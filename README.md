@@ -141,6 +141,8 @@ The Lambda expects **two** secrets in AWS Secrets Manager: one that contains an 
 
 Once both secrets exist, reference their ARNs in `.env` (for local runs) and pass them to the CDK stack via context parameters when deploying.
 
+When you are working entirely within LocalStack, skip the manual `aws secretsmanager create-secret` calls—the `backend/scripts/setup_localstack.py` helper can provision both secrets and the DynamoDB table in one shot.
+
 ---
 
 ## Running the Lambda Locally
@@ -173,43 +175,31 @@ docker run --rm -it \
 
 Leave this container running in a separate terminal.  The default edge endpoint (`http://localhost:4566`) will now proxy DynamoDB and Secrets Manager calls.
 
-### Step 3 — Point SDKs to LocalStack and bootstrap resources
+### Step 3 — Bootstrap LocalStack with the helper script
 
-In a new terminal (with your Python virtual environment active), export the LocalStack endpoints and seed the required AWS resources:
+Run the automation script to create the DynamoDB table and the required Secrets Manager entries.  Provide the OpenAI key directly (or via a JSON file) and point the script at the Gmail credentials JSON produced by `gmail_token_quickstart.py`:
 
 ```bash
-export AWS_ACCESS_KEY_ID=test
-export AWS_SECRET_ACCESS_KEY=test
-export AWS_DEFAULT_REGION=us-east-1
-export AWS_ENDPOINT_URL=http://localhost:4566
-export SECRETSMANAGER_ENDPOINT_URL=http://localhost:4566
-export DYNAMODB_ENDPOINT_URL=http://localhost:4566
-
-aws --endpoint-url $AWS_ENDPOINT_URL dynamodb create-table \
-  --table-name Events \
-  --attribute-definitions AttributeName=id,AttributeType=S \
-  --key-schema AttributeName=id,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST
-
-aws --endpoint-url $AWS_ENDPOINT_URL dynamodb update-table \
-  --table-name Events \
-  --attribute-definitions AttributeName=category,AttributeType=S AttributeName=source_name,AttributeType=S AttributeName=start_time,AttributeType=S \
-  --global-secondary-index-updates '[{"Create":{"IndexName":"category-index","KeySchema":[{"AttributeName":"category","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}}},{"Create":{"IndexName":"source_name-index","KeySchema":[{"AttributeName":"source_name","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}}},{"Create":{"IndexName":"start_time-index","KeySchema":[{"AttributeName":"start_time","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}}}]'
-
-aws --endpoint-url $AWS_ENDPOINT_URL secretsmanager create-secret \
-  --name local/openai \
-  --secret-string '{"apiKey": "test-openai"}'
-
-aws --endpoint-url $AWS_ENDPOINT_URL secretsmanager create-secret \
-  --name local/gmail \
-  --secret-string @gmail-credentials.json
+python3 backend/scripts/setup_localstack.py \
+  --endpoint-url http://localhost:4566 \
+  --openai-api-key sk-your-key \
+  --gmail-secret-file gmail-credentials.json
 ```
 
-> **Tip:** Swap `gmail-credentials.json` with a sanitized fixture when you do not want the Lambda to contact Gmail.  The ingestion handler will still call OpenAI unless you mock or stub it.
+Key flags:
+
+| Flag | Purpose |
+| --- | --- |
+| `--openai-api-key` | Inline the OpenAI API key into the secret JSON.  Use `--openai-secret-file` if you prefer to supply a pre-built payload. |
+| `--gmail-secret-file` | Path to the merged Gmail OAuth credentials JSON (required). |
+| `--openai-secret-name` / `--gmail-secret-name` | Override the default LocalStack secret names (`local/openai`, `local/gmail`). |
+| `--force` | Overwrite existing secrets instead of leaving them untouched. |
+
+The script prints the ARNs that LocalStack assigns, along with a ready-to-copy block of environment variables for `.env`.
 
 ### Step 4 — Configure environment variables
 
-Update `.env` (or export variables in the terminal) so the Lambda uses the LocalStack resources you created.
+Update `.env` (or export variables in the terminal) so the Lambda uses the LocalStack resources you created.  The bootstrap script echoes compatible values—copy/paste them here.
 
 ```env
 OPENAI_SECRET_ARN=arn:aws:secretsmanager:us-east-1:000000000000:secret:local/openai
