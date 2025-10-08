@@ -97,6 +97,7 @@ The Lambda expects **two** secrets in AWS Secrets Manager: one that contains an 
      --name prod/openai \
      --secret-string '{"apiKey": "sk-your-key"}'
    ```
+   For LocalStack development, add `--endpoint-url http://localhost:4566` and choose a local secret name (for example, `local/openai`).
    Use the returned ARN as `OPENAI_SECRET_ARN` in `.env` and CDK context parameters.  The Lambda expects the secret JSON to contain an `apiKey` field.
 
 ### Gmail OAuth Credentials
@@ -135,6 +136,7 @@ The Lambda expects **two** secrets in AWS Secrets Manager: one that contains an 
      --name prod/gmail \
      --secret-string file://gmail-credentials.json
    ```
+   For LocalStack development, repeat the command with `--endpoint-url http://localhost:4566` and a local secret name such as `local/gmail`.
    Point `GMAIL_SECRET_ARN` to the ARN returned by this command.  The Lambda expects the secret JSON to include the refresh token so it can mint short-lived access tokens automatically.  If Google ever revokes the refresh token (for example, you do not use it for an extended period or you regenerate the OAuth client secret), rerun `gmail_token_quickstart.py` with the updated credentials to produce a fresh JSON payload and update the secret.
 
 Once both secrets exist, reference their ARNs in `.env` (for local runs) and pass them to the CDK stack via context parameters when deploying.
@@ -143,93 +145,96 @@ Once both secrets exist, reference their ARNs in `.env` (for local runs) and pas
 
 ## Running the Lambda Locally
 
-The Lambda reaches out to three external systems—AWS Secrets Manager, Gmail, and OpenAI—so a “local” run still requires valid credentials.  There are two common approaches.
+The Lambda reaches out to three external systems—AWS Secrets Manager, Gmail, and OpenAI—so a “local” run still requires valid credentials.  To avoid touching live AWS resources, you can emulate Secrets Manager and DynamoDB with **LocalStack**.
 
-### Option A — Invoke against real AWS services
+### Step 1 — Install LocalStack
 
-1. **Provision supporting resources (one-time).**
-   ```bash
-   aws dynamodb create-table \
-     --table-name Events \
-     --attribute-definitions AttributeName=id,AttributeType=S \
-     --key-schema AttributeName=id,KeyType=HASH \
-     --billing-mode PAY_PER_REQUEST
+LocalStack can run either as a Docker container (recommended) or directly via `pip` inside a Python virtual environment.
 
-   aws dynamodb update-table \
-     --table-name Events \
-     --attribute-definitions AttributeName=category,AttributeType=S AttributeName=source_name,AttributeType=S AttributeName=start_time,AttributeType=S \
-     --global-secondary-index-updates '[{"Create":{"IndexName":"category-index","KeySchema":[{"AttributeName":"category","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}}},{"Create":{"IndexName":"source_name-index","KeySchema":[{"AttributeName":"source_name","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}}},{"Create":{"IndexName":"start_time-index","KeySchema":[{"AttributeName":"start_time","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}}}]'
+```bash
+# Using Docker (preferred)
+docker pull localstack/localstack
 
-   aws secretsmanager create-secret --name <openai-secret-name> --secret-string '{"apiKey": "sk-..."}'
-   aws secretsmanager create-secret --name <gmail-secret-name> --secret-string @gmail-credentials.json
-   ```
-   The Gmail credentials JSON must contain the OAuth tokens generated for the `events.andreas.services` Gmail account.
+# Or install the CLI locally
+pip install "localstack[full]"
+```
 
-2. **Export environment variables in your shell or rely on `.env`.**
-   ```bash
-   export OPENAI_SECRET_ARN=arn:aws:secretsmanager:us-east-1:123456789012:secret:openai-api
-   export GMAIL_SECRET_ARN=arn:aws:secretsmanager:us-east-1:123456789012:secret:gmail-credentials
-   export TABLE_NAME=Events
-   export TIMEZONE=America/New_York
-   export AWS_PROFILE=<your-aws-profile>
-   export AWS_REGION=us-east-1
-   ```
+If you use the LocalStack CLI, start it with `localstack start`.  When running in Docker, follow the next step.
 
-3. **Run an ad-hoc invocation from VS Code’s integrated terminal.**
-   ```bash
-   python3 - <<'PY'
-   import json
-   from backend.lambda.lambda_function import handler
+### Step 2 — Launch LocalStack
 
-   result = handler({}, None)
-   print(json.dumps(result, indent=2, default=str))
-   PY
-   ```
-   The handler will pull real Gmail messages labelled `Events`, process them with OpenAI, and write into DynamoDB.
+```bash
+docker run --rm -it \
+  -p 4566:4566 \
+  -p 4510-4559:4510-4559 \
+  -e SERVICES="dynamodb,secretsmanager" \
+  localstack/localstack
+```
 
-4. **Inspect CloudWatch Logs** (optional) to review the run: `aws logs tail /aws/lambda/<function-name> --follow`.
+Leave this container running in a separate terminal.  The default edge endpoint (`http://localhost:4566`) will now proxy DynamoDB and Secrets Manager calls.
 
-### Option B — Emulate AWS with LocalStack
+### Step 3 — Point SDKs to LocalStack and bootstrap resources
 
-1. **Start LocalStack.**
-   ```bash
-   docker run --rm -it -p 4566:4566 -p 4510-4559:4510-4559 localstack/localstack
-   ```
+In a new terminal (with your Python virtual environment active), export the LocalStack endpoints and seed the required AWS resources:
 
-2. **Point AWS SDKs to LocalStack and bootstrap resources.**
-   ```bash
-   export AWS_ACCESS_KEY_ID=test
-   export AWS_SECRET_ACCESS_KEY=test
-   export AWS_DEFAULT_REGION=us-east-1
-   export AWS_ENDPOINT_URL=http://localhost:4566
-   export SECRETSMANAGER_ENDPOINT_URL=http://localhost:4566
-   export DYNAMODB_ENDPOINT_URL=http://localhost:4566
+```bash
+export AWS_ACCESS_KEY_ID=test
+export AWS_SECRET_ACCESS_KEY=test
+export AWS_DEFAULT_REGION=us-east-1
+export AWS_ENDPOINT_URL=http://localhost:4566
+export SECRETSMANAGER_ENDPOINT_URL=http://localhost:4566
+export DYNAMODB_ENDPOINT_URL=http://localhost:4566
 
-   aws --endpoint-url $AWS_ENDPOINT_URL dynamodb create-table \
-     --table-name Events \
-     --attribute-definitions AttributeName=id,AttributeType=S \
-     --key-schema AttributeName=id,KeyType=HASH \
-     --billing-mode PAY_PER_REQUEST
+aws --endpoint-url $AWS_ENDPOINT_URL dynamodb create-table \
+  --table-name Events \
+  --attribute-definitions AttributeName=id,AttributeType=S \
+  --key-schema AttributeName=id,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST
 
-   aws --endpoint-url $AWS_ENDPOINT_URL secretsmanager create-secret \
-     --name local/openai \
-     --secret-string '{"apiKey": "test-openai"}'
-   aws --endpoint-url $AWS_ENDPOINT_URL secretsmanager create-secret \
-     --name local/gmail \
-     --secret-string @gmail-credentials.json
-   ```
+aws --endpoint-url $AWS_ENDPOINT_URL dynamodb update-table \
+  --table-name Events \
+  --attribute-definitions AttributeName=category,AttributeType=S AttributeName=source_name,AttributeType=S AttributeName=start_time,AttributeType=S \
+  --global-secondary-index-updates '[{"Create":{"IndexName":"category-index","KeySchema":[{"AttributeName":"category","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}}},{"Create":{"IndexName":"source_name-index","KeySchema":[{"AttributeName":"source_name","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}}},{"Create":{"IndexName":"start_time-index","KeySchema":[{"AttributeName":"start_time","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}}}]'
 
-3. **Update `.env` to use the LocalStack ARNs and endpoint overrides.**
-   ```env
-   OPENAI_SECRET_ARN=arn:aws:secretsmanager:us-east-1:000000000000:secret:local/openai
-   GMAIL_SECRET_ARN=arn:aws:secretsmanager:us-east-1:000000000000:secret:local/gmail
-   TABLE_NAME=Events
-   TIMEZONE=America/New_York
-   SECRETSMANAGER_ENDPOINT_URL=http://localhost:4566
-   DYNAMODB_ENDPOINT_URL=http://localhost:4566
-   ```
+aws --endpoint-url $AWS_ENDPOINT_URL secretsmanager create-secret \
+  --name local/openai \
+  --secret-string '{"apiKey": "test-openai"}'
 
-4. **Invoke the handler** exactly as in Option A.  Gmail and OpenAI calls will still reach their live APIs—mock them by temporarily editing `lambda_function.py` or by setting test credentials.
+aws --endpoint-url $AWS_ENDPOINT_URL secretsmanager create-secret \
+  --name local/gmail \
+  --secret-string @gmail-credentials.json
+```
+
+> **Tip:** Swap `gmail-credentials.json` with a sanitized fixture when you do not want the Lambda to contact Gmail.  The ingestion handler will still call OpenAI unless you mock or stub it.
+
+### Step 4 — Configure environment variables
+
+Update `.env` (or export variables in the terminal) so the Lambda uses the LocalStack resources you created.
+
+```env
+OPENAI_SECRET_ARN=arn:aws:secretsmanager:us-east-1:000000000000:secret:local/openai
+GMAIL_SECRET_ARN=arn:aws:secretsmanager:us-east-1:000000000000:secret:local/gmail
+TABLE_NAME=Events
+TIMEZONE=America/New_York
+SECRETSMANAGER_ENDPOINT_URL=http://localhost:4566
+DYNAMODB_ENDPOINT_URL=http://localhost:4566
+```
+
+### Step 5 — Invoke the handler from VS Code
+
+With LocalStack running and environment variables set, execute the Lambda handler directly:
+
+```bash
+python3 - <<'PY'
+import json
+from backend.lambda.lambda_function import handler
+
+result = handler({}, None)
+print(json.dumps(result, indent=2, default=str))
+PY
+```
+
+The handler will communicate with LocalStack for DynamoDB and Secrets Manager while still reaching Gmail and OpenAI over the public internet.  To fully isolate tests, patch `lambda_function.py` to stub those external calls or inject mock clients in your test harness.
 
 ---
 
