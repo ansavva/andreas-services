@@ -83,6 +83,54 @@ Install the following tools before working with the project locally:
 
 ---
 
+## Obtaining the OpenAI & Gmail Secrets
+
+The Lambda expects **two** secrets in AWS Secrets Manager: one that contains an OpenAI API key and another that contains Gmail OAuth credentials (including refresh tokens).  The steps below outline how to create each secret from scratch.
+
+### OpenAI API Key
+
+1. **Create or sign in to an OpenAI account.** Visit [https://platform.openai.com/](https://platform.openai.com/) and sign in with the account that will own billing for the ingestion workload.
+2. **Generate a personal API key.** Navigate to **Dashboard → API keys → + Create new secret key**.  Copy the generated key (`sk-...`) immediately—OpenAI will only show it once.
+3. **Store the key in Secrets Manager.**
+   ```bash
+   aws secretsmanager create-secret \
+     --name prod/openai \
+     --secret-string '{"apiKey": "sk-your-key"}'
+   ```
+   Use the returned ARN as `OPENAI_SECRET_ARN` in `.env` and CDK context parameters.  The Lambda expects the secret JSON to contain an `apiKey` field.
+
+### Gmail OAuth Credentials
+
+1. **Create a Google Cloud project.** Visit [https://console.cloud.google.com/](https://console.cloud.google.com/), click the project selector, and create (or select) a project that will host the Gmail API integration.
+2. **Enable the Gmail API.** In the Google Cloud Console, go to **APIs & Services → Library**, search for “Gmail API,” and click **Enable**.
+3. **Configure the OAuth consent screen.** Under **APIs & Services → OAuth consent screen**, create either an internal or external consent screen (internal is simplest for Workspace accounts).  Add the Gmail scopes you plan to request—`https://www.googleapis.com/auth/gmail.readonly` works for read-only ingestion.
+4. **Create OAuth client credentials.** Navigate to **APIs & Services → Credentials → + Create credentials → OAuth client ID**.  Choose **Desktop app** (for manual token generation) and download the resulting JSON—it will contain a `client_id` and `client_secret`.
+5. **Generate refresh tokens.** Use Google’s Python quickstart or the [`google-auth-oauthlib` flow](https://developers.google.com/gmail/api/quickstart/python) to authorize the Gmail account that receives event emails.  The process yields a token JSON with `refresh_token`, `token`, `token_uri`, and expiration fields.
+6. **Combine the client and token JSON.** Merge the `client_id`/`client_secret` values with the refresh-token payload so that the final secret JSON resembles:
+   ```json
+   {
+     "client_id": "...apps.googleusercontent.com",
+     "client_secret": "...",
+     "refresh_token": "1//...",
+     "token": "ya29...",
+     "token_uri": "https://oauth2.googleapis.com/token",
+     "scopes": [
+       "https://www.googleapis.com/auth/gmail.readonly"
+     ]
+   }
+   ```
+7. **Store the Gmail credentials in Secrets Manager.**
+   ```bash
+   aws secretsmanager create-secret \
+     --name prod/gmail \
+     --secret-string file://gmail-credentials.json
+   ```
+   Point `GMAIL_SECRET_ARN` to the ARN returned by this command.  The Lambda expects the secret JSON to include the refresh token so it can mint short-lived access tokens automatically.
+
+Once both secrets exist, reference their ARNs in `.env` (for local runs) and pass them to the CDK stack via context parameters when deploying.
+
+---
+
 ## Running the Lambda Locally
 
 The Lambda reaches out to three external systems—AWS Secrets Manager, Gmail, and OpenAI—so a “local” run still requires valid credentials.  There are two common approaches.
