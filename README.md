@@ -108,7 +108,7 @@ The Lambda expects **two** secrets in AWS Secrets Manager: one that contains an 
 5. **Generate refresh tokens.** Run the bundled helper (a direct adaptation of Google’s [Python quickstart](https://developers.google.com/workspace/gmail/api/quickstart/python)) to authorize the Gmail account that receives event emails.  The script reads the OAuth client ID/secret you just created, opens the browser-based consent screen, and writes out the merged token payload you will store in Secrets Manager.
 
    ```bash
-   python backend/scripts/gmail_token_quickstart.py \
+   python3 backend/scripts/gmail_token_quickstart.py \
      --client-id "<CLIENT_ID>.apps.googleusercontent.com" \
      --client-secret "<CLIENT_SECRET>" \
      --output gmail-credentials.json
@@ -177,7 +177,7 @@ The Lambda reaches out to three external systems—AWS Secrets Manager, Gmail, a
 
 3. **Run an ad-hoc invocation from VS Code’s integrated terminal.**
    ```bash
-   python - <<'PY'
+   python3 - <<'PY'
    import json
    from backend.lambda.lambda_function import handler
 
@@ -261,7 +261,7 @@ The Lambda reaches out to three external systems—AWS Secrets Manager, Gmail, a
 - **Python linting & formatting:** Enable `ruff` or `flake8` if you prefer static analysis.  Configure `"python.formatting.provider": "black"` for consistent formatting.
 - **AWS Toolkit invocations:** Right-click `backend/lambda/lambda_function.py` → “Run Locally” to launch the handler with custom payloads.  Provide environment variables in the dialog or via `.env`.
 - **Debugging:** Create `.vscode/launch.json` with a `python` configuration whose `module` is `backend.lambda.lambda_function` and add `"envFile": "${workspaceFolder}/.env"`.
-- **Task automation:** Add VS Code tasks that run `python -m compileall backend/lambda` or `cdk synth` for quick verification.
+- **Task automation:** Add VS Code tasks that run `python3 -m compileall backend/lambda` or `cdk synth` for quick verification.
 
 ---
 
@@ -271,7 +271,7 @@ Run these quick checks before committing changes:
 
 ```bash
 # Byte-compile the Lambda source to catch syntax errors
-python -m compileall backend/lambda
+python3 -m compileall backend/lambda
 
 # Optional: run CDK synthesis in CI mode
 cd backend/cdk && cdk synth && cd ../..

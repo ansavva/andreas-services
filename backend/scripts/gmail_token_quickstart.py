@@ -7,7 +7,7 @@ resulting token payload can be merged directly into the AWS Secrets Manager
 entry consumed by the ingestion Lambda.
 
 Example:
-    python backend/scripts/gmail_token_quickstart.py \
+    python3 backend/scripts/gmail_token_quickstart.py \
         --client-id YOUR_CLIENT_ID \
         --client-secret YOUR_CLIENT_SECRET \
         --scopes https://www.googleapis.com/auth/gmail.readonly \
