@@ -1,0 +1,275 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Gmail ingestion pipeline for events.andreas.services. Provisions the DynamoDB table,
+  ECS task definition, permissions, and an EventBridge schedule that runs the container weekly.
+
+Parameters:
+  OpenAISecretArn:
+    Type: String
+    Description: ARN of the Secrets Manager secret that stores the OpenAI API key.
+  GmailSecretArn:
+    Type: String
+    Description: ARN of the Secrets Manager secret that stores Gmail OAuth credentials.
+  TableName:
+    Type: String
+    Default: Events
+    Description: Name of the DynamoDB table that stores normalized event records.
+  ClusterName:
+    Type: String
+    Default: events-ingestion
+    Description: Logical name for the ECS cluster that runs the scheduled task.
+  TaskFamily:
+    Type: String
+    Default: events-gmail-ingest
+    Description: ECS task family name.
+  ContainerImage:
+    Type: String
+    Description: Fully qualified container image URI (e.g., 123456789012.dkr.ecr.us-east-1.amazonaws.com/events-ingest:latest).
+  ContainerCpu:
+    Type: Number
+    Default: 1024
+    Description: Fargate CPU units for the ingestion task.
+  ContainerMemory:
+    Type: Number
+    Default: 2048
+    Description: Fargate memory (MB) for the ingestion task.
+  ScheduleExpression:
+    Type: String
+    Default: cron(0 17 ? * MON *)
+    Description: EventBridge cron expression (defaults to Mondays at 5:00 PM local time).
+  ScheduleTimezone:
+    Type: String
+    Default: America/New_York
+    Description: Time zone for the EventBridge schedule.
+  Timezone:
+    Type: String
+    Default: America/New_York
+    Description: Time zone injected into the container for parsing email times.
+  OpenAIModel:
+    Type: String
+    Default: gpt-4o-mini
+    Description: Model name passed to the OpenAI extraction request.
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets for running the Fargate task (must be in the target VPC).
+  SecurityGroupIds:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Description: Security groups attached to the scheduled task ENI.
+  AssignPublicIp:
+    Type: String
+    Default: ENABLED
+    AllowedValues:
+      - ENABLED
+      - DISABLED
+    Description: Whether to assign a public IP when launching the task.
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    Description: Number of days to retain CloudWatch logs.
+
+Resources:
+  EventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref TableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: category
+          AttributeType: S
+        - AttributeName: source_name
+          AttributeType: S
+        - AttributeName: start_time
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: category-index
+          KeySchema:
+            - AttributeName: category
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: source_name-index
+          KeySchema:
+            - AttributeName: source_name
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: start_time-index
+          KeySchema:
+            - AttributeName: start_time
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  IngestionCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref ClusterName
+
+  IngestionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/ecs/${TaskFamily}"
+      RetentionInDays: !Ref LogRetentionDays
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: TaskDynamoDbAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !GetAtt EventsTable.Arn
+                  - !Sub "${EventsTable.Arn}/index/*"
+        - PolicyName: TaskSecretAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref OpenAISecretArn
+                  - !Ref GmailSecretArn
+
+  IngestionTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref TaskFamily
+      Cpu: !Ref ContainerCpu
+      Memory: !Ref ContainerMemory
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      RuntimePlatform:
+        CpuArchitecture: X86_64
+        OperatingSystemFamily: LINUX
+      ContainerDefinitions:
+        - Name: ingest
+          Image: !Ref ContainerImage
+          Essential: true
+          Environment:
+            - Name: TABLE_NAME
+              Value: !Ref TableName
+            - Name: TIMEZONE
+              Value: !Ref Timezone
+            - Name: OPENAI_MODEL
+              Value: !Ref OpenAIModel
+            - Name: OPENAI_SECRET_ARN
+              Value: !Ref OpenAISecretArn
+            - Name: GMAIL_SECRET_ARN
+              Value: !Ref GmailSecretArn
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref IngestionLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ingest
+
+  EventBridgeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: RunTaskPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:RunTask
+                Resource: !Ref IngestionTaskDefinition
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource:
+                  - !GetAtt TaskExecutionRole.Arn
+                  - !GetAtt TaskRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: ecs-tasks.amazonaws.com
+
+  WeeklySchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Weekly trigger for Gmail ingestion container.
+      Name: !Sub "${TaskFamily}-schedule"
+      ScheduleExpression: !Ref ScheduleExpression
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt IngestionCluster.Arn
+          Id: GmailIngestionTask
+          RoleArn: !GetAtt EventBridgeRole.Arn
+          EcsParameters:
+            TaskDefinitionArn: !Ref IngestionTaskDefinition
+            LaunchType: FARGATE
+            PlatformVersion: LATEST
+            NetworkConfiguration:
+              AwsvpcConfiguration:
+                AssignPublicIp: !Ref AssignPublicIp
+                Subnets: !Ref SubnetIds
+                SecurityGroups: !Ref SecurityGroupIds
+
+Outputs:
+  DynamoDbTableName:
+    Description: Name of the DynamoDB table that stores events.
+    Value: !Ref EventsTable
+  DynamoDbTableArn:
+    Description: ARN of the DynamoDB table.
+    Value: !GetAtt EventsTable.Arn
+  ClusterName:
+    Description: Name of the ECS cluster hosting the ingestion task.
+    Value: !Ref IngestionCluster
+  TaskDefinitionArn:
+    Description: ARN of the ECS task definition for the ingestion container.
+    Value: !Ref IngestionTaskDefinition
+  EventRuleArn:
+    Description: ARN of the EventBridge rule that schedules the ingestion task.
+    Value: !GetAtt WeeklySchedule.Arn

@@ -1,0 +1,25 @@
+version: "3.9"
+
+services:
+  dynamodb:
+    image: amazon/dynamodb-local:latest
+    container_name: dynamodb-local
+    ports:
+      - "8000:8000"
+
+  app:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    depends_on:
+      - dynamodb
+    env_file:
+      - .env
+    environment:
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-fake}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-fake}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      DYNAMODB_ENDPOINT_URL: ${COMPOSE_DYNAMODB_ENDPOINT_URL:-http://dynamodb:8000}
+    command: ["python", "-m", "app.main"]
+    volumes:
+      - ./backend/app:/app/app:ro
