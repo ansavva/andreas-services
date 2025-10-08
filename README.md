@@ -196,10 +196,13 @@ Take note of the returned ARNs; you will pass them to the CDK stack in the next 
 
 ### Step 4 — Deploy the CDK stack with `aws-cdk-local`
 
-Deploying with [`cdklocal`](https://github.com/localstack/aws-cdk-local) exercises the same CDK application that you use for real AWS regions, ensuring environment parity.  Install the CLI (`npm install -g aws-cdk-local`) and then bootstrap and deploy against LocalStack:
+Deploying with [`cdklocal`](https://github.com/localstack/aws-cdk-local) exercises the same CDK application that you use for real AWS regions, ensuring environment parity.  Install the CLI (`npm install -g aws-cdk-local`) and then bootstrap and deploy against LocalStack.  Because `cdklocal` still looks for AWS credentials, export throwaway values (or run `aws configure` against a dedicated profile) before bootstrapping:
 
 ```bash
 cd backend/cdk
+export AWS_ACCESS_KEY_ID=test
+export AWS_SECRET_ACCESS_KEY=test
+export AWS_REGION=us-east-1
 cdklocal bootstrap aws://000000000000/us-east-1
 cdklocal deploy LambdaStack \
   --context openaiSecretArn=arn:aws:secretsmanager:us-east-1:000000000000:secret:local/openai \
