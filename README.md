@@ -105,8 +105,18 @@ The Lambda expects **two** secrets in AWS Secrets Manager: one that contains an 
 2. **Enable the Gmail API.** In the Google Cloud Console, go to **APIs & Services → Library**, search for “Gmail API,” and click **Enable**.
 3. **Configure the OAuth consent screen.** Under **APIs & Services → OAuth consent screen**, create either an internal or external consent screen (internal is simplest for Workspace accounts).  Add the Gmail scopes you plan to request—`https://www.googleapis.com/auth/gmail.readonly` works for read-only ingestion.
 4. **Create OAuth client credentials.** Navigate to **APIs & Services → Credentials → + Create credentials → OAuth client ID**.  Choose **Desktop app** (for manual token generation) and download the resulting JSON—it will contain a `client_id` and `client_secret`.
-5. **Generate refresh tokens.** Use Google’s Python quickstart or the [`google-auth-oauthlib` flow](https://developers.google.com/gmail/api/quickstart/python) to authorize the Gmail account that receives event emails.  The process yields a token JSON with `refresh_token`, `token`, `token_uri`, and expiration fields.
-6. **Combine the client and token JSON.** Merge the `client_id`/`client_secret` values with the refresh-token payload so that the final secret JSON resembles:
+5. **Generate refresh tokens.** Run the bundled helper (a direct adaptation of Google’s [Python quickstart](https://developers.google.com/workspace/gmail/api/quickstart/python)) to authorize the Gmail account that receives event emails.  The script reads the OAuth client ID/secret you just created, opens the browser-based consent screen, and writes out the merged token payload you will store in Secrets Manager.
+
+   ```bash
+   python backend/scripts/gmail_token_quickstart.py \
+     --client-id "<CLIENT_ID>.apps.googleusercontent.com" \
+     --client-secret "<CLIENT_SECRET>" \
+     --output gmail-credentials.json
+   ```
+
+   If you are working on a headless machine, add `--no-browser` to complete the flow entirely in the terminal.  The command produces `gmail-credentials.json`, which contains the access token, refresh token, and metadata in the exact structure the Lambda expects.
+
+6. **Combine the client and token JSON.** (Already handled if you ran the helper above.)  Ensure the final secret JSON resembles:
    ```json
    {
      "client_id": "...apps.googleusercontent.com",
@@ -125,7 +135,7 @@ The Lambda expects **two** secrets in AWS Secrets Manager: one that contains an 
      --name prod/gmail \
      --secret-string file://gmail-credentials.json
    ```
-   Point `GMAIL_SECRET_ARN` to the ARN returned by this command.  The Lambda expects the secret JSON to include the refresh token so it can mint short-lived access tokens automatically.
+   Point `GMAIL_SECRET_ARN` to the ARN returned by this command.  The Lambda expects the secret JSON to include the refresh token so it can mint short-lived access tokens automatically.  If Google ever revokes the refresh token (for example, you do not use it for an extended period or you regenerate the OAuth client secret), rerun `gmail_token_quickstart.py` with the updated credentials to produce a fresh JSON payload and update the secret.
 
 Once both secrets exist, reference their ARNs in `.env` (for local runs) and pass them to the CDK stack via context parameters when deploying.
 
