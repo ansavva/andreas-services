@@ -1,8 +1,11 @@
 # events.andreas.services — Gmail Event Ingestion
 
-This repository packages the Gmail ingestion Lambda for the `events.andreas.services` project and the tooling required to deploy it with **plain AWS CLI commands**. The Lambda polls Gmail for messages labelled **Events**, extracts structured event metadata via the OpenAI API, deduplicates records in DynamoDB, and logs summary metrics.
+This repository contains the Gmail ingestion Lambda for the `events.andreas.services` project together with a reusable
+**CloudFormation template**. The function retrieves Gmail messages labeled **Events**, extracts structured event data via the
+OpenAI API, deduplicates items in DynamoDB, and logs ingestion metrics.
 
-A helper shell script (`backend/scripts/deploy_infrastructure.sh`) provisions or updates every AWS resource with the CLI—no CDK or CloudFormation stacks are required. The same script works against both AWS and LocalStack so your local setup mirrors production.
+The CloudFormation workflow keeps local and cloud deployments identical—package the Lambda once, then deploy the same stack to
+AWS or LocalStack.
 
 ---
 
@@ -10,38 +13,40 @@ A helper shell script (`backend/scripts/deploy_infrastructure.sh`) provisions or
 
 ```
 backend/
+├── cloudformation/
+│   └── events-stack.yaml       # CloudFormation template for DynamoDB, Lambda, EventBridge, IAM
 ├── lambda/
-│   ├── lambda_function.py    # Gmail → OpenAI → DynamoDB ingestion logic
-│   └── requirements.txt      # Lambda runtime dependencies (inherits ../requirements.txt)
-├── requirements.txt          # Shared backend dependencies
+│   ├── lambda_function.py      # Gmail → OpenAI → DynamoDB ingestion handler
+│   └── requirements.txt        # Lambda-specific dependency overrides (extends ../requirements.txt)
+├── requirements.txt            # Shared backend dependencies
 └── scripts/
-    ├── deploy_infrastructure.sh  # AWS CLI based infrastructure bootstrapper
-    └── gmail_token_quickstart.py # OAuth helper for generating Gmail refresh tokens
+    ├── build_lambda_bundle.sh  # Creates the deployment bundle consumed by CloudFormation
+    └── gmail_token_quickstart.py # Gmail OAuth helper to mint refresh tokens
 ```
 
-`.env.example` documents the environment variables consumed by the Lambda and local tooling.
+`.env.example` documents the runtime environment variables that the Lambda consumes during local testing.
 
 ---
 
 ## Prerequisites
 
-Install the following before working with the project:
+Install the following tools before working with the project:
 
 | Tool | Purpose | Notes |
 | --- | --- | --- |
-| [Python 3.11](https://www.python.org/downloads/) | Lambda runtime & scripts | Configure as the default interpreter in VS Code. |
-| [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) | Provision AWS/LocalStack resources | Configure with `aws configure --profile <name>` for cloud deployments. |
-| [`zip`](https://infozip.sourceforge.net/Zip.html) | Package Lambda artifacts | macOS and Linux include it by default; Windows users can install via `choco install zip`. |
-| [Docker Desktop](https://www.docker.com/products/docker-desktop/) (optional) | Run LocalStack locally | Required only if you emulate AWS services instead of touching the cloud. |
-| [`awscli-local`](https://github.com/localstack/awscli-local) (optional) | Convenience wrapper for LocalStack | Provides the `awslocal` command used throughout this guide. |
+| [Python 3.11](https://www.python.org/downloads/) | Lambda runtime & helper scripts | Set as the default interpreter in VS Code. |
+| [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) | Package and deploy CloudFormation stacks | Configure a profile with `aws configure --profile <name>` for real AWS deployments. |
+| [`zip`](https://infozip.sourceforge.net/Zip.html) | Bundles Lambda artifacts | Included on macOS/Linux; Windows users can install via `choco install zip`. |
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) (optional) | Runs LocalStack locally | Required only when emulating AWS services. |
+| [`awscli-local`](https://github.com/localstack/awscli-local) (optional) | Convenience wrapper for LocalStack | Supplies the `awslocal` command used in this guide. |
 
-If you are using VS Code, install the [Python extension](https://marketplace.visualstudio.com/items?itemName=ms-python.python) for virtualenv support and linting.
+VS Code users should also install the [Python extension](https://marketplace.visualstudio.com/items?itemName=ms-python.python) for virtual environment support.
 
 ---
 
 ## Initial Project Setup
 
-1. **Clone and open the repository.**
+1. **Clone the repository and open it in VS Code.**
    ```bash
    git clone <your-fork-url>
    cd andreas-services
@@ -68,18 +73,19 @@ If you are using VS Code, install the [Python extension](https://marketplace.vis
    ```bash
    cp .env.example .env
    ```
-   Populate the ARN placeholders once you create the OpenAI and Gmail secrets. VS Code automatically loads `.env` files when the Python extension is enabled (or set `"python.envFile": "${workspaceFolder}/.env"` in `.vscode/settings.json`).
+   Populate the ARN placeholders after you create the OpenAI and Gmail secrets. VS Code automatically loads `.env` files when the Python extension is enabled (or set `"python.envFile": "${workspaceFolder}/.env"` in `.vscode/settings.json`).
 
 ---
 
 ## Generating the OpenAI and Gmail Secrets
 
-The Lambda expects two Secrets Manager entries: one with your OpenAI API key and another with Gmail OAuth credentials (client ID, client secret, refresh token, etc.). The examples below show both AWS and LocalStack workflows.
+The Lambda expects two Secrets Manager entries: one storing your OpenAI API key and another storing Gmail OAuth credentials
+(client ID, client secret, refresh token, etc.). The commands below show both AWS and LocalStack workflows.
 
 ### OpenAI API Key
 
 1. **Create or sign in to an OpenAI account.** Visit [https://platform.openai.com/](https://platform.openai.com/) and sign in with the account that will own billing for the ingestion workload.
-2. **Generate a personal API key.** Navigate to **Dashboard → API keys → + Create new secret key**. Copy the generated key (`sk-...`) immediately—OpenAI only shows it once.
+2. **Generate a personal API key.** Navigate to **Dashboard → API keys → + Create new secret key**. Copy the generated key (`sk-...`) immediately—OpenAI shows it only once.
 3. **Store the key in Secrets Manager.**
    ```bash
    # AWS
@@ -87,27 +93,27 @@ The Lambda expects two Secrets Manager entries: one with your OpenAI API key and
      --name prod/openai \
      --secret-string '{"apiKey": "sk-your-key"}'
 
-   # LocalStack (using awslocal)
+   # LocalStack
    awslocal secretsmanager create-secret \
      --name local/openai \
      --secret-string '{"apiKey": "sk-your-key"}'
    ```
-   Save the returned ARN—you will supply it to the deployment script and `.env` as `OPENAI_SECRET_ARN`.
+   Save the returned ARN—you will provide it to CloudFormation and to your `.env` file as `OPENAI_SECRET_ARN`.
 
 ### Gmail OAuth Credentials
 
 1. **Create a Google Cloud project** (or reuse an existing one) via [https://console.cloud.google.com/](https://console.cloud.google.com/).
 2. **Enable the Gmail API** under **APIs & Services → Library**.
-3. **Configure the OAuth consent screen** under **APIs & Services → OAuth consent screen**. Add the Gmail scopes you plan to request; `https://www.googleapis.com/auth/gmail.readonly` works for read-only ingestion.
-4. **Create OAuth client credentials** via **APIs & Services → Credentials → + Create credentials → OAuth client ID**. Choose **Desktop app** and download the JSON—it contains the `client_id` and `client_secret` used in the next step.
-5. **Generate tokens with the bundled helper.** Run the Gmail quickstart adaptation to authorize the mailbox that receives event emails and emit the merged JSON the Lambda expects.
+3. **Configure the OAuth consent screen** under **APIs & Services → OAuth consent screen**. Add the Gmail scopes you require; `https://www.googleapis.com/auth/gmail.readonly` covers read-only ingestion.
+4. **Create OAuth client credentials** via **APIs & Services → Credentials → + Create credentials → OAuth client ID**. Choose **Desktop app** and download the JSON—it contains the `client_id` and `client_secret` for the next step.
+5. **Generate tokens with the bundled helper.** Run the quickstart adaptation to authorize the mailbox that receives event emails and produce the merged JSON expected by the Lambda.
    ```bash
    python3 backend/scripts/gmail_token_quickstart.py \
      --client-id "<CLIENT_ID>.apps.googleusercontent.com" \
      --client-secret "<CLIENT_SECRET>" \
      --output gmail-credentials.json
    ```
-   Add `--no-browser` in headless environments to finish the OAuth flow entirely within the terminal.
+   Add `--no-browser` in headless environments to complete the OAuth flow entirely within the terminal.
 6. **Store the Gmail secret.**
    ```bash
    # AWS
@@ -120,29 +126,60 @@ The Lambda expects two Secrets Manager entries: one with your OpenAI API key and
      --name local/gmail \
      --secret-string file://gmail-credentials.json
    ```
-   Keep the ARN handy—it becomes `GMAIL_SECRET_ARN` in `.env` and when you run the deployment script. Re-run the helper whenever you revoke credentials or Google rotates the refresh token.
+   Keep the ARN handy—it becomes `GMAIL_SECRET_ARN` in both `.env` and the CloudFormation parameters. Re-run the helper whenever you revoke credentials or Google rotates the refresh token.
 
 ---
 
-## Provisioning Infrastructure with the AWS CLI
+## Building the Lambda Bundle
 
-The `deploy_infrastructure.sh` script packages the Lambda, ensures the DynamoDB table and IAM role exist, and wires the EventBridge rule. It works in both cloud and LocalStack environments by switching between `aws` and `awslocal` commands.
+CloudFormation expects a ready-to-zip directory that already contains the Lambda source and its dependencies. Run the helper script from the repository root whenever you update the Lambda code or its requirements:
+
+```bash
+./backend/scripts/build_lambda_bundle.sh
+```
+
+The script creates `build/lambda/` (ignored by Git) containing the handler and vendored dependencies. Subsequent CloudFormation packaging steps reference this directory.
+
+---
+
+## Deploying with CloudFormation
+
+CloudFormation handles both the AWS and LocalStack environments; only the CLI binary (`aws` vs. `awslocal`) and artifact bucket differ. The examples below assume you run them from the repository root.
 
 ### Common Parameters
 
-| Flag | Description |
+| Parameter | Description |
 | --- | --- |
-| `--openai-secret-arn` | ARN of the OpenAI secret (required). |
-| `--gmail-secret-arn` | ARN of the Gmail secret (required). |
-| `--region` | AWS region (default `us-east-1`). |
-| `--profile` | AWS CLI profile to use (cloud mode only). |
-| `--local` | Use `awslocal` to target LocalStack. |
-| `--table-name` | DynamoDB table name (default `Events`). |
-| `--lambda-name` | Lambda function name (default `events-gmail-ingest`). |
-| `--timezone` | EventBridge schedule time zone (default `America/New_York`). |
-| `--openai-model` | Optional override for the `OPENAI_MODEL` environment variable. |
+| `OpenAISecretArn` | ARN of the OpenAI secret (required). |
+| `GmailSecretArn` | ARN of the Gmail secret (required). |
+| `TableName` | DynamoDB table name (default `Events`). |
+| `LambdaFunctionName` | Lambda function name (default `events-gmail-ingest`). |
+| `ScheduleExpression` | Cron expression for the EventBridge rule (defaults to Mondays at 5 PM). |
+| `ScheduleTimezone` | Time zone for the schedule (default `America/New_York`). |
+| `OpenAIModel` | Optional override for the OpenAI model. |
+| `SecretsManagerEndpointUrl` / `DynamoDbEndpointUrl` | Set to `http://host.docker.internal:4566` when the Lambda should call LocalStack endpoints. |
 
-The script writes build artifacts to `build/` (safe to delete) and is idempotent—rerunning it updates existing resources.
+### Deploying to AWS
+
+1. **Choose or create an S3 bucket** for packaging artifacts (e.g., `events-artifacts-<account-id>`).
+2. **Package the template.**
+   ```bash
+   aws cloudformation package \
+     --template-file backend/cloudformation/events-stack.yaml \
+     --s3-bucket <artifact-bucket> \
+     --output-template-file build/packaged-template.yaml
+   ```
+3. **Deploy the stack.**
+   ```bash
+   aws cloudformation deploy \
+     --template-file build/packaged-template.yaml \
+     --stack-name events-gmail-stack \
+     --capabilities CAPABILITY_NAMED_IAM \
+     --parameter-overrides \
+       OpenAISecretArn=<openai-secret-arn> \
+       GmailSecretArn=<gmail-secret-arn>
+   ```
+   Add additional `ParameterKey=Value` pairs to override defaults as needed. The command outputs the DynamoDB table and Lambda ARNs on success.
 
 ### Deploying to LocalStack
 
@@ -151,97 +188,60 @@ The script writes build artifacts to `build/` (safe to delete) and is idempotent
    docker run --rm -it \
      -p 4566:4566 \
      -p 4510-4559:4510-4559 \
-     -e SERVICES="dynamodb,secretsmanager,events,iam,lambda" \
+     -e SERVICES="dynamodb,secretsmanager,events,iam,lambda,cloudformation,s3" \
      localstack/localstack
    ```
-
-2. **Export throwaway AWS credentials.** LocalStack still requires them for signature calculations.
+2. **Export placeholder AWS credentials** (LocalStack still validates that they exist).
    ```bash
    export AWS_ACCESS_KEY_ID=test
    export AWS_SECRET_ACCESS_KEY=test
-   export AWS_SESSION_TOKEN=test
-   export AWS_DEFAULT_REGION=us-east-1
+   export AWS_REGION=us-east-1
    ```
-
-3. **Create or update the secrets** using `awslocal` (see the previous section) and note their ARNs.
-
-4. **Run the deployment script.**
+3. **Create an artifact bucket inside LocalStack.**
    ```bash
-   backend/scripts/deploy_infrastructure.sh \
-     --local \
-     --openai-secret-arn arn:aws:secretsmanager:us-east-1:000000000000:secret:local/openai \
-     --gmail-secret-arn arn:aws:secretsmanager:us-east-1:000000000000:secret:local/gmail
+   awslocal s3 mb s3://local-artifacts
    ```
-
-5. **Invoke the Lambda locally** using `awslocal` once you upload test emails to your LocalStack secrets/DynamoDB:
+4. **Package the template.**
    ```bash
-   awslocal lambda invoke \
-     --function-name events-gmail-ingest \
-     --payload '{}' \
-     output.json
-   cat output.json
+   awslocal cloudformation package \
+     --template-file backend/cloudformation/events-stack.yaml \
+     --s3-bucket local-artifacts \
+     --output-template-file build/packaged-template.yaml
    ```
-
-### Deploying to AWS
-
-1. **Ensure the AWS CLI is configured** with an account and region (`aws configure --profile <name>`).
-2. **Create the Secrets Manager entries** (OpenAI + Gmail) in the target region and record their ARNs.
-3. **Run the deployment script with your profile.**
+5. **Deploy the stack.**
    ```bash
-   backend/scripts/deploy_infrastructure.sh \
-     --profile prod \
-     --region us-east-1 \
-     --openai-secret-arn arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/openai \
-     --gmail-secret-arn arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/gmail
+   awslocal cloudformation deploy \
+     --template-file build/packaged-template.yaml \
+     --stack-name events-gmail-stack \
+     --capabilities CAPABILITY_NAMED_IAM \
+     --parameter-overrides \
+       OpenAISecretArn=local/openai \
+       GmailSecretArn=local/gmail \
+       SecretsManagerEndpointUrl=http://host.docker.internal:4566 \
+       DynamoDbEndpointUrl=http://host.docker.internal:4566
    ```
-
-The script creates/updates the following AWS resources:
-
-- DynamoDB table `Events` (with `category`, `source_name`, and `start_time` GSIs + streams).
-- IAM role and inline policies for the Lambda.
-- Lambda function `events-gmail-ingest` with necessary environment variables.
-- EventBridge rule scheduled every Monday at 5:00 PM America/New_York.
-
-Subsequent deployments reuse the same role/table and simply update code, configuration, and scheduling.
+   Update the secret ARNs if you chose different names.
 
 ---
 
-## Running the Lambda Handler for Debugging
+## Local Testing Tips
 
-The Lambda is designed to run inside AWS, but you can execute it locally once the required environment variables and AWS endpoints are available (LocalStack or AWS).
+* **Invoke the Lambda locally** by exporting the same environment variables defined in `.env` and running `python3 backend/lambda/lambda_function.py` within a harness of your choosing (for example, `lambda_function.handler({}, {})`).
+* **Run static checks** with `python3 -m compileall backend/lambda backend/scripts` before packaging to catch syntax errors early.
+* **Tail LocalStack logs** for troubleshooting Lambda executions: `docker logs -f <localstack-container-id>`.
+
+---
+
+## Cleanup
+
+To remove the deployed resources, delete the stack with the same CLI used for deployment:
 
 ```bash
-export OPENAI_SECRET_ARN=arn:aws:secretsmanager:us-east-1:000000000000:secret:local/openai
-export GMAIL_SECRET_ARN=arn:aws:secretsmanager:us-east-1:000000000000:secret:local/gmail
-export TABLE_NAME=Events
-export TIMEZONE=America/New_York
-export SECRETSMANAGER_ENDPOINT_URL=http://localhost:4566   # LocalStack example
-export DYNAMODB_ENDPOINT_URL=http://localhost:4566         # LocalStack example
-python3 - <<'PY'
-from backend.lambda import lambda_function
-print(lambda_function.handler({}, None))
-PY
+# AWS
+aws cloudformation delete-stack --stack-name events-gmail-stack
+
+# LocalStack
+awslocal cloudformation delete-stack --stack-name events-gmail-stack
 ```
 
-Make sure the AWS CLI credentials in your shell point to the correct environment (LocalStack or the cloud) before running the snippet.
-
----
-
-## Updating Secrets or Redeploying
-
-- **Rotate secrets:** Update the value with `aws secretsmanager put-secret-value` (or `awslocal ...`). The Lambda picks up new credentials on the next invocation.
-- **Redeploy code/config:** Re-run `backend/scripts/deploy_infrastructure.sh` with the same parameters. The script rebuilds the package and updates the Lambda in place.
-- **Clean up LocalStack artifacts:** Stop the LocalStack container and delete the `build/` directory to remove cached dependencies.
-
----
-
-## Troubleshooting
-
-| Issue | Resolution |
-| --- | --- |
-| `AuthenticationError` from `awslocal` or `aws` | Ensure `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN` are set (even for LocalStack). |
-| `zip: command not found` | Install `zip` (via `apt-get install zip`, `brew install zip`, or `choco install zip`). |
-| Gmail OAuth refresh token revoked | Re-run `gmail_token_quickstart.py` with the same client ID/secret and update the stored secret. |
-| Lambda cannot reach OpenAI/Gmail | Verify that the Secrets Manager ARNs reference secrets containing the required fields and that outbound internet access is available (or stub responses for testing). |
-
-For more verbose deployment output, run the script with `bash -x backend/scripts/deploy_infrastructure.sh ...`.
+Remember to empty or delete the artifact bucket separately if you no longer need the uploaded Lambda bundles.

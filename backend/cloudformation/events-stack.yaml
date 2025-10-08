@@ -1,0 +1,190 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Gmail ingestion pipeline for events.andreas.services. Provisions the DynamoDB table,
+  scheduled Lambda function, and supporting permissions.
+
+Parameters:
+  OpenAISecretArn:
+    Type: String
+    Description: ARN of the Secrets Manager secret that stores the OpenAI API key.
+  GmailSecretArn:
+    Type: String
+    Description: ARN of the Secrets Manager secret that stores Gmail OAuth credentials.
+  TableName:
+    Type: String
+    Default: Events
+    Description: Name of the DynamoDB table that stores normalized event records.
+  LambdaFunctionName:
+    Type: String
+    Default: events-gmail-ingest
+    Description: Name of the Lambda function that pulls Gmail events.
+  ScheduleExpression:
+    Type: String
+    Default: cron(0 17 ? * MON *)
+    Description: EventBridge cron expression (defaults to Mondays at 5:00 PM local time).
+  ScheduleTimezone:
+    Type: String
+    Default: America/New_York
+    Description: Time zone for the EventBridge schedule.
+  OpenAIModel:
+    Type: String
+    Default: gpt-4o-mini
+    Description: Model name passed to the OpenAI extraction request.
+  LambdaTimeout:
+    Type: Number
+    Default: 900
+    Description: Lambda timeout in seconds.
+  LambdaMemory:
+    Type: Number
+    Default: 1024
+    Description: Lambda memory size in MB.
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    Description: Number of days to retain CloudWatch logs.
+  SecretsManagerEndpointUrl:
+    Type: String
+    Default: ''
+    Description: Optional override for the Secrets Manager endpoint (useful for LocalStack).
+  DynamoDbEndpointUrl:
+    Type: String
+    Default: ''
+    Description: Optional override for the DynamoDB endpoint (useful for LocalStack).
+
+Resources:
+  EventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref TableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: category
+          AttributeType: S
+        - AttributeName: source_name
+          AttributeType: S
+        - AttributeName: start_time
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: category-index
+          KeySchema:
+            - AttributeName: category
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: source_name-index
+          KeySchema:
+            - AttributeName: source_name
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: start_time-index
+          KeySchema:
+            - AttributeName: start_time
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: LambdaResourceAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !GetAtt EventsTable.Arn
+                  - !Sub "${EventsTable.Arn}/index/*"
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref OpenAISecretArn
+                  - !Ref GmailSecretArn
+
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${LambdaFunctionName}"
+      RetentionInDays: !Ref LogRetentionDays
+
+  GmailIngestionFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref LambdaFunctionName
+      Description: Weekly Gmail ingestion that normalizes events into DynamoDB.
+      Handler: lambda_function.handler
+      Runtime: python3.11
+      MemorySize: !Ref LambdaMemory
+      Timeout: !Ref LambdaTimeout
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+          OPENAI_SECRET_ARN: !Ref OpenAISecretArn
+          GMAIL_SECRET_ARN: !Ref GmailSecretArn
+          TIMEZONE: !Ref ScheduleTimezone
+          OPENAI_MODEL: !Ref OpenAIModel
+          SECRETSMANAGER_ENDPOINT_URL: !Ref SecretsManagerEndpointUrl
+          DYNAMODB_ENDPOINT_URL: !Ref DynamoDbEndpointUrl
+      Code: ../build/lambda
+      DependsOn:
+        - LambdaExecutionRole
+        - LambdaLogGroup
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt GmailIngestionFunction.Arn
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt WeeklySchedule.Arn
+
+  WeeklySchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Weekly trigger for Gmail ingestion.
+      Name: !Sub "${LambdaFunctionName}-schedule"
+      ScheduleExpression: !Ref ScheduleExpression
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt GmailIngestionFunction.Arn
+          Id: GmailIngestionTarget
+
+Outputs:
+  DynamoDbTableName:
+    Description: Name of the DynamoDB table that stores events.
+    Value: !Ref EventsTable
+  DynamoDbTableArn:
+    Description: ARN of the DynamoDB table.
+    Value: !GetAtt EventsTable.Arn
+  LambdaFunctionArn:
+    Description: ARN of the Gmail ingestion Lambda.
+    Value: !GetAtt GmailIngestionFunction.Arn
