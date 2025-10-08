@@ -36,6 +36,7 @@ Install the following tools before working with the project locally:
 | [AWS CDK CLI](https://docs.aws.amazon.com/cdk/v2/guide/getting_started.html) | Synthesize/deploy infrastructure | Install globally with `npm install -g aws-cdk`. |
 | [VS Code](https://code.visualstudio.com/) with the [Python extension](https://marketplace.visualstudio.com/items?itemName=ms-python.python) and [AWS Toolkit](https://marketplace.visualstudio.com/items?itemName=AmazonWebServices.aws-toolkit-vscode) | Editing, linting, local lambda invocations | The AWS Toolkit streamlines invoking and debugging Lambdas locally. |
 | (Optional) [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Local emulation via LocalStack | Required only if you plan to emulate AWS services locally. |
+| (Optional) [`aws-cdk-local`](https://github.com/localstack/aws-cdk-local) | Deploy the CDK app against LocalStack | Install with `npm install -g aws-cdk-local`. |
 
 ---
 
@@ -141,7 +142,7 @@ The Lambda expects **two** secrets in AWS Secrets Manager: one that contains an 
 
 Once both secrets exist, reference their ARNs in `.env` (for local runs) and pass them to the CDK stack via context parameters when deploying.
 
-When you are working entirely within LocalStack, skip the manual `aws secretsmanager create-secret` calls—the `backend/scripts/setup_localstack.py` helper can provision both secrets and the DynamoDB table in one shot.
+When you are working entirely within LocalStack, you can use the same AWS CLI commands shown above by swapping in the LocalStack endpoint (or using the `awslocal` wrapper from the `awscli-local` package).  This keeps parity between your local workflow and your real AWS environments.
 
 ---
 
@@ -175,31 +176,42 @@ docker run --rm -it \
 
 Leave this container running in a separate terminal.  The default edge endpoint (`http://localhost:4566`) will now proxy DynamoDB and Secrets Manager calls.
 
-### Step 3 — Bootstrap LocalStack with the helper script
+### Step 3 — Create the LocalStack secrets
 
-Run the automation script to create the DynamoDB table and the required Secrets Manager entries.  Provide the OpenAI key directly (or via a JSON file) and point the script at the Gmail credentials JSON produced by `gmail_token_quickstart.py`:
+Provision the OpenAI and Gmail credentials exactly as you would in AWS Secrets Manager, but point the AWS CLI at the LocalStack endpoint.  The examples below assume you have installed [`awscli-local`](https://github.com/localstack/awscli-local) (`pip install awscli-local`) so that the `awslocal` wrapper automatically injects the correct endpoint URL.
 
 ```bash
-python3 backend/scripts/setup_localstack.py \
-  --endpoint-url http://localhost:4566 \
-  --openai-api-key sk-your-key \
-  --gmail-secret-file gmail-credentials.json
+# OpenAI API key
+awslocal secretsmanager create-secret \
+  --name local/openai \
+  --secret-string '{"apiKey": "sk-your-key"}'
+
+# Gmail OAuth bundle
+awslocal secretsmanager create-secret \
+  --name local/gmail \
+  --secret-string file://gmail-credentials.json
 ```
 
-Key flags:
+Take note of the returned ARNs; you will pass them to the CDK stack in the next step.
 
-| Flag | Purpose |
-| --- | --- |
-| `--openai-api-key` | Inline the OpenAI API key into the secret JSON.  Use `--openai-secret-file` if you prefer to supply a pre-built payload. |
-| `--gmail-secret-file` | Path to the merged Gmail OAuth credentials JSON (required). |
-| `--openai-secret-name` / `--gmail-secret-name` | Override the default LocalStack secret names (`local/openai`, `local/gmail`). |
-| `--force` | Overwrite existing secrets instead of leaving them untouched. |
+### Step 4 — Deploy the CDK stack with `aws-cdk-local`
 
-The script prints the ARNs that LocalStack assigns, along with a ready-to-copy block of environment variables for `.env`.
+Deploying with [`cdklocal`](https://github.com/localstack/aws-cdk-local) exercises the same CDK application that you use for real AWS regions, ensuring environment parity.  Install the CLI (`npm install -g aws-cdk-local`) and then bootstrap and deploy against LocalStack:
 
-### Step 4 — Configure environment variables
+```bash
+cd backend/cdk
+cdklocal bootstrap aws://000000000000/us-east-1
+cdklocal deploy LambdaStack \
+  --context openaiSecretArn=arn:aws:secretsmanager:us-east-1:000000000000:secret:local/openai \
+  --context gmailSecretArn=arn:aws:secretsmanager:us-east-1:000000000000:secret:local/gmail
+cd ..
+```
 
-Update `.env` (or export variables in the terminal) so the Lambda uses the LocalStack resources you created.  The bootstrap script echoes compatible values—copy/paste them here.
+This command sequence creates the DynamoDB table, Lambda function, EventBridge rule, and IAM permissions inside LocalStack exactly as `cdk deploy` would do in AWS.  When you iterate locally, re-run `cdklocal deploy` after making infrastructure changes.
+
+### Step 5 — Configure environment variables
+
+Update `.env` (or export variables in the terminal) so the Lambda uses the LocalStack resources you just deployed.
 
 ```env
 OPENAI_SECRET_ARN=arn:aws:secretsmanager:us-east-1:000000000000:secret:local/openai
@@ -210,7 +222,7 @@ SECRETSMANAGER_ENDPOINT_URL=http://localhost:4566
 DYNAMODB_ENDPOINT_URL=http://localhost:4566
 ```
 
-### Step 5 — Invoke the handler from VS Code
+### Step 6 — Invoke the handler from VS Code
 
 With LocalStack running and environment variables set, execute the Lambda handler directly:
 
