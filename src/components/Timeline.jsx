@@ -1,0 +1,125 @@
+import { useEffect, useMemo, useRef } from 'react';
+import TimelineEvent from './TimelineEvent.jsx';
+import '../styles/timeline.css';
+
+const BASE_SPACING = 48;
+const MAX_SPACING = 220;
+const TIME_COMPRESSION = 90;
+const SIGNIFICANT_DAY_GAP = 90;
+
+const DAY_IN_MS = 1000 * 60 * 60 * 24;
+
+function formatGapLabel(diffInDays) {
+  if (diffInDays < SIGNIFICANT_DAY_GAP) {
+    return undefined;
+  }
+
+  if (diffInDays >= 365) {
+    const years = Math.max(1, Math.round(diffInDays / 365));
+    return `${years} year${years === 1 ? '' : 's'} later`;
+  }
+
+  const months = Math.max(1, Math.round(diffInDays / 30));
+  return `${months} month${months === 1 ? '' : 's'} later`;
+}
+
+function computeTemporalContext(previousDate, currentDate) {
+  if (!previousDate) {
+    return {
+      spacing: MAX_SPACING / 2,
+      gapLabel: undefined
+    };
+  }
+
+  const diffInDays = Math.abs(currentDate - previousDate) / DAY_IN_MS;
+  const stretched = Math.log1p(diffInDays) * TIME_COMPRESSION;
+  const spacing = Math.min(MAX_SPACING, BASE_SPACING + stretched);
+
+  return {
+    spacing,
+    gapLabel: formatGapLabel(diffInDays)
+  };
+}
+
+function Timeline({ events, onReachStart, onReachEnd, isLoading }) {
+  const startSentinelRef = useRef(null);
+  const endSentinelRef = useRef(null);
+
+  const sentinelOptions = useMemo(
+    () => ({
+      root: null,
+      rootMargin: '0px',
+      threshold: 0.1
+    }),
+    []
+  );
+
+  useEffect(() => {
+    if (!onReachStart || !startSentinelRef.current || typeof IntersectionObserver === 'undefined') {
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          onReachStart();
+        }
+      });
+    }, sentinelOptions);
+
+    observer.observe(startSentinelRef.current);
+
+    return () => observer.disconnect();
+  }, [onReachStart, sentinelOptions]);
+
+  useEffect(() => {
+    if (!onReachEnd || !endSentinelRef.current || typeof IntersectionObserver === 'undefined') {
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          onReachEnd();
+        }
+      });
+    }, sentinelOptions);
+
+    observer.observe(endSentinelRef.current);
+
+    return () => observer.disconnect();
+  }, [onReachEnd, sentinelOptions]);
+
+  const decoratedEvents = useMemo(() => {
+    return events.map((event, index) => {
+      const previous = events[index - 1];
+      const previousDate = previous ? new Date(previous.date) : undefined;
+      const currentDate = new Date(event.date);
+      const { spacing, gapLabel } = computeTemporalContext(previousDate, currentDate);
+      return {
+        ...event,
+        spacing,
+        gapLabel
+      };
+    });
+  }, [events]);
+
+  return (
+    <section className="timeline" aria-label="Historical timeline">
+      <div ref={startSentinelRef} className="timeline__sentinel" aria-hidden="true" />
+      <ol className="timeline__list">
+        {decoratedEvents.map((event) => (
+          <TimelineEvent key={event.id} event={event} />
+        ))}
+      </ol>
+      {isLoading ? (
+        <div className="timeline__loader" role="status" aria-live="polite">
+          Loading events…
+        </div>
+      ) : null}
+      <div ref={endSentinelRef} className="timeline__sentinel" aria-hidden="true" />
+    </section>
+  );
+}
+
+export default Timeline;
