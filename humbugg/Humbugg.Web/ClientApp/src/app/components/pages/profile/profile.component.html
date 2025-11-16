@@ -1,0 +1,22 @@
+<page-title title="Profile">
+  <div class="profile-component">
+    <div class="card profile-details">
+      <form (ngSubmit)="onSubmit()" #profileForm="ngForm">
+        <div class="form-group">
+          <input type="text" class="form-control" placeholder="First Name" id="firstName" [(ngModel)]="profile.firstName" name="firstName" #firstName="ngModel" required />
+          <small class="form-text text-danger" *ngIf="firstName.invalid">First Name Name is required</small>
+        </div>
+        <div class="form-group">
+          <input type="text" class="form-control" placeholder="Last Name" id="lastName" [(ngModel)]="profile.lastName" name="lastName" #lastName="ngModel" required />
+          <small class="form-text text-danger" *ngIf="lastName.invalid">Last Name Name is required</small>
+        </div>
+        <div class="form-group">
+          <input type="text" class="form-control" placeholder="Email" id="email" [(ngModel)]="profile.email" name="email" #email="ngModel" required />
+          <small class="form-text text-danger" *ngIf="email.invalid">Email is required</small>
+        </div>
+        <button type="submit" class="btn btn-outline-primary" color="primary" [disabled]="!profileForm.form.valid">Update</button>
+      </form>
+    </div>
+  </div>
+</page-title>
+

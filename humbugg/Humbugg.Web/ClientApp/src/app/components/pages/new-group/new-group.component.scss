@@ -1,0 +1,30 @@
+.group-component {
+  padding: 1em;
+  margin: 4em auto;
+  max-width: 45em;
+
+  .form-field {
+    width: 100%;
+    margin-bottom: 10px;
+  }
+
+  .progress {
+    height: 10em;
+    margin: auto;
+    padding: 2em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    background-color: white;
+
+    .icon {
+      margin: 0px auto;
+    }
+
+    .progress-message {
+      text-align: center;
+      position: absolute;
+    }
+  }
+}

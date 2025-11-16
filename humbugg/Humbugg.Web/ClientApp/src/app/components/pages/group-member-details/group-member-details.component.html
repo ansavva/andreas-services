@@ -1,0 +1,35 @@
+<div class="group-member-details-component card">
+  <div class="card-body">
+    <div class="f-r">
+      <div ngbDropdown class="d-inline-block" *ngIf="canEditGroupMember() || canDeleteGroupMember()">
+        <button class="btn bg-transparent" id="dropdownMenu1" ngbDropdownToggle>
+          <fa-icon [icon]="['fas', 'ellipsis-v']" class="pointer"></fa-icon>
+        </button>
+        <div ngbDropdownMenu aria-labelledby="dropdownMenu1">
+          <button ngbDropdownItem (click)="editGroupMember()" *ngIf="canEditGroupMember()">Edit</button>
+          <button ngbDropdownItem (click)="deleteGroupMember()" *ngIf="canDeleteGroupMember()">{{deleteGroupMemberText()}}</button>
+        </div>
+      </div>
+    </div>
+    <h5 class="card-title">{{groupMember.firstName}} {{groupMember.lastName}}</h5>
+    <div class="card-text">
+      <label class="bold">Gift Suggestions</label>
+      <p style="white-space: pre-wrap;">{{groupMember.giftSuggestionsDescription}}</p>
+      <label class="bold">Gifts to Avoid</label>
+      <p style="white-space: pre-wrap;">{{groupMember.giftAvoidancesDescription}}</p>
+      <label *ngIf="myGroupMember.isAdmin && hasSecretQuestion" class="bold">Secret Question Answer</label>
+      <p *ngIf="myGroupMember.isAdmin && hasSecretQuestion" style="white-space: pre-wrap;">{{groupMember.secretQuestionAnswer}}</p>
+      <label class="bold" *ngIf="hasAddress()">Address</label>
+      <div *ngIf="hasAddress()">
+        <div>{{groupMember.address1}}</div>
+        <div>{{groupMember.address2}}</div>
+        <div>{{groupMember.city}}, {{groupMember.state}}</div>
+        <div>{{groupMember.postalCode}}</div>
+      </div>
+    </div>
+  </div>
+  <div class="card-footer" *ngIf="hasMatch()">
+    <label class="bold">Recipient</label>
+    <div>{{match().firstName}} {{match().lastName}}</div>
+  </div>
+</div>

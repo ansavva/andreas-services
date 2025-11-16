@@ -1,0 +1,8 @@
+<page-title title="My Groups">
+  <div class="my-groups-component">
+    <button type="button" *ngFor="let group of groups" class="group btn btn-outline-primary" (click)="goToGroup(group.id)">
+      <h2 class="my-group-header">{{group.name}}</h2>
+      <div class="my-group-datetime">{{group.eventDateDisplay}}</div>
+    </button>
+  </div>
+</page-title>

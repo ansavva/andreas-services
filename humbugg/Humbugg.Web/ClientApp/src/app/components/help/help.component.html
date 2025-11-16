@@ -1,0 +1,3 @@
+<ng-content></ng-content>
+<a class="drawer-link mat-small" (click)="toggle()">What's this?</a>
+<div class="mat-small" [@slideInOut]="expanded ? 'open' : 'closed'">{{title}}</div>

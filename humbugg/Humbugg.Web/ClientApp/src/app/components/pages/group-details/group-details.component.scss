@@ -1,0 +1,13 @@
+.group-details-component {
+  margin: 4em auto;
+  max-width: 45em;
+
+  .copy-link {
+    cursor: pointer;
+    text-decoration: none;
+  }
+
+  .dropdown-toggle::after {
+    display:none;
+  }
+}

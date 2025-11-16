@@ -1,0 +1,55 @@
+<div class="edit-group-member-component">
+  <div class="modal-header">
+    <h1><span class="group-member-heading">{{groupMember.firstName}} {{groupMember.lastName}}</span></h1>
+  </div>
+  <div class="modal-body">
+    <form (ngSubmit)="save()" #groupMemberForm="ngForm">
+      <div class="form-check mb-3" *ngIf="myGroupMember.isAdmin">
+        <input class="form-check-input" type="checkbox" value="" id="isAdminCheck" [checked]="groupMember.isAdmin" (change)="groupMember.isAdmin = !groupMember.isAdmin" >
+        <label class="form-check-label" for="isAdminCheck">
+          Group Admin
+        </label>
+      </div>
+      <div class="form-group">
+        <label for="address1">Address Line 1</label>
+        <input type="text" class="form-control" placeholder="Address Line 1" id="address1" [(ngModel)]="groupMember.address1" name="address1" #address1="ngModel" required />
+        <small class="form-text text-danger" *ngIf="address1.invalid">Address Line 1 is required</small>
+    </div>
+    <div class="form-group">
+        <label for="address2">Address Line 2</label>
+        <input type="text" class="form-control" placeholder="Address Line 2" id="address2" [(ngModel)]="groupMember.address2" name="address2" #address2="ngModel" />
+    </div>
+    <div class="form-group">
+        <label for="City">City</label>
+        <input type="text" class="form-control" placeholder="City" id="city" [(ngModel)]="groupMember.city" name="city" #city="ngModel" required />
+        <small class="form-text text-danger" *ngIf="city.invalid">City is required</small>
+    </div>
+    <div class="form-group">
+        <label for="State">State</label>
+        <input type="text" class="form-control" placeholder="State" id="state" [(ngModel)]="groupMember.state" name="state" #state="ngModel" required />
+        <small class="form-text text-danger" *ngIf="state.invalid">State is required</small>
+    </div>
+    <div class="form-group">
+        <label for="postalCode">Postal Code</label>
+        <input type="text" class="form-control" placeholder="Postal Code" id="postalCode" [(ngModel)]="groupMember.postalCode" name="postalCode" #postalCode="ngModel" required />
+        <small class="form-text text-danger" *ngIf="postalCode.invalid">Postal Code is required</small>
+    </div>
+      <div class="form-group">
+        <label for="giftSuggestionsDescription">Gift Suggestions</label>
+        <textarea class="form-control" rows="5" id="giftSuggestionsDescription" [(ngModel)]="groupMember.giftSuggestionsDescription" name="giftSuggestionsDescription" #giftSuggestionsDescription="ngModel"></textarea>
+      </div>
+      <div class="form-group">
+        <label for="giftAvoidancesDescription">Gifts to Avoid</label>
+        <textarea class="form-control" rows="5" id="giftAvoidancesDescription" [(ngModel)]="groupMember.giftAvoidancesDescription" name="giftAvoidancesDescription" #giftAvoidancesDescription="ngModel"></textarea>
+      </div>
+      <div class="form-group" *ngIf="hasSecretQuestion()">
+        <label for="secretQuestionAnswer">{{group.secretQuestion}}</label>
+        <textarea class="form-control" row="5" id="secretQuestionAnswer" [(ngModel)]="groupMember.secretQuestionAnswer" name="secretQuestionAnswer" #secretQuestionAnswer="ngModel" required></textarea>
+      </div>
+    </form>
+  </div>
+  <div class="modal-footer">
+    <button type="button" class="btn btn-outline-primary mr-2" (click)="save()">Save</button>
+    <button type="button" class="btn btn-outline-primary" (click)="cancel()">Cancel</button>
+  </div>
+</div>

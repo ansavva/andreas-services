@@ -1,0 +1,28 @@
+{
+    "iisSettings": {
+      "windowsAuthentication": false, 
+      "anonymousAuthentication": true, 
+      "iisExpress": {
+        "applicationUrl": "http://localhost:10422",
+        "sslPort": 44302
+      }
+    },
+    "profiles": {
+      "IIS Express": {
+        "commandName": "IISExpress",
+        "launchBrowser": true,
+        "environmentVariables": {
+          "ASPNETCORE_ENVIRONMENT": "Development"
+        }
+      },
+      "Humbugg.IdentityServer": {
+        "commandName": "Project",
+        "launchBrowser": true,
+        "applicationUrl": "https://localhost:4201;http://localhost:4200",
+        "environmentVariables": {
+          "ASPNETCORE_ENVIRONMENT": "Development"
+        }
+      }
+    }
+  }
+  

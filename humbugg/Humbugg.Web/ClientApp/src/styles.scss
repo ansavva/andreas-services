@@ -1,0 +1,78 @@
+/* You can add global styles to this file, and also import other style files */
+@import url('https://fonts.googleapis.com/css?family=Roboto:300,400,500|Lily+Script+One&display=swap');
+@import "~angular-notifier/styles";
+@import "variables.scss";
+@import "~bootstrap/scss/bootstrap";
+
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: Roboto,"Helvetica Neue",sans-serif;
+}
+
+hr {
+  box-sizing: content-box;
+  height: 0;
+  border: 0;
+  border-top: 0.1em solid #e8e9eb;
+}
+
+a {
+  color: $primary;
+  background-color: transparent;
+  font-weight: 400;
+  text-decoration: none;
+}
+
+h1 {
+  margin: 0;
+}
+
+.list-inline {
+   padding-left: 0; 
+   list-style: none; 
+   margin-left: 0.5em; 
+}
+
+.list-inline > li {
+  display: inline-block;
+  padding-left: 0.5em;
+  padding-right: 0.5em;
+}
+
+.app-background {
+  background: #fafafa;
+}
+
+.bold {
+  font-weight: bold;
+}
+
+.margin-0 {
+  margin: 0;
+}
+
+.padding-0 {
+  padding: 0;
+}
+
+.center-in-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.f-r {
+  float: right;
+}
+
+.pointer {
+  cursor: pointer;
+}
+
+.logo {
+  font-family: 'Lily Script One' !important;
+}

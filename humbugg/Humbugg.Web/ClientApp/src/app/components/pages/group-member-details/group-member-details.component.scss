@@ -1,0 +1,22 @@
+.group-member-details-component {
+  .member-picture {
+    width: 2.2em;
+    height: 2.2em;
+    border-radius: 50%;
+    overflow: hidden;
+    margin-right: 1em;
+    vertical-align: middle;
+  }
+  .match-picture {
+    width: 1.5em;
+    height: 1.5em;
+    border-radius: 50%;
+    overflow: hidden;
+    margin-right: 1em;
+    vertical-align: middle;
+  }
+
+  .dropdown-toggle::after {
+    display:none;
+  }
+}

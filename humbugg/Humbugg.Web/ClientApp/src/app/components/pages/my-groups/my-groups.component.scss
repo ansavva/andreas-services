@@ -1,0 +1,28 @@
+.my-groups-component {
+  padding: 1em;
+  margin: 4em auto;
+  max-width: 25em;
+
+  .group {
+    margin-bottom: 1em;
+    width: 100%;
+    text-align: left;
+    padding: 1em;
+  }
+
+  .my-group-header {
+    margin-bottom: 0;
+  }
+
+  .my-group-datetime {
+    margin-bottom: 0.3em;
+  }
+
+  .profile-picture {
+    width: 2em;
+    height: 2em;
+    border-radius: 50%;
+    overflow: hidden;
+    margin-right: 0.5em;
+  }
+}

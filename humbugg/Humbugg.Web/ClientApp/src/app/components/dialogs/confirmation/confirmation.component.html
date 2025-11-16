@@ -1,0 +1,12 @@
+<div>
+    <div class="modal-header">
+        <h1 mat-dialog-title class="mb-2">{{title}}</h1>
+    </div>
+    <div class="modal-body">
+        <span>{{message}}</span>
+    </div>
+    <div class="modal-footer">
+        <button type="button" class="btn btn-outline-primary mr-2" (click)="confirm()">{{confirmationButtonText}}</button>
+        <button type="button" class="btn btn-outline-primary" (click)="cancel()">Cancel</button>
+    </div>
+</div>

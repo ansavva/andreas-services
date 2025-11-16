@@ -1,0 +1,76 @@
+<page-title title="Group Details">
+  <div class="card group-details-component">
+    <div class="card-body">
+      <div class="f-r">
+        <div ngbDropdown class="d-inline-block" *ngIf="myGroupMember.isAdmin">
+          <button class="btn bg-transparent" id="groupOptions" ngbDropdownToggle>
+            <fa-icon [icon]="['fas', 'ellipsis-v']" class="pointer"></fa-icon>
+          </button>
+          <div ngbDropdownMenu aria-labelledby="groupOptions">
+            <button ngbDropdownItem *ngIf="hasMultipleMembers() && hasMatches()" (click)="createMatches()">
+              Re-Create Matches
+            </button>
+            <button ngbDropdownItem *ngIf="canForceShowMatches()" (click)="forceShowMatches()">
+              {{forceShowMatchesText()}}
+            </button>
+            <button ngbDropdownItem *ngIf="canForceShowMatches()" (click)="editMatches()">
+              Edit Matches
+            </button>
+            <button ngbDropdownItem *ngIf="canDeleteGroup()" (click)="deleteGroup(group.id)">
+              Delete Group
+            </button>
+          </div>
+        </div>
+      </div>
+      <div>{{group.eventDateDisplay}}</div>
+      <h1 class="card-title mb-3">{{group.name}}</h1>
+      <div class="card-text">
+        <label class="bold">Description</label>
+        <p style="white-space: pre-wrap;">{{group.description}}</p>
+        <label class="bold">Spending Limit</label>
+        <p>{{group.spendingLimit | currency:"USD":true:"1.2-2"}}</p>
+        <label *ngIf="myGroupMember.isAdmin" class="bold">Share Link</label>
+        <p *ngIf="myGroupMember.isAdmin" class="mb-0">{{shareLink}}</p>
+        <p *ngIf="myGroupMember.isAdmin" class="mt-0">
+          <small>
+            <a class="copy-link" (click)="copyText(shareLink)">Copy Link</a>
+          </small>
+        </p>
+        <label class="bold">Signup Deadline</label>
+        <p>{{group.signUpDeadlineDisplay}}</p>
+        <div *ngIf="hasSecretQuestion">
+          <label class="bold">Secret Question</label>
+          <p style="white-space: pre-wrap;">{{group.secretQuestion}}</p>
+          <label *ngIf="myGroupMember.isAdmin" class="bold">Secret Question Answer</label>
+          <p *ngIf="myGroupMember.isAdmin" style="white-space: pre-wrap;">{{group.secretQuestionAnswer}}</p>
+        </div>
+        <label class="bold">Group Members</label>
+        <div class="group-member mb-2" *ngFor="let groupMember of group.groupMembers">
+          <app-group-member-details [groupMember]="groupMember" [group]="group" [myGroupMember]="myGroupMember"
+            [showMatches]="showMatches" [hasSecretQuestion]="hasSecretQuestion"
+            (deletedGroupMember)="onDeletedGroupMember($event)"></app-group-member-details>
+        </div>
+        <label class="bold mt-2" *ngIf="showMatches">Group Matches</label>
+        <div class="mt-2" *ngIf="showMatches">
+          <table class="table">
+            <thead>
+              <tr>
+                <th scope="col">Group Member</th>
+                <th scope="col">Recipient</th>
+                <th scope="col" *ngIf="hasSecretQuestion">Secret Question Answer</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let groupMember of group.groupMembers" app-group-member-match [groupMember]="groupMember"
+                [group]="group" [hasSecretQuestion]="hasSecretQuestion"></tr>
+            </tbody>
+          </table>
+        </div>
+        <button type="button" class="mt-3 mr-2 btn btn-outline-primary w-100"
+          *ngIf="myGroupMember.isAdmin && hasMultipleMembers() && !hasMatches()" (click)="createMatches()">
+          Create Matches
+        </button>
+      </div>
+    </div>
+  </div>
+</page-title>

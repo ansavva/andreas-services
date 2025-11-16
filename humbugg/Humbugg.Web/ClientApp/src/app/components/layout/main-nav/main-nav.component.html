@@ -1,0 +1,53 @@
+<nav class="navbar navbar-expand-lg navbar-dark bg-custom">
+  <a class="navbar-brand" [routerLink]="['/']"><span class="logo">Humbugg</span></a>
+  <button class="navbar-toggler" type="button" (click)="toggleNavbar()">
+    <span class="navbar-toggler-icon"></span>
+  </button>
+  <div class="collapse navbar-collapse" [ngClass]="{ 'show': navbarOpen }">
+    <ul class="navbar-nav mr-auto">
+      <li class="nav-item active" *ngIf="!isUserAuthenticated">
+        <a class="nav-link" style="cursor: pointer;" (click)="login()">Login</a>
+      </li>
+      <li class="nav-item active">
+        <a class="nav-link" [routerLink]="['/new-group']">Create New Group</a>
+      </li>
+      <li class="nav-item active" *ngIf="isUserAuthenticated">
+        <a class="nav-link" [routerLink]="['/my-groups']">My Groups</a>
+      </li>
+    </ul>
+    <ul class="navbar-nav ml-auto">
+      <li class="nav-item" ngbDropdown display="dynamic" placement="bottom-right">
+        <a class="nav-link" tabindex="0" ngbDropdownToggle id="dropdownProfile" role="button" class="btn btn-outline-light">
+          {{profile.firstName}}
+        </a>
+        <div ngbDropdownMenu aria-labelledby="dropdownProfile" class="dropdown-menu">
+          <a ngbDropdownItem [routerLink]="['/profile']">Profile</a>
+          <a ngbDropdownItem (click)="logout()">Logout</a>
+        </div>
+      </li>
+    </ul>
+    <!-- <div class="my-2 my-lg-0 mr-2" *ngIf="isUserAuthenticated">
+      <div ngbDropdown class="d-inline-block">
+        <button class="btn btn-outline-light" id="dropdownProfile" ngbDropdownToggle>{{profile.firstName}}</button>
+        <div ngbDropdownMenu class="dropdown-menu-right" aria-labelledby="dropdownProfile">
+          <a ngbDropdownItem [routerLink]="['/profile']">Profile</a>
+          <a ngbDropdownItem (click)="logout()">Logout</a>
+        </div>
+      </div>
+    </div> -->
+  </div>
+</nav>
+<!-- Add Content Here -->
+<router-outlet></router-outlet>
+<hr>
+<div class="footer" fxLayout="row" fxLayout.xs="column" fxLayoutAlign="center center">
+  <div fxFlex>
+    <p>Copyright © 2020 <span class="logo">Humbugg</span>.</p>
+  </div>
+  <div>
+    <ul class="list-inline">
+      <li><a href="#">Terms</a></li>
+      <li><a href="#">Privacy Policy</a></li>
+    </ul>
+  </div>
+</div>

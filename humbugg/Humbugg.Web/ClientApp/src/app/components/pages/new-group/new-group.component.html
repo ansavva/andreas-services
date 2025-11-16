@@ -1,0 +1,129 @@
+<page-title title="New Group">
+  <div class="card group-component">
+    <h2 class="mb-3">New Group</h2>
+    <form (ngSubmit)="createGroup()" #groupForm="ngForm">
+      <h3 class="mb-3">Group Details</h3>
+      <div class="form-group">
+        <label for="name">Group Name</label>
+        <input type="text" class="form-control" placeholder="Group Name" id="name" [(ngModel)]="group.name" name="name" #name="ngModel" required />
+        <small class="form-text text-danger" *ngIf="name.invalid">Name is required</small>
+      </div>
+      <div class="form-group">
+        <label for="eventDate">Event Date</label>
+        <div class="input-group">
+          <input class="form-control" placeholder="Event Date" id="eventDate" name="eventDate" [formControl]="eventDateControl" [(ngModel)]="eventDateStruct" ngbDatepicker #eventDate="ngbDatepicker" required>
+          <div class="input-group-append">
+            <button class="btn btn-outline-secondary" (click)="eventDate.toggle()" type="button">
+              <fa-icon [icon]="['fas', 'calendar-alt']" class="pointer"></fa-icon>
+            </button>
+          </div>
+        </div>
+        <small class="form-text text-danger" *ngIf="eventDateControl.invalid">Event Date is required</small>
+      </div>
+      <div class="form-group">
+        <label for="description">Description</label>
+        <textarea class="form-control" rows="8" placeholder="Tell people about your event" id="description" [(ngModel)]="group.description" name="description" #description="ngModel"></textarea>
+        <small class="form-text text-danger" *ngIf="description.invalid">Description is required</small>
+      </div>
+      <div class="form-group">
+        <label for="signupDeadline">Sign Up Deadline</label>
+        <div class="input-group">
+          <input class="form-control" placeholder="Sign Up Deadline" name="signupDeadline" [formControl]="signupDeadlineControl"  [(ngModel)]="signupDeadlineStruct" ngbDatepicker #signupDeadline="ngbDatepicker" required>
+          <div class="input-group-append">
+            <button class="btn btn-outline-secondary" (click)="signupDeadline.toggle()" type="button">
+              <fa-icon [icon]="['fas', 'calendar-alt']" class="pointer"></fa-icon>
+            </button>
+          </div>
+        </div>
+        <small class="form-text text-danger" *ngIf="signupDeadlineControl.invalid">Singup Deadline is required</small>
+      </div>
+      <div class="form-group">
+        <label for="spendingLimit">Spending Limit</label>
+        <input type="number" class="form-control" placeholder="Spending Limit" id="spendingLimit" [(ngModel)]="group.spendingLimit" name="spendingLimit" #spendingLimit="ngModel" required />
+        <small class="form-text text-danger" *ngIf="spendingLimit.invalid">Spending Limit is required</small>
+      </div>
+      <div class="form-group">
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" value="" id="askSecretQuestion" [checked]="askSecretQuestion" (change)="askSecretQuestion = !askSecretQuestion" >
+          <label class="form-check-label" for="askSecretQuestion">
+            I want to ask a Secret Question
+          </label>
+          <fa-icon [icon]="['fas', 'question-circle']" class="pointer ml-2" ngbPopover="You have the option to include a question as part of Secret Stanta Group. This question will be asked to each group member and the answer will be revealed at your event." triggers="mouseenter:mouseleave"></fa-icon>
+        </div>
+      </div>
+      <div class="form-group" *ngIf="askSecretQuestion">
+        <label for="secretQuestion">Secret Question</label>
+        <textarea class="form-control" rows="5" placeholder="Secret Question" id="secretQuestion" [(ngModel)]="group.secretQuestion" name="secretQuestion" #secretQuestion="ngModel" required></textarea>
+        <small class="form-text text-danger" *ngIf="secretQuestion.invalid">Secret Question is required</small>
+      </div>
+      <div class="form-group" *ngIf="askSecretQuestion">
+        <label for="secretQuestionAnswer">Secret Question Answer</label>
+        <textarea class="form-control" rows="5" placeholder="Secret Question Answer" id="secretQuestionAnswer" [(ngModel)]="group.secretQuestionAnswer" name="secretQuestionAnswer" #secretQuestionAnswer="ngModel" required></textarea>
+        <small class="form-text text-danger" *ngIf="secretQuestionAnswer.invalid">Secret Question Answer is required</small>
+      </div>
+      <h3 class="mb-3">Your Details</h3>
+      <div class="form-group">
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" value="" id="isParticipating" [checked]="!groupMember.isParticipating" (change)="groupMember.isParticipating = !groupMember.isParticipating" >
+          <label class="form-check-label" for="isParticipating">
+            I am not participating in this gift exchange
+          </label>
+        </div>
+      </div>
+      <div *ngIf="groupMember.isParticipating">
+        <div class="form-group">
+          <label for="firstName">First Name</label>
+          <input type="text" class="form-control" placeholder="First Name" id="firstName" [(ngModel)]="groupMember.firstName" name="firstName" #firstName="ngModel" required />
+          <small class="form-text text-danger" *ngIf="firstName.invalid">First Name is required</small>
+        </div>
+        <div class="form-group">
+          <label for="middleName">Middle Name</label>
+          <input type="text" class="form-control" placeholder="Middle Name" id="middleName" [(ngModel)]="groupMember.middleName"
+            name="middleName" #middleName="ngModel" />
+          <small class="form-text text-danger" *ngIf="middleName.invalid">Middle Name is required</small>
+        </div>
+        <div class="form-group">
+          <label for="lastName">Last Name</label>
+          <input type="text" class="form-control" placeholder="Last Name" id="lastName" [(ngModel)]="groupMember.lastName" name="lastName" #lastName="ngModel" required />
+          <small class="form-text text-danger" *ngIf="lastName.invalid">Last Name is required</small>
+        </div>
+        <div class="form-group">
+          <label for="address1">Address Line 1</label>
+          <input type="text" class="form-control" placeholder="Address Line 1" id="address1" [(ngModel)]="groupMember.address1" name="address1" #address1="ngModel" required />
+          <small class="form-text text-danger" *ngIf="address1.invalid">Address Line 1 is required</small>
+        </div>
+        <div class="form-group">
+          <label for="address2">Address Line 2</label>
+          <input type="text" class="form-control" placeholder="Address Line 2" id="address2" [(ngModel)]="groupMember.address2" name="address2" #address2="ngModel" />
+        </div>
+        <div class="form-group">
+          <label for="city">City</label>
+          <input type="text" class="form-control" placeholder="City" id="city" [(ngModel)]="groupMember.city" name="city" #city="ngModel"
+            required />
+          <small class="form-text text-danger" *ngIf="city.invalid">City is required</small>
+        </div>
+        <div class="form-group">
+          <label for="state">State</label>
+          <input type="text" class="form-control" placeholder="State" id="state" [(ngModel)]="groupMember.state" name="state" #state="ngModel" required />
+          <small class="form-text text-danger" *ngIf="state.invalid">State is required</small>
+        </div>
+        <div class="form-group">
+          <label for="postalCode">Postal Code</label>
+          <input type="text" class="form-control" placeholder="Postal Code" id="postalCode" [(ngModel)]="groupMember.postalCode" name="postalCode" #postalCode="ngModel" required />
+          <small class="form-text text-danger" *ngIf="postalCode.invalid">Postal Code is required</small>
+        </div>
+        <div class="form-group">
+          <label for="giftSuggestionsDescription">Gift Suggestions</label>
+          <textarea class="form-control" rows="5" placeholder="Gift Suggestions" id="giftSuggestionsDescription" [(ngModel)]="groupMember.giftSuggestionsDescription" name="giftSuggestionsDescription" #giftSuggestionsDescription="ngModel"></textarea>
+          <small class="form-text text-danger" *ngIf="giftSuggestionsDescription.invalid">Gift Suggestions are required</small>
+        </div>
+        <div class="form-group">
+          <label for="giftAvoidancesDescription">Gifts to Avoid</label>
+          <textarea class="form-control" rows="5" placeholder="Gifts to Avoid" id="giftAvoidancesDescription" [(ngModel)]="groupMember.giftAvoidancesDescription" name="giftAvoidancesDescription" #giftAvoidancesDescription="ngModel"></textarea>
+          <small class="form-text text-danger" *ngIf="giftAvoidancesDescription.invalid">Gift Avoidances is required</small>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-outline-primary mt-3" [disabled]="!groupForm.form.valid">Create Group</button>
+    </form>
+  </div>
+</page-title>

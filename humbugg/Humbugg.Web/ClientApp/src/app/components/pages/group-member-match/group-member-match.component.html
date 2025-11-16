@@ -1,0 +1,3 @@
+<td>{{groupMember.firstName}} {{groupMember.lastName}}</td>
+<td><span *ngIf="hasMatch()">{{match().firstName}} {{match().lastName}}</span></td>
+<td *ngIf="hasSecretQuestion">{{groupMember.secretQuestionAnswer}}</td>

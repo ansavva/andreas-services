@@ -1,0 +1,24 @@
+@import "../../../../variables.scss";
+
+.bg-custom {
+  background-color: $primary !important;
+  box-shadow: 0 2px 4px -1px rgba(0,0,0,.2), 0 4px 5px 0 rgba(0,0,0,.14), 0 1px 10px 0 rgba(0,0,0,.12);
+}
+
+.navbar-border {
+  border-bottom: 1px solid #E8E8E8;
+}
+
+.header {
+  .profile-picture {
+    width: 2.5em;
+    height: 2.5em;
+    border-radius: 50%;
+    overflow: hidden;
+    margin-right: 1em;
+  }
+}
+
+.footer {
+  padding: 0 2em;
+}

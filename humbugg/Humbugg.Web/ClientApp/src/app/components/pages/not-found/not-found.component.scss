@@ -1,0 +1,16 @@
+@import "../../../../variables.scss";
+
+.not-found-component {
+    padding: 3em 5em;
+    margin: 4em auto;
+    max-width: 25em;
+    text-align: center;
+    h1 {
+        font-size: 4em;
+        font-weight: 500;
+        color: $primary !important;
+    }
+    p {
+        font-size: 1.5em;
+    }
+}
