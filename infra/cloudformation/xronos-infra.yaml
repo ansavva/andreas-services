@@ -1,0 +1,231 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Xronos timeline infrastructure for staging/production
+
+Parameters:
+  StageName:
+    Type: String
+    AllowedValues: [staging, production]
+  BasePath:
+    Type: String
+    Description: Base path prefix used in CloudFront path routing (e.g. /xronos or /staging/xronos)
+  DomainName:
+    Type: String
+    Default: andreas.services
+  CertificateArn:
+    Type: String
+    Description: ACM certificate ARN in us-east-1 for CloudFront
+  ApiImageUri:
+    Type: String
+    Description: ECR image URI for the Lambda container
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  DocDbSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  DocDbUsername:
+    Type: String
+    Default: xronosapp
+  DocDbPassword:
+    Type: String
+    NoEcho: true
+  WebBucketName:
+    Type: String
+    Default: ''
+
+Conditions:
+  UseCustomBucketName: !Not [!Equals [!Ref WebBucketName, '']]
+
+Resources:
+  XronosDocumentDbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Access for Xronos Lambda into DocumentDB
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 27017
+          ToPort: 27017
+          SourceSecurityGroupId: !Ref XronosDocumentDbSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: 0
+          ToPort: 0
+          CidrIp: 0.0.0.0/0
+
+  XronosDocumentDbSubnetGroup:
+    Type: AWS::DocDB::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private subnets for Xronos DocumentDB
+      SubnetIds: !Ref DocDbSubnetIds
+
+  XronosDocumentDbCluster:
+    Type: AWS::DocDB::DBCluster
+    Properties:
+      DBClusterIdentifier: !Sub xronos-${StageName}-cluster
+      EngineVersion: 5.0.0
+      MasterUsername: !Ref DocDbUsername
+      MasterUserPassword: !Ref DocDbPassword
+      DBSubnetGroupName: !Ref XronosDocumentDbSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref XronosDocumentDbSecurityGroup
+      StorageEncrypted: true
+
+  XronosDocumentDbInstance:
+    Type: AWS::DocDB::DBInstance
+    Properties:
+      DBClusterIdentifier: !Ref XronosDocumentDbCluster
+      DBInstanceClass: db.t3.medium
+
+  XronosApiExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub xronos-${StageName}-api-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: xronos-documentdb-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - docdb:Describe*
+                  - docdb:List*
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: '*'
+
+  XronosWebBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !If [UseCustomBucketName, !Ref WebBucketName, !Ref 'AWS::NoValue']
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  XronosWebOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub xronos-${StageName}-oac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  XronosApiFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub xronos-${StageName}-api
+      PackageType: Image
+      Code:
+        ImageUri: !Ref ApiImageUri
+      MemorySize: 512
+      Timeout: 30
+      Role: !GetAtt XronosApiExecutionRole.Arn
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref XronosDocumentDbSecurityGroup
+        SubnetIds: !Ref PrivateSubnetIds
+      Environment:
+        Variables:
+          MONGODB_URI: !Sub >
+            mongodb://${DocDbUsername}:${DocDbPassword}@${XronosDocumentDbCluster.Endpoint}/xronos?tls=true&replicaSet=rs0&readPreference=secondaryPreferred&retryWrites=false
+          MONGODB_DB: xronos
+          API_BASE_PATH_PREFIX: !Ref BasePath
+
+  XronosHttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub xronos-${StageName}-api
+      ProtocolType: HTTP
+
+  XronosApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref XronosHttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${XronosApiFunction.Arn}/invocations
+      PayloadFormatVersion: '2.0'
+
+  XronosApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      StageName: default
+      ApiId: !Ref XronosHttpApi
+      AutoDeploy: true
+      DefaultRouteSettings:
+        DetailedMetricsEnabled: true
+
+  XronosApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref XronosApiFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${XronosHttpApi}/*/*/*
+
+  XronosDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Aliases:
+          - !Ref DomainName
+        DefaultCacheBehavior:
+          TargetOriginId: web
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD, OPTIONS]
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # CachingOptimized
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf # CORS-S3Origin
+        Origins:
+          - Id: web
+            DomainName: !GetAtt XronosWebBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+            OriginAccessControlId: !GetAtt XronosWebOAC.Id
+          - Id: api
+            DomainName: !Sub '${XronosHttpApi}.execute-api.${AWS::Region}.amazonaws.com'
+            CustomOriginConfig:
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
+        CacheBehaviors:
+          - PathPattern: !Sub '${BasePath}/api/*'
+            TargetOriginId: api
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+            CachedMethods: [GET, HEAD, OPTIONS]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # CachingDisabled
+            OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3 # AllViewer
+          - PathPattern: !Sub '${BasePath}/web/*'
+            TargetOriginId: web
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS]
+            CachedMethods: [GET, HEAD, OPTIONS]
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+            OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf
+        ViewerCertificate:
+          AcmCertificateArn: !Ref CertificateArn
+          SslSupportMethod: sni-only
+
+Outputs:
+  ApiInvokeUrl:
+    Value: !Sub https://${DomainName}${BasePath}/api
+  WebUrl:
+    Value: !Sub https://${DomainName}${BasePath}/web
+  CloudFrontDistributionId:
+    Value: !Ref XronosDistribution

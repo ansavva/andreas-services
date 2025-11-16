@@ -1,0 +1,131 @@
+name: build-and-deploy
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  NODE_VERSION: 18
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install dependencies
+        run: npm install --no-progress
+      - name: Build web app
+        run: npm run build
+        env:
+          VITE_APP_BASE_PATH: ${{ github.event_name == 'pull_request' && '/staging/xronos/web/' || '/xronos/web/' }}
+          VITE_API_BASE_PATH: ${{ github.event_name == 'pull_request' && '/staging/xronos/api' || '/xronos/api' }}
+
+  deploy-staging:
+    if: github.event_name == 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.ROLE_TO_ASSUME }}
+          role-session-name: xronos-staging-${{ github.run_id }}
+          aws-region: us-east-1
+      - name: Install dependencies
+        run: npm install --no-progress
+      - name: Build web app
+        run: npm run build
+        env:
+          VITE_APP_BASE_PATH: /staging/xronos/web/
+          VITE_API_BASE_PATH: /staging/xronos/api
+      - name: Build Lambda image
+        run: npm run build:lambda
+      - name: Push Lambda image
+        run: |
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
+          docker tag xronos-api:latest ${{ secrets.ECR_REGISTRY }}/xronos:staging-${{ github.sha }}
+          docker push ${{ secrets.ECR_REGISTRY }}/xronos:staging-${{ github.sha }}
+      - name: Deploy staging stack
+        env:
+          AWS_REGION: us-east-1
+          API_IMAGE_URI: ${{ secrets.ECR_REGISTRY }}/xronos:staging-${{ github.sha }}
+          CLOUDFRONT_CERT_ARN: ${{ secrets.CLOUDFRONT_CERT_ARN }}
+          VPC_ID: ${{ secrets.VPC_ID }}
+          PRIVATE_SUBNET_IDS: ${{ secrets.PRIVATE_SUBNET_IDS }}
+          DOCDB_SUBNET_IDS: ${{ secrets.DOCDB_SUBNET_IDS }}
+          DOCDB_USERNAME: ${{ secrets.DOCDB_USERNAME }}
+          DOCDB_PASSWORD: ${{ secrets.DOCDB_PASSWORD }}
+          WEB_BUCKET_NAME: xronos-staging-web
+          DOMAIN_NAME: andreas.services
+        run: npm run infra:deploy -- staging
+      - name: Upload web assets to S3
+        env:
+          AWS_REGION: us-east-1
+        run: |
+          aws s3 sync dist s3://xronos-staging-web/staging/xronos/web/ --delete
+      - name: Invalidate CloudFront
+        env:
+          AWS_REGION: us-east-1
+        run: |
+          DISTRIBUTION_ID=$(aws cloudformation describe-stacks --stack-name xronos-staging --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" --output text)
+          aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/staging/xronos/web/*"
+
+  deploy-production:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.ROLE_TO_ASSUME }}
+          role-session-name: xronos-prod-${{ github.run_id }}
+          aws-region: us-east-1
+      - name: Install dependencies
+        run: npm install --no-progress
+      - name: Build web app
+        run: npm run build
+        env:
+          VITE_APP_BASE_PATH: /xronos/web/
+          VITE_API_BASE_PATH: /xronos/api
+      - name: Build Lambda image
+        run: npm run build:lambda
+      - name: Push Lambda image
+        run: |
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
+          docker tag xronos-api:latest ${{ secrets.ECR_REGISTRY }}/xronos:prod-${{ github.sha }}
+          docker push ${{ secrets.ECR_REGISTRY }}/xronos:prod-${{ github.sha }}
+      - name: Deploy production stack
+        env:
+          AWS_REGION: us-east-1
+          API_IMAGE_URI: ${{ secrets.ECR_REGISTRY }}/xronos:prod-${{ github.sha }}
+          CLOUDFRONT_CERT_ARN: ${{ secrets.CLOUDFRONT_CERT_ARN }}
+          VPC_ID: ${{ secrets.VPC_ID }}
+          PRIVATE_SUBNET_IDS: ${{ secrets.PRIVATE_SUBNET_IDS }}
+          DOCDB_SUBNET_IDS: ${{ secrets.DOCDB_SUBNET_IDS }}
+          DOCDB_USERNAME: ${{ secrets.DOCDB_USERNAME }}
+          DOCDB_PASSWORD: ${{ secrets.DOCDB_PASSWORD }}
+          WEB_BUCKET_NAME: xronos-prod-web
+          DOMAIN_NAME: andreas.services
+        run: npm run infra:deploy -- production
+      - name: Upload web assets to S3
+        env:
+          AWS_REGION: us-east-1
+        run: |
+          aws s3 sync dist s3://xronos-prod-web/xronos/web/ --delete
+      - name: Invalidate CloudFront
+        env:
+          AWS_REGION: us-east-1
+        run: |
+          DISTRIBUTION_ID=$(aws cloudformation describe-stacks --stack-name xronos-production --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" --output text)
+          aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/xronos/web/*"
