@@ -6,6 +6,7 @@ import crypto from 'crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_FILE = path.resolve(__dirname, '../data/events.json');
+const SEED_FILE = path.resolve(__dirname, '../data/seedEvents.json');
 
 function sortEvents(events) {
   return [...events].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -50,8 +51,25 @@ class EventsStore {
   }
 
   async load() {
-    const fileContents = await readFile(DATA_FILE, 'utf-8');
-    const parsed = JSON.parse(fileContents);
+    let parsed = [];
+
+    try {
+      const fileContents = await readFile(DATA_FILE, 'utf-8');
+      parsed = JSON.parse(fileContents);
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        throw error;
+      }
+    }
+
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      const seedsContents = await readFile(SEED_FILE, 'utf-8');
+      parsed = JSON.parse(seedsContents);
+      this.events = sortEvents(parsed);
+      await this.persist();
+      return;
+    }
+
     this.events = sortEvents(parsed);
   }
 
