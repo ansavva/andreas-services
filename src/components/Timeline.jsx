@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
+import PropTypes from 'prop-types';
 import TimelineEvent from './TimelineEvent.jsx';
 
 const BASE_SPACING = 48;
@@ -40,7 +41,7 @@ function computeTemporalContext(previousDate, currentDate) {
   };
 }
 
-function Timeline({ events, onReachStart, onReachEnd, isLoading }) {
+function Timeline({ events, onReachStart, onReachEnd, isLoading, onEdit }) {
   const startSentinelRef = useRef(null);
   const endSentinelRef = useRef(null);
 
@@ -108,7 +109,7 @@ function Timeline({ events, onReachStart, onReachEnd, isLoading }) {
       <div ref={startSentinelRef} className="h-px" aria-hidden="true" />
       <ol className="relative border-l border-timeline-line/60 pl-8 sm:pl-12">
         {decoratedEvents.map((event) => (
-          <TimelineEvent key={event.id} event={event} />
+          <TimelineEvent key={event.id} event={event} onEdit={onEdit} />
         ))}
       </ol>
       {isLoading ? (
@@ -121,5 +122,27 @@ function Timeline({ events, onReachStart, onReachEnd, isLoading }) {
     </section>
   );
 }
+
+Timeline.propTypes = {
+  events: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.string.isRequired,
+      date: PropTypes.string.isRequired,
+      title: PropTypes.string.isRequired,
+      description: PropTypes.string.isRequired
+    })
+  ).isRequired,
+  onReachStart: PropTypes.func,
+  onReachEnd: PropTypes.func,
+  isLoading: PropTypes.bool,
+  onEdit: PropTypes.func
+};
+
+Timeline.defaultProps = {
+  onReachStart: undefined,
+  onReachEnd: undefined,
+  isLoading: false,
+  onEdit: undefined
+};
 
 export default Timeline;

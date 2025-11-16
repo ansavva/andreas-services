@@ -31,7 +31,13 @@ Chevron.propTypes = {
   open: PropTypes.bool.isRequired
 };
 
-function TimelineEvent({ event }) {
+function TimelineEvent({ event, onEdit }) {
+  const handleEditClick = () => {
+    if (onEdit) {
+      onEdit(event);
+    }
+  };
+
   return (
     <li
       className="relative -ml-[1px] flex flex-col gap-2 pb-12 pl-8 sm:pl-12"
@@ -47,15 +53,24 @@ function TimelineEvent({ event }) {
         <Disclosure>
           {({ open }) => (
             <>
-              <Disclosure.Button className="flex w-full items-start justify-between gap-4 text-left">
-                <div className="flex flex-col gap-1">
-                  <time className="text-xs font-semibold uppercase tracking-[0.25em] text-sky-300" dateTime={event.date}>
-                    {formatDateLabel(event.date)}
-                  </time>
-                  <h2 className="text-xl font-semibold text-slate-50">{event.title}</h2>
-                </div>
-                <Chevron open={open} />
-              </Disclosure.Button>
+              <div className="flex w-full items-start justify-between gap-4 text-left">
+                <Disclosure.Button className="flex flex-1 items-start gap-4 text-left">
+                  <div className="flex flex-col gap-1">
+                    <time className="text-xs font-semibold uppercase tracking-[0.25em] text-sky-300" dateTime={event.date}>
+                      {formatDateLabel(event.date)}
+                    </time>
+                    <h2 className="text-xl font-semibold text-slate-50">{event.title}</h2>
+                  </div>
+                  <Chevron open={open} />
+                </Disclosure.Button>
+                <button
+                  type="button"
+                  onClick={handleEditClick}
+                  className="rounded-full border border-slate-700 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-300 transition hover:border-sky-400 hover:text-sky-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+                >
+                  Edit
+                </button>
+              </div>
               <Transition
                 as={Fragment}
                 enter="transition duration-150 ease-out"
@@ -85,7 +100,12 @@ TimelineEvent.propTypes = {
     description: PropTypes.string.isRequired,
     spacing: PropTypes.number.isRequired,
     gapLabel: PropTypes.string
-  }).isRequired
+  }).isRequired,
+  onEdit: PropTypes.func
+};
+
+TimelineEvent.defaultProps = {
+  onEdit: undefined
 };
 
 export default TimelineEvent;
