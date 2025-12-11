@@ -1,0 +1,130 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Humbugg backend (Flask) Lambda deployment
+
+Parameters:
+  FunctionName:
+    Type: String
+  ImageUri:
+    Type: String
+    Description: ECR image URI (backend container built for linux/amd64)
+  Timeout:
+    Type: Number
+    Default: 30
+  MemorySize:
+    Type: Number
+    Default: 512
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Private subnets for Lambda (leave empty for public networking)
+    Default: []
+  SecurityGroupIds:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Default: []
+  EnvMongoUri:
+    Type: String
+    Description: DocumentDB connection string (Mongo-compatible, e.g., mongodb://user:pass@docdb-cluster:27017)
+  EnvMongoDbName:
+    Type: String
+    Default: HumbuggDb
+  EnvCorsOrigin:
+    Type: String
+    Default: https://www.example.com
+  EnvCognitoRegion:
+    Type: String
+  EnvCognitoPoolId:
+    Type: String
+  EnvCognitoClientId:
+    Type: String
+  StageName:
+    Type: String
+    Default: prod
+
+Conditions:
+  UseVpcConfig: !Not [!Equals [!Select [0, !Ref SubnetIds], ""]]
+
+Resources:
+  BackendFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref FunctionName
+      PackageType: Image
+      Code:
+        ImageUri: !Ref ImageUri
+      Timeout: !Ref Timeout
+      MemorySize: !Ref MemorySize
+      Environment:
+        Variables:
+          MONGO_URI: !Ref EnvMongoUri
+          MONGO_DB_NAME: !Ref EnvMongoDbName
+          CORS_ORIGIN: !Ref EnvCorsOrigin
+          COGNITO_REGION: !Ref EnvCognitoRegion
+          COGNITO_USER_POOL_ID: !Ref EnvCognitoPoolId
+          COGNITO_CLIENT_ID: !Ref EnvCognitoClientId
+      Role:
+        Fn::GetAtt:
+          - BackendLambdaRole
+          - Arn
+      VpcConfig:
+        Fn::If:
+          - UseVpcConfig
+          - { SubnetIds: !Ref SubnetIds, SecurityGroupIds: !Ref SecurityGroupIds }
+          - { Ref: AWS::NoValue }
+
+  BackendLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${FunctionName}-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub ${FunctionName}-http
+      ProtocolType: HTTP
+
+  ApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt BackendFunction.Arn
+      PayloadFormatVersion: 2.0
+
+  ApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: !Ref StageName
+      AutoDeploy: true
+      DefaultRouteSettings:
+        DetailedMetricsEnabled: true
+
+  ApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: '$default'
+      Target: !Join ['', ['integrations/', !Ref ApiIntegration]]
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref BackendFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/* 
+
+Outputs:
+  LambdaFunctionArn:
+    Value: !GetAtt BackendFunction.Arn
+  ApiInvokeUrl:
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}
