@@ -151,46 +151,6 @@ GitHub Actions will automatically:
 - Deploy to S3
 - Invalidate CloudFront cache
 
-### Option B: Manual Deployment
-
-**Backend:**
-```bash
-cd storybook
-./scripts/deploy-backend.sh
-```
-
-**Frontend:**
-```bash
-cd storybook
-./scripts/deploy-frontend.sh
-```
-
-## Post-Deployment Setup
-
-### 1. Create Admin User
-
-```bash
-cd storybook
-./scripts/setup-cognito.sh
-```
-
-Enter your email and a temporary password. You'll be prompted to change it on first login.
-
-### 2. Update Frontend Environment (if not using GitHub Actions)
-
-After Terraform completes, update the frontend production config:
-
-```bash
-cd frontend/storybook-ui
-
-# Get values from terraform output
-terraform -chdir=../../infra output cognito_user_pool_id
-terraform -chdir=../../infra output cognito_user_pool_client_id
-terraform -chdir=../../infra output cognito_domain
-
-# Update .env.production with these values
-```
-
 ## Verification
 
 ### 1. Check Infrastructure
@@ -233,19 +193,9 @@ curl https://storybook.andreas.services/app
 
 Changes to `storybook/backend/**` trigger automatic deployment via GitHub Actions.
 
-Or manually:
-```bash
-./scripts/deploy-backend.sh
-```
-
 ### Frontend Updates
 
 Changes to `storybook/frontend/**` trigger automatic deployment via GitHub Actions.
-
-Or manually:
-```bash
-./scripts/deploy-frontend.sh
-```
 
 ### Infrastructure Updates
 
@@ -255,90 +205,6 @@ terraform plan
 terraform apply
 ```
 
-## Troubleshooting
-
-### Lambda Function Won't Update
-
-```bash
-# Check ECR images
-aws ecr describe-images --repository-name storybook-backend-production
-
-# Check Lambda logs
-aws logs tail /aws/lambda/storybook-backend-production --follow
-
-# Force update
-aws lambda update-function-code \
-  --function-name storybook-backend-production \
-  --image-uri YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/storybook-backend-production:latest
-```
-
-### Frontend Not Loading
-
-```bash
-# Check S3 contents
-aws s3 ls s3://storybook-frontend-production/
-
-# Check CloudFront distribution status
-aws cloudfront get-distribution --id YOUR_DISTRIBUTION_ID
-
-# Invalidate cache
-aws cloudfront create-invalidation \
-  --distribution-id YOUR_DISTRIBUTION_ID \
-  --paths "/*"
-```
-
-### Authentication Fails
-
-```bash
-# Check Cognito configuration
-aws cognito-idp describe-user-pool-client \
-  --user-pool-id YOUR_POOL_ID \
-  --client-id YOUR_CLIENT_ID
-
-# Verify callback URLs include your frontend URL
-# Should include: https://storybook.andreas.services/app
-```
-
-### DNS Not Resolving
-
-```bash
-# Check Route53 records
-aws route53 list-resource-record-sets --hosted-zone-id YOUR_ZONE_ID
-
-# Verify certificates
-aws acm list-certificates --region us-east-1
-```
-
-### Certificate Validation Stuck
-
-This is usually due to DNS propagation. Wait 10-15 minutes, then:
-
-```bash
-# Check certificate status
-aws acm describe-certificate --certificate-arn YOUR_CERT_ARN --region us-east-1
-
-# If still stuck, delete and recreate
-terraform destroy -target=aws_acm_certificate.frontend
-terraform apply -target=aws_acm_certificate.frontend
-```
-
-## Cost Optimization
-
-- **CloudFront**: Use PriceClass_100 (North America/Europe only)
-- **Lambda**: Use ARM64 architecture (cheaper) - update Dockerfile
-- **S3**: Enable lifecycle rules for old versions
-- **Logs**: Set retention to 14 days (already configured)
-
-## Security Best Practices
-
-1. **Never commit secrets** - Use Terraform variables or GitHub secrets
-2. **Enable MFA** on AWS root and IAM users
-3. **Rotate credentials** regularly (Replicate API token, AWS keys)
-4. **Review CloudWatch logs** for suspicious activity
-5. **Keep dependencies updated** - Run `npm audit` and `pip-audit`
-6. **Enable AWS CloudTrail** for audit logging
-7. **Use least-privilege IAM** policies
-
 ## Cleanup
 
 To destroy all infrastructure:
@@ -347,13 +213,6 @@ To destroy all infrastructure:
 cd infra
 terraform destroy
 ```
-
-**Warning**: This will delete:
-- All S3 buckets and their contents
-- Lambda function
-- Cognito user pool (all users will be deleted)
-- CloudFront distribution
-- DNS records
 
 ## Support
 
