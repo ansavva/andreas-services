@@ -32,7 +32,8 @@ This guide walks you through deploying Storybook to AWS from scratch.
 
 Before starting, gather these values:
 - Replicate API token
-- AWS access keys for S3 operations (optional if using IAM roles)
+
+**Note**: AWS credentials are handled automatically via IAM roles (no access keys needed).
 
 ## One-Time Setup
 
@@ -57,10 +58,10 @@ cp terraform.tfvars.example terraform.tfvars
 Edit `terraform.tfvars` with your actual values:
 
 ```hcl
-replicate_api_token    = "r8_your_actual_token"
-aws_access_key_id      = "AKIA..." # Optional
-aws_secret_access_key  = "your_secret" # Optional
+replicate_api_token = "r8_your_actual_token"
 ```
+
+**Note**: AWS credentials are handled automatically via IAM roles (Lambda) and AWS CLI (local development). No access keys needed!
 
 **Important**: Never commit `terraform.tfvars` - it's in `.gitignore`.
 

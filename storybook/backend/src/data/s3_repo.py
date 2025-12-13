@@ -6,11 +6,11 @@ from typing import Optional
 class S3Repo:
     def __get_s3_client(self):
         config = current_app.config
+        # Use IAM role credentials (Lambda) or AWS CLI credentials (local)
+        # No need to pass access keys explicitly
         return boto3.client(
             's3',
-            aws_access_key_id=config["AWS_ACCESS_KEY_ID"],
-            aws_secret_access_key=config["AWS_SECRET_ACCESS_KEY"],
-            region_name=config["AWS_REGION"]
+            region_name=config.get("AWS_REGION", "us-east-1")
         )
     
     def __get_bucket_name(self):

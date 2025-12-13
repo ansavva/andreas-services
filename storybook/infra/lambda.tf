@@ -98,7 +98,6 @@ resource "aws_lambda_function" "backend" {
       AWS_COGNITO_USER_POOL_ID    = aws_cognito_user_pool.main.id
       AWS_COGNITO_APP_CLIENT_ID   = aws_cognito_user_pool_client.main.id
       S3_BUCKET_NAME              = aws_s3_bucket.backend_files.id
-      AWS_REGION                  = var.aws_region
       REPLICATE_API_TOKEN         = var.replicate_api_token
       APP_URL                     = "https://${var.app_subdomain}${var.frontend_path}"
     }
@@ -132,7 +131,7 @@ resource "aws_lambda_function_url" "backend" {
   cors {
     allow_credentials = true
     allow_origins     = [
-      "https://${var.frontend_subdomain}",
+      "https://${var.app_subdomain}",
       "http://localhost:5173"
     ]
     allow_methods     = ["*"]

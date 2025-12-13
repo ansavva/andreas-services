@@ -12,3 +12,6 @@ override.tf.json
 *_override.tf.json
 .terraformrc
 terraform.rc
+
+# Generated Lambda packages
+redirect_lambda.zip
