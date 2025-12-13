@@ -39,15 +39,3 @@ variable "replicate_api_token" {
   type        = string
   sensitive   = true
 }
-
-variable "aws_access_key_id" {
-  description = "AWS access key for S3 operations"
-  type        = string
-  sensitive   = true
-}
-
-variable "aws_secret_access_key" {
-  description = "AWS secret key for S3 operations"
-  type        = string
-  sensitive   = true
-}

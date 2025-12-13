@@ -9,6 +9,4 @@ frontend_path   = "/app"
 backend_path    = "/api"
 
 # Secrets (DO NOT commit actual values - use terraform.tfvars locally or environment variables in CI/CD)
-replicate_api_token    = "your_replicate_api_token"
-aws_access_key_id      = "your_aws_access_key"
-aws_secret_access_key  = "your_aws_secret_key"
+replicate_api_token = "your_replicate_api_token"
