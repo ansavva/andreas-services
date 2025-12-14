@@ -1,8 +1,8 @@
 export type SiteConfig = typeof siteConfig;
 
 export const siteConfig = {
-  name: "Aillusion",
-  description: "Be anything you want to be.",
+  name: "Storybook",
+  description: "AI portrait studio - upload photos, train models, and generate new images.",
   navItems: [
     {
       label: "Home",
