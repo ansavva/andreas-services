@@ -4,7 +4,7 @@ from werkzeug.datastructures import FileStorage
 from typing import List, Optional
 import zipfile
 
-from src.models.file import File
+from src.models.image import Image
 from src.data.project_repo import ProjectRepo
 from src.data.image_repo import ImageRepo
 
@@ -13,37 +13,42 @@ class ImageService:
         self.image_repo = ImageRepo()
         self.project_repo = ProjectRepo()
 
-    def upload_file(self, project_id: str, directory: str, file: FileStorage, fileName: str) -> File:
+    def upload_image(self, project_id: str, file: FileStorage, filename: str) -> Image:
+        """Upload an image for a project"""
+        # Verify project exists and belongs to user
         project = self.project_repo.get_project(project_id)
-        return self.image_repo.upload_file(project.key, directory, file, fileName)
+        return self.image_repo.upload_image(project_id, file, filename)
 
-    def download_file(self, project_id: str, directory: str, key: str) -> Optional[bytes]:
-        project = self.project_repo.get_project(project_id)
-        return self.image_repo.download_file(project.key, directory, key)
+    def download_image(self, image_id: str) -> Optional[bytes]:
+        """Download an image by ID"""
+        return self.image_repo.download_image(image_id)
 
-    def delete_file(self, project_id: str, directory: str, key: str):
-        project = self.project_repo.get_project(project_id)
-        self.image_repo.delete_file(project.key, directory, key)
+    def delete_image(self, image_id: str):
+        """Delete an image by ID"""
+        self.image_repo.delete_image(image_id)
 
-    def list_files(self, project_id: str, directory: str) -> List[File]:
+    def list_images(self, project_id: str) -> List[Image]:
+        """List all images for a project"""
+        # Verify project exists and belongs to user
         project = self.project_repo.get_project(project_id)
-        return self.image_repo.list_files(project.key, directory)
-    
-    def create_zip(self, project_id: str, directory: str):
+        return self.image_repo.list_images(project_id)
+
+    def create_zip(self, project_id: str):
+        """Create a zip file of all training images for a project"""
         project = self.project_repo.get_project(project_id)
-        # List objects in the specified directory
-        files = self.list_files(project.id, directory)
+        # List all images for the project
+        images = self.list_images(project_id)
         # Create an in-memory zip file
         zip_buffer = io.BytesIO()
         # Create a zip file in memory
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
             index = 0
-            for file in files:
-                # Download each file using the custom download method
-                file_blob = self.download_file(project.id, directory, file.key)
+            for image in images:
+                # Download each file
+                file_blob = self.download_image(image.id)
                 # Rename the file so that the AI knows the subject
-                file_extension = os.path.splitext(file.name)[1] 
-                fileName = f"a_photo_of_{project.subjectName}({index}){file_extension}"
+                file_extension = os.path.splitext(image.filename)[1]
+                fileName = f"a_photo_of_{project.subject_name}({index}){file_extension}"
                 # Add the image to the zip file
                 zip_file.writestr(fileName, file_blob)
                 index = index + 1

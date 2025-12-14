@@ -40,14 +40,32 @@ class CognitoJWTValidator:
             # Get the key
             key = self.get_key(token)
 
-            # Decode and verify the token
-            claims = jwt.decode(
-                token,
-                key,
-                algorithms=['RS256'],
-                audience=self.app_client_id,
-                issuer=f'https://cognito-idp.{self.region}.amazonaws.com/{self.user_pool_id}'
-            )
+            # Decode the token to check its type
+            unverified_claims = jwt.get_unverified_claims(token)
+            token_use = unverified_claims.get('token_use')
+
+            # Access tokens have client_id instead of aud, and token_use should be 'access'
+            if token_use == 'access':
+                # For access tokens, validate client_id instead of audience
+                claims = jwt.decode(
+                    token,
+                    key,
+                    algorithms=['RS256'],
+                    options={'verify_aud': False},  # Don't verify audience for access tokens
+                    issuer=f'https://cognito-idp.{self.region}.amazonaws.com/{self.user_pool_id}'
+                )
+                # Manually verify client_id matches
+                if claims.get('client_id') != self.app_client_id:
+                    raise ValueError('Token client_id does not match app client ID')
+            else:
+                # For ID tokens, use standard audience validation
+                claims = jwt.decode(
+                    token,
+                    key,
+                    algorithms=['RS256'],
+                    audience=self.app_client_id,
+                    issuer=f'https://cognito-idp.{self.region}.amazonaws.com/{self.user_pool_id}'
+                )
 
             return claims
 

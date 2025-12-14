@@ -1,49 +1,184 @@
 import os
-from authlib.integrations.flask_oauth2 import current_token
+from flask import request
 from werkzeug.datastructures import FileStorage
 from typing import List, Optional
 import uuid
+from datetime import datetime
 
-from src.models.file import File
-from src.data.s3_repo import S3Repo
+from src.data.database import get_db
+from src.models.image import Image
+from src.storage.factory import get_file_storage
 
 class ImageRepo:
+    """
+    Image repository - handles image metadata in MongoDB and files in S3
+    """
+
     def __init__(self):
-        self.s3_repo = S3Repo()
-    
-    def __create_directory(self, project_key: str, directory: str):
-        user_id = current_token.sub.split('|')[1]
-        return f"users/{user_id}/projects/{project_key}/{directory}"
+        self._storage = None
 
-    def upload_file(self, project_key: str, directory: str, file: FileStorage, fileName: str) -> File:
-        file_guid = str(uuid.uuid4())
-        user_directory = self.__create_directory(project_key, directory)
-        key = f"{user_directory}/{file_guid}__ai__{fileName}"
-        self.s3_repo.upload_file(file, key)
-        return File(id=file_guid, name=fileName, key=f"{file_guid}__ai__{fileName}")
+    @property
+    def storage(self):
+        """Lazy-load storage adapter to avoid app context issues"""
+        if self._storage is None:
+            self._storage = get_file_storage()
+        return self._storage
 
-    def download_file(self, project_key: str, directory: str, key: str) -> Optional[bytes]:
-        user_directory = self.__create_directory(project_key, directory)
-        return self.s3_repo.download_file(f"{user_directory}/{key}")
+    def _get_user_id(self) -> str:
+        """Get current user ID from Cognito claims"""
+        return request.cognito_claims['sub']
 
-    def delete_file(self, project_key: str, directory: str, key: str):
-        user_directory = self.__create_directory(project_key, directory)
-        self.s3_repo.delete_file(f"{user_directory}/{key}")
+    def _create_s3_key(self, project_id: str, image_id: str, filename: str) -> str:
+        """Generate S3 key for image storage"""
+        user_id = self._get_user_id()
+        return f"users/{user_id}/projects/{project_id}/images/{image_id}_{filename}"
 
-    def list_files(self, project_key: str, directory: str) -> List[File]:
-        # Get all files from s3
-        user_directory = self.__create_directory(project_key, directory)
-        files = self.s3_repo.list_files(user_directory)
-        # Get only the file name (remove directory)
-        file_names = [os.path.basename(file_path) for file_path in files]
-        # Create file models
-        file_models = []
-        for file_name in file_names:
-            # Split by the delimiter __ai__
-            parts = file_name.split("__ai__")
-            # Ensure we have exactly 2 parts, otherwise handle the error
-            if len(parts) == 2:
-                file_id, file_name_part = parts
-                file_models.append(File(id=file_id, name=file_name_part, key=file_name))
-        return file_models
-    
+    def upload_image(self, project_id: str, file: FileStorage, filename: str) -> Image:
+        """
+        Upload an image file to S3 and save metadata to MongoDB
+
+        Args:
+            project_id: UUID of the project this image belongs to
+            file: File upload from request
+            filename: Original filename
+
+        Returns:
+            Created Image object
+        """
+        db = get_db()
+        user_id = self._get_user_id()
+
+        image_id = str(uuid.uuid4())
+        s3_key = self._create_s3_key(project_id, image_id, filename)
+
+        # Upload file to S3
+        self.storage.upload_file(file, s3_key)
+
+        # Save metadata to MongoDB
+        image = Image(
+            id=image_id,
+            project_id=project_id,
+            user_id=user_id,
+            s3_key=s3_key,
+            filename=filename,
+            content_type=file.content_type or 'application/octet-stream',
+            size_bytes=file.content_length or 0,
+            created_at=datetime.utcnow()
+        )
+
+        db.images.insert_one(image.to_dict())
+
+        return image
+
+    def get_image(self, image_id: str) -> Image:
+        """
+        Get image metadata by ID
+
+        Args:
+            image_id: UUID of the image
+
+        Returns:
+            Image object
+
+        Raises:
+            ValueError: If image not found or doesn't belong to user
+        """
+        db = get_db()
+        user_id = self._get_user_id()
+
+        image_data = db.images.find_one({
+            '_id': image_id,
+            'user_id': user_id
+        })
+
+        if not image_data:
+            raise ValueError(f"Image with ID {image_id} not found.")
+
+        return Image.from_dict(image_data)
+
+    def list_images(self, project_id: str) -> List[Image]:
+        """
+        List all images for a project
+
+        Args:
+            project_id: UUID of the project
+
+        Returns:
+            List of Image objects
+        """
+        db = get_db()
+        user_id = self._get_user_id()
+
+        images_data = db.images.find({
+            'project_id': project_id,
+            'user_id': user_id
+        }).sort('created_at', -1)  # Most recent first
+
+        return [Image.from_dict(img) for img in images_data]
+
+    def download_image(self, image_id: str) -> Optional[bytes]:
+        """
+        Download image file from S3
+
+        Args:
+            image_id: UUID of the image
+
+        Returns:
+            Image file bytes
+
+        Raises:
+            ValueError: If image not found or doesn't belong to user
+        """
+        image = self.get_image(image_id)
+        return self.storage.download_file(image.s3_key)
+
+    def delete_image(self, image_id: str) -> None:
+        """
+        Delete image metadata from MongoDB and file from S3
+
+        Args:
+            image_id: UUID of the image
+
+        Raises:
+            ValueError: If image not found or doesn't belong to user
+        """
+        db = get_db()
+        user_id = self._get_user_id()
+
+        # First, get the image to get S3 key
+        image = self.get_image(image_id)
+
+        # Delete from S3
+        self.storage.delete_file(image.s3_key)
+
+        # Delete metadata from MongoDB
+        result = db.images.delete_one({
+            '_id': image_id,
+            'user_id': user_id
+        })
+
+        if result.deleted_count == 0:
+            raise ValueError(f"Image with ID {image_id} not found.")
+
+    def delete_project_images(self, project_id: str) -> None:
+        """
+        Delete all images for a project (called when deleting a project)
+
+        Args:
+            project_id: UUID of the project
+        """
+        db = get_db()
+        user_id = self._get_user_id()
+
+        # Get all images for the project
+        images = self.list_images(project_id)
+
+        # Delete all files from S3
+        for image in images:
+            self.storage.delete_file(image.s3_key)
+
+        # Delete all metadata from MongoDB
+        db.images.delete_many({
+            'project_id': project_id,
+            'user_id': user_id
+        })

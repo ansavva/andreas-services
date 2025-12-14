@@ -1,18 +1,18 @@
-# ECR Repository for Lambda container image
+# modules/compute/main.tf
+# Lambda function, ECR, and API Gateway (production only)
+
+# ECR Repository
 resource "aws_ecr_repository" "backend" {
-  name                 = "storybook-backend-${var.environment}"
+  name                 = "${var.project}-backend-${var.environment}"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
     scan_on_push = true
   }
 
-  tags = {
-    Name = "storybook-backend"
-  }
+  tags = var.tags
 }
 
-# ECR Lifecycle Policy
 resource "aws_ecr_lifecycle_policy" "backend" {
   repository = aws_ecr_repository.backend.name
 
@@ -34,7 +34,7 @@ resource "aws_ecr_lifecycle_policy" "backend" {
 
 # IAM role for Lambda
 resource "aws_iam_role" "lambda" {
-  name = "storybook-lambda-role-${var.environment}"
+  name = "${var.project}-lambda-role-${var.environment}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -46,16 +46,17 @@ resource "aws_iam_role" "lambda" {
       }
     }]
   })
+
+  tags = var.tags
 }
 
-# IAM policy for Lambda
 resource "aws_iam_role_policy" "lambda" {
-  name = "storybook-lambda-policy"
+  name = "${var.project}-lambda-policy"
   role = aws_iam_role.lambda.id
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
+    Statement = concat([
       {
         Effect = "Allow"
         Action = [
@@ -74,41 +75,72 @@ resource "aws_iam_role_policy" "lambda" {
           "s3:ListBucket"
         ]
         Resource = [
-          aws_s3_bucket.backend_files.arn,
-          "${aws_s3_bucket.backend_files.arn}/*"
+          var.s3_bucket_arn,
+          "${var.s3_bucket_arn}/*"
         ]
       }
-    ]
+    ],
+    var.vpc_id != null ? [{
+      Effect = "Allow"
+      Action = [
+        "ec2:CreateNetworkInterface",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DeleteNetworkInterface"
+      ]
+      Resource = "*"
+    }] : [])
+  })
+}
+
+# Security group for Lambda (only if VPC is used)
+resource "aws_security_group" "lambda" {
+  count       = var.vpc_id != null ? 1 : 0
+  name        = "${var.project}-lambda-${var.environment}"
+  description = "Security group for Lambda function"
+  vpc_id      = var.vpc_id
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(var.tags, {
+    Name = "${var.project}-lambda-${var.environment}"
   })
 }
 
 # Lambda Function
 resource "aws_lambda_function" "backend" {
-  function_name = "storybook-backend-${var.environment}"
+  function_name = "${var.project}-backend-${var.environment}"
   role          = aws_iam_role.lambda.arn
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.backend.repository_url}:latest"
   timeout       = 30
   memory_size   = 512
 
-  environment {
-    variables = {
-      FLASK_ENV                   = var.environment
-      AWS_COGNITO_REGION          = var.aws_region
-      AWS_COGNITO_USER_POOL_ID    = aws_cognito_user_pool.main.id
-      AWS_COGNITO_APP_CLIENT_ID   = aws_cognito_user_pool_client.main.id
-      S3_BUCKET_NAME              = aws_s3_bucket.backend_files.id
-      AWS_REGION                  = var.aws_region
-      REPLICATE_API_TOKEN         = var.replicate_api_token
-      APP_URL                     = "https://${var.app_subdomain}${var.frontend_path}"
+  dynamic "vpc_config" {
+    for_each = var.vpc_id != null ? [1] : []
+    content {
+      subnet_ids         = var.subnet_ids
+      security_group_ids = [aws_security_group.lambda[0].id]
     }
   }
 
-  tags = {
-    Name = "storybook-backend"
+  environment {
+    variables = merge({
+      FLASK_ENV                 = var.environment
+      AWS_COGNITO_REGION        = var.aws_region
+      AWS_COGNITO_USER_POOL_ID  = var.cognito_user_pool_id
+      AWS_COGNITO_APP_CLIENT_ID = var.cognito_client_id
+      S3_BUCKET_NAME            = var.s3_bucket_id
+    }, var.additional_env_vars)
   }
 
-  # The image_uri will be updated by GitHub Actions
+  tags = var.tags
+
   lifecycle {
     ignore_changes = [image_uri]
   }
@@ -119,49 +151,27 @@ resource "aws_cloudwatch_log_group" "lambda" {
   name              = "/aws/lambda/${aws_lambda_function.backend.function_name}"
   retention_in_days = 14
 
-  tags = {
-    Name = "storybook-lambda-logs"
-  }
+  tags = var.tags
 }
 
-# Lambda Function URL
-resource "aws_lambda_function_url" "backend" {
-  function_name      = aws_lambda_function.backend.function_name
-  authorization_type = "NONE"
+# API Gateway v2 (HTTP API)
+resource "aws_apigatewayv2_api" "backend" {
+  name          = "${var.project}-backend-${var.environment}"
+  protocol_type = "HTTP"
+  description   = "${var.project} Backend API"
 
-  cors {
+  cors_configuration {
     allow_credentials = true
-    allow_origins     = [
-      "https://${var.frontend_subdomain}",
-      "http://localhost:5173"
-    ]
+    allow_origins     = var.cors_allowed_origins
     allow_methods     = ["*"]
     allow_headers     = ["*"]
     expose_headers    = ["*"]
     max_age           = 3600
   }
+
+  tags = var.tags
 }
 
-# API Gateway v2 (HTTP API) for custom domain
-resource "aws_apigatewayv2_api" "backend" {
-  name          = "storybook-backend-${var.environment}"
-  protocol_type = "HTTP"
-  description   = "Storybook Backend API"
-
-  cors_configuration {
-    allow_credentials = true
-    allow_origins = [
-      "https://${var.app_subdomain}",
-      "http://localhost:5173"
-    ]
-    allow_methods = ["*"]
-    allow_headers = ["*"]
-    expose_headers = ["*"]
-    max_age = 3600
-  }
-}
-
-# API Gateway Integration with Lambda
 resource "aws_apigatewayv2_integration" "backend" {
   api_id           = aws_apigatewayv2_api.backend.id
   integration_type = "AWS_PROXY"
@@ -170,7 +180,6 @@ resource "aws_apigatewayv2_integration" "backend" {
   payload_format_version = "2.0"
 }
 
-# API Gateway Route
 resource "aws_apigatewayv2_route" "backend" {
   api_id    = aws_apigatewayv2_api.backend.id
   route_key = "$default"
@@ -178,38 +187,21 @@ resource "aws_apigatewayv2_route" "backend" {
   target = "integrations/${aws_apigatewayv2_integration.backend.id}"
 }
 
-# API Gateway Stage
 resource "aws_apigatewayv2_stage" "backend" {
   api_id      = aws_apigatewayv2_api.backend.id
   name        = "$default"
   auto_deploy = true
 
-  access_log_settings {
-    destination_arn = aws_cloudwatch_log_group.api_gateway.arn
-    format = jsonencode({
-      requestId      = "$context.requestId"
-      ip             = "$context.identity.sourceIp"
-      requestTime    = "$context.requestTime"
-      httpMethod     = "$context.httpMethod"
-      routeKey       = "$context.routeKey"
-      status         = "$context.status"
-      protocol       = "$context.protocol"
-      responseLength = "$context.responseLength"
-    })
-  }
+  tags = var.tags
 }
 
-# CloudWatch Log Group for API Gateway
 resource "aws_cloudwatch_log_group" "api_gateway" {
-  name              = "/aws/apigateway/storybook-backend-${var.environment}"
+  name              = "/aws/apigateway/${var.project}-backend-${var.environment}"
   retention_in_days = 14
 
-  tags = {
-    Name = "storybook-api-gateway-logs"
-  }
+  tags = var.tags
 }
 
-# Lambda permission for API Gateway
 resource "aws_lambda_permission" "api_gateway" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
@@ -217,6 +209,3 @@ resource "aws_lambda_permission" "api_gateway" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.backend.execution_arn}/*/*"
 }
-
-# Note: Backend is accessed via CloudFront at storybook.andreas.services/api
-# No separate custom domain needed for API Gateway

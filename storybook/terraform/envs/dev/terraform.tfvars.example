@@ -1,0 +1,5 @@
+# envs/dev/terraform.tfvars.example
+# Development environment variables
+# Copy this file to terraform.tfvars and fill in your actual values
+
+aws_region = "us-east-1"

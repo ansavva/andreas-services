@@ -6,6 +6,7 @@ from flask_cors import CORS
 
 from src.config import Config
 from src.cognito_validator import CognitoJWTValidator, require_cognito_auth
+from src.data.database import init_db
 from src.controllers.image_controller import image_controller
 from src.controllers.model_controller import model_controller
 from src.controllers.project_controller import project_controller
@@ -23,8 +24,15 @@ cognito_validator = CognitoJWTValidator(
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# Set up CORS
-CORS(app, supports_credentials=True)  # Enable CORS for all routes
+# Initialize database connection
+init_db(app)
+
+# Set up CORS - allow frontend origin
+CORS(app,
+     resources={r"/api/*": {"origins": os.getenv('APP_URL', 'http://localhost:5173')}},
+     supports_credentials=True,
+     allow_headers=["Content-Type", "Authorization"],
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
 
 # Apply Cognito authentication to blueprints
 @image_controller.before_request
@@ -79,4 +87,5 @@ if __name__ == '__main__':
     # Check environment variable to determine the mode
     env = os.getenv("FLASK_ENV", "production")  # Default to production if env is not set
     debug_mode = env == "development"
-    app.run(debug=debug_mode, port=8080, host='0.0.0.0')
+    port = int(os.getenv("PORT", "5000"))  # Use PORT env var or default to 5000
+    app.run(debug=debug_mode, port=port, host='0.0.0.0')

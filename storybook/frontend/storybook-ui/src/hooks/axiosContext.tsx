@@ -24,6 +24,7 @@ export const useAxios = (): AxiosContextType => {
 // AxiosProvider component
 export const AxiosProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Create an Axios instance
+  console.log('VITE_API_URL:', import.meta.env.VITE_API_URL); // Debug log
   const axiosInstance = axios.create({
     baseURL: import.meta.env.VITE_API_URL,
   });
@@ -32,7 +33,8 @@ export const AxiosProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       // Get the current session from Cognito
       const session = await fetchAuthSession();
-      const token = session.tokens?.idToken?.toString();
+      // Use access token instead of ID token to avoid at_hash validation issues
+      const token = session.tokens?.accessToken?.toString();
 
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
