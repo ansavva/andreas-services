@@ -16,17 +16,14 @@ def check_model_exists(project_id: str):
 @model_controller.route("/train", methods=["GET"])
 def train():
     try:
-        # Retrieve project_id and directory from request args
+        # Retrieve project_id from request args
         project_id = request.args.get("project_id")
-        directory = request.args.get("directory")
-        
+
         # Validate required data
         if not project_id:
             return jsonify({"error": "Project ID is required"}), 400
-        if not directory:
-            return jsonify({"error": "Directory is required"}), 400
-        
-        training_id = model_service.train(project_id, directory)
+
+        training_id = model_service.train(project_id)
         return jsonify({"training_id": training_id}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -44,13 +41,21 @@ def generate():
     try:
         project_id = request.args.get("project_id")
         prompt = request.args.get("prompt")
-        
+
         if not project_id:
-            return jsonify({"error": "Project ID and file key are required"}), 400
+            return jsonify({"error": "Project ID is required"}), 400
         if not prompt:
             return jsonify({"error": "Prompt is required"}), 400
-        
-        file = model_service.generate(prompt, project_id)
-        return jsonify(file), 200
+
+        image = model_service.generate(prompt, project_id)
+
+        # Convert Image object to dict for JSON response
+        return jsonify({
+            "id": image.id,
+            "filename": image.filename,
+            "content_type": image.content_type,
+            "size_bytes": image.size_bytes,
+            "created_at": image.created_at.isoformat() if image.created_at else None
+        }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500

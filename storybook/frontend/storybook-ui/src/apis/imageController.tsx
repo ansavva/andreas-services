@@ -16,7 +16,7 @@ export const uploadImage = async (
       });    
   
     try {
-      const response = await axiosInstance.post("/images/upload", formData, {
+      const response = await axiosInstance.post("/api/images/upload", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
@@ -27,10 +27,10 @@ export const uploadImage = async (
       return [];
     }
   };
-  
+
 
 export const downloadImage = async (axiosInstance: AxiosInstance, projectId: string, directory: string, key: string) => {
-    const response = await axiosInstance.get(`/images/download`, {
+    const response = await axiosInstance.get(`/api/images/download`, {
         params: { project_id: projectId, directory, key },
         responseType: "blob",
     });
@@ -38,14 +38,14 @@ export const downloadImage = async (axiosInstance: AxiosInstance, projectId: str
 };
 
 export const deleteImage = async (axiosInstance: AxiosInstance, projectId: string, directory: string, key: string) => {
-    const response = await axiosInstance.delete(`/images/delete`, {
+    const response = await axiosInstance.delete(`/api/images/delete`, {
         params: { project_id: projectId, directory, key },
     });
     return response.data;
 };
 
 export const listImages = async (axiosInstance: AxiosInstance, projectId: string, directory: string) => {
-    const response = await axiosInstance.get(`/images/list`, {
+    const response = await axiosInstance.get(`/api/images/list`, {
         params: { project_id: projectId, directory },
     });
     return response.data;

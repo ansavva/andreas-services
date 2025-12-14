@@ -10,3 +10,9 @@ class Config:
     # - Locally: Uses AWS CLI credentials from ~/.aws/credentials
     AWS_REGION = os.getenv("AWS_COGNITO_REGION", "us-east-1")  # Defaults to Cognito region
     AWS_COGNITO_REGION = os.getenv("AWS_COGNITO_REGION", "us-east-1")
+
+    # Database configuration
+    # For local dev: mongodb://localhost:27017/storybook_dev
+    # For prod: mongodb://username:password@docdb-endpoint:27017/storybook?tls=true&...
+    DATABASE_URL = os.getenv("DATABASE_URL", "mongodb://localhost:27017/storybook_dev")
+    DATABASE_NAME = os.getenv("DATABASE_NAME", "storybook_dev")

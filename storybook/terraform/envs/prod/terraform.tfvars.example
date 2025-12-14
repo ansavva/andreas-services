@@ -1,0 +1,8 @@
+# envs/prod/terraform.tfvars.example
+# Production environment variables
+# Copy this file to terraform.tfvars and fill in your actual values
+
+aws_region = "us-east-1"
+
+# Secrets - Get your Replicate API token from https://replicate.com/account/api-tokens
+replicate_api_token = "your_replicate_api_token_here"

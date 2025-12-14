@@ -9,17 +9,19 @@ Storybook is an AI portrait studio that lets authenticated users upload training
 
 ## Architecture
 
-- **`backend/`** – Python/Flask API running on AWS Lambda (containerized), secured with AWS Cognito, persists project metadata in AWS S3, and orchestrates Replicate trainings/inference. It exposes Blueprints for images, model management, and project CRUD plus health endpoints for monitoring.
+- **`backend/`** – Python/Flask API running on AWS Lambda (containerized), secured with AWS Cognito, persists project metadata in MongoDB/DocumentDB, stores images in S3, and orchestrates Replicate trainings/inference. It exposes Blueprints for images, model management, and project CRUD plus health endpoints for monitoring.
 - **`frontend/`** – `frontend/storybook-ui` is a Vite + React + NextUI experience (Tailwind-enabled) served via S3 + CloudFront. Handles AWS Cognito authentication and provides project/image management tooling.
-- **`infra/`** – Terraform configuration for provisioning all AWS resources (Lambda, S3, CloudFront, Cognito, Route53, etc.)
-- **`scripts/`** – Helper scripts for deployment and Cognito setup
+- **`terraform/`** – Modular Terraform configuration for provisioning all AWS resources (Lambda, VPC, DocumentDB, S3, CloudFront, Cognito, Route53, etc.)
+- **`dev-docs/`** – Development documentation and guides
 
 ### AWS Infrastructure
 
 - **Frontend Hosting**: S3 bucket + CloudFront distribution
-- **Backend Runtime**: Lambda function with container image from ECR
+- **Backend Runtime**: Lambda function with container image from ECR (in VPC for DocumentDB access)
 - **Authentication**: Cognito User Pool with OAuth 2.0
-- **Storage**: Dedicated S3 bucket for user uploads and project data
+- **Database**: MongoDB (local dev) / AWS DocumentDB (production) for project and image metadata
+- **File Storage**: Dedicated S3 bucket for user image uploads
+- **Networking**: VPC with private subnets for Lambda and DocumentDB communication
 - **DNS**: Route53 records in the `andreas.services` hosted zone
 - **API Gateway**: HTTP API (v2) for custom domain and routing
 
@@ -29,21 +31,27 @@ Install the required tooling (Homebrew commands shown for macOS):
 
 - **Python 3.11** – `brew install python@3.11`
 - **Node.js 18+** – `brew install node`
+- **MongoDB 7.0** (local dev) – `brew tap mongodb/brew && brew install mongodb-community@7.0`
 
 ## Backend notes
 
 - Requires Python 3.11+, `pip install -r backend/requirements.txt`.
-- Environment variables drive secrets (see `backend/src/config.py` and `.env`): `S3_BUCKET_NAME`, AWS credentials, `AWS_COGNITO_REGION`, `AWS_COGNITO_USER_POOL_ID`, `AWS_COGNITO_APP_CLIENT_ID`, Replicate tokens, etc.
-- `src/app.py` bootstraps the Flask app with per-request Cognito authentication, registers controllers, and binds to port 8080 by default.
-- Services coordinate AWS S3 file storage (`ImageService`/`S3Repo`) and Replicate training/generation (`ModelService`).
+- Environment variables drive secrets (see `backend/src/config.py` and `.env`): `DATABASE_URL`, `DATABASE_NAME`, `S3_BUCKET_NAME`, AWS credentials, `AWS_COGNITO_REGION`, `AWS_COGNITO_USER_POOL_ID`, `AWS_COGNITO_APP_CLIENT_ID`, Replicate tokens, etc.
+- `src/app.py` bootstraps the Flask app with per-request Cognito authentication, initializes MongoDB connection, registers controllers, and binds to port 5000 by default.
+- Data layer uses MongoDB for project/image metadata (`ProjectRepo`, `ImageRepo`/`database.py`) and S3 for actual image files.
+- Services coordinate database operations, S3 file storage, and Replicate training/generation (`ModelService`).
 
 To run locally:
 
 ```bash
+# Start MongoDB
+brew services start mongodb-community@7.0
+
+# Run backend
 cd backend
-python -m venv .venv && source .venv/bin/activate
+python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-FLASK_ENV=development python src/app.py
+FLASK_ENV=development python -m src.app
 ```
 
 ## Frontend notes
@@ -74,37 +82,29 @@ See [.github/workflows/deploy-storybook.yml](../.github/workflows/deploy-storybo
 
 **Initial Infrastructure Setup:**
 ```bash
-cd infra
+# For production environment
+cd terraform/envs/prod
 terraform init
 terraform plan
 terraform apply
 ```
 
-See [infra/README.md](infra/README.md) for detailed infrastructure setup instructions.
+See [terraform/README.md](terraform/README.md) for detailed infrastructure setup instructions.
 
-**Backend Deployment:**
-```bash
-./scripts/deploy-backend.sh
-```
+**Backend & Frontend Deployment:**
 
-**Frontend Deployment:**
-```bash
-./scripts/deploy-frontend.sh
-```
-
-**Cognito Setup (create admin user):**
-```bash
-./scripts/setup-cognito.sh
-```
+See GitHub Actions workflow in `.github/workflows/` for automated deployment, or refer to deployment documentation in `dev-docs/`.
 
 ## Environment Variables
 
 ### Backend (Lambda Environment Variables - set via Terraform)
 - `FLASK_ENV` - Environment (production/development)
+- `DATABASE_URL` - MongoDB connection string (local: `mongodb://localhost:27017/storybook_dev`, prod: DocumentDB endpoint)
+- `DATABASE_NAME` - Database name (default: `storybook_dev`)
 - `AWS_COGNITO_REGION` - AWS region for Cognito
 - `AWS_COGNITO_USER_POOL_ID` - Cognito User Pool ID
 - `AWS_COGNITO_APP_CLIENT_ID` - Cognito App Client ID
-- `S3_BUCKET_NAME` - S3 bucket for user files
+- `S3_BUCKET_NAME` - S3 bucket for user image files
 - `AWS_REGION` - AWS region
 - `REPLICATE_API_TOKEN` - Replicate API token
 - `APP_URL` - Frontend URL
@@ -130,23 +130,33 @@ Required repository secrets:
 
 ```
 storybook/
-├── backend/              # Flask API (Lambda)
-│   ├── src/             # Application code
-│   ├── Dockerfile       # Lambda container image
-│   ├── lambda_handler.py # Lambda entry point
-│   └── requirements.txt # Python dependencies
-├── frontend/            # React frontend
-│   └── storybook-ui/   # Vite app
-├── infra/              # Terraform configuration
-│   ├── main.tf         # Provider configuration
-│   ├── cognito.tf      # Cognito resources
-│   ├── lambda.tf       # Lambda and API Gateway
-│   ├── s3.tf           # S3 buckets
-│   ├── cloudfront.tf   # CloudFront distribution
-│   ├── route53.tf      # DNS records
-│   └── README.md       # Infrastructure docs
-└── scripts/            # Deployment helpers
-    ├── deploy-backend.sh
-    ├── deploy-frontend.sh
-    └── setup-cognito.sh
+├── backend/                    # Flask API (Lambda)
+│   ├── src/
+│   │   ├── controllers/       # API endpoints (Blueprints)
+│   │   ├── data/              # Data access layer (repos, database)
+│   │   ├── models/            # Domain models (Project, Image)
+│   │   ├── services/          # Business logic
+│   │   ├── storage/           # File storage abstraction (S3, filesystem)
+│   │   ├── app.py             # Flask application
+│   │   └── config.py          # Configuration
+│   ├── Dockerfile             # Lambda container image
+│   ├── lambda_handler.py      # Lambda entry point
+│   └── requirements.txt       # Python dependencies
+├── frontend/                   # React frontend
+│   └── storybook-ui/          # Vite + React + NextUI app
+├── terraform/                  # Modular Terraform configuration
+│   ├── envs/
+│   │   ├── dev/               # Development environment
+│   │   └── prod/              # Production environment
+│   └── modules/
+│       ├── auth/              # Cognito resources
+│       ├── compute/           # Lambda + API Gateway
+│       ├── database/          # DocumentDB cluster
+│       ├── hosting/           # CloudFront + Route53
+│       ├── networking/        # VPC, subnets, NAT
+│       └── storage/           # S3 buckets
+├── dev-docs/                   # Development documentation
+│   ├── DEPLOYMENT_GUIDE.md
+│   └── USER_STORIES.md
+└── MONGODB_MIGRATION_SUMMARY.md # Database migration details
 ```

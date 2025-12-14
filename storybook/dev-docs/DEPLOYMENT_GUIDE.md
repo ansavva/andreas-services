@@ -1,15 +1,16 @@
 # Storybook Deployment Guide
 
-This guide walks you through deploying Storybook to AWS from scratch.
+This guide walks you through deploying Storybook to AWS with separate development and production environments.
 
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
-2. [One-Time Setup](#one-time-setup)
-3. [Infrastructure Deployment](#infrastructure-deployment)
-4. [Application Deployment](#application-deployment)
-5. [Verification](#verification)
-6. [Troubleshooting](#troubleshooting)
+2. [Environment Overview](#environment-overview)
+3. [One-Time Setup](#one-time-setup)
+4. [Development Environment](#development-environment)
+5. [Production Environment](#production-environment)
+6. [Verification](#verification)
+7. [Troubleshooting](#troubleshooting)
 
 ## Prerequisites
 
@@ -35,6 +36,26 @@ Before starting, gather these values:
 
 **Note**: AWS credentials are handled automatically via IAM roles (no access keys needed).
 
+## Environment Overview
+
+Storybook uses two separate environments:
+
+### Development Environment
+- **Purpose**: Local development only (no hosting)
+- **Resources**: Cognito User Pool + S3 bucket
+- **Frontend**: Runs locally at `localhost:5173`
+- **Backend**: Runs locally at `localhost:5000`
+- **Auth**: Dev Cognito pool (separate users from production)
+- **Storage**: Dev S3 bucket (separate data from production)
+
+### Production Environment
+- **Purpose**: Live application
+- **Resources**: Full stack (Cognito, S3, Lambda, API Gateway, CloudFront, Route53)
+- **Frontend**: Hosted at `https://storybook.andreas.services/app`
+- **Backend**: Hosted at `https://storybook.andreas.services/api`
+- **Auth**: Production Cognito pool
+- **Storage**: Production S3 bucket
+
 ## One-Time Setup
 
 ### 1. Complete Generic AWS Setup
@@ -49,6 +70,8 @@ This one-time setup includes:
 - Configuring GitHub repository secrets
 
 ### 2. Configure Terraform Variables
+
+Create a local `terraform.tfvars` file with your secrets:
 
 ```bash
 cd storybook/infra
@@ -65,53 +88,133 @@ replicate_api_token = "r8_your_actual_token"
 
 **Important**: Never commit `terraform.tfvars` - it's in `.gitignore`.
 
-## Infrastructure Deployment
+## Development Environment
 
-### Step 1: Initialize Terraform
+The development environment is for local development only. It creates minimal AWS resources (Cognito + S3) that your local frontend and backend connect to.
+
+### Step 1: Deploy Development Infrastructure
 
 ```bash
 cd storybook/infra
 terraform init
+terraform plan -var-file=terraform.dev.tfvars
+terraform apply -var-file=terraform.dev.tfvars
 ```
 
-### Step 2: Plan Infrastructure
+Type `yes` when prompted. This creates:
+- Cognito User Pool for dev users
+- S3 bucket for dev file storage
+
+### Step 2: Get Development Outputs
+
+```bash
+terraform output
+```
+
+You'll see:
+- `cognito_user_pool_id` - Copy this
+- `cognito_user_pool_client_id` - Copy this
+- `cognito_domain` - Copy this
+- `s3_backend_bucket` - Copy this
+
+### Step 3: Configure Local Backend
+
+```bash
+cd storybook/backend
+cp .env.example .env
+```
+
+Edit `.env` with the Terraform outputs from Step 2:
+
+```bash
+S3_BUCKET_NAME=storybook-backend-files-development
+AWS_COGNITO_REGION=us-east-1
+AWS_COGNITO_USER_POOL_ID=<from terraform output>
+AWS_COGNITO_APP_CLIENT_ID=<from terraform output>
+REPLICATE_API_TOKEN=<your replicate token>
+FLASK_ENV=development
+APP_URL=http://localhost:5173
+```
+
+### Step 4: Configure Local Frontend
+
+```bash
+cd storybook/frontend/storybook-ui
+cp .env.local.example .env.local
+```
+
+Edit `.env.local` with the Terraform outputs from Step 2:
+
+```bash
+VITE_API_URL=http://localhost:5000
+VITE_AWS_COGNITO_REGION=us-east-1
+VITE_AWS_COGNITO_USER_POOL_ID=<from terraform output>
+VITE_AWS_COGNITO_APP_CLIENT_ID=<from terraform output>
+VITE_AWS_COGNITO_DOMAIN=<from terraform output>
+```
+
+### Step 5: Run Locally
+
+**Terminal 1 - Backend:**
+```bash
+cd storybook/backend
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+python src/app.py
+```
+
+**Terminal 2 - Frontend:**
+```bash
+cd storybook/frontend/storybook-ui
+npm install
+npm run dev
+```
+
+Visit `http://localhost:5173` - you should be able to sign up/login using the dev Cognito pool!
+
+## Production Environment
+
+The production environment is fully hosted on AWS with CloudFront CDN.
+
+### Infrastructure Deployment
+
+### Step 1: Plan Production Infrastructure
 
 Review what will be created:
 
 ```bash
-terraform plan
+cd storybook/infra
+terraform plan -var-file=terraform.prod.tfvars
 ```
 
 This will show:
-- Cognito User Pool and Client
+- Cognito User Pool and Client (production)
 - S3 buckets (frontend and backend files)
 - CloudFront distribution
 - Lambda function and API Gateway
 - Route53 DNS records
 - ACM certificates
 
-### Step 3: Apply Infrastructure
+### Step 2: Apply Production Infrastructure
 
 ```bash
-terraform apply
+terraform apply -var-file=terraform.prod.tfvars
 ```
 
 Type `yes` when prompted. This will take 10-15 minutes due to:
 - Certificate validation (5-10 min)
 - CloudFront distribution creation (5-10 min)
 
-### Step 4: Save Outputs
+### Step 3: Save Outputs
 
 ```bash
-terraform output > outputs.txt
+terraform output > outputs-prod.txt
 ```
 
-You'll need these values for:
-- GitHub Actions secrets
-- Local development
-- Frontend configuration
+You'll need these values for GitHub Actions secrets.
 
-## Application Deployment
+## Application Deployment (Production Only)
 
 ### Option A: Automatic (GitHub Actions)
 
@@ -190,30 +293,62 @@ curl https://storybook.andreas.services/app
 
 ## Updating the Application
 
-### Backend Updates
+### Development Environment Updates
 
-Changes to `storybook/backend/**` trigger automatic deployment via GitHub Actions.
+Simply restart your local backend and frontend servers after making code changes.
 
-### Frontend Updates
+### Production Environment Updates
 
-Changes to `storybook/frontend/**` trigger automatic deployment via GitHub Actions.
+**Backend Updates**: Changes to `storybook/backend/**` trigger automatic deployment via GitHub Actions.
 
-### Infrastructure Updates
+**Frontend Updates**: Changes to `storybook/frontend/**` trigger automatic deployment via GitHub Actions.
 
+**Infrastructure Updates**:
 ```bash
 cd infra
-terraform plan
-terraform apply
+terraform plan -var-file=terraform.prod.tfvars
+terraform apply -var-file=terraform.prod.tfvars
+```
+
+## Switching Between Environments
+
+### Switching to Development
+
+```bash
+cd storybook/infra
+terraform workspace select default  # or create: terraform workspace new development
+terraform apply -var-file=terraform.dev.tfvars
+```
+
+### Switching to Production
+
+```bash
+cd storybook/infra
+terraform workspace select default  # or create: terraform workspace new production
+terraform apply -var-file=terraform.prod.tfvars
 ```
 
 ## Cleanup
 
-To destroy all infrastructure:
+### Destroy Development Environment
 
 ```bash
-cd infra
-terraform destroy
+cd storybook/infra
+terraform destroy -var-file=terraform.dev.tfvars
 ```
+
+This removes:
+- Development Cognito User Pool
+- Development S3 bucket
+
+### Destroy Production Environment
+
+```bash
+cd storybook/infra
+terraform destroy -var-file=terraform.prod.tfvars
+```
+
+This removes all production infrastructure including CloudFront, Lambda, etc.
 
 ## Support
 

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { getCurrentUser, fetchUserAttributes, AuthUser } from 'aws-amplify/auth';
+import { getCurrentUser, fetchAuthSession } from 'aws-amplify/auth';
 
 // Define user type based on Cognito attributes
 interface CognitoUser {
@@ -42,15 +42,24 @@ export const UserProvider = ({ children }: UserProviderProps) => {
   const checkAuthState = async () => {
     try {
       const user = await getCurrentUser();
-      const attributes = await fetchUserAttributes();
+      const session = await fetchAuthSession();
+
+      // Get user attributes from ID token payload
+      const idToken = session.tokens?.idToken;
+      if (!idToken) {
+        throw new Error('No ID token found');
+      }
+
+      // Access the payload property which contains the claims
+      const claims = idToken.payload;
 
       setCurrentUser({
         username: user.username,
         userId: user.userId,
-        email: attributes.email,
-        name: attributes.name,
-        picture: attributes.picture,
-        ...attributes
+        email: claims.email as string,
+        name: claims.name as string,
+        picture: claims.picture as string,
+        ...claims
       });
       setIsAuthenticated(true);
     } catch (error) {

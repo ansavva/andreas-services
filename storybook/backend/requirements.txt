@@ -16,3 +16,5 @@ replicate
 python-jose[cryptography]
 cognitojwt
 mangum
+pymongo[srv]==4.6.1
+certifi

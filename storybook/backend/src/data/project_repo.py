@@ -1,48 +1,147 @@
 from typing import List
-from authlib.integrations.flask_oauth2 import current_token
-from werkzeug.datastructures import FileStorage
+from flask import request
 import uuid
+from datetime import datetime
 
-from src.data.s3_repo import S3Repo
+from src.data.database import get_db
 from src.models.project import Project
 
 class ProjectRepo:
-    def __init__(self):
-        self.s3_repo = S3Repo()
-    
-    def __create_directory(self):
-        user_id = current_token.sub.split('|')[1]
-        return f"users/{user_id}/projects"
+    """
+    Project repository - handles CRUD operations for projects using MongoDB
+    """
 
-    def extract_project_info(self, project_key: str, directory: str) -> Project:
-        # Remove the directory portion of the key to isolate the project string
-        project_key = project_key.replace(directory + "/", "").split('/')[0]  # Remove directory part from the project key
-        project_id, project_name, subject_name = project_key.split("__ai__")
-        return Project(id=project_id, name=project_name, subjectName=subject_name, key=project_key)
+    def __init__(self):
+        pass
+
+    def _get_user_id(self) -> str:
+        """Get current user ID from Cognito claims"""
+        return request.cognito_claims['sub']
 
     def get_project(self, project_id: str) -> Project:
-        directory = self.__create_directory()
-        projects = self.s3_repo.list_files(directory, False)
-        for project in projects:
-            if "__ai__" in project:
-                project = self.extract_project_info(project, directory)
-                if project.id == project_id:
-                    return project
-        raise ValueError(f"Project with ID {project_id} not found.")    
+        """
+        Get a single project by ID for the current user
+
+        Args:
+            project_id: UUID of the project
+
+        Returns:
+            Project object
+
+        Raises:
+            ValueError: If project not found or doesn't belong to user
+        """
+        db = get_db()
+        user_id = self._get_user_id()
+
+        project_data = db.projects.find_one({
+            '_id': project_id,
+            'user_id': user_id
+        })
+
+        if not project_data:
+            raise ValueError(f"Project with ID {project_id} not found.")
+
+        return Project.from_dict(project_data)
 
     def get_projects(self) -> List[Project]:
-        directory = self.__create_directory()
-        projects = self.s3_repo.list_files(directory, False)
-        formatted_projects = []
-        for project in projects:
-            if "__ai__" in project:
-                project = self.extract_project_info(project, directory)
-                formatted_projects.append(project)                
-        return formatted_projects
+        """
+        Get all projects for the current user
+
+        Returns:
+            List of Project objects
+        """
+        db = get_db()
+        user_id = self._get_user_id()
+
+        projects_data = db.projects.find({
+            'user_id': user_id
+        }).sort('created_at', -1)  # Most recent first
+
+        return [Project.from_dict(p) for p in projects_data]
 
     def create_project(self, name: str, subject_name: str) -> Project:
-        project_guid = str(uuid.uuid4())
-        directory = self.__create_directory()
-        key = f"{directory}/{project_guid}__ai__{name}__ai__{subject_name}"
-        self.s3_repo.create_directory(key)
-        return Project(id=project_guid, name=name, subjectName=subject_name, key=key)
+        """
+        Create a new project for the current user
+
+        Args:
+            name: Name of the project
+            subject_name: Name of the subject (person, object, etc.)
+
+        Returns:
+            Created Project object
+        """
+        db = get_db()
+        user_id = self._get_user_id()
+
+        project_id = str(uuid.uuid4())
+        project = Project(
+            id=project_id,
+            name=name,
+            subject_name=subject_name,
+            user_id=user_id,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+
+        db.projects.insert_one(project.to_dict())
+
+        return project
+
+    def update_project(self, project_id: str, name: str = None, subject_name: str = None) -> Project:
+        """
+        Update a project's name or subject_name
+
+        Args:
+            project_id: UUID of the project
+            name: New name (optional)
+            subject_name: New subject name (optional)
+
+        Returns:
+            Updated Project object
+
+        Raises:
+            ValueError: If project not found or doesn't belong to user
+        """
+        db = get_db()
+        user_id = self._get_user_id()
+
+        update_fields = {'updated_at': datetime.utcnow()}
+        if name is not None:
+            update_fields['name'] = name
+        if subject_name is not None:
+            update_fields['subject_name'] = subject_name
+
+        result = db.projects.update_one(
+            {'_id': project_id, 'user_id': user_id},
+            {'$set': update_fields}
+        )
+
+        if result.matched_count == 0:
+            raise ValueError(f"Project with ID {project_id} not found.")
+
+        return self.get_project(project_id)
+
+    def delete_project(self, project_id: str) -> None:
+        """
+        Delete a project (metadata only - S3 cleanup should be handled separately)
+
+        Args:
+            project_id: UUID of the project
+
+        Raises:
+            ValueError: If project not found or doesn't belong to user
+        """
+        db = get_db()
+        user_id = self._get_user_id()
+
+        result = db.projects.delete_one({
+            '_id': project_id,
+            'user_id': user_id
+        })
+
+        if result.deleted_count == 0:
+            raise ValueError(f"Project with ID {project_id} not found.")
+
+        # Note: Also delete associated images from MongoDB
+        db.images.delete_many({'project_id': project_id})

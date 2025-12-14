@@ -212,3 +212,11 @@ node_modules/
 package-lock.json
 **/package-lock.json
 storybook/infra/outputs.txt
+
+# Terraform
+*.tfvars
+!*.tfvars.example
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup

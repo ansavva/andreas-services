@@ -1,12 +1,12 @@
-# Cognito User Pool
-resource "aws_cognito_user_pool" "main" {
-  name = "storybook-${var.environment}"
+# modules/auth/main.tf
+# Cognito User Pool and Client for authentication
 
-  # Allow users to sign in with email
+resource "aws_cognito_user_pool" "main" {
+  name = "${var.project}-${var.environment}"
+
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
 
-  # Password policy
   password_policy {
     minimum_length                   = 8
     require_lowercase                = true
@@ -16,7 +16,6 @@ resource "aws_cognito_user_pool" "main" {
     temporary_password_validity_days = 7
   }
 
-  # User attributes
   schema {
     name                = "email"
     attribute_data_type = "String"
@@ -53,7 +52,6 @@ resource "aws_cognito_user_pool" "main" {
     }
   }
 
-  # Account recovery
   account_recovery_setting {
     recovery_mechanism {
       name     = "verified_email"
@@ -61,51 +59,35 @@ resource "aws_cognito_user_pool" "main" {
     }
   }
 
-  # Email configuration
   email_configuration {
     email_sending_account = "COGNITO_DEFAULT"
   }
 
-  # MFA configuration (optional)
   mfa_configuration = "OPTIONAL"
 
   software_token_mfa_configuration {
     enabled = true
   }
 
-  tags = {
-    Name = "storybook-user-pool"
-  }
+  tags = var.tags
 }
 
-# Cognito User Pool Client
 resource "aws_cognito_user_pool_client" "main" {
-  name         = "storybook-client-${var.environment}"
+  name         = "${var.project}-client-${var.environment}"
   user_pool_id = aws_cognito_user_pool.main.id
 
-  # OAuth configuration
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["openid", "email", "profile"]
 
-  # Callback URLs
-  callback_urls = [
-    "https://${var.app_subdomain}${var.frontend_path}",
-    "http://localhost:5173" # For local development
-  ]
-
-  # Logout URLs
-  logout_urls = [
-    "https://${var.app_subdomain}${var.frontend_path}",
-    "http://localhost:5173"
-  ]
+  callback_urls = var.callback_urls
+  logout_urls   = var.logout_urls
 
   supported_identity_providers = ["COGNITO"]
 
-  # Token validity
-  id_token_validity      = 60  # minutes
-  access_token_validity  = 60  # minutes
-  refresh_token_validity = 30  # days
+  id_token_validity      = 60
+  access_token_validity  = 60
+  refresh_token_validity = 30
 
   token_validity_units {
     id_token      = "minutes"
@@ -113,10 +95,8 @@ resource "aws_cognito_user_pool_client" "main" {
     refresh_token = "days"
   }
 
-  # Prevent user existence errors
   prevent_user_existence_errors = "ENABLED"
 
-  # Read and write attributes
   read_attributes = [
     "email",
     "email_verified",
@@ -132,18 +112,20 @@ resource "aws_cognito_user_pool_client" "main" {
 
   explicit_auth_flows = [
     "ALLOW_REFRESH_TOKEN_AUTH",
-    "ALLOW_USER_SRP_AUTH"
+    "ALLOW_USER_SRP_AUTH",
+    "ALLOW_CUSTOM_AUTH"
   ]
+
+  # Enable access to user attributes
+  generate_secret = false
 }
 
-# Cognito User Pool Domain
 resource "aws_cognito_user_pool_domain" "main" {
-  domain       = "storybook-${var.environment}-${random_string.cognito_domain_suffix.result}"
+  domain       = "${var.project}-${var.environment}-${random_string.suffix.result}"
   user_pool_id = aws_cognito_user_pool.main.id
 }
 
-# Random string for unique Cognito domain
-resource "random_string" "cognito_domain_suffix" {
+resource "random_string" "suffix" {
   length  = 8
   special = false
   upper   = false
