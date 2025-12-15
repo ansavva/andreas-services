@@ -1,11 +1,10 @@
 import { useEffect } from 'react';
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet } from "react-router-dom";
 import { signInWithRedirect } from 'aws-amplify/auth';
 import { useUserContext } from '@/hooks/userContext';
 
 const PrivateRoute = () => {
   const { isAuthenticated, isLoading } = useUserContext();
-  const navigate = useNavigate();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
