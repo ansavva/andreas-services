@@ -110,7 +110,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd storybook/frontend/storybook-ui
-          npm ci
+          npm install
 
       - name: Build frontend
         env:
