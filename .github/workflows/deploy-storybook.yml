@@ -110,7 +110,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd storybook/frontend/storybook-ui
-          npm install
+          npm install --legacy-peer-deps
 
       - name: Build frontend
         env:
