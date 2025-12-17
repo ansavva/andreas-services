@@ -125,7 +125,7 @@ jobs:
 
       - name: Deploy to S3
         run: |
-          aws s3 sync storybook/frontend/storybook-ui/dist s3://storybook-frontend-production --delete
+          aws s3 sync storybook/frontend/storybook-ui/dist s3://storybook-frontend-production/app --delete
 
       - name: Invalidate CloudFront cache
         run: |
