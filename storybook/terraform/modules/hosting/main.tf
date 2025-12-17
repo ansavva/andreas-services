@@ -29,6 +29,33 @@ resource "aws_cloudfront_origin_access_control" "frontend" {
   signing_protocol                  = "sigv4"
 }
 
+# CloudFront Function to redirect root to /app
+resource "aws_cloudfront_function" "redirect_root" {
+  name    = "${var.project}-redirect-root"
+  runtime = "cloudfront-js-1.0"
+  comment = "Redirect root path to /app"
+  publish = true
+  code    = <<-EOT
+    function handler(event) {
+      var request = event.request;
+      var uri = request.uri;
+
+      // Redirect root path to /app
+      if (uri === '/' || uri === '') {
+        return {
+          statusCode: 302,
+          statusDescription: 'Found',
+          headers: {
+            'location': { value: '/app' }
+          }
+        };
+      }
+
+      return request;
+    }
+  EOT
+}
+
 # CloudFront Distribution
 resource "aws_cloudfront_distribution" "app" {
   enabled         = true
@@ -71,9 +98,14 @@ resource "aws_cloudfront_distribution" "app" {
 
     viewer_protocol_policy = "redirect-to-https"
     min_ttl                = 0
-    default_ttl            = 3600
-    max_ttl                = 86400
+    default_ttl            = 0
+    max_ttl                = 0
     compress               = true
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.redirect_root.arn
+    }
   }
 
   ordered_cache_behavior {

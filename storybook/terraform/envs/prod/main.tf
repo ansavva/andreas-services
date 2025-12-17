@@ -29,12 +29,12 @@ module "auth" {
 
   callback_urls = [
     "https://${local.domain_name}/app",
-    "http://localhost:5173" # Also allow local testing against prod Cognito
+    "http://localhost:5173/app" # Also allow local testing against prod Cognito
   ]
 
   logout_urls = [
     "https://${local.domain_name}/app",
-    "http://localhost:5173"
+    "http://localhost:5173/app"
   ]
 
   tags = local.common_tags

@@ -19,8 +19,8 @@ Amplify.configure({
         oauth: {
           domain: import.meta.env.VITE_AWS_COGNITO_DOMAIN,
           scopes: ['openid', 'email', 'profile'],
-          redirectSignIn: [window.location.origin],
-          redirectSignOut: [window.location.origin],
+          redirectSignIn: [window.location.origin + "/app"],
+          redirectSignOut: [window.location.origin + "/app"],
           responseType: 'code'
         }
       }
@@ -30,7 +30,7 @@ Amplify.configure({
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename="/app">
       <Provider>
         <UserProvider>
           <AxiosProvider>
