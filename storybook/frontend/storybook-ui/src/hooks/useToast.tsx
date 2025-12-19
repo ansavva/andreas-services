@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useCallback } from 'react';
-import { addToast, ToastProvider as HeroUIToastProvider } from "@heroui/react";
+import { addToast, ToastProvider as HeroUIToastProvider, Button } from "@heroui/react";
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faCopy } from '@fortawesome/free-solid-svg-icons';
 
 type ToastType = 'success' | 'danger' | 'warning' | 'default';
 
@@ -22,13 +24,43 @@ export const useToast = () => {
 };
 
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const copyToClipboard = useCallback((text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      addToast({
+        description: 'Copied to clipboard',
+        color: 'success',
+        timeout: 2000,
+      });
+    }).catch(() => {
+      addToast({
+        description: 'Failed to copy',
+        color: 'danger',
+        timeout: 2000,
+      });
+    });
+  }, []);
+
   const showToast = useCallback((message: string, type: ToastType = 'default') => {
     addToast({
-      description: message,
+      description: (
+        <div className="flex items-center justify-between gap-2 w-full">
+          <span className="flex-1">{message}</span>
+          <Button
+            size="sm"
+            variant="light"
+            isIconOnly
+            onPress={() => copyToClipboard(message)}
+            className="min-w-fit"
+            aria-label="Copy to clipboard"
+          >
+            <FontAwesomeIcon icon={faCopy} />
+          </Button>
+        </div>
+      ),
       color: type,
       timeout: 5000,
     });
-  }, []);
+  }, [copyToClipboard]);
 
   const showSuccess = useCallback((message: string) => showToast(message, 'success'), [showToast]);
   const showError = useCallback((message: string) => showToast(message, 'danger'), [showToast]);

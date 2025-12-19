@@ -23,7 +23,7 @@ class StyleReferenceManager:
         # Map style_id to filename
         # Currently only supporting Pixar 3D style
         self.style_map = {
-            "pixar_3d": "pixar_3d_reference.png"
+            "pixar_3d": "pixar_3d_reference.jpg"
         }
 
     def get_available_styles(self) -> list:
