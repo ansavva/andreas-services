@@ -104,7 +104,7 @@ def generate_stylized_portrait(project_id):
 
     Request body (JSON):
         - user_description: Optional custom description to append to prompt
-        - style_id: Optional style identifier (default: "pixar_3d")
+        - style_id: Optional style identifier (default: "animated_3d")
         - style_strength: Optional 0.0-1.0 (default: from config, typically 0.8)
 
     Returns:
@@ -194,72 +194,6 @@ def generate_stylized_portrait(project_id):
         log_error(e, request.endpoint)
         return jsonify({"error": str(e)}), 500
 
-@character_controller.route("/project/<string:project_id>/preview-scenes", methods=["POST"])
-def generate_preview_scenes(project_id):
-    """Generate preview scenes for character"""
-    try:
-        data = request.get_json()
-        scenes = data.get("scenes", ["park", "space", "pirate"])
-        style = data.get("style")  # Optional style preset
-
-        # Get child profile
-        profile = child_profile_repo.get_by_project_id(project_id)
-        if not profile:
-            return jsonify({"error": "Child profile not found"}), 404
-
-        # Get approved portrait as reference
-        storage = get_file_storage()
-        approved_portrait = character_asset_repo.get_approved_portrait(project_id)
-        reference_image = None
-        if approved_portrait and approved_portrait.image_id:
-            image_metadata = image_repo.get_image(approved_portrait.image_id)
-            reference_image = storage.download_file(image_metadata.s3_key)
-
-        # Get character description
-        character_desc = f"A child named {profile.child_name}, age {profile.child_age}"
-
-        # Generate scenes
-        generated_scenes = []
-        user_id = request.cognito_claims['sub']
-
-        for scene_name in scenes:
-            result = stability_service.generate_preview_scene(
-                scene_name=scene_name,
-                character_description=character_desc,
-                reference_image=reference_image,
-                style=style
-            )
-
-            # Upload using image_repo - stores in project_id/{image_id}.png
-            image_stream = stability_service.image_to_bytes(result["image_data"])
-            image_stream.seek(0)
-
-            # Wrap in FileStorage for image_repo
-            file_obj = FileStorage(
-                stream=image_stream,
-                filename=f"scene_{scene_name}.png",
-                content_type="image/png"
-            )
-
-            image_record = image_repo.upload_image(project_id, file_obj, f"scene_{scene_name}.png")
-
-            # Save asset with reference to image ID
-            asset = character_asset_repo.create_image_asset(
-                project_id=project_id,
-                asset_type="preview_scene",
-                image_id=image_record.id,
-                prompt=f"{character_desc} in {scene_name}",
-                scene_name=scene_name,
-                stability_image_id=str(result.get("seed")),
-                version=1
-            )
-            generated_scenes.append(asset.to_dict())
-
-        return jsonify({"scenes": generated_scenes}), 201
-    except Exception as e:
-        log_error(e, request.endpoint)
-        return jsonify({"error": str(e)}), 500
-
 @character_controller.route("/asset/<string:asset_id>/approve", methods=["POST"])
 def approve_character_asset(asset_id):
     """Approve a character asset (portrait or scene)"""
@@ -334,19 +268,6 @@ def regenerate_character_asset(asset_id):
             from io import BytesIO
             image_stream = BytesIO(result_bytes)
             result = {"image_data": None}  # Placeholder for compatibility
-        elif asset.asset_type == "preview_scene":
-            approved_portrait = character_asset_repo.get_approved_portrait(asset.project_id)
-            ref_image = None
-            if approved_portrait and approved_portrait.image_id:
-                image_metadata = image_repo.get_image(approved_portrait.image_id)
-                ref_image = storage.download_file(image_metadata.s3_key)
-
-            result = stability_service.generate_preview_scene(
-                scene_name=asset.scene_name,
-                character_description=f"A child named {profile.child_name}",
-                reference_image=ref_image,
-                style=style
-            )
         else:
             return jsonify({"error": "Cannot regenerate this asset type"}), 400
 

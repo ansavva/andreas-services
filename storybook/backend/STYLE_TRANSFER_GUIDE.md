@@ -2,14 +2,14 @@
 
 ## Overview
 
-The storybook backend now supports **Stability AI's Style Transfer endpoint** for character portrait generation. This is the **RECOMMENDED** method as it provides better preservation of kid likeness while applying artistic styles (Pixar, animation, etc.).
+The storybook backend now supports **Stability AI's Style Transfer endpoint** for character portrait generation. This is the **RECOMMENDED** method as it provides better preservation of kid likeness while applying artistic styles (3D animation studio, animation, etc.).
 
 ## Architecture
 
 ### How It Works
 
 1. **User provides**: Kid reference photo(s) + optional text description
-2. **Backend provides**: Style reference image (Pixar character example, etc.)
+2. **Backend provides**: Style reference image (3D animated character example, etc.)
 3. **Stability AI**: Combines them using style transfer to create a stylized portrait that preserves the kid's likeness
 
 ### Key Components
@@ -17,7 +17,7 @@ The storybook backend now supports **Stability AI's Style Transfer endpoint** fo
 - **New Endpoint**: `POST /api/characters/project/{project_id}/portrait-stylized`
 - **Style Reference Manager**: `src/config/style_references.py` - Maps style_id to backend-owned reference images
 - **Stability Service**: `src/services/stability_service.py` - Added `style_transfer()` method
-- **Configuration**: `config/prompts.yaml` - Style transfer prompts and parameters
+- **Configuration**: `config/config.yaml` - Style transfer prompts and parameters
 
 ## API Usage
 
@@ -29,7 +29,7 @@ The storybook backend now supports **Stability AI's Style Transfer endpoint** fo
 ```json
 {
   "user_description": "wearing glasses, big smile",  // Optional
-  "style_id": "pixar_3d",  // Optional, default: "pixar_3d"
+  "style_id": "animated_3d",  // Optional, default: "animated_3d"
   "style_strength": 0.8    // Optional, default: 0.8, range: 0.0-1.0
 }
 ```
@@ -43,14 +43,14 @@ The storybook backend now supports **Stability AI's Style Transfer endpoint** fo
   "image_id": "img_789",
   "is_approved": false,
   "version": 1,
-  "prompt": "A cheerful young child... (style: pixar_3d, strength: 0.8)"
+  "prompt": "A cheerful young child... (style: animated_3d, strength: 0.8)"
 }
 ```
 
 ### Available Style IDs
 
 Current styles (defined in `src/config/style_references.py`):
-- `pixar_3d` - Pixar-style 3D animated character (default)
+- `animated_3d` - High-quality 3D animated 3D animated character (default)
 - `storybook` - Classic storybook illustration
 - `watercolor` - Soft watercolor painting style
 - `comic` - Comic book/graphic novel style
@@ -59,10 +59,10 @@ Current styles (defined in `src/config/style_references.py`):
 
 - **0.0-0.3**: Very subtle stylization, mostly preserves original photo
 - **0.4-0.6**: Moderate stylization with good likeness preservation
-- **0.7-0.9**: Strong stylization (Recommended for Pixar-like effects)
+- **0.7-0.9**: Strong stylization (Recommended for high-quality animation style effects)
 - **0.9-1.0**: Maximum stylization, may drift from likeness
 
-**Recommended**: 0.8 (configured in `config/prompts.yaml`)
+**Recommended**: 0.8 (configured in `config/config.yaml`)
 
 ## Setup Instructions
 
@@ -71,7 +71,7 @@ Current styles (defined in `src/config/style_references.py`):
 Place style reference images in: `storybook/backend/assets/styles/`
 
 Required files:
-- `pixar_3d_reference.png` - Pixar-style character example
+- `animated_3d_reference.png` - High-quality 3D animated character example
 - `storybook_reference.png` - Storybook illustration example
 - `watercolor_reference.png` - Watercolor style example
 - `comic_reference.png` - Comic art style example
@@ -91,7 +91,7 @@ See `assets/styles/README.md` for detailed guidance.
 
 ### 2. Configure Prompts
 
-Edit `config/prompts.yaml` to customize:
+Edit `config/config.yaml` to customize:
 
 ```yaml
 character:
@@ -105,7 +105,7 @@ character:
   style_strength: 0.8
 
   # Default style_id
-  default_style_id: "pixar_3d"
+  default_style_id: "animated_3d"
 ```
 
 ## Frontend Integration
@@ -144,7 +144,7 @@ const result = await generateStylizedPortrait(
   axiosInstance,
   projectId,
   userDescription || undefined,
-  "pixar_3d",  // or let user select
+  "animated_3d",  // or let user select
   undefined  // use default strength
 );
 ```
@@ -164,7 +164,7 @@ const result = await generateStylizedPortrait(
 ✅ No additional assets needed
 ✅ Supports style presets directly
 ❌ Less predictable likeness preservation
-❌ Harder to achieve consistent Pixar look
+❌ Harder to achieve consistent 3D animation studio look
 
 ## Configuration Reference
 
@@ -175,7 +175,7 @@ const result = await generateStylizedPortrait(
 prompts_config.get_style_transfer_prompt()  # Base prompt
 prompts_config.get_style_transfer_negative()  # Negative prompt
 prompts_config.get_style_strength()  # Default strength (0.8)
-prompts_config.get_default_style_id()  # Default style ("pixar_3d")
+prompts_config.get_default_style_id()  # Default style ("animated_3d")
 prompts_config.build_style_transfer_prompt(user_desc)  # Build full prompt
 ```
 
@@ -186,7 +186,7 @@ prompts_config.build_style_transfer_prompt(user_desc)  # Build full prompt
 style_references.get_available_styles()  # List available style IDs
 style_references.is_valid_style(style_id)  # Validate style_id
 style_references.get_style_image(style_id)  # Load style reference image
-style_references.get_default_style()  # Get default ("pixar_3d")
+style_references.get_default_style()  # Get default ("animated_3d")
 ```
 
 ## Testing
@@ -200,7 +200,7 @@ curl -X POST http://localhost:5001/api/characters/project/{project_id}/portrait-
   -H "Content-Type: application/json" \
   -d '{
     "user_description": "wearing glasses, big smile",
-    "style_id": "pixar_3d",
+    "style_id": "animated_3d",
     "style_strength": 0.8
   }'
 ```

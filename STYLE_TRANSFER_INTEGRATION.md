@@ -10,7 +10,7 @@ The frontend has been successfully integrated with the new Stability AI style tr
 - ✅ New endpoint: `POST /api/characters/project/{project_id}/portrait-stylized`
 - ✅ Updated regenerate endpoint to use style transfer for portraits
 - ✅ Style reference manager for backend-owned style images
-- ✅ Configuration in `prompts.yaml` for style transfer prompts
+- ✅ Configuration in `config.yaml` for style transfer prompts
 
 ### Frontend API (`src/apis/characterController.tsx`)
 - ✅ Added `generateStylizedPortrait()` - Direct style transfer API
@@ -31,7 +31,7 @@ The frontend has been successfully integrated with the new Stability AI style tr
 3. User clicks "Generate Portrait"
 4. Backend combines:
    - Kid photo (init_image) - preserves likeness
-   - Pixar reference (style_image) - defines artistic style
+   - 3D animation studio reference (style_image) - defines artistic style
    - User description + base prompt
 5. Stability AI style transfer creates portrait
 6. User can regenerate unlimited times with different descriptions
@@ -45,7 +45,7 @@ const result = await generateCharacterPortrait(
   axiosInstance,
   projectId,
   userDescription || undefined,
-  selectedStyle || undefined  // Defaults to "pixar_3d"
+  selectedStyle || undefined  // Defaults to "animated_3d"
 );
 ```
 
@@ -56,7 +56,7 @@ generateStylizedPortrait(
   axiosInstance,
   projectId,
   userDescription,
-  "pixar_3d",  // style_id
+  "animated_3d",  // style_id
   undefined    // styleStrength (uses default 0.8)
 )
 ```
@@ -66,7 +66,7 @@ generateStylizedPortrait(
 POST /api/characters/project/{id}/portrait-stylized
 {
   "user_description": "wearing glasses, big smile",
-  "style_id": "pixar_3d",
+  "style_id": "animated_3d",
   "style_strength": 0.8
 }
 ```
@@ -87,7 +87,7 @@ const result = await regenerateCharacterAsset(
 POST /api/characters/asset/{asset_id}/regenerate
 {
   "user_description": "updated description",
-  "style_id": "pixar_3d",
+  "style_id": "animated_3d",
   "style_strength": 0.8
 }
 ```
@@ -95,16 +95,16 @@ POST /api/characters/asset/{asset_id}/regenerate
 ## Configuration
 
 ### Default Values
-- **style_id**: `pixar_3d` (only supported style currently)
-- **style_strength**: `0.8` (configured in `prompts.yaml`)
-- **prompt**: "A cheerful young child character portrait..." (from `prompts.yaml`)
-- **negative_prompt**: "photorealistic, adult, scary..." (from `prompts.yaml`)
+- **style_id**: `animated_3d` (only supported style currently)
+- **style_strength**: `0.8` (configured in `config.yaml`)
+- **prompt**: "A cheerful young child character portrait..." (from `config.yaml`)
+- **negative_prompt**: "photorealistic, adult, scary..." (from `config.yaml`)
 
 ### Customization Points
 
 Users can customize via UI:
 - ✅ **Description**: Text input for custom details (e.g., "wearing glasses")
-- ⚠️ **Style**: Currently hidden (only pixar_3d available)
+- ⚠️ **Style**: Currently hidden (only animated_3d available)
 - ⚠️ **Strength**: Not exposed to UI (uses default 0.8)
 
 Future enhancements could add:
@@ -115,20 +115,20 @@ Future enhancements could add:
 
 ### Add Style Reference Image
 
-Place `pixar_3d_reference.png` in:
+Place `animated_3d_reference.png` in:
 ```
-storybook/backend/assets/styles/pixar_3d_reference.png
+storybook/backend/assets/styles/animated_3d_reference.png
 ```
 
 **Requirements:**
 - Format: PNG (preferred) or JPEG
 - Size: 1024x1024 recommended
-- Content: Example Pixar-style 3D character
+- Content: Example High-quality 3D animated 3D character
 - Quality: High resolution, clear style definition
 
 **How to get it:**
-1. Generate using Stability AI text-to-image with Pixar-style prompt
-2. Find/create a reference Pixar character image (internal use only)
+1. Generate using Stability AI text-to-image with High-quality 3D animated prompt
+2. Find/create a reference 3D animated character image (internal use only)
 3. Commission a sample character in desired style
 
 ## Testing
@@ -137,7 +137,7 @@ storybook/backend/assets/styles/pixar_3d_reference.png
 1. Upload kid photos
 2. Optionally add description
 3. Click "Generate Portrait"
-4. Verify Pixar-style result with good likeness
+4. Verify High-quality 3D animated result with good likeness
 
 ### Test Regenerate
 1. After generating, update description
@@ -153,7 +153,7 @@ storybook/backend/assets/styles/pixar_3d_reference.png
 ## Troubleshooting
 
 ### "Style reference image not found"
-- Check `assets/styles/pixar_3d_reference.png` exists
+- Check `assets/styles/animated_3d_reference.png` exists
 - Verify file permissions
 - Check file is valid PNG/JPEG
 
@@ -162,8 +162,8 @@ storybook/backend/assets/styles/pixar_3d_reference.png
 - Ensure photos are well-lit, clear face
 - Consider lowering style_strength in config
 
-### Too realistic (not Pixar-like)
-- Increase style_strength in `prompts.yaml`
+### Too realistic (not high-quality animation style)
+- Increase style_strength in `config.yaml`
 - Ensure style reference image is clearly stylized
 - Update style_transfer_prompt for stronger stylization
 
@@ -192,9 +192,9 @@ Can be removed after confirming style transfer works well.
 
 ## Next Steps
 
-1. ✅ Add `pixar_3d_reference.png` to assets/styles/
+1. ✅ Add `animated_3d_reference.png` to assets/styles/
 2. ✅ Test generation with real kid photos
 3. ✅ Gather user feedback on likeness vs stylization
-4. ✅ Fine-tune style_strength if needed (edit `prompts.yaml`)
+4. ✅ Fine-tune style_strength if needed (edit `config.yaml`)
 5. ✅ Consider adding UI controls for style_strength
 6. ✅ Add more style options if desired (storybook, watercolor, etc.)

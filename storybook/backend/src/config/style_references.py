@@ -7,24 +7,21 @@ Each style_id maps to a specific reference image that defines the visual style.
 from pathlib import Path
 from typing import Optional, BinaryIO
 import io
+from .prompts_config import config
 
 class StyleReferenceManager:
     """
     Manages style reference images for style transfer
 
-    Currently supported style:
-    - pixar_3d: Pixar-style 3D animated character (default)
+    Style references are now configured in config.yaml
     """
 
     def __init__(self):
         # Path to style reference images directory
         self.styles_dir = Path(__file__).parent.parent.parent / "assets" / "styles"
 
-        # Map style_id to filename
-        # Currently only supporting Pixar 3D style
-        self.style_map = {
-            "pixar_3d": "pixar_3d_reference.jpg"
-        }
+        # Load style map from config
+        self.style_map = config.get_all_style_references()
 
     def get_available_styles(self) -> list:
         """Get list of available style IDs"""
@@ -71,7 +68,7 @@ class StyleReferenceManager:
 
     def get_default_style(self) -> str:
         """Get default style ID"""
-        return "pixar_3d"
+        return "animated_3d"
 
 
 # Singleton instance

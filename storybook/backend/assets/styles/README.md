@@ -6,8 +6,8 @@ This directory contains backend-owned style reference images used for Stability 
 
 Place the following style reference images in this directory:
 
-1. **pixar_3d_reference.png** - Pixar-style 3D animated character
-   - Example: A Pixar character portrait with soft lighting, rounded features, large expressive eyes
+1. **animated_3d_reference.png** - High-quality 3D animated 3D animated character
+   - Example: A 3D animated character portrait with soft lighting, rounded features, large expressive eyes
    - Recommended size: 1024x1024 or larger
 
 ## How It Works
@@ -21,7 +21,7 @@ When a user uploads photos of their child and requests character generation:
 
 Good sources for style reference images:
 - Generate sample images using Stability AI text-to-image with your desired style
-- Use existing Pixar/animation artwork (for internal use only - don't redistribute)
+- Use existing modern 3D animation artwork (for internal use only - don't redistribute)
 - Create your own styled character portraits
 - Commission artists to create style references
 

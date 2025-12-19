@@ -1,15 +1,15 @@
 """
-Prompts Configuration Loader
-Loads and manages AI generation prompts from YAML configuration file
+Configuration Loader
+Loads and manages configuration from YAML file
 """
 import yaml
 import os
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 
-class PromptsConfig:
+class Config:
     """
-    Manages loading and accessing AI generation prompts from configuration
+    Manages loading and accessing configuration
     """
 
     _instance = None
@@ -17,69 +17,82 @@ class PromptsConfig:
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(PromptsConfig, cls).__new__(cls)
+            cls._instance = super(Config, cls).__new__(cls)
             cls._instance._load_config()
         return cls._instance
 
     def _load_config(self):
-        """Load prompts configuration from YAML file"""
+        """Load configuration from YAML file"""
         # Find config file - go up from src/config to backend/config
         current_dir = Path(__file__).parent
-        config_path = current_dir.parent.parent / "config" / "prompts.yaml"
+        config_path = current_dir.parent.parent / "config" / "config.yaml"
+        self.assets_dir = current_dir.parent.parent / "assets"
 
         if not config_path.exists():
-            raise FileNotFoundError(f"Prompts config not found at {config_path}")
+            raise FileNotFoundError(f"Config not found at {config_path}")
 
         with open(config_path, 'r') as f:
             self._config = yaml.safe_load(f)
+
+    def _load_prompt_file(self, filepath: str) -> str:
+        """Load a prompt from a markdown file in assets directory"""
+        full_path = self.assets_dir / filepath
+
+        if not full_path.exists():
+            raise FileNotFoundError(f"Prompt file not found: {full_path}")
+
+        with open(full_path, 'r') as f:
+            content = f.read().strip()
+
+        return content
 
     def reload(self):
         """Reload configuration from file (useful for testing/hot-reload)"""
         self._load_config()
 
+    # Style references
+    def get_style_reference_filename(self, style_id: str) -> Optional[str]:
+        """Get filename for a style reference image"""
+        style_refs = self._config.get('style_references', {})
+        style_config = style_refs.get(style_id)
+        if style_config:
+            return style_config.get('filename')
+        return None
+
+    def get_all_style_references(self) -> Dict[str, str]:
+        """Get all style reference filenames"""
+        style_refs = self._config.get('style_references', {})
+        return {
+            style_id: config.get('filename')
+            for style_id, config in style_refs.items()
+        }
+
     # Character prompts
     def get_character_base_prompt(self) -> str:
         """Get base prompt for character generation"""
-        return self._config['character']['base_prompt']
+        prompt_file = self._config['prompts']['character_base_prompt']
+        return self._load_prompt_file(prompt_file)
 
     def get_character_negative_prompt(self) -> str:
         """Get negative prompt for character generation"""
-        return self._config['character']['negative_prompt']
+        prompt_file = self._config['prompts']['character_negative_prompt']
+        return self._load_prompt_file(prompt_file)
 
     def get_character_default_style(self) -> str:
-        """Get default style preset for character generation"""
-        return self._config['character']['default_style']
+        """Get default style preset for character generation (legacy)"""
+        return self._config['character']['default_style_preset']
 
     def get_character_image_strength(self) -> float:
         """Get image strength parameter for character generation"""
         return self._config['character']['image_strength']
 
-    # Preview scene prompts
-    def get_scene_prompt(self, scene_name: str) -> Optional[str]:
-        """Get prompt for a specific scene"""
-        scenes = self._config['preview_scenes']['scenes']
-        return scenes.get(scene_name)
-
-    def get_all_scene_names(self) -> List[str]:
-        """Get list of all available scene names"""
-        return list(self._config['preview_scenes']['scenes'].keys())
-
-    def get_scene_base_suffix(self) -> str:
-        """Get base suffix added to all scene prompts"""
-        return self._config['preview_scenes']['base_suffix']
-
-    def get_scene_negative_prompt(self) -> str:
-        """Get negative prompt for scene generation"""
-        return self._config['preview_scenes']['negative_prompt']
-
-    def get_scene_image_strength(self) -> float:
-        """Get image strength for scene generation"""
-        return self._config['preview_scenes']['image_strength']
-
     # Story illustration prompts
     def get_story_negative_prompt_items(self) -> List[str]:
         """Get list of negative prompt items for story illustrations"""
-        return self._config['story_illustrations']['negative_prompt']
+        prompt_file = self._config['prompts']['story_negative_prompt']
+        content = self._load_prompt_file(prompt_file)
+        # Split by comma and strip whitespace
+        return [item.strip() for item in content.split(',')]
 
     def get_story_image_strength(self) -> float:
         """Get image strength for story illustrations"""
@@ -88,19 +101,21 @@ class PromptsConfig:
     # Style transfer (recommended method)
     def get_style_transfer_prompt(self) -> str:
         """Get base prompt for style transfer"""
-        return self._config['character']['style_transfer_prompt']
+        prompt_file = self._config['prompts']['style_transfer_prompt']
+        return self._load_prompt_file(prompt_file)
 
     def get_style_transfer_negative(self) -> str:
         """Get negative prompt for style transfer"""
-        return self._config['character']['style_transfer_negative']
+        prompt_file = self._config['prompts']['style_transfer_negative']
+        return self._load_prompt_file(prompt_file)
 
     def get_style_strength(self) -> float:
         """Get default style strength for style transfer"""
         return self._config['character']['style_strength']
 
     def get_default_style_id(self) -> str:
-        """Get default style_id for style transfer"""
-        return self._config['character']['default_style_id']
+        """Get default style reference for style transfer"""
+        return self._config['character']['default_style_reference']
 
     # Style presets
     def get_available_style_presets(self) -> List[str]:
@@ -158,27 +173,6 @@ class PromptsConfig:
 
         return ", ".join(parts)
 
-    def build_scene_prompt(self,
-                          scene_name: str,
-                          character_description: str) -> str:
-        """
-        Build complete scene generation prompt
-
-        Args:
-            scene_name: Name of the scene
-            character_description: Description of the character
-
-        Returns:
-            Complete prompt string
-        """
-        scene_desc = self.get_scene_prompt(scene_name)
-        if not scene_desc:
-            scene_desc = scene_name
-
-        suffix = self.get_scene_base_suffix()
-
-        return f"{character_description}, {scene_desc}, {suffix}"
-
     def build_story_negative_prompt(self, must_avoid: Optional[List[str]] = None) -> str:
         """
         Build negative prompt for story illustration
@@ -198,4 +192,7 @@ class PromptsConfig:
 
 
 # Singleton instance
-prompts_config = PromptsConfig()
+config = Config()
+
+# Backwards compatibility alias
+prompts_config = config

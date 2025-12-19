@@ -1,0 +1,67 @@
+# Storybook Backend Configuration
+# Edit these settings to customize AI generation and style references
+
+# Style reference images configuration
+style_references:
+  animated_3d:
+    filename: "animated_3d_reference.png"
+    description: "High-quality 3D animated character style"
+
+# Prompt files configuration
+# Prompts are stored as markdown files in assets/prompts/ for better editing
+prompts:
+  # Style Transfer prompts (recommended method)
+  style_transfer_prompt: "prompts/style_transfer_prompt.md"
+  style_transfer_negative: "prompts/style_transfer_negative.md"
+
+  # Legacy image-to-image prompts
+  character_base_prompt: "prompts/character_base_prompt.md"
+  character_negative_prompt: "prompts/character_negative_prompt.md"
+
+  # Story illustration prompts
+  story_negative_prompt: "prompts/story_negative_prompt.md"
+
+character:
+  # Style strength for style transfer (0.0-1.0)
+  # Higher = more stylized, Lower = more like original photo
+  # Recommended: 0.7-0.9 for good stylization while preserving likeness
+  style_strength: 0.7
+
+  # Default style reference image for style transfer
+  # Maps to a style reference image in assets/styles/
+  default_style_reference: "animated_3d"
+
+  # Default Stability AI style preset (legacy image-to-image only)
+  # Only used by the old /portrait endpoint, not the recommended /portrait-stylized endpoint
+  default_style_preset: "3d-model"
+
+  # Image generation parameters
+  # Lower value = more likeness to reference photos, less stylization
+  # Higher value = more stylization, risk of drift from reference
+  # Recommended range: 0.35-0.45 for good balance
+  image_strength: 0.4  # How much to use reference photo (0.0-1.0)
+
+story_illustrations:
+  # Image generation parameters
+  image_strength: 0.28
+
+# Available style presets from Stability AI
+# See: https://platform.stability.ai/docs/api-reference#tag/v1generation/operation/textToImage
+style_presets:
+  - "3d-model"
+  - "analog-film"
+  - "anime"
+  - "cinematic"
+  - "comic-book"
+  - "digital-art"
+  - "enhance"
+  - "fantasy-art"
+  - "isometric"
+  - "line-art"
+  - "low-poly"
+  - "modeling-compound"
+  - "neon-punk"
+  - "origami"
+  - "photographic"
+  - "pixel-art"
+  - "tile-texture"

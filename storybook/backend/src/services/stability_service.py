@@ -340,7 +340,7 @@ class StabilityService:
         Apply style transfer using Stability AI's Control Style Transfer endpoint
 
         This is the recommended approach for preserving kid likeness while applying
-        a Pixar/animation style using a reference style image.
+        a modern 3D animation style using a reference style image.
 
         Args:
             init_image: The kid's reference photo (preserves identity/pose)
