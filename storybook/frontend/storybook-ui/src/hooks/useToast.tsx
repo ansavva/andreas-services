@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { Card, CardBody } from '@nextui-org/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faCheckCircle,
@@ -46,7 +45,11 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const id = `toast-${Date.now()}-${Math.random()}`;
     const toast: Toast = { id, message, type };
 
-    setToasts((prev) => [...prev, toast]);
+    console.log(`[Toast] Showing ${type} toast:`, message);
+    setToasts((prev) => {
+      console.log('[Toast] Current toasts:', prev.length, 'Adding new toast');
+      return [...prev, toast];
+    });
 
     // Auto-dismiss after 5 seconds
     setTimeout(() => {
@@ -109,14 +112,18 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     >
       {children}
 
-      {/* Toast Container */}
-      <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-md">
+      {/* Toast Container - Fixed position with very high z-index */}
+      <div
+        className="fixed top-4 right-4 flex flex-col gap-2 max-w-md pointer-events-none"
+        style={{ zIndex: 9999 }}
+      >
         {toasts.map((toast) => {
           const styles = getToastStyles(toast.type);
           return (
             <div
               key={toast.id}
-              className={`${styles.bg} border-l-4 ${styles.border} rounded-lg shadow-lg animate-slide-in-right`}
+              className={`${styles.bg} border-l-4 ${styles.border} rounded-lg shadow-2xl animate-slide-in-right pointer-events-auto`}
+              role="alert"
             >
               <div className="flex items-start gap-3 p-4">
                 <FontAwesomeIcon
@@ -124,12 +131,12 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                   className={`${styles.iconColor} mt-0.5`}
                   size="lg"
                 />
-                <p className={`flex-1 ${styles.text} text-sm font-medium`}>
+                <p className={`flex-1 ${styles.text} text-sm font-medium break-words`}>
                   {toast.message}
                 </p>
                 <button
                   onClick={() => removeToast(toast.id)}
-                  className={`${styles.text} hover:opacity-70 transition-opacity`}
+                  className={`${styles.text} hover:opacity-70 transition-opacity flex-shrink-0`}
                   aria-label="Close"
                 >
                   <FontAwesomeIcon icon={faTimes} size="sm" />

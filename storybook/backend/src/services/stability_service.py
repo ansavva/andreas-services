@@ -329,6 +329,101 @@ class StabilityService:
 
         return variants
 
+    def style_transfer(self,
+                      init_image: BinaryIO,
+                      style_image: BinaryIO,
+                      prompt: str,
+                      style_strength: float = 0.8,
+                      negative_prompt: Optional[str] = None,
+                      output_format: str = "png") -> bytes:
+        """
+        Apply style transfer using Stability AI's Control Style Transfer endpoint
+
+        This is the recommended approach for preserving kid likeness while applying
+        a Pixar/animation style using a reference style image.
+
+        Args:
+            init_image: The kid's reference photo (preserves identity/pose)
+            style_image: Backend style reference image (defines visual style)
+            prompt: Text description of desired output
+            style_strength: How strongly to apply style (0.0-1.0, default 0.8)
+            negative_prompt: What to avoid in generation
+            output_format: Output format ("png" or "jpeg")
+
+        Returns:
+            Raw image bytes
+
+        Raises:
+            ValueError: If style_strength out of range
+            Exception: On API errors
+
+        Reference:
+            https://platform.stability.ai/docs/api-reference#tag/Control/paths/~1v2beta~1stable-image~1control~1style-transfer/post
+        """
+        if not (0.0 <= style_strength <= 1.0):
+            raise ValueError(f"style_strength must be between 0.0 and 1.0, got {style_strength}")
+
+        url = f"{self.api_host}/v2beta/stable-image/control/style-transfer"
+
+        # Prepare image files
+        # Convert file-like objects to bytes
+        if isinstance(init_image, bytes):
+            init_bytes = init_image
+        else:
+            init_image.seek(0)
+            init_bytes = init_image.read()
+
+        if isinstance(style_image, bytes):
+            style_bytes = style_image
+        else:
+            style_image.seek(0)
+            style_bytes = style_image.read()
+
+        # Detect MIME types
+        init_mime, init_ext = self._detect_image_type(init_bytes)
+        style_mime, style_ext = self._detect_image_type(style_bytes)
+
+        # Build multipart form data
+        files = {
+            "init_image": (f"init{init_ext}", init_bytes, init_mime),
+            "style_image": (f"style{style_ext}", style_bytes, style_mime)
+        }
+
+        data = {
+            "prompt": prompt,
+            "style_strength": str(style_strength),
+            "output_format": output_format
+        }
+
+        if negative_prompt:
+            data["negative_prompt"] = negative_prompt
+
+        # Call API
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Accept": "image/*"  # Expect binary image response
+        }
+
+        response = requests.post(
+            url,
+            headers=headers,
+            files=files,
+            data=data,
+            timeout=60
+        )
+
+        if response.status_code != 200:
+            error_msg = f"Stability API style transfer error: {response.status_code}"
+            try:
+                error_detail = response.json()
+                error_msg += f" - {error_detail}"
+            except:
+                error_msg += f" - {response.text[:200]}"
+            raise Exception(error_msg)
+
+        # Return raw image bytes
+        return response.content
+
     def image_to_bytes(self, base64_data: str) -> BytesIO:
         """
         Convert base64 image data to BytesIO object

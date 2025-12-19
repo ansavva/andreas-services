@@ -1,10 +1,15 @@
-import React, { useState } from "react";
-import { Button, Input, Checkbox, Card, CardBody } from "@nextui-org/react";
+import React, { useState, useEffect } from "react";
+import { Button, Input, Checkbox, Card, CardBody } from "@heroui/react";
 
 type KidSetupStepProps = {
   projectId: string;
   onComplete: (data: KidSetupData) => void;
   loading: boolean;
+  initialData?: {
+    childName?: string;
+    childAge?: number;
+    consentGiven?: boolean;
+  };
 };
 
 export type KidSetupData = {
@@ -17,10 +22,20 @@ const KidSetupStep: React.FC<KidSetupStepProps> = ({
   projectId,
   onComplete,
   loading,
+  initialData,
 }) => {
-  const [childName, setChildName] = useState("");
-  const [childAge, setChildAge] = useState<string>("");
-  const [consentGiven, setConsentGiven] = useState(false);
+  const [childName, setChildName] = useState(initialData?.childName || "");
+  const [childAge, setChildAge] = useState<string>(initialData?.childAge?.toString() || "");
+  const [consentGiven, setConsentGiven] = useState(initialData?.consentGiven || false);
+
+  // Update state when initialData changes (e.g., when going back to this step)
+  useEffect(() => {
+    if (initialData) {
+      setChildName(initialData.childName || "");
+      setChildAge(initialData.childAge?.toString() || "");
+      setConsentGiven(initialData.consentGiven || false);
+    }
+  }, [initialData]);
   const [errors, setErrors] = useState<{
     childName?: string;
     childAge?: string;

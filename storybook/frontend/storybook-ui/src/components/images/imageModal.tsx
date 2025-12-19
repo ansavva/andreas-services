@@ -1,6 +1,6 @@
 // ImageModal.tsx
 import React from "react";
-import { Modal, ModalContent, ModalBody, ModalFooter, Button, Image } from "@nextui-org/react";
+import { Modal, ModalContent, ModalBody, ModalFooter, Button, Image } from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faDownload, faTrash } from "@fortawesome/free-solid-svg-icons";
 import { downloadImageById, deleteImage } from "@/apis/imageController";

@@ -85,6 +85,23 @@ class PromptsConfig:
         """Get image strength for story illustrations"""
         return self._config['story_illustrations']['image_strength']
 
+    # Style transfer (recommended method)
+    def get_style_transfer_prompt(self) -> str:
+        """Get base prompt for style transfer"""
+        return self._config['character']['style_transfer_prompt']
+
+    def get_style_transfer_negative(self) -> str:
+        """Get negative prompt for style transfer"""
+        return self._config['character']['style_transfer_negative']
+
+    def get_style_strength(self) -> float:
+        """Get default style strength for style transfer"""
+        return self._config['character']['style_strength']
+
+    def get_default_style_id(self) -> str:
+        """Get default style_id for style transfer"""
+        return self._config['character']['default_style_id']
+
     # Style presets
     def get_available_style_presets(self) -> List[str]:
         """Get list of all available style presets"""
@@ -94,11 +111,29 @@ class PromptsConfig:
         """Check if a style preset is valid"""
         return style in self.get_available_style_presets()
 
+    def build_style_transfer_prompt(self, user_description: Optional[str] = None) -> str:
+        """
+        Build complete prompt for style transfer
+
+        Args:
+            user_description: User-provided additional description (optional)
+
+        Returns:
+            Complete prompt string for style transfer
+        """
+        base = self.get_style_transfer_prompt()
+
+        if user_description and user_description.strip():
+            # Append user description to base prompt
+            return f"{base}, {user_description.strip()}"
+
+        return base
+
     def build_character_prompt(self,
                                child_name: Optional[str] = None,
                                user_description: Optional[str] = None) -> str:
         """
-        Build complete character generation prompt
+        Build complete character generation prompt (legacy image-to-image)
 
         Args:
             child_name: Name of the child (optional)
@@ -110,7 +145,7 @@ class PromptsConfig:
         base = self.get_character_base_prompt()
 
         parts = []
-        
+
         # Add child name if provided
         if child_name:
             parts.append(f"Portrait of a smiling child named {child_name}")

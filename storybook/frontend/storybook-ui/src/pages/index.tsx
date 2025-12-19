@@ -1,5 +1,4 @@
-import { Link } from "@nextui-org/link";
-import { Button } from "@nextui-org/react";
+import { Link, Button } from "@heroui/react";
 
 import DefaultLayout from "@/layouts/default";
 

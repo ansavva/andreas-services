@@ -6,7 +6,7 @@ import {
   Spinner,
   Tabs,
   Tab,
-} from "@nextui-org/react";
+} from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faRefresh, faCheck } from "@fortawesome/free-solid-svg-icons";
 import ImageGrid from "@/components/images/imageGrid";

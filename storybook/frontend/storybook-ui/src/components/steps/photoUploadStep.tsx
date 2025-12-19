@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { Button, Card, CardBody, Progress } from "@nextui-org/react";
+import { Button, Card, CardBody, Progress } from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUpload } from "@fortawesome/free-solid-svg-icons";
 import { useAxios } from "@/hooks/axiosContext";

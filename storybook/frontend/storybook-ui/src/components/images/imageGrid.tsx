@@ -1,7 +1,7 @@
 // ImageGrid.tsx
 import React, { useEffect, useState } from "react";
-import { Card, Image, Spinner } from "@nextui-org/react";
-import { useDisclosure } from "@nextui-org/react";
+import { Card, Image, Spinner } from "@heroui/react";
+import { useDisclosure } from "@heroui/react";
 import { useAxios } from '@/hooks/axiosContext';
 import { downloadImageById } from "@/apis/imageController";
 import ImageModal from "@/components/images/imageModal";

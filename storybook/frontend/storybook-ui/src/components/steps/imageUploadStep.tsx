@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from "react";
-import { Button, Input } from "@nextui-org/react";
+import { Button, Input } from "@heroui/react";
 import { uploadImage, deleteImage, getImagesByProject } from "@/apis/imageController";
 import { useAxios } from '@/hooks/axiosContext';
 import ImageGrid from "@/components/images/imageGrid";

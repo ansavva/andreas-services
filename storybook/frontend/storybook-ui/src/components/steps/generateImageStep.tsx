@@ -1,6 +1,6 @@
 // GenerateImageStep.tsx
 import React, { useState, useEffect } from "react";
-import { Button, Textarea } from "@nextui-org/react";
+import { Button, Textarea } from "@heroui/react";
 import { useAxios } from '@/hooks/axiosContext'
 import { generate } from "@/apis/modelController";
 import { listImages } from "@/apis/imageController";

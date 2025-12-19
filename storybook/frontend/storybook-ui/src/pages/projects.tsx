@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Button, Card, CardBody, Input, Modal, ModalContent, ModalBody, ModalFooter, ModalHeader, useDisclosure, Tabs, Tab, Chip } from '@nextui-org/react';
+import { Button, Card, CardBody, Input, Modal, ModalContent, ModalBody, ModalFooter, ModalHeader, useDisclosure, Tabs, Tab, Chip } from '@heroui/react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPlus, faBook } from "@fortawesome/free-solid-svg-icons";
@@ -8,20 +8,21 @@ import { useAxios } from '@/hooks/axiosContext';
 import { getProjects, createProject } from '../apis/projectController';
 import { getStoryProjects, createStoryProject } from '../apis/storyProjectController';
 import DefaultLayout from '@/layouts/default';
+import { getErrorMessage, logError } from '@/utils/errorHandling';
+import { useToast } from '@/hooks/useToast';
 
 const ProjectsPage = () => {
   const { axiosInstance } = useAxios();
   const navigate = useNavigate();  // Initialize useNavigate for navigation
+  const { showError, showSuccess } = useToast();
 
   const { isOpen, onOpen, onOpenChange } = useDisclosure();  // Initialize modal state
-  const { isOpen: isStoryOpen, onOpen: onStoryOpen, onOpenChange: onStoryOpenChange } = useDisclosure();
 
   const [activeTab, setActiveTab] = useState('training');
   const [projects, setProjects] = useState<any[]>([]);
   const [storyProjects, setStoryProjects] = useState<any[]>([]);
   const [newProjectName, setNewProjectName] = useState<string | null>(null);
   const [subjectName, setSubjectName] = useState<string | null>(null);
-  const [newStoryName, setNewStoryName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -33,17 +34,17 @@ const ProjectsPage = () => {
         ]);
         setProjects(trainingProjects);
         setStoryProjects(storyProjectsList);
-      } catch (error) {
-        console.error('Error fetching projects:', error);
+      } catch (error: any) {
+        logError('Fetch projects', error);
+        showError(getErrorMessage(error, 'Failed to load projects'));
       }
     };
     fetchProjects();
-  }, []);
+  }, [axiosInstance, showError]);
 
   // Validation checks for empty strings only, treating null as valid (initial state)
   const isProjectNameInvalid = useMemo(() => newProjectName === '', [newProjectName]);
   const isSubjectNameInvalid = useMemo(() => subjectName === '', [subjectName]);
-  const isStoryNameInvalid = useMemo(() => newStoryName === '', [newStoryName]);
 
   const handleCreateProject = async () => {
     if (newProjectName == null || subjectName == null || isProjectNameInvalid || isSubjectNameInvalid) {
@@ -62,31 +63,19 @@ const ProjectsPage = () => {
       setProjects([...projects, newProject]);
       setNewProjectName('');
       setSubjectName('');
+      showSuccess('Project created successfully!');
       navigate(`/project/${newProject.id}`);  // Navigate to the new project page
-    } catch (error) {
-      console.error('Error creating project:', error);
+    } catch (error: any) {
+      logError('Create project', error);
+      showError(getErrorMessage(error, 'Failed to create project'));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreateStoryProject = async () => {
-    if (newStoryName == null || isStoryNameInvalid) {
-      setNewStoryName('');
-      return;
-    }
-    setLoading(true);
-
-    try {
-      const newStory = await createStoryProject(axiosInstance, newStoryName as string);
-      setStoryProjects([...storyProjects, newStory]);
-      setNewStoryName('');
-      navigate(`/story-project/${newStory._id}`);
-    } catch (error) {
-      console.error('Error creating story project:', error);
-    } finally {
-      setLoading(false);
-    }
+  const handleCreateStoryProject = () => {
+    // Navigate to kid setup page (project will be created after kid setup is complete)
+    navigate('/story-project/new');
   };
 
   const handleCardClick = (projectId: string) => {
@@ -141,7 +130,7 @@ const ProjectsPage = () => {
 
         <Tab key="stories" title="Story Projects">
           <div className="flex justify-end mb-4">
-            <Button color="primary" onPress={onStoryOpen} startContent={<FontAwesomeIcon icon={faBook} />}>
+            <Button color="primary" onPress={handleCreateStoryProject} startContent={<FontAwesomeIcon icon={faBook} />}>
               New Story Project
             </Button>
           </div>
@@ -214,39 +203,6 @@ const ProjectsPage = () => {
         </ModalContent>
       </Modal>
 
-      {/* Modal for creating a new story project */}
-      <Modal isOpen={isStoryOpen} onOpenChange={onStoryOpenChange} isDismissable={false} isKeyboardDismissDisabled={true}>
-        <ModalContent>
-          {(onClose) => (
-            <>
-              <ModalHeader className="flex flex-col gap-1">Create New Story</ModalHeader>
-              <ModalBody>
-                <Input
-                  label="Story Name"
-                  value={newStoryName ?? ''}
-                  isInvalid={isStoryNameInvalid}
-                  color={isStoryNameInvalid ? "danger" : "default"}
-                  errorMessage={isStoryNameInvalid ? "Story name is required" : ""}
-                  onValueChange={setNewStoryName}
-                  description="Give your story a name to get started!"
-                />
-              </ModalBody>
-              <ModalFooter>
-                <Button variant="light" onPress={onClose}>
-                  Cancel
-                </Button>
-                <Button
-                  color="primary"
-                  onPress={handleCreateStoryProject}
-                  disabled={loading || isStoryNameInvalid}
-                >
-                  Create Story
-                </Button>
-              </ModalFooter>
-            </>
-          )}
-        </ModalContent>
-      </Modal>
     </DefaultLayout>
   );
 };

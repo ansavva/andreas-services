@@ -7,7 +7,7 @@ import {
   Spinner,
   Chip,
   Divider,
-} from "@nextui-org/react";
+} from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPaperPlane, faBook } from "@fortawesome/free-solid-svg-icons";
 

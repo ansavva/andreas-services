@@ -2,17 +2,40 @@
 # Edit these prompts to customize character and scene generation
 
 character:
+  # Style Transfer Configuration (Recommended Method)
+  # Uses Stability AI's style transfer endpoint for better likeness preservation
+
+  # Base prompt for style transfer
+  # This works with: init_image (kid photo) + style_image (backend Pixar reference)
+  style_transfer_prompt: "A cheerful young child character portrait with a warm friendly expression, gentle smile, age-appropriate proportions, wholesome and family-friendly, clean composition"
+
+  # What to avoid in style transfer
+  style_transfer_negative: "photorealistic, realistic photo, adult, mature, old, teen, horror, creepy, scary, dark, violence, weapons, inappropriate, text, watermark, blurry, distorted, bad anatomy"
+
+  # Style strength for style transfer (0.0-1.0)
+  # Higher = more stylized, Lower = more like original photo
+  # Recommended: 0.7-0.9 for good Pixar-like stylization while preserving likeness
+  style_strength: 0.8
+
+  # Default style_id (maps to backend style reference image)
+  default_style_id: "pixar_3d"
+
+  # Legacy Image-to-Image Configuration (Fallback)
   # Base prompt for character portrait generation
-  base_prompt: "Portrait of a cheerful young child, high-quality 3D animated storybook illustration, warm cinematic lighting, soft rounded facial features, large expressive eyes, gentle smile, childlike proportions, smooth stylized skin shading, subtle subsurface scattering, clean shapes, friendly and wholesome, centered composition, simple soft-gradient background, vibrant yet natural color palette, highly detailed but not realistic, studio-quality animation look"
+  # This prompt works with reference photos to preserve likeness while achieving Pixar-style animation
+  base_prompt: "Using the provided reference photos, create a Pixar-inspired 3D animated character portrait of the same child. Preserve the child's facial structure, proportions, skin tone, eye color, and hair color from the reference images while translating them into a stylized animated look. The character should have soft rounded facial features, large expressive eyes, a slightly oversized head typical of Pixar-style animation, and smooth high-quality 3D shading. Maintain age-appropriate proportions and a natural friendly expression. Render with cinematic soft lighting, warm color grading, and a clean minimal background. The result should feel wholesome, polished, and emotionally engaging, similar to modern Pixar character artwork"
 
   # What to avoid in character generation
-  negative_prompt: "photorealistic, realistic photo, hyperreal, uncanny valley, adult, mature face, old, teen, wrinkles, stubble, heavy makeup, horror, creepy, scary, dark, gore, blood, violence, weapon, guns, knives, bruises, injuries, erotic, suggestive, nude, lingerie, text, watermark, logo, signature, lowres, blurry, noise, grainy, jpeg artifacts, bad anatomy, deformed, distorted face, extra fingers, extra limbs, bad hands, crossed eyes"
+  negative_prompt: "photorealistic, realistic photo, hyperreal, uncanny valley, adult, mature face, old, teen, wrinkles, stubble, heavy makeup, horror, creepy, scary, dark, gore, blood, violence, weapon, guns, knives, bruises, injuries, erotic, suggestive, nude, lingerie, anime, manga, caricature, exaggerated facial distortion, aging, text, watermark, logo, signature, lowres, blurry, noise, grainy, jpeg artifacts, bad anatomy, deformed, distorted face, extra fingers, extra limbs, bad hands, crossed eyes, harsh shadows"
 
   # Default style preset (can be overridden from frontend)
   default_style: "3d-model"
 
   # Image generation parameters
-  image_strength: 0.6  # How much to use reference photo (0.0-1.0)
+  # Lower value = more likeness to reference photos, less stylization
+  # Higher value = more stylization, risk of drift from reference
+  # Recommended range: 0.35-0.45 for good balance
+  image_strength: 0.4  # How much to use reference photo (0.0-1.0)
 
 preview_scenes:
   # Prompts for different preview scenes

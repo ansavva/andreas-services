@@ -8,7 +8,7 @@ import {
   SelectItem,
   Spinner,
   Textarea,
-} from "@nextui-org/react";
+} from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faUpload,
@@ -23,6 +23,7 @@ import { uploadImage, deleteImage, downloadImageById } from "@/apis/imageControl
 import { getStylePresets } from "@/apis/configController";
 import { generateCharacterPortrait, approveCharacterAsset, regenerateCharacterAsset, getCharacterAssets } from "@/apis/characterController";
 import ImageGrid from "@/components/images/imageGrid";
+import { getErrorMessage, logError } from "@/utils/errorHandling";
 
 type PhotoFile = {
   id: string;
@@ -204,8 +205,9 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
 
       setPhotos(updatedPhotos);
       showSuccess("Photo deleted");
-    } catch (error) {
-      showError("Failed to delete photo");
+    } catch (error: any) {
+      logError("Delete photo", error);
+      showError(getErrorMessage(error, "Failed to delete photo"));
     }
   };
 
@@ -235,8 +237,8 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
 
       showSuccess("Character portrait generated successfully!");
     } catch (error: any) {
-      console.error("Failed to generate portrait:", error);
-      showError(error.response?.data?.error || "Failed to generate portrait. Please try again.");
+      logError("Generate portrait", error);
+      showError(getErrorMessage(error, "Failed to generate portrait. Please try again."));
     } finally {
       setIsGenerating(false);
     }
@@ -265,8 +267,8 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
 
       showSuccess("Character portrait regenerated!");
     } catch (error: any) {
-      console.error("Failed to regenerate portrait:", error);
-      showError(error.response?.data?.error || "Failed to regenerate portrait. Please try again.");
+      logError("Regenerate portrait", error);
+      showError(getErrorMessage(error, "Failed to regenerate portrait. Please try again."));
     } finally {
       setIsGenerating(false);
     }
@@ -279,8 +281,9 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
       const result = await approveCharacterAsset(axiosInstance, generatedPortrait._id);
       setGeneratedPortrait(result);
       showSuccess("Character portrait approved! You can now continue.");
-    } catch (error) {
-      showError("Failed to approve portrait. Please try again.");
+    } catch (error: any) {
+      logError("Approve portrait", error);
+      showError(getErrorMessage(error, "Failed to approve portrait. Please try again."));
     }
   };
 
@@ -349,20 +352,23 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
                 />
               </div>
 
-              <div>
-                <Select
-                  label="Art Style"
-                  placeholder="Select a style"
-                  selectedKeys={selectedStyle ? [selectedStyle] : []}
-                  onChange={(e) => setSelectedStyle(e.target.value)}
-                >
-                  {stylePresets.map((preset) => (
-                    <SelectItem key={preset} value={preset}>
-                      {preset.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                    </SelectItem>
-                  ))}
-                </Select>
-              </div>
+              {/* Only show style selector if there are multiple styles available */}
+              {stylePresets.length > 1 && (
+                <div>
+                  <Select
+                    label="Art Style"
+                    placeholder="Select a style"
+                    selectedKeys={selectedStyle ? [selectedStyle] : []}
+                    onChange={(e) => setSelectedStyle(e.target.value)}
+                  >
+                    {stylePresets.map((preset) => (
+                      <SelectItem key={preset} value={preset}>
+                        {preset.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                      </SelectItem>
+                    ))}
+                  </Select>
+                </div>
+              )}
             </CardBody>
           </Card>
 

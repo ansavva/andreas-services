@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAxios } from '@/hooks/axiosContext';
 import { useToast } from '@/hooks/useToast';
-import { Card, CardBody, Spinner } from '@nextui-org/react';
+import { Card, CardBody, Spinner } from '@heroui/react';
 import DefaultLayout from '@/layouts/default';
 import Stepper from '../components/common/stepper';
 import ErrorDisplay from '../components/common/errorDisplay';
@@ -12,7 +12,7 @@ import StoryChatStep from '../components/steps/storyChatStep';
 import PagesEditorStep from '../components/steps/pagesEditorStep';
 
 // API imports
-import { getStoryProjectById, updateStoryProjectStatus, updateStoryProject } from '../apis/storyProjectController';
+import { getStoryProjectById, createStoryProject, updateStoryProjectStatus, updateStoryProject } from '../apis/storyProjectController';
 import {
   getChildProfileByProject,
   createChildProfile,
@@ -44,6 +44,7 @@ import {
   exportStoryPDF,
   StoryPage,
 } from '../apis/storyPageController';
+import { getErrorMessage, logError } from '@/utils/errorHandling';
 
 const StoryProject: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -78,8 +79,12 @@ const StoryProject: React.FC = () => {
   ];
 
   useEffect(() => {
-    if (projectId) {
+    if (projectId && projectId !== 'new') {
       loadProjectData();
+    } else if (projectId === 'new') {
+      // New project - start at Kid Setup step
+      setLoading(false);
+      setCurrentStep(0);
     }
   }, [projectId]);
 
@@ -123,13 +128,13 @@ const StoryProject: React.FC = () => {
         }
       }
     } catch (error: any) {
-      console.error('Error loading project:', error);
+      logError('Load project data', error);
 
       // If project doesn't exist (404), show not found error
       if (error.response?.status === 404) {
         setError('Project not found. It may have been deleted.');
       } else {
-        setError('Failed to load project. Please check your connection and try again.');
+        setError(getErrorMessage(error, 'Failed to load project. Please check your connection and try again.'));
       }
       setLoading(false);
     } finally {
@@ -145,8 +150,9 @@ const StoryProject: React.FC = () => {
 
       setPortrait(portraitAsset || null);
       setPreviewScenes(sceneAssets);
-    } catch (error) {
-      console.error('Error loading character assets:', error);
+    } catch (error: any) {
+      logError('Load character assets', error);
+      showError(getErrorMessage(error, 'Failed to load character assets'));
     }
   };
 
@@ -157,8 +163,9 @@ const StoryProject: React.FC = () => {
 
       const state = await getStoryState(axiosInstance, projectId!);
       setStoryState(state);
-    } catch (error) {
-      console.error('Error loading chat data:', error);
+    } catch (error: any) {
+      logError('Load chat data', error);
+      showError(getErrorMessage(error, 'Failed to load chat messages'));
     }
   };
 
@@ -166,8 +173,9 @@ const StoryProject: React.FC = () => {
     try {
       const pages = await getStoryPages(axiosInstance, projectId!);
       setStoryPages(pages);
-    } catch (error) {
-      console.error('Error loading pages:', error);
+    } catch (error: any) {
+      logError('Load pages', error);
+      showError(getErrorMessage(error, 'Failed to load story pages'));
     }
   };
 
@@ -176,16 +184,38 @@ const StoryProject: React.FC = () => {
     try {
       setSavingProfile(true);
 
+      let currentProjectId = projectId;
+
+      // If this is a new project, create it first
+      if (projectId === 'new') {
+        const newProject = await createStoryProject(axiosInstance, data.childName);
+        setProject(newProject);
+        currentProjectId = newProject._id;
+
+        // Update URL to reflect the actual project ID
+        navigate(`/story-project/${newProject._id}`, { replace: true });
+      }
+
       if (childProfile) {
         // Update existing profile
-        await updateChildProfile(axiosInstance, childProfile._id, {
+        const updatedProfile = await updateChildProfile(axiosInstance, childProfile._id, {
           child_name: data.childName,
           child_age: data.childAge,
         });
+        setChildProfile(updatedProfile);
+
+        // Update project name if it changed
+        await updateStoryProject(axiosInstance, currentProjectId!, {
+          name: data.childName,
+        });
+
+        // Reload project to get updated name
+        const updatedProject = await getStoryProjectById(axiosInstance, currentProjectId!);
+        setProject(updatedProject);
       } else {
         // Create new profile
         const newProfile = await createChildProfile(axiosInstance, {
-          project_id: projectId!,
+          project_id: currentProjectId!,
           child_name: data.childName,
           child_age: data.childAge,
           consent_given: data.consentGiven,
@@ -193,10 +223,10 @@ const StoryProject: React.FC = () => {
         setChildProfile(newProfile);
       }
 
-      setCurrentStep(1); // Move to photo upload
-    } catch (error) {
-      console.error('Error saving profile:', error);
-      showError('Failed to save profile. Please try again.');
+      setCurrentStep(1); // Move to character creation
+    } catch (error: any) {
+      logError('Save profile', error);
+      showError(getErrorMessage(error, 'Failed to save profile. Please try again.'));
     } finally {
       setSavingProfile(false);
     }
@@ -220,9 +250,9 @@ const StoryProject: React.FC = () => {
       setChildProfile(updatedProfile);
 
       setCurrentStep(2); // Move to character preview
-    } catch (error) {
-      console.error('Error updating profile:', error);
-      showError('Failed to update profile. Please try again.');
+    } catch (error: any) {
+      logError('Update profile with photos', error);
+      showError(getErrorMessage(error, 'Failed to update profile. Please try again.'));
     } finally {
       setUploadingPhotos(false);
     }
@@ -234,9 +264,9 @@ const StoryProject: React.FC = () => {
       setGeneratingPortrait(true);
       const newPortrait = await generateCharacterPortrait(axiosInstance, projectId!);
       setPortrait(newPortrait);
-    } catch (error) {
-      console.error('Error generating portrait:', error);
-      showError('Failed to generate portrait. Please try again.');
+    } catch (error: any) {
+      logError('Generate portrait', error);
+      showError(getErrorMessage(error, 'Failed to generate portrait. Please try again.'));
     } finally {
       setGeneratingPortrait(false);
     }
@@ -247,9 +277,9 @@ const StoryProject: React.FC = () => {
       setGeneratingScenes(true);
       const result = await generatePreviewScenes(axiosInstance, projectId!);
       setPreviewScenes(result.scenes);
-    } catch (error) {
-      console.error('Error generating scenes:', error);
-      showError('Failed to generate scenes. Please try again.');
+    } catch (error: any) {
+      logError('Generate scenes', error);
+      showError(getErrorMessage(error, 'Failed to generate scenes. Please try again.'));
     } finally {
       setGeneratingScenes(false);
     }
@@ -263,9 +293,9 @@ const StoryProject: React.FC = () => {
       if (portrait && portrait._id === assetId) {
         setPortrait(approved);
       }
-    } catch (error) {
-      console.error('Error approving asset:', error);
-      showError('Failed to approve asset. Please try again.');
+    } catch (error: any) {
+      logError('Approve asset', error);
+      showError(getErrorMessage(error, 'Failed to approve asset. Please try again.'));
     }
   };
 
@@ -280,9 +310,9 @@ const StoryProject: React.FC = () => {
         // Update scene
         setPreviewScenes((prev) => prev.map((s) => (s._id === assetId ? newAsset : s)));
       }
-    } catch (error) {
-      console.error('Error regenerating asset:', error);
-      showError('Failed to regenerate asset. Please try again.');
+    } catch (error: any) {
+      logError('Regenerate asset', error);
+      showError(getErrorMessage(error, 'Failed to regenerate asset. Please try again.'));
     }
   };
 
@@ -295,9 +325,9 @@ const StoryProject: React.FC = () => {
 
       setCurrentStep(2); // Move to story chat
       await loadChatData();
-    } catch (error) {
-      console.error('Error moving to chat:', error);
-      showError('Failed to continue. Please try again.');
+    } catch (error: any) {
+      logError('Move to chat', error);
+      showError(getErrorMessage(error, 'Failed to continue. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -335,10 +365,11 @@ const StoryProject: React.FC = () => {
           console.log('Story state not ready yet');
         }
       }
-    } catch (error) {
-      console.error('Error sending message:', error);
+    } catch (error: any) {
+      logError('Send message', error);
       // Remove optimistic message on error
       setChatMessages((prev) => prev.filter((m) => !m._id.startsWith('temp-')));
+      showError(getErrorMessage(error, 'Failed to send message. Please try again.'));
       throw error;
     }
   };
@@ -359,9 +390,9 @@ const StoryProject: React.FC = () => {
 
       // Move to pages editor
       setCurrentStep(4);
-    } catch (error) {
-      console.error('Error compiling story:', error);
-      showError('Failed to compile story. Please try again.');
+    } catch (error: any) {
+      logError('Compile story', error);
+      showError(getErrorMessage(error, 'Failed to compile story. Please try again.'));
     } finally {
       setCompilingStory(false);
     }
@@ -389,9 +420,9 @@ const StoryProject: React.FC = () => {
       await exportStoryPDF(axiosInstance, projectId!);
       // Reload project data to get updated EXPORTED status
       await loadProjectData();
-    } catch (error) {
-      console.error('Error exporting story:', error);
-      showError('Failed to export story. Please try again.');
+    } catch (error: any) {
+      logError('Export story', error);
+      showError(getErrorMessage(error, 'Failed to export story. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -441,6 +472,11 @@ const StoryProject: React.FC = () => {
               projectId={projectId!}
               onComplete={handleKidSetupComplete}
               loading={savingProfile}
+              initialData={childProfile ? {
+                childName: childProfile.child_name,
+                childAge: childProfile.child_age,
+                consentGiven: childProfile.consent_given,
+              } : undefined}
             />
           )}
 

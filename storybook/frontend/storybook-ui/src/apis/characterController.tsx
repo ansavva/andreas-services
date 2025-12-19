@@ -27,21 +27,34 @@ export const getCharacterAssets = async (
   return response.data;
 };
 
-// Generate character portrait
+// Generate character portrait using style transfer (RECOMMENDED)
+export const generateStylizedPortrait = async (
+  axiosInstance: AxiosInstance,
+  projectId: string,
+  userDescription?: string,
+  styleId?: string,
+  styleStrength?: number
+): Promise<CharacterAsset> => {
+  const response = await axiosInstance.post(
+    `/api/characters/project/${projectId}/portrait-stylized`,
+    {
+      user_description: userDescription,
+      style_id: styleId,
+      style_strength: styleStrength
+    }
+  );
+  return response.data;
+};
+
+// Generate character portrait (legacy image-to-image method)
 export const generateCharacterPortrait = async (
   axiosInstance: AxiosInstance,
   projectId: string,
   userDescription?: string,
   style?: string
 ): Promise<CharacterAsset> => {
-  const response = await axiosInstance.post(
-    `/api/characters/project/${projectId}/portrait`,
-    {
-      user_description: userDescription,
-      style: style
-    }
-  );
-  return response.data;
+  // Use the new style transfer endpoint by default
+  return generateStylizedPortrait(axiosInstance, projectId, userDescription, style);
 };
 
 // Generate preview scenes
@@ -72,13 +85,16 @@ export const regenerateCharacterAsset = async (
   axiosInstance: AxiosInstance,
   assetId: string,
   userDescription?: string,
-  style?: string
+  styleIdOrPreset?: string,
+  styleStrength?: number
 ): Promise<CharacterAsset> => {
   const response = await axiosInstance.post(
     `/api/characters/asset/${assetId}/regenerate`,
     {
       user_description: userDescription,
-      style: style
+      style_id: styleIdOrPreset,  // For portraits using style transfer
+      style_strength: styleStrength,  // For portraits using style transfer
+      style: styleIdOrPreset  // For preview scenes using legacy method
     }
   );
   return response.data;

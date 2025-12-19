@@ -1,7 +1,6 @@
-import { Button } from "@nextui-org/button";
-import { Link as NextUILink } from "@nextui-org/link";
-import { Link as RouterLink } from "react-router-dom";
 import {
+  Button,
+  Link as NextUILink,
   Navbar as NextUINavbar,
   NavbarBrand,
   NavbarContent,
@@ -9,15 +8,14 @@ import {
   NavbarMenuToggle,
   NavbarMenu,
   NavbarMenuItem,
-} from "@nextui-org/navbar";
-import {
   Dropdown,
   DropdownTrigger,
   DropdownMenu,
-  DropdownItem
-} from "@nextui-org/dropdown";
-import { Avatar } from "@nextui-org/avatar";
-import { link as linkStyles } from "@nextui-org/theme";
+  DropdownItem,
+  Avatar
+} from "@heroui/react";
+import { Link as RouterLink } from "react-router-dom";
+import { link as linkStyles } from "@heroui/theme";
 import clsx from "clsx";
 import { signInWithRedirect, signOut } from 'aws-amplify/auth';
 

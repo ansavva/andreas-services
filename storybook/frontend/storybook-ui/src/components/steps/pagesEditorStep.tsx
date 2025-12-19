@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, CardBody, CardHeader, Button, Textarea, Spinner, Chip } from '@nextui-org/react';
+import { Card, CardBody, CardHeader, Button, Textarea, Spinner, Chip } from '@heroui/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowLeft, faImage, faEdit, faSave, faTimes, faRedo } from '@fortawesome/free-solid-svg-icons';
 import { StoryPage } from '../apis/storyPageController';

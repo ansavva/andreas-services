@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Card, CardBody } from '@nextui-org/react';
+import { Button, Card, CardBody } from '@heroui/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBookOpen, faHome } from '@fortawesome/free-solid-svg-icons';
 import DefaultLayout from '@/layouts/default';
