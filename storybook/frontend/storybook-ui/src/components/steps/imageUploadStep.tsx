@@ -1,11 +1,11 @@
 import React, { useRef, useState, useEffect } from "react";
 import { Button, Input } from "@nextui-org/react";
-import { uploadImage, listImages } from "../apis/imageController";
+import { uploadImage, deleteImage, getImagesByProject } from "@/apis/imageController";
 import { useAxios } from '@/hooks/axiosContext';
-import ImageGrid from "./imageGrid";
+import ImageGrid from "@/components/images/imageGrid";
 
 type ImageFile = {
-  key: string;
+  id: string;
   name: string;
 };
 
@@ -22,13 +22,18 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({ projectId, onTrainCli
   const [isLoading, setIsLoading] = useState(false);
 
   // Define allowed file types (image formats)
-  const allowedFileTypes = ["image/jpeg", "image/png"];
+  const allowedFileTypes = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 
   const fetchImages = async () => {
     setIsLoading(true);
     try {
-      const response = await listImages(axiosInstance, projectId, "uploaded_images");
-      setImages(response.files);
+      const response = await getImagesByProject(axiosInstance, projectId);
+      // Convert response to ImageGrid format
+      const imageFiles = response.images.map((img: any) => ({
+        id: img.id,
+        name: img.filename || 'Image'
+      }));
+      setImages(imageFiles);
     } catch (error) {
       console.error('Error fetching images:', error);
     } finally {
@@ -67,8 +72,13 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({ projectId, onTrainCli
     }
   };
 
-  const handleImageDelete = async (key: string) => {
-    setImages(prevImages => prevImages.filter(img => img.key !== key));
+  const handleImageDelete = async (imageId: string) => {
+    try {
+      await deleteImage(axiosInstance, imageId);
+      setImages(prevImages => prevImages.filter(img => img.id !== imageId));
+    } catch (error) {
+      console.error('Error deleting image:', error);
+    }
   };
 
   return (
@@ -82,17 +92,15 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({ projectId, onTrainCli
         onChange={handleFileChange}
         className="mb-4"
       />
-      <ImageGrid 
-        projectId={projectId} 
-        directory="uploaded_images" 
+      <ImageGrid
         images={images}
         isLoading={isLoading}
         onImageDelete={handleImageDelete}
       />
-      <Button 
-        color="primary" 
-        onPress={onTrainClick} 
-        className="mt-4" 
+      <Button
+        color="primary"
+        onPress={onTrainClick}
+        className="mt-4"
         isLoading={loading}
         isDisabled={images.length === 0}
       >

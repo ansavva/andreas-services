@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, send_file
 from io import BytesIO
 
 from src.services.image_service import ImageService
+from src.utils.error_logging import log_error
 
 image_controller = Blueprint("image_controller", __name__)
 image_service = ImageService()
@@ -44,6 +45,7 @@ def upload_image():
 
         return jsonify({"images": uploaded_images}), 200
     except Exception as e:
+        log_error(e, "image upload")
         return jsonify({"error": str(e)}), 500
 
 @image_controller.route("/download/<image_id>", methods=["GET"])
@@ -65,6 +67,7 @@ def download_image(image_id):
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
     except Exception as e:
+        log_error(e, "image download")
         return jsonify({"error": str(e)}), 500
 
 @image_controller.route("/delete/<image_id>", methods=["DELETE"])
@@ -79,6 +82,7 @@ def delete_image(image_id):
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
     except Exception as e:
+        log_error(e, "image delete")
         return jsonify({"error": str(e)}), 500
 
 @image_controller.route("/list/<project_id>", methods=["GET"])
@@ -103,4 +107,5 @@ def list_images(project_id):
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
     except Exception as e:
+        log_error(e, "image list")
         return jsonify({"error": str(e)}), 500

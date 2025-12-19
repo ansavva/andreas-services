@@ -1,0 +1,57 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Flask (Storybook Backend)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "flask",
+      "python": "${workspaceFolder}/storybook/backend/venv/bin/python",
+      "env": {
+        "FLASK_APP": "src/app.py",
+        "FLASK_DEBUG": "1",
+        "PYTHONPATH": "${workspaceFolder}/storybook/backend"
+      },
+      "args": [
+        "run",
+        "--host=0.0.0.0",
+        "--port=5001",
+        "--no-debugger",
+        "--no-reload"
+      ],
+      "jinja": true,
+      "cwd": "${workspaceFolder}/storybook/backend",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Python: Current File",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "python": "${workspaceFolder}/storybook/backend/venv/bin/python",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/storybook/backend",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/storybook/backend"
+      },
+      "justMyCode": true
+    },
+    {
+      "name": "Python: Attach to Flask",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5678
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}/storybook/backend",
+          "remoteRoot": "."
+        }
+      ],
+      "justMyCode": false
+    }
+  ]
+}

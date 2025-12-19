@@ -4,7 +4,7 @@ import { Button, Textarea } from "@nextui-org/react";
 import { useAxios } from '@/hooks/axiosContext'
 import { generate } from "@/apis/modelController";
 import { listImages } from "@/apis/imageController";
-import ImageGrid from "@/components/imageGrid";
+import ImageGrid from "@/components/images/imageGrid";
 
 type ImageProps = {
   key: string;

@@ -13,8 +13,13 @@ Werkzeug==3.0.4
 requests
 boto3
 replicate
+openai
+stability-sdk
 python-jose[cryptography]
 cognitojwt
 mangum
 pymongo[srv]==4.6.1
 certifi
+reportlab
+Pillow
+pillow-heifPyYAML==6.0.1

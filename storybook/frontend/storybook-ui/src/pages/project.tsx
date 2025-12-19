@@ -7,10 +7,10 @@ import { getProjectById } from "@/apis/projectController";
 import { useAxios } from '@/hooks/axiosContext'
 
 import DefaultLayout from "@/layouts/default";
-import Stepper from "@/components/stepper";
-import ImageUploadStep from "@/components/imageUploadStep";
-import TrainingStep from "@/components/trainingStep";
-import GenerateImageStep from "@/components/generateImageStep";
+import Stepper from "@/components/common/stepper";
+import ImageUploadStep from "@/components/steps/imageUploadStep";
+import TrainingStep from "@/components/steps/trainingStep";
+import GenerateImageStep from "@/components/steps/generateImageStep";
 
 const ProjectPage: React.FC = () => {
   const { axiosInstance } = useAxios();

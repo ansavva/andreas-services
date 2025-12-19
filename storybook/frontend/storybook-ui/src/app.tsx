@@ -7,6 +7,8 @@ import AboutPage from "@/pages/about";
 import StatusPage from "@/pages/status";
 import ProjectPage from "@/pages/project";
 import ProjectsPage from "@/pages/projects";
+import StoryProjectPage from "@/pages/storyProject";
+import NotFoundPage from "@/pages/notFound";
 
 function App() {
   return (
@@ -22,6 +24,11 @@ function App() {
       <Route element={<PrivateRoute />}>
         <Route element={<ProjectsPage />} path="/projects" />
       </Route>
+      <Route element={<PrivateRoute />}>
+        <Route element={<StoryProjectPage />} path="/story-project/:projectId" />
+      </Route>
+      {/* 404 catch-all route */}
+      <Route element={<NotFoundPage />} path="*" />
     </Routes>
   );
 }

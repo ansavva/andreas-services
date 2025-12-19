@@ -1,0 +1,80 @@
+# AI Generation Prompts Configuration
+# Edit these prompts to customize character and scene generation
+
+character:
+  # Base prompt for character portrait generation
+  base_prompt: "Portrait of a cheerful young child, high-quality 3D animated storybook illustration, warm cinematic lighting, soft rounded facial features, large expressive eyes, gentle smile, childlike proportions, smooth stylized skin shading, subtle subsurface scattering, clean shapes, friendly and wholesome, centered composition, simple soft-gradient background, vibrant yet natural color palette, highly detailed but not realistic, studio-quality animation look"
+
+  # What to avoid in character generation
+  negative_prompt: "photorealistic, realistic photo, hyperreal, uncanny valley, adult, mature face, old, teen, wrinkles, stubble, heavy makeup, horror, creepy, scary, dark, gore, blood, violence, weapon, guns, knives, bruises, injuries, erotic, suggestive, nude, lingerie, text, watermark, logo, signature, lowres, blurry, noise, grainy, jpeg artifacts, bad anatomy, deformed, distorted face, extra fingers, extra limbs, bad hands, crossed eyes"
+
+  # Default style preset (can be overridden from frontend)
+  default_style: "3d-model"
+
+  # Image generation parameters
+  image_strength: 0.6  # How much to use reference photo (0.0-1.0)
+
+preview_scenes:
+  # Prompts for different preview scenes
+  scenes:
+    park: "the child playing in a sunny neighborhood park, gentle breeze, soft bokeh background, colorful playground, joyful playful pose, natural candid expression, clean composition"
+    space: "the child floating in a whimsical outer space scene with friendly stars and colorful planets, wearing a cute astronaut suit and helmet, amazed delighted expression, soft glow lighting"
+    pirate: "the child on a bright friendly pirate ship deck, wearing a playful pirate costume with hat, holding a harmless toy map, adventurous grin, ocean sparkle in background"
+    castle: "the child standing in front of a magical fairytale castle, wearing a simple prince/princess-inspired outfit (kid-appropriate), confident brave pose, warm golden-hour lighting"
+    underwater: "the child underwater in a safe imaginative scene with colorful fish and coral, wearing a cute diving mask and snorkel, smiling, light rays through water, serene and joyful mood"
+
+  # Base additions for all scenes
+  base_suffix: "high-quality 3D animated storybook illustration, warm cinematic lighting, vibrant colors, soft rounded shapes, expressive face, wholesome child-friendly tone, shallow depth of field, polished studio animation look"
+
+  # What to avoid in scenes
+  negative_prompt: "scary, dark, horror, violence, weapons, blood, gore, adult themes, photorealistic, realistic photo, hyperreal, gritty, dystopian, scary creatures, unsettling, text, watermark, logo, blurry, low quality, deformed, distorted, bad anatomy, extra fingers, extra limbs"
+
+  # Image generation parameters
+  image_strength: 0.35
+
+story_illustrations:
+  # Base negative prompt for story page illustrations
+  negative_prompt:
+    - "scary"
+    - "dark"
+    - "violent"
+    - "inappropriate"
+    - "realistic photo"
+    - "photorealistic"
+    - "horror"
+    - "blood"
+    - "gore"
+    - "weapons"
+    - "text"
+    - "watermark"
+    - "logo"
+    - "low quality"
+    - "blurry"
+    - "deformed"
+    - "distorted face"
+    - "extra fingers"
+    - "extra limbs"
+
+  # Image generation parameters
+  image_strength: 0.28
+
+# Available style presets from Stability AI
+# See: https://platform.stability.ai/docs/api-reference#tag/v1generation/operation/textToImage
+style_presets:
+  - "3d-model"
+  - "analog-film"
+  - "anime"
+  - "cinematic"
+  - "comic-book"
+  - "digital-art"
+  - "enhance"
+  - "fantasy-art"
+  - "isometric"
+  - "line-art"
+  - "low-poly"
+  - "modeling-compound"
+  - "neon-punk"
+  - "origami"
+  - "photographic"
+  - "pixel-art"
+  - "tile-texture"

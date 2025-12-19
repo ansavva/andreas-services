@@ -1,11 +1,12 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Button, Card, CardBody, Input, Modal, ModalContent, ModalBody, ModalFooter, ModalHeader, useDisclosure } from '@nextui-org/react';
+import { Button, Card, CardBody, Input, Modal, ModalContent, ModalBody, ModalFooter, ModalHeader, useDisclosure, Tabs, Tab, Chip } from '@nextui-org/react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlus } from "@fortawesome/free-solid-svg-icons";
+import { faPlus, faBook } from "@fortawesome/free-solid-svg-icons";
 
 import { useAxios } from '@/hooks/axiosContext';
 import { getProjects, createProject } from '../apis/projectController';
+import { getStoryProjects, createStoryProject } from '../apis/storyProjectController';
 import DefaultLayout from '@/layouts/default';
 
 const ProjectsPage = () => {
@@ -13,17 +14,25 @@ const ProjectsPage = () => {
   const navigate = useNavigate();  // Initialize useNavigate for navigation
 
   const { isOpen, onOpen, onOpenChange } = useDisclosure();  // Initialize modal state
+  const { isOpen: isStoryOpen, onOpen: onStoryOpen, onOpenChange: onStoryOpenChange } = useDisclosure();
 
+  const [activeTab, setActiveTab] = useState('training');
   const [projects, setProjects] = useState<any[]>([]);
+  const [storyProjects, setStoryProjects] = useState<any[]>([]);
   const [newProjectName, setNewProjectName] = useState<string | null>(null);
   const [subjectName, setSubjectName] = useState<string | null>(null);
+  const [newStoryName, setNewStoryName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const projects = await getProjects(axiosInstance);
-        setProjects(projects);
+        const [trainingProjects, storyProjectsList] = await Promise.all([
+          getProjects(axiosInstance),
+          getStoryProjects(axiosInstance),
+        ]);
+        setProjects(trainingProjects);
+        setStoryProjects(storyProjectsList);
       } catch (error) {
         console.error('Error fetching projects:', error);
       }
@@ -34,6 +43,7 @@ const ProjectsPage = () => {
   // Validation checks for empty strings only, treating null as valid (initial state)
   const isProjectNameInvalid = useMemo(() => newProjectName === '', [newProjectName]);
   const isSubjectNameInvalid = useMemo(() => subjectName === '', [subjectName]);
+  const isStoryNameInvalid = useMemo(() => newStoryName === '', [newStoryName]);
 
   const handleCreateProject = async () => {
     if (newProjectName == null || subjectName == null || isProjectNameInvalid || isSubjectNameInvalid) {
@@ -60,28 +70,106 @@ const ProjectsPage = () => {
     }
   };
 
+  const handleCreateStoryProject = async () => {
+    if (newStoryName == null || isStoryNameInvalid) {
+      setNewStoryName('');
+      return;
+    }
+    setLoading(true);
+
+    try {
+      const newStory = await createStoryProject(axiosInstance, newStoryName as string);
+      setStoryProjects([...storyProjects, newStory]);
+      setNewStoryName('');
+      navigate(`/story-project/${newStory._id}`);
+    } catch (error) {
+      console.error('Error creating story project:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCardClick = (projectId: string) => {
     // Navigate to the project page using projectId
     navigate(`/project/${projectId}`);
+  };
+
+  const handleStoryCardClick = (projectId: string) => {
+    navigate(`/story-project/${projectId}`);
+  };
+
+  const getStatusLabel = (status: string) => {
+    const statusLabels: { [key: string]: { label: string; color: any } } = {
+      'DRAFT_SETUP': { label: 'Setup', color: 'default' },
+      'CHARACTER_PREVIEW': { label: 'Character', color: 'primary' },
+      'CHAT': { label: 'Chatting', color: 'secondary' },
+      'COMPILED': { label: 'Compiled', color: 'success' },
+      'ILLUSTRATING': { label: 'Illustrating', color: 'warning' },
+      'READY': { label: 'Ready', color: 'success' },
+      'EXPORTED': { label: 'Exported', color: 'success' },
+    };
+    return statusLabels[status] || { label: status, color: 'default' };
   };
 
   return (
     <DefaultLayout>
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-5xl font-extrabold leading-none">Projects</h1>
-        <Button isIconOnly onPress={onOpen} aria-label="Add Project">
-          <FontAwesomeIcon icon={faPlus} />
-        </Button>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {projects.map((project) => (
-          <Card key={project.id} isPressable onPress={() => handleCardClick(project.id)} className="cursor-pointer">
-            <CardBody>
-              <h4>{project.name}</h4>
-            </CardBody>
-          </Card>
-        ))}
-      </div>
+
+      <Tabs selectedKey={activeTab} onSelectionChange={(key) => setActiveTab(key as string)} className="mb-6">
+        <Tab key="training" title="Training Projects">
+          <div className="flex justify-end mb-4">
+            <Button onPress={onOpen} startContent={<FontAwesomeIcon icon={faPlus} />}>
+              New Training Project
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {projects.map((project) => (
+              <Card key={project.id} isPressable onPress={() => handleCardClick(project.id)} className="cursor-pointer">
+                <CardBody>
+                  <h4>{project.name}</h4>
+                  <p className="text-sm text-gray-500">Subject: {project.subject_name}</p>
+                </CardBody>
+              </Card>
+            ))}
+            {projects.length === 0 && (
+              <p className="text-gray-500 col-span-full text-center py-8">No training projects yet. Create one to get started!</p>
+            )}
+          </div>
+        </Tab>
+
+        <Tab key="stories" title="Story Projects">
+          <div className="flex justify-end mb-4">
+            <Button color="primary" onPress={onStoryOpen} startContent={<FontAwesomeIcon icon={faBook} />}>
+              New Story Project
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {storyProjects.map((project) => {
+              const statusInfo = getStatusLabel(project.status);
+              return (
+                <Card key={project._id} isPressable onPress={() => handleStoryCardClick(project._id)} className="cursor-pointer">
+                  <CardBody>
+                    <div className="flex justify-between items-start mb-2">
+                      <h4 className="flex-1">{project.name}</h4>
+                      <Chip size="sm" color={statusInfo.color} variant="flat">
+                        {statusInfo.label}
+                      </Chip>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Updated: {new Date(project.updated_at).toLocaleDateString()}
+                    </p>
+                  </CardBody>
+                </Card>
+              );
+            })}
+            {storyProjects.length === 0 && (
+              <p className="text-gray-500 col-span-full text-center py-8">No story projects yet. Create one to start writing!</p>
+            )}
+          </div>
+        </Tab>
+      </Tabs>
 
       {/* Modal for creating a new project */}
       <Modal isOpen={isOpen} onOpenChange={onOpenChange} isDismissable={false} isKeyboardDismissDisabled={true}>
@@ -119,6 +207,40 @@ const ProjectsPage = () => {
                   disabled={loading || isProjectNameInvalid || isSubjectNameInvalid}
                 >
                   Create Project
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
+
+      {/* Modal for creating a new story project */}
+      <Modal isOpen={isStoryOpen} onOpenChange={onStoryOpenChange} isDismissable={false} isKeyboardDismissDisabled={true}>
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex flex-col gap-1">Create New Story</ModalHeader>
+              <ModalBody>
+                <Input
+                  label="Story Name"
+                  value={newStoryName ?? ''}
+                  isInvalid={isStoryNameInvalid}
+                  color={isStoryNameInvalid ? "danger" : "default"}
+                  errorMessage={isStoryNameInvalid ? "Story name is required" : ""}
+                  onValueChange={setNewStoryName}
+                  description="Give your story a name to get started!"
+                />
+              </ModalBody>
+              <ModalFooter>
+                <Button variant="light" onPress={onClose}>
+                  Cancel
+                </Button>
+                <Button
+                  color="primary"
+                  onPress={handleCreateStoryProject}
+                  disabled={loading || isStoryNameInvalid}
+                >
+                  Create Story
                 </Button>
               </ModalFooter>
             </>

@@ -3,7 +3,7 @@ import React from "react";
 import { Modal, ModalContent, ModalBody, ModalFooter, Button, Image } from "@nextui-org/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faDownload, faTrash } from "@fortawesome/free-solid-svg-icons";
-import { downloadImage, deleteImage } from "../apis/imageController";
+import { downloadImageById, deleteImage } from "@/apis/imageController";
 import { useAxios } from '@/hooks/axiosContext';
 
 type ImageModalProps = {
@@ -11,47 +11,53 @@ type ImageModalProps = {
   onClose: () => void;
   imageSrc: string;
   imageName: string;
-  projectId: string;
-  directory: string;
-  imageKey: string;
-  onImageDelete: (key: string) => void; // Callback to refresh the grid after deletion
+  imageId: string;
+  onImageDelete?: (imageId: string) => void;
+  customActions?: () => React.ReactNode; // Custom action buttons
 };
 
-const ImageModal: React.FC<ImageModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  imageSrc, 
-  imageName, 
-  projectId, 
-  directory, 
-  imageKey,
-  onImageDelete 
+const ImageModal: React.FC<ImageModalProps> = ({
+  isOpen,
+  onClose,
+  imageSrc,
+  imageName,
+  imageId,
+  onImageDelete,
+  customActions
 }) => {
   const { axiosInstance } = useAxios();
 
   const handleDownload = async () => {
     try {
-      const fileBlob = await downloadImage(axiosInstance, projectId, directory, imageKey);
+      const fileBlob = await downloadImageById(axiosInstance, imageId);
+      const filename = `${imageId}.png`;
+
       const downloadUrl = window.URL.createObjectURL(new Blob([fileBlob]));
       const link = document.createElement("a");
       link.href = downloadUrl;
-      link.setAttribute("download", imageKey);
+      link.setAttribute("download", filename);
       document.body.appendChild(link);
       link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
     } catch (error) {
       console.error("Error downloading image:", error);
     }
   };
 
   const handleDelete = async () => {
+    if (!onImageDelete) return;
+
     try {
-      onImageDelete(imageKey); // Trigger a refresh in the grid
+      onImageDelete(imageId); // Trigger a refresh in the grid
       onClose(); // Close the modal after deletion
-      await deleteImage(axiosInstance, projectId, directory, imageKey);
+      await deleteImage(axiosInstance, imageId);
     } catch (error) {
       console.error("Error deleting image:", error);
     }
   };
+
+  const showDefaultActions = !customActions;
 
 
   return (
@@ -65,24 +71,32 @@ const ImageModal: React.FC<ImageModalProps> = ({
           />
         </ModalBody>
         <ModalFooter className="flex justify-between w-full">
-          {/* Left-aligned download and delete buttons */}
+          {/* Left-aligned action buttons */}
           <div className="flex gap-2">
-            <Button
-              variant="light"
-              isIconOnly
-              onPress={handleDownload}
-              aria-label="Download"
-            >
-              <FontAwesomeIcon icon={faDownload} />
-            </Button>
-            <Button
-              variant="light"
-              isIconOnly
-              onPress={handleDelete}
-              aria-label="Delete"
-            >
-              <FontAwesomeIcon icon={faTrash} />
-            </Button>
+            {!showDefaultActions && customActions ? (
+              customActions()
+            ) : (
+              <>
+                <Button
+                  variant="light"
+                  isIconOnly
+                  onPress={handleDownload}
+                  aria-label="Download"
+                >
+                  <FontAwesomeIcon icon={faDownload} />
+                </Button>
+                {onImageDelete && (
+                  <Button
+                    variant="light"
+                    isIconOnly
+                    onPress={handleDelete}
+                    aria-label="Delete"
+                  >
+                    <FontAwesomeIcon icon={faTrash} />
+                  </Button>
+                )}
+              </>
+            )}
           </div>
           {/* Right-aligned close button */}
           <Button

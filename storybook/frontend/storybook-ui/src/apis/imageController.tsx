@@ -21,10 +21,10 @@ export const uploadImage = async (
           "Content-Type": "multipart/form-data",
         },
       });
-      return response.data.upload_results; // Return upload results
+      return response.data; // Return the full response data which contains "images" array
     } catch (error) {
       console.error("Upload failed:", error);
-      return [];
+      throw error; // Throw error instead of returning empty array so caller can handle it
     }
   };
 
@@ -37,10 +37,15 @@ export const downloadImage = async (axiosInstance: AxiosInstance, projectId: str
     return response.data;
 };
 
-export const deleteImage = async (axiosInstance: AxiosInstance, projectId: string, directory: string, key: string) => {
-    const response = await axiosInstance.delete(`/api/images/delete`, {
-        params: { project_id: projectId, directory, key },
+export const downloadImageById = async (axiosInstance: AxiosInstance, imageId: string) => {
+    const response = await axiosInstance.get(`/api/images/download/${imageId}`, {
+        responseType: "blob",
     });
+    return response.data;
+};
+
+export const deleteImage = async (axiosInstance: AxiosInstance, imageId: string) => {
+    const response = await axiosInstance.delete(`/api/images/delete/${imageId}`);
     return response.data;
 };
 
@@ -48,5 +53,10 @@ export const listImages = async (axiosInstance: AxiosInstance, projectId: string
     const response = await axiosInstance.get(`/api/images/list`, {
         params: { project_id: projectId, directory },
     });
+    return response.data;
+};
+
+export const getImagesByProject = async (axiosInstance: AxiosInstance, projectId: string) => {
+    const response = await axiosInstance.get(`/api/images/list/${projectId}`);
     return response.data;
 };

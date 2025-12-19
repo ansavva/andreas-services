@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import { Amplify } from 'aws-amplify';
 import { UserProvider } from '@/hooks/userContext.tsx';
 import { AxiosProvider } from "./hooks/axiosContext.tsx";
+import { ToastProvider } from "./hooks/useToast.tsx";
 
 import App from "./app.tsx";
 import { Provider } from "./provider.tsx";
@@ -32,11 +33,13 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter basename="/app">
       <Provider>
-        <UserProvider>
-          <AxiosProvider>
-            <App />
-          </AxiosProvider>
-        </UserProvider>
+        <ToastProvider>
+          <UserProvider>
+            <AxiosProvider>
+              <App />
+            </AxiosProvider>
+          </UserProvider>
+        </ToastProvider>
       </Provider>
     </BrowserRouter>
   </React.StrictMode>,

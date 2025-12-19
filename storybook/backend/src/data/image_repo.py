@@ -31,7 +31,9 @@ class ImageRepo:
     def _create_s3_key(self, project_id: str, image_id: str, filename: str) -> str:
         """Generate S3 key for image storage"""
         user_id = self._get_user_id()
-        return f"users/{user_id}/projects/{project_id}/images/{image_id}_{filename}"
+        # Ensure project_id is a string (could be ObjectId from MongoDB)
+        project_id_str = str(project_id)
+        return f"users/{user_id}/projects/{project_id_str}/images/{image_id}_{filename}"
 
     def upload_image(self, project_id: str, file: FileStorage, filename: str) -> Image:
         """
@@ -47,6 +49,9 @@ class ImageRepo:
         """
         db = get_db()
         user_id = self._get_user_id()
+
+        # Ensure project_id is a string (could be ObjectId from MongoDB)
+        project_id = str(project_id)
 
         image_id = str(uuid.uuid4())
         s3_key = self._create_s3_key(project_id, image_id, filename)
@@ -108,6 +113,9 @@ class ImageRepo:
         """
         db = get_db()
         user_id = self._get_user_id()
+
+        # Ensure project_id is a string (could be ObjectId from MongoDB)
+        project_id = str(project_id)
 
         images_data = db.images.find({
             'project_id': project_id,

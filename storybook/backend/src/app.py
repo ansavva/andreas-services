@@ -10,6 +10,12 @@ from src.data.database import init_db
 from src.controllers.image_controller import image_controller
 from src.controllers.model_controller import model_controller
 from src.controllers.project_controller import project_controller
+from src.controllers.story_project_controller import story_project_controller
+from src.controllers.child_profile_controller import child_profile_controller
+from src.controllers.character_controller import character_controller
+from src.controllers.chat_controller import chat_controller
+from src.controllers.story_page_controller import story_page_controller
+from src.controllers.config_controller import config_controller
 
 load_dotenv()
 
@@ -50,10 +56,46 @@ def model_authentication():
 def project_authentication():
     pass
 
+@story_project_controller.before_request
+@require_cognito_auth(cognito_validator)
+def story_project_authentication():
+    pass
+
+@child_profile_controller.before_request
+@require_cognito_auth(cognito_validator)
+def child_profile_authentication():
+    pass
+
+@character_controller.before_request
+@require_cognito_auth(cognito_validator)
+def character_authentication():
+    pass
+
+@chat_controller.before_request
+@require_cognito_auth(cognito_validator)
+def chat_authentication():
+    pass
+
+@story_page_controller.before_request
+@require_cognito_auth(cognito_validator)
+def story_page_authentication():
+    pass
+
+@config_controller.before_request
+@require_cognito_auth(cognito_validator)
+def config_authentication():
+    pass
+
 # Register Blueprints
 app.register_blueprint(image_controller, url_prefix='/api/images')
 app.register_blueprint(model_controller, url_prefix='/api/model')
 app.register_blueprint(project_controller, url_prefix='/api/projects')
+app.register_blueprint(story_project_controller, url_prefix='/api/story-projects')
+app.register_blueprint(child_profile_controller, url_prefix='/api/child-profiles')
+app.register_blueprint(character_controller, url_prefix='/api/characters')
+app.register_blueprint(chat_controller, url_prefix='/api/chat')
+app.register_blueprint(story_page_controller, url_prefix='/api/story-pages')
+app.register_blueprint(config_controller, url_prefix='/api/config')
 
 # # Register Blueprints with auth
 # @image_controller.before_request
