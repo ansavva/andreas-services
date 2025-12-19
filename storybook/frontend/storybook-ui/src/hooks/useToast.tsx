@@ -1,20 +1,7 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import {
-  faCheckCircle,
-  faExclamationCircle,
-  faInfoCircle,
-  faTimesCircle,
-  faTimes,
-} from '@fortawesome/free-solid-svg-icons';
+import React, { createContext, useContext, useCallback } from 'react';
+import { addToast, ToastProvider as HeroUIToastProvider } from "@heroui/react";
 
-type ToastType = 'success' | 'error' | 'warning' | 'info';
-
-interface Toast {
-  id: string;
-  message: string;
-  type: ToastType;
-}
+type ToastType = 'success' | 'danger' | 'warning' | 'default';
 
 interface ToastContextType {
   showToast: (message: string, type?: ToastType) => void;
@@ -35,70 +22,18 @@ export const useToast = () => {
 };
 
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [toasts, setToasts] = useState<Toast[]>([]);
-
-  const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  const showToast = useCallback((message: string, type: ToastType = 'default') => {
+    addToast({
+      description: message,
+      color: type,
+      timeout: 5000,
+    });
   }, []);
 
-  const showToast = useCallback((message: string, type: ToastType = 'info') => {
-    const id = `toast-${Date.now()}-${Math.random()}`;
-    const toast: Toast = { id, message, type };
-
-    console.log(`[Toast] Showing ${type} toast:`, message);
-    setToasts((prev) => {
-      console.log('[Toast] Current toasts:', prev.length, 'Adding new toast');
-      return [...prev, toast];
-    });
-
-    // Auto-dismiss after 5 seconds
-    setTimeout(() => {
-      removeToast(id);
-    }, 5000);
-  }, [removeToast]);
-
   const showSuccess = useCallback((message: string) => showToast(message, 'success'), [showToast]);
-  const showError = useCallback((message: string) => showToast(message, 'error'), [showToast]);
+  const showError = useCallback((message: string) => showToast(message, 'danger'), [showToast]);
   const showWarning = useCallback((message: string) => showToast(message, 'warning'), [showToast]);
-  const showInfo = useCallback((message: string) => showToast(message, 'info'), [showToast]);
-
-  const getToastStyles = (type: ToastType) => {
-    switch (type) {
-      case 'success':
-        return {
-          bg: 'bg-success-50 dark:bg-success-900/20',
-          border: 'border-success-500',
-          text: 'text-success-700 dark:text-success-300',
-          icon: faCheckCircle,
-          iconColor: 'text-success-600',
-        };
-      case 'error':
-        return {
-          bg: 'bg-danger-50 dark:bg-danger-900/20',
-          border: 'border-danger-500',
-          text: 'text-danger-700 dark:text-danger-300',
-          icon: faTimesCircle,
-          iconColor: 'text-danger-600',
-        };
-      case 'warning':
-        return {
-          bg: 'bg-warning-50 dark:bg-warning-900/20',
-          border: 'border-warning-500',
-          text: 'text-warning-700 dark:text-warning-300',
-          icon: faExclamationCircle,
-          iconColor: 'text-warning-600',
-        };
-      case 'info':
-      default:
-        return {
-          bg: 'bg-primary-50 dark:bg-primary-900/20',
-          border: 'border-primary-500',
-          text: 'text-primary-700 dark:text-primary-300',
-          icon: faInfoCircle,
-          iconColor: 'text-primary-600',
-        };
-    }
-  };
+  const showInfo = useCallback((message: string) => showToast(message, 'default'), [showToast]);
 
   return (
     <ToastContext.Provider
@@ -110,42 +45,8 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         showInfo,
       }}
     >
+      <HeroUIToastProvider placement="top-right" />
       {children}
-
-      {/* Toast Container - Fixed position with very high z-index */}
-      <div
-        className="fixed top-4 right-4 flex flex-col gap-2 max-w-md pointer-events-none"
-        style={{ zIndex: 9999 }}
-      >
-        {toasts.map((toast) => {
-          const styles = getToastStyles(toast.type);
-          return (
-            <div
-              key={toast.id}
-              className={`${styles.bg} border-l-4 ${styles.border} rounded-lg shadow-2xl animate-slide-in-right pointer-events-auto`}
-              role="alert"
-            >
-              <div className="flex items-start gap-3 p-4">
-                <FontAwesomeIcon
-                  icon={styles.icon}
-                  className={`${styles.iconColor} mt-0.5`}
-                  size="lg"
-                />
-                <p className={`flex-1 ${styles.text} text-sm font-medium break-words`}>
-                  {toast.message}
-                </p>
-                <button
-                  onClick={() => removeToast(toast.id)}
-                  className={`${styles.text} hover:opacity-70 transition-opacity flex-shrink-0`}
-                  aria-label="Close"
-                >
-                  <FontAwesomeIcon icon={faTimes} size="sm" />
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
     </ToastContext.Provider>
   );
 };
