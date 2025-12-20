@@ -5,7 +5,7 @@ import uuid
 from src.data.character_asset_repo import CharacterAssetRepo
 from src.data.child_profile_repo import ChildProfileRepo
 from src.data.image_repo import ImageRepo
-from src.services.stability_service import StabilityService
+from src.proxies.stability_service import StabilityService
 from src.storage.factory import get_file_storage
 from src.utils.error_logging import log_error
 from src.config.style_references import style_references

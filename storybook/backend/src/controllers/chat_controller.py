@@ -4,7 +4,7 @@ from src.data.chat_message_repo import ChatMessageRepo
 from src.data.story_state_repo import StoryStateRepo
 from src.data.story_project_repo import StoryProjectRepo
 from src.data.child_profile_repo import ChildProfileRepo
-from src.services.openai_service import OpenAIService
+from src.proxies.openai_service import OpenAIService
 from src.utils.error_logging import log_error
 
 chat_controller = Blueprint("chat_controller", __name__)

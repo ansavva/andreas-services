@@ -45,6 +45,40 @@ story_illustrations:
   # Image generation parameters
   image_strength: 0.28
 
+# Replicate FLUX Model Configuration
+# Reference: https://replicate.com/blog/fine-tune-flux
+replicate:
+  # Account configuration
+  owner: "ansavva"  # Replicate account username
+
+  # Training configuration
+  training:
+    steps: 1000  # Number of training steps
+    learning_rate: 0.0004  # Learning rate for training
+    batch_size: 1  # Training batch size
+    resolution: "512,768,1024"  # Training resolutions (comma-separated)
+    autocaption: true  # Automatically caption images
+    caption_dropout_rate: 0.05  # Rate to drop captions during training
+    optimizer: "adamw8bit"  # Optimizer type
+    trigger_word: null  # Optional trigger word for model
+    hardware: "gpu-t4"  # Hardware specification
+    visibility: "private"  # Model visibility (public or private)
+    trainer_version: "ostris/flux-dev-lora-trainer:4ffd32160efd92e956d39c5338a9b8fbafca58e03f791f6d8011f3e20e8ea6fa"
+
+  # Generation configuration
+  generation:
+    model: "dev"  # Model type
+    aspect_ratio: "1:1"  # Output aspect ratio
+    num_outputs: 1  # Number of images to generate
+    output_format: "jpg"  # Output format (jpg or png)
+    output_quality: 90  # Output quality (1-100)
+    lora_scale: 1.0  # LoRA scale (strength of fine-tuning)
+    guidance_scale: 3.5  # How strictly to follow prompt
+    prompt_strength: 0.8  # Prompt adherence strength
+    num_inference_steps: 28  # Number of denoising steps
+    extra_lora_scale: 1.0  # Additional LoRA scaling
+    disable_safety_checker: true  # Disable safety checker
+
 # Available style presets from Stability AI
 # See: https://platform.stability.ai/docs/api-reference#tag/v1generation/operation/textToImage
 style_presets:

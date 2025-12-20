@@ -49,10 +49,10 @@ export const deleteImage = async (axiosInstance: AxiosInstance, imageId: string)
     return response.data;
 };
 
-export const listImages = async (axiosInstance: AxiosInstance, projectId: string, directory: string) => {
-    const response = await axiosInstance.get(`/api/images/list`, {
-        params: { project_id: projectId, directory },
-    });
+export const listImages = async (axiosInstance: AxiosInstance, projectId: string, directory?: string) => {
+    // Note: directory parameter is kept for backwards compatibility but not used
+    // The backend doesn't support directory filtering yet
+    const response = await axiosInstance.get(`/api/images/list/${projectId}`);
     return response.data;
 };
 

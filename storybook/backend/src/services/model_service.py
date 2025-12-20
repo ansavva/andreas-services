@@ -1,95 +1,139 @@
-# https://replicate.com/blog/fine-tune-flux
-from typing import List
-import replicate
+"""
+Model Service - Handles AI model training and generation
+Orchestrates Replicate service for FLUX model operations
+"""
+from typing import Optional, Dict, Any
 from flask import request
-import requests
 from io import BytesIO
 from werkzeug.datastructures import FileStorage
 
 from src.models.image import Image
 from src.services.image_service import ImageService
+from src.proxies.replicate_service import ReplicateService
+
 
 class ModelService:
+    """
+    Service for managing AI model training and image generation
+    Wraps ReplicateService with user-specific model naming
+    Configuration is loaded from config.yaml via ReplicateService
+    """
 
     def __init__(self):
         self.image_service = ImageService()
+        self.replicate = ReplicateService()  # Owner loaded from config.yaml
 
-    def __get_model_name(self, project_id):
+    def __get_model_name(self, project_id: str) -> str:
+        """
+        Generate model name based on user ID and project ID
+
+        Args:
+            project_id: Model project ID
+
+        Returns:
+            Model name in format: flux_{user_id}_{project_id}
+        """
         user_id = request.cognito_claims['sub']
-        model_name = f"flux_{user_id}_{project_id}"
-        return model_name
+        return f"flux_{user_id}_{project_id}"
 
     def exists(self, project_id: str) -> bool:
-        model_name = self.__get_model_name(project_id)
-        try:
-            # Try to get the model by name
-            replicate.models.get(f"ansavva/{model_name}")
-            return True
-        except:
-            return False
+        """
+        Check if a trained model exists for this project
 
-    def train(self, project_id: str) -> str:
+        Args:
+            project_id: Model project ID
+
+        Returns:
+            True if model exists, False otherwise
+        """
         model_name = self.__get_model_name(project_id)
-        try:
-            # Try to get the model by name
-            model = replicate.models.get(f"ansavva/{model_name}")
-        except:
-            # If model not found, create it
-            model = replicate.models.create(
-                owner="ansavva",
-                name=model_name,
-                visibility="private",  # or "private" if you prefer
-                hardware="gpu-t4",  # Replicate will override this for fine-tuned models
-                description="A fine-tuned FLUX.1 model"
-            )
+        return self.replicate.model_exists(model_name)
+
+    def train(self,
+             project_id: str,
+             config_override: Optional[Dict[str, Any]] = None) -> str:
+        """
+        Train a FLUX model with uploaded images
+
+        Args:
+            project_id: Model project ID
+            config_override: Optional dict to override specific config values from YAML
+                           Example: {"steps": 1500, "learning_rate": 0.0005}
+
+        Returns:
+            Training ID for status polling
+        """
+        model_name = self.__get_model_name(project_id)
+
+        # Create ZIP of training images
         zip_file_buffer = self.image_service.create_zip(project_id)
-        training = replicate.trainings.create(
-            version="ostris/flux-dev-lora-trainer:4ffd32160efd92e956d39c5338a9b8fbafca58e03f791f6d8011f3e20e8ea6fa",
-            input={
-                "input_images": zip_file_buffer,
-                "steps": 1000
-            },
-            destination=f"{model.owner}/{model.name}"
+
+        # Start training (config comes from YAML, with optional overrides)
+        training_id = self.replicate.train(
+            model_name=model_name,
+            training_data=zip_file_buffer,
+            config_override=config_override
         )
-        return training.id
+
+        return training_id
 
     def check_training_status(self, training_id: str) -> str:
-        # Query the training status
-        training_status = replicate.trainings.get(training_id)
-        status = training_status.status
-        return status
+        """
+        Check the status of a training job
 
-    def generate(self, prompt: str, project_id: str) -> Image:
+        Args:
+            training_id: ID of the training job
+
+        Returns:
+            Status string (e.g., "starting", "processing", "succeeded", "failed")
+        """
+        return self.replicate.get_training_status(training_id)
+
+    def generate(self,
+                prompt: str,
+                project_id: str,
+                config_override: Optional[Dict[str, Any]] = None) -> Image:
+        """
+        Generate an image using the trained model
+
+        Args:
+            prompt: Text prompt for image generation
+            project_id: Model project ID
+            config_override: Optional dict to override specific config values from YAML
+                           Example: {"aspect_ratio": "16:9", "guidance_scale": 4.0}
+
+        Returns:
+            Image object with metadata
+
+        Raises:
+            Exception: If generation or upload fails
+        """
         model_name = self.__get_model_name(project_id)
-        model = replicate.models.get(f"ansavva/{model_name}")
-        output = replicate.run(
-            f"{model.owner}/{model.name}:{model.latest_version.id}",
-            input={
-                "model": "dev",
-                "prompt": prompt,
-                "lora_scale": 1,
-                "num_outputs": 1,
-                "aspect_ratio": "1:1",
-                "output_format": "jpg",
-                "guidance_scale": 3.5,
-                "output_quality": 90,
-                "prompt_strength": 0.8,
-                "extra_lora_scale": 1,
-                "num_inference_steps": 28,
-                "disable_safety_checker": True
-            }
+
+        # Generate image (config comes from YAML, with optional overrides)
+        image_bytes = self.replicate.generate(
+            prompt=prompt,
+            model_name=model_name,
+            config_override=config_override
         )
-        # Get the URL of the generated image
-        image_url = output[0].url
-        # Download the image from the URL
-        response = requests.get(image_url)
-        # Check if the request was successful
-        if response.status_code == 200:
-            # Convert the image content into a file-like object
-            image_data = BytesIO(response.content)
-            file = FileStorage(image_data)
-            # Call the upload_image method to upload the image to S3
-            image = self.image_service.upload_image(project_id, file, "out.jpg")
-            return image
-        else:
-            raise Exception("Failed to download generated image from Replicate")
+
+        # Convert bytes to file-like object
+        image_data = BytesIO(image_bytes)
+        file = FileStorage(image_data)
+
+        # Upload to storage and create database record
+        image = self.image_service.upload_image(project_id, file, "out.jpg")
+
+        return image
+
+    def cancel_training(self, training_id: str) -> bool:
+        """
+        Cancel an in-progress training job
+
+        Args:
+            training_id: ID of the training job to cancel
+
+        Returns:
+            True if cancelled successfully, False otherwise
+        """
+        return self.replicate.cancel_training(training_id)

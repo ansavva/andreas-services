@@ -190,6 +190,19 @@ class Config:
 
         return ", ".join(negative_items)
 
+    def build_scene_prompt(self, scene_name: str, character_description: str) -> str:
+        """
+        Build prompt for preview scene generation
+
+        Args:
+            scene_name: Name of the scene
+            character_description: Description of the character
+
+        Returns:
+            Complete scene prompt
+        """
+        return f"{character_description} in a {scene_name} setting"
+
 
 # Singleton instance
 config = Config()

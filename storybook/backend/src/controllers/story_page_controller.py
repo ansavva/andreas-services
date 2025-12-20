@@ -98,7 +98,7 @@ def update_illustration_prompt(page_id):
 def generate_page_image(page_id):
     """Generate image for a page using Stability.ai"""
     try:
-        from src.services.stability_service import StabilityService
+        from src.proxies.stability_service import StabilityService
         from src.data.character_asset_repo import CharacterAssetRepo
         from src.data.story_project_repo import StoryProjectRepo
         from src.storage.factory import get_file_storage

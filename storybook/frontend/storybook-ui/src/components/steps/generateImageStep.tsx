@@ -7,8 +7,8 @@ import { listImages } from "@/apis/imageController";
 import ImageGrid from "@/components/images/imageGrid";
 
 type ImageProps = {
-  key: string;
-  name: string;
+  id: string;
+  filename?: string;
 };
 
 type GenerateImageStepProps = {
@@ -27,8 +27,11 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({ projectId }) => {
     setLoadingImages(true);
     try {
       const response = await listImages(axiosInstance, projectId, "generated_images");
-      setImages(response.files);
-    } finally { 
+      setImages(response.images || []);
+    } catch (error) {
+      console.error("Error fetching images:", error);
+      setImages([]);
+    } finally {
       setLoading(false);
       setLoadingImages(false);
     }
@@ -47,8 +50,8 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({ projectId }) => {
     }
   };
 
-  const handleImageDelete = (key: string) => {
-    setImages((prevImages) => prevImages.filter((img) => img.key !== key));
+  const handleImageDelete = (imageId: string) => {
+    setImages((prevImages) => prevImages.filter((img) => img.id !== imageId));
   };
 
   useEffect(() => {
@@ -77,9 +80,7 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({ projectId }) => {
         Generate Image
       </Button>
       <div className="mt-4">
-        <ImageGrid 
-          projectId={projectId} 
-          directory="generated_images" 
+        <ImageGrid
           images={images}
           isLoading={loadingImages}
           onImageDelete={handleImageDelete}
