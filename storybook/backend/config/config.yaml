@@ -45,8 +45,8 @@ story_illustrations:
   # Image generation parameters
   image_strength: 0.28
 
-# Replicate FLUX Model Configuration
-# Reference: https://replicate.com/blog/fine-tune-flux
+# Replicate SDXL Model Configuration
+# Reference: https://replicate.com/blog/fine-tune-sdxl
 replicate:
   # Account configuration
   owner: "ansavva"  # Replicate account username
@@ -54,16 +54,19 @@ replicate:
   # Training configuration
   training:
     steps: 1000  # Number of training steps
-    learning_rate: 0.0004  # Learning rate for training
-    batch_size: 1  # Training batch size
-    resolution: "512,768,1024"  # Training resolutions (comma-separated)
+    learning_rate: 0.0001  # Learning rate for training (SDXL optimal)
+    batch_size: 4  # Training batch size (SDXL default)
+    resolution: 768  # Training resolution in pixels (square)
     autocaption: true  # Automatically caption images
     caption_dropout_rate: 0.05  # Rate to drop captions during training
     optimizer: "adamw8bit"  # Optimizer type
     trigger_word: null  # Optional trigger word for model
+    token_string: "TOK"  # Unique identifier for trained concept (SDXL)
+    is_lora: true  # Use LoRA training instead of full fine-tuning
+    unet_learning_rate: 0.000001  # U-Net learning rate (1e-6 to 1e-5)
     hardware: "gpu-t4"  # Hardware specification
     visibility: "private"  # Model visibility (public or private)
-    trainer_version: "ostris/flux-dev-lora-trainer:4ffd32160efd92e956d39c5338a9b8fbafca58e03f791f6d8011f3e20e8ea6fa"
+    trainer_version: "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b"
 
   # Generation configuration
   generation:

@@ -1,6 +1,6 @@
 """
 Replicate Service - Wrapper for Replicate API interactions
-Handles FLUX model training and image generation using fine-tuned models
+Handles SDXL model training and image generation using fine-tuned models
 Configuration is loaded from config.yaml
 """
 from typing import Optional, Dict, Any, BinaryIO
@@ -12,9 +12,9 @@ from src.config.replicate_config import replicate_config
 class ReplicateService:
     """
     Service for interacting with Replicate API
-    Handles FLUX model training and image generation
+    Handles SDXL model training and image generation
 
-    Reference: https://replicate.com/blog/fine-tune-flux
+    Reference: https://replicate.com/blog/fine-tune-sdxl
     """
 
     def __init__(self, owner: Optional[str] = None):
@@ -45,9 +45,9 @@ class ReplicateService:
 
     def create_model(self,
                     model_name: str,
-                    description: str = "A fine-tuned FLUX.1 model",
+                    description: str = "A fine-tuned SDXL model",
                     visibility: Optional[str] = None,
-                    hardware: Optional[str] = None) -> replicate.models.Model:
+                    hardware: Optional[str] = None):
         """
         Create a new model in Replicate
 
@@ -73,7 +73,7 @@ class ReplicateService:
              training_data: BinaryIO,
              config_override: Optional[Dict[str, Any]] = None) -> str:
         """
-        Train a FLUX model with the provided images
+        Train an SDXL model with the provided images
 
         Args:
             model_name: Name of the model to train
@@ -99,6 +99,9 @@ class ReplicateService:
             "autocaption": self.config.get_autocaption(),
             "caption_dropout_rate": self.config.get_caption_dropout_rate(),
             "optimizer": self.config.get_optimizer(),
+            "token_string": self.config.get_token_string(),
+            "is_lora": self.config.get_is_lora(),
+            "unet_learning_rate": self.config.get_unet_learning_rate(),
         }
 
         # Add trigger word if configured
@@ -140,7 +143,7 @@ class ReplicateService:
                 model_name: str,
                 config_override: Optional[Dict[str, Any]] = None) -> bytes:
         """
-        Generate an image using a trained FLUX model
+        Generate an image using a trained SDXL model
 
         Args:
             prompt: Text prompt for image generation

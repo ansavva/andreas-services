@@ -1,6 +1,6 @@
 """
 Replicate Configuration Loader
-Loads and manages Replicate FLUX model configuration from YAML file
+Loads and manages Replicate SDXL model configuration from YAML file
 """
 import yaml
 from typing import Dict, Any
@@ -88,6 +88,18 @@ class ReplicateConfig:
     def get_trigger_word(self) -> str:
         """Get trigger word for model (default: None)"""
         return self.get_training_config().get('trigger_word')
+
+    def get_token_string(self) -> str:
+        """Get token string for SDXL training (default: 'TOK')"""
+        return self.get_training_config().get('token_string', 'TOK')
+
+    def get_is_lora(self) -> bool:
+        """Get whether to use LoRA training (default: True)"""
+        return self.get_training_config().get('is_lora', True)
+
+    def get_unet_learning_rate(self) -> float:
+        """Get U-Net learning rate for SDXL (default: 1e-06)"""
+        return self.get_training_config().get('unet_learning_rate', 0.000001)
 
     def get_hardware(self) -> str:
         """Get hardware specification (default: 'gpu-t4')"""

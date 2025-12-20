@@ -442,7 +442,7 @@ const StoryProject: React.FC = () => {
     const isNotFound = error.includes('not found');
     return (
       <DefaultLayout>
-        <div className="container mx-auto px-4 py-8">
+        <div className="container mx-auto px-4">
           <ErrorDisplay
             title={isNotFound ? 'Project Not Found' : 'Error Loading Project'}
             message={error}
@@ -463,7 +463,7 @@ const StoryProject: React.FC = () => {
 
   return (
     <DefaultLayout>
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4">
         <Stepper steps={steps} currentStep={currentStep} />
 
         <div className="mt-8">

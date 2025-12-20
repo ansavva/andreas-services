@@ -18,14 +18,47 @@ import { Link as RouterLink } from "react-router-dom";
 import { link as linkStyles } from "@heroui/theme";
 import clsx from "clsx";
 import { signInWithRedirect, signOut } from 'aws-amplify/auth';
+import { useState, useEffect } from "react";
 
 import { siteConfig } from "@/config/site";
 import { ThemeSwitch } from "@/components/common/theme-switch";
 import { useUserContext } from "@/hooks/userContext";
+import { useAxios } from "@/hooks/axiosContext";
+import { getMyProfile } from "@/apis/userProfileController";
+import { downloadImageById } from "@/apis/imageController";
 
 export const Navbar = () => {
   const { currentUser, isAuthenticated } = useUserContext();
+  const { axiosInstance } = useAxios();
   const currentPath = window.location.pathname;
+  const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
+
+  // Fetch user profile on mount
+  useEffect(() => {
+    if (isAuthenticated && axiosInstance) {
+      fetchUserProfile();
+    }
+  }, [isAuthenticated, axiosInstance]);
+
+  const fetchUserProfile = async () => {
+    try {
+      const profile = await getMyProfile(axiosInstance);
+      setDisplayName(profile.display_name);
+
+      // Fetch profile image if exists
+      if (profile.profile_image_id) {
+        const response = await downloadImageById(axiosInstance, profile.profile_image_id);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setProfileImageUrl(reader.result as string);
+        };
+        reader.readAsDataURL(response);
+      }
+    } catch (error) {
+      console.error("Error fetching profile:", error);
+    }
+  };
 
   const handleLogin = async () => {
     await signInWithRedirect();
@@ -89,13 +122,17 @@ export const Navbar = () => {
                   isBordered
                   as="button"
                   className="transition-transform"
-                  src={currentUser?.picture}
+                  src={profileImageUrl || undefined}
+                  name={displayName || currentUser?.username}
                 />
               </DropdownTrigger>
               <DropdownMenu aria-label="Profile Actions" variant="flat">
-                <DropdownItem key="profile" className="h-14 gap-2">
+                <DropdownItem key="profile-info" className="h-14 gap-2">
                   <p className="font-semibold">Signed in as</p>
-                  <p className="font-semibold">{currentUser?.name}</p>
+                  <p className="font-semibold">{displayName || currentUser?.name || currentUser?.username}</p>
+                </DropdownItem>
+                <DropdownItem key="profile" as={RouterLink} to="/profile">
+                  Profile Settings
                 </DropdownItem>
                 <DropdownItem key="logout" color="danger" onClick={handleLogout}>
                   Log Out
@@ -124,13 +161,17 @@ export const Navbar = () => {
                   isBordered
                   as="button"
                   className="transition-transform"
-                  src={currentUser?.picture}
+                  src={profileImageUrl || undefined}
+                  name={displayName || currentUser?.username}
                 />
               </DropdownTrigger>
               <DropdownMenu aria-label="Profile Actions" variant="flat">
-                <DropdownItem key="profile" className="h-14 gap-2">
+                <DropdownItem key="profile-info" className="h-14 gap-2">
                   <p className="font-semibold">Signed in as</p>
-                  <p className="font-semibold">{currentUser?.name}</p>
+                  <p className="font-semibold">{displayName || currentUser?.name || currentUser?.username}</p>
+                </DropdownItem>
+                <DropdownItem key="profile" as={RouterLink} to="/profile">
+                  Profile Settings
                 </DropdownItem>
                 <DropdownItem key="logout" color="danger" onClick={handleLogout}>
                   Log Out

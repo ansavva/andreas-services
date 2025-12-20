@@ -111,7 +111,7 @@ const ModelProjectPage: React.FC = () => {
     const isNotFound = error.includes("not found");
     return (
       <DefaultLayout>
-        <div className="container mx-auto px-4 py-8">
+        <div className="container mx-auto px-4">
           <ErrorDisplay
             title={isNotFound ? "Project Not Found" : "Error Loading Project"}
             message={error}
@@ -132,7 +132,7 @@ const ModelProjectPage: React.FC = () => {
 
   return (
     <DefaultLayout>
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4">
         <h1 className="text-5xl font-extrabold leading-none mb-4">
           {project ? project.name : project_id === "new" ? "New Model Project" : "Loading..."}
         </h1>

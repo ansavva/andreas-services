@@ -8,6 +8,7 @@ import StatusPage from "@/pages/status";
 import ModelProjectPage from "@/pages/modelProject";
 import ProjectsPage from "@/pages/projects";
 import StoryProjectPage from "@/pages/storyProject";
+import ProfilePage from "@/pages/profile";
 import NotFoundPage from "@/pages/notFound";
 
 function App() {
@@ -26,6 +27,9 @@ function App() {
       </Route>
       <Route element={<PrivateRoute />}>
         <Route element={<StoryProjectPage />} path="/story-project/:projectId" />
+      </Route>
+      <Route element={<PrivateRoute />}>
+        <Route element={<ProfilePage />} path="/profile" />
       </Route>
       {/* 404 catch-all route */}
       <Route element={<NotFoundPage />} path="*" />
