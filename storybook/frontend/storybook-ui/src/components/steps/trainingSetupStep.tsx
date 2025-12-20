@@ -1,12 +1,13 @@
 import React, { useRef, useState, useEffect } from "react";
-import { Button, Card, CardBody, Spinner } from "@heroui/react";
+import { Button, Card, CardBody, Input, Spinner } from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUpload, faWandMagicSparkles, faCheck } from "@fortawesome/free-solid-svg-icons";
 import { useAxios } from "@/hooks/axiosContext";
 import { useToast } from "@/hooks/useToast";
 import { uploadImage, deleteImage, getImagesByProject } from "@/apis/imageController";
 import { train, training_status } from "@/apis/modelController";
-import { updateModelProjectStatus } from "@/apis/modelProjectController";
+import { createModelProject } from "@/apis/modelProjectController";
+import { useNavigate } from "react-router-dom";
 import ImageGrid from "@/components/images/imageGrid";
 import { getErrorMessage, logError } from "@/utils/errorHandling";
 
@@ -15,24 +16,34 @@ type ImageFile = {
   name: string;
 };
 
-type ImageUploadStepProps = {
+type TrainingSetupStepProps = {
   projectId: string;
   project: any;
+  onProjectCreated: (project: any) => void;
   onTrainingComplete: () => void;
 };
 
-const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
+const TrainingSetupStep: React.FC<TrainingSetupStepProps> = ({
   projectId,
   project,
+  onProjectCreated,
   onTrainingComplete,
 }) => {
   const { axiosInstance } = useAxios();
   const { showError, showSuccess } = useToast();
+  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Subject name state (only for new projects)
+  const [subjectName, setSubjectName] = useState("");
+  const [subjectNameError, setSubjectNameError] = useState("");
+
+  // Images state
   const [images, setImages] = useState<ImageFile[]>([]);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [isLoadingImages, setIsLoadingImages] = useState(false);
+
+  // Training state
   const [isTraining, setIsTraining] = useState(false);
   const [trainingStatus, setTrainingStatus] = useState<string>("pending");
   const [trainingComplete, setTrainingComplete] = useState(false);
@@ -40,6 +51,7 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
   const allowedFileTypes = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
   const maxFileSize = 10 * 1024 * 1024; // 10MB
 
+  // Load existing images if project exists
   useEffect(() => {
     if (projectId && projectId !== "new") {
       fetchImages();
@@ -111,7 +123,7 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
 
   const handleUpload = async (filesToUpload: File[]) => {
     if (!projectId || projectId === "new") {
-      showError("Project not found");
+      showError("Please start training first to create the project");
       return;
     }
 
@@ -140,6 +152,15 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
   };
 
   const handleStartTraining = async () => {
+    // Validate subject name for new projects
+    if (projectId === "new") {
+      if (!subjectName.trim()) {
+        setSubjectNameError("Subject name is required");
+        return;
+      }
+      setSubjectNameError("");
+    }
+
     if (images.length === 0) {
       showError("Please upload at least one image before training");
       return;
@@ -149,12 +170,26 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
     setTrainingStatus("pending");
 
     try {
+      let currentProjectId = projectId;
+
+      // If this is a new model project, create it first
+      if (projectId === "new") {
+        const newProject = await createModelProject(axiosInstance, subjectName, subjectName);
+        onProjectCreated(newProject);
+        currentProjectId = newProject.id;
+
+        // Update URL to reflect the actual model project ID
+        navigate(`/model-project/${newProject.id}`, { replace: true });
+
+        // Upload images to the newly created project
+        if (fileInputRef.current?.files) {
+          const files = Array.from(fileInputRef.current.files);
+          await uploadImage(axiosInstance, currentProjectId, "uploaded_images", files);
+        }
+      }
+
       // Start training
-      const response = await train(axiosInstance, projectId, "uploaded_images");
-
-      // Update project status to TRAINING
-      await updateModelProjectStatus(axiosInstance, projectId, "TRAINING");
-
+      const response = await train(axiosInstance, currentProjectId, "uploaded_images");
       setTrainingStatus("running");
       await pollTrainingStatus(response.training_id);
     } catch (error: any) {
@@ -174,10 +209,6 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
           clearInterval(intervalId);
           setIsTraining(false);
           setTrainingComplete(true);
-
-          // Update project status to READY
-          await updateModelProjectStatus(axiosInstance, projectId, "READY");
-
           showSuccess("Training completed successfully!");
         } else if (status === "failed") {
           clearInterval(intervalId);
@@ -193,20 +224,47 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
     }, 5000);
   };
 
+  const canStartTraining = projectId === "new" ? subjectName.trim() && images.length > 0 : images.length > 0;
+
   return (
     <div className="max-w-7xl mx-auto">
-      <h3 className="text-2xl font-bold mb-2">Upload Training Images</h3>
+      <h3 className="text-2xl font-bold mb-2">Train Your Model</h3>
       <p className="text-gray-600 dark:text-gray-400 mb-6">
-        Upload images of {project?.subject_name || 'your subject'} to train your AI model.
+        {projectId === "new"
+          ? "Enter a name for your subject and upload images to train your AI model."
+          : `Upload images of ${project?.subjectName || 'your subject'} and start training your AI model.`}
       </p>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left Panel: Controls */}
         <div className="space-y-4">
+          {/* Subject Name Input (only for new projects) */}
+          {projectId === "new" && (
+            <Card>
+              <CardBody className="p-6">
+                <h4 className="text-lg font-semibold mb-3">Subject Information</h4>
+                <Input
+                  label="Subject Name"
+                  placeholder="e.g., John, My Dog, etc."
+                  value={subjectName}
+                  onValueChange={(value) => {
+                    setSubjectName(value);
+                    if (value.trim()) setSubjectNameError("");
+                  }}
+                  isInvalid={!!subjectNameError}
+                  errorMessage={subjectNameError}
+                  isRequired
+                  variant="bordered"
+                  isDisabled={isTraining || trainingComplete}
+                />
+              </CardBody>
+            </Card>
+          )}
+
           {/* Photo Upload */}
           <Card>
             <CardBody className="p-6">
-              <h4 className="text-lg font-semibold mb-3">Upload Images</h4>
+              <h4 className="text-lg font-semibold mb-3">Upload Training Images</h4>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 Upload images (JPG, PNG, HEIC) of your subject
               </p>
@@ -225,12 +283,18 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
                 variant="flat"
                 startContent={<FontAwesomeIcon icon={faUpload} />}
                 onPress={handleFileSelect}
-                isDisabled={isUploadingImages || isTraining || trainingComplete}
+                isDisabled={isUploadingImages || isTraining || trainingComplete || (projectId === "new")}
                 isLoading={isUploadingImages}
                 className="mb-4"
               >
                 {isUploadingImages ? "Uploading..." : "Select Images"}
               </Button>
+
+              {(projectId === "new") && (
+                <p className="text-sm text-warning mb-4">
+                  Note: You'll be able to upload images after starting training
+                </p>
+              )}
 
               {images.length > 0 && (
                 <div>
@@ -256,7 +320,7 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
               startContent={<FontAwesomeIcon icon={faWandMagicSparkles} />}
               onPress={handleStartTraining}
               isLoading={isTraining}
-              isDisabled={images.length === 0 || isTraining}
+              isDisabled={!canStartTraining || isTraining}
             >
               {isTraining ? "Training..." : "Start Training"}
             </Button>
@@ -293,7 +357,7 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
                 </div>
                 <h4 className="text-xl font-bold text-success mb-2">Training Complete!</h4>
                 <p className="text-gray-600 dark:text-gray-400 mb-6">
-                  Your model for <strong>{project?.subject_name}</strong> is ready to use.
+                  Your model for <strong>{project?.subjectName || subjectName}</strong> is ready to use.
                 </p>
                 <div className="bg-success-50 dark:bg-success-900/20 p-4 rounded-lg">
                   <p className="text-sm text-success-700 dark:text-success-300">
@@ -318,4 +382,4 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
   );
 };
 
-export default ImageUploadStep;
+export default TrainingSetupStep;

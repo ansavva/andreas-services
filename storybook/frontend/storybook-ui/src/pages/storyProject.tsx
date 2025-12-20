@@ -72,10 +72,10 @@ const StoryProject: React.FC = () => {
   const [compilingStory, setCompilingStory] = useState(false);
 
   const steps = [
-    'Kid Setup',
-    'Character Creation',
-    'Story Writing',
-    'Page Editing',
+    { title: 'Kid Setup', description: 'Enter child information and upload photos' },
+    { title: 'Character Creation', description: 'Generate and approve character design' },
+    { title: 'Story Writing', description: 'Chat with AI to create your story' },
+    { title: 'Page Editing', description: 'Edit pages and generate illustrations' },
   ];
 
   useEffect(() => {

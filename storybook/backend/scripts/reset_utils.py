@@ -2,7 +2,10 @@
 Shared utilities for reset scripts
 """
 import os
+import sys
 import shutil
+import time
+import requests
 from pymongo import MongoClient
 from dotenv import load_dotenv
 
@@ -102,3 +105,105 @@ def reset_storage():
 
     print(f"  ✓ Deleted {deleted_count} item(s)")
     print(f"\n✅ Storage cleared: {file_count} file(s) deleted")
+
+
+def reset_replicate():
+    """Delete all Replicate models based on database model_projects"""
+    load_env()
+
+    API_BASE = "https://api.replicate.com/v1"
+
+    # Get Replicate API token
+    api_token = os.getenv('REPLICATE_API_TOKEN')
+    if not api_token:
+        print("\n⚠️  Warning: REPLICATE_API_TOKEN not found in .env file")
+        print("   Skipping Replicate cleanup")
+        return
+
+    # Get database URL
+    database_url = os.getenv('MONGODB_URL', 'mongodb://localhost:27017/storybook_dev')
+    database_name = database_url.split('/')[-1]
+
+    # Create session with auth
+    session = requests.Session()
+    session.headers.update({
+        "Authorization": f"Bearer {api_token}",
+        "Accept": "application/json",
+    })
+
+    try:
+        # Get account username
+        resp = session.get(f"{API_BASE}/account", timeout=30)
+        if resp.status_code != 200:
+            print(f"\n⚠️  Warning: Failed to get Replicate account info: {resp.status_code}")
+            print("   Skipping Replicate cleanup")
+            return
+
+        replicate_username = resp.json().get("username")
+        print(f"\n🤖 Replicate: {replicate_username}")
+
+        # Connect to MongoDB and get model projects
+        client = MongoClient(database_url)
+        db = client[database_name]
+        projects = list(db.model_projects.find({}))
+        client.close()
+
+        # Build model names: flux_{user_id}_{project_id}
+        models = []
+        for project in projects:
+            project_id = str(project.get('_id'))
+            user_id = project.get('user_id')
+            if project_id and user_id:
+                model_name = f"flux_{user_id}_{project_id}"
+                models.append(model_name)
+
+        if not models:
+            print("   No model projects found in database")
+            print("\n✅ Replicate: No models to delete")
+            return
+
+        print(f"\nDeleting {len(models)} Replicate model(s)...\n")
+
+        deleted_count = 0
+        failed_count = 0
+
+        for model_name in models:
+            model_id = f"{replicate_username}/{model_name}"
+
+            # List and delete all versions first
+            version_url = f"{API_BASE}/models/{replicate_username}/{model_name}/versions"
+            version_ids = []
+
+            while version_url:
+                resp = session.get(version_url, timeout=30)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for v in data.get("results", []):
+                        vid = v.get("id")
+                        if vid:
+                            version_ids.append(vid)
+                    version_url = data.get("next")
+                else:
+                    break
+
+            # Delete versions
+            for vid in reversed(version_ids):
+                session.delete(f"{API_BASE}/models/{replicate_username}/{model_name}/versions/{vid}", timeout=30)
+                time.sleep(0.1)
+
+            # Delete the model
+            resp = session.delete(f"{API_BASE}/models/{replicate_username}/{model_name}", timeout=30)
+            if resp.status_code in (200, 202, 204):
+                deleted_count += 1
+                print(f"  ✓ {model_id}")
+            else:
+                failed_count += 1
+                print(f"  ✗ {model_id}")
+
+        print(f"\n✅ Replicate cleared: {deleted_count} model(s) deleted")
+        if failed_count > 0:
+            print(f"   ⚠️  Failed to delete: {failed_count} model(s)")
+
+    except Exception as e:
+        print(f"\n❌ Error during Replicate cleanup: {e}")
+        print("   Continuing with other cleanup tasks...")

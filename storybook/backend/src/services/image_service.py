@@ -6,7 +6,7 @@ import zipfile
 from PIL import Image as PILImage
 
 from src.models.image import Image
-from src.data.project_repo import ProjectRepo
+from src.data.model_project_repo import ModelProjectRepo
 from src.data.image_repo import ImageRepo
 
 # Import pillow_heif for HEIC conversion
@@ -26,7 +26,7 @@ class ImageService:
 
     def __init__(self):
         self.image_repo = ImageRepo()
-        self.project_repo = ProjectRepo()
+        self.model_project_repo = ModelProjectRepo()
 
     def _find_best_sdxl_dimensions(self, width: int, height: int) -> tuple:
         """
@@ -94,8 +94,20 @@ class ImageService:
             target_width, target_height = self._find_best_sdxl_dimensions(orig_width, orig_height)
             print(f"[IMAGE NORMALIZE] Resizing from {orig_width}x{orig_height} to {target_width}x{target_height}")
 
-            # Resize image
-            img = img.resize((target_width, target_height), PILImage.Resampling.LANCZOS)
+            # Calculate the scaling factor to fit within target dimensions while maintaining aspect ratio
+            scale = min(target_width / orig_width, target_height / orig_height)
+            new_width = int(orig_width * scale)
+            new_height = int(orig_height * scale)
+
+            # Resize image while maintaining aspect ratio
+            img = img.resize((new_width, new_height), PILImage.Resampling.LANCZOS)
+
+            # Create a new image with the target dimensions and paste the resized image centered
+            final_img = PILImage.new('RGB', (target_width, target_height), (255, 255, 255))
+            paste_x = (target_width - new_width) // 2
+            paste_y = (target_height - new_height) // 2
+            final_img.paste(img, (paste_x, paste_y))
+            img = final_img
 
             # Convert to RGB if necessary (for PNG compatibility)
             if img.mode not in ('RGB', 'RGBA', 'L'):
@@ -157,7 +169,7 @@ class ImageService:
 
     def create_zip(self, project_id: str):
         """Create a zip file of all training images for a project"""
-        project = self.project_repo.get_project(project_id)
+        project = self.model_project_repo.get_project(project_id)
         # List all images for the project
         images = self.list_images(project_id)
         # Create an in-memory zip file

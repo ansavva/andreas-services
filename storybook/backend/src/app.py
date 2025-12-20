@@ -9,7 +9,7 @@ from src.cognito_validator import CognitoJWTValidator, require_cognito_auth
 from src.data.database import init_db
 from src.controllers.image_controller import image_controller
 from src.controllers.model_controller import model_controller
-from src.controllers.project_controller import project_controller
+from src.controllers.model_project_controller import model_project_controller
 from src.controllers.story_project_controller import story_project_controller
 from src.controllers.child_profile_controller import child_profile_controller
 from src.controllers.character_controller import character_controller
@@ -51,9 +51,9 @@ def image_authentication():
 def model_authentication():
     pass
 
-@project_controller.before_request
+@model_project_controller.before_request
 @require_cognito_auth(cognito_validator)
-def project_authentication():
+def model_project_authentication():
     pass
 
 @story_project_controller.before_request
@@ -89,7 +89,7 @@ def config_authentication():
 # Register Blueprints
 app.register_blueprint(image_controller, url_prefix='/api/images')
 app.register_blueprint(model_controller, url_prefix='/api/model')
-app.register_blueprint(project_controller, url_prefix='/api/projects')
+app.register_blueprint(model_project_controller, url_prefix='/api/model-projects')
 app.register_blueprint(story_project_controller, url_prefix='/api/story-projects')
 app.register_blueprint(child_profile_controller, url_prefix='/api/child-profiles')
 app.register_blueprint(character_controller, url_prefix='/api/characters')

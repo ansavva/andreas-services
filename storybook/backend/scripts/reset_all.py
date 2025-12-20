@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 Reset All Script
-Resets both the database and storage directory for local development.
+Resets database, storage, and Replicate models for local development.
 WARNING: This will delete ALL data!
 """
 import sys
-from reset_utils import reset_database, reset_storage
+from reset_utils import reset_database, reset_storage, reset_replicate
 
 if __name__ == "__main__":
     # Confirm action
@@ -13,17 +13,19 @@ if __name__ == "__main__":
     print("WARNING: This will delete ALL data!")
     print("  - All database collections will be cleared")
     print("  - All files in storage directory will be deleted")
+    print("  - All Replicate trained models will be deleted")
     print("=" * 60)
     response = input("\nAre you sure you want to continue? (yes/no): ")
 
     if response.lower() in ['yes', 'y']:
         try:
             print("\n" + "=" * 60)
-            print("RESETTING DATABASE AND STORAGE")
+            print("RESETTING DATABASE, STORAGE, AND REPLICATE")
             print("=" * 60)
 
             reset_database()
             reset_storage()
+            reset_replicate()
 
             print("\n" + "=" * 60)
             print("✅ RESET COMPLETE!")

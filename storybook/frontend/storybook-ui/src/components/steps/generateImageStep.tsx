@@ -64,7 +64,7 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({ projectId }) => {
         onChange={(e) => setPrompt(e.target.value)}
         rows={4}
         placeholder="Type your prompt here..."
-        description="Enter any prompot your want with the subject you see above. For example: (andreas being a giant queer)"
+        description="Enter any prompot your want with the subject you see above."
       />
       <Button 
         color="primary" 

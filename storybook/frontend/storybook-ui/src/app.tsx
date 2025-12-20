@@ -5,7 +5,7 @@ import PrivateRoute from "@/privateRoute";
 import IndexPage from "@/pages/index";
 import AboutPage from "@/pages/about";
 import StatusPage from "@/pages/status";
-import ProjectPage from "@/pages/project";
+import ModelProjectPage from "@/pages/modelProject";
 import ProjectsPage from "@/pages/projects";
 import StoryProjectPage from "@/pages/storyProject";
 import NotFoundPage from "@/pages/notFound";
@@ -19,7 +19,7 @@ function App() {
         <Route element={<StatusPage />} path="/status" />
       </Route>
       <Route element={<PrivateRoute />}>
-        <Route element={<ProjectPage />} path="/project/:project_id" />
+        <Route element={<ModelProjectPage />} path="/model-project/:project_id" />
       </Route>
       <Route element={<PrivateRoute />}>
         <Route element={<ProjectsPage />} path="/projects" />
