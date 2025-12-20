@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/useToast";
 export default function ProfilePage() {
   const { axiosInstance } = useAxios();
   const { currentUser } = useUserContext();
-  const { showToast } = useToast();
+  const { showToast, showError } = useToast();
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [displayName, setDisplayName] = useState("");
@@ -41,7 +41,7 @@ export default function ProfilePage() {
       }
     } catch (error) {
       console.error("Error fetching profile:", error);
-      showToast("Failed to load profile", "error");
+      showError("Failed to load profile");
     } finally {
       setIsLoading(false);
     }
@@ -62,7 +62,7 @@ export default function ProfilePage() {
 
   const handleSaveProfile = async () => {
     if (!displayName.trim()) {
-      showToast("Display name cannot be empty", "error");
+      showError("Display name cannot be empty");
       return;
     }
 
@@ -73,7 +73,7 @@ export default function ProfilePage() {
       showToast("Profile updated successfully", "success");
     } catch (error) {
       console.error("Error updating profile:", error);
-      showToast("Failed to update profile", "error");
+      showError("Failed to update profile");
     } finally {
       setIsSaving(false);
     }
@@ -85,13 +85,13 @@ export default function ProfilePage() {
 
     // Validate file type
     if (!file.type.startsWith("image/")) {
-      showToast("Please select an image file", "error");
+      showError("Please select an image file");
       return;
     }
 
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      showToast("Image size must be less than 5MB", "error");
+      showError("Image size must be less than 5MB");
       return;
     }
 
@@ -108,7 +108,7 @@ export default function ProfilePage() {
       showToast("Profile image uploaded successfully", "success");
     } catch (error) {
       console.error("Error uploading profile image:", error);
-      showToast("Failed to upload profile image", "error");
+      showError("Failed to upload profile image");
     } finally {
       setIsUploadingImage(false);
     }
