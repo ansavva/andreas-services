@@ -1,50 +1,29 @@
-// originally written by @imoaazahmed
+import { useMemo } from "react";
+import { useTheme as useNextTheme } from "next-themes";
 
-import { useEffect, useMemo, useState } from "react";
+type ThemeMode = "light" | "dark";
 
-const ThemeProps = {
-  key: "theme",
-  light: "light",
-  dark: "dark",
-} as const;
+export const useTheme = () => {
+  const { theme, setTheme, resolvedTheme } = useNextTheme();
 
-type Theme = typeof ThemeProps.light | typeof ThemeProps.dark;
+  const currentTheme = useMemo<ThemeMode>(() => {
+    const value = theme === "system" ? resolvedTheme : theme;
+    return (value as ThemeMode) || "light";
+  }, [theme, resolvedTheme]);
 
-export const useTheme = (defaultTheme?: Theme) => {
-  const [theme, setTheme] = useState<Theme>(() => {
-    const storedTheme = localStorage.getItem(ThemeProps.key) as Theme | null;
+  const isDark = currentTheme === "dark";
+  const isLight = currentTheme === "light";
 
-    return storedTheme || (defaultTheme ?? ThemeProps.light);
-  });
+  const setLightTheme = () => setTheme("light");
+  const setDarkTheme = () => setTheme("dark");
+  const toggleTheme = () => setTheme(isDark ? "light" : "dark");
 
-  const isDark = useMemo(() => {
-    return theme === ThemeProps.dark;
-  }, [theme]);
-
-  const isLight = useMemo(() => {
-    return theme === ThemeProps.light;
-  }, [theme]);
-
-  const _setTheme = (theme: Theme) => {
-    localStorage.setItem(ThemeProps.key, theme);
-    document.documentElement.classList.remove(
-      ThemeProps.light,
-      ThemeProps.dark,
-    );
-    document.documentElement.classList.add(theme);
-    setTheme(theme);
+  return {
+    theme: currentTheme,
+    isDark,
+    isLight,
+    setLightTheme,
+    setDarkTheme,
+    toggleTheme,
   };
-
-  const setLightTheme = () => _setTheme(ThemeProps.light);
-
-  const setDarkTheme = () => _setTheme(ThemeProps.dark);
-
-  const toggleTheme = () =>
-    theme === ThemeProps.dark ? setLightTheme() : setDarkTheme();
-
-  useEffect(() => {
-    _setTheme(theme);
-  });
-
-  return { theme, isDark, isLight, setLightTheme, setDarkTheme, toggleTheme };
 };

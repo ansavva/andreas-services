@@ -3,10 +3,14 @@ Replicate Service - Wrapper for Replicate API interactions
 Handles SDXL model training and image generation using fine-tuned models
 Configuration is loaded from config.yaml
 """
-from typing import Optional, Dict, Any, BinaryIO
+from typing import Optional, Dict, Any, BinaryIO, List
+import os
+import time
 import replicate
 import requests
 from src.config.replicate_config import replicate_config
+
+API_BASE = "https://api.replicate.com/v1"
 
 
 class ReplicateService:
@@ -26,6 +30,7 @@ class ReplicateService:
         """
         self.config = replicate_config
         self.owner = owner or self.config.get_owner()
+        self.api_token = os.getenv("REPLICATE_API_TOKEN")
 
     def _resolve_model_identifier(self, model_name: str):
         """Split a model identifier into owner/name"""
@@ -263,9 +268,61 @@ class ReplicateService:
             True if deleted successfully, False otherwise
         """
         owner, resolved_name = self._resolve_model_identifier(model_name)
+
+        # Try HTTP API deletion that removes versions first
+        if self._delete_model_via_http(owner, resolved_name):
+            return True
+
+        # Fallback to basic delete via Replicate client
         try:
             model = replicate.models.get(f"{owner}/{resolved_name}")
             model.delete()
             return True
         except:
             return False
+
+    def _delete_model_via_http(self, owner: str, model_name: str) -> bool:
+        """
+        Delete model + versions using direct HTTP calls (mirrors working script)
+        """
+        if not self.api_token:
+            return False
+
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "application/json",
+        }
+
+        version_ids = self._list_versions(owner, model_name, headers)
+
+        for version_id in reversed(version_ids):
+            url = f"{API_BASE}/models/{owner}/{model_name}/versions/{version_id}"
+            resp = requests.delete(url, headers=headers, timeout=30)
+            if resp.status_code not in (200, 202, 204):
+                return False
+            time.sleep(0.1)
+
+        url = f"{API_BASE}/models/{owner}/{model_name}"
+        resp = requests.delete(url, headers=headers, timeout=30)
+        return resp.status_code in (200, 202, 204)
+
+    def _list_versions(self, owner: str, model_name: str, headers: Dict[str, str]) -> List[str]:
+        """List all version IDs for a model using HTTP API"""
+        version_ids: List[str] = []
+        url = f"{API_BASE}/models/{owner}/{model_name}/versions"
+
+        while url:
+            resp = requests.get(url, headers=headers, timeout=30)
+            if resp.status_code == 404:
+                return []
+            if resp.status_code != 200:
+                return []
+
+            data = resp.json()
+            for version in data.get("results", []):
+                vid = version.get("id")
+                if vid:
+                    version_ids.append(vid)
+            url = data.get("next")
+
+        return version_ids

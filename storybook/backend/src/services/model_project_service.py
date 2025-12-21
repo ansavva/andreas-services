@@ -82,10 +82,6 @@ class ModelProjectService:
 
         # 4. Delete Replicate model if it exists
         model_identifier = project.replicate_model_id
-        if not model_identifier:
-            profile = project.model_type or ModelProject.DEFAULT_MODEL_TYPE
-            fallback_name = self.replicate_service.config.build_model_name(profile, user_id, project_id)
-            model_identifier = fallback_name
         try:
             if self.replicate_service.model_exists(model_identifier):
                 self.replicate_service.delete_model(model_identifier)

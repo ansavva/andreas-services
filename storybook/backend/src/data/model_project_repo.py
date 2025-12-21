@@ -34,7 +34,7 @@ class ModelProjectRepo:
         db = get_db()
         user_id = self._get_user_id()
 
-        project_data = db.projects.find_one({
+        project_data = db.model_projects.find_one({
             '_id': project_id,
             'user_id': user_id
         })
@@ -54,7 +54,7 @@ class ModelProjectRepo:
         db = get_db()
         user_id = self._get_user_id()
 
-        projects_data = db.projects.find({
+        projects_data = db.model_projects.find({
             'user_id': user_id
         }).sort('created_at', -1)  # Most recent first
 
@@ -87,7 +87,7 @@ class ModelProjectRepo:
             updated_at=datetime.utcnow()
         )
 
-        db.projects.insert_one(project.to_dict())
+        db.model_projects.insert_one(project.to_dict())
 
         return project
 
@@ -126,7 +126,7 @@ class ModelProjectRepo:
         if replicate_model_id is not None:
             update_fields['replicate_model_id'] = replicate_model_id
 
-        result = db.projects.update_one(
+        result = db.model_projects.update_one(
             {'_id': project_id, 'user_id': user_id},
             {'$set': update_fields}
         )
@@ -156,7 +156,7 @@ class ModelProjectRepo:
         db = get_db()
         user_id = self._get_user_id()
 
-        result = db.projects.update_one(
+        result = db.model_projects.update_one(
             {'_id': project_id, 'user_id': user_id},
             {'$set': {'status': status, 'updated_at': datetime.utcnow()}}
         )
@@ -179,7 +179,7 @@ class ModelProjectRepo:
         db = get_db()
         user_id = self._get_user_id()
 
-        result = db.projects.delete_one({
+        result = db.model_projects.delete_one({
             '_id': project_id,
             'user_id': user_id
         })
