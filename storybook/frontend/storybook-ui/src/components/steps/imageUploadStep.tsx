@@ -1,18 +1,29 @@
 import React, { useRef, useState, useEffect } from "react";
-import { Button, Card, CardBody, Spinner } from "@heroui/react";
+import { Button, Card, CardBody, Spinner, Chip, Image } from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faUpload, faWandMagicSparkles, faCheck } from "@fortawesome/free-solid-svg-icons";
+import { faUpload, faWandMagicSparkles, faCheck, faExclamationCircle } from "@fortawesome/free-solid-svg-icons";
 import { useAxios } from "@/hooks/axiosContext";
 import { useToast } from "@/hooks/useToast";
-import { uploadImage, deleteImage, getImagesByProject } from "@/apis/imageController";
-import { train, training_status } from "@/apis/modelController";
-import { updateModelProjectStatus } from "@/apis/modelProjectController";
+import { uploadImage, deleteImage, getImagesByProject, downloadImageById } from "@/apis/imageController";
+import { train, getTrainingRuns, updateTrainingRunStatus } from "@/apis/modelController";
 import ImageGrid from "@/components/images/imageGrid";
 import { getErrorMessage, logError } from "@/utils/errorHandling";
 
 type ImageFile = {
   id: string;
   name: string;
+};
+
+type TrainingRun = {
+  id: string;
+  project_id: string;
+  replicate_training_id: string | null;
+  image_ids: string[];
+  status: string;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  error_message: string | null;
 };
 
 type ImageUploadStepProps = {
@@ -31,11 +42,12 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [images, setImages] = useState<ImageFile[]>([]);
+  const [trainingRuns, setTrainingRuns] = useState<TrainingRun[]>([]);
+  const [imageThumbnails, setImageThumbnails] = useState<Record<string, string>>({});
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [isLoadingImages, setIsLoadingImages] = useState(false);
-  const [isTraining, setIsTraining] = useState(false);
-  const [trainingStatus, setTrainingStatus] = useState<string>("pending");
-  const [trainingComplete, setTrainingComplete] = useState(false);
+  const [isLoadingTrainingRuns, setIsLoadingTrainingRuns] = useState(false);
+  const [isStartingTraining, setIsStartingTraining] = useState(false);
 
   const allowedFileTypes = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
   const maxFileSize = 10 * 1024 * 1024; // 10MB
@@ -43,6 +55,7 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
   useEffect(() => {
     if (projectId && projectId !== "new") {
       fetchImages();
+      fetchTrainingRuns();
     }
   }, [projectId]);
 
@@ -51,7 +64,8 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
 
     setIsLoadingImages(true);
     try {
-      const response = await getImagesByProject(axiosInstance, projectId);
+      // Only fetch training images, not generated images
+      const response = await getImagesByProject(axiosInstance, projectId, "training");
       const imageFiles = response.images.map((img: any) => ({
         id: img.id,
         name: img.filename || "Image",
@@ -61,6 +75,46 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
       logError("Fetch images", error);
     } finally {
       setIsLoadingImages(false);
+    }
+  };
+
+  const fetchTrainingRuns = async () => {
+    if (!projectId || projectId === "new") return;
+
+    setIsLoadingTrainingRuns(true);
+    try {
+      const response = await getTrainingRuns(axiosInstance, projectId);
+      const runs = response.training_runs || [];
+      setTrainingRuns(runs);
+
+      // Load thumbnails for all images in all training runs
+      runs.forEach((run: TrainingRun) => {
+        run.image_ids.forEach((imageId: string) => {
+          if (!imageThumbnails[imageId]) {
+            loadImageThumbnail(imageId);
+          }
+        });
+      });
+    } catch (error) {
+      logError("Fetch training runs", error);
+    } finally {
+      setIsLoadingTrainingRuns(false);
+    }
+  };
+
+  const loadImageThumbnail = async (imageId: string) => {
+    try {
+      const blob = await downloadImageById(axiosInstance, imageId);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImageThumbnails(prev => ({
+          ...prev,
+          [imageId]: reader.result as string
+        }));
+      };
+      reader.readAsDataURL(blob);
+    } catch (error) {
+      logError(`Load thumbnail for ${imageId}`, error);
     }
   };
 
@@ -117,7 +171,7 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
 
     setIsUploadingImages(true);
     try {
-      await uploadImage(axiosInstance, projectId, "uploaded_images", filesToUpload);
+      await uploadImage(axiosInstance, projectId, "uploaded_images", filesToUpload, "training", { normalize: false });
       await fetchImages();
       showSuccess(`Successfully uploaded ${filesToUpload.length} image${filesToUpload.length > 1 ? 's' : ''}`);
     } catch (error) {
@@ -129,6 +183,13 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
   };
 
   const handleImageDelete = async (imageId: string) => {
+    // Check if image is used in any training run
+    const usedInTraining = trainingRuns.some(run => run.image_ids.includes(imageId));
+    if (usedInTraining) {
+      showError("Cannot delete image that has been used in a training run");
+      return;
+    }
+
     try {
       await deleteImage(axiosInstance, imageId);
       setImages((prevImages) => prevImages.filter((img) => img.id !== imageId));
@@ -141,178 +202,250 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
 
   const handleStartTraining = async () => {
     if (images.length === 0) {
-      showError("Please upload at least one image before training");
+      showError("Please upload at least one image for training");
       return;
     }
 
-    setIsTraining(true);
-    setTrainingStatus("pending");
+    setIsStartingTraining(true);
 
     try {
-      // Start training
-      const response = await train(axiosInstance, projectId, "uploaded_images");
+      // Use all uploaded images for training
+      const imageIdsArray = images.map(img => img.id);
+      await train(axiosInstance, projectId, imageIdsArray);
 
-      // Update project status to TRAINING
-      await updateModelProjectStatus(axiosInstance, projectId, "TRAINING");
+      showSuccess("Training started! Refreshing training runs...");
 
-      setTrainingStatus("running");
-      await pollTrainingStatus(response.training_id);
+      // Refresh training runs
+      await fetchTrainingRuns();
     } catch (error: any) {
       logError("Start training", error);
       showError(getErrorMessage(error, "Failed to start training. Please try again."));
-      setIsTraining(false);
-      setTrainingStatus("failed");
+    } finally {
+      setIsStartingTraining(false);
     }
   };
 
-  const pollTrainingStatus = async (training_id: string) => {
-    const intervalId = setInterval(async () => {
-      try {
-        const { status } = await training_status(axiosInstance, training_id);
-        setTrainingStatus(status);
-        if (status === "succeeded") {
-          clearInterval(intervalId);
-          setIsTraining(false);
-          setTrainingComplete(true);
+  const handleRefreshStatus = async (trainingRunId: string) => {
+    try {
+      const response = await updateTrainingRunStatus(axiosInstance, trainingRunId);
 
-          // Update project status to READY
-          await updateModelProjectStatus(axiosInstance, projectId, "READY");
+      // Update the training run in state
+      setTrainingRuns(prev =>
+        prev.map(run => run.id === trainingRunId ? { ...run, ...response } : run)
+      );
 
-          showSuccess("Training completed successfully!");
-        } else if (status === "failed") {
-          clearInterval(intervalId);
-          setIsTraining(false);
-          showError("Training failed. Please try again.");
-        }
-      } catch (error) {
-        clearInterval(intervalId);
-        setTrainingStatus("failed");
-        setIsTraining(false);
-        showError("Failed to check training status");
+      // If training succeeded, notify parent
+      if (response.status === "succeeded") {
+        showSuccess("Training completed successfully!");
+        onTrainingComplete();
       }
-    }, 5000);
+    } catch (error) {
+      logError("Refresh training status", error);
+      showError("Failed to refresh training status");
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "succeeded":
+        return "success";
+      case "failed":
+      case "canceled":
+        return "danger";
+      case "processing":
+      case "starting":
+        return "warning";
+      default:
+        return "default";
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "succeeded":
+        return faCheck;
+      case "failed":
+      case "canceled":
+        return faExclamationCircle;
+      default:
+        return faWandMagicSparkles;
+    }
   };
 
   return (
     <div className="max-w-7xl mx-auto">
-      <h3 className="text-2xl font-bold mb-2">Upload Training Images</h3>
-      <p className="text-gray-600 dark:text-gray-400 mb-6">
-        Upload images of {project?.subject_name || 'your subject'} to train your AI model.
-      </p>
+      <h4 className="text-lg font-semibold mb-4">Training Images</h4>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Panel: Controls */}
-        <div className="space-y-4">
-          {/* Photo Upload */}
-          <Card>
-            <CardBody className="p-6">
-              <h4 className="text-lg font-semibold mb-3">Upload Images</h4>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                Upload images (JPG, PNG, HEIC) of your subject
-              </p>
+      {/* Section 1: Upload and Training Start */}
+      <div className="mb-8">
+        <Card>
+          <CardBody className="p-6">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              accept={allowedFileTypes.join(",")}
+              multiple
+              className="hidden"
+            />
 
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                accept={allowedFileTypes.join(",")}
-                multiple
-                className="hidden"
-              />
-
-              <Button
-                color="primary"
-                variant="flat"
-                startContent={<FontAwesomeIcon icon={faUpload} />}
-                onPress={handleFileSelect}
-                isDisabled={isUploadingImages || isTraining || trainingComplete}
-                isLoading={isUploadingImages}
-                className="mb-4"
-              >
-                {isUploadingImages ? "Uploading..." : "Select Images"}
-              </Button>
-
-              {images.length > 0 && (
-                <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                    {images.length} image{images.length > 1 ? "s" : ""} uploaded
-                  </p>
-                  <ImageGrid
-                    images={images}
-                    isLoading={isLoadingImages}
-                    onImageDelete={isTraining || trainingComplete ? undefined : handleImageDelete}
-                  />
-                </div>
-              )}
-            </CardBody>
-          </Card>
-
-          {/* Start Training Button */}
-          {!trainingComplete && (
             <Button
               color="primary"
-              size="lg"
-              className="w-full"
-              startContent={<FontAwesomeIcon icon={faWandMagicSparkles} />}
-              onPress={handleStartTraining}
-              isLoading={isTraining}
-              isDisabled={images.length === 0 || isTraining}
+              variant="flat"
+              startContent={<FontAwesomeIcon icon={faUpload} />}
+              onPress={handleFileSelect}
+              isDisabled={isUploadingImages}
+              isLoading={isUploadingImages}
+              className="mb-4"
             >
-              {isTraining ? "Training..." : "Start Training"}
+              {isUploadingImages ? "Uploading..." : "Select Images"}
             </Button>
-          )}
-        </div>
 
-        {/* Right Panel: Training Status */}
-        <Card>
-          <CardBody className="p-6 min-h-[600px] flex flex-col items-center justify-center">
-            {!isTraining && !trainingComplete && (
-              <div className="text-center text-gray-500 dark:text-gray-400">
-                <FontAwesomeIcon icon={faWandMagicSparkles} size="3x" className="mb-4 opacity-30" />
-                <p>Training status will appear here</p>
-                <p className="text-sm mt-2">Upload images and click "Start Training" to begin</p>
-              </div>
-            )}
-
-            {isTraining && (
-              <div className="text-center">
-                <Spinner size="lg" />
-                <p className="mt-4 text-lg font-semibold">Training in Progress</p>
-                <p className="mt-2 text-gray-600 dark:text-gray-400">
-                  {trainingStatus === "pending" || trainingStatus === "processing"
-                    ? "This could take a while. Please don't leave this screen."
-                    : `Status: ${trainingStatus}`}
+            {/* Training Images Row */}
+            {images.length > 0 ? (
+              <div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  {images.length} image{images.length !== 1 ? "s" : ""} uploaded
                 </p>
+
+                <ImageGrid
+                  images={images}
+                  isLoading={isLoadingImages}
+                  onImageDelete={handleImageDelete}
+                  compact
+                />
+
+                {/* Start Training Button - right-aligned */}
+                <div className="flex justify-end mt-4">
+                  <Button
+                    color="primary"
+                    size="lg"
+                    startContent={<FontAwesomeIcon icon={faWandMagicSparkles} />}
+                    onPress={handleStartTraining}
+                    isLoading={isStartingTraining}
+                    isDisabled={images.length === 0 || isStartingTraining}
+                  >
+                    {isStartingTraining ? "Starting Training..." : `Start Training with ${images.length} Image${images.length !== 1 ? 's' : ''}`}
+                  </Button>
+                </div>
               </div>
-            )}
-
-            {trainingComplete && (
-              <div className="text-center w-full">
-                <div className="mb-4">
-                  <FontAwesomeIcon icon={faCheck} size="3x" className="text-success" />
-                </div>
-                <h4 className="text-xl font-bold text-success mb-2">Training Complete!</h4>
-                <p className="text-gray-600 dark:text-gray-400 mb-6">
-                  Your model for <strong>{project?.subject_name}</strong> is ready to use.
-                </p>
-                <div className="bg-success-50 dark:bg-success-900/20 p-4 rounded-lg">
-                  <p className="text-sm text-success-700 dark:text-success-300">
-                    You can now generate images with your trained model!
-                  </p>
-                </div>
-
-                <Button
-                  color="primary"
-                  size="lg"
-                  className="mt-6 w-full"
-                  onPress={onTrainingComplete}
-                >
-                  Continue to Generate Images
-                </Button>
+            ) : (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                <FontAwesomeIcon icon={faUpload} size="2x" className="mb-3 opacity-30" />
+                <p>No training images uploaded yet</p>
+                <p className="text-sm mt-2">Upload images to begin training your model</p>
               </div>
             )}
           </CardBody>
         </Card>
+      </div>
+
+      {/* Section 2: Training Runs List */}
+      <div>
+        <h4 className="text-lg font-semibold mb-4">Training Runs</h4>
+
+        {isLoadingTrainingRuns && (
+          <div className="flex justify-center py-12">
+            <Spinner size="lg" />
+          </div>
+        )}
+
+        {!isLoadingTrainingRuns && trainingRuns.length === 0 && (
+          <Card>
+            <CardBody className="p-8">
+              <div className="text-center text-gray-500 dark:text-gray-400">
+                <FontAwesomeIcon icon={faWandMagicSparkles} size="2x" className="mb-3 opacity-30" />
+                <p>No training runs yet</p>
+                <p className="text-sm mt-2">Select images and click "Start Training" to create your first training run</p>
+              </div>
+            </CardBody>
+          </Card>
+        )}
+
+        {!isLoadingTrainingRuns && trainingRuns.length > 0 && (
+          <div className="space-y-3">
+            {trainingRuns.map((run) => (
+              <Card key={run.id} className="border border-gray-200 dark:border-gray-700">
+                <CardBody className="p-4">
+                  {/* Row layout: thumbnails left, metadata right */}
+                  <div className="flex items-start gap-4">
+                    {/* Left: Image thumbnails */}
+                    <div className="flex gap-2 flex-shrink-0">
+                      {run.image_ids.slice(0, 4).map((imageId) => (
+                        <div key={imageId} className="relative">
+                          {imageThumbnails[imageId] ? (
+                            <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                              <Image
+                                src={imageThumbnails[imageId]}
+                                alt="Training image"
+                                width={64}
+                                height={64}
+                                className="object-cover"
+                              />
+                              {/* Small training badge on thumbnails */}
+                              <div className="absolute bottom-0 right-0">
+                                <Chip size="sm" color="primary" variant="flat" className="text-[8px] h-3 px-1">
+                                  T
+                                </Chip>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center">
+                              <Spinner size="sm" />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {run.image_ids.length > 4 && (
+                        <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center text-xs font-medium">
+                          +{run.image_ids.length - 4}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right: Metadata */}
+                    <div className="flex-1 flex justify-between items-start">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                          {new Date(run.created_at).toLocaleDateString()} at {new Date(run.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {run.image_ids.length} training image{run.image_ids.length !== 1 ? 's' : ''}
+                        </p>
+                        {run.error_message && (
+                          <p className="text-xs text-danger mt-2">{run.error_message}</p>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col items-end gap-2">
+                        <Chip
+                          size="sm"
+                          color={getStatusColor(run.status)}
+                          variant="flat"
+                          startContent={<FontAwesomeIcon icon={getStatusIcon(run.status)} className="text-xs" />}
+                          className="capitalize"
+                        >
+                          {run.status}
+                        </Chip>
+
+                        {run.status !== "succeeded" && run.status !== "failed" && run.status !== "canceled" && (
+                          <Button
+                            size="sm"
+                            variant="light"
+                            onPress={() => handleRefreshStatus(run.id)}
+                            className="text-xs h-6"
+                          >
+                            Refresh
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </CardBody>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -16,13 +16,15 @@ type ImageGridProps = {
   isLoading?: boolean;
   onImageDelete?: (imageId: string) => void;
   customActions?: (image: ImageProps) => React.ReactNode; // For custom modal actions
+  compact?: boolean;
 };
 
 const ImageGrid: React.FC<ImageGridProps> = ({
   images,
   isLoading = false,
   onImageDelete,
-  customActions
+  customActions,
+  compact = false
 }) => {
   const { axiosInstance } = useAxios();
   const [thumbnails, setThumbnails] = useState<{ [imageId: string]: string }>({});
@@ -61,9 +63,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
   return (
     <>
-      <div className="grid md:grid-cols-4 sm:grid-cols-1 md:gap-4 sm:gap-1">
+      <div className={compact ? "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3" : "grid md:grid-cols-4 sm:grid-cols-1 md:gap-4 sm:gap-1"}>
         {isLoading ? (
-          <div className="col-span-4 flex justify-center items-center">
+          <div className="col-span-full flex justify-center items-center">
             <Spinner size="md" />
           </div>
         ) : (
@@ -74,7 +76,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
               isPressable
               onPress={() => handleCardClick(image)}
               radius="lg"
-            >
+              >
               <Image
                 src={thumbnails[image.id]}
                 className="object-cover"
