@@ -46,6 +46,15 @@ const ModelProjectSettingsStep: React.FC<ModelProjectSettingsStepProps> = ({
           </p>
         </div>
 
+        <div>
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Model Type
+          </p>
+          <p className="text-sm text-gray-600 dark:text-gray-400 capitalize">
+            {project?.model_type?.replace(/_/g, " ") || "unknown"}
+          </p>
+        </div>
+
         <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
           <Button
             className="w-full"

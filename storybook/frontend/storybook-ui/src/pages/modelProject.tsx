@@ -59,9 +59,11 @@ export default function ModelProjectPage() {
       const modelReady = modelExistsResponse.model_found || projectData.status === "READY";
       setModelExists(modelReady);
 
-      const hadSuccess = await refreshTrainingProgress(project_id!);
-      if (modelReady || hadSuccess) {
+      const { hasSuccess, hasActive } = await refreshTrainingProgress(project_id!);
+      if (!hasActive && (modelReady || hasSuccess)) {
         setSelectedTab("generate");
+      } else if (hasActive) {
+        setSelectedTab("training");
       }
     } catch (error: any) {
       logError("Load project data", error);
@@ -87,11 +89,14 @@ export default function ModelProjectPage() {
       const response = await getTrainingRuns(axiosInstance, projId);
       const runs = response.training_runs || [];
       const hasSuccess = runs.some((run: any) => run.status === "succeeded");
+      const hasActive = runs.some((run: any) =>
+        ["starting", "processing"].includes(run.status),
+      );
       setHasSuccessfulTraining(hasSuccess);
-      return hasSuccess;
+      return { hasSuccess, hasActive };
     } catch (error) {
       logError("Get training runs", error);
-      return false;
+      return { hasSuccess: false, hasActive: false };
     }
   };
 

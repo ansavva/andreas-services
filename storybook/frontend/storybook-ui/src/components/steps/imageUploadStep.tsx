@@ -7,6 +7,7 @@ import {
   faCheck,
   faExclamationCircle,
   faRotate,
+  faPersonRunning,
 } from "@fortawesome/free-solid-svg-icons";
 
 import { useAxios } from "@/hooks/axiosContext";
@@ -66,6 +67,8 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
   const [isLoadingImages, setIsLoadingImages] = useState(false);
   const [isLoadingTrainingRuns, setIsLoadingTrainingRuns] = useState(false);
   const [isStartingTraining, setIsStartingTraining] = useState(false);
+
+  const ACTIVE_TRAINING_STATUSES = ["processing", "starting"];
 
   const allowedFileTypes = [
     "image/jpeg",
@@ -235,6 +238,11 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
     return images.filter((image) => !isImageUsedInTraining(image.id));
   }, [images, trainingRuns]);
 
+  const hasActiveTraining = useMemo(
+    () => trainingRuns.some((run) => ACTIVE_TRAINING_STATUSES.includes(run.status)),
+    [trainingRuns],
+  );
+
   const handleImageDelete = async (imageId: string) => {
     if (isImageUsedInTraining(imageId)) {
       showError("Cannot delete image that has been used in a training run");
@@ -378,11 +386,13 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
                 />
 
                 {/* Start Training Button - right-aligned */}
-                <div className="flex justify-end mt-4">
+                <div className="flex flex-col items-end mt-4 text-right">
                   <Button
                     color="primary"
                     isDisabled={
-                      availableImages.length === 0 || isStartingTraining
+                      availableImages.length === 0 ||
+                      isStartingTraining ||
+                      hasActiveTraining
                     }
                     isLoading={isStartingTraining}
                     size="lg"
@@ -395,6 +405,11 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
                       ? "Starting Training..."
                       : `Start Training with ${availableImages.length} Image${availableImages.length !== 1 ? "s" : ""}`}
                   </Button>
+                  {hasActiveTraining && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      A training run is currently processing. Please wait (this can take up to 30 minutes).
+                    </p>
+                  )}
                 </div>
               </div>
             ) : (
@@ -499,10 +514,17 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
                       color={getStatusColor(run.status)}
                       size="sm"
                       startContent={
-                        <FontAwesomeIcon
-                          className="text-xs mr-1"
-                          icon={getStatusIcon(run.status)}
-                        />
+                        run.status === "processing" ? (
+                          <FontAwesomeIcon
+                            className="text-xs mr-1 animate-spin"
+                            icon={faPersonRunning}
+                          />
+                        ) : (
+                          <FontAwesomeIcon
+                            className="text-xs mr-1"
+                            icon={getStatusIcon(run.status)}
+                          />
+                        )
                       }
                       variant="flat"
                     >
@@ -523,6 +545,11 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
                         </Button>
                       )}
                   </div>
+                  {run.status === "processing" && (
+                    <p className="text-xs text-gray-500">
+                      Training is processing. This can take up to 30 minutes.
+                    </p>
+                  )}
                   {run.error_message && (
                     <p className="text-xs text-danger">
                       {run.error_message}

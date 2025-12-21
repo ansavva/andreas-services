@@ -118,6 +118,39 @@ replicate:
       extra_lora_scale: 1.0
       disable_safety_checker: true
 
+  flux_pro:
+    label: "Flux 1.1 Pro"
+    description: "Fine-tune and generate with the Flux 1.1 Pro capabilities."
+    use_subject_token: false
+    model_name_template: "flux11_{user_id}_{project_id}"
+    training:
+      steps: 1200
+      learning_rate: 0.00015
+      batch_size: 4
+      resolution: 768
+      autocaption: true
+      caption_dropout_rate: 0.05
+      optimizer: "adamw8bit"
+      trigger_word: null
+      token_string: "TOK"
+      is_lora: true
+      unet_learning_rate: 0.000001
+      hardware: "gpu-t4"
+      visibility: "private"
+      trainer_version: "ostris/flux-dev-lora-trainer:4ffd32160efd92e956d39c5338a9b8fbafca58e03f791f6d8011f3e20e8ea6fa"
+    generation:
+      model: "dev"
+      aspect_ratio: "1:1"
+      num_outputs: 1
+      output_format: "jpg"
+      output_quality: 90
+      lora_scale: 1.0
+      guidance_scale: 3.5
+      prompt_strength: 0.8
+      num_inference_steps: 28
+      extra_lora_scale: 1.0
+      disable_safety_checker: true
+
 # Available style presets from Stability AI
 # See: https://platform.stability.ai/docs/api-reference#tag/v1generation/operation/textToImage
 style_presets:
