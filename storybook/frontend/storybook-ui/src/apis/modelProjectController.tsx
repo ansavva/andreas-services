@@ -13,9 +13,15 @@ export const getModelProjectById = async (axiosInstance: AxiosInstance, projectI
 };
 
 // Function to create a new model project
-export const createModelProject = async (axiosInstance: AxiosInstance, name: string, subjectName: string) => {
-  const response = await axiosInstance.post('/api/model-projects', { name, subjectName });
+export const createModelProject = async (axiosInstance: AxiosInstance, name: string, subjectName: string, modelType: string) => {
+  const response = await axiosInstance.post('/api/model-projects', { name, subjectName, modelType });
   return response.data;  // returns the newly created model project
+};
+
+// Fetch available model types from backend config
+export const getModelTypes = async (axiosInstance: AxiosInstance) => {
+  const response = await axiosInstance.get('/api/model-projects/model-types');
+  return response.data;
 };
 
 // Function to update model project status
@@ -25,7 +31,7 @@ export const updateModelProjectStatus = async (axiosInstance: AxiosInstance, pro
 };
 
 // Function to update model project fields
-export const updateModelProject = async (axiosInstance: AxiosInstance, projectId: string, updates: { name?: string; subjectName?: string }) => {
+export const updateModelProject = async (axiosInstance: AxiosInstance, projectId: string, updates: { name?: string; subjectName?: string; modelType?: string }) => {
   const response = await axiosInstance.put(`/api/model-projects/${projectId}`, updates);
   return response.data;  // returns the updated model project
 };

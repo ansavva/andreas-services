@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Button, Card, CardBody, Input } from "@heroui/react";
+import React, { useEffect, useState } from "react";
+import { Button, Card, CardBody, Input, RadioGroup, Radio } from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowRight } from "@fortawesome/free-solid-svg-icons";
 
@@ -7,6 +7,7 @@ import { useAxios } from "@/hooks/axiosContext";
 import {
   createModelProject,
   updateModelProject,
+  getModelTypes,
 } from "@/apis/modelProjectController";
 import { useToast } from "@/hooks/useToast";
 import { getErrorMessage, logError } from "@/utils/errorHandling";
@@ -18,6 +19,12 @@ type SubjectSetupStepProps = {
   onComplete: () => void;
 };
 
+type ModelTypeOption = {
+  id: string;
+  label: string;
+  description?: string;
+};
+
 const SubjectSetupStep: React.FC<SubjectSetupStepProps> = ({
   projectId,
   project,
@@ -27,9 +34,38 @@ const SubjectSetupStep: React.FC<SubjectSetupStepProps> = ({
   const { axiosInstance } = useAxios();
   const { showError, showSuccess } = useToast();
 
-  const [subjectName, setSubjectName] = useState(project?.subject_name || "");
-  const [subjectNameError, setSubjectNameError] = useState("");
+  const [subjectName, setSubjectName] = useState<string>(project?.subject_name || "");
+  const [subjectNameError, setSubjectNameError] = useState<string>("");
+  const [modelType, setModelType] = useState<string>(project?.model_type || "");
+  const [modelTypes, setModelTypes] = useState<ModelTypeOption[]>([]);
+  const [isLoadingModelTypes, setIsLoadingModelTypes] = useState<boolean>(true);
   const [isCreating, setIsCreating] = useState(false);
+
+  useEffect(() => {
+    const loadModelTypes = async () => {
+      setIsLoadingModelTypes(true);
+      try {
+        const response = await getModelTypes(axiosInstance);
+        const options: ModelTypeOption[] = response.modelTypes || [];
+        setModelTypes(options);
+        const fallback =
+          project?.model_type ||
+          response.defaultModelType ||
+          options[0]?.id ||
+          "";
+        setModelType((current) => current || fallback);
+      } catch (error) {
+        logError("Load model types", error);
+        showError(
+          getErrorMessage(error, "Failed to load available model types."),
+        );
+      } finally {
+        setIsLoadingModelTypes(false);
+      }
+    };
+
+    loadModelTypes();
+  }, [axiosInstance, project?.model_type, projectId, showError]);
 
   const handleContinue = async () => {
     if (!subjectName.trim()) {
@@ -39,6 +75,11 @@ const SubjectSetupStep: React.FC<SubjectSetupStepProps> = ({
     }
     setSubjectNameError("");
 
+    if (!modelType) {
+      showError("No model types are available. Please try again later.");
+      return;
+    }
+
     setIsCreating(true);
     try {
       if (projectId === "new") {
@@ -47,6 +88,7 @@ const SubjectSetupStep: React.FC<SubjectSetupStepProps> = ({
           axiosInstance,
           subjectName,
           subjectName,
+          modelType,
         );
 
         onProjectCreated(newProject);
@@ -102,11 +144,33 @@ const SubjectSetupStep: React.FC<SubjectSetupStepProps> = ({
             }}
           />
 
+          {modelTypes.length > 0 ? (
+            <RadioGroup
+              className="mb-6"
+              label="Model Type"
+              value={modelType}
+              isDisabled={projectId !== "new" || isLoadingModelTypes}
+              onValueChange={(value) => setModelType(value as string)}
+            >
+              {modelTypes.map((type) => (
+                <Radio key={type.id} value={type.id} description={type.description}>
+                  {type.label}
+                </Radio>
+              ))}
+            </RadioGroup>
+          ) : (
+            <p className="text-sm text-gray-500 mb-6">
+              {isLoadingModelTypes
+                ? "Loading model types..."
+                : "No model types are currently available."}
+            </p>
+          )}
+
           <Button
             className="w-full"
             color="primary"
             endContent={<FontAwesomeIcon icon={faArrowRight} />}
-            isDisabled={!subjectName.trim() || isCreating}
+            isDisabled={!subjectName.trim() || !modelType || isCreating}
             isLoading={isCreating}
             size="lg"
             onPress={handleContinue}

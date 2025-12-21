@@ -47,18 +47,25 @@ def get_models_from_database():
     projects = list(db.model_projects.find({}))
     client.close()
 
-    # Build model names: flux_{user_id}_{project_id}
+    # Build model identifiers from stored data
     models = []
     for project in projects:
         project_id = str(project.get('_id'))
         user_id = project.get('user_id')
-        if project_id and user_id:
-            model_name = f"flux_{user_id}_{project_id}"
-            models.append({
-                'name': model_name,
-                'project_id': project_id,
-                'user_id': user_id
-            })
+        identifier = project.get('replicate_model_id')
+        if not (project_id and user_id and identifier):
+            continue
+        owner = None
+        model_name = identifier
+        if '/' in identifier:
+            owner, model_name = identifier.split('/', 1)
+        models.append({
+            'identifier': identifier,
+            'owner': owner,
+            'name': model_name,
+            'project_id': project_id,
+            'user_id': user_id
+        })
 
     return models
 
@@ -130,13 +137,14 @@ def reset_replicate_models():
         models = get_models_from_database()
 
         if not models:
-            print("✓ No model projects found in database. Nothing to delete.")
+            print("✓ No model identifiers found in database. Nothing to delete.")
             return
 
         print(f"Found {len(models)} model project(s) in database:\n")
         for i, model in enumerate(models, 1):
+            owner = model.get("owner") or replicate_username
             model_name = model.get("name")
-            print(f"  {i}. {replicate_username}/{model_name}")
+            print(f"  {i}. {owner}/{model_name}")
 
         print("\n🗑️  Deleting models from Replicate...\n")
 
@@ -144,24 +152,25 @@ def reset_replicate_models():
         failed_count = 0
 
         for model in models:
+            owner = model.get("owner") or replicate_username
             model_name = model.get("name")
-            model_id = f"{replicate_username}/{model_name}"
+            model_id = f"{owner}/{model_name}"
 
             print(f"  Deleting {model_id}...")
 
             # Delete all versions first
-            version_ids = list_versions(session, replicate_username, model_name)
+            version_ids = list_versions(session, owner, model_name)
             if version_ids:
                 print(f"    Found {len(version_ids)} version(s)")
                 for vid in reversed(version_ids):
-                    if delete_version(session, replicate_username, model_name, vid):
+                    if delete_version(session, owner, model_name, vid):
                         print(f"    ✓ Deleted version {vid}")
                     else:
                         print(f"    ✗ Failed to delete version {vid}")
                     time.sleep(0.1)
 
             # Delete the model
-            if delete_model(session, replicate_username, model_name):
+            if delete_model(session, owner, model_name):
                 print(f"  ✓ Deleted model")
                 deleted_count += 1
             else:

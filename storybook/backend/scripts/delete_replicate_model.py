@@ -62,7 +62,7 @@ def delete_model(owner: str, model_name: str, api_token: str = None):
 
     Args:
         owner (str): Username or organization that owns the model (e.g., "ansavva").
-        model_name (str): Model name (e.g., "flux_94f844c8-70e1-702c-91ca-4362ba7f6e5a_07f3a273-9638-45f3-8a24-5d8a0415e8ef").
+        model_name (str): Model name.
         api_token (str, optional): Replicate API token. If None, reads from REPLICATE_API_TOKEN env var.
 
     Returns:
@@ -126,7 +126,7 @@ if __name__ == "__main__":
     load_dotenv(env_path)
 
     parser = argparse.ArgumentParser(description="Delete a Replicate model")
-    parser.add_argument("model_id", help="Full model identifier (owner/model-name). e.g. ansavva/flux_xxx")
+    parser.add_argument("model_id", help="Full model identifier (owner/model-name).")
     parser.add_argument(
         "--token",
         help="Replicate API token (optional; if not provided uses REPLICATE_API_TOKEN)",

@@ -50,37 +50,73 @@ story_illustrations:
 replicate:
   # Account configuration
   owner: "ansavva"  # Replicate account username
+  default_profile: "stability"
 
-  # Training configuration
-  training:
-    steps: 1500  # Number of training steps
-    learning_rate: 0.0002  # Learning rate for training (SDXL optimal)
-    batch_size: 4  # Training batch size (SDXL default)
-    resolution: 768  # Training resolution in pixels (square)
-    autocaption: true  # Automatically caption images
-    caption_dropout_rate: 0.05  # Rate to drop captions during training
-    optimizer: "adamw8bit"  # Optimizer type
-    trigger_word: null  # Optional trigger word for model
-    token_string: "TOK"  # Unique identifier for trained concept (SDXL)
-    is_lora: true  # Use LoRA training instead of full fine-tuning
-    unet_learning_rate: 0.000001  # U-Net learning rate (1e-6 to 1e-5)
-    hardware: "gpu-t4"  # Hardware specification
-    visibility: "private"  # Model visibility (public or private)
-    trainer_version: "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b"
+  stability:
+    label: "Stability SDXL (Recommended)"
+    description: "Best likeness. Uses a subject-specific token automatically."
+    use_subject_token: true
+    model_name_template: "stability_{user_id}_{project_id}"
+    training:
+      steps: 1500
+      learning_rate: 0.0002
+      batch_size: 4
+      resolution: 768
+      autocaption: true
+      caption_dropout_rate: 0.05
+      optimizer: "adamw8bit"
+      trigger_word: null
+      token_string: "TOK"
+      is_lora: true
+      unet_learning_rate: 0.000001
+      hardware: "gpu-t4"
+      visibility: "private"
+      trainer_version: "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b"
+    generation:
+      model: "dev"
+      aspect_ratio: "1:1"
+      num_outputs: 1
+      output_format: "jpg"
+      output_quality: 90
+      lora_scale: 1.0
+      guidance_scale: 3.5
+      prompt_strength: 0.8
+      num_inference_steps: 28
+      extra_lora_scale: 1.0
+      disable_safety_checker: true
 
-  # Generation configuration
-  generation:
-    model: "dev"  # Model type
-    aspect_ratio: "1:1"  # Output aspect ratio
-    num_outputs: 1  # Number of images to generate
-    output_format: "jpg"  # Output format (jpg or png)
-    output_quality: 90  # Output quality (1-100)
-    lora_scale: 1.0  # LoRA scale (strength of fine-tuning)
-    guidance_scale: 3.5  # How strictly to follow prompt
-    prompt_strength: 0.8  # Prompt adherence strength
-    num_inference_steps: 28  # Number of denoising steps
-    extra_lora_scale: 1.0  # Additional LoRA scaling
-    disable_safety_checker: true  # Disable safety checker
+  flux:
+    label: "Flux"
+    description: "Fine-tune that behaves like our original FLUX workflow."
+    use_subject_token: false
+    model_name_template: "flux_{user_id}_{project_id}"
+    training:
+      steps: 1000
+      learning_rate: 0.0001
+      batch_size: 4
+      resolution: 768
+      autocaption: true
+      caption_dropout_rate: 0.05
+      optimizer: "adamw8bit"
+      trigger_word: null
+      token_string: "TOK"
+      is_lora: true
+      unet_learning_rate: 0.000001
+      hardware: "gpu-t4"
+      visibility: "private"
+      trainer_version: "ostris/flux-dev-lora-trainer:4ffd32160efd92e956d39c5338a9b8fbafca58e03f791f6d8011f3e20e8ea6fa"
+    generation:
+      model: "dev"
+      aspect_ratio: "1:1"
+      num_outputs: 1
+      output_format: "jpg"
+      output_quality: 90
+      lora_scale: 1.0
+      guidance_scale: 3.5
+      prompt_strength: 0.8
+      num_inference_steps: 28
+      extra_lora_scale: 1.0
+      disable_safety_checker: true
 
 # Available style presets from Stability AI
 # See: https://platform.stability.ai/docs/api-reference#tag/v1generation/operation/textToImage

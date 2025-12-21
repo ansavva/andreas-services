@@ -27,6 +27,13 @@ class ReplicateService:
         self.config = replicate_config
         self.owner = owner or self.config.get_owner()
 
+    def _resolve_model_identifier(self, model_name: str):
+        """Split a model identifier into owner/name"""
+        if "/" in model_name:
+            owner, name = model_name.split("/", 1)
+            return owner, name
+        return self.owner, model_name
+
     def model_exists(self, model_name: str) -> bool:
         """
         Check if a model exists in Replicate
@@ -37,8 +44,9 @@ class ReplicateService:
         Returns:
             True if model exists, False otherwise
         """
+        owner, resolved_name = self._resolve_model_identifier(model_name)
         try:
-            replicate.models.get(f"{self.owner}/{model_name}")
+            replicate.models.get(f"{owner}/{resolved_name}")
             return True
         except:
             return False
@@ -63,15 +71,16 @@ class ReplicateService:
         return replicate.models.create(
             owner=self.owner,
             name=model_name,
-            visibility=visibility or self.config.get_visibility(),
-            hardware=hardware or self.config.get_hardware(),
+            visibility=visibility or "private",
+            hardware=hardware or "gpu-t4",
             description=description
         )
 
     def train(self,
              model_name: str,
              training_data: BinaryIO,
-             config_override: Optional[Dict[str, Any]] = None) -> str:
+             config_override: Optional[Dict[str, Any]] = None,
+             profile: str = "stability") -> str:
         """
         Train an SDXL model with the provided images
 
@@ -84,29 +93,36 @@ class ReplicateService:
             Training ID for status polling
         """
         # Get or create the model
+        training_config = self.config.get_training_config(profile)
+
         try:
             model = replicate.models.get(f"{self.owner}/{model_name}")
         except:
-            model = self.create_model(model_name=model_name)
+            model = self.create_model(
+                model_name=model_name,
+                visibility=training_config.get("visibility"),
+                hardware=training_config.get("hardware"),
+                description=f"A fine-tuned {profile} model"
+            )
 
         # Start with config from YAML
         training_input = {
             "input_images": training_data,
-            "steps": self.config.get_training_steps(),
-            "learning_rate": self.config.get_learning_rate(),
-            "batch_size": self.config.get_batch_size(),
-            "resolution": self.config.get_resolution(),
-            "autocaption": self.config.get_autocaption(),
-            "caption_dropout_rate": self.config.get_caption_dropout_rate(),
-            "optimizer": self.config.get_optimizer(),
-            "token_string": self.config.get_token_string(),
-            "is_lora": self.config.get_is_lora(),
-            "unet_learning_rate": self.config.get_unet_learning_rate(),
+            "steps": training_config.get("steps", 1000),
+            "learning_rate": training_config.get("learning_rate", 0.0001),
+            "batch_size": training_config.get("batch_size", 1),
+            "resolution": training_config.get("resolution", 768),
+            "autocaption": training_config.get("autocaption", True),
+            "caption_dropout_rate": training_config.get("caption_dropout_rate", 0.05),
+            "optimizer": training_config.get("optimizer", "adamw8bit"),
+            "token_string": training_config.get("token_string"),
+            "is_lora": training_config.get("is_lora", True),
+            "unet_learning_rate": training_config.get("unet_learning_rate", 0.000001),
             "input_images_filetype": "zip",
         }
 
         # Add trigger word if configured
-        trigger_word = self.config.get_trigger_word()
+        trigger_word = training_config.get("trigger_word")
         if trigger_word:
             training_input["trigger_word"] = trigger_word
 
@@ -115,7 +131,7 @@ class ReplicateService:
             training_input.update(config_override)
 
         # Get trainer version from config
-        trainer_version = self.config.get_trainer_version()
+        trainer_version = training_config.get("trainer_version")
 
         # Start training
         training = replicate.trainings.create(
@@ -160,7 +176,8 @@ class ReplicateService:
     def generate(self,
                 prompt: str,
                 model_name: str,
-                config_override: Optional[Dict[str, Any]] = None) -> bytes:
+                config_override: Optional[Dict[str, Any]] = None,
+                profile: str = "stability") -> bytes:
         """
         Generate an image using a trained SDXL model
 
@@ -176,22 +193,25 @@ class ReplicateService:
             Exception: If image download fails
         """
         # Get the model
-        model = replicate.models.get(f"{self.owner}/{model_name}")
+        owner, resolved_name = self._resolve_model_identifier(model_name)
+        model = replicate.models.get(f"{owner}/{resolved_name}")
 
         # Start with config from YAML
+        generation_config = self.config.get_generation_config(profile)
+
         generation_input = {
             "prompt": prompt,
-            "model": self.config.get_model_type(),
-            "aspect_ratio": self.config.get_aspect_ratio(),
-            "num_outputs": self.config.get_num_outputs(),
-            "output_format": self.config.get_output_format(),
-            "output_quality": self.config.get_output_quality(),
-            "lora_scale": self.config.get_lora_scale(),
-            "guidance_scale": self.config.get_guidance_scale(),
-            "prompt_strength": self.config.get_prompt_strength(),
-            "num_inference_steps": self.config.get_num_inference_steps(),
-            "extra_lora_scale": self.config.get_extra_lora_scale(),
-            "disable_safety_checker": self.config.get_disable_safety_checker(),
+            "model": generation_config.get("model", "dev"),
+            "aspect_ratio": generation_config.get("aspect_ratio", "1:1"),
+            "num_outputs": generation_config.get("num_outputs", 1),
+            "output_format": generation_config.get("output_format", "jpg"),
+            "output_quality": generation_config.get("output_quality", 90),
+            "lora_scale": generation_config.get("lora_scale", 1.0),
+            "guidance_scale": generation_config.get("guidance_scale", 3.5),
+            "prompt_strength": generation_config.get("prompt_strength", 0.8),
+            "num_inference_steps": generation_config.get("num_inference_steps", 28),
+            "extra_lora_scale": generation_config.get("extra_lora_scale", 1.0),
+            "disable_safety_checker": generation_config.get("disable_safety_checker", True),
         }
 
         # Apply any overrides
@@ -242,8 +262,9 @@ class ReplicateService:
         Returns:
             True if deleted successfully, False otherwise
         """
+        owner, resolved_name = self._resolve_model_identifier(model_name)
         try:
-            model = replicate.models.get(f"{self.owner}/{model_name}")
+            model = replicate.models.get(f"{owner}/{resolved_name}")
             model.delete()
             return True
         except:

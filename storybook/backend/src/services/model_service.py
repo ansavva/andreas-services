@@ -1,6 +1,6 @@
 """
 Model Service - Handles AI model training and generation
-Orchestrates Replicate service for FLUX model operations
+Supports multiple Replicate profiles (e.g., Stability, Flux)
 """
 from typing import Optional, Dict, Any, List
 import re
@@ -30,18 +30,20 @@ class ModelService:
         self.training_run_repo = TrainingRunRepo()
         self.model_project_repo = ModelProjectRepo()
 
-    def __get_model_name(self, project_id: str) -> str:
+    def __get_model_name(self, project: ModelProject) -> str:
         """
-        Generate model name based on user ID and project ID
-
-        Args:
-            project_id: Model project ID
-
-        Returns:
-            Model name in format: flux_{user_id}_{project_id}
+        Generate model name based on user ID, project ID, and model profile.
+        This returns the short name without owner prefix.
         """
         user_id = request.cognito_claims['sub']
-        return f"flux_{user_id}_{project_id}"
+        profile = project.model_type or ModelProject.DEFAULT_MODEL_TYPE
+        return self.replicate.config.build_model_name(profile, user_id, project.id)
+
+    def __get_model_identifier(self, project: ModelProject) -> str:
+        """Return the stored owner/model identifier or fallback to short name"""
+        if project.replicate_model_id:
+            return project.replicate_model_id
+        return self.__get_model_name(project)
 
     def exists(self, project_id: str) -> bool:
         """
@@ -53,8 +55,9 @@ class ModelService:
         Returns:
             True if model exists, False otherwise
         """
-        model_name = self.__get_model_name(project_id)
-        return self.replicate.model_exists(model_name)
+        project = self.model_project_repo.get_project(project_id)
+        model_identifier = self.__get_model_identifier(project)
+        return self.replicate.model_exists(model_identifier)
 
     def _build_subject_token(self, project: ModelProject) -> str:
         """Generate a consistent token string based on subject name"""
@@ -69,7 +72,7 @@ class ModelService:
              image_ids: List[str],
              config_override: Optional[Dict[str, Any]] = None) -> TrainingRun:
         """
-        Train a FLUX model with specific images and create a training run record
+        Train an image model with specific images and create a training run record
 
         Args:
             project_id: Model project ID
@@ -80,9 +83,18 @@ class ModelService:
         Returns:
             TrainingRun object with training details
         """
-        model_name = self.__get_model_name(project_id)
         project = self.model_project_repo.get_project(project_id)
-        subject_token = self._build_subject_token(project)
+        model_name = self.__get_model_name(project)
+        model_identifier = f"{self.replicate.owner}/{model_name}"
+        if project.replicate_model_id != model_identifier:
+            self.model_project_repo.update_project(
+                project_id,
+                replicate_model_id=model_identifier
+            )
+            project.replicate_model_id = model_identifier
+        profile = project.model_type or ModelProject.DEFAULT_MODEL_TYPE
+        use_subject_token = self.replicate.config.profile_uses_subject_token(profile)
+        subject_token = self._build_subject_token(project) if use_subject_token else None
 
         # Create a training run record BEFORE starting training
         training_run = self.training_run_repo.create(
@@ -96,13 +108,15 @@ class ModelService:
 
             # Start training (config comes from YAML, with optional overrides)
             overrides = dict(config_override or {})
-            overrides.setdefault("token_string", subject_token)
-            overrides.setdefault("trigger_word", subject_token)
+            if use_subject_token and subject_token:
+                overrides.setdefault("token_string", subject_token)
+                overrides.setdefault("trigger_word", subject_token)
 
             replicate_training_id = self.replicate.train(
                 model_name=model_name,
                 training_data=zip_file_buffer,
-                config_override=overrides
+                config_override=overrides,
+                profile=profile
             )
 
             # Update training run with Replicate ID and set status to starting
@@ -158,20 +172,24 @@ class ModelService:
             Exception: If generation or upload fails
         """
         project = self.model_project_repo.get_project(project_id)
-        subject_token = self._build_subject_token(project)
-        model_name = self.__get_model_name(project_id)
+        model_identifier = self.__get_model_identifier(project)
+        profile = project.model_type or ModelProject.DEFAULT_MODEL_TYPE
+        use_subject_token = self.replicate.config.profile_uses_subject_token(profile)
+        subject_token = self._build_subject_token(project) if use_subject_token else None
         prompt_to_use = prompt
-        if project.subject_name:
-            pattern = re.compile(re.escape(project.subject_name), re.IGNORECASE)
-            prompt_to_use = pattern.sub(subject_token, prompt_to_use)
-        if subject_token.lower() not in prompt_to_use.lower():
-            prompt_to_use = f"{subject_token}, {prompt_to_use}".strip(", ")
+        if use_subject_token and subject_token:
+            if project.subject_name:
+                pattern = re.compile(re.escape(project.subject_name), re.IGNORECASE)
+                prompt_to_use = pattern.sub(subject_token, prompt_to_use)
+            if subject_token.lower() not in prompt_to_use.lower():
+                prompt_to_use = f"{subject_token}, {prompt_to_use}".strip(", ")
 
         # Generate image (config comes from YAML, with optional overrides)
         image_bytes = self.replicate.generate(
             prompt=prompt_to_use,
-            model_name=model_name,
-            config_override=config_override
+            model_name=model_identifier,
+            config_override=config_override,
+            profile=profile
         )
 
         # Convert bytes to file-like object

@@ -24,13 +24,17 @@ class ModelProjectService:
         # Retrieve a specific model project by ID from the repo
         return self.model_project_repo.get_project(project_id)
 
-    def create_project(self, name: str, subject_name: str) -> ModelProject:
+    def create_project(self, name: str, subject_name: str, model_type: str) -> ModelProject:
         # Create a new model project in the repo
-        return self.model_project_repo.create_project(name, subject_name)
+        if model_type not in ModelProject.VALID_MODEL_TYPES:
+            raise ValueError(f"Invalid model type: {model_type}")
+        return self.model_project_repo.create_project(name, subject_name, model_type)
 
-    def update_project(self, project_id: str, name: str = None, subject_name: str = None) -> ModelProject:
+    def update_project(self, project_id: str, name: str = None, subject_name: str = None, model_type: str = None) -> ModelProject:
         # Update a model project's metadata
-        return self.model_project_repo.update_project(project_id, name, subject_name)
+        if model_type and model_type not in ModelProject.VALID_MODEL_TYPES:
+            raise ValueError(f"Invalid model type: {model_type}")
+        return self.model_project_repo.update_project(project_id, name, subject_name, model_type)
 
     def update_status(self, project_id: str, status: str) -> ModelProject:
         # Update a model project's status
@@ -52,6 +56,7 @@ class ModelProjectService:
             ValueError: If project not found or doesn't belong to user
         """
         user_id = request.cognito_claims['sub']
+        project = self.model_project_repo.get_project(project_id)
 
         # 1. Delete all training runs for this project
         try:
@@ -76,12 +81,16 @@ class ModelProjectService:
                 print(f"Error deleting image {image.id}: {e}")
 
         # 4. Delete Replicate model if it exists
-        model_name = f"flux_{user_id}_{project_id}"
+        model_identifier = project.replicate_model_id
+        if not model_identifier:
+            profile = project.model_type or ModelProject.DEFAULT_MODEL_TYPE
+            fallback_name = self.replicate_service.config.build_model_name(profile, user_id, project_id)
+            model_identifier = fallback_name
         try:
-            if self.replicate_service.model_exists(model_name):
-                self.replicate_service.delete_model(model_name)
+            if self.replicate_service.model_exists(model_identifier):
+                self.replicate_service.delete_model(model_identifier)
         except Exception as e:
-            print(f"Error deleting Replicate model {model_name}: {e}")
+            print(f"Error deleting Replicate model {model_identifier}: {e}")
 
         # 5. Finally, delete the project itself
         self.model_project_repo.delete_project(project_id)

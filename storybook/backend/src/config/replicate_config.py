@@ -3,7 +3,7 @@ Replicate Configuration Loader
 Loads and manages Replicate SDXL model configuration from YAML file
 """
 import yaml
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 from pathlib import Path
 
 
@@ -47,15 +47,76 @@ class ReplicateConfig:
         """
         return self._config.get('replicate', {}).get('owner', 'ansavva')
 
+    def get_default_profile(self) -> str:
+        """Return the default model profile identifier"""
+        replicate_cfg = self._config.get('replicate', {})
+        default_profile = replicate_cfg.get('default_profile')
+        profile_ids = self.get_profile_ids()
+        if default_profile in profile_ids:
+            return default_profile
+        if profile_ids:
+            return profile_ids[0]
+        return "stability"
+
+    def _get_profiles_map(self) -> Dict[str, Dict[str, Any]]:
+        replicate_cfg = self._config.get('replicate', {})
+        profiles = {}
+        for key, value in replicate_cfg.items():
+            if key in ('owner', 'default_profile'):
+                continue
+            if isinstance(value, dict):
+                profiles[key] = value
+        return profiles
+
+    def get_profile_ids(self) -> List[str]:
+        """List available profile identifiers"""
+        return list(self._get_profiles_map().keys())
+
+    def get_available_profiles(self) -> List[Dict[str, Any]]:
+        """Return metadata for each available profile"""
+        profiles = []
+        for profile_id, cfg in self._get_profiles_map().items():
+            profiles.append({
+                "id": profile_id,
+                "label": cfg.get("label", profile_id.title()),
+                "description": cfg.get("description", "")
+            })
+        return profiles
+
+    def get_model_name_template(self, profile: str = "stability") -> str:
+        """
+        Get the model name template (e.g., \"stability_{user_id}_{project_id}\")
+        """
+        section = self._get_profile_section(profile)
+        return section.get("model_name_template", "{profile}_{user_id}_{project_id}")
+
+    def build_model_name(self, profile: str, user_id: str, project_id: str) -> str:
+        """
+        Build a model name for Replicate using the configured template
+        """
+        template = self.get_model_name_template(profile)
+        return template.format(
+            profile=profile,
+            user_id=str(user_id),
+            project_id=str(project_id)
+        )
+
     # Training configuration
-    def get_training_config(self) -> Dict[str, Any]:
+    def _get_profile_section(self, profile: Optional[str]) -> Dict[str, Any]:
+        profiles = self._get_profiles_map()
+        if profile and profile in profiles:
+            return profiles[profile]
+        default_profile = self.get_default_profile()
+        return profiles.get(default_profile, {})
+
+    def get_training_config(self, profile: Optional[str] = None) -> Dict[str, Any]:
         """
         Get Replicate training configuration
 
         Returns:
             Dictionary containing all training parameters from YAML
         """
-        return self._config.get('replicate', {}).get('training', {})
+        return self._get_profile_section(profile).get('training', {})
 
     def get_training_steps(self) -> int:
         """Get number of training steps (default: 1000)"""
@@ -117,58 +178,18 @@ class ReplicateConfig:
         )
 
     # Generation configuration
-    def get_generation_config(self) -> Dict[str, Any]:
+    def get_generation_config(self, profile: Optional[str] = None) -> Dict[str, Any]:
         """
         Get Replicate generation configuration
 
         Returns:
             Dictionary containing all generation parameters from YAML
         """
-        return self._config.get('replicate', {}).get('generation', {})
+        return self._get_profile_section(profile).get('generation', {})
 
-    def get_model_type(self) -> str:
-        """Get model type (default: 'dev')"""
-        return self.get_generation_config().get('model', 'dev')
-
-    def get_aspect_ratio(self) -> str:
-        """Get output aspect ratio (default: '1:1')"""
-        return self.get_generation_config().get('aspect_ratio', '1:1')
-
-    def get_num_outputs(self) -> int:
-        """Get number of outputs to generate (default: 1)"""
-        return self.get_generation_config().get('num_outputs', 1)
-
-    def get_output_format(self) -> str:
-        """Get output format (default: 'jpg')"""
-        return self.get_generation_config().get('output_format', 'jpg')
-
-    def get_output_quality(self) -> int:
-        """Get output quality 1-100 (default: 90)"""
-        return self.get_generation_config().get('output_quality', 90)
-
-    def get_lora_scale(self) -> float:
-        """Get LoRA scale - strength of fine-tuning (default: 1.0)"""
-        return self.get_generation_config().get('lora_scale', 1.0)
-
-    def get_guidance_scale(self) -> float:
-        """Get guidance scale - how strictly to follow prompt (default: 3.5)"""
-        return self.get_generation_config().get('guidance_scale', 3.5)
-
-    def get_prompt_strength(self) -> float:
-        """Get prompt adherence strength (default: 0.8)"""
-        return self.get_generation_config().get('prompt_strength', 0.8)
-
-    def get_num_inference_steps(self) -> int:
-        """Get number of denoising steps (default: 28)"""
-        return self.get_generation_config().get('num_inference_steps', 28)
-
-    def get_extra_lora_scale(self) -> float:
-        """Get additional LoRA scaling (default: 1.0)"""
-        return self.get_generation_config().get('extra_lora_scale', 1.0)
-
-    def get_disable_safety_checker(self) -> bool:
-        """Get safety checker setting (default: True)"""
-        return self.get_generation_config().get('disable_safety_checker', True)
+    def profile_uses_subject_token(self, profile: str) -> bool:
+        """Determine if a profile requires subject token injection"""
+        return bool(self._get_profile_section(profile).get('use_subject_token'))
 
 
 # Singleton instance

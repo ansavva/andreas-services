@@ -16,7 +16,7 @@ import {
   getImagesByProject,
 } from "@/apis/imageController";
 import { train, training_status } from "@/apis/modelController";
-import { createModelProject } from "@/apis/modelProjectController";
+import { createModelProject, getModelTypes } from "@/apis/modelProjectController";
 import ImageGrid from "@/components/images/imageGrid";
 import { getErrorMessage, logError } from "@/utils/errorHandling";
 
@@ -56,6 +56,7 @@ const TrainingSetupStep: React.FC<TrainingSetupStepProps> = ({
   const [isTraining, setIsTraining] = useState(false);
   const [trainingStatus, setTrainingStatus] = useState<string>("pending");
   const [trainingComplete, setTrainingComplete] = useState(false);
+  const [defaultModelType, setDefaultModelType] = useState<string>("");
 
   const allowedFileTypes = [
     "image/jpeg",
@@ -72,6 +73,24 @@ const TrainingSetupStep: React.FC<TrainingSetupStepProps> = ({
       fetchImages();
     }
   }, [projectId]);
+
+  useEffect(() => {
+    const fetchModelTypes = async () => {
+      try {
+        const response = await getModelTypes(axiosInstance);
+        const fallback =
+          response.defaultModelType ||
+          response.modelTypes?.[0]?.id ||
+          "";
+        setDefaultModelType(fallback);
+      } catch (error) {
+        logError("Load model types", error);
+        showError("Failed to load available model types.");
+        setDefaultModelType((prev) => prev || "");
+      }
+    };
+    fetchModelTypes();
+  }, [axiosInstance, showError]);
 
   const fetchImages = async () => {
     if (!projectId || projectId === "new") return;
@@ -206,10 +225,21 @@ const TrainingSetupStep: React.FC<TrainingSetupStepProps> = ({
 
       // If this is a new model project, create it first
       if (projectId === "new") {
+        const projectModelType =
+          project?.model_type ||
+          defaultModelType ||
+          "";
+        if (!projectModelType) {
+          showError("No model types available. Please try again later.");
+          setIsTraining(false);
+          setTrainingStatus("failed");
+          return;
+        }
         const newProject = await createModelProject(
           axiosInstance,
           subjectName,
           subjectName,
+          projectModelType,
         );
 
         onProjectCreated(newProject);

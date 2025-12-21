@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from typing import Optional
 from datetime import datetime
 
+from src.config.replicate_config import replicate_config
+
 @dataclass
 class ModelProject:
     """
@@ -16,8 +18,13 @@ class ModelProject:
     subject_name: str  # Name of the subject being trained (e.g., "John", "MyDog")
     user_id: str  # Cognito user ID (sub claim)
     status: str = "DRAFT"  # Project status for workflow management
+    DEFAULT_MODEL_TYPE = replicate_config.get_default_profile()
+    VALID_MODEL_TYPES = replicate_config.get_profile_ids() or [DEFAULT_MODEL_TYPE]
+
+    model_type: str = DEFAULT_MODEL_TYPE
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    replicate_model_id: Optional[str] = None
 
     # Legacy field for backwards compatibility (no longer used with MongoDB)
     key: Optional[str] = None
@@ -41,6 +48,8 @@ class ModelProject:
             'subject_name': self.subject_name,
             'user_id': self.user_id,
             'status': self.status,
+            'model_type': self.model_type or self.DEFAULT_MODEL_TYPE,
+            'replicate_model_id': self.replicate_model_id,
             'created_at': self.created_at or datetime.utcnow(),
             'updated_at': self.updated_at or datetime.utcnow()
         }
@@ -54,6 +63,16 @@ class ModelProject:
             subject_name=data.get('subject_name'),
             user_id=data.get('user_id'),
             status=data.get('status', 'DRAFT'),
+            model_type=ModelProject._normalize_model_type(data.get('model_type')),
             created_at=data.get('created_at'),
-            updated_at=data.get('updated_at')
+            updated_at=data.get('updated_at'),
+            replicate_model_id=data.get('replicate_model_id')
         )
+
+    @staticmethod
+    def _normalize_model_type(value: Optional[str]) -> str:
+        if not value:
+            return ModelProject.DEFAULT_MODEL_TYPE
+        if value not in ModelProject.VALID_MODEL_TYPES:
+            return ModelProject.DEFAULT_MODEL_TYPE
+        return value

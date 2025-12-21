@@ -148,17 +148,15 @@ def reset_replicate():
         projects = list(db.model_projects.find({}))
         client.close()
 
-        # Build model names: flux_{user_id}_{project_id}
+        # Pull stored Replicate model identifiers
         models = []
         for project in projects:
-            project_id = str(project.get('_id'))
-            user_id = project.get('user_id')
-            if project_id and user_id:
-                model_name = f"flux_{user_id}_{project_id}"
-                models.append(model_name)
+            model_identifier = project.get('replicate_model_id')
+            if model_identifier:
+                models.append(model_identifier)
 
         if not models:
-            print("   No model projects found in database")
+            print("   No model identifiers found in database")
             print("\n✅ Replicate: No models to delete")
             return
 
@@ -167,11 +165,15 @@ def reset_replicate():
         deleted_count = 0
         failed_count = 0
 
-        for model_name in models:
-            model_id = f"{replicate_username}/{model_name}"
+        for model_identifier in models:
+            if "/" in model_identifier:
+                owner, model_name = model_identifier.split("/", 1)
+            else:
+                owner, model_name = replicate_username, model_identifier
+            model_id = f"{owner}/{model_name}"
 
             # List and delete all versions first
-            version_url = f"{API_BASE}/models/{replicate_username}/{model_name}/versions"
+            version_url = f"{API_BASE}/models/{owner}/{model_name}/versions"
             version_ids = []
 
             while version_url:
@@ -188,11 +190,11 @@ def reset_replicate():
 
             # Delete versions
             for vid in reversed(version_ids):
-                session.delete(f"{API_BASE}/models/{replicate_username}/{model_name}/versions/{vid}", timeout=30)
+                session.delete(f"{API_BASE}/models/{owner}/{model_name}/versions/{vid}", timeout=30)
                 time.sleep(0.1)
 
             # Delete the model
-            resp = session.delete(f"{API_BASE}/models/{replicate_username}/{model_name}", timeout=30)
+            resp = session.delete(f"{API_BASE}/models/{owner}/{model_name}", timeout=30)
             if resp.status_code in (200, 202, 204):
                 deleted_count += 1
                 print(f"  ✓ {model_id}")
