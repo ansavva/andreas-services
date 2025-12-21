@@ -137,9 +137,9 @@ replicate:
       unet_learning_rate: 0.000001
       hardware: "gpu-t4"
       visibility: "private"
-      trainer_version: "ostris/flux-dev-lora-trainer:4ffd32160efd92e956d39c5338a9b8fbafca58e03f791f6d8011f3e20e8ea6fa"
+      trainer_version: "black-forest-labs/flux-1.1-pro"
     generation:
-      model: "dev"
+      model: "black-forest-labs/flux-1.1-pro"
       aspect_ratio: "1:1"
       num_outputs: 1
       output_format: "jpg"
