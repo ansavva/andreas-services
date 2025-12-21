@@ -2,6 +2,7 @@ import React, { useRef, useState } from "react";
 import { Button, Card, CardBody, Progress } from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUpload } from "@fortawesome/free-solid-svg-icons";
+
 import { useAxios } from "@/hooks/axiosContext";
 import { uploadImage, deleteImage } from "@/apis/imageController";
 import ImageGrid from "@/components/images/imageGrid";
@@ -34,7 +35,13 @@ const PhotoUploadStep: React.FC<PhotoUploadStepProps> = ({
   const [error, setError] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
 
-  const allowedFileTypes = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+  const allowedFileTypes = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+  ];
   const maxFileSize = 10 * 1024 * 1024; // 10MB
 
   const handleFileSelect = () => {
@@ -43,6 +50,7 @@ const PhotoUploadStep: React.FC<PhotoUploadStepProps> = ({
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
+
     if (!files) return;
 
     setError("");
@@ -53,6 +61,7 @@ const PhotoUploadStep: React.FC<PhotoUploadStepProps> = ({
     // Check if adding these files would exceed max
     if (photos.length + files.length > maxPhotos) {
       setError(`You can only upload up to ${maxPhotos} photos`);
+
       return;
     }
 
@@ -82,24 +91,32 @@ const PhotoUploadStep: React.FC<PhotoUploadStepProps> = ({
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
+
       return;
     }
 
     // Upload all files at once
     setIsUploading(true);
     try {
-      const result = await uploadImage(axiosInstance, projectId, 'child_photos', filesToUpload);
+      const result = await uploadImage(
+        axiosInstance,
+        projectId,
+        "child_photos",
+        filesToUpload,
+      );
 
       // Add uploaded images to photos array
-      const newPhotos: PhotoFile[] = result.images.map((img: any, idx: number) => ({
-        id: img.id,
-        name: filesToUpload[idx].name
-      }));
+      const newPhotos: PhotoFile[] = result.images.map(
+        (img: any, idx: number) => ({
+          id: img.id,
+          name: filesToUpload[idx].name,
+        }),
+      );
 
       setPhotos((prev) => [...prev, ...newPhotos]);
     } catch (error) {
-      console.error('Error uploading photos:', error);
-      setError('Failed to upload photos. Please try again.');
+      console.error("Error uploading photos:", error);
+      setError("Failed to upload photos. Please try again.");
     } finally {
       setIsUploading(false);
       // Reset input
@@ -116,18 +133,22 @@ const PhotoUploadStep: React.FC<PhotoUploadStepProps> = ({
       setPhotos((prev) => prev.filter((p) => p.id !== imageId));
       setError("");
     } catch (error) {
-      console.error('Error deleting photo from server:', error);
-      setError('Failed to delete photo. Please try again.');
+      console.error("Error deleting photo from server:", error);
+      setError("Failed to delete photo. Please try again.");
     }
   };
 
   const handleContinue = () => {
     if (photos.length < minPhotos) {
-      setError(`Please upload at least ${minPhotos} photo${minPhotos > 1 ? "s" : ""}`);
+      setError(
+        `Please upload at least ${minPhotos} photo${minPhotos > 1 ? "s" : ""}`,
+      );
+
       return;
     }
 
     const photoIds = photos.map((p) => p.id);
+
     onComplete(photoIds);
   };
 
@@ -137,8 +158,8 @@ const PhotoUploadStep: React.FC<PhotoUploadStepProps> = ({
     <div className="max-w-4xl mx-auto">
       <h3 className="text-2xl font-bold mb-2">Upload Photos</h3>
       <p className="text-gray-600 dark:text-gray-400 mb-6">
-        Upload {minPhotos}-{maxPhotos} clear photos of your child. These will
-        be used to create a personalized character in the story.
+        Upload {minPhotos}-{maxPhotos} clear photos of your child. These will be
+        used to create a personalized character in the story.
       </p>
 
       <Card className="mb-6">
@@ -156,35 +177,33 @@ const PhotoUploadStep: React.FC<PhotoUploadStepProps> = ({
 
           <input
             ref={fileInputRef}
-            type="file"
             multiple
             accept={allowedFileTypes.join(",")}
-            onChange={handleFileChange}
             className="hidden"
+            type="file"
+            onChange={handleFileChange}
           />
 
           {photos.length < maxPhotos && (
             <Button
-              color="primary"
-              variant="flat"
-              onPress={handleFileSelect}
-              startContent={<FontAwesomeIcon icon={faUpload} />}
               fullWidth
+              color="primary"
               isDisabled={isUploading}
               isLoading={isUploading}
+              startContent={<FontAwesomeIcon icon={faUpload} />}
+              variant="flat"
+              onPress={handleFileSelect}
             >
               Select Photos ({uploadedCount}/{maxPhotos})
             </Button>
           )}
 
-          {error && (
-            <p className="text-danger text-sm mt-2">{error}</p>
-          )}
+          {error && <p className="text-danger text-sm mt-2">{error}</p>}
 
           <Progress
-            value={(uploadedCount / maxPhotos) * 100}
             className="mt-4"
             color={uploadedCount >= minPhotos ? "success" : "default"}
+            value={(uploadedCount / maxPhotos) * 100}
           />
           <p className="text-sm text-gray-500 mt-1">
             {uploadedCount} of {maxPhotos} photos uploaded
@@ -196,23 +215,24 @@ const PhotoUploadStep: React.FC<PhotoUploadStepProps> = ({
 
       {photos.length > 0 && (
         <div className="mb-6">
-          <ImageGrid
-            images={photos}
-            onImageDelete={handleRemovePhoto}
-          />
+          <ImageGrid images={photos} onImageDelete={handleRemovePhoto} />
         </div>
       )}
 
       <div className="flex justify-between">
-        <Button variant="flat" onPress={onBack} isDisabled={loading || isUploading}>
+        <Button
+          isDisabled={loading || isUploading}
+          variant="flat"
+          onPress={onBack}
+        >
           Back
         </Button>
         <Button
           color="primary"
+          isDisabled={loading || uploadedCount < minPhotos || isUploading}
+          isLoading={loading}
           size="lg"
           onPress={handleContinue}
-          isLoading={loading}
-          isDisabled={loading || uploadedCount < minPhotos || isUploading}
         >
           Continue to Character Generation
         </Button>

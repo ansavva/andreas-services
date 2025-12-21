@@ -1,8 +1,23 @@
-import React, { useState } from 'react';
-import { Card, CardBody, CardHeader, Button, Textarea, Spinner, Chip } from '@heroui/react';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faArrowLeft, faImage, faEdit, faSave, faTimes, faRedo } from '@fortawesome/free-solid-svg-icons';
-import { StoryPage } from '../apis/storyPageController';
+import React, { useState } from "react";
+import {
+  Card,
+  CardBody,
+  CardHeader,
+  Button,
+  Textarea,
+  Chip,
+} from "@heroui/react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faArrowLeft,
+  faImage,
+  faEdit,
+  faSave,
+  faTimes,
+  faRedo,
+} from "@fortawesome/free-solid-svg-icons";
+
+import { StoryPage } from "../apis/storyPageController";
 
 interface PagesEditorStepProps {
   projectId: string;
@@ -28,8 +43,8 @@ const PagesEditorStep: React.FC<PagesEditorStepProps> = ({
   const [selectedPage, setSelectedPage] = useState<number>(0);
   const [editingText, setEditingText] = useState(false);
   const [editingPrompt, setEditingPrompt] = useState(false);
-  const [textDraft, setTextDraft] = useState('');
-  const [promptDraft, setPromptDraft] = useState('');
+  const [textDraft, setTextDraft] = useState("");
+  const [promptDraft, setPromptDraft] = useState("");
   const [generatingImage, setGeneratingImage] = useState<string | null>(null);
   const [savingText, setSavingText] = useState(false);
   const [savingPrompt, setSavingPrompt] = useState(false);
@@ -47,8 +62,8 @@ const PagesEditorStep: React.FC<PagesEditorStepProps> = ({
       await onUpdatePageText(currentPage._id, textDraft);
       setEditingText(false);
     } catch (error) {
-      console.error('Error saving text:', error);
-      alert('Failed to save text. Please try again.');
+      console.error("Error saving text:", error);
+      alert("Failed to save text. Please try again.");
     } finally {
       setSavingText(false);
     }
@@ -56,11 +71,11 @@ const PagesEditorStep: React.FC<PagesEditorStepProps> = ({
 
   const handleCancelEditText = () => {
     setEditingText(false);
-    setTextDraft('');
+    setTextDraft("");
   };
 
   const handleStartEditPrompt = () => {
-    setPromptDraft(currentPage.illustration_prompt || '');
+    setPromptDraft(currentPage.illustration_prompt || "");
     setEditingPrompt(true);
   };
 
@@ -70,8 +85,8 @@ const PagesEditorStep: React.FC<PagesEditorStepProps> = ({
       await onUpdatePrompt(currentPage._id, promptDraft);
       setEditingPrompt(false);
     } catch (error) {
-      console.error('Error saving prompt:', error);
-      alert('Failed to save prompt. Please try again.');
+      console.error("Error saving prompt:", error);
+      alert("Failed to save prompt. Please try again.");
     } finally {
       setSavingPrompt(false);
     }
@@ -79,7 +94,7 @@ const PagesEditorStep: React.FC<PagesEditorStepProps> = ({
 
   const handleCancelEditPrompt = () => {
     setEditingPrompt(false);
-    setPromptDraft('');
+    setPromptDraft("");
   };
 
   const handleGenerateImage = async () => {
@@ -87,8 +102,8 @@ const PagesEditorStep: React.FC<PagesEditorStepProps> = ({
       setGeneratingImage(currentPage._id);
       await onGenerateImage(currentPage._id);
     } catch (error) {
-      console.error('Error generating image:', error);
-      alert('Failed to generate image. Please try again.');
+      console.error("Error generating image:", error);
+      alert("Failed to generate image. Please try again.");
     } finally {
       setGeneratingImage(null);
     }
@@ -109,8 +124,8 @@ const PagesEditorStep: React.FC<PagesEditorStepProps> = ({
       {/* Header */}
       <div className="flex justify-between items-center">
         <Button
-          variant="light"
           startContent={<FontAwesomeIcon icon={faArrowLeft} />}
+          variant="light"
           onPress={onBack}
         >
           Back
@@ -126,16 +141,16 @@ const PagesEditorStep: React.FC<PagesEditorStepProps> = ({
         {pages.map((page, index) => (
           <Button
             key={page._id}
-            size="sm"
-            color={selectedPage === index ? 'primary' : 'default'}
-            variant={selectedPage === index ? 'solid' : 'bordered'}
-            onPress={() => setSelectedPage(index)}
             className="min-w-[80px]"
+            color={selectedPage === index ? "primary" : "default"}
+            size="sm"
+            variant={selectedPage === index ? "solid" : "bordered"}
+            onPress={() => setSelectedPage(index)}
           >
             Page {page.page_number}
             {page.image_s3_key && (
-              <Chip size="sm" color="success" className="ml-1">
-                <FontAwesomeIcon icon={faImage} className="text-xs" />
+              <Chip className="ml-1" color="success" size="sm">
+                <FontAwesomeIcon className="text-xs" icon={faImage} />
               </Chip>
             )}
           </Button>
@@ -150,8 +165,8 @@ const PagesEditorStep: React.FC<PagesEditorStepProps> = ({
             {!editingText && (
               <Button
                 size="sm"
-                variant="light"
                 startContent={<FontAwesomeIcon icon={faEdit} />}
+                variant="light"
                 onPress={handleStartEditText}
               >
                 Edit
@@ -162,37 +177,40 @@ const PagesEditorStep: React.FC<PagesEditorStepProps> = ({
             {editingText ? (
               <div className="space-y-4">
                 <Textarea
-                  value={textDraft}
-                  onValueChange={setTextDraft}
                   minRows={4}
                   placeholder="Enter page text..."
+                  value={textDraft}
+                  onValueChange={setTextDraft}
                 />
                 <div className="flex gap-2">
                   <Button
                     color="primary"
+                    isLoading={savingText}
                     startContent={<FontAwesomeIcon icon={faSave} />}
                     onPress={handleSaveText}
-                    isLoading={savingText}
                   >
                     Save
                   </Button>
                   <Button
-                    variant="light"
-                    startContent={<FontAwesomeIcon icon={faTimes} />}
-                    onPress={handleCancelEditText}
                     isDisabled={savingText}
+                    startContent={<FontAwesomeIcon icon={faTimes} />}
+                    variant="light"
+                    onPress={handleCancelEditText}
                   >
                     Cancel
                   </Button>
                 </div>
                 <p className="text-xs text-gray-500">
-                  Version: {currentPage.text_version} (saving will create version {currentPage.text_version + 1})
+                  Version: {currentPage.text_version} (saving will create
+                  version {currentPage.text_version + 1})
                 </p>
               </div>
             ) : (
               <div>
                 <p className="whitespace-pre-wrap">{currentPage.page_text}</p>
-                <p className="text-xs text-gray-500 mt-2">Version: {currentPage.text_version}</p>
+                <p className="text-xs text-gray-500 mt-2">
+                  Version: {currentPage.text_version}
+                </p>
               </div>
             )}
           </CardBody>
@@ -208,35 +226,39 @@ const PagesEditorStep: React.FC<PagesEditorStepProps> = ({
               <div className="space-y-4">
                 <div className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center">
                   {/* TODO: Display actual image from S3 */}
-                  <p className="text-gray-500">Image: {currentPage.image_s3_key}</p>
+                  <p className="text-gray-500">
+                    Image: {currentPage.image_s3_key}
+                  </p>
                 </div>
                 <div className="flex gap-2">
                   <Button
                     color="primary"
-                    variant="bordered"
-                    startContent={<FontAwesomeIcon icon={faRedo} />}
-                    onPress={handleGenerateImage}
                     isLoading={generatingImage === currentPage._id}
+                    startContent={<FontAwesomeIcon icon={faRedo} />}
+                    variant="bordered"
+                    onPress={handleGenerateImage}
                   >
                     Regenerate
                   </Button>
                 </div>
-                <p className="text-xs text-gray-500">Version: {currentPage.image_version}</p>
+                <p className="text-xs text-gray-500">
+                  Version: {currentPage.image_version}
+                </p>
               </div>
             ) : (
               <div className="space-y-4">
                 <div className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center">
                   <div className="text-center text-gray-500">
-                    <FontAwesomeIcon icon={faImage} className="text-4xl mb-2" />
+                    <FontAwesomeIcon className="text-4xl mb-2" icon={faImage} />
                     <p>No image generated yet</p>
                   </div>
                 </div>
                 <Button
                   color="primary"
+                  isDisabled={!currentPage.illustration_prompt}
+                  isLoading={generatingImage === currentPage._id}
                   startContent={<FontAwesomeIcon icon={faImage} />}
                   onPress={handleGenerateImage}
-                  isLoading={generatingImage === currentPage._id}
-                  isDisabled={!currentPage.illustration_prompt}
                 >
                   Generate Image
                 </Button>
@@ -253,8 +275,8 @@ const PagesEditorStep: React.FC<PagesEditorStepProps> = ({
           {!editingPrompt && (
             <Button
               size="sm"
-              variant="light"
               startContent={<FontAwesomeIcon icon={faEdit} />}
+              variant="light"
               onPress={handleStartEditPrompt}
             >
               Edit
@@ -265,26 +287,26 @@ const PagesEditorStep: React.FC<PagesEditorStepProps> = ({
           {editingPrompt ? (
             <div className="space-y-4">
               <Textarea
-                value={promptDraft}
-                onValueChange={setPromptDraft}
+                description="This prompt will be used to generate the illustration using AI"
                 minRows={3}
                 placeholder="Describe what should be illustrated on this page..."
-                description="This prompt will be used to generate the illustration using AI"
+                value={promptDraft}
+                onValueChange={setPromptDraft}
               />
               <div className="flex gap-2">
                 <Button
                   color="primary"
+                  isLoading={savingPrompt}
                   startContent={<FontAwesomeIcon icon={faSave} />}
                   onPress={handleSavePrompt}
-                  isLoading={savingPrompt}
                 >
                   Save
                 </Button>
                 <Button
-                  variant="light"
-                  startContent={<FontAwesomeIcon icon={faTimes} />}
-                  onPress={handleCancelEditPrompt}
                   isDisabled={savingPrompt}
+                  startContent={<FontAwesomeIcon icon={faTimes} />}
+                  variant="light"
+                  onPress={handleCancelEditPrompt}
                 >
                   Cancel
                 </Button>
@@ -292,7 +314,9 @@ const PagesEditorStep: React.FC<PagesEditorStepProps> = ({
             </div>
           ) : (
             <div>
-              <p className="whitespace-pre-wrap">{currentPage.illustration_prompt || 'No prompt set'}</p>
+              <p className="whitespace-pre-wrap">
+                {currentPage.illustration_prompt || "No prompt set"}
+              </p>
             </div>
           )}
         </CardBody>
@@ -305,10 +329,11 @@ const PagesEditorStep: React.FC<PagesEditorStepProps> = ({
             <div>
               <p className="font-semibold">Story Progress</p>
               <p className="text-sm text-gray-500">
-                {pages.filter(p => p.image_s3_key).length} of {pages.length} pages illustrated
+                {pages.filter((p) => p.image_s3_key).length} of {pages.length}{" "}
+                pages illustrated
               </p>
             </div>
-            {pages.every(p => p.image_s3_key) && (
+            {pages.every((p) => p.image_s3_key) && (
               <Chip color="success" variant="flat">
                 All pages complete!
               </Chip>

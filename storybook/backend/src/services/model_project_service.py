@@ -1,11 +1,20 @@
 from typing import List
+from flask import request
 
 from src.data.model_project_repo import ModelProjectRepo
+from src.data.image_repo import ImageRepo
+from src.data.generation_history_repo import GenerationHistoryRepo
+from src.data.training_run_repo import TrainingRunRepo
 from src.models.model_project import ModelProject
+from src.proxies.replicate_service import ReplicateService
 
 class ModelProjectService:
     def __init__(self):
         self.model_project_repo = ModelProjectRepo()
+        self.image_repo = ImageRepo()
+        self.generation_history_repo = GenerationHistoryRepo()
+        self.training_run_repo = TrainingRunRepo()
+        self.replicate_service = ReplicateService()
 
     def get_projects(self) -> List[ModelProject]:
         # Retrieve all model projects from the repo
@@ -26,3 +35,53 @@ class ModelProjectService:
     def update_status(self, project_id: str, status: str) -> ModelProject:
         # Update a model project's status
         return self.model_project_repo.update_status(project_id, status)
+
+    def delete_project(self, project_id: str) -> None:
+        """
+        Delete a project and all associated data:
+        - Training runs (all historical training sessions)
+        - Generation history entries
+        - All images (from S3 and MongoDB)
+        - Replicate model (if exists)
+        - Project metadata
+
+        Args:
+            project_id: UUID of the project to delete
+
+        Raises:
+            ValueError: If project not found or doesn't belong to user
+        """
+        user_id = request.cognito_claims['sub']
+
+        # 1. Delete all training runs for this project
+        try:
+            self.training_run_repo.delete_by_project(project_id)
+        except Exception as e:
+            print(f"Error deleting training runs: {e}")
+
+        # 2. Delete all generation history for this project
+        histories = self.generation_history_repo.list_by_project(project_id)
+        for history in histories:
+            try:
+                self.generation_history_repo.delete(history.id)
+            except Exception as e:
+                print(f"Error deleting generation history {history.id}: {e}")
+
+        # 3. Delete all images for this project (S3 + MongoDB)
+        images = self.image_repo.list_images(project_id)
+        for image in images:
+            try:
+                self.image_repo.delete_image(image.id)
+            except Exception as e:
+                print(f"Error deleting image {image.id}: {e}")
+
+        # 4. Delete Replicate model if it exists
+        model_name = f"flux_{user_id}_{project_id}"
+        try:
+            if self.replicate_service.model_exists(model_name):
+                self.replicate_service.delete_model(model_name)
+        except Exception as e:
+            print(f"Error deleting Replicate model {model_name}: {e}")
+
+        # 5. Finally, delete the project itself
+        self.model_project_repo.delete_project(project_id)

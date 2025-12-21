@@ -1,11 +1,27 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useMemo } from "react";
 import { Button, Card, CardBody, Spinner, Chip, Image } from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faUpload, faWandMagicSparkles, faCheck, faExclamationCircle } from "@fortawesome/free-solid-svg-icons";
+import {
+  faUpload,
+  faWandMagicSparkles,
+  faCheck,
+  faExclamationCircle,
+  faRotate,
+} from "@fortawesome/free-solid-svg-icons";
+
 import { useAxios } from "@/hooks/axiosContext";
 import { useToast } from "@/hooks/useToast";
-import { uploadImage, deleteImage, getImagesByProject, downloadImageById } from "@/apis/imageController";
-import { train, getTrainingRuns, updateTrainingRunStatus } from "@/apis/modelController";
+import {
+  uploadImage,
+  deleteImage,
+  getImagesByProject,
+  downloadImageById,
+} from "@/apis/imageController";
+import {
+  train,
+  getTrainingRuns,
+  updateTrainingRunStatus,
+} from "@/apis/modelController";
 import ImageGrid from "@/components/images/imageGrid";
 import { getErrorMessage, logError } from "@/utils/errorHandling";
 
@@ -43,13 +59,21 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
 
   const [images, setImages] = useState<ImageFile[]>([]);
   const [trainingRuns, setTrainingRuns] = useState<TrainingRun[]>([]);
-  const [imageThumbnails, setImageThumbnails] = useState<Record<string, string>>({});
+  const [imageThumbnails, setImageThumbnails] = useState<
+    Record<string, string>
+  >({});
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [isLoadingImages, setIsLoadingImages] = useState(false);
   const [isLoadingTrainingRuns, setIsLoadingTrainingRuns] = useState(false);
   const [isStartingTraining, setIsStartingTraining] = useState(false);
 
-  const allowedFileTypes = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+  const allowedFileTypes = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+  ];
   const maxFileSize = 10 * 1024 * 1024; // 10MB
 
   useEffect(() => {
@@ -65,11 +89,16 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
     setIsLoadingImages(true);
     try {
       // Only fetch training images, not generated images
-      const response = await getImagesByProject(axiosInstance, projectId, "training");
+      const response = await getImagesByProject(
+        axiosInstance,
+        projectId,
+        "training",
+      );
       const imageFiles = response.images.map((img: any) => ({
         id: img.id,
         name: img.filename || "Image",
       }));
+
       setImages(imageFiles);
     } catch (error) {
       logError("Fetch images", error);
@@ -85,6 +114,7 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
     try {
       const response = await getTrainingRuns(axiosInstance, projectId);
       const runs = response.training_runs || [];
+
       setTrainingRuns(runs);
 
       // Load thumbnails for all images in all training runs
@@ -106,10 +136,11 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
     try {
       const blob = await downloadImageById(axiosInstance, imageId);
       const reader = new FileReader();
+
       reader.onloadend = () => {
-        setImageThumbnails(prev => ({
+        setImageThumbnails((prev) => ({
           ...prev,
-          [imageId]: reader.result as string
+          [imageId]: reader.result as string,
         }));
       };
       reader.readAsDataURL(blob);
@@ -124,6 +155,7 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
+
     if (!files) return;
 
     const filesToUpload: File[] = [];
@@ -153,6 +185,7 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
+
       return;
     }
 
@@ -166,27 +199,46 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
   const handleUpload = async (filesToUpload: File[]) => {
     if (!projectId || projectId === "new") {
       showError("Project not found");
+
       return;
     }
 
     setIsUploadingImages(true);
     try {
-      await uploadImage(axiosInstance, projectId, "uploaded_images", filesToUpload, "training", { normalize: false });
+      await uploadImage(
+        axiosInstance,
+        projectId,
+        "uploaded_images",
+        filesToUpload,
+        "training",
+        { normalize: false },
+      );
       await fetchImages();
-      showSuccess(`Successfully uploaded ${filesToUpload.length} image${filesToUpload.length > 1 ? 's' : ''}`);
+      showSuccess(
+        `Successfully uploaded ${filesToUpload.length} image${filesToUpload.length > 1 ? "s" : ""}`,
+      );
     } catch (error) {
       logError("Upload images", error);
-      showError(getErrorMessage(error, "Failed to upload images. Please try again."));
+      showError(
+        getErrorMessage(error, "Failed to upload images. Please try again."),
+      );
     } finally {
       setIsUploadingImages(false);
     }
   };
 
+  const isImageUsedInTraining = (imageId: string) => {
+    return trainingRuns.some((run) => run.image_ids.includes(imageId));
+  };
+
+  const availableImages = useMemo(() => {
+    return images.filter((image) => !isImageUsedInTraining(image.id));
+  }, [images, trainingRuns]);
+
   const handleImageDelete = async (imageId: string) => {
-    // Check if image is used in any training run
-    const usedInTraining = trainingRuns.some(run => run.image_ids.includes(imageId));
-    if (usedInTraining) {
+    if (isImageUsedInTraining(imageId)) {
       showError("Cannot delete image that has been used in a training run");
+
       return;
     }
 
@@ -201,8 +253,9 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
   };
 
   const handleStartTraining = async () => {
-    if (images.length === 0) {
+    if (availableImages.length === 0) {
       showError("Please upload at least one image for training");
+
       return;
     }
 
@@ -210,16 +263,20 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
 
     try {
       // Use all uploaded images for training
-      const imageIdsArray = images.map(img => img.id);
+      const imageIdsArray = availableImages.map((img) => img.id);
+
       await train(axiosInstance, projectId, imageIdsArray);
 
       showSuccess("Training started! Refreshing training runs...");
+      setImages([]);
 
       // Refresh training runs
       await fetchTrainingRuns();
     } catch (error: any) {
       logError("Start training", error);
-      showError(getErrorMessage(error, "Failed to start training. Please try again."));
+      showError(
+        getErrorMessage(error, "Failed to start training. Please try again."),
+      );
     } finally {
       setIsStartingTraining(false);
     }
@@ -227,11 +284,16 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
 
   const handleRefreshStatus = async (trainingRunId: string) => {
     try {
-      const response = await updateTrainingRunStatus(axiosInstance, trainingRunId);
+      const response = await updateTrainingRunStatus(
+        axiosInstance,
+        trainingRunId,
+      );
 
       // Update the training run in state
-      setTrainingRuns(prev =>
-        prev.map(run => run.id === trainingRunId ? { ...run, ...response } : run)
+      setTrainingRuns((prev) =>
+        prev.map((run) =>
+          run.id === trainingRunId ? { ...run, ...response } : run,
+        ),
       );
 
       // If training succeeded, notify parent
@@ -281,59 +343,82 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
         <Card>
           <CardBody className="p-6">
             <input
-              type="file"
               ref={fileInputRef}
-              onChange={handleFileChange}
-              accept={allowedFileTypes.join(",")}
               multiple
+              accept={allowedFileTypes.join(",")}
               className="hidden"
+              type="file"
+              onChange={handleFileChange}
             />
 
             <Button
+              className="mb-4"
               color="primary"
-              variant="flat"
-              startContent={<FontAwesomeIcon icon={faUpload} />}
-              onPress={handleFileSelect}
               isDisabled={isUploadingImages}
               isLoading={isUploadingImages}
-              className="mb-4"
+              startContent={<FontAwesomeIcon icon={faUpload} />}
+              variant="flat"
+              onPress={handleFileSelect}
             >
               {isUploadingImages ? "Uploading..." : "Select Images"}
             </Button>
 
             {/* Training Images Row */}
-            {images.length > 0 ? (
+            {availableImages.length > 0 ? (
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                  {images.length} image{images.length !== 1 ? "s" : ""} uploaded
+                  {availableImages.length} image
+                  {availableImages.length !== 1 ? "s" : ""} ready
                 </p>
 
                 <ImageGrid
-                  images={images}
+                  images={availableImages}
                   isLoading={isLoadingImages}
                   onImageDelete={handleImageDelete}
-                  compact
                 />
 
                 {/* Start Training Button - right-aligned */}
                 <div className="flex justify-end mt-4">
                   <Button
                     color="primary"
-                    size="lg"
-                    startContent={<FontAwesomeIcon icon={faWandMagicSparkles} />}
-                    onPress={handleStartTraining}
+                    isDisabled={
+                      availableImages.length === 0 || isStartingTraining
+                    }
                     isLoading={isStartingTraining}
-                    isDisabled={images.length === 0 || isStartingTraining}
+                    size="lg"
+                    startContent={
+                      <FontAwesomeIcon icon={faWandMagicSparkles} />
+                    }
+                    onPress={handleStartTraining}
                   >
-                    {isStartingTraining ? "Starting Training..." : `Start Training with ${images.length} Image${images.length !== 1 ? 's' : ''}`}
+                    {isStartingTraining
+                      ? "Starting Training..."
+                      : `Start Training with ${availableImages.length} Image${availableImages.length !== 1 ? "s" : ""}`}
                   </Button>
                 </div>
               </div>
             ) : (
               <div className="text-center py-8 text-gray-500 dark:text-gray-400 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
-                <FontAwesomeIcon icon={faUpload} size="2x" className="mb-3 opacity-30" />
-                <p>No training images uploaded yet</p>
-                <p className="text-sm mt-2">Upload images to begin training your model</p>
+                <FontAwesomeIcon
+                  className="mb-3 opacity-30"
+                  icon={faUpload}
+                  size="2x"
+                />
+                {images.length === 0 ? (
+                  <>
+                    <p>No training images uploaded yet</p>
+                    <p className="text-sm mt-2">
+                      Upload images to begin training your model
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>All uploaded images have been used</p>
+                    <p className="text-sm mt-2">
+                      Add new photos to start another training run
+                    </p>
+                  </>
+                )}
               </div>
             )}
           </CardBody>
@@ -351,98 +436,100 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
         )}
 
         {!isLoadingTrainingRuns && trainingRuns.length === 0 && (
-          <Card>
-            <CardBody className="p-8">
-              <div className="text-center text-gray-500 dark:text-gray-400">
-                <FontAwesomeIcon icon={faWandMagicSparkles} size="2x" className="mb-3 opacity-30" />
-                <p>No training runs yet</p>
-                <p className="text-sm mt-2">Select images and click "Start Training" to create your first training run</p>
-              </div>
-            </CardBody>
-          </Card>
+          <div className="text-center text-gray-500 dark:text-gray-400">
+            <FontAwesomeIcon
+              className="mb-3 opacity-30"
+              icon={faWandMagicSparkles}
+              size="2x"
+            />
+            <p>No training runs yet</p>
+            <p className="text-sm mt-2">
+              Upload images and click "Start Training" to create your first
+              training run
+            </p>
+          </div>
         )}
 
         {!isLoadingTrainingRuns && trainingRuns.length > 0 && (
           <div className="space-y-3">
             {trainingRuns.map((run) => (
-              <Card key={run.id} className="border border-gray-200 dark:border-gray-700">
-                <CardBody className="p-4">
-                  {/* Row layout: thumbnails left, metadata right */}
-                  <div className="flex items-start gap-4">
-                    {/* Left: Image thumbnails */}
-                    <div className="flex gap-2 flex-shrink-0">
-                      {run.image_ids.slice(0, 4).map((imageId) => (
-                        <div key={imageId} className="relative">
-                          {imageThumbnails[imageId] ? (
-                            <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-                              <Image
-                                src={imageThumbnails[imageId]}
-                                alt="Training image"
-                                width={64}
-                                height={64}
-                                className="object-cover"
-                              />
-                              {/* Small training badge on thumbnails */}
-                              <div className="absolute bottom-0 right-0">
-                                <Chip size="sm" color="primary" variant="flat" className="text-[8px] h-3 px-1">
-                                  T
-                                </Chip>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center">
-                              <Spinner size="sm" />
-                            </div>
-                          )}
+              <div
+                key={run.id}
+                className="grid md:grid-cols-[minmax(0,2.5fr)_minmax(150px,1fr)] gap-6 items-start"
+              >
+                <div className="flex flex-wrap gap-1">
+                  {run.image_ids.map((imageId, index) => (
+                    <div key={`${run.id}-${imageId}-${index}`} className="relative">
+                      {imageThumbnails[imageId] ? (
+                        <div className="relative w-28 h-28 rounded-xl overflow-hidden">
+                          <Image
+                            alt="Training image"
+                            className="object-cover w-full h-full"
+                            height={112}
+                            src={imageThumbnails[imageId]}
+                            width={112}
+                          />
                         </div>
-                      ))}
-                      {run.image_ids.length > 4 && (
-                        <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center text-xs font-medium">
-                          +{run.image_ids.length - 4}
+                      ) : (
+                        <div className="w-28 h-28 bg-gray-200 dark:bg-gray-700 rounded-xl flex items-center justify-center">
+                          <Spinner size="sm" />
                         </div>
                       )}
                     </div>
+                  ))}
+                </div>
 
-                    {/* Right: Metadata */}
-                    <div className="flex-1 flex justify-between items-start">
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                          {new Date(run.created_at).toLocaleDateString()} at {new Date(run.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {run.image_ids.length} training image{run.image_ids.length !== 1 ? 's' : ''}
-                        </p>
-                        {run.error_message && (
-                          <p className="text-xs text-danger mt-2">{run.error_message}</p>
-                        )}
-                      </div>
-
-                      <div className="flex flex-col items-end gap-2">
-                        <Chip
-                          size="sm"
-                          color={getStatusColor(run.status)}
-                          variant="flat"
-                          startContent={<FontAwesomeIcon icon={getStatusIcon(run.status)} className="text-xs" />}
-                          className="capitalize"
-                        >
-                          {run.status}
-                        </Chip>
-
-                        {run.status !== "succeeded" && run.status !== "failed" && run.status !== "canceled" && (
-                          <Button
-                            size="sm"
-                            variant="light"
-                            onPress={() => handleRefreshStatus(run.id)}
-                            className="text-xs h-6"
-                          >
-                            Refresh
-                          </Button>
-                        )}
-                      </div>
-                    </div>
+                <div className="flex flex-col gap-2 justify-center">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      {new Date(run.created_at).toLocaleDateString()} at{" "}
+                      {new Date(run.created_at).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {run.image_ids.length} training image
+                      {run.image_ids.length !== 1 ? "s" : ""}
+                    </p>
                   </div>
-                </CardBody>
-              </Card>
+                  <div>
+                    <Chip
+                      className="capitalize p-3"
+                      color={getStatusColor(run.status)}
+                      size="sm"
+                      startContent={
+                        <FontAwesomeIcon
+                          className="text-xs mr-1"
+                          icon={getStatusIcon(run.status)}
+                        />
+                      }
+                      variant="flat"
+                    >
+                      {run.status}
+                    </Chip>
+                    {run.status !== "succeeded" &&
+                      run.status !== "failed" &&
+                      run.status !== "canceled" && (
+                        <Button
+                          className="text-xs h-6"
+                          size="sm"
+                          variant="light"
+                          isIconOnly
+                          aria-label="Refresh status"
+                          onPress={() => handleRefreshStatus(run.id)}
+                        >
+                          <FontAwesomeIcon icon={faRotate} />
+                        </Button>
+                      )}
+                  </div>
+                  {run.error_message && (
+                    <p className="text-xs text-danger">
+                      {run.error_message}
+                    </p>
+                  )}
+                </div>
+              </div>
             ))}
           </div>
         )}

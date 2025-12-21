@@ -1,20 +1,29 @@
 import { AxiosInstance } from "axios";
 
+type UploadImageOptions = {
+  normalize?: boolean;
+};
+
 export const uploadImage = async (
-    axiosInstance: AxiosInstance,
-    projectId: string,
-    directory: string,
-    files: File[]
-  ) => {
+  axiosInstance: AxiosInstance,
+  projectId: string,
+  directory: string,
+  files: File[],
+  imageType: string = "training",
+  options?: UploadImageOptions,
+) => {
     const formData = new FormData();
     formData.append("project_id", projectId);
     formData.append("directory", directory);
-  
+    formData.append("image_type", imageType);
+    const shouldNormalize = options?.normalize ?? true;
+    formData.append("normalize_images", shouldNormalize ? "true" : "false");
+
     // Append all files to FormData
     files.forEach((file, index) => {
         formData.append(`image[${index}]`, file); // Index added here
-      });    
-  
+      });
+
     try {
       const response = await axiosInstance.post("/api/images/upload", formData, {
         headers: {
@@ -49,14 +58,15 @@ export const deleteImage = async (axiosInstance: AxiosInstance, imageId: string)
     return response.data;
 };
 
-export const listImages = async (axiosInstance: AxiosInstance, projectId: string, directory?: string) => {
+export const listImages = async (axiosInstance: AxiosInstance, projectId: string, directory?: string, imageType?: string) => {
     // Note: directory parameter is kept for backwards compatibility but not used
-    // The backend doesn't support directory filtering yet
-    const response = await axiosInstance.get(`/api/images/list/${projectId}`);
+    const params = imageType ? { image_type: imageType } : {};
+    const response = await axiosInstance.get(`/api/images/list/${projectId}`, { params });
     return response.data;
 };
 
-export const getImagesByProject = async (axiosInstance: AxiosInstance, projectId: string) => {
-    const response = await axiosInstance.get(`/api/images/list/${projectId}`);
+export const getImagesByProject = async (axiosInstance: AxiosInstance, projectId: string, imageType?: string) => {
+    const params = imageType ? { image_type: imageType } : {};
+    const response = await axiosInstance.get(`/api/images/list/${projectId}`, { params });
     return response.data;
 };

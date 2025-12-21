@@ -1,6 +1,5 @@
 import {
   Button,
-  Link as NextUILink,
   Navbar as NextUINavbar,
   NavbarBrand,
   NavbarContent,
@@ -12,12 +11,12 @@ import {
   DropdownTrigger,
   DropdownMenu,
   DropdownItem,
-  Avatar
+  Avatar,
 } from "@heroui/react";
 import { Link as RouterLink } from "react-router-dom";
 import { link as linkStyles } from "@heroui/theme";
 import clsx from "clsx";
-import { signInWithRedirect, signOut } from 'aws-amplify/auth';
+import { signInWithRedirect, signOut } from "aws-amplify/auth";
 import { useState, useEffect } from "react";
 
 import { siteConfig } from "@/config/site";
@@ -44,12 +43,17 @@ export const Navbar = () => {
   const fetchUserProfile = async () => {
     try {
       const profile = await getMyProfile(axiosInstance);
+
       setDisplayName(profile.display_name);
 
       // Fetch profile image if exists
       if (profile.profile_image_id) {
-        const response = await downloadImageById(axiosInstance, profile.profile_image_id);
+        const response = await downloadImageById(
+          axiosInstance,
+          profile.profile_image_id,
+        );
         const reader = new FileReader();
+
         reader.onloadend = () => {
           setProfileImageUrl(reader.result as string);
         };
@@ -72,10 +76,7 @@ export const Navbar = () => {
     <NextUINavbar maxWidth="xl" position="sticky">
       <NavbarContent className="basis-1/5 sm:basis-full" justify="start">
         <NavbarBrand className="gap-3 max-w-fit">
-          <RouterLink
-            className="flex justify-start items-center gap-1"
-            to="/"
-          >
+          <RouterLink className="flex justify-start items-center gap-1" to="/">
             <p className="font-bold text-inherit">Storybook</p>
           </RouterLink>
         </NavbarBrand>
@@ -88,7 +89,7 @@ export const Navbar = () => {
                   {
                     "text-primary font-medium": currentPath === item.href,
                   },
-                  "data-[active=true]:font-medium"
+                  "data-[active=true]:font-medium",
                 )}
                 to={item.href}
               >
@@ -107,7 +108,7 @@ export const Navbar = () => {
           <ThemeSwitch />
         </NavbarItem>
         <NavbarItem className="hidden sm:flex">
-          {(!isAuthenticated) ? (
+          {!isAuthenticated ? (
             <Button
               className="text-sm font-normal text-default-600 bg-default-100"
               variant="flat"
@@ -122,19 +123,25 @@ export const Navbar = () => {
                   isBordered
                   as="button"
                   className="transition-transform"
-                  src={profileImageUrl || undefined}
                   name={displayName || currentUser?.username}
+                  src={profileImageUrl || undefined}
                 />
               </DropdownTrigger>
               <DropdownMenu aria-label="Profile Actions" variant="flat">
                 <DropdownItem key="profile-info" className="h-14 gap-2">
                   <p className="font-semibold">Signed in as</p>
-                  <p className="font-semibold">{displayName || currentUser?.name || currentUser?.username}</p>
+                  <p className="font-semibold">
+                    {displayName || currentUser?.name || currentUser?.username}
+                  </p>
                 </DropdownItem>
                 <DropdownItem key="profile" as={RouterLink} to="/profile">
                   Profile Settings
                 </DropdownItem>
-                <DropdownItem key="logout" color="danger" onClick={handleLogout}>
+                <DropdownItem
+                  key="logout"
+                  color="danger"
+                  onClick={handleLogout}
+                >
                   Log Out
                 </DropdownItem>
               </DropdownMenu>
@@ -146,7 +153,7 @@ export const Navbar = () => {
       <NavbarContent className="sm:hidden basis-1 pl-4" justify="end">
         <ThemeSwitch />
         <NavbarItem>
-          {(!isAuthenticated) ? (
+          {!isAuthenticated ? (
             <Button
               className="text-sm font-normal text-default-600 bg-default-100"
               variant="flat"
@@ -161,19 +168,25 @@ export const Navbar = () => {
                   isBordered
                   as="button"
                   className="transition-transform"
-                  src={profileImageUrl || undefined}
                   name={displayName || currentUser?.username}
+                  src={profileImageUrl || undefined}
                 />
               </DropdownTrigger>
               <DropdownMenu aria-label="Profile Actions" variant="flat">
                 <DropdownItem key="profile-info" className="h-14 gap-2">
                   <p className="font-semibold">Signed in as</p>
-                  <p className="font-semibold">{displayName || currentUser?.name || currentUser?.username}</p>
+                  <p className="font-semibold">
+                    {displayName || currentUser?.name || currentUser?.username}
+                  </p>
                 </DropdownItem>
                 <DropdownItem key="profile" as={RouterLink} to="/profile">
                   Profile Settings
                 </DropdownItem>
-                <DropdownItem key="logout" color="danger" onClick={handleLogout}>
+                <DropdownItem
+                  key="logout"
+                  color="danger"
+                  onClick={handleLogout}
+                >
                   Log Out
                 </DropdownItem>
               </DropdownMenu>
@@ -188,10 +201,9 @@ export const Navbar = () => {
           {siteConfig.navMenuItems.map((item, index) => (
             <NavbarMenuItem key={`${item}-${index}`}>
               <RouterLink
-                className={clsx(
-                  "text-lg",
-                  { "text-primary font-medium": currentPath === item.href }
-                )}
+                className={clsx("text-lg", {
+                  "text-primary font-medium": currentPath === item.href,
+                })}
                 to={item.href}
               >
                 {item.label}

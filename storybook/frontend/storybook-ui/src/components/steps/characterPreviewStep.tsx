@@ -1,14 +1,8 @@
 import React, { useState } from "react";
-import {
-  Button,
-  Card,
-  CardBody,
-  Spinner,
-  Tabs,
-  Tab,
-} from "@heroui/react";
+import { Button, Card, CardBody, Spinner, Tabs, Tab } from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faRefresh, faCheck } from "@fortawesome/free-solid-svg-icons";
+
 import ImageGrid from "@/components/images/imageGrid";
 
 type CharacterAsset = {
@@ -56,34 +50,39 @@ const CharacterPreviewStep: React.FC<CharacterPreviewStepProps> = ({
   const canContinue = hasApprovedPortrait;
 
   // Convert portrait to ImageGrid format
-  const portraitImages = portrait ? [{
-    id: portrait.image_id,
-    name: 'Character Portrait'
-  }] : [];
+  const portraitImages = portrait
+    ? [
+        {
+          id: portrait.image_id,
+          name: "Character Portrait",
+        },
+      ]
+    : [];
 
   // Convert scenes to ImageGrid format
-  const sceneImages = previewScenes.map(scene => ({
+  const sceneImages = previewScenes.map((scene) => ({
     id: scene.image_id,
-    name: scene.scene_name || 'Preview Scene'
+    name: scene.scene_name || "Preview Scene",
   }));
 
   // Custom actions for portrait modal
   const renderPortraitActions = (image: any) => {
     if (!portrait) return null;
+
     return (
       <>
         <Button
           color={portrait.is_approved ? "success" : "default"}
-          variant={portrait.is_approved ? "solid" : "flat"}
-          startContent={<FontAwesomeIcon icon={faCheck} />}
-          onPress={() => onApproveAsset(portrait.id)}
           isDisabled={portrait.is_approved}
+          startContent={<FontAwesomeIcon icon={faCheck} />}
+          variant={portrait.is_approved ? "solid" : "flat"}
+          onPress={() => onApproveAsset(portrait.id)}
         >
           {portrait.is_approved ? "Approved" : "Approve"}
         </Button>
         <Button
-          variant="flat"
           startContent={<FontAwesomeIcon icon={faRefresh} />}
+          variant="flat"
           onPress={() => onRegenerateAsset(portrait.id)}
         >
           Regenerate
@@ -94,12 +93,14 @@ const CharacterPreviewStep: React.FC<CharacterPreviewStepProps> = ({
 
   // Custom actions for scene modals
   const renderSceneActions = (image: any) => {
-    const scene = previewScenes.find(s => s.id === image.id);
+    const scene = previewScenes.find((s) => s.id === image.id);
+
     if (!scene) return null;
+
     return (
       <Button
-        variant="flat"
         startContent={<FontAwesomeIcon icon={faRefresh} />}
+        variant="flat"
         onPress={() => onRegenerateAsset(scene.id)}
       >
         Regenerate
@@ -116,9 +117,9 @@ const CharacterPreviewStep: React.FC<CharacterPreviewStepProps> = ({
       </p>
 
       <Tabs
+        className="mb-6"
         selectedKey={activeTab}
         onSelectionChange={(key) => setActiveTab(key as string)}
-        className="mb-6"
       >
         <Tab key="portrait" title="Portrait">
           <Card>
@@ -130,9 +131,9 @@ const CharacterPreviewStep: React.FC<CharacterPreviewStepProps> = ({
                   </p>
                   <Button
                     color="primary"
+                    isLoading={generatingPortrait}
                     size="lg"
                     onPress={onGeneratePortrait}
-                    isLoading={generatingPortrait}
                   >
                     Generate Portrait
                   </Button>
@@ -151,19 +152,20 @@ const CharacterPreviewStep: React.FC<CharacterPreviewStepProps> = ({
               {portrait && !generatingPortrait && (
                 <div className="max-w-md mx-auto">
                   <ImageGrid
-                    images={portraitImages}
                     customActions={renderPortraitActions}
+                    images={portraitImages}
                   />
 
                   {!hasScenes && portrait.is_approved && (
                     <div className="mt-6 p-4 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
                       <p className="mb-3">
-                        Great! Now let's see your character in fun preview scenes.
+                        Great! Now let's see your character in fun preview
+                        scenes.
                       </p>
                       <Button
                         color="primary"
-                        onPress={onGenerateScenes}
                         isLoading={generatingScenes}
+                        onPress={onGenerateScenes}
                       >
                         Generate Preview Scenes
                       </Button>
@@ -175,7 +177,11 @@ const CharacterPreviewStep: React.FC<CharacterPreviewStepProps> = ({
           </Card>
         </Tab>
 
-        <Tab key="scenes" title="Preview Scenes" isDisabled={!hasApprovedPortrait}>
+        <Tab
+          key="scenes"
+          isDisabled={!hasApprovedPortrait}
+          title="Preview Scenes"
+        >
           <Card>
             <CardBody className="p-8">
               {!hasScenes && !generatingScenes && hasApprovedPortrait && (
@@ -185,9 +191,9 @@ const CharacterPreviewStep: React.FC<CharacterPreviewStepProps> = ({
                   </p>
                   <Button
                     color="primary"
+                    isLoading={generatingScenes}
                     size="lg"
                     onPress={onGenerateScenes}
-                    isLoading={generatingScenes}
                   >
                     Generate Preview Scenes
                   </Button>
@@ -205,8 +211,8 @@ const CharacterPreviewStep: React.FC<CharacterPreviewStepProps> = ({
 
               {hasScenes && !generatingScenes && (
                 <ImageGrid
-                  images={sceneImages}
                   customActions={renderSceneActions}
+                  images={sceneImages}
                 />
               )}
             </CardBody>
@@ -215,15 +221,15 @@ const CharacterPreviewStep: React.FC<CharacterPreviewStepProps> = ({
       </Tabs>
 
       <div className="flex justify-between mt-6">
-        <Button variant="flat" onPress={onBack} isDisabled={loading}>
+        <Button isDisabled={loading} variant="flat" onPress={onBack}>
           Back
         </Button>
         <Button
           color="primary"
+          isDisabled={!canContinue || loading}
+          isLoading={loading}
           size="lg"
           onPress={onContinue}
-          isLoading={loading}
-          isDisabled={!canContinue || loading}
         >
           Continue to Story Chat
         </Button>

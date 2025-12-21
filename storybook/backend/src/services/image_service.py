@@ -53,6 +53,40 @@ class ImageService:
 
         return best_match
 
+    def _convert_heic_to_png(self, file: FileStorage, filename: str):
+        """Convert HEIC/HEIF image to PNG without resizing"""
+        if pillow_heif is None:
+            print("[IMAGE CONVERT ERROR] pillow_heif not available, cannot convert HEIC")
+            file.stream.seek(0)
+            return file, filename
+
+        try:
+            file.stream.seek(0)
+            file_data = file.stream.read()
+            heif_file = pillow_heif.read_heif(file_data)
+            img = PILImage.frombytes(heif_file.mode, heif_file.size, heif_file.data, "raw")
+            if img.mode not in ('RGB', 'RGBA', 'L'):
+                img = img.convert('RGB')
+
+            output = io.BytesIO()
+            img.save(output, format='PNG', optimize=True)
+            output.seek(0)
+
+            base_filename = os.path.splitext(filename)[0]
+            new_filename = f"{base_filename}.png"
+
+            new_file = FileStorage(
+                stream=output,
+                filename=new_filename,
+                content_type='image/png'
+            )
+
+            return new_file, new_filename
+        except Exception as e:
+            print(f"Error converting HEIC image: {e}")
+            file.stream.seek(0)
+            return file, filename
+
     def _normalize_image(self, file: FileStorage, filename: str):
         """
         Normalize image: convert HEIC to PNG and resize to SDXL dimensions
@@ -141,16 +175,29 @@ class ImageService:
             file.stream.seek(0)
             return file, filename
 
-    def upload_image(self, project_id: str, file: FileStorage, filename: str) -> Image:
+    def upload_image(
+        self,
+        project_id: str,
+        file: FileStorage,
+        filename: str,
+        image_type: str = "training",
+        normalize: bool = True
+    ) -> Image:
         """Upload an image for a project"""
         # Note: We don't validate project here because this service is used for both
         # regular projects and story projects, which are in different collections.
         # The controller should handle authentication/authorization.
 
-        # Normalize image: convert HEIC to PNG and resize to SDXL dimensions
-        file, filename = self._normalize_image(file, filename)
+        is_heic = filename.lower().endswith(('.heic', '.heif'))
 
-        return self.image_repo.upload_image(project_id, file, filename)
+        if normalize:
+            # Normalize image: convert HEIC to PNG and resize to SDXL dimensions
+            file, filename = self._normalize_image(file, filename)
+        elif is_heic:
+            # Convert HEIC to PNG without resizing when normalization is disabled
+            file, filename = self._convert_heic_to_png(file, filename)
+
+        return self.image_repo.upload_image(project_id, file, filename, image_type)
 
     def download_image(self, image_id: str) -> Optional[bytes]:
         """Download an image by ID"""
@@ -160,18 +207,18 @@ class ImageService:
         """Delete an image by ID"""
         self.image_repo.delete_image(image_id)
 
-    def list_images(self, project_id: str) -> List[Image]:
-        """List all images for a project"""
+    def list_images(self, project_id: str, image_type: Optional[str] = None) -> List[Image]:
+        """List all images for a project, optionally filtered by image type"""
         # Note: We don't validate project here because this service is used for both
         # regular projects and story projects, which are in different collections.
         # The controller should handle authentication/authorization.
-        return self.image_repo.list_images(project_id)
+        return self.image_repo.list_images(project_id, image_type)
 
     def create_zip(self, project_id: str):
         """Create a zip file of all training images for a project"""
         project = self.model_project_repo.get_project(project_id)
-        # List all images for the project
-        images = self.list_images(project_id)
+        # List only training images for the project
+        images = self.list_images(project_id, image_type="training")
         # Create an in-memory zip file
         zip_buffer = io.BytesIO()
         # Create a zip file in memory
@@ -188,5 +235,36 @@ class ImageService:
                 index = index + 1
         # After adding all files, get the contents of the zip file
         zip_buffer.seek(0)  # Go to the beginning of the buffer before returning it
+        zip_buffer.name = "training_images.zip"
+        return zip_buffer
+
+    def create_zip_from_images(self, image_ids: list):
+        """Create a zip file from specific image IDs"""
+        # Get the first image to determine the project
+        if not image_ids:
+            raise ValueError("At least one image ID is required")
+
+        first_image = self.image_repo.get_image(image_ids[0])
+        project = self.model_project_repo.get_project(first_image.project_id)
+
+        # Create an in-memory zip file
+        zip_buffer = io.BytesIO()
+        # Create a zip file in memory
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            index = 0
+            for image_id in image_ids:
+                # Get image metadata
+                image = self.image_repo.get_image(image_id)
+                # Download the file
+                file_blob = self.download_image(image_id)
+                # Rename the file so that the AI knows the subject
+                file_extension = os.path.splitext(image.filename)[1]
+                fileName = f"a_photo_of_{project.subject_name}({index}){file_extension}"
+                # Add the image to the zip file
+                zip_file.writestr(fileName, file_blob)
+                index = index + 1
+        # After adding all files, get the contents of the zip file
+        zip_buffer.seek(0)  # Go to the beginning of the buffer before returning it
+        zip_buffer.name = "training_images.zip"
         return zip_buffer
     

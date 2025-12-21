@@ -31,6 +31,7 @@ def create_history():
             return jsonify({"error": "prompt is required"}), 400
 
         history = generation_history_repo.create(project_id, prompt, image_ids)
+        profile = user_profile_repo.get_by_id(history.user_id)
 
         return jsonify({
             "id": history.id,
@@ -38,7 +39,11 @@ def create_history():
             "user_id": history.user_id,
             "prompt": history.prompt,
             "image_ids": history.image_ids,
-            "created_at": history.created_at.isoformat() if history.created_at else None
+            "created_at": history.created_at.isoformat() if history.created_at else None,
+            "user_profile": {
+                "display_name": profile.display_name if profile else None,
+                "profile_image_id": profile.profile_image_id if profile else None
+            }
         }), 201
 
     except Exception as e:

@@ -102,6 +102,7 @@ class ReplicateService:
             "token_string": self.config.get_token_string(),
             "is_lora": self.config.get_is_lora(),
             "unet_learning_rate": self.config.get_unet_learning_rate(),
+            "input_images_filetype": "zip",
         }
 
         # Add trigger word if configured
@@ -125,18 +126,36 @@ class ReplicateService:
 
         return training.id
 
-    def get_training_status(self, training_id: str) -> str:
+    def get_training_status_details(self, training_id: str) -> Dict[str, Any]:
         """
-        Get the status of a training job
+        Get details about a training job including status and error info
 
         Args:
             training_id: ID of the training job
 
         Returns:
-            Status string (e.g., "starting", "processing", "succeeded", "failed")
+            Dict with status and optional error_message
         """
         training = replicate.trainings.get(training_id)
-        return training.status
+        error_message = None
+
+        if getattr(training, "error", None):
+            error = training.error
+            if isinstance(error, dict):
+                error_message = error.get("message") or str(error)
+            else:
+                error_message = str(error)
+
+        return {
+            "status": training.status,
+            "error_message": error_message
+        }
+
+    def get_training_status(self, training_id: str) -> str:
+        """
+        Get just the status string of a training job
+        """
+        return self.get_training_status_details(training_id)["status"]
 
     def generate(self,
                 prompt: str,
@@ -209,6 +228,23 @@ class ReplicateService:
         try:
             training = replicate.trainings.get(training_id)
             training.cancel()
+            return True
+        except:
+            return False
+
+    def delete_model(self, model_name: str) -> bool:
+        """
+        Delete a model from Replicate
+
+        Args:
+            model_name: Name of the model to delete
+
+        Returns:
+            True if deleted successfully, False otherwise
+        """
+        try:
+            model = replicate.models.get(f"{self.owner}/{model_name}")
+            model.delete()
             return True
         except:
             return False

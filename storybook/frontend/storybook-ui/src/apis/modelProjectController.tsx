@@ -29,3 +29,9 @@ export const updateModelProject = async (axiosInstance: AxiosInstance, projectId
   const response = await axiosInstance.put(`/api/model-projects/${projectId}`, updates);
   return response.data;  // returns the updated model project
 };
+
+// Function to delete a model project
+export const deleteModelProject = async (axiosInstance: AxiosInstance, projectId: string) => {
+  const response = await axiosInstance.delete(`/api/model-projects/${projectId}`);
+  return response.data;  // returns success message
+};

@@ -2,8 +2,12 @@ import React, { useState } from "react";
 import { Button, Card, CardBody, Input } from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowRight } from "@fortawesome/free-solid-svg-icons";
+
 import { useAxios } from "@/hooks/axiosContext";
-import { createModelProject, updateModelProject } from "@/apis/modelProjectController";
+import {
+  createModelProject,
+  updateModelProject,
+} from "@/apis/modelProjectController";
 import { useToast } from "@/hooks/useToast";
 import { getErrorMessage, logError } from "@/utils/errorHandling";
 
@@ -30,6 +34,7 @@ const SubjectSetupStep: React.FC<SubjectSetupStepProps> = ({
   const handleContinue = async () => {
     if (!subjectName.trim()) {
       setSubjectNameError("Subject name is required");
+
       return;
     }
     setSubjectNameError("");
@@ -38,22 +43,34 @@ const SubjectSetupStep: React.FC<SubjectSetupStepProps> = ({
     try {
       if (projectId === "new") {
         // Create new project
-        const newProject = await createModelProject(axiosInstance, subjectName, subjectName);
+        const newProject = await createModelProject(
+          axiosInstance,
+          subjectName,
+          subjectName,
+        );
+
         onProjectCreated(newProject);
         showSuccess("Project created successfully!");
       } else if (project && subjectName !== project.subject_name) {
         // Update existing project if subject name changed
-        const updatedProject = await updateModelProject(axiosInstance, projectId, {
-          name: subjectName,
-          subjectName: subjectName,
-        });
+        const updatedProject = await updateModelProject(
+          axiosInstance,
+          projectId,
+          {
+            name: subjectName,
+            subjectName: subjectName,
+          },
+        );
+
         onProjectCreated(updatedProject);
         showSuccess("Subject name updated successfully!");
       }
       onComplete();
     } catch (error: any) {
       logError("Save project", error);
-      showError(getErrorMessage(error, "Failed to save project. Please try again."));
+      showError(
+        getErrorMessage(error, "Failed to save project. Please try again."),
+      );
     } finally {
       setIsCreating(false);
     }
@@ -69,30 +86,30 @@ const SubjectSetupStep: React.FC<SubjectSetupStepProps> = ({
       <Card>
         <CardBody className="p-8">
           <Input
+            isRequired
+            className="mb-6"
+            description="This is the person or thing you'll be training the AI model to recognize"
+            errorMessage={subjectNameError}
+            isInvalid={!!subjectNameError}
             label="Subject Name"
             placeholder="e.g., John, My Dog, Sarah, etc."
+            size="lg"
             value={subjectName}
+            variant="bordered"
             onValueChange={(value) => {
               setSubjectName(value);
               if (value.trim()) setSubjectNameError("");
             }}
-            isInvalid={!!subjectNameError}
-            errorMessage={subjectNameError}
-            isRequired
-            variant="bordered"
-            size="lg"
-            description="This is the person or thing you'll be training the AI model to recognize"
-            className="mb-6"
           />
 
           <Button
-            color="primary"
-            size="lg"
             className="w-full"
+            color="primary"
             endContent={<FontAwesomeIcon icon={faArrowRight} />}
-            onPress={handleContinue}
-            isLoading={isCreating}
             isDisabled={!subjectName.trim() || isCreating}
+            isLoading={isCreating}
+            size="lg"
+            onPress={handleContinue}
           >
             {isCreating ? "Creating Project..." : "Continue"}
           </Button>

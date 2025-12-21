@@ -139,19 +139,19 @@ const StoryChatStep: React.FC<StoryChatStepProps> = ({
           <div className="p-4">
             <div className="flex gap-2">
               <Input
+                fullWidth
+                disabled={sending || compiling}
+                placeholder="Type your message..."
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Type your message..."
-                disabled={sending || compiling}
-                fullWidth
               />
               <Button
-                color="primary"
                 isIconOnly
-                onPress={handleSend}
-                isLoading={sending}
+                color="primary"
                 isDisabled={!inputMessage.trim() || sending || compiling}
+                isLoading={sending}
+                onPress={handleSend}
               >
                 <FontAwesomeIcon icon={faPaperPlane} />
               </Button>
@@ -160,7 +160,11 @@ const StoryChatStep: React.FC<StoryChatStepProps> = ({
         </Card>
 
         <div className="flex justify-between mt-4">
-          <Button variant="flat" onPress={onBack} isDisabled={loading || compiling}>
+          <Button
+            isDisabled={loading || compiling}
+            variant="flat"
+            onPress={onBack}
+          >
             Back
           </Button>
         </div>
@@ -190,7 +194,7 @@ const StoryChatStep: React.FC<StoryChatStepProps> = ({
                 {storyState.age_range && (
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Age Range</p>
-                    <Chip size="sm" color="primary" variant="flat">
+                    <Chip color="primary" size="sm" variant="flat">
                       {storyState.age_range}
                     </Chip>
                   </div>
@@ -239,12 +243,12 @@ const StoryChatStep: React.FC<StoryChatStepProps> = ({
             <Divider className="my-4" />
 
             <Button
-              color="success"
               fullWidth
+              color="success"
+              isDisabled={!canCompile || compiling}
+              isLoading={compiling}
               startContent={<FontAwesomeIcon icon={faBook} />}
               onPress={onCompileStory}
-              isLoading={compiling}
-              isDisabled={!canCompile || compiling}
             >
               {compiling ? "Compiling Story..." : "Compile Story"}
             </Button>

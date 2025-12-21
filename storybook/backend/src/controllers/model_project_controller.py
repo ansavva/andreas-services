@@ -76,3 +76,14 @@ def update_model_project(project_id):
         return jsonify({"error": str(e)}), 404
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@model_project_controller.route("/<string:project_id>", methods=["DELETE"])
+def delete_model_project(project_id):
+    """Delete a project and all associated data"""
+    try:
+        model_project_service.delete_project(project_id)
+        return jsonify({"message": "Project deleted successfully"}), 200
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

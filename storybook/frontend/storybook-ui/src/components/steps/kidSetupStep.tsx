@@ -25,8 +25,12 @@ const KidSetupStep: React.FC<KidSetupStepProps> = ({
   initialData,
 }) => {
   const [childName, setChildName] = useState(initialData?.childName || "");
-  const [childAge, setChildAge] = useState<string>(initialData?.childAge?.toString() || "");
-  const [consentGiven, setConsentGiven] = useState(initialData?.consentGiven || false);
+  const [childAge, setChildAge] = useState<string>(
+    initialData?.childAge?.toString() || "",
+  );
+  const [consentGiven, setConsentGiven] = useState(
+    initialData?.consentGiven || false,
+  );
 
   // Update state when initialData changes (e.g., when going back to this step)
   useEffect(() => {
@@ -50,6 +54,7 @@ const KidSetupStep: React.FC<KidSetupStepProps> = ({
     }
 
     const age = parseInt(childAge);
+
     if (!childAge || isNaN(age)) {
       newErrors.childAge = "Age is required";
     } else if (age < 0 || age > 12) {
@@ -61,6 +66,7 @@ const KidSetupStep: React.FC<KidSetupStepProps> = ({
     }
 
     setErrors(newErrors);
+
     return Object.keys(newErrors).length === 0;
   };
 
@@ -78,47 +84,48 @@ const KidSetupStep: React.FC<KidSetupStepProps> = ({
     <div className="max-w-2xl mx-auto">
       <h3 className="text-2xl font-bold mb-2">Tell Us About Your Child</h3>
       <p className="text-gray-600 dark:text-gray-400 mb-6">
-        We'll create a personalized story featuring your child as the main character!
+        We'll create a personalized story featuring your child as the main
+        character!
       </p>
 
       <Card className="mb-6">
         <CardBody className="gap-4">
           <Input
+            isRequired
+            errorMessage={errors.childName}
+            isInvalid={!!errors.childName}
             label="Child's Name"
             placeholder="Enter your child's name"
             value={childName}
-            onChange={(e) => setChildName(e.target.value)}
-            isInvalid={!!errors.childName}
-            errorMessage={errors.childName}
-            isRequired
             variant="bordered"
+            onChange={(e) => setChildName(e.target.value)}
           />
 
           <Input
-            type="number"
-            label="Child's Age"
-            placeholder="Enter age (0-12)"
-            value={childAge}
-            onChange={(e) => setChildAge(e.target.value)}
-            isInvalid={!!errors.childAge}
-            errorMessage={errors.childAge}
             isRequired
-            variant="bordered"
-            min={0}
+            errorMessage={errors.childAge}
+            isInvalid={!!errors.childAge}
+            label="Child's Age"
             max={12}
+            min={0}
+            placeholder="Enter age (0-12)"
+            type="number"
+            value={childAge}
+            variant="bordered"
+            onChange={(e) => setChildAge(e.target.value)}
           />
 
           <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
             <h4 className="font-semibold mb-2">Privacy & Safety</h4>
             <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
               Your child's information and photos are securely stored and used
-              only to create personalized stories. We never share this data
-              with third parties.
+              only to create personalized stories. We never share this data with
+              third parties.
             </p>
             <Checkbox
+              isInvalid={!!errors.consent}
               isSelected={consentGiven}
               onValueChange={setConsentGiven}
-              isInvalid={!!errors.consent}
             >
               <span className="text-sm">
                 I am the parent/guardian or have permission to upload and
@@ -135,10 +142,10 @@ const KidSetupStep: React.FC<KidSetupStepProps> = ({
       <div className="flex justify-end">
         <Button
           color="primary"
+          isDisabled={loading}
+          isLoading={loading}
           size="lg"
           onPress={handleContinue}
-          isLoading={loading}
-          isDisabled={loading}
         >
           Continue to Photo Upload
         </Button>

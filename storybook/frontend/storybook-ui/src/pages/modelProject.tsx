@@ -1,44 +1,48 @@
-// ModelProjectPage.tsx
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Spinner } from "@heroui/react";
+import { Tabs, Tab, Spinner, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/react";
 
-import { exists } from "@/apis/modelController";
-import { getModelProjectById } from "@/apis/modelProjectController";
+import { exists, getTrainingRuns } from "@/apis/modelController";
+import { getModelProjectById, deleteModelProject } from "@/apis/modelProjectController";
 import { useAxios } from "@/hooks/axiosContext";
 import { useToast } from "@/hooks/useToast";
 
 import DefaultLayout from "@/layouts/default";
-import Stepper from "@/components/common/stepper";
 import SubjectSetupStep from "@/components/steps/subjectSetupStep";
 import ImageUploadStep from "@/components/steps/imageUploadStep";
 import GenerateImageStep from "@/components/steps/generateImageStep";
+import ModelProjectSettingsStep from "@/components/steps/modelProjectSettingsStep";
 import ErrorDisplay from "@/components/common/errorDisplay";
 import { getErrorMessage, logError } from "@/utils/errorHandling";
 
-const ModelProjectPage: React.FC = () => {
+export default function ModelProjectPage() {
   const { axiosInstance } = useAxios();
   const { project_id } = useParams();
   const navigate = useNavigate();
-  const { showError } = useToast();
+  const { showError, showSuccess } = useToast();
+  const { isOpen: isDeleteOpen, onOpen: onDeleteOpen, onClose: onDeleteClose } = useDisclosure();
 
   const [project, setProject] = useState<any>(null);
-  const [currentStep, setCurrentStep] = useState<number>(0);
+  const [selectedTab, setSelectedTab] = useState<string>("training");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [modelExists, setModelExists] = useState(false);
+  const [hasSuccessfulTraining, setHasSuccessfulTraining] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [needsSubjectSetup, setNeedsSubjectSetup] = useState(false);
 
-  // Ensure project_id is a valid string
+  // Ensure project_id is valid
   if (!project_id) {
     throw new Error("Project ID is required");
   }
 
   useEffect(() => {
-    if (project_id && project_id !== "new") {
-      loadProjectData();
-    } else if (project_id === "new") {
-      // New project - start at Subject Setup step
+    if (project_id === "new") {
+      // New project - show subject setup
+      setNeedsSubjectSetup(true);
       setLoading(false);
-      setCurrentStep(0);
+    } else {
+      loadProjectData();
     }
   }, [project_id]);
 
@@ -50,13 +54,14 @@ const ModelProjectPage: React.FC = () => {
       const projectData = await getModelProjectById(axiosInstance, project_id!);
       setProject(projectData);
 
-      // Determine current step based on model existence and project status
+      // Check if model exists
       const modelExistsResponse = await exists(axiosInstance, project_id!);
-      if (modelExistsResponse.model_found || projectData.status === "READY") {
-        setCurrentStep(2); // Generate Images step
-      } else {
-        // Check if project has been created (has images or is in training)
-        setCurrentStep(1); // Image Upload & Training step
+      const modelReady = modelExistsResponse.model_found || projectData.status === "READY";
+      setModelExists(modelReady);
+
+      const hadSuccess = await refreshTrainingProgress(project_id!);
+      if (modelReady || hadSuccess) {
+        setSelectedTab("generate");
       }
     } catch (error: any) {
       logError("Load project data", error);
@@ -77,25 +82,45 @@ const ModelProjectPage: React.FC = () => {
     }
   };
 
+  const refreshTrainingProgress = async (projId: string) => {
+    try {
+      const response = await getTrainingRuns(axiosInstance, projId);
+      const runs = response.training_runs || [];
+      const hasSuccess = runs.some((run: any) => run.status === "succeeded");
+      setHasSuccessfulTraining(hasSuccess);
+      return hasSuccess;
+    } catch (error) {
+      logError("Get training runs", error);
+      return false;
+    }
+  };
+
   const handleProjectCreated = (newProject: any) => {
     setProject(newProject);
+    setNeedsSubjectSetup(false);
     // Update URL to reflect the actual project ID
     navigate(`/model-project/${newProject.id}`, { replace: true });
   };
 
-  const handleSubjectSetupComplete = () => {
-    setCurrentStep(1); // Move to Image Upload step
-  };
-
   const handleTrainingComplete = () => {
-    setCurrentStep(2); // Move to Generate Images step
+    setModelExists(true);
+    setHasSuccessfulTraining(true);
+    loadProjectData(); // Reload to get updated status
   };
 
-  const steps = [
-    { title: "Subject Setup", description: "Enter subject information" },
-    { title: "Training", description: "Upload images and train your model" },
-    { title: "Generate Images", description: "Create images with your trained model" },
-  ];
+  const handleDeleteProject = async () => {
+    setIsDeleting(true);
+    try {
+      await deleteModelProject(axiosInstance, project_id!);
+      showSuccess("Project deleted successfully");
+      navigate("/projects");
+    } catch (error) {
+      console.error("Error deleting project:", error);
+      showError("Failed to delete project");
+      setIsDeleting(false);
+      onDeleteClose();
+    }
+  };
 
   if (loading) {
     return (
@@ -130,63 +155,120 @@ const ModelProjectPage: React.FC = () => {
     );
   }
 
+  // Show subject setup for new projects
+  if (needsSubjectSetup) {
+    return (
+      <DefaultLayout>
+        <div className="container mx-auto px-4">
+          <h1 className="text-5xl font-extrabold leading-none mb-6">
+            New Model Project
+          </h1>
+          <SubjectSetupStep
+            projectId={project_id}
+            project={project}
+            onProjectCreated={handleProjectCreated}
+            onComplete={() => setNeedsSubjectSetup(false)}
+          />
+        </div>
+      </DefaultLayout>
+    );
+  }
+
   return (
     <DefaultLayout>
       <div className="container mx-auto px-4">
-        <h1 className="text-5xl font-extrabold leading-none mb-4">
-          {project ? project.name : project_id === "new" ? "New Model Project" : "Loading..."}
-        </h1>
-        {project && project.subject_name && (
-          <p className="text-lg mb-4">Subject: {project.subject_name}</p>
-        )}
-
-        <div className="mb-8">
-          <Stepper steps={steps} currentStep={currentStep} />
+        {/* Header */}
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <h1 className="text-5xl font-extrabold leading-none mb-2">
+              {project?.name || "Project"}
+            </h1>
+            {project?.subject_name && (
+              <p className="text-lg text-gray-600 dark:text-gray-400">
+                Subject: {project.subject_name}
+              </p>
+            )}
+          </div>
         </div>
 
-        <div className="mt-8">
-          {currentStep === 0 && (
-            <SubjectSetupStep
-              projectId={project_id}
-              project={project}
-              onProjectCreated={handleProjectCreated}
-              onComplete={handleSubjectSetupComplete}
-            />
-          )}
-
-          {currentStep === 1 && (
+        {/* Tabs */}
+        <Tabs
+          selectedKey={selectedTab}
+          onSelectionChange={(key) => setSelectedTab(key as string)}
+          aria-label="Project tabs"
+          className="mb-6"
+        >
+          <Tab key="training" title="Training">
             <div>
-              {project_id !== "new" && (
-                <button
-                  onClick={() => setCurrentStep(0)}
-                  className="mb-4 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                >
-                  ← Back to Subject Setup
-                </button>
-              )}
               <ImageUploadStep
-                projectId={project?.id || project_id}
+                projectId={project?.id || project_id!}
                 project={project}
                 onTrainingComplete={handleTrainingComplete}
               />
             </div>
-          )}
+          </Tab>
 
-          {currentStep === 2 && (
+          <Tab
+            key="generate"
+            title="Generate Images"
+            isDisabled={!hasSuccessfulTraining}
+          >
             <div>
-              <button
-                onClick={() => setCurrentStep(1)}
-                className="mb-4 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-              >
-                ← Back to Training
-              </button>
-              <GenerateImageStep projectId={project?.id || project_id} />
+              {modelExists ? (
+                <GenerateImageStep projectId={project?.id || project_id!} />
+              ) : (
+                <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                  <p>Complete training before generating images</p>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </Tab>
+
+          <Tab key="settings" title="Settings">
+            <div>
+              <ModelProjectSettingsStep
+                project={project}
+                onDeleteProject={onDeleteOpen}
+              />
+            </div>
+          </Tab>
+        </Tabs>
+
+        {/* Delete Confirmation Modal */}
+        <Modal isOpen={isDeleteOpen} onClose={onDeleteClose}>
+          <ModalContent>
+            <ModalHeader>Delete Project</ModalHeader>
+            <ModalBody>
+              <p>Are you sure you want to delete this project?</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+                This will permanently delete:
+              </p>
+              <ul className="list-disc list-inside text-sm text-gray-600 dark:text-gray-400 mt-2">
+                <li>All training runs and their history</li>
+                <li>All training images</li>
+                <li>All generated images</li>
+                <li>The trained model on Replicate</li>
+                <li>All generation history</li>
+              </ul>
+              <p className="text-sm font-semibold text-red-600 dark:text-red-400 mt-4">
+                This action cannot be undone.
+              </p>
+            </ModalBody>
+            <ModalFooter>
+              <Button variant="light" onPress={onDeleteClose} isDisabled={isDeleting}>
+                Cancel
+              </Button>
+              <Button
+                color="danger"
+                onPress={handleDeleteProject}
+                isLoading={isDeleting}
+              >
+                Delete Project
+              </Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
       </div>
     </DefaultLayout>
   );
-};
-
-export default ModelProjectPage;
+}

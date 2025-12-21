@@ -15,7 +15,12 @@ class Image:
     filename: str  # Original filename
     content_type: str  # MIME type (e.g., image/jpeg)
     size_bytes: int  # File size in bytes
+    image_type: str = "training"  # Type: "training" or "generated"
     created_at: Optional[datetime] = None
+
+    # Constants for image types
+    TYPE_TRAINING = "training"
+    TYPE_GENERATED = "generated"
 
     def to_dict(self):
         """Convert to dictionary for MongoDB storage"""
@@ -27,6 +32,7 @@ class Image:
             'filename': self.filename,
             'content_type': self.content_type,
             'size_bytes': self.size_bytes,
+            'image_type': self.image_type,
             'created_at': self.created_at or datetime.utcnow()
         }
 
@@ -41,5 +47,6 @@ class Image:
             filename=data.get('filename'),
             content_type=data.get('content_type'),
             size_bytes=data.get('size_bytes'),
+            image_type=data.get('image_type', 'training'),  # Default to training for backward compatibility
             created_at=data.get('created_at')
         )

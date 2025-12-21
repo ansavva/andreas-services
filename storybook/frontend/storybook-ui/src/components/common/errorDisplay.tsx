@@ -1,7 +1,10 @@
-import React from 'react';
-import { Card, CardBody, Button } from '@heroui/react';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faExclamationTriangle, faRefresh } from '@fortawesome/free-solid-svg-icons';
+import React from "react";
+import { Card, CardBody, Button } from "@heroui/react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faExclamationTriangle,
+  faRefresh,
+} from "@fortawesome/free-solid-svg-icons";
 
 interface ErrorDisplayProps {
   title?: string;
@@ -11,18 +14,18 @@ interface ErrorDisplayProps {
 }
 
 const ErrorDisplay: React.FC<ErrorDisplayProps> = ({
-  title = 'Something went wrong',
+  title = "Something went wrong",
   message,
   onRetry,
-  retryText = 'Try Again'
+  retryText = "Try Again",
 }) => {
   return (
     <Card className="max-w-md mx-auto mt-8">
       <CardBody className="text-center py-8 px-6">
         <div className="mb-4">
           <FontAwesomeIcon
-            icon={faExclamationTriangle}
             className="text-5xl text-warning"
+            icon={faExclamationTriangle}
           />
         </div>
 
@@ -32,9 +35,9 @@ const ErrorDisplay: React.FC<ErrorDisplayProps> = ({
         {onRetry && (
           <Button
             color="primary"
+            startContent={<FontAwesomeIcon icon={faRefresh} />}
             variant="flat"
             onPress={onRetry}
-            startContent={<FontAwesomeIcon icon={faRefresh} />}
           >
             {retryText}
           </Button>

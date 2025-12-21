@@ -3,7 +3,6 @@ import {
   Button,
   Card,
   CardBody,
-  Input,
   Select,
   SelectItem,
   Spinner,
@@ -15,13 +14,22 @@ import {
   faWandMagicSparkles,
   faCheck,
   faRefresh,
-  faTrash,
 } from "@fortawesome/free-solid-svg-icons";
+
 import { useAxios } from "@/hooks/axiosContext";
 import { useToast } from "@/hooks/useToast";
-import { uploadImage, deleteImage, downloadImageById } from "@/apis/imageController";
+import {
+  uploadImage,
+  deleteImage,
+  downloadImageById,
+} from "@/apis/imageController";
 import { getStylePresets } from "@/apis/configController";
-import { generateCharacterPortrait, approveCharacterAsset, regenerateCharacterAsset, getCharacterAssets } from "@/apis/characterController";
+import {
+  generateCharacterPortrait,
+  approveCharacterAsset,
+  regenerateCharacterAsset,
+  getCharacterAssets,
+} from "@/apis/characterController";
 import ImageGrid from "@/components/images/imageGrid";
 import { getErrorMessage, logError } from "@/utils/errorHandling";
 
@@ -66,14 +74,18 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
 
   // Generation state
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedPortrait, setGeneratedPortrait] = useState<CharacterAsset | null>(null);
-  const [portraitImageData, setPortraitImageData] = useState<string | null>(null);
+  const [generatedPortrait, setGeneratedPortrait] =
+    useState<CharacterAsset | null>(null);
+  const [portraitImageData, setPortraitImageData] = useState<string | null>(
+    null,
+  );
 
   // Load style presets on mount
   useEffect(() => {
     const loadStylePresets = async () => {
       try {
         const response = await getStylePresets(axiosInstance);
+
         setStylePresets(response.presets);
         setDefaultStyle(response.default);
         setSelectedStyle(response.default);
@@ -90,12 +102,21 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
     const loadExistingData = async () => {
       try {
         // Load portrait
-        const assets = await getCharacterAssets(axiosInstance, projectId, "portrait");
+        const assets = await getCharacterAssets(
+          axiosInstance,
+          projectId,
+          "portrait",
+        );
+
         if (assets.length > 0) {
           setGeneratedPortrait(assets[0]);
           // Fetch portrait image data
-          const imageBlob = await downloadImageById(axiosInstance, assets[0].image_id);
+          const imageBlob = await downloadImageById(
+            axiosInstance,
+            assets[0].image_id,
+          );
           const reader = new FileReader();
+
           reader.onloadend = () => {
             setPortraitImageData(reader.result as string);
           };
@@ -103,12 +124,18 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
         }
 
         // Load photos from child profile
-        const profileResponse = await axiosInstance.get(`/api/child-profiles/project/${projectId}`);
+        const profileResponse = await axiosInstance.get(
+          `/api/child-profiles/project/${projectId}`,
+        );
+
         if (profileResponse.data && profileResponse.data.photo_ids) {
-          const photoFiles: PhotoFile[] = profileResponse.data.photo_ids.map((id: string) => ({
-            id: id,
-            name: `Photo ${id.substring(0, 8)}`
-          }));
+          const photoFiles: PhotoFile[] = profileResponse.data.photo_ids.map(
+            (id: string) => ({
+              id: id,
+              name: `Photo ${id.substring(0, 8)}`,
+            }),
+          );
+
           setPhotos(photoFiles);
         }
       } catch (error) {
@@ -119,7 +146,13 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
     loadExistingData();
   }, [axiosInstance, projectId]);
 
-  const allowedFileTypes = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+  const allowedFileTypes = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+  ];
   const maxFileSize = 10 * 1024 * 1024; // 10MB
   const maxPhotos = 5;
 
@@ -129,6 +162,7 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
+
     if (!files) return;
 
     const filesToUpload: File[] = [];
@@ -136,6 +170,7 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
 
     if (photos.length + files.length > maxPhotos) {
       showError(`You can only upload up to ${maxPhotos} photos`);
+
       return;
     }
 
@@ -163,25 +198,39 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
+
       return;
     }
 
     setIsUploading(true);
     try {
-      const result = await uploadImage(axiosInstance, projectId, 'child_photos', filesToUpload);
-      const newPhotos: PhotoFile[] = result.images.map((img: any, idx: number) => ({
-        id: img.id,
-        name: filesToUpload[idx].name
-      }));
+      const result = await uploadImage(
+        axiosInstance,
+        projectId,
+        "child_photos",
+        filesToUpload,
+      );
+      const newPhotos: PhotoFile[] = result.images.map(
+        (img: any, idx: number) => ({
+          id: img.id,
+          name: filesToUpload[idx].name,
+        }),
+      );
 
       // Update child profile with new photo IDs
-      const updatedPhotoIds = [...photos.map(p => p.id), ...newPhotos.map(p => p.id)];
+      const updatedPhotoIds = [
+        ...photos.map((p) => p.id),
+        ...newPhotos.map((p) => p.id),
+      ];
+
       await axiosInstance.put(`/api/child-profiles/project/${projectId}`, {
-        photo_ids: updatedPhotoIds
+        photo_ids: updatedPhotoIds,
       });
 
       setPhotos((prev) => [...prev, ...newPhotos]);
-      showSuccess(`Successfully uploaded ${newPhotos.length} photo${newPhotos.length > 1 ? 's' : ''}`);
+      showSuccess(
+        `Successfully uploaded ${newPhotos.length} photo${newPhotos.length > 1 ? "s" : ""}`,
+      );
     } catch (error) {
       showError("Failed to upload photos. Please try again.");
     } finally {
@@ -198,9 +247,10 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
 
       // Update child profile to remove the photo ID
       const updatedPhotos = photos.filter((p) => p.id !== photoId);
-      const updatedPhotoIds = updatedPhotos.map(p => p.id);
+      const updatedPhotoIds = updatedPhotos.map((p) => p.id);
+
       await axiosInstance.put(`/api/child-profiles/project/${projectId}`, {
-        photo_ids: updatedPhotoIds
+        photo_ids: updatedPhotoIds,
       });
 
       setPhotos(updatedPhotos);
@@ -214,6 +264,7 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
   const handleGenerate = async () => {
     if (photos.length === 0) {
       showError("Please upload at least one photo");
+
       return;
     }
 
@@ -223,13 +274,15 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
         axiosInstance,
         projectId,
         userDescription || undefined,
-        selectedStyle || undefined
+        selectedStyle || undefined,
       );
+
       setGeneratedPortrait(result);
 
       // Fetch the image data for display
       const imageBlob = await downloadImageById(axiosInstance, result.image_id);
       const reader = new FileReader();
+
       reader.onloadend = () => {
         setPortraitImageData(reader.result as string);
       };
@@ -238,7 +291,12 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
       showSuccess("Character portrait generated successfully!");
     } catch (error: any) {
       logError("Generate portrait", error);
-      showError(getErrorMessage(error, "Failed to generate portrait. Please try again."));
+      showError(
+        getErrorMessage(
+          error,
+          "Failed to generate portrait. Please try again.",
+        ),
+      );
     } finally {
       setIsGenerating(false);
     }
@@ -253,13 +311,15 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
         axiosInstance,
         generatedPortrait._id,
         userDescription || undefined,
-        selectedStyle || undefined
+        selectedStyle || undefined,
       );
+
       setGeneratedPortrait(result);
 
       // Fetch the new image data for display
       const imageBlob = await downloadImageById(axiosInstance, result.image_id);
       const reader = new FileReader();
+
       reader.onloadend = () => {
         setPortraitImageData(reader.result as string);
       };
@@ -268,7 +328,12 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
       showSuccess("Character portrait regenerated!");
     } catch (error: any) {
       logError("Regenerate portrait", error);
-      showError(getErrorMessage(error, "Failed to regenerate portrait. Please try again."));
+      showError(
+        getErrorMessage(
+          error,
+          "Failed to regenerate portrait. Please try again.",
+        ),
+      );
     } finally {
       setIsGenerating(false);
     }
@@ -278,12 +343,18 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
     if (!generatedPortrait) return;
 
     try {
-      const result = await approveCharacterAsset(axiosInstance, generatedPortrait._id);
+      const result = await approveCharacterAsset(
+        axiosInstance,
+        generatedPortrait._id,
+      );
+
       setGeneratedPortrait(result);
       showSuccess("Character portrait approved! You can now continue.");
     } catch (error: any) {
       logError("Approve portrait", error);
-      showError(getErrorMessage(error, "Failed to approve portrait. Please try again."));
+      showError(
+        getErrorMessage(error, "Failed to approve portrait. Please try again."),
+      );
     }
   };
 
@@ -293,8 +364,9 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
     <div className="max-w-7xl mx-auto">
       <h3 className="text-2xl font-bold mb-2">Create Your Character</h3>
       <p className="text-gray-600 dark:text-gray-400 mb-6">
-        Upload photos, customize the description and style, then generate your character portrait.
-        You can regenerate as many times as you'd like before approving!
+        Upload photos, customize the description and style, then generate your
+        character portrait. You can regenerate as many times as you'd like
+        before approving!
       </p>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -309,31 +381,28 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
               </p>
 
               <input
-                type="file"
                 ref={fileInputRef}
-                onChange={handleFileChange}
-                accept={allowedFileTypes.join(",")}
                 multiple
+                accept={allowedFileTypes.join(",")}
                 className="hidden"
+                type="file"
+                onChange={handleFileChange}
               />
 
               <Button
+                className="mb-4"
                 color="primary"
-                variant="flat"
-                startContent={<FontAwesomeIcon icon={faUpload} />}
-                onPress={handleFileSelect}
                 isDisabled={isUploading || photos.length >= maxPhotos}
                 isLoading={isUploading}
-                className="mb-4"
+                startContent={<FontAwesomeIcon icon={faUpload} />}
+                variant="flat"
+                onPress={handleFileSelect}
               >
                 {isUploading ? "Uploading..." : "Select Photos"}
               </Button>
 
               {photos.length > 0 && (
-                <ImageGrid
-                  images={photos}
-                  onImageDelete={handleDeletePhoto}
-                />
+                <ImageGrid images={photos} onImageDelete={handleDeletePhoto} />
               )}
             </CardBody>
           </Card>
@@ -343,12 +412,12 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
             <CardBody className="p-6 space-y-4">
               <div>
                 <Textarea
+                  description="Add details to customize the generated character"
                   label="Custom Description (Optional)"
+                  maxRows={3}
                   placeholder="E.g., wearing glasses, has curly hair, big smile..."
                   value={userDescription}
                   onValueChange={setUserDescription}
-                  maxRows={3}
-                  description="Add details to customize the generated character"
                 />
               </div>
 
@@ -363,7 +432,13 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
                   >
                     {stylePresets.map((preset) => (
                       <SelectItem key={preset} value={preset}>
-                        {preset.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                        {preset
+                          .split("_")
+                          .map(
+                            (word) =>
+                              word.charAt(0).toUpperCase() + word.slice(1),
+                          )
+                          .join(" ")}
                       </SelectItem>
                     ))}
                   </Select>
@@ -374,19 +449,19 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
 
           {/* Generate Button */}
           <Button
-            color="primary"
-            size="lg"
             className="w-full"
+            color="primary"
+            isDisabled={photos.length === 0 || isGenerating}
+            isLoading={isGenerating}
+            size="lg"
             startContent={<FontAwesomeIcon icon={faWandMagicSparkles} />}
             onPress={generatedPortrait ? handleRegenerate : handleGenerate}
-            isLoading={isGenerating}
-            isDisabled={photos.length === 0 || isGenerating}
           >
             {isGenerating
               ? "Generating..."
               : generatedPortrait
-              ? "Regenerate Portrait"
-              : "Generate Portrait"}
+                ? "Regenerate Portrait"
+                : "Generate Portrait"}
           </Button>
         </div>
 
@@ -395,7 +470,11 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
           <CardBody className="p-6 min-h-[600px] flex flex-col items-center justify-center">
             {!generatedPortrait && !isGenerating && (
               <div className="text-center text-gray-500 dark:text-gray-400">
-                <FontAwesomeIcon icon={faWandMagicSparkles} size="3x" className="mb-4 opacity-30" />
+                <FontAwesomeIcon
+                  className="mb-4 opacity-30"
+                  icon={faWandMagicSparkles}
+                  size="3x"
+                />
                 <p>Your generated character will appear here</p>
               </div>
             )}
@@ -413,9 +492,9 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
               <div className="w-full">
                 <div className="relative aspect-square max-w-md mx-auto mb-4">
                   <img
-                    src={portraitImageData}
                     alt="Generated Character"
                     className="w-full h-full object-cover rounded-lg cursor-pointer"
+                    src={portraitImageData}
                     onClick={() => {
                       // TODO: Open in modal if needed
                     }}
@@ -424,20 +503,22 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
 
                 <div className="flex gap-3 justify-center">
                   <Button
-                    color={generatedPortrait.is_approved ? "success" : "default"}
-                    variant={generatedPortrait.is_approved ? "solid" : "flat"}
-                    startContent={<FontAwesomeIcon icon={faCheck} />}
-                    onPress={handleApprove}
+                    color={
+                      generatedPortrait.is_approved ? "success" : "default"
+                    }
                     isDisabled={generatedPortrait.is_approved}
+                    startContent={<FontAwesomeIcon icon={faCheck} />}
+                    variant={generatedPortrait.is_approved ? "solid" : "flat"}
+                    onPress={handleApprove}
                   >
                     {generatedPortrait.is_approved ? "Approved" : "Approve"}
                   </Button>
 
                   <Button
-                    variant="flat"
-                    startContent={<FontAwesomeIcon icon={faRefresh} />}
-                    onPress={handleRegenerate}
                     isDisabled={isGenerating}
+                    startContent={<FontAwesomeIcon icon={faRefresh} />}
+                    variant="flat"
+                    onPress={handleRegenerate}
                   >
                     Regenerate
                   </Button>
@@ -463,9 +544,9 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
         </Button>
         <Button
           color="primary"
+          isDisabled={!canContinue}
           size="lg"
           onPress={onContinue}
-          isDisabled={!canContinue}
         >
           Continue to Story Writing
         </Button>
