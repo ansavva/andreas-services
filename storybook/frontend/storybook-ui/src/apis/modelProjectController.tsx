@@ -13,8 +13,14 @@ export const getModelProjectById = async (axiosInstance: AxiosInstance, projectI
 };
 
 // Function to create a new model project
-export const createModelProject = async (axiosInstance: AxiosInstance, name: string, subjectName: string, modelType: string) => {
-  const response = await axiosInstance.post('/api/model-projects', { name, subjectName, modelType });
+export const createModelProject = async (
+  axiosInstance: AxiosInstance,
+  name: string,
+  subjectName: string,
+  modelType: string,
+  subjectDescription?: string
+) => {
+  const response = await axiosInstance.post('/api/model-projects', { name, subjectName, modelType, subjectDescription });
   return response.data;  // returns the newly created model project
 };
 
@@ -31,7 +37,11 @@ export const updateModelProjectStatus = async (axiosInstance: AxiosInstance, pro
 };
 
 // Function to update model project fields
-export const updateModelProject = async (axiosInstance: AxiosInstance, projectId: string, updates: { name?: string; subjectName?: string; modelType?: string }) => {
+export const updateModelProject = async (
+  axiosInstance: AxiosInstance,
+  projectId: string,
+  updates: { name?: string; subjectName?: string; modelType?: string; subjectDescription?: string }
+) => {
   const response = await axiosInstance.put(`/api/model-projects/${projectId}`, updates);
   return response.data;  // returns the updated model project
 };

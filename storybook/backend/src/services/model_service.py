@@ -206,6 +206,12 @@ class ModelService:
         profile = project.model_type or ModelProject.DEFAULT_MODEL_TYPE
         provider = project.get_provider()
 
+        prompt_with_description = prompt.strip() if isinstance(prompt, str) else prompt
+        if project.subject_description:
+            desc = project.subject_description.strip()
+            if desc:
+                prompt_with_description = f"{prompt_with_description}\n\nSubject description: {desc}" if prompt_with_description else desc
+
         resolved_reference_images: List[Any] = list(reference_images or [])
         if reference_image_ids:
             resolved_reference_images.extend(
@@ -221,7 +227,7 @@ class ModelService:
                 method = generation_models_config.get_method(provider, profile)
 
                 # Build prompts from config
-                prompt_to_use = generation_models_config.build_prompt(provider, profile, prompt)
+                prompt_to_use = generation_models_config.build_prompt(provider, profile, prompt_with_description)
                 negative_prompt = generation_models_config.get_negative_prompt_template(provider, profile)
 
                 if method == "style_transfer":
@@ -274,7 +280,7 @@ class ModelService:
                 image_prompt = resolved_reference_images[0] if resolved_reference_images else None
 
                 image_bytes = self.replicate.generate_with_model(
-                    prompt=prompt,
+                    prompt=prompt_with_description,
                     profile=profile,
                     image_prompt=image_prompt,
                     config_override=config_override
@@ -284,7 +290,7 @@ class ModelService:
             model_identifier = self.__get_model_identifier(project)
             use_subject_token = self.replicate.config.profile_uses_subject_token(profile)
             subject_token = self._build_subject_token(project) if use_subject_token else None
-            prompt_to_use = prompt
+            prompt_to_use = prompt_with_description
 
             if use_subject_token and subject_token:
                 if project.subject_name:

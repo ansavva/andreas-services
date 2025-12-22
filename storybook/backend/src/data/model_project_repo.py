@@ -60,7 +60,7 @@ class ModelProjectRepo:
 
         return [ModelProject.from_dict(p) for p in projects_data]
 
-    def create_project(self, name: str, subject_name: str, model_type: str = None) -> ModelProject:
+    def create_project(self, name: str, subject_name: str, model_type: str = None, subject_description: str = None) -> ModelProject:
         """
         Create a new project for the current user
 
@@ -79,6 +79,7 @@ class ModelProjectRepo:
             id=project_id,
             name=name,
             subject_name=subject_name,
+            subject_description=subject_description,
             user_id=user_id,
             status="DRAFT",
             model_type=model_type or ModelProject.DEFAULT_MODEL_TYPE,
@@ -97,7 +98,8 @@ class ModelProjectRepo:
         name: str = None,
         subject_name: str = None,
         model_type: str = None,
-        replicate_model_id: str = None
+        replicate_model_id: str = None,
+        subject_description: str = None
     ) -> ModelProject:
         """
         Update a project's name or subject_name
@@ -121,6 +123,8 @@ class ModelProjectRepo:
             update_fields['name'] = name
         if subject_name is not None:
             update_fields['subject_name'] = subject_name
+        if subject_description is not None:
+            update_fields['subject_description'] = subject_description
         if model_type is not None:
             update_fields['model_type'] = model_type
         if replicate_model_id is not None:

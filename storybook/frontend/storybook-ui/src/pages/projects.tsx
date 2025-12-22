@@ -27,6 +27,7 @@ type Project = {
   subject_name?: string;
   status?: string;
   model_type?: string;
+  subject_description?: string;
 };
 
 const ProjectsPage = () => {
@@ -53,6 +54,7 @@ const ProjectsPage = () => {
           subject_name: p.subject_name,
           status: p.status,
           model_type: p.model_type,
+          subject_description: p.subject_description,
         }));
 
         const normalizedStoryProjects: Project[] = storyProjects.map((p: any) => ({

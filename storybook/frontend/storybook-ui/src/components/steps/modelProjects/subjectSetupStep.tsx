@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Button, Card, CardBody, Input, RadioGroup, Radio } from "@heroui/react";
+import { Button, Card, CardBody, Input, RadioGroup, Radio, Textarea } from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowRight } from "@fortawesome/free-solid-svg-icons";
 
@@ -36,6 +36,7 @@ const SubjectSetupStep: React.FC<SubjectSetupStepProps> = ({
 
   const [subjectName, setSubjectName] = useState<string>(project?.subject_name || "");
   const [subjectNameError, setSubjectNameError] = useState<string>("");
+  const [subjectDescription, setSubjectDescription] = useState<string>(project?.subject_description || "");
   const [modelType, setModelType] = useState<string>(project?.model_type || "");
   const [modelTypes, setModelTypes] = useState<ModelTypeOption[]>([]);
   const [isLoadingModelTypes, setIsLoadingModelTypes] = useState<boolean>(true);
@@ -89,18 +90,23 @@ const SubjectSetupStep: React.FC<SubjectSetupStepProps> = ({
           subjectName,
           subjectName,
           modelType,
+          subjectDescription,
         );
 
         onProjectCreated(newProject);
         showSuccess("Project created successfully!");
-      } else if (project && subjectName !== project.subject_name) {
-        // Update existing project if subject name changed
+      } else if (
+        project &&
+        (subjectName !== project.subject_name ||
+          subjectDescription !== (project.subject_description || ""))
+      ) {
         const updatedProject = await updateModelProject(
           axiosInstance,
           projectId,
           {
             name: subjectName,
             subjectName: subjectName,
+            subjectDescription: subjectDescription,
           },
         );
 
@@ -142,6 +148,16 @@ const SubjectSetupStep: React.FC<SubjectSetupStepProps> = ({
               setSubjectName(value);
               if (value.trim()) setSubjectNameError("");
             }}
+          />
+
+          <Textarea
+            className="mb-6"
+            label="Subject Description"
+            placeholder="Describe unique traits, personality, or other helpful context for this subject."
+            minRows={10}
+            value={subjectDescription}
+            variant="bordered"
+            onValueChange={setSubjectDescription}
           />
 
           {modelTypes.length > 0 ? (

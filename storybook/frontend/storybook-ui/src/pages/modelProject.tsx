@@ -265,6 +265,7 @@ export default function ModelProjectPage() {
               <ModelProjectSettingsStep
                 project={project}
                 onDeleteProject={onDeleteOpen}
+                onProjectUpdated={(updated) => setProject(updated)}
               />
             </div>
           </Tab>

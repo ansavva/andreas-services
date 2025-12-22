@@ -110,8 +110,8 @@ export const Navbar = () => {
         </div>
         <NavbarItem className="hidden sm:flex">
           <NewProjectButton
-            onSelect={handleCreateProject}
             buttonProps={{ size: "sm", variant: "flat", color: "primary" }}
+            onSelect={handleCreateProject}
           />
         </NavbarItem>
       </NavbarContent>

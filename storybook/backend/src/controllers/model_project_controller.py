@@ -91,6 +91,7 @@ def create_model_project():
         data = request.get_json()
         name = data.get("name")
         subject_name = data.get('subjectName')
+        subject_description = data.get('subjectDescription')
         model_type = data.get('modelType', ModelProject.DEFAULT_MODEL_TYPE)
         if not name:
             return jsonify({"error": "Project name is required"}), 400
@@ -99,7 +100,7 @@ def create_model_project():
         if model_type not in ModelProject.VALID_MODEL_TYPES:
             return jsonify({"error": "Invalid model type"}), 400
         # Create a new model project
-        project = model_project_service.create_project(name, subject_name, model_type)
+        project = model_project_service.create_project(name, subject_name, model_type, subject_description)
         return jsonify(project.__dict__), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -131,7 +132,8 @@ def update_model_project(project_id):
             project_id=project_id,
             name=data.get("name"),
             subject_name=data.get("subjectName"),
-            model_type=data.get("modelType")
+            model_type=data.get("modelType"),
+            subject_description=data.get("subjectDescription")
         )
         return jsonify(project.__dict__), 200
     except ValueError as e:

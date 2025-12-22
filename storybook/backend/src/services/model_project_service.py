@@ -24,17 +24,17 @@ class ModelProjectService:
         # Retrieve a specific model project by ID from the repo
         return self.model_project_repo.get_project(project_id)
 
-    def create_project(self, name: str, subject_name: str, model_type: str) -> ModelProject:
+    def create_project(self, name: str, subject_name: str, model_type: str, subject_description: str = None) -> ModelProject:
         # Create a new model project in the repo
         if model_type not in ModelProject.VALID_MODEL_TYPES:
             raise ValueError(f"Invalid model type: {model_type}")
-        return self.model_project_repo.create_project(name, subject_name, model_type)
+        return self.model_project_repo.create_project(name, subject_name, model_type, subject_description)
 
-    def update_project(self, project_id: str, name: str = None, subject_name: str = None, model_type: str = None) -> ModelProject:
+    def update_project(self, project_id: str, name: str = None, subject_name: str = None, model_type: str = None, subject_description: str = None) -> ModelProject:
         # Update a model project's metadata
         if model_type and model_type not in ModelProject.VALID_MODEL_TYPES:
             raise ValueError(f"Invalid model type: {model_type}")
-        return self.model_project_repo.update_project(project_id, name, subject_name, model_type)
+        return self.model_project_repo.update_project(project_id, name, subject_name, model_type, subject_description=subject_description)
 
     def update_status(self, project_id: str, status: str) -> ModelProject:
         # Update a model project's status

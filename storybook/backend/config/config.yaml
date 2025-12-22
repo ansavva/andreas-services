@@ -17,10 +17,10 @@ models:
           label: "Stability SDXL"
           description: "Best likeness. Uses a subject-specific token automatically."
           use_subject_token: true
-          model_name_template: "stabilitysdxl_{user_id}_{project_id}"
+          model_name_template: "{project_id}"
           training:
             steps: 1500
-            learning_rate: 0.0002
+            learning_rate: 0.0001
             batch_size: 4
             resolution: 768
             autocaption: true
@@ -50,7 +50,7 @@ models:
           label: "Ostris Flux Dev Lora Trainer"
           description: "Black Forest Labs Fine-tune that behaves like our original FLUX workflow."
           use_subject_token: false
-          model_name_template: "flux_{user_id}_{project_id}"
+          model_name_template: "{project_id}"
           training:
             steps: 1000
             learning_rate: 0.0001

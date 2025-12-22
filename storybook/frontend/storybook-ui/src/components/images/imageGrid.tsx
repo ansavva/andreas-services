@@ -3,7 +3,11 @@ import React, { useEffect, useState, useRef, useMemo } from "react";
 import { Card, Image, Spinner, Button } from "@heroui/react";
 import { useDisclosure } from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faTrash, faCheck } from "@fortawesome/free-solid-svg-icons";
+import {
+  faTrash,
+  faCheck,
+  faTriangleExclamation,
+} from "@fortawesome/free-solid-svg-icons";
 
 import { useAxios } from "@/hooks/axiosContext";
 import { downloadImageById } from "@/apis/imageController";
@@ -82,6 +86,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       reader.readAsDataURL(response);
     } catch (error) {
       console.error("Error fetching thumbnail:", error);
+      setThumbnails((prev) => ({
+        ...prev,
+        [key]: "__ERROR__",
+      }));
     }
   };
 
@@ -140,6 +148,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           images.map((image, index) => {
             const key = getImageKey(image, index);
             const thumbnailSrc = thumbnails[key];
+            const isErrorThumbnail = thumbnailSrc === "__ERROR__";
             const identifier = image.id || key;
             const isSelected =
               selectable && identifier ? selectedIdSet.has(identifier) : false;
@@ -160,7 +169,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                 style={cardStyle}
                 onPress={() => handleCardClick(image, key)}
               >
-                {thumbnailSrc ? (
+                {thumbnailSrc && !isErrorThumbnail ? (
                   <Image
                     alt={image.name || "Image"}
                     className="object-cover w-full h-full"
@@ -168,7 +177,14 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-gray-200 dark:bg-gray-700">
-                    <Spinner size="sm" />
+                    {isErrorThumbnail ? (
+                      <FontAwesomeIcon
+                        className="text-danger text-xl"
+                        icon={faTriangleExclamation}
+                      />
+                    ) : (
+                      <Spinner size="sm" />
+                    )}
                   </div>
                 )}
                 {selectable && isSelected && (
@@ -202,15 +218,20 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           imageName={selectedImage.image.name || "Image"}
           imageSrc={thumbnails[selectedImage.key]}
           isOpen={isOpen}
+          showDeleteButton={showDeleteButton}
           onClose={() => {
             setSelectedImage(null);
             onClose();
           }}
-          onImageDelete={() => {
-            handleImageDelete(selectedImage.image, selectedImage.key);
-            setSelectedImage(null);
-            onClose();
-          }}
+          onImageDelete={
+            showDeleteButton
+              ? () => {
+                  handleImageDelete(selectedImage.image, selectedImage.key);
+                  setSelectedImage(null);
+                  onClose();
+                }
+              : undefined
+          }
         />
       )}
     </>

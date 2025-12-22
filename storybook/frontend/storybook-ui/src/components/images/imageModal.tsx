@@ -22,6 +22,7 @@ type ImageModalProps = {
   imageId: string;
   onImageDelete?: (imageId: string) => void;
   customActions?: () => React.ReactNode; // Custom action buttons
+  showDeleteButton?: boolean;
 };
 
 const ImageModal: React.FC<ImageModalProps> = ({
@@ -32,6 +33,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   imageId,
   onImageDelete,
   customActions,
+  showDeleteButton = true,
 }) => {
   const { axiosInstance } = useAxios();
 
@@ -93,7 +95,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 >
                   <FontAwesomeIcon icon={faDownload} />
                 </Button>
-                {onImageDelete && (
+                {showDeleteButton && onImageDelete && (
                   <Button
                     isIconOnly
                     aria-label="Delete"

@@ -19,6 +19,7 @@ class ModelProject:
     subject_name: str  # Name of the subject being trained (e.g., "John", "MyDog")
     user_id: str  # Cognito user ID (sub claim)
     status: str = "DRAFT"  # Project status for workflow management
+    subject_description: Optional[str] = None
     DEFAULT_MODEL_TYPE = replicate_config.get_default_profile()
 
     @staticmethod
@@ -62,6 +63,7 @@ class ModelProject:
             '_id': self.id,
             'name': self.name,
             'subject_name': self.subject_name,
+            'subject_description': self.subject_description,
             'user_id': self.user_id,
             'status': self.status,
             'model_type': self.model_type or self.DEFAULT_MODEL_TYPE,
@@ -77,6 +79,7 @@ class ModelProject:
             id=str(data.get('_id')),
             name=data.get('name'),
             subject_name=data.get('subject_name'),
+            subject_description=data.get('subject_description'),
             user_id=data.get('user_id'),
             status=data.get('status', 'DRAFT'),
             model_type=ModelProject._normalize_model_type(data.get('model_type')),
