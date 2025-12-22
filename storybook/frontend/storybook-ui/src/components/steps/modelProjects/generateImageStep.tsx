@@ -197,7 +197,7 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !isGenerating && prompt.trim()) {
       handleGenerate();
     }
