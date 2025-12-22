@@ -1,6 +1,5 @@
 from flask import Blueprint, jsonify
-from src.config.prompts_config import prompts_config
-from src.config.style_references import style_references
+from src.config.generation_models_config import generation_models_config
 
 config_controller = Blueprint("config_controller", __name__)
 
@@ -10,8 +9,11 @@ def get_style_presets():
     try:
         # Use style transfer styles (backend-owned reference images)
         # These are the valid style_id values that map to reference images
-        presets = style_references.get_available_styles()
-        default_style = style_references.get_default_style()
+        provider = "stability_ai"
+        profile = "style_transfer"
+
+        presets = list(generation_models_config.get_all_style_references().keys())
+        default_style = generation_models_config.get_style_reference_id(provider, profile)
 
         return jsonify({
             "presets": presets,

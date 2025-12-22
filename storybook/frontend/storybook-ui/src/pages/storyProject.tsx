@@ -6,10 +6,10 @@ import { Card, CardBody, Spinner } from '@heroui/react';
 import DefaultLayout from '@/layouts/default';
 import Stepper from '../components/common/stepper';
 import ErrorDisplay from '../components/common/errorDisplay';
-import KidSetupStep, { KidSetupData } from '../components/steps/kidSetupStep';
-import CharacterCreationStep from '../components/steps/characterCreationStep';
-import StoryChatStep from '../components/steps/storyChatStep';
-import PagesEditorStep from '../components/steps/pagesEditorStep';
+import KidSetupStep, { KidSetupData } from '../components/steps/storyProjects/kidSetupStep';
+import CharacterCreationStep from '../components/steps/storyProjects/characterCreationStep';
+import StoryChatStep from '../components/steps/storyProjects/storyChatStep';
+import PagesEditorStep from '../components/steps/storyProjects/pagesEditorStep';
 
 // API imports
 import { getStoryProjectById, createStoryProject, updateStoryProjectStatus, updateStoryProject } from '../apis/storyProjectController';

@@ -1,38 +1,74 @@
 // ImageGrid.tsx
-import React, { useEffect, useState } from "react";
-import { Card, Image, Spinner } from "@heroui/react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
+import { Card, Image, Spinner, Button } from "@heroui/react";
 import { useDisclosure } from "@heroui/react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faTrash, faCheck } from "@fortawesome/free-solid-svg-icons";
 
 import { useAxios } from "@/hooks/axiosContext";
 import { downloadImageById } from "@/apis/imageController";
 import ImageModal from "@/components/images/imageModal";
 
-type ImageProps = {
-  id: string; // Image ID (required)
-  name?: string; // Display name (optional)
+type ImageItem = {
+  id?: string;
+  name?: string;
+  src?: string;
 };
 
 type ImageGridProps = {
-  images: ImageProps[];
+  images: ImageItem[];
   isLoading?: boolean;
-  onImageDelete?: (imageId: string) => void;
-  customActions?: (image: ImageProps) => React.ReactNode; // For custom modal actions
+  onImageDelete?: (imageId: string, image?: ImageItem) => void;
+  customActions?: (image: ImageItem) => React.ReactNode;
+  showDeleteButton?: boolean;
+  thumbnailWidth?: number;
+  thumbnailHeight?: number;
+  className?: string;
+  showModal?: boolean;
+  selectable?: boolean;
+  selectedIds?: string[];
+  onImageSelect?: (
+    imageId: string,
+    isSelected: boolean,
+    image?: ImageItem,
+  ) => void;
 };
+
+const DEFAULT_CONTAINER_CLASSES =
+  "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4";
 
 const ImageGrid: React.FC<ImageGridProps> = ({
   images,
   isLoading = false,
   onImageDelete,
   customActions,
+  showDeleteButton = false,
+  thumbnailWidth,
+  thumbnailHeight,
+  className,
+  showModal = true,
+  selectable = false,
+  selectedIds = [],
+  onImageSelect,
 }) => {
   const { axiosInstance } = useAxios();
-  const [thumbnails, setThumbnails] = useState<{ [imageId: string]: string }>(
-    {},
-  );
-  const [selectedImage, setSelectedImage] = useState<ImageProps | null>(null);
+  const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
+  const thumbnailsRef = useRef<Record<string, string>>({});
+  const [selectedImage, setSelectedImage] = useState<{
+    image: ImageItem;
+    key: string;
+  } | null>(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
-  const fetchThumbnail = async (imageId: string) => {
+  useEffect(() => {
+    thumbnailsRef.current = thumbnails;
+  }, [thumbnails]);
+
+  const getImageKey = (image: ImageItem, index: number) =>
+    image.id || (image.src ? `${image.src}-${index}` : `image-${index}`);
+
+  const fetchThumbnail = async (imageId: string, key: string) => {
     try {
       const response = await downloadImageById(axiosInstance, imageId);
       const reader = new FileReader();
@@ -40,7 +76,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       reader.onloadend = () => {
         setThumbnails((prev) => ({
           ...prev,
-          [imageId]: reader.result as string,
+          [key]: reader.result as string,
         }));
       };
       reader.readAsDataURL(response);
@@ -50,58 +86,131 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   };
 
   useEffect(() => {
-    images.forEach((image) => {
-      if (image.id && !thumbnails[image.id]) {
-        fetchThumbnail(image.id);
+    images.forEach((image, index) => {
+      const key = getImageKey(image, index);
+
+      if (!key) return;
+
+      if (image.src) {
+        setThumbnails((prev) =>
+          prev[key] ? prev : { ...prev, [key]: image.src as string },
+        );
+      } else if (image.id && !thumbnailsRef.current[key]) {
+        fetchThumbnail(image.id, key);
       }
     });
-  }, [images]);
+  }, [images, axiosInstance]);
 
-  const handleCardClick = (image: ImageProps) => {
-    setSelectedImage(image);
-    onOpen();
+  const handleSelectToggle = (image: ImageItem, identifier: string) => {
+    if (!selectable || !identifier) return;
+    const currentlySelected = selectedIdSet.has(identifier);
+
+    onImageSelect?.(identifier, !currentlySelected, image);
   };
 
-  const handleImageDelete = (imageId: string) => {
-    onImageDelete?.(imageId);
+  const handleCardClick = (image: ImageItem, key: string) => {
+    const identifier = image.id || key;
+
+    if (selectable) {
+      handleSelectToggle(image, identifier);
+      if (!showModal) {
+        return;
+      }
+    }
+    if (showModal && image.id) {
+      setSelectedImage({ image, key });
+      onOpen();
+    }
   };
+
+  const handleImageDelete = (image: ImageItem, key: string) => {
+    onImageDelete?.(image.id || key, image);
+  };
+
+  const containerClasses = className ? className : DEFAULT_CONTAINER_CLASSES;
 
   return (
     <>
-      <div className="grid md:grid-cols-4 sm:grid-cols-1 md:gap-4 sm:gap-1">
+      <div className={containerClasses}>
         {isLoading ? (
-          <div className="col-span-full flex justify-center items-center">
+          <div className="w-full flex justify-center items-center py-4">
             <Spinner size="md" />
           </div>
         ) : (
-          images.map((image) => (
-            <Card
-              key={image.id}
-              isPressable
-              className="border-none mb-3"
-              radius="lg"
-              onPress={() => handleCardClick(image)}
-            >
-              <Image
-                alt={image.name || "Image"}
-                className="object-cover"
-                src={thumbnails[image.id]}
-              />
-            </Card>
-          ))
+          images.map((image, index) => {
+            const key = getImageKey(image, index);
+            const thumbnailSrc = thumbnails[key];
+            const identifier = image.id || key;
+            const isSelected =
+              selectable && identifier ? selectedIdSet.has(identifier) : false;
+            const cardStyle =
+              thumbnailWidth || thumbnailHeight
+                ? {
+                    ...(thumbnailWidth ? { width: thumbnailWidth } : {}),
+                    ...(thumbnailHeight ? { height: thumbnailHeight } : {}),
+                  }
+                : undefined;
+
+            return (
+              <Card
+                key={key}
+                className={`border-0 relative overflow-hidden ${showModal && image.id ? "cursor-pointer" : ""} ${isSelected ? "ring-2 ring-primary" : ""}`}
+                isPressable={selectable || (showModal && !!image.id)}
+                radius="lg"
+                style={cardStyle}
+                onPress={() => handleCardClick(image, key)}
+              >
+                {thumbnailSrc ? (
+                  <Image
+                    alt={image.name || "Image"}
+                    className="object-cover w-full h-full"
+                    src={thumbnailSrc}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-200 dark:bg-gray-700">
+                    <Spinner size="sm" />
+                  </div>
+                )}
+                {selectable && isSelected && (
+                  <div className="absolute top-2 left-2 bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center text-xs z-10">
+                    <FontAwesomeIcon icon={faCheck} />
+                  </div>
+                )}
+                {showDeleteButton && (
+                  <Button
+                    isIconOnly
+                    className="absolute top-2 right-2 z-10"
+                    color="danger"
+                    size="sm"
+                    variant="light"
+                    onPress={() => handleImageDelete(image, key)}
+                  >
+                    <FontAwesomeIcon icon={faTrash} />
+                  </Button>
+                )}
+              </Card>
+            );
+          })
         )}
       </div>
       {selectedImage && (
         <ImageModal
           customActions={
-            customActions ? () => customActions(selectedImage) : undefined
+            customActions ? () => customActions(selectedImage.image) : undefined
           }
-          imageId={selectedImage.id}
-          imageName={selectedImage.name || "Image"}
-          imageSrc={thumbnails[selectedImage.id]}
+          imageId={selectedImage.image.id as string}
+          imageName={selectedImage.image.name || "Image"}
+          imageSrc={thumbnails[selectedImage.key]}
           isOpen={isOpen}
-          onClose={onClose}
-          onImageDelete={handleImageDelete}
+          onClose={() => {
+            setSelectedImage(null);
+            onClose();
+          }}
+          onImageDelete={() => {
+            handleImageDelete(selectedImage.image, selectedImage.key);
+            setSelectedImage(null);
+            onClose();
+          }}
         />
       )}
     </>

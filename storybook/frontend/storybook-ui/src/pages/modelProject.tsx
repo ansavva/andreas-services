@@ -3,15 +3,15 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Tabs, Tab, Spinner, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/react";
 
 import { exists, getTrainingRuns } from "@/apis/modelController";
-import { getModelProjectById, deleteModelProject } from "@/apis/modelProjectController";
+import { getModelProjectById, deleteModelProject, getModelTypes } from "@/apis/modelProjectController";
 import { useAxios } from "@/hooks/axiosContext";
 import { useToast } from "@/hooks/useToast";
 
 import DefaultLayout from "@/layouts/default";
-import SubjectSetupStep from "@/components/steps/subjectSetupStep";
-import ImageUploadStep from "@/components/steps/imageUploadStep";
-import GenerateImageStep from "@/components/steps/generateImageStep";
-import ModelProjectSettingsStep from "@/components/steps/modelProjectSettingsStep";
+import SubjectSetupStep from "@/components/steps/modelProjects/subjectSetupStep";
+import TrainingStep from "@/components/steps/modelProjects/trainingStep";
+import GenerateImageStep from "@/components/steps/modelProjects/generateImageStep";
+import ModelProjectSettingsStep from "@/components/steps/modelProjects/modelProjectSettingsStep";
 import ErrorDisplay from "@/components/common/errorDisplay";
 import { getErrorMessage, logError } from "@/utils/errorHandling";
 
@@ -30,6 +30,8 @@ export default function ModelProjectPage() {
   const [hasSuccessfulTraining, setHasSuccessfulTraining] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [needsSubjectSetup, setNeedsSubjectSetup] = useState(false);
+  const [requiresTraining, setRequiresTraining] = useState<boolean>(true);
+  const [modelTypeInfo, setModelTypeInfo] = useState<any>(null);
 
   // Ensure project_id is valid
   if (!project_id) {
@@ -54,16 +56,33 @@ export default function ModelProjectPage() {
       const projectData = await getModelProjectById(axiosInstance, project_id!);
       setProject(projectData);
 
-      // Check if model exists
-      const modelExistsResponse = await exists(axiosInstance, project_id!);
-      const modelReady = modelExistsResponse.model_found || projectData.status === "READY";
-      setModelExists(modelReady);
+      // Fetch model types to determine if this model requires training
+      const modelTypesData = await getModelTypes(axiosInstance);
+      const currentModelTypeInfo = modelTypesData.modelTypes.find(
+        (mt: any) => mt.id === projectData.model_type
+      );
+      setModelTypeInfo(currentModelTypeInfo || null);
 
-      const { hasSuccess, hasActive } = await refreshTrainingProgress(project_id!);
-      if (!hasActive && (modelReady || hasSuccess)) {
+      const needsTraining = currentModelTypeInfo?.requires_training ?? true;
+      setRequiresTraining(needsTraining);
+
+      // For generation-only models, skip training checks and go directly to generation
+      if (!needsTraining) {
         setSelectedTab("generate");
-      } else if (hasActive) {
-        setSelectedTab("training");
+        setHasSuccessfulTraining(true); // Enable generation tab
+        setModelExists(true); // No model training needed
+      } else {
+        // For training models, check if model exists and training status
+        const modelExistsResponse = await exists(axiosInstance, project_id!);
+        const modelReady = modelExistsResponse.model_found || projectData.status === "READY";
+        setModelExists(modelReady);
+
+        const { hasSuccess, hasActive } = await refreshTrainingProgress(project_id!);
+        if (!hasActive && (modelReady || hasSuccess)) {
+          setSelectedTab("generate");
+        } else if (hasActive) {
+          setSelectedTab("training");
+        }
       }
     } catch (error: any) {
       logError("Load project data", error);
@@ -193,6 +212,11 @@ export default function ModelProjectPage() {
                 Subject: {project.subject_name}
               </p>
             )}
+            {modelTypeInfo && (
+              <p className="text-base text-gray-500 dark:text-gray-400 mt-1">
+                Model: {modelTypeInfo.name || modelTypeInfo.id}
+              </p>
+            )}
           </div>
         </div>
 
@@ -203,24 +227,31 @@ export default function ModelProjectPage() {
           aria-label="Project tabs"
           className="mb-6"
         >
-          <Tab key="training" title="Training">
-            <div>
-              <ImageUploadStep
-                projectId={project?.id || project_id!}
-                project={project}
-                onTrainingComplete={handleTrainingComplete}
-              />
-            </div>
-          </Tab>
+          {/* Only show Training tab if model requires training */}
+          {requiresTraining && (
+            <Tab key="training" title="Training">
+              <div>
+                <TrainingStep
+                  projectId={project?.id || project_id!}
+                  project={project}
+                  onTrainingComplete={handleTrainingComplete}
+                />
+              </div>
+            </Tab>
+          )}
 
           <Tab
             key="generate"
             title="Generate Images"
-            isDisabled={!hasSuccessfulTraining}
+            isDisabled={requiresTraining && !hasSuccessfulTraining}
           >
             <div>
-              {modelExists ? (
-                <GenerateImageStep projectId={project?.id || project_id!} />
+              {(requiresTraining && modelExists) || !requiresTraining ? (
+                <GenerateImageStep
+                  projectId={project?.id || project_id!}
+                  project={project}
+                  modelTypeInfo={modelTypeInfo}
+                />
               ) : (
                 <div className="text-center py-12 text-gray-500 dark:text-gray-400">
                   <p>Complete training before generating images</p>
@@ -249,10 +280,10 @@ export default function ModelProjectPage() {
                 This will permanently delete:
               </p>
               <ul className="list-disc list-inside text-sm text-gray-600 dark:text-gray-400 mt-2">
-                <li>All training runs and their history</li>
-                <li>All training images</li>
+                {requiresTraining && <li>All training runs and their history</li>}
+                {requiresTraining && <li>All training images</li>}
                 <li>All generated images</li>
-                <li>The trained model on Replicate</li>
+                {requiresTraining && <li>The trained model on Replicate</li>}
                 <li>All generation history</li>
               </ul>
               <p className="text-sm font-semibold text-red-600 dark:text-red-400 mt-4">

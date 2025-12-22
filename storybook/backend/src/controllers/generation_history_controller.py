@@ -24,13 +24,19 @@ def create_history():
         project_id = data.get("project_id")
         prompt = data.get("prompt")
         image_ids = data.get("image_ids", [])
+        reference_image_ids = data.get("reference_image_ids")
 
         if not project_id:
             return jsonify({"error": "project_id is required"}), 400
         if not prompt:
             return jsonify({"error": "prompt is required"}), 400
 
-        history = generation_history_repo.create(project_id, prompt, image_ids)
+        history = generation_history_repo.create(
+            project_id,
+            prompt,
+            image_ids,
+            reference_image_ids,
+        )
         profile = user_profile_repo.get_by_id(history.user_id)
 
         return jsonify({
@@ -39,6 +45,7 @@ def create_history():
             "user_id": history.user_id,
             "prompt": history.prompt,
             "image_ids": history.image_ids,
+            "reference_image_ids": history.reference_image_ids or [],
             "created_at": history.created_at.isoformat() if history.created_at else None,
             "user_profile": {
                 "display_name": profile.display_name if profile else None,
@@ -63,6 +70,7 @@ def get_history(history_id: str):
             "user_id": history.user_id,
             "prompt": history.prompt,
             "image_ids": history.image_ids,
+            "reference_image_ids": history.reference_image_ids or [],
             "created_at": history.created_at.isoformat() if history.created_at else None
         }), 200
 
@@ -97,6 +105,7 @@ def list_history_by_project(project_id: str):
                 "user_id": h.user_id,
                 "prompt": h.prompt,
                 "image_ids": h.image_ids,
+                "reference_image_ids": h.reference_image_ids or [],
                 "created_at": h.created_at.isoformat() if h.created_at else None,
                 "user_profile": {
                     "display_name": profile.display_name if profile else None,

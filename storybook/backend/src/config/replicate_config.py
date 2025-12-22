@@ -45,11 +45,14 @@ class ReplicateConfig:
         Returns:
             Account owner username (default: 'ansavva')
         """
-        return self._config.get('replicate', {}).get('owner', 'ansavva')
+        training_models = self._config.get('models', {}).get('training_models', {})
+        replicate_cfg = training_models.get('replicate', {})
+        return replicate_cfg.get('owner', 'ansavva')
 
     def get_default_profile(self) -> str:
         """Return the default model profile identifier"""
-        replicate_cfg = self._config.get('replicate', {})
+        training_models = self._config.get('models', {}).get('training_models', {})
+        replicate_cfg = training_models.get('replicate', {})
         default_profile = replicate_cfg.get('default_profile')
         profile_ids = self.get_profile_ids()
         if default_profile in profile_ids:
@@ -59,14 +62,9 @@ class ReplicateConfig:
         return "stability"
 
     def _get_profiles_map(self) -> Dict[str, Dict[str, Any]]:
-        replicate_cfg = self._config.get('replicate', {})
-        profiles = {}
-        for key, value in replicate_cfg.items():
-            if key in ('owner', 'default_profile'):
-                continue
-            if isinstance(value, dict):
-                profiles[key] = value
-        return profiles
+        training_models = self._config.get('models', {}).get('training_models', {})
+        replicate_cfg = training_models.get('replicate', {})
+        return replicate_cfg.get('profiles', {})
 
     def get_profile_ids(self) -> List[str]:
         """List available profile identifiers"""

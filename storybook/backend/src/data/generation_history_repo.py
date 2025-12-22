@@ -15,7 +15,8 @@ class GenerationHistoryRepo:
         """Get current user ID from Cognito claims"""
         return request.cognito_claims['sub']
 
-    def create(self, project_id: str, prompt: str, image_ids: List[str]) -> GenerationHistory:
+    def create(self, project_id: str, prompt: str, image_ids: List[str],
+               reference_image_ids: List[str] = None) -> GenerationHistory:
         """
         Create a new generation history entry
 
@@ -23,6 +24,7 @@ class GenerationHistoryRepo:
             project_id: UUID of the project
             prompt: The exact prompt submitted
             image_ids: List of image IDs generated from this prompt
+            reference_image_ids: Optional list of reference image IDs used for generation
 
         Returns:
             Created GenerationHistory object
@@ -41,6 +43,7 @@ class GenerationHistoryRepo:
             user_id=user_id,
             prompt=prompt,
             image_ids=image_ids,
+            reference_image_ids=reference_image_ids,
             created_at=datetime.utcnow()
         )
 
@@ -123,3 +126,23 @@ class GenerationHistoryRepo:
             raise ValueError(f"Generation history with ID {history_id} not found.")
 
         return True
+
+    def delete_by_project(self, project_id: str) -> int:
+        """
+        Delete all generation history entries for a project
+
+        Args:
+            project_id: UUID of the project
+
+        Returns:
+            Number of entries deleted
+        """
+        db = get_db()
+        user_id = self._get_user_id()
+
+        result = db.generation_history.delete_many({
+            'project_id': str(project_id),
+            'user_id': user_id
+        })
+
+        return result.deleted_count

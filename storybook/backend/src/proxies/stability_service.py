@@ -1,6 +1,8 @@
 """
-Stability.ai Service - Wrapper for Stability API interactions
-Handles character generation, scene generation, and illustration creation using SDXL
+Stability AI API Proxy - Clean wrapper for Stability AI API
+
+This is a thin proxy layer that handles raw API calls to Stability AI.
+Business logic for character generation should be in CharacterGenerationService.
 """
 from typing import List, Dict, Any, Optional, BinaryIO
 import requests
@@ -8,18 +10,25 @@ import base64
 from io import BytesIO
 import imghdr
 from src.config import Config
-from src.config.prompts_config import prompts_config
+from src.config.generation_models_config import generation_models_config
 
 class StabilityService:
     """
-    Service for interacting with Stability.ai API
-    Used for character portraits, preview scenes, and story page illustrations
+    Clean API proxy for Stability AI
+
+    Provides low-level methods for calling Stability AI endpoints:
+    - generate_image(): Text-to-image and image-to-image generation
+    - style_transfer(): Style transfer endpoint
+    - generate_variants(): Multiple generation runs
+
+    For business logic (character portraits, scenes, etc.), use CharacterGenerationService.
     """
 
     def __init__(self):
         self.api_key = Config.STABILITY_API_KEY
-        self.api_host = "https://api.stability.ai"
-        self.default_engine = "stable-diffusion-xl-1024-v1-0"  # SDXL
+        self.provider = "stability_ai"
+        self.api_host = generation_models_config.get_api_host(self.provider) or "https://api.stability.ai"
+        self.default_engine = generation_models_config.get_default_engine(self.provider) or "stable-diffusion-xl-1024-v1-0"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Accept": "application/json"
@@ -90,7 +99,11 @@ class StabilityService:
                 - seed: Generation seed
                 - finish_reason: Why generation stopped
         """
-        url = f"{self.api_host}/v1/generation/{self.default_engine}/text-to-image"
+        url = generation_models_config.get_endpoint(
+            self.provider,
+            'text_to_image',
+            engine=self.default_engine
+        )
 
         # Build request body
         body = {
@@ -115,7 +128,11 @@ class StabilityService:
 
         # Use image-to-image endpoint if init_image provided
         if init_image:
-            url = f"{self.api_host}/v1/generation/{self.default_engine}/image-to-image"
+            url = generation_models_config.get_endpoint(
+                self.provider,
+                'image_to_image',
+                engine=self.default_engine
+            )
 
             # Convert init_image to bytes
             # Handle both bytes and file-like objects
@@ -183,131 +200,6 @@ class StabilityService:
             "finish_reason": artifact.get("finishReason")
         }
 
-    def generate_character_portrait(self,
-                                    reference_images: List[BinaryIO],
-                                    child_name: Optional[str] = None,
-                                    user_description: Optional[str] = None,
-                                    style: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Generate a stylized character portrait from reference photos
-
-        Args:
-            reference_images: List of child photos (file-like objects)
-            child_name: Optional name of the child
-            user_description: Optional custom description to add to prompt
-            style: Optional style preset for generation (validates against allowed presets)
-
-        Returns:
-            Dictionary with image_data and metadata
-
-        Raises:
-            ValueError: If style preset is invalid
-        """
-        # Validate and set style preset
-        if style is None:
-            style = prompts_config.get_character_default_style()
-        elif not prompts_config.is_valid_style_preset(style):
-            raise ValueError(f"Invalid style preset: {style}. Must be one of: {prompts_config.get_available_style_presets()}")
-
-        # Build prompt from config
-        prompt = prompts_config.build_character_prompt(child_name, user_description)
-        negative_prompt = prompts_config.get_character_negative_prompt()
-        image_strength = prompts_config.get_character_image_strength()
-
-        return self.generate_image(
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            style_preset=style,
-            init_image=reference_images[0] if reference_images else None,
-            image_strength=image_strength
-        )
-
-    def generate_preview_scene(self,
-                              scene_name: str,
-                              character_description: str,
-                              reference_image: BinaryIO = None,
-                              style: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Generate a preview scene with the character
-
-        Args:
-            scene_name: Name of the scene (e.g., "park", "space", "pirate")
-            character_description: Description of the character for consistency
-            reference_image: Optional character reference image
-            style: Optional style preset (validates against allowed presets)
-
-        Returns:
-            Dictionary with image_data and metadata
-
-        Raises:
-            ValueError: If style preset is invalid
-        """
-        # Validate and set style preset
-        if style is None:
-            style = prompts_config.get_character_default_style()
-        elif not prompts_config.is_valid_style_preset(style):
-            raise ValueError(f"Invalid style preset: {style}. Must be one of: {prompts_config.get_available_style_presets()}")
-
-        # Build scene prompt from config
-        prompt = prompts_config.build_scene_prompt(scene_name, character_description)
-        negative_prompt = prompts_config.get_scene_negative_prompt()
-
-        return self.generate_image(
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            style_preset=style,
-            init_image=reference_image,
-            image_strength=0.3 if reference_image else 0.0
-        )
-
-    def generate_story_illustration(self,
-                                    prompt: str,
-                                    character_bible: Dict[str, Any] = None,
-                                    character_reference: BinaryIO = None,
-                                    must_avoid: List[str] = None,
-                                    style: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Generate an illustration for a story page
-
-        Args:
-            prompt: Detailed scene description
-            character_bible: Character traits and visual details
-            character_reference: Character reference image
-            must_avoid: List of elements to avoid
-            style: Optional style preset (validates against allowed presets)
-
-        Returns:
-            Dictionary with image_data and metadata
-
-        Raises:
-            ValueError: If style preset is invalid
-        """
-        # Validate and set style preset
-        if style is None:
-            style = prompts_config.get_character_default_style()
-        elif not prompts_config.is_valid_style_preset(style):
-            raise ValueError(f"Invalid style preset: {style}. Must be one of: {prompts_config.get_available_style_presets()}")
-
-        # Enhance prompt with character consistency
-        full_prompt = prompt
-        if character_bible:
-            character_desc = character_bible.get("visual_description", "")
-            if character_desc:
-                full_prompt = f"{character_desc}, {prompt}"
-
-        # Build negative prompt from config
-        negative_prompt = prompts_config.build_story_negative_prompt(must_avoid)
-
-        return self.generate_image(
-            prompt=full_prompt,
-            negative_prompt=negative_prompt,
-            style_preset=style,
-            init_image=character_reference,
-            image_strength=0.25 if character_reference else 0.0,
-            width=1024,
-            height=1024
-        )
-
     def generate_variants(self, prompt: str,
                          num_variants: int = 3,
                          **kwargs) -> List[Dict[str, Any]]:
@@ -363,7 +255,7 @@ class StabilityService:
         if not (0.0 <= style_strength <= 1.0):
             raise ValueError(f"style_strength must be between 0.0 and 1.0, got {style_strength}")
 
-        url = f"{self.api_host}/v2beta/stable-image/control/style-transfer"
+        url = generation_models_config.get_endpoint(self.provider, 'style_transfer')
 
         # Prepare image files
         # Convert file-like objects to bytes

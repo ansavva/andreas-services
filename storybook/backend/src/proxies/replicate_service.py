@@ -1,6 +1,7 @@
 """
 Replicate Service - Wrapper for Replicate API interactions
 Handles SDXL model training and image generation using fine-tuned models
+Also handles generation-only models like Flux Pro
 Configuration is loaded from config.yaml
 """
 from typing import Optional, Dict, Any, BinaryIO, List
@@ -9,6 +10,7 @@ import time
 import replicate
 import requests
 from src.config.replicate_config import replicate_config
+from src.config.generation_models_config import generation_models_config
 
 API_BASE = "https://api.replicate.com/v1"
 
@@ -326,3 +328,75 @@ class ReplicateService:
             url = data.get("next")
 
         return version_ids
+
+    def generate_with_model(self,
+                           prompt: str,
+                           profile: str = "flux_pro",
+                           image_prompt: Optional[BinaryIO] = None,
+                           config_override: Optional[Dict[str, Any]] = None) -> bytes:
+        """
+        Generate an image using a generation-only model (no training required)
+
+        This method is for models like Flux 1.1 Pro that don't require training
+        and support direct generation with prompts and optional reference images.
+
+        Args:
+            prompt: Text prompt for image generation
+            profile: Model profile to use (e.g., 'flux_pro')
+            image_prompt: Optional reference image for guided composition
+            config_override: Optional dict to override specific config values
+
+        Returns:
+            Image data as bytes
+
+        Raises:
+            Exception: If generation or image download fails
+        """
+        provider = "replicate"
+        gen_config = generation_models_config.get_generation_config(provider, profile)
+        model_id = generation_models_config.get_model_id(provider, profile)
+
+        if not model_id:
+            raise ValueError(f"No model ID configured for profile '{profile}'")
+
+        # Build input parameters from config
+        generation_input = {
+            "prompt": prompt,
+            "aspect_ratio": gen_config.get("aspect_ratio", "1:1"),
+            "num_outputs": gen_config.get("num_outputs", 1),
+            "output_format": gen_config.get("output_format", "png"),
+            "output_quality": gen_config.get("output_quality", 90),
+            "safety_tolerance": gen_config.get("safety_tolerance", 2),
+            "prompt_upsampling": gen_config.get("prompt_upsampling", False),
+        }
+
+        # Add image prompt if provided
+        if image_prompt:
+            # Convert to URL or data URL (Replicate accepts image URLs)
+            # For now, we'll need to upload it or provide it as data
+            # This might need adjustment based on how you handle image uploads
+            generation_input["image_prompt"] = image_prompt
+
+        # Apply any overrides
+        if config_override:
+            generation_input.update(config_override)
+
+        # Run prediction
+        output = replicate.run(
+            model_id,
+            input=generation_input
+        )
+
+        # Handle output - could be a list of URLs or direct output
+        if isinstance(output, list) and len(output) > 0:
+            image_url = output[0] if isinstance(output[0], str) else output[0].url
+        else:
+            image_url = output.url if hasattr(output, 'url') else str(output)
+
+        # Download the image
+        response = requests.get(image_url)
+
+        if response.status_code != 200:
+            raise Exception(f"Failed to download generated image from Replicate: {response.status_code}")
+
+        return response.content

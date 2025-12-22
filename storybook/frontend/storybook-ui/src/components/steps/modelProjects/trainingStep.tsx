@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useMemo } from "react";
-import { Button, Card, CardBody, Spinner, Chip, Image } from "@heroui/react";
+import { Button, Card, CardBody, Spinner, Chip } from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faUpload,
@@ -16,7 +16,6 @@ import {
   uploadImage,
   deleteImage,
   getImagesByProject,
-  downloadImageById,
 } from "@/apis/imageController";
 import {
   train,
@@ -43,13 +42,13 @@ type TrainingRun = {
   error_message: string | null;
 };
 
-type ImageUploadStepProps = {
+type TrainingStepProps = {
   projectId: string;
   project: any;
   onTrainingComplete: () => void;
 };
 
-const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
+const TrainingStep: React.FC<TrainingStepProps> = ({
   projectId,
   project,
   onTrainingComplete,
@@ -60,9 +59,6 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
 
   const [images, setImages] = useState<ImageFile[]>([]);
   const [trainingRuns, setTrainingRuns] = useState<TrainingRun[]>([]);
-  const [imageThumbnails, setImageThumbnails] = useState<
-    Record<string, string>
-  >({});
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [isLoadingImages, setIsLoadingImages] = useState(false);
   const [isLoadingTrainingRuns, setIsLoadingTrainingRuns] = useState(false);
@@ -119,36 +115,10 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
       const runs = response.training_runs || [];
 
       setTrainingRuns(runs);
-
-      // Load thumbnails for all images in all training runs
-      runs.forEach((run: TrainingRun) => {
-        run.image_ids.forEach((imageId: string) => {
-          if (!imageThumbnails[imageId]) {
-            loadImageThumbnail(imageId);
-          }
-        });
-      });
     } catch (error) {
       logError("Fetch training runs", error);
     } finally {
       setIsLoadingTrainingRuns(false);
-    }
-  };
-
-  const loadImageThumbnail = async (imageId: string) => {
-    try {
-      const blob = await downloadImageById(axiosInstance, imageId);
-      const reader = new FileReader();
-
-      reader.onloadend = () => {
-        setImageThumbnails((prev) => ({
-          ...prev,
-          [imageId]: reader.result as string,
-        }));
-      };
-      reader.readAsDataURL(blob);
-    } catch (error) {
-      logError(`Load thumbnail for ${imageId}`, error);
     }
   };
 
@@ -383,6 +353,9 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
                   images={availableImages}
                   isLoading={isLoadingImages}
                   onImageDelete={handleImageDelete}
+                  showDeleteButton
+                  thumbnailWidth={120}
+                  thumbnailHeight={120}
                 />
 
                 {/* Start Training Button - right-aligned */}
@@ -472,27 +445,14 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
                 key={run.id}
                 className="grid md:grid-cols-[minmax(0,2.5fr)_minmax(150px,1fr)] gap-6 items-start"
               >
-                <div className="flex flex-wrap gap-1">
-                  {run.image_ids.map((imageId, index) => (
-                    <div key={`${run.id}-${imageId}-${index}`} className="relative">
-                      {imageThumbnails[imageId] ? (
-                        <div className="relative w-28 h-28 rounded-xl overflow-hidden">
-                          <Image
-                            alt="Training image"
-                            className="object-cover w-full h-full"
-                            height={112}
-                            src={imageThumbnails[imageId]}
-                            width={112}
-                          />
-                        </div>
-                      ) : (
-                        <div className="w-28 h-28 bg-gray-200 dark:bg-gray-700 rounded-xl flex items-center justify-center">
-                          <Spinner size="sm" />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <ImageGrid
+                  className="flex flex-wrap gap-2"
+                  images={run.image_ids.map((imageId) => ({
+                    id: imageId,
+                  }))}
+                  thumbnailWidth={112}
+                  thumbnailHeight={112}
+                />
 
                 <div className="flex flex-col gap-2 justify-center">
                   <div>
@@ -565,4 +525,4 @@ const ImageUploadStep: React.FC<ImageUploadStepProps> = ({
   );
 };
 
-export default ImageUploadStep;
+export default TrainingStep;

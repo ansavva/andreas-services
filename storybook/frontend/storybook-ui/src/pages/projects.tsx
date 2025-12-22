@@ -1,5 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Button, Card, CardBody, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Chip } from '@heroui/react';
+import {
+  Button,
+  Dropdown,
+  DropdownTrigger,
+  DropdownMenu,
+  DropdownItem,
+  Chip,
+  Table,
+  TableHeader,
+  TableColumn,
+  TableBody,
+  TableRow,
+  TableCell,
+} from '@heroui/react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPlus, faChevronDown, faWandMagicSparkles, faBook } from "@fortawesome/free-solid-svg-icons";
@@ -18,6 +31,7 @@ type Project = {
   type: 'model' | 'story';
   subject_name?: string;
   status?: string;
+  model_type?: string;
 };
 
 const ProjectsPage = () => {
@@ -43,6 +57,7 @@ const ProjectsPage = () => {
           type: 'model' as const,
           subject_name: p.subject_name,
           status: p.status,
+          model_type: p.model_type,
         }));
 
         const normalizedStoryProjects: Project[] = storyProjects.map((p: any) => ({
@@ -123,43 +138,86 @@ const ProjectsPage = () => {
         </Dropdown>
       </div>
 
-      <div className="space-y-3">
-        {allProjects.map((project) => (
-          <Card
-            key={`${project.type}-${project.id}`}
-            isPressable
-            onPress={() => handleProjectClick(project)}
-            className="cursor-pointer"
-          >
-            <CardBody className="flex flex-row justify-between items-center py-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <h4 className="font-semibold text-lg">{project.name}</h4>
-                  <Chip size="sm" color={getProjectTypeColor(project.type)} variant="flat">
-                    {getProjectTypeLabel(project.type)}
-                  </Chip>
-                </div>
-                {project.subject_name && (
-                  <p className="text-sm text-gray-500">Subject: {project.subject_name}</p>
+      <Table
+        aria-label="Projects table"
+        classNames={{
+          base: "bg-content1 rounded-xl shadow-sm",
+          table: "min-w-full",
+        }}
+      >
+        <TableHeader>
+          <TableColumn key="name">Project</TableColumn>
+          <TableColumn key="type">Type</TableColumn>
+          <TableColumn key="modelType">Model Type</TableColumn>
+          <TableColumn key="subject">Subject</TableColumn>
+          <TableColumn key="status">Status</TableColumn>
+          <TableColumn key="created">Created</TableColumn>
+          <TableColumn key="actions">Actions</TableColumn>
+        </TableHeader>
+        <TableBody
+          emptyContent={
+            <div className="text-center py-12">
+              <p className="text-gray-500 mb-2">No projects yet. Create one to get started!</p>
+              <p className="text-sm text-gray-400">
+                Choose between a Model Training project or a Story project above.
+              </p>
+            </div>
+          }
+        >
+          {allProjects.map((project) => (
+            <TableRow key={`${project.type}-${project.id}`}>
+              <TableCell>
+                <span className="font-semibold">{project.name}</span>
+              </TableCell>
+              <TableCell>
+                <Chip size="sm" color={getProjectTypeColor(project.type)} variant="flat">
+                  {getProjectTypeLabel(project.type)}
+                </Chip>
+              </TableCell>
+              <TableCell>
+                {project.type === "model" && project.model_type ? (
+                  <span className="text-sm text-gray-600 uppercase tracking-wide">
+                    {project.model_type}
+                  </span>
+                ) : (
+                  <span className="text-sm text-gray-400 italic">N/A</span>
                 )}
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-gray-500">
+              </TableCell>
+              <TableCell>
+                {project.subject_name ? (
+                  <span className="text-sm text-gray-600">{project.subject_name}</span>
+                ) : (
+                  <span className="text-sm text-gray-400 italic">N/A</span>
+                )}
+              </TableCell>
+              <TableCell>
+                {project.status ? (
+                  <Chip size="sm" variant="flat" color={project.status === "active" ? "success" : "default"}>
+                    {project.status}
+                  </Chip>
+                ) : (
+                  <span className="text-sm text-gray-400">—</span>
+                )}
+              </TableCell>
+              <TableCell>
+                <span className="text-sm text-gray-500">
                   {new Date(project.created_at).toLocaleDateString()}
-                </p>
-              </div>
-            </CardBody>
-          </Card>
-        ))}
-        {allProjects.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-gray-500 mb-4">No projects yet. Create one to get started!</p>
-            <p className="text-sm text-gray-400">
-              Choose between a Model Training project or a Story project above.
-            </p>
-          </div>
-        )}
-      </div>
+                </span>
+              </TableCell>
+              <TableCell>
+                <Button
+                  size="sm"
+                  color="primary"
+                  variant="flat"
+                  onPress={() => handleProjectClick(project)}
+                >
+                  View
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </DefaultLayout>
   );
 };

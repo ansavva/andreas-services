@@ -28,12 +28,20 @@ export const updateTrainingRunStatus = async (axiosInstance: AxiosInstance, trai
   return response.data;
 };
 
-export const generate = async (axiosInstance: AxiosInstance, prompt: string, project_id: string) => {
-  const response = await axiosInstance.get('/api/model/generate', {
-    params: {
-      prompt: prompt,
-      project_id: project_id
-    }
+type GenerateOptions = {
+  referenceImageIds?: string[];
+};
+
+export const generate = async (
+  axiosInstance: AxiosInstance,
+  prompt: string,
+  project_id: string,
+  options: GenerateOptions = {},
+) => {
+  const response = await axiosInstance.post("/api/model/generate", {
+    prompt,
+    project_id,
+    reference_image_ids: options.referenceImageIds,
   });
   return response.data;
 };

@@ -5,17 +5,16 @@ import uuid
 from src.data.character_asset_repo import CharacterAssetRepo
 from src.data.child_profile_repo import ChildProfileRepo
 from src.data.image_repo import ImageRepo
-from src.proxies.stability_service import StabilityService
+from src.services.character_generation_service import CharacterGenerationService
 from src.storage.factory import get_file_storage
 from src.utils.error_logging import log_error
-from src.config.style_references import style_references
-from src.config.prompts_config import prompts_config
+from src.config.generation_models_config import generation_models_config
 
 character_controller = Blueprint("character_controller", __name__)
 character_asset_repo = CharacterAssetRepo()
 child_profile_repo = ChildProfileRepo()
 image_repo = ImageRepo()
-stability_service = StabilityService()
+character_generation_service = CharacterGenerationService()
 
 @character_controller.route("/project/<string:project_id>", methods=["GET"])
 def get_character_assets(project_id):
@@ -123,13 +122,19 @@ def generate_stylized_portrait(project_id):
         # Get request parameters
         data = request.get_json() or {}
         user_description = data.get("user_description")
-        style_id = data.get("style_id", prompts_config.get_default_style_id())
-        style_strength = data.get("style_strength", prompts_config.get_style_strength())
+
+        provider = "stability_ai"
+        profile_name = "style_transfer"
+        gen_config = generation_models_config.get_generation_config(provider, profile_name)
+
+        style_id = data.get("style_id", generation_models_config.get_style_reference_id(provider, profile_name))
+        style_strength = data.get("style_strength", gen_config.get("style_strength", 0.7))
 
         # Validate style_id
-        if not style_references.is_valid_style(style_id):
+        available_styles = list(generation_models_config.get_all_style_references().keys())
+        if style_id not in available_styles:
             return jsonify({
-                "error": f"Invalid style_id '{style_id}'. Available styles: {style_references.get_available_styles()}"
+                "error": f"Invalid style_id '{style_id}'. Available styles: {available_styles}"
             }), 400
 
         # Validate style_strength
@@ -141,21 +146,13 @@ def generate_stylized_portrait(project_id):
         kid_image_metadata = image_repo.get_image(profile.photo_ids[0])
         init_image = storage.download_file(kid_image_metadata.s3_key)
 
-        # Load backend style reference image
-        style_image = style_references.get_style_image(style_id)
-
-        # Build prompt
-        prompt = prompts_config.build_style_transfer_prompt(user_description)
-        negative_prompt = prompts_config.get_style_transfer_negative()
-
-        # Call Stability AI style transfer
-        result_bytes = stability_service.style_transfer(
+        # Call character generation service (handles all the business logic)
+        result_bytes = character_generation_service.generate_stylized_portrait(
             init_image=init_image,
-            style_image=style_image,
-            prompt=prompt,
+            style_id=style_id,
+            user_description=user_description,
             style_strength=style_strength,
-            negative_prompt=negative_prompt,
-            output_format="png"
+            profile=profile_name
         )
 
         # Upload result using image_repo
@@ -241,27 +238,24 @@ def regenerate_character_asset(asset_id):
             if not reference_images:
                 return jsonify({"error": "No reference images available"}), 400
 
+            provider = "stability_ai"
+            profile_name = "style_transfer"
+            gen_config = generation_models_config.get_generation_config(provider, profile_name)
+
             # Load style reference image
             if not style_id:
-                style_id = prompts_config.get_default_style_id()
+                style_id = generation_models_config.get_style_reference_id(provider, profile_name)
 
             if not style_strength:
-                style_strength = prompts_config.get_style_strength()
+                style_strength = gen_config.get("style_strength", 0.7)
 
-            style_image = style_references.get_style_image(style_id)
-
-            # Build prompt
-            prompt = prompts_config.build_style_transfer_prompt(user_description)
-            negative_prompt = prompts_config.get_style_transfer_negative()
-
-            # Call style transfer
-            result_bytes = stability_service.style_transfer(
+            # Call character generation service (handles all the business logic)
+            result_bytes = character_generation_service.generate_stylized_portrait(
                 init_image=reference_images[0],
-                style_image=style_image,
-                prompt=prompt,
+                style_id=style_id,
+                user_description=user_description,
                 style_strength=style_strength,
-                negative_prompt=negative_prompt,
-                output_format="png"
+                profile=profile_name
             )
 
             # Convert bytes to file-like object for compatibility with existing code

@@ -8,6 +8,7 @@ export const useTheme = () => {
 
   const currentTheme = useMemo<ThemeMode>(() => {
     const value = theme === "system" ? resolvedTheme : theme;
+
     return (value as ThemeMode) || "light";
   }, [theme, resolvedTheme]);
 

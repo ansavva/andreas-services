@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify
+import json
 
 from src.services.model_service import ModelService
 
@@ -86,18 +87,59 @@ def update_training_run_status(training_run_id: str):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@model_controller.route("/generate", methods=["GET"])
+@model_controller.route("/generate", methods=["POST"])
 def generate():
+    """
+    Generate an image for a project
+
+    Supports both training models and generation-only models.
+    For generation-only models, reference images can be provided based on model requirements.
+    """
     try:
-        project_id = request.args.get("project_id")
-        prompt = request.args.get("prompt")
+        data = request.get_json(silent=True)
+        if data:
+            project_id = data.get("project_id")
+            prompt = data.get("prompt")
+        else:
+            project_id = request.form.get("project_id")
+            prompt = request.form.get("prompt")
 
         if not project_id:
             return jsonify({"error": "Project ID is required"}), 400
         if not prompt:
             return jsonify({"error": "Prompt is required"}), 400
 
-        image = model_service.generate(prompt, project_id)
+        # Get reference images if provided directly
+        reference_images = []
+        if request.files:
+            files = request.files.getlist('reference_images')
+            reference_images = [f for f in files if f.filename]
+
+        # Get reference image IDs (existing uploads) if provided
+        reference_image_ids = None
+        reference_ids_source = (
+            data.get("reference_image_ids") if data
+            else request.form.get("reference_image_ids")
+        )
+        if reference_ids_source:
+            if isinstance(reference_ids_source, list):
+                reference_image_ids = [str(item) for item in reference_ids_source if item]
+            else:
+                try:
+                    parsed_ids = json.loads(reference_ids_source)
+                    if isinstance(parsed_ids, list):
+                        reference_image_ids = [str(item) for item in parsed_ids if item]
+                except (json.JSONDecodeError, TypeError):
+                    reference_image_ids = [
+                        part.strip() for part in str(reference_ids_source).split(",") if part.strip()
+                    ]
+
+        image = model_service.generate(
+            prompt=prompt,
+            project_id=project_id,
+            reference_images=reference_images if reference_images else None,
+            reference_image_ids=reference_image_ids
+        )
 
         # Convert Image object to dict for JSON response
         return jsonify({

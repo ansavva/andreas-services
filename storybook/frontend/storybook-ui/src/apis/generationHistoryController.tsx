@@ -6,6 +6,7 @@ export interface GenerationHistoryItem {
   user_id: string;  // Cognito user ID (sub) of the creator
   prompt: string;
   image_ids: string[];
+  reference_image_ids?: string[];
   created_at: string;
   user_profile?: {
     display_name: string | null;
@@ -17,12 +18,14 @@ export const createGenerationHistory = async (
   axiosInstance: AxiosInstance,
   projectId: string,
   prompt: string,
-  imageIds: string[]
+  imageIds: string[],
+  referenceImageIds?: string[]
 ): Promise<GenerationHistoryItem> => {
   const response = await axiosInstance.post("/api/generation-history/create", {
     project_id: projectId,
     prompt: prompt,
     image_ids: imageIds,
+    reference_image_ids: referenceImageIds,
   });
   return response.data;
 };

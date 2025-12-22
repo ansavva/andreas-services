@@ -15,18 +15,21 @@ from src.services.image_service import ImageService
 from src.data.training_run_repo import TrainingRunRepo
 from src.data.model_project_repo import ModelProjectRepo
 from src.proxies.replicate_service import ReplicateService
+from src.proxies.stability_service import StabilityService
+from src.config.generation_models_config import generation_models_config
 
 
 class ModelService:
     """
     Service for managing AI model training and image generation
-    Wraps ReplicateService with user-specific model naming
-    Configuration is loaded from config.yaml via ReplicateService
+    Wraps ReplicateService and StabilityService with user-specific model naming
+    Configuration is loaded from config.yaml
     """
 
     def __init__(self):
         self.image_service = ImageService()
         self.replicate = ReplicateService()  # Owner loaded from config.yaml
+        self.stability = StabilityService()  # Stability AI proxy
         self.training_run_repo = TrainingRunRepo()
         self.model_project_repo = ModelProjectRepo()
 
@@ -54,8 +57,15 @@ class ModelService:
 
         Returns:
             True if model exists, False otherwise
+            For generation-only models, always returns True (no training needed)
         """
         project = self.model_project_repo.get_project(project_id)
+
+        # For generation-only models, there's no trained model to check
+        # They can generate immediately without training
+        if not project.requires_training():
+            return True
+
         model_identifier = self.__get_model_identifier(project)
         return self.replicate.model_exists(model_identifier)
 
@@ -152,16 +162,37 @@ class ModelService:
         """
         return self.replicate.get_training_status(training_id)
 
+    def _load_reference_images_from_ids(self, image_ids: List[str]) -> List[Any]:
+        """Convert stored image IDs into binary streams for generation"""
+        loaded_files: List[Any] = []
+        for image_id in image_ids:
+            try:
+                image_meta = self.image_service.image_repo.get_image(image_id)
+                file_bytes = self.image_service.download_image(image_id)
+                if not file_bytes:
+                    continue
+                stream = BytesIO(file_bytes)
+                # replicate.run expects file-like object with a name attribute
+                stream.name = image_meta.filename or f"{image_id}.png"
+                loaded_files.append(stream)
+            except Exception as exc:
+                print(f"[REFERENCE IMAGE LOAD] Failed to load {image_id}: {exc}")
+        return loaded_files
+
     def generate(self,
                 prompt: str,
                 project_id: str,
+                reference_images: Optional[List[Any]] = None,
+                reference_image_ids: Optional[List[str]] = None,
                 config_override: Optional[Dict[str, Any]] = None) -> Image:
         """
-        Generate an image using the trained model
+        Generate an image using the model (trained or generation-only)
 
         Args:
             prompt: Text prompt for image generation
             project_id: Model project ID
+            reference_images: Optional list of reference images (file-like objects)
+                            Used for generation-only models that support reference images
             config_override: Optional dict to override specific config values from YAML
                            Example: {"aspect_ratio": "16:9", "guidance_scale": 4.0}
 
@@ -172,25 +203,103 @@ class ModelService:
             Exception: If generation or upload fails
         """
         project = self.model_project_repo.get_project(project_id)
-        model_identifier = self.__get_model_identifier(project)
         profile = project.model_type or ModelProject.DEFAULT_MODEL_TYPE
-        use_subject_token = self.replicate.config.profile_uses_subject_token(profile)
-        subject_token = self._build_subject_token(project) if use_subject_token else None
-        prompt_to_use = prompt
-        if use_subject_token and subject_token:
-            if project.subject_name:
-                pattern = re.compile(re.escape(project.subject_name), re.IGNORECASE)
-                prompt_to_use = pattern.sub(subject_token, prompt_to_use)
-            if subject_token.lower() not in prompt_to_use.lower():
-                prompt_to_use = f"{subject_token}, {prompt_to_use}".strip(", ")
+        provider = project.get_provider()
 
-        # Generate image (config comes from YAML, with optional overrides)
-        image_bytes = self.replicate.generate(
-            prompt=prompt_to_use,
-            model_name=model_identifier,
-            config_override=config_override,
-            profile=profile
-        )
+        resolved_reference_images: List[Any] = list(reference_images or [])
+        if reference_image_ids:
+            resolved_reference_images.extend(
+                self._load_reference_images_from_ids(reference_image_ids)
+            )
+
+        # For generation-only models, use direct generation (no trained model needed)
+        if not project.requires_training():
+            # Route to the appropriate generation service based on provider
+            if provider == "stability_ai":
+                # Use Stability AI for generation
+                gen_config = generation_models_config.get_generation_config(provider, profile)
+                method = generation_models_config.get_method(provider, profile)
+
+                # Build prompts from config
+                prompt_to_use = generation_models_config.build_prompt(provider, profile, prompt)
+                negative_prompt = generation_models_config.get_negative_prompt_template(provider, profile)
+
+                if method == "style_transfer":
+                    # Style transfer requires both a style reference and an init image
+                    if not resolved_reference_images or len(resolved_reference_images) == 0:
+                        raise ValueError("Style transfer requires at least one reference image")
+
+                    style_id = generation_models_config.get_style_reference_id(provider, profile)
+                    style_image = generation_models_config.get_style_image(style_id) if style_id else None
+
+                    if not style_image:
+                        raise ValueError(f"Style reference '{style_id}' not found")
+
+                    style_strength = gen_config.get('style_strength', 0.7)
+
+                    # Use style transfer
+                    image_bytes = self.stability.style_transfer(
+                        init_image=resolved_reference_images[0],
+                        style_image=style_image,
+                        prompt=prompt_to_use,
+                        style_strength=style_strength,
+                        negative_prompt=negative_prompt,
+                        output_format=gen_config.get('output_format', 'png')
+                    )
+                else:
+                    # Standard image generation (image_to_image or text_to_image)
+                    style_preset = generation_models_config.get_style_preset(provider, profile)
+                    image_strength = gen_config.get('image_strength', 0.35)
+
+                    # Use first reference image if provided
+                    init_image = resolved_reference_images[0] if resolved_reference_images else None
+
+                    result = self.stability.generate_image(
+                        prompt=prompt_to_use,
+                        negative_prompt=negative_prompt,
+                        style_preset=style_preset,
+                        init_image=init_image,
+                        image_strength=image_strength,
+                        width=gen_config.get('width', 1024),
+                        height=gen_config.get('height', 1024),
+                        steps=gen_config.get('steps', 30),
+                        cfg_scale=gen_config.get('cfg_scale', 7.0)
+                    )
+
+                    # Convert base64 to bytes
+                    image_bytes = self.stability.decode_base64_image(result['image_data']).read()
+            else:
+                # Use Replicate for generation-only models (e.g., flux_pro)
+                # Use first reference image if provided (for models that support it like Flux Redux)
+                image_prompt = resolved_reference_images[0] if resolved_reference_images else None
+
+                image_bytes = self.replicate.generate_with_model(
+                    prompt=prompt,
+                    profile=profile,
+                    image_prompt=image_prompt,
+                    config_override=config_override
+                )
+        else:
+            # For training models, use the trained model
+            model_identifier = self.__get_model_identifier(project)
+            use_subject_token = self.replicate.config.profile_uses_subject_token(profile)
+            subject_token = self._build_subject_token(project) if use_subject_token else None
+            prompt_to_use = prompt
+
+            if use_subject_token and subject_token:
+                if project.subject_name:
+                    pattern = re.compile(re.escape(project.subject_name), re.IGNORECASE)
+                    prompt_to_use = pattern.sub(subject_token, prompt_to_use)
+                if subject_token.lower() not in prompt_to_use.lower():
+                    prompt_to_use = f"{subject_token}, {prompt_to_use}".strip(", ")
+
+            # Generate image with trained model (config comes from YAML, with optional overrides)
+            image_bytes = self.replicate.generate(
+                prompt=prompt_to_use,
+                model_name=model_identifier,
+                config_override=config_override,
+                profile=profile
+            )
 
         # Convert bytes to file-like object
         image_data = BytesIO(image_bytes)

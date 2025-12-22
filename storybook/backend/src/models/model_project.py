@@ -1,8 +1,9 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 from src.config.replicate_config import replicate_config
+from src.config.generation_models_config import generation_models_config
 
 @dataclass
 class ModelProject:
@@ -19,7 +20,22 @@ class ModelProject:
     user_id: str  # Cognito user ID (sub claim)
     status: str = "DRAFT"  # Project status for workflow management
     DEFAULT_MODEL_TYPE = replicate_config.get_default_profile()
-    VALID_MODEL_TYPES = replicate_config.get_profile_ids() or [DEFAULT_MODEL_TYPE]
+
+    @staticmethod
+    def _get_all_valid_model_types() -> List[str]:
+        """Get all valid model types (training + generation)"""
+        model_types = []
+
+        # Add training model types
+        model_types.extend(replicate_config.get_profile_ids())
+
+        # Add generation model types from all providers
+        for provider in generation_models_config.get_providers():
+            model_types.extend(generation_models_config.get_profile_ids(provider))
+
+        return model_types
+
+    VALID_MODEL_TYPES = _get_all_valid_model_types.__func__()
 
     model_type: str = DEFAULT_MODEL_TYPE
     created_at: Optional[datetime] = None
@@ -76,3 +92,37 @@ class ModelProject:
         if value not in ModelProject.VALID_MODEL_TYPES:
             return ModelProject.DEFAULT_MODEL_TYPE
         return value
+
+    def requires_training(self) -> bool:
+        """
+        Determine if this model type requires training
+
+        Returns:
+            True if the model is a training-based model (Replicate training models)
+            False if the model is a generation-only model (Stability AI, Replicate Flux Pro)
+        """
+        # Check if it's a training model (from replicate training configs)
+        if self.model_type in replicate_config.get_profile_ids():
+            return True
+
+        # Otherwise it's a generation-only model
+        return False
+
+    def get_provider(self) -> str:
+        """
+        Get the provider for this model type
+
+        Returns:
+            Provider name (e.g., 'replicate', 'stability_ai')
+        """
+        # Check training models first
+        if self.model_type in replicate_config.get_profile_ids():
+            return 'replicate'
+
+        # Check generation models
+        for provider in generation_models_config.get_providers():
+            if self.model_type in generation_models_config.get_profile_ids(provider):
+                return provider
+
+        # Default to replicate
+        return 'replicate'

@@ -65,20 +65,16 @@ class ModelProjectService:
             print(f"Error deleting training runs: {e}")
 
         # 2. Delete all generation history for this project
-        histories = self.generation_history_repo.list_by_project(project_id)
-        for history in histories:
-            try:
-                self.generation_history_repo.delete(history.id)
-            except Exception as e:
-                print(f"Error deleting generation history {history.id}: {e}")
+        try:
+            self.generation_history_repo.delete_by_project(project_id)
+        except Exception as e:
+            print(f"Error deleting generation history for project {project_id}: {e}")
 
-        # 3. Delete all images for this project (S3 + MongoDB)
-        images = self.image_repo.list_images(project_id)
-        for image in images:
-            try:
-                self.image_repo.delete_image(image.id)
-            except Exception as e:
-                print(f"Error deleting image {image.id}: {e}")
+        # 3. Delete all images for this project (S3 + MongoDB, including reference images)
+        try:
+            self.image_repo.delete_project_images(project_id)
+        except Exception as e:
+            print(f"Error deleting images for project {project_id}: {e}")
 
         # 4. Delete Replicate model if it exists
         model_identifier = project.replicate_model_id
