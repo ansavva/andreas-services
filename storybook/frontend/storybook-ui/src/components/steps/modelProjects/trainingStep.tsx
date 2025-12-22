@@ -355,7 +355,6 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
                   onImageDelete={handleImageDelete}
                   showDeleteButton
                   thumbnailWidth={120}
-                  thumbnailHeight={120}
                 />
 
                 {/* Start Training Button - right-aligned */}

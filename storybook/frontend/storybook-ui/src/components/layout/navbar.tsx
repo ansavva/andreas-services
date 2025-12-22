@@ -13,7 +13,7 @@ import {
   DropdownItem,
   Avatar,
 } from "@heroui/react";
-import { Link as RouterLink } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { link as linkStyles } from "@heroui/theme";
 import clsx from "clsx";
 import { signInWithRedirect, signOut } from "aws-amplify/auth";
@@ -25,11 +25,13 @@ import { useUserContext } from "@/hooks/userContext";
 import { useAxios } from "@/hooks/axiosContext";
 import { getMyProfile } from "@/apis/userProfileController";
 import { downloadImageById } from "@/apis/imageController";
+import NewProjectButton from "@/components/projects/newProjectButton";
 
 export const Navbar = () => {
   const { currentUser, isAuthenticated } = useUserContext();
   const { axiosInstance } = useAxios();
   const currentPath = window.location.pathname;
+  const navigate = useNavigate();
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
 
@@ -72,6 +74,14 @@ export const Navbar = () => {
     await signOut();
   };
 
+  const handleCreateProject = (type: "model" | "story") => {
+    if (type === "model") {
+      navigate("/model-project/new");
+    } else {
+      navigate("/story-project/new");
+    }
+  };
+
   return (
     <NextUINavbar maxWidth="xl" position="sticky">
       <NavbarContent className="basis-1/5 sm:basis-full" justify="start">
@@ -98,6 +108,12 @@ export const Navbar = () => {
             </NavbarItem>
           ))}
         </div>
+        <NavbarItem className="hidden sm:flex">
+          <NewProjectButton
+            onSelect={handleCreateProject}
+            buttonProps={{ size: "sm", variant: "flat", color: "primary" }}
+          />
+        </NavbarItem>
       </NavbarContent>
 
       <NavbarContent

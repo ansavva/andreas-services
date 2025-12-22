@@ -1,10 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   Button,
-  Dropdown,
-  DropdownTrigger,
-  DropdownMenu,
-  DropdownItem,
   Chip,
   Table,
   TableHeader,
@@ -14,8 +10,7 @@ import {
   TableCell,
 } from '@heroui/react';
 import { useNavigate } from 'react-router-dom';
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlus, faChevronDown, faWandMagicSparkles, faBook } from "@fortawesome/free-solid-svg-icons";
+import NewProjectButton from "@/components/projects/newProjectButton";
 
 import { useAxios } from '@/hooks/axiosContext';
 import { getModelProjects } from '../apis/modelProjectController';
@@ -112,30 +107,7 @@ const ProjectsPage = () => {
     <DefaultLayout>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-5xl font-extrabold leading-none">Projects</h1>
-        <Dropdown>
-          <DropdownTrigger>
-            <Button color="primary" endContent={<FontAwesomeIcon icon={faChevronDown} />}>
-              <FontAwesomeIcon icon={faPlus} className="mr-2" />
-              New Project
-            </Button>
-          </DropdownTrigger>
-          <DropdownMenu aria-label="Project Type Selection" onAction={(key) => handleCreateProject(key as 'model' | 'story')}>
-            <DropdownItem
-              key="model"
-              startContent={<FontAwesomeIcon icon={faWandMagicSparkles} />}
-              description="Train an AI model with photos"
-            >
-              Model Training Project
-            </DropdownItem>
-            <DropdownItem
-              key="story"
-              startContent={<FontAwesomeIcon icon={faBook} />}
-              description="Create a personalized storybook"
-            >
-              Story Project
-            </DropdownItem>
-          </DropdownMenu>
-        </Dropdown>
+        <NewProjectButton onSelect={handleCreateProject} />
       </div>
 
       <Table
