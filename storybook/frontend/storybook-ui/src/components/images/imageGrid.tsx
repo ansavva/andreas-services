@@ -35,7 +35,7 @@ type ImageGridProps = {
 };
 
 const DEFAULT_CONTAINER_CLASSES =
-  "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4";
+  "flex gap-3 overflow-x-auto whitespace-nowrap py-1";
 
 const ImageGrid: React.FC<ImageGridProps> = ({
   images,
@@ -154,7 +154,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             return (
               <Card
                 key={key}
-                className={`border-0 relative overflow-hidden ${showModal && image.id ? "cursor-pointer" : ""} ${isSelected ? "ring-2 ring-primary" : ""}`}
+                className={`border-0 relative overflow-hidden inline-flex flex-none ${showModal && image.id ? "cursor-pointer" : ""} ${isSelected ? "ring-2 ring-primary" : ""}`}
                 isPressable={selectable || (showModal && !!image.id)}
                 radius="lg"
                 style={cardStyle}
