@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, send_file
 from io import BytesIO
 
 from src.services.image_service import ImageService
+from src.utils.error_logging import log_error
 
 image_controller = Blueprint("image_controller", __name__)
 image_service = ImageService()
@@ -9,12 +10,16 @@ image_service = ImageService()
 @image_controller.route("/upload", methods=["POST"])
 def upload_image():
     try:
-        # Retrieve project_id from request form data
+        # Retrieve project_id and image_type from request form data
         project_id = request.form.get("project_id")
+        image_type = request.form.get("image_type", "training")  # Default to "training"
 
         # Validate required data
         if not project_id:
             return jsonify({"error": "Project ID is required"}), 400
+
+        normalize_images = request.form.get("normalize_images", "true")
+        should_normalize = normalize_images.lower() != "false"
 
         uploaded_files = []
         for key in request.files:
@@ -30,8 +35,8 @@ def upload_image():
 
         # Loop through the uploaded files and upload each one
         for file in uploaded_files:
-            # Call the image service to upload the file
-            image = image_service.upload_image(project_id, file, file.filename)
+            # Call the image service to upload the file with the specified image_type
+            image = image_service.upload_image(project_id, file, file.filename, image_type, should_normalize)
 
             # Collect the result for each file upload (convert to dict for JSON)
             uploaded_images.append({
@@ -39,11 +44,13 @@ def upload_image():
                 "filename": image.filename,
                 "content_type": image.content_type,
                 "size_bytes": image.size_bytes,
+                "image_type": image.image_type,
                 "created_at": image.created_at.isoformat() if image.created_at else None
             })
 
         return jsonify({"images": uploaded_images}), 200
     except Exception as e:
+        log_error(e, "image upload")
         return jsonify({"error": str(e)}), 500
 
 @image_controller.route("/download/<image_id>", methods=["GET"])
@@ -65,6 +72,7 @@ def download_image(image_id):
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
     except Exception as e:
+        log_error(e, "image download")
         return jsonify({"error": str(e)}), 500
 
 @image_controller.route("/delete/<image_id>", methods=["DELETE"])
@@ -79,6 +87,7 @@ def delete_image(image_id):
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
     except Exception as e:
+        log_error(e, "image delete")
         return jsonify({"error": str(e)}), 500
 
 @image_controller.route("/list/<project_id>", methods=["GET"])
@@ -88,7 +97,10 @@ def list_images(project_id):
         if not project_id:
             return jsonify({"error": "Project ID is required"}), 400
 
-        images = image_service.list_images(project_id)
+        # Get optional image_type filter from query parameters
+        image_type = request.args.get("image_type")
+
+        images = image_service.list_images(project_id, image_type)
 
         # Convert images to dict for JSON response
         images_data = [{
@@ -96,6 +108,7 @@ def list_images(project_id):
             "filename": img.filename,
             "content_type": img.content_type,
             "size_bytes": img.size_bytes,
+            "image_type": img.image_type,
             "created_at": img.created_at.isoformat() if img.created_at else None
         } for img in images]
 
@@ -103,4 +116,5 @@ def list_images(project_id):
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
     except Exception as e:
+        log_error(e, "image list")
         return jsonify({"error": str(e)}), 500

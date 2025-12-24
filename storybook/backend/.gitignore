@@ -106,3 +106,6 @@ ENV/
 
 .vscode/
 node_modules/
+
+# Local file storage (contains user data and images)
+storage/

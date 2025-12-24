@@ -31,9 +31,11 @@ class ImageRepo:
     def _create_s3_key(self, project_id: str, image_id: str, filename: str) -> str:
         """Generate S3 key for image storage"""
         user_id = self._get_user_id()
-        return f"users/{user_id}/projects/{project_id}/images/{image_id}_{filename}"
+        # Ensure project_id is a string (could be ObjectId from MongoDB)
+        project_id_str = str(project_id)
+        return f"users/{user_id}/projects/{project_id_str}/images/{image_id}_{filename}"
 
-    def upload_image(self, project_id: str, file: FileStorage, filename: str) -> Image:
+    def upload_image(self, project_id: str, file: FileStorage, filename: str, image_type: str = "training") -> Image:
         """
         Upload an image file to S3 and save metadata to MongoDB
 
@@ -41,12 +43,16 @@ class ImageRepo:
             project_id: UUID of the project this image belongs to
             file: File upload from request
             filename: Original filename
+            image_type: Type of image ("training" or "generated")
 
         Returns:
             Created Image object
         """
         db = get_db()
         user_id = self._get_user_id()
+
+        # Ensure project_id is a string (could be ObjectId from MongoDB)
+        project_id = str(project_id)
 
         image_id = str(uuid.uuid4())
         s3_key = self._create_s3_key(project_id, image_id, filename)
@@ -63,6 +69,7 @@ class ImageRepo:
             filename=filename,
             content_type=file.content_type or 'application/octet-stream',
             size_bytes=file.content_length or 0,
+            image_type=image_type,
             created_at=datetime.utcnow()
         )
 
@@ -96,12 +103,13 @@ class ImageRepo:
 
         return Image.from_dict(image_data)
 
-    def list_images(self, project_id: str) -> List[Image]:
+    def list_images(self, project_id: str, image_type: Optional[str] = None) -> List[Image]:
         """
-        List all images for a project
+        List all images for a project, optionally filtered by image type
 
         Args:
             project_id: UUID of the project
+            image_type: Optional filter for image type ("training" or "generated")
 
         Returns:
             List of Image objects
@@ -109,10 +117,19 @@ class ImageRepo:
         db = get_db()
         user_id = self._get_user_id()
 
-        images_data = db.images.find({
+        # Ensure project_id is a string (could be ObjectId from MongoDB)
+        project_id = str(project_id)
+
+        query = {
             'project_id': project_id,
             'user_id': user_id
-        }).sort('created_at', -1)  # Most recent first
+        }
+
+        # Add image_type filter if specified
+        if image_type:
+            query['image_type'] = image_type
+
+        images_data = db.images.find(query).sort('created_at', -1)  # Most recent first
 
         return [Image.from_dict(img) for img in images_data]
 

@@ -1,130 +1,197 @@
-import { useEffect, useState, useMemo } from 'react';
-import { Button, Card, CardBody, Input, Modal, ModalContent, ModalBody, ModalFooter, ModalHeader, useDisclosure } from '@nextui-org/react';
+import { useEffect, useState } from 'react';
+import {
+  Button,
+  Chip,
+  Table,
+  TableHeader,
+  TableColumn,
+  TableBody,
+  TableRow,
+  TableCell,
+} from '@heroui/react';
 import { useNavigate } from 'react-router-dom';
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlus } from "@fortawesome/free-solid-svg-icons";
+import NewProjectButton from "@/components/projects/newProjectButton";
 
 import { useAxios } from '@/hooks/axiosContext';
-import { getProjects, createProject } from '../apis/projectController';
+import { getModelProjects } from '../apis/modelProjectController';
+import { getStoryProjects } from '../apis/storyProjectController';
 import DefaultLayout from '@/layouts/default';
+import { getErrorMessage, logError } from '@/utils/errorHandling';
+import { useToast } from '@/hooks/useToast';
+
+type Project = {
+  id: string;
+  name: string;
+  created_at: string;
+  type: 'model' | 'story';
+  subject_name?: string;
+  status?: string;
+  model_type?: string;
+  subject_description?: string;
+};
 
 const ProjectsPage = () => {
   const { axiosInstance } = useAxios();
-  const navigate = useNavigate();  // Initialize useNavigate for navigation
+  const navigate = useNavigate();
+  const { showError } = useToast();
 
-  const { isOpen, onOpen, onOpenChange } = useDisclosure();  // Initialize modal state
-
-  const [projects, setProjects] = useState<any[]>([]);
-  const [newProjectName, setNewProjectName] = useState<string | null>(null);
-  const [subjectName, setSubjectName] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
 
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const projects = await getProjects(axiosInstance);
-        setProjects(projects);
-      } catch (error) {
-        console.error('Error fetching projects:', error);
+        const [modelProjects, storyProjects] = await Promise.all([
+          getModelProjects(axiosInstance),
+          getStoryProjects(axiosInstance),
+        ]);
+
+        // Combine and normalize both project types
+        const normalizedModelProjects: Project[] = modelProjects.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          created_at: p.created_at,
+          type: 'model' as const,
+          subject_name: p.subject_name,
+          status: p.status,
+          model_type: p.model_type,
+          subject_description: p.subject_description,
+        }));
+
+        const normalizedStoryProjects: Project[] = storyProjects.map((p: any) => ({
+          id: p._id,
+          name: p.name,
+          created_at: p.created_at,
+          type: 'story' as const,
+          status: p.status,
+        }));
+
+        // Combine and sort by created_at (newest first)
+        const combined = [...normalizedModelProjects, ...normalizedStoryProjects].sort((a, b) => {
+          const dateA = new Date(a.created_at).getTime();
+          const dateB = new Date(b.created_at).getTime();
+          return dateB - dateA; // Newest first
+        });
+
+        setAllProjects(combined);
+      } catch (error: any) {
+        logError('Fetch projects', error);
+        showError(getErrorMessage(error, 'Failed to load projects'));
       }
     };
     fetchProjects();
-  }, []);
+  }, [axiosInstance, showError]);
 
-  // Validation checks for empty strings only, treating null as valid (initial state)
-  const isProjectNameInvalid = useMemo(() => newProjectName === '', [newProjectName]);
-  const isSubjectNameInvalid = useMemo(() => subjectName === '', [subjectName]);
-
-  const handleCreateProject = async () => {
-    if (newProjectName == null || subjectName == null || isProjectNameInvalid || isSubjectNameInvalid) {
-      if (newProjectName == null || isProjectNameInvalid) {
-        setNewProjectName('');
-      }
-      if (subjectName == null || isSubjectNameInvalid) {
-        setSubjectName('');
-      }
-      return;
-    }
-    setLoading(true);
-
-    try {
-      const newProject = await createProject(axiosInstance, newProjectName as string, subjectName as string);
-      setProjects([...projects, newProject]);
-      setNewProjectName('');
-      setSubjectName('');
-      navigate(`/project/${newProject.id}`);  // Navigate to the new project page
-    } catch (error) {
-      console.error('Error creating project:', error);
-    } finally {
-      setLoading(false);
+  const handleCreateProject = (type: 'model' | 'story') => {
+    if (type === 'model') {
+      navigate('/model-project/new');
+    } else {
+      navigate('/story-project/new');
     }
   };
 
-  const handleCardClick = (projectId: string) => {
-    // Navigate to the project page using projectId
-    navigate(`/project/${projectId}`);
+  const handleProjectClick = (project: Project) => {
+    if (project.type === 'model') {
+      navigate(`/model-project/${project.id}`);
+    } else {
+      navigate(`/story-project/${project.id}`);
+    }
+  };
+
+  const getProjectTypeLabel = (type: 'model' | 'story') => {
+    return type === 'model' ? 'Model Training' : 'Story';
+  };
+
+  const getProjectTypeColor = (type: 'model' | 'story') => {
+    return type === 'model' ? 'primary' : 'secondary';
   };
 
   return (
     <DefaultLayout>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-6">
         <h1 className="text-5xl font-extrabold leading-none">Projects</h1>
-        <Button isIconOnly onPress={onOpen} aria-label="Add Project">
-          <FontAwesomeIcon icon={faPlus} />
-        </Button>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {projects.map((project) => (
-          <Card key={project.id} isPressable onPress={() => handleCardClick(project.id)} className="cursor-pointer">
-            <CardBody>
-              <h4>{project.name}</h4>
-            </CardBody>
-          </Card>
-        ))}
+        <NewProjectButton onSelect={handleCreateProject} />
       </div>
 
-      {/* Modal for creating a new project */}
-      <Modal isOpen={isOpen} onOpenChange={onOpenChange} isDismissable={false} isKeyboardDismissDisabled={true}>
-        <ModalContent>
-          {(onClose) => (
-            <>
-              <ModalHeader className="flex flex-col gap-1">Create New Project</ModalHeader>
-              <ModalBody>
-                <Input
-                  label="Project Name"
-                  value={newProjectName ?? ''}
-                  isInvalid={isProjectNameInvalid}
-                  color={isProjectNameInvalid ? "danger" : "default"}
-                  errorMessage={isProjectNameInvalid ? "Project name is required" : ""}
-                  onValueChange={setNewProjectName}
-                  description="The name you would like to give your new project."
-                />
-                <Input
-                  label="Subject"
-                  value={subjectName ?? ''}
-                  isInvalid={isSubjectNameInvalid}
-                  color={isSubjectNameInvalid ? "danger" : "default"}
-                  errorMessage={isSubjectNameInvalid ? "Subject is required" : ""}
-                  onValueChange={setSubjectName}
-                  description="The subject of your project. This is the name you will use in your prompts. (Suggestion: Your First Name)"
-                />
-              </ModalBody>
-              <ModalFooter>
-                <Button variant="light" onPress={onClose}>
-                  Cancel
-                </Button>
+      <Table
+        aria-label="Projects table"
+        classNames={{
+          base: "bg-content1 rounded-xl shadow-sm",
+          table: "min-w-full",
+        }}
+      >
+        <TableHeader>
+          <TableColumn key="name">Project</TableColumn>
+          <TableColumn key="type">Type</TableColumn>
+          <TableColumn key="modelType">Model Type</TableColumn>
+          <TableColumn key="subject">Subject</TableColumn>
+          <TableColumn key="status">Status</TableColumn>
+          <TableColumn key="created">Created</TableColumn>
+          <TableColumn key="actions">Actions</TableColumn>
+        </TableHeader>
+        <TableBody
+          emptyContent={
+            <div className="text-center py-12">
+              <p className="text-gray-500 mb-2">No projects yet. Create one to get started!</p>
+              <p className="text-sm text-gray-400">
+                Choose between a Model Training project or a Story project above.
+              </p>
+            </div>
+          }
+        >
+          {allProjects.map((project) => (
+            <TableRow key={`${project.type}-${project.id}`}>
+              <TableCell>
+                <span className="font-semibold">{project.name}</span>
+              </TableCell>
+              <TableCell>
+                <Chip size="sm" color={getProjectTypeColor(project.type)} variant="flat">
+                  {getProjectTypeLabel(project.type)}
+                </Chip>
+              </TableCell>
+              <TableCell>
+                {project.type === "model" && project.model_type ? (
+                  <span className="text-sm text-gray-600 uppercase tracking-wide">
+                    {project.model_type}
+                  </span>
+                ) : (
+                  <span className="text-sm text-gray-400 italic">N/A</span>
+                )}
+              </TableCell>
+              <TableCell>
+                {project.subject_name ? (
+                  <span className="text-sm text-gray-600">{project.subject_name}</span>
+                ) : (
+                  <span className="text-sm text-gray-400 italic">N/A</span>
+                )}
+              </TableCell>
+              <TableCell>
+                {project.status ? (
+                  <Chip size="sm" variant="flat" color={project.status === "active" ? "success" : "default"}>
+                    {project.status}
+                  </Chip>
+                ) : (
+                  <span className="text-sm text-gray-400">—</span>
+                )}
+              </TableCell>
+              <TableCell>
+                <span className="text-sm text-gray-500">
+                  {new Date(project.created_at).toLocaleDateString()}
+                </span>
+              </TableCell>
+              <TableCell>
                 <Button
+                  size="sm"
                   color="primary"
-                  onPress={handleCreateProject}
-                  disabled={loading || isProjectNameInvalid || isSubjectNameInvalid}
+                  variant="flat"
+                  onPress={() => handleProjectClick(project)}
                 >
-                  Create Project
+                  View
                 </Button>
-              </ModalFooter>
-            </>
-          )}
-        </ModalContent>
-      </Modal>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </DefaultLayout>
   );
 };

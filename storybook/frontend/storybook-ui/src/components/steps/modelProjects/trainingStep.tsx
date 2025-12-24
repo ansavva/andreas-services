@@ -1,0 +1,527 @@
+import React, { useRef, useState, useEffect, useMemo } from "react";
+import { Button, Card, CardBody, Spinner, Chip } from "@heroui/react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faUpload,
+  faWandMagicSparkles,
+  faCheck,
+  faExclamationCircle,
+  faRotate,
+  faPersonRunning,
+} from "@fortawesome/free-solid-svg-icons";
+
+import { useAxios } from "@/hooks/axiosContext";
+import { useToast } from "@/hooks/useToast";
+import {
+  uploadImage,
+  deleteImage,
+  getImagesByProject,
+} from "@/apis/imageController";
+import {
+  train,
+  getTrainingRuns,
+  updateTrainingRunStatus,
+} from "@/apis/modelController";
+import ImageGrid from "@/components/images/imageGrid";
+import { getErrorMessage, logError } from "@/utils/errorHandling";
+
+type ImageFile = {
+  id: string;
+  name: string;
+};
+
+type TrainingRun = {
+  id: string;
+  project_id: string;
+  replicate_training_id: string | null;
+  image_ids: string[];
+  status: string;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  error_message: string | null;
+};
+
+type TrainingStepProps = {
+  projectId: string;
+  project: any;
+  onTrainingComplete: () => void;
+};
+
+const TrainingStep: React.FC<TrainingStepProps> = ({
+  projectId,
+  project,
+  onTrainingComplete,
+}) => {
+  const { axiosInstance } = useAxios();
+  const { showError, showSuccess } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [images, setImages] = useState<ImageFile[]>([]);
+  const [trainingRuns, setTrainingRuns] = useState<TrainingRun[]>([]);
+  const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const [isLoadingImages, setIsLoadingImages] = useState(false);
+  const [isLoadingTrainingRuns, setIsLoadingTrainingRuns] = useState(false);
+  const [isStartingTraining, setIsStartingTraining] = useState(false);
+
+  const ACTIVE_TRAINING_STATUSES = ["processing", "starting"];
+
+  const allowedFileTypes = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+  ];
+  const maxFileSize = 10 * 1024 * 1024; // 10MB
+
+  useEffect(() => {
+    if (projectId && projectId !== "new") {
+      fetchImages();
+      fetchTrainingRuns();
+    }
+  }, [projectId]);
+
+  const fetchImages = async () => {
+    if (!projectId || projectId === "new") return;
+
+    setIsLoadingImages(true);
+    try {
+      // Only fetch training images, not generated images
+      const response = await getImagesByProject(
+        axiosInstance,
+        projectId,
+        "training",
+      );
+      const imageFiles = response.images.map((img: any) => ({
+        id: img.id,
+        name: img.filename || "Image",
+      }));
+
+      setImages(imageFiles);
+    } catch (error) {
+      logError("Fetch images", error);
+    } finally {
+      setIsLoadingImages(false);
+    }
+  };
+
+  const fetchTrainingRuns = async () => {
+    if (!projectId || projectId === "new") return;
+
+    setIsLoadingTrainingRuns(true);
+    try {
+      const response = await getTrainingRuns(axiosInstance, projectId);
+      const runs = response.training_runs || [];
+
+      setTrainingRuns(runs);
+    } catch (error) {
+      logError("Fetch training runs", error);
+    } finally {
+      setIsLoadingTrainingRuns(false);
+    }
+  };
+
+  const handleFileSelect = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+
+    if (!files) return;
+
+    const filesToUpload: File[] = [];
+    let errorMsg = "";
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+
+      if (!allowedFileTypes.includes(file.type)) {
+        errorMsg = `File ${file.name} is not a valid image type`;
+        continue;
+      }
+
+      if (file.size > maxFileSize) {
+        errorMsg = `File ${file.name} is too large (max 10MB)`;
+        continue;
+      }
+
+      filesToUpload.push(file);
+    }
+
+    if (errorMsg) {
+      showError(errorMsg);
+    }
+
+    if (filesToUpload.length === 0) {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+
+      return;
+    }
+
+    await handleUpload(filesToUpload);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleUpload = async (filesToUpload: File[]) => {
+    if (!projectId || projectId === "new") {
+      showError("Project not found");
+
+      return;
+    }
+
+    setIsUploadingImages(true);
+    try {
+      await uploadImage(
+        axiosInstance,
+        projectId,
+        "uploaded_images",
+        filesToUpload,
+        "training",
+        { normalize: false },
+      );
+      await fetchImages();
+      showSuccess(
+        `Successfully uploaded ${filesToUpload.length} image${filesToUpload.length > 1 ? "s" : ""}`,
+      );
+    } catch (error) {
+      logError("Upload images", error);
+      showError(
+        getErrorMessage(error, "Failed to upload images. Please try again."),
+      );
+    } finally {
+      setIsUploadingImages(false);
+    }
+  };
+
+  const isImageUsedInTraining = (imageId: string) => {
+    return trainingRuns.some((run) => run.image_ids.includes(imageId));
+  };
+
+  const availableImages = useMemo(() => {
+    return images.filter((image) => !isImageUsedInTraining(image.id));
+  }, [images, trainingRuns]);
+
+  const hasActiveTraining = useMemo(
+    () => trainingRuns.some((run) => ACTIVE_TRAINING_STATUSES.includes(run.status)),
+    [trainingRuns],
+  );
+
+  const handleImageDelete = async (imageId: string) => {
+    if (isImageUsedInTraining(imageId)) {
+      showError("Cannot delete image that has been used in a training run");
+
+      return;
+    }
+
+    try {
+      await deleteImage(axiosInstance, imageId);
+      setImages((prevImages) => prevImages.filter((img) => img.id !== imageId));
+      showSuccess("Image deleted");
+    } catch (error: any) {
+      logError("Delete image", error);
+      showError(getErrorMessage(error, "Failed to delete image"));
+    }
+  };
+
+  const handleStartTraining = async () => {
+    if (availableImages.length === 0) {
+      showError("Please upload at least one image for training");
+
+      return;
+    }
+
+    setIsStartingTraining(true);
+
+    try {
+      // Use all uploaded images for training
+      const imageIdsArray = availableImages.map((img) => img.id);
+
+      await train(axiosInstance, projectId, imageIdsArray);
+
+      showSuccess("Training started! Refreshing training runs...");
+      setImages([]);
+
+      // Refresh training runs
+      await fetchTrainingRuns();
+    } catch (error: any) {
+      logError("Start training", error);
+      showError(
+        getErrorMessage(error, "Failed to start training. Please try again."),
+      );
+    } finally {
+      setIsStartingTraining(false);
+    }
+  };
+
+  const handleRefreshStatus = async (trainingRunId: string) => {
+    try {
+      const response = await updateTrainingRunStatus(
+        axiosInstance,
+        trainingRunId,
+      );
+
+      // Update the training run in state
+      setTrainingRuns((prev) =>
+        prev.map((run) =>
+          run.id === trainingRunId ? { ...run, ...response } : run,
+        ),
+      );
+
+      // If training succeeded, notify parent
+      if (response.status === "succeeded") {
+        showSuccess("Training completed successfully!");
+        onTrainingComplete();
+      }
+    } catch (error) {
+      logError("Refresh training status", error);
+      showError("Failed to refresh training status");
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "succeeded":
+        return "success";
+      case "failed":
+      case "canceled":
+        return "danger";
+      case "processing":
+      case "starting":
+        return "warning";
+      default:
+        return "default";
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "succeeded":
+        return faCheck;
+      case "failed":
+      case "canceled":
+        return faExclamationCircle;
+      default:
+        return faWandMagicSparkles;
+    }
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto">
+      <h4 className="text-lg font-semibold mb-4">Training Images</h4>
+
+      {/* Section 1: Upload and Training Start */}
+      <div className="mb-8">
+        <Card>
+          <CardBody className="p-6">
+            <input
+              ref={fileInputRef}
+              multiple
+              accept={allowedFileTypes.join(",")}
+              className="hidden"
+              type="file"
+              onChange={handleFileChange}
+            />
+
+            <Button
+              className="mb-4"
+              color="primary"
+              isDisabled={isUploadingImages}
+              isLoading={isUploadingImages}
+              startContent={<FontAwesomeIcon icon={faUpload} />}
+              variant="flat"
+              onPress={handleFileSelect}
+            >
+              {isUploadingImages ? "Uploading..." : "Select Images"}
+            </Button>
+
+            {/* Training Images Row */}
+            {availableImages.length > 0 ? (
+              <div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  {availableImages.length} image
+                  {availableImages.length !== 1 ? "s" : ""} ready
+                </p>
+
+                <ImageGrid
+                  images={availableImages}
+                  isLoading={isLoadingImages}
+                  onImageDelete={handleImageDelete}
+                  showDeleteButton
+                  thumbnailWidth={120}
+                />
+
+                {/* Start Training Button - right-aligned */}
+                <div className="flex flex-col items-end mt-4 text-right">
+                  <Button
+                    color="primary"
+                    isDisabled={
+                      availableImages.length === 0 ||
+                      isStartingTraining ||
+                      hasActiveTraining
+                    }
+                    isLoading={isStartingTraining}
+                    size="lg"
+                    startContent={
+                      <FontAwesomeIcon icon={faWandMagicSparkles} />
+                    }
+                    onPress={handleStartTraining}
+                  >
+                    {isStartingTraining
+                      ? "Starting Training..."
+                      : `Start Training with ${availableImages.length} Image${availableImages.length !== 1 ? "s" : ""}`}
+                  </Button>
+                  {hasActiveTraining && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      A training run is currently processing. Please wait (this can take up to 30 minutes).
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                <FontAwesomeIcon
+                  className="mb-3 opacity-30"
+                  icon={faUpload}
+                  size="2x"
+                />
+                {images.length === 0 ? (
+                  <>
+                    <p>No training images uploaded yet</p>
+                    <p className="text-sm mt-2">
+                      Upload images to begin training your model
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>All uploaded images have been used</p>
+                    <p className="text-sm mt-2">
+                      Add new photos to start another training run
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+          </CardBody>
+        </Card>
+      </div>
+
+      {/* Section 2: Training Runs List */}
+      <div>
+        <h4 className="text-lg font-semibold mb-4">Training Runs</h4>
+
+        {isLoadingTrainingRuns && (
+          <div className="flex justify-center py-12">
+            <Spinner size="lg" />
+          </div>
+        )}
+
+        {!isLoadingTrainingRuns && trainingRuns.length === 0 && (
+          <div className="text-center text-gray-500 dark:text-gray-400">
+            <FontAwesomeIcon
+              className="mb-3 opacity-30"
+              icon={faWandMagicSparkles}
+              size="2x"
+            />
+            <p>No training runs yet</p>
+            <p className="text-sm mt-2">
+              Upload images and click "Start Training" to create your first
+              training run
+            </p>
+          </div>
+        )}
+
+        {!isLoadingTrainingRuns && trainingRuns.length > 0 && (
+          <div className="space-y-3">
+            {trainingRuns.map((run) => (
+              <div
+                key={run.id}
+                className="grid md:grid-cols-[minmax(0,2.5fr)_minmax(150px,1fr)] gap-6 items-start"
+              >
+                <ImageGrid
+                  className="flex flex-wrap gap-2"
+                  images={run.image_ids.map((imageId) => ({
+                    id: imageId,
+                  }))}
+                  thumbnailWidth={112}
+                  thumbnailHeight={112}
+                />
+
+                <div className="flex flex-col gap-2 justify-center">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      {new Date(run.created_at).toLocaleDateString()} at{" "}
+                      {new Date(run.created_at).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {run.image_ids.length} training image
+                      {run.image_ids.length !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  <div>
+                    <Chip
+                      className="capitalize p-3"
+                      color={getStatusColor(run.status)}
+                      size="sm"
+                      startContent={
+                        run.status === "processing" ? (
+                          <FontAwesomeIcon
+                            className="text-xs mr-1 animate-spin"
+                            icon={faPersonRunning}
+                          />
+                        ) : (
+                          <FontAwesomeIcon
+                            className="text-xs mr-1"
+                            icon={getStatusIcon(run.status)}
+                          />
+                        )
+                      }
+                      variant="flat"
+                    >
+                      {run.status}
+                    </Chip>
+                    {run.status !== "succeeded" &&
+                      run.status !== "failed" &&
+                      run.status !== "canceled" && (
+                        <Button
+                          className="text-xs h-6"
+                          size="sm"
+                          variant="light"
+                          isIconOnly
+                          aria-label="Refresh status"
+                          onPress={() => handleRefreshStatus(run.id)}
+                        >
+                          <FontAwesomeIcon icon={faRotate} />
+                        </Button>
+                      )}
+                  </div>
+                  {run.status === "processing" && (
+                    <p className="text-xs text-gray-500">
+                      Training is processing. This can take up to 30 minutes.
+                    </p>
+                  )}
+                  {run.error_message && (
+                    <p className="text-xs text-danger">
+                      {run.error_message}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default TrainingStep;

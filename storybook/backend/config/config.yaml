@@ -1,0 +1,213 @@
+# Storybook Backend Configuration
+# Unified model configuration for training-based and generation-based models
+
+# ============================================
+# MODEL CONFIGURATIONS
+# ============================================
+models:
+
+  # Training-based models (require fine-tuning before use)
+  training_models:
+    replicate:
+      owner: "ansavva"
+      default_profile: "stability"
+
+      profiles:
+        stability:
+          label: "Stability SDXL"
+          description: "Best likeness. Uses a subject-specific token automatically."
+          use_subject_token: true
+          model_name_template: "{project_id}"
+          training:
+            steps: 1500
+            learning_rate: 0.0001
+            batch_size: 4
+            resolution: 768
+            autocaption: true
+            caption_dropout_rate: 0.05
+            optimizer: "adamw8bit"
+            trigger_word: null
+            token_string: "TOK"
+            is_lora: true
+            unet_learning_rate: 0.000001
+            hardware: "gpu-t4"
+            visibility: "private"
+            trainer_version: "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b"
+          generation:
+            model: "dev"
+            aspect_ratio: "1:1"
+            num_outputs: 1
+            output_format: "jpg"
+            output_quality: 90
+            lora_scale: 1.0
+            guidance_scale: 3.5
+            prompt_strength: 0.8
+            num_inference_steps: 28
+            extra_lora_scale: 1.0
+            disable_safety_checker: true
+
+        flux:
+          label: "Ostris Flux Dev Lora Trainer"
+          description: "Black Forest Labs Fine-tune that behaves like our original FLUX workflow."
+          use_subject_token: false
+          model_name_template: "{project_id}"
+          training:
+            steps: 1000
+            learning_rate: 0.0001
+            batch_size: 4
+            resolution: 768
+            autocaption: true
+            caption_dropout_rate: 0.05
+            optimizer: "adamw8bit"
+            trigger_word: null
+            token_string: "TOK"
+            is_lora: true
+            unet_learning_rate: 0.000001
+            hardware: "gpu-t4"
+            visibility: "private"
+            trainer_version: "ostris/flux-dev-lora-trainer:4ffd32160efd92e956d39c5338a9b8fbafca58e03f791f6d8011f3e20e8ea6fa"
+          generation:
+            model: "dev"
+            aspect_ratio: "1:1"
+            num_outputs: 1
+            output_format: "jpg"
+            output_quality: 90
+            lora_scale: 1.0
+            guidance_scale: 3.5
+            prompt_strength: 0.8
+            num_inference_steps: 28
+            extra_lora_scale: 1.0
+            disable_safety_checker: true
+
+  # Generation-based models (direct generation with prompt + reference images)
+  generation_models:
+
+    # Stability AI provider
+    stability_ai:
+      owner: "stability-ai"
+      api_host: "https://api.stability.ai"
+      default_engine: "stable-diffusion-xl-1024-v1-0"
+      default_profile: "style_transfer"
+      endpoints:
+        text_to_image: "/v1/generation/{engine}/text-to-image"
+        image_to_image: "/v1/generation/{engine}/image-to-image"
+        style_transfer: "/v2beta/stable-image/control/style-transfer"
+
+      profiles:
+        style_transfer:
+          label: "Stability Style Transfer"
+          description: "High-quality character portraits using style transfer with reference style images"
+          method: "style_transfer"
+          reference_images:
+            required: true
+            min: 1
+            max: 1
+            description: "Reference photo of the character"
+          generation:
+            style_strength: 0.7
+            image_strength: 0.4
+            default_style_reference: "animated_3d"
+            prompt_template: "style_transfer_prompt"
+            negative_prompt_template: "style_transfer_negative"
+            width: 1024
+            height: 1024
+            steps: 30
+            cfg_scale: 7.0
+            output_format: "png"
+            output_quality: 90
+
+        stable_image:
+          label: "Stablility Image Generation (Image-to-Image)"
+          description: "Direct image-to-image generation with SDXL"
+          method: "image_to_image"
+          reference_images:
+            required: false
+            min: 0
+            max: 1
+            description: "Optional reference image for guided generation"
+          generation:
+            image_strength: 0.35
+            default_style_preset: "3d-model"
+            prompt_template: "character_base_prompt"
+            negative_prompt_template: "character_negative_prompt"
+            width: 1024
+            height: 1024
+            steps: 30
+            cfg_scale: 7.0
+            output_format: "png"
+            output_quality: 90
+
+    # Replicate provider (generation-only models)
+    replicate:
+      owner: "black-forest-labs"
+      default_profile: "flux_pro"
+
+      profiles:
+        flux_pro:
+          label: "Black Forest Labs Flux 1.1 Pro"
+          description: "High-quality generation with Flux Redux supporting prompt + reference images"
+          model: "black-forest-labs/flux-1.1-pro"
+          reference_images:
+            required: false
+            min: 0
+            max: 1
+            description: "Optional reference image for composition guidance (Flux Redux)"
+          generation:
+            aspect_ratio: "1:1"
+            width: 1024
+            height: 1024
+            num_outputs: 1
+            output_format: "png"
+            output_quality: 90
+            safety_tolerance: 2
+            prompt_upsampling: false
+
+# ============================================
+# STYLE REFERENCE IMAGES
+# ============================================
+# Style reference images for style transfer
+# Images stored in assets/styles/
+style_references:
+  animated_3d:
+    filename: "animated_3d_reference.png"
+    description: "High-quality 3D animated character style"
+
+# ============================================
+# PROMPT TEMPLATES
+# ============================================
+# Prompt files stored as markdown in assets/prompts/
+prompts:
+  # Style Transfer prompts (recommended method)
+  style_transfer_prompt: "prompts/style_transfer_prompt.md"
+  style_transfer_negative: "prompts/style_transfer_negative.md"
+
+  # Image-to-image prompts
+  character_base_prompt: "prompts/character_base_prompt.md"
+  character_negative_prompt: "prompts/character_negative_prompt.md"
+
+  # Story illustration prompts
+  story_negative_prompt: "prompts/story_negative_prompt.md"
+
+# ============================================
+# AVAILABLE STYLE PRESETS
+# ============================================
+# Stability AI style presets for legacy image-to-image
+# See: https://platform.stability.ai/docs/api-reference#tag/v1generation/operation/textToImage
+style_presets:
+  - "3d-model"
+  - "analog-film"
+  - "anime"
+  - "cinematic"
+  - "comic-book"
+  - "digital-art"
+  - "enhance"
+  - "fantasy-art"
+  - "isometric"
+  - "line-art"
+  - "low-poly"
+  - "modeling-compound"
+  - "neon-punk"
+  - "origami"
+  - "photographic"
+  - "pixel-art"
+  - "tile-texture"

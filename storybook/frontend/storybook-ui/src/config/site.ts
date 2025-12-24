@@ -2,7 +2,8 @@ export type SiteConfig = typeof siteConfig;
 
 export const siteConfig = {
   name: "Storybook",
-  description: "AI portrait studio - upload photos, train models, and generate new images.",
+  description:
+    "AI portrait studio - upload photos, train models, and generate new images.",
   navItems: [
     {
       label: "Home",
@@ -14,8 +15,8 @@ export const siteConfig = {
     },
     {
       label: "Projects",
-      href: "/projects"
-    }
+      href: "/projects",
+    },
   ],
   navMenuItems: [
     {
@@ -28,7 +29,7 @@ export const siteConfig = {
     },
     {
       label: "Projects",
-      href: "/projects"
-    }
+      href: "/projects",
+    },
   ],
 };

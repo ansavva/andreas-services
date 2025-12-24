@@ -1,95 +1,376 @@
-# https://replicate.com/blog/fine-tune-flux
-from typing import List
-import replicate
+"""
+Model Service - Handles AI model training and generation
+Supports multiple Replicate profiles (e.g., Stability, Flux)
+"""
+from typing import Optional, Dict, Any, List
+import re
 from flask import request
-import requests
 from io import BytesIO
 from werkzeug.datastructures import FileStorage
 
 from src.models.image import Image
+from src.models.training_run import TrainingRun
+from src.models.model_project import ModelProject
 from src.services.image_service import ImageService
+from src.data.training_run_repo import TrainingRunRepo
+from src.data.model_project_repo import ModelProjectRepo
+from src.proxies.replicate_service import ReplicateService
+from src.proxies.stability_service import StabilityService
+from src.config.generation_models_config import generation_models_config
+
 
 class ModelService:
+    """
+    Service for managing AI model training and image generation
+    Wraps ReplicateService and StabilityService with user-specific model naming
+    Configuration is loaded from config.yaml
+    """
 
     def __init__(self):
         self.image_service = ImageService()
+        self.replicate = ReplicateService()  # Owner loaded from config.yaml
+        self.stability = StabilityService()  # Stability AI proxy
+        self.training_run_repo = TrainingRunRepo()
+        self.model_project_repo = ModelProjectRepo()
 
-    def __get_model_name(self, project_id):
+    def __get_model_name(self, project: ModelProject) -> str:
+        """
+        Generate model name based on user ID, project ID, and model profile.
+        This returns the short name without owner prefix.
+        """
         user_id = request.cognito_claims['sub']
-        model_name = f"flux_{user_id}_{project_id}"
-        return model_name
+        profile = project.model_type or ModelProject.DEFAULT_MODEL_TYPE
+        return self.replicate.config.build_model_name(profile, user_id, project.id)
+
+    def __get_model_identifier(self, project: ModelProject) -> str:
+        """Return the stored owner/model identifier or fallback to short name"""
+        if project.replicate_model_id:
+            return project.replicate_model_id
+        return self.__get_model_name(project)
 
     def exists(self, project_id: str) -> bool:
-        model_name = self.__get_model_name(project_id)
-        try:
-            # Try to get the model by name
-            replicate.models.get(f"ansavva/{model_name}")
-            return True
-        except:
-            return False
+        """
+        Check if a trained model exists for this project
 
-    def train(self, project_id: str) -> str:
-        model_name = self.__get_model_name(project_id)
-        try:
-            # Try to get the model by name
-            model = replicate.models.get(f"ansavva/{model_name}")
-        except:
-            # If model not found, create it
-            model = replicate.models.create(
-                owner="ansavva",
-                name=model_name,
-                visibility="private",  # or "private" if you prefer
-                hardware="gpu-t4",  # Replicate will override this for fine-tuned models
-                description="A fine-tuned FLUX.1 model"
+        Args:
+            project_id: Model project ID
+
+        Returns:
+            True if model exists, False otherwise
+            For generation-only models, always returns True (no training needed)
+        """
+        project = self.model_project_repo.get_project(project_id)
+
+        # For generation-only models, there's no trained model to check
+        # They can generate immediately without training
+        if not project.requires_training():
+            return True
+
+        model_identifier = self.__get_model_identifier(project)
+        return self.replicate.model_exists(model_identifier)
+
+    def _build_subject_token(self, project: ModelProject) -> str:
+        """Generate a consistent token string based on subject name"""
+        subject = (project.subject_name or "subject").lower()
+        sanitized = "".join(ch if ch.isalnum() else "_" for ch in subject).strip("_")
+        if not sanitized:
+            sanitized = "subject"
+        return f"{sanitized}_tok"
+
+    def train(self,
+             project_id: str,
+             image_ids: List[str],
+             config_override: Optional[Dict[str, Any]] = None) -> TrainingRun:
+        """
+        Train an image model with specific images and create a training run record
+
+        Args:
+            project_id: Model project ID
+            image_ids: List of image IDs to use for this training
+            config_override: Optional dict to override specific config values from YAML
+                           Example: {"steps": 1500, "learning_rate": 0.0005}
+
+        Returns:
+            TrainingRun object with training details
+        """
+        project = self.model_project_repo.get_project(project_id)
+        model_name = self.__get_model_name(project)
+        model_identifier = f"{self.replicate.owner}/{model_name}"
+        if project.replicate_model_id != model_identifier:
+            self.model_project_repo.update_project(
+                project_id,
+                replicate_model_id=model_identifier
             )
-        zip_file_buffer = self.image_service.create_zip(project_id)
-        training = replicate.trainings.create(
-            version="ostris/flux-dev-lora-trainer:4ffd32160efd92e956d39c5338a9b8fbafca58e03f791f6d8011f3e20e8ea6fa",
-            input={
-                "input_images": zip_file_buffer,
-                "steps": 1000
-            },
-            destination=f"{model.owner}/{model.name}"
+            project.replicate_model_id = model_identifier
+        profile = project.model_type or ModelProject.DEFAULT_MODEL_TYPE
+        use_subject_token = self.replicate.config.profile_uses_subject_token(profile)
+        subject_token = self._build_subject_token(project) if use_subject_token else None
+
+        # Create a training run record BEFORE starting training
+        training_run = self.training_run_repo.create(
+            project_id=project_id,
+            image_ids=image_ids
         )
-        return training.id
+
+        try:
+            # Create ZIP of the specific training images
+            zip_file_buffer = self.image_service.create_zip_from_images(image_ids)
+
+            # Start training (config comes from YAML, with optional overrides)
+            overrides = dict(config_override or {})
+            if use_subject_token and subject_token:
+                overrides.setdefault("token_string", subject_token)
+                overrides.setdefault("trigger_word", subject_token)
+
+            replicate_training_id = self.replicate.train(
+                model_name=model_name,
+                training_data=zip_file_buffer,
+                config_override=overrides,
+                profile=profile
+            )
+
+            # Update training run with Replicate ID and set status to starting
+            training_run = self.training_run_repo.set_replicate_id(
+                training_run.id,
+                replicate_training_id
+            )
+            training_run = self.training_run_repo.update_status(
+                training_run.id,
+                TrainingRun.STATUS_STARTING
+            )
+
+        except Exception as e:
+            # Mark training as failed if it couldn't start
+            self.training_run_repo.update_status(
+                training_run.id,
+                TrainingRun.STATUS_FAILED,
+                error_message=str(e)
+            )
+            raise
+
+        return training_run
 
     def check_training_status(self, training_id: str) -> str:
-        # Query the training status
-        training_status = replicate.trainings.get(training_id)
-        status = training_status.status
-        return status
+        """
+        Check the status of a training job
 
-    def generate(self, prompt: str, project_id: str) -> Image:
-        model_name = self.__get_model_name(project_id)
-        model = replicate.models.get(f"ansavva/{model_name}")
-        output = replicate.run(
-            f"{model.owner}/{model.name}:{model.latest_version.id}",
-            input={
-                "model": "dev",
-                "prompt": prompt,
-                "lora_scale": 1,
-                "num_outputs": 1,
-                "aspect_ratio": "1:1",
-                "output_format": "jpg",
-                "guidance_scale": 3.5,
-                "output_quality": 90,
-                "prompt_strength": 0.8,
-                "extra_lora_scale": 1,
-                "num_inference_steps": 28,
-                "disable_safety_checker": True
-            }
-        )
-        # Get the URL of the generated image
-        image_url = output[0].url
-        # Download the image from the URL
-        response = requests.get(image_url)
-        # Check if the request was successful
-        if response.status_code == 200:
-            # Convert the image content into a file-like object
-            image_data = BytesIO(response.content)
-            file = FileStorage(image_data)
-            # Call the upload_image method to upload the image to S3
-            image = self.image_service.upload_image(project_id, file, "out.jpg")
-            return image
+        Args:
+            training_id: ID of the training job
+
+        Returns:
+            Status string (e.g., "starting", "processing", "succeeded", "failed")
+        """
+        return self.replicate.get_training_status(training_id)
+
+    def _load_reference_images_from_ids(self, image_ids: List[str]) -> List[Any]:
+        """Convert stored image IDs into binary streams for generation"""
+        loaded_files: List[Any] = []
+        for image_id in image_ids:
+            try:
+                image_meta = self.image_service.image_repo.get_image(image_id)
+                file_bytes = self.image_service.download_image(image_id)
+                if not file_bytes:
+                    continue
+                stream = BytesIO(file_bytes)
+                # replicate.run expects file-like object with a name attribute
+                stream.name = image_meta.filename or f"{image_id}.png"
+                loaded_files.append(stream)
+            except Exception as exc:
+                print(f"[REFERENCE IMAGE LOAD] Failed to load {image_id}: {exc}")
+        return loaded_files
+
+    def generate(self,
+                prompt: str,
+                project_id: str,
+                reference_images: Optional[List[Any]] = None,
+                reference_image_ids: Optional[List[str]] = None,
+                config_override: Optional[Dict[str, Any]] = None,
+                include_subject_description: bool = True) -> Image:
+        """
+        Generate an image using the model (trained or generation-only)
+
+        Args:
+            prompt: Text prompt for image generation
+            project_id: Model project ID
+            reference_images: Optional list of reference images (file-like objects)
+                            Used for generation-only models that support reference images
+            config_override: Optional dict to override specific config values from YAML
+                           Example: {"aspect_ratio": "16:9", "guidance_scale": 4.0}
+
+        Returns:
+            Image object with metadata
+
+        Raises:
+            Exception: If generation or upload fails
+        """
+        project = self.model_project_repo.get_project(project_id)
+        profile = project.model_type or ModelProject.DEFAULT_MODEL_TYPE
+        provider = project.get_provider()
+
+        prompt_with_description = prompt.strip() if isinstance(prompt, str) else prompt
+        if include_subject_description and project.subject_description:
+            desc = project.subject_description.strip()
+            if desc:
+                prompt_with_description = f"{prompt_with_description}\n\nSubject description: {desc}" if prompt_with_description else desc
+
+        resolved_reference_images: List[Any] = list(reference_images or [])
+        if reference_image_ids:
+            resolved_reference_images.extend(
+                self._load_reference_images_from_ids(reference_image_ids)
+            )
+
+        # For generation-only models, use direct generation (no trained model needed)
+        if not project.requires_training():
+            # Route to the appropriate generation service based on provider
+            if provider == "stability_ai":
+                # Use Stability AI for generation
+                gen_config = generation_models_config.get_generation_config(provider, profile)
+                method = generation_models_config.get_method(provider, profile)
+
+                # Build prompts from config
+                prompt_to_use = generation_models_config.build_prompt(provider, profile, prompt_with_description)
+                negative_prompt = generation_models_config.get_negative_prompt_template(provider, profile)
+
+                if method == "style_transfer":
+                    # Style transfer requires both a style reference and an init image
+                    if not resolved_reference_images or len(resolved_reference_images) == 0:
+                        raise ValueError("Style transfer requires at least one reference image")
+
+                    style_id = generation_models_config.get_style_reference_id(provider, profile)
+                    style_image = generation_models_config.get_style_image(style_id) if style_id else None
+
+                    if not style_image:
+                        raise ValueError(f"Style reference '{style_id}' not found")
+
+                    style_strength = gen_config.get('style_strength', 0.7)
+
+                    # Use style transfer
+                    image_bytes = self.stability.style_transfer(
+                        init_image=resolved_reference_images[0],
+                        style_image=style_image,
+                        prompt=prompt_to_use,
+                        style_strength=style_strength,
+                        negative_prompt=negative_prompt,
+                        output_format=gen_config.get('output_format', 'png')
+                    )
+                else:
+                    # Standard image generation (image_to_image or text_to_image)
+                    style_preset = generation_models_config.get_style_preset(provider, profile)
+                    image_strength = gen_config.get('image_strength', 0.35)
+
+                    # Use first reference image if provided
+                    init_image = resolved_reference_images[0] if resolved_reference_images else None
+
+                    result = self.stability.generate_image(
+                        prompt=prompt_to_use,
+                        negative_prompt=negative_prompt,
+                        style_preset=style_preset,
+                        init_image=init_image,
+                        image_strength=image_strength,
+                        width=gen_config.get('width', 1024),
+                        height=gen_config.get('height', 1024),
+                        steps=gen_config.get('steps', 30),
+                        cfg_scale=gen_config.get('cfg_scale', 7.0)
+                    )
+
+                    # Convert base64 to bytes
+                    image_bytes = self.stability.decode_base64_image(result['image_data']).read()
+            else:
+                # Use Replicate for generation-only models (e.g., flux_pro)
+                # Use first reference image if provided (for models that support it like Flux Redux)
+                image_prompt = resolved_reference_images[0] if resolved_reference_images else None
+
+                image_bytes = self.replicate.generate_with_model(
+                    prompt=prompt_with_description,
+                    profile=profile,
+                    image_prompt=image_prompt,
+                    config_override=config_override
+                )
         else:
-            raise Exception("Failed to download generated image from Replicate")
+            # For training models, use the trained model
+            model_identifier = self.__get_model_identifier(project)
+            use_subject_token = self.replicate.config.profile_uses_subject_token(profile)
+            subject_token = self._build_subject_token(project) if use_subject_token else None
+            prompt_to_use = prompt_with_description
+
+            if use_subject_token and subject_token:
+                if project.subject_name:
+                    pattern = re.compile(re.escape(project.subject_name), re.IGNORECASE)
+                    prompt_to_use = pattern.sub(subject_token, prompt_to_use)
+                if subject_token.lower() not in prompt_to_use.lower():
+                    prompt_to_use = f"{subject_token}, {prompt_to_use}".strip(", ")
+
+            # Generate image with trained model (config comes from YAML, with optional overrides)
+            image_bytes = self.replicate.generate(
+                prompt=prompt_to_use,
+                model_name=model_identifier,
+                config_override=config_override,
+                profile=profile
+            )
+
+        # Convert bytes to file-like object
+        image_data = BytesIO(image_bytes)
+        file = FileStorage(image_data)
+
+        # Upload to storage and create database record with image_type="generated"
+        image = self.image_service.upload_image(project_id, file, "out.jpg", image_type="generated")
+
+        return image
+
+    def cancel_training(self, training_id: str) -> bool:
+        """
+        Cancel an in-progress training job
+
+        Args:
+            training_id: ID of the training job to cancel
+
+        Returns:
+            True if cancelled successfully, False otherwise
+        """
+        return self.replicate.cancel_training(training_id)
+
+    def get_training_runs(self, project_id: str) -> List[TrainingRun]:
+        """
+        Get all training runs for a project
+
+        Args:
+            project_id: Model project ID
+
+        Returns:
+            List of TrainingRun objects (newest first)
+        """
+        return self.training_run_repo.list_by_project(project_id)
+
+    def update_training_run_status(self, training_run_id: str) -> TrainingRun:
+        """
+        Update a training run's status by checking Replicate
+
+        Args:
+            training_run_id: Training run ID
+
+        Returns:
+            Updated TrainingRun object
+        """
+        training_run = self.training_run_repo.get_by_id(training_run_id)
+
+        if not training_run.replicate_training_id:
+            return training_run
+
+        # Get status + error info from Replicate
+        replicate_info = self.replicate.get_training_status_details(training_run.replicate_training_id)
+        replicate_status = replicate_info["status"]
+        error_message = replicate_info.get("error_message")
+
+        should_update = replicate_status != training_run.status
+        if not should_update and replicate_status == TrainingRun.STATUS_FAILED:
+            if error_message and error_message != training_run.error_message:
+                should_update = True
+
+        if should_update:
+            training_run = self.training_run_repo.update_status(
+                training_run_id,
+                replicate_status,
+                error_message if replicate_status == TrainingRun.STATUS_FAILED else None
+            )
+
+        return training_run
