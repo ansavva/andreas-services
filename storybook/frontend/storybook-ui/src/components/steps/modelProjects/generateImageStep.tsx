@@ -1,6 +1,6 @@
 // GenerateImageStep.tsx
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Textarea, Button, Card, CardBody, Spinner } from "@heroui/react";
+import { Textarea, Button, Card, CardBody, Spinner, Switch } from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUpload, faWandMagicSparkles } from "@fortawesome/free-solid-svg-icons";
 
@@ -50,6 +50,7 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({
   const [isUploadingReferenceImages, setIsUploadingReferenceImages] = useState(false);
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  const [includeSubjectDescription, setIncludeSubjectDescription] = useState(true);
 
   useEffect(() => {
     const configFromProps = modelTypeInfo?.reference_images;
@@ -170,6 +171,7 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({
       const referenceIds = availableReferenceImages.map((image) => image.id);
       const generatedImage = await generate(axiosInstance, trimmedPrompt, projectId, {
         referenceImageIds: referenceIds,
+        includeSubjectDescription,
       });
 
       // Create history entry with the prompt and generated image
@@ -247,6 +249,13 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={handleKeyDown}
         />
+        <Switch
+          className="mb-2"
+          isSelected={includeSubjectDescription}
+          onValueChange={setIncludeSubjectDescription}
+        >
+          Include subject description in prompt
+        </Switch>
 
             {error && (
               <div className="mt-2 p-3 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded-md text-sm">

@@ -184,7 +184,8 @@ class ModelService:
                 project_id: str,
                 reference_images: Optional[List[Any]] = None,
                 reference_image_ids: Optional[List[str]] = None,
-                config_override: Optional[Dict[str, Any]] = None) -> Image:
+                config_override: Optional[Dict[str, Any]] = None,
+                include_subject_description: bool = True) -> Image:
         """
         Generate an image using the model (trained or generation-only)
 
@@ -207,7 +208,7 @@ class ModelService:
         provider = project.get_provider()
 
         prompt_with_description = prompt.strip() if isinstance(prompt, str) else prompt
-        if project.subject_description:
+        if include_subject_description and project.subject_description:
             desc = project.subject_description.strip()
             if desc:
                 prompt_with_description = f"{prompt_with_description}\n\nSubject description: {desc}" if prompt_with_description else desc

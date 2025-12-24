@@ -30,6 +30,7 @@ export const updateTrainingRunStatus = async (axiosInstance: AxiosInstance, trai
 
 type GenerateOptions = {
   referenceImageIds?: string[];
+  includeSubjectDescription?: boolean;
 };
 
 export const generate = async (
@@ -42,6 +43,7 @@ export const generate = async (
     prompt,
     project_id,
     reference_image_ids: options.referenceImageIds,
+    include_subject_description: options.includeSubjectDescription,
   });
   return response.data;
 };

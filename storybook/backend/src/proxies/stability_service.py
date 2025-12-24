@@ -221,6 +221,13 @@ class StabilityService:
 
         return variants
 
+    def decode_base64_image(self, base64_string: str) -> BytesIO:
+        """
+        Decode a base64-encoded image string into a BytesIO stream.
+        """
+        image_bytes = base64.b64decode(base64_string)
+        return BytesIO(image_bytes)
+
     def style_transfer(self,
                       init_image: BinaryIO,
                       style_image: BinaryIO,

@@ -104,6 +104,12 @@ def generate():
             project_id = request.form.get("project_id")
             prompt = request.form.get("prompt")
 
+        include_subject_description = True
+        if data and "include_subject_description" in data:
+            include_subject_description = bool(data.get("include_subject_description"))
+        elif request.form.get("include_subject_description") is not None:
+            include_subject_description = request.form.get("include_subject_description", "false").lower() == "true"
+
         if not project_id:
             return jsonify({"error": "Project ID is required"}), 400
         if not prompt:
@@ -138,7 +144,8 @@ def generate():
             prompt=prompt,
             project_id=project_id,
             reference_images=reference_images if reference_images else None,
-            reference_image_ids=reference_image_ids
+            reference_image_ids=reference_image_ids,
+            include_subject_description=include_subject_description
         )
 
         # Convert Image object to dict for JSON response
