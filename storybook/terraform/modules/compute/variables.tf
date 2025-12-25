@@ -46,14 +46,20 @@ variable "additional_env_vars" {
   default     = {}
 }
 
+variable "enable_vpc" {
+  description = "Whether to place the Lambda inside a VPC"
+  type        = bool
+  default     = false
+}
+
 variable "vpc_id" {
-  description = "VPC ID for Lambda (optional)"
+  description = "VPC ID for Lambda (required if enable_vpc = true)"
   type        = string
   default     = null
 }
 
 variable "subnet_ids" {
-  description = "Subnet IDs for Lambda (optional)"
+  description = "Subnet IDs for Lambda (required if enable_vpc = true)"
   type        = list(string)
   default     = []
 }

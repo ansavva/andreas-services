@@ -1,5 +1,5 @@
-# Root-level Terraform backend configuration
-# This manages cross-cutting infrastructure for all andreas.services
+# envs/shared/backend.tf
+# Remote state for shared platform infrastructure
 
 terraform {
   required_version = ">= 1.0"
@@ -17,14 +17,4 @@ terraform {
     region  = "us-east-1"
     encrypt = true
   }
-}
-
-provider "aws" {
-  region = var.aws_region
-}
-
-# Provider for ACM certificates (must be in us-east-1 for CloudFront)
-provider "aws" {
-  alias  = "us_east_1"
-  region = "us-east-1"
 }

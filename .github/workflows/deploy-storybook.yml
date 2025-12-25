@@ -78,6 +78,51 @@ jobs:
             --function-name $LAMBDA_FUNCTION_NAME \
             --image-uri $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
+      - name: Update Lambda environment variables
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          STABILITY_API_KEY: ${{ secrets.STABILITY_API_KEY }}
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
+          AWS_COGNITO_REGION: ${{ secrets.AWS_COGNITO_REGION }}
+          AWS_COGNITO_USER_POOL_ID: ${{ secrets.AWS_COGNITO_USER_POOL_ID }}
+          AWS_COGNITO_APP_CLIENT_ID: ${{ secrets.AWS_COGNITO_APP_CLIENT_ID }}
+          S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
+        run: |
+          set -euo pipefail
+          CURRENT_ENV=$(aws lambda get-function-configuration \
+            --function-name $LAMBDA_FUNCTION_NAME \
+            --query 'Environment.Variables' \
+            --output json)
+          if [ "$CURRENT_ENV" = "null" ] || [ -z "$CURRENT_ENV" ]; then
+            CURRENT_ENV="{}"
+          fi
+
+          UPDATED_ENV="$CURRENT_ENV"
+          KEYS=(
+            "OPENAI_API_KEY"
+            "STABILITY_API_KEY"
+            "REPLICATE_API_TOKEN"
+            "DATABASE_URL"
+            "DATABASE_NAME"
+            "AWS_COGNITO_REGION"
+            "AWS_COGNITO_USER_POOL_ID"
+            "AWS_COGNITO_APP_CLIENT_ID"
+            "S3_BUCKET_NAME"
+          )
+
+          for KEY in "${KEYS[@]}"; do
+            VALUE=${!KEY:-}
+            if [ -n "$VALUE" ]; then
+              UPDATED_ENV=$(echo "$UPDATED_ENV" | jq --arg key "$KEY" --arg value "$VALUE" '.[$key]=$value')
+            fi
+          done
+
+          aws lambda update-function-configuration \
+            --function-name $LAMBDA_FUNCTION_NAME \
+            --environment "Variables=$UPDATED_ENV"
+
       - name: Wait for Lambda update to complete
         run: |
           aws lambda wait function-updated \

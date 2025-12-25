@@ -23,6 +23,7 @@ variable "subnet_ids" {
 variable "lambda_security_group_ids" {
   description = "Security group IDs of Lambda functions that need access"
   type        = list(string)
+  default     = []
 }
 
 variable "master_username" {

@@ -5,12 +5,12 @@ Also handles generation-only models like Flux Pro
 Configuration is loaded from config.yaml
 """
 from typing import Optional, Dict, Any, BinaryIO, List
-import os
 import time
 import replicate
 import requests
 from src.config.replicate_config import replicate_config
 from src.config.generation_models_config import generation_models_config
+from src.config.config import Config
 
 API_BASE = "https://api.replicate.com/v1"
 
@@ -32,7 +32,7 @@ class ReplicateService:
         """
         self.config = replicate_config
         self.owner = owner or self.config.get_owner()
-        self.api_token = os.getenv("REPLICATE_API_TOKEN")
+        self.api_token = Config.REPLICATE_API_TOKEN
 
     def _resolve_model_identifier(self, model_name: str):
         """Split a model identifier into owner/name"""
