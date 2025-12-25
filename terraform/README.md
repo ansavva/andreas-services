@@ -1,6 +1,6 @@
 # Root-Level Infrastructure
 
-This directory manages **cross-cutting infrastructure** shared by all services in the andreas-services monorepo.
+This directory manages **cross-cutting infrastructure** shared by all services in the andreas-services monorepo. It now mirrors the same `envs/` + `modules/` structure used by the Storybook stack.
 
 ## What's Managed Here
 
@@ -53,12 +53,28 @@ storybook/terraform/         # SERVICE LEVEL
     └── main.tf              # References root cert via data source
 ```
 
+## Layout
+
+```
+terraform/
+├── envs/
+│   └── shared/              # Root/shared environment
+│       ├── backend.tf
+│       ├── providers.tf
+│       ├── variables.tf
+│       ├── main.tf          # Route53, ACM, shared VPC + DocDB
+│       └── outputs.tf
+└── README.md
+```
+
+Service-specific code (e.g., Storybook) lives under `storybook/terraform`, but references the shared outputs via Terraform remote state.
+
 ## First-Time Setup
 
-### 1. Initialize and Apply
+### 1. Initialize and Apply (shared env)
 
 ```bash
-cd /Users/andreassavva/Repos/andreas-services/terraform
+cd /Users/andreassavva/Repos/andreas-services/terraform/envs/shared
 terraform init
 terraform plan
 terraform apply
@@ -127,13 +143,17 @@ resource "aws_route53_record" "app" {
 
 ## Outputs
 
-After `terraform apply`, these outputs are available:
+After `terraform apply`, these outputs are available (run from `envs/shared`):
 
 | Output | Description | Used By |
 |--------|-------------|---------|
 | `route53_zone_id` | Zone ID for creating DNS records | All services |
 | `route53_name_servers` | Name servers for domain registrar | Manual setup |
 | `acm_certificate_arn` | ARN of wildcard SSL cert | CloudFront distributions |
+| `shared_vpc_id` | Shared VPC for Lambda/ECS workloads | Storybook + future apps |
+| `shared_private_subnet_ids` | Private subnets for workloads | Storybook + future apps |
+| `shared_docdb_connection_string` | Mongo URI (no creds) | Backend services |
+| `shared_docdb_security_group_id` | SG protecting DocDB | Allows app SG ingress |
 
 ## State Management
 
@@ -143,7 +163,7 @@ After `terraform apply`, these outputs are available:
 
 ```
 s3://andreas-services-terraform-state/
-├── root/terraform.tfstate              # This infrastructure
+├── root/terraform.tfstate              # Shared infrastructure (this)
 ├── storybook/dev/terraform.tfstate     # Storybook dev
 ├── storybook/prod/terraform.tfstate    # Storybook prod
 └── humbugg/prod/terraform.tfstate      # Humbugg prod (future)

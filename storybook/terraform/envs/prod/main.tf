@@ -14,6 +14,16 @@ locals {
   }
 }
 
+# Shared infrastructure state (VPC, DocDB, etc.)
+data "terraform_remote_state" "shared" {
+  backend = "s3"
+  config = {
+    bucket = "andreas-services-terraform-state"
+    key    = "root/terraform.tfstate"
+    region = "us-east-1"
+  }
+}
+
 # Data source for Route53 hosted zone
 data "aws_route53_zone" "main" {
   name         = "andreas.services"
@@ -29,7 +39,7 @@ module "auth" {
 
   callback_urls = [
     "https://${local.domain_name}/app",
-    "http://localhost:5173/app" # Also allow local testing against prod Cognito
+    "http://localhost:5173/app"
   ]
 
   logout_urls = [
@@ -52,7 +62,7 @@ module "storage" {
     "http://localhost:5173"
   ]
 
-  create_frontend_bucket = true # Production needs frontend hosting
+  create_frontend_bucket = true
 
   tags = local.common_tags
 }
@@ -64,12 +74,13 @@ module "compute" {
   project     = local.project
   environment = local.environment
   aws_region  = var.aws_region
+  enable_vpc  = true
+  vpc_id      = data.terraform_remote_state.shared.outputs.shared_vpc_id
+  subnet_ids  = data.terraform_remote_state.shared.outputs.shared_private_subnet_ids
 
-  # Pass outputs from auth module
   cognito_user_pool_id = module.auth.user_pool_id
   cognito_client_id    = module.auth.user_pool_client_id
 
-  # Pass outputs from storage module
   s3_bucket_id  = module.storage.backend_files_bucket_id
   s3_bucket_arn = module.storage.backend_files_bucket_arn
 
@@ -79,11 +90,21 @@ module "compute" {
   ]
 
   additional_env_vars = {
-    REPLICATE_API_TOKEN = var.replicate_api_token
     APP_URL             = "https://${local.domain_name}/app"
   }
 
   tags = local.common_tags
+}
+
+# Allow Lambda access to shared DocumentDB
+resource "aws_security_group_rule" "lambda_to_docdb" {
+  type                     = "ingress"
+  from_port                = 27017
+  to_port                  = 27017
+  protocol                 = "tcp"
+  security_group_id        = data.terraform_remote_state.shared.outputs.shared_docdb_security_group_id
+  source_security_group_id = module.compute.lambda_security_group_id
+  description              = "Allow Lambda access to shared DocumentDB"
 }
 
 # Hosting module - CloudFront + Route53
@@ -99,12 +120,10 @@ module "hosting" {
 
   route53_zone_id = data.aws_route53_zone.main.zone_id
 
-  # Pass outputs from storage module
   frontend_bucket_id                   = module.storage.frontend_bucket_id
   frontend_bucket_arn                  = module.storage.frontend_bucket_arn
   frontend_bucket_regional_domain_name = module.storage.frontend_bucket_regional_domain_name
 
-  # Pass outputs from compute module
   api_gateway_endpoint = module.compute.api_gateway_endpoint
 
   tags = local.common_tags

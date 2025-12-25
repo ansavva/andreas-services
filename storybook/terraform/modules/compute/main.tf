@@ -94,7 +94,7 @@ resource "aws_iam_role_policy" "lambda" {
 
 # Security group for Lambda (only if VPC is used)
 resource "aws_security_group" "lambda" {
-  count       = var.vpc_id != null ? 1 : 0
+  count       = var.enable_vpc ? 1 : 0
   name        = "${var.project}-lambda-${var.environment}"
   description = "Security group for Lambda function"
   vpc_id      = var.vpc_id
@@ -122,7 +122,7 @@ resource "aws_lambda_function" "backend" {
   memory_size   = 512
 
   dynamic "vpc_config" {
-    for_each = var.vpc_id != null ? [1] : []
+    for_each = var.enable_vpc ? [1] : []
     content {
       subnet_ids         = var.subnet_ids
       security_group_ids = [aws_security_group.lambda[0].id]

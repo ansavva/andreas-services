@@ -1,0 +1,8 @@
+# envs/shared/terraform.tfvars.example
+# Copy this file to terraform.tfvars and supply real values locally.
+
+aws_region = "us-east-1"
+
+# Shared DocumentDB credentials (do not commit real secrets)
+docdb_master_username = "docdbadmin"
+docdb_master_password = "your_docdb_master_password_here"

@@ -7,12 +7,15 @@ resource "aws_security_group" "docdb" {
   description = "Security group for DocumentDB cluster"
   vpc_id      = var.vpc_id
 
-  ingress {
-    description = "MongoDB port from Lambda"
-    from_port   = 27017
-    to_port     = 27017
-    protocol    = "tcp"
-    security_groups = var.lambda_security_group_ids
+  dynamic "ingress" {
+    for_each = var.lambda_security_group_ids
+    content {
+      description              = "MongoDB port from Lambda"
+      from_port                = 27017
+      to_port                  = 27017
+      protocol                 = "tcp"
+      security_groups          = [ingress.value]
+    }
   }
 
   egress {

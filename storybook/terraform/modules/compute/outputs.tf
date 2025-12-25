@@ -27,5 +27,5 @@ output "api_gateway_id" {
 
 output "lambda_security_group_id" {
   description = "Lambda security group ID (null if no VPC)"
-  value       = var.vpc_id != null ? aws_security_group.lambda[0].id : null
+  value       = var.enable_vpc ? aws_security_group.lambda[0].id : null
 }
