@@ -122,7 +122,7 @@ jobs:
 
           aws lambda update-function-configuration \
             --function-name $LAMBDA_FUNCTION_NAME \
-            --environment "Variables=$UPDATED_ENV"
+            --environment Variables=$UPDATED_ENV
 
       - name: Wait for Lambda update to complete
         run: |
