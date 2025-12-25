@@ -115,9 +115,10 @@ jobs:
           for KEY in "${KEYS[@]}"; do
             VALUE=${!KEY:-}
             if [ -n "$VALUE" ]; then
-              UPDATED_ENV=$(echo "$UPDATED_ENV" | jq --arg key "$KEY" --arg value "$VALUE" '.[$key]=$value')
+              UPDATED_ENV=$(echo "$UPDATED_ENV" | jq -c --arg key "$KEY" --arg value "$VALUE" '.[$key]=$value')
             fi
           done
+          UPDATED_ENV=$(echo "$UPDATED_ENV" | jq -c '.')
 
           aws lambda update-function-configuration \
             --function-name $LAMBDA_FUNCTION_NAME \
