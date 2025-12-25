@@ -10,43 +10,23 @@ import {
 } from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPaperPlane, faBook } from "@fortawesome/free-solid-svg-icons";
-
-type ChatMessage = {
-  id: string;
-  role: "user" | "assistant" | "system";
-  content: string;
-  created_at: string;
-};
-
-type StoryState = {
-  title?: string;
-  age_range?: string;
-  page_count?: number;
-  characters?: any[];
-  setting?: string;
-  outline?: string[];
-  themes?: string[];
-};
+import { ChatMessage, StoryState } from "@/apis/chatController";
 
 type StoryChatStepProps = {
-  projectId: string;
   messages: ChatMessage[];
   storyState: StoryState | null;
   onSendMessage: (message: string) => Promise<void>;
   onCompileStory: () => Promise<void>;
   onBack: () => void;
-  loading: boolean;
   compiling: boolean;
 };
 
 const StoryChatStep: React.FC<StoryChatStepProps> = ({
-  projectId,
   messages,
   storyState,
   onSendMessage,
   onCompileStory,
   onBack,
-  loading,
   compiling,
 }) => {
   const [inputMessage, setInputMessage] = useState("");
@@ -106,7 +86,7 @@ const StoryChatStep: React.FC<StoryChatStepProps> = ({
 
             {displayedMessages.map((message) => (
               <div
-                key={message.id}
+                key={message._id}
                 className={`flex ${
                   message.role === "user" ? "justify-end" : "justify-start"
                 }`}
@@ -160,11 +140,7 @@ const StoryChatStep: React.FC<StoryChatStepProps> = ({
         </Card>
 
         <div className="flex justify-between mt-4">
-          <Button
-            isDisabled={loading || compiling}
-            variant="flat"
-            onPress={onBack}
-          >
+          <Button isDisabled={compiling} variant="flat" onPress={onBack}>
             Back
           </Button>
         </div>

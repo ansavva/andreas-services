@@ -162,6 +162,31 @@ class ModelService:
         """
         return self.replicate.get_training_status(training_id)
 
+    def delete_training_run(self, training_run_id: str) -> None:
+        """
+        Delete a training run and cancel it with Replicate if still running.
+        """
+        training_run = self.training_run_repo.get_by_id(training_run_id)
+
+        if (
+            training_run.replicate_training_id
+            and training_run.status in (
+                TrainingRun.STATUS_PENDING,
+                TrainingRun.STATUS_STARTING,
+                TrainingRun.STATUS_PROCESSING,
+            )
+        ):
+            self.replicate.cancel_training(training_run.replicate_training_id)
+
+        # Delete training images associated with this run
+        for image_id in training_run.image_ids or []:
+            try:
+                self.image_service.delete_image(image_id)
+            except Exception as exc:
+                print(f"[TRAINING RUN DELETE] Failed to delete image {image_id}: {exc}")
+
+        self.training_run_repo.delete(training_run_id)
+
     def _load_reference_images_from_ids(self, image_ids: List[str]) -> List[Any]:
         """Convert stored image IDs into binary streams for generation"""
         loaded_files: List[Any] = []

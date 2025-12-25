@@ -22,4 +22,5 @@ pymongo[srv]==4.6.1
 certifi
 reportlab
 Pillow
-pillow-heifPyYAML==6.0.1
+pillow-heif
+PyYAML==6.0.1

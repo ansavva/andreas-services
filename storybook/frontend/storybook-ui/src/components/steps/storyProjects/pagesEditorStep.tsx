@@ -17,28 +17,24 @@ import {
   faRedo,
 } from "@fortawesome/free-solid-svg-icons";
 
-import { StoryPage } from "../apis/storyPageController";
+import { StoryPage } from "@/apis/storyPageController";
 
 interface PagesEditorStepProps {
-  projectId: string;
   pages: StoryPage[];
   onUpdatePageText: (pageId: string, text: string) => Promise<void>;
   onUpdatePrompt: (pageId: string, prompt: string) => Promise<void>;
   onGenerateImage: (pageId: string) => Promise<void>;
   onBack: () => void;
   onExport: () => void;
-  loading?: boolean;
 }
 
 const PagesEditorStep: React.FC<PagesEditorStepProps> = ({
-  projectId,
   pages,
   onUpdatePageText,
   onUpdatePrompt,
   onGenerateImage,
   onBack,
   onExport,
-  loading = false,
 }) => {
   const [selectedPage, setSelectedPage] = useState<number>(0);
   const [editingText, setEditingText] = useState(false);

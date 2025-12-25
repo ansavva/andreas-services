@@ -8,6 +8,7 @@ import {
   faExclamationCircle,
   faRotate,
   faPersonRunning,
+  faTrash,
 } from "@fortawesome/free-solid-svg-icons";
 
 import { useAxios } from "@/hooks/axiosContext";
@@ -21,6 +22,7 @@ import {
   train,
   getTrainingRuns,
   updateTrainingRunStatus,
+  deleteTrainingRun as deleteTrainingRunApi,
 } from "@/apis/modelController";
 import ImageGrid from "@/components/images/imageGrid";
 import { getErrorMessage, logError } from "@/utils/errorHandling";
@@ -44,13 +46,11 @@ type TrainingRun = {
 
 type TrainingStepProps = {
   projectId: string;
-  project: any;
   onTrainingComplete: () => void;
 };
 
 const TrainingStep: React.FC<TrainingStepProps> = ({
   projectId,
-  project,
   onTrainingComplete,
 }) => {
   const { axiosInstance } = useAxios();
@@ -63,6 +63,7 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
   const [isLoadingImages, setIsLoadingImages] = useState(false);
   const [isLoadingTrainingRuns, setIsLoadingTrainingRuns] = useState(false);
   const [isStartingTraining, setIsStartingTraining] = useState(false);
+  const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
 
   const ACTIVE_TRAINING_STATUSES = ["processing", "starting"];
 
@@ -312,6 +313,30 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
     }
   };
 
+  const handleDeleteTrainingRun = async (trainingRunId: string) => {
+    const shouldDelete = window.confirm(
+      "Delete this training run? Active runs will be cancelled with Replicate.",
+    );
+    if (!shouldDelete) return;
+
+    setDeletingRunId(trainingRunId);
+    try {
+      await deleteTrainingRunApi(axiosInstance, trainingRunId);
+      setTrainingRuns((prev) =>
+        prev.filter((run) => run.id !== trainingRunId),
+      );
+      await fetchImages();
+      showSuccess("Training run deleted");
+    } catch (error) {
+      logError("Delete training run", error);
+      showError(
+        getErrorMessage(error, "Failed to delete training run. Try again."),
+      );
+    } finally {
+      setDeletingRunId(null);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto">
       <h4 className="text-lg font-semibold mb-4">Training Images</h4>
@@ -509,11 +534,23 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
                       Training is processing. This can take up to 30 minutes.
                     </p>
                   )}
-                  {run.error_message && (
-                    <p className="text-xs text-danger">
-                      {run.error_message}
-                    </p>
-                  )}
+                    {run.error_message && (
+                      <p className="text-xs text-danger">
+                        {run.error_message}
+                      </p>
+                    )}
+                  <Button
+                    className="w-fit mt-2"
+                    color="danger"
+                    size="sm"
+                    startContent={<FontAwesomeIcon icon={faTrash} />}
+                    variant="light"
+                    isDisabled={deletingRunId === run.id}
+                    isLoading={deletingRunId === run.id}
+                    onPress={() => handleDeleteTrainingRun(run.id)}
+                  >
+                    Delete Run
+                  </Button>
                 </div>
               </div>
             ))}

@@ -28,6 +28,11 @@ export const updateTrainingRunStatus = async (axiosInstance: AxiosInstance, trai
   return response.data;
 };
 
+export const deleteTrainingRun = async (axiosInstance: AxiosInstance, trainingRunId: string) => {
+  const response = await axiosInstance.delete(`/api/model/training-runs/${trainingRunId}`);
+  return response.data;
+};
+
 type GenerateOptions = {
   referenceImageIds?: string[];
   includeSubjectDescription?: boolean;
