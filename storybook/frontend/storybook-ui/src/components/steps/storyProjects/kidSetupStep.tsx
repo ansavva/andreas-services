@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { Button, Input, Checkbox, Card, CardBody } from "@heroui/react";
 
 type KidSetupStepProps = {
-  projectId: string;
   onComplete: (data: KidSetupData) => void;
   loading: boolean;
   initialData?: {
@@ -19,7 +18,6 @@ export type KidSetupData = {
 };
 
 const KidSetupStep: React.FC<KidSetupStepProps> = ({
-  projectId,
   onComplete,
   loading,
   initialData,

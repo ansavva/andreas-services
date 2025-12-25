@@ -233,7 +233,6 @@ export default function ModelProjectPage() {
               <div>
                 <TrainingStep
                   projectId={project?.id || project_id!}
-                  project={project}
                   onTrainingComplete={handleTrainingComplete}
                 />
               </div>

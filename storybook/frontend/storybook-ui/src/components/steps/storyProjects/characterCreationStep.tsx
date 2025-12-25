@@ -29,6 +29,7 @@ import {
   approveCharacterAsset,
   regenerateCharacterAsset,
   getCharacterAssets,
+  CharacterAsset,
 } from "@/apis/characterController";
 import ImageGrid from "@/components/images/imageGrid";
 import { getErrorMessage, logError } from "@/utils/errorHandling";
@@ -36,15 +37,6 @@ import { getErrorMessage, logError } from "@/utils/errorHandling";
 type PhotoFile = {
   id: string;
   name?: string;
-};
-
-type CharacterAsset = {
-  _id: string;
-  project_id: string;
-  asset_type: string;
-  image_id: string;
-  is_approved: boolean;
-  version: number;
 };
 
 type CharacterCreationStepProps = {
@@ -70,7 +62,6 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
   const [userDescription, setUserDescription] = useState<string>("");
   const [selectedStyle, setSelectedStyle] = useState<string>("");
   const [stylePresets, setStylePresets] = useState<string[]>([]);
-  const [defaultStyle, setDefaultStyle] = useState<string>("");
 
   // Generation state
   const [isGenerating, setIsGenerating] = useState(false);
@@ -87,8 +78,7 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
         const response = await getStylePresets(axiosInstance);
 
         setStylePresets(response.presets);
-        setDefaultStyle(response.default);
-        setSelectedStyle(response.default);
+        setSelectedStyle(response.default ?? "");
       } catch (error) {
         console.error("Failed to load style presets:", error);
       }
@@ -109,18 +99,9 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
         );
 
         if (assets.length > 0) {
-          setGeneratedPortrait(assets[0]);
-          // Fetch portrait image data
-          const imageBlob = await downloadImageById(
-            axiosInstance,
-            assets[0].image_id,
-          );
-          const reader = new FileReader();
-
-          reader.onloadend = () => {
-            setPortraitImageData(reader.result as string);
-          };
-          reader.readAsDataURL(imageBlob);
+          const portraitAsset = assets[0];
+          setGeneratedPortrait(portraitAsset);
+          await loadPortraitImage(portraitAsset.image_id);
         }
 
         // Load photos from child profile
@@ -155,6 +136,21 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
   ];
   const maxFileSize = 10 * 1024 * 1024; // 10MB
   const maxPhotos = 5;
+
+  const loadPortraitImage = async (imageId?: string) => {
+    if (!imageId) {
+      setPortraitImageData(null);
+      return;
+    }
+
+    const imageBlob = await downloadImageById(axiosInstance, imageId);
+    const reader = new FileReader();
+
+    reader.onloadend = () => {
+      setPortraitImageData(reader.result as string);
+    };
+    reader.readAsDataURL(imageBlob);
+  };
 
   const handleFileSelect = () => {
     fileInputRef.current?.click();
@@ -279,14 +275,7 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
 
       setGeneratedPortrait(result);
 
-      // Fetch the image data for display
-      const imageBlob = await downloadImageById(axiosInstance, result.image_id);
-      const reader = new FileReader();
-
-      reader.onloadend = () => {
-        setPortraitImageData(reader.result as string);
-      };
-      reader.readAsDataURL(imageBlob);
+      await loadPortraitImage(result.image_id);
 
       showSuccess("Character portrait generated successfully!");
     } catch (error: any) {
@@ -316,14 +305,7 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
 
       setGeneratedPortrait(result);
 
-      // Fetch the new image data for display
-      const imageBlob = await downloadImageById(axiosInstance, result.image_id);
-      const reader = new FileReader();
-
-      reader.onloadend = () => {
-        setPortraitImageData(reader.result as string);
-      };
-      reader.readAsDataURL(imageBlob);
+      await loadPortraitImage(result.image_id);
 
       showSuccess("Character portrait regenerated!");
     } catch (error: any) {
@@ -431,7 +413,7 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
                     onChange={(e) => setSelectedStyle(e.target.value)}
                   >
                     {stylePresets.map((preset) => (
-                      <SelectItem key={preset} value={preset}>
+                      <SelectItem key={preset}>
                         {preset
                           .split("_")
                           .map(

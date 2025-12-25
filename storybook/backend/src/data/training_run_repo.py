@@ -190,6 +190,20 @@ class TrainingRunRepo:
 
         return self.get_by_id(training_run_id)
 
+    def delete(self, training_run_id: str) -> None:
+        """
+        Delete a single training run that belongs to the current user.
+        """
+        db = get_db()
+        user_id = self._get_user_id()
+
+        result = db.training_runs.delete_one(
+            {'_id': training_run_id, 'user_id': user_id}
+        )
+
+        if result.deleted_count == 0:
+            raise ValueError(f"Training run with ID {training_run_id} not found.")
+
     def delete_by_project(self, project_id: str) -> int:
         """
         Delete all training runs for a project

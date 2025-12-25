@@ -87,6 +87,17 @@ def update_training_run_status(training_run_id: str):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@model_controller.route("/training-runs/<string:training_run_id>", methods=["DELETE"])
+def delete_training_run(training_run_id: str):
+    """Delete a training run (cancels in Replicate if still running)."""
+    try:
+        model_service.delete_training_run(training_run_id)
+        return jsonify({"deleted": True}), 200
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @model_controller.route("/generate", methods=["POST"])
 def generate():
     """

@@ -58,7 +58,7 @@ export const deleteImage = async (axiosInstance: AxiosInstance, imageId: string)
     return response.data;
 };
 
-export const listImages = async (axiosInstance: AxiosInstance, projectId: string, directory?: string, imageType?: string) => {
+export const listImages = async (axiosInstance: AxiosInstance, projectId: string, _directory?: string, imageType?: string) => {
     // Note: directory parameter is kept for backwards compatibility but not used
     const params = imageType ? { image_type: imageType } : {};
     const response = await axiosInstance.get(`/api/images/list/${projectId}`, { params });

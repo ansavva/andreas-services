@@ -37,7 +37,7 @@ export const Navbar = () => {
 
   // Fetch user profile on mount
   useEffect(() => {
-    if (isAuthenticated && axiosInstance) {
+    if (isAuthenticated) {
       fetchUserProfile();
     }
   }, [isAuthenticated, axiosInstance]);
@@ -150,7 +150,10 @@ export const Navbar = () => {
                     {displayName || currentUser?.name || currentUser?.username}
                   </p>
                 </DropdownItem>
-                <DropdownItem key="profile" as={RouterLink} to="/profile">
+                <DropdownItem
+                  key="profile"
+                  onPress={() => navigate("/profile")}
+                >
                   Profile Settings
                 </DropdownItem>
                 <DropdownItem
@@ -195,7 +198,10 @@ export const Navbar = () => {
                     {displayName || currentUser?.name || currentUser?.username}
                   </p>
                 </DropdownItem>
-                <DropdownItem key="profile" as={RouterLink} to="/profile">
+                <DropdownItem
+                  key="profile"
+                  onPress={() => navigate("/profile")}
+                >
                   Profile Settings
                 </DropdownItem>
                 <DropdownItem

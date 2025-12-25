@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAxios } from '@/hooks/axiosContext';
 import { useToast } from '@/hooks/useToast';
-import { Card, CardBody, Spinner } from '@heroui/react';
+import { Spinner } from '@heroui/react';
 import DefaultLayout from '@/layouts/default';
 import Stepper from '../components/common/stepper';
 import ErrorDisplay from '../components/common/errorDisplay';
@@ -19,14 +19,6 @@ import {
   updateChildProfile,
 } from '../apis/childProfileController';
 import {
-  getCharacterAssets,
-  generateCharacterPortrait,
-  generatePreviewScenes,
-  approveCharacterAsset,
-  regenerateCharacterAsset,
-  CharacterAsset,
-} from '../apis/characterController';
-import {
   getChatMessages,
   sendChatMessage,
   getStoryState,
@@ -34,7 +26,6 @@ import {
   ChatMessage,
   StoryState,
 } from '../apis/chatController';
-import { uploadImage } from '../apis/imageController';
 import {
   getStoryPages,
   updatePageText,
@@ -50,25 +41,19 @@ const StoryProject: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { axiosInstance } = useAxios();
-  const { showError, showSuccess } = useToast();
+  const { showError } = useToast();
 
   // State
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
-  const [project, setProject] = useState<any>(null);
   const [childProfile, setChildProfile] = useState<any>(null);
-  const [portrait, setPortrait] = useState<CharacterAsset | null>(null);
-  const [previewScenes, setPreviewScenes] = useState<CharacterAsset[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [storyState, setStoryState] = useState<StoryState | null>(null);
   const [storyPages, setStoryPages] = useState<StoryPage[]>([]);
 
   // Loading states
   const [savingProfile, setSavingProfile] = useState(false);
-  const [uploadingPhotos, setUploadingPhotos] = useState(false);
-  const [generatingPortrait, setGeneratingPortrait] = useState(false);
-  const [generatingScenes, setGeneratingScenes] = useState(false);
   const [compilingStory, setCompilingStory] = useState(false);
 
   const steps = [
@@ -94,7 +79,6 @@ const StoryProject: React.FC = () => {
 
       // Load project
       const proj = await getStoryProjectById(axiosInstance, projectId!);
-      setProject(proj);
 
       // Determine current step based on project status
       switch (proj.status) {
@@ -103,7 +87,6 @@ const StoryProject: React.FC = () => {
           break;
         case 'CHARACTER_PREVIEW':
           setCurrentStep(1);
-          await loadCharacterAssets();
           break;
         case 'CHAT':
           setCurrentStep(2);
@@ -142,20 +125,6 @@ const StoryProject: React.FC = () => {
     }
   };
 
-  const loadCharacterAssets = async () => {
-    try {
-      const assets = await getCharacterAssets(axiosInstance, projectId!);
-      const portraitAsset = assets.find((a) => a.asset_type === 'portrait');
-      const sceneAssets = assets.filter((a) => a.asset_type === 'preview_scene');
-
-      setPortrait(portraitAsset || null);
-      setPreviewScenes(sceneAssets);
-    } catch (error: any) {
-      logError('Load character assets', error);
-      showError(getErrorMessage(error, 'Failed to load character assets'));
-    }
-  };
-
   const loadChatData = async () => {
     try {
       const messages = await getChatMessages(axiosInstance, projectId!);
@@ -189,7 +158,6 @@ const StoryProject: React.FC = () => {
       // If this is a new project, create it first
       if (projectId === 'new') {
         const newProject = await createStoryProject(axiosInstance, data.childName);
-        setProject(newProject);
         currentProjectId = newProject._id;
 
         // Update URL to reflect the actual project ID
@@ -208,10 +176,6 @@ const StoryProject: React.FC = () => {
         await updateStoryProject(axiosInstance, currentProjectId!, {
           name: data.childName,
         });
-
-        // Reload project to get updated name
-        const updatedProject = await getStoryProjectById(axiosInstance, currentProjectId!);
-        setProject(updatedProject);
       } else {
         // Create new profile
         const newProfile = await createChildProfile(axiosInstance, {
@@ -229,90 +193,6 @@ const StoryProject: React.FC = () => {
       showError(getErrorMessage(error, 'Failed to save profile. Please try again.'));
     } finally {
       setSavingProfile(false);
-    }
-  };
-
-  // Step 2: Photo Upload
-  const handlePhotoUploadComplete = async (photoIds: string[]) => {
-    try {
-      setUploadingPhotos(true);
-
-      // Photos are already uploaded, just update child profile with photo IDs
-      await updateChildProfile(axiosInstance, childProfile._id, {
-        photo_ids: photoIds,
-      });
-
-      // Update project status
-      await updateStoryProjectStatus(axiosInstance, projectId!, 'CHARACTER_PREVIEW');
-
-      // Reload child profile
-      const updatedProfile = await getChildProfileByProject(axiosInstance, projectId!);
-      setChildProfile(updatedProfile);
-
-      setCurrentStep(2); // Move to character preview
-    } catch (error: any) {
-      logError('Update profile with photos', error);
-      showError(getErrorMessage(error, 'Failed to update profile. Please try again.'));
-    } finally {
-      setUploadingPhotos(false);
-    }
-  };
-
-  // Step 3: Character Preview
-  const handleGeneratePortrait = async () => {
-    try {
-      setGeneratingPortrait(true);
-      const newPortrait = await generateCharacterPortrait(axiosInstance, projectId!);
-      setPortrait(newPortrait);
-    } catch (error: any) {
-      logError('Generate portrait', error);
-      showError(getErrorMessage(error, 'Failed to generate portrait. Please try again.'));
-    } finally {
-      setGeneratingPortrait(false);
-    }
-  };
-
-  const handleGenerateScenes = async () => {
-    try {
-      setGeneratingScenes(true);
-      const result = await generatePreviewScenes(axiosInstance, projectId!);
-      setPreviewScenes(result.scenes);
-    } catch (error: any) {
-      logError('Generate scenes', error);
-      showError(getErrorMessage(error, 'Failed to generate scenes. Please try again.'));
-    } finally {
-      setGeneratingScenes(false);
-    }
-  };
-
-  const handleApproveAsset = async (assetId: string) => {
-    try {
-      const approved = await approveCharacterAsset(axiosInstance, assetId);
-
-      // Update local state
-      if (portrait && portrait._id === assetId) {
-        setPortrait(approved);
-      }
-    } catch (error: any) {
-      logError('Approve asset', error);
-      showError(getErrorMessage(error, 'Failed to approve asset. Please try again.'));
-    }
-  };
-
-  const handleRegenerateAsset = async (assetId: string) => {
-    try {
-      const newAsset = await regenerateCharacterAsset(axiosInstance, assetId);
-
-      // Update local state
-      if (portrait && portrait._id === assetId) {
-        setPortrait(newAsset);
-      } else {
-        // Update scene
-        setPreviewScenes((prev) => prev.map((s) => (s._id === assetId ? newAsset : s)));
-      }
-    } catch (error: any) {
-      logError('Regenerate asset', error);
-      showError(getErrorMessage(error, 'Failed to regenerate asset. Please try again.'));
     }
   };
 
@@ -349,7 +229,7 @@ const StoryProject: React.FC = () => {
       setChatMessages((prev) => [...prev, userMsg]);
 
       // Send to API
-      const response = await sendChatMessage(axiosInstance, projectId!, message);
+      await sendChatMessage(axiosInstance, projectId!, message);
 
       // Reload messages to get actual IDs and assistant response
       const updatedMessages = await getChatMessages(axiosInstance, projectId!);
@@ -469,7 +349,6 @@ const StoryProject: React.FC = () => {
         <div className="mt-8">
           {currentStep === 0 && (
             <KidSetupStep
-              projectId={projectId!}
               onComplete={handleKidSetupComplete}
               loading={savingProfile}
               initialData={childProfile ? {
@@ -490,27 +369,23 @@ const StoryProject: React.FC = () => {
 
           {currentStep === 2 && (
             <StoryChatStep
-              projectId={projectId!}
               messages={chatMessages}
               storyState={storyState}
               onSendMessage={handleSendMessage}
               onCompileStory={handleCompileStory}
               onBack={() => setCurrentStep(1)}
-              loading={loading}
               compiling={compilingStory}
             />
           )}
 
           {currentStep === 3 && (
             <PagesEditorStep
-              projectId={projectId!}
               pages={storyPages}
               onUpdatePageText={handleUpdatePageText}
               onUpdatePrompt={handleUpdatePrompt}
               onGenerateImage={handleGeneratePageImage}
               onBack={() => setCurrentStep(2)}
               onExport={handleExportStory}
-              loading={loading}
             />
           )}
         </div>

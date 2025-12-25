@@ -4,18 +4,9 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faRefresh, faCheck } from "@fortawesome/free-solid-svg-icons";
 
 import ImageGrid from "@/components/images/imageGrid";
-
-type CharacterAsset = {
-  id: string;
-  asset_type: string;
-  image_id: string;
-  scene_name?: string;
-  is_approved: boolean;
-  version: number;
-};
+import { CharacterAsset } from "@/apis/characterController";
 
 type CharacterPreviewStepProps = {
-  projectId: string;
   portrait: CharacterAsset | null;
   previewScenes: CharacterAsset[];
   onGeneratePortrait: () => Promise<void>;
@@ -30,7 +21,6 @@ type CharacterPreviewStepProps = {
 };
 
 const CharacterPreviewStep: React.FC<CharacterPreviewStepProps> = ({
-  projectId,
   portrait,
   previewScenes,
   onGeneratePortrait,
@@ -50,23 +40,26 @@ const CharacterPreviewStep: React.FC<CharacterPreviewStepProps> = ({
   const canContinue = hasApprovedPortrait;
 
   // Convert portrait to ImageGrid format
-  const portraitImages = portrait
-    ? [
-        {
-          id: portrait.image_id,
-          name: "Character Portrait",
-        },
-      ]
-    : [];
+  const portraitImages =
+    portrait?.image_id
+      ? [
+          {
+            id: portrait.image_id,
+            name: "Character Portrait",
+          },
+        ]
+      : [];
 
   // Convert scenes to ImageGrid format
-  const sceneImages = previewScenes.map((scene) => ({
-    id: scene.image_id,
-    name: scene.scene_name || "Preview Scene",
-  }));
+  const sceneImages = previewScenes
+    .filter((scene) => !!scene.image_id)
+    .map((scene) => ({
+      id: scene.image_id as string,
+      name: scene.scene_name || "Preview Scene",
+    }));
 
   // Custom actions for portrait modal
-  const renderPortraitActions = (image: any) => {
+  const renderPortraitActions = (_image: any) => {
     if (!portrait) return null;
 
     return (
@@ -76,14 +69,14 @@ const CharacterPreviewStep: React.FC<CharacterPreviewStepProps> = ({
           isDisabled={portrait.is_approved}
           startContent={<FontAwesomeIcon icon={faCheck} />}
           variant={portrait.is_approved ? "solid" : "flat"}
-          onPress={() => onApproveAsset(portrait.id)}
+          onPress={() => onApproveAsset(portrait._id)}
         >
           {portrait.is_approved ? "Approved" : "Approve"}
         </Button>
         <Button
           startContent={<FontAwesomeIcon icon={faRefresh} />}
           variant="flat"
-          onPress={() => onRegenerateAsset(portrait.id)}
+          onPress={() => onRegenerateAsset(portrait._id)}
         >
           Regenerate
         </Button>
@@ -93,7 +86,7 @@ const CharacterPreviewStep: React.FC<CharacterPreviewStepProps> = ({
 
   // Custom actions for scene modals
   const renderSceneActions = (image: any) => {
-    const scene = previewScenes.find((s) => s.id === image.id);
+    const scene = previewScenes.find((s) => s.image_id === image.id);
 
     if (!scene) return null;
 
@@ -101,7 +94,7 @@ const CharacterPreviewStep: React.FC<CharacterPreviewStepProps> = ({
       <Button
         startContent={<FontAwesomeIcon icon={faRefresh} />}
         variant="flat"
-        onPress={() => onRegenerateAsset(scene.id)}
+        onPress={() => onRegenerateAsset(scene._id)}
       >
         Regenerate
       </Button>
