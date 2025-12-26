@@ -92,6 +92,12 @@ jobs:
             --function-name $LAMBDA_FUNCTION_NAME \
             --image-uri $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
+      - name: Wait for Lambda code update
+        if: github.event_name != 'pull_request'
+        run: |
+          aws lambda wait function-updated \
+            --function-name $LAMBDA_FUNCTION_NAME
+
       # Keep Lambda env vars in sync with repo secrets (skip on PRs)
       - name: Update Lambda environment variables
         if: github.event_name != 'pull_request'
