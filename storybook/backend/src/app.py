@@ -111,6 +111,12 @@ app.register_blueprint(config_controller, url_prefix='/api/config')
 app.register_blueprint(generation_history_controller, url_prefix='/api/generation-history')
 app.register_blueprint(user_profile_controller, url_prefix='/api/user-profile')
 
+# Capture unexpected exceptions and log details to CloudWatch.
+@app.errorhandler(Exception)
+def handle_unexpected_error(error):
+    app.logger.exception("Unhandled exception while processing request")
+    return jsonify({"error": "Internal server error"}), 500
+
 # # Register Blueprints with auth
 # @image_controller.before_request
 # def require_auth_for_all():
