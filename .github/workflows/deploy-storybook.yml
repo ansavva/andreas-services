@@ -7,6 +7,10 @@ on:
     paths:
       - 'storybook/**'
       - '.github/workflows/deploy-storybook.yml'
+  pull_request:
+    paths:
+      - 'storybook/**'
+      - '.github/workflows/deploy-storybook.yml'
   workflow_dispatch:
 
 env:
@@ -22,7 +26,9 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      # Quickly check whether frontend/backend paths were touched to short-circuit work
+      - name: Detect frontend/backend changes
+        uses: dorny/paths-filter@v3
         id: filter
         with:
           filters: |
@@ -54,7 +60,8 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push Docker image
+      # Always build the backend image (even on PR) to verify Dockerfile changes
+      - name: Build backend Docker image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
@@ -65,11 +72,18 @@ jobs:
             -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
             .
-          # Push both tags
+      # Only push/publish when this isn't a PR build
+      - name: Push Docker image
+        if: github.event_name != 'pull_request'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
       - name: Update Lambda function
+        if: github.event_name != 'pull_request'
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
@@ -78,7 +92,9 @@ jobs:
             --function-name $LAMBDA_FUNCTION_NAME \
             --image-uri $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
+      # Keep Lambda env vars in sync with repo secrets (skip on PRs)
       - name: Update Lambda environment variables
+        if: github.event_name != 'pull_request'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           STABILITY_API_KEY: ${{ secrets.STABILITY_API_KEY }}
@@ -90,9 +106,11 @@ jobs:
           AWS_COGNITO_APP_CLIENT_ID: ${{ secrets.AWS_COGNITO_APP_CLIENT_ID }}
           S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
         run: |
+          # Fail fast on errors/unset vars to avoid partial updates
           set -euo pipefail
+          # Fetch existing Lambda env vars so we can merge secrets into them
           CURRENT_ENV=$(aws lambda get-function-configuration \
-            --function-name $LAMBDA_FUNCTION_NAME \
+            --function-name "$LAMBDA_FUNCTION_NAME" \
             --query 'Environment.Variables' \
             --output json)
           if [ "$CURRENT_ENV" = "null" ] || [ -z "$CURRENT_ENV" ]; then
@@ -112,19 +130,23 @@ jobs:
             "S3_BUCKET_NAME"
           )
 
+          # Update each key with the latest secret (skip if unset)
           for KEY in "${KEYS[@]}"; do
             VALUE=${!KEY:-}
             if [ -n "$VALUE" ]; then
               UPDATED_ENV=$(echo "$UPDATED_ENV" | jq -c --arg key "$KEY" --arg value "$VALUE" '.[$key]=$value')
             fi
           done
-          UPDATED_ENV=$(echo "$UPDATED_ENV" | jq -c '.')
+
+          # The CLI expects the entire {"Variables":{...}} object; write it to disk
+          jq -n --argjson vars "$UPDATED_ENV" '{Variables: $vars}' > environment.json
 
           aws lambda update-function-configuration \
-            --function-name $LAMBDA_FUNCTION_NAME \
-            --environment Variables=$UPDATED_ENV
+            --function-name "$LAMBDA_FUNCTION_NAME" \
+            --environment file://environment.json
 
       - name: Wait for Lambda update to complete
+        if: github.event_name != 'pull_request'
         run: |
           aws lambda wait function-updated \
             --function-name $LAMBDA_FUNCTION_NAME
@@ -169,11 +191,14 @@ jobs:
           cd storybook/frontend/storybook-ui
           npm run build
 
+      # Ship the built frontend only on deploy runs
       - name: Deploy to S3
+        if: github.event_name != 'pull_request'
         run: |
           aws s3 sync storybook/frontend/storybook-ui/dist s3://storybook-frontend-production/app --delete
 
       - name: Invalidate CloudFront cache
+        if: github.event_name != 'pull_request'
         run: |
           aws cloudfront create-invalidation \
             --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
