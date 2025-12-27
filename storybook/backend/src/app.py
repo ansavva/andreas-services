@@ -28,8 +28,22 @@ cognito_validator = CognitoJWTValidator(
     app_client_id=os.getenv('AWS_COGNITO_APP_CLIENT_ID')
 )
 
+# Basic middleware to log any uncaught WSGI errors (helps Lambda debugging).
+class LoggingMiddleware:
+    def __init__(self, app, logger):
+        self.app = app
+        self.logger = logger
+
+    def __call__(self, environ, start_response):
+        try:
+            return self.app(environ, start_response)
+        except Exception:
+            self.logger.exception("Unhandled exception bubbled to WSGI layer")
+            raise
+
 # Initialize Flask app and configuration
 app = Flask(__name__)
+app.wsgi_app = LoggingMiddleware(app.wsgi_app, app.logger)
 app.config.from_object(Config)
 
 # Initialize database connection
