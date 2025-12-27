@@ -41,10 +41,6 @@ def handler(event, context):
     """
     Entrypoint invoked by AWS Lambda. Wrap Mangum to log full errors.
     """
-    http = event.get("requestContext", {}).get("http", {})
-    path = event.get("rawPath") or event.get("path")
-    method = http.get("method") or event.get("httpMethod")
-    logger.info("Handling request path=%s method=%s", path, method)
     try:
         return _mangum_handler(event, context)
     except Exception:
