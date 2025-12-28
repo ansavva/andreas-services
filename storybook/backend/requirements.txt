@@ -17,7 +17,7 @@ openai
 stability-sdk
 python-jose[cryptography]
 cognitojwt
-mangum
+mangum==0.17.0
 pymongo[srv]==4.6.1
 certifi
 reportlab
