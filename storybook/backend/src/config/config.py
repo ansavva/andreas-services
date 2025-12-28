@@ -1,8 +1,11 @@
 from dotenv import load_dotenv
 import os
 from pathlib import Path
+import logging
 
 load_dotenv()  # Load .env file
+
+logger = logging.getLogger(__name__)
 
 # Project paths - single source of truth for file locations
 _BACKEND_DIR = Path(__file__).parent.parent.parent
@@ -21,7 +24,11 @@ def _get_required_env(key: str) -> str:
     """Get required environment variable or raise error"""
     value = os.getenv(key)
     if not value:
-        raise ValueError(f"Required environment variable not set: {key}")
+        error_msg = f"Required environment variable not set: {key}"
+        # Print to stdout/stderr for CloudWatch before logging is configured
+        print(f"ERROR: Missing required environment variable: {key}", flush=True)
+        logger.error("Missing required environment variable", extra={"variable_name": key})
+        raise ValueError(error_msg)
     return value
 
 class Config:
