@@ -30,11 +30,16 @@ def get_db_client() -> MongoClient:
                 _client = MongoClient(database_url)
             else:
                 # For DocumentDB/Atlas, use TLS with certificate verification
+                ca_path = certifi.where()
                 _client = MongoClient(
                     database_url,
                     tls=True,
-                    tlsCAFile=certifi.where(),  # Use certifi bundle for TLS
+                    tlsCAFile=ca_path,  # Use certifi bundle for TLS
                     retryWrites=False  # DocumentDB doesn't support retryable writes
+                )
+                logger.info(
+                    "MongoDB TLS configuration",
+                    extra={"tls_ca_file": ca_path},
                 )
             if _client is not None and getattr(_client, "address", None):
                 host, port = _client.address
