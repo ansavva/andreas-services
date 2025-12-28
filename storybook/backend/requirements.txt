@@ -18,6 +18,7 @@ stability-sdk
 python-jose[cryptography]
 cognitojwt
 mangum==0.17.0
+asgiref==3.8.1
 pymongo[srv]==4.6.1
 certifi
 reportlab
