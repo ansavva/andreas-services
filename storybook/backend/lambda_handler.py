@@ -6,6 +6,7 @@ Adds defensive logging so cold-start failures surface in CloudWatch.
 import logging
 
 from mangum import Mangum
+from mangum.adapters.wsgi import WSGIAdapter
 
 from src.logging_config import configure_logging
 
@@ -35,8 +36,11 @@ logger.info(
     },
 )
 
+# Wrap the Flask WSGI app so Mangum can treat it as ASGI.
+asgi_app = WSGIAdapter(app)
+
 # Mangum adapter for AWS Lambda
-_mangum_handler = Mangum(app, lifespan="off")
+_mangum_handler = Mangum(asgi_app, lifespan="off")
 
 
 def handler(event, context):
