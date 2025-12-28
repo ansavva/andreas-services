@@ -13,7 +13,7 @@ terraform {
 
   backend "s3" {
     bucket  = "andreas-services-terraform-state"
-    key     = "root/terraform.tfstate"
+    key     = "shared/terraform.tfstate"
     region  = "us-east-1"
     encrypt = true
   }
