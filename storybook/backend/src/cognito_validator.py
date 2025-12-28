@@ -97,8 +97,13 @@ def require_cognito_auth(validator):
                 # Validate the token
                 claims = validator.validate_token(token)
 
-                # Add the claims to the request context for use in the route
+                # Add the claims to the request context for use in the route/logging
                 request.cognito_claims = claims
+                request.cognito_user_id = (
+                    claims.get('sub')
+                    or claims.get('username')
+                    or claims.get('cognito:username')
+                )
 
             except Exception as e:
                 return jsonify({'error': f'Authentication failed: {str(e)}'}), 401

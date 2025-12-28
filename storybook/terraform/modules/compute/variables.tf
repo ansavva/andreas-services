@@ -40,12 +40,6 @@ variable "cors_allowed_origins" {
   type        = list(string)
 }
 
-variable "additional_env_vars" {
-  description = "Additional environment variables for Lambda"
-  type        = map(string)
-  default     = {}
-}
-
 variable "enable_vpc" {
   description = "Whether to place the Lambda inside a VPC"
   type        = bool

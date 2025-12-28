@@ -106,11 +106,12 @@ jobs:
           STABILITY_API_KEY: ${{ secrets.STABILITY_API_KEY }}
           REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
-          AWS_COGNITO_REGION: ${{ secrets.AWS_COGNITO_REGION }}
-          AWS_COGNITO_USER_POOL_ID: ${{ secrets.AWS_COGNITO_USER_POOL_ID }}
-          AWS_COGNITO_APP_CLIENT_ID: ${{ secrets.AWS_COGNITO_APP_CLIENT_ID }}
-          S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
+          AWS_COGNITO_REGION: ${{ vars.AWS_COGNITO_REGION }}
+          AWS_COGNITO_USER_POOL_ID: ${{ vars.AWS_COGNITO_USER_POOL_ID }}
+          AWS_COGNITO_APP_CLIENT_ID: ${{ vars.AWS_COGNITO_APP_CLIENT_ID }}
+          DATABASE_NAME: ${{ vars.DATABASE_NAME }}
+          S3_BUCKET_NAME: ${{ vars.S3_BUCKET_NAME }}
+          APP_URL: ${{ vars.APP_URL }}
         run: |
           # Fail fast on errors/unset vars to avoid partial updates
           set -euo pipefail
@@ -134,6 +135,7 @@ jobs:
             "AWS_COGNITO_USER_POOL_ID"
             "AWS_COGNITO_APP_CLIENT_ID"
             "S3_BUCKET_NAME"
+            "APP_URL"
           )
 
           # Update each key with the latest secret (skip if unset)
@@ -188,11 +190,11 @@ jobs:
 
       - name: Build frontend
         env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
-          VITE_AWS_COGNITO_REGION: ${{ secrets.VITE_AWS_COGNITO_REGION }}
-          VITE_AWS_COGNITO_USER_POOL_ID: ${{ secrets.VITE_AWS_COGNITO_USER_POOL_ID }}
-          VITE_AWS_COGNITO_APP_CLIENT_ID: ${{ secrets.VITE_AWS_COGNITO_APP_CLIENT_ID }}
-          VITE_AWS_COGNITO_DOMAIN: ${{ secrets.VITE_AWS_COGNITO_DOMAIN }}
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_AWS_COGNITO_REGION: ${{ vars.VITE_AWS_COGNITO_REGION }}
+          VITE_AWS_COGNITO_USER_POOL_ID: ${{ vars.VITE_AWS_COGNITO_USER_POOL_ID }}
+          VITE_AWS_COGNITO_APP_CLIENT_ID: ${{ vars.VITE_AWS_COGNITO_APP_CLIENT_ID }}
+          VITE_AWS_COGNITO_DOMAIN: ${{ vars.VITE_AWS_COGNITO_DOMAIN }}
         run: |
           cd storybook/frontend/storybook-ui
           npm run build

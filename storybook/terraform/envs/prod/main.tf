@@ -89,10 +89,6 @@ module "compute" {
     "http://localhost:5173"
   ]
 
-  additional_env_vars = {
-    APP_URL             = "https://${local.domain_name}/app"
-  }
-
   tags = local.common_tags
 }
 

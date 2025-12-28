@@ -129,16 +129,6 @@ resource "aws_lambda_function" "backend" {
     }
   }
 
-  environment {
-    variables = merge({
-      FLASK_ENV                 = var.environment
-      AWS_COGNITO_REGION        = var.aws_region
-      AWS_COGNITO_USER_POOL_ID  = var.cognito_user_pool_id
-      AWS_COGNITO_APP_CLIENT_ID = var.cognito_client_id
-      S3_BUCKET_NAME            = var.s3_bucket_id
-    }, var.additional_env_vars)
-  }
-
   tags = var.tags
 
   lifecycle {
