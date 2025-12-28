@@ -32,10 +32,12 @@ def get_db_client() -> MongoClient:
                     tlsCAFile=certifi.where(),  # Use certifi bundle for TLS
                     retryWrites=False  # DocumentDB doesn't support retryable writes
                 )
-            logger.info(
-                "MongoDB client initialized",
-                extra={"db_host": _client.address[0] if _client else None},
-            )
+            if _client is not None:
+                host, port = _client.address
+                logger.info(
+                    "MongoDB client initialized",
+                    extra={"db_host": host, "db_port": port},
+                )
         except Exception:
             logger.exception(
                 "Failed to initialize MongoDB client",
