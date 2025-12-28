@@ -132,7 +132,10 @@ resource "aws_lambda_function" "backend" {
   tags = var.tags
 
   lifecycle {
-    ignore_changes = [image_uri]
+    ignore_changes = [
+      image_uri,
+      environment,
+    ]
   }
 }
 
