@@ -5,8 +5,8 @@ Handles connection to local MongoDB (dev) or AWS DocumentDB (production)
 from pymongo import MongoClient
 from pymongo.database import Database
 from flask import current_app, g
-import certifi
 import structlog
+from src.config.config import DOCUMENTDB_CA_BUNDLE_PATH
 
 _client = None
 logger = structlog.get_logger(__name__)
@@ -29,19 +29,24 @@ def get_db_client() -> MongoClient:
             if 'localhost' in database_url or '127.0.0.1' in database_url:
                 _client = MongoClient(database_url)
             else:
-                # For DocumentDB/Atlas, use TLS with certificate verification
-                ca_path = certifi.where()
-                _client = MongoClient(
-                    database_url,
-                    tls=True,
-                    tlsCAFile=ca_path,  # Use certifi bundle for TLS
-                    retryWrites=False,  # DocumentDB doesn't support retryable writes
-                    serverSelectionTimeoutMS=5000,
-                    connectTimeoutMS=5000,
-                )
+                # For DocumentDB, use TLS with AWS RDS CA bundle
+                if not DOCUMENTDB_CA_BUNDLE_PATH.exists():
+                    raise FileNotFoundError(
+                        f"DocumentDB CA bundle not found: {DOCUMENTDB_CA_BUNDLE_PATH}. "
+                        "This file is required for connecting to DocumentDB in production."
+                    )
+                ca_path = str(DOCUMENTDB_CA_BUNDLE_PATH)
                 logger.info(
                     "MongoDB TLS configuration",
                     tls_ca_file=ca_path,
+                )
+                _client = MongoClient(
+                    database_url,
+                    tls=True,
+                    tlsCAFile=ca_path,  # Use AWS RDS CA bundle for DocumentDB
+                    retryWrites=False,  # DocumentDB doesn't support retryable writes
+                    serverSelectionTimeoutMS=5000,
+                    connectTimeoutMS=5000,
                 )
             if _client is not None and getattr(_client, "address", None):
                 host, port = _client.address

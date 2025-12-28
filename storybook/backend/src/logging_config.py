@@ -2,12 +2,12 @@
 Configure structlog for JSON logging compatible with CloudWatch.
 """
 import logging
-import os
 import sys
 from typing import Optional
 
 import structlog
 from structlog.stdlib import ProcessorFormatter
+from src.config.config import Config
 
 _configured = False
 
@@ -18,7 +18,7 @@ def configure_logging(level: Optional[str] = None) -> None:
     if _configured:
         return
 
-    log_level_name = (level or os.getenv("LOG_LEVEL", "INFO")).upper()
+    log_level_name = (level or Config.LOG_LEVEL).upper()
     log_level = getattr(logging, log_level_name, logging.INFO)
 
     timestamper = structlog.processors.TimeStamper(fmt="iso")

@@ -4,7 +4,7 @@ Loads and manages Replicate SDXL model configuration from YAML file
 """
 import yaml
 from typing import Dict, Any, List, Optional
-from pathlib import Path
+from .config import CONFIG_YAML_PATH
 
 
 class ReplicateConfig:
@@ -23,14 +23,7 @@ class ReplicateConfig:
 
     def _load_config(self):
         """Load configuration from YAML file"""
-        # Find config file - go up from src/config to backend/config
-        current_dir = Path(__file__).parent
-        config_path = current_dir.parent.parent / "config" / "config.yaml"
-
-        if not config_path.exists():
-            raise FileNotFoundError(f"Config not found at {config_path}")
-
-        with open(config_path, 'r') as f:
+        with open(CONFIG_YAML_PATH, 'r') as f:
             self._config = yaml.safe_load(f)
 
     def reload(self):

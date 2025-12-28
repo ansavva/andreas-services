@@ -7,7 +7,7 @@ Supports multiple providers: Stability AI, Replicate (generation-only models lik
 import yaml
 import io
 from typing import Dict, Any, List, Optional, BinaryIO
-from pathlib import Path
+from .config import CONFIG_YAML_PATH, ASSETS_DIR
 
 
 class GenerationModelsConfig:
@@ -29,15 +29,8 @@ class GenerationModelsConfig:
 
     def _load_config(self):
         """Load configuration from YAML file"""
-        # Find config file - go up from src/config to backend/config
-        current_dir = Path(__file__).parent
-        config_path = current_dir.parent.parent / "config" / "config.yaml"
-        self.assets_dir = current_dir.parent.parent / "assets"
-
-        if not config_path.exists():
-            raise FileNotFoundError(f"Config not found at {config_path}")
-
-        with open(config_path, 'r') as f:
+        self.assets_dir = ASSETS_DIR
+        with open(CONFIG_YAML_PATH, 'r') as f:
             self._config = yaml.safe_load(f)
 
     def reload(self):

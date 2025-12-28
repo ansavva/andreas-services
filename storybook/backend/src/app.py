@@ -1,5 +1,4 @@
 from dotenv import load_dotenv
-import os
 from functools import wraps
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -27,9 +26,9 @@ logger = structlog.get_logger(__name__)
 
 # Initialize Cognito authentication
 cognito_validator = CognitoJWTValidator(
-    region=os.getenv('AWS_COGNITO_REGION', 'us-east-1'),
-    user_pool_id=os.getenv('AWS_COGNITO_USER_POOL_ID'),
-    app_client_id=os.getenv('AWS_COGNITO_APP_CLIENT_ID')
+    region=Config.AWS_COGNITO_REGION,
+    user_pool_id=Config.AWS_COGNITO_USER_POOL_ID,
+    app_client_id=Config.AWS_COGNITO_APP_CLIENT_ID
 )
 
 # Initialize Flask app and configuration
@@ -42,7 +41,7 @@ init_db(app)
 
 # Set up CORS - allow frontend origin
 CORS(app,
-     resources={r"/api/*": {"origins": os.getenv('APP_URL', 'http://localhost:5173')}},
+     resources={r"/api/*": {"origins": Config.APP_URL}},
      supports_credentials=True,
      allow_headers=["Content-Type", "Authorization"],
      methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
@@ -156,8 +155,5 @@ def health():
     return jsonify({"status": "ok"}), 200
 
 if __name__ == '__main__':
-    # Check environment variable to determine the mode
-    env = os.getenv("FLASK_ENV", "production")  # Default to production if env is not set
-    debug_mode = env == "development"
-    port = int(os.getenv("PORT", "5000"))  # Use PORT env var or default to 5000
-    app.run(debug=debug_mode, port=port, host='0.0.0.0')
+    debug_mode = Config.FLASK_ENV == "development"
+    app.run(debug=debug_mode, port=Config.PORT, host='0.0.0.0')
