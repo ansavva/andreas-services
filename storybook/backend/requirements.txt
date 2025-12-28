@@ -25,3 +25,4 @@ reportlab
 Pillow
 pillow-heif
 PyYAML==6.0.1
+structlog==24.4.0

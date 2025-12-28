@@ -1,13 +1,10 @@
 import traceback
-import logging
+import structlog
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+from src.logging_config import configure_logging
 
-logger = logging.getLogger(__name__)
+configure_logging()
+logger = structlog.get_logger(__name__)
 
 def log_error(error: Exception, context: str = None):
     """

@@ -5,11 +5,11 @@ Handles connection to local MongoDB (dev) or AWS DocumentDB (production)
 from pymongo import MongoClient
 from pymongo.database import Database
 from flask import current_app, g
-import logging
 import certifi
+import structlog
 
 _client = None
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 def get_db_client() -> MongoClient:
     """
@@ -23,7 +23,7 @@ def get_db_client() -> MongoClient:
         # For local MongoDB, use default settings
         logger.info(
             "Connecting to MongoDB",
-            extra={"database_url_redacted": redact_connection_string(database_url)},
+            database_url_redacted=redact_connection_string(database_url),
         )
         try:
             if 'localhost' in database_url or '127.0.0.1' in database_url:
@@ -39,23 +39,22 @@ def get_db_client() -> MongoClient:
                 )
                 logger.info(
                     "MongoDB TLS configuration",
-                    extra={"tls_ca_file": ca_path},
+                    tls_ca_file=ca_path,
                 )
             if _client is not None and getattr(_client, "address", None):
                 host, port = _client.address
                 logger.info(
                     "MongoDB client initialized",
-                    extra={"db_host": host, "db_port": port},
+                    db_host=host,
+                    db_port=port,
                 )
         except Exception:
             host_port = getattr(_client, "address", None)
             logger.exception(
                 "Failed to initialize MongoDB client",
-                extra={
-                    "database_url_redacted": redact_connection_string(database_url),
-                    "db_host": host_port[0] if host_port else None,
-                    "db_port": host_port[1] if host_port else None,
-                },
+                database_url_redacted=redact_connection_string(database_url),
+                db_host=host_port[0] if host_port else None,
+                db_port=host_port[1] if host_port else None,
             )
             raise
     return _client

@@ -3,6 +3,7 @@ import os
 from functools import wraps
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+import structlog
 
 from src.config import Config
 from src.cognito_validator import CognitoJWTValidator, require_cognito_auth
@@ -22,6 +23,7 @@ from src.controllers.user_profile_controller import user_profile_controller
 
 load_dotenv()
 configure_logging()
+logger = structlog.get_logger(__name__)
 
 # Initialize Cognito authentication
 cognito_validator = CognitoJWTValidator(
@@ -32,6 +34,7 @@ cognito_validator = CognitoJWTValidator(
 
 # Initialize Flask app and configuration
 app = Flask(__name__)
+app.logger = structlog.get_logger("flask.app")
 app.config.from_object(Config)
 
 # Initialize database connection
@@ -116,13 +119,11 @@ app.register_blueprint(user_profile_controller, url_prefix='/api/user-profile')
 # Capture unexpected exceptions and log details to CloudWatch.
 @app.errorhandler(Exception)
 def handle_unexpected_error(error):
-    app.logger.exception(
+    logger.exception(
         "Unhandled exception while processing request",
-        extra={
-            "path": request.path,
-            "method": request.method,
-            "user_id": getattr(request, "cognito_user_id", None),
-        },
+        path=request.path,
+        method=request.method,
+        user_id=getattr(request, "cognito_user_id", None),
     )
     return jsonify({"error": "Internal server error"}), 500
 

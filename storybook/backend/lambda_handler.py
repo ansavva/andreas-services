@@ -3,15 +3,16 @@ Lambda handler for running Flask app in AWS Lambda
 This module adapts the Flask application to work with AWS Lambda.
 Adds defensive logging so cold-start failures surface in CloudWatch.
 """
-import logging
+from urllib.parse import urlsplit
 
+import structlog
 from mangum import Mangum
 from asgiref.wsgi import WsgiToAsgi
 
 from src.logging_config import configure_logging
 
 configure_logging()
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 try:
     from src.app import app
@@ -25,16 +26,25 @@ except Exception:
 # Log high-level env info (no secrets) so we can confirm what the Lambda sees.
 logger.info(
     "Cold start config",
-    extra={
-        "region": getattr(Config, "AWS_COGNITO_REGION", None),
-        "bucket_set": bool(getattr(Config, "S3_BUCKET_NAME", None)),
-        "db_url_set": bool(getattr(Config, "DATABASE_URL", None)),
-        "db_name": getattr(Config, "DATABASE_NAME", None),
-        "openai": bool(getattr(Config, "OPENAI_API_KEY", None)),
-        "stability": bool(getattr(Config, "STABILITY_API_KEY", None)),
-        "replicate": bool(getattr(Config, "REPLICATE_API_TOKEN", None)),
-    },
+    region=getattr(Config, "AWS_COGNITO_REGION", None),
+    bucket_set=bool(getattr(Config, "S3_BUCKET_NAME", None)),
+    db_url_set=bool(getattr(Config, "DATABASE_URL", None)),
+    db_name=getattr(Config, "DATABASE_NAME", None),
+    openai=bool(getattr(Config, "OPENAI_API_KEY", None)),
+    stability=bool(getattr(Config, "STABILITY_API_KEY", None)),
+    replicate=bool(getattr(Config, "REPLICATE_API_TOKEN", None)),
 )
+
+db_uri = getattr(Config, "DATABASE_URL", "")
+if db_uri:
+    parsed = urlsplit(db_uri)
+    logger.info(
+        "Database URI parsed",
+        db_scheme=parsed.scheme,
+        db_host=parsed.hostname,
+        db_has_port=parsed.port is not None,
+        db_query=parsed.query,
+    )
 
 
 asgi_app = WsgiToAsgi(app)
@@ -52,21 +62,17 @@ def handler(event, context):
     method = http.get("method") or event.get("httpMethod")
     logger.info(
         "Handling request",
-        extra={
-            "path": path,
-            "method": method,
-            "aws_request_id": getattr(context, "aws_request_id", None),
-        },
+        path=path,
+        method=method,
+        aws_request_id=getattr(context, "aws_request_id", None),
     )
     try:
         return _mangum_handler(event, context)
     except Exception:
         logger.exception(
             "Unhandled exception while processing Lambda event",
-            extra={
-                "path": path,
-                "method": method,
-                "aws_request_id": getattr(context, "aws_request_id", None),
-            },
+            path=path,
+            method=method,
+            aws_request_id=getattr(context, "aws_request_id", None),
         )
         raise
