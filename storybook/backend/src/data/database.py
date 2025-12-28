@@ -35,7 +35,9 @@ def get_db_client() -> MongoClient:
                     database_url,
                     tls=True,
                     tlsCAFile=ca_path,  # Use certifi bundle for TLS
-                    retryWrites=False  # DocumentDB doesn't support retryable writes
+                    retryWrites=False,  # DocumentDB doesn't support retryable writes
+                    serverSelectionTimeoutMS=5000,
+                    connectTimeoutMS=5000,
                 )
                 logger.info(
                     "MongoDB TLS configuration",
