@@ -31,6 +31,21 @@ module "auth" {
   tags = local.common_tags
 }
 
-# No storage module in dev - uses local filesystem for files and MongoDB for data
+# Storage bucket for dev uploads
+module "storage" {
+  source = "../../modules/storage"
+
+  project     = local.project
+  environment = local.environment
+
+  cors_allowed_origins = [
+    "http://localhost:5173"
+  ]
+
+  create_frontend_bucket = false
+
+  tags = local.common_tags
+}
+
 # No compute module in dev - backend runs locally
 # No hosting module in dev - no CloudFront/Route53 needed

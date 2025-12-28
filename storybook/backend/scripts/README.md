@@ -112,9 +112,9 @@ All data has been cleared. You can start fresh.
 - Make sure MongoDB is running: `brew services start mongodb-community`
 - Check your `.env` file has the correct `MONGODB_URL`
 
-**Storage Path Not Found**
-- The script will automatically create the storage directory if it doesn't exist
-- Check your `.env` file has `FILE_STORAGE_PATH=./storage`
+**S3 Upload Issues**
+- Ensure `S3_BUCKET_NAME` in `.env` points to your dev bucket (e.g., `storybook-backend-files-development`)
+- Confirm your AWS CLI credentials/IAM permissions allow PutObject/DeleteObject on that bucket
 
 **Permission Denied**
 - Make sure scripts are executable: `chmod +x scripts/*.py`

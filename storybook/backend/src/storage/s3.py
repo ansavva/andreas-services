@@ -97,3 +97,23 @@ class S3Storage(FileStorageAdapter):
         key = self._add_trailing_slash(key)
         client = self._get_client()
         client.put_object(Bucket=self.bucket_name, Body='', Key=key)
+
+    def generate_presigned_upload(self, key: str, content_type: str, expires_in: int = 3600):
+        """Generate a presigned PUT URL for direct browser uploads."""
+        client = self._get_client()
+        url = client.generate_presigned_url(
+            "put_object",
+            Params={
+                "Bucket": self.bucket_name,
+                "Key": key,
+                "ContentType": content_type
+            },
+            ExpiresIn=expires_in
+        )
+        return {
+            "url": url,
+            "method": "PUT",
+            "headers": {
+                "Content-Type": content_type
+            }
+        }

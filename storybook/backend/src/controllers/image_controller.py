@@ -7,6 +7,44 @@ from src.utils.error_logging import log_error
 image_controller = Blueprint("image_controller", __name__)
 image_service = ImageService()
 
+@image_controller.route("/upload/presign", methods=["POST"])
+def presign_image_upload():
+    try:
+        data = request.get_json() or {}
+        project_id = data.get("project_id")
+        files = data.get("files", [])
+        image_type = data.get("image_type", "training")
+
+        if not project_id:
+            return jsonify({"error": "Project ID is required"}), 400
+        if not files:
+            return jsonify({"error": "No files provided"}), 400
+
+        uploads = image_service.create_presigned_uploads(project_id, files, image_type)
+        return jsonify({"uploads": uploads}), 200
+    except Exception as e:
+        log_error(e, "image presign")
+        return jsonify({"error": str(e)}), 500
+
+@image_controller.route("/upload/complete", methods=["POST"])
+def complete_image_upload():
+    try:
+        data = request.get_json() or {}
+        project_id = data.get("project_id")
+        uploads = data.get("uploads", [])
+        image_type = data.get("image_type", "training")
+
+        if not project_id:
+            return jsonify({"error": "Project ID is required"}), 400
+        if not uploads:
+            return jsonify({"error": "No uploads provided"}), 400
+
+        images = image_service.complete_presigned_uploads(project_id, uploads, image_type)
+        return jsonify({"images": images}), 200
+    except Exception as e:
+        log_error(e, "image complete upload")
+        return jsonify({"error": str(e)}), 500
+
 @image_controller.route("/upload", methods=["POST"])
 def upload_image():
     try:

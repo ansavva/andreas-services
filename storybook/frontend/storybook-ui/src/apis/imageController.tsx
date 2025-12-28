@@ -4,38 +4,89 @@ type UploadImageOptions = {
   normalize?: boolean;
 };
 
+type PresignedUpload = {
+  image_id: string;
+  filename: string;
+  content_type: string;
+  normalize?: boolean;
+  upload_url: string;
+  method?: string;
+  headers?: Record<string, string>;
+};
+
 export const uploadImage = async (
   axiosInstance: AxiosInstance,
   projectId: string,
-  directory: string,
+  _directory: string,
   files: File[],
   imageType: string = "training",
   options?: UploadImageOptions,
 ) => {
-    const formData = new FormData();
-    formData.append("project_id", projectId);
-    formData.append("directory", directory);
-    formData.append("image_type", imageType);
-    const shouldNormalize = options?.normalize ?? true;
-    formData.append("normalize_images", shouldNormalize ? "true" : "false");
+  if (!files.length) {
+    return { images: [] };
+  }
 
-    // Append all files to FormData
-    files.forEach((file, index) => {
-        formData.append(`image[${index}]`, file); // Index added here
+  const shouldNormalize = options?.normalize ?? true;
+
+  const filePayload = files.map((file) => ({
+    filename: file.name,
+    content_type: file.type || "application/octet-stream",
+    normalize: shouldNormalize,
+  }));
+
+  const presignResponse = await axiosInstance.post("/api/images/upload/presign", {
+    project_id: projectId,
+    image_type: imageType,
+    files: filePayload,
+  });
+
+  const presignedUploads: PresignedUpload[] = presignResponse.data.uploads || [];
+
+  if (presignedUploads.length !== files.length) {
+    throw new Error("Presigned upload mismatch");
+  }
+
+  await Promise.all(
+    presignedUploads.map(async (upload, index) => {
+      const file = files[index];
+      const url = upload.upload_url;
+      if (!url) {
+        throw new Error("Missing upload URL in presigned response");
+      }
+      const method = upload.method || "PUT";
+      if (method !== "PUT") {
+        throw new Error(`Unsupported upload method: ${method}`);
+      }
+      const headers: Record<string, string> = {
+        "Content-Type": file.type || "application/octet-stream",
+        ...(upload.headers || {}),
+      };
+
+      const response = await fetch(url, {
+        method,
+        headers,
+        body: file,
       });
 
-    try {
-      const response = await axiosInstance.post("/api/images/upload", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      });
-      return response.data; // Return the full response data which contains "images" array
-    } catch (error) {
-      console.error("Upload failed:", error);
-      throw error; // Throw error instead of returning empty array so caller can handle it
-    }
-  };
+      if (!response.ok) {
+        throw new Error(`Failed to upload ${file.name} to S3`);
+      }
+    }),
+  );
+
+  const completeResponse = await axiosInstance.post("/api/images/upload/complete", {
+    project_id: projectId,
+    image_type: imageType,
+    uploads: presignedUploads.map((upload, index) => ({
+      image_id: upload.image_id,
+      filename: files[index].name,
+      content_type: files[index].type || "application/octet-stream",
+      normalize: upload.normalize ?? shouldNormalize,
+    })),
+  });
+
+  return completeResponse.data;
+};
 
 
 export const downloadImage = async (axiosInstance: AxiosInstance, projectId: string, directory: string, key: string) => {

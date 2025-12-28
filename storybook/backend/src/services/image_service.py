@@ -1,5 +1,6 @@
 import io
 import os
+import uuid
 from werkzeug.datastructures import FileStorage
 from typing import List, Optional
 import zipfile
@@ -27,6 +28,97 @@ class ImageService:
     def __init__(self):
         self.image_repo = ImageRepo()
         self.model_project_repo = ModelProjectRepo()
+        self._temp_prefix = "temp/uploads"
+
+    def _get_user_id(self) -> str:
+        return self.image_repo.get_current_user_id()
+
+    def _build_temp_upload_key(self, project_id: str, image_id: str, filename: str) -> str:
+        user_id = self._get_user_id()
+        project_id = str(project_id)
+        safe_filename = filename.replace("/", "_")
+        return f"{self._temp_prefix}/{user_id}/{project_id}/{image_id}_{safe_filename}"
+
+    def create_presigned_uploads(self, project_id: str, files: List[dict], image_type: str = "training"):
+        if not project_id:
+            raise ValueError("Project ID is required")
+        if not files:
+            raise ValueError("No files provided")
+
+        storage = self.image_repo.storage
+        if not hasattr(storage, "generate_presigned_upload"):
+            raise ValueError("Presigned uploads are not supported for this storage backend")
+
+        uploads = []
+        for file_data in files:
+            filename = file_data.get("filename")
+            if not filename:
+                raise ValueError("Each file entry must include a filename")
+            content_type = file_data.get("content_type") or "application/octet-stream"
+            normalize = file_data.get("normalize", True)
+            image_id = str(uuid.uuid4())
+            temp_key = self._build_temp_upload_key(project_id, image_id, filename)
+            presigned = storage.generate_presigned_upload(temp_key, content_type)
+            uploads.append({
+                "image_id": image_id,
+                "filename": filename,
+                "content_type": content_type,
+                "normalize": normalize,
+                "upload_url": presigned["url"],
+                "method": presigned.get("method", "PUT"),
+                "headers": presigned.get("headers", {}),
+            })
+
+        return uploads
+
+    def complete_presigned_uploads(self, project_id: str, uploads: List[dict], image_type: str = "training"):
+        if not project_id:
+            raise ValueError("Project ID is required")
+        if not uploads:
+            raise ValueError("No uploads provided")
+
+        results = []
+        for upload in uploads:
+            image_id = upload.get("image_id")
+            filename = upload.get("filename")
+            if not image_id or not filename:
+                raise ValueError("Each upload must include image_id and filename")
+            content_type = upload.get("content_type") or "application/octet-stream"
+            normalize = upload.get("normalize", True)
+            temp_key = self._build_temp_upload_key(project_id, image_id, filename)
+
+            file_bytes = self.image_repo.storage.download_file(temp_key)
+            if file_bytes is None:
+                raise ValueError(f"Uploaded file not found for image_id {image_id}")
+
+            stream = io.BytesIO(file_bytes)
+            stream.seek(0)
+            file_obj = FileStorage(stream=stream, filename=filename, content_type=content_type)
+            # content_length is read-only; provide size via headers for downstream use.
+            file_obj.headers["Content-Length"] = str(len(file_bytes))
+
+            image = self.upload_image(
+                project_id,
+                file_obj,
+                filename,
+                image_type=image_type,
+                normalize=normalize,
+                image_id=image_id
+            )
+
+            results.append({
+                "id": image.id,
+                "filename": image.filename,
+                "content_type": image.content_type,
+                "size_bytes": image.size_bytes,
+                "image_type": image.image_type,
+                "created_at": image.created_at.isoformat() if image.created_at else None
+            })
+
+            # Clean up temp upload
+            self.image_repo.storage.delete_file(temp_key)
+
+        return results
 
     def _find_best_sdxl_dimensions(self, width: int, height: int) -> tuple:
         """
@@ -181,7 +273,8 @@ class ImageService:
         file: FileStorage,
         filename: str,
         image_type: str = "training",
-        normalize: bool = True
+        normalize: bool = True,
+        image_id: Optional[str] = None,
     ) -> Image:
         """Upload an image for a project"""
         # Note: We don't validate project here because this service is used for both
@@ -197,7 +290,7 @@ class ImageService:
             # Convert HEIC to PNG without resizing when normalization is disabled
             file, filename = self._convert_heic_to_png(file, filename)
 
-        return self.image_repo.upload_image(project_id, file, filename, image_type)
+        return self.image_repo.upload_image(project_id, file, filename, image_type, image_id=image_id)
 
     def download_image(self, image_id: str) -> Optional[bytes]:
         """Download an image by ID"""

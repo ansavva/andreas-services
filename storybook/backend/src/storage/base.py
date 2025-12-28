@@ -32,3 +32,7 @@ class FileStorageAdapter(ABC):
     def create_directory(self, key: str) -> None:
         """Create a directory (or marker for it)"""
         pass
+
+    def generate_presigned_upload(self, key: str, content_type: str, expires_in: int = 3600):
+        """Generate a presigned upload target if supported by the storage backend."""
+        raise NotImplementedError("Presigned uploads are not supported for this storage backend.")

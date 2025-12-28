@@ -24,9 +24,13 @@ class ImageRepo:
             self._storage = get_file_storage()
         return self._storage
 
-    def _get_user_id(self) -> str:
+    def get_current_user_id(self) -> str:
         """Get current user ID from Cognito claims"""
         return request.cognito_claims['sub']
+
+    def _get_user_id(self) -> str:
+        """Backward-compatible alias for getting user id."""
+        return self.get_current_user_id()
 
     def _create_s3_key(self, project_id: str, image_id: str, filename: str) -> str:
         """Generate S3 key for image storage"""
@@ -35,7 +39,14 @@ class ImageRepo:
         project_id_str = str(project_id)
         return f"users/{user_id}/projects/{project_id_str}/images/{image_id}_{filename}"
 
-    def upload_image(self, project_id: str, file: FileStorage, filename: str, image_type: str = "training") -> Image:
+    def upload_image(
+        self,
+        project_id: str,
+        file: FileStorage,
+        filename: str,
+        image_type: str = "training",
+        image_id: Optional[str] = None,
+    ) -> Image:
         """
         Upload an image file to S3 and save metadata to MongoDB
 
@@ -54,7 +65,7 @@ class ImageRepo:
         # Ensure project_id is a string (could be ObjectId from MongoDB)
         project_id = str(project_id)
 
-        image_id = str(uuid.uuid4())
+        image_id = image_id or str(uuid.uuid4())
         s3_key = self._create_s3_key(project_id, image_id, filename)
 
         # Upload file to S3
