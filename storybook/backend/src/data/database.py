@@ -5,9 +5,11 @@ Handles connection to local MongoDB (dev) or AWS DocumentDB (production)
 from pymongo import MongoClient
 from pymongo.database import Database
 from flask import current_app, g
+import logging
 import certifi
 
 _client = None
+logger = logging.getLogger(__name__)
 
 def get_db_client() -> MongoClient:
     """
@@ -19,16 +21,27 @@ def get_db_client() -> MongoClient:
         database_url = current_app.config['DATABASE_URL']
 
         # For local MongoDB, use default settings
-        if 'localhost' in database_url or '127.0.0.1' in database_url:
-            _client = MongoClient(database_url)
-        else:
-            # For DocumentDB/Atlas, use TLS with certificate verification
-            _client = MongoClient(
-                database_url,
-                tls=True,
-                tlsCAFile=certifi.where(),  # Use certifi bundle for TLS
-                retryWrites=False  # DocumentDB doesn't support retryable writes
+        try:
+            if 'localhost' in database_url or '127.0.0.1' in database_url:
+                _client = MongoClient(database_url)
+            else:
+                # For DocumentDB/Atlas, use TLS with certificate verification
+                _client = MongoClient(
+                    database_url,
+                    tls=True,
+                    tlsCAFile=certifi.where(),  # Use certifi bundle for TLS
+                    retryWrites=False  # DocumentDB doesn't support retryable writes
+                )
+            logger.info(
+                "MongoDB client initialized",
+                extra={"db_host": _client.address[0] if _client else None},
             )
+        except Exception:
+            logger.exception(
+                "Failed to initialize MongoDB client",
+                extra={"database_url_redacted": redact_connection_string(database_url)},
+            )
+            raise
     return _client
 
 def get_db() -> Database:
@@ -56,3 +69,12 @@ def init_db(app):
     Registers teardown handler to close connections.
     """
     app.teardown_appcontext(close_db)
+def redact_connection_string(uri: str) -> str:
+    """Remove credentials from a MongoDB URI for safe logging."""
+    if "@" not in uri:
+        return uri
+    prefix, rest = uri.split("@", 1)
+    if "://" in prefix:
+        scheme, _ = prefix.split("://", 1)
+        return f"{scheme}://***:***@{rest}"
+    return f"***:***@{rest}"
