@@ -7,6 +7,7 @@ from flask_cors import CORS
 from src.config import Config
 from src.cognito_validator import CognitoJWTValidator, require_cognito_auth
 from src.data.database import init_db
+from src.logging_config import configure_logging
 from src.controllers.image_controller import image_controller
 from src.controllers.model_controller import model_controller
 from src.controllers.model_project_controller import model_project_controller
@@ -20,6 +21,7 @@ from src.controllers.generation_history_controller import generation_history_con
 from src.controllers.user_profile_controller import user_profile_controller
 
 load_dotenv()
+configure_logging()
 
 # Initialize Cognito authentication
 cognito_validator = CognitoJWTValidator(
@@ -114,7 +116,14 @@ app.register_blueprint(user_profile_controller, url_prefix='/api/user-profile')
 # Capture unexpected exceptions and log details to CloudWatch.
 @app.errorhandler(Exception)
 def handle_unexpected_error(error):
-    app.logger.exception("Unhandled exception while processing request")
+    app.logger.exception(
+        "Unhandled exception while processing request",
+        extra={
+            "path": request.path,
+            "method": request.method,
+            "user_id": getattr(request, "cognito_user_id", None),
+        },
+    )
     return jsonify({"error": "Internal server error"}), 500
 
 # # Register Blueprints with auth
