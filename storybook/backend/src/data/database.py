@@ -21,6 +21,10 @@ def get_db_client() -> MongoClient:
         database_url = current_app.config['DATABASE_URL']
 
         # For local MongoDB, use default settings
+        logger.info(
+            "Connecting to MongoDB",
+            extra={"database_url_redacted": redact_connection_string(database_url)},
+        )
         try:
             if 'localhost' in database_url or '127.0.0.1' in database_url:
                 _client = MongoClient(database_url)
