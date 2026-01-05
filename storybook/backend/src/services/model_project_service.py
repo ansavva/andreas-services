@@ -5,6 +5,7 @@ from src.repositories.db.model_project_repo import ModelProjectRepo
 from src.repositories.db.image_repo import ImageRepo
 from src.repositories.db.generation_history_repo import GenerationHistoryRepo
 from src.repositories.db.training_run_repo import TrainingRunRepo
+from src.repositories.db.chat_message_repo import ChatMessageRepo
 from src.models.model_project import ModelProject
 from src.services.external.replicate_service import ReplicateService
 
@@ -14,6 +15,7 @@ class ModelProjectService:
         self.image_repo = ImageRepo()
         self.generation_history_repo = GenerationHistoryRepo()
         self.training_run_repo = TrainingRunRepo()
+        self.chat_message_repo = ChatMessageRepo()
         self.replicate_service = ReplicateService()
 
     def get_projects(self) -> List[ModelProject]:
@@ -70,13 +72,19 @@ class ModelProjectService:
         except Exception as e:
             print(f"Error deleting generation history for project {project_id}: {e}")
 
-        # 3. Delete all images for this project (S3 + MongoDB, including reference images)
+        # 3. Delete all chat messages for this project
+        try:
+            self.chat_message_repo.clear_conversation(project_id)
+        except Exception as e:
+            print(f"Error deleting chat messages for project {project_id}: {e}")
+
+        # 4. Delete all images for this project (S3 + MongoDB, including reference images)
         try:
             self.image_repo.delete_project_images(project_id)
         except Exception as e:
             print(f"Error deleting images for project {project_id}: {e}")
 
-        # 4. Delete Replicate model if it exists
+        # 5. Delete Replicate model if it exists
         model_identifier = project.replicate_model_id
         try:
             if self.replicate_service.model_exists(model_identifier):
@@ -84,5 +92,5 @@ class ModelProjectService:
         except Exception as e:
             print(f"Error deleting Replicate model {model_identifier}: {e}")
 
-        # 5. Finally, delete the project itself
+        # 6. Finally, delete the project itself
         self.model_project_repo.delete_project(project_id)
