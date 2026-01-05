@@ -8,7 +8,6 @@ import structlog
 from dotenv import load_dotenv
 from flask import Flask
 from werkzeug.datastructures import FileStorage
-import time
 
 from src.utils.config import AppConfig
 from src.services.aws.s3 import S3Storage
@@ -56,7 +55,6 @@ def _parse_body(body: Any) -> Dict[str, Any]:
 
 
 def process_message(payload: Dict[str, Any], storage: S3Storage) -> Dict[str, Any]:
-    time.sleep(60)
     image_id = _require_field(payload, "image_id")
     resize_flag = payload.get("resize", True)
     if isinstance(resize_flag, str):

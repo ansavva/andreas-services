@@ -24,3 +24,9 @@ aws logs tail /aws/lambda/storybook-image-normalization-production --follow --re
 ```bash
 aws logs tail /aws/lambda/storybook-image-normalization-production --since 10m --follow --region us-east-1
 ```
+
+## Only New Logs (from now)
+
+```bash
+aws logs tail /aws/lambda/storybook-image-normalization-production --since 0s --follow --region us-east-1
+```
