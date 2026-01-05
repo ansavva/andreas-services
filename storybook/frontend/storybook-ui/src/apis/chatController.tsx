@@ -38,7 +38,7 @@ export const getChatMessages = async (
   limit?: number
 ): Promise<ChatMessage[]> => {
   const params = limit ? { limit } : {};
-  const response = await axiosInstance.get(`/api/chat/project/${projectId}/messages`, { params });
+  const response = await axiosInstance.get(`/api/chat/story-project/${projectId}/chat/messages`, { params });
   return response.data.messages;
 };
 
@@ -48,7 +48,7 @@ export const sendChatMessage = async (
   projectId: string,
   message: string
 ): Promise<{ message: string; model: string; tokens_used: number }> => {
-  const response = await axiosInstance.post(`/api/chat/project/${projectId}/messages`, {
+  const response = await axiosInstance.post(`/api/chat/story-project/${projectId}/chat/messages`, {
     message,
   });
   return response.data;
@@ -59,7 +59,7 @@ export const generateStoryState = async (
   axiosInstance: AxiosInstance,
   projectId: string
 ): Promise<{ story_state: StoryState; tokens_used: number }> => {
-  const response = await axiosInstance.post(`/api/chat/project/${projectId}/generate-state`);
+  const response = await axiosInstance.post(`/api/chat/story-project/${projectId}/chat/state/generate`);
   return response.data;
 };
 
@@ -69,7 +69,7 @@ export const getStoryState = async (
   projectId: string
 ): Promise<StoryState | null> => {
   try {
-    const response = await axiosInstance.get(`/api/chat/project/${projectId}/state`);
+    const response = await axiosInstance.get(`/api/chat/story-project/${projectId}/chat/state`);
     return response.data;
   } catch (error: any) {
     if (error.response?.status === 404) {
@@ -84,7 +84,7 @@ export const getStoryStateVersions = async (
   axiosInstance: AxiosInstance,
   projectId: string
 ): Promise<StoryState[]> => {
-  const response = await axiosInstance.get(`/api/chat/project/${projectId}/state/versions`);
+  const response = await axiosInstance.get(`/api/chat/story-project/${projectId}/chat/state/versions`);
   return response.data.versions;
 };
 
@@ -93,5 +93,33 @@ export const clearChat = async (
   axiosInstance: AxiosInstance,
   projectId: string
 ): Promise<void> => {
-  await axiosInstance.delete(`/api/chat/project/${projectId}/messages`);
+  await axiosInstance.delete(`/api/chat/story-project/${projectId}/chat/messages`);
+};
+
+export const getModelProjectChatMessages = async (
+  axiosInstance: AxiosInstance,
+  projectId: string,
+  limit?: number
+): Promise<ChatMessage[]> => {
+  const params = limit ? { limit } : {};
+  const response = await axiosInstance.get(`/api/chat/model-project/${projectId}/chat/messages`, { params });
+  return response.data.messages;
+};
+
+export const sendModelProjectChatMessage = async (
+  axiosInstance: AxiosInstance,
+  projectId: string,
+  message: string
+): Promise<{ message: string; model: string; tokens_used: number }> => {
+  const response = await axiosInstance.post(`/api/chat/model-project/${projectId}/chat/messages`, {
+    message,
+  });
+  return response.data;
+};
+
+export const clearModelProjectChat = async (
+  axiosInstance: AxiosInstance,
+  projectId: string
+): Promise<void> => {
+  await axiosInstance.delete(`/api/chat/model-project/${projectId}/chat/messages`);
 };

@@ -16,7 +16,7 @@ class OpenAIService:
     def __init__(self):
         self.client = OpenAI(api_key=AppConfig.OPENAI_API_KEY)
         self.default_model = "gpt-4o"  # Latest GPT-4 model
-        self.moderation_model = "text-moderation-latest"
+        self.moderation_model = "omni-moderation-latest"
 
     def chat_completion(self, messages: List[Dict[str, str]],
                        model: str = None,

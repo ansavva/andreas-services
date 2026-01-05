@@ -189,6 +189,14 @@ prompts:
   story_negative_prompt: "prompts/story_negative_prompt.md"
 
 # ============================================
+# CHAT PROMPTS
+# ============================================
+# Prompt files stored as markdown in assets/prompts/
+chat_prompts:
+  story_chat_system: "prompts/story_chat_system.md"
+  model_chat_system: "prompts/model_chat_system.md"
+
+# ============================================
 # AVAILABLE STYLE PRESETS
 # ============================================
 # Stability AI style presets for legacy image-to-image

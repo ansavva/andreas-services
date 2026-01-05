@@ -12,6 +12,7 @@ import SubjectSetupStep from "@/components/steps/modelProjects/subjectSetupStep"
 import TrainingStep from "@/components/steps/modelProjects/trainingStep";
 import GenerateImageStep from "@/components/steps/modelProjects/generateImageStep";
 import ModelProjectSettingsStep from "@/components/steps/modelProjects/modelProjectSettingsStep";
+import ModelProjectChatPanel from "@/components/steps/modelProjects/modelProjectChatPanel";
 import ErrorDisplay from "@/components/common/errorDisplay";
 import { getErrorMessage, logError } from "@/utils/errorHandling";
 
@@ -204,79 +205,86 @@ export default function ModelProjectPage() {
 
   return (
     <DefaultLayout>
-      <div className="container mx-auto px-4">
-        {/* Header */}
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <h1 className="text-5xl font-extrabold leading-none mb-2">
-              {project?.name || "Project"}
-            </h1>
-            {project?.subject_name && (
-              <p className="text-lg text-gray-600 dark:text-gray-400">
-                Subject: {project.subject_name}
-              </p>
-            )}
-            {modelTypeInfo && (
-              <p className="text-base text-gray-500 dark:text-gray-400 mt-1">
-                Model: {modelTypeInfo.name || modelTypeInfo.id}
-              </p>
-            )}
+      <div className="container mx-auto px-4 h-[calc(100vh-96px)] overflow-hidden">
+        <div className="flex flex-col lg:flex-row gap-6 h-full">
+          <div className="flex-1 min-w-0 overflow-y-auto pr-1 lg:pr-4">
+            {/* Header */}
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <h1 className="text-5xl font-extrabold leading-none mb-2">
+                  {project?.name || "Project"}
+                </h1>
+                {project?.subject_name && (
+                  <p className="text-lg text-gray-600 dark:text-gray-400">
+                    Subject: {project.subject_name}
+                  </p>
+                )}
+                {modelTypeInfo && (
+                  <p className="text-base text-gray-500 dark:text-gray-400 mt-1">
+                    Model: {modelTypeInfo.name || modelTypeInfo.id}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <Tabs
+              selectedKey={selectedTab}
+              onSelectionChange={(key) => {
+                const nextTab = key as string;
+                setSelectedTab(nextTab);
+                updateTabQuery(nextTab);
+              }}
+              aria-label="Project tabs"
+              className="mb-6"
+            >
+              {/* Only show Training tab if model requires training */}
+              {requiresTraining && (
+                <Tab key="training" title="Training">
+                  <div>
+                    <TrainingStep
+                      projectId={project?.id || project_id!}
+                      onTrainingComplete={handleTrainingComplete}
+                    />
+                  </div>
+                </Tab>
+              )}
+
+              <Tab
+                key="generate"
+                title="Generate Images"
+                isDisabled={requiresTraining && !hasSuccessfulTraining}
+              >
+                <div>
+                  {(requiresTraining && modelReady) || !requiresTraining ? (
+                    <GenerateImageStep
+                      projectId={project?.id || project_id!}
+                      project={project}
+                      modelTypeInfo={modelTypeInfo}
+                    />
+                  ) : (
+                    <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                      <p>Complete training before generating images</p>
+                    </div>
+                  )}
+                </div>
+              </Tab>
+
+              <Tab key="settings" title="Settings">
+                <div>
+                  <ModelProjectSettingsStep
+                    project={project}
+                    onDeleteProject={onDeleteOpen}
+                    onProjectUpdated={(updated) => setProject(updated)}
+                  />
+                </div>
+              </Tab>
+            </Tabs>
+          </div>
+          <div className="w-full lg:w-96 lg:shrink-0 lg:h-full">
+            <ModelProjectChatPanel projectId={project?.id || project_id!} />
           </div>
         </div>
-
-        {/* Tabs */}
-        <Tabs
-          selectedKey={selectedTab}
-          onSelectionChange={(key) => {
-            const nextTab = key as string;
-            setSelectedTab(nextTab);
-            updateTabQuery(nextTab);
-          }}
-          aria-label="Project tabs"
-          className="mb-6"
-        >
-          {/* Only show Training tab if model requires training */}
-          {requiresTraining && (
-            <Tab key="training" title="Training">
-              <div>
-                <TrainingStep
-                  projectId={project?.id || project_id!}
-                  onTrainingComplete={handleTrainingComplete}
-                />
-              </div>
-            </Tab>
-          )}
-
-          <Tab
-            key="generate"
-            title="Generate Images"
-            isDisabled={requiresTraining && !hasSuccessfulTraining}
-          >
-            <div>
-              {(requiresTraining && modelReady) || !requiresTraining ? (
-                <GenerateImageStep
-                  projectId={project?.id || project_id!}
-                  project={project}
-                  modelTypeInfo={modelTypeInfo}
-                />
-              ) : (
-                <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                  <p>Complete training before generating images</p>
-                </div>
-              )}
-            </div>
-          </Tab>
-
-          <Tab key="settings" title="Settings">
-            <div>
-              <ModelProjectSettingsStep
-                project={project}
-                onDeleteProject={onDeleteOpen}
-                onProjectUpdated={(updated) => setProject(updated)}
-              />
-            </div>
-          </Tab>
-        </Tabs>
 
         {/* Delete Confirmation Modal */}
         <Modal isOpen={isDeleteOpen} onClose={onDeleteClose}>

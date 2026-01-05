@@ -84,7 +84,7 @@ export const compileStory = async (
   axiosInstance: AxiosInstance,
   projectId: string
 ): Promise<{ message: string; pages: StoryPage[] }> => {
-  const response = await axiosInstance.post(`/api/chat/project/${projectId}/compile`);
+  const response = await axiosInstance.post(`/api/chat/story-project/${projectId}/chat/compile`);
   return response.data;
 };
 
