@@ -105,20 +105,19 @@ def download_image(image_id):
         if not image_id:
             return jsonify({"error": "Image ID is required"}), 400
 
-        file_data = image_service.download_image(image_id)
+        # Get image metadata to retrieve filename and storage key
+        from src.repositories.db.image_repo import ImageRepo
+        repo = ImageRepo()
+        image = repo.get_image(image_id)
 
-        if file_data:
-            # Get image metadata to retrieve filename
-            from src.repositories.db.image_repo import ImageRepo
-            repo = ImageRepo()
-            image = repo.get_image(image_id)
-            return send_file(BytesIO(file_data), download_name=image.filename, as_attachment=True)
-        return jsonify({"error": "File not found"}), 404
+        presigned_url = repo.storage.generate_presigned_download(image.s3_key)
+        return jsonify({"url": presigned_url}), 200
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
     except Exception as e:
         log_error(e, "image download")
         return jsonify({"error": str(e)}), 500
+
 
 @image_controller.route("/delete/<image_id>", methods=["DELETE"])
 def delete_image(image_id):

@@ -24,7 +24,7 @@ import { ThemeSwitch } from "@/components/common/theme-switch";
 import { useUserContext } from "@/hooks/userContext";
 import { useAxios } from "@/hooks/axiosContext";
 import { getMyProfile } from "@/apis/userProfileController";
-import { downloadImageById } from "@/apis/imageController";
+import { fetchImageDownloadUrl } from "@/apis/imageController";
 import NewProjectButton from "@/components/projects/newProjectButton";
 
 export const Navbar = () => {
@@ -50,16 +50,11 @@ export const Navbar = () => {
 
       // Fetch profile image if exists
       if (profile.profile_image_id) {
-        const response = await downloadImageById(
+        const url = await fetchImageDownloadUrl(
           axiosInstance,
           profile.profile_image_id,
         );
-        const reader = new FileReader();
-
-        reader.onloadend = () => {
-          setProfileImageUrl(reader.result as string);
-        };
-        reader.readAsDataURL(response);
+        setProfileImageUrl(url);
       }
     } catch (error) {
       console.error("Error fetching profile:", error);

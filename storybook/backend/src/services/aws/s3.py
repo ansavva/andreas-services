@@ -119,3 +119,16 @@ class S3Storage:
                 "Content-Type": content_type,
             },
         }
+
+    def generate_presigned_download(self, key: str, expires_in: int = 3600):
+        """Generate a presigned GET URL for direct browser downloads."""
+        client = self._get_client()
+        url = client.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": self.bucket_name,
+                "Key": key,
+            },
+            ExpiresIn=expires_in,
+        )
+        return url

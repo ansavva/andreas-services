@@ -21,7 +21,7 @@ import { useToast } from "@/hooks/useToast";
 import {
   uploadImage,
   deleteImage,
-  downloadImageById,
+  fetchImageDownloadUrl,
 } from "@/apis/imageController";
 import { getStylePresets } from "@/apis/configController";
 import {
@@ -143,13 +143,8 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
       return;
     }
 
-    const imageBlob = await downloadImageById(axiosInstance, imageId);
-    const reader = new FileReader();
-
-    reader.onloadend = () => {
-      setPortraitImageData(reader.result as string);
-    };
-    reader.readAsDataURL(imageBlob);
+    const url = await fetchImageDownloadUrl(axiosInstance, imageId);
+    setPortraitImageData(url);
   };
 
   const handleFileSelect = () => {

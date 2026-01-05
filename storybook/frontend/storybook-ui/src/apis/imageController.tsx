@@ -97,11 +97,9 @@ export const downloadImage = async (axiosInstance: AxiosInstance, projectId: str
     return response.data;
 };
 
-export const downloadImageById = async (axiosInstance: AxiosInstance, imageId: string) => {
-    const response = await axiosInstance.get(`/api/images/download/${imageId}`, {
-        responseType: "blob",
-    });
-    return response.data;
+export const fetchImageDownloadUrl = async (axiosInstance: AxiosInstance, imageId: string) => {
+    const response = await axiosInstance.get(`/api/images/download/${imageId}`);
+    return response.data.url as string;
 };
 
 export const deleteImage = async (axiosInstance: AxiosInstance, imageId: string) => {

@@ -8,7 +8,7 @@ import {
   uploadProfileImage,
   UserProfile,
 } from "@/apis/userProfileController";
-import { downloadImageById } from "@/apis/imageController";
+import { fetchImageDownloadUrl } from "@/apis/imageController";
 import DefaultLayout from "@/layouts/default";
 import { useToast } from "@/hooks/useToast";
 
@@ -49,12 +49,8 @@ export default function ProfilePage() {
 
   const fetchProfileImage = async (imageId: string) => {
     try {
-      const response = await downloadImageById(axiosInstance, imageId);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProfileImageUrl(reader.result as string);
-      };
-      reader.readAsDataURL(response);
+      const url = await fetchImageDownloadUrl(axiosInstance, imageId);
+      setProfileImageUrl(url);
     } catch (error) {
       console.error("Error fetching profile image:", error);
     }

@@ -1,6 +1,6 @@
 // ImageGrid.tsx
-import React, { useEffect, useState, useRef, useMemo } from "react";
-import { Card, Image, Spinner, Button } from "@heroui/react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Card, Image, Spinner } from "@heroui/react";
 import { useDisclosure } from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -10,7 +10,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import { useAxios } from "@/hooks/axiosContext";
-import { downloadImageById } from "@/apis/imageController";
+import { fetchImageDownloadUrl } from "@/apis/imageController";
 import ImageModal from "@/components/images/imageModal";
 
 type ImageItem = {
@@ -77,16 +77,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
   const fetchThumbnail = async (imageId: string, key: string) => {
     try {
-      const response = await downloadImageById(axiosInstance, imageId);
-      const reader = new FileReader();
-
-      reader.onloadend = () => {
-        setThumbnails((prev) => ({
-          ...prev,
-          [key]: reader.result as string,
-        }));
-      };
-      reader.readAsDataURL(response);
+      const url = await fetchImageDownloadUrl(axiosInstance, imageId);
+      setThumbnails((prev) => ({
+        ...prev,
+        [key]: url,
+      }));
     } catch (error) {
       console.error("Error fetching thumbnail:", error);
       setThumbnails((prev) => ({
@@ -206,16 +201,25 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                   </div>
                 )}
                 {showDeleteButton && (
-                  <Button
-                    isIconOnly
-                    className="absolute top-2 right-2 z-10"
-                    color="danger"
-                    size="sm"
-                    variant="light"
-                    onPress={() => handleImageDelete(image, key)}
+                  <span
+                    aria-label="Delete image"
+                    className="absolute top-2 right-2 z-10 inline-flex items-center justify-center rounded-small text-danger hover:bg-danger-50 dark:hover:bg-danger-50/10 cursor-pointer w-7 h-7"
+                    role="button"
+                    tabIndex={0}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleImageDelete(image, key);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        handleImageDelete(image, key);
+                      }
+                    }}
                   >
-                    <FontAwesomeIcon icon={faTrash} />
-                  </Button>
+                    <FontAwesomeIcon className="text-sm" icon={faTrash} />
+                  </span>
                 )}
               </Card>
             );

@@ -11,7 +11,7 @@ import {
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faDownload, faTrash } from "@fortawesome/free-solid-svg-icons";
 
-import { downloadImageById, deleteImage } from "@/apis/imageController";
+import { fetchImageDownloadUrl, deleteImage } from "@/apis/imageController";
 import { useAxios } from "@/hooks/axiosContext";
 
 type ImageModalProps = {
@@ -39,18 +39,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const handleDownload = async () => {
     try {
-      const fileBlob = await downloadImageById(axiosInstance, imageId);
-      const filename = `${imageId}.png`;
-
-      const downloadUrl = window.URL.createObjectURL(new Blob([fileBlob]));
+      const url = await fetchImageDownloadUrl(axiosInstance, imageId);
       const link = document.createElement("a");
-
-      link.href = downloadUrl;
-      link.setAttribute("download", filename);
+      link.href = url;
+      link.setAttribute("download", imageName || `${imageId}.png`);
       document.body.appendChild(link);
       link.click();
       link.remove();
-      window.URL.revokeObjectURL(downloadUrl);
     } catch (error) {
       console.error("Error downloading image:", error);
     }
