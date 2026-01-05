@@ -58,7 +58,7 @@ resource "aws_iam_role_policy" "lambda" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
+    Statement = concat([
       {
         Effect = "Allow"
         Action = [
@@ -91,7 +91,35 @@ resource "aws_iam_role_policy" "lambda" {
         ]
         Resource = var.queue_arn
       }
-    ]
+    ],
+    var.enable_vpc ? [{
+      Effect = "Allow"
+      Action = [
+        "ec2:CreateNetworkInterface",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DeleteNetworkInterface"
+      ]
+      Resource = "*"
+    }] : [])
+  })
+}
+
+resource "aws_security_group" "worker" {
+  count       = var.enable_vpc ? 1 : 0
+  name        = "${local.name}-lambda"
+  description = "Security group for image normalization worker"
+  vpc_id      = var.vpc_id
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(var.tags, {
+    Name = "${local.name}-lambda"
   })
 }
 
@@ -102,6 +130,14 @@ resource "aws_lambda_function" "worker" {
   image_uri     = "${aws_ecr_repository.worker.repository_url}:latest"
   timeout       = 900
   memory_size   = 512
+
+  dynamic "vpc_config" {
+    for_each = var.enable_vpc ? [1] : []
+    content {
+      subnet_ids         = var.subnet_ids
+      security_group_ids = [aws_security_group.worker[0].id]
+    }
+  }
 
   image_config {
     command = ["src.handlers.lambda.jobs.image_normalization_handler.handler"]

@@ -86,6 +86,9 @@ module "image_worker" {
 
   s3_bucket_arn = module.storage.backend_files_bucket_arn
   queue_arn     = module.image_queue.queue_arn
+  enable_vpc    = true
+  vpc_id        = data.terraform_remote_state.shared.outputs.shared_vpc_id
+  subnet_ids    = data.terraform_remote_state.shared.outputs.shared_private_subnet_ids
 
   tags = local.common_tags
 }
@@ -125,6 +128,16 @@ resource "aws_security_group_rule" "lambda_to_docdb" {
   security_group_id        = data.terraform_remote_state.shared.outputs.shared_docdb_security_group_id
   source_security_group_id = module.compute.lambda_security_group_id
   description              = "Allow Lambda access to shared DocumentDB"
+}
+
+resource "aws_security_group_rule" "image_worker_to_docdb" {
+  type                     = "ingress"
+  from_port                = 27017
+  to_port                  = 27017
+  protocol                 = "tcp"
+  security_group_id        = data.terraform_remote_state.shared.outputs.shared_docdb_security_group_id
+  source_security_group_id = module.image_worker.lambda_security_group_id
+  description              = "Allow image worker Lambda access to shared DocumentDB"
 }
 
 # Hosting module - CloudFront + Route53

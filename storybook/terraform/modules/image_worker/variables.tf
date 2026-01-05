@@ -20,6 +20,24 @@ variable "queue_arn" {
   type        = string
 }
 
+variable "enable_vpc" {
+  description = "Attach the worker Lambda to a VPC"
+  type        = bool
+  default     = false
+}
+
+variable "vpc_id" {
+  description = "VPC ID for the worker Lambda"
+  type        = string
+  default     = null
+}
+
+variable "subnet_ids" {
+  description = "Subnet IDs for the worker Lambda"
+  type        = list(string)
+  default     = []
+}
+
 variable "environment_variables" {
   description = "Optional Lambda environment variables"
   type        = map(string)
