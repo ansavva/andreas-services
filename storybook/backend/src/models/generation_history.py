@@ -16,11 +16,23 @@ class GenerationHistory:
     created_at: Optional[datetime] = None
     reference_image_ids: Optional[List[str]] = None  # Reference images used for this generation
     include_subject_description: Optional[bool] = None
-    status: str = "completed"  # draft, completed
+    prediction_id: Optional[str] = None
+    provider: Optional[str] = None
+    error_message: Optional[str] = None
+    status: str = "completed"  # draft, processing, completed, failed, canceled
 
     STATUS_DRAFT = "draft"
+    STATUS_PROCESSING = "processing"
     STATUS_COMPLETED = "completed"
-    VALID_STATUSES = [STATUS_DRAFT, STATUS_COMPLETED]
+    STATUS_FAILED = "failed"
+    STATUS_CANCELED = "canceled"
+    VALID_STATUSES = [
+        STATUS_DRAFT,
+        STATUS_PROCESSING,
+        STATUS_COMPLETED,
+        STATUS_FAILED,
+        STATUS_CANCELED,
+    ]
 
     def to_dict(self):
         """Convert to dictionary for MongoDB storage"""
@@ -37,6 +49,12 @@ class GenerationHistory:
             data['reference_image_ids'] = self.reference_image_ids
         if self.include_subject_description is not None:
             data['include_subject_description'] = self.include_subject_description
+        if self.prediction_id is not None:
+            data['prediction_id'] = self.prediction_id
+        if self.provider is not None:
+            data['provider'] = self.provider
+        if self.error_message is not None:
+            data['error_message'] = self.error_message
         return data
 
     @staticmethod
@@ -51,5 +69,8 @@ class GenerationHistory:
             created_at=data.get('created_at'),
             reference_image_ids=data.get('reference_image_ids'),
             include_subject_description=data.get('include_subject_description'),
+            prediction_id=data.get('prediction_id') or data.get('replicate_prediction_id'),
+            provider=data.get('provider'),
+            error_message=data.get('error_message'),
             status=data.get('status', GenerationHistory.STATUS_COMPLETED)
         )

@@ -1,5 +1,15 @@
 import React, { useRef, useState, useEffect, useMemo } from "react";
-import { Button, Card, CardBody, Spinner, Chip } from "@heroui/react";
+import {
+  Button,
+  Card,
+  CardBody,
+  Spinner,
+  Chip,
+  Dropdown,
+  DropdownTrigger,
+  DropdownMenu,
+  DropdownItem,
+} from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faUpload,
@@ -8,7 +18,7 @@ import {
   faExclamationCircle,
   faRotate,
   faPersonRunning,
-  faTrash,
+  faEllipsisVertical,
 } from "@fortawesome/free-solid-svg-icons";
 
 import { useAxios } from "@/hooks/axiosContext";
@@ -567,30 +577,7 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
                   )}
                 </div>
               </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500 dark:text-gray-400 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
-                <FontAwesomeIcon
-                  className="mb-3 opacity-30"
-                  icon={faUpload}
-                  size="2x"
-                />
-                {images.length === 0 ? (
-                  <>
-                    <p>No draft training images yet</p>
-                    <p className="text-sm mt-2">
-                      Upload images to begin training your model
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p>No draft images available</p>
-                    <p className="text-sm mt-2">
-                      Upload new photos to start another training run
-                    </p>
-                  </>
-                )}
-              </div>
-            )}
+            ) : null}
           </CardBody>
         </Card>
       </div>
@@ -639,7 +626,32 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
                   thumbnailHeight={112}
                 />
 
-                <div className="flex flex-col gap-2 justify-center">
+                <div className="relative flex flex-col gap-2 justify-center">
+                  <div className="absolute top-0 right-0 z-10">
+                    <Dropdown placement="bottom-end">
+                      <DropdownTrigger>
+                        <Button
+                          className="text-xs h-6"
+                          size="sm"
+                          variant="light"
+                          isIconOnly
+                          aria-label="Training run actions"
+                        >
+                          <FontAwesomeIcon icon={faEllipsisVertical} />
+                        </Button>
+                      </DropdownTrigger>
+                      <DropdownMenu aria-label="Training run actions" variant="flat">
+                        <DropdownItem
+                          key="delete"
+                          color="danger"
+                          onPress={() => handleDeleteTrainingRun(run.id)}
+                          isDisabled={deletingRunId === run.id}
+                        >
+                          Delete run
+                        </DropdownItem>
+                      </DropdownMenu>
+                    </Dropdown>
+                  </div>
                   <div>
                     <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                       {new Date(run.created_at).toLocaleDateString()} at{" "}
@@ -654,41 +666,43 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
                     </p>
                   </div>
                   <div>
-                    <Chip
-                      className="capitalize p-3"
-                      color={getStatusColor(run.status)}
-                      size="sm"
-                      startContent={
-                        run.status === "processing" ? (
-                          <FontAwesomeIcon
-                            className="text-xs mr-1 animate-spin"
-                            icon={faPersonRunning}
-                          />
-                        ) : (
-                          <FontAwesomeIcon
-                            className="text-xs mr-1"
-                            icon={getStatusIcon(run.status)}
-                          />
-                        )
-                      }
-                      variant="flat"
-                    >
-                      {run.status}
-                    </Chip>
-                    {run.status !== "succeeded" &&
-                      run.status !== "failed" &&
-                      run.status !== "canceled" && (
-                        <Button
-                          className="text-xs h-6"
-                          size="sm"
-                          variant="light"
-                          isIconOnly
-                          aria-label="Refresh status"
-                          onPress={() => handleRefreshStatus(run.id)}
-                        >
-                          <FontAwesomeIcon icon={faRotate} />
-                        </Button>
-                      )}
+                    <div className="flex items-center gap-2">
+                      <Chip
+                        className="capitalize p-3"
+                        color={getStatusColor(run.status)}
+                        size="sm"
+                        startContent={
+                          run.status === "processing" ? (
+                            <FontAwesomeIcon
+                              className="text-xs mr-1 animate-spin"
+                              icon={faPersonRunning}
+                            />
+                          ) : (
+                            <FontAwesomeIcon
+                              className="text-xs mr-1"
+                              icon={getStatusIcon(run.status)}
+                            />
+                          )
+                        }
+                        variant="flat"
+                      >
+                        {run.status}
+                      </Chip>
+                      {run.status !== "succeeded" &&
+                        run.status !== "failed" &&
+                        run.status !== "canceled" && (
+                          <Button
+                            className="text-xs h-6"
+                            size="sm"
+                            variant="light"
+                            isIconOnly
+                            aria-label="Refresh status"
+                            onPress={() => handleRefreshStatus(run.id)}
+                          >
+                            <FontAwesomeIcon icon={faRotate} />
+                          </Button>
+                        )}
+                    </div>
                   </div>
                   {run.status === "processing" && (
                     <p className="text-xs text-gray-500">
@@ -700,18 +714,9 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
                         {run.error_message}
                       </p>
                     )}
-                  <Button
-                    className="w-fit mt-2"
-                    color="danger"
-                    size="sm"
-                    startContent={<FontAwesomeIcon icon={faTrash} />}
-                    variant="light"
-                    isDisabled={deletingRunId === run.id}
-                    isLoading={deletingRunId === run.id}
-                    onPress={() => handleDeleteTrainingRun(run.id)}
-                  >
-                    Delete Run
-                  </Button>
+                  {deletingRunId === run.id && (
+                    <div className="text-xs text-gray-500">Deleting run...</div>
+                  )}
                 </div>
               </div>
               );

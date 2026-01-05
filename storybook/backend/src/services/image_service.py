@@ -125,6 +125,43 @@ class ImageService:
             image_id=image_id,
         )
 
+    def save_image(
+        self,
+        project_id: str,
+        file: FileStorage,
+        filename: str,
+        image_type: str = "generated",
+        image_id: Optional[str] = None,
+    ) -> Image:
+        """Save an image as-is without normalization or queueing."""
+        image_id = image_id or str(uuid.uuid4())
+        project_id = str(project_id)
+
+        destination_key = self.image_repo.build_s3_key(project_id, image_id, filename)
+
+        file.stream.seek(0)
+        file_bytes = file.stream.read()
+        file_stream = io.BytesIO(file_bytes)
+        file_stream.seek(0)
+        output_file = FileStorage(
+            stream=file_stream,
+            filename=filename,
+            content_type=file.content_type,
+        )
+        output_file.headers["Content-Length"] = str(len(file_bytes))
+        self.image_repo.storage.upload_file(output_file, destination_key)
+
+        return self.image_repo.create_image_record(
+            project_id=project_id,
+            image_id=image_id,
+            filename=filename,
+            s3_key=destination_key,
+            content_type=file.content_type,
+            size_bytes=len(file_bytes),
+            image_type=image_type,
+            processing=False,
+        )
+
     def _enqueue_normalization_job(
         self,
         project_id: str,

@@ -9,6 +9,10 @@ export interface GenerationHistoryItem {
   reference_image_ids?: string[];
   image_processing?: Record<string, boolean>;
   include_subject_description?: boolean;
+  status?: string;
+  prediction_id?: string | null;
+  provider?: string | null;
+  error_message?: string | null;
   created_at: string;
   user_profile?: {
     display_name: string | null;
@@ -16,30 +20,22 @@ export interface GenerationHistoryItem {
   };
 }
 
-export const createGenerationHistory = async (
-  axiosInstance: AxiosInstance,
-  projectId: string,
-  prompt: string,
-  imageIds: string[],
-  referenceImageIds?: string[],
-  includeSubjectDescription?: boolean
-): Promise<GenerationHistoryItem> => {
-  const response = await axiosInstance.post("/api/generation-history/create", {
-    project_id: projectId,
-    prompt: prompt,
-    image_ids: imageIds,
-    reference_image_ids: referenceImageIds,
-    include_subject_description: includeSubjectDescription,
-  });
-  return response.data;
-};
-
 export const getGenerationHistory = async (
   axiosInstance: AxiosInstance,
   historyId: string
 ): Promise<GenerationHistoryItem> => {
   const response = await axiosInstance.get(
     `/api/generation-history/${historyId}`
+  );
+  return response.data;
+};
+
+export const updateGenerationHistoryStatus = async (
+  axiosInstance: AxiosInstance,
+  historyId: string
+): Promise<GenerationHistoryItem> => {
+  const response = await axiosInstance.get(
+    `/api/generation-history/${historyId}/status`
   );
   return response.data;
 };

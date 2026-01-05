@@ -151,7 +151,7 @@ def generate():
                         part.strip() for part in str(reference_ids_source).split(",") if part.strip()
                     ]
 
-        image = model_service.generate(
+        history = model_service.generate(
             prompt=prompt,
             project_id=project_id,
             reference_images=reference_images if reference_images else None,
@@ -159,13 +159,21 @@ def generate():
             include_subject_description=include_subject_description
         )
 
-        # Convert Image object to dict for JSON response
         return jsonify({
-            "id": image.id,
-            "filename": image.filename,
-            "content_type": image.content_type,
-            "size_bytes": image.size_bytes,
-            "created_at": image.created_at.isoformat() if image.created_at else None
+            "history": {
+                "id": history.id,
+                "project_id": history.project_id,
+                "user_id": history.user_id,
+                "prompt": history.prompt,
+                "image_ids": history.image_ids,
+                "reference_image_ids": history.reference_image_ids or [],
+                "status": history.status,
+                "prediction_id": history.prediction_id,
+                "provider": history.provider,
+                "error_message": history.error_message,
+                "include_subject_description": history.include_subject_description,
+                "created_at": history.created_at.isoformat() if history.created_at else None,
+            }
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500

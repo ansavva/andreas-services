@@ -1,13 +1,26 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { Button, Spinner } from "@heroui/react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Button,
+  Spinner,
+  Chip,
+  Dropdown,
+  DropdownTrigger,
+  DropdownMenu,
+  DropdownItem,
+} from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faTrash } from "@fortawesome/free-solid-svg-icons";
+import {
+  faEllipsisVertical,
+  faTrash,
+  faWandMagicSparkles,
+} from "@fortawesome/free-solid-svg-icons";
 
 import { useAxios } from "@/hooks/axiosContext";
 import {
   GenerationHistoryItem,
   listGenerationHistory,
   deleteGenerationHistory,
+  updateGenerationHistoryStatus,
 } from "@/apis/generationHistoryController";
 import { deleteImage } from "@/apis/imageController";
 import ImageGrid from "@/components/images/imageGrid";
@@ -30,6 +43,8 @@ const GenerationHistoryList: React.FC<GenerationHistoryListProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const pollRef = useRef<number | null>(null);
+  const pollInFlightRef = useRef(false);
 
   const fetchHistory = useCallback(async () => {
     if (!projectId) return;
@@ -51,6 +66,51 @@ const GenerationHistoryList: React.FC<GenerationHistoryListProps> = ({
   useEffect(() => {
     fetchHistory();
   }, [fetchHistory, refreshSignal]);
+
+  useEffect(() => {
+    const activeHistories = history.filter(
+      (item) => item.status === "processing" && item.prediction_id,
+    );
+
+    if (pollRef.current) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    if (!activeHistories.length) {
+      return;
+    }
+
+    pollRef.current = window.setInterval(async () => {
+      if (pollInFlightRef.current) {
+        return;
+      }
+      pollInFlightRef.current = true;
+      try {
+        const updates = await Promise.all(
+          activeHistories.map((item) =>
+            updateGenerationHistoryStatus(axiosInstance, item.id),
+          ),
+        );
+        const updatedById = new Map(updates.map((item) => [item.id, item]));
+        setHistory((prev) =>
+          prev.map((item) =>
+            updatedById.has(item.id) ? { ...item, ...updatedById.get(item.id) } : item,
+          ),
+        );
+      } catch (err) {
+        console.error("Failed to poll generation history", err);
+      } finally {
+        pollInFlightRef.current = false;
+      }
+    }, 5000);
+
+    return () => {
+      if (pollRef.current) {
+        window.clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [history, axiosInstance]);
 
   const handleDelete = async (historyId: string) => {
     if (deleteConfirmId !== historyId) {
@@ -107,19 +167,50 @@ const GenerationHistoryList: React.FC<GenerationHistoryListProps> = ({
       )}
       {history.map((item) => (
         <div key={item.id} className="flex flex-wrap gap-4">
-          <ImageGrid
-            className="flex flex-wrap gap-4"
-            images={item.image_ids.map((imageId) => ({
-              id: imageId,
-              processing: item.image_processing?.[imageId] ?? true,
-            }))}
-            showModal={false}
-            thumbnailWidth={120}
-            thumbnailHeight={120}
-            onImageClick={(imageId) => onImageClick?.(imageId, item.prompt)}
-          />
+          {item.image_ids.length > 0 ? (
+            <ImageGrid
+              className="flex flex-wrap gap-4"
+              images={item.image_ids.map((imageId) => ({
+                id: imageId,
+                processing: item.status !== "completed",
+              }))}
+              showModal={false}
+              thumbnailWidth={120}
+              thumbnailHeight={120}
+              onImageClick={(imageId) => onImageClick?.(imageId, item.prompt)}
+            />
+          ) : (
+            <div className="w-[120px] h-[120px] rounded-xl border border-default-700/60 bg-default-800/40 flex flex-col items-center justify-center text-xs text-gray-300">
+              <FontAwesomeIcon className="mb-2 text-sm" icon={faWandMagicSparkles} />
+              Generating...
+            </div>
+          )}
 
-          <div className="flex flex-col gap-2 justify-center flex-1 min-w-[200px]">
+          <div className="relative flex flex-col gap-2 justify-center flex-1 min-w-[200px]">
+            <div className="absolute top-0 right-0 z-10">
+              <Dropdown placement="bottom-end">
+                <DropdownTrigger>
+                  <Button
+                    className="text-xs h-6"
+                    size="sm"
+                    variant="light"
+                    isIconOnly
+                    aria-label="Generation actions"
+                  >
+                    <FontAwesomeIcon icon={faEllipsisVertical} />
+                  </Button>
+                </DropdownTrigger>
+                <DropdownMenu aria-label="Generation actions" variant="flat">
+                  <DropdownItem
+                    key="delete"
+                    color="danger"
+                    onPress={() => handleDelete(item.id)}
+                  >
+                    Delete generation
+                  </DropdownItem>
+                </DropdownMenu>
+              </Dropdown>
+            </div>
             <div>
               <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                 {new Date(item.created_at).toLocaleDateString()} at{" "}
@@ -129,6 +220,14 @@ const GenerationHistoryList: React.FC<GenerationHistoryListProps> = ({
                 })}
               </p>
               <p className="text-gray-900 dark:text-gray-100">{item.prompt}</p>
+              {item.status && item.status !== "completed" && (
+                <Chip className="mt-2 capitalize" color="warning" size="sm" variant="flat">
+                  {item.status}
+                </Chip>
+              )}
+              {item.status === "failed" && item.error_message && (
+                <p className="text-xs text-danger mt-1">{item.error_message}</p>
+              )}
             </div>
 
             {item.reference_image_ids && item.reference_image_ids.length > 0 && (
@@ -142,7 +241,7 @@ const GenerationHistoryList: React.FC<GenerationHistoryListProps> = ({
                     .filter(Boolean)
                     .map((referenceId) => ({
                       id: referenceId as string,
-                      processing: item.image_processing?.[referenceId as string] ?? true,
+                      processing: false,
                     }))}
                   showModal={false}
                   thumbnailWidth={56}
@@ -159,32 +258,19 @@ const GenerationHistoryList: React.FC<GenerationHistoryListProps> = ({
               )}
             </div>
 
-            <div className="mt-2">
-              {deleteConfirmId === item.id ? (
-                <div className="flex gap-2 items-center">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                    Delete this generation?
-                  </span>
-                  <Button color="danger" size="sm" onPress={() => handleDelete(item.id)}>
-                    Confirm
-                  </Button>
-                  <Button size="sm" variant="light" onPress={cancelDelete}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  color="danger"
-                  size="sm"
-                  variant="light"
-                  isIconOnly
-                  aria-label="Delete generation"
-                  onPress={() => handleDelete(item.id)}
-                >
-                  <FontAwesomeIcon icon={faTrash} />
+            {deleteConfirmId === item.id && (
+              <div className="flex gap-2 items-center">
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                  Delete this generation?
+                </span>
+                <Button color="danger" size="sm" onPress={() => handleDelete(item.id)}>
+                  Confirm
                 </Button>
-              )}
-            </div>
+                <Button size="sm" variant="light" onPress={cancelDelete}>
+                  Cancel
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       ))}

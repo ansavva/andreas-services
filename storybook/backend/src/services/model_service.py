@@ -4,15 +4,19 @@ Supports multiple Replicate profiles (e.g., Stability, Flux)
 """
 from typing import Optional, Dict, Any, List
 import re
+import uuid
 from flask import request
 from io import BytesIO
 from werkzeug.datastructures import FileStorage
+import requests
 
 from src.models.image import Image
 from src.models.training_run import TrainingRun
 from src.models.model_project import ModelProject
+from src.models.generation_history import GenerationHistory
 from src.services.image_service import ImageService
 from src.repositories.db.training_run_repo import TrainingRunRepo
+from src.repositories.db.generation_history_repo import GenerationHistoryRepo
 from src.repositories.db.model_project_repo import ModelProjectRepo
 from src.services.external.replicate_service import ReplicateService
 from src.services.external.stability_service import StabilityService
@@ -32,6 +36,7 @@ class ModelService:
         self.stability = StabilityService()  # Stability AI proxy
         self.training_run_repo = TrainingRunRepo()
         self.model_project_repo = ModelProjectRepo()
+        self.generation_history_repo = GenerationHistoryRepo()
 
     def __get_model_name(self, project: ModelProject) -> str:
         """
@@ -241,7 +246,7 @@ class ModelService:
                 reference_images: Optional[List[Any]] = None,
                 reference_image_ids: Optional[List[str]] = None,
                 config_override: Optional[Dict[str, Any]] = None,
-                include_subject_description: bool = True) -> Image:
+                include_subject_description: bool = True):
         """
         Generate an image using the model (trained or generation-only)
 
@@ -254,20 +259,18 @@ class ModelService:
                            Example: {"aspect_ratio": "16:9", "guidance_scale": 4.0}
 
         Returns:
-            Image object with metadata
-
-        Raises:
-            Exception: If generation or upload fails
+            GenerationHistory object with status and prediction ID
         """
         project = self.model_project_repo.get_project(project_id)
         profile = project.model_type or ModelProject.DEFAULT_MODEL_TYPE
         provider = project.get_provider()
 
-        prompt_with_description = prompt.strip() if isinstance(prompt, str) else prompt
+        prompt_text = prompt.strip() if isinstance(prompt, str) else prompt
+        prompt_with_description = prompt_text
         if include_subject_description and project.subject_description:
             desc = project.subject_description.strip()
             if desc:
-                prompt_with_description = f"{prompt_with_description}\n\nSubject description: {desc}" if prompt_with_description else desc
+                    prompt_with_description = f"{prompt_with_description}\n\nSubject description: {desc}" if prompt_with_description else desc
 
         resolved_reference_images: List[Any] = list(reference_images or [])
         if reference_image_ids:
@@ -275,72 +278,38 @@ class ModelService:
                 self._load_reference_images_from_ids(reference_image_ids)
             )
 
+        resolved_reference_image_ids = [str(item) for item in (reference_image_ids or []) if item]
+
         # For generation-only models, use direct generation (no trained model needed)
         if not project.requires_training():
             # Route to the appropriate generation service based on provider
             if provider == "stability_ai":
-                # Use Stability AI for generation
-                gen_config = generation_models_config.get_generation_config(provider, profile)
-                method = generation_models_config.get_method(provider, profile)
-
-                # Build prompts from config
-                prompt_to_use = generation_models_config.build_prompt(provider, profile, prompt_with_description)
-                negative_prompt = generation_models_config.get_negative_prompt_template(provider, profile)
-
-                if method == "style_transfer":
-                    # Style transfer requires both a style reference and an init image
-                    if not resolved_reference_images or len(resolved_reference_images) == 0:
-                        raise ValueError("Style transfer requires at least one reference image")
-
-                    style_id = generation_models_config.get_style_reference_id(provider, profile)
-                    style_image = generation_models_config.get_style_image(style_id) if style_id else None
-
-                    if not style_image:
-                        raise ValueError(f"Style reference '{style_id}' not found")
-
-                    style_strength = gen_config.get('style_strength', 0.7)
-
-                    # Use style transfer
-                    image_bytes = self.stability.style_transfer(
-                        init_image=resolved_reference_images[0],
-                        style_image=style_image,
-                        prompt=prompt_to_use,
-                        style_strength=style_strength,
-                        negative_prompt=negative_prompt,
-                        output_format=gen_config.get('output_format', 'png')
-                    )
-                else:
-                    # Standard image generation (image_to_image or text_to_image)
-                    style_preset = generation_models_config.get_style_preset(provider, profile)
-                    image_strength = gen_config.get('image_strength', 0.35)
-
-                    # Use first reference image if provided
-                    init_image = resolved_reference_images[0] if resolved_reference_images else None
-
-                    result = self.stability.generate_image(
-                        prompt=prompt_to_use,
-                        negative_prompt=negative_prompt,
-                        style_preset=style_preset,
-                        init_image=init_image,
-                        image_strength=image_strength,
-                        width=gen_config.get('width', 1024),
-                        height=gen_config.get('height', 1024),
-                        steps=gen_config.get('steps', 30),
-                        cfg_scale=gen_config.get('cfg_scale', 7.0)
-                    )
-
-                    # Convert base64 to bytes
-                    image_bytes = self.stability.decode_base64_image(result['image_data']).read()
+                prediction_id = str(uuid.uuid4())
+                return self._create_generation_history(
+                    project_id=project_id,
+                    prompt=prompt_text,
+                    reference_image_ids=resolved_reference_image_ids,
+                    include_subject_description=include_subject_description,
+                    prediction_id=prediction_id,
+                    provider="stability_ai",
+                )
             else:
                 # Use Replicate for generation-only models (e.g., flux_pro)
                 # Use first reference image if provided (for models that support it like Flux Redux)
                 image_prompt = resolved_reference_images[0] if resolved_reference_images else None
-
-                image_bytes = self.replicate.generate_with_model(
+                prediction = self.replicate.create_prediction_with_model(
                     prompt=prompt_with_description,
                     profile=profile,
                     image_prompt=image_prompt,
-                    config_override=config_override
+                    config_override=config_override,
+                )
+                return self._create_generation_history(
+                    project_id=project_id,
+                    prompt=prompt_text,
+                    reference_image_ids=resolved_reference_image_ids,
+                    include_subject_description=include_subject_description,
+                    prediction_id=prediction.id,
+                    provider="replicate",
                 )
         else:
             # For training models, use the trained model
@@ -356,22 +325,248 @@ class ModelService:
                 if subject_token.lower() not in prompt_to_use.lower():
                     prompt_to_use = f"{subject_token}, {prompt_to_use}".strip(", ")
 
-            # Generate image with trained model (config comes from YAML, with optional overrides)
-            image_bytes = self.replicate.generate(
+            prediction = self.replicate.create_prediction(
                 prompt=prompt_to_use,
                 model_name=model_identifier,
                 config_override=config_override,
-                profile=profile
+                profile=profile,
+            )
+            return self._create_generation_history(
+                project_id=project_id,
+                prompt=prompt_text,
+                reference_image_ids=resolved_reference_image_ids,
+                include_subject_description=include_subject_description,
+                prediction_id=prediction.id,
+                provider="replicate",
             )
 
-        # Convert bytes to file-like object
         image_data = BytesIO(image_bytes)
         file = FileStorage(image_data)
+        image = self.image_service.save_image(project_id, file, "out.jpg", image_type="generated")
 
-        # Upload to storage and create database record with image_type="generated"
-        image = self.image_service.upload_image(project_id, file, "out.jpg", image_type="generated")
+        return self._create_generation_history(
+            project_id=project_id,
+            prompt=prompt_text,
+            reference_image_ids=resolved_reference_image_ids,
+            include_subject_description=include_subject_description,
+            image_ids=[image.id],
+            status=GenerationHistory.STATUS_COMPLETED,
+            provider=provider,
+        )
 
-        return image
+    def _create_generation_history(
+        self,
+        project_id: str,
+        prompt: str,
+        reference_image_ids: Optional[List[str]] = None,
+        include_subject_description: Optional[bool] = None,
+        prediction_id: Optional[str] = None,
+        provider: Optional[str] = None,
+        image_ids: Optional[List[str]] = None,
+        status: str = GenerationHistory.STATUS_PROCESSING,
+    ) -> GenerationHistory:
+        draft = self.generation_history_repo.get_draft_by_project(project_id)
+        if draft:
+            if status == GenerationHistory.STATUS_PROCESSING:
+                return self.generation_history_repo.promote_draft_to_processing(
+                    draft.id,
+                    prompt,
+                    reference_image_ids=reference_image_ids,
+                    include_subject_description=include_subject_description,
+                    prediction_id=prediction_id,
+                    provider=provider,
+                )
+            return self.generation_history_repo.finalize_draft(
+                draft.id,
+                prompt,
+                image_ids or [],
+                reference_image_ids=reference_image_ids,
+                include_subject_description=include_subject_description,
+            )
+
+        return self.generation_history_repo.create(
+            project_id=project_id,
+            prompt=prompt,
+            image_ids=image_ids or [],
+            reference_image_ids=reference_image_ids or [],
+            status=status,
+            include_subject_description=include_subject_description,
+            prediction_id=prediction_id,
+            provider=provider,
+        )
+
+    def update_generation_history_status(self, history_id: str) -> GenerationHistory:
+        history = self.generation_history_repo.get_by_id(history_id)
+        if history.status != GenerationHistory.STATUS_PROCESSING:
+            return history
+
+        if history.provider == "replicate" and history.prediction_id:
+            prediction = self.replicate.get_prediction_details(history.prediction_id)
+            status = prediction.get("status")
+            error_message = prediction.get("error_message")
+
+            if status in ("starting", "processing"):
+                return history
+
+            if status == "succeeded":
+                if history.image_ids:
+                    return self.generation_history_repo.update_status(
+                        history.id,
+                        GenerationHistory.STATUS_COMPLETED,
+                        image_ids=history.image_ids,
+                    )
+
+                output_urls = prediction.get("output_urls") or []
+                image_ids: List[str] = []
+                for index, url in enumerate(output_urls):
+                    response = requests.get(url, timeout=30)
+                    if response.status_code != 200:
+                        continue
+                    image_data = BytesIO(response.content)
+                    file = FileStorage(image_data)
+                    filename = f"generated_{history.id}_{index + 1}.jpg"
+                    image = self.image_service.save_image(
+                        history.project_id,
+                        file,
+                        filename,
+                        image_type="generated",
+                    )
+                    image_ids.append(image.id)
+
+                return self.generation_history_repo.update_status(
+                    history.id,
+                    GenerationHistory.STATUS_COMPLETED,
+                    image_ids=image_ids,
+                )
+
+            if status == "failed":
+                return self.generation_history_repo.update_status(
+                    history.id,
+                    GenerationHistory.STATUS_FAILED,
+                    error_message=error_message,
+                )
+
+            if status == "canceled":
+                return self.generation_history_repo.update_status(
+                    history.id,
+                    GenerationHistory.STATUS_CANCELED,
+                    error_message=error_message,
+                )
+
+        if history.provider == "stability_ai":
+            try:
+                if history.image_ids:
+                    return self.generation_history_repo.update_status(
+                        history.id,
+                        GenerationHistory.STATUS_COMPLETED,
+                        image_ids=history.image_ids,
+                    )
+
+                project = self.model_project_repo.get_project(history.project_id)
+                prompt_with_description = self._build_prompt_with_description(
+                    history.prompt,
+                    project,
+                    history.include_subject_description,
+                )
+                image_bytes = self._generate_stability_image_bytes(
+                    project,
+                    prompt_with_description,
+                    history.reference_image_ids or [],
+                )
+                image_data = BytesIO(image_bytes)
+                file = FileStorage(image_data)
+                image = self.image_service.save_image(
+                    history.project_id,
+                    file,
+                    f"generated_{history.id}_1.jpg",
+                    image_type="generated",
+                )
+                return self.generation_history_repo.update_status(
+                    history.id,
+                    GenerationHistory.STATUS_COMPLETED,
+                    image_ids=[image.id],
+                )
+            except Exception as exc:
+                return self.generation_history_repo.update_status(
+                    history.id,
+                    GenerationHistory.STATUS_FAILED,
+                    error_message=str(exc),
+                )
+
+        return history
+
+    def _build_prompt_with_description(
+        self,
+        prompt: str,
+        project: ModelProject,
+        include_subject_description: Optional[bool],
+    ) -> str:
+        prompt_text = prompt.strip() if isinstance(prompt, str) else prompt
+        if include_subject_description and project.subject_description:
+            desc = project.subject_description.strip()
+            if desc:
+                return f"{prompt_text}\n\nSubject description: {desc}" if prompt_text else desc
+        return prompt_text
+
+    def _generate_stability_image_bytes(
+        self,
+        project: ModelProject,
+        prompt_with_description: str,
+        reference_image_ids: List[str],
+    ) -> bytes:
+        provider = "stability_ai"
+        profile = project.model_type or ModelProject.DEFAULT_MODEL_TYPE
+        gen_config = generation_models_config.get_generation_config(provider, profile)
+        method = generation_models_config.get_method(provider, profile)
+
+        prompt_to_use = generation_models_config.build_prompt(
+            provider,
+            profile,
+            prompt_with_description,
+        )
+        negative_prompt = generation_models_config.get_negative_prompt_template(
+            provider,
+            profile,
+        )
+
+        resolved_reference_images = self._load_reference_images_from_ids(reference_image_ids)
+
+        if method == "style_transfer":
+            if not resolved_reference_images:
+                raise ValueError("Style transfer requires at least one reference image")
+
+            style_id = generation_models_config.get_style_reference_id(provider, profile)
+            style_image = generation_models_config.get_style_image(style_id) if style_id else None
+            if not style_image:
+                raise ValueError(f"Style reference '{style_id}' not found")
+
+            style_strength = gen_config.get('style_strength', 0.7)
+            return self.stability.style_transfer(
+                init_image=resolved_reference_images[0],
+                style_image=style_image,
+                prompt=prompt_to_use,
+                style_strength=style_strength,
+                negative_prompt=negative_prompt,
+                output_format=gen_config.get('output_format', 'png'),
+            )
+
+        style_preset = generation_models_config.get_style_preset(provider, profile)
+        image_strength = gen_config.get('image_strength', 0.35)
+        init_image = resolved_reference_images[0] if resolved_reference_images else None
+
+        result = self.stability.generate_image(
+            prompt=prompt_to_use,
+            negative_prompt=negative_prompt,
+            style_preset=style_preset,
+            init_image=init_image,
+            image_strength=image_strength,
+            width=gen_config.get('width', 1024),
+            height=gen_config.get('height', 1024),
+            steps=gen_config.get('steps', 30),
+            cfg_scale=gen_config.get('cfg_scale', 7.0),
+        )
+
+        return self.stability.decode_base64_image(result['image_data']).read()
 
     def cancel_training(self, training_id: str) -> bool:
         """

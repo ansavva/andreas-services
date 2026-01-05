@@ -8,7 +8,6 @@ import { useAxios } from "@/hooks/axiosContext";
 import { generate } from "@/apis/modelController";
 import { deleteImage, getImageStatus, uploadImage } from "@/apis/imageController";
 import {
-  createGenerationHistory,
   GenerationHistoryItem,
   getDraftGenerationHistory,
   updateDraftGenerationPrompt,
@@ -263,20 +262,13 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({
     try {
       // Generate the image
       const referenceIds = availableReferenceImages.map((image) => image.id);
-      const generatedImage = await generate(axiosInstance, trimmedPrompt, projectId, {
+      const response = await generate(axiosInstance, trimmedPrompt, projectId, {
         referenceImageIds: referenceIds,
         includeSubjectDescription,
       });
-
-      // Create history entry with the prompt and generated image
-      await createGenerationHistory(
-        axiosInstance,
-        projectId,
-        trimmedPrompt,
-        [generatedImage.id],
-        referenceIds,
-        includeSubjectDescription,
-      );
+      if (!response?.history?.id) {
+        throw new Error("Failed to start generation.");
+      }
 
       // Clear the prompt input after successful generation
       setPrompt("");

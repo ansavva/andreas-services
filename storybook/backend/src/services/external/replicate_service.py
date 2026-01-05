@@ -4,7 +4,7 @@ Handles SDXL model training and image generation using fine-tuned models
 Also handles generation-only models like Flux Pro
 Configuration is loaded from config.yaml
 """
-from typing import Optional, Dict, Any, BinaryIO, List
+from typing import Optional, Dict, Any, BinaryIO, List, Tuple
 import time
 import replicate
 import requests
@@ -242,6 +242,41 @@ class ReplicateService:
 
         return response.content
 
+    def create_prediction(self,
+                          prompt: str,
+                          model_name: str,
+                          config_override: Optional[Dict[str, Any]] = None,
+                          profile: str = "stability") -> Any:
+        """
+        Create an async prediction for a trained model.
+        """
+        owner, resolved_name = self._resolve_model_identifier(model_name)
+        model = replicate.models.get(f"{owner}/{resolved_name}")
+
+        generation_config = self.config.get_generation_config(profile)
+        generation_input = {
+            "prompt": prompt,
+            "model": generation_config.get("model", "dev"),
+            "aspect_ratio": generation_config.get("aspect_ratio", "1:1"),
+            "num_outputs": generation_config.get("num_outputs", 1),
+            "output_format": generation_config.get("output_format", "jpg"),
+            "output_quality": generation_config.get("output_quality", 90),
+            "lora_scale": generation_config.get("lora_scale", 1.0),
+            "guidance_scale": generation_config.get("guidance_scale", 3.5),
+            "prompt_strength": generation_config.get("prompt_strength", 0.8),
+            "num_inference_steps": generation_config.get("num_inference_steps", 28),
+            "extra_lora_scale": generation_config.get("extra_lora_scale", 1.0),
+            "disable_safety_checker": generation_config.get("disable_safety_checker", True),
+        }
+
+        if config_override:
+            generation_input.update(config_override)
+
+        return replicate.predictions.create(
+            version=model.latest_version.id,
+            input=generation_input,
+        )
+
     def cancel_training(self, training_id: str) -> bool:
         """
         Cancel an in-progress training job
@@ -400,3 +435,81 @@ class ReplicateService:
             raise Exception(f"Failed to download generated image from Replicate: {response.status_code}")
 
         return response.content
+
+    def create_prediction_with_model(self,
+                                     prompt: str,
+                                     profile: str = "flux_pro",
+                                     image_prompt: Optional[BinaryIO] = None,
+                                     config_override: Optional[Dict[str, Any]] = None) -> Any:
+        """
+        Create an async prediction for a generation-only Replicate model.
+        """
+        provider = "replicate"
+        gen_config = generation_models_config.get_generation_config(provider, profile)
+        model_id = generation_models_config.get_model_id(provider, profile)
+
+        if not model_id:
+            raise ValueError(f"No model ID configured for profile '{profile}'")
+
+        generation_input = {
+            "prompt": prompt,
+            "aspect_ratio": gen_config.get("aspect_ratio", "1:1"),
+            "num_outputs": gen_config.get("num_outputs", 1),
+            "output_format": gen_config.get("output_format", "png"),
+            "output_quality": gen_config.get("output_quality", 90),
+            "safety_tolerance": gen_config.get("safety_tolerance", 2),
+            "prompt_upsampling": gen_config.get("prompt_upsampling", False),
+        }
+
+        if image_prompt:
+            generation_input["image_prompt"] = image_prompt
+
+        if config_override:
+            generation_input.update(config_override)
+
+        base_id, version_id = self._resolve_model_version(model_id)
+
+        return replicate.predictions.create(
+            version=version_id,
+            input=generation_input,
+        )
+
+    def get_prediction_details(self, prediction_id: str) -> Dict[str, Any]:
+        """
+        Fetch prediction status and outputs from Replicate.
+        """
+        prediction = replicate.predictions.get(prediction_id)
+        output_urls = self._extract_output_urls(getattr(prediction, "output", None))
+        return {
+            "status": getattr(prediction, "status", None),
+            "output_urls": output_urls,
+            "error_message": getattr(prediction, "error", None),
+        }
+
+    def _resolve_model_version(self, model_id: str) -> Tuple[str, str]:
+        """
+        Resolve a model ID to (base_id, version_id).
+        """
+        if ":" in model_id:
+            base_id, version_id = model_id.split(":", 1)
+            return base_id, version_id
+
+        model = replicate.models.get(model_id)
+        return model_id, model.latest_version.id
+
+    def _extract_output_urls(self, output: Any) -> List[str]:
+        if not output:
+            return []
+        if isinstance(output, list):
+            urls = []
+            for item in output:
+                if isinstance(item, str):
+                    urls.append(item)
+                elif hasattr(item, "url"):
+                    urls.append(item.url)
+                else:
+                    urls.append(str(item))
+            return urls
+        if hasattr(output, "url"):
+            return [output.url]
+        return [str(output)]

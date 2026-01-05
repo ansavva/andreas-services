@@ -18,7 +18,10 @@ class GenerationHistoryRepo:
     def create(self, project_id: str, prompt: str, image_ids: List[str],
                reference_image_ids: List[str] = None,
                status: str = GenerationHistory.STATUS_COMPLETED,
-               include_subject_description: Optional[bool] = None) -> GenerationHistory:
+               include_subject_description: Optional[bool] = None,
+               prediction_id: Optional[str] = None,
+               provider: Optional[str] = None,
+               error_message: Optional[str] = None) -> GenerationHistory:
         """
         Create a new generation history entry
 
@@ -47,6 +50,9 @@ class GenerationHistoryRepo:
             image_ids=image_ids,
             reference_image_ids=reference_image_ids,
             include_subject_description=include_subject_description,
+            prediction_id=prediction_id,
+            provider=provider,
+            error_message=error_message,
             status=status,
             created_at=datetime.utcnow()
         )
@@ -149,6 +155,65 @@ class GenerationHistoryRepo:
             {"$set": update},
         )
         return self.get_by_id(draft_id)
+
+    def promote_draft_to_processing(
+        self,
+        draft_id: str,
+        prompt: str,
+        reference_image_ids: Optional[List[str]] = None,
+        include_subject_description: Optional[bool] = None,
+        prediction_id: Optional[str] = None,
+        provider: Optional[str] = None,
+    ) -> GenerationHistory:
+        """Promote a draft to a processing history entry."""
+        db = get_db()
+        user_id = self._get_user_id()
+
+        update = {
+            "prompt": prompt,
+            "image_ids": [],
+            "status": GenerationHistory.STATUS_PROCESSING,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+            "prediction_id": prediction_id,
+            "provider": provider,
+        }
+        if reference_image_ids is not None:
+            update["reference_image_ids"] = reference_image_ids
+        if include_subject_description is not None:
+            update["include_subject_description"] = include_subject_description
+
+        db.generation_history.update_one(
+            {"_id": draft_id, "user_id": user_id},
+            {"$set": update},
+        )
+        return self.get_by_id(draft_id)
+
+    def update_status(
+        self,
+        history_id: str,
+        status: str,
+        image_ids: Optional[List[str]] = None,
+        error_message: Optional[str] = None,
+    ) -> GenerationHistory:
+        """Update generation history status and optional fields."""
+        db = get_db()
+        user_id = self._get_user_id()
+
+        update = {
+            "status": status,
+            "updated_at": datetime.utcnow(),
+        }
+        if image_ids is not None:
+            update["image_ids"] = image_ids
+        if error_message is not None:
+            update["error_message"] = error_message
+
+        db.generation_history.update_one(
+            {"_id": history_id, "user_id": user_id},
+            {"$set": update},
+        )
+        return self.get_by_id(history_id)
 
     def update_draft_prompt(
         self,

@@ -3,11 +3,13 @@ from flask import Blueprint, request, jsonify
 from src.repositories.db.generation_history_repo import GenerationHistoryRepo
 from src.repositories.db.image_repo import ImageRepo
 from src.repositories.db.user_profile_repo import UserProfileRepo
+from src.services.model_service import ModelService
 
 generation_history_controller = Blueprint("generation_history_controller", __name__)
 generation_history_repo = GenerationHistoryRepo()
 user_profile_repo = UserProfileRepo()
 image_repo = ImageRepo()
+model_service = ModelService()
 
 
 def _build_image_processing_map(image_ids):
@@ -60,10 +62,6 @@ def create_history():
                 include_subject_description=include_subject_description,
             )
         profile = user_profile_repo.get_by_id(history.user_id)
-        image_processing = _build_image_processing_map(
-            (history.image_ids or []) + (history.reference_image_ids or [])
-        )
-
         return jsonify({
             "id": history.id,
             "project_id": history.project_id,
@@ -71,8 +69,10 @@ def create_history():
             "prompt": history.prompt,
             "image_ids": history.image_ids,
             "reference_image_ids": history.reference_image_ids or [],
-            "image_processing": image_processing,
             "status": history.status,
+            "prediction_id": history.prediction_id,
+            "provider": history.provider,
+            "error_message": history.error_message,
             "include_subject_description": history.include_subject_description,
             "created_at": history.created_at.isoformat() if history.created_at else None,
             "user_profile": {
@@ -91,10 +91,6 @@ def get_history(history_id: str):
     """
     try:
         history = generation_history_repo.get_by_id(history_id)
-        image_processing = _build_image_processing_map(
-            (history.image_ids or []) + (history.reference_image_ids or [])
-        )
-
         return jsonify({
             "id": history.id,
             "project_id": history.project_id,
@@ -102,8 +98,10 @@ def get_history(history_id: str):
             "prompt": history.prompt,
             "image_ids": history.image_ids,
             "reference_image_ids": history.reference_image_ids or [],
-            "image_processing": image_processing,
             "status": history.status,
+            "prediction_id": history.prediction_id,
+            "provider": history.provider,
+            "error_message": history.error_message,
             "include_subject_description": history.include_subject_description,
             "created_at": history.created_at.isoformat() if history.created_at else None
         }), 200
@@ -135,16 +133,8 @@ def list_history_by_project(project_id: str):
             all_image_ids.extend(h.image_ids or [])
             all_image_ids.extend(h.reference_image_ids or [])
 
-        image_processing_map = _build_image_processing_map(all_image_ids)
-
         for h in histories:
             profile = user_profiles.get(h.user_id)
-            per_history_processing = {
-                image_id: image_processing_map.get(image_id, True)
-                for image_id in (h.image_ids or []) + (h.reference_image_ids or [])
-                if image_id
-            }
-
             enriched_histories.append({
                 "id": h.id,
                 "project_id": h.project_id,
@@ -152,8 +142,10 @@ def list_history_by_project(project_id: str):
                 "prompt": h.prompt,
                 "image_ids": h.image_ids,
                 "reference_image_ids": h.reference_image_ids or [],
-                "image_processing": per_history_processing,
                 "status": h.status,
+                "prediction_id": h.prediction_id,
+                "provider": h.provider,
+                "error_message": h.error_message,
                 "include_subject_description": h.include_subject_description,
                 "created_at": h.created_at.isoformat() if h.created_at else None,
                 "user_profile": {
@@ -178,10 +170,6 @@ def get_draft_history(project_id: str):
         if not draft:
             return jsonify({"history": None}), 200
 
-        image_processing = _build_image_processing_map(
-            (draft.reference_image_ids or []) + (draft.image_ids or [])
-        )
-
         return jsonify({
             "history": {
                 "id": draft.id,
@@ -190,8 +178,10 @@ def get_draft_history(project_id: str):
                 "prompt": draft.prompt,
                 "image_ids": draft.image_ids,
                 "reference_image_ids": draft.reference_image_ids or [],
-                "image_processing": image_processing,
                 "status": draft.status,
+                "prediction_id": draft.prediction_id,
+                "provider": draft.provider,
+                "error_message": draft.error_message,
                 "include_subject_description": draft.include_subject_description,
                 "created_at": draft.created_at.isoformat() if draft.created_at else None,
             }
@@ -223,9 +213,38 @@ def update_draft_prompt(project_id: str):
             "image_ids": draft.image_ids,
             "reference_image_ids": draft.reference_image_ids or [],
             "status": draft.status,
+            "prediction_id": draft.prediction_id,
+            "provider": draft.provider,
+            "error_message": draft.error_message,
             "include_subject_description": draft.include_subject_description,
             "created_at": draft.created_at.isoformat() if draft.created_at else None,
         }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@generation_history_controller.route('/<string:history_id>/status', methods=['GET'])
+def update_history_status(history_id: str):
+    """
+    Update and return the status of a generation history entry
+    """
+    try:
+        history = model_service.update_generation_history_status(history_id)
+        return jsonify({
+            "id": history.id,
+            "project_id": history.project_id,
+            "user_id": history.user_id,
+            "prompt": history.prompt,
+            "image_ids": history.image_ids,
+            "reference_image_ids": history.reference_image_ids or [],
+            "status": history.status,
+            "prediction_id": history.prediction_id,
+            "provider": history.provider,
+            "error_message": history.error_message,
+            "include_subject_description": history.include_subject_description,
+            "created_at": history.created_at.isoformat() if history.created_at else None,
+        }), 200
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
