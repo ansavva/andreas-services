@@ -124,7 +124,6 @@ jobs:
           STABILITY_API_KEY: ${{ secrets.STABILITY_API_KEY }}
           REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          AWS_REGION: ${{ env.AWS_REGION }}
           AWS_COGNITO_USER_POOL_ID: ${{ vars.AWS_COGNITO_USER_POOL_ID }}
           AWS_COGNITO_APP_CLIENT_ID: ${{ vars.AWS_COGNITO_APP_CLIENT_ID }}
           DATABASE_NAME: ${{ vars.DATABASE_NAME }}
@@ -150,7 +149,6 @@ jobs:
             "REPLICATE_API_TOKEN"
             "DATABASE_URL"
             "DATABASE_NAME"
-            "AWS_REGION"
             "AWS_COGNITO_USER_POOL_ID"
             "AWS_COGNITO_APP_CLIENT_ID"
             "S3_BUCKET_NAME"
@@ -180,7 +178,6 @@ jobs:
           STABILITY_API_KEY: ${{ secrets.STABILITY_API_KEY }}
           REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          AWS_REGION: ${{ env.AWS_REGION }}
           AWS_COGNITO_USER_POOL_ID: ${{ vars.AWS_COGNITO_USER_POOL_ID }}
           AWS_COGNITO_APP_CLIENT_ID: ${{ vars.AWS_COGNITO_APP_CLIENT_ID }}
           DATABASE_NAME: ${{ vars.DATABASE_NAME }}
@@ -203,7 +200,6 @@ jobs:
             "REPLICATE_API_TOKEN"
             "DATABASE_URL"
             "DATABASE_NAME"
-            "AWS_REGION"
             "AWS_COGNITO_USER_POOL_ID"
             "AWS_COGNITO_APP_CLIENT_ID"
             "S3_BUCKET_NAME"
