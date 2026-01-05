@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Tabs, Tab, Spinner, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/react";
 
-import { exists } from "@/apis/modelController";
+import { ready } from "@/apis/modelController";
 import { getModelProjectById, deleteModelProject, getModelTypes } from "@/apis/modelProjectController";
 import { useAxios } from "@/hooks/axiosContext";
 import { useToast } from "@/hooks/useToast";
@@ -27,7 +27,7 @@ export default function ModelProjectPage() {
   const [selectedTab, setSelectedTab] = useState<string>("training");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [modelExists, setModelExists] = useState(false);
+  const [modelReady, setModelReady] = useState(false);
   const [hasSuccessfulTraining, setHasSuccessfulTraining] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [needsSubjectSetup, setNeedsSubjectSetup] = useState(false);
@@ -85,15 +85,16 @@ export default function ModelProjectPage() {
       if (!needsTraining) {
         setSelectedTab("generate");
         setHasSuccessfulTraining(true); // Enable generation tab
-        setModelExists(true); // No model training needed
+        setModelReady(true); // No model training needed
         if (preferredTab) {
           setSelectedTab(preferredTab);
         }
       } else {
         // For training models, check if model exists and training status
-        const modelExistsResponse = await exists(axiosInstance, project_id!);
-        const modelReady = modelExistsResponse.model_found || projectData.status === "READY";
-        setModelExists(modelReady);
+        const modelReadyResponse = await ready(axiosInstance, project_id!);
+        const modelReady =
+          modelReadyResponse.model_ready || projectData.status === "READY";
+        setModelReady(modelReady);
 
         const fallbackTab = modelReady ? "generate" : "training";
         const nextTab =
@@ -130,7 +131,7 @@ export default function ModelProjectPage() {
   };
 
   const handleTrainingComplete = () => {
-    setModelExists(true);
+    setModelReady(true);
     setHasSuccessfulTraining(true);
     loadProjectData(); // Reload to get updated status
   };
@@ -252,7 +253,7 @@ export default function ModelProjectPage() {
             isDisabled={requiresTraining && !hasSuccessfulTraining}
           >
             <div>
-              {(requiresTraining && modelExists) || !requiresTraining ? (
+              {(requiresTraining && modelReady) || !requiresTraining ? (
                 <GenerateImageStep
                   projectId={project?.id || project_id!}
                   project={project}

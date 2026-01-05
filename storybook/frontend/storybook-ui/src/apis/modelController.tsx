@@ -1,7 +1,7 @@
 import { AxiosInstance } from "axios";
 
-export const exists = async (axiosInstance: AxiosInstance, projectId: string) => {
-  const response = await axiosInstance.get(`/api/model/exists/${projectId}`);
+export const ready = async (axiosInstance: AxiosInstance, projectId: string) => {
+  const response = await axiosInstance.get(`/api/model/ready/${projectId}`);
   return response.data;
 };
 

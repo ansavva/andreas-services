@@ -6,11 +6,11 @@ from src.services.model_service import ModelService
 model_controller = Blueprint("model_controller", __name__)
 model_service = ModelService()
 
-@model_controller.route('/exists/<string:project_id>', methods=['GET'])
-def check_model_exists(project_id: str):
+@model_controller.route('/ready/<string:project_id>', methods=['GET'])
+def check_model_ready(project_id: str):
     try:
-        model_exists = model_service.exists(project_id)
-        return jsonify({"model_found": model_exists}), 200
+        model_ready = model_service.ready(project_id)
+        return jsonify({"model_ready": model_ready}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

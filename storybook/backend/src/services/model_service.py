@@ -48,15 +48,15 @@ class ModelService:
             return project.replicate_model_id
         return self.__get_model_name(project)
 
-    def exists(self, project_id: str) -> bool:
+    def ready(self, project_id: str) -> bool:
         """
-        Check if a trained model exists for this project
+        Check if a trained model is ready for this project
 
         Args:
             project_id: Model project ID
 
         Returns:
-            True if model exists, False otherwise
+            True if model is ready, False otherwise
             For generation-only models, always returns True (no training needed)
         """
         project = self.model_project_repo.get_project(project_id)
@@ -65,8 +65,10 @@ class ModelService:
         # They can generate immediately without training
         if not project.requires_training():
             return True
-
         model_identifier = self.__get_model_identifier(project)
+        if project.status != ModelProject.STATUS_READY:
+            return False
+
         return self.replicate.model_exists(model_identifier)
 
     def _build_subject_token(self, project: ModelProject) -> str:
@@ -162,6 +164,10 @@ class ModelService:
             training_run = self.training_run_repo.update_status(
                 training_run.id,
                 TrainingRun.STATUS_STARTING
+            )
+            self.model_project_repo.update_status(
+                project_id,
+                ModelProject.STATUS_TRAINING,
             )
 
         except Exception as e:
@@ -422,5 +428,10 @@ class ModelService:
                 replicate_status,
                 error_message if replicate_status == TrainingRun.STATUS_FAILED else None
             )
+            if replicate_status == TrainingRun.STATUS_SUCCEEDED:
+                self.model_project_repo.update_status(
+                    training_run.project_id,
+                    ModelProject.STATUS_READY,
+                )
 
         return training_run
