@@ -16,7 +16,8 @@ import { useToast } from "@/hooks/useToast";
 import {
   uploadImage,
   deleteImage,
-  getImagesByProject,
+  getDraftTrainingImages,
+  getImageStatus,
 } from "@/apis/imageController";
 import {
   train,
@@ -30,6 +31,7 @@ import { getErrorMessage, logError } from "@/utils/errorHandling";
 type ImageFile = {
   id: string;
   name: string;
+  processing?: boolean;
 };
 
 type TrainingRun = {
@@ -37,6 +39,7 @@ type TrainingRun = {
   project_id: string;
   replicate_training_id: string | null;
   image_ids: string[];
+  images?: ImageFile[];
   status: string;
   created_at: string;
   updated_at: string;
@@ -64,8 +67,11 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
   const [isLoadingTrainingRuns, setIsLoadingTrainingRuns] = useState(false);
   const [isStartingTraining, setIsStartingTraining] = useState(false);
   const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
+  const pollTimeoutRef = useRef<number | null>(null);
+  const trainingPollRef = useRef<number | null>(null);
+  const trainingPollInFlightRef = useRef(false);
 
-  const ACTIVE_TRAINING_STATUSES = ["processing", "starting"];
+  const ACTIVE_TRAINING_STATUSES = ["pending", "processing", "starting"];
 
   const allowedFileTypes = [
     "image/jpeg",
@@ -81,29 +87,152 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
       fetchImages();
       fetchTrainingRuns();
     }
+
+    return () => {
+      if (pollTimeoutRef.current) {
+        window.clearTimeout(pollTimeoutRef.current);
+      }
+      if (trainingPollRef.current) {
+        window.clearInterval(trainingPollRef.current);
+      }
+    };
   }, [projectId]);
+
+  useEffect(() => {
+    const hasActiveRuns = trainingRuns.some((run) =>
+      ACTIVE_TRAINING_STATUSES.includes(run.status),
+    );
+
+    if (!hasActiveRuns) {
+      if (trainingPollRef.current) {
+        window.clearInterval(trainingPollRef.current);
+        trainingPollRef.current = null;
+      }
+      return;
+    }
+
+    if (trainingPollRef.current) {
+      return;
+    }
+
+    trainingPollRef.current = window.setInterval(async () => {
+      if (trainingPollInFlightRef.current) {
+        return;
+      }
+      trainingPollInFlightRef.current = true;
+      try {
+        const activeRuns = trainingRuns.filter((run) =>
+          ACTIVE_TRAINING_STATUSES.includes(run.status),
+        );
+        if (!activeRuns.length) {
+          return;
+        }
+
+        const updates = await Promise.all(
+          activeRuns.map((run) => updateTrainingRunStatus(axiosInstance, run.id)),
+        );
+
+        const updatedById = new Map(updates.map((run) => [run.id, run]));
+        setTrainingRuns((prev) => {
+          const merged = prev.map((run) =>
+            updatedById.has(run.id) ? { ...run, ...updatedById.get(run.id) } : run,
+          );
+          return merged;
+        });
+
+        const succeeded = updates.some((run) => run.status === "succeeded");
+        if (succeeded) {
+          showSuccess("Training completed successfully!");
+          onTrainingComplete();
+        }
+      } catch (error) {
+        logError("Poll training runs", error);
+      } finally {
+        trainingPollInFlightRef.current = false;
+      }
+    }, 5000);
+
+    return () => {
+      if (trainingPollRef.current) {
+        window.clearInterval(trainingPollRef.current);
+        trainingPollRef.current = null;
+      }
+    };
+  }, [trainingRuns, axiosInstance, onTrainingComplete]);
 
   const fetchImages = async () => {
     if (!projectId || projectId === "new") return;
 
     setIsLoadingImages(true);
     try {
-      // Only fetch training images, not generated images
-      const response = await getImagesByProject(
-        axiosInstance,
-        projectId,
-        "training",
-      );
-      const imageFiles = response.images.map((img: any) => ({
+      const response = await getDraftTrainingImages(axiosInstance, projectId);
+      const imageFiles: ImageFile[] = response.images.map((img: any) => ({
         id: img.id,
         name: img.filename || "Image",
+        processing: img.processing,
       }));
 
-      setImages(imageFiles);
+      setImages((prev) => {
+        const prevById = new Map(prev.map((img) => [img.id, img]));
+        return imageFiles.map((img) => {
+          const existing = prevById.get(img.id);
+          if (
+            existing &&
+            existing.name === img.name &&
+            existing.processing === img.processing
+          ) {
+            return existing;
+          }
+          return img;
+        });
+      });
+      const pendingIds = imageFiles
+        .filter((img) => img.processing)
+        .map((img) => img.id);
+      if (pendingIds.length) {
+        pollImageStatus(pendingIds);
+      }
     } catch (error) {
       logError("Fetch images", error);
     } finally {
       setIsLoadingImages(false);
+    }
+  };
+
+  const mergeImages = (updates: ImageFile[]) => {
+    setImages((prev) => {
+      const byId = new Map(prev.map((img) => [img.id, img]));
+      updates.forEach((img) => {
+        byId.set(img.id, { ...byId.get(img.id), ...img });
+      });
+      return Array.from(byId.values());
+    });
+  };
+
+  const pollImageStatus = async (imageIds: string[]) => {
+    if (!imageIds.length) return;
+
+    try {
+      const response = await getImageStatus(axiosInstance, imageIds);
+      const updates: ImageFile[] = (response.images || []).map((img: any) => ({
+        id: img.id,
+        name: img.filename || "Image",
+        processing: img.processing,
+      }));
+
+      mergeImages(updates);
+
+      const stillProcessing = updates
+        .filter((img) => img.processing)
+        .map((img) => img.id);
+
+      if (stillProcessing.length) {
+        pollTimeoutRef.current = window.setTimeout(() => {
+          pollImageStatus(stillProcessing);
+        }, 2000);
+      }
+    } catch (error) {
+      logError("Poll image status", error);
     }
   };
 
@@ -113,7 +242,9 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
     setIsLoadingTrainingRuns(true);
     try {
       const response = await getTrainingRuns(axiosInstance, projectId);
-      const runs = response.training_runs || [];
+      const runs = (response.training_runs || []).filter(
+        (run: any) => run.status !== "draft",
+      );
 
       setTrainingRuns(runs);
     } catch (error) {
@@ -179,17 +310,32 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
 
     setIsUploadingImages(true);
     try {
-      await uploadImage(
+      const response = await uploadImage(
         axiosInstance,
         projectId,
         "uploaded_images",
         filesToUpload,
         "training",
-        { normalize: false },
+        { resize: false },
       );
-      await fetchImages();
+
+      const newImages: ImageFile[] = (response.images || []).map((img: any) => ({
+        id: img.id,
+        name: img.filename || "Image",
+        processing: img.processing,
+      }));
+
+      if (newImages.length) {
+        mergeImages(newImages);
+        const pendingIds = newImages
+          .filter((img) => img.processing)
+          .map((img) => img.id);
+        if (pendingIds.length) {
+          pollImageStatus(pendingIds);
+        }
+      }
       showSuccess(
-        `Successfully uploaded ${filesToUpload.length} image${filesToUpload.length > 1 ? "s" : ""}`,
+        `Uploaded ${filesToUpload.length} image${filesToUpload.length > 1 ? "s" : ""}. Processing started.`,
       );
     } catch (error) {
       logError("Upload images", error);
@@ -205,13 +351,13 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
     return trainingRuns.some((run) => run.image_ids.includes(imageId));
   };
 
-  const availableImages = useMemo(() => {
-    return images.filter((image) => !isImageUsedInTraining(image.id));
-  }, [images, trainingRuns]);
-
   const hasActiveTraining = useMemo(
     () => trainingRuns.some((run) => ACTIVE_TRAINING_STATUSES.includes(run.status)),
     [trainingRuns],
+  );
+  const hasProcessingImages = useMemo(
+    () => images.some((img) => img.processing),
+    [images],
   );
 
   const handleImageDelete = async (imageId: string) => {
@@ -232,25 +378,27 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
   };
 
   const handleStartTraining = async () => {
-    if (availableImages.length === 0) {
+    if (images.length === 0) {
       showError("Please upload at least one image for training");
 
+      return;
+    }
+    if (hasProcessingImages) {
+      showError("Please wait for all images to finish processing before training.");
       return;
     }
 
     setIsStartingTraining(true);
 
     try {
-      // Use all uploaded images for training
-      const imageIdsArray = availableImages.map((img) => img.id);
-
-      await train(axiosInstance, projectId, imageIdsArray);
+      await train(axiosInstance, projectId);
 
       showSuccess("Training started! Refreshing training runs...");
       setImages([]);
 
       // Refresh training runs
       await fetchTrainingRuns();
+      await fetchImages();
     } catch (error: any) {
       logError("Start training", error);
       showError(
@@ -367,15 +515,19 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
             </Button>
 
             {/* Training Images Row */}
-            {availableImages.length > 0 ? (
+            {isLoadingImages && images.length === 0 ? (
+              <div className="flex justify-center py-8">
+                <Spinner size="lg" />
+              </div>
+            ) : images.length > 0 ? (
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                  {availableImages.length} image
-                  {availableImages.length !== 1 ? "s" : ""} ready
+                  {images.length} image
+                  {images.length !== 1 ? "s" : ""} ready
                 </p>
 
                 <ImageGrid
-                  images={availableImages}
+                  images={images}
                   isLoading={isLoadingImages}
                   onImageDelete={handleImageDelete}
                   showDeleteButton
@@ -387,7 +539,8 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
                   <Button
                     color="primary"
                     isDisabled={
-                      availableImages.length === 0 ||
+                      images.length === 0 ||
+                      hasProcessingImages ||
                       isStartingTraining ||
                       hasActiveTraining
                     }
@@ -400,11 +553,16 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
                   >
                     {isStartingTraining
                       ? "Starting Training..."
-                      : `Start Training with ${availableImages.length} Image${availableImages.length !== 1 ? "s" : ""}`}
+                      : `Start Training with ${images.length} Image${images.length !== 1 ? "s" : ""}`}
                   </Button>
                   {hasActiveTraining && (
                     <p className="text-xs text-gray-500 mt-2">
                       A training run is currently processing. Please wait (this can take up to 30 minutes).
+                    </p>
+                  )}
+                  {hasProcessingImages && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      Images are still processing. Training will be enabled when processing completes.
                     </p>
                   )}
                 </div>
@@ -418,16 +576,16 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
                 />
                 {images.length === 0 ? (
                   <>
-                    <p>No training images uploaded yet</p>
+                    <p>No draft training images yet</p>
                     <p className="text-sm mt-2">
                       Upload images to begin training your model
                     </p>
                   </>
                 ) : (
                   <>
-                    <p>All uploaded images have been used</p>
+                    <p>No draft images available</p>
                     <p className="text-sm mt-2">
-                      Add new photos to start another training run
+                      Upload new photos to start another training run
                     </p>
                   </>
                 )}
@@ -464,16 +622,19 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
 
         {!isLoadingTrainingRuns && trainingRuns.length > 0 && (
           <div className="space-y-3">
-            {trainingRuns.map((run) => (
+            {trainingRuns.map((run) => {
+              const runImages =
+                run.images && run.images.length
+                  ? run.images
+                  : run.image_ids.map((imageId) => ({ id: imageId, processing: false }));
+              return (
               <div
                 key={run.id}
                 className="grid md:grid-cols-[minmax(0,2.5fr)_minmax(150px,1fr)] gap-6 items-start"
               >
                 <ImageGrid
                   className="flex flex-wrap gap-2"
-                  images={run.image_ids.map((imageId) => ({
-                    id: imageId,
-                  }))}
+                  images={runImages}
                   thumbnailWidth={112}
                   thumbnailHeight={112}
                 />
@@ -553,7 +714,8 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
                   </Button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

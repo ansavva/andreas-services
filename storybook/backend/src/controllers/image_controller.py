@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, send_file
 from io import BytesIO
 
 from src.services.image_service import ImageService
-from src.utils.error_logging import log_error
+from src.utils.logging.error_logging import log_error
 
 image_controller = Blueprint("image_controller", __name__)
 image_service = ImageService()
@@ -26,8 +26,8 @@ def presign_image_upload():
         log_error(e, "image presign")
         return jsonify({"error": str(e)}), 500
 
-@image_controller.route("/upload/complete", methods=["POST"])
-def complete_image_upload():
+@image_controller.route("/upload/dispatch", methods=["POST"])
+def dispatch_image_upload():
     try:
         data = request.get_json() or {}
         project_id = data.get("project_id")
@@ -39,7 +39,7 @@ def complete_image_upload():
         if not uploads:
             return jsonify({"error": "No uploads provided"}), 400
 
-        images = image_service.complete_presigned_uploads(project_id, uploads, image_type)
+        images = image_service.dispatch_presigned_uploads(project_id, uploads, image_type)
         return jsonify({"images": images}), 200
     except Exception as e:
         log_error(e, "image complete upload")
@@ -56,8 +56,8 @@ def upload_image():
         if not project_id:
             return jsonify({"error": "Project ID is required"}), 400
 
-        normalize_images = request.form.get("normalize_images", "true")
-        should_normalize = normalize_images.lower() != "false"
+        resize_images = request.form.get("resize_images", "true")
+        should_resize = str(resize_images).lower() != "false"
 
         uploaded_files = []
         for key in request.files:
@@ -74,7 +74,13 @@ def upload_image():
         # Loop through the uploaded files and upload each one
         for file in uploaded_files:
             # Call the image service to upload the file with the specified image_type
-            image = image_service.upload_image(project_id, file, file.filename, image_type, should_normalize)
+            image = image_service.upload_image(
+                project_id,
+                file,
+                file.filename,
+                image_type,
+                should_resize,
+            )
 
             # Collect the result for each file upload (convert to dict for JSON)
             uploaded_images.append({
@@ -83,6 +89,7 @@ def upload_image():
                 "content_type": image.content_type,
                 "size_bytes": image.size_bytes,
                 "image_type": image.image_type,
+                "processing": image.processing,
                 "created_at": image.created_at.isoformat() if image.created_at else None
             })
 
@@ -102,7 +109,7 @@ def download_image(image_id):
 
         if file_data:
             # Get image metadata to retrieve filename
-            from src.data.image_repo import ImageRepo
+            from src.repositories.db.image_repo import ImageRepo
             repo = ImageRepo()
             image = repo.get_image(image_id)
             return send_file(BytesIO(file_data), download_name=image.filename, as_attachment=True)
@@ -147,6 +154,7 @@ def list_images(project_id):
             "content_type": img.content_type,
             "size_bytes": img.size_bytes,
             "image_type": img.image_type,
+            "processing": img.processing,
             "created_at": img.created_at.isoformat() if img.created_at else None
         } for img in images]
 
@@ -155,4 +163,55 @@ def list_images(project_id):
         return jsonify({"error": str(e)}), 404
     except Exception as e:
         log_error(e, "image list")
+        return jsonify({"error": str(e)}), 500
+
+
+@image_controller.route("/draft/<project_id>", methods=["GET"])
+def list_draft_training_images(project_id):
+    try:
+        if not project_id:
+            return jsonify({"error": "Project ID is required"}), 400
+
+        images = image_service.list_draft_training_images(project_id)
+        images_data = [{
+            "id": img.id,
+            "filename": img.filename,
+            "content_type": img.content_type,
+            "size_bytes": img.size_bytes,
+            "image_type": img.image_type,
+            "processing": img.processing,
+            "created_at": img.created_at.isoformat() if img.created_at else None
+        } for img in images]
+
+        return jsonify({"images": images_data}), 200
+    except Exception as e:
+        log_error(e, "image draft list")
+        return jsonify({"error": str(e)}), 500
+
+
+@image_controller.route("/status", methods=["GET"])
+def image_status():
+    try:
+        ids_param = request.args.get("ids")
+        if not ids_param:
+            return jsonify({"error": "ids query parameter is required"}), 400
+
+        image_ids = [item.strip() for item in ids_param.split(",") if item.strip()]
+        if not image_ids:
+            return jsonify({"error": "ids query parameter is required"}), 400
+
+        images = image_service.get_images_by_ids(image_ids)
+        images_data = [{
+            "id": img.id,
+            "filename": img.filename,
+            "content_type": img.content_type,
+            "size_bytes": img.size_bytes,
+            "image_type": img.image_type,
+            "processing": img.processing,
+            "created_at": img.created_at.isoformat() if img.created_at else None
+        } for img in images]
+
+        return jsonify({"images": images_data}), 200
+    except Exception as e:
+        log_error(e, "image status")
         return jsonify({"error": str(e)}), 500

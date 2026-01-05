@@ -17,12 +17,14 @@ type ImageItem = {
   id?: string;
   name?: string;
   src?: string;
+  processing?: boolean;
 };
 
 type ImageGridProps = {
   images: ImageItem[];
   isLoading?: boolean;
   onImageDelete?: (imageId: string, image?: ImageItem) => void;
+  onImageClick?: (imageId: string, image?: ImageItem) => void;
   customActions?: (image: ImageItem) => React.ReactNode;
   showDeleteButton?: boolean;
   thumbnailWidth?: number;
@@ -45,6 +47,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   images,
   isLoading = false,
   onImageDelete,
+  onImageClick,
   customActions,
   showDeleteButton = false,
   thumbnailWidth,
@@ -103,7 +106,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         setThumbnails((prev) =>
           prev[key] ? prev : { ...prev, [key]: image.src as string },
         );
-      } else if (image.id && !thumbnailsRef.current[key]) {
+      } else if (
+        image.id &&
+        image.processing === false &&
+        (!thumbnailsRef.current[key] || thumbnailsRef.current[key] === "__ERROR__")
+      ) {
         fetchThumbnail(image.id, key);
       }
     });
@@ -124,6 +131,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       if (!showModal) {
         return;
       }
+    }
+    if (!selectable && image.id) {
+      onImageClick?.(image.id, image);
     }
     if (showModal && image.id) {
       setSelectedImage({ image, key });
@@ -149,6 +159,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             const key = getImageKey(image, index);
             const thumbnailSrc = thumbnails[key];
             const isErrorThumbnail = thumbnailSrc === "__ERROR__";
+            const isProcessing = image.processing !== false;
             const identifier = image.id || key;
             const isSelected =
               selectable && identifier ? selectedIdSet.has(identifier) : false;
@@ -169,7 +180,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                 style={cardStyle}
                 onPress={() => handleCardClick(image, key)}
               >
-                {thumbnailSrc && !isErrorThumbnail ? (
+                {thumbnailSrc && !isErrorThumbnail && !isProcessing ? (
                   <Image
                     alt={image.name || "Image"}
                     className="object-cover w-full h-full"
@@ -177,7 +188,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-gray-200 dark:bg-gray-700">
-                    {isErrorThumbnail ? (
+                    {isProcessing ? (
+                      <Spinner size="sm" />
+                    ) : isErrorThumbnail ? (
                       <FontAwesomeIcon
                         className="text-danger text-xl"
                         icon={faTriangleExclamation}

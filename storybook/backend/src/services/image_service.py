@@ -1,33 +1,25 @@
 import io
 import os
 import uuid
-from werkzeug.datastructures import FileStorage
 from typing import List, Optional
 import zipfile
-from PIL import Image as PILImage
+
+from werkzeug.datastructures import FileStorage
 
 from src.models.image import Image
-from src.data.model_project_repo import ModelProjectRepo
-from src.data.image_repo import ImageRepo
-
-# Import pillow_heif for HEIC conversion
-try:
-    import pillow_heif
-    print("[HEIC] pillow-heif module imported successfully")
-except ImportError as e:
-    pillow_heif = None
-    print(f"Warning: pillow-heif not installed. HEIC format conversion will not work. Error: {e}")
+from src.repositories.db.model_project_repo import ModelProjectRepo
+from src.repositories.db.image_repo import ImageRepo
+from src.repositories.db.training_run_repo import TrainingRunRepo
+from src.repositories.db.generation_history_repo import GenerationHistoryRepo
+from src.services.aws.sqs import SqsClient
+from src.utils.config import AppConfig
 
 class ImageService:
-    # Allowed SDXL dimensions for AI generation
-    ALLOWED_SDXL_DIMENSIONS = [
-        (1024, 1024), (1152, 896), (1216, 832), (1344, 768), (1536, 640),
-        (640, 1536), (768, 1344), (832, 1216), (896, 1152)
-    ]
-
     def __init__(self):
         self.image_repo = ImageRepo()
         self.model_project_repo = ModelProjectRepo()
+        self.training_run_repo = TrainingRunRepo()
+        self.generation_history_repo = GenerationHistoryRepo()
         self._temp_prefix = "temp/uploads"
 
     def _get_user_id(self) -> str:
@@ -55,7 +47,7 @@ class ImageService:
             if not filename:
                 raise ValueError("Each file entry must include a filename")
             content_type = file_data.get("content_type") or "application/octet-stream"
-            normalize = file_data.get("normalize", True)
+            resize = file_data.get("resize", True)
             image_id = str(uuid.uuid4())
             temp_key = self._build_temp_upload_key(project_id, image_id, filename)
             presigned = storage.generate_presigned_upload(temp_key, content_type)
@@ -63,7 +55,7 @@ class ImageService:
                 "image_id": image_id,
                 "filename": filename,
                 "content_type": content_type,
-                "normalize": normalize,
+                "resize": resize,
                 "upload_url": presigned["url"],
                 "method": presigned.get("method", "PUT"),
                 "headers": presigned.get("headers", {}),
@@ -71,7 +63,7 @@ class ImageService:
 
         return uploads
 
-    def complete_presigned_uploads(self, project_id: str, uploads: List[dict], image_type: str = "training"):
+    def dispatch_presigned_uploads(self, project_id: str, uploads: List[dict], image_type: str = "training"):
         if not project_id:
             raise ValueError("Project ID is required")
         if not uploads:
@@ -84,26 +76,18 @@ class ImageService:
             if not image_id or not filename:
                 raise ValueError("Each upload must include image_id and filename")
             content_type = upload.get("content_type") or "application/octet-stream"
-            normalize = upload.get("normalize", True)
+            resize = upload.get("resize", True)
             temp_key = self._build_temp_upload_key(project_id, image_id, filename)
 
-            file_bytes = self.image_repo.storage.download_file(temp_key)
-            if file_bytes is None:
-                raise ValueError(f"Uploaded file not found for image_id {image_id}")
-
-            stream = io.BytesIO(file_bytes)
-            stream.seek(0)
-            file_obj = FileStorage(stream=stream, filename=filename, content_type=content_type)
-            # content_length is read-only; provide size via headers for downstream use.
-            file_obj.headers["Content-Length"] = str(len(file_bytes))
-
-            image = self.upload_image(
-                project_id,
-                file_obj,
-                filename,
+            image = self._enqueue_normalization_job(
+                project_id=project_id,
+                file=None,
+                filename=filename,
                 image_type=image_type,
-                normalize=normalize,
-                image_id=image_id
+                resize=resize,
+                image_id=image_id,
+                temp_key=temp_key,
+                content_type=content_type,
             )
 
             results.append({
@@ -112,160 +96,11 @@ class ImageService:
                 "content_type": image.content_type,
                 "size_bytes": image.size_bytes,
                 "image_type": image.image_type,
+                "processing": image.processing,
                 "created_at": image.created_at.isoformat() if image.created_at else None
             })
 
-            # Clean up temp upload
-            self.image_repo.storage.delete_file(temp_key)
-
         return results
-
-    def _find_best_sdxl_dimensions(self, width: int, height: int) -> tuple:
-        """
-        Find the closest allowed SDXL dimensions by aspect ratio
-
-        Args:
-            width: Original image width
-            height: Original image height
-
-        Returns:
-            Tuple of (target_width, target_height)
-        """
-        orig_aspect = width / height
-        best_match = None
-        min_aspect_diff = float('inf')
-
-        for allowed_w, allowed_h in self.ALLOWED_SDXL_DIMENSIONS:
-            allowed_aspect = allowed_w / allowed_h
-            aspect_diff = abs(orig_aspect - allowed_aspect)
-
-            if aspect_diff < min_aspect_diff:
-                min_aspect_diff = aspect_diff
-                best_match = (allowed_w, allowed_h)
-
-        return best_match
-
-    def _convert_heic_to_png(self, file: FileStorage, filename: str):
-        """Convert HEIC/HEIF image to PNG without resizing"""
-        if pillow_heif is None:
-            print("[IMAGE CONVERT ERROR] pillow_heif not available, cannot convert HEIC")
-            file.stream.seek(0)
-            return file, filename
-
-        try:
-            file.stream.seek(0)
-            file_data = file.stream.read()
-            heif_file = pillow_heif.read_heif(file_data)
-            img = PILImage.frombytes(heif_file.mode, heif_file.size, heif_file.data, "raw")
-            if img.mode not in ('RGB', 'RGBA', 'L'):
-                img = img.convert('RGB')
-
-            output = io.BytesIO()
-            img.save(output, format='PNG', optimize=True)
-            output.seek(0)
-
-            base_filename = os.path.splitext(filename)[0]
-            new_filename = f"{base_filename}.png"
-
-            new_file = FileStorage(
-                stream=output,
-                filename=new_filename,
-                content_type='image/png'
-            )
-
-            return new_file, new_filename
-        except Exception as e:
-            print(f"Error converting HEIC image: {e}")
-            file.stream.seek(0)
-            return file, filename
-
-    def _normalize_image(self, file: FileStorage, filename: str):
-        """
-        Normalize image: convert HEIC to PNG and resize to SDXL dimensions
-
-        Args:
-            file: FileStorage object containing image
-            filename: Original filename
-
-        Returns:
-            Tuple of (normalized FileStorage, new filename)
-        """
-        try:
-            # Ensure we're at the start of the stream
-            file.stream.seek(0)
-
-            # Read the entire file into memory
-            file_data = file.stream.read()
-            print(f"[IMAGE NORMALIZE] Processing {filename}, size: {len(file_data)} bytes")
-
-            # Handle HEIC files
-            if filename.lower().endswith(('.heic', '.heif')):
-                if pillow_heif is None:
-                    print("[IMAGE NORMALIZE ERROR] pillow_heif not available, cannot convert HEIC")
-                    file.stream.seek(0)
-                    return file, filename
-
-                print(f"[IMAGE NORMALIZE] Converting HEIC to PNG")
-                heif_file = pillow_heif.read_heif(file_data)
-                img = PILImage.frombytes(heif_file.mode, heif_file.size, heif_file.data, "raw")
-                print(f"[IMAGE NORMALIZE] HEIC converted, mode: {img.mode}, size: {img.size}")
-            else:
-                # Open regular image
-                img = PILImage.open(io.BytesIO(file_data))
-                print(f"[IMAGE NORMALIZE] Opened image, mode: {img.mode}, size: {img.size}")
-
-            orig_width, orig_height = img.size
-
-            # Find best SDXL dimensions
-            target_width, target_height = self._find_best_sdxl_dimensions(orig_width, orig_height)
-            print(f"[IMAGE NORMALIZE] Resizing from {orig_width}x{orig_height} to {target_width}x{target_height}")
-
-            # Calculate the scaling factor to fit within target dimensions while maintaining aspect ratio
-            scale = min(target_width / orig_width, target_height / orig_height)
-            new_width = int(orig_width * scale)
-            new_height = int(orig_height * scale)
-
-            # Resize image while maintaining aspect ratio
-            img = img.resize((new_width, new_height), PILImage.Resampling.LANCZOS)
-
-            # Create a new image with the target dimensions and paste the resized image centered
-            final_img = PILImage.new('RGB', (target_width, target_height), (255, 255, 255))
-            paste_x = (target_width - new_width) // 2
-            paste_y = (target_height - new_height) // 2
-            final_img.paste(img, (paste_x, paste_y))
-            img = final_img
-
-            # Convert to RGB if necessary (for PNG compatibility)
-            if img.mode not in ('RGB', 'RGBA', 'L'):
-                print(f"[IMAGE NORMALIZE] Converting from {img.mode} to RGB")
-                img = img.convert('RGB')
-
-            # Save as PNG to BytesIO
-            output = io.BytesIO()
-            img.save(output, format='PNG', optimize=True)
-            output.seek(0)
-            print(f"[IMAGE NORMALIZE] Saved as PNG, size: {len(output.getvalue())} bytes")
-            output.seek(0)
-
-            # Create new filename with .png extension
-            base_filename = os.path.splitext(filename)[0]
-            new_filename = f"{base_filename}.png"
-
-            # Create a new FileStorage object
-            new_file = FileStorage(
-                stream=output,
-                filename=new_filename,
-                content_type='image/png'
-            )
-
-            return new_file, new_filename
-        except Exception as e:
-            print(f"Error normalizing image: {e}")
-            import traceback
-            traceback.print_exc()
-            # Return original file if normalization fails
-            file.stream.seek(0)
-            return file, filename
 
     def upload_image(
         self,
@@ -273,7 +108,7 @@ class ImageService:
         file: FileStorage,
         filename: str,
         image_type: str = "training",
-        normalize: bool = True,
+        resize: bool = True,
         image_id: Optional[str] = None,
     ) -> Image:
         """Upload an image for a project"""
@@ -281,16 +116,82 @@ class ImageService:
         # regular projects and story projects, which are in different collections.
         # The controller should handle authentication/authorization.
 
-        is_heic = filename.lower().endswith(('.heic', '.heif'))
+        return self._enqueue_normalization_job(
+            project_id=project_id,
+            file=file,
+            filename=filename,
+            image_type=image_type,
+            resize=resize,
+            image_id=image_id,
+        )
 
-        if normalize:
-            # Normalize image: convert HEIC to PNG and resize to SDXL dimensions
-            file, filename = self._normalize_image(file, filename)
-        elif is_heic:
-            # Convert HEIC to PNG without resizing when normalization is disabled
-            file, filename = self._convert_heic_to_png(file, filename)
+    def _enqueue_normalization_job(
+        self,
+        project_id: str,
+        file: Optional[FileStorage],
+        filename: str,
+        image_type: str,
+        resize: bool,
+        image_id: Optional[str] = None,
+        temp_key: Optional[str] = None,
+        content_type: Optional[str] = None,
+        size_bytes: Optional[int] = None,
+    ) -> Image:
+        queue_url = os.getenv("IMAGE_UPLOAD_QUEUE_URL")
+        if not queue_url:
+            raise ValueError("IMAGE_UPLOAD_QUEUE_URL must be set")
 
-        return self.image_repo.upload_image(project_id, file, filename, image_type, image_id=image_id)
+        image_id = image_id or str(uuid.uuid4())
+        user_id = self._get_user_id()
+        project_id = str(project_id)
+
+        temp_key = temp_key or self._build_temp_upload_key(project_id, image_id, filename)
+        destination_key = self.image_repo.build_s3_key(project_id, image_id, filename)
+
+        if file is not None:
+            file.stream.seek(0)
+            file_bytes = file.stream.read()
+            file_stream = io.BytesIO(file_bytes)
+            file_stream.seek(0)
+            temp_file = FileStorage(
+                stream=file_stream,
+                filename=filename,
+                content_type=file.content_type,
+            )
+            temp_file.headers["Content-Length"] = str(len(file_bytes))
+            self.image_repo.storage.upload_file(temp_file, temp_key)
+            size_bytes = len(file_bytes)
+            content_type = file.content_type
+        else:
+            size_bytes = size_bytes or 0
+            content_type = content_type or "application/octet-stream"
+
+        image = self.image_repo.create_image_record(
+            project_id=project_id,
+            image_id=image_id,
+            filename=filename,
+            s3_key=destination_key,
+            content_type=content_type,
+            size_bytes=size_bytes,
+            image_type=image_type,
+            processing=True,
+        )
+
+        if image_type == "training":
+            self.training_run_repo.add_images_to_draft(project_id, [image_id])
+        elif image_type == "reference":
+            self.generation_history_repo.add_reference_images_to_draft(project_id, [image_id])
+
+        sqs = SqsClient(region=AppConfig.AWS_REGION)
+        sqs.send_message(
+            queue_url=queue_url,
+            message_body={
+                "image_id": image_id,
+                "resize": bool(resize),
+            },
+        )
+
+        return image
 
     def download_image(self, image_id: str) -> Optional[bytes]:
         """Download an image by ID"""
@@ -298,6 +199,14 @@ class ImageService:
 
     def delete_image(self, image_id: str):
         """Delete an image by ID"""
+        image = self.image_repo.get_image(image_id)
+        if image.image_type == "training":
+            self.training_run_repo.remove_images_from_draft(image.project_id, [image_id])
+        elif image.image_type == "reference":
+            self.generation_history_repo.remove_reference_images_from_draft(
+                image.project_id,
+                [image_id],
+            )
         self.image_repo.delete_image(image_id)
 
     def list_images(self, project_id: str, image_type: Optional[str] = None) -> List[Image]:
@@ -306,6 +215,17 @@ class ImageService:
         # regular projects and story projects, which are in different collections.
         # The controller should handle authentication/authorization.
         return self.image_repo.list_images(project_id, image_type)
+
+    def list_draft_training_images(self, project_id: str) -> List[Image]:
+        """List images attached to the current draft training run."""
+        draft = self.training_run_repo.get_draft_by_project(project_id)
+        if not draft or not draft.image_ids:
+            return []
+        return self.get_images_by_ids(draft.image_ids)
+
+    def get_images_by_ids(self, image_ids: List[str]) -> List[Image]:
+        """Fetch specific images for the current user by ID."""
+        return self.image_repo.get_images_by_ids(image_ids)
 
     def create_zip(self, project_id: str):
         """Create a zip file of all training images for a project"""

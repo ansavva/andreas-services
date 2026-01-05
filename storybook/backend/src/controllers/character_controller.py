@@ -2,19 +2,20 @@ from flask import Blueprint, request, jsonify
 from werkzeug.datastructures import FileStorage
 import uuid
 
-from src.data.character_asset_repo import CharacterAssetRepo
-from src.data.child_profile_repo import ChildProfileRepo
-from src.data.image_repo import ImageRepo
+from src.repositories.db.character_asset_repo import CharacterAssetRepo
+from src.repositories.db.child_profile_repo import ChildProfileRepo
+from src.repositories.db.image_repo import ImageRepo
 from src.services.character_generation_service import CharacterGenerationService
-from src.storage.factory import get_file_storage
-from src.utils.error_logging import log_error
-from src.config.generation_models_config import generation_models_config
+from src.services.aws.s3 import S3Storage
+from src.utils.logging.error_logging import log_error
+from src.utils.config.generation_models_config import generation_models_config
 
 character_controller = Blueprint("character_controller", __name__)
 character_asset_repo = CharacterAssetRepo()
 child_profile_repo = ChildProfileRepo()
 image_repo = ImageRepo()
 character_generation_service = CharacterGenerationService()
+
 
 @character_controller.route("/project/<string:project_id>", methods=["GET"])
 def get_character_assets(project_id):
@@ -28,6 +29,7 @@ def get_character_assets(project_id):
         log_error(e, request.endpoint)
         return jsonify({"error": str(e)}), 500
 
+
 @character_controller.route("/project/<string:project_id>/portrait", methods=["POST"])
 def generate_character_portrait(project_id):
     """Generate a character portrait from uploaded photos"""
@@ -35,14 +37,17 @@ def generate_character_portrait(project_id):
         # Get child profile
         profile = child_profile_repo.get_by_project_id(project_id)
         if not profile:
-            return jsonify({"error": "Child profile not found. Please complete kid setup first."}), 404
+            return (
+                jsonify({"error": "Child profile not found. Please complete kid setup first."}),
+                404,
+            )
 
         # Get reference images from profile
         if not profile.photo_ids or len(profile.photo_ids) == 0:
             return jsonify({"error": "No photos found. Please upload photos first."}), 400
 
         # Download reference images from S3
-        storage = get_file_storage()
+        storage = S3Storage()
         reference_images = []
         for photo_id in profile.photo_ids:
             image_metadata = image_repo.get_image(photo_id)
@@ -59,7 +64,7 @@ def generate_character_portrait(project_id):
             reference_images=reference_images,
             child_name=profile.child_name,
             user_description=user_description,
-            style=style
+            style=style,
         )
 
         # Convert base64 to bytes and upload using image_repo (same as uploaded photos)
@@ -70,7 +75,7 @@ def generate_character_portrait(project_id):
         file_obj = FileStorage(
             stream=image_stream,
             filename="portrait.png",
-            content_type="image/png"
+            content_type="image/png",
         )
 
         # Upload using image_repo - stores in project_id/{image_id}.png
@@ -83,9 +88,8 @@ def generate_character_portrait(project_id):
             image_id=image_record.id,  # Just store the image ID
             prompt=f"Portrait of {profile.child_name}",
             stability_image_id=str(result.get("seed")),
-            version=1
+            version=1,
         )
-
         return jsonify(asset.to_dict()), 201
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
@@ -93,19 +97,17 @@ def generate_character_portrait(project_id):
         log_error(e, request.endpoint)
         return jsonify({"error": str(e)}), 500
 
+
 @character_controller.route("/project/<string:project_id>/portrait-stylized", methods=["POST"])
 def generate_stylized_portrait(project_id):
     """
     Generate a stylized character portrait using Stability AI's style transfer
-
     This is the RECOMMENDED method for character generation as it better preserves
     kid likeness while applying artistic styles.
-
     Request body (JSON):
         - user_description: Optional custom description to append to prompt
         - style_id: Optional style identifier (default: "animated_3d")
         - style_strength: Optional 0.0-1.0 (default: from config, typically 0.8)
-
     Returns:
         Character asset with generated portrait
     """
@@ -113,7 +115,10 @@ def generate_stylized_portrait(project_id):
         # Get child profile
         profile = child_profile_repo.get_by_project_id(project_id)
         if not profile:
-            return jsonify({"error": "Child profile not found. Please complete kid setup first."}), 404
+            return (
+                jsonify({"error": "Child profile not found. Please complete kid setup first."}),
+                404,
+            )
 
         # Get reference images from profile (kid photos)
         if not profile.photo_ids or len(profile.photo_ids) == 0:
@@ -122,27 +127,33 @@ def generate_stylized_portrait(project_id):
         # Get request parameters
         data = request.get_json() or {}
         user_description = data.get("user_description")
-
         provider = "stability_ai"
         profile_name = "style_transfer"
         gen_config = generation_models_config.get_generation_config(provider, profile_name)
-
-        style_id = data.get("style_id", generation_models_config.get_style_reference_id(provider, profile_name))
+        style_id = data.get(
+            "style_id",
+            generation_models_config.get_style_reference_id(provider, profile_name),
+        )
         style_strength = data.get("style_strength", gen_config.get("style_strength", 0.7))
 
         # Validate style_id
         available_styles = list(generation_models_config.get_all_style_references().keys())
         if style_id not in available_styles:
-            return jsonify({
-                "error": f"Invalid style_id '{style_id}'. Available styles: {available_styles}"
-            }), 400
+            return (
+                jsonify(
+                    {
+                        "error": f"Invalid style_id '{style_id}'. Available styles: {available_styles}"
+                    }
+                ),
+                400,
+            )
 
         # Validate style_strength
         if not (0.0 <= style_strength <= 1.0):
             return jsonify({"error": "style_strength must be between 0.0 and 1.0"}), 400
 
         # Download kid reference image (use first photo as init_image)
-        storage = get_file_storage()
+        storage = S3Storage()
         kid_image_metadata = image_repo.get_image(profile.photo_ids[0])
         init_image = storage.download_file(kid_image_metadata.s3_key)
 
@@ -152,37 +163,33 @@ def generate_stylized_portrait(project_id):
             style_id=style_id,
             user_description=user_description,
             style_strength=style_strength,
-            profile=profile_name
+            profile=profile_name,
         )
 
         # Upload result using image_repo
         from io import BytesIO
-        image_stream = BytesIO(result_bytes)
 
+        image_stream = BytesIO(result_bytes)
         file_obj = FileStorage(
             stream=image_stream,
             filename="portrait_stylized.png",
-            content_type="image/png"
+            content_type="image/png",
         )
-
         image_record = image_repo.upload_image(project_id, file_obj, "portrait_stylized.png")
 
         # Save character asset
         full_prompt = f"{prompt} (style: {style_id}, strength: {style_strength})"
         if user_description:
             full_prompt += f" - {user_description}"
-
         asset = character_asset_repo.create_image_asset(
             project_id=project_id,
             asset_type="portrait",
             image_id=image_record.id,
             prompt=full_prompt,
             stability_image_id=f"style_transfer_{style_id}",
-            version=1
+            version=1,
         )
-
         return jsonify(asset.to_dict()), 201
-
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except FileNotFoundError as e:
@@ -190,6 +197,7 @@ def generate_stylized_portrait(project_id):
     except Exception as e:
         log_error(e, request.endpoint)
         return jsonify({"error": str(e)}), 500
+
 
 @character_controller.route("/asset/<string:asset_id>/approve", methods=["POST"])
 def approve_character_asset(asset_id):
@@ -202,6 +210,7 @@ def approve_character_asset(asset_id):
     except Exception as e:
         log_error(e, request.endpoint)
         return jsonify({"error": str(e)}), 500
+
 
 @character_controller.route("/asset/<string:asset_id>/regenerate", methods=["POST"])
 def regenerate_character_asset(asset_id):
@@ -216,7 +225,7 @@ def regenerate_character_asset(asset_id):
             return jsonify({"error": "Child profile not found"}), 404
 
         # Get storage adapter
-        storage = get_file_storage()
+        storage = S3Storage()
 
         # Get reference images
         reference_images = []
@@ -245,7 +254,6 @@ def regenerate_character_asset(asset_id):
             # Load style reference image
             if not style_id:
                 style_id = generation_models_config.get_style_reference_id(provider, profile_name)
-
             if not style_strength:
                 style_strength = gen_config.get("style_strength", 0.7)
 
@@ -255,11 +263,12 @@ def regenerate_character_asset(asset_id):
                 style_id=style_id,
                 user_description=user_description,
                 style_strength=style_strength,
-                profile=profile_name
+                profile=profile_name,
             )
 
             # Convert bytes to file-like object for compatibility with existing code
             from io import BytesIO
+
             image_stream = BytesIO(result_bytes)
             result = {"image_data": None}  # Placeholder for compatibility
         else:
@@ -273,17 +282,19 @@ def regenerate_character_asset(asset_id):
         else:
             # Legacy format: convert base64 to bytes
             image_stream = stability_service.image_to_bytes(result["image_data"])
-
         image_stream.seek(0)
 
         # Wrap in FileStorage for image_repo
-        filename = f"{asset.asset_type}.png" if not asset.scene_name else f"scene_{asset.scene_name}.png"
+        filename = (
+            f"{asset.asset_type}.png"
+            if not asset.scene_name
+            else f"scene_{asset.scene_name}.png"
+        )
         file_obj = FileStorage(
             stream=image_stream,
             filename=filename,
-            content_type="image/png"
+            content_type="image/png",
         )
-
         image_record = image_repo.upload_image(asset.project_id, file_obj, filename)
 
         # Create new asset version with reference to image ID
@@ -294,9 +305,8 @@ def regenerate_character_asset(asset_id):
             prompt=asset.prompt,
             scene_name=asset.scene_name,
             stability_image_id=str(result.get("seed")),
-            version=asset.version + 1
+            version=asset.version + 1,
         )
-
         return jsonify(new_asset.to_dict()), 201
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
@@ -304,24 +314,24 @@ def regenerate_character_asset(asset_id):
         log_error(e, request.endpoint)
         return jsonify({"error": str(e)}), 500
 
+
 @character_controller.route("/project/<string:project_id>/bible", methods=["POST"])
 def create_character_bible(project_id):
     """Create or update character bible"""
     try:
         data = request.get_json()
         bible_data = data.get("bible_data")
-
         if not bible_data:
             return jsonify({"error": "Bible data is required"}), 400
-
         asset = character_asset_repo.create_character_bible(
             project_id=project_id,
-            bible_data=bible_data
+            bible_data=bible_data,
         )
         return jsonify(asset.to_dict()), 201
     except Exception as e:
         log_error(e, request.endpoint)
         return jsonify({"error": str(e)}), 500
+
 
 @character_controller.route("/project/<string:project_id>/bible", methods=["GET"])
 def get_character_bible(project_id):

@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Tabs, Tab, Spinner, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/react";
 
-import { exists, getTrainingRuns } from "@/apis/modelController";
+import { exists } from "@/apis/modelController";
 import { getModelProjectById, deleteModelProject, getModelTypes } from "@/apis/modelProjectController";
 import { useAxios } from "@/hooks/axiosContext";
 import { useToast } from "@/hooks/useToast";
@@ -19,6 +19,7 @@ export default function ModelProjectPage() {
   const { axiosInstance } = useAxios();
   const { project_id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { showError, showSuccess } = useToast();
   const { isOpen: isDeleteOpen, onOpen: onDeleteOpen, onClose: onDeleteClose } = useDisclosure();
 
@@ -32,6 +33,13 @@ export default function ModelProjectPage() {
   const [needsSubjectSetup, setNeedsSubjectSetup] = useState(false);
   const [requiresTraining, setRequiresTraining] = useState<boolean>(true);
   const [modelTypeInfo, setModelTypeInfo] = useState<any>(null);
+  const tabParam = searchParams.get("tab");
+
+  const updateTabQuery = (tab: string) => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("tab", tab);
+    setSearchParams(nextParams, { replace: true });
+  };
 
   // Ensure project_id is valid
   if (!project_id) {
@@ -67,22 +75,33 @@ export default function ModelProjectPage() {
       setRequiresTraining(needsTraining);
 
       // For generation-only models, skip training checks and go directly to generation
+      const allowedTabs = needsTraining
+        ? ["training", "generate", "settings"]
+        : ["generate", "settings"];
+      const preferredTab = allowedTabs.includes(tabParam || "")
+        ? (tabParam as string)
+        : null;
+
       if (!needsTraining) {
         setSelectedTab("generate");
         setHasSuccessfulTraining(true); // Enable generation tab
         setModelExists(true); // No model training needed
+        if (preferredTab) {
+          setSelectedTab(preferredTab);
+        }
       } else {
         // For training models, check if model exists and training status
         const modelExistsResponse = await exists(axiosInstance, project_id!);
         const modelReady = modelExistsResponse.model_found || projectData.status === "READY";
         setModelExists(modelReady);
 
-        const { hasSuccess, hasActive } = await refreshTrainingProgress(project_id!);
-        if (!hasActive && (modelReady || hasSuccess)) {
-          setSelectedTab("generate");
-        } else if (hasActive) {
-          setSelectedTab("training");
-        }
+        const fallbackTab = modelReady ? "generate" : "training";
+        const nextTab =
+          preferredTab === "generate" && !modelReady
+            ? "training"
+            : (preferredTab || fallbackTab);
+        setHasSuccessfulTraining(modelReady);
+        setSelectedTab(nextTab);
       }
     } catch (error: any) {
       logError("Load project data", error);
@@ -100,22 +119,6 @@ export default function ModelProjectPage() {
       }
     } finally {
       setLoading(false);
-    }
-  };
-
-  const refreshTrainingProgress = async (projId: string) => {
-    try {
-      const response = await getTrainingRuns(axiosInstance, projId);
-      const runs = response.training_runs || [];
-      const hasSuccess = runs.some((run: any) => run.status === "succeeded");
-      const hasActive = runs.some((run: any) =>
-        ["starting", "processing"].includes(run.status),
-      );
-      setHasSuccessfulTraining(hasSuccess);
-      return { hasSuccess, hasActive };
-    } catch (error) {
-      logError("Get training runs", error);
-      return { hasSuccess: false, hasActive: false };
     }
   };
 
@@ -223,7 +226,11 @@ export default function ModelProjectPage() {
         {/* Tabs */}
         <Tabs
           selectedKey={selectedTab}
-          onSelectionChange={(key) => setSelectedTab(key as string)}
+          onSelectionChange={(key) => {
+            const nextTab = key as string;
+            setSelectedTab(nextTab);
+            updateTabQuery(nextTab);
+          }}
           aria-label="Project tabs"
           className="mb-6"
         >

@@ -2,8 +2,8 @@ from dataclasses import dataclass
 from typing import Optional, List
 from datetime import datetime
 
-from src.config.replicate_config import replicate_config
-from src.config.generation_models_config import generation_models_config
+from src.utils.config.replicate_config import replicate_config
+from src.utils.config.generation_models_config import generation_models_config
 
 @dataclass
 class ModelProject:

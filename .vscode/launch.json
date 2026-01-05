@@ -8,14 +8,14 @@
       "module": "flask",
       "python": "${workspaceFolder}/storybook/backend/venv/bin/python",
       "env": {
-        "FLASK_APP": "src/app.py",
+        "FLASK_APP": "src.handlers.local.api.api_dev_server",
         "FLASK_DEBUG": "1",
         "PYTHONPATH": "${workspaceFolder}/storybook/backend"
       },
       "args": [
         "run",
         "--host=0.0.0.0",
-        "--port=5001",
+        "--port=3000",
         "--no-debugger",
         "--no-reload"
       ],

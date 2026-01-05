@@ -67,6 +67,29 @@ module "storage" {
   tags = local.common_tags
 }
 
+# Image normalization queue (prod)
+module "image_queue" {
+  source = "../../modules/image_queue"
+
+  project     = local.project
+  environment = local.environment
+
+  tags = local.common_tags
+}
+
+# Image normalization worker (prod)
+module "image_worker" {
+  source = "../../modules/image_worker"
+
+  project     = local.project
+  environment = local.environment
+
+  s3_bucket_arn = module.storage.backend_files_bucket_arn
+  queue_arn     = module.image_queue.queue_arn
+
+  tags = local.common_tags
+}
+
 # Compute module - Lambda + API Gateway
 module "compute" {
   source = "../../modules/compute"

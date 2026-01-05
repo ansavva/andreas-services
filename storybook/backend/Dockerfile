@@ -11,4 +11,4 @@ RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
 COPY . ${LAMBDA_TASK_ROOT}/
 
 # Set the Lambda handler
-CMD ["lambda_handler.handler"]
+CMD ["src.handlers.lambda.api.api_handler.handler"]

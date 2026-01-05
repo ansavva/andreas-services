@@ -1,14 +1,14 @@
 import { AxiosInstance } from "axios";
 
 type UploadImageOptions = {
-  normalize?: boolean;
+  resize?: boolean;
 };
 
 type PresignedUpload = {
   image_id: string;
   filename: string;
   content_type: string;
-  normalize?: boolean;
+  resize?: boolean;
   upload_url: string;
   method?: string;
   headers?: Record<string, string>;
@@ -26,12 +26,12 @@ export const uploadImage = async (
     return { images: [] };
   }
 
-  const shouldNormalize = options?.normalize ?? true;
+  const shouldResize = options?.resize ?? true;
 
   const filePayload = files.map((file) => ({
     filename: file.name,
     content_type: file.type || "application/octet-stream",
-    normalize: shouldNormalize,
+    resize: shouldResize,
   }));
 
   const presignResponse = await axiosInstance.post("/api/images/upload/presign", {
@@ -74,14 +74,14 @@ export const uploadImage = async (
     }),
   );
 
-  const completeResponse = await axiosInstance.post("/api/images/upload/complete", {
+  const completeResponse = await axiosInstance.post("/api/images/upload/dispatch", {
     project_id: projectId,
     image_type: imageType,
     uploads: presignedUploads.map((upload, index) => ({
       image_id: upload.image_id,
       filename: files[index].name,
       content_type: files[index].type || "application/octet-stream",
-      normalize: upload.normalize ?? shouldNormalize,
+      resize: upload.resize ?? shouldResize,
     })),
   });
 
@@ -119,5 +119,26 @@ export const listImages = async (axiosInstance: AxiosInstance, projectId: string
 export const getImagesByProject = async (axiosInstance: AxiosInstance, projectId: string, imageType?: string) => {
     const params = imageType ? { image_type: imageType } : {};
     const response = await axiosInstance.get(`/api/images/list/${projectId}`, { params });
+    return response.data;
+};
+
+export const getAvailableTrainingImages = async (axiosInstance: AxiosInstance, projectId: string) => {
+    const response = await axiosInstance.get(`/api/images/available/${projectId}`);
+    return response.data;
+};
+
+export const getDraftTrainingImages = async (axiosInstance: AxiosInstance, projectId: string) => {
+    const response = await axiosInstance.get(`/api/images/draft/${projectId}`);
+    return response.data;
+};
+
+export const getImageStatus = async (axiosInstance: AxiosInstance, imageIds: string[]) => {
+    if (!imageIds.length) {
+        return { images: [] };
+    }
+
+    const response = await axiosInstance.get(`/api/images/status`, {
+        params: { ids: imageIds.join(",") },
+    });
     return response.data;
 };

@@ -15,8 +15,10 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: storybook-backend-production
-  LAMBDA_FUNCTION_NAME: storybook-backend-production
+  ECR_REPOSITORY_API: storybook-backend-production
+  ECR_REPOSITORY_IMAGE_NORMALIZATION: storybook-image-normalization-production
+  LAMBDA_FUNCTION_NAME_API: storybook-backend-production
+  LAMBDA_FUNCTION_NAME_IMAGE_NORMALIZATION: storybook-image-normalization-production
 
 jobs:
   check-changes:
@@ -69,8 +71,10 @@ jobs:
           cd storybook/backend
           # Build without buildx for Lambda compatibility (Lambda doesn't support OCI manifests)
           DOCKER_BUILDKIT=0 docker build \
-            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
-            -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY_API:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY_API:latest \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY_IMAGE_NORMALIZATION:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY_IMAGE_NORMALIZATION:latest \
             .
       # Only push/publish when this isn't a PR build
       - name: Push Docker image
@@ -79,39 +83,54 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_API:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_API:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_IMAGE_NORMALIZATION:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_IMAGE_NORMALIZATION:latest
 
-      - name: Update Lambda function
+      - name: Update API Lambda function
         if: github.event_name != 'pull_request'
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
           aws lambda update-function-code \
-            --function-name $LAMBDA_FUNCTION_NAME \
-            --image-uri $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+            --function-name $LAMBDA_FUNCTION_NAME_API \
+            --image-uri $ECR_REGISTRY/$ECR_REPOSITORY_API:$IMAGE_TAG
+
+      - name: Update image normalization Lambda function
+        if: github.event_name != 'pull_request'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          aws lambda update-function-code \
+            --function-name $LAMBDA_FUNCTION_NAME_IMAGE_NORMALIZATION \
+            --image-uri $ECR_REGISTRY/$ECR_REPOSITORY_IMAGE_NORMALIZATION:$IMAGE_TAG
 
       - name: Wait for Lambda code update
         if: github.event_name != 'pull_request'
         run: |
           aws lambda wait function-updated \
-            --function-name $LAMBDA_FUNCTION_NAME
+            --function-name $LAMBDA_FUNCTION_NAME_API
+          aws lambda wait function-updated \
+            --function-name $LAMBDA_FUNCTION_NAME_IMAGE_NORMALIZATION
 
       # Keep Lambda env vars in sync with repo secrets (skip on PRs)
-      - name: Update Lambda environment variables
+      - name: Update API Lambda environment variables
         if: github.event_name != 'pull_request'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           STABILITY_API_KEY: ${{ secrets.STABILITY_API_KEY }}
           REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          AWS_COGNITO_REGION: ${{ vars.AWS_COGNITO_REGION }}
+          AWS_REGION: ${{ env.AWS_REGION }}
           AWS_COGNITO_USER_POOL_ID: ${{ vars.AWS_COGNITO_USER_POOL_ID }}
           AWS_COGNITO_APP_CLIENT_ID: ${{ vars.AWS_COGNITO_APP_CLIENT_ID }}
           DATABASE_NAME: ${{ vars.DATABASE_NAME }}
           S3_BUCKET_NAME: ${{ vars.S3_BUCKET_NAME }}
           APP_URL: ${{ vars.APP_URL }}
+          IMAGE_UPLOAD_QUEUE_URL: ${{ vars.IMAGE_UPLOAD_QUEUE_URL }}
         run: |
           # Fail fast on errors/unset vars to avoid partial updates
           set -euo pipefail
@@ -131,11 +150,12 @@ jobs:
             "REPLICATE_API_TOKEN"
             "DATABASE_URL"
             "DATABASE_NAME"
-            "AWS_COGNITO_REGION"
+            "AWS_REGION"
             "AWS_COGNITO_USER_POOL_ID"
             "AWS_COGNITO_APP_CLIENT_ID"
             "S3_BUCKET_NAME"
             "APP_URL"
+            "IMAGE_UPLOAD_QUEUE_URL"
           )
 
           # Update each key with the latest secret (skip if unset)
@@ -150,14 +170,66 @@ jobs:
           jq -n --argjson vars "$UPDATED_ENV" '{Variables: $vars}' > environment.json
 
           aws lambda update-function-configuration \
-            --function-name "$LAMBDA_FUNCTION_NAME" \
+            --function-name "$LAMBDA_FUNCTION_NAME_API" \
+            --environment file://environment.json
+
+      - name: Update image normalization Lambda environment variables
+        if: github.event_name != 'pull_request'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          STABILITY_API_KEY: ${{ secrets.STABILITY_API_KEY }}
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          AWS_COGNITO_USER_POOL_ID: ${{ vars.AWS_COGNITO_USER_POOL_ID }}
+          AWS_COGNITO_APP_CLIENT_ID: ${{ vars.AWS_COGNITO_APP_CLIENT_ID }}
+          DATABASE_NAME: ${{ vars.DATABASE_NAME }}
+          S3_BUCKET_NAME: ${{ vars.S3_BUCKET_NAME }}
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          set -euo pipefail
+          CURRENT_ENV=$(aws lambda get-function-configuration \
+            --function-name "$LAMBDA_FUNCTION_NAME_IMAGE_NORMALIZATION" \
+            --query 'Environment.Variables' \
+            --output json)
+          if [ "$CURRENT_ENV" = "null" ] || [ -z "$CURRENT_ENV" ]; then
+            CURRENT_ENV="{}"
+          fi
+
+          UPDATED_ENV="$CURRENT_ENV"
+          KEYS=(
+            "OPENAI_API_KEY"
+            "STABILITY_API_KEY"
+            "REPLICATE_API_TOKEN"
+            "DATABASE_URL"
+            "DATABASE_NAME"
+            "AWS_REGION"
+            "AWS_COGNITO_USER_POOL_ID"
+            "AWS_COGNITO_APP_CLIENT_ID"
+            "S3_BUCKET_NAME"
+            "APP_URL"
+          )
+
+          for KEY in "${KEYS[@]}"; do
+            VALUE=${!KEY:-}
+            if [ -n "$VALUE" ]; then
+              UPDATED_ENV=$(echo "$UPDATED_ENV" | jq -c --arg key "$KEY" --arg value "$VALUE" '.[$key]=$value')
+            fi
+          done
+
+          jq -n --argjson vars "$UPDATED_ENV" '{Variables: $vars}' > environment.json
+
+          aws lambda update-function-configuration \
+            --function-name "$LAMBDA_FUNCTION_NAME_IMAGE_NORMALIZATION" \
             --environment file://environment.json
 
       - name: Wait for Lambda update to complete
         if: github.event_name != 'pull_request'
         run: |
           aws lambda wait function-updated \
-            --function-name $LAMBDA_FUNCTION_NAME
+            --function-name $LAMBDA_FUNCTION_NAME_API
+          aws lambda wait function-updated \
+            --function-name $LAMBDA_FUNCTION_NAME_IMAGE_NORMALIZATION
 
   deploy-frontend:
     needs: check-changes
@@ -191,7 +263,6 @@ jobs:
       - name: Build frontend
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
-          VITE_AWS_COGNITO_REGION: ${{ vars.VITE_AWS_COGNITO_REGION }}
           VITE_AWS_COGNITO_USER_POOL_ID: ${{ vars.VITE_AWS_COGNITO_USER_POOL_ID }}
           VITE_AWS_COGNITO_APP_CLIENT_ID: ${{ vars.VITE_AWS_COGNITO_APP_CLIENT_ID }}
           VITE_AWS_COGNITO_DOMAIN: ${{ vars.VITE_AWS_COGNITO_DOMAIN }}

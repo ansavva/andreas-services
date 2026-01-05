@@ -5,11 +5,19 @@ export const exists = async (axiosInstance: AxiosInstance, projectId: string) =>
   return response.data;
 };
 
-export const train = async (axiosInstance: AxiosInstance, projectId: string, imageIds: string[]) => {
-  const response = await axiosInstance.post('/api/model/train', {
+export const train = async (
+  axiosInstance: AxiosInstance,
+  projectId: string,
+  imageIds?: string[],
+) => {
+  const payload: { project_id: string; image_ids?: string[] } = {
     project_id: projectId,
-    image_ids: imageIds
-  });
+  };
+  if (imageIds && imageIds.length) {
+    payload.image_ids = imageIds;
+  }
+
+  const response = await axiosInstance.post('/api/model/train', payload);
   return response.data;
 };
 

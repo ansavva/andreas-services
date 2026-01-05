@@ -2,8 +2,8 @@ from flask import Blueprint, request, jsonify
 
 from src.services.model_project_service import ModelProjectService
 from src.models.model_project import ModelProject
-from src.config.replicate_config import replicate_config
-from src.config.generation_models_config import generation_models_config
+from src.utils.config.replicate_config import replicate_config
+from src.utils.config.generation_models_config import generation_models_config
 
 model_project_controller = Blueprint("model_project_controller", __name__)
 model_project_service = ModelProjectService()

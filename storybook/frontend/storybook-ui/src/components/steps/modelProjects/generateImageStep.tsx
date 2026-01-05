@@ -6,12 +6,13 @@ import { faUpload, faWandMagicSparkles } from "@fortawesome/free-solid-svg-icons
 
 import { useAxios } from "@/hooks/axiosContext";
 import { generate } from "@/apis/modelController";
+import { deleteImage, getImageStatus, uploadImage } from "@/apis/imageController";
 import {
-  deleteImage,
-  getImagesByProject,
-  uploadImage,
-} from "@/apis/imageController";
-import { createGenerationHistory, GenerationHistoryItem } from "@/apis/generationHistoryController";
+  createGenerationHistory,
+  GenerationHistoryItem,
+  getDraftGenerationHistory,
+  updateDraftGenerationPrompt,
+} from "@/apis/generationHistoryController";
 import { getModelTypes } from "@/apis/modelProjectController";
 import ImageGrid from "@/components/images/imageGrid";
 import GenerationHistoryList from "@/components/steps/modelProjects/generationHistoryList";
@@ -26,6 +27,7 @@ type ReferenceImageConfig = {
 type ReferenceImage = {
   id: string;
   name?: string;
+  processing?: boolean;
 };
 
 type GenerateImageStepProps = {
@@ -46,11 +48,27 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({
   const [referenceConfig, setReferenceConfig] = useState<ReferenceImageConfig | null>(null);
   const [referenceImages, setReferenceImages] = useState<ReferenceImage[]>([]);
   const [usedReferenceImageIds, setUsedReferenceImageIds] = useState<string[]>([]);
-  const [isLoadingReferenceImages, setIsLoadingReferenceImages] = useState(false);
   const [isUploadingReferenceImages, setIsUploadingReferenceImages] = useState(false);
+  const referencePollRef = useRef<number | null>(null);
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [includeSubjectDescription, setIncludeSubjectDescription] = useState(true);
+  const promptSaveTimeoutRef = useRef<number | null>(null);
+  const lastSavedPromptRef = useRef<string>("");
+  const lastSavedIncludeSubjectRef = useRef<boolean | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (referencePollRef.current) {
+        window.clearTimeout(referencePollRef.current);
+        referencePollRef.current = null;
+      }
+      if (promptSaveTimeoutRef.current) {
+        window.clearTimeout(promptSaveTimeoutRef.current);
+        promptSaveTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const configFromProps = modelTypeInfo?.reference_images;
@@ -80,26 +98,84 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({
   }, [axiosInstance, project?.model_type, modelTypeInfo]);
 
   useEffect(() => {
-    fetchReferenceImages();
+    setReferenceImages([]);
+    if (referencePollRef.current) {
+      window.clearTimeout(referencePollRef.current);
+      referencePollRef.current = null;
+    }
+    if (promptSaveTimeoutRef.current) {
+      window.clearTimeout(promptSaveTimeoutRef.current);
+      promptSaveTimeoutRef.current = null;
+    }
+    lastSavedPromptRef.current = "";
+    lastSavedIncludeSubjectRef.current = null;
+    setPrompt("");
+  }, [projectId]);
+
+  useEffect(() => {
+    const loadDraftReferences = async () => {
+      if (!projectId) return;
+      try {
+        const draft = await getDraftGenerationHistory(axiosInstance, projectId);
+        if (!draft) {
+          setReferenceImages([]);
+          return;
+        }
+        const refs = (draft.reference_image_ids || []).map((id) => ({
+          id,
+          name: "Image",
+          processing: draft.image_processing?.[id] ?? true,
+        }));
+        if (draft.prompt) {
+          setPrompt(draft.prompt);
+          lastSavedPromptRef.current = draft.prompt;
+        }
+        if (typeof draft.include_subject_description === "boolean") {
+          setIncludeSubjectDescription(draft.include_subject_description);
+          lastSavedIncludeSubjectRef.current = draft.include_subject_description;
+        }
+        setReferenceImages(refs);
+
+        const pending = refs.filter((img) => img.processing).map((img) => img.id);
+        if (pending.length) {
+          pollReferenceStatus(pending);
+        }
+      } catch (err) {
+        console.error("Failed to load draft reference images", err);
+      }
+    };
+
+    loadDraftReferences();
   }, [axiosInstance, projectId]);
 
-  const fetchReferenceImages = async () => {
+  useEffect(() => {
     if (!projectId) return;
-    setIsLoadingReferenceImages(true);
-    try {
-      const response = await getImagesByProject(axiosInstance, projectId, "reference");
-      const items = (response.images || []).map((img: any) => ({
-        id: img.id,
-        name: img.filename || "Image",
-      }));
-      setReferenceImages(items);
-    } catch (err) {
-      console.error("Failed to load reference images", err);
-    } finally {
-      setIsLoadingReferenceImages(false);
-    }
-  };
 
+    if (promptSaveTimeoutRef.current) {
+      window.clearTimeout(promptSaveTimeoutRef.current);
+    }
+
+    promptSaveTimeoutRef.current = window.setTimeout(async () => {
+      const trimmed = prompt.trim();
+      const includeChanged =
+        lastSavedIncludeSubjectRef.current !== includeSubjectDescription;
+      if (trimmed === lastSavedPromptRef.current && !includeChanged) {
+        return;
+      }
+      try {
+        await updateDraftGenerationPrompt(
+          axiosInstance,
+          projectId,
+          trimmed,
+          includeSubjectDescription,
+        );
+        lastSavedPromptRef.current = trimmed;
+        lastSavedIncludeSubjectRef.current = includeSubjectDescription;
+      } catch (err) {
+        console.error("Failed to save draft prompt", err);
+      }
+    }, 800);
+  }, [prompt, projectId, axiosInstance, includeSubjectDescription]);
   const handleReferenceUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!projectId) return;
     const files = Array.from(event.target.files || []);
@@ -118,15 +194,28 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({
 
     setIsUploadingReferenceImages(true);
     try {
-      await uploadImage(
+      const response = await uploadImage(
         axiosInstance,
         projectId,
         "reference_images",
         files,
         "reference",
-        { normalize: false },
+        { resize: false },
       );
-      await fetchReferenceImages();
+      const uploaded = (response.images || []).map((img: any) => ({
+        id: img.id,
+        name: img.filename || "Image",
+        processing: img.processing,
+      }));
+      if (uploaded.length) {
+        setReferenceImages((prev) => [...prev, ...uploaded]);
+        const pending = uploaded
+          .filter((img: any) => img.processing)
+          .map((img: any) => img.id);
+        if (pending.length) {
+          pollReferenceStatus(pending);
+        }
+      }
       setError(null);
     } catch (err) {
       console.error("Failed to upload reference images", err);
@@ -139,7 +228,8 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({
   const handleRemoveReference = async (imageId: string) => {
     try {
       await deleteImage(axiosInstance, imageId);
-      await fetchReferenceImages();
+      setReferenceImages((prev) => prev.filter((image) => image.id !== imageId));
+      setUsedReferenceImageIds((prev) => prev.filter((id) => id !== imageId));
     } catch (err) {
       console.error("Failed to delete reference image", err);
       setError("Failed to delete reference image. Please try again.");
@@ -162,6 +252,10 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({
         return;
       }
     }
+    if (hasProcessingReferenceImages) {
+      setError("Please wait for reference images to finish processing before generating.");
+      return;
+    }
 
     setIsGenerating(true);
     setError(null);
@@ -181,6 +275,7 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({
         trimmedPrompt,
         [generatedImage.id],
         referenceIds,
+        includeSubjectDescription,
       );
 
       // Clear the prompt input after successful generation
@@ -214,6 +309,44 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({
     () => referenceImages.filter((image) => !usedReferenceIdSet.has(image.id)),
     [referenceImages, usedReferenceIdSet],
   );
+  const hasProcessingReferenceImages = useMemo(
+    () => availableReferenceImages.some((image) => image.processing),
+    [availableReferenceImages],
+  );
+
+  const pollReferenceStatus = async (imageIds: string[]) => {
+    if (!imageIds.length) return;
+
+    try {
+      const response = await getImageStatus(axiosInstance, imageIds);
+      const updates: ReferenceImage[] = (response.images || []).map((img: any) => ({
+        id: img.id,
+        name: img.filename || "Image",
+        processing: img.processing,
+      }));
+
+      setReferenceImages((prev) => {
+        const byId = new Map(prev.map((img) => [img.id, img]));
+        updates.forEach((update) => {
+          const existing = byId.get(update.id);
+          byId.set(update.id, existing ? { ...existing, ...update } : update);
+        });
+        return Array.from(byId.values());
+      });
+
+      const stillProcessing = updates
+        .filter((update) => update.processing)
+        .map((update) => update.id);
+
+      if (stillProcessing.length) {
+        referencePollRef.current = window.setTimeout(() => {
+          pollReferenceStatus(stillProcessing);
+        }, 2000);
+      }
+    } catch (error) {
+      console.error("Failed to poll reference image status", error);
+    }
+  };
 
   const handleHistoryLoaded = (histories: GenerationHistoryItem[]) => {
     const ids = new Set<string>();
@@ -230,7 +363,9 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({
     availableReferenceImages.length >= (referenceConfig?.min || 0);
 
   const canGenerate =
-    prompt.trim().length > 0 && (!referenceConfig || isReferenceRequirementMet);
+    prompt.trim().length > 0 &&
+    (!referenceConfig || isReferenceRequirementMet) &&
+    !hasProcessingReferenceImages;
 
   return (
     <div>
@@ -321,14 +456,13 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({
               <div className="space-y-2 w-full">
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                   {availableReferenceImages.length} reference image
-                  {availableReferenceImages.length === 1 ? "" : "s"} uploaded
+                  {availableReferenceImages.length === 1 ? "" : "s"} processing
                 </p>
                   <ImageGrid
                     images={availableReferenceImages}
                     showModal={false}
                     thumbnailWidth={120}
                     thumbnailHeight={120}
-                    isLoading={isLoadingReferenceImages}
                     showDeleteButton={!isGenerating}
                     onImageDelete={
                       !isGenerating
@@ -339,7 +473,7 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({
                 </div>
               ) : (
                 <div className="rounded-lg border-2 border-dashed border-default-300 dark:border-default-600 p-4 text-sm text-gray-600 dark:text-gray-400">
-                  No reference images uploaded. Add one above to guide generation.
+                  No reference images yet. Add one above to guide generation.
                 </div>
               )}
             </div>
@@ -356,6 +490,11 @@ const GenerateImageStep: React.FC<GenerateImageStepProps> = ({
               {isGenerating ? "Generating..." : "Generate Image"}
             </Button>
           </div>
+          {hasProcessingReferenceImages && (
+            <p className="text-xs text-gray-500">
+              Reference images are still processing. Generation will be enabled when processing completes.
+            </p>
+          )}
         </CardBody>
       </Card>
 

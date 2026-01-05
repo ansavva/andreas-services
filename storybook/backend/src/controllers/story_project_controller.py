@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 
-from src.data.story_project_repo import StoryProjectRepo
-from src.utils.error_logging import log_error
+from src.repositories.db.story_project_repo import StoryProjectRepo
+from src.utils.logging.error_logging import log_error
 
 story_project_controller = Blueprint("story_project_controller", __name__)
 story_project_repo = StoryProjectRepo()

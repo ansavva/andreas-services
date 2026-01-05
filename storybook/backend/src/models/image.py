@@ -16,6 +16,7 @@ class Image:
     content_type: str  # MIME type (e.g., image/jpeg)
     size_bytes: int  # File size in bytes
     image_type: str = "training"  # Type: "training" or "generated"
+    processing: bool = False  # True while async processing is running
     created_at: Optional[datetime] = None
 
     # Constants for image types
@@ -33,6 +34,7 @@ class Image:
             'content_type': self.content_type,
             'size_bytes': self.size_bytes,
             'image_type': self.image_type,
+            'processing': self.processing,
             'created_at': self.created_at or datetime.utcnow()
         }
 
@@ -48,5 +50,6 @@ class Image:
             content_type=data.get('content_type'),
             size_bytes=data.get('size_bytes'),
             image_type=data.get('image_type', 'training'),  # Default to training for backward compatibility
+            processing=data.get('processing', False),
             created_at=data.get('created_at')
         )

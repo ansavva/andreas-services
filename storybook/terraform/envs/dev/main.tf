@@ -47,5 +47,15 @@ module "storage" {
   tags = local.common_tags
 }
 
+# Image normalization queue (dev)
+module "image_queue" {
+  source = "../../modules/image_queue"
+
+  project     = local.project
+  environment = local.environment
+
+  tags = local.common_tags
+}
+
 # No compute module in dev - backend runs locally
 # No hosting module in dev - no CloudFront/Route53 needed

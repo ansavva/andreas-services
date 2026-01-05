@@ -48,3 +48,23 @@ output "backend_files_bucket_id" {
   description = "S3 bucket for backend files (dev)"
   value       = module.storage.backend_files_bucket_id
 }
+
+output "image_queue_url" {
+  description = "Image normalization SQS queue URL"
+  value       = module.image_queue.queue_url
+}
+
+output "image_queue_arn" {
+  description = "Image normalization SQS queue ARN"
+  value       = module.image_queue.queue_arn
+}
+
+output "image_queue_dlq_url" {
+  description = "Image normalization DLQ URL"
+  value       = module.image_queue.dlq_url
+}
+
+output "image_queue_dlq_arn" {
+  description = "Image normalization DLQ ARN"
+  value       = module.image_queue.dlq_arn
+}

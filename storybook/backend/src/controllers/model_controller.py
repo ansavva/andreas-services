@@ -18,15 +18,13 @@ def check_model_exists(project_id: str):
 def train():
     try:
         # Retrieve data from request body
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         project_id = data.get("project_id")
-        image_ids = data.get("image_ids", [])
+        image_ids = data.get("image_ids") or []
 
         # Validate required data
         if not project_id:
             return jsonify({"error": "Project ID is required"}), 400
-        if not image_ids or len(image_ids) == 0:
-            return jsonify({"error": "At least one image ID is required"}), 400
 
         training_run = model_service.train(project_id, image_ids)
 
@@ -38,6 +36,8 @@ def train():
             "status": training_run.status,
             "created_at": training_run.created_at.isoformat() if training_run.created_at else None
         }), 200
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

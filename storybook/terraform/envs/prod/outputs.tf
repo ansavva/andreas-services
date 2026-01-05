@@ -35,6 +35,11 @@ output "lambda_function_name" {
   value       = module.compute.lambda_function_name
 }
 
+output "image_worker_lambda_function_name" {
+  description = "Image normalization Lambda function name"
+  value       = module.image_worker.lambda_function_name
+}
+
 output "cloudfront_distribution_id" {
   description = "CloudFront distribution ID"
   value       = module.hosting.cloudfront_distribution_id
@@ -45,6 +50,11 @@ output "ecr_repository_url" {
   value       = module.compute.ecr_repository_url
 }
 
+output "image_worker_ecr_repository_url" {
+  description = "ECR repository URL for image normalization worker"
+  value       = module.image_worker.ecr_repository_url
+}
+
 output "s3_frontend_bucket" {
   description = "S3 frontend bucket"
   value       = module.storage.frontend_bucket_id
@@ -53,4 +63,24 @@ output "s3_frontend_bucket" {
 output "s3_backend_bucket" {
   description = "S3 backend files bucket"
   value       = module.storage.backend_files_bucket_id
+}
+
+output "image_queue_url" {
+  description = "Image normalization SQS queue URL"
+  value       = module.image_queue.queue_url
+}
+
+output "image_queue_arn" {
+  description = "Image normalization SQS queue ARN"
+  value       = module.image_queue.queue_arn
+}
+
+output "image_queue_dlq_url" {
+  description = "Image normalization DLQ URL"
+  value       = module.image_queue.dlq_url
+}
+
+output "image_queue_dlq_arn" {
+  description = "Image normalization DLQ ARN"
+  value       = module.image_queue.dlq_arn
 }

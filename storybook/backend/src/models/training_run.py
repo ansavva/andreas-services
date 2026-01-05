@@ -15,13 +15,14 @@ class TrainingRun:
     user_id: str  # Cognito user ID (sub claim)
     replicate_training_id: Optional[str] = None  # Training ID from Replicate
     image_ids: List[str] = None  # IDs of images used in this training run
-    status: str = "pending"  # Training status: pending, starting, processing, succeeded, failed, canceled
+    status: str = "pending"  # Training status: draft, pending, starting, processing, succeeded, failed, canceled
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None  # Error details if training failed
 
     # Valid status values (from Replicate)
+    STATUS_DRAFT = "draft"
     STATUS_PENDING = "pending"
     STATUS_STARTING = "starting"
     STATUS_PROCESSING = "processing"
@@ -30,6 +31,7 @@ class TrainingRun:
     STATUS_CANCELED = "canceled"
 
     VALID_STATUSES = [
+        STATUS_DRAFT,
         STATUS_PENDING,
         STATUS_STARTING,
         STATUS_PROCESSING,

@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 
-from src.data.user_profile_repo import UserProfileRepo
-from src.data.image_repo import ImageRepo
+from src.repositories.db.user_profile_repo import UserProfileRepo
+from src.repositories.db.image_repo import ImageRepo
 from src.services.image_service import ImageService
 
 user_profile_controller = Blueprint("user_profile_controller", __name__)

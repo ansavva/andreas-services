@@ -6,8 +6,8 @@ scenes, and story illustrations. It orchestrates calls to the underlying API pro
 (StabilityService, ReplicateService) with business context.
 """
 from typing import List, Dict, Any, Optional, BinaryIO
-from src.proxies.stability_service import StabilityService
-from src.config.generation_models_config import generation_models_config
+from src.services.external.stability_service import StabilityService
+from src.utils.config.generation_models_config import generation_models_config
 
 
 class CharacterGenerationService:

@@ -1,0 +1,79 @@
+"""
+Lambda handler for running Flask app in AWS Lambda
+This module adapts the Flask application to work with AWS Lambda.
+Adds defensive logging so cold-start failures surface in CloudWatch.
+"""
+from urllib.parse import urlsplit
+
+import structlog
+from mangum import Mangum
+from asgiref.wsgi import WsgiToAsgi
+
+from src.utils.logging.logger import configure_logging
+
+configure_logging()
+logger = structlog.get_logger(__name__)
+
+try:
+    from src.utils.http.app_factory import create_app
+    from src.utils.config import AppConfig
+except Exception:
+    # Emit the full stack trace to CloudWatch before re-raising so we can see
+    # the real import/initialization failure instead of Mangum's generic error.
+    logger.exception("Failed to initialize Flask app on cold start")
+    raise
+
+# Log high-level env info (no secrets) so we can confirm what the Lambda sees.
+logger.info(
+    "Cold start config",
+    region=AppConfig.AWS_REGION,
+    bucket_set=bool(getattr(AppConfig, "S3_BUCKET_NAME", None)),
+    db_url_set=bool(getattr(AppConfig, "DATABASE_URL", None)),
+    db_name=getattr(AppConfig, "DATABASE_NAME", None),
+    openai=bool(getattr(AppConfig, "OPENAI_API_KEY", None)),
+    stability=bool(getattr(AppConfig, "STABILITY_API_KEY", None)),
+    replicate=bool(getattr(AppConfig, "REPLICATE_API_TOKEN", None)),
+)
+
+db_uri = getattr(AppConfig, "DATABASE_URL", "")
+if db_uri:
+    parsed = urlsplit(db_uri)
+    logger.info(
+        "Database URI parsed",
+        db_scheme=parsed.scheme,
+        db_host=parsed.hostname,
+        db_has_port=parsed.port is not None,
+        db_query=parsed.query,
+    )
+
+
+app = create_app()
+asgi_app = WsgiToAsgi(app)
+
+# Mangum adapter for AWS Lambda
+_mangum_handler = Mangum(asgi_app, lifespan="off")
+
+
+def handler(event, context):
+    """
+    Entrypoint invoked by AWS Lambda. Wrap Mangum to log full errors.
+    """
+    http = event.get("requestContext", {}).get("http", {})
+    path = event.get("rawPath") or event.get("path")
+    method = http.get("method") or event.get("httpMethod")
+    logger.info(
+        "Handling request",
+        path=path,
+        method=method,
+        aws_request_id=getattr(context, "aws_request_id", None),
+    )
+    try:
+        return _mangum_handler(event, context)
+    except Exception:
+        logger.exception(
+            "Unhandled exception while processing Lambda event",
+            path=path,
+            method=method,
+            aws_request_id=getattr(context, "aws_request_id", None),
+        )
+        raise

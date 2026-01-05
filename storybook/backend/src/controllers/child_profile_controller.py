@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 
-from src.data.child_profile_repo import ChildProfileRepo
-from src.utils.error_logging import log_error
+from src.repositories.db.child_profile_repo import ChildProfileRepo
+from src.utils.logging.error_logging import log_error
 
 child_profile_controller = Blueprint("child_profile_controller", __name__)
 child_profile_repo = ChildProfileRepo()

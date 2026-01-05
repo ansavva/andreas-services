@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Image, Spinner } from "@heroui/react";
+import React, { useCallback, useEffect, useState } from "react";
+import { Button, Spinner } from "@heroui/react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTrash } from "@fortawesome/free-solid-svg-icons";
 
@@ -9,7 +9,8 @@ import {
   listGenerationHistory,
   deleteGenerationHistory,
 } from "@/apis/generationHistoryController";
-import { downloadImageById, deleteImage } from "@/apis/imageController";
+import { deleteImage } from "@/apis/imageController";
+import ImageGrid from "@/components/images/imageGrid";
 
 interface GenerationHistoryListProps {
   projectId: string;
@@ -27,44 +28,8 @@ const GenerationHistoryList: React.FC<GenerationHistoryListProps> = ({
   const { axiosInstance } = useAxios();
   const [history, setHistory] = useState<GenerationHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const fetchedThumbnailIds = useRef<Set<string>>(new Set());
-
-  const allThumbnailIds = useMemo(() => {
-    const ids = new Set<string>();
-    history.forEach((item) => {
-      item.image_ids.forEach((imageId) => ids.add(imageId));
-      (item.reference_image_ids || []).forEach((imageId) => imageId && ids.add(imageId));
-    });
-    return ids;
-  }, [history]);
-
-  const fetchThumbnail = useCallback(
-    async (imageId: string) => {
-      if (!imageId || fetchedThumbnailIds.current.has(imageId) || thumbnails[imageId]) {
-        return;
-      }
-
-      fetchedThumbnailIds.current.add(imageId);
-      try {
-        const response = await downloadImageById(axiosInstance, imageId);
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setThumbnails((prev) => ({
-            ...prev,
-            [imageId]: reader.result as string,
-          }));
-        };
-        reader.readAsDataURL(response);
-      } catch (err) {
-        console.error(`Failed to fetch thumbnail ${imageId}`, err);
-      }
-    },
-    [axiosInstance, thumbnails],
-  );
 
   const fetchHistory = useCallback(async () => {
     if (!projectId) return;
@@ -86,10 +51,6 @@ const GenerationHistoryList: React.FC<GenerationHistoryListProps> = ({
   useEffect(() => {
     fetchHistory();
   }, [fetchHistory, refreshSignal]);
-
-  useEffect(() => {
-    allThumbnailIds.forEach((id) => fetchThumbnail(id));
-  }, [allThumbnailIds, fetchThumbnail]);
 
   const handleDelete = async (historyId: string) => {
     if (deleteConfirmId !== historyId) {
@@ -146,27 +107,17 @@ const GenerationHistoryList: React.FC<GenerationHistoryListProps> = ({
       )}
       {history.map((item) => (
         <div key={item.id} className="flex flex-wrap gap-4">
-          <div className="flex flex-wrap gap-4">
-            {item.image_ids.map((imageId) => (
-              <div
-                key={imageId}
-                className="relative w-120 rounded-xl overflow-hidden cursor-pointer"
-                onClick={() => onImageClick?.(imageId, item.prompt)}
-              >
-                {thumbnails[imageId] ? (
-                  <Image
-                    alt="Generated image"
-                    className="object-cover w-full h-full"
-                    src={thumbnails[imageId]}
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gray-200 dark:bg-gray-700">
-                    <Spinner size="sm" />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+          <ImageGrid
+            className="flex flex-wrap gap-4"
+            images={item.image_ids.map((imageId) => ({
+              id: imageId,
+              processing: item.image_processing?.[imageId] ?? true,
+            }))}
+            showModal={false}
+            thumbnailWidth={120}
+            thumbnailHeight={120}
+            onImageClick={(imageId) => onImageClick?.(imageId, item.prompt)}
+          />
 
           <div className="flex flex-col gap-2 justify-center flex-1 min-w-[200px]">
             <div>
@@ -185,24 +136,18 @@ const GenerationHistoryList: React.FC<GenerationHistoryListProps> = ({
                 <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
                   Reference Images
                 </p>
-                <div className="flex flex-wrap gap-2">
-                  {item.reference_image_ids.map((referenceId) => (
-                    <div
-                      key={`${item.id}-reference-${referenceId}`}
-                      className="w-14 h-14 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center"
-                    >
-                      {referenceId && thumbnails[referenceId] ? (
-                        <Image
-                          alt="Reference image"
-                          className="object-cover w-full h-full"
-                          src={thumbnails[referenceId]}
-                        />
-                      ) : (
-                        <Spinner size="sm" />
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <ImageGrid
+                  className="flex flex-wrap gap-2"
+                  images={(item.reference_image_ids || [])
+                    .filter(Boolean)
+                    .map((referenceId) => ({
+                      id: referenceId as string,
+                      processing: item.image_processing?.[referenceId as string] ?? true,
+                    }))}
+                  showModal={false}
+                  thumbnailWidth={56}
+                  thumbnailHeight={56}
+                />
               </div>
             )}
 

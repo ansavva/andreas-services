@@ -1,12 +1,12 @@
 from typing import List
 from flask import request
 
-from src.data.model_project_repo import ModelProjectRepo
-from src.data.image_repo import ImageRepo
-from src.data.generation_history_repo import GenerationHistoryRepo
-from src.data.training_run_repo import TrainingRunRepo
+from src.repositories.db.model_project_repo import ModelProjectRepo
+from src.repositories.db.image_repo import ImageRepo
+from src.repositories.db.generation_history_repo import GenerationHistoryRepo
+from src.repositories.db.training_run_repo import TrainingRunRepo
 from src.models.model_project import ModelProject
-from src.proxies.replicate_service import ReplicateService
+from src.services.external.replicate_service import ReplicateService
 
 class ModelProjectService:
     def __init__(self):

@@ -12,11 +12,11 @@ from src.models.image import Image
 from src.models.training_run import TrainingRun
 from src.models.model_project import ModelProject
 from src.services.image_service import ImageService
-from src.data.training_run_repo import TrainingRunRepo
-from src.data.model_project_repo import ModelProjectRepo
-from src.proxies.replicate_service import ReplicateService
-from src.proxies.stability_service import StabilityService
-from src.config.generation_models_config import generation_models_config
+from src.repositories.db.training_run_repo import TrainingRunRepo
+from src.repositories.db.model_project_repo import ModelProjectRepo
+from src.services.external.replicate_service import ReplicateService
+from src.services.external.stability_service import StabilityService
+from src.utils.config.generation_models_config import generation_models_config
 
 
 class ModelService:
@@ -79,14 +79,15 @@ class ModelService:
 
     def train(self,
              project_id: str,
-             image_ids: List[str],
+             image_ids: Optional[List[str]] = None,
              config_override: Optional[Dict[str, Any]] = None) -> TrainingRun:
         """
         Train an image model with specific images and create a training run record
 
         Args:
             project_id: Model project ID
-            image_ids: List of image IDs to use for this training
+            image_ids: Optional list of image IDs to use for this training.
+                      If omitted, the current draft training run is used.
             config_override: Optional dict to override specific config values from YAML
                            Example: {"steps": 1500, "learning_rate": 0.0005}
 
@@ -106,15 +107,39 @@ class ModelService:
         use_subject_token = self.replicate.config.profile_uses_subject_token(profile)
         subject_token = self._build_subject_token(project) if use_subject_token else None
 
-        # Create a training run record BEFORE starting training
-        training_run = self.training_run_repo.create(
-            project_id=project_id,
-            image_ids=image_ids
-        )
+        resolved_image_ids: List[str] = []
+        training_run: Optional[TrainingRun] = None
+        image_ids = [str(item) for item in (image_ids or []) if item]
+
+        if image_ids:
+            draft = self.training_run_repo.get_draft_by_project(project_id)
+            if draft:
+                training_run = self.training_run_repo.replace_images(draft.id, image_ids)
+            else:
+                training_run = self.training_run_repo.create(
+                    project_id=project_id,
+                    image_ids=image_ids,
+                    status=TrainingRun.STATUS_PENDING,
+                )
+        else:
+            draft = self.training_run_repo.get_draft_by_project(project_id)
+            if not draft or not draft.image_ids:
+                raise ValueError("No draft training images available")
+            training_run = draft
+
+        resolved_image_ids = training_run.image_ids or []
+        if not resolved_image_ids:
+            raise ValueError("At least one image ID is required")
+
+        if training_run.status == TrainingRun.STATUS_DRAFT:
+            training_run = self.training_run_repo.update_status(
+                training_run.id,
+                TrainingRun.STATUS_PENDING,
+            )
 
         try:
             # Create ZIP of the specific training images
-            zip_file_buffer = self.image_service.create_zip_from_images(image_ids)
+            zip_file_buffer = self.image_service.create_zip_from_images(resolved_image_ids)
 
             # Start training (config comes from YAML, with optional overrides)
             overrides = dict(config_override or {})

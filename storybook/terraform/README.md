@@ -41,7 +41,7 @@ See [root terraform README](../../terraform/README.md) for details.
 - **Resources**: Cognito User Pool + S3 bucket
 - **State**: `s3://andreas-services-terraform-state/storybook/dev/terraform.tfstate`
 - **Frontend**: localhost:5173
-- **Backend**: localhost:5000
+- **Backend**: localhost:3000
 
 ### Production
 - **Purpose**: Live hosted application

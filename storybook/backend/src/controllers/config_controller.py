@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify
-from src.config.generation_models_config import generation_models_config
+from src.utils.config.generation_models_config import generation_models_config
 
 config_controller = Blueprint("config_controller", __name__)
 

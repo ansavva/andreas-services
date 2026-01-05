@@ -1,11 +1,11 @@
 from flask import Blueprint, request, jsonify
 
-from src.data.chat_message_repo import ChatMessageRepo
-from src.data.story_state_repo import StoryStateRepo
-from src.data.story_project_repo import StoryProjectRepo
-from src.data.child_profile_repo import ChildProfileRepo
-from src.proxies.openai_service import OpenAIService
-from src.utils.error_logging import log_error
+from src.repositories.db.chat_message_repo import ChatMessageRepo
+from src.repositories.db.story_state_repo import StoryStateRepo
+from src.repositories.db.story_project_repo import StoryProjectRepo
+from src.repositories.db.child_profile_repo import ChildProfileRepo
+from src.services.external.openai_service import OpenAIService
+from src.utils.logging.error_logging import log_error
 
 chat_controller = Blueprint("chat_controller", __name__)
 chat_message_repo = ChatMessageRepo()
@@ -186,8 +186,8 @@ def get_story_state_versions(project_id):
 def compile_story(project_id):
     """Compile story into finalized pages with text and illustration prompts"""
     try:
-        from src.data.story_page_repo import StoryPageRepo
-        from src.data.story_project_repo import StoryProjectRepo
+        from src.repositories.db.story_page_repo import StoryPageRepo
+        from src.repositories.db.story_project_repo import StoryProjectRepo
 
         story_page_repo = StoryPageRepo()
         story_project_repo = StoryProjectRepo()
