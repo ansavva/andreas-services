@@ -106,6 +106,7 @@ module "compute" {
 
   s3_bucket_id  = module.storage.backend_files_bucket_id
   s3_bucket_arn = module.storage.backend_files_bucket_arn
+  image_queue_arn = module.image_queue.queue_arn
 
   cors_allowed_origins = [
     "https://${local.domain_name}",

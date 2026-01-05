@@ -35,6 +35,11 @@ variable "s3_bucket_arn" {
   type        = string
 }
 
+variable "image_queue_arn" {
+  description = "SQS queue ARN for image normalization jobs"
+  type        = string
+}
+
 variable "cors_allowed_origins" {
   description = "CORS allowed origins"
   type        = list(string)

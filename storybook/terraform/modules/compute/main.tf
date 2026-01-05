@@ -78,6 +78,13 @@ resource "aws_iam_role_policy" "lambda" {
           var.s3_bucket_arn,
           "${var.s3_bucket_arn}/*"
         ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:SendMessage"
+        ]
+        Resource = var.image_queue_arn
       }
     ],
     var.vpc_id != null ? [{
