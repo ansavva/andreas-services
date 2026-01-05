@@ -8,6 +8,7 @@ scenes, and story illustrations. It orchestrates calls to the underlying API pro
 from typing import List, Dict, Any, Optional, BinaryIO
 from src.services.external.stability_service import StabilityService
 from src.utils.config.generation_models_config import generation_models_config
+from src.services.prompt_service import PromptService
 
 
 class CharacterGenerationService:
@@ -22,6 +23,7 @@ class CharacterGenerationService:
 
     def __init__(self):
         self.stability_proxy = StabilityService()
+        self.prompt_service = PromptService()
 
     def generate_character_portrait(self,
                                    reference_images: List[BinaryIO],
@@ -58,16 +60,14 @@ class CharacterGenerationService:
             )
 
         # Build prompt from config
-        prompt_template = generation_models_config.get_prompt_template(provider, profile)
-        if child_name:
-            prompt = f"Portrait of a smiling child named {child_name}, {prompt_template}"
-        else:
-            prompt = prompt_template or ""
+        prompt = self.prompt_service.build_character_portrait_prompt(
+            provider,
+            profile,
+            child_name,
+            user_description,
+        )
 
-        if user_description:
-            prompt = f"{prompt}, {user_description}" if prompt else user_description
-
-        negative_prompt = generation_models_config.get_negative_prompt_template(provider, profile)
+        negative_prompt = self.prompt_service.get_negative_prompt(provider, profile)
         image_strength = gen_config.get('image_strength', 0.35)
 
         # Call the API proxy
@@ -113,8 +113,8 @@ class CharacterGenerationService:
             )
 
         # Build scene prompt (business logic)
-        prompt = f"{character_description} in a {scene_name} setting"
-        negative_prompt = generation_models_config.get_negative_prompt_template(provider, profile)
+        prompt = self.prompt_service.build_preview_scene_prompt(scene_name, character_description)
+        negative_prompt = self.prompt_service.get_negative_prompt(provider, profile)
 
         # Call the API proxy
         return self.stability_proxy.generate_image(
@@ -161,14 +161,16 @@ class CharacterGenerationService:
             )
 
         # Enhance prompt with character consistency (business logic)
-        full_prompt = prompt
-        if character_bible:
-            character_desc = character_bible.get("visual_description", "")
-            if character_desc:
-                full_prompt = f"{character_desc}, {prompt}"
+        full_prompt = self.prompt_service.build_story_illustration_prompt(
+            prompt,
+            character_bible,
+        )
 
-        # Build negative prompt from config
-        negative_prompt = generation_models_config.build_negative_prompt(provider, profile, must_avoid)
+        negative_prompt = self.prompt_service.build_negative_prompt(
+            provider,
+            profile,
+            must_avoid,
+        )
 
         # Call the API proxy
         return self.stability_proxy.generate_image(
@@ -209,8 +211,8 @@ class CharacterGenerationService:
         style_image = generation_models_config.get_style_image(style_id)
 
         # Build prompt
-        prompt = generation_models_config.build_prompt(provider, profile, user_description)
-        negative_prompt = generation_models_config.get_negative_prompt_template(provider, profile)
+        prompt = self.prompt_service.build_provider_prompt(provider, profile, user_description)
+        negative_prompt = self.prompt_service.get_negative_prompt(provider, profile)
 
         # Call the API proxy
         return self.stability_proxy.style_transfer(
