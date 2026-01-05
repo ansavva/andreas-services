@@ -136,7 +136,7 @@ jobs:
           set -euo pipefail
           # Fetch existing Lambda env vars so we can merge secrets into them
           CURRENT_ENV=$(aws lambda get-function-configuration \
-            --function-name "$LAMBDA_FUNCTION_NAME" \
+            --function-name "$LAMBDA_FUNCTION_NAME_API" \
             --query 'Environment.Variables' \
             --output json)
           if [ "$CURRENT_ENV" = "null" ] || [ -z "$CURRENT_ENV" ]; then
