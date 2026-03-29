@@ -20,3 +20,6 @@ my-tools = "my_tools.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["python"]
+
+[tool.pytest.ini_options]
+pythonpath = ["python/my_tools/tests"]
