@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "my-tools"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "typer==0.24.1",
+    "rich>=13.5.2,<14.0.0",
+    "osxphotos==0.75.6",
+    "qrcode[pil]==8.0",
+    "Pillow>=10.0,<12",
+    "pymupdf>=1.24,<2",
+]
+
+[project.scripts]
+my-tools = "my_tools.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["python"]
