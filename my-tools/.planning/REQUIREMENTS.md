@@ -18,15 +18,15 @@
 
 - [x] **SETUP-01**: Tool runs with Python 3.13 in a dedicated venv (`python/venv/`, replacing existing 3.9 venv)
 - [ ] **SETUP-02**: Tool provides step-by-step instructions for requesting a Google Takeout export (shown via `my-tools photos setup`)
-- [ ] **SETUP-03**: Tool validates that a provided Takeout folder is structurally complete
+- [x] **SETUP-03**: Tool validates that a provided Takeout folder is structurally complete
 
 ### Takeout Scanner
 
-- [ ] **TAKE-01**: CLI command `my-tools photos scan-takeout <path>` scans a Google Takeout export folder and indexes all photos/videos
-- [ ] **TAKE-02**: For each media item, stores: filename, file path, creation timestamp (from JSON sidecar), width, height, file size, SHA-256 hash in SQLite
-- [ ] **TAKE-03**: Parses Google's `.supplemental-metadata.json` (and legacy `.json`) sidecars; handles all 3 naming patterns (standard, 51-char truncation, counter-shift)
-- [ ] **TAKE-04**: Handles Live Photo pairs (HEIC + MOV with same timestamp) without double-counting
-- [ ] **TAKE-05**: Re-runs are incremental — skips already-indexed files using SQLite cache
+- [x] **TAKE-01**: CLI command `my-tools photos scan-takeout <path>` scans a Google Takeout export folder and indexes all photos/videos
+- [x] **TAKE-02**: For each media item, stores: filename, file path, creation timestamp (from JSON sidecar), width, height, file size, SHA-256 hash in SQLite
+- [x] **TAKE-03**: Parses Google's `.supplemental-metadata.json` (and legacy `.json`) sidecars; handles all 3 naming patterns (standard, 51-char truncation, counter-shift)
+- [x] **TAKE-04**: Handles Live Photo pairs (HEIC + MOV with same timestamp) without double-counting
+- [x] **TAKE-05**: Re-runs are incremental — skips already-indexed files using SQLite cache
 
 ### iCloud Scanner
 
@@ -71,9 +71,9 @@
 
 ### Safety
 
-- [ ] **SAFE-01**: No write operations to iCloud Photos library except via explicit import command
+- [x] **SAFE-01**: No write operations to iCloud Photos library except via explicit import command
 - [ ] **SAFE-02**: All destructive-adjacent operations require `--confirm` flag
-- [ ] **SAFE-03**: SQLite database is never wiped without explicit `--reset` flag
+- [x] **SAFE-03**: SQLite database is never wiped without explicit `--reset` flag
 - [ ] **SAFE-04**: Tool prints a summary of what it intends to do before each import batch
 
 ## v2 Requirements
@@ -112,18 +112,18 @@
 | CLI-06 | Phase 1 | Pending |
 | SETUP-01 | Phase 1 | Pending |
 | SETUP-02 | Phase 1 | Pending |
-| SETUP-03 | Phase 1 | Pending |
-| TAKE-01 | Phase 1 | Pending |
-| TAKE-02 | Phase 1 | Pending |
-| TAKE-03 | Phase 1 | Pending |
-| TAKE-04 | Phase 1 | Pending |
-| TAKE-05 | Phase 1 | Pending |
+| SETUP-03 | Phase 1 | Complete |
+| TAKE-01 | Phase 1 | Complete |
+| TAKE-02 | Phase 1 | Complete |
+| TAKE-03 | Phase 1 | Complete |
+| TAKE-04 | Phase 1 | Complete |
+| TAKE-05 | Phase 1 | Complete |
 | ICLOUD-01 | Phase 1 | Pending |
 | ICLOUD-02 | Phase 1 | Pending |
 | ICLOUD-03 | Phase 1 | Pending |
 | ICLOUD-04 | Phase 1 | Pending |
-| SAFE-01 | Phase 1 | Pending |
-| SAFE-03 | Phase 1 | Pending |
+| SAFE-01 | Phase 1 | Complete |
+| SAFE-03 | Phase 1 | Complete |
 | COMP-01 | Phase 2 | Pending |
 | COMP-02 | Phase 2 | Pending |
 | COMP-03 | Phase 2 | Pending |

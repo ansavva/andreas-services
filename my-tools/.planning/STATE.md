@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: "v1.0 is complete when:"
 status: in-progress
-last_updated: "2026-03-29T15:16:32Z"
+last_updated: "2026-03-29T15:25:18.008Z"
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -22,17 +22,17 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 
 ## Current Phase
 
-Phase 1: Foundation & Scanners — in progress (Plan 1.1 complete, Plans 1.2 and 1.3 remaining).
+Phase 1: Foundation & Scanners — in progress (Plans 1.1 and 1.2 complete, Plan 1.3 remaining).
 
 ## Current Plan
 
-Phase 1, Plan 2 of 3 (01-2-PLAN.md)
+Phase 1, Plan 3 of 3 (01-3-PLAN.md)
 
 ## Phase Summary
 
 | Phase | Name | Status |
 |-------|------|--------|
-| 1 | Foundation & Scanners | In progress (1/3 plans complete) |
+| 1 | Foundation & Scanners | In progress (2/3 plans complete) |
 | 2 | Compare & Report | Not started |
 | 3 | Metadata & Import | Not started |
 
@@ -62,16 +62,18 @@ Phase 1, Plan 2 of 3 (01-2-PLAN.md)
 | 2026-03-29 | rich>=13.5.2,<14.0.0 | osxphotos 0.75.6 requires rich<14.0.0; plan specified 14.3.3 which conflicts |
 | 2026-03-29 | setuptools.build_meta build backend | Plan specified setuptools.backends.legacy:build which does not support editable installs |
 | 2026-03-29 | Resolve my-tools binary via sys.executable parent | Subprocess cannot find 'my-tools' by name in tests unless PATH is set; venv path is reliable |
+| 2026-03-29 | detect_live_photo_pairs() uses original filename case | macOS path matching requires case-preserved filenames; lowercase extension reconstruction fails for uppercase files like IMG_0001.MOV |
 
 ## Performance Metrics
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 01 | 1.1 | 4 min | 2 | 9 |
+| 01 | 1.2 | 8 min | 2 | 6 |
 
 ## Stopped At
 
-Completed 01-1-PLAN.md (Plan 1.1 of Phase 1). Next: 01-2-PLAN.md.
+Completed 01-2-PLAN.md (Plan 1.2 of Phase 1). Next: 01-3-PLAN.md.
 
 ---
-*Last updated: 2026-03-29 — Plan 1.1 complete*
+*Last updated: 2026-03-29 — Plan 1.2 complete*

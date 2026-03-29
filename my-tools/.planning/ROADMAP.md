@@ -48,9 +48,9 @@
 5. Re-running either scan skips already-indexed items (faster than initial run, observable via output).
 6. SQLite DB is not wiped on re-run unless `--reset` is passed.
 
-**Plans:** 3 plans
+**Plans:** 2/3 plans executed
 - [x] 01-1-PLAN.md — CLI framework: `python/my_tools/` package, Typer multi-group app, `my-tools` entry point, `media kindle`, `qr generate`, `photos` group stub, Python 3.13 venv
-- [ ] 01-2-PLAN.md — SQLite schema + Takeout scanner: `cache.py`, all 5 tables, `scan-takeout` command with five-stage sidecar pairing, Live Photo detection, incremental skip
+- [x] 01-2-PLAN.md — SQLite schema + Takeout scanner: `cache.py`, all 5 tables, `scan-takeout` command with five-stage sidecar pairing, Live Photo detection, incremental skip
 - [ ] 01-3-PLAN.md — iCloud scanner + setup: `scan-icloud` via osxphotos.PhotosDB(dbfile=...), Optimize Mac Storage handling, incremental re-scan, `setup` command with Takeout instructions
 
 ---
@@ -102,7 +102,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Scanners | 1/3 | In Progress | - |
+| 1. Foundation & Scanners | 2/3 | In Progress|  |
 | 2. Compare & Report | 0/2 | Not started | - |
 | 3. Metadata & Import | 0/2 | Not started | - |
 
