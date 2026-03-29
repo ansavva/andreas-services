@@ -41,7 +41,7 @@ def test_upserts_regular_photo(tmp_db, monkeypatch):
         "my_tools.photos.icloud_scanner.osxphotos.PhotosDB",
         return_value=mock_db_instance,
     ), patch(
-        "my_tools.photos.icloud_scanner.osxphotos.list_photo_libraries",
+        "my_tools.photos.icloud_scanner.list_photo_libraries",
         return_value=[],
     ), patch(
         "pathlib.Path.exists", return_value=True
@@ -79,7 +79,7 @@ def test_upserts_missing_photo(tmp_db, monkeypatch):
         "my_tools.photos.icloud_scanner.osxphotos.PhotosDB",
         return_value=mock_db_instance,
     ), patch(
-        "my_tools.photos.icloud_scanner.osxphotos.list_photo_libraries",
+        "my_tools.photos.icloud_scanner.list_photo_libraries",
         return_value=[],
     ), patch(
         "pathlib.Path.exists", return_value=True
@@ -112,7 +112,7 @@ def test_incremental_uses_query_options(tmp_db, monkeypatch):
         "my_tools.photos.icloud_scanner.osxphotos.PhotosDB",
         return_value=mock_db_instance,
     ), patch(
-        "my_tools.photos.icloud_scanner.osxphotos.list_photo_libraries",
+        "my_tools.photos.icloud_scanner.list_photo_libraries",
         return_value=[],
     ), patch(
         "pathlib.Path.exists", return_value=True
@@ -145,7 +145,7 @@ def test_full_scan_on_first_run(tmp_db, monkeypatch):
         "my_tools.photos.icloud_scanner.osxphotos.PhotosDB",
         return_value=mock_db_instance,
     ), patch(
-        "my_tools.photos.icloud_scanner.osxphotos.list_photo_libraries",
+        "my_tools.photos.icloud_scanner.list_photo_libraries",
         return_value=[],
     ), patch(
         "pathlib.Path.exists", return_value=True
@@ -163,14 +163,13 @@ def test_full_scan_on_first_run(tmp_db, monkeypatch):
 
 def test_library_not_found_error(tmp_db, monkeypatch):
     """If default path absent and list_photo_libraries() returns [], raises FileNotFoundError."""
-    with patch(
-        "my_tools.photos.icloud_scanner.osxphotos.list_photo_libraries",
-        return_value=[],
-    ), patch("pathlib.Path.exists", return_value=False):
-        from my_tools.photos import icloud_scanner
-        import importlib
-        importlib.reload(icloud_scanner)
+    from my_tools.photos import icloud_scanner
+    import importlib
+    importlib.reload(icloud_scanner)
 
+    with patch.object(icloud_scanner, "list_photo_libraries", return_value=[]), patch(
+        "pathlib.Path.exists", return_value=False
+    ):
         with pytest.raises(FileNotFoundError, match="Photos library not found"):
             icloud_scanner.scan_icloud(quiet=True)
 
@@ -178,14 +177,14 @@ def test_library_not_found_error(tmp_db, monkeypatch):
 def test_multiple_libraries_error(tmp_db, monkeypatch):
     """If list_photo_libraries() returns 2 libraries, raises ValueError with --library guidance."""
     from pathlib import Path
+    from my_tools.photos import icloud_scanner
+    import importlib
+    importlib.reload(icloud_scanner)
 
-    with patch(
-        "my_tools.photos.icloud_scanner.osxphotos.list_photo_libraries",
+    with patch.object(
+        icloud_scanner,
+        "list_photo_libraries",
         return_value=[Path("/lib/A.photoslibrary"), Path("/lib/B.photoslibrary")],
     ), patch("pathlib.Path.exists", return_value=False):
-        from my_tools.photos import icloud_scanner
-        import importlib
-        importlib.reload(icloud_scanner)
-
         with pytest.raises(ValueError, match="--library"):
             icloud_scanner.scan_icloud(quiet=True)
