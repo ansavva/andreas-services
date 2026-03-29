@@ -3,6 +3,8 @@ from pathlib import Path
 import typer
 from typing import Optional
 
+from my_tools.photos.takeout_scanner import scan_takeout as run_scan
+
 app = typer.Typer(
     help="Scan and migrate photos between Google Takeout and iCloud.",
     no_args_is_help=True,
@@ -16,9 +18,7 @@ def scan_takeout(
     reset: bool = typer.Option(False, "--reset", help="Wipe and recreate the SQLite database before scanning"),
 ):
     """Scan a Google Takeout export and index all media into SQLite."""
-    # Implemented in Plan 1.2
-    typer.echo("[Plan 1.2] scan-takeout not yet implemented.")
-    raise typer.Exit(code=1)
+    run_scan(str(path), quiet=quiet, reset=reset)
 
 
 @app.command("scan-icloud")
