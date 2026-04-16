@@ -82,11 +82,11 @@ emails you want the processor to read.
 
 ---
 
-## Step 2 – OpenAI API Key
+## Step 2 – Anthropic API Key
 
-1. Sign up at [platform.openai.com](https://platform.openai.com)
-2. Create an API key under *API Keys*
-3. Add it to your `.env` as `OPENAI_API_KEY`
+1. Sign up at [console.anthropic.com](https://console.anthropic.com)
+2. Go to *API Keys → Create Key*
+3. Add it to your `.env` as `ANTHROPIC_API_KEY`
 
 ---
 
@@ -198,7 +198,7 @@ aws lambda update-function-configuration \
   --function-name nyc-events-email-processor \
   --environment "Variables={
     DYNAMODB_TABLE_NAME=nyc-events-events,
-    OPENAI_API_KEY=<key>,
+    ANTHROPIC_API_KEY=<key>,
     GMAIL_CLIENT_ID=<id>,
     GMAIL_CLIENT_SECRET=<secret>,
     GMAIL_ACCESS_TOKEN=<new-access-token>,
@@ -229,7 +229,7 @@ aws lambda update-function-configuration \
 Ensure the label exists in your Gmail account with the **exact** name `Events`
 (capital E, no trailing spaces).
 
-### OpenAI returns non-JSON
+### Claude returns non-JSON
 
 This occasionally happens when the model adds markdown fences or a preamble.
 The processor strips common fence patterns (```` ```json ... ``` ````), but if
@@ -270,8 +270,8 @@ EventBridge (weekly)
 ┌─────────────────────┐     Gmail API      ┌──────────┐
 │  email-processor    │ ──────────────────▶│  Gmail   │
 │  Lambda             │                    └──────────┘
-│                     │     OpenAI API     ┌──────────┐
-│                     │ ──────────────────▶│  OpenAI  │
+│                     │   Anthropic API    ┌──────────┐
+│                     │ ──────────────────▶│  Claude  │
 └─────────┬───────────┘                    └──────────┘
           │ PutItem
           ▼
