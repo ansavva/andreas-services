@@ -32,7 +32,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Build Docker image, push to ECR, update both Lambda functions + env vars
-  # ECR URLs and Lambda names come from vars set by deploy-infra-storybook.yml
+  # ECR URLs and Lambda names come from SSM (written by deploy-infra-storybook.yml)
   # ---------------------------------------------------------------------------
   deploy-backend:
     name: Build & Deploy Backend
@@ -53,119 +53,122 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Read infrastructure values from SSM
+        run: |
+          get() { aws ssm get-parameter --name "/storybook/prod/${1}" \
+            --query Parameter.Value --output text; }
+
+          echo "ECR_URL=$(get ecr-url)"                         >> "$GITHUB_ENV"
+          echo "IMAGE_WORKER_ECR_URL=$(get image-worker-ecr-url)" >> "$GITHUB_ENV"
+          echo "LAMBDA_NAME=$(get lambda-name)"                 >> "$GITHUB_ENV"
+          echo "IMAGE_WORKER_LAMBDA=$(get image-worker-lambda)" >> "$GITHUB_ENV"
+          echo "S3_BACKEND_BUCKET=$(get s3-backend-bucket)"     >> "$GITHUB_ENV"
+          echo "APP_URL=$(get app-url)"                         >> "$GITHUB_ENV"
+          echo "IMAGE_QUEUE_URL=$(get image-queue-url)"         >> "$GITHUB_ENV"
+          echo "COGNITO_POOL_ID=$(get cognito-user-pool-id)"    >> "$GITHUB_ENV"
+          echo "COGNITO_CLIENT_ID=$(get cognito-client-id)"     >> "$GITHUB_ENV"
+
       - name: Login to Amazon ECR
-        id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build Docker image
-        env:
-          IMAGE_TAG: ${{ github.sha }}
         run: |
           cd storybook/backend
           DOCKER_BUILDKIT=0 docker build \
-            -t "${{ vars.ECR_REPOSITORY_URL }}:${IMAGE_TAG}" \
-            -t "${{ vars.ECR_REPOSITORY_URL }}:latest" \
-            -t "${{ vars.IMAGE_WORKER_ECR_REPOSITORY_URL }}:${IMAGE_TAG}" \
-            -t "${{ vars.IMAGE_WORKER_ECR_REPOSITORY_URL }}:latest" \
+            -t "${ECR_URL}:${{ github.sha }}" \
+            -t "${ECR_URL}:latest" \
+            -t "${IMAGE_WORKER_ECR_URL}:${{ github.sha }}" \
+            -t "${IMAGE_WORKER_ECR_URL}:latest" \
             .
 
       - name: Push Docker image
-        env:
-          IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker push "${{ vars.ECR_REPOSITORY_URL }}:${IMAGE_TAG}"
-          docker push "${{ vars.ECR_REPOSITORY_URL }}:latest"
-          docker push "${{ vars.IMAGE_WORKER_ECR_REPOSITORY_URL }}:${IMAGE_TAG}"
-          docker push "${{ vars.IMAGE_WORKER_ECR_REPOSITORY_URL }}:latest"
+          docker push "${ECR_URL}:${{ github.sha }}"
+          docker push "${ECR_URL}:latest"
+          docker push "${IMAGE_WORKER_ECR_URL}:${{ github.sha }}"
+          docker push "${IMAGE_WORKER_ECR_URL}:latest"
 
-      - name: Update API Lambda env vars
+      - name: Update API Lambda env vars + code
         env:
-          OPENAI_API_KEY:           ${{ secrets.OPENAI_API_KEY }}
-          STABILITY_API_KEY:        ${{ secrets.STABILITY_API_KEY }}
-          REPLICATE_API_TOKEN:      ${{ secrets.REPLICATE_API_TOKEN }}
-          DATABASE_URL:             ${{ secrets.DATABASE_URL }}
-          DATABASE_NAME:            ${{ vars.DATABASE_NAME }}
-          AWS_COGNITO_USER_POOL_ID: ${{ vars.AWS_COGNITO_USER_POOL_ID }}
-          AWS_COGNITO_APP_CLIENT_ID:${{ vars.AWS_COGNITO_APP_CLIENT_ID }}
-          S3_BUCKET_NAME:           ${{ vars.S3_BACKEND_BUCKET_NAME }}
-          APP_URL:                  ${{ vars.APP_URL }}
-          IMAGE_UPLOAD_QUEUE_URL:   ${{ vars.IMAGE_UPLOAD_QUEUE_URL }}
+          OPENAI_API_KEY:      ${{ secrets.OPENAI_API_KEY }}
+          STABILITY_API_KEY:   ${{ secrets.STABILITY_API_KEY }}
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+          DATABASE_URL:        ${{ secrets.DATABASE_URL }}
+          DATABASE_NAME:       ${{ vars.DATABASE_NAME }}
         run: |
           set -euo pipefail
-          KEYS=(OPENAI_API_KEY STABILITY_API_KEY REPLICATE_API_TOKEN DATABASE_URL \
-                DATABASE_NAME AWS_COGNITO_USER_POOL_ID AWS_COGNITO_APP_CLIENT_ID \
-                S3_BUCKET_NAME APP_URL IMAGE_UPLOAD_QUEUE_URL)
-          ENV_JSON=$(jq -n 'reduce $ARGS.positional[] as $p ({}; .[$p | split("=")[0]] = ($p | split("=")[1:] | join("=")))' \
-            --args "${KEYS[@]/#/}" 2>/dev/null || echo "{}")
-
-          # Build env JSON from shell env vars directly
           ENV_OBJ="{}"
-          for KEY in "${KEYS[@]}"; do
+          for KEY in OPENAI_API_KEY STABILITY_API_KEY REPLICATE_API_TOKEN \
+                     DATABASE_URL DATABASE_NAME COGNITO_POOL_ID COGNITO_CLIENT_ID \
+                     S3_BACKEND_BUCKET APP_URL IMAGE_QUEUE_URL; do
             VAL="${!KEY:-}"
-            [ -n "$VAL" ] && ENV_OBJ=$(echo "$ENV_OBJ" | jq -c --arg k "$KEY" --arg v "$VAL" '.[$k]=$v')
+            [ -n "$VAL" ] && ENV_OBJ=$(echo "$ENV_OBJ" | \
+              jq -c --arg k "$KEY" --arg v "$VAL" '.[$k]=$v')
           done
+          # Remap generic names to what the Lambda expects
+          ENV_OBJ=$(echo "$ENV_OBJ" | jq -c '
+            .AWS_COGNITO_USER_POOL_ID  = .COGNITO_POOL_ID   | del(.COGNITO_POOL_ID) |
+            .AWS_COGNITO_APP_CLIENT_ID = .COGNITO_CLIENT_ID | del(.COGNITO_CLIENT_ID) |
+            .S3_BUCKET_NAME            = .S3_BACKEND_BUCKET | del(.S3_BACKEND_BUCKET) |
+            .IMAGE_UPLOAD_QUEUE_URL    = .IMAGE_QUEUE_URL   | del(.IMAGE_QUEUE_URL)
+          ')
           jq -n --argjson v "$ENV_OBJ" '{Variables:$v}' > /tmp/env-api.json
 
           aws lambda update-function-configuration \
-            --function-name "${{ vars.LAMBDA_FUNCTION_NAME }}" \
+            --function-name "${LAMBDA_NAME}" \
             --region "${{ env.AWS_REGION }}" \
             --environment file:///tmp/env-api.json
 
-      - name: Update image worker Lambda env vars
-        env:
-          OPENAI_API_KEY:           ${{ secrets.OPENAI_API_KEY }}
-          STABILITY_API_KEY:        ${{ secrets.STABILITY_API_KEY }}
-          REPLICATE_API_TOKEN:      ${{ secrets.REPLICATE_API_TOKEN }}
-          DATABASE_URL:             ${{ secrets.DATABASE_URL }}
-          DATABASE_NAME:            ${{ vars.DATABASE_NAME }}
-          AWS_COGNITO_USER_POOL_ID: ${{ vars.AWS_COGNITO_USER_POOL_ID }}
-          AWS_COGNITO_APP_CLIENT_ID:${{ vars.AWS_COGNITO_APP_CLIENT_ID }}
-          S3_BUCKET_NAME:           ${{ vars.S3_BACKEND_BUCKET_NAME }}
-          APP_URL:                  ${{ vars.APP_URL }}
-        run: |
-          set -euo pipefail
-          KEYS=(OPENAI_API_KEY STABILITY_API_KEY REPLICATE_API_TOKEN DATABASE_URL \
-                DATABASE_NAME AWS_COGNITO_USER_POOL_ID AWS_COGNITO_APP_CLIENT_ID \
-                S3_BUCKET_NAME APP_URL)
-          ENV_OBJ="{}"
-          for KEY in "${KEYS[@]}"; do
-            VAL="${!KEY:-}"
-            [ -n "$VAL" ] && ENV_OBJ=$(echo "$ENV_OBJ" | jq -c --arg k "$KEY" --arg v "$VAL" '.[$k]=$v')
-          done
-          jq -n --argjson v "$ENV_OBJ" '{Variables:$v}' > /tmp/env-worker.json
-
-          aws lambda update-function-configuration \
-            --function-name "${{ vars.IMAGE_WORKER_LAMBDA_FUNCTION_NAME }}" \
-            --region "${{ env.AWS_REGION }}" \
-            --environment file:///tmp/env-worker.json
-
-      - name: Wait for configuration updates
-        run: |
           aws lambda wait function-updated \
-            --function-name "${{ vars.LAMBDA_FUNCTION_NAME }}" \
-            --region "${{ env.AWS_REGION }}"
-          aws lambda wait function-updated \
-            --function-name "${{ vars.IMAGE_WORKER_LAMBDA_FUNCTION_NAME }}" \
-            --region "${{ env.AWS_REGION }}"
+            --function-name "${LAMBDA_NAME}" --region "${{ env.AWS_REGION }}"
 
-      - name: Update Lambda function code
-        env:
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
           aws lambda update-function-code \
-            --function-name "${{ vars.LAMBDA_FUNCTION_NAME }}" \
-            --image-uri "${{ vars.ECR_REPOSITORY_URL }}:${IMAGE_TAG}" \
+            --function-name "${LAMBDA_NAME}" \
+            --image-uri "${ECR_URL}:${{ github.sha }}" \
             --region "${{ env.AWS_REGION }}" \
             --output table --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
 
+      - name: Update image worker Lambda env vars + code
+        env:
+          OPENAI_API_KEY:      ${{ secrets.OPENAI_API_KEY }}
+          STABILITY_API_KEY:   ${{ secrets.STABILITY_API_KEY }}
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+          DATABASE_URL:        ${{ secrets.DATABASE_URL }}
+          DATABASE_NAME:       ${{ vars.DATABASE_NAME }}
+        run: |
+          set -euo pipefail
+          ENV_OBJ="{}"
+          for KEY in OPENAI_API_KEY STABILITY_API_KEY REPLICATE_API_TOKEN \
+                     DATABASE_URL DATABASE_NAME COGNITO_POOL_ID COGNITO_CLIENT_ID \
+                     S3_BACKEND_BUCKET APP_URL; do
+            VAL="${!KEY:-}"
+            [ -n "$VAL" ] && ENV_OBJ=$(echo "$ENV_OBJ" | \
+              jq -c --arg k "$KEY" --arg v "$VAL" '.[$k]=$v')
+          done
+          ENV_OBJ=$(echo "$ENV_OBJ" | jq -c '
+            .AWS_COGNITO_USER_POOL_ID  = .COGNITO_POOL_ID   | del(.COGNITO_POOL_ID) |
+            .AWS_COGNITO_APP_CLIENT_ID = .COGNITO_CLIENT_ID | del(.COGNITO_CLIENT_ID) |
+            .S3_BUCKET_NAME            = .S3_BACKEND_BUCKET | del(.S3_BACKEND_BUCKET)
+          ')
+          jq -n --argjson v "$ENV_OBJ" '{Variables:$v}' > /tmp/env-worker.json
+
+          aws lambda update-function-configuration \
+            --function-name "${IMAGE_WORKER_LAMBDA}" \
+            --region "${{ env.AWS_REGION }}" \
+            --environment file:///tmp/env-worker.json
+
+          aws lambda wait function-updated \
+            --function-name "${IMAGE_WORKER_LAMBDA}" --region "${{ env.AWS_REGION }}"
+
           aws lambda update-function-code \
-            --function-name "${{ vars.IMAGE_WORKER_LAMBDA_FUNCTION_NAME }}" \
-            --image-uri "${{ vars.IMAGE_WORKER_ECR_REPOSITORY_URL }}:${IMAGE_TAG}" \
+            --function-name "${IMAGE_WORKER_LAMBDA}" \
+            --image-uri "${IMAGE_WORKER_ECR_URL}:${{ github.sha }}" \
             --region "${{ env.AWS_REGION }}" \
             --output table --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
 
   # ---------------------------------------------------------------------------
   # Build Vite SPA and sync to S3 + CloudFront
+  # Values come from SSM (written by deploy-infra-storybook.yml)
   # ---------------------------------------------------------------------------
   deploy-frontend:
     name: Deploy Frontend
@@ -180,6 +183,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Read infrastructure values from SSM
+        run: |
+          get() { aws ssm get-parameter --name "/storybook/prod/${1}" \
+            --query Parameter.Value --output text; }
+
+          echo "VITE_API_URL=$(get api-url)"                         >> "$GITHUB_ENV"
+          echo "VITE_COGNITO_POOL_ID=$(get cognito-user-pool-id)"   >> "$GITHUB_ENV"
+          echo "VITE_COGNITO_CLIENT_ID=$(get cognito-client-id)"    >> "$GITHUB_ENV"
+          echo "VITE_COGNITO_DOMAIN=$(get cognito-domain)"          >> "$GITHUB_ENV"
+          echo "S3_FRONTEND_BUCKET=$(get s3-frontend-bucket)"       >> "$GITHUB_ENV"
+          echo "CF_DIST_ID=$(get cf-dist-id)"                       >> "$GITHUB_ENV"
+
       - name: Set up Node.js 18
         uses: actions/setup-node@v4
         with:
@@ -192,21 +213,16 @@ jobs:
 
       - name: Build frontend
         env:
-          VITE_API_URL:                  ${{ vars.VITE_API_URL }}
-          VITE_AWS_COGNITO_USER_POOL_ID: ${{ vars.VITE_AWS_COGNITO_USER_POOL_ID }}
-          VITE_AWS_COGNITO_APP_CLIENT_ID:${{ vars.VITE_AWS_COGNITO_APP_CLIENT_ID }}
-          VITE_AWS_COGNITO_DOMAIN:       ${{ vars.VITE_AWS_COGNITO_DOMAIN }}
+          VITE_API_URL:                  ${{ env.VITE_API_URL }}
+          VITE_AWS_COGNITO_USER_POOL_ID: ${{ env.VITE_COGNITO_POOL_ID }}
+          VITE_AWS_COGNITO_APP_CLIENT_ID:${{ env.VITE_COGNITO_CLIENT_ID }}
+          VITE_AWS_COGNITO_DOMAIN:       ${{ env.VITE_COGNITO_DOMAIN }}
         run: cd storybook/frontend/storybook-ui && npm run build
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
 
       - name: Sync hashed assets (long cache)
         run: |
-          aws s3 sync storybook/frontend/storybook-ui/dist/ "s3://${{ vars.S3_BUCKET_NAME }}/app/" \
+          aws s3 sync storybook/frontend/storybook-ui/dist/ \
+            "s3://${S3_FRONTEND_BUCKET}/app/" \
             --region "${{ env.AWS_REGION }}" \
             --delete \
             --cache-control "public,max-age=31536000,immutable" \
@@ -214,7 +230,8 @@ jobs:
 
       - name: Sync HTML (no cache)
         run: |
-          aws s3 sync storybook/frontend/storybook-ui/dist/ "s3://${{ vars.S3_BUCKET_NAME }}/app/" \
+          aws s3 sync storybook/frontend/storybook-ui/dist/ \
+            "s3://${S3_FRONTEND_BUCKET}/app/" \
             --region "${{ env.AWS_REGION }}" \
             --cache-control "no-cache,no-store,must-revalidate" \
             --include "*.html"
@@ -222,5 +239,5 @@ jobs:
       - name: Invalidate CloudFront
         run: |
           aws cloudfront create-invalidation \
-            --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --distribution-id "${CF_DIST_ID}" \
             --paths "/*"

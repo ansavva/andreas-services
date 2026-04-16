@@ -62,8 +62,7 @@ jobs:
               "GmailAccessToken=${{ secrets.GMAIL_ACCESS_TOKEN }}" \
               "GmailRefreshToken=${{ secrets.GMAIL_REFRESH_TOKEN }}"
 
-      - name: Read CloudFormation outputs
-        id: cfn
+      - name: Store infrastructure outputs in SSM
         run: |
           get_output() {
             aws cloudformation describe-stacks \
@@ -71,34 +70,15 @@ jobs:
               --query "Stacks[0].Outputs[?OutputKey=='${1}'].OutputValue | [0]" \
               --output text
           }
-          echo "api_url=$(get_output ApiEndpoint)" >> "$GITHUB_OUTPUT"
-          echo "s3_bucket=$(get_output S3BucketName)" >> "$GITHUB_OUTPUT"
-          echo "cf_dist_id=$(get_output CloudFrontDistributionId)" >> "$GITHUB_OUTPUT"
 
-      # Writes VITE_API_URL, S3_BUCKET_NAME, and CLOUDFRONT_DISTRIBUTION_ID into
-      # the scout-production environment so the code deploy workflow can read them.
-      - name: Update scout-production GitHub variables
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GH_PAT }}
-          script: |
-            const vars = {
-              VITE_API_URL:                '${{ steps.cfn.outputs.api_url }}',
-              S3_BUCKET_NAME:              '${{ steps.cfn.outputs.s3_bucket }}',
-              CLOUDFRONT_DISTRIBUTION_ID:  '${{ steps.cfn.outputs.cf_dist_id }}',
-            };
-            for (const [name, value] of Object.entries(vars)) {
-              const base = {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                environment_name: 'scout-production',
-                name,
-                value,
-              };
-              try {
-                await github.rest.actions.updateEnvironmentVariable(base);
-              } catch {
-                await github.rest.actions.createEnvironmentVariable(base);
-              }
-              core.info(`Set ${name} = ${value}`);
-            }
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/prod/api-url \
+            --value "$(get_output ApiEndpoint)"
+
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/prod/s3-bucket \
+            --value "$(get_output S3BucketName)"
+
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/prod/cf-dist-id \
+            --value "$(get_output CloudFrontDistributionId)"

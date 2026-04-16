@@ -94,6 +94,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Build Vite SPA and sync to S3 + CloudFront
+  # Values come from SSM (written by deploy-infra-scout.yml)
   # ---------------------------------------------------------------------------
   deploy-frontend:
     name: Deploy Frontend
@@ -115,23 +116,30 @@ jobs:
           cache: npm
           cache-dependency-path: scout/frontend/package-lock.json
 
-      - name: Install dependencies
-        run: cd scout/frontend && npm ci
-
-      - name: Build frontend
-        env:
-          VITE_API_URL: ${{ vars.VITE_API_URL }}
-        run: cd scout/frontend && npm run build
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Read infrastructure values from SSM
+        run: |
+          get() { aws ssm get-parameter --name "/scout/prod/${1}" \
+            --query Parameter.Value --output text; }
+
+          echo "VITE_API_URL=$(get api-url)"            >> "$GITHUB_ENV"
+          echo "S3_BUCKET=$(get s3-bucket)"             >> "$GITHUB_ENV"
+          echo "CF_DIST_ID=$(get cf-dist-id)"           >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: cd scout/frontend && npm ci
+
+      - name: Build frontend
+        run: cd scout/frontend && npm run build
+
       - name: Sync hashed assets (long cache)
         run: |
-          aws s3 sync scout/frontend/dist/ "s3://${{ vars.S3_BUCKET_NAME }}/" \
+          aws s3 sync scout/frontend/dist/ "s3://${S3_BUCKET}/" \
             --region "${{ env.AWS_REGION }}" \
             --delete \
             --cache-control "public,max-age=31536000,immutable" \
@@ -139,7 +147,7 @@ jobs:
 
       - name: Sync HTML (no cache)
         run: |
-          aws s3 sync scout/frontend/dist/ "s3://${{ vars.S3_BUCKET_NAME }}/" \
+          aws s3 sync scout/frontend/dist/ "s3://${S3_BUCKET}/" \
             --region "${{ env.AWS_REGION }}" \
             --cache-control "no-cache,no-store,must-revalidate" \
             --include "*.html"
@@ -147,5 +155,5 @@ jobs:
       - name: Invalidate CloudFront
         run: |
           aws cloudfront create-invalidation \
-            --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --distribution-id "${CF_DIST_ID}" \
             --paths "/*"
