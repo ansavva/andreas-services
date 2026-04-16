@@ -5,7 +5,7 @@
 Aggregates NYC event listings from Gmail subscriptions and displays them at `scout.andreas.services`:
 
 1. **EventBridge** triggers `email-processor` Lambda every Monday at 08:00 UTC
-2. Lambda fetches emails with the **"Events"** Gmail label, extracts structured event data via OpenAI GPT-3.5-turbo, stores results in DynamoDB
+2. Lambda fetches emails with the **"Events"** Gmail label, extracts structured event data via Claude (claude-haiku-4-5), stores results in DynamoDB
 3. **events-api** Lambda serves a REST API via API Gateway
 4. Vite + React + TypeScript SPA (S3 + CloudFront) displays events
 
@@ -60,7 +60,7 @@ All secrets live in the `scout-production` GitHub Actions environment, never in 
 
 | Variable | Where set | Description |
 |----------|-----------|-------------|
-| `OPENAI_API_KEY` | GitHub secret | OpenAI API key |
+| `ANTHROPIC_API_KEY` | GitHub secret | Anthropic API key |
 | `GMAIL_CLIENT_ID` | GitHub secret | Google OAuth client ID |
 | `GMAIL_CLIENT_SECRET` | GitHub secret | Google OAuth client secret |
 | `GMAIL_ACCESS_TOKEN` | GitHub secret | OAuth access token (auto-refreshed by Lambda) |
@@ -82,7 +82,7 @@ For local use: `cp .env.example .env` and fill in values.
 - Authenticates Gmail via OAuth (auto-refreshes token using stored refresh token)
 - Skips emails already in DynamoDB (dedup by Gmail `email_id`)
 - Converts HTML bodies to plain text via `html2text` before sending to OpenAI
-- GPT-3.5-turbo returns a JSON array — one object per event in the email
+- Claude (claude-haiku-4-5) returns a JSON array — one object per event in the email
 
 ### events-api
 

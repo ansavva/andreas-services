@@ -14,10 +14,10 @@ Parameters:
     Default: scout
     Description: Short name used as a prefix for all resource names.
 
-  OpenAIApiKey:
+  AnthropicApiKey:
     Type: String
     NoEcho: true
-    Description: OpenAI API key used by the email-processor Lambda.
+    Description: Anthropic API key used by the email-processor Lambda.
 
   GmailClientId:
     Type: String
@@ -165,7 +165,7 @@ Resources:
       Environment:
         Variables:
           DYNAMODB_TABLE_NAME: !Ref EventsTable
-          OPENAI_API_KEY: !Ref OpenAIApiKey
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
           GMAIL_CLIENT_ID: !Ref GmailClientId
           GMAIL_CLIENT_SECRET: !Ref GmailClientSecret
           GMAIL_ACCESS_TOKEN: !Ref GmailAccessToken

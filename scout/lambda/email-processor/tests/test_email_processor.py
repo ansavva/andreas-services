@@ -71,7 +71,7 @@ class TestEmailProcessor(unittest.TestCase):
         )
 
         os.environ["DYNAMODB_TABLE_NAME"] = TABLE_NAME
-        os.environ["OPENAI_API_KEY"] = "test-key"
+        os.environ["ANTHROPIC_API_KEY"] = "test-key"
         os.environ["GMAIL_CLIENT_ID"] = "test-client-id"
         os.environ["GMAIL_CLIENT_SECRET"] = "test-secret"
         os.environ["GMAIL_ACCESS_TOKEN"] = "test-access-token"
@@ -226,19 +226,17 @@ class TestEmailProcessor(unittest.TestCase):
         return service
 
     @patch("lambda_function.get_gmail_service")
-    @patch("lambda_function.openai.ChatCompletion.create")
-    def test_lambda_handler_processes_emails(self, mock_openai, mock_gmail):
+    @patch("lambda_function._anthropic_client.messages.create")
+    def test_lambda_handler_processes_emails(self, mock_claude, mock_gmail):
         messages = [_make_message(msg_id="msg-001")]
         mock_gmail.return_value = self._make_gmail_service(messages)
-        mock_openai.return_value = MagicMock(
-            choices=[
+        mock_claude.return_value = MagicMock(
+            content=[
                 MagicMock(
-                    message=MagicMock(
-                        content=json.dumps([
-                            {"event_name": "Test Gig", "date": "2026-05-01", "time": "9 PM",
-                             "venue": "CBGB", "price": "$10", "description": "Rock show", "links": []}
-                        ])
-                    )
+                    text=json.dumps([
+                        {"event_name": "Test Gig", "date": "2026-05-01", "time": "9 PM",
+                         "venue": "CBGB", "price": "$10", "description": "Rock show", "links": []}
+                    ])
                 )
             ]
         )
@@ -251,8 +249,8 @@ class TestEmailProcessor(unittest.TestCase):
         assert body["errors"] == []
 
     @patch("lambda_function.get_gmail_service")
-    @patch("lambda_function.openai.ChatCompletion.create")
-    def test_lambda_handler_skips_already_processed(self, mock_openai, mock_gmail):
+    @patch("lambda_function._anthropic_client.messages.create")
+    def test_lambda_handler_skips_already_processed(self, mock_claude, mock_gmail):
         # Pre-seed the table so email-exists looks up the email as processed.
         events = [{"event_name": "Pre-existing", "date": "", "time": "", "venue": "", "price": "", "description": "", "links": []}]
         self.lf.store_events(events, "msg-dup", "Subj", "a@a.com", "")
@@ -264,15 +262,15 @@ class TestEmailProcessor(unittest.TestCase):
         assert resp["statusCode"] == 200
         body = json.loads(resp["body"])
         assert body["emails_processed"] == 0
-        mock_openai.assert_not_called()
+        mock_claude.assert_not_called()
 
     @patch("lambda_function.get_gmail_service")
-    @patch("lambda_function.openai.ChatCompletion.create")
-    def test_lambda_handler_handles_no_events_from_openai(self, mock_openai, mock_gmail):
+    @patch("lambda_function._anthropic_client.messages.create")
+    def test_lambda_handler_handles_no_events_from_claude(self, mock_claude, mock_gmail):
         messages = [_make_message(msg_id="msg-empty")]
         mock_gmail.return_value = self._make_gmail_service(messages)
-        mock_openai.return_value = MagicMock(
-            choices=[MagicMock(message=MagicMock(content="[]"))]
+        mock_claude.return_value = MagicMock(
+            content=[MagicMock(text="[]")]
         )
 
         resp = self.lf.lambda_handler({}, {})

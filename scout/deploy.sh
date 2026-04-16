@@ -10,7 +10,7 @@
 #
 # Required environment variables (or set in .env):
 #   LAMBDA_CODE_BUCKET  - S3 bucket for Lambda zip files (must exist)
-#   OPENAI_API_KEY
+#   ANTHROPIC_API_KEY
 #   GMAIL_CLIENT_ID
 #   GMAIL_CLIENT_SECRET
 #   GMAIL_ACCESS_TOKEN
@@ -38,7 +38,7 @@ fi
 
 required_vars=(
   LAMBDA_CODE_BUCKET
-  OPENAI_API_KEY
+  ANTHROPIC_API_KEY
   GMAIL_CLIENT_ID
   GMAIL_CLIENT_SECRET
   GMAIL_ACCESS_TOKEN
@@ -138,7 +138,7 @@ aws cloudformation deploy \
     LambdaCodeBucket="${LAMBDA_CODE_BUCKET}" \
     AcmCertificateArn="${ACM_CERT_ARN}" \
     Route53HostedZoneId="${HOSTED_ZONE_ID}" \
-    OpenAIApiKey="${OPENAI_API_KEY}" \
+    AnthropicApiKey="${ANTHROPIC_API_KEY}" \
     GmailClientId="${GMAIL_CLIENT_ID}" \
     GmailClientSecret="${GMAIL_CLIENT_SECRET}" \
     GmailAccessToken="${GMAIL_ACCESS_TOKEN}" \

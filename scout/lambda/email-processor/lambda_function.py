@@ -2,7 +2,7 @@
 Gmail Email Processor Lambda Function
 
 Fetches emails with the "Events" label from Gmail, extracts structured
-event data using OpenAI GPT-3.5-turbo, and stores results in DynamoDB.
+event data using Claude, and stores results in DynamoDB.
 
 Triggered weekly via EventBridge.
 """
@@ -13,9 +13,9 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import anthropic
 import boto3
 import html2text
-import openai
 from boto3.dynamodb.conditions import Attr
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -26,7 +26,7 @@ logger.setLevel(logging.INFO)
 
 # Environment variables
 DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
-OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 GMAIL_CLIENT_ID = os.environ["GMAIL_CLIENT_ID"]
 GMAIL_CLIENT_SECRET = os.environ["GMAIL_CLIENT_SECRET"]
 GMAIL_ACCESS_TOKEN = os.environ["GMAIL_ACCESS_TOKEN"]
@@ -37,7 +37,7 @@ MAX_EMAILS_PER_RUN = int(os.environ.get("MAX_EMAILS_PER_RUN", "20"))
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 EVENTS_LABEL = "Events"
 
-openai.api_key = OPENAI_API_KEY
+_anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(DYNAMODB_TABLE_NAME)
 
@@ -165,9 +165,9 @@ def extract_email_content(message):
     return subject, sender, date_str, content[:6000]  # cap to control token usage
 
 
-def extract_events_with_openai(subject, sender, content):
+def extract_events_with_claude(subject, sender, content):
     """
-    Call OpenAI GPT-3.5-turbo to extract structured event data from email content.
+    Call Claude to extract structured event data from email content.
 
     Returns a list of event dicts (an email may contain multiple events).
     """
@@ -190,14 +190,13 @@ Email Content:
 
 Return only valid JSON array, no other text:"""
 
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.1,
+    response = _anthropic_client.messages.create(
+        model="claude-haiku-4-5",
         max_tokens=1500,
+        messages=[{"role": "user", "content": prompt}],
     )
 
-    raw = response.choices[0].message.content.strip()
+    raw = response.content[0].text.strip()
     # Strip markdown code fences if present
     if raw.startswith("```"):
         raw = raw.split("```")[1]
@@ -267,7 +266,7 @@ def lambda_handler(event, context):
                 subject, sender, source_date, content = extract_email_content(message)
                 logger.info("Processing email: %s from %s", subject, sender)
 
-                events = extract_events_with_openai(subject, sender, content)
+                events = extract_events_with_claude(subject, sender, content)
                 if events:
                     count = store_events(events, email_id, subject, sender, source_date)
                     total_events += count
