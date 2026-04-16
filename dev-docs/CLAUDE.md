@@ -1,14 +1,12 @@
-# Claude Instructions
+# Claude Instructions – dev-docs
 
-This file contains project-specific instructions and context for Claude Code.
-
-## Project Overview
-- Monorepo containing multiple services: humbugg, storybook
-- Working on branch: savva-storybook-setup
+This directory contains development documentation for the andreas-services monorepo.
+For monorepo-wide coding patterns and conventions, see the root `CLAUDE.md`.
 
 ## AWS Authentication Best Practices
 
 ### Never Use Hardcoded Access Keys
+
 - **Production (Lambda)**: Use IAM roles attached to Lambda functions
 - **Local Development**: Use AWS CLI credentials (`aws configure`)
 - **boto3**: When no credentials are passed, it automatically uses:
@@ -16,16 +14,26 @@ This file contains project-specific instructions and context for Claude Code.
   2. AWS CLI credentials from `~/.aws/credentials` (locally)
   3. Environment variables (if set)
 
-### How It Works
 ```python
-# GOOD: No credentials needed
+# CORRECT
 boto3.client('s3', region_name='us-east-1')
 
-# BAD: Never hardcode access keys
+# WRONG — never hardcode keys
 boto3.client('s3',
     aws_access_key_id='AKIA...',
     aws_secret_access_key='...')
 ```
 
-## Instructions
-(To be updated as we work together)
+## Services in this Repo
+
+See root `CLAUDE.md` for the full service index.
+
+- `storybook/` – AI portrait studio
+- `humbugg/` – Gift-exchange platform
+- `nyc-events-aggregator/` – NYC events aggregator from Gmail
+
+## Shared Infrastructure
+
+`terraform/` at the repo root owns the shared Route53 zone, ACM wildcard cert, VPC,
+and DocumentDB. See `terraform/README.md` for full documentation.
+**Never recreate these resources inside a service.**
