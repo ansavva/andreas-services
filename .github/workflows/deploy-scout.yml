@@ -1,0 +1,226 @@
+name: Deploy Scout
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scout/**'
+      - '.github/workflows/deploy-scout.yml'
+  pull_request:
+    paths:
+      - 'scout/**'
+      - '.github/workflows/deploy-scout.yml'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  STACK_NAME: scout
+
+jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect frontend/backend changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'scout/frontend/**'
+            backend:
+              - 'scout/lambda/**'
+              - 'scout/cloudformation.yaml'
+
+  deploy-backend:
+    needs: check-changes
+    if: needs.check-changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    environment: scout-production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Package email-processor Lambda
+        run: |
+          cd scout/lambda/email-processor
+          pip install -q -r requirements.txt -t package/
+          cp lambda_function.py package/
+          cd package && zip -q -r ../email-processor.zip .
+
+      - name: Package events-api Lambda
+        run: |
+          cd scout/lambda/events-api
+          mkdir package
+          cp lambda_function.py package/
+          cd package && zip -q -r ../events-api.zip .
+
+      - name: Upload Lambda packages to S3
+        run: |
+          aws s3 cp scout/lambda/email-processor.zip \
+            s3://${{ vars.LAMBDA_CODE_BUCKET }}/lambda/email-processor.zip
+          aws s3 cp scout/lambda/events-api.zip \
+            s3://${{ vars.LAMBDA_CODE_BUCKET }}/lambda/events-api.zip
+
+      - name: Resolve shared infrastructure values
+        id: shared-infra
+        run: |
+          ACM_CERT_ARN=$(aws acm list-certificates \
+            --region us-east-1 \
+            --query "CertificateSummaryList[?DomainName=='*.andreas.services'].CertificateArn | [0]" \
+            --output text)
+          HOSTED_ZONE_ID=$(aws route53 list-hosted-zones \
+            --query "HostedZones[?Name=='andreas.services.'].Id | [0]" \
+            --output text | sed 's|/hostedzone/||')
+          echo "acm_cert_arn=${ACM_CERT_ARN}" >> "$GITHUB_OUTPUT"
+          echo "hosted_zone_id=${HOSTED_ZONE_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy CloudFormation stack
+        run: |
+          aws cloudformation deploy \
+            --template-file scout/cloudformation.yaml \
+            --stack-name ${{ env.STACK_NAME }} \
+            --region ${{ env.AWS_REGION }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              ProjectName=${{ env.STACK_NAME }} \
+              LambdaCodeBucket=${{ vars.LAMBDA_CODE_BUCKET }} \
+              AcmCertificateArn=${{ steps.shared-infra.outputs.acm_cert_arn }} \
+              Route53HostedZoneId=${{ steps.shared-infra.outputs.hosted_zone_id }} \
+              OpenAIApiKey=${{ secrets.OPENAI_API_KEY }} \
+              GmailClientId=${{ secrets.GMAIL_CLIENT_ID }} \
+              GmailClientSecret=${{ secrets.GMAIL_CLIENT_SECRET }} \
+              GmailAccessToken=${{ secrets.GMAIL_ACCESS_TOKEN }} \
+              GmailRefreshToken=${{ secrets.GMAIL_REFRESH_TOKEN }}
+
+      - name: Update Lambda function code
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ env.STACK_NAME }}-email-processor \
+            --s3-bucket ${{ vars.LAMBDA_CODE_BUCKET }} \
+            --s3-key lambda/email-processor.zip \
+            --region ${{ env.AWS_REGION }}
+
+          aws lambda update-function-code \
+            --function-name ${{ env.STACK_NAME }}-events-api \
+            --s3-bucket ${{ vars.LAMBDA_CODE_BUCKET }} \
+            --s3-key lambda/events-api.zip \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Wait for Lambda updates to complete
+        run: |
+          aws lambda wait function-updated \
+            --function-name ${{ env.STACK_NAME }}-email-processor
+          aws lambda wait function-updated \
+            --function-name ${{ env.STACK_NAME }}-events-api
+
+      - name: Sync Lambda environment variables
+        run: |
+          set -euo pipefail
+
+          update_lambda_env() {
+            local fn="$1"
+            shift
+            local current
+            current=$(aws lambda get-function-configuration \
+              --function-name "$fn" \
+              --query 'Environment.Variables' \
+              --output json)
+            [ "$current" = "null" ] && current="{}"
+
+            local updated="$current"
+            for pair in "$@"; do
+              local key="${pair%%=*}"
+              local value="${pair#*=}"
+              [ -n "$value" ] && updated=$(echo "$updated" | \
+                jq -c --arg k "$key" --arg v "$value" '.[$k]=$v')
+            done
+
+            jq -n --argjson vars "$updated" '{Variables: $vars}' > /tmp/env.json
+            aws lambda update-function-configuration \
+              --function-name "$fn" \
+              --environment file:///tmp/env.json
+          }
+
+          update_lambda_env "${{ env.STACK_NAME }}-email-processor" \
+            "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" \
+            "GMAIL_CLIENT_ID=${{ secrets.GMAIL_CLIENT_ID }}" \
+            "GMAIL_CLIENT_SECRET=${{ secrets.GMAIL_CLIENT_SECRET }}" \
+            "GMAIL_ACCESS_TOKEN=${{ secrets.GMAIL_ACCESS_TOKEN }}" \
+            "GMAIL_REFRESH_TOKEN=${{ secrets.GMAIL_REFRESH_TOKEN }}"
+
+  deploy-frontend:
+    needs: check-changes
+    if: needs.check-changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    environment: scout-production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install dependencies
+        run: |
+          cd scout/frontend
+          npm install
+
+      - name: Build frontend
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+        run: |
+          cd scout/frontend
+          npm run build
+
+      - name: Deploy to S3 – hashed assets (immutable)
+        if: github.event_name != 'pull_request'
+        run: |
+          aws s3 sync scout/frontend/dist s3://${{ vars.S3_BUCKET_NAME }}/ \
+            --delete \
+            --cache-control "public,max-age=31536000,immutable" \
+            --exclude "*.html"
+
+      - name: Deploy to S3 – HTML (no-cache)
+        if: github.event_name != 'pull_request'
+        run: |
+          aws s3 sync scout/frontend/dist s3://${{ vars.S3_BUCKET_NAME }}/ \
+            --cache-control "no-cache,no-store,must-revalidate" \
+            --include "*.html"
+
+      - name: Invalidate CloudFront cache
+        if: github.event_name != 'pull_request'
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/*"

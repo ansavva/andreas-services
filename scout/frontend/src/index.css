@@ -30,7 +30,6 @@
   --color-badge-text:    #86efac;
 }
 
-/* ─── Base ───────────────────────────────────────────────────────────────── */
 * {
   box-sizing: border-box;
 }
@@ -40,18 +39,15 @@ body {
   font-family: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
   background-color: var(--color-background);
   color: var(--color-text-primary);
-  transition: background-color 0.2s ease, color 0.2s ease;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ─── Smooth surface transitions ─────────────────────────────────────────── */
 .theme-transition {
   transition: background-color 0.2s ease, color 0.2s ease,
               border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* ─── Link reset ─────────────────────────────────────────────────────────── */
 a {
   color: var(--color-primary);
   text-decoration: none;
@@ -61,7 +57,6 @@ a:hover {
   color: var(--color-primary-hover);
 }
 
-/* ─── Focus ring ─────────────────────────────────────────────────────────── */
 :focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;

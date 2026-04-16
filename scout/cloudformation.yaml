@@ -1,8 +1,9 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  NYC Events Aggregator – serverless stack.
+  Scout – serverless NYC events aggregator stack.
   Includes DynamoDB, two Lambda functions, API Gateway, EventBridge,
-  S3 static site, and CloudFront CDN.
+  S3 static site, and CloudFront CDN at scout.andreas.services.
+  ACM certificate and Route53 zone are owned by the shared terraform/ stack.
 
 # ---------------------------------------------------------------------------
 # Parameters
@@ -10,7 +11,7 @@ Description: >
 Parameters:
   ProjectName:
     Type: String
-    Default: nyc-events
+    Default: scout
     Description: Short name used as a prefix for all resource names.
 
   OpenAIApiKey:
@@ -52,6 +53,19 @@ Parameters:
     Type: String
     Description: S3 bucket that holds Lambda deployment zip files.
 
+  # Resolved from the shared terraform/ stack at deploy time — never hard-code.
+  AcmCertificateArn:
+    Type: String
+    Description: >
+      ARN of the shared *.andreas.services ACM wildcard certificate (us-east-1).
+      Owned by terraform/envs/shared. Passed in by deploy.sh at runtime.
+
+  Route53HostedZoneId:
+    Type: String
+    Description: >
+      ID of the shared andreas.services Route53 hosted zone.
+      Owned by terraform/envs/shared. Passed in by deploy.sh at runtime.
+
 # ---------------------------------------------------------------------------
 # Resources
 # ---------------------------------------------------------------------------
@@ -73,14 +87,12 @@ Resources:
           KeyType: HASH
       SSESpecification:
         SSEEnabled: true
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: false
       Tags:
         - Key: Project
           Value: !Ref ProjectName
 
   # -------------------------------------------------------------------------
-  # IAM – Lambda execution role (shared)
+  # IAM – Lambda execution role (shared by both functions)
   # -------------------------------------------------------------------------
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -188,11 +200,10 @@ Resources:
     Type: AWS::ApiGateway::RestApi
     Properties:
       Name: !Sub "${ProjectName}-api"
-      Description: REST API for NYC events.
+      Description: REST API for Scout events.
       EndpointConfiguration:
         Types: [REGIONAL]
 
-  # /events resource
   EventsResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -200,7 +211,6 @@ Resources:
       ParentId: !GetAtt EventsApi.RootResourceId
       PathPart: events
 
-  # /events/{id} resource
   EventByIdResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -208,7 +218,6 @@ Resources:
       ParentId: !Ref EventsResource
       PathPart: "{id}"
 
-  # GET /events
   EventsGetMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -223,7 +232,6 @@ Resources:
           - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
           - FnArn: !GetAtt EventsApiFunction.Arn
 
-  # OPTIONS /events (CORS preflight)
   EventsOptionsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -238,7 +246,6 @@ Resources:
           - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
           - FnArn: !GetAtt EventsApiFunction.Arn
 
-  # GET /events/{id}
   EventByIdGetMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -253,7 +260,6 @@ Resources:
           - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
           - FnArn: !GetAtt EventsApiFunction.Arn
 
-  # OPTIONS /events/{id} (CORS preflight)
   EventByIdOptionsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -268,7 +274,6 @@ Resources:
           - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
           - FnArn: !GetAtt EventsApiFunction.Arn
 
-  # API Gateway deployment & stage
   ApiDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
@@ -291,7 +296,6 @@ Resources:
           ThrottlingBurstLimit: 50
           ThrottlingRateLimit: 10
 
-  # Permission for API Gateway to invoke Events API Lambda
   ApiGatewayLambdaPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -332,17 +336,24 @@ Resources:
             Resource: !Sub "${WebsiteBucket.Arn}/*"
 
   # -------------------------------------------------------------------------
-  # CloudFront distribution
+  # CloudFront – serves scout.andreas.services
+  # Uses the shared *.andreas.services ACM certificate from terraform/
   # -------------------------------------------------------------------------
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
       DistributionConfig:
         Enabled: true
-        Comment: !Sub "${ProjectName} website CDN"
+        Comment: Scout website CDN
         DefaultRootObject: index.html
         HttpVersion: http2
         PriceClass: PriceClass_100
+        Aliases:
+          - scout.andreas.services
+        ViewerCertificate:
+          AcmCertificateArn: !Ref AcmCertificateArn
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
         Origins:
           - Id: S3Origin
             DomainName: !Sub "${WebsiteBucket}.s3-website-${AWS::Region}.amazonaws.com"
@@ -365,15 +376,33 @@ Resources:
         - Key: Project
           Value: !Ref ProjectName
 
+  # -------------------------------------------------------------------------
+  # Route53 – DNS alias record for scout.andreas.services
+  # The hosted zone is owned by terraform/envs/shared — we only add a record.
+  # -------------------------------------------------------------------------
+  DnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref Route53HostedZoneId
+      Name: scout.andreas.services.
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt CloudFrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2  # CloudFront's global hosted zone ID (fixed value)
+
 # ---------------------------------------------------------------------------
 # Outputs
 # ---------------------------------------------------------------------------
 Outputs:
   WebsiteURL:
-    Description: CloudFront URL for the NYC Events website.
-    Value: !Sub "https://${CloudFrontDistribution.DomainName}"
+    Description: Custom domain URL for Scout.
+    Value: https://scout.andreas.services
     Export:
       Name: !Sub "${ProjectName}-website-url"
+
+  CloudFrontURL:
+    Description: Raw CloudFront URL (useful before DNS propagates).
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}"
 
   ApiEndpoint:
     Description: API Gateway endpoint URL.
@@ -393,6 +422,8 @@ Outputs:
     Export:
       Name: !Sub "${ProjectName}-dynamodb-table"
 
-  CloudFrontDomain:
-    Description: Raw CloudFront domain name.
-    Value: !GetAtt CloudFrontDistribution.DomainName
+  CloudFrontDistributionId:
+    Description: CloudFront distribution ID (used for cache invalidation).
+    Value: !Ref CloudFrontDistribution
+    Export:
+      Name: !Sub "${ProjectName}-cf-distribution-id"

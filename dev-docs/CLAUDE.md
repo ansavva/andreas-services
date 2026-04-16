@@ -30,7 +30,7 @@ See root `CLAUDE.md` for the full service index.
 
 - `storybook/` – AI portrait studio
 - `humbugg/` – Gift-exchange platform
-- `nyc-events-aggregator/` – NYC events aggregator from Gmail
+- `scout/` – NYC events aggregator from Gmail (`scout.andreas.services`)
 
 ## Shared Infrastructure
 
