@@ -7,6 +7,7 @@ on:
 
 env:
   AWS_REGION: us-east-1
+  LAMBDA_CODE_BUCKET: andreas-services-lambda-code
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -57,7 +58,7 @@ jobs:
         if: steps.check-stack.outputs.status != 'DOES_NOT_EXIST'
         run: |
           aws s3 rm \
-            "s3://${{ vars.LAMBDA_CODE_BUCKET }}/pr/${{ github.event.pull_request.number }}/" \
+            "s3://${{ env.LAMBDA_CODE_BUCKET }}/pr/${{ github.event.pull_request.number }}/" \
             --recursive || true
 
       - name: Skip (stack not found)

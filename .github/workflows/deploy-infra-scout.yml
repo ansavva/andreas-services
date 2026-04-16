@@ -11,6 +11,7 @@ on:
 env:
   AWS_REGION: us-east-1
   STACK_NAME: scout
+  LAMBDA_CODE_BUCKET: andreas-services-lambda-code
 
 jobs:
   deploy-infra:
@@ -53,7 +54,7 @@ jobs:
             --no-fail-on-empty-changeset \
             --parameter-overrides \
               "ProjectName=${{ env.STACK_NAME }}" \
-              "LambdaCodeBucket=${{ vars.LAMBDA_CODE_BUCKET }}" \
+              "LambdaCodeBucket=${{ env.LAMBDA_CODE_BUCKET }}" \
               "AcmCertificateArn=${{ steps.shared.outputs.acm_arn }}" \
               "Route53HostedZoneId=${{ steps.shared.outputs.zone_id }}" \
               "AnthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }}" \

@@ -12,6 +12,7 @@ on:
 env:
   AWS_REGION: us-east-1
   STACK_NAME: scout
+  LAMBDA_CODE_BUCKET: andreas-services-lambda-code
 
 jobs:
   detect-changes:
@@ -76,16 +77,16 @@ jobs:
       - name: Upload Lambda packages to S3
         run: |
           aws s3 cp scout/lambda/email-processor.zip \
-            "s3://${{ vars.LAMBDA_CODE_BUCKET }}/lambda/email-processor.zip"
+            "s3://${{ env.LAMBDA_CODE_BUCKET }}/lambda/email-processor.zip"
           aws s3 cp scout/lambda/events-api.zip \
-            "s3://${{ vars.LAMBDA_CODE_BUCKET }}/lambda/events-api.zip"
+            "s3://${{ env.LAMBDA_CODE_BUCKET }}/lambda/events-api.zip"
 
       - name: Update Lambda function code
         run: |
           for fn in email-processor events-api; do
             aws lambda update-function-code \
               --function-name "${{ env.STACK_NAME }}-${fn}" \
-              --s3-bucket "${{ vars.LAMBDA_CODE_BUCKET }}" \
+              --s3-bucket "${{ env.LAMBDA_CODE_BUCKET }}" \
               --s3-key "lambda/${fn}.zip" \
               --region "${{ env.AWS_REGION }}" \
               --output table \

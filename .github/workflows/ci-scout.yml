@@ -8,6 +8,7 @@ on:
 
 env:
   AWS_REGION: us-east-1
+  LAMBDA_CODE_BUCKET: andreas-services-lambda-code
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -63,7 +64,7 @@ jobs:
   # 'scout-production':
   #   Secrets: AWS_ROLE_ARN, ANTHROPIC_API_KEY, GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET,
   #            GMAIL_ACCESS_TOKEN, GMAIL_REFRESH_TOKEN
-  #   Vars:    LAMBDA_CODE_BUCKET
+  #   (LAMBDA_CODE_BUCKET is hardcoded in workflow env)
   # ---------------------------------------------------------------------------
   tier-2:
     name: Deploy PR Stack & Integration Tests
@@ -109,9 +110,9 @@ jobs:
         run: |
           PR_PREFIX="pr/${{ github.event.pull_request.number }}/lambda"
           aws s3 cp scout/lambda/email-processor.zip \
-            "s3://${{ vars.LAMBDA_CODE_BUCKET }}/${PR_PREFIX}/email-processor.zip"
+            "s3://${{ env.LAMBDA_CODE_BUCKET }}/${PR_PREFIX}/email-processor.zip"
           aws s3 cp scout/lambda/events-api.zip \
-            "s3://${{ vars.LAMBDA_CODE_BUCKET }}/${PR_PREFIX}/events-api.zip"
+            "s3://${{ env.LAMBDA_CODE_BUCKET }}/${PR_PREFIX}/events-api.zip"
 
       - name: Deploy ephemeral CloudFormation stack
         run: |
@@ -124,7 +125,7 @@ jobs:
             --no-fail-on-empty-changeset \
             --parameter-overrides \
               "ProjectName=${{ env.STACK_NAME }}" \
-              "LambdaCodeBucket=${{ vars.LAMBDA_CODE_BUCKET }}" \
+              "LambdaCodeBucket=${{ env.LAMBDA_CODE_BUCKET }}" \
               "EmailProcessorZipKey=${PR_PREFIX}/email-processor.zip" \
               "EventsApiZipKey=${PR_PREFIX}/events-api.zip" \
               "DeployFrontend=false" \
