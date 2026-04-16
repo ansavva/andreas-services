@@ -1,0 +1,398 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  NYC Events Aggregator – serverless stack.
+  Includes DynamoDB, two Lambda functions, API Gateway, EventBridge,
+  S3 static site, and CloudFront CDN.
+
+# ---------------------------------------------------------------------------
+# Parameters
+# ---------------------------------------------------------------------------
+Parameters:
+  ProjectName:
+    Type: String
+    Default: nyc-events
+    Description: Short name used as a prefix for all resource names.
+
+  OpenAIApiKey:
+    Type: String
+    NoEcho: true
+    Description: OpenAI API key used by the email-processor Lambda.
+
+  GmailClientId:
+    Type: String
+    NoEcho: true
+    Description: Google OAuth client ID.
+
+  GmailClientSecret:
+    Type: String
+    NoEcho: true
+    Description: Google OAuth client secret.
+
+  GmailAccessToken:
+    Type: String
+    NoEcho: true
+    Description: Google OAuth access token.
+
+  GmailRefreshToken:
+    Type: String
+    NoEcho: true
+    Description: Google OAuth refresh token.
+
+  EmailProcessorZipKey:
+    Type: String
+    Default: lambda/email-processor.zip
+    Description: S3 key for the email-processor Lambda deployment package.
+
+  EventsApiZipKey:
+    Type: String
+    Default: lambda/events-api.zip
+    Description: S3 key for the events-api Lambda deployment package.
+
+  LambdaCodeBucket:
+    Type: String
+    Description: S3 bucket that holds Lambda deployment zip files.
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+Resources:
+
+  # -------------------------------------------------------------------------
+  # DynamoDB
+  # -------------------------------------------------------------------------
+  EventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-events"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: event_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: event_id
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: false
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # -------------------------------------------------------------------------
+  # IAM – Lambda execution role (shared)
+  # -------------------------------------------------------------------------
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-lambda-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                Resource: !GetAtt EventsTable.Arn
+
+  # -------------------------------------------------------------------------
+  # Lambda – Email Processor
+  # -------------------------------------------------------------------------
+  EmailProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-email-processor"
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300
+      MemorySize: 256
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref EmailProcessorZipKey
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref EventsTable
+          OPENAI_API_KEY: !Ref OpenAIApiKey
+          GMAIL_CLIENT_ID: !Ref GmailClientId
+          GMAIL_CLIENT_SECRET: !Ref GmailClientSecret
+          GMAIL_ACCESS_TOKEN: !Ref GmailAccessToken
+          GMAIL_REFRESH_TOKEN: !Ref GmailRefreshToken
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # -------------------------------------------------------------------------
+  # Lambda – Events API
+  # -------------------------------------------------------------------------
+  EventsApiFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-events-api"
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 128
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref EventsApiZipKey
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref EventsTable
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # -------------------------------------------------------------------------
+  # EventBridge – Weekly trigger for email processor
+  # -------------------------------------------------------------------------
+  WeeklyProcessorRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-weekly-processor"
+      Description: Trigger the email processor Lambda every Monday at 08:00 UTC.
+      ScheduleExpression: "cron(0 8 ? * MON *)"
+      State: ENABLED
+      Targets:
+        - Id: EmailProcessorTarget
+          Arn: !GetAtt EmailProcessorFunction.Arn
+
+  WeeklyProcessorPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt EmailProcessorFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt WeeklyProcessorRule.Arn
+
+  # -------------------------------------------------------------------------
+  # API Gateway
+  # -------------------------------------------------------------------------
+  EventsApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub "${ProjectName}-api"
+      Description: REST API for NYC events.
+      EndpointConfiguration:
+        Types: [REGIONAL]
+
+  # /events resource
+  EventsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref EventsApi
+      ParentId: !GetAtt EventsApi.RootResourceId
+      PathPart: events
+
+  # /events/{id} resource
+  EventByIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref EventsApi
+      ParentId: !Ref EventsResource
+      PathPart: "{id}"
+
+  # GET /events
+  EventsGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref EventsApi
+      ResourceId: !Ref EventsResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
+          - FnArn: !GetAtt EventsApiFunction.Arn
+
+  # OPTIONS /events (CORS preflight)
+  EventsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref EventsApi
+      ResourceId: !Ref EventsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
+          - FnArn: !GetAtt EventsApiFunction.Arn
+
+  # GET /events/{id}
+  EventByIdGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref EventsApi
+      ResourceId: !Ref EventByIdResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
+          - FnArn: !GetAtt EventsApiFunction.Arn
+
+  # OPTIONS /events/{id} (CORS preflight)
+  EventByIdOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref EventsApi
+      ResourceId: !Ref EventByIdResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
+          - FnArn: !GetAtt EventsApiFunction.Arn
+
+  # API Gateway deployment & stage
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - EventsGetMethod
+      - EventsOptionsMethod
+      - EventByIdGetMethod
+      - EventByIdOptionsMethod
+    Properties:
+      RestApiId: !Ref EventsApi
+
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref EventsApi
+      DeploymentId: !Ref ApiDeployment
+      StageName: prod
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingBurstLimit: 50
+          ThrottlingRateLimit: 10
+
+  # Permission for API Gateway to invoke Events API Lambda
+  ApiGatewayLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt EventsApiFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${EventsApi}/*"
+
+  # -------------------------------------------------------------------------
+  # S3 – Static website bucket
+  # -------------------------------------------------------------------------
+  WebsiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-website-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  WebsiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebsiteBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: s3:GetObject
+            Resource: !Sub "${WebsiteBucket.Arn}/*"
+
+  # -------------------------------------------------------------------------
+  # CloudFront distribution
+  # -------------------------------------------------------------------------
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "${ProjectName} website CDN"
+        DefaultRootObject: index.html
+        HttpVersion: http2
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: S3Origin
+            DomainName: !Sub "${WebsiteBucket}.s3-website-${AWS::Region}.amazonaws.com"
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized
+          Compress: true
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+# ---------------------------------------------------------------------------
+# Outputs
+# ---------------------------------------------------------------------------
+Outputs:
+  WebsiteURL:
+    Description: CloudFront URL for the NYC Events website.
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}"
+    Export:
+      Name: !Sub "${ProjectName}-website-url"
+
+  ApiEndpoint:
+    Description: API Gateway endpoint URL.
+    Value: !Sub "https://${EventsApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+    Export:
+      Name: !Sub "${ProjectName}-api-endpoint"
+
+  S3BucketName:
+    Description: Name of the S3 bucket hosting the static site.
+    Value: !Ref WebsiteBucket
+    Export:
+      Name: !Sub "${ProjectName}-s3-bucket"
+
+  DynamoDBTableName:
+    Description: Name of the DynamoDB events table.
+    Value: !Ref EventsTable
+    Export:
+      Name: !Sub "${ProjectName}-dynamodb-table"
+
+  CloudFrontDomain:
+    Description: Raw CloudFront domain name.
+    Value: !GetAtt CloudFrontDistribution.DomainName
