@@ -19,9 +19,6 @@ class AppConfig:
     FLASK_ENV = os.getenv("FLASK_ENV", "production")
     PORT = int(os.getenv("PORT", "3000"))
 
-    DATABASE_URL = os.getenv("DATABASE_URL")
-    DATABASE_NAME = os.getenv("DATABASE_NAME")
-
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     STABILITY_API_KEY = os.getenv("STABILITY_API_KEY")
     REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN")

@@ -45,22 +45,10 @@ variable "cors_allowed_origins" {
   type        = list(string)
 }
 
-variable "enable_vpc" {
-  description = "Whether to place the Lambda inside a VPC"
-  type        = bool
-  default     = false
-}
-
-variable "vpc_id" {
-  description = "VPC ID for Lambda (required if enable_vpc = true)"
-  type        = string
-  default     = null
-}
-
-variable "subnet_ids" {
-  description = "Subnet IDs for Lambda (required if enable_vpc = true)"
-  type        = list(string)
-  default     = []
+variable "dynamodb_table_arns" {
+  description = "Map of DynamoDB table ARNs the Lambda needs access to"
+  type        = map(string)
+  default     = {}
 }
 
 variable "tags" {

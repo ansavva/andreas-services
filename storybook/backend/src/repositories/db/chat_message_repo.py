@@ -1,14 +1,18 @@
 from typing import List, Optional, Dict, Any
 from flask import request
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
-from src.repositories.db.database import get_db
+from boto3.dynamodb.conditions import Key, Attr
+from src.repositories.db.database import _table
 from src.models.chat_message import ChatMessage
+
 
 class ChatMessageRepo:
     """
-    ChatMessage repository - handles CRUD operations for chat messages using MongoDB
+    ChatMessage repository - handles CRUD operations for chat messages using DynamoDB.
+    Table: STORYBOOK_CHAT_MESSAGES_TABLE  PK: message_id (S)
+    GSI: project_id-sequence-index  PK: project_id (S), SK: sequence (S — ISO timestamp)
     """
 
     def __init__(self):
@@ -18,92 +22,62 @@ class ChatMessageRepo:
         """Get current user ID from Cognito claims"""
         return request.cognito_claims['sub']
 
+    @staticmethod
+    def _table():
+        return _table('STORYBOOK_CHAT_MESSAGES_TABLE')
+
     def get_by_id(self, message_id: str) -> ChatMessage:
         """
-        Get a single chat message by ID for the current user
-
-        Args:
-            message_id: UUID of the chat message
-
-        Returns:
-            ChatMessage object
+        Get a single chat message by ID for the current user.
 
         Raises:
             ValueError: If message not found or doesn't belong to user
         """
-        db = get_db()
         user_id = self._get_user_id()
+        resp = self._table().get_item(Key={'message_id': message_id})
+        item = resp.get('Item')
 
-        message_data = db.chat_messages.find_one({
-            '_id': message_id,
-            'user_id': user_id
-        })
-
-        if not message_data:
+        if not item or item.get('user_id') != user_id:
             raise ValueError(f"Chat message with ID {message_id} not found.")
 
-        return ChatMessage.from_dict(message_data)
+        return ChatMessage.from_dict(item)
 
     def get_conversation(self, project_id: str, limit: int = None) -> List[ChatMessage]:
         """
-        Get chat conversation for a project, ordered by sequence
+        Get chat conversation for a project, ordered by sequence (ISO timestamp) ascending.
 
         Args:
             project_id: UUID of the story project
-            limit: Optional limit on number of messages to return (most recent)
-
-        Returns:
-            List of ChatMessage objects sorted by sequence
+            limit: Optional limit on number of messages (most recent N)
         """
-        db = get_db()
         user_id = self._get_user_id()
+        table = self._table()
 
-        query = db.chat_messages.find({
-            'project_id': project_id,
-            'user_id': user_id
-        }).sort('sequence', 1)
+        resp = table.query(
+            IndexName='project_id-sequence-index',
+            KeyConditionExpression=Key('project_id').eq(project_id),
+            FilterExpression=Attr('user_id').eq(user_id),
+            ScanIndexForward=True,  # ascending
+        )
 
-        if limit:
-            # Get last N messages
-            total_count = db.chat_messages.count_documents({
-                'project_id': project_id,
-                'user_id': user_id
-            })
-            skip_count = max(0, total_count - limit)
-            query = query.skip(skip_count).limit(limit)
+        messages = [ChatMessage.from_dict(m) for m in resp.get('Items', [])]
 
-        return [ChatMessage.from_dict(m) for m in query]
+        if limit and len(messages) > limit:
+            messages = messages[-limit:]
+
+        return messages
 
     def get_conversation_for_openai(self, project_id: str, limit: int = None) -> List[Dict[str, str]]:
-        """
-        Get conversation in OpenAI format for API calls
-
-        Args:
-            project_id: UUID of the story project
-            limit: Optional limit on number of messages
-
-        Returns:
-            List of message dictionaries in OpenAI format
-        """
+        """Get conversation in OpenAI format for API calls."""
         messages = self.get_conversation(project_id, limit)
         return [msg.to_openai_format() for msg in messages]
 
     def add_message(self, project_id: str, role: str, content: str,
-                   model: str = None, tokens_used: int = None,
-                   structured_data: Dict[str, Any] = None) -> ChatMessage:
+                    model: str = None, tokens_used: int = None,
+                    structured_data: Dict[str, Any] = None) -> ChatMessage:
         """
-        Add a new message to the conversation
-
-        Args:
-            project_id: UUID of the story project
-            role: Message role (user, assistant, system)
-            content: Message content
-            model: Model used (for assistant messages)
-            tokens_used: Token count (for assistant messages)
-            structured_data: Optional structured response data
-
-        Returns:
-            Created ChatMessage object
+        Add a new message to the conversation.
+        Uses ISO timestamp as the sequence value for GSI sort key.
 
         Raises:
             ValueError: If invalid role
@@ -111,122 +85,85 @@ class ChatMessageRepo:
         if role not in ChatMessage.VALID_ROLES:
             raise ValueError(f"Invalid role: {role}")
 
-        db = get_db()
         user_id = self._get_user_id()
-
-        # Get next sequence number
-        last_message = db.chat_messages.find_one(
-            {'project_id': project_id, 'user_id': user_id},
-            sort=[('sequence', -1)]
-        )
-        next_sequence = 1 if not last_message else last_message['sequence'] + 1
-
         message_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc)
+        # Use ISO timestamp as sequence — preserves ordering without atomic counters
+        sequence = now.isoformat()
+
         message = ChatMessage(
             id=message_id,
             project_id=project_id,
             user_id=user_id,
             role=role,
             content=content,
-            sequence=next_sequence,
+            sequence=sequence,
             model=model,
             tokens_used=tokens_used,
             structured_data=structured_data,
-            created_at=datetime.utcnow()
+            created_at=now,
         )
 
-        db.chat_messages.insert_one(message.to_dict())
-
+        self._table().put_item(Item=message.to_dict())
         return message
 
     def add_user_message(self, project_id: str, content: str) -> ChatMessage:
-        """
-        Add a user message to the conversation
-
-        Args:
-            project_id: UUID of the story project
-            content: User's message content
-
-        Returns:
-            Created ChatMessage object
-        """
+        """Add a user message to the conversation."""
         return self.add_message(
             project_id=project_id,
             role=ChatMessage.ROLE_USER,
-            content=content
+            content=content,
         )
 
     def add_assistant_message(self, project_id: str, content: str,
-                             model: str = None, tokens_used: int = None,
-                             structured_data: Dict[str, Any] = None) -> ChatMessage:
-        """
-        Add an assistant message to the conversation
-
-        Args:
-            project_id: UUID of the story project
-            content: Assistant's response content
-            model: Model used for generation
-            tokens_used: Token count
-            structured_data: Optional structured response
-
-        Returns:
-            Created ChatMessage object
-        """
+                               model: str = None, tokens_used: int = None,
+                               structured_data: Dict[str, Any] = None) -> ChatMessage:
+        """Add an assistant message to the conversation."""
         return self.add_message(
             project_id=project_id,
             role=ChatMessage.ROLE_ASSISTANT,
             content=content,
             model=model,
             tokens_used=tokens_used,
-            structured_data=structured_data
+            structured_data=structured_data,
         )
 
     def add_system_message(self, project_id: str, content: str) -> ChatMessage:
-        """
-        Add a system message to the conversation
-
-        Args:
-            project_id: UUID of the story project
-            content: System message content
-
-        Returns:
-            Created ChatMessage object
-        """
+        """Add a system message to the conversation."""
         return self.add_message(
             project_id=project_id,
             role=ChatMessage.ROLE_SYSTEM,
-            content=content
+            content=content,
         )
 
     def clear_conversation(self, project_id: str) -> None:
-        """
-        Delete all messages for a project
-
-        Args:
-            project_id: UUID of the story project
-        """
-        db = get_db()
+        """Delete all messages for a project."""
         user_id = self._get_user_id()
+        table = self._table()
 
-        db.chat_messages.delete_many({
-            'project_id': project_id,
-            'user_id': user_id
-        })
+        resp = table.query(
+            IndexName='project_id-sequence-index',
+            KeyConditionExpression=Key('project_id').eq(project_id),
+            FilterExpression=Attr('user_id').eq(user_id),
+        )
+
+        items = resp.get('Items', [])
+        if not items:
+            return
+
+        with table.batch_writer() as batch:
+            for item in items:
+                batch.delete_item(Key={'message_id': item['message_id']})
 
     def get_message_count(self, project_id: str) -> int:
-        """
-        Get total message count for a project
-
-        Args:
-            project_id: UUID of the story project
-
-        Returns:
-            Number of messages
-        """
-        db = get_db()
+        """Get total message count for a project."""
         user_id = self._get_user_id()
 
-        return db.chat_messages.count_documents({
-            'project_id': project_id,
-            'user_id': user_id
-        })
+        resp = self._table().query(
+            IndexName='project_id-sequence-index',
+            KeyConditionExpression=Key('project_id').eq(project_id),
+            FilterExpression=Attr('user_id').eq(user_id),
+            Select='COUNT',
+        )
+
+        return resp.get('Count', 0)

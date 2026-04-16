@@ -1,14 +1,18 @@
 from typing import List
 from flask import request
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
-from src.repositories.db.database import get_db
+from boto3.dynamodb.conditions import Key, Attr
+from src.repositories.db.database import _table
 from src.models.model_project import ModelProject
+
 
 class ModelProjectRepo:
     """
-    Project repository - handles CRUD operations for projects using MongoDB
+    ModelProject repository - handles CRUD operations for model projects using DynamoDB.
+    Table: STORYBOOK_MODEL_PROJECTS_TABLE  PK: project_id (S)
+    GSI: user_id-created_at-index  PK: user_id (S), SK: created_at (S)
     """
 
     def __init__(self):
@@ -18,63 +22,45 @@ class ModelProjectRepo:
         """Get current user ID from Cognito claims"""
         return request.cognito_claims['sub']
 
+    @staticmethod
+    def _table():
+        return _table('STORYBOOK_MODEL_PROJECTS_TABLE')
+
     def get_project(self, project_id: str) -> ModelProject:
         """
-        Get a single project by ID for the current user
-
-        Args:
-            project_id: UUID of the project
-
-        Returns:
-            Project object
+        Get a single project by ID for the current user.
 
         Raises:
             ValueError: If project not found or doesn't belong to user
         """
-        db = get_db()
         user_id = self._get_user_id()
+        resp = self._table().get_item(Key={'project_id': project_id})
+        item = resp.get('Item')
 
-        project_data = db.model_projects.find_one({
-            '_id': project_id,
-            'user_id': user_id
-        })
-
-        if not project_data:
+        if not item or item.get('user_id') != user_id:
             raise ValueError(f"Project with ID {project_id} not found.")
 
-        return ModelProject.from_dict(project_data)
+        return ModelProject.from_dict(item)
 
     def get_projects(self) -> List[ModelProject]:
-        """
-        Get all projects for the current user
-
-        Returns:
-            List of Project objects
-        """
-        db = get_db()
+        """Get all projects for the current user, most recent first."""
         user_id = self._get_user_id()
 
-        projects_data = db.model_projects.find({
-            'user_id': user_id
-        }).sort('created_at', -1)  # Most recent first
+        resp = self._table().query(
+            IndexName='user_id-created_at-index',
+            KeyConditionExpression=Key('user_id').eq(user_id),
+            ScanIndexForward=False,
+        )
 
-        return [ModelProject.from_dict(p) for p in projects_data]
+        return [ModelProject.from_dict(p) for p in resp.get('Items', [])]
 
-    def create_project(self, name: str, subject_name: str, model_type: str = None, subject_description: str = None) -> ModelProject:
-        """
-        Create a new project for the current user
-
-        Args:
-            name: Name of the project
-            subject_name: Name of the subject (person, object, etc.)
-
-        Returns:
-            Created Project object
-        """
-        db = get_db()
+    def create_project(self, name: str, subject_name: str,
+                       model_type: str = None,
+                       subject_description: str = None) -> ModelProject:
+        """Create a new project for the current user."""
         user_id = self._get_user_id()
-
         project_id = str(uuid.uuid4())
+
         project = ModelProject(
             id=project_id,
             name=name,
@@ -84,12 +70,11 @@ class ModelProjectRepo:
             status="DRAFT",
             model_type=model_type or ModelProject.DEFAULT_MODEL_TYPE,
             replicate_model_id=None,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
 
-        db.model_projects.insert_one(project.to_dict())
-
+        self._table().put_item(Item=project.to_dict())
         return project
 
     def update_project(
@@ -99,57 +84,53 @@ class ModelProjectRepo:
         subject_name: str = None,
         model_type: str = None,
         replicate_model_id: str = None,
-        subject_description: str = None
+        subject_description: str = None,
     ) -> ModelProject:
         """
-        Update a project's name or subject_name
-
-        Args:
-            project_id: UUID of the project
-            name: New name (optional)
-            subject_name: New subject name (optional)
-
-        Returns:
-            Updated Project object
+        Update a project's fields.
 
         Raises:
             ValueError: If project not found or doesn't belong to user
         """
-        db = get_db()
-        user_id = self._get_user_id()
+        # Validates ownership
+        self.get_project(project_id)
 
-        update_fields = {'updated_at': datetime.utcnow()}
+        now = datetime.now(timezone.utc).isoformat()
+        set_parts = ['updated_at = :updated_at']
+        expr_values = {':updated_at': now}
+        expr_names = {}
+
         if name is not None:
-            update_fields['name'] = name
+            set_parts.append('#name = :name')
+            expr_values[':name'] = name
+            expr_names['#name'] = 'name'
         if subject_name is not None:
-            update_fields['subject_name'] = subject_name
+            set_parts.append('subject_name = :subject_name')
+            expr_values[':subject_name'] = subject_name
         if subject_description is not None:
-            update_fields['subject_description'] = subject_description
+            set_parts.append('subject_description = :subject_description')
+            expr_values[':subject_description'] = subject_description
         if model_type is not None:
-            update_fields['model_type'] = model_type
+            set_parts.append('model_type = :model_type')
+            expr_values[':model_type'] = model_type
         if replicate_model_id is not None:
-            update_fields['replicate_model_id'] = replicate_model_id
+            set_parts.append('replicate_model_id = :replicate_model_id')
+            expr_values[':replicate_model_id'] = replicate_model_id
 
-        result = db.model_projects.update_one(
-            {'_id': project_id, 'user_id': user_id},
-            {'$set': update_fields}
+        kwargs = dict(
+            Key={'project_id': project_id},
+            UpdateExpression='SET ' + ', '.join(set_parts),
+            ExpressionAttributeValues=expr_values,
         )
+        if expr_names:
+            kwargs['ExpressionAttributeNames'] = expr_names
 
-        if result.matched_count == 0:
-            raise ValueError(f"Project with ID {project_id} not found.")
-
+        self._table().update_item(**kwargs)
         return self.get_project(project_id)
 
     def update_status(self, project_id: str, status: str) -> ModelProject:
         """
-        Update a project's status
-
-        Args:
-            project_id: UUID of the project
-            status: New status (must be valid status from ModelProject.VALID_STATUSES)
-
-        Returns:
-            Updated Project object
+        Update a project's status.
 
         Raises:
             ValueError: If project not found, doesn't belong to user, or invalid status
@@ -157,39 +138,34 @@ class ModelProjectRepo:
         if status not in ModelProject.VALID_STATUSES:
             raise ValueError(f"Invalid status: {status}. Must be one of {ModelProject.VALID_STATUSES}")
 
-        db = get_db()
-        user_id = self._get_user_id()
+        # Validates ownership
+        self.get_project(project_id)
 
-        result = db.model_projects.update_one(
-            {'_id': project_id, 'user_id': user_id},
-            {'$set': {'status': status, 'updated_at': datetime.utcnow()}}
+        now = datetime.now(timezone.utc).isoformat()
+        self._table().update_item(
+            Key={'project_id': project_id},
+            UpdateExpression='SET #status = :status, updated_at = :updated_at',
+            ExpressionAttributeNames={'#status': 'status'},
+            ExpressionAttributeValues={':status': status, ':updated_at': now},
         )
-
-        if result.matched_count == 0:
-            raise ValueError(f"Project with ID {project_id} not found.")
 
         return self.get_project(project_id)
 
     def delete_project(self, project_id: str) -> None:
         """
-        Delete a project (metadata only - S3 cleanup should be handled separately)
-
-        Args:
-            project_id: UUID of the project
+        Delete a project (metadata only - S3 cleanup handled separately).
+        Also deletes associated image records.
 
         Raises:
             ValueError: If project not found or doesn't belong to user
         """
-        db = get_db()
-        user_id = self._get_user_id()
+        # Validates ownership
+        self.get_project(project_id)
+        self._table().delete_item(Key={'project_id': project_id})
 
-        result = db.model_projects.delete_one({
-            '_id': project_id,
-            'user_id': user_id
-        })
-
-        if result.deleted_count == 0:
-            raise ValueError(f"Project with ID {project_id} not found.")
-
-        # Note: Also delete associated images from MongoDB
-        db.images.delete_many({'project_id': project_id})
+        # Delete associated image records
+        from src.repositories.db.story_project_repo import _delete_by_project_gsi
+        _delete_by_project_gsi(
+            _table('STORYBOOK_IMAGES_TABLE'),
+            'project_id-created_at-index', 'project_id', project_id, 'image_id'
+        )

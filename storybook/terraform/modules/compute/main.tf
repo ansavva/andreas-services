@@ -86,36 +86,23 @@ resource "aws_iam_role_policy" "lambda" {
         ]
         Resource = var.image_queue_arn
       }
-    ],
-    var.vpc_id != null ? [{
+    ,{
       Effect = "Allow"
       Action = [
-        "ec2:CreateNetworkInterface",
-        "ec2:DescribeNetworkInterfaces",
-        "ec2:DeleteNetworkInterface"
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:BatchGetItem",
       ]
-      Resource = "*"
-    }] : [])
-  })
-}
-
-# Security group for Lambda (only if VPC is used)
-resource "aws_security_group" "lambda" {
-  count       = var.enable_vpc ? 1 : 0
-  name        = "${var.project}-lambda-${var.environment}"
-  description = "Security group for Lambda function"
-  vpc_id      = var.vpc_id
-
-  egress {
-    description = "Allow all outbound"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = merge(var.tags, {
-    Name = "${var.project}-lambda-${var.environment}"
+      Resource = concat(
+        values(var.dynamodb_table_arns),
+        [for arn in values(var.dynamodb_table_arns) : "${arn}/index/*"]
+      )
+    }]
   })
 }
 
@@ -127,14 +114,6 @@ resource "aws_lambda_function" "backend" {
   image_uri     = "${aws_ecr_repository.backend.repository_url}:latest"
   timeout       = 30
   memory_size   = 512
-
-  dynamic "vpc_config" {
-    for_each = var.enable_vpc ? [1] : []
-    content {
-      subnet_ids         = var.subnet_ids
-      security_group_ids = [aws_security_group.lambda[0].id]
-    }
-  }
 
   tags = var.tags
 
