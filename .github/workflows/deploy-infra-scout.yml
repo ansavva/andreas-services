@@ -1,0 +1,104 @@
+name: Deploy – Scout Infrastructure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scout/cloudformation.yaml'
+      - '.github/workflows/deploy-infra-scout.yml'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  STACK_NAME: scout
+
+jobs:
+  deploy-infra:
+    name: Deploy CloudFormation Stack
+    runs-on: ubuntu-latest
+    environment: scout-production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve shared infrastructure
+        id: shared
+        run: |
+          ACM_ARN=$(aws acm list-certificates \
+            --region us-east-1 \
+            --query "CertificateSummaryList[?DomainName=='*.andreas.services'].CertificateArn | [0]" \
+            --output text)
+          ZONE_ID=$(aws route53 list-hosted-zones \
+            --query "HostedZones[?Name=='andreas.services.'].Id | [0]" \
+            --output text | sed 's|/hostedzone/||')
+          echo "acm_arn=${ACM_ARN}" >> "$GITHUB_OUTPUT"
+          echo "zone_id=${ZONE_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy CloudFormation stack
+        run: |
+          aws cloudformation deploy \
+            --template-file scout/cloudformation.yaml \
+            --stack-name "${{ env.STACK_NAME }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "ProjectName=${{ env.STACK_NAME }}" \
+              "LambdaCodeBucket=${{ vars.LAMBDA_CODE_BUCKET }}" \
+              "AcmCertificateArn=${{ steps.shared.outputs.acm_arn }}" \
+              "Route53HostedZoneId=${{ steps.shared.outputs.zone_id }}" \
+              "AnthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }}" \
+              "GmailClientId=${{ secrets.GMAIL_CLIENT_ID }}" \
+              "GmailClientSecret=${{ secrets.GMAIL_CLIENT_SECRET }}" \
+              "GmailAccessToken=${{ secrets.GMAIL_ACCESS_TOKEN }}" \
+              "GmailRefreshToken=${{ secrets.GMAIL_REFRESH_TOKEN }}"
+
+      - name: Read CloudFormation outputs
+        id: cfn
+        run: |
+          get_output() {
+            aws cloudformation describe-stacks \
+              --stack-name "${{ env.STACK_NAME }}" \
+              --query "Stacks[0].Outputs[?OutputKey=='${1}'].OutputValue | [0]" \
+              --output text
+          }
+          echo "api_url=$(get_output ApiEndpoint)" >> "$GITHUB_OUTPUT"
+          echo "s3_bucket=$(get_output S3BucketName)" >> "$GITHUB_OUTPUT"
+          echo "cf_dist_id=$(get_output CloudFrontDistributionId)" >> "$GITHUB_OUTPUT"
+
+      # Writes VITE_API_URL, S3_BUCKET_NAME, and CLOUDFRONT_DISTRIBUTION_ID into
+      # the scout-production environment so the code deploy workflow can read them.
+      - name: Update scout-production GitHub variables
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GH_PAT }}
+          script: |
+            const vars = {
+              VITE_API_URL:                '${{ steps.cfn.outputs.api_url }}',
+              S3_BUCKET_NAME:              '${{ steps.cfn.outputs.s3_bucket }}',
+              CLOUDFRONT_DISTRIBUTION_ID:  '${{ steps.cfn.outputs.cf_dist_id }}',
+            };
+            for (const [name, value] of Object.entries(vars)) {
+              const base = {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                environment_name: 'scout-production',
+                name,
+                value,
+              };
+              try {
+                await github.rest.actions.updateEnvironmentVariable(base);
+              } catch {
+                await github.rest.actions.createEnvironmentVariable(base);
+              }
+              core.info(`Set ${name} = ${value}`);
+            }
