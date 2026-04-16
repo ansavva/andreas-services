@@ -1,13 +1,25 @@
 # envs/shared/main.tf
-# Shared platform infrastructure (Route53, ACM, networking, DocumentDB)
+# Shared platform infrastructure: Route53 zone (data source) + ACM wildcard certificate.
+#
+# The VPC, NAT Gateway, subnets, and DocumentDB cluster have been removed.
+# All services now use DynamoDB (IAM-controlled, no VPC required).
 
-# Route53 Hosted Zone (existing)
+locals {
+  shared_tags = {
+    Project     = "platform"
+    Environment = "shared"
+    ManagedBy   = "terraform"
+    Scope       = "shared"
+  }
+}
+
+# Route53 hosted zone — managed outside Terraform (registered domain)
 data "aws_route53_zone" "main" {
   name         = var.domain_name
   private_zone = false
 }
 
-# Wildcard ACM certificate for *.andreas.services
+# Wildcard ACM certificate for *.andreas.services (must be in us-east-1 for CloudFront)
 resource "aws_acm_certificate" "wildcard" {
   provider          = aws.us_east_1
   domain_name       = "*.${var.domain_name}"
@@ -19,14 +31,11 @@ resource "aws_acm_certificate" "wildcard" {
     create_before_destroy = true
   }
 
-  tags = {
-    Name        = "wildcard-${var.domain_name}"
-    ManagedBy   = "terraform"
-    Environment = "shared"
-  }
+  tags = merge(local.shared_tags, {
+    Name = "wildcard-${var.domain_name}"
+  })
 }
 
-# DNS validation records
 resource "aws_route53_record" "cert_validation" {
   for_each = {
     for dvo in aws_acm_certificate.wildcard.domain_validation_options : dvo.domain_name => {
@@ -48,43 +57,4 @@ resource "aws_acm_certificate_validation" "wildcard" {
   provider                = aws.us_east_1
   certificate_arn         = aws_acm_certificate.wildcard.arn
   validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
-}
-
-locals {
-  shared_project     = "platform"
-  shared_environment = "shared"
-
-  shared_tags = {
-    Project     = local.shared_project
-    Environment = local.shared_environment
-    ManagedBy   = "terraform"
-    Scope       = "shared"
-  }
-}
-
-# Shared VPC + networking used by apps
-module "shared_networking" {
-  source = "../../modules/networking"
-
-  project     = local.shared_project
-  environment = local.shared_environment
-  aws_region  = var.aws_region
-
-  tags = local.shared_tags
-}
-
-# Shared DocumentDB cluster
-module "shared_database" {
-  source = "../../modules/database"
-
-  project     = local.shared_project
-  environment = local.shared_environment
-  vpc_id      = module.shared_networking.vpc_id
-  subnet_ids  = module.shared_networking.private_subnet_ids
-
-  lambda_security_group_ids = []
-  master_username           = var.docdb_master_username
-  master_password           = var.docdb_master_password
-
-  tags = local.shared_tags
 }

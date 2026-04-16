@@ -1,14 +1,16 @@
 from typing import Any, Dict, List
 
-from bson import ObjectId
-
 
 def normalize_document(doc: Dict[str, Any]) -> Dict[str, Any]:
-  """Convert MongoDB _id/ObjectId to string Id for API responses."""
+  """Return a shallow copy of a DynamoDB item, adding 'Id' from the item's primary key if present."""
+  if doc is None:
+    return None
   normalized = dict(doc)
-  object_id = normalized.pop('_id', None)
-  if isinstance(object_id, ObjectId):
-    normalized['Id'] = str(object_id)
+  # Expose the primary-key field as 'Id' so callers that expect 'Id' continue to work.
+  for pk_field in ('member_id', 'group_id', 'user_id'):
+    if pk_field in normalized and 'Id' not in normalized:
+      normalized['Id'] = normalized[pk_field]
+      break
   return normalized
 
 

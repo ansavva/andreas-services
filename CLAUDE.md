@@ -21,8 +21,8 @@ The root `terraform/` directory owns **cross-cutting AWS resources** shared by a
 
 - **Route53** hosted zone for `andreas.services`
 - **ACM wildcard certificate** for `*.andreas.services` (us-east-1, required for CloudFront)
-- **VPC + private subnets** (shared networking for Lambda/DB workloads)
-- **DocumentDB** cluster (MongoDB-compatible, used by Storybook and Humbugg)
+
+> **Note:** The VPC, NAT Gateway, and DocumentDB cluster have been removed. All services use DynamoDB (IAM-controlled, no VPC required), which eliminates the ~$230/month NAT Gateway cost.
 
 State is in S3: `s3://andreas-services-terraform-state/`
 - Shared: `root/terraform.tfstate`
@@ -66,7 +66,7 @@ data "aws_route53_zone" "main" {
 - **Pattern**: routes → controllers → services → repositories
 - **Logging**: structured JSON (structlog or watchtower → CloudWatch)
 - **Auth**: AWS Cognito JWT validation
-- **DB access**: Direct PyMongo queries (no ORM)
+- **DB access**: DynamoDB via boto3 (no ORM, no VPC needed)
 
 ### Backend (Lambda-only services like nyc-events)
 - **Language**: Python 3.11

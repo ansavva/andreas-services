@@ -1,29 +1,49 @@
+import os
+import uuid
 from typing import List, Optional
 
-from bson import ObjectId
+import boto3
+from boto3.dynamodb.conditions import Key, Attr
 
-from src.extensions import get_db
 from src.repositories.helpers import normalize_document, normalize_many
+
+dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
 
 
 class GroupRepository:
-  def __init__(self, db_name: str):
-    self.collection = get_db(db_name).groups
+  # db_name is accepted but unused — kept for backward compatibility with existing route instantiation
+  def __init__(self, db_name: str = None):
+    pass
+
+  def _table(self):
+    return dynamodb.Table(os.environ['HUMBUGG_GROUPS_TABLE'])
 
   def list_ids_for_user(self, group_ids: List[str]) -> List[dict]:
-    docs = list(self.collection.find({'_id': {'$in': [ObjectId(gid) for gid in group_ids]}}))
-    return normalize_many(docs)
+    if not group_ids:
+      return []
+    keys = [{'group_id': gid} for gid in group_ids]
+    resp = dynamodb.batch_get_item(
+      RequestItems={
+        os.environ['HUMBUGG_GROUPS_TABLE']: {'Keys': keys}
+      }
+    )
+    items = resp['Responses'].get(os.environ['HUMBUGG_GROUPS_TABLE'], [])
+    return normalize_many(items)
 
   def get(self, group_id: str) -> Optional[dict]:
-    doc = self.collection.find_one({'_id': ObjectId(group_id)})
-    return normalize_document(doc) if doc else None
+    resp = self._table().get_item(Key={'group_id': group_id})
+    item = resp.get('Item')
+    return normalize_document(item) if item else None
 
   def create(self, group_doc: dict) -> dict:
-    result = self.collection.insert_one(group_doc)
-    return self.get(str(result.inserted_id))
+    group_id = str(uuid.uuid4())
+    item = {'group_id': group_id, **group_doc}
+    self._table().put_item(Item=item)
+    return normalize_document(item)
 
   def update(self, group_id: str, group_doc: dict) -> None:
-    self.collection.replace_one({'_id': ObjectId(group_id)}, group_doc)
+    item = {'group_id': group_id, **group_doc}
+    self._table().put_item(Item=item)
 
   def delete(self, group_id: str) -> None:
-    self.collection.delete_one({'_id': ObjectId(group_id)})
+    self._table().delete_item(Key={'group_id': group_id})
