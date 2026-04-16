@@ -1,0 +1,74 @@
+name: CI – Storybook
+
+on:
+  pull_request:
+    paths:
+      - 'storybook/**'
+      - '.github/workflows/ci-storybook.yml'
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: storybook-backend-production
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Tier 1 – verify Docker build + frontend build (no push, no deploy)
+  # ---------------------------------------------------------------------------
+  build-backend:
+    name: Build Backend Docker Image
+    runs-on: ubuntu-latest
+    environment: storybook-production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker image (verify only, no push)
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          cd storybook/backend
+          DOCKER_BUILDKIT=0 docker build \
+            -t "$ECR_REGISTRY/$ECR_REPOSITORY:pr-${{ github.event.pull_request.number }}" \
+            .
+
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: npm
+          cache-dependency-path: storybook/frontend/storybook-ui/package-lock.json
+
+      - name: Install dependencies
+        run: cd storybook/frontend/storybook-ui && npm ci
+
+      - name: Lint frontend
+        run: cd storybook/frontend/storybook-ui && npm run lint
+
+      - name: Build frontend
+        env:
+          # Placeholder values — only used to satisfy VITE_ type declarations at build time
+          VITE_API_URL: https://example.execute-api.us-east-1.amazonaws.com
+          VITE_COGNITO_USER_POOL_ID: us-east-1_placeholder
+          VITE_COGNITO_CLIENT_ID: placeholder
+          VITE_AWS_REGION: us-east-1
+        run: cd storybook/frontend/storybook-ui && npm run build

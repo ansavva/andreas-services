@@ -33,7 +33,7 @@ GMAIL_ACCESS_TOKEN = os.environ["GMAIL_ACCESS_TOKEN"]
 GMAIL_REFRESH_TOKEN = os.environ["GMAIL_REFRESH_TOKEN"]
 
 # Constants
-MAX_EMAILS_PER_RUN = 20
+MAX_EMAILS_PER_RUN = int(os.environ.get("MAX_EMAILS_PER_RUN", "20"))
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 EVENTS_LABEL = "Events"
 

@@ -1,0 +1,65 @@
+name: Teardown PR Environments
+
+on:
+  pull_request:
+    types:
+      - closed
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Delete the Scout ephemeral stack when a PR closes (merged or abandoned).
+  # Only runs if the scout-pr stack exists for this PR number.
+  # ---------------------------------------------------------------------------
+  teardown-scout:
+    name: Teardown Scout PR Stack
+    if: contains(github.event.pull_request.labels.*.name, 'scout') || true
+    runs-on: ubuntu-latest
+    environment: scout-pr
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      STACK_NAME: scout-pr-${{ github.event.pull_request.number }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Check if stack exists
+        id: check-stack
+        run: |
+          STATUS=$(aws cloudformation describe-stacks \
+            --stack-name "${{ env.STACK_NAME }}" \
+            --query "Stacks[0].StackStatus" \
+            --output text 2>/dev/null || echo "DOES_NOT_EXIST")
+          echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
+
+      - name: Delete CloudFormation stack
+        if: steps.check-stack.outputs.status != 'DOES_NOT_EXIST'
+        run: |
+          aws cloudformation delete-stack \
+            --stack-name "${{ env.STACK_NAME }}" \
+            --region "${{ env.AWS_REGION }}"
+
+          aws cloudformation wait stack-delete-complete \
+            --stack-name "${{ env.STACK_NAME }}" \
+            --region "${{ env.AWS_REGION }}"
+
+          echo "Stack ${{ env.STACK_NAME }} deleted successfully."
+
+      - name: Clean up S3 Lambda artifacts
+        if: steps.check-stack.outputs.status != 'DOES_NOT_EXIST'
+        run: |
+          aws s3 rm \
+            "s3://${{ vars.LAMBDA_CODE_BUCKET }}/pr/${{ github.event.pull_request.number }}/" \
+            --recursive || true
+
+      - name: Skip (stack not found)
+        if: steps.check-stack.outputs.status == 'DOES_NOT_EXIST'
+        run: echo "No Scout PR stack found for PR #${{ github.event.pull_request.number }} — nothing to delete."

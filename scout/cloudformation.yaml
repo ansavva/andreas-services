@@ -53,18 +53,43 @@ Parameters:
     Type: String
     Description: S3 bucket that holds Lambda deployment zip files.
 
+  MaxEmailsPerRun:
+    Type: Number
+    Default: 20
+    Description: >
+      Maximum number of emails processed per Lambda invocation.
+      Set to 3 for PR environments to limit OpenAI API usage.
+
+  DeployFrontend:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >
+      Set to false for PR/ephemeral environments to skip creating S3, CloudFront,
+      and Route53 resources. API Gateway is always deployed.
+
   # Resolved from the shared terraform/ stack at deploy time — never hard-code.
   AcmCertificateArn:
     Type: String
+    Default: ""
     Description: >
       ARN of the shared *.andreas.services ACM wildcard certificate (us-east-1).
-      Owned by terraform/envs/shared. Passed in by deploy.sh at runtime.
+      Owned by terraform/envs/shared. Required when DeployFrontend=true.
 
   Route53HostedZoneId:
     Type: String
+    Default: ""
     Description: >
       ID of the shared andreas.services Route53 hosted zone.
-      Owned by terraform/envs/shared. Passed in by deploy.sh at runtime.
+      Owned by terraform/envs/shared. Required when DeployFrontend=true.
+
+# ---------------------------------------------------------------------------
+# Conditions
+# ---------------------------------------------------------------------------
+Conditions:
+  ShouldDeployFrontend: !Equals [!Ref DeployFrontend, "true"]
 
 # ---------------------------------------------------------------------------
 # Resources
@@ -145,6 +170,7 @@ Resources:
           GMAIL_CLIENT_SECRET: !Ref GmailClientSecret
           GMAIL_ACCESS_TOKEN: !Ref GmailAccessToken
           GMAIL_REFRESH_TOKEN: !Ref GmailRefreshToken
+          MAX_EMAILS_PER_RUN: !Ref MaxEmailsPerRun
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -305,10 +331,11 @@ Resources:
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${EventsApi}/*"
 
   # -------------------------------------------------------------------------
-  # S3 – Static website bucket
+  # S3 – Static website bucket (production only)
   # -------------------------------------------------------------------------
   WebsiteBucket:
     Type: AWS::S3::Bucket
+    Condition: ShouldDeployFrontend
     Properties:
       BucketName: !Sub "${ProjectName}-website-${AWS::AccountId}"
       PublicAccessBlockConfiguration:
@@ -325,6 +352,7 @@ Resources:
 
   WebsiteBucketPolicy:
     Type: AWS::S3::BucketPolicy
+    Condition: ShouldDeployFrontend
     Properties:
       Bucket: !Ref WebsiteBucket
       PolicyDocument:
@@ -336,11 +364,12 @@ Resources:
             Resource: !Sub "${WebsiteBucket.Arn}/*"
 
   # -------------------------------------------------------------------------
-  # CloudFront – serves scout.andreas.services
+  # CloudFront – serves scout.andreas.services (production only)
   # Uses the shared *.andreas.services ACM certificate from terraform/
   # -------------------------------------------------------------------------
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
+    Condition: ShouldDeployFrontend
     Properties:
       DistributionConfig:
         Enabled: true
@@ -377,11 +406,12 @@ Resources:
           Value: !Ref ProjectName
 
   # -------------------------------------------------------------------------
-  # Route53 – DNS alias record for scout.andreas.services
+  # Route53 – DNS alias record for scout.andreas.services (production only)
   # The hosted zone is owned by terraform/envs/shared — we only add a record.
   # -------------------------------------------------------------------------
   DnsRecord:
     Type: AWS::Route53::RecordSet
+    Condition: ShouldDeployFrontend
     Properties:
       HostedZoneId: !Ref Route53HostedZoneId
       Name: scout.andreas.services.
@@ -395,12 +425,14 @@ Resources:
 # ---------------------------------------------------------------------------
 Outputs:
   WebsiteURL:
+    Condition: ShouldDeployFrontend
     Description: Custom domain URL for Scout.
     Value: https://scout.andreas.services
     Export:
       Name: !Sub "${ProjectName}-website-url"
 
   CloudFrontURL:
+    Condition: ShouldDeployFrontend
     Description: Raw CloudFront URL (useful before DNS propagates).
     Value: !Sub "https://${CloudFrontDistribution.DomainName}"
 
@@ -411,6 +443,7 @@ Outputs:
       Name: !Sub "${ProjectName}-api-endpoint"
 
   S3BucketName:
+    Condition: ShouldDeployFrontend
     Description: Name of the S3 bucket hosting the static site.
     Value: !Ref WebsiteBucket
     Export:
@@ -423,6 +456,7 @@ Outputs:
       Name: !Sub "${ProjectName}-dynamodb-table"
 
   CloudFrontDistributionId:
+    Condition: ShouldDeployFrontend
     Description: CloudFront distribution ID (used for cache invalidation).
     Value: !Ref CloudFrontDistribution
     Export:

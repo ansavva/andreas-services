@@ -1,0 +1,111 @@
+name: CI – Shared Infrastructure
+
+on:
+  pull_request:
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/ci-shared-infra.yml'
+
+env:
+  AWS_REGION: us-east-1
+  TF_DIR: terraform/envs/shared
+
+jobs:
+  terraform-plan:
+    name: Validate & Plan
+    runs-on: ubuntu-latest
+    environment: shared-infra
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.0'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false
+
+      - name: Terraform Validate
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform plan -input=false -no-color -out=tfplan 2>&1 | tee /tmp/plan-output.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
+      - name: Post plan to PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const planOutput = fs.readFileSync('/tmp/plan-output.txt', 'utf8');
+            const exitCode = '${{ steps.plan.outputs.exit_code }}';
+            const status = exitCode === '0' ? '✅ Success' : '❌ Failed';
+
+            // Truncate if too long for a PR comment (GitHub limit ~65k chars)
+            const maxLen = 60000;
+            const truncated = planOutput.length > maxLen
+              ? planOutput.slice(0, maxLen) + '\n\n...[truncated]'
+              : planOutput;
+
+            const body = [
+              '## Terraform Plan – Shared Infrastructure',
+              '',
+              `**Status:** ${status}`,
+              '',
+              '<details><summary>Show Plan</summary>',
+              '',
+              '```hcl',
+              truncated,
+              '```',
+              '',
+              '</details>',
+              '',
+              '_Plan is read-only. Apply only happens on `main` via manual run._',
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c =>
+              c.user.login === 'github-actions[bot]' &&
+              c.body.includes('Terraform Plan – Shared Infrastructure')
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      - name: Fail if plan failed
+        if: steps.plan.outputs.exit_code != '0'
+        run: exit 1

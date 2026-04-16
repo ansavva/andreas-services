@@ -1,0 +1,223 @@
+name: CI – Scout
+
+on:
+  pull_request:
+    paths:
+      - 'scout/**'
+      - '.github/workflows/ci-scout.yml'
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Tier 1 – no AWS required: lint, unit tests, frontend build
+  # ---------------------------------------------------------------------------
+  tier-1:
+    name: Lint, Unit Tests & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install events-api test deps
+        run: pip install -q -r scout/lambda/events-api/requirements-test.txt
+
+      - name: Run events-api unit tests
+        run: pytest scout/lambda/events-api/tests/ -v
+
+      - name: Install email-processor test deps
+        run: pip install -q -r scout/lambda/email-processor/requirements-test.txt
+
+      - name: Run email-processor unit tests
+        run: pytest scout/lambda/email-processor/tests/ -v
+
+      - name: Set up Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: npm
+          cache-dependency-path: scout/frontend/package-lock.json
+
+      - name: Install frontend deps
+        run: cd scout/frontend && npm ci
+
+      - name: Lint frontend
+        run: cd scout/frontend && npm run lint
+
+      - name: Build frontend
+        env:
+          # Placeholder API URL — only used to satisfy VITE_ type declarations at build time
+          VITE_API_URL: https://example.execute-api.us-east-1.amazonaws.com/prod
+        run: cd scout/frontend && npm run build
+
+  # ---------------------------------------------------------------------------
+  # Tier 2 – deploy ephemeral PR stack, run integration tests
+  #
+  # Requires a 'scout-pr' GitHub Actions environment with the same secrets as
+  # 'scout-production':
+  #   Secrets: AWS_ROLE_ARN, OPENAI_API_KEY, GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET,
+  #            GMAIL_ACCESS_TOKEN, GMAIL_REFRESH_TOKEN
+  #   Vars:    LAMBDA_CODE_BUCKET
+  # ---------------------------------------------------------------------------
+  tier-2:
+    name: Deploy PR Stack & Integration Tests
+    needs: tier-1
+    runs-on: ubuntu-latest
+    environment: scout-pr
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+    env:
+      STACK_NAME: scout-pr-${{ github.event.pull_request.number }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Package email-processor Lambda
+        run: |
+          cd scout/lambda/email-processor
+          pip install -q -r requirements.txt -t package/
+          cp lambda_function.py package/
+          cd package && zip -q -r ../email-processor.zip .
+
+      - name: Package events-api Lambda
+        run: |
+          cd scout/lambda/events-api
+          mkdir -p package
+          cp lambda_function.py package/
+          cd package && zip -q -r ../events-api.zip .
+
+      - name: Upload Lambda packages to S3
+        run: |
+          PR_PREFIX="pr/${{ github.event.pull_request.number }}/lambda"
+          aws s3 cp scout/lambda/email-processor.zip \
+            "s3://${{ vars.LAMBDA_CODE_BUCKET }}/${PR_PREFIX}/email-processor.zip"
+          aws s3 cp scout/lambda/events-api.zip \
+            "s3://${{ vars.LAMBDA_CODE_BUCKET }}/${PR_PREFIX}/events-api.zip"
+
+      - name: Deploy ephemeral CloudFormation stack
+        run: |
+          PR_PREFIX="pr/${{ github.event.pull_request.number }}/lambda"
+          aws cloudformation deploy \
+            --template-file scout/cloudformation.yaml \
+            --stack-name "${{ env.STACK_NAME }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "ProjectName=${{ env.STACK_NAME }}" \
+              "LambdaCodeBucket=${{ vars.LAMBDA_CODE_BUCKET }}" \
+              "EmailProcessorZipKey=${PR_PREFIX}/email-processor.zip" \
+              "EventsApiZipKey=${PR_PREFIX}/events-api.zip" \
+              "DeployFrontend=false" \
+              "MaxEmailsPerRun=3" \
+              "OpenAIApiKey=${{ secrets.OPENAI_API_KEY }}" \
+              "GmailClientId=${{ secrets.GMAIL_CLIENT_ID }}" \
+              "GmailClientSecret=${{ secrets.GMAIL_CLIENT_SECRET }}" \
+              "GmailAccessToken=${{ secrets.GMAIL_ACCESS_TOKEN }}" \
+              "GmailRefreshToken=${{ secrets.GMAIL_REFRESH_TOKEN }}"
+
+      - name: Get API endpoint from stack outputs
+        id: stack-outputs
+        run: |
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name "${{ env.STACK_NAME }}" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue | [0]" \
+            --output text)
+          echo "api_url=${API_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Invoke email-processor (max 3 emails, 1-week lookback)
+        run: |
+          aws lambda invoke \
+            --function-name "${{ env.STACK_NAME }}-email-processor" \
+            --invocation-type RequestResponse \
+            --region "${{ env.AWS_REGION }}" \
+            /tmp/email-processor-output.json
+          echo "Email processor output:"
+          cat /tmp/email-processor-output.json
+
+      - name: Install integration test deps
+        run: pip install -q -r scout/tests/integration/requirements-test.txt
+
+      - name: Run integration tests
+        env:
+          SCOUT_API_URL: ${{ steps.stack-outputs.outputs.api_url }}
+        run: pytest scout/tests/integration/ -v
+
+      - name: Post PR comment with environment details
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const apiUrl = '${{ steps.stack-outputs.outputs.api_url }}';
+            const stackName = '${{ env.STACK_NAME }}';
+
+            let emailSummary = '_Email processor output unavailable_';
+            try {
+              const raw = fs.readFileSync('/tmp/email-processor-output.json', 'utf8');
+              const outer = JSON.parse(raw);
+              const inner = JSON.parse(outer.body || '{}');
+              const processed = inner.emails_processed ?? 'n/a';
+              const stored = inner.events_stored ?? 'n/a';
+              const errors = (inner.errors || []).length;
+              emailSummary = `📧 Emails processed: **${processed}** | Events stored: **${stored}** | Errors: **${errors}**`;
+            } catch (e) {
+              emailSummary = `📧 Email processor ran (output parse failed: ${e.message})`;
+            }
+
+            const body = [
+              '## Scout PR Environment',
+              '',
+              `**Stack:** \`${stackName}\``,
+              `**API URL:** \`${apiUrl}\``,
+              '',
+              emailSummary,
+              '',
+              `**Events endpoint:** [${apiUrl}/events](${apiUrl}/events)`,
+              '',
+              '_This environment will be torn down automatically when the PR is closed._',
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c =>
+              c.user.login === 'github-actions[bot]' &&
+              c.body.includes('Scout PR Environment')
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
