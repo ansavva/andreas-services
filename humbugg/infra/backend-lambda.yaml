@@ -13,19 +13,6 @@ Parameters:
   MemorySize:
     Type: Number
     Default: 512
-  SubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
-    Description: Private subnets for Lambda (leave empty for public networking)
-    Default: []
-  SecurityGroupIds:
-    Type: List<AWS::EC2::SecurityGroup::Id>
-    Default: []
-  EnvMongoUri:
-    Type: String
-    Description: DocumentDB connection string (Mongo-compatible, e.g., mongodb://user:pass@docdb-cluster:27017)
-  EnvMongoDbName:
-    Type: String
-    Default: HumbuggDb
   EnvCorsOrigin:
     Type: String
     Default: https://www.example.com
@@ -39,36 +26,65 @@ Parameters:
     Type: String
     Default: prod
 
-Conditions:
-  UseVpcConfig: !Not [!Equals [!Select [0, !Ref SubnetIds], ""]]
-
 Resources:
-  BackendFunction:
-    Type: AWS::Lambda::Function
+  HumbuggProfilesTable:
+    Type: AWS::DynamoDB::Table
     Properties:
-      FunctionName: !Ref FunctionName
-      PackageType: Image
-      Code:
-        ImageUri: !Ref ImageUri
-      Timeout: !Ref Timeout
-      MemorySize: !Ref MemorySize
-      Environment:
-        Variables:
-          MONGO_URI: !Ref EnvMongoUri
-          MONGO_DB_NAME: !Ref EnvMongoDbName
-          CORS_ORIGIN: !Ref EnvCorsOrigin
-          COGNITO_REGION: !Ref EnvCognitoRegion
-          COGNITO_USER_POOL_ID: !Ref EnvCognitoPoolId
-          COGNITO_CLIENT_ID: !Ref EnvCognitoClientId
-      Role:
-        Fn::GetAtt:
-          - BackendLambdaRole
-          - Arn
-      VpcConfig:
-        Fn::If:
-          - UseVpcConfig
-          - { SubnetIds: !Ref SubnetIds, SecurityGroupIds: !Ref SecurityGroupIds }
-          - { Ref: AWS::NoValue }
+      TableName: humbugg-profiles
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+
+  HumbuggGroupsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: humbugg-groups
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: group_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: group_id
+          KeyType: HASH
+
+  HumbuggGroupmembersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: humbugg-groupmembers
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: member_id
+          AttributeType: S
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: group_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: member_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: user_id-index
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: group_id-index
+          KeySchema:
+            - AttributeName: group_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
 
   BackendLambdaRole:
     Type: AWS::IAM::Role
@@ -83,7 +99,56 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+
+  BackendLambdaDynamoPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${FunctionName}-dynamo-policy
+      Roles:
+        - !Ref BackendLambdaRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:DeleteItem
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:BatchWriteItem
+              - dynamodb:BatchGetItem
+            Resource:
+              - !GetAtt HumbuggProfilesTable.Arn
+              - !GetAtt HumbuggGroupsTable.Arn
+              - !GetAtt HumbuggGroupmembersTable.Arn
+              - !Sub ${HumbuggProfilesTable.Arn}/index/*
+              - !Sub ${HumbuggGroupsTable.Arn}/index/*
+              - !Sub ${HumbuggGroupmembersTable.Arn}/index/*
+
+  BackendFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref FunctionName
+      PackageType: Image
+      Code:
+        ImageUri: !Ref ImageUri
+      Timeout: !Ref Timeout
+      MemorySize: !Ref MemorySize
+      Environment:
+        Variables:
+          HUMBUGG_PROFILES_TABLE: !Ref HumbuggProfilesTable
+          HUMBUGG_GROUPS_TABLE: !Ref HumbuggGroupsTable
+          HUMBUGG_GROUPMEMBERS_TABLE: !Ref HumbuggGroupmembersTable
+          CORS_ORIGIN: !Ref EnvCorsOrigin
+          COGNITO_REGION: !Ref EnvCognitoRegion
+          COGNITO_USER_POOL_ID: !Ref EnvCognitoPoolId
+          COGNITO_CLIENT_ID: !Ref EnvCognitoClientId
+      Role:
+        Fn::GetAtt:
+          - BackendLambdaRole
+          - Arn
 
   HttpApi:
     Type: AWS::ApiGatewayV2::Api
@@ -121,10 +186,16 @@ Resources:
       Action: lambda:InvokeFunction
       FunctionName: !Ref BackendFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/* 
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/*
 
 Outputs:
   LambdaFunctionArn:
     Value: !GetAtt BackendFunction.Arn
   ApiInvokeUrl:
     Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}
+  ProfilesTableName:
+    Value: !Ref HumbuggProfilesTable
+  GroupsTableName:
+    Value: !Ref HumbuggGroupsTable
+  GroupmembersTableName:
+    Value: !Ref HumbuggGroupmembersTable
