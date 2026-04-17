@@ -11,3 +11,9 @@ variable "domain_name" {
   type        = string
   default     = "andreas.services"
 }
+
+variable "github_repo" {
+  description = "GitHub repo allowed to assume the Actions role (owner/repo)"
+  type        = string
+  default     = "ansavva/andreas-services"
+}

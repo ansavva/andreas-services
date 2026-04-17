@@ -17,3 +17,8 @@ output "acm_certificate_arn" {
   description = "ARN of the *.andreas.services wildcard ACM certificate (us-east-1)"
   value       = aws_acm_certificate.wildcard.arn
 }
+
+output "github_actions_role_arn" {
+  description = "IAM role ARN to use as AWS_ROLE_ARN in GitHub Actions environments"
+  value       = aws_iam_role.github_actions.arn
+}
