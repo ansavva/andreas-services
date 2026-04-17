@@ -167,7 +167,7 @@ const PhotoUploadStep: React.FC<PhotoUploadStepProps> = ({
           <div className="mb-4">
             <h4 className="font-semibold mb-2">Photo Tips:</h4>
             <ul className="text-sm text-gray-600 dark:text-gray-400 list-disc list-inside space-y-1">
-              <li>Use clear, well-lit photos showing your child's face</li>
+              <li>Use clear, well-lit photos showing your child&apos;s face</li>
               <li>Include photos from different angles</li>
               <li>Avoid photos with heavy filters or face paint</li>
               <li>Close-up portraits work best</li>

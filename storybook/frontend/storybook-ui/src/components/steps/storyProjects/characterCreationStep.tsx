@@ -342,7 +342,7 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
       <h3 className="text-2xl font-bold mb-2">Create Your Character</h3>
       <p className="text-gray-600 dark:text-gray-400 mb-6">
         Upload photos, customize the description and style, then generate your
-        character portrait. You can regenerate as many times as you'd like
+        character portrait. You can regenerate as many times as you&apos;d like
         before approving!
       </p>
 
@@ -470,11 +470,8 @@ const CharacterCreationStep: React.FC<CharacterCreationStepProps> = ({
                 <div className="relative aspect-square max-w-md mx-auto mb-4">
                   <img
                     alt="Generated Character"
-                    className="w-full h-full object-cover rounded-lg cursor-pointer"
+                    className="w-full h-full object-cover rounded-lg"
                     src={portraitImageData}
-                    onClick={() => {
-                      // TODO: Open in modal if needed
-                    }}
                   />
                 </div>
 

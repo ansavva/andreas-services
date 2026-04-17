@@ -207,6 +207,12 @@ data "aws_iam_policy_document" "github_actions_permissions" {
       "iam:GetOpenIDConnectProvider",
       "iam:DeleteOpenIDConnectProvider",
       "iam:TagOpenIDConnectProvider",
+      "iam:CreatePolicy",
+      "iam:GetPolicy",
+      "iam:GetPolicyVersion",
+      "iam:ListPolicyVersions",
+      "iam:DeletePolicy",
+      "iam:TagPolicy",
     ]
     resources = ["*"]
   }

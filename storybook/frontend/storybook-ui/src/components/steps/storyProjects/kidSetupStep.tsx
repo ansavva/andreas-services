@@ -82,7 +82,7 @@ const KidSetupStep: React.FC<KidSetupStepProps> = ({
     <div className="max-w-2xl mx-auto">
       <h3 className="text-2xl font-bold mb-2">Tell Us About Your Child</h3>
       <p className="text-gray-600 dark:text-gray-400 mb-6">
-        We'll create a personalized story featuring your child as the main
+        We&apos;ll create a personalized story featuring your child as the main
         character!
       </p>
 
@@ -116,7 +116,7 @@ const KidSetupStep: React.FC<KidSetupStepProps> = ({
           <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
             <h4 className="font-semibold mb-2">Privacy & Safety</h4>
             <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
-              Your child's information and photos are securely stored and used
+              Your child&apos;s information and photos are securely stored and used
               only to create personalized stories. We never share this data with
               third parties.
             </p>

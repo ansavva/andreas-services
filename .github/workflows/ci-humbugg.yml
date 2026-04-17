@@ -55,8 +55,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: npm
-          cache-dependency-path: humbugg/frontend/package-lock.json
 
       - name: Install dependencies
         run: cd humbugg/frontend && npm ci

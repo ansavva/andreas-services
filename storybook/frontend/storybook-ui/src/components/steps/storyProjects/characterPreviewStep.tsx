@@ -105,7 +105,7 @@ const CharacterPreviewStep: React.FC<CharacterPreviewStepProps> = ({
     <div className="max-w-6xl mx-auto">
       <h3 className="text-2xl font-bold mb-2">Character Preview</h3>
       <p className="text-gray-600 dark:text-gray-400 mb-6">
-        Review your child's character portrait and see them in different scenes.
+        Review your child&apos;s character portrait and see them in different scenes.
         Approve the portrait you like best to continue.
       </p>
 
@@ -152,7 +152,7 @@ const CharacterPreviewStep: React.FC<CharacterPreviewStepProps> = ({
                   {!hasScenes && portrait.is_approved && (
                     <div className="mt-6 p-4 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
                       <p className="mb-3">
-                        Great! Now let's see your character in fun preview
+                        Great! Now let&apos;s see your character in fun preview
                         scenes.
                       </p>
                       <Button

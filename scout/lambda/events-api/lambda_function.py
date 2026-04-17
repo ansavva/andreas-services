@@ -126,8 +126,9 @@ def route_request(http_method, path, query_params):
     if http_method == "OPTIONS":
         return cors_preflight()
 
-    # Normalise path: strip trailing slash, collapse double slashes
-    path = "/" + "/".join(p for p in path.split("/") if p)
+    # Collapse double slashes but preserve trailing slash (trailing slash = missing event ID)
+    while "//" in path:
+        path = path.replace("//", "/")
 
     if http_method == "GET":
         if path == "/events":
