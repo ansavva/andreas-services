@@ -41,25 +41,28 @@ class TrainingRun:
     ]
 
     def to_dict(self):
-        """Convert to dictionary for MongoDB storage"""
-        return {
-            '_id': self.id,
+        now = datetime.utcnow().isoformat()
+        data = {
+            'training_run_id': self.id,
             'project_id': self.project_id,
             'user_id': self.user_id,
-            'replicate_training_id': self.replicate_training_id,
             'image_ids': self.image_ids or [],
             'status': self.status,
-            'created_at': self.created_at or datetime.utcnow(),
-            'updated_at': self.updated_at or datetime.utcnow(),
-            'completed_at': self.completed_at,
-            'error_message': self.error_message
+            'created_at': self.created_at.isoformat() if isinstance(self.created_at, datetime) else (self.created_at or now),
+            'updated_at': self.updated_at.isoformat() if isinstance(self.updated_at, datetime) else (self.updated_at or now),
         }
+        if self.replicate_training_id is not None:
+            data['replicate_training_id'] = self.replicate_training_id
+        if self.completed_at is not None:
+            data['completed_at'] = self.completed_at.isoformat() if isinstance(self.completed_at, datetime) else self.completed_at
+        if self.error_message is not None:
+            data['error_message'] = self.error_message
+        return data
 
     @staticmethod
     def from_dict(data: dict) -> 'TrainingRun':
-        """Create TrainingRun from MongoDB document"""
         return TrainingRun(
-            id=str(data.get('_id')),
+            id=str(data.get('training_run_id')),
             project_id=data.get('project_id'),
             user_id=data.get('user_id'),
             replicate_training_id=data.get('replicate_training_id'),

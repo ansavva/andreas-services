@@ -3,311 +3,186 @@ from flask import request
 import uuid
 from datetime import datetime
 
-from src.repositories.db.database import get_db
+from boto3.dynamodb.conditions import Key, Attr
+from src.repositories.db.database import _table
 from src.models.training_run import TrainingRun
+
 
 class TrainingRunRepo:
     """
-    Training Run repository - handles CRUD operations for training runs
-    Training runs are immutable once created - they represent historical training sessions
+    Training Run repository.
+    Table: STORYBOOK_TRAINING_RUNS_TABLE  PK: training_run_id (S)
+    GSI:   project_id-created_at-index  PK: project_id (S), SK: created_at (S)
     """
 
-    def __init__(self):
-        pass
-
     def _get_user_id(self) -> str:
-        """Get current user ID from Cognito claims"""
         return request.cognito_claims['sub']
 
-    def create(
-        self,
-        project_id: str,
-        image_ids: List[str],
-        replicate_training_id: Optional[str] = None,
-        status: str = TrainingRun.STATUS_PENDING,
-    ) -> TrainingRun:
-        """
-        Create a new training run
+    @staticmethod
+    def _table():
+        return _table('STORYBOOK_TRAINING_RUNS_TABLE')
 
-        Args:
-            project_id: UUID of the project
-            image_ids: List of image IDs used in this training
-            replicate_training_id: Optional Replicate training ID
-
-        Returns:
-            Created TrainingRun object
-        """
-        db = get_db()
+    def create(self, project_id: str, image_ids: List[str],
+               replicate_training_id: Optional[str] = None,
+               status: str = TrainingRun.STATUS_PENDING) -> TrainingRun:
         user_id = self._get_user_id()
-
         training_run_id = str(uuid.uuid4())
+        now = datetime.utcnow().isoformat()
 
-        training_run = TrainingRun(
-            id=training_run_id,
-            project_id=str(project_id),
-            user_id=user_id,
-            replicate_training_id=replicate_training_id,
-            image_ids=image_ids,
-            status=status,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+        item = {
+            'training_run_id': training_run_id,
+            'project_id': str(project_id),
+            'user_id': user_id,
+            'image_ids': image_ids or [],
+            'status': status,
+            'created_at': now,
+            'updated_at': now,
+        }
+        if replicate_training_id is not None:
+            item['replicate_training_id'] = replicate_training_id
+
+        self._table().put_item(Item=item)
+        return TrainingRun.from_dict(item)
+
+    def get_by_id(self, training_run_id: str) -> TrainingRun:
+        user_id = self._get_user_id()
+        result = self._table().get_item(Key={'training_run_id': training_run_id})
+        item = result.get('Item')
+        if not item or item.get('user_id') != user_id:
+            raise ValueError(f"Training run with ID {training_run_id} not found.")
+        return TrainingRun.from_dict(item)
+
+    def get_by_replicate_id(self, replicate_training_id: str) -> Optional[TrainingRun]:
+        user_id = self._get_user_id()
+        result = self._table().query(
+            IndexName='project_id-created_at-index',
+            FilterExpression=Attr('user_id').eq(user_id) & Attr('replicate_training_id').eq(replicate_training_id),
         )
-
-        db.training_runs.insert_one(training_run.to_dict())
-
-        return training_run
+        items = result.get('Items', [])
+        return TrainingRun.from_dict(items[0]) if items else None
 
     def get_draft_by_project(self, project_id: str) -> Optional[TrainingRun]:
-        """Get the active draft training run for a project."""
-        db = get_db()
         user_id = self._get_user_id()
-
-        training_run_data = db.training_runs.find_one(
-            {
-                "project_id": str(project_id),
-                "user_id": user_id,
-                "status": TrainingRun.STATUS_DRAFT,
-            }
+        result = self._table().query(
+            IndexName='project_id-created_at-index',
+            KeyConditionExpression=Key('project_id').eq(str(project_id)),
+            FilterExpression=Attr('user_id').eq(user_id) & Attr('status').eq(TrainingRun.STATUS_DRAFT),
         )
-
-        if not training_run_data:
-            return None
-
-        return TrainingRun.from_dict(training_run_data)
+        items = result.get('Items', [])
+        return TrainingRun.from_dict(items[0]) if items else None
 
     def get_or_create_draft(self, project_id: str) -> TrainingRun:
-        """Fetch an existing draft or create a new one for a project."""
         existing = self.get_draft_by_project(project_id)
         if existing:
             return existing
-
         return self.create(project_id=project_id, image_ids=[], status=TrainingRun.STATUS_DRAFT)
 
     def add_images_to_run(self, training_run_id: str, image_ids: List[str]) -> TrainingRun:
-        """Append images to a training run."""
         if not image_ids:
             return self.get_by_id(training_run_id)
-
-        db = get_db()
+        run = self.get_by_id(training_run_id)
         user_id = self._get_user_id()
-
-        db.training_runs.update_one(
-            {"_id": training_run_id, "user_id": user_id},
-            {
-                "$addToSet": {"image_ids": {"$each": image_ids}},
-                "$set": {"updated_at": datetime.utcnow()},
-            },
+        updated = list(set(run.image_ids or []) | set(image_ids))
+        self._table().update_item(
+            Key={'training_run_id': training_run_id},
+            ConditionExpression=Attr('user_id').eq(user_id),
+            UpdateExpression='SET image_ids = :ids, updated_at = :now',
+            ExpressionAttributeValues={':ids': updated, ':now': datetime.utcnow().isoformat()},
         )
         return self.get_by_id(training_run_id)
 
     def add_images_to_draft(self, project_id: str, image_ids: List[str]) -> TrainingRun:
-        """Ensure a draft exists and append images to it."""
         draft = self.get_or_create_draft(project_id)
         return self.add_images_to_run(draft.id, image_ids)
 
     def replace_images(self, training_run_id: str, image_ids: List[str]) -> TrainingRun:
-        """Replace all images for a training run."""
-        db = get_db()
         user_id = self._get_user_id()
-
-        db.training_runs.update_one(
-            {"_id": training_run_id, "user_id": user_id},
-            {
-                "$set": {"image_ids": image_ids, "updated_at": datetime.utcnow()},
-            },
+        self._table().update_item(
+            Key={'training_run_id': training_run_id},
+            ConditionExpression=Attr('user_id').eq(user_id),
+            UpdateExpression='SET image_ids = :ids, updated_at = :now',
+            ExpressionAttributeValues={':ids': image_ids, ':now': datetime.utcnow().isoformat()},
         )
         return self.get_by_id(training_run_id)
 
     def remove_images_from_draft(self, project_id: str, image_ids: List[str]) -> Optional[TrainingRun]:
-        """Remove images from the draft training run."""
         if not image_ids:
             return self.get_draft_by_project(project_id)
-
         draft = self.get_draft_by_project(project_id)
         if not draft:
             return None
-
-        db = get_db()
         user_id = self._get_user_id()
-
-        db.training_runs.update_one(
-            {"_id": draft.id, "user_id": user_id},
-            {
-                "$pull": {"image_ids": {"$in": image_ids}},
-                "$set": {"updated_at": datetime.utcnow()},
-            },
+        remove_set = set(image_ids)
+        updated = [i for i in (draft.image_ids or []) if i not in remove_set]
+        self._table().update_item(
+            Key={'training_run_id': draft.id},
+            ConditionExpression=Attr('user_id').eq(user_id),
+            UpdateExpression='SET image_ids = :ids, updated_at = :now',
+            ExpressionAttributeValues={':ids': updated, ':now': datetime.utcnow().isoformat()},
         )
         return self.get_by_id(draft.id)
 
-    def get_by_id(self, training_run_id: str) -> TrainingRun:
-        """
-        Get a training run by ID
-
-        Args:
-            training_run_id: UUID of the training run
-
-        Returns:
-            TrainingRun object
-
-        Raises:
-            ValueError: If training run not found or doesn't belong to user
-        """
-        db = get_db()
-        user_id = self._get_user_id()
-
-        training_run_data = db.training_runs.find_one({
-            '_id': training_run_id,
-            'user_id': user_id
-        })
-
-        if not training_run_data:
-            raise ValueError(f"Training run with ID {training_run_id} not found.")
-
-        return TrainingRun.from_dict(training_run_data)
-
-    def get_by_replicate_id(self, replicate_training_id: str) -> Optional[TrainingRun]:
-        """
-        Get a training run by Replicate training ID
-
-        Args:
-            replicate_training_id: Replicate training ID
-
-        Returns:
-            TrainingRun object or None if not found
-        """
-        db = get_db()
-        user_id = self._get_user_id()
-
-        training_run_data = db.training_runs.find_one({
-            'replicate_training_id': replicate_training_id,
-            'user_id': user_id
-        })
-
-        if not training_run_data:
-            return None
-
-        return TrainingRun.from_dict(training_run_data)
-
     def list_by_project(self, project_id: str) -> List[TrainingRun]:
-        """
-        Get all training runs for a project (newest first)
-
-        Args:
-            project_id: UUID of the project
-
-        Returns:
-            List of TrainingRun objects
-        """
-        db = get_db()
         user_id = self._get_user_id()
+        result = self._table().query(
+            IndexName='project_id-created_at-index',
+            KeyConditionExpression=Key('project_id').eq(str(project_id)),
+            FilterExpression=Attr('user_id').eq(user_id),
+            ScanIndexForward=False,
+        )
+        return [TrainingRun.from_dict(item) for item in result.get('Items', [])]
 
-        training_runs_data = db.training_runs.find({
-            'project_id': str(project_id),
-            'user_id': user_id
-        }).sort('created_at', -1)  # Newest first
-
-        return [TrainingRun.from_dict(tr) for tr in training_runs_data]
-
-    def update_status(self, training_run_id: str, status: str, error_message: Optional[str] = None) -> TrainingRun:
-        """
-        Update training run status (this is the ONLY mutable field)
-
-        Args:
-            training_run_id: UUID of the training run
-            status: New status
-            error_message: Optional error message if failed
-
-        Returns:
-            Updated TrainingRun object
-
-        Raises:
-            ValueError: If training run not found or invalid status
-        """
+    def update_status(self, training_run_id: str, status: str,
+                      error_message: Optional[str] = None) -> TrainingRun:
         if status not in TrainingRun.VALID_STATUSES:
             raise ValueError(f"Invalid status: {status}. Must be one of {TrainingRun.VALID_STATUSES}")
-
-        db = get_db()
         user_id = self._get_user_id()
-
-        update_fields = {
-            'status': status,
-            'updated_at': datetime.utcnow()
-        }
-
-        # Set completed_at when training finishes (success or failure)
+        now = datetime.utcnow().isoformat()
+        expr_parts = ['#st = :status', 'updated_at = :now']
+        vals = {':status': status, ':now': now}
         if status in [TrainingRun.STATUS_SUCCEEDED, TrainingRun.STATUS_FAILED, TrainingRun.STATUS_CANCELED]:
-            update_fields['completed_at'] = datetime.utcnow()
-
-        if error_message:
-            update_fields['error_message'] = error_message
-
-        result = db.training_runs.update_one(
-            {'_id': training_run_id, 'user_id': user_id},
-            {'$set': update_fields}
+            expr_parts.append('completed_at = :now')
+        if error_message is not None:
+            expr_parts.append('error_message = :err')
+            vals[':err'] = error_message
+        self._table().update_item(
+            Key={'training_run_id': training_run_id},
+            ConditionExpression=Attr('user_id').eq(user_id),
+            UpdateExpression='SET ' + ', '.join(expr_parts),
+            ExpressionAttributeNames={'#st': 'status'},
+            ExpressionAttributeValues=vals,
         )
-
-        if result.matched_count == 0:
-            raise ValueError(f"Training run with ID {training_run_id} not found.")
-
         return self.get_by_id(training_run_id)
 
     def set_replicate_id(self, training_run_id: str, replicate_training_id: str) -> TrainingRun:
-        """
-        Set the Replicate training ID for a training run
-
-        Args:
-            training_run_id: UUID of the training run
-            replicate_training_id: Replicate training ID
-
-        Returns:
-            Updated TrainingRun object
-        """
-        db = get_db()
         user_id = self._get_user_id()
-
-        result = db.training_runs.update_one(
-            {'_id': training_run_id, 'user_id': user_id},
-            {'$set': {
-                'replicate_training_id': replicate_training_id,
-                'updated_at': datetime.utcnow()
-            }}
+        self._table().update_item(
+            Key={'training_run_id': training_run_id},
+            ConditionExpression=Attr('user_id').eq(user_id),
+            UpdateExpression='SET replicate_training_id = :rid, updated_at = :now',
+            ExpressionAttributeValues={
+                ':rid': replicate_training_id,
+                ':now': datetime.utcnow().isoformat(),
+            },
         )
-
-        if result.matched_count == 0:
-            raise ValueError(f"Training run with ID {training_run_id} not found.")
-
         return self.get_by_id(training_run_id)
 
     def delete(self, training_run_id: str) -> None:
-        """
-        Delete a single training run that belongs to the current user.
-        """
-        db = get_db()
         user_id = self._get_user_id()
-
-        result = db.training_runs.delete_one(
-            {'_id': training_run_id, 'user_id': user_id}
-        )
-
-        if result.deleted_count == 0:
+        item = self._table().get_item(Key={'training_run_id': training_run_id}).get('Item')
+        if not item or item.get('user_id') != user_id:
             raise ValueError(f"Training run with ID {training_run_id} not found.")
+        self._table().delete_item(Key={'training_run_id': training_run_id})
 
     def delete_by_project(self, project_id: str) -> int:
-        """
-        Delete all training runs for a project
-
-        Args:
-            project_id: UUID of the project
-
-        Returns:
-            Number of training runs deleted
-        """
-        db = get_db()
         user_id = self._get_user_id()
-
-        result = db.training_runs.delete_many({
-            'project_id': str(project_id),
-            'user_id': user_id
-        })
-
-        return result.deleted_count
+        result = self._table().query(
+            IndexName='project_id-created_at-index',
+            KeyConditionExpression=Key('project_id').eq(str(project_id)),
+            FilterExpression=Attr('user_id').eq(user_id),
+        )
+        items = result.get('Items', [])
+        with self._table().batch_writer() as batch:
+            for item in items:
+                batch.delete_item(Key={'training_run_id': item['training_run_id']})
+        return len(items)
