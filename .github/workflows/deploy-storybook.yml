@@ -233,7 +233,7 @@ jobs:
         env:
           VITE_API_URL:                  ${{ env.VITE_API_URL }}
           VITE_AWS_COGNITO_USER_POOL_ID: ${{ env.VITE_COGNITO_POOL_ID }}
-          VITE_AWS_COGNITO_APP_CLIENT_ID:${{ env.VITE_COGNITO_CLIENT_ID }}
+          VITE_AWS_COGNITO_APP_CLIENT_ID: ${{ env.VITE_COGNITO_CLIENT_ID }}
           VITE_AWS_COGNITO_DOMAIN:       ${{ env.VITE_COGNITO_DOMAIN }}
         run: cd storybook/frontend/storybook-ui && npm run build
 
