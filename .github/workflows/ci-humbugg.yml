@@ -57,7 +57,7 @@ jobs:
           node-version: '18'
 
       - name: Install dependencies
-        run: cd humbugg/frontend && npm ci
+        run: cd humbugg/frontend && npm install --legacy-peer-deps
 
       - name: Build frontend
         env:
