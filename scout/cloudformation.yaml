@@ -322,6 +322,13 @@ Resources:
           ThrottlingBurstLimit: 50
           ThrottlingRateLimit: 10
 
+  ApiGateway404Response:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      RestApiId: !Ref EventsApi
+      ResponseType: MISSING_AUTHENTICATION_TOKEN
+      StatusCode: '404'
+
   ApiGatewayLambdaPermission:
     Type: AWS::Lambda::Permission
     Properties:
