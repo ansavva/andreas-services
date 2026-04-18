@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'scout/cloudformation.yaml'
+      - 'scout/cloudformation-pr-preview.yaml'
       - '.github/workflows/deploy-infra-scout.yml'
   workflow_dispatch:
 
@@ -83,3 +84,32 @@ jobs:
           aws ssm put-parameter --overwrite --type String \
             --name /scout/prod/cf-dist-id \
             --value "$(get_output CloudFrontDistributionId)"
+
+      - name: Deploy PR preview infrastructure
+        run: |
+          aws cloudformation deploy \
+            --template-file scout/cloudformation-pr-preview.yaml \
+            --stack-name scout-pr-preview \
+            --region "${{ env.AWS_REGION }}" \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "AcmCertificateArn=${{ steps.shared.outputs.acm_arn }}" \
+              "Route53HostedZoneId=${{ steps.shared.outputs.zone_id }}"
+
+      - name: Store PR preview infrastructure outputs in SSM
+        run: |
+          get_pr() {
+            aws cloudformation describe-stacks \
+              --stack-name scout-pr-preview \
+              --query "Stacks[0].Outputs[?OutputKey=='${1}'].OutputValue | [0]" \
+              --output text
+          }
+
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/pr-preview/s3-bucket \
+            --value "$(get_pr S3BucketName)"
+
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/pr-preview/cf-dist-id \
+            --value "$(get_pr CloudFrontDistributionId)"

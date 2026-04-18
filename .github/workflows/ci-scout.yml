@@ -126,8 +126,7 @@ jobs:
               "LambdaCodeBucket=${{ env.LAMBDA_CODE_BUCKET }}" \
               "EmailProcessorZipKey=${PR_PREFIX}/email-processor.zip" \
               "EventsApiZipKey=${PR_PREFIX}/events-api.zip" \
-              "DeployFrontend=true" \
-              "DeployDns=false" \
+              "DeployFrontend=false" \
               "MaxEmailsPerRun=3" \
               "AnthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }}" \
               "GmailClientId=${{ secrets.GMAIL_CLIENT_ID }}" \
@@ -144,38 +143,49 @@ jobs:
               --query "Stacks[0].Outputs[?OutputKey=='${1}'].OutputValue | [0]" \
               --output text
           }
-          echo "api_url=$(get ApiEndpoint)"           >> "$GITHUB_OUTPUT"
-          echo "cf_url=$(get CloudFrontURL)"          >> "$GITHUB_OUTPUT"
-          echo "s3_bucket=$(get S3BucketName)"        >> "$GITHUB_OUTPUT"
-          echo "cf_dist_id=$(get CloudFrontDistributionId)" >> "$GITHUB_OUTPUT"
+          echo "api_url=$(get ApiEndpoint)" >> "$GITHUB_OUTPUT"
+
+      - name: Read PR preview shared infrastructure
+        id: pr-preview
+        run: |
+          echo "s3_bucket=$(aws ssm get-parameter \
+            --name /scout/pr-preview/s3-bucket \
+            --query Parameter.Value --output text)" >> "$GITHUB_OUTPUT"
+          echo "cf_dist_id=$(aws ssm get-parameter \
+            --name /scout/pr-preview/cf-dist-id \
+            --query Parameter.Value --output text)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Node.js 18
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
-      - name: Build frontend
+      - name: Build frontend for PR path
         env:
+          VITE_BASE_PATH: /pr/${{ github.event.pull_request.number }}/
           VITE_API_URL: ${{ steps.stack-outputs.outputs.api_url }}
         run: cd scout/frontend && npm install && npm run build
 
-      - name: Sync frontend to S3
+      - name: Sync PR frontend to shared S3 bucket
         run: |
-          aws s3 sync scout/frontend/dist/ "s3://${{ steps.stack-outputs.outputs.s3_bucket }}/" \
+          PR_PATH="pr/${{ github.event.pull_request.number }}"
+          aws s3 sync scout/frontend/dist/ \
+            "s3://${{ steps.pr-preview.outputs.s3_bucket }}/${PR_PATH}/" \
             --region "${{ env.AWS_REGION }}" \
             --delete \
             --cache-control "public,max-age=31536000,immutable" \
             --exclude "*.html"
-          aws s3 sync scout/frontend/dist/ "s3://${{ steps.stack-outputs.outputs.s3_bucket }}/" \
+          aws s3 sync scout/frontend/dist/ \
+            "s3://${{ steps.pr-preview.outputs.s3_bucket }}/${PR_PATH}/" \
             --region "${{ env.AWS_REGION }}" \
             --cache-control "no-cache,no-store,must-revalidate" \
             --include "*.html"
 
-      - name: Invalidate CloudFront
+      - name: Invalidate CloudFront for PR path
         run: |
           aws cloudfront create-invalidation \
-            --distribution-id "${{ steps.stack-outputs.outputs.cf_dist_id }}" \
-            --paths "/*"
+            --distribution-id "${{ steps.pr-preview.outputs.cf_dist_id }}" \
+            --paths "/pr/${{ github.event.pull_request.number }}/*"
 
       - name: Invoke email-processor (max 3 emails, 1-week lookback)
         run: |
@@ -202,7 +212,7 @@ jobs:
           script: |
             const fs = require('fs');
             const apiUrl = '${{ steps.stack-outputs.outputs.api_url }}';
-            const cfUrl = '${{ steps.stack-outputs.outputs.cf_url }}';
+            const prUrl = `https://scout-pr.andreas.services/pr/${context.issue.number}/`;
             const stackName = '${{ env.STACK_NAME }}';
 
             let emailSummary = '_Email processor output unavailable_';
@@ -222,7 +232,7 @@ jobs:
               '## Scout PR Environment',
               '',
               `**Stack:** \`${stackName}\``,
-              `**Frontend:** ${cfUrl ? `[${cfUrl}](${cfUrl})` : '_not deployed_'}`,
+              `**Frontend:** [${prUrl}](${prUrl})`,
               `**API URL:** \`${apiUrl}\``,
               '',
               emailSummary,

@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Scout PR preview shared hosting.
+  One S3 bucket + CloudFront distribution at scout-pr.andreas.services
+  serves all PR previews at /pr/{number}/. Deployed once; never torn down.
+
+Parameters:
+  AcmCertificateArn:
+    Type: String
+    Description: >
+      ARN of the shared *.andreas.services ACM wildcard certificate (us-east-1).
+      Owned by terraform/envs/shared.
+
+  Route53HostedZoneId:
+    Type: String
+    Description: >
+      ID of the shared andreas.services Route53 hosted zone.
+      Owned by terraform/envs/shared.
+
+Resources:
+
+  PrPreviewBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "scout-pr-previews-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+      Tags:
+        - Key: Project
+          Value: scout
+
+  PrPreviewBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref PrPreviewBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: s3:GetObject
+            Resource: !Sub "${PrPreviewBucket.Arn}/*"
+
+  PrPreviewDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: Scout PR preview CDN
+        HttpVersion: http2
+        PriceClass: PriceClass_100
+        Aliases:
+          - scout-pr.andreas.services
+        ViewerCertificate:
+          AcmCertificateArn: !Ref AcmCertificateArn
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
+        Origins:
+          - Id: S3Origin
+            # Use the S3 website endpoint so directory indexes (e.g. /pr/33/ → /pr/33/index.html)
+            # are resolved by S3 before CloudFront receives the response.
+            DomainName: !Sub "${PrPreviewBucket}.s3-website-${AWS::Region}.amazonaws.com"
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized
+          Compress: true
+      Tags:
+        - Key: Project
+          Value: scout
+
+  DnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref Route53HostedZoneId
+      Name: scout-pr.andreas.services.
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt PrPreviewDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2  # CloudFront's global hosted zone ID (fixed value)
+
+Outputs:
+  S3BucketName:
+    Description: S3 bucket hosting all PR preview frontends.
+    Value: !Ref PrPreviewBucket
+
+  CloudFrontDistributionId:
+    Description: CloudFront distribution ID (used for cache invalidation).
+    Value: !Ref PrPreviewDistribution
+
+  CloudFrontURL:
+    Description: Raw CloudFront URL for the PR preview distribution.
+    Value: !Sub "https://${PrPreviewDistribution.DomainName}"
+
+  PreviewBaseURL:
+    Description: Base URL for PR previews.
+    Value: https://scout-pr.andreas.services

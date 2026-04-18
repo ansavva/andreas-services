@@ -61,6 +61,27 @@ jobs:
             "s3://${{ env.LAMBDA_CODE_BUCKET }}/pr/${{ github.event.pull_request.number }}/" \
             --recursive || true
 
+      - name: Delete PR frontend from shared preview bucket
+        run: |
+          PR_PREVIEW_BUCKET=$(aws ssm get-parameter \
+            --name /scout/pr-preview/s3-bucket \
+            --query Parameter.Value --output text 2>/dev/null || echo "")
+          if [ -n "${PR_PREVIEW_BUCKET}" ]; then
+            aws s3 rm "s3://${PR_PREVIEW_BUCKET}/pr/${{ github.event.pull_request.number }}/" \
+              --recursive || true
+          fi
+
+      - name: Invalidate CloudFront PR prefix
+        run: |
+          PR_PREVIEW_CF_DIST=$(aws ssm get-parameter \
+            --name /scout/pr-preview/cf-dist-id \
+            --query Parameter.Value --output text 2>/dev/null || echo "")
+          if [ -n "${PR_PREVIEW_CF_DIST}" ]; then
+            aws cloudfront create-invalidation \
+              --distribution-id "${PR_PREVIEW_CF_DIST}" \
+              --paths "/pr/${{ github.event.pull_request.number }}/*"
+          fi
+
       - name: Skip (stack not found)
         if: steps.check-stack.outputs.status == 'DOES_NOT_EXIST'
         run: echo "No Scout PR stack found for PR #${{ github.event.pull_request.number }} — nothing to delete."
