@@ -107,9 +107,9 @@ jobs:
       - name: Upload Lambda packages to S3
         run: |
           PR_PREFIX="pr/${{ github.event.pull_request.number }}/lambda"
-          aws s3 cp scout/lambda/email-processor.zip \
+          aws s3 cp scout/lambda/email-processor/email-processor.zip \
             "s3://${{ env.LAMBDA_CODE_BUCKET }}/${PR_PREFIX}/email-processor.zip"
-          aws s3 cp scout/lambda/events-api.zip \
+          aws s3 cp scout/lambda/events-api/events-api.zip \
             "s3://${{ env.LAMBDA_CODE_BUCKET }}/${PR_PREFIX}/events-api.zip"
 
       - name: Deploy ephemeral CloudFormation stack
