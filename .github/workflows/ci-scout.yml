@@ -60,8 +60,7 @@ jobs:
   #
   # Requires a 'scout-pr' GitHub Actions environment with the same secrets as
   # 'scout-production':
-  #   Vars: AWS_ROLE_ARN
-  #   Secrets: ANTHROPIC_API_KEY, GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET,
+  #   Secrets: AWS_ROLE_ARN, ANTHROPIC_API_KEY, GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET,
   #            GMAIL_ACCESS_TOKEN, GMAIL_REFRESH_TOKEN
   #   (LAMBDA_CODE_BUCKET is hardcoded in workflow env)
   # ---------------------------------------------------------------------------
