@@ -1,0 +1,108 @@
+name: Deploy Infra – Humbugg
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'humbugg/infra/**'
+      - '.github/workflows/deploy-infra-humbugg.yml'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy-infra:
+    name: Deploy CloudFormation Stacks
+    runs-on: ubuntu-latest
+    environment: humbugg-production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve shared resources (ACM cert + Route53 zone)
+        id: shared
+        run: |
+          ACM_ARN=$(aws acm list-certificates \
+            --region us-east-1 \
+            --query "CertificateSummaryList[?DomainName=='*.andreas.services'].CertificateArn | [0]" \
+            --output text)
+          ZONE_ID=$(aws route53 list-hosted-zones \
+            --query "HostedZones[?Name=='andreas.services.'].Id | [0]" \
+            --output text | sed 's|/hostedzone/||')
+          echo "acm_arn=${ACM_ARN}" >> "$GITHUB_OUTPUT"
+          echo "zone_id=${ZONE_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy backend stack
+        run: |
+          aws cloudformation deploy \
+            --template-file humbugg/infra/backend-lambda.yaml \
+            --stack-name humbugg-backend \
+            --region "${{ env.AWS_REGION }}" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "EnvCorsOrigin=https://humbugg.andreas.services"
+
+      - name: Read backend outputs and write to SSM
+        run: |
+          set -euo pipefail
+          get() {
+            aws cloudformation describe-stacks --stack-name humbugg-backend \
+              --query "Stacks[0].Outputs[?OutputKey=='${1}'].OutputValue | [0]" \
+              --output text
+          }
+          put() { aws ssm put-parameter --overwrite --type String \
+            --name "/humbugg/prod/${1}" --value "${2}"; }
+
+          API_URL="$(get ApiInvokeUrl)"
+          API_DOMAIN=$(echo "${API_URL}" | sed -E 's#https?://([^/]+)/.*#\1#')
+          API_STAGE=$(echo "${API_URL}" | awk -F/ '{print $NF}')
+
+          put api-url              "${API_URL}"
+          put lambda-name          "$(get LambdaFunctionName)"
+          put ecr-url              "$(get EcrRepositoryUri)"
+          put cognito-user-pool-id "$(get CognitoUserPoolId)"
+          put cognito-client-id    "$(get CognitoClientId)"
+
+          echo "API_DOMAIN=${API_DOMAIN}" >> "$GITHUB_ENV"
+          echo "API_STAGE=${API_STAGE}"   >> "$GITHUB_ENV"
+
+      - name: Deploy frontend stack
+        run: |
+          aws cloudformation deploy \
+            --template-file humbugg/infra/frontend-cloudfront.yaml \
+            --stack-name humbugg-frontend \
+            --region "${{ env.AWS_REGION }}" \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "StackName=humbugg-frontend" \
+              "DomainName=humbugg.andreas.services" \
+              "HostedZoneId=${{ steps.shared.outputs.zone_id }}" \
+              "CertificateArn=${{ steps.shared.outputs.acm_arn }}" \
+              "ApiDomainName=${{ env.API_DOMAIN }}" \
+              "ApiStageName=${{ env.API_STAGE }}"
+
+      - name: Read frontend outputs and write to SSM
+        run: |
+          set -euo pipefail
+          get() {
+            aws cloudformation describe-stacks --stack-name humbugg-frontend \
+              --query "Stacks[0].Outputs[?OutputKey=='${1}'].OutputValue | [0]" \
+              --output text
+          }
+          put() { aws ssm put-parameter --overwrite --type String \
+            --name "/humbugg/prod/${1}" --value "${2}"; }
+
+          put s3-bucket  "$(get SiteBucketName)"
+          put cf-dist-id "$(get DistributionId)"

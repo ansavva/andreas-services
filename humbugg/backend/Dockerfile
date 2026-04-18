@@ -1,7 +1,6 @@
 FROM python:3.11-slim AS base
 
-ENV POETRY_VERSION=1.7.1 \
-    PYTHONDONTWRITEBYTECODE=1 \
+ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app
@@ -11,8 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src ./src
 
-ENV PYTHONPATH="/app/src"
+ENV PYTHONPATH="/app"
 
-EXPOSE 5001
-
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5001", "src.app:app", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info"]
+ENTRYPOINT ["python", "-m", "awslambdaric"]
+CMD ["src.lambda_handler.handler"]

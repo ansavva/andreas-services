@@ -1,12 +1,10 @@
 from flask import Blueprint, jsonify, request
 
 from src.auth.decorators import requires_auth
-from src.config import load_config
 from src.repositories.profile_repository import ProfileRepository
 from src.services.profile_service import ProfileService
 
-config = load_config()
-profile_repo = ProfileRepository(config.mongo_db_name)
+profile_repo = ProfileRepository()
 profile_service = ProfileService(profile_repo)
 
 bp = Blueprint('profiles', __name__, url_prefix='/api/profile')
