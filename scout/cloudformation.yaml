@@ -67,8 +67,19 @@ Parameters:
       - "true"
       - "false"
     Description: >
-      Set to false for PR/ephemeral environments to skip creating S3, CloudFront,
-      and Route53 resources. API Gateway is always deployed.
+      Set to false to skip all frontend resources (S3, CloudFront, Route53).
+      API Gateway is always deployed.
+
+  DeployDns:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >
+      Set to false for PR/ephemeral environments to skip the Route53 DNS record
+      and use the CloudFront default certificate instead of the ACM wildcard.
+      Requires DeployFrontend=true.
 
   # Resolved from the shared terraform/ stack at deploy time — never hard-code.
   AcmCertificateArn:
@@ -76,20 +87,23 @@ Parameters:
     Default: ""
     Description: >
       ARN of the shared *.andreas.services ACM wildcard certificate (us-east-1).
-      Owned by terraform/envs/shared. Required when DeployFrontend=true.
+      Owned by terraform/envs/shared. Required when DeployDns=true.
 
   Route53HostedZoneId:
     Type: String
     Default: ""
     Description: >
       ID of the shared andreas.services Route53 hosted zone.
-      Owned by terraform/envs/shared. Required when DeployFrontend=true.
+      Owned by terraform/envs/shared. Required when DeployDns=true.
 
 # ---------------------------------------------------------------------------
 # Conditions
 # ---------------------------------------------------------------------------
 Conditions:
   ShouldDeployFrontend: !Equals [!Ref DeployFrontend, "true"]
+  ShouldDeployDns: !And
+    - !Equals [!Ref DeployFrontend, "true"]
+    - !Equals [!Ref DeployDns, "true"]
 
 # ---------------------------------------------------------------------------
 # Resources
@@ -399,12 +413,16 @@ Resources:
         DefaultRootObject: index.html
         HttpVersion: http2
         PriceClass: PriceClass_100
-        Aliases:
-          - scout.andreas.services
-        ViewerCertificate:
-          AcmCertificateArn: !Ref AcmCertificateArn
-          SslSupportMethod: sni-only
-          MinimumProtocolVersion: TLSv1.2_2021
+        Aliases: !If
+          - ShouldDeployDns
+          - [scout.andreas.services]
+          - !Ref AWS::NoValue
+        ViewerCertificate: !If
+          - ShouldDeployDns
+          - AcmCertificateArn: !Ref AcmCertificateArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
         Origins:
           - Id: S3Origin
             DomainName: !Sub "${WebsiteBucket}.s3-website-${AWS::Region}.amazonaws.com"
@@ -433,7 +451,7 @@ Resources:
   # -------------------------------------------------------------------------
   DnsRecord:
     Type: AWS::Route53::RecordSet
-    Condition: ShouldDeployFrontend
+    Condition: ShouldDeployDns
     Properties:
       HostedZoneId: !Ref Route53HostedZoneId
       Name: scout.andreas.services.

@@ -126,7 +126,8 @@ jobs:
               "LambdaCodeBucket=${{ env.LAMBDA_CODE_BUCKET }}" \
               "EmailProcessorZipKey=${PR_PREFIX}/email-processor.zip" \
               "EventsApiZipKey=${PR_PREFIX}/events-api.zip" \
-              "DeployFrontend=false" \
+              "DeployFrontend=true" \
+              "DeployDns=false" \
               "MaxEmailsPerRun=3" \
               "AnthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }}" \
               "GmailClientId=${{ secrets.GMAIL_CLIENT_ID }}" \
@@ -134,14 +135,47 @@ jobs:
               "GmailAccessToken=${{ secrets.GMAIL_ACCESS_TOKEN }}" \
               "GmailRefreshToken=${{ secrets.GMAIL_REFRESH_TOKEN }}"
 
-      - name: Get API endpoint from stack outputs
+      - name: Get stack outputs
         id: stack-outputs
         run: |
-          API_URL=$(aws cloudformation describe-stacks \
-            --stack-name "${{ env.STACK_NAME }}" \
-            --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue | [0]" \
-            --output text)
-          echo "api_url=${API_URL}" >> "$GITHUB_OUTPUT"
+          get() {
+            aws cloudformation describe-stacks \
+              --stack-name "${{ env.STACK_NAME }}" \
+              --query "Stacks[0].Outputs[?OutputKey=='${1}'].OutputValue | [0]" \
+              --output text
+          }
+          echo "api_url=$(get ApiEndpoint)"           >> "$GITHUB_OUTPUT"
+          echo "cf_url=$(get CloudFrontURL)"          >> "$GITHUB_OUTPUT"
+          echo "s3_bucket=$(get S3BucketName)"        >> "$GITHUB_OUTPUT"
+          echo "cf_dist_id=$(get CloudFrontDistributionId)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Build frontend
+        env:
+          VITE_API_URL: ${{ steps.stack-outputs.outputs.api_url }}
+        run: cd scout/frontend && npm install && npm run build
+
+      - name: Sync frontend to S3
+        run: |
+          aws s3 sync scout/frontend/dist/ "s3://${{ steps.stack-outputs.outputs.s3_bucket }}/" \
+            --region "${{ env.AWS_REGION }}" \
+            --delete \
+            --cache-control "public,max-age=31536000,immutable" \
+            --exclude "*.html"
+          aws s3 sync scout/frontend/dist/ "s3://${{ steps.stack-outputs.outputs.s3_bucket }}/" \
+            --region "${{ env.AWS_REGION }}" \
+            --cache-control "no-cache,no-store,must-revalidate" \
+            --include "*.html"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ steps.stack-outputs.outputs.cf_dist_id }}" \
+            --paths "/*"
 
       - name: Invoke email-processor (max 3 emails, 1-week lookback)
         run: |
@@ -168,6 +202,7 @@ jobs:
           script: |
             const fs = require('fs');
             const apiUrl = '${{ steps.stack-outputs.outputs.api_url }}';
+            const cfUrl = '${{ steps.stack-outputs.outputs.cf_url }}';
             const stackName = '${{ env.STACK_NAME }}';
 
             let emailSummary = '_Email processor output unavailable_';
@@ -187,6 +222,7 @@ jobs:
               '## Scout PR Environment',
               '',
               `**Stack:** \`${stackName}\``,
+              `**Frontend:** ${cfUrl ? `[${cfUrl}](${cfUrl})` : '_not deployed_'}`,
               `**API URL:** \`${apiUrl}\``,
               '',
               emailSummary,
