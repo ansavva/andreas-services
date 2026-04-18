@@ -240,6 +240,36 @@ resource "aws_iam_role_policy_attachment" "github_actions" {
   policy_arn = aws_iam_policy.github_actions.arn
 }
 
+# ─── Lambda code bucket ───────────────────────────────────────────────────────
+# Stores Lambda zip packages for Scout ephemeral PR stacks and production deploys.
+
+resource "aws_s3_bucket" "lambda_code" {
+  bucket = "andreas-services-lambda-code"
+  tags   = local.shared_tags
+}
+
+resource "aws_s3_bucket_versioning" "lambda_code" {
+  bucket = aws_s3_bucket.lambda_code.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "lambda_code" {
+  bucket = aws_s3_bucket.lambda_code.id
+
+  rule {
+    id     = "expire-pr-artifacts"
+    status = "Enabled"
+    filter {
+      prefix = "pr/"
+    }
+    expiration {
+      days = 7
+    }
+  }
+}
+
 # ─── ACM ──────────────────────────────────────────────────────────────────────
 
 resource "aws_acm_certificate_validation" "wildcard" {
