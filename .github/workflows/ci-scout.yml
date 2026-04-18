@@ -60,7 +60,8 @@ jobs:
   #
   # Requires a 'scout-pr' GitHub Actions environment with the same secrets as
   # 'scout-production':
-  #   Secrets: AWS_ROLE_ARN, ANTHROPIC_API_KEY, GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET,
+  #   Vars: AWS_ROLE_ARN
+  #   Secrets: ANTHROPIC_API_KEY, GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET,
   #            GMAIL_ACCESS_TOKEN, GMAIL_REFRESH_TOKEN
   #   (LAMBDA_CODE_BUCKET is hardcoded in workflow env)
   # ---------------------------------------------------------------------------
@@ -87,7 +88,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Package email-processor Lambda
