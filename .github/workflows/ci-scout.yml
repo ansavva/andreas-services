@@ -44,7 +44,7 @@ jobs:
           node-version: '18'
 
       - name: Install frontend deps
-        run: cd scout/frontend && npm ci
+        run: cd scout/frontend && npm install
 
       - name: Lint frontend
         run: cd scout/frontend && npm run lint

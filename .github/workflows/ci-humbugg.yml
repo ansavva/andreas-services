@@ -17,32 +17,16 @@ jobs:
   build-backend:
     name: Build Backend Docker Image
     runs-on: ubuntu-latest
-    environment: humbugg-production
     permissions:
-      id-token: write
       contents: read
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
       - name: Build Docker image (verify only, no push)
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           cd humbugg/backend
-          DOCKER_BUILDKIT=0 docker build \
-            -t "$ECR_REGISTRY/$ECR_REPOSITORY:pr-${{ github.event.pull_request.number }}" \
-            .
+          DOCKER_BUILDKIT=0 docker build -t humbugg-backend:ci-verify .
 
   build-frontend:
     name: Build Frontend
