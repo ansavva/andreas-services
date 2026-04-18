@@ -300,13 +300,35 @@ Resources:
           - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
           - FnArn: !GetAtt EventsApiFunction.Arn
 
-  ApiDeployment:
+  ProxyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref EventsApi
+      ParentId: !GetAtt EventsApi.RootResourceId
+      PathPart: "{proxy+}"
+
+  ProxyAnyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref EventsApi
+      ResourceId: !Ref ProxyResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
+          - FnArn: !GetAtt EventsApiFunction.Arn
+
+  ApiDeploymentV2:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - EventsGetMethod
       - EventsOptionsMethod
       - EventByIdGetMethod
       - EventByIdOptionsMethod
+      - ProxyAnyMethod
     Properties:
       RestApiId: !Ref EventsApi
 
@@ -314,20 +336,13 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref EventsApi
-      DeploymentId: !Ref ApiDeployment
+      DeploymentId: !Ref ApiDeploymentV2
       StageName: prod
       MethodSettings:
         - ResourcePath: "/*"
           HttpMethod: "*"
           ThrottlingBurstLimit: 50
           ThrottlingRateLimit: 10
-
-  ApiGateway404Response:
-    Type: AWS::ApiGateway::GatewayResponse
-    Properties:
-      RestApiId: !Ref EventsApi
-      ResponseType: MISSING_AUTHENTICATION_TOKEN
-      StatusCode: '404'
 
   ApiGatewayLambdaPermission:
     Type: AWS::Lambda::Permission
