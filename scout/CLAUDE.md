@@ -146,7 +146,7 @@ cd frontend && npm run dev
 
 Every `pull_request` (opened / synchronize / reopened) whose diff touches
 `scout/**` spins up an ephemeral environment via
-`.github/workflows/deploy-pr-scout.yml`:
+`.github/workflows/scout-deploy-preview-pr.yml`:
 
 | | Prod | PR `<N>` |
 |---|---|---|
@@ -156,7 +156,7 @@ Every `pull_request` (opened / synchronize / reopened) whose diff touches
 The shared PR-preview infrastructure (one S3 bucket, one CloudFront
 distribution with a CloudFront Function for SPA fallback, and one API Gateway
 custom domain) lives in `cloudformation-pr-preview.yaml` and is deployed
-once by `deploy-infra-scout.yml`.
+once by `scout-deploy-preview-infra.yml`.
 
 Per-PR resources live in `cloudformation-pr.yaml` (stack `scout-pr-<N>`):
 Lambda + REST API with `/api/...` routes, a DynamoDB table suffixed
@@ -164,7 +164,7 @@ Lambda + REST API with `/api/...` routes, a DynamoDB table suffixed
 the PR's preview URL as callback, and a `BasePathMapping` that attaches the
 PR's API to the shared custom domain under `/<N>`.
 
-Closing the PR triggers `.github/workflows/teardown-pr-envs.yml`, which
+Closing the PR triggers `.github/workflows/scout-teardown-preview-pr.yml`, which
 deletes the stack, empties the S3 prefix, and invalidates CloudFront.
 
 ### Constraints

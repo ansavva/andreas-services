@@ -1,4 +1,4 @@
-name: PR Preview – Scout
+name: Scout · Deploy preview stack · PR
 
 # Spins up an ephemeral per-PR environment for Scout:
 #   - CloudFormation stack scout-pr-<N> (Lambda + API GW + DynamoDB + Cognito)
@@ -6,14 +6,14 @@ name: PR Preview – Scout
 #   - Frontend published into s3://<shared-preview-bucket>/<N>/app/ and served
 #     at scout-pr.andreas.services/<N>/app
 #
-# Teardown on close is handled by .github/workflows/teardown-pr-envs.yml.
+# Teardown on close is handled by .github/workflows/scout-teardown-preview-pr.yml.
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
       - 'scout/**'
-      - '.github/workflows/deploy-pr-scout.yml'
+      - '.github/workflows/scout-deploy-preview-pr.yml'
 
 env:
   AWS_REGION: us-east-1

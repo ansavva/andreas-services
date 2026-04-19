@@ -1,4 +1,4 @@
-name: Deploy – Humbugg
+name: Humbugg · Deploy app · Prod
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
     paths:
       - 'humbugg/backend/**'
       - 'humbugg/frontend/**'
-      - '.github/workflows/deploy-humbugg.yml'
+      - '.github/workflows/humbugg-deploy-app-prod.yml'
   workflow_dispatch:
 
 env:
@@ -38,6 +38,7 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    environment: humbugg-production
     permissions:
       id-token: write
       contents: read
@@ -122,6 +123,7 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    environment: humbugg-production
     permissions:
       id-token: write
       contents: read

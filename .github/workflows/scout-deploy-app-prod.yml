@@ -1,4 +1,4 @@
-name: Deploy – Scout Code
+name: Scout · Deploy app · Prod
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
     paths:
       - 'scout/lambda/**'
       - 'scout/frontend/**'
-      - '.github/workflows/deploy-scout.yml'
+      - '.github/workflows/scout-deploy-app-prod.yml'
   workflow_dispatch:
 
 env:
@@ -34,7 +34,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Package Lambda zips and push to the functions
-  # Infrastructure (CloudFormation) is managed by deploy-infra-scout.yml
+  # Infrastructure (CloudFormation) is managed by scout-deploy-infra-prod.yml
   # ---------------------------------------------------------------------------
   deploy-backend:
     name: Deploy Lambda Functions
@@ -95,7 +95,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Build Vite SPA and sync to S3 + CloudFront
-  # Values come from SSM (written by deploy-infra-scout.yml)
+  # Values come from SSM (written by scout-deploy-infra-prod.yml)
   # ---------------------------------------------------------------------------
   deploy-frontend:
     name: Deploy Frontend

@@ -62,4 +62,4 @@ Push changes to the `main` branch. GitHub Actions will automatically:
 - Build and deploy backend to Lambda when `storybook/backend/**` changes
 - Build and deploy frontend to S3/CloudFront when `storybook/frontend/**` changes
 
-See [.github/workflows/deploy-storybook.yml](../.github/workflows/deploy-storybook.yml) for details.
+See [.github/workflows/storybook-deploy-app-prod.yml](../.github/workflows/storybook-deploy-app-prod.yml) for details.

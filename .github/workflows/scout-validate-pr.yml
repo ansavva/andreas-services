@@ -1,13 +1,13 @@
-name: CI – Scout
+name: Scout · Lint, test & build · PR
 
 # Lint, unit tests, and frontend build for Scout changes on PRs.
-# PR preview environments are deployed by .github/workflows/deploy-pr-scout.yml.
+# PR preview environments are deployed by .github/workflows/scout-deploy-preview-pr.yml.
 
 on:
   pull_request:
     paths:
       - 'scout/**'
-      - '.github/workflows/ci-scout.yml'
+      - '.github/workflows/scout-validate-pr.yml'
 
 jobs:
   lint-unit-build:

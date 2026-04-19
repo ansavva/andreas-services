@@ -1,4 +1,4 @@
-name: Teardown PR Environments
+name: Scout · Tear down preview · PR closed
 
 on:
   pull_request:
@@ -12,11 +12,11 @@ env:
 jobs:
   # ---------------------------------------------------------------------------
   # Delete the Scout ephemeral stack when a PR closes (merged or abandoned).
-  # Only runs if the scout-pr stack exists for this PR number.
+  # Runs for every PR close; the check-stack step short-circuits if there is
+  # no scout-pr stack for this PR number.
   # ---------------------------------------------------------------------------
   teardown-scout:
     name: Teardown Scout PR Stack
-    if: contains(github.event.pull_request.labels.*.name, 'scout') || true
     runs-on: ubuntu-latest
     environment: scout-pr
     permissions:

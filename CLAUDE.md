@@ -81,7 +81,7 @@ data "aws_route53_zone" "main" {
 - Lambda for all backends (containerised Docker for Flask services, zip for pure Lambda)
 
 ### Deployment (CI/CD)
-- **Standard**: GitHub Actions (`.github/workflows/deploy-<service>.yml`)
+- **Standard**: GitHub Actions. Filenames follow `<service>-<action>[-<scope>]-<env>.yml` (e.g. `humbugg-deploy-app-prod.yml`, `scout-validate-pr.yml`) so the service, the action, and the trigger environment (PR vs Prod) are all visible at a glance.
 - **Path filtering**: `dorny/paths-filter@v3` — only deploy when the service's files change
 - **Separate jobs**: `deploy-backend` and `deploy-frontend` run independently
 - **AWS auth**: OIDC role assumption (`aws-actions/configure-aws-credentials@v4`) — never long-lived keys
@@ -107,7 +107,7 @@ boto3.client('s3', aws_access_key_id='AKIA...', aws_secret_access_key='...')
 
 1. Create `<service>/` directory — self-contained with own backend, frontend, infra
 2. Reference shared Terraform outputs (Route53 zone, ACM cert, VPC) — do not recreate them
-3. Add a GitHub Actions workflow at `.github/workflows/deploy-<service>.yml` following the storybook pattern (path filtering, separate jobs, OIDC auth)
+3. Add GitHub Actions workflows at `.github/workflows/<service>-<action>-<env>.yml` following the storybook pattern (one file per action × env: e.g. `<service>-validate-pr.yml`, `<service>-deploy-app-prod.yml`, `<service>-deploy-infra-prod.yml`). Use path filtering, separate jobs, OIDC auth.
 4. Use Vite for the frontend (not CRA)
 5. Add TypeScript
 6. Add a `CLAUDE.md` inside the service directory with service-specific context

@@ -1,11 +1,11 @@
-name: Deploy – Shared Infrastructure
+name: Shared infra · Terraform apply · Prod
 
 on:
   push:
     branches: [main]
     paths:
       - 'terraform/**'
-      - '.github/workflows/deploy-infra-shared.yml'
+      - '.github/workflows/shared-deploy-infra-prod.yml'
   workflow_dispatch:
 
 env:

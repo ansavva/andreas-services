@@ -1,11 +1,11 @@
-name: Deploy – Storybook Infrastructure
+name: Storybook · Deploy infra · Prod
 
 on:
   push:
     branches: [main]
     paths:
       - 'storybook/terraform/**'
-      - '.github/workflows/deploy-infra-storybook.yml'
+      - '.github/workflows/storybook-deploy-infra-prod.yml'
   workflow_dispatch:
 
 env:

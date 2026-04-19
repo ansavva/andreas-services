@@ -1,10 +1,10 @@
-name: CI – Shared Infrastructure
+name: Shared infra · Terraform plan · PR
 
 on:
   pull_request:
     paths:
       - 'terraform/**'
-      - '.github/workflows/ci-shared-infra.yml'
+      - '.github/workflows/shared-plan-infra-pr.yml'
 
 env:
   AWS_REGION: us-east-1

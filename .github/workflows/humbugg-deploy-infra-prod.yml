@@ -1,11 +1,11 @@
-name: Deploy Infra – Humbugg
+name: Humbugg · Deploy infra · Prod
 
 on:
   push:
     branches: [main]
     paths:
       - 'humbugg/infra/**'
-      - '.github/workflows/deploy-infra-humbugg.yml'
+      - '.github/workflows/humbugg-deploy-infra-prod.yml'
   workflow_dispatch:
 
 env:
@@ -15,6 +15,7 @@ jobs:
   deploy-infra:
     name: Deploy CloudFormation Stacks
     runs-on: ubuntu-latest
+    environment: humbugg-production
     permissions:
       id-token: write
       contents: read

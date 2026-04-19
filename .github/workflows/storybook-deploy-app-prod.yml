@@ -1,4 +1,4 @@
-name: Deploy – Storybook Code
+name: Storybook · Deploy app · Prod
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
     paths:
       - 'storybook/backend/**'
       - 'storybook/frontend/**'
-      - '.github/workflows/deploy-storybook.yml'
+      - '.github/workflows/storybook-deploy-app-prod.yml'
   workflow_dispatch:
 
 env:
@@ -43,7 +43,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Build Docker image, push to ECR, update both Lambda functions + env vars
-  # ECR URLs and Lambda names come from SSM (written by deploy-infra-storybook.yml)
+  # ECR URLs and Lambda names come from SSM (written by storybook-deploy-infra-prod.yml)
   # ---------------------------------------------------------------------------
   deploy-backend:
     name: Build & Deploy Backend
@@ -186,7 +186,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Build Vite SPA and sync to S3 + CloudFront
-  # Values come from SSM (written by deploy-infra-storybook.yml)
+  # Values come from SSM (written by storybook-deploy-infra-prod.yml)
   # ---------------------------------------------------------------------------
   deploy-frontend:
     name: Deploy Frontend
