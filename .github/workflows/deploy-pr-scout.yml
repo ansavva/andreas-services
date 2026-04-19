@@ -167,9 +167,21 @@ jobs:
             --paths "/${{ env.PR_NUMBER }}/*"
 
       # ------------------------------------------------------------------
+      # Integration tests against the freshly deployed PR API
+      # ------------------------------------------------------------------
+      - name: Install integration test deps
+        run: pip install -q -r scout/tests/integration/requirements-test.txt
+
+      - name: Run integration tests
+        env:
+          SCOUT_API_URL: ${{ steps.outputs.outputs.api_url }}
+        run: pytest scout/tests/integration/ -v
+
+      # ------------------------------------------------------------------
       # Comment the PR with the preview URLs
       # ------------------------------------------------------------------
       - name: Comment preview URLs on PR
+        if: always() && steps.outputs.outputs.api_url != ''
         uses: actions/github-script@v7
         env:
           FRONTEND_URL: ${{ steps.outputs.outputs.frontend_url }}

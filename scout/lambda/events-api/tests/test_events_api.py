@@ -72,7 +72,7 @@ class TestEventsApi(unittest.TestCase):
     # Helper: call the Lambda handler with a synthetic API GW event
     # ------------------------------------------------------------------
 
-    def _call(self, method="GET", path="/events", query=None):
+    def _call(self, method="GET", path="/api/events", query=None):
         return self.lf.lambda_handler(
             {
                 "httpMethod": method,
@@ -110,7 +110,7 @@ class TestEventsApi(unittest.TestCase):
         assert self.lf.sort_events([]) == []
 
     # ------------------------------------------------------------------
-    # GET /events — list all
+    # GET /api/events — list all
     # ------------------------------------------------------------------
 
     def test_get_events_empty_table(self):
@@ -148,7 +148,7 @@ class TestEventsApi(unittest.TestCase):
         assert names[-1] == "No Date Event"
 
     # ------------------------------------------------------------------
-    # GET /events?upcoming=true
+    # GET /api/events?upcoming=true
     # ------------------------------------------------------------------
 
     def test_get_events_upcoming_only(self):
@@ -179,23 +179,23 @@ class TestEventsApi(unittest.TestCase):
         assert body["count"] == 1
 
     # ------------------------------------------------------------------
-    # GET /events/{id}
+    # GET /api/events/{id}
     # ------------------------------------------------------------------
 
     def test_get_event_by_id_found(self):
         _seed_table(self.table, [_make_event("abc-123", "My Event", "2026-06-15")])
-        resp = self._call(path="/events/abc-123")
+        resp = self._call(path="/api/events/abc-123")
         assert resp["statusCode"] == 200
         body = json.loads(resp["body"])
         assert body["event_id"] == "abc-123"
         assert body["event_name"] == "My Event"
 
     def test_get_event_by_id_not_found(self):
-        resp = self._call(path="/events/nonexistent")
+        resp = self._call(path="/api/events/nonexistent")
         assert resp["statusCode"] == 404
 
     def test_get_event_by_id_missing_id(self):
-        resp = self._call(path="/events/")
+        resp = self._call(path="/api/events/")
         assert resp["statusCode"] in (400, 404)
 
     # ------------------------------------------------------------------
@@ -203,7 +203,7 @@ class TestEventsApi(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_options_returns_200(self):
-        resp = self._call(method="OPTIONS", path="/events")
+        resp = self._call(method="OPTIONS", path="/api/events")
         assert resp["statusCode"] == 200
         assert "Access-Control-Allow-Origin" in resp["headers"]
 
@@ -216,7 +216,7 @@ class TestEventsApi(unittest.TestCase):
         assert resp["statusCode"] == 404
 
     def test_post_returns_404(self):
-        resp = self._call(method="POST", path="/events")
+        resp = self._call(method="POST", path="/api/events")
         assert resp["statusCode"] == 404
 
     # ------------------------------------------------------------------
@@ -228,5 +228,5 @@ class TestEventsApi(unittest.TestCase):
         assert resp["headers"]["Access-Control-Allow-Origin"] == "*"
 
     def test_cors_headers_on_not_found(self):
-        resp = self._call(path="/events/missing")
+        resp = self._call(path="/api/events/missing")
         assert "Access-Control-Allow-Origin" in resp["headers"]
