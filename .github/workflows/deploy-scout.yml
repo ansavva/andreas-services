@@ -136,11 +136,13 @@ jobs:
         run: cd scout/frontend && npm ci
 
       - name: Build frontend
+        env:
+          VITE_BASE: /app/
         run: cd scout/frontend && npm run build
 
       - name: Sync hashed assets (long cache)
         run: |
-          aws s3 sync scout/frontend/dist/ "s3://${S3_BUCKET}/" \
+          aws s3 sync scout/frontend/dist/ "s3://${S3_BUCKET}/app/" \
             --region "${{ env.AWS_REGION }}" \
             --delete \
             --cache-control "public,max-age=31536000,immutable" \
@@ -148,7 +150,7 @@ jobs:
 
       - name: Sync HTML (no cache)
         run: |
-          aws s3 sync scout/frontend/dist/ "s3://${S3_BUCKET}/" \
+          aws s3 sync scout/frontend/dist/ "s3://${S3_BUCKET}/app/" \
             --region "${{ env.AWS_REGION }}" \
             --cache-control "no-cache,no-store,must-revalidate" \
             --include "*.html"

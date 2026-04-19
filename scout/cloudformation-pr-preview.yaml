@@ -1,15 +1,22 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  Scout PR preview shared hosting.
-  One S3 bucket + CloudFront distribution at scout-pr.andreas.services
-  serves all PR previews at /pr/{number}/. Deployed once; never torn down.
+  Scout PR preview shared infrastructure.
+
+  Hosts all PR previews behind two custom domains:
+    - scout-pr.andreas.services         — static frontends, serving /<N>/app/*
+    - scout-api-pr.andreas.services     — REST API, base-path-mapped per PR
+
+  Deployed once; never torn down. Per-PR stacks (scout-pr-<N>) add
+  BasePathMapping entries on the shared API Gateway custom domain and
+  write frontend bundles into this bucket under /<N>/app/.
 
 Parameters:
   AcmCertificateArn:
     Type: String
     Description: >
       ARN of the shared *.andreas.services ACM wildcard certificate (us-east-1).
-      Owned by terraform/envs/shared.
+      Owned by terraform/envs/shared. Used by both CloudFront (global-friendly)
+      and API Gateway Regional (cert must live in us-east-1, which it does).
 
   Route53HostedZoneId:
     Type: String
@@ -19,6 +26,9 @@ Parameters:
 
 Resources:
 
+  # -------------------------------------------------------------------------
+  # S3 — single bucket holding every PR's frontend under /<N>/app/*
+  # -------------------------------------------------------------------------
   PrPreviewBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -47,12 +57,43 @@ Resources:
             Action: s3:GetObject
             Resource: !Sub "${PrPreviewBucket.Arn}/*"
 
+  # -------------------------------------------------------------------------
+  # CloudFront Function — SPA fallback for /<N>/app/* routes
+  # Any request under /<N>/app/ whose final segment has no file extension
+  # is rewritten to /<N>/app/index.html so React Router can handle the route.
+  # Hashed asset requests (e.g. /<N>/app/assets/index-abc123.js) are passed
+  # through untouched.
+  # -------------------------------------------------------------------------
+  SpaFallbackFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: scout-pr-spa-fallback
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Rewrite SPA routes under /<N>/app/* to /<N>/app/index.html
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          var uri = request.uri;
+          var match = uri.match(/^\/(\d+)\/app(\/.*)?$/);
+          if (!match) {
+            return request;
+          }
+          var rest = match[2] || '';
+          var lastSegment = rest.split('/').pop();
+          if (!lastSegment || lastSegment.indexOf('.') === -1) {
+            request.uri = '/' + match[1] + '/app/index.html';
+          }
+          return request;
+        }
+
   PrPreviewDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
       DistributionConfig:
         Enabled: true
-        Comment: Scout PR preview CDN
+        Comment: Scout PR preview CDN (per-PR frontends under /<N>/app/)
         HttpVersion: http2
         PriceClass: PriceClass_100
         Aliases:
@@ -63,8 +104,6 @@ Resources:
           MinimumProtocolVersion: TLSv1.2_2021
         Origins:
           - Id: S3Origin
-            # Use the S3 website endpoint so directory indexes (e.g. /pr/33/ → /pr/33/index.html)
-            # are resolved by S3 before CloudFront receives the response.
             DomainName: !Sub "${PrPreviewBucket}.s3-website-${AWS::Region}.amazonaws.com"
             CustomOriginConfig:
               HTTPPort: 80
@@ -74,11 +113,14 @@ Resources:
           ViewerProtocolPolicy: redirect-to-https
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized
           Compress: true
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt SpaFallbackFunction.FunctionARN
       Tags:
         - Key: Project
           Value: scout
 
-  DnsRecord:
+  PrPreviewFrontendDns:
     Type: AWS::Route53::RecordSet
     Properties:
       HostedZoneId: !Ref Route53HostedZoneId
@@ -88,19 +130,60 @@ Resources:
         DNSName: !GetAtt PrPreviewDistribution.DomainName
         HostedZoneId: Z2FDTNDATAQYW2  # CloudFront's global hosted zone ID (fixed value)
 
+  # -------------------------------------------------------------------------
+  # API Gateway custom domain — scout-api-pr.andreas.services
+  # No base path mappings are created here; per-PR stacks add their own
+  # (BasePath = <N>). REST API Gateway base paths are single-segment, so
+  # routes inside each PR's API are prefixed /api/... (not /<N>/api/...).
+  # Regional endpoint requires a regional ACM cert in us-east-1, which is
+  # where the shared wildcard lives.
+  # -------------------------------------------------------------------------
+  PrPreviewApiDomain:
+    Type: AWS::ApiGateway::DomainName
+    Properties:
+      DomainName: scout-api-pr.andreas.services
+      RegionalCertificateArn: !Ref AcmCertificateArn
+      EndpointConfiguration:
+        Types: [REGIONAL]
+      SecurityPolicy: TLS_1_2
+
+  PrPreviewApiDns:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref Route53HostedZoneId
+      Name: scout-api-pr.andreas.services.
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt PrPreviewApiDomain.RegionalDomainName
+        HostedZoneId: !GetAtt PrPreviewApiDomain.RegionalHostedZoneId
+
 Outputs:
   S3BucketName:
     Description: S3 bucket hosting all PR preview frontends.
     Value: !Ref PrPreviewBucket
+    Export:
+      Name: scout-pr-preview-s3-bucket
 
   CloudFrontDistributionId:
     Description: CloudFront distribution ID (used for cache invalidation).
     Value: !Ref PrPreviewDistribution
+    Export:
+      Name: scout-pr-preview-cf-dist-id
 
   CloudFrontURL:
     Description: Raw CloudFront URL for the PR preview distribution.
     Value: !Sub "https://${PrPreviewDistribution.DomainName}"
 
   PreviewBaseURL:
-    Description: Base URL for PR previews.
+    Description: Base URL for PR frontends. Each PR lives under /<N>/app/.
     Value: https://scout-pr.andreas.services
+
+  ApiDomainName:
+    Description: Custom domain name for PR preview API Gateway.
+    Value: !Ref PrPreviewApiDomain
+    Export:
+      Name: scout-pr-preview-api-domain
+
+  ApiBaseURL:
+    Description: Base URL for PR APIs. Each PR lives under /<N>/api/.
+    Value: https://scout-api-pr.andreas.services

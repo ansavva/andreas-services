@@ -1,0 +1,352 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Scout per-PR ephemeral stack (scout-pr-<N>).
+
+  Stands up a throwaway backend for a single pull request:
+    - DynamoDB table           scout-events-pr-<N>     (DeletionPolicy: Delete)
+    - Lambda events-api        scout-events-api-pr-<N>
+    - REST API Gateway with    /api/events, /api/events/{id}, /api/{proxy+}
+    - BasePathMapping (<N>)    on the shared scout-api-pr.andreas.services
+    - Fresh Cognito User Pool + Client scoped to this PR
+
+  The frontend bundle is published by the PR-preview GitHub Actions workflow
+  into the shared s3://scout-pr-previews-<account>/<N>/app/ prefix; it is not
+  owned by this stack.
+
+Parameters:
+  PrNumber:
+    Type: String
+    Description: Pull request number used as the resource suffix and API base path.
+    AllowedPattern: "^[0-9]+$"
+
+  LambdaCodeBucket:
+    Type: String
+    Description: S3 bucket that holds Lambda deployment zip files.
+
+  EventsApiZipKey:
+    Type: String
+    Description: >
+      S3 key under LambdaCodeBucket for the events-api Lambda zip for this PR
+      (e.g. pr/42/events-api.zip).
+
+  SharedApiDomainName:
+    Type: String
+    Default: scout-api-pr.andreas.services
+    Description: >
+      The API Gateway custom domain owned by the shared scout-pr-preview stack.
+      This stack attaches a BasePathMapping (BasePath = PrNumber) to it.
+
+  FrontendBaseUrl:
+    Type: String
+    Default: https://scout-pr.andreas.services
+    Description: >
+      Base URL where the PR frontend is hosted. The Cognito client is
+      configured with {FrontendBaseUrl}/{PrNumber}/app as the callback URL.
+
+Resources:
+
+  # -------------------------------------------------------------------------
+  # DynamoDB — scoped to this PR, deleted on stack teardown
+  # -------------------------------------------------------------------------
+  EventsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TableName: !Sub "scout-events-pr-${PrNumber}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: event_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: event_id
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: Project
+          Value: scout
+        - Key: PrNumber
+          Value: !Ref PrNumber
+
+  # -------------------------------------------------------------------------
+  # IAM — per-PR Lambda execution role (scoped to the per-PR table)
+  # -------------------------------------------------------------------------
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "scout-pr-${PrNumber}-lambda-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                Resource: !GetAtt EventsTable.Arn
+
+  # -------------------------------------------------------------------------
+  # Lambda — events-api for this PR
+  # The email-processor is intentionally omitted from PR stacks to avoid
+  # burning API quota; PR previews read whatever sample data is seeded into
+  # the per-PR DynamoDB table (or just show an empty state).
+  # -------------------------------------------------------------------------
+  EventsApiFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "scout-events-api-pr-${PrNumber}"
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 128
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref EventsApiZipKey
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref EventsTable
+      Tags:
+        - Key: Project
+          Value: scout
+        - Key: PrNumber
+          Value: !Ref PrNumber
+
+  # -------------------------------------------------------------------------
+  # API Gateway — routes mirror production (/api/...)
+  # Base path mapping strips the /<N> segment, so the Lambda receives
+  # event.path = "/api/events" for both prod and PR requests.
+  # -------------------------------------------------------------------------
+  EventsApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub "scout-pr-${PrNumber}-api"
+      Description: !Sub "REST API for Scout PR #${PrNumber}."
+      EndpointConfiguration:
+        Types: [REGIONAL]
+
+  ApiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref EventsApi
+      ParentId: !GetAtt EventsApi.RootResourceId
+      PathPart: api
+
+  ApiEventsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref EventsApi
+      ParentId: !Ref ApiResource
+      PathPart: events
+
+  ApiEventByIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref EventsApi
+      ParentId: !Ref ApiEventsResource
+      PathPart: "{id}"
+
+  ApiEventsGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref EventsApi
+      ResourceId: !Ref ApiEventsResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
+          - FnArn: !GetAtt EventsApiFunction.Arn
+
+  ApiEventsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref EventsApi
+      ResourceId: !Ref ApiEventsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
+          - FnArn: !GetAtt EventsApiFunction.Arn
+
+  ApiEventByIdGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref EventsApi
+      ResourceId: !Ref ApiEventByIdResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
+          - FnArn: !GetAtt EventsApiFunction.Arn
+
+  ApiEventByIdOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref EventsApi
+      ResourceId: !Ref ApiEventByIdResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
+          - FnArn: !GetAtt EventsApiFunction.Arn
+
+  ApiProxyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref EventsApi
+      ParentId: !Ref ApiResource
+      PathPart: "{proxy+}"
+
+  ApiProxyAnyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref EventsApi
+      ResourceId: !Ref ApiProxyResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
+          - FnArn: !GetAtt EventsApiFunction.Arn
+
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - ApiEventsGetMethod
+      - ApiEventsOptionsMethod
+      - ApiEventByIdGetMethod
+      - ApiEventByIdOptionsMethod
+      - ApiProxyAnyMethod
+    Properties:
+      RestApiId: !Ref EventsApi
+
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref EventsApi
+      DeploymentId: !Ref ApiDeployment
+      StageName: prod
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingBurstLimit: 20
+          ThrottlingRateLimit: 5
+
+  ApiGatewayLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt EventsApiFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${EventsApi}/*"
+
+  # -------------------------------------------------------------------------
+  # Attach this PR's API to the shared custom domain under /<N>/
+  # -------------------------------------------------------------------------
+  ApiBasePathMapping:
+    Type: AWS::ApiGateway::BasePathMapping
+    DependsOn: ApiStage
+    Properties:
+      DomainName: !Ref SharedApiDomainName
+      BasePath: !Ref PrNumber
+      RestApiId: !Ref EventsApi
+      Stage: !Ref ApiStage
+
+  # -------------------------------------------------------------------------
+  # Cognito — fresh user pool per PR, callback tied to the preview URL
+  # -------------------------------------------------------------------------
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      UserPoolName: !Sub "scout-pr-${PrNumber}"
+      AutoVerifiedAttributes: [email]
+      UsernameAttributes: [email]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: false
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+      UserPoolTags:
+        Project: scout
+        PrNumber: !Ref PrNumber
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "scout-pr-${PrNumber}-web"
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [email, openid, profile]
+      AllowedOAuthFlowsUserPoolClient: true
+      SupportedIdentityProviders: [COGNITO]
+      CallbackURLs:
+        - !Sub "${FrontendBaseUrl}/${PrNumber}/app"
+      LogoutURLs:
+        - !Sub "${FrontendBaseUrl}/${PrNumber}/app"
+
+Outputs:
+  ApiEndpoint:
+    Description: Public API URL for this PR (via the shared custom domain).
+    Value: !Sub "https://${SharedApiDomainName}/${PrNumber}/api"
+
+  ApiGatewayInvokeURL:
+    Description: Raw execute-api URL (useful for debugging DNS propagation).
+    Value: !Sub "https://${EventsApi}.execute-api.${AWS::Region}.amazonaws.com/prod/api"
+
+  DynamoDBTableName:
+    Description: Name of the per-PR DynamoDB events table.
+    Value: !Ref EventsTable
+
+  UserPoolId:
+    Description: Cognito User Pool ID for this PR.
+    Value: !Ref UserPool
+
+  UserPoolClientId:
+    Description: Cognito App Client ID for this PR.
+    Value: !Ref UserPoolClient
+
+  FrontendURL:
+    Description: Public frontend URL for this PR.
+    Value: !Sub "${FrontendBaseUrl}/${PrNumber}/app"

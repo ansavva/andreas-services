@@ -197,18 +197,18 @@ if [[ "${SKIP_FRONTEND}" == "false" ]]; then
   cd "${PROJECT_ROOT}/frontend"
   [[ ! -d node_modules ]] && npm install
 
-  VITE_API_URL="${API_ENDPOINT}" npm run build
+  VITE_API_URL="${API_ENDPOINT}" VITE_BASE="/app/" npm run build
 
   section "Deploying frontend to S3"
 
   # Hashed assets — long-lived cache
-  aws s3 sync dist/ "s3://${S3_BUCKET}/" \
+  aws s3 sync dist/ "s3://${S3_BUCKET}/app/" \
     --region "${REGION}" --delete \
     --cache-control "public,max-age=31536000,immutable" \
     --exclude "*.html"
 
   # HTML — always revalidate
-  aws s3 sync dist/ "s3://${S3_BUCKET}/" \
+  aws s3 sync dist/ "s3://${S3_BUCKET}/app/" \
     --region "${REGION}" \
     --cache-control "no-cache,no-store,must-revalidate" \
     --include "*.html"

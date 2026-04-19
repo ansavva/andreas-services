@@ -1,0 +1,213 @@
+name: PR Preview – Scout
+
+# Spins up an ephemeral per-PR environment for Scout:
+#   - CloudFormation stack scout-pr-<N> (Lambda + API GW + DynamoDB + Cognito)
+#   - BasePathMapping attaching the PR's API to scout-api-pr.andreas.services
+#   - Frontend published into s3://<shared-preview-bucket>/<N>/app/ and served
+#     at scout-pr.andreas.services/<N>/app
+#
+# Teardown on close is handled by .github/workflows/teardown-pr-envs.yml.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'scout/**'
+      - '.github/workflows/deploy-pr-scout.yml'
+
+env:
+  AWS_REGION: us-east-1
+  LAMBDA_CODE_BUCKET: andreas-services-lambda-code
+  STACK_NAME: scout-pr-${{ github.event.pull_request.number }}
+  PR_NUMBER: ${{ github.event.pull_request.number }}
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  deploy-preview:
+    name: Deploy PR Preview
+    runs-on: ubuntu-latest
+    environment: scout-pr
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ------------------------------------------------------------------
+      # Build + upload the events-api Lambda zip to a per-PR S3 key
+      # ------------------------------------------------------------------
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Package events-api Lambda
+        run: |
+          cd scout/lambda/events-api
+          mkdir -p package
+          cp lambda_function.py package/
+          cd package && zip -q -r ../events-api.zip .
+
+      - name: Upload Lambda zip to S3
+        run: |
+          aws s3 cp scout/lambda/events-api/events-api.zip \
+            "s3://${{ env.LAMBDA_CODE_BUCKET }}/pr/${{ env.PR_NUMBER }}/events-api.zip"
+
+      # ------------------------------------------------------------------
+      # Deploy the per-PR CloudFormation stack
+      # ------------------------------------------------------------------
+      - name: Read shared PR preview API domain from SSM
+        id: preview
+        run: |
+          API_DOMAIN=$(aws ssm get-parameter \
+            --name /scout/pr-preview/api-domain \
+            --query Parameter.Value --output text)
+          echo "api_domain=${API_DOMAIN}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy per-PR CloudFormation stack
+        run: |
+          aws cloudformation deploy \
+            --template-file scout/cloudformation-pr.yaml \
+            --stack-name "${{ env.STACK_NAME }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "PrNumber=${{ env.PR_NUMBER }}" \
+              "LambdaCodeBucket=${{ env.LAMBDA_CODE_BUCKET }}" \
+              "EventsApiZipKey=pr/${{ env.PR_NUMBER }}/events-api.zip" \
+              "SharedApiDomainName=${{ steps.preview.outputs.api_domain }}"
+
+      - name: Force Lambda to pick up the latest zip
+        run: |
+          aws lambda update-function-code \
+            --function-name "scout-events-api-pr-${{ env.PR_NUMBER }}" \
+            --s3-bucket "${{ env.LAMBDA_CODE_BUCKET }}" \
+            --s3-key "pr/${{ env.PR_NUMBER }}/events-api.zip" \
+            --region "${{ env.AWS_REGION }}" \
+            --output table \
+            --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
+
+      - name: Read PR stack outputs
+        id: outputs
+        run: |
+          get_output() {
+            aws cloudformation describe-stacks \
+              --stack-name "${{ env.STACK_NAME }}" \
+              --query "Stacks[0].Outputs[?OutputKey=='${1}'].OutputValue | [0]" \
+              --output text
+          }
+          echo "api_url=$(get_output ApiEndpoint)"           >> "$GITHUB_OUTPUT"
+          echo "pool_id=$(get_output UserPoolId)"            >> "$GITHUB_OUTPUT"
+          echo "client_id=$(get_output UserPoolClientId)"    >> "$GITHUB_OUTPUT"
+          echo "frontend_url=$(get_output FrontendURL)"      >> "$GITHUB_OUTPUT"
+
+      # ------------------------------------------------------------------
+      # Build + publish the frontend under /<N>/app/
+      # ------------------------------------------------------------------
+      - name: Set up Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: npm
+          cache-dependency-path: scout/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd scout/frontend && npm ci
+
+      - name: Build frontend
+        env:
+          VITE_BASE: /${{ env.PR_NUMBER }}/app/
+          VITE_API_URL: ${{ steps.outputs.outputs.api_url }}
+          VITE_COGNITO_USER_POOL_ID: ${{ steps.outputs.outputs.pool_id }}
+          VITE_COGNITO_CLIENT_ID: ${{ steps.outputs.outputs.client_id }}
+        run: cd scout/frontend && npm run build
+
+      - name: Read shared preview bucket + distribution from SSM
+        id: preview_infra
+        run: |
+          BUCKET=$(aws ssm get-parameter \
+            --name /scout/pr-preview/s3-bucket \
+            --query Parameter.Value --output text)
+          DIST=$(aws ssm get-parameter \
+            --name /scout/pr-preview/cf-dist-id \
+            --query Parameter.Value --output text)
+          echo "bucket=${BUCKET}" >> "$GITHUB_OUTPUT"
+          echo "dist=${DIST}"     >> "$GITHUB_OUTPUT"
+
+      - name: Sync hashed assets (long cache)
+        run: |
+          aws s3 sync scout/frontend/dist/ \
+            "s3://${{ steps.preview_infra.outputs.bucket }}/${{ env.PR_NUMBER }}/app/" \
+            --region "${{ env.AWS_REGION }}" \
+            --delete \
+            --cache-control "public,max-age=31536000,immutable" \
+            --exclude "*.html"
+
+      - name: Sync HTML (no cache)
+        run: |
+          aws s3 sync scout/frontend/dist/ \
+            "s3://${{ steps.preview_infra.outputs.bucket }}/${{ env.PR_NUMBER }}/app/" \
+            --region "${{ env.AWS_REGION }}" \
+            --cache-control "no-cache,no-store,must-revalidate" \
+            --include "*.html"
+
+      - name: Invalidate CloudFront for this PR
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ steps.preview_infra.outputs.dist }}" \
+            --paths "/${{ env.PR_NUMBER }}/*"
+
+      # ------------------------------------------------------------------
+      # Comment the PR with the preview URLs
+      # ------------------------------------------------------------------
+      - name: Comment preview URLs on PR
+        uses: actions/github-script@v7
+        env:
+          FRONTEND_URL: ${{ steps.outputs.outputs.frontend_url }}
+          API_URL: ${{ steps.outputs.outputs.api_url }}
+          POOL_ID: ${{ steps.outputs.outputs.pool_id }}
+          CLIENT_ID: ${{ steps.outputs.outputs.client_id }}
+        with:
+          script: |
+            const marker = '<!-- scout-pr-preview -->';
+            const body = [
+              marker,
+              '### Scout PR preview',
+              '',
+              `- Frontend: ${process.env.FRONTEND_URL}`,
+              `- API:      ${process.env.API_URL}`,
+              '',
+              '<details><summary>Cognito (fresh per-PR pool)</summary>',
+              '',
+              `- User Pool ID: \`${process.env.POOL_ID}\``,
+              `- App Client ID: \`${process.env.CLIENT_ID}\``,
+              '',
+              '</details>',
+              '',
+              '_Environment is torn down automatically when the PR closes._',
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(c => c.body && c.body.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number, body,
+              });
+            }

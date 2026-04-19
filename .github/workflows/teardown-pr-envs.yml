@@ -67,7 +67,7 @@ jobs:
             --name /scout/pr-preview/s3-bucket \
             --query Parameter.Value --output text 2>/dev/null || echo "")
           if [ -n "${PR_PREVIEW_BUCKET}" ]; then
-            aws s3 rm "s3://${PR_PREVIEW_BUCKET}/pr/${{ github.event.pull_request.number }}/" \
+            aws s3 rm "s3://${PR_PREVIEW_BUCKET}/${{ github.event.pull_request.number }}/" \
               --recursive || true
           fi
 
@@ -79,7 +79,7 @@ jobs:
           if [ -n "${PR_PREVIEW_CF_DIST}" ]; then
             aws cloudfront create-invalidation \
               --distribution-id "${PR_PREVIEW_CF_DIST}" \
-              --paths "/pr/${{ github.event.pull_request.number }}/*"
+              --paths "/${{ github.event.pull_request.number }}/*"
           fi
 
       - name: Skip (stack not found)

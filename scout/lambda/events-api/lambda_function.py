@@ -4,9 +4,13 @@ Events API Lambda Function
 Serves a REST API via API Gateway for querying NYC events stored in DynamoDB.
 
 Endpoints:
-  GET  /events          - List events (optional ?upcoming=true filter)
-  GET  /events/{id}     - Get a single event by event_id
-  OPTIONS /*            - CORS preflight
+  GET  /api/events          - List events (optional ?upcoming=true filter)
+  GET  /api/events/{id}     - Get a single event by event_id
+  OPTIONS /*                - CORS preflight
+
+Route prefix is /api/... so prod (scout-api.andreas.services) and PR previews
+(scout-api-pr.andreas.services/<N>) share the same route definitions — in both
+cases the API Gateway base path mapping strips everything before /api.
 """
 
 import json
@@ -131,13 +135,13 @@ def route_request(http_method, path, query_params):
         path = path.replace("//", "/")
 
     if http_method == "GET":
-        if path == "/events":
+        if path == "/api/events":
             upcoming = (query_params or {}).get("upcoming", "").lower() == "true"
             events = get_all_events(upcoming_only=upcoming)
             return ok({"events": events, "count": len(events)})
 
-        if path.startswith("/events/"):
-            event_id = path[len("/events/"):]
+        if path.startswith("/api/events/"):
+            event_id = path[len("/api/events/"):]
             if not event_id:
                 return bad_request("Missing event ID")
             event = get_event_by_id(event_id)
@@ -157,7 +161,7 @@ def lambda_handler(event, context):
 
     try:
         http_method = event.get("httpMethod", "GET")
-        path = event.get("path", "/events")
+        path = event.get("path", "/api/events")
         query_params = event.get("queryStringParameters") or {}
         return route_request(http_method, path, query_params)
 

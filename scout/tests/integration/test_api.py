@@ -2,8 +2,10 @@
 Integration tests for the Scout events API.
 
 These tests hit a live API Gateway endpoint and require the SCOUT_API_URL
-environment variable to be set to the base URL (without trailing slash), e.g.:
-  SCOUT_API_URL=https://abc123.execute-api.us-east-1.amazonaws.com/prod
+environment variable to be set to the API base URL (including the /api
+prefix, without trailing slash), e.g.:
+  SCOUT_API_URL=https://scout-api.andreas.services/api
+  SCOUT_API_URL=https://scout-api-pr.andreas.services/42/api
 
 Run after deploying an ephemeral PR stack:
   SCOUT_API_URL=<url> pytest scout/tests/integration/

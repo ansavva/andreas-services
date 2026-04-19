@@ -2,7 +2,7 @@
 
 ## What this service does
 
-Aggregates NYC event listings from Gmail subscriptions and displays them at `scout.andreas.services`:
+Aggregates NYC event listings from Gmail subscriptions and displays them at `scout.andreas.services/app`:
 
 1. **EventBridge** triggers `email-processor` Lambda every Monday at 08:00 UTC
 2. Lambda fetches emails with the **"Events"** Gmail label, extracts structured event data via Claude (claude-haiku-4-5), stores results in DynamoDB
@@ -13,8 +13,10 @@ Aggregates NYC event listings from Gmail subscriptions and displays them at `sco
 
 ```
 scout/
-├── cloudformation.yaml          # AWS infrastructure (DynamoDB, Lambdas, API GW, S3, CloudFront, Route53)
-├── deploy.sh                    # Local/manual end-to-end deployment script
+├── cloudformation.yaml             # Prod infrastructure (DynamoDB, Lambdas, API GW at scout-api.andreas.services, S3, CloudFront at scout.andreas.services/app, Route53)
+├── cloudformation-pr-preview.yaml  # Shared PR preview infra (scout-pr.andreas.services bucket+CDN + scout-api-pr.andreas.services custom domain) — deployed once
+├── cloudformation-pr.yaml          # Per-PR stack scout-pr-<N> (Lambda + API GW + DynamoDB-pr-<N> + Cognito pool + BasePathMapping)
+├── deploy.sh                       # Local/manual end-to-end deployment script
 ├── setup-frontend.sh            # Frontend local dev bootstrap
 ├── .env.example                 # Required env var template (copy to .env for local use)
 ├── lambda/
@@ -88,9 +90,15 @@ For local use: `cp .env.example .env` and fill in values.
 
 - **Trigger**: API Gateway
 - **Runtime**: Python 3.11, 128 MB, 30 s timeout
-- `GET /events` — list all; `?upcoming=true` filters to date ≥ today
-- `GET /events/{id}` — fetch single event by `event_id`
+- `GET /api/events` — list all; `?upcoming=true` filters to date ≥ today
+- `GET /api/events/{id}` — fetch single event by `event_id`
 - `OPTIONS /*` — CORS preflight
+
+Routes live under `/api/...` so the same Lambda code serves both prod
+(`scout-api.andreas.services/api/events`) and PR previews
+(`scout-api-pr.andreas.services/<N>/api/events`). In both cases the API
+Gateway base path mapping strips everything before `/api` before the Lambda
+sees the request.
 
 ## DynamoDB Schema
 
@@ -127,6 +135,44 @@ See `docs/SETUP.md` for the full guide including Gmail OAuth setup.
 ## Local Frontend Development
 
 ```bash
-./setup-frontend.sh https://your-api-id.execute-api.us-east-1.amazonaws.com/prod
+./setup-frontend.sh https://scout-api.andreas.services/api   # or any /api-suffixed URL
 cd frontend && npm run dev
 ```
+
+`setup-frontend.sh` writes `frontend/.env.local` with `VITE_API_URL` and
+`VITE_BASE=/app/`.
+
+## PR Previews
+
+Every `pull_request` (opened / synchronize / reopened) whose diff touches
+`scout/**` spins up an ephemeral environment via
+`.github/workflows/deploy-pr-scout.yml`:
+
+| | Prod | PR `<N>` |
+|---|---|---|
+| Frontend | `scout.andreas.services/app` | `scout-pr.andreas.services/<N>/app` |
+| API      | `scout-api.andreas.services/api` | `scout-api-pr.andreas.services/<N>/api` |
+
+The shared PR-preview infrastructure (one S3 bucket, one CloudFront
+distribution with a CloudFront Function for SPA fallback, and one API Gateway
+custom domain) lives in `cloudformation-pr-preview.yaml` and is deployed
+once by `deploy-infra-scout.yml`.
+
+Per-PR resources live in `cloudformation-pr.yaml` (stack `scout-pr-<N>`):
+Lambda + REST API with `/api/...` routes, a DynamoDB table suffixed
+`-pr-<N>` (DeletionPolicy: Delete), a fresh Cognito User Pool + Client with
+the PR's preview URL as callback, and a `BasePathMapping` that attaches the
+PR's API to the shared custom domain under `/<N>`.
+
+Closing the PR triggers `.github/workflows/teardown-pr-envs.yml`, which
+deletes the stack, empties the S3 prefix, and invalidates CloudFront.
+
+### Constraints
+- REST API Gateway `BasePathMapping` base paths are a **single path segment**
+  — that's why the base path is just `<N>` and the `/api/` prefix lives
+  inside the API itself.
+- Regional API Gateway custom domains require a regional ACM cert; the shared
+  `*.andreas.services` wildcard lives in `us-east-1`, which satisfies that.
+- The shared GitHub Actions OIDC trust policy (`terraform/envs/shared`)
+  already allows `repo:<org>/<repo>:*`, so `pull_request` refs can assume
+  the CI role without any changes.

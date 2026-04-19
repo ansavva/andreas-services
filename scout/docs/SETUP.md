@@ -142,7 +142,9 @@ At the end you'll see:
 ### Test the API
 
 ```bash
-curl https://<api-id>.execute-api.us-east-1.amazonaws.com/prod/events
+curl https://scout-api.andreas.services/api/events
+# or, before the custom domain propagates:
+curl https://<api-id>.execute-api.us-east-1.amazonaws.com/prod/api/events
 ```
 
 ### Manually trigger the email processor

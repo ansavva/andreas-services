@@ -1,8 +1,9 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
   Scout – serverless NYC events aggregator stack.
-  Includes DynamoDB, two Lambda functions, API Gateway, EventBridge,
-  S3 static site, and CloudFront CDN at scout.andreas.services.
+  Includes DynamoDB, two Lambda functions, API Gateway (custom domain
+  scout-api.andreas.services), EventBridge, S3 static site, and CloudFront CDN
+  at scout.andreas.services serving the SPA under /app.
   ACM certificate and Route53 zone are owned by the shared terraform/ stack.
 
 # ---------------------------------------------------------------------------
@@ -56,54 +57,20 @@ Parameters:
   MaxEmailsPerRun:
     Type: Number
     Default: 20
-    Description: >
-      Maximum number of emails processed per Lambda invocation.
-      Set to 3 for PR environments to limit OpenAI API usage.
-
-  DeployFrontend:
-    Type: String
-    Default: "true"
-    AllowedValues:
-      - "true"
-      - "false"
-    Description: >
-      Set to false to skip all frontend resources (S3, CloudFront, Route53).
-      API Gateway is always deployed.
-
-  DeployDns:
-    Type: String
-    Default: "true"
-    AllowedValues:
-      - "true"
-      - "false"
-    Description: >
-      Set to false for PR/ephemeral environments to skip the Route53 DNS record
-      and use the CloudFront default certificate instead of the ACM wildcard.
-      Requires DeployFrontend=true.
+    Description: Maximum number of emails processed per Lambda invocation.
 
   # Resolved from the shared terraform/ stack at deploy time — never hard-code.
   AcmCertificateArn:
     Type: String
-    Default: ""
     Description: >
       ARN of the shared *.andreas.services ACM wildcard certificate (us-east-1).
-      Owned by terraform/envs/shared. Required when DeployDns=true.
+      Owned by terraform/envs/shared.
 
   Route53HostedZoneId:
     Type: String
-    Default: ""
     Description: >
       ID of the shared andreas.services Route53 hosted zone.
-      Owned by terraform/envs/shared. Required when DeployDns=true.
-
-# ---------------------------------------------------------------------------
-# Conditions
-# ---------------------------------------------------------------------------
-Conditions:
-  ShouldDeployFrontend: !Equals [!Ref DeployFrontend, "true"]
-  ShouldDeployDns: !And
-    - !Equals [!Ref DeployFrontend, "true"]
-    - !Equals [!Ref DeployDns, "true"]
+      Owned by terraform/envs/shared.
 
 # ---------------------------------------------------------------------------
 # Resources
@@ -234,7 +201,10 @@ Resources:
       SourceArn: !GetAtt WeeklyProcessorRule.Arn
 
   # -------------------------------------------------------------------------
-  # API Gateway
+  # API Gateway — routes live under /api/... so the same Lambda code works for
+  # prod (scout-api.andreas.services/api/...) and PRs
+  # (scout-api-pr.andreas.services/<N>/api/...); in both cases the Lambda
+  # receives event.path = "/api/events" (stage + base path are stripped).
   # -------------------------------------------------------------------------
   EventsApi:
     Type: AWS::ApiGateway::RestApi
@@ -244,25 +214,32 @@ Resources:
       EndpointConfiguration:
         Types: [REGIONAL]
 
-  EventsResource:
+  ApiResource:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref EventsApi
       ParentId: !GetAtt EventsApi.RootResourceId
+      PathPart: api
+
+  ApiEventsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref EventsApi
+      ParentId: !Ref ApiResource
       PathPart: events
 
-  EventByIdResource:
+  ApiEventByIdResource:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref EventsApi
-      ParentId: !Ref EventsResource
+      ParentId: !Ref ApiEventsResource
       PathPart: "{id}"
 
-  EventsGetMethod:
+  ApiEventsGetMethod:
     Type: AWS::ApiGateway::Method
     Properties:
       RestApiId: !Ref EventsApi
-      ResourceId: !Ref EventsResource
+      ResourceId: !Ref ApiEventsResource
       HttpMethod: GET
       AuthorizationType: NONE
       Integration:
@@ -272,11 +249,11 @@ Resources:
           - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
           - FnArn: !GetAtt EventsApiFunction.Arn
 
-  EventsOptionsMethod:
+  ApiEventsOptionsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
       RestApiId: !Ref EventsApi
-      ResourceId: !Ref EventsResource
+      ResourceId: !Ref ApiEventsResource
       HttpMethod: OPTIONS
       AuthorizationType: NONE
       Integration:
@@ -286,11 +263,11 @@ Resources:
           - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
           - FnArn: !GetAtt EventsApiFunction.Arn
 
-  EventByIdGetMethod:
+  ApiEventByIdGetMethod:
     Type: AWS::ApiGateway::Method
     Properties:
       RestApiId: !Ref EventsApi
-      ResourceId: !Ref EventByIdResource
+      ResourceId: !Ref ApiEventByIdResource
       HttpMethod: GET
       AuthorizationType: NONE
       Integration:
@@ -300,11 +277,11 @@ Resources:
           - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
           - FnArn: !GetAtt EventsApiFunction.Arn
 
-  EventByIdOptionsMethod:
+  ApiEventByIdOptionsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
       RestApiId: !Ref EventsApi
-      ResourceId: !Ref EventByIdResource
+      ResourceId: !Ref ApiEventByIdResource
       HttpMethod: OPTIONS
       AuthorizationType: NONE
       Integration:
@@ -314,18 +291,18 @@ Resources:
           - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
           - FnArn: !GetAtt EventsApiFunction.Arn
 
-  ProxyResource:
+  ApiProxyResource:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref EventsApi
-      ParentId: !GetAtt EventsApi.RootResourceId
+      ParentId: !Ref ApiResource
       PathPart: "{proxy+}"
 
-  ProxyAnyMethod:
+  ApiProxyAnyMethod:
     Type: AWS::ApiGateway::Method
     Properties:
       RestApiId: !Ref EventsApi
-      ResourceId: !Ref ProxyResource
+      ResourceId: !Ref ApiProxyResource
       HttpMethod: ANY
       AuthorizationType: NONE
       Integration:
@@ -335,14 +312,14 @@ Resources:
           - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
           - FnArn: !GetAtt EventsApiFunction.Arn
 
-  ApiDeploymentV2:
+  ApiDeploymentV3:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
-      - EventsGetMethod
-      - EventsOptionsMethod
-      - EventByIdGetMethod
-      - EventByIdOptionsMethod
-      - ProxyAnyMethod
+      - ApiEventsGetMethod
+      - ApiEventsOptionsMethod
+      - ApiEventByIdGetMethod
+      - ApiEventByIdOptionsMethod
+      - ApiProxyAnyMethod
     Properties:
       RestApiId: !Ref EventsApi
 
@@ -350,7 +327,7 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref EventsApi
-      DeploymentId: !Ref ApiDeploymentV2
+      DeploymentId: !Ref ApiDeploymentV3
       StageName: prod
       MethodSettings:
         - ResourcePath: "/*"
@@ -367,11 +344,42 @@ Resources:
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${EventsApi}/*"
 
   # -------------------------------------------------------------------------
-  # S3 – Static website bucket (production only)
+  # API Gateway custom domain — scout-api.andreas.services
+  # Default (empty) base path mapping, so scout-api.andreas.services/api/events
+  # resolves to /api/events inside the API.
+  # -------------------------------------------------------------------------
+  ApiCustomDomain:
+    Type: AWS::ApiGateway::DomainName
+    Properties:
+      DomainName: scout-api.andreas.services
+      RegionalCertificateArn: !Ref AcmCertificateArn
+      EndpointConfiguration:
+        Types: [REGIONAL]
+      SecurityPolicy: TLS_1_2
+
+  ApiBasePathMapping:
+    Type: AWS::ApiGateway::BasePathMapping
+    DependsOn: ApiStage
+    Properties:
+      DomainName: !Ref ApiCustomDomain
+      RestApiId: !Ref EventsApi
+      Stage: !Ref ApiStage
+
+  ApiDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref Route53HostedZoneId
+      Name: scout-api.andreas.services.
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApiCustomDomain.RegionalDomainName
+        HostedZoneId: !GetAtt ApiCustomDomain.RegionalHostedZoneId
+
+  # -------------------------------------------------------------------------
+  # S3 – Static website bucket
   # -------------------------------------------------------------------------
   WebsiteBucket:
     Type: AWS::S3::Bucket
-    Condition: ShouldDeployFrontend
     Properties:
       BucketName: !Sub "${ProjectName}-website-${AWS::AccountId}"
       PublicAccessBlockConfiguration:
@@ -388,7 +396,6 @@ Resources:
 
   WebsiteBucketPolicy:
     Type: AWS::S3::BucketPolicy
-    Condition: ShouldDeployFrontend
     Properties:
       Bucket: !Ref WebsiteBucket
       PolicyDocument:
@@ -400,29 +407,60 @@ Resources:
             Resource: !Sub "${WebsiteBucket.Arn}/*"
 
   # -------------------------------------------------------------------------
-  # CloudFront – serves scout.andreas.services (production only)
+  # CloudFront Function — SPA fallback under /app/*
+  # Any request under /app/ whose final segment has no file extension is
+  # rewritten to /app/index.html. The root / is redirected to /app/ so the
+  # bare hostname still lands on the SPA.
+  # -------------------------------------------------------------------------
+  SpaFallbackFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub "${ProjectName}-spa-fallback"
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Rewrite /app/* to /app/index.html and redirect / to /app/
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          var uri = request.uri;
+          if (uri === '/' || uri === '') {
+            return {
+              statusCode: 302,
+              statusDescription: 'Found',
+              headers: { location: { value: '/app/' } }
+            };
+          }
+          var match = uri.match(/^\/app(\/.*)?$/);
+          if (!match) {
+            return request;
+          }
+          var rest = match[1] || '';
+          var lastSegment = rest.split('/').pop();
+          if (!lastSegment || lastSegment.indexOf('.') === -1) {
+            request.uri = '/app/index.html';
+          }
+          return request;
+        }
+
+  # -------------------------------------------------------------------------
+  # CloudFront – serves scout.andreas.services/app
   # Uses the shared *.andreas.services ACM certificate from terraform/
   # -------------------------------------------------------------------------
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
-    Condition: ShouldDeployFrontend
     Properties:
       DistributionConfig:
         Enabled: true
         Comment: Scout website CDN
-        DefaultRootObject: index.html
         HttpVersion: http2
         PriceClass: PriceClass_100
-        Aliases: !If
-          - ShouldDeployDns
-          - [scout.andreas.services]
-          - !Ref AWS::NoValue
-        ViewerCertificate: !If
-          - ShouldDeployDns
-          - AcmCertificateArn: !Ref AcmCertificateArn
-            SslSupportMethod: sni-only
-            MinimumProtocolVersion: TLSv1.2_2021
-          - CloudFrontDefaultCertificate: true
+        Aliases:
+          - scout.andreas.services
+        ViewerCertificate:
+          AcmCertificateArn: !Ref AcmCertificateArn
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
         Origins:
           - Id: S3Origin
             DomainName: !Sub "${WebsiteBucket}.s3-website-${AWS::Region}.amazonaws.com"
@@ -434,24 +472,18 @@ Resources:
           ViewerProtocolPolicy: redirect-to-https
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized
           Compress: true
-        CustomErrorResponses:
-          - ErrorCode: 404
-            ResponseCode: 200
-            ResponsePagePath: /index.html
-          - ErrorCode: 403
-            ResponseCode: 200
-            ResponsePagePath: /index.html
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt SpaFallbackFunction.FunctionARN
       Tags:
         - Key: Project
           Value: !Ref ProjectName
 
   # -------------------------------------------------------------------------
-  # Route53 – DNS alias record for scout.andreas.services (production only)
-  # The hosted zone is owned by terraform/envs/shared — we only add a record.
+  # Route53 – DNS alias for scout.andreas.services → CloudFront
   # -------------------------------------------------------------------------
   DnsRecord:
     Type: AWS::Route53::RecordSet
-    Condition: ShouldDeployDns
     Properties:
       HostedZoneId: !Ref Route53HostedZoneId
       Name: scout.andreas.services.
@@ -465,25 +497,26 @@ Resources:
 # ---------------------------------------------------------------------------
 Outputs:
   WebsiteURL:
-    Condition: ShouldDeployFrontend
     Description: Custom domain URL for Scout.
-    Value: https://scout.andreas.services
+    Value: https://scout.andreas.services/app
     Export:
       Name: !Sub "${ProjectName}-website-url"
 
   CloudFrontURL:
-    Condition: ShouldDeployFrontend
     Description: Raw CloudFront URL (useful before DNS propagates).
     Value: !Sub "https://${CloudFrontDistribution.DomainName}"
 
   ApiEndpoint:
-    Description: API Gateway endpoint URL.
-    Value: !Sub "https://${EventsApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+    Description: Public API endpoint (via the custom domain).
+    Value: https://scout-api.andreas.services/api
     Export:
       Name: !Sub "${ProjectName}-api-endpoint"
 
+  ApiGatewayInvokeURL:
+    Description: Raw execute-api URL (useful for debugging DNS propagation).
+    Value: !Sub "https://${EventsApi}.execute-api.${AWS::Region}.amazonaws.com/prod/api"
+
   S3BucketName:
-    Condition: ShouldDeployFrontend
     Description: Name of the S3 bucket hosting the static site.
     Value: !Ref WebsiteBucket
     Export:
@@ -496,7 +529,6 @@ Outputs:
       Name: !Sub "${ProjectName}-dynamodb-table"
 
   CloudFrontDistributionId:
-    Condition: ShouldDeployFrontend
     Description: CloudFront distribution ID (used for cache invalidation).
     Value: !Ref CloudFrontDistribution
     Export:

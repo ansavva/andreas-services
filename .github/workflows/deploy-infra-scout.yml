@@ -113,3 +113,7 @@ jobs:
           aws ssm put-parameter --overwrite --type String \
             --name /scout/pr-preview/cf-dist-id \
             --value "$(get_pr CloudFrontDistributionId)"
+
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/pr-preview/api-domain \
+            --value "$(get_pr ApiDomainName)"
