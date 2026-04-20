@@ -46,6 +46,28 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       # ------------------------------------------------------------------
+      # Fail fast if the shared preview infra has never been deployed. The
+      # per-PR stack depends on /scout/pr-preview/* SSM params written by
+      # scout-deploy-preview-infra.yml — without them we would fail deep
+      # inside the CFN deploy with a cryptic error.
+      # ------------------------------------------------------------------
+      - name: Check shared preview infra is provisioned
+        run: |
+          set -euo pipefail
+          missing=()
+          for p in s3-bucket cf-dist-id api-domain; do
+            if ! aws ssm get-parameter --name "/scout/pr-preview/${p}" \
+                --query Parameter.Value --output text >/dev/null 2>&1; then
+              missing+=("/scout/pr-preview/${p}")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing SSM params: ${missing[*]}"
+            echo "::error::scout-deploy-preview-infra.yml has never been deployed; run it first."
+            exit 1
+          fi
+
+      # ------------------------------------------------------------------
       # Build + upload the events-api Lambda zip to a per-PR S3 key
       # ------------------------------------------------------------------
       - name: Set up Python 3.11

@@ -182,7 +182,21 @@ Every `pull_request` (opened / synchronize / reopened) whose diff touches
 The shared PR-preview infrastructure (one S3 bucket, one CloudFront
 distribution with a CloudFront Function for SPA fallback, and one API Gateway
 custom domain) lives in `cloudformation-pr-preview.yaml` and is deployed
-once by `scout-deploy-preview-infra.yml`.
+once by `scout-deploy-preview-infra.yml`. Its outputs are published to SSM
+under `/scout/pr-preview/*` (s3-bucket, cf-dist-id, api-domain).
+
+### Bootstrapping preview infra
+
+On a fresh AWS account, run `scout-deploy-preview-infra.yml` manually via
+`workflow_dispatch` before opening the first PR. The per-PR deploy
+(`scout-deploy-preview-pr.yml`) starts with a **readiness-check** step that
+calls `aws ssm get-parameter` for each `/scout/pr-preview/*` value; if any
+are missing it fails immediately with:
+
+> `scout-deploy-preview-infra.yml has never been deployed; run it first.`
+
+After the shared preview stack exists, every PR touching `scout/**` can
+deploy cleanly.
 
 Per-PR resources live in `cloudformation-pr.yaml` (stack `scout-pr-<N>`):
 Lambda + REST API with `/api/...` routes, a DynamoDB table suffixed
