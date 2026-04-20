@@ -115,7 +115,10 @@ boto3.client('s3', aws_access_key_id='AKIA...', aws_secret_access_key='...')
 
 1. Create `<service>/` directory — self-contained with own backend, frontend, infra
 2. Reference shared Terraform outputs (Route53 zone, ACM cert, VPC) — do not recreate them
-3. Add GitHub Actions workflows at `.github/workflows/<service>-<action>-<env>.yml` following the storybook pattern (one file per action × env: e.g. `<service>-validate-pr.yml`, `<service>-deploy-app-prod.yml`, `<service>-deploy-infra-prod.yml`). Use path filtering, separate jobs, OIDC auth.
+3. Add GitHub Actions workflows at `.github/workflows/<service>-<action>-<env>.yml` following the storybook pattern:
+   - `<service>-validate-pr.yml` — PR checks (lint, test, Docker build verification)
+   - `<service>-deploy-prod.yml` — single combined deploy (detect-changes → deploy-infra → deploy-backend + deploy-frontend), with `concurrency: { group: <service>-prod, cancel-in-progress: false }`, `workflow_dispatch` inputs `run_infra` and `run_app`, and a `workflow_run` trigger on `Shared infra · Terraform apply · Prod`.
+   Use path filtering, OIDC auth, and SSM params for cross-job values.
 4. Use Vite for the frontend (not CRA)
 5. Add TypeScript
 6. Add a `CLAUDE.md` inside the service directory with service-specific context
