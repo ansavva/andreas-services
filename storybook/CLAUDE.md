@@ -74,7 +74,7 @@ Copy `backend/.env.example → backend/.env` and `frontend/storybook-ui/.env.loc
 
 ## Environment Variables (Prod)
 
-All secrets live in the `storybook-production` GitHub Actions environment. The infra workflow writes Terraform outputs to SSM under `/storybook/prod/*`, and the app workflow reads them at deploy time.
+All secrets live in the `storybook-production` GitHub Actions environment. The `deploy-infra` job writes Terraform outputs to SSM under `/storybook/prod/*`, and the `deploy-backend` + `deploy-frontend` jobs read them at deploy time.
 
 Key SSM params:
 
@@ -101,8 +101,31 @@ API-key secrets (`OPENAI_API_KEY`, `STABILITY_API_KEY`, `REPLICATE_API_TOKEN`) a
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `.github/workflows/storybook-validate-pr.yml` | PR touching `storybook/**` | Verify backend Docker build, lint + build frontend. No push, no AWS writes. |
-| `.github/workflows/storybook-deploy-app-prod.yml` | Push to `main` touching `storybook/backend/**` or `storybook/frontend/**` | Build + push backend image (both API and image-worker tags) to ECR, update both Lambdas' code + env; build frontend, sync to S3, invalidate CloudFront. Gated by `storybook-production` environment. |
-| `.github/workflows/storybook-deploy-infra-prod.yml` | Push to `main` touching `storybook/terraform/**` | `terraform apply` on `envs/prod` and write outputs into `/storybook/prod/*` SSM params. Gated by `storybook-production` environment. |
+| `.github/workflows/storybook-deploy-prod.yml` | Push to `main` touching `storybook/**`, or `workflow_dispatch`, or `workflow_run` after shared infra applies | Single combined deploy. `detect-changes` → `deploy-infra` (terraform apply, writes `/storybook/prod/*` SSM) → `deploy-backend` (updates api + image-worker Lambdas) + `deploy-frontend` (S3 + CloudFront) in parallel. Gated by `storybook-production` environment. |
+
+### Combined deploy workflow (`storybook-deploy-prod.yml`)
+
+**DAG**
+
+```
+detect-changes ─► deploy-infra (if storybook/terraform/** changed)
+                       │
+                       ├─► deploy-backend  (api + image-worker Lambdas)
+                       └─► deploy-frontend
+```
+
+Both app jobs use `needs: [detect-changes, deploy-infra]` and run when their paths changed OR when `deploy-infra` produced fresh SSM values. App-only changes skip `deploy-infra`; skipped ≠ failure so app jobs still run.
+
+`deploy-backend` builds a single Docker image and tags/pushes it to both the api ECR repo and the image-worker ECR repo, then updates the two corresponding Lambda functions. Both must remain in the same job so the image-worker always stays in sync with the api.
+
+**`workflow_dispatch` inputs**
+
+- `run_infra` (default `true`) — run the `deploy-infra` job.
+- `run_app` (default `true`) — run `deploy-backend` and `deploy-frontend`.
+
+**Concurrency**
+
+Group `storybook-prod` with `cancel-in-progress: false` — queued pushes wait for the previous run instead of racing on `update-function-code` across the two Lambdas.
 
 ## DynamoDB Tables
 

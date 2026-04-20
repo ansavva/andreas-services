@@ -58,8 +58,9 @@ For local development, copy `.env.local.example` to `.env.local` and fill in the
 
 ### Automatic Deployment (Recommended)
 
-Push changes to the `main` branch. GitHub Actions will automatically:
-- Build and deploy backend to Lambda when `storybook/backend/**` changes
-- Build and deploy frontend to S3/CloudFront when `storybook/frontend/**` changes
+Push changes to the `main` branch. GitHub Actions runs a single combined workflow that:
+- Applies Terraform when `storybook/terraform/**` changes
+- Builds and deploys the backend (api + image-worker Lambdas) when `storybook/backend/**` changes or infra ran
+- Builds and deploys the frontend to S3/CloudFront when `storybook/frontend/**` changes or infra ran
 
-See [.github/workflows/storybook-deploy-app-prod.yml](../.github/workflows/storybook-deploy-app-prod.yml) for details.
+See [.github/workflows/storybook-deploy-prod.yml](../.github/workflows/storybook-deploy-prod.yml) for details.

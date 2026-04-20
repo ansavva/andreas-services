@@ -1,13 +1,33 @@
-name: Storybook · Deploy app · Prod
+name: Storybook · Deploy · Prod
+
+# Combined prod deploy for storybook. Runs infra first (when terraform files
+# change or manual dispatch requests it), then backend + frontend in parallel.
+# Infra writes SSM params under /storybook/prod/* that the app jobs read.
+#
+# DAG:
+#   detect-changes ─► deploy-infra (if storybook/terraform/** changed)
+#                          │
+#                          ├─► deploy-backend  (if backend changed OR infra ran)
+#                          └─► deploy-frontend (if frontend changed OR infra ran)
+#
+# deploy-backend updates both the api Lambda and the image-worker Lambda.
 
 on:
   push:
     branches: [main]
     paths:
-      - 'storybook/backend/**'
-      - 'storybook/frontend/**'
-      - '.github/workflows/storybook-deploy-app-prod.yml'
+      - 'storybook/**'
+      - '.github/workflows/storybook-deploy-prod.yml'
   workflow_dispatch:
+    inputs:
+      run_infra:
+        description: 'Run the deploy-infra job'
+        type: boolean
+        default: true
+      run_app:
+        description: 'Run the deploy-backend and deploy-frontend jobs'
+        type: boolean
+        default: true
 
 concurrency:
   group: storybook-prod
@@ -15,6 +35,7 @@ concurrency:
 
 env:
   AWS_REGION: us-east-1
+  TF_DIR: storybook/terraform/envs/prod
   STORYBOOK_USER_PROFILES_TABLE:    storybook-user-profiles
   STORYBOOK_CHILD_PROFILES_TABLE:   storybook-child-profiles
   STORYBOOK_STORY_PROJECTS_TABLE:   storybook-story-projects
@@ -32,6 +53,7 @@ jobs:
     name: Detect Changes
     runs-on: ubuntu-latest
     outputs:
+      infra: ${{ steps.filter.outputs.infra }}
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
     steps:
@@ -40,19 +62,87 @@ jobs:
         id: filter
         with:
           filters: |
+            infra:
+              - 'storybook/terraform/**'
             backend:
               - 'storybook/backend/**'
             frontend:
               - 'storybook/frontend/**'
 
   # ---------------------------------------------------------------------------
+  # Terraform apply (storybook/terraform/envs/prod) and publish outputs to SSM.
+  # ---------------------------------------------------------------------------
+  deploy-infra:
+    name: Terraform Apply
+    needs: detect-changes
+    if: |
+      (github.event_name == 'push' && needs.detect-changes.outputs.infra == 'true')
+      || (github.event_name == 'workflow_dispatch' && inputs.run_infra)
+    runs-on: ubuntu-latest
+    environment: storybook-production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.5'
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false
+
+      - name: Terraform Apply
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform apply -auto-approve -input=false
+
+      - name: Store infrastructure outputs in SSM
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          put() {
+            aws ssm put-parameter --overwrite --type String \
+              --name "/storybook/prod/${1}" --value "${2}"
+          }
+
+          put cognito-user-pool-id    "$(terraform output -raw cognito_user_pool_id)"
+          put cognito-client-id       "$(terraform output -raw cognito_user_pool_client_id)"
+          put cognito-domain          "$(terraform output -raw cognito_domain)"
+          put api-url                 "$(terraform output -raw api_url)"
+          put app-url                 "$(terraform output -raw application_url)"
+          put s3-frontend-bucket      "$(terraform output -raw s3_frontend_bucket)"
+          put s3-backend-bucket       "$(terraform output -raw s3_backend_bucket)"
+          put cf-dist-id              "$(terraform output -raw cloudfront_distribution_id)"
+          put image-queue-url         "$(terraform output -raw image_queue_url)"
+          put lambda-name             "$(terraform output -raw lambda_function_name)"
+          put image-worker-lambda     "$(terraform output -raw image_worker_lambda_function_name)"
+          put ecr-url                 "$(terraform output -raw ecr_repository_url)"
+          put image-worker-ecr-url    "$(terraform output -raw image_worker_ecr_repository_url)"
+
+  # ---------------------------------------------------------------------------
   # Build Docker image, push to ECR, update both Lambda functions + env vars
-  # ECR URLs and Lambda names come from SSM (written by storybook-deploy-infra-prod.yml)
+  # ECR URLs and Lambda names come from SSM (written by deploy-infra)
   # ---------------------------------------------------------------------------
   deploy-backend:
     name: Build & Deploy Backend
-    needs: detect-changes
-    if: needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+    needs: [detect-changes, deploy-infra]
+    if: |
+      !cancelled()
+      && needs.deploy-infra.result != 'failure'
+      && (github.event_name == 'workflow_dispatch' && inputs.run_app
+          || (github.event_name == 'push'
+              && (needs.detect-changes.outputs.backend == 'true'
+                  || needs.deploy-infra.result == 'success')))
     runs-on: ubuntu-latest
     environment: storybook-production
     permissions:
@@ -190,12 +280,18 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Build Vite SPA and sync to S3 + CloudFront
-  # Values come from SSM (written by storybook-deploy-infra-prod.yml)
+  # Values come from SSM (written by deploy-infra)
   # ---------------------------------------------------------------------------
   deploy-frontend:
     name: Deploy Frontend
-    needs: detect-changes
-    if: needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+    needs: [detect-changes, deploy-infra]
+    if: |
+      !cancelled()
+      && needs.deploy-infra.result != 'failure'
+      && (github.event_name == 'workflow_dispatch' && inputs.run_app
+          || (github.event_name == 'push'
+              && (needs.detect-changes.outputs.frontend == 'true'
+                  || needs.deploy-infra.result == 'success')))
     runs-on: ubuntu-latest
     environment: storybook-production
     permissions:
