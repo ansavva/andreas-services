@@ -257,11 +257,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: npm
-          cache-dependency-path: scout/frontend/package-lock.json
 
       - name: Install frontend dependencies
-        run: cd scout/frontend && npm ci
+        run: cd scout/frontend && npm install
 
       - name: Build frontend
         env:
