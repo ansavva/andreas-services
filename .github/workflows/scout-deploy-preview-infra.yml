@@ -17,6 +17,10 @@ on:
       - '.github/workflows/scout-deploy-preview-infra.yml'
   workflow_dispatch:
 
+concurrency:
+  group: scout-preview-shared
+  cancel-in-progress: false
+
 env:
   AWS_REGION: us-east-1
 

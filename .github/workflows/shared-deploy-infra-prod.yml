@@ -8,6 +8,10 @@ on:
       - '.github/workflows/shared-deploy-infra-prod.yml'
   workflow_dispatch:
 
+concurrency:
+  group: shared-infra
+  cancel-in-progress: false
+
 env:
   AWS_REGION: us-east-1
   TF_DIR: terraform/envs/shared

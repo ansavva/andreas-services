@@ -8,6 +8,10 @@ on:
       - '.github/workflows/storybook-deploy-infra-prod.yml'
   workflow_dispatch:
 
+concurrency:
+  group: storybook-prod
+  cancel-in-progress: false
+
 env:
   AWS_REGION: us-east-1
   TF_DIR: storybook/terraform/envs/prod

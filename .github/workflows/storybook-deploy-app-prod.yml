@@ -9,6 +9,10 @@ on:
       - '.github/workflows/storybook-deploy-app-prod.yml'
   workflow_dispatch:
 
+concurrency:
+  group: storybook-prod
+  cancel-in-progress: false
+
 env:
   AWS_REGION: us-east-1
   STORYBOOK_USER_PROFILES_TABLE:    storybook-user-profiles

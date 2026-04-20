@@ -15,6 +15,10 @@ on:
       - 'scout/**'
       - '.github/workflows/scout-deploy-preview-pr.yml'
 
+concurrency:
+  group: scout-preview-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 env:
   AWS_REGION: us-east-1
   LAMBDA_CODE_BUCKET: andreas-services-lambda-code

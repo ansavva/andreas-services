@@ -9,6 +9,10 @@ on:
       - '.github/workflows/scout-deploy-app-prod.yml'
   workflow_dispatch:
 
+concurrency:
+  group: scout-prod
+  cancel-in-progress: false
+
 env:
   AWS_REGION: us-east-1
   STACK_NAME: scout

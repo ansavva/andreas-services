@@ -81,7 +81,8 @@ data "aws_route53_zone" "main" {
 - Lambda for all backends (containerised Docker for Flask services, zip for pure Lambda)
 
 ### Deployment (CI/CD)
-- **Standard**: GitHub Actions. Filenames follow `<service>-<action>[-<scope>]-<env>.yml` (e.g. `humbugg-deploy-app-prod.yml`, `scout-validate-pr.yml`) so the service, the action, and the trigger environment (PR vs Prod) are all visible at a glance.
+- **Standard**: GitHub Actions. Filenames follow `<service>-<action>[-<scope>]-<env>.yml` (e.g. `humbugg-deploy-prod.yml`, `scout-validate-pr.yml`) so the service, the action, and the trigger environment (PR vs Prod) are all visible at a glance.
+- **One combined prod deploy per service**: each service has a single `<service>-deploy-prod.yml` that runs infra then apps in one workflow with `needs:` chaining (detect-changes → deploy-infra → deploy-backend + deploy-frontend). This eliminates races between separate infra and app workflows that shared SSM params.
 - **Path filtering**: `dorny/paths-filter@v3` — only deploy when the service's files change
 - **Separate jobs**: `deploy-backend` and `deploy-frontend` run independently
 - **AWS auth**: OIDC role assumption (`aws-actions/configure-aws-credentials@v4`) — never long-lived keys
@@ -90,6 +91,13 @@ data "aws_route53_zone" "main" {
   - Hashed assets → `public, max-age=31536000, immutable`
   - HTML files → `no-cache, no-store, must-revalidate`
 - **CloudFront**: always invalidate `/*` after S3 sync
+- **Concurrency groups** (prevent racing deploys to the same environment):
+  - `<service>-prod` (`cancel-in-progress: false`) on every prod deploy workflow
+  - `scout-preview-shared` (`cancel-in-progress: false`) on the shared preview infra workflow
+  - `scout-preview-pr-<N>` (`cancel-in-progress: true`) on the per-PR preview deploy and teardown
+  - `shared-infra` (`cancel-in-progress: false`) on the shared Terraform apply
+- **Chaining on shared infra**: each service's combined deploy workflow declares a `workflow_run` trigger on `Shared infra · Terraform apply · Prod` so a cert or zone change reapplies every downstream service's infra.
+- **Manual triggers**: every combined workflow accepts `workflow_dispatch` inputs `run_infra` (default `true`) and `run_app` (default `true`) for targeted reruns.
 
 ## AWS Credentials — Critical Rule
 

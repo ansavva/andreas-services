@@ -9,6 +9,10 @@ on:
       - '.github/workflows/humbugg-deploy-app-prod.yml'
   workflow_dispatch:
 
+concurrency:
+  group: humbugg-prod
+  cancel-in-progress: false
+
 env:
   AWS_REGION: us-east-1
 
