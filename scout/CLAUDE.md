@@ -122,7 +122,33 @@ Table: `scout-events` · Primary key: `event_id` (UUID string)
 
 ## Deployment
 
-**Automated (preferred):** Push to `main` — GitHub Actions workflow handles everything.
+**Automated (preferred):** Push to `main` — GitHub Actions runs the combined `.github/workflows/scout-deploy-prod.yml` workflow (`detect-changes` → `deploy-infra` → `deploy-backend` + `deploy-frontend`). Paths determine which jobs run:
+
+- `scout/cloudformation.yaml` → `deploy-infra` runs, then fans out to both app jobs (fresh SSM values)
+- `scout/lambda/**` → `deploy-backend` only
+- `scout/frontend/**` → `deploy-frontend` only
+
+### Combined deploy workflow (`scout-deploy-prod.yml`)
+
+**DAG**
+
+```
+detect-changes ─► deploy-infra (if scout/cloudformation.yaml changed)
+                       │
+                       ├─► deploy-backend  (Lambda zips → update-function-code)
+                       └─► deploy-frontend (Vite build → S3 + CloudFront)
+```
+
+App jobs use `needs: [detect-changes, deploy-infra]` and an `if:` that fires when their paths changed OR when `deploy-infra` produced new SSM values. Skipped upstream infra doesn't block app-only deploys.
+
+**`workflow_dispatch` inputs**
+
+- `run_infra` (default `true`) — run `deploy-infra`.
+- `run_app` (default `true`) — run `deploy-backend` and `deploy-frontend`.
+
+**Concurrency**
+
+Group `scout-prod` with `cancel-in-progress: false` — queued pushes wait for the previous run instead of racing on `update-function-code`.
 
 **Manual (local):**
 ```bash
