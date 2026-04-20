@@ -17,7 +17,7 @@ on:
     branches: [main]
     paths:
       - 'storybook/**'
-      - '.github/workflows/storybook-deploy-prod.yml'
+      - '.github/workflows/storybook-prod.yaml'
   workflow_dispatch:
     inputs:
       run_infra:

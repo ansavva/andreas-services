@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - 'terraform/**'
-      - '.github/workflows/shared-deploy-infra-prod.yml'
+      - '.github/workflows/shared-prod-infra-deploy.yaml'
   workflow_dispatch:
 
 concurrency:

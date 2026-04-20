@@ -101,9 +101,9 @@ API-key secrets (`OPENAI_API_KEY`, `STABILITY_API_KEY`, `REPLICATE_API_TOKEN`) a
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `.github/workflows/storybook-pr.yml` | PR touching `storybook/**` | Verify backend Docker build, lint + build frontend. No push, no AWS writes. |
-| `.github/workflows/storybook-deploy-prod.yml` | Push to `main` touching `storybook/**`, or `workflow_dispatch`, or `workflow_run` after shared infra applies | Single combined deploy. `detect-changes` → `deploy-infra` (terraform apply, writes `/storybook/prod/*` SSM) → `deploy-backend` (updates api + image-worker Lambdas) + `deploy-frontend` (S3 + CloudFront) in parallel. Gated by `storybook-production` environment. |
+| `.github/workflows/storybook-prod.yaml` | Push to `main` touching `storybook/**`, or `workflow_dispatch`, or `workflow_run` after shared infra applies | Single combined deploy. `detect-changes` → `deploy-infra` (terraform apply, writes `/storybook/prod/*` SSM) → `deploy-backend` (updates api + image-worker Lambdas) + `deploy-frontend` (S3 + CloudFront) in parallel. Gated by `storybook-production` environment. |
 
-### Combined deploy workflow (`storybook-deploy-prod.yml`)
+### Combined deploy workflow (`storybook-prod.yaml`)
 
 **DAG**
 

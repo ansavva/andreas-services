@@ -63,4 +63,4 @@ Push changes to the `main` branch. GitHub Actions runs a single combined workflo
 - Builds and deploys the backend (api + image-worker Lambdas) when `storybook/backend/**` changes or infra ran
 - Builds and deploys the frontend to S3/CloudFront when `storybook/frontend/**` changes or infra ran
 
-See [.github/workflows/storybook-deploy-prod.yml](../.github/workflows/storybook-deploy-prod.yml) for details.
+See [.github/workflows/storybook-prod.yaml](../.github/workflows/storybook-prod.yaml) for details.

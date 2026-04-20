@@ -11,8 +11,8 @@ name: Scout · Deploy · Prod
 #                          └─► deploy-frontend (if scout/frontend/** changed OR infra ran)
 #
 # PR previews live in a different environment (scout-pr). Their workflows
-# (scout-deploy-preview-infra.yml, scout-pr.yml, and
-# scout-teardown-preview-pr.yml) stay separate.
+# (scout-pr.yaml and scout-pr-teardown.yaml) stay separate. The shared
+# preview infra is deployed as part of scout-pr.yaml itself.
 
 on:
   push:
@@ -21,7 +21,7 @@ on:
       - 'scout/cloudformation.yaml'
       - 'scout/lambda/**'
       - 'scout/frontend/**'
-      - '.github/workflows/scout-deploy-prod.yml'
+      - '.github/workflows/scout-prod.yaml'
   workflow_dispatch:
     inputs:
       run_infra:

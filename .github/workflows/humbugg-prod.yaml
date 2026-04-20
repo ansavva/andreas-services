@@ -15,7 +15,7 @@ on:
     branches: [main]
     paths:
       - 'humbugg/**'
-      - '.github/workflows/humbugg-deploy-prod.yml'
+      - '.github/workflows/humbugg-prod.yaml'
   workflow_dispatch:
     inputs:
       run_infra:

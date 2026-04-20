@@ -122,13 +122,13 @@ Table: `scout-events` · Primary key: `event_id` (UUID string)
 
 ## Deployment
 
-**Automated (preferred):** Push to `main` — GitHub Actions runs the combined `.github/workflows/scout-deploy-prod.yml` workflow (`detect-changes` → `deploy-infra` → `deploy-backend` + `deploy-frontend`). Paths determine which jobs run:
+**Automated (preferred):** Push to `main` — GitHub Actions runs the combined `.github/workflows/scout-prod.yaml` workflow (`detect-changes` → `deploy-infra` → `deploy-backend` + `deploy-frontend`). Paths determine which jobs run:
 
 - `scout/cloudformation.yaml` → `deploy-infra` runs, then fans out to both app jobs (fresh SSM values)
 - `scout/lambda/**` → `deploy-backend` only
 - `scout/frontend/**` → `deploy-frontend` only
 
-### Combined deploy workflow (`scout-deploy-prod.yml`)
+### Combined deploy workflow (`scout-prod.yaml`)
 
 **DAG**
 
@@ -173,8 +173,9 @@ cd frontend && npm run dev
 Every `pull_request` (opened / synchronize / reopened) whose diff touches
 `scout/**` runs `.github/workflows/scout-pr.yml`. The workflow validates
 first (`lint-unit-build`: Python unit tests + frontend lint + frontend build);
-only if that job succeeds does the `deploy-preview` job (`needs: lint-unit-build`)
-spin up an ephemeral environment:
+only if that job succeeds does `deploy-preview-infra` reapply the shared
+PR-preview stack, and only then does `deploy-preview` spin up the per-PR
+ephemeral environment:
 
 | | Prod | PR `<N>` |
 |---|---|---|
@@ -183,22 +184,21 @@ spin up an ephemeral environment:
 
 The shared PR-preview infrastructure (one S3 bucket, one CloudFront
 distribution with a CloudFront Function for SPA fallback, and one API Gateway
-custom domain) lives in `cloudformation-pr-preview.yaml` and is deployed
-once by `scout-deploy-preview-infra.yml`. Its outputs are published to SSM
-under `/scout/pr-preview/*` (s3-bucket, cf-dist-id, api-domain).
+custom domain) lives in `cloudformation-pr-preview.yaml`. It is deployed as
+the `deploy-preview-infra` job inside `scout-pr.yml` itself — every PR
+reapplies the stack (idempotent; CFN is a no-op on empty changesets). Its
+outputs are published to SSM under `/scout/pr-preview/*` (s3-bucket,
+cf-dist-id, api-domain) for the per-PR `deploy-preview` job to consume.
 
-### Bootstrapping preview infra
+### DAG
 
-On a fresh AWS account, run `scout-deploy-preview-infra.yml` manually via
-`workflow_dispatch` before opening the first PR. The per-PR `deploy-preview`
-job in `scout-pr.yml` starts with a **readiness-check** step that calls
-`aws ssm get-parameter` for each `/scout/pr-preview/*` value; if any are
-missing it fails immediately with:
+```
+lint-unit-build ─► deploy-preview-infra ─► deploy-preview
+```
 
-> `scout-deploy-preview-infra.yml has never been deployed; run it first.`
-
-After the shared preview stack exists, every PR touching `scout/**` can
-deploy cleanly.
+This removes the old "bootstrap on fresh AWS account by running
+scout-deploy-preview-infra manually first" step — every PR self-heals the
+shared stack, so a brand-new account just needs the first PR to complete.
 
 Per-PR resources live in `cloudformation-pr.yaml` (stack `scout-pr-<N>`):
 Lambda + REST API with `/api/...` routes, a DynamoDB table suffixed
@@ -206,7 +206,7 @@ Lambda + REST API with `/api/...` routes, a DynamoDB table suffixed
 the PR's preview URL as callback, and a `BasePathMapping` that attaches the
 PR's API to the shared custom domain under `/<N>`.
 
-Closing the PR triggers `.github/workflows/scout-teardown-preview-pr.yml`, which
+Closing the PR triggers `.github/workflows/scout-pr-teardown.yaml`, which
 deletes the stack, empties the S3 prefix, and invalidates CloudFront.
 
 ### Constraints

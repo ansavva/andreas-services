@@ -1,12 +1,20 @@
 name: Scout · PR
 
 # Combined PR workflow for scout. Validates first (lint, unit tests, frontend
-# build); only if validation passes does the per-PR preview stack deploy.
+# build); then ensures the shared PR-preview infrastructure exists (idempotent
+# CFN deploy); finally spins up the per-PR preview stack.
 #
 # DAG:
-#   lint-unit-build ─► deploy-preview (ephemeral stack + integration tests)
+#   lint-unit-build ─► deploy-preview-infra ─► deploy-preview
 #
-# Teardown on close is handled by .github/workflows/scout-teardown-preview-pr.yml.
+# The shared preview infra (scout-pr-preview CFN stack — S3 bucket +
+# CloudFront @ scout-pr.andreas.services and API Gateway custom domain
+# @ scout-api-pr.andreas.services) used to live in its own workflow that ran
+# only from main, which meant fresh AWS accounts needed a manual bootstrap
+# before the first PR could deploy. We inline the deploy here instead so
+# every PR self-heals the shared stack as part of its run.
+#
+# Teardown on close is handled by .github/workflows/scout-pr-teardown.yaml.
 
 on:
   pull_request:
@@ -72,7 +80,83 @@ jobs:
         run: cd scout/frontend && npm run build
 
   # ---------------------------------------------------------------------------
-  # Deploy per-PR preview stack (only runs if validation passed).
+  # Ensure the shared PR-preview infrastructure exists. This is an idempotent
+  # CloudFormation deploy of the scout-pr-preview stack (S3 bucket + CloudFront
+  # at scout-pr.andreas.services + API Gateway custom domain at
+  # scout-api-pr.andreas.services). Outputs are published to SSM under
+  # /scout/pr-preview/*, which the per-PR deploy consumes.
+  #
+  # Concurrency: every PR job in this workflow queues behind the previous PR
+  # via the scout-preview-pr-<N> group above, but parallel PRs can each hit
+  # this job simultaneously. CFN's own per-stack locking serialises the
+  # deploys safely; on empty changesets CFN is a no-op.
+  # ---------------------------------------------------------------------------
+  deploy-preview-infra:
+    name: Ensure shared PR preview infra
+    needs: lint-unit-build
+    runs-on: ubuntu-latest
+    environment: scout-pr
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve shared infrastructure
+        id: shared
+        run: |
+          ACM_ARN=$(aws acm list-certificates \
+            --region us-east-1 \
+            --query "CertificateSummaryList[?DomainName=='*.andreas.services'].CertificateArn | [0]" \
+            --output text)
+          ZONE_ID=$(aws route53 list-hosted-zones \
+            --query "HostedZones[?Name=='andreas.services.'].Id | [0]" \
+            --output text | sed 's|/hostedzone/||')
+          echo "acm_arn=${ACM_ARN}" >> "$GITHUB_OUTPUT"
+          echo "zone_id=${ZONE_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy PR preview infrastructure
+        run: |
+          aws cloudformation deploy \
+            --template-file scout/cloudformation-pr-preview.yaml \
+            --stack-name scout-pr-preview \
+            --region "${{ env.AWS_REGION }}" \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "AcmCertificateArn=${{ steps.shared.outputs.acm_arn }}" \
+              "Route53HostedZoneId=${{ steps.shared.outputs.zone_id }}"
+
+      - name: Store PR preview infrastructure outputs in SSM
+        run: |
+          get_pr() {
+            aws cloudformation describe-stacks \
+              --stack-name scout-pr-preview \
+              --query "Stacks[0].Outputs[?OutputKey=='${1}'].OutputValue | [0]" \
+              --output text
+          }
+
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/pr-preview/s3-bucket \
+            --value "$(get_pr S3BucketName)"
+
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/pr-preview/cf-dist-id \
+            --value "$(get_pr CloudFrontDistributionId)"
+
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/pr-preview/api-domain \
+            --value "$(get_pr ApiDomainName)"
+
+  # ---------------------------------------------------------------------------
+  # Deploy per-PR preview stack (only runs if validation + shared infra passed).
   #   - CloudFormation stack scout-pr-<N> (Lambda + API GW + DynamoDB + Cognito)
   #   - BasePathMapping attaching the PR's API to scout-api-pr.andreas.services
   #   - Frontend published into s3://<shared-preview-bucket>/<N>/app/ and served
@@ -80,7 +164,7 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-preview:
     name: Deploy PR Preview
-    needs: lint-unit-build
+    needs: deploy-preview-infra
     runs-on: ubuntu-latest
     environment: scout-pr
     permissions:
@@ -96,28 +180,6 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-
-      # ------------------------------------------------------------------
-      # Fail fast if the shared preview infra has never been deployed. The
-      # per-PR stack depends on /scout/pr-preview/* SSM params written by
-      # scout-deploy-preview-infra.yml — without them we would fail deep
-      # inside the CFN deploy with a cryptic error.
-      # ------------------------------------------------------------------
-      - name: Check shared preview infra is provisioned
-        run: |
-          set -euo pipefail
-          missing=()
-          for p in s3-bucket cf-dist-id api-domain; do
-            if ! aws ssm get-parameter --name "/scout/pr-preview/${p}" \
-                --query Parameter.Value --output text >/dev/null 2>&1; then
-              missing+=("/scout/pr-preview/${p}")
-            fi
-          done
-          if [ "${#missing[@]}" -gt 0 ]; then
-            echo "::error::Missing SSM params: ${missing[*]}"
-            echo "::error::scout-deploy-preview-infra.yml has never been deployed; run it first."
-            exit 1
-          fi
 
       # ------------------------------------------------------------------
       # Build + upload the events-api Lambda zip to a per-PR S3 key

@@ -81,9 +81,9 @@ data "aws_route53_zone" "main" {
 - Lambda for all backends (containerised Docker for Flask services, zip for pure Lambda)
 
 ### Deployment (CI/CD)
-- **Standard**: GitHub Actions. Filenames follow `<service>-<action>[-<scope>]-<env>.yml` or `<service>-pr.yml` for the combined PR workflow (e.g. `humbugg-deploy-prod.yml`, `scout-pr.yml`) so the service, the action, and the trigger environment (PR vs Prod) are all visible at a glance.
-- **One combined PR workflow per service**: each service has a single `<service>-pr.yml` that runs on every PR. It validates first (lint + unit tests + build); when the service has an ephemeral preview deploy (scout), that deploy is a separate job chained via `needs:` so a failing validate blocks any AWS writes.
-- **One combined prod deploy per service**: each service has a single `<service>-deploy-prod.yml` that runs infra then apps in one workflow with `needs:` chaining (detect-changes → deploy-infra → deploy-backend + deploy-frontend). This eliminates races between separate infra and app workflows that shared SSM params.
+- **Standard**: GitHub Actions. Filenames follow `<service>-<env>.yaml` (combined deploy) and `<service>-pr.yml` (combined PR workflow) — e.g. `humbugg-prod.yaml`, `scout-pr.yml` — so the service and the trigger environment (PR vs Prod) are visible at a glance. Auxiliary workflows append a scope suffix after the env segment (e.g. `scout-pr-teardown.yaml`, `shared-prod-infra-plan.yaml`).
+- **One combined PR workflow per service**: each service has a single `<service>-pr.yml` that runs on every PR. It validates first (lint + unit tests + build); when the service has an ephemeral preview deploy (scout), preview-infra and preview-deploy are separate jobs chained via `needs:` so a failing validate blocks any AWS writes. Scout's PR workflow also reapplies the shared PR-preview infra on every PR so fresh AWS accounts don't need a manual bootstrap.
+- **One combined prod deploy per service**: each service has a single `<service>-prod.yaml` that runs infra then apps in one workflow with `needs:` chaining (detect-changes → deploy-infra → deploy-backend + deploy-frontend). This eliminates races between separate infra and app workflows that shared SSM params.
 - **Path filtering**: `dorny/paths-filter@v3` — only deploy when the service's files change
 - **Separate jobs**: `deploy-backend` and `deploy-frontend` run independently
 - **AWS auth**: OIDC role assumption (`aws-actions/configure-aws-credentials@v4`) — never long-lived keys
@@ -94,10 +94,9 @@ data "aws_route53_zone" "main" {
 - **CloudFront**: always invalidate `/*` after S3 sync
 - **Concurrency groups** (prevent racing deploys to the same environment):
   - `<service>-prod` (`cancel-in-progress: false`) on every prod deploy workflow
-  - `scout-preview-shared` (`cancel-in-progress: false`) on the shared preview infra workflow
-  - `scout-preview-pr-<N>` (`cancel-in-progress: true`) on the per-PR preview deploy and teardown
+  - `scout-preview-pr-<N>` (`cancel-in-progress: true`) on the per-PR preview workflow (covers both the shared preview infra ensure-step and the per-PR deploy) and on the teardown
   - `shared-infra` (`cancel-in-progress: false`) on the shared Terraform apply
-- **Chaining on shared infra**: each service's combined deploy workflow (and `scout-deploy-preview-infra.yml`) declares a `workflow_run` trigger on `Shared infra · Terraform apply · Prod` with a job-level guard (`if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'`) so a cert or zone change reapplies every downstream service's infra only when the shared apply succeeds. `workflow_run` doesn't inherit path filters; this is intentional — a shared cert/zone change should reapply everything downstream.
+- **Chaining on shared infra**: each service's combined prod deploy workflow declares a `workflow_run` trigger on `Shared infra · Terraform apply · Prod` with a job-level guard (`if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'`) so a cert or zone change reapplies every downstream service's infra only when the shared apply succeeds. `workflow_run` doesn't inherit path filters; this is intentional — a shared cert/zone change should reapply everything downstream.
 - **Manual triggers**: every combined workflow accepts `workflow_dispatch` inputs `run_infra` (default `true`) and `run_app` (default `true`) for targeted reruns.
 
 ## AWS Credentials — Critical Rule
@@ -116,9 +115,9 @@ boto3.client('s3', aws_access_key_id='AKIA...', aws_secret_access_key='...')
 
 1. Create `<service>/` directory — self-contained with own backend, frontend, infra
 2. Reference shared Terraform outputs (Route53 zone, ACM cert, VPC) — do not recreate them
-3. Add GitHub Actions workflows at `.github/workflows/<service>-<action>-<env>.yml` following the storybook pattern:
+3. Add GitHub Actions workflows at `.github/workflows/<service>-<env>.yaml` following the storybook pattern:
    - `<service>-pr.yml` — PR checks (lint, test, Docker build verification); if the service has ephemeral preview deploys, chain them as a job with `needs: <validate-job>` so validation must pass first
-   - `<service>-deploy-prod.yml` — single combined deploy (detect-changes → deploy-infra → deploy-backend + deploy-frontend), with `concurrency: { group: <service>-prod, cancel-in-progress: false }`, `workflow_dispatch` inputs `run_infra` and `run_app`, and a `workflow_run` trigger on `Shared infra · Terraform apply · Prod`.
+   - `<service>-prod.yaml` — single combined deploy (detect-changes → deploy-infra → deploy-backend + deploy-frontend), with `concurrency: { group: <service>-prod, cancel-in-progress: false }`, `workflow_dispatch` inputs `run_infra` and `run_app`, and a `workflow_run` trigger on `Shared infra · Terraform apply · Prod`.
    Use path filtering, OIDC auth, and SSM params for cross-job values.
 4. Use Vite for the frontend (not CRA)
 5. Add TypeScript

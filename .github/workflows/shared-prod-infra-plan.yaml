@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - 'terraform/**'
-      - '.github/workflows/shared-plan-infra-pr.yml'
+      - '.github/workflows/shared-prod-infra-plan.yaml'
 
 env:
   AWS_REGION: us-east-1
