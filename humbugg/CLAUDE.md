@@ -73,7 +73,7 @@ VITE_AWS_REGION=us-east-1
 
 ## Environment Variables (Prod)
 
-All secrets/values live in the `humbugg-production` GitHub Actions environment. The infra workflow writes the resolved values into SSM Parameter Store under `/humbugg/prod/*`, and the app workflow reads them at deploy time.
+All secrets/values live in the `humbugg-production` GitHub Actions environment. The `deploy-infra` job writes the resolved values into SSM Parameter Store under `/humbugg/prod/*`, and the `deploy-backend` + `deploy-frontend` jobs read them at deploy time.
 
 | SSM param | Purpose |
 |---|---|
@@ -90,8 +90,31 @@ All secrets/values live in the `humbugg-production` GitHub Actions environment. 
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `.github/workflows/humbugg-validate-pr.yml` | PR touching `humbugg/**` | Build backend Docker image (verify only), build frontend, no push |
-| `.github/workflows/humbugg-deploy-app-prod.yml` | Push to `main` touching `humbugg/backend/**` or `humbugg/frontend/**` | Build + push backend image to ECR, update Lambda code + env; build frontend, sync to S3, invalidate CloudFront. Gated by `humbugg-production` environment. |
-| `.github/workflows/humbugg-deploy-infra-prod.yml` | Push to `main` touching `humbugg/infra/**` | Deploy backend-lambda + frontend-cloudfront CloudFormation stacks; write outputs into `/humbugg/prod/*` SSM params. Gated by `humbugg-production` environment. |
+| `.github/workflows/humbugg-deploy-prod.yml` | Push to `main` touching `humbugg/**`, or `workflow_dispatch`, or `workflow_run` after shared infra applies | Single combined deploy. `detect-changes` → `deploy-infra` (CloudFormation backend + frontend stacks, writes `/humbugg/prod/*` SSM) → `deploy-backend` + `deploy-frontend` in parallel. Gated by `humbugg-production` environment. |
+
+### Combined deploy workflow (`humbugg-deploy-prod.yml`)
+
+**DAG**
+
+```
+detect-changes ─► deploy-infra (if humbugg/infra/** changed)
+                       │
+                       ├─► deploy-backend  (if humbugg/backend/** changed OR infra ran)
+                       └─► deploy-frontend (if humbugg/frontend/** changed OR infra ran)
+```
+
+App jobs use `needs: [detect-changes, deploy-infra]` and an `if:` that runs when the app changed OR when `deploy-infra` produced new SSM values. If `deploy-infra` is skipped (app-only change) the app jobs still run because `!cancelled() && needs.deploy-infra.result != 'failure'` is true for skipped upstream jobs.
+
+**`workflow_dispatch` inputs**
+
+- `run_infra` (default `true`) — run the `deploy-infra` job.
+- `run_app` (default `true`) — run `deploy-backend` and `deploy-frontend`.
+
+Use `run_infra=true, run_app=false` for infra-only reruns, and `run_infra=false, run_app=true` to redeploy just the app using whatever is already in SSM.
+
+**Concurrency**
+
+Group `humbugg-prod` with `cancel-in-progress: false` — queued pushes wait for the previous run instead of racing on `update-function-code` or SSM writes.
 
 ## DynamoDB Tables
 

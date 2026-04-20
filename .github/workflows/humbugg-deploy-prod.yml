@@ -1,13 +1,31 @@
-name: Humbugg · Deploy app · Prod
+name: Humbugg · Deploy · Prod
+
+# Combined prod deploy for humbugg. Runs infra first (when infra files change
+# or manual dispatch requests it), then backend + frontend in parallel. Infra
+# writes SSM params under /humbugg/prod/* that the app jobs read.
+#
+# DAG:
+#   detect-changes ─► deploy-infra (if infra changed)
+#                          │
+#                          ├─► deploy-backend  (if backend changed OR infra ran)
+#                          └─► deploy-frontend (if frontend changed OR infra ran)
 
 on:
   push:
     branches: [main]
     paths:
-      - 'humbugg/backend/**'
-      - 'humbugg/frontend/**'
-      - '.github/workflows/humbugg-deploy-app-prod.yml'
+      - 'humbugg/**'
+      - '.github/workflows/humbugg-deploy-prod.yml'
   workflow_dispatch:
+    inputs:
+      run_infra:
+        description: 'Run the deploy-infra job'
+        type: boolean
+        default: true
+      run_app:
+        description: 'Run the deploy-backend and deploy-frontend jobs'
+        type: boolean
+        default: true
 
 concurrency:
   group: humbugg-prod
@@ -21,6 +39,7 @@ jobs:
     name: Detect Changes
     runs-on: ubuntu-latest
     outputs:
+      infra: ${{ steps.filter.outputs.infra }}
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
     steps:
@@ -29,18 +48,129 @@ jobs:
         id: filter
         with:
           filters: |
+            infra:
+              - 'humbugg/infra/**'
             backend:
               - 'humbugg/backend/**'
             frontend:
               - 'humbugg/frontend/**'
 
   # ---------------------------------------------------------------------------
+  # Deploy CloudFormation stacks (backend then frontend) and publish the
+  # resolved IDs into SSM for the app jobs to consume.
+  # ---------------------------------------------------------------------------
+  deploy-infra:
+    name: Deploy CloudFormation Stacks
+    needs: detect-changes
+    if: |
+      (github.event_name == 'push' && needs.detect-changes.outputs.infra == 'true')
+      || (github.event_name == 'workflow_dispatch' && inputs.run_infra)
+    runs-on: ubuntu-latest
+    environment: humbugg-production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve shared resources (ACM cert + Route53 zone)
+        id: shared
+        run: |
+          ACM_ARN=$(aws acm list-certificates \
+            --region us-east-1 \
+            --query "CertificateSummaryList[?DomainName=='*.andreas.services'].CertificateArn | [0]" \
+            --output text)
+          ZONE_ID=$(aws route53 list-hosted-zones \
+            --query "HostedZones[?Name=='andreas.services.'].Id | [0]" \
+            --output text | sed 's|/hostedzone/||')
+          echo "acm_arn=${ACM_ARN}" >> "$GITHUB_OUTPUT"
+          echo "zone_id=${ZONE_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy backend stack
+        run: |
+          aws cloudformation deploy \
+            --template-file humbugg/infra/backend-lambda.yaml \
+            --stack-name humbugg-backend \
+            --region "${{ env.AWS_REGION }}" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "EnvCorsOrigin=https://humbugg.andreas.services"
+
+      - name: Read backend outputs and write to SSM
+        run: |
+          set -euo pipefail
+          get() {
+            aws cloudformation describe-stacks --stack-name humbugg-backend \
+              --query "Stacks[0].Outputs[?OutputKey=='${1}'].OutputValue | [0]" \
+              --output text
+          }
+          put() { aws ssm put-parameter --overwrite --type String \
+            --name "/humbugg/prod/${1}" --value "${2}"; }
+
+          API_URL="$(get ApiInvokeUrl)"
+          API_DOMAIN=$(echo "${API_URL}" | sed -E 's#https?://([^/]+)/.*#\1#')
+          API_STAGE=$(echo "${API_URL}" | awk -F/ '{print $NF}')
+
+          put api-url              "${API_URL}"
+          put lambda-name          "$(get LambdaFunctionName)"
+          put ecr-url              "$(get EcrRepositoryUri)"
+          put cognito-user-pool-id "$(get CognitoUserPoolId)"
+          put cognito-client-id    "$(get CognitoClientId)"
+
+          echo "API_DOMAIN=${API_DOMAIN}" >> "$GITHUB_ENV"
+          echo "API_STAGE=${API_STAGE}"   >> "$GITHUB_ENV"
+
+      - name: Deploy frontend stack
+        run: |
+          aws cloudformation deploy \
+            --template-file humbugg/infra/frontend-cloudfront.yaml \
+            --stack-name humbugg-frontend \
+            --region "${{ env.AWS_REGION }}" \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "StackName=humbugg-frontend" \
+              "DomainName=humbugg.andreas.services" \
+              "HostedZoneId=${{ steps.shared.outputs.zone_id }}" \
+              "CertificateArn=${{ steps.shared.outputs.acm_arn }}" \
+              "ApiDomainName=${{ env.API_DOMAIN }}" \
+              "ApiStageName=${{ env.API_STAGE }}"
+
+      - name: Read frontend outputs and write to SSM
+        run: |
+          set -euo pipefail
+          get() {
+            aws cloudformation describe-stacks --stack-name humbugg-frontend \
+              --query "Stacks[0].Outputs[?OutputKey=='${1}'].OutputValue | [0]" \
+              --output text
+          }
+          put() { aws ssm put-parameter --overwrite --type String \
+            --name "/humbugg/prod/${1}" --value "${2}"; }
+
+          put s3-bucket  "$(get SiteBucketName)"
+          put cf-dist-id "$(get DistributionId)"
+
+  # ---------------------------------------------------------------------------
   # Build Docker image, push to ECR, update Lambda function code + env vars
   # ---------------------------------------------------------------------------
   deploy-backend:
     name: Build & Deploy Backend
-    needs: detect-changes
-    if: needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+    needs: [detect-changes, deploy-infra]
+    if: |
+      !cancelled()
+      && needs.deploy-infra.result != 'failure'
+      && (github.event_name == 'workflow_dispatch' && inputs.run_app
+          || (github.event_name == 'push'
+              && (needs.detect-changes.outputs.backend == 'true'
+                  || needs.deploy-infra.result == 'success')))
     runs-on: ubuntu-latest
     environment: humbugg-production
     permissions:
@@ -124,8 +254,14 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-frontend:
     name: Deploy Frontend
-    needs: detect-changes
-    if: needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+    needs: [detect-changes, deploy-infra]
+    if: |
+      !cancelled()
+      && needs.deploy-infra.result != 'failure'
+      && (github.event_name == 'workflow_dispatch' && inputs.run_app
+          || (github.event_name == 'push'
+              && (needs.detect-changes.outputs.frontend == 'true'
+                  || needs.deploy-infra.result == 'success')))
     runs-on: ubuntu-latest
     environment: humbugg-production
     permissions:
