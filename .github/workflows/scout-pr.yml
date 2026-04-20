@@ -1,10 +1,10 @@
-name: Scout · Deploy preview stack · PR
+name: Scout · PR
 
-# Spins up an ephemeral per-PR environment for Scout:
-#   - CloudFormation stack scout-pr-<N> (Lambda + API GW + DynamoDB + Cognito)
-#   - BasePathMapping attaching the PR's API to scout-api-pr.andreas.services
-#   - Frontend published into s3://<shared-preview-bucket>/<N>/app/ and served
-#     at scout-pr.andreas.services/<N>/app
+# Combined PR workflow for scout. Validates first (lint, unit tests, frontend
+# build); only if validation passes does the per-PR preview stack deploy.
+#
+# DAG:
+#   lint-unit-build ─► deploy-preview (ephemeral stack + integration tests)
 #
 # Teardown on close is handled by .github/workflows/scout-teardown-preview-pr.yml.
 
@@ -13,7 +13,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - 'scout/**'
-      - '.github/workflows/scout-deploy-preview-pr.yml'
+      - '.github/workflows/scout-pr.yml'
 
 concurrency:
   group: scout-preview-pr-${{ github.event.pull_request.number }}
@@ -25,16 +25,68 @@ env:
   STACK_NAME: scout-pr-${{ github.event.pull_request.number }}
   PR_NUMBER: ${{ github.event.pull_request.number }}
 
-permissions:
-  id-token: write
-  contents: read
-  pull-requests: write
-
 jobs:
+  # ---------------------------------------------------------------------------
+  # Validate: lint + unit tests + frontend build. Gates the preview deploy.
+  # ---------------------------------------------------------------------------
+  lint-unit-build:
+    name: Lint, Unit Tests & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install events-api test deps
+        run: pip install -q -r scout/lambda/events-api/requirements-test.txt
+
+      - name: Run events-api unit tests
+        run: pytest scout/lambda/events-api/tests/ -v
+
+      - name: Install email-processor test deps
+        run: pip install -q -r scout/lambda/email-processor/requirements-test.txt
+
+      - name: Run email-processor unit tests
+        run: pytest scout/lambda/email-processor/tests/ -v
+
+      - name: Set up Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install frontend deps
+        run: cd scout/frontend && npm install
+
+      - name: Lint frontend
+        run: cd scout/frontend && npm run lint
+
+      - name: Build frontend
+        env:
+          # Placeholder values — only used to satisfy build-time env references.
+          VITE_API_URL: https://example.execute-api.us-east-1.amazonaws.com/prod/api
+          VITE_BASE: /app/
+        run: cd scout/frontend && npm run build
+
+  # ---------------------------------------------------------------------------
+  # Deploy per-PR preview stack (only runs if validation passed).
+  #   - CloudFormation stack scout-pr-<N> (Lambda + API GW + DynamoDB + Cognito)
+  #   - BasePathMapping attaching the PR's API to scout-api-pr.andreas.services
+  #   - Frontend published into s3://<shared-preview-bucket>/<N>/app/ and served
+  #     at scout-pr.andreas.services/<N>/app
+  # ---------------------------------------------------------------------------
   deploy-preview:
     name: Deploy PR Preview
+    needs: lint-unit-build
     runs-on: ubuntu-latest
     environment: scout-pr
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v4

@@ -11,7 +11,7 @@ name: Scout · Deploy · Prod
 #                          └─► deploy-frontend (if scout/frontend/** changed OR infra ran)
 #
 # PR previews live in a different environment (scout-pr). Their workflows
-# (scout-deploy-preview-infra.yml, scout-deploy-preview-pr.yml, and
+# (scout-deploy-preview-infra.yml, scout-pr.yml, and
 # scout-teardown-preview-pr.yml) stay separate.
 
 on:

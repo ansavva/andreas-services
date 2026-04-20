@@ -4,7 +4,7 @@ name: Scout · Deploy shared preview infra (from main)
 #   - S3 bucket + CloudFront distribution @ scout-pr.andreas.services
 #   - API Gateway custom domain @ scout-api-pr.andreas.services
 #
-# Per-PR stacks created by scout-deploy-preview-pr.yml attach to these
+# Per-PR stacks created by scout-pr.yml attach to these
 # shared resources via BasePathMapping and per-PR S3 prefixes. This workflow
 # deploys from `main` even though it exists to support PR previews — hence no
 # `-pr` / `-prod` suffix on the filename.

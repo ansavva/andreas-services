@@ -81,7 +81,8 @@ data "aws_route53_zone" "main" {
 - Lambda for all backends (containerised Docker for Flask services, zip for pure Lambda)
 
 ### Deployment (CI/CD)
-- **Standard**: GitHub Actions. Filenames follow `<service>-<action>[-<scope>]-<env>.yml` (e.g. `humbugg-deploy-prod.yml`, `scout-validate-pr.yml`) so the service, the action, and the trigger environment (PR vs Prod) are all visible at a glance.
+- **Standard**: GitHub Actions. Filenames follow `<service>-<action>[-<scope>]-<env>.yml` or `<service>-pr.yml` for the combined PR workflow (e.g. `humbugg-deploy-prod.yml`, `scout-pr.yml`) so the service, the action, and the trigger environment (PR vs Prod) are all visible at a glance.
+- **One combined PR workflow per service**: each service has a single `<service>-pr.yml` that runs on every PR. It validates first (lint + unit tests + build); when the service has an ephemeral preview deploy (scout), that deploy is a separate job chained via `needs:` so a failing validate blocks any AWS writes.
 - **One combined prod deploy per service**: each service has a single `<service>-deploy-prod.yml` that runs infra then apps in one workflow with `needs:` chaining (detect-changes → deploy-infra → deploy-backend + deploy-frontend). This eliminates races between separate infra and app workflows that shared SSM params.
 - **Path filtering**: `dorny/paths-filter@v3` — only deploy when the service's files change
 - **Separate jobs**: `deploy-backend` and `deploy-frontend` run independently
@@ -116,7 +117,7 @@ boto3.client('s3', aws_access_key_id='AKIA...', aws_secret_access_key='...')
 1. Create `<service>/` directory — self-contained with own backend, frontend, infra
 2. Reference shared Terraform outputs (Route53 zone, ACM cert, VPC) — do not recreate them
 3. Add GitHub Actions workflows at `.github/workflows/<service>-<action>-<env>.yml` following the storybook pattern:
-   - `<service>-validate-pr.yml` — PR checks (lint, test, Docker build verification)
+   - `<service>-pr.yml` — PR checks (lint, test, Docker build verification); if the service has ephemeral preview deploys, chain them as a job with `needs: <validate-job>` so validation must pass first
    - `<service>-deploy-prod.yml` — single combined deploy (detect-changes → deploy-infra → deploy-backend + deploy-frontend), with `concurrency: { group: <service>-prod, cancel-in-progress: false }`, `workflow_dispatch` inputs `run_infra` and `run_app`, and a `workflow_run` trigger on `Shared infra · Terraform apply · Prod`.
    Use path filtering, OIDC auth, and SSM params for cross-job values.
 4. Use Vite for the frontend (not CRA)

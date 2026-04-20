@@ -1,10 +1,10 @@
-name: Storybook · Build & lint · PR
+name: Storybook · PR
 
 on:
   pull_request:
     paths:
       - 'storybook/**'
-      - '.github/workflows/storybook-validate-pr.yml'
+      - '.github/workflows/storybook-pr.yml'
 
 env:
   AWS_REGION: us-east-1

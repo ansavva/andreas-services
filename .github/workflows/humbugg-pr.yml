@@ -1,10 +1,10 @@
-name: Humbugg · Build & verify · PR
+name: Humbugg · PR
 
 on:
   pull_request:
     paths:
       - 'humbugg/**'
-      - '.github/workflows/humbugg-validate-pr.yml'
+      - '.github/workflows/humbugg-pr.yml'
 
 env:
   AWS_REGION: us-east-1

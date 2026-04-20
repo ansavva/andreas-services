@@ -171,8 +171,10 @@ cd frontend && npm run dev
 ## PR Previews
 
 Every `pull_request` (opened / synchronize / reopened) whose diff touches
-`scout/**` spins up an ephemeral environment via
-`.github/workflows/scout-deploy-preview-pr.yml`:
+`scout/**` runs `.github/workflows/scout-pr.yml`. The workflow validates
+first (`lint-unit-build`: Python unit tests + frontend lint + frontend build);
+only if that job succeeds does the `deploy-preview` job (`needs: lint-unit-build`)
+spin up an ephemeral environment:
 
 | | Prod | PR `<N>` |
 |---|---|---|
@@ -188,10 +190,10 @@ under `/scout/pr-preview/*` (s3-bucket, cf-dist-id, api-domain).
 ### Bootstrapping preview infra
 
 On a fresh AWS account, run `scout-deploy-preview-infra.yml` manually via
-`workflow_dispatch` before opening the first PR. The per-PR deploy
-(`scout-deploy-preview-pr.yml`) starts with a **readiness-check** step that
-calls `aws ssm get-parameter` for each `/scout/pr-preview/*` value; if any
-are missing it fails immediately with:
+`workflow_dispatch` before opening the first PR. The per-PR `deploy-preview`
+job in `scout-pr.yml` starts with a **readiness-check** step that calls
+`aws ssm get-parameter` for each `/scout/pr-preview/*` value; if any are
+missing it fails immediately with:
 
 > `scout-deploy-preview-infra.yml has never been deployed; run it first.`
 

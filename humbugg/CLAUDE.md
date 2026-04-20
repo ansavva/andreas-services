@@ -89,7 +89,7 @@ All secrets/values live in the `humbugg-production` GitHub Actions environment. 
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `.github/workflows/humbugg-validate-pr.yml` | PR touching `humbugg/**` | Build backend Docker image (verify only), build frontend, no push |
+| `.github/workflows/humbugg-pr.yml` | PR touching `humbugg/**` | Build backend Docker image (verify only), build frontend, no push |
 | `.github/workflows/humbugg-deploy-prod.yml` | Push to `main` touching `humbugg/**`, or `workflow_dispatch`, or `workflow_run` after shared infra applies | Single combined deploy. `detect-changes` → `deploy-infra` (CloudFormation backend + frontend stacks, writes `/humbugg/prod/*` SSM) → `deploy-backend` + `deploy-frontend` in parallel. Gated by `humbugg-production` environment. |
 
 ### Combined deploy workflow (`humbugg-deploy-prod.yml`)
