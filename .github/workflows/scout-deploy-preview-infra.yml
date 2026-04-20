@@ -16,6 +16,10 @@ on:
       - 'scout/cloudformation-pr-preview.yaml'
       - '.github/workflows/scout-deploy-preview-infra.yml'
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Shared infra · Terraform apply · Prod"]
+    types: [completed]
+    branches: [main]
 
 concurrency:
   group: scout-preview-shared
@@ -27,6 +31,7 @@ env:
 jobs:
   deploy-pr-preview:
     name: Deploy PR preview shared stack (scout-pr-preview)
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     environment: scout-production
     permissions:

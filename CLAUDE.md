@@ -96,7 +96,7 @@ data "aws_route53_zone" "main" {
   - `scout-preview-shared` (`cancel-in-progress: false`) on the shared preview infra workflow
   - `scout-preview-pr-<N>` (`cancel-in-progress: true`) on the per-PR preview deploy and teardown
   - `shared-infra` (`cancel-in-progress: false`) on the shared Terraform apply
-- **Chaining on shared infra**: each service's combined deploy workflow declares a `workflow_run` trigger on `Shared infra · Terraform apply · Prod` so a cert or zone change reapplies every downstream service's infra.
+- **Chaining on shared infra**: each service's combined deploy workflow (and `scout-deploy-preview-infra.yml`) declares a `workflow_run` trigger on `Shared infra · Terraform apply · Prod` with a job-level guard (`if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'`) so a cert or zone change reapplies every downstream service's infra only when the shared apply succeeds. `workflow_run` doesn't inherit path filters; this is intentional — a shared cert/zone change should reapply everything downstream.
 - **Manual triggers**: every combined workflow accepts `workflow_dispatch` inputs `run_infra` (default `true`) and `run_app` (default `true`) for targeted reruns.
 
 ## AWS Credentials — Critical Rule

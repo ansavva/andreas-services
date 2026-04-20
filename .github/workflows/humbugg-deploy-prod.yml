@@ -26,6 +26,10 @@ on:
         description: 'Run the deploy-backend and deploy-frontend jobs'
         type: boolean
         default: true
+  workflow_run:
+    workflows: ["Shared infra · Terraform apply · Prod"]
+    types: [completed]
+    branches: [main]
 
 concurrency:
   group: humbugg-prod
@@ -37,6 +41,7 @@ env:
 jobs:
   detect-changes:
     name: Detect Changes
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     outputs:
       infra: ${{ steps.filter.outputs.infra }}
@@ -65,6 +70,7 @@ jobs:
     if: |
       (github.event_name == 'push' && needs.detect-changes.outputs.infra == 'true')
       || (github.event_name == 'workflow_dispatch' && inputs.run_infra)
+      || github.event_name == 'workflow_run'
     runs-on: ubuntu-latest
     environment: humbugg-production
     permissions:
@@ -167,10 +173,12 @@ jobs:
     if: |
       !cancelled()
       && needs.deploy-infra.result != 'failure'
-      && (github.event_name == 'workflow_dispatch' && inputs.run_app
+      && ((github.event_name == 'workflow_dispatch' && inputs.run_app)
           || (github.event_name == 'push'
               && (needs.detect-changes.outputs.backend == 'true'
-                  || needs.deploy-infra.result == 'success')))
+                  || needs.deploy-infra.result == 'success'))
+          || (github.event_name == 'workflow_run'
+              && needs.deploy-infra.result == 'success'))
     runs-on: ubuntu-latest
     environment: humbugg-production
     permissions:
@@ -258,10 +266,12 @@ jobs:
     if: |
       !cancelled()
       && needs.deploy-infra.result != 'failure'
-      && (github.event_name == 'workflow_dispatch' && inputs.run_app
+      && ((github.event_name == 'workflow_dispatch' && inputs.run_app)
           || (github.event_name == 'push'
               && (needs.detect-changes.outputs.frontend == 'true'
-                  || needs.deploy-infra.result == 'success')))
+                  || needs.deploy-infra.result == 'success'))
+          || (github.event_name == 'workflow_run'
+              && needs.deploy-infra.result == 'success'))
     runs-on: ubuntu-latest
     environment: humbugg-production
     permissions:
