@@ -1,6 +1,6 @@
 # Humbugg Web (React)
 
-This directory contains the standalone Humbugg web client. It replaces the legacy ASP.NET MVC app with a modern React + Vite SPA that talks directly to the Flask backend (`../backend`) and authenticates with AWS Cognito.
+This directory contains the standalone Humbugg web client.
 
 ## Development
 
