@@ -168,19 +168,20 @@ export default function ProfilePage() {
             {/* Profile Info Section */}
             <div className="space-y-4">
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
                   Email
-                </label>
+                </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400 py-2">
                   {currentUser?.email || "Not set"}
                 </p>
               </div>
 
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                <label htmlFor="display-name" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
                   Display Name *
                 </label>
                 <Input
+                  id="display-name"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="Enter your display name"

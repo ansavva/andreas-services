@@ -1,74 +1,163 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Humbugg backend (Flask) Lambda deployment
+Description: Humbugg backend — ECR repository, Cognito, Lambda, API Gateway, DynamoDB
 
 Parameters:
   FunctionName:
     Type: String
+    Default: humbugg-backend-production
   ImageUri:
     Type: String
-    Description: ECR image URI (backend container built for linux/amd64)
+    # Placeholder used only on first stack creation; deploy workflow updates the image thereafter.
+    Default: public.ecr.aws/lambda/python:3.11
   Timeout:
     Type: Number
     Default: 30
   MemorySize:
     Type: Number
     Default: 512
-  SubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
-    Description: Private subnets for Lambda (leave empty for public networking)
-    Default: []
-  SecurityGroupIds:
-    Type: List<AWS::EC2::SecurityGroup::Id>
-    Default: []
-  EnvMongoUri:
-    Type: String
-    Description: DocumentDB connection string (Mongo-compatible, e.g., mongodb://user:pass@docdb-cluster:27017)
-  EnvMongoDbName:
-    Type: String
-    Default: HumbuggDb
   EnvCorsOrigin:
     Type: String
-    Default: https://www.example.com
-  EnvCognitoRegion:
-    Type: String
-  EnvCognitoPoolId:
-    Type: String
-  EnvCognitoClientId:
-    Type: String
+    Default: https://humbugg.andreas.services
   StageName:
     Type: String
     Default: prod
 
-Conditions:
-  UseVpcConfig: !Not [!Equals [!Select [0, !Ref SubnetIds], ""]]
-
 Resources:
-  BackendFunction:
-    Type: AWS::Lambda::Function
+
+  # ---------------------------------------------------------------------------
+  # ECR
+  # ---------------------------------------------------------------------------
+
+  HumbuggBackendECR:
+    Type: AWS::ECR::Repository
     Properties:
-      FunctionName: !Ref FunctionName
-      PackageType: Image
-      Code:
-        ImageUri: !Ref ImageUri
-      Timeout: !Ref Timeout
-      MemorySize: !Ref MemorySize
-      Environment:
-        Variables:
-          MONGO_URI: !Ref EnvMongoUri
-          MONGO_DB_NAME: !Ref EnvMongoDbName
-          CORS_ORIGIN: !Ref EnvCorsOrigin
-          COGNITO_REGION: !Ref EnvCognitoRegion
-          COGNITO_USER_POOL_ID: !Ref EnvCognitoPoolId
-          COGNITO_CLIENT_ID: !Ref EnvCognitoClientId
-      Role:
-        Fn::GetAtt:
-          - BackendLambdaRole
-          - Arn
-      VpcConfig:
-        Fn::If:
-          - UseVpcConfig
-          - { SubnetIds: !Ref SubnetIds, SecurityGroupIds: !Ref SecurityGroupIds }
-          - { Ref: AWS::NoValue }
+      RepositoryName: humbugg-backend-production
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [{
+              "rulePriority": 1,
+              "description": "Keep last 10 images",
+              "selection": {
+                "tagStatus": "any",
+                "countType": "imageCountMoreThan",
+                "countNumber": 10
+              },
+              "action": { "type": "expire" }
+            }]
+          }
+
+  # ---------------------------------------------------------------------------
+  # Cognito
+  # ---------------------------------------------------------------------------
+
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: humbugg-production
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      PasswordPolicy:
+        MinimumLength: 8
+        RequireUppercase: true
+        RequireLowercase: true
+        RequireNumbers: true
+        RequireSymbols: false
+      Schema:
+        - Name: given_name
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+        - Name: family_name
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: humbugg-web
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+
+  # ---------------------------------------------------------------------------
+  # DynamoDB
+  # ---------------------------------------------------------------------------
+
+  HumbuggProfilesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: humbugg-profiles
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+
+  HumbuggGroupsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: humbugg-groups
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: group_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: group_id
+          KeyType: HASH
+
+  HumbuggGroupmembersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: humbugg-groupmembers
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: member_id
+          AttributeType: S
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: group_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: member_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: user_id-index
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: group_id-index
+          KeySchema:
+            - AttributeName: group_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # ---------------------------------------------------------------------------
+  # IAM
+  # ---------------------------------------------------------------------------
 
   BackendLambdaRole:
     Type: AWS::IAM::Role
@@ -83,7 +172,61 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+
+  BackendLambdaDynamoPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${FunctionName}-dynamo-policy
+      Roles:
+        - !Ref BackendLambdaRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:DeleteItem
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:BatchWriteItem
+              - dynamodb:BatchGetItem
+            Resource:
+              - !GetAtt HumbuggProfilesTable.Arn
+              - !GetAtt HumbuggGroupsTable.Arn
+              - !GetAtt HumbuggGroupmembersTable.Arn
+              - !Sub ${HumbuggProfilesTable.Arn}/index/*
+              - !Sub ${HumbuggGroupsTable.Arn}/index/*
+              - !Sub ${HumbuggGroupmembersTable.Arn}/index/*
+
+  # ---------------------------------------------------------------------------
+  # Lambda
+  # ---------------------------------------------------------------------------
+
+  BackendFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref FunctionName
+      PackageType: Image
+      Code:
+        ImageUri: !Ref ImageUri
+      Timeout: !Ref Timeout
+      MemorySize: !Ref MemorySize
+      Environment:
+        Variables:
+          HUMBUGG_PROFILES_TABLE: !Ref HumbuggProfilesTable
+          HUMBUGG_GROUPS_TABLE: !Ref HumbuggGroupsTable
+          HUMBUGG_GROUPMEMBERS_TABLE: !Ref HumbuggGroupmembersTable
+          CORS_ORIGIN: !Ref EnvCorsOrigin
+          COGNITO_REGION: !Ref AWS::Region
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+          COGNITO_CLIENT_ID: !Ref CognitoUserPoolClient
+      Role: !GetAtt BackendLambdaRole.Arn
+
+  # ---------------------------------------------------------------------------
+  # API Gateway
+  # ---------------------------------------------------------------------------
 
   HttpApi:
     Type: AWS::ApiGatewayV2::Api
@@ -97,7 +240,7 @@ Resources:
       ApiId: !Ref HttpApi
       IntegrationType: AWS_PROXY
       IntegrationUri: !GetAtt BackendFunction.Arn
-      PayloadFormatVersion: 2.0
+      PayloadFormatVersion: '2.0'
 
   ApiStage:
     Type: AWS::ApiGatewayV2::Stage
@@ -121,10 +264,22 @@ Resources:
       Action: lambda:InvokeFunction
       FunctionName: !Ref BackendFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/* 
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/*
 
 Outputs:
-  LambdaFunctionArn:
-    Value: !GetAtt BackendFunction.Arn
+  LambdaFunctionName:
+    Value: !Ref BackendFunction
+  EcrRepositoryUri:
+    Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${HumbuggBackendECR}
   ApiInvokeUrl:
     Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}
+  CognitoUserPoolId:
+    Value: !Ref CognitoUserPool
+  CognitoClientId:
+    Value: !Ref CognitoUserPoolClient
+  ProfilesTableName:
+    Value: !Ref HumbuggProfilesTable
+  GroupsTableName:
+    Value: !Ref HumbuggGroupsTable
+  GroupmembersTableName:
+    Value: !Ref HumbuggGroupmembersTable

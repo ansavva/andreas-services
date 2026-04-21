@@ -6,9 +6,9 @@ from datetime import datetime
 class Image:
     """
     Image model - represents an image belonging to a project
-    Metadata stored in MongoDB, actual image file stored in S3
+    Metadata stored in DynamoDB, actual image file stored in S3
     """
-    id: str  # UUID or MongoDB _id
+    id: str  # UUID
     project_id: str  # Reference to Project
     user_id: str  # Cognito user ID (sub claim)
     s3_key: str  # S3 object key where the image is stored
@@ -24,7 +24,6 @@ class Image:
     TYPE_GENERATED = "generated"
 
     def to_dict(self):
-        """Convert to dictionary for MongoDB storage"""
         return {
             '_id': self.id,
             'project_id': self.project_id,
@@ -40,7 +39,6 @@ class Image:
 
     @staticmethod
     def from_dict(data: dict) -> 'Image':
-        """Create Image from MongoDB document"""
         return Image(
             id=str(data.get('_id')),
             project_id=data.get('project_id'),

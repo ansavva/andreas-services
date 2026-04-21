@@ -13,9 +13,6 @@ def create_app() -> Flask:
   config = load_config()
   app = Flask(__name__)
   app.config.update(
-    MONGO_URI=config.mongo_uri,
-    MONGO_DB_NAME=config.mongo_db_name,
-    ENV=config.environ,
     DEBUG=config.environ == 'development'
   )
 

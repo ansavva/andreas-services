@@ -1,0 +1,535 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Scout – serverless events aggregator stack.
+  Includes DynamoDB, two Lambda functions, API Gateway (custom domain
+  scout-api.andreas.services), EventBridge, S3 static site, and CloudFront CDN
+  at scout.andreas.services serving the SPA under /app.
+  ACM certificate and Route53 zone are owned by the shared terraform/ stack.
+
+# ---------------------------------------------------------------------------
+# Parameters
+# ---------------------------------------------------------------------------
+Parameters:
+  ProjectName:
+    Type: String
+    Default: scout
+    Description: Short name used as a prefix for all resource names.
+
+  AnthropicApiKey:
+    Type: String
+    NoEcho: true
+    Description: Anthropic API key used by the email-processor Lambda.
+
+  GmailClientId:
+    Type: String
+    NoEcho: true
+    Description: Google OAuth client ID.
+
+  GmailClientSecret:
+    Type: String
+    NoEcho: true
+    Description: Google OAuth client secret.
+
+  GmailAccessToken:
+    Type: String
+    NoEcho: true
+    Description: Google OAuth access token.
+
+  GmailRefreshToken:
+    Type: String
+    NoEcho: true
+    Description: Google OAuth refresh token.
+
+  EmailProcessorZipKey:
+    Type: String
+    Default: lambda/email-processor.zip
+    Description: S3 key for the email-processor Lambda deployment package.
+
+  EventsApiZipKey:
+    Type: String
+    Default: lambda/events-api.zip
+    Description: S3 key for the events-api Lambda deployment package.
+
+  LambdaCodeBucket:
+    Type: String
+    Description: S3 bucket that holds Lambda deployment zip files.
+
+  MaxEmailsPerRun:
+    Type: Number
+    Default: 20
+    Description: Maximum number of emails processed per Lambda invocation.
+
+  # Resolved from the shared terraform/ stack at deploy time — never hard-code.
+  AcmCertificateArn:
+    Type: String
+    Description: >
+      ARN of the shared *.andreas.services ACM wildcard certificate (us-east-1).
+      Owned by terraform/envs/shared.
+
+  Route53HostedZoneId:
+    Type: String
+    Description: >
+      ID of the shared andreas.services Route53 hosted zone.
+      Owned by terraform/envs/shared.
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+Resources:
+
+  # -------------------------------------------------------------------------
+  # DynamoDB
+  # -------------------------------------------------------------------------
+  EventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-events"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: event_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: event_id
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # -------------------------------------------------------------------------
+  # IAM – Lambda execution role (shared by both functions)
+  # -------------------------------------------------------------------------
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-lambda-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                Resource: !GetAtt EventsTable.Arn
+
+  # -------------------------------------------------------------------------
+  # Lambda – Email Processor
+  # -------------------------------------------------------------------------
+  EmailProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-email-processor"
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300
+      MemorySize: 256
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref EmailProcessorZipKey
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref EventsTable
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          GMAIL_CLIENT_ID: !Ref GmailClientId
+          GMAIL_CLIENT_SECRET: !Ref GmailClientSecret
+          GMAIL_ACCESS_TOKEN: !Ref GmailAccessToken
+          GMAIL_REFRESH_TOKEN: !Ref GmailRefreshToken
+          MAX_EMAILS_PER_RUN: !Ref MaxEmailsPerRun
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # -------------------------------------------------------------------------
+  # Lambda – Events API
+  # -------------------------------------------------------------------------
+  EventsApiFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-events-api"
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 128
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref EventsApiZipKey
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref EventsTable
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # -------------------------------------------------------------------------
+  # EventBridge – Weekly trigger for email processor
+  # -------------------------------------------------------------------------
+  WeeklyProcessorRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-weekly-processor"
+      Description: Trigger the email processor Lambda every Monday at 08:00 UTC.
+      ScheduleExpression: "cron(0 8 ? * MON *)"
+      State: ENABLED
+      Targets:
+        - Id: EmailProcessorTarget
+          Arn: !GetAtt EmailProcessorFunction.Arn
+
+  WeeklyProcessorPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt EmailProcessorFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt WeeklyProcessorRule.Arn
+
+  # -------------------------------------------------------------------------
+  # API Gateway — routes live under /api/... so the same Lambda code works for
+  # prod (scout-api.andreas.services/api/...) and PRs
+  # (scout-api-pr.andreas.services/<N>/api/...); in both cases the Lambda
+  # receives event.path = "/api/events" (stage + base path are stripped).
+  # -------------------------------------------------------------------------
+  EventsApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub "${ProjectName}-api"
+      Description: REST API for Scout events.
+      EndpointConfiguration:
+        Types: [REGIONAL]
+
+  ApiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref EventsApi
+      ParentId: !GetAtt EventsApi.RootResourceId
+      PathPart: api
+
+  ApiEventsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref EventsApi
+      ParentId: !Ref ApiResource
+      PathPart: events
+
+  ApiEventByIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref EventsApi
+      ParentId: !Ref ApiEventsResource
+      PathPart: "{id}"
+
+  ApiEventsGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref EventsApi
+      ResourceId: !Ref ApiEventsResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
+          - FnArn: !GetAtt EventsApiFunction.Arn
+
+  ApiEventsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref EventsApi
+      ResourceId: !Ref ApiEventsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
+          - FnArn: !GetAtt EventsApiFunction.Arn
+
+  ApiEventByIdGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref EventsApi
+      ResourceId: !Ref ApiEventByIdResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
+          - FnArn: !GetAtt EventsApiFunction.Arn
+
+  ApiEventByIdOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref EventsApi
+      ResourceId: !Ref ApiEventByIdResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
+          - FnArn: !GetAtt EventsApiFunction.Arn
+
+  ApiProxyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref EventsApi
+      ParentId: !Ref ApiResource
+      PathPart: "{proxy+}"
+
+  ApiProxyAnyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref EventsApi
+      ResourceId: !Ref ApiProxyResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
+          - FnArn: !GetAtt EventsApiFunction.Arn
+
+  ApiDeploymentV3:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - ApiEventsGetMethod
+      - ApiEventsOptionsMethod
+      - ApiEventByIdGetMethod
+      - ApiEventByIdOptionsMethod
+      - ApiProxyAnyMethod
+    Properties:
+      RestApiId: !Ref EventsApi
+
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref EventsApi
+      DeploymentId: !Ref ApiDeploymentV3
+      StageName: prod
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingBurstLimit: 50
+          ThrottlingRateLimit: 10
+
+  ApiGatewayLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt EventsApiFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${EventsApi}/*"
+
+  # -------------------------------------------------------------------------
+  # API Gateway custom domain — scout-api.andreas.services
+  # Default (empty) base path mapping, so scout-api.andreas.services/api/events
+  # resolves to /api/events inside the API.
+  # -------------------------------------------------------------------------
+  ApiCustomDomain:
+    Type: AWS::ApiGateway::DomainName
+    Properties:
+      DomainName: scout-api.andreas.services
+      RegionalCertificateArn: !Ref AcmCertificateArn
+      EndpointConfiguration:
+        Types: [REGIONAL]
+      SecurityPolicy: TLS_1_2
+
+  ApiBasePathMapping:
+    Type: AWS::ApiGateway::BasePathMapping
+    DependsOn: ApiStage
+    Properties:
+      DomainName: !Ref ApiCustomDomain
+      RestApiId: !Ref EventsApi
+      Stage: !Ref ApiStage
+
+  ApiDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref Route53HostedZoneId
+      Name: scout-api.andreas.services.
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApiCustomDomain.RegionalDomainName
+        HostedZoneId: !GetAtt ApiCustomDomain.RegionalHostedZoneId
+
+  # -------------------------------------------------------------------------
+  # S3 – Static website bucket
+  # -------------------------------------------------------------------------
+  WebsiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-website-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  WebsiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebsiteBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: s3:GetObject
+            Resource: !Sub "${WebsiteBucket.Arn}/*"
+
+  # -------------------------------------------------------------------------
+  # CloudFront Function — SPA fallback under /app/*
+  # Any request under /app/ whose final segment has no file extension is
+  # rewritten to /app/index.html. The root / is redirected to /app/ so the
+  # bare hostname still lands on the SPA.
+  # -------------------------------------------------------------------------
+  SpaFallbackFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub "${ProjectName}-spa-fallback"
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Rewrite /app/* to /app/index.html and redirect / to /app/
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          var uri = request.uri;
+          if (uri === '/' || uri === '') {
+            return {
+              statusCode: 302,
+              statusDescription: 'Found',
+              headers: { location: { value: '/app/' } }
+            };
+          }
+          var match = uri.match(/^\/app(\/.*)?$/);
+          if (!match) {
+            return request;
+          }
+          var rest = match[1] || '';
+          var lastSegment = rest.split('/').pop();
+          if (!lastSegment || lastSegment.indexOf('.') === -1) {
+            request.uri = '/app/index.html';
+          }
+          return request;
+        }
+
+  # -------------------------------------------------------------------------
+  # CloudFront – serves scout.andreas.services/app
+  # Uses the shared *.andreas.services ACM certificate from terraform/
+  # -------------------------------------------------------------------------
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: Scout website CDN
+        HttpVersion: http2
+        PriceClass: PriceClass_100
+        Aliases:
+          - scout.andreas.services
+        ViewerCertificate:
+          AcmCertificateArn: !Ref AcmCertificateArn
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
+        Origins:
+          - Id: S3Origin
+            DomainName: !Sub "${WebsiteBucket}.s3-website-${AWS::Region}.amazonaws.com"
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized
+          Compress: true
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt SpaFallbackFunction.FunctionARN
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # -------------------------------------------------------------------------
+  # Route53 – DNS alias for scout.andreas.services → CloudFront
+  # -------------------------------------------------------------------------
+  DnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref Route53HostedZoneId
+      Name: scout.andreas.services.
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt CloudFrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2  # CloudFront's global hosted zone ID (fixed value)
+
+# ---------------------------------------------------------------------------
+# Outputs
+# ---------------------------------------------------------------------------
+Outputs:
+  WebsiteURL:
+    Description: Custom domain URL for Scout.
+    Value: https://scout.andreas.services/app
+    Export:
+      Name: !Sub "${ProjectName}-website-url"
+
+  CloudFrontURL:
+    Description: Raw CloudFront URL (useful before DNS propagates).
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}"
+
+  ApiEndpoint:
+    Description: Public API endpoint (via the custom domain).
+    Value: https://scout-api.andreas.services/api
+    Export:
+      Name: !Sub "${ProjectName}-api-endpoint"
+
+  ApiGatewayInvokeURL:
+    Description: Raw execute-api URL (useful for debugging DNS propagation).
+    Value: !Sub "https://${EventsApi}.execute-api.${AWS::Region}.amazonaws.com/prod/api"
+
+  S3BucketName:
+    Description: Name of the S3 bucket hosting the static site.
+    Value: !Ref WebsiteBucket
+    Export:
+      Name: !Sub "${ProjectName}-s3-bucket"
+
+  DynamoDBTableName:
+    Description: Name of the DynamoDB events table.
+    Value: !Ref EventsTable
+    Export:
+      Name: !Sub "${ProjectName}-dynamodb-table"
+
+  CloudFrontDistributionId:
+    Description: CloudFront distribution ID (used for cache invalidation).
+    Value: !Ref CloudFrontDistribution
+    Export:
+      Name: !Sub "${ProjectName}-cf-distribution-id"

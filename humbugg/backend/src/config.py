@@ -11,10 +11,8 @@ load_dotenv()
 class Config:
   """Application configuration."""
 
-  mongo_uri: str = os.getenv('MONGO_URI', 'mongodb://localhost:27017')
-  mongo_db_name: str = os.getenv('MONGO_DB_NAME', 'HumbuggDb')
   cors_origins: List[str] = field(default_factory=lambda: [
-    origin.strip() for origin in os.getenv('CORS_ORIGINS', 'http://localhost:5173').split(',') if origin.strip()
+    origin.strip() for origin in os.getenv('CORS_ORIGIN', 'http://localhost:5173').split(',') if origin.strip()
   ])
   cors_allow_all: bool = os.getenv('CORS_ALLOW_ALL', 'false').lower() == 'true'
   cognito_user_pool_id: str = os.getenv('COGNITO_USER_POOL_ID', 'us-east-1_example')

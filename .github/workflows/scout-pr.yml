@@ -1,0 +1,433 @@
+name: Scout · PR
+
+# Combined PR workflow for scout. Validates first (lint, unit tests, frontend
+# build); then ensures the shared PR-preview infrastructure exists (idempotent
+# CFN deploy); finally spins up the per-PR preview stack.
+#
+# DAG:
+#   lint-unit-build ─► deploy-preview-infra ─► deploy-preview
+#
+# The shared preview infra (scout-pr-preview CFN stack — S3 bucket +
+# CloudFront @ scout-pr.andreas.services and API Gateway custom domain
+# @ scout-api-pr.andreas.services) used to live in its own workflow that ran
+# only from main, which meant fresh AWS accounts needed a manual bootstrap
+# before the first PR could deploy. We inline the deploy here instead so
+# every PR self-heals the shared stack as part of its run.
+#
+# Teardown on close is handled by .github/workflows/scout-pr-teardown.yaml.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'scout/**'
+      - '.github/workflows/scout-pr.yml'
+
+concurrency:
+  group: scout-preview-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: us-east-1
+  LAMBDA_CODE_BUCKET: andreas-services-lambda-code
+  STACK_NAME: scout-pr-${{ github.event.pull_request.number }}
+  PR_NUMBER: ${{ github.event.pull_request.number }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Validate: lint + unit tests + frontend build. Gates the preview deploy.
+  # ---------------------------------------------------------------------------
+  lint-unit-build:
+    name: Lint, Unit Tests & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install events-api test deps
+        run: pip install -q -r scout/lambda/events-api/requirements-test.txt
+
+      - name: Run events-api unit tests
+        run: pytest scout/lambda/events-api/tests/ -v
+
+      - name: Install email-processor test deps
+        run: pip install -q -r scout/lambda/email-processor/requirements-test.txt
+
+      - name: Run email-processor unit tests
+        run: pytest scout/lambda/email-processor/tests/ -v
+
+      - name: Set up Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install frontend deps
+        run: cd scout/frontend && npm install
+
+      - name: Lint frontend
+        run: cd scout/frontend && npm run lint
+
+      - name: Build frontend
+        env:
+          # Placeholder values — only used to satisfy build-time env references.
+          VITE_API_URL: https://example.execute-api.us-east-1.amazonaws.com/prod/api
+          VITE_BASE: /app/
+        run: cd scout/frontend && npm run build
+
+  # ---------------------------------------------------------------------------
+  # Ensure the shared PR-preview infrastructure exists. This is an idempotent
+  # CloudFormation deploy of the scout-pr-preview stack (S3 bucket + CloudFront
+  # at scout-pr.andreas.services + API Gateway custom domain at
+  # scout-api-pr.andreas.services). Outputs are published to SSM under
+  # /scout/pr-preview/*, which the per-PR deploy consumes.
+  #
+  # Concurrency: every PR job in this workflow queues behind the previous PR
+  # via the scout-preview-pr-<N> group above, but parallel PRs can each hit
+  # this job simultaneously. CFN's own per-stack locking serialises the
+  # deploys safely; on empty changesets CFN is a no-op.
+  # ---------------------------------------------------------------------------
+  deploy-preview-infra:
+    name: Ensure shared PR preview infra
+    needs: lint-unit-build
+    runs-on: ubuntu-latest
+    environment: scout-pr
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve shared infrastructure
+        id: shared
+        run: |
+          ACM_ARN=$(aws acm list-certificates \
+            --region us-east-1 \
+            --query "CertificateSummaryList[?DomainName=='*.andreas.services'].CertificateArn | [0]" \
+            --output text)
+          ZONE_ID=$(aws route53 list-hosted-zones \
+            --query "HostedZones[?Name=='andreas.services.'].Id | [0]" \
+            --output text | sed 's|/hostedzone/||')
+          echo "acm_arn=${ACM_ARN}" >> "$GITHUB_OUTPUT"
+          echo "zone_id=${ZONE_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy PR preview infrastructure
+        run: |
+          aws cloudformation deploy \
+            --template-file scout/infra/cloudformation-pr-preview.yaml \
+            --stack-name scout-pr-preview \
+            --region "${{ env.AWS_REGION }}" \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "AcmCertificateArn=${{ steps.shared.outputs.acm_arn }}" \
+              "Route53HostedZoneId=${{ steps.shared.outputs.zone_id }}"
+
+      - name: Store PR preview infrastructure outputs in SSM
+        run: |
+          get_pr() {
+            aws cloudformation describe-stacks \
+              --stack-name scout-pr-preview \
+              --query "Stacks[0].Outputs[?OutputKey=='${1}'].OutputValue | [0]" \
+              --output text
+          }
+
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/pr-preview/s3-bucket \
+            --value "$(get_pr S3BucketName)"
+
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/pr-preview/cf-dist-id \
+            --value "$(get_pr CloudFrontDistributionId)"
+
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/pr-preview/api-domain \
+            --value "$(get_pr ApiDomainName)"
+
+  # ---------------------------------------------------------------------------
+  # Deploy per-PR preview stack (only runs if validation + shared infra passed).
+  #   - CloudFormation stack scout-pr-<N> (Lambda + API GW + DynamoDB + Cognito)
+  #   - BasePathMapping attaching the PR's API to scout-api-pr.andreas.services
+  #   - Frontend published into s3://<shared-preview-bucket>/<N>/app/ and served
+  #     at scout-pr.andreas.services/<N>/app
+  # ---------------------------------------------------------------------------
+  deploy-preview:
+    name: Deploy PR Preview
+    needs: deploy-preview-infra
+    runs-on: ubuntu-latest
+    environment: scout-pr
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ------------------------------------------------------------------
+      # Build + upload the events-api Lambda zip to a per-PR S3 key
+      # ------------------------------------------------------------------
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Package events-api Lambda
+        run: |
+          cd scout/lambda/events-api
+          mkdir -p package
+          cp lambda_function.py package/
+          cd package && zip -q -r ../events-api.zip .
+
+      - name: Upload Lambda zip to S3
+        run: |
+          aws s3 cp scout/lambda/events-api/events-api.zip \
+            "s3://${{ env.LAMBDA_CODE_BUCKET }}/pr/${{ env.PR_NUMBER }}/events-api.zip"
+
+      - name: Package email-processor Lambda
+        run: |
+          cd scout/lambda/email-processor
+          mkdir -p package
+          pip install -q -r requirements.txt --target package/
+          cp lambda_function.py package/
+          cd package && zip -q -r ../email-processor.zip .
+
+      - name: Upload email-processor zip to S3
+        run: |
+          aws s3 cp scout/lambda/email-processor/email-processor.zip \
+            "s3://${{ env.LAMBDA_CODE_BUCKET }}/pr/${{ env.PR_NUMBER }}/email-processor.zip"
+
+      # ------------------------------------------------------------------
+      # Deploy the per-PR CloudFormation stack
+      # ------------------------------------------------------------------
+      - name: Read shared PR preview API domain from SSM
+        id: preview
+        run: |
+          API_DOMAIN=$(aws ssm get-parameter \
+            --name /scout/pr-preview/api-domain \
+            --query Parameter.Value --output text)
+          echo "api_domain=${API_DOMAIN}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy per-PR CloudFormation stack
+        run: |
+          aws cloudformation deploy \
+            --template-file scout/infra/cloudformation-pr.yaml \
+            --stack-name "${{ env.STACK_NAME }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "PrNumber=${{ env.PR_NUMBER }}" \
+              "LambdaCodeBucket=${{ env.LAMBDA_CODE_BUCKET }}" \
+              "EventsApiZipKey=pr/${{ env.PR_NUMBER }}/events-api.zip" \
+              "EmailProcessorZipKey=pr/${{ env.PR_NUMBER }}/email-processor.zip" \
+              "SharedApiDomainName=${{ steps.preview.outputs.api_domain }}" \
+              "AnthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }}" \
+              "GmailClientId=${{ secrets.GMAIL_CLIENT_ID }}" \
+              "GmailClientSecret=${{ secrets.GMAIL_CLIENT_SECRET }}" \
+              "GmailAccessToken=${{ secrets.GMAIL_ACCESS_TOKEN }}" \
+              "GmailRefreshToken=${{ secrets.GMAIL_REFRESH_TOKEN }}" \
+              "MaxEmailsPerRun=3"
+
+      - name: Force Lambda to pick up the latest zip
+        run: |
+          aws lambda update-function-code \
+            --function-name "scout-events-api-pr-${{ env.PR_NUMBER }}" \
+            --s3-bucket "${{ env.LAMBDA_CODE_BUCKET }}" \
+            --s3-key "pr/${{ env.PR_NUMBER }}/events-api.zip" \
+            --region "${{ env.AWS_REGION }}" \
+            --output table \
+            --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
+
+          aws lambda update-function-code \
+            --function-name "scout-email-processor-pr-${{ env.PR_NUMBER }}" \
+            --s3-bucket "${{ env.LAMBDA_CODE_BUCKET }}" \
+            --s3-key "pr/${{ env.PR_NUMBER }}/email-processor.zip" \
+            --region "${{ env.AWS_REGION }}" \
+            --output table \
+            --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
+
+          aws lambda wait function-updated \
+            --function-name "scout-email-processor-pr-${{ env.PR_NUMBER }}" \
+            --region "${{ env.AWS_REGION }}"
+
+      - name: Invoke email-processor to seed PR table
+        run: |
+          aws lambda invoke \
+            --function-name "scout-email-processor-pr-${{ env.PR_NUMBER }}" \
+            --invocation-type RequestResponse \
+            --region "${{ env.AWS_REGION }}" \
+            --payload '{}' \
+            --cli-binary-format raw-in-base64-out \
+            /tmp/email-processor-response.json
+
+          cat /tmp/email-processor-response.json
+
+          STATUS=$(python3 -c "
+          import sys, json
+          d = json.load(open('/tmp/email-processor-response.json'))
+          print(d.get('statusCode', ''))
+          ")
+          ERRORS=$(python3 -c "
+          import sys, json
+          d = json.load(open('/tmp/email-processor-response.json'))
+          body = json.loads(d.get('body', '{}'))
+          print(json.dumps(body.get('errors', [])))
+          ")
+
+          echo "statusCode: $STATUS"
+          echo "errors: $ERRORS"
+
+          if [ "$STATUS" != "200" ]; then
+            echo "email-processor returned non-200 statusCode: $STATUS"
+            exit 1
+          fi
+          if [ "$ERRORS" != "[]" ]; then
+            echo "email-processor reported errors: $ERRORS"
+            exit 1
+          fi
+
+      - name: Read PR stack outputs
+        id: outputs
+        run: |
+          get_output() {
+            aws cloudformation describe-stacks \
+              --stack-name "${{ env.STACK_NAME }}" \
+              --query "Stacks[0].Outputs[?OutputKey=='${1}'].OutputValue | [0]" \
+              --output text
+          }
+          echo "api_url=$(get_output ApiEndpoint)"           >> "$GITHUB_OUTPUT"
+          echo "pool_id=$(get_output UserPoolId)"            >> "$GITHUB_OUTPUT"
+          echo "client_id=$(get_output UserPoolClientId)"    >> "$GITHUB_OUTPUT"
+          echo "frontend_url=$(get_output FrontendURL)"      >> "$GITHUB_OUTPUT"
+
+      # ------------------------------------------------------------------
+      # Build + publish the frontend under /<N>/app/
+      # ------------------------------------------------------------------
+      - name: Set up Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install frontend dependencies
+        run: cd scout/frontend && npm install
+
+      - name: Build frontend
+        env:
+          VITE_BASE: /${{ env.PR_NUMBER }}/app/
+          VITE_API_URL: ${{ steps.outputs.outputs.api_url }}
+          VITE_COGNITO_USER_POOL_ID: ${{ steps.outputs.outputs.pool_id }}
+          VITE_COGNITO_CLIENT_ID: ${{ steps.outputs.outputs.client_id }}
+        run: cd scout/frontend && npm run build
+
+      - name: Read shared preview bucket + distribution from SSM
+        id: preview_infra
+        run: |
+          BUCKET=$(aws ssm get-parameter \
+            --name /scout/pr-preview/s3-bucket \
+            --query Parameter.Value --output text)
+          DIST=$(aws ssm get-parameter \
+            --name /scout/pr-preview/cf-dist-id \
+            --query Parameter.Value --output text)
+          echo "bucket=${BUCKET}" >> "$GITHUB_OUTPUT"
+          echo "dist=${DIST}"     >> "$GITHUB_OUTPUT"
+
+      - name: Sync hashed assets (long cache)
+        run: |
+          aws s3 sync scout/frontend/dist/ \
+            "s3://${{ steps.preview_infra.outputs.bucket }}/${{ env.PR_NUMBER }}/app/" \
+            --region "${{ env.AWS_REGION }}" \
+            --delete \
+            --cache-control "public,max-age=31536000,immutable" \
+            --exclude "*.html"
+
+      - name: Sync HTML (no cache)
+        run: |
+          aws s3 sync scout/frontend/dist/ \
+            "s3://${{ steps.preview_infra.outputs.bucket }}/${{ env.PR_NUMBER }}/app/" \
+            --region "${{ env.AWS_REGION }}" \
+            --cache-control "no-cache,no-store,must-revalidate" \
+            --include "*.html"
+
+      - name: Invalidate CloudFront for this PR
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ steps.preview_infra.outputs.dist }}" \
+            --paths "/${{ env.PR_NUMBER }}/*"
+
+      # ------------------------------------------------------------------
+      # Integration tests against the freshly deployed PR API
+      # ------------------------------------------------------------------
+      - name: Install integration test deps
+        run: pip install -q -r scout/tests/integration/requirements-test.txt
+
+      - name: Run integration tests
+        env:
+          SCOUT_API_URL: ${{ steps.outputs.outputs.api_url }}
+          SCOUT_EMAIL_PROCESSOR_FUNCTION: scout-email-processor-pr-${{ env.PR_NUMBER }}
+          AWS_DEFAULT_REGION: ${{ env.AWS_REGION }}
+        run: pytest scout/tests/integration/ -v
+
+      # ------------------------------------------------------------------
+      # Comment the PR with the preview URLs
+      # ------------------------------------------------------------------
+      - name: Comment preview URLs on PR
+        if: always() && steps.outputs.outputs.api_url != ''
+        uses: actions/github-script@v7
+        env:
+          FRONTEND_URL: ${{ steps.outputs.outputs.frontend_url }}
+          API_URL: ${{ steps.outputs.outputs.api_url }}
+          POOL_ID: ${{ steps.outputs.outputs.pool_id }}
+          CLIENT_ID: ${{ steps.outputs.outputs.client_id }}
+        with:
+          script: |
+            const marker = '<!-- scout-pr-preview -->';
+            const body = [
+              marker,
+              '### Scout PR preview',
+              '',
+              `- Frontend: ${process.env.FRONTEND_URL}`,
+              `- API:      ${process.env.API_URL}`,
+              '',
+              '<details><summary>Cognito (fresh per-PR pool)</summary>',
+              '',
+              `- User Pool ID: \`${process.env.POOL_ID}\``,
+              `- App Client ID: \`${process.env.CLIENT_ID}\``,
+              '',
+              '</details>',
+              '',
+              '_Environment is torn down automatically when the PR closes._',
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(c => c.body && c.body.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number, body,
+              });
+            }

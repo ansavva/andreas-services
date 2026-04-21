@@ -79,7 +79,7 @@ const StoryChatStep: React.FC<StoryChatStepProps> = ({
               <div className="text-center py-12 text-gray-500">
                 <p className="mb-2">Start chatting to create your story!</p>
                 <p className="text-sm">
-                  Try asking: "I want to create a story about going to space"
+                  Try asking: &quot;I want to create a story about going to space&quot;
                 </p>
               </div>
             )}

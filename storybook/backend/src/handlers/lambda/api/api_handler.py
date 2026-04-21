@@ -3,8 +3,6 @@ Lambda handler for running Flask app in AWS Lambda
 This module adapts the Flask application to work with AWS Lambda.
 Adds defensive logging so cold-start failures surface in CloudWatch.
 """
-from urllib.parse import urlsplit
-
 import structlog
 from mangum import Mangum
 from asgiref.wsgi import WsgiToAsgi
@@ -28,24 +26,10 @@ logger.info(
     "Cold start config",
     region=AppConfig.AWS_REGION,
     bucket_set=bool(getattr(AppConfig, "S3_BUCKET_NAME", None)),
-    db_url_set=bool(getattr(AppConfig, "DATABASE_URL", None)),
-    db_name=getattr(AppConfig, "DATABASE_NAME", None),
     openai=bool(getattr(AppConfig, "OPENAI_API_KEY", None)),
     stability=bool(getattr(AppConfig, "STABILITY_API_KEY", None)),
     replicate=bool(getattr(AppConfig, "REPLICATE_API_TOKEN", None)),
 )
-
-db_uri = getattr(AppConfig, "DATABASE_URL", "")
-if db_uri:
-    parsed = urlsplit(db_uri)
-    logger.info(
-        "Database URI parsed",
-        db_scheme=parsed.scheme,
-        db_host=parsed.hostname,
-        db_has_port=parsed.port is not None,
-        db_query=parsed.query,
-    )
-
 
 app = create_app()
 asgi_app = WsgiToAsgi(app)

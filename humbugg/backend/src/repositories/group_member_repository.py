@@ -1,46 +1,110 @@
+import os
+import uuid
 from typing import List, Optional
 
-from bson import ObjectId
+import boto3
+from boto3.dynamodb.conditions import Key, Attr
 
-from src.extensions import get_db
 from src.repositories.helpers import normalize_document, normalize_many
+
+dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
 
 
 class GroupMemberRepository:
-  def __init__(self, db_name: str):
-    self.collection = get_db(db_name).groupmembers
+  # db_name is accepted but unused — kept for backward compatibility with existing route instantiation
+  def __init__(self, db_name: str = None):
+    pass
+
+  def _table(self):
+    return dynamodb.Table(os.environ['HUMBUGG_GROUPMEMBERS_TABLE'])
 
   def get_by_user(self, user_id: str) -> List[dict]:
-    docs = list(self.collection.find({'UserId': user_id}))
-    return normalize_many(docs)
+    resp = self._table().query(
+      IndexName='user_id-index',
+      KeyConditionExpression=Key('user_id').eq(user_id)
+    )
+    return normalize_many(resp['Items'])
 
   def get_by_group(self, group_id: str) -> List[dict]:
-    docs = list(self.collection.find({'GroupId': group_id}))
-    return normalize_many(docs)
+    resp = self._table().query(
+      IndexName='group_id-index',
+      KeyConditionExpression=Key('group_id').eq(group_id)
+    )
+    return normalize_many(resp['Items'])
 
   def get_by_user_and_group(self, user_id: str, group_id: str) -> Optional[dict]:
-    doc = self.collection.find_one({'UserId': user_id, 'GroupId': group_id})
-    return normalize_document(doc) if doc else None
+    # Query user_id-index then filter by group_id
+    resp = self._table().query(
+      IndexName='user_id-index',
+      KeyConditionExpression=Key('user_id').eq(user_id),
+      FilterExpression=Attr('group_id').eq(group_id)
+    )
+    items = resp['Items']
+    return normalize_document(items[0]) if items else None
 
   def get(self, member_id: str) -> Optional[dict]:
-    doc = self.collection.find_one({'_id': ObjectId(member_id)})
-    return normalize_document(doc) if doc else None
+    resp = self._table().get_item(Key={'member_id': member_id})
+    item = resp.get('Item')
+    return normalize_document(item) if item else None
 
   def create_many(self, docs: List[dict]) -> None:
-    self.collection.insert_many(docs)
+    with self._table().batch_writer() as batch:
+      for doc in docs:
+        member_id = str(uuid.uuid4())
+        # Derive lowercase GSI key fields from the uppercase payload fields
+        user_id = doc.get('UserId') or doc.get('user_id', '')
+        group_id = doc.get('GroupId') or doc.get('group_id', '')
+        item = {
+          'member_id': member_id,
+          'user_id': user_id,
+          'group_id': group_id,
+          **doc
+        }
+        batch.put_item(Item=item)
 
   def create(self, doc: dict) -> dict:
-    result = self.collection.insert_one(doc)
-    return self.get(str(result.inserted_id))
+    member_id = str(uuid.uuid4())
+    # Derive lowercase GSI key fields from the uppercase payload fields
+    user_id = doc.get('UserId') or doc.get('user_id', '')
+    group_id = doc.get('GroupId') or doc.get('group_id', '')
+    item = {
+      'member_id': member_id,
+      'user_id': user_id,
+      'group_id': group_id,
+      **doc
+    }
+    self._table().put_item(Item=item)
+    return normalize_document(item)
 
   def update(self, member_id: str, doc: dict) -> None:
-    self.collection.replace_one({'_id': ObjectId(member_id)}, doc)
+    # Derive lowercase GSI key fields from the uppercase payload fields
+    user_id = doc.get('UserId') or doc.get('user_id', '')
+    group_id = doc.get('GroupId') or doc.get('group_id', '')
+    item = {
+      'member_id': member_id,
+      'user_id': user_id,
+      'group_id': group_id,
+      **doc
+    }
+    self._table().put_item(Item=item)
 
-  def update_recipient(self, member_id: str, recipient_id: str | None) -> None:
-    self.collection.update_one({'_id': ObjectId(member_id)}, {'$set': {'RecipientId': recipient_id}})
+  def update_recipient(self, member_id: str, recipient_id: Optional[str]) -> None:
+    update_expr = 'SET RecipientId = :val'
+    expr_values = {':val': recipient_id}
+    self._table().update_item(
+      Key={'member_id': member_id},
+      UpdateExpression=update_expr,
+      ExpressionAttributeValues=expr_values
+    )
 
   def delete(self, member_id: str) -> None:
-    self.collection.delete_one({'_id': ObjectId(member_id)})
+    self._table().delete_item(Key={'member_id': member_id})
 
   def delete_by_group(self, group_id: str) -> None:
-    self.collection.delete_many({'GroupId': group_id})
+    resp = self._table().query(
+      IndexName='group_id-index',
+      KeyConditionExpression=Key('group_id').eq(group_id)
+    )
+    with self._table().batch_writer() as batch:
+      for item in resp['Items']:
+        batch.delete_item(Key={'member_id': item['member_id']})

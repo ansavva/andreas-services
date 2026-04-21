@@ -1,0 +1,292 @@
+name: Scout · Deploy · Prod
+
+# Combined prod deploy for scout. Runs infra first (when the prod CFN template
+# changes or manual dispatch requests it), then backend + frontend in parallel.
+# Infra writes SSM params under /scout/prod/* that the app jobs read.
+#
+# DAG:
+#   detect-changes ─► deploy-infra (if scout/cloudformation.yaml changed)
+#                          │
+#                          ├─► deploy-backend  (if scout/lambda/** changed OR infra ran)
+#                          └─► deploy-frontend (if scout/frontend/** changed OR infra ran)
+#
+# PR previews live in a different environment (scout-pr). Their workflows
+# (scout-pr.yaml and scout-pr-teardown.yaml) stay separate. The shared
+# preview infra is deployed as part of scout-pr.yaml itself.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scout/infra/cloudformation.yaml'
+      - 'scout/lambda/**'
+      - 'scout/frontend/**'
+      - '.github/workflows/scout-prod.yaml'
+  workflow_dispatch:
+    inputs:
+      run_infra:
+        description: 'Run the deploy-infra job'
+        type: boolean
+        default: true
+      run_app:
+        description: 'Run the deploy-backend and deploy-frontend jobs'
+        type: boolean
+        default: true
+  workflow_run:
+    workflows: ["Shared infra · Terraform apply · Prod"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: scout-prod
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  STACK_NAME: scout
+  LAMBDA_CODE_BUCKET: andreas-services-lambda-code
+
+jobs:
+  detect-changes:
+    name: Detect Changes
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      infra: ${{ steps.filter.outputs.infra }}
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            infra:
+              - 'scout/infra/cloudformation.yaml'
+            backend:
+              - 'scout/lambda/**'
+            frontend:
+              - 'scout/frontend/**'
+
+  # ---------------------------------------------------------------------------
+  # Production stack (scout) — Lambdas, API GW @ scout-api.andreas.services,
+  # CloudFront @ scout.andreas.services, DynamoDB, Route53.
+  # ---------------------------------------------------------------------------
+  deploy-infra:
+    name: Deploy prod stack (scout)
+    needs: detect-changes
+    if: |
+      (github.event_name == 'push' && needs.detect-changes.outputs.infra == 'true')
+      || (github.event_name == 'workflow_dispatch' && inputs.run_infra)
+      || github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    environment: scout-production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve shared infrastructure
+        id: shared
+        run: |
+          ACM_ARN=$(aws acm list-certificates \
+            --region us-east-1 \
+            --query "CertificateSummaryList[?DomainName=='*.andreas.services'].CertificateArn | [0]" \
+            --output text)
+          ZONE_ID=$(aws route53 list-hosted-zones \
+            --query "HostedZones[?Name=='andreas.services.'].Id | [0]" \
+            --output text | sed 's|/hostedzone/||')
+          echo "acm_arn=${ACM_ARN}" >> "$GITHUB_OUTPUT"
+          echo "zone_id=${ZONE_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy CloudFormation stack
+        run: |
+          aws cloudformation deploy \
+            --template-file scout/infra/cloudformation.yaml \
+            --stack-name "${{ env.STACK_NAME }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "ProjectName=scout" \
+              "LambdaCodeBucket=${{ env.LAMBDA_CODE_BUCKET }}" \
+              "AcmCertificateArn=${{ steps.shared.outputs.acm_arn }}" \
+              "Route53HostedZoneId=${{ steps.shared.outputs.zone_id }}" \
+              "AnthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }}" \
+              "GmailClientId=${{ secrets.GMAIL_CLIENT_ID }}" \
+              "GmailClientSecret=${{ secrets.GMAIL_CLIENT_SECRET }}" \
+              "GmailAccessToken=${{ secrets.GMAIL_ACCESS_TOKEN }}" \
+              "GmailRefreshToken=${{ secrets.GMAIL_REFRESH_TOKEN }}"
+
+      - name: Store infrastructure outputs in SSM
+        run: |
+          get_output() {
+            aws cloudformation describe-stacks \
+              --stack-name "${{ env.STACK_NAME }}" \
+              --query "Stacks[0].Outputs[?OutputKey=='${1}'].OutputValue | [0]" \
+              --output text
+          }
+
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/prod/api-url \
+            --value "$(get_output ApiEndpoint)"
+
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/prod/s3-bucket \
+            --value "$(get_output S3BucketName)"
+
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/prod/cf-dist-id \
+            --value "$(get_output CloudFrontDistributionId)"
+
+  # ---------------------------------------------------------------------------
+  # Package Lambda zips and push to the functions
+  # ---------------------------------------------------------------------------
+  deploy-backend:
+    name: Deploy Lambda Functions
+    needs: [detect-changes, deploy-infra]
+    if: |
+      !cancelled()
+      && needs.deploy-infra.result != 'failure'
+      && ((github.event_name == 'workflow_dispatch' && inputs.run_app)
+          || (github.event_name == 'push'
+              && (needs.detect-changes.outputs.backend == 'true'
+                  || needs.deploy-infra.result == 'success'))
+          || (github.event_name == 'workflow_run'
+              && needs.deploy-infra.result == 'success'))
+    runs-on: ubuntu-latest
+    environment: scout-production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Package email-processor Lambda
+        run: |
+          cd scout/lambda/email-processor
+          pip install -q -r requirements.txt -t package/
+          cp lambda_function.py package/
+          cd package && zip -q -r ../email-processor.zip .
+
+      - name: Package events-api Lambda
+        run: |
+          cd scout/lambda/events-api
+          mkdir -p package
+          cp lambda_function.py package/
+          cd package && zip -q -r ../events-api.zip .
+
+      - name: Upload Lambda packages to S3
+        run: |
+          aws s3 cp scout/lambda/email-processor.zip \
+            "s3://${{ env.LAMBDA_CODE_BUCKET }}/lambda/email-processor.zip"
+          aws s3 cp scout/lambda/events-api.zip \
+            "s3://${{ env.LAMBDA_CODE_BUCKET }}/lambda/events-api.zip"
+
+      - name: Update Lambda function code
+        run: |
+          for fn in email-processor events-api; do
+            aws lambda update-function-code \
+              --function-name "${{ env.STACK_NAME }}-${fn}" \
+              --s3-bucket "${{ env.LAMBDA_CODE_BUCKET }}" \
+              --s3-key "lambda/${fn}.zip" \
+              --region "${{ env.AWS_REGION }}" \
+              --output table \
+              --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
+          done
+
+  # ---------------------------------------------------------------------------
+  # Build Vite SPA and sync to S3 + CloudFront
+  # Values come from SSM (written by deploy-infra)
+  # ---------------------------------------------------------------------------
+  deploy-frontend:
+    name: Deploy Frontend
+    needs: [detect-changes, deploy-infra]
+    if: |
+      !cancelled()
+      && needs.deploy-infra.result != 'failure'
+      && ((github.event_name == 'workflow_dispatch' && inputs.run_app)
+          || (github.event_name == 'push'
+              && (needs.detect-changes.outputs.frontend == 'true'
+                  || needs.deploy-infra.result == 'success'))
+          || (github.event_name == 'workflow_run'
+              && needs.deploy-infra.result == 'success'))
+    runs-on: ubuntu-latest
+    environment: scout-production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: npm
+          cache-dependency-path: scout/frontend/package-lock.json
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Read infrastructure values from SSM
+        run: |
+          get() { aws ssm get-parameter --name "/scout/prod/${1}" \
+            --query Parameter.Value --output text; }
+
+          echo "VITE_API_URL=$(get api-url)"            >> "$GITHUB_ENV"
+          echo "S3_BUCKET=$(get s3-bucket)"             >> "$GITHUB_ENV"
+          echo "CF_DIST_ID=$(get cf-dist-id)"           >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: cd scout/frontend && npm ci
+
+      - name: Build frontend
+        env:
+          VITE_BASE: /app/
+        run: cd scout/frontend && npm run build
+
+      - name: Sync hashed assets (long cache)
+        run: |
+          aws s3 sync scout/frontend/dist/ "s3://${S3_BUCKET}/app/" \
+            --region "${{ env.AWS_REGION }}" \
+            --delete \
+            --cache-control "public,max-age=31536000,immutable" \
+            --exclude "*.html"
+
+      - name: Sync HTML (no cache)
+        run: |
+          aws s3 sync scout/frontend/dist/ "s3://${S3_BUCKET}/app/" \
+            --region "${{ env.AWS_REGION }}" \
+            --cache-control "no-cache,no-store,must-revalidate" \
+            --include "*.html"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${CF_DIST_ID}" \
+            --paths "/*"

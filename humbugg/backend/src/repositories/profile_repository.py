@@ -1,25 +1,39 @@
+import os
 from typing import Optional
 
-from bson import ObjectId
+import boto3
+from boto3.dynamodb.conditions import Key, Attr
 
-from src.extensions import get_db
 from src.repositories.helpers import normalize_document
+
+dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
 
 
 class ProfileRepository:
-  def __init__(self, db_name: str):
-    self.collection = get_db(db_name).profiles
+  # db_name is accepted but unused — kept for backward compatibility with existing route instantiation
+  def __init__(self, db_name: str = None):
+    pass
 
-  def get(self, profile_id: str) -> Optional[dict]:
-    doc = self.collection.find_one({'_id': ObjectId(profile_id)})
-    return normalize_document(doc) if doc else None
+  def _table(self):
+    return dynamodb.Table(os.environ['HUMBUGG_PROFILES_TABLE'])
+
+  def get(self, user_id: str) -> Optional[dict]:
+    resp = self._table().get_item(Key={'user_id': user_id})
+    item = resp.get('Item')
+    return normalize_document(item) if item else None
 
   def create(self, profile: dict) -> dict:
-    result = self.collection.insert_one(profile)
-    return self.get(str(result.inserted_id))
+    # user_id must be present in the payload (comes from Cognito via the service layer)
+    user_id = profile.get('user_id') or profile.get('UserId')
+    if not user_id:
+      raise ValueError('user_id is required to create a profile')
+    item = {'user_id': user_id, **profile}
+    self._table().put_item(Item=item)
+    return normalize_document(item)
 
-  def update(self, profile_id: str, profile: dict) -> None:
-    self.collection.replace_one({'_id': ObjectId(profile_id)}, profile)
+  def update(self, user_id: str, profile: dict) -> None:
+    item = {'user_id': user_id, **profile}
+    self._table().put_item(Item=item)
 
-  def delete(self, profile_id: str) -> None:
-    self.collection.delete_one({'_id': ObjectId(profile_id)})
+  def delete(self, user_id: str) -> None:
+    self._table().delete_item(Key={'user_id': user_id})

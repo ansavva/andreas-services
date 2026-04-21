@@ -45,7 +45,6 @@ class StoryProject:
     ]
 
     def to_dict(self):
-        """Convert to dictionary for MongoDB storage"""
         return {
             '_id': self.id,
             'name': self.name,
@@ -60,7 +59,6 @@ class StoryProject:
 
     @staticmethod
     def from_dict(data: dict) -> 'StoryProject':
-        """Create StoryProject from MongoDB document"""
         return StoryProject(
             id=str(data.get('_id')),
             name=data.get('name'),

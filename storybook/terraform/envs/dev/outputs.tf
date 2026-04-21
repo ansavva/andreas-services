@@ -26,13 +26,10 @@ output "setup_instructions" {
     Development environment deployed successfully!
 
     Next steps:
-    1. Start MongoDB: docker-compose up -d mongodb
-
-    2. Copy backend/.env.example to backend/.env and set:
+    1. Copy backend/.env.example to backend/.env and set:
        - AWS_COGNITO_USER_POOL_ID=${module.auth.user_pool_id}
        - AWS_COGNITO_APP_CLIENT_ID=${module.auth.user_pool_client_id}
        - S3_BUCKET_NAME=${module.storage.backend_files_bucket_id}
-       - DATABASE_URL=mongodb://localhost:27017/storybook_dev
 
     3. Copy frontend/.env.local.example to frontend/.env.local and set:
        - VITE_AWS_COGNITO_USER_POOL_ID=${module.auth.user_pool_id}

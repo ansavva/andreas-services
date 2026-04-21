@@ -12,14 +12,8 @@ variable "domain_name" {
   default     = "andreas.services"
 }
 
-variable "docdb_master_username" {
-  description = "Master username for shared DocumentDB cluster"
+variable "github_repo" {
+  description = "GitHub repo allowed to assume the Actions role (owner/repo)"
   type        = string
-  default     = "docdbadmin"
-}
-
-variable "docdb_master_password" {
-  description = "Master password for shared DocumentDB cluster"
-  type        = string
-  sensitive   = true
+  default     = "ansavva/andreas-services"
 }

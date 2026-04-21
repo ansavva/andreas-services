@@ -8,7 +8,7 @@ class GenerationHistory:
     Generation History model - represents a prompt + generated images entry
     Immutable history of image generation for a project
     """
-    id: str  # UUID or MongoDB _id
+    id: str  # UUID
     project_id: str  # Reference to Project
     user_id: str  # Cognito user ID (sub claim) - the creator
     prompt: str  # The exact prompt submitted
@@ -35,14 +35,13 @@ class GenerationHistory:
     ]
 
     def to_dict(self):
-        """Convert to dictionary for MongoDB storage"""
         data = {
-            '_id': self.id,
+            'generation_id': self.id,
             'project_id': self.project_id,
             'user_id': self.user_id,
             'prompt': self.prompt,
             'image_ids': self.image_ids,
-            'created_at': self.created_at or datetime.utcnow(),
+            'created_at': self.created_at.isoformat() if isinstance(self.created_at, datetime) else (self.created_at or datetime.utcnow().isoformat()),
             'status': self.status,
         }
         if self.reference_image_ids is not None:
@@ -59,9 +58,8 @@ class GenerationHistory:
 
     @staticmethod
     def from_dict(data: dict) -> 'GenerationHistory':
-        """Create GenerationHistory from MongoDB document"""
         return GenerationHistory(
-            id=str(data.get('_id')),
+            id=str(data.get('generation_id')),
             project_id=data.get('project_id'),
             user_id=data.get('user_id'),
             prompt=data.get('prompt'),

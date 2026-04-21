@@ -1,14 +1,12 @@
 from flask import Blueprint, jsonify, request
 
 from src.auth.decorators import requires_auth
-from src.config import load_config
 from src.repositories.group_member_repository import GroupMemberRepository
 from src.repositories.group_repository import GroupRepository
 from src.services.member_service import GroupMemberService
 
-config = load_config()
-member_repo = GroupMemberRepository(config.mongo_db_name)
-group_repo = GroupRepository(config.mongo_db_name)
+member_repo = GroupMemberRepository()
+group_repo = GroupRepository()
 member_service = GroupMemberService(member_repo, group_repo)
 
 bp = Blueprint('group_members', __name__, url_prefix='/api/groupmember')

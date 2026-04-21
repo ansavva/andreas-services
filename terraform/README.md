@@ -62,7 +62,7 @@ terraform/
 │       ├── backend.tf
 │       ├── providers.tf
 │       ├── variables.tf
-│       ├── main.tf          # Route53, ACM, shared VPC + DocDB
+│       ├── main.tf          # Route53, ACM, GitHub Actions OIDC
 │       └── outputs.tf
 └── README.md
 ```
@@ -81,9 +81,10 @@ terraform apply
 ```
 
 This creates:
-- Route53 hosted zone for `andreas.services`
 - Wildcard ACM certificate for `*.andreas.services`
 - DNS validation records
+- GitHub Actions OIDC provider and IAM role
+- S3 bucket for Lambda code artifacts
 
 ### 2. Update Domain Registrar
 
@@ -150,10 +151,6 @@ After `terraform apply`, these outputs are available (run from `envs/shared`):
 | `route53_zone_id` | Zone ID for creating DNS records | All services |
 | `route53_name_servers` | Name servers for domain registrar | Manual setup |
 | `acm_certificate_arn` | ARN of wildcard SSL cert | CloudFront distributions |
-| `shared_vpc_id` | Shared VPC for Lambda/ECS workloads | Storybook + future apps |
-| `shared_private_subnet_ids` | Private subnets for workloads | Storybook + future apps |
-| `shared_docdb_connection_string` | Mongo URI (no creds) | Backend services |
-| `shared_docdb_security_group_id` | SG protecting DocDB | Allows app SG ingress |
 
 ## State Management
 

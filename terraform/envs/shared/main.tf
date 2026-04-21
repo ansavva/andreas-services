@@ -1,13 +1,25 @@
 # envs/shared/main.tf
-# Shared platform infrastructure (Route53, ACM, networking, DocumentDB)
+# Shared platform infrastructure: Route53 zone (data source) + ACM wildcard certificate.
+#
+# The VPC, NAT Gateway, subnets, and DocumentDB cluster have been removed.
+# All services now use DynamoDB (IAM-controlled, no VPC required).
 
-# Route53 Hosted Zone (existing)
+locals {
+  shared_tags = {
+    Project     = "platform"
+    Environment = "shared"
+    ManagedBy   = "terraform"
+    Scope       = "shared"
+  }
+}
+
+# Route53 hosted zone — managed outside Terraform (registered domain)
 data "aws_route53_zone" "main" {
   name         = var.domain_name
   private_zone = false
 }
 
-# Wildcard ACM certificate for *.andreas.services
+# Wildcard ACM certificate for *.andreas.services (must be in us-east-1 for CloudFront)
 resource "aws_acm_certificate" "wildcard" {
   provider          = aws.us_east_1
   domain_name       = "*.${var.domain_name}"
@@ -19,14 +31,11 @@ resource "aws_acm_certificate" "wildcard" {
     create_before_destroy = true
   }
 
-  tags = {
-    Name        = "wildcard-${var.domain_name}"
-    ManagedBy   = "terraform"
-    Environment = "shared"
-  }
+  tags = merge(local.shared_tags, {
+    Name = "wildcard-${var.domain_name}"
+  })
 }
 
-# DNS validation records
 resource "aws_route53_record" "cert_validation" {
   for_each = {
     for dvo in aws_acm_certificate.wildcard.domain_validation_options : dvo.domain_name => {
@@ -44,47 +53,227 @@ resource "aws_route53_record" "cert_validation" {
   zone_id         = data.aws_route53_zone.main.zone_id
 }
 
+# ─── GitHub Actions OIDC ──────────────────────────────────────────────────────
+
+resource "aws_iam_openid_connect_provider" "github_actions" {
+  url             = "https://token.actions.githubusercontent.com"
+  client_id_list  = ["sts.amazonaws.com"]
+  # AWS auto-validates GitHub's TLS cert; thumbprint is ignored but required by the API
+  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
+
+  tags = local.shared_tags
+}
+
+data "aws_iam_policy_document" "github_actions_trust" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github_actions.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringLike"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:${var.github_repo}:*"]
+    }
+  }
+}
+
+resource "aws_iam_role" "github_actions" {
+  name               = "github-actions-andreas-services"
+  assume_role_policy = data.aws_iam_policy_document.github_actions_trust.json
+  tags               = local.shared_tags
+}
+
+data "aws_iam_policy_document" "github_actions_permissions" {
+  # CloudFormation — scout ephemeral PR stacks + production stack
+  statement {
+    effect    = "Allow"
+    actions   = ["cloudformation:*"]
+    resources = ["*"]
+  }
+
+  # Lambda — code deploys, env var updates, invocations
+  statement {
+    effect    = "Allow"
+    actions   = ["lambda:*"]
+    resources = ["*"]
+  }
+
+  # ECR — storybook Docker image pushes
+  statement {
+    effect    = "Allow"
+    actions   = ["ecr:*"]
+    resources = ["*"]
+  }
+
+  # DynamoDB — created by CloudFormation/Terraform; read during stack ops
+  statement {
+    effect    = "Allow"
+    actions   = ["dynamodb:*"]
+    resources = ["*"]
+  }
+
+  # S3 — Lambda zip uploads, frontend syncs, Terraform state
+  statement {
+    effect    = "Allow"
+    actions   = ["s3:*"]
+    resources = ["*"]
+  }
+
+  # API Gateway — scout stack
+  statement {
+    effect    = "Allow"
+    actions   = ["apigateway:*"]
+    resources = ["*"]
+  }
+
+  # CloudFront — invalidations + stack management
+  statement {
+    effect    = "Allow"
+    actions   = ["cloudfront:*"]
+    resources = ["*"]
+  }
+
+  # Route53 — DNS records created by stacks
+  statement {
+    effect    = "Allow"
+    actions   = ["route53:*"]
+    resources = ["*"]
+  }
+
+  # ACM — shared wildcard cert (Terraform)
+  statement {
+    effect    = "Allow"
+    actions   = ["acm:*"]
+    resources = ["*"]
+  }
+
+  # EventBridge — scout email processor schedule
+  statement {
+    effect    = "Allow"
+    actions   = ["events:*"]
+    resources = ["*"]
+  }
+
+  # CloudWatch Logs — stack log groups
+  statement {
+    effect    = "Allow"
+    actions   = ["logs:*"]
+    resources = ["*"]
+  }
+
+  # Cognito — storybook auth (Terraform)
+  statement {
+    effect    = "Allow"
+    actions   = ["cognito-idp:*"]
+    resources = ["*"]
+  }
+
+  # SQS — storybook image queue (Terraform)
+  statement {
+    effect    = "Allow"
+    actions   = ["sqs:*"]
+    resources = ["*"]
+  }
+
+  # IAM — creating Lambda execution roles via CloudFormation/Terraform
+  statement {
+    effect = "Allow"
+    actions = [
+      "iam:CreateRole",
+      "iam:DeleteRole",
+      "iam:GetRole",
+      "iam:PassRole",
+      "iam:AttachRolePolicy",
+      "iam:DetachRolePolicy",
+      "iam:PutRolePolicy",
+      "iam:DeleteRolePolicy",
+      "iam:GetRolePolicy",
+      "iam:ListRolePolicies",
+      "iam:ListAttachedRolePolicies",
+      "iam:TagRole",
+      "iam:UntagRole",
+      "iam:CreateOpenIDConnectProvider",
+      "iam:GetOpenIDConnectProvider",
+      "iam:DeleteOpenIDConnectProvider",
+      "iam:TagOpenIDConnectProvider",
+      "iam:CreatePolicy",
+      "iam:GetPolicy",
+      "iam:GetPolicyVersion",
+      "iam:ListPolicyVersions",
+      "iam:DeletePolicy",
+      "iam:TagPolicy",
+    ]
+    resources = ["*"]
+  }
+
+  # SSM — infra workflows write outputs; code workflows read them
+  statement {
+    effect  = "Allow"
+    actions = ["ssm:PutParameter", "ssm:GetParameter", "ssm:DeleteParameter"]
+    resources = [
+      "arn:aws:ssm:*:*:parameter/scout/*",
+      "arn:aws:ssm:*:*:parameter/storybook/*",
+      "arn:aws:ssm:*:*:parameter/humbugg/*",
+    ]
+  }
+}
+
+resource "aws_iam_policy" "github_actions" {
+  name   = "github-actions-andreas-services"
+  policy = data.aws_iam_policy_document.github_actions_permissions.json
+  tags   = local.shared_tags
+}
+
+resource "aws_iam_role_policy_attachment" "github_actions" {
+  role       = aws_iam_role.github_actions.name
+  policy_arn = aws_iam_policy.github_actions.arn
+}
+
+# ─── Lambda code bucket ───────────────────────────────────────────────────────
+# Stores Lambda zip packages for Scout ephemeral PR stacks and production deploys.
+
+resource "aws_s3_bucket" "lambda_code" {
+  bucket = "andreas-services-lambda-code"
+  tags   = local.shared_tags
+}
+
+resource "aws_s3_bucket_versioning" "lambda_code" {
+  bucket = aws_s3_bucket.lambda_code.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "lambda_code" {
+  bucket = aws_s3_bucket.lambda_code.id
+
+  rule {
+    id     = "expire-pr-artifacts"
+    status = "Enabled"
+    filter {
+      prefix = "pr/"
+    }
+    expiration {
+      days = 7
+    }
+  }
+}
+
+# ─── ACM ──────────────────────────────────────────────────────────────────────
+
 resource "aws_acm_certificate_validation" "wildcard" {
   provider                = aws.us_east_1
   certificate_arn         = aws_acm_certificate.wildcard.arn
   validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
-}
-
-locals {
-  shared_project     = "platform"
-  shared_environment = "shared"
-
-  shared_tags = {
-    Project     = local.shared_project
-    Environment = local.shared_environment
-    ManagedBy   = "terraform"
-    Scope       = "shared"
-  }
-}
-
-# Shared VPC + networking used by apps
-module "shared_networking" {
-  source = "../../modules/networking"
-
-  project     = local.shared_project
-  environment = local.shared_environment
-  aws_region  = var.aws_region
-
-  tags = local.shared_tags
-}
-
-# Shared DocumentDB cluster
-module "shared_database" {
-  source = "../../modules/database"
-
-  project     = local.shared_project
-  environment = local.shared_environment
-  vpc_id      = module.shared_networking.vpc_id
-  subnet_ids  = module.shared_networking.private_subnet_ids
-
-  lambda_security_group_ids = []
-  master_username           = var.docdb_master_username
-  master_password           = var.docdb_master_password
-
-  tags = local.shared_tags
 }

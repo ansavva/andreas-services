@@ -1,0 +1,7 @@
+google-auth==2.17.3
+google-auth-oauthlib==0.4.6
+google-auth-httplib2==0.1.0
+google-api-python-client==2.88.0
+anthropic==0.49.0
+boto3==1.26.137
+html2text==2020.1.16

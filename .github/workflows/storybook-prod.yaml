@@ -1,0 +1,371 @@
+name: Storybook · Deploy · Prod
+
+# Combined prod deploy for storybook. Runs infra first (when terraform files
+# change or manual dispatch requests it), then backend + frontend in parallel.
+# Infra writes SSM params under /storybook/prod/* that the app jobs read.
+#
+# DAG:
+#   detect-changes ─► deploy-infra (if storybook/terraform/** changed)
+#                          │
+#                          ├─► deploy-backend  (if backend changed OR infra ran)
+#                          └─► deploy-frontend (if frontend changed OR infra ran)
+#
+# deploy-backend updates both the api Lambda and the image-worker Lambda.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'storybook/**'
+      - '.github/workflows/storybook-prod.yaml'
+  workflow_dispatch:
+    inputs:
+      run_infra:
+        description: 'Run the deploy-infra job'
+        type: boolean
+        default: true
+      run_app:
+        description: 'Run the deploy-backend and deploy-frontend jobs'
+        type: boolean
+        default: true
+  workflow_run:
+    workflows: ["Shared infra · Terraform apply · Prod"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: storybook-prod
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  TF_DIR: storybook/terraform/envs/prod
+  STORYBOOK_USER_PROFILES_TABLE:    storybook-user-profiles
+  STORYBOOK_CHILD_PROFILES_TABLE:   storybook-child-profiles
+  STORYBOOK_STORY_PROJECTS_TABLE:   storybook-story-projects
+  STORYBOOK_STORY_PAGES_TABLE:      storybook-story-pages
+  STORYBOOK_CHAT_MESSAGES_TABLE:    storybook-chat-messages
+  STORYBOOK_CHARACTER_ASSETS_TABLE: storybook-character-assets
+  STORYBOOK_STORY_STATES_TABLE:     storybook-story-states
+  STORYBOOK_IMAGES_TABLE:           storybook-images
+  STORYBOOK_MODEL_PROJECTS_TABLE:   storybook-model-projects
+  STORYBOOK_GENERATION_HISTORY_TABLE: storybook-generation-history
+  STORYBOOK_TRAINING_RUNS_TABLE:    storybook-training-runs
+
+jobs:
+  detect-changes:
+    name: Detect Changes
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      infra: ${{ steps.filter.outputs.infra }}
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            infra:
+              - 'storybook/terraform/**'
+            backend:
+              - 'storybook/backend/**'
+            frontend:
+              - 'storybook/frontend/**'
+
+  # ---------------------------------------------------------------------------
+  # Terraform apply (storybook/terraform/envs/prod) and publish outputs to SSM.
+  # ---------------------------------------------------------------------------
+  deploy-infra:
+    name: Terraform Apply
+    needs: detect-changes
+    if: |
+      (github.event_name == 'push' && needs.detect-changes.outputs.infra == 'true')
+      || (github.event_name == 'workflow_dispatch' && inputs.run_infra)
+      || github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    environment: storybook-production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.5'
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false
+
+      - name: Terraform Apply
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform apply -auto-approve -input=false
+
+      - name: Store infrastructure outputs in SSM
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          put() {
+            aws ssm put-parameter --overwrite --type String \
+              --name "/storybook/prod/${1}" --value "${2}"
+          }
+
+          put cognito-user-pool-id    "$(terraform output -raw cognito_user_pool_id)"
+          put cognito-client-id       "$(terraform output -raw cognito_user_pool_client_id)"
+          put cognito-domain          "$(terraform output -raw cognito_domain)"
+          put api-url                 "$(terraform output -raw api_url)"
+          put app-url                 "$(terraform output -raw application_url)"
+          put s3-frontend-bucket      "$(terraform output -raw s3_frontend_bucket)"
+          put s3-backend-bucket       "$(terraform output -raw s3_backend_bucket)"
+          put cf-dist-id              "$(terraform output -raw cloudfront_distribution_id)"
+          put image-queue-url         "$(terraform output -raw image_queue_url)"
+          put lambda-name             "$(terraform output -raw lambda_function_name)"
+          put image-worker-lambda     "$(terraform output -raw image_worker_lambda_function_name)"
+          put ecr-url                 "$(terraform output -raw ecr_repository_url)"
+          put image-worker-ecr-url    "$(terraform output -raw image_worker_ecr_repository_url)"
+
+  # ---------------------------------------------------------------------------
+  # Build Docker image, push to ECR, update both Lambda functions + env vars
+  # ECR URLs and Lambda names come from SSM (written by deploy-infra)
+  # ---------------------------------------------------------------------------
+  deploy-backend:
+    name: Build & Deploy Backend
+    needs: [detect-changes, deploy-infra]
+    if: |
+      !cancelled()
+      && needs.deploy-infra.result != 'failure'
+      && ((github.event_name == 'workflow_dispatch' && inputs.run_app)
+          || (github.event_name == 'push'
+              && (needs.detect-changes.outputs.backend == 'true'
+                  || needs.deploy-infra.result == 'success'))
+          || (github.event_name == 'workflow_run'
+              && needs.deploy-infra.result == 'success'))
+    runs-on: ubuntu-latest
+    environment: storybook-production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Read infrastructure values from SSM
+        run: |
+          get() { aws ssm get-parameter --name "/storybook/prod/${1}" \
+            --query Parameter.Value --output text; }
+
+          echo "ECR_URL=$(get ecr-url)"                         >> "$GITHUB_ENV"
+          echo "IMAGE_WORKER_ECR_URL=$(get image-worker-ecr-url)" >> "$GITHUB_ENV"
+          echo "LAMBDA_NAME=$(get lambda-name)"                 >> "$GITHUB_ENV"
+          echo "IMAGE_WORKER_LAMBDA=$(get image-worker-lambda)" >> "$GITHUB_ENV"
+          echo "S3_BACKEND_BUCKET=$(get s3-backend-bucket)"     >> "$GITHUB_ENV"
+          echo "APP_URL=$(get app-url)"                         >> "$GITHUB_ENV"
+          echo "IMAGE_QUEUE_URL=$(get image-queue-url)"         >> "$GITHUB_ENV"
+          echo "COGNITO_POOL_ID=$(get cognito-user-pool-id)"    >> "$GITHUB_ENV"
+          echo "COGNITO_CLIENT_ID=$(get cognito-client-id)"     >> "$GITHUB_ENV"
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker image
+        run: |
+          cd storybook/backend
+          DOCKER_BUILDKIT=0 docker build \
+            -t "${ECR_URL}:${{ github.sha }}" \
+            -t "${ECR_URL}:latest" \
+            -t "${IMAGE_WORKER_ECR_URL}:${{ github.sha }}" \
+            -t "${IMAGE_WORKER_ECR_URL}:latest" \
+            .
+
+      - name: Push Docker image
+        run: |
+          docker push "${ECR_URL}:${{ github.sha }}"
+          docker push "${ECR_URL}:latest"
+          docker push "${IMAGE_WORKER_ECR_URL}:${{ github.sha }}"
+          docker push "${IMAGE_WORKER_ECR_URL}:latest"
+
+      - name: Update API Lambda env vars + code
+        env:
+          OPENAI_API_KEY:      ${{ secrets.OPENAI_API_KEY }}
+          STABILITY_API_KEY:   ${{ secrets.STABILITY_API_KEY }}
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          ENV_OBJ="{}"
+          for KEY in OPENAI_API_KEY STABILITY_API_KEY REPLICATE_API_TOKEN \
+                     COGNITO_POOL_ID COGNITO_CLIENT_ID \
+                     S3_BACKEND_BUCKET APP_URL IMAGE_QUEUE_URL \
+                     STORYBOOK_USER_PROFILES_TABLE STORYBOOK_CHILD_PROFILES_TABLE \
+                     STORYBOOK_STORY_PROJECTS_TABLE STORYBOOK_STORY_PAGES_TABLE \
+                     STORYBOOK_CHAT_MESSAGES_TABLE STORYBOOK_CHARACTER_ASSETS_TABLE \
+                     STORYBOOK_STORY_STATES_TABLE STORYBOOK_IMAGES_TABLE \
+                     STORYBOOK_MODEL_PROJECTS_TABLE STORYBOOK_GENERATION_HISTORY_TABLE \
+                     STORYBOOK_TRAINING_RUNS_TABLE; do
+            VAL="${!KEY:-}"
+            [ -n "$VAL" ] && ENV_OBJ=$(echo "$ENV_OBJ" | \
+              jq -c --arg k "$KEY" --arg v "$VAL" '.[$k]=$v')
+          done
+          # Remap generic names to what the Lambda expects
+          ENV_OBJ=$(echo "$ENV_OBJ" | jq -c '
+            .AWS_COGNITO_USER_POOL_ID  = .COGNITO_POOL_ID   | del(.COGNITO_POOL_ID) |
+            .AWS_COGNITO_APP_CLIENT_ID = .COGNITO_CLIENT_ID | del(.COGNITO_CLIENT_ID) |
+            .S3_BUCKET_NAME            = .S3_BACKEND_BUCKET | del(.S3_BACKEND_BUCKET) |
+            .IMAGE_UPLOAD_QUEUE_URL    = .IMAGE_QUEUE_URL   | del(.IMAGE_QUEUE_URL)
+          ')
+          jq -n --argjson v "$ENV_OBJ" '{Variables:$v}' > /tmp/env-api.json
+
+          aws lambda update-function-configuration \
+            --function-name "${LAMBDA_NAME}" \
+            --region "${{ env.AWS_REGION }}" \
+            --environment file:///tmp/env-api.json
+
+          aws lambda wait function-updated \
+            --function-name "${LAMBDA_NAME}" --region "${{ env.AWS_REGION }}"
+
+          aws lambda update-function-code \
+            --function-name "${LAMBDA_NAME}" \
+            --image-uri "${ECR_URL}:${{ github.sha }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --output table --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
+
+      - name: Update image worker Lambda env vars + code
+        env:
+          OPENAI_API_KEY:      ${{ secrets.OPENAI_API_KEY }}
+          STABILITY_API_KEY:   ${{ secrets.STABILITY_API_KEY }}
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          ENV_OBJ="{}"
+          for KEY in OPENAI_API_KEY STABILITY_API_KEY REPLICATE_API_TOKEN \
+                     COGNITO_POOL_ID COGNITO_CLIENT_ID S3_BACKEND_BUCKET APP_URL \
+                     STORYBOOK_USER_PROFILES_TABLE STORYBOOK_CHILD_PROFILES_TABLE \
+                     STORYBOOK_STORY_PROJECTS_TABLE STORYBOOK_STORY_PAGES_TABLE \
+                     STORYBOOK_CHAT_MESSAGES_TABLE STORYBOOK_CHARACTER_ASSETS_TABLE \
+                     STORYBOOK_STORY_STATES_TABLE STORYBOOK_IMAGES_TABLE \
+                     STORYBOOK_MODEL_PROJECTS_TABLE STORYBOOK_GENERATION_HISTORY_TABLE \
+                     STORYBOOK_TRAINING_RUNS_TABLE; do
+            VAL="${!KEY:-}"
+            [ -n "$VAL" ] && ENV_OBJ=$(echo "$ENV_OBJ" | \
+              jq -c --arg k "$KEY" --arg v "$VAL" '.[$k]=$v')
+          done
+          ENV_OBJ=$(echo "$ENV_OBJ" | jq -c '
+            .AWS_COGNITO_USER_POOL_ID  = .COGNITO_POOL_ID   | del(.COGNITO_POOL_ID) |
+            .AWS_COGNITO_APP_CLIENT_ID = .COGNITO_CLIENT_ID | del(.COGNITO_CLIENT_ID) |
+            .S3_BUCKET_NAME            = .S3_BACKEND_BUCKET | del(.S3_BACKEND_BUCKET)
+          ')
+          jq -n --argjson v "$ENV_OBJ" '{Variables:$v}' > /tmp/env-worker.json
+
+          aws lambda update-function-configuration \
+            --function-name "${IMAGE_WORKER_LAMBDA}" \
+            --region "${{ env.AWS_REGION }}" \
+            --environment file:///tmp/env-worker.json
+
+          aws lambda wait function-updated \
+            --function-name "${IMAGE_WORKER_LAMBDA}" --region "${{ env.AWS_REGION }}"
+
+          aws lambda update-function-code \
+            --function-name "${IMAGE_WORKER_LAMBDA}" \
+            --image-uri "${IMAGE_WORKER_ECR_URL}:${{ github.sha }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --output table --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
+
+  # ---------------------------------------------------------------------------
+  # Build Vite SPA and sync to S3 + CloudFront
+  # Values come from SSM (written by deploy-infra)
+  # ---------------------------------------------------------------------------
+  deploy-frontend:
+    name: Deploy Frontend
+    needs: [detect-changes, deploy-infra]
+    if: |
+      !cancelled()
+      && needs.deploy-infra.result != 'failure'
+      && ((github.event_name == 'workflow_dispatch' && inputs.run_app)
+          || (github.event_name == 'push'
+              && (needs.detect-changes.outputs.frontend == 'true'
+                  || needs.deploy-infra.result == 'success'))
+          || (github.event_name == 'workflow_run'
+              && needs.deploy-infra.result == 'success'))
+    runs-on: ubuntu-latest
+    environment: storybook-production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Read infrastructure values from SSM
+        run: |
+          get() { aws ssm get-parameter --name "/storybook/prod/${1}" \
+            --query Parameter.Value --output text; }
+
+          echo "VITE_API_URL=$(get api-url)"                         >> "$GITHUB_ENV"
+          echo "VITE_COGNITO_POOL_ID=$(get cognito-user-pool-id)"   >> "$GITHUB_ENV"
+          echo "VITE_COGNITO_CLIENT_ID=$(get cognito-client-id)"    >> "$GITHUB_ENV"
+          echo "VITE_COGNITO_DOMAIN=$(get cognito-domain)"          >> "$GITHUB_ENV"
+          echo "S3_FRONTEND_BUCKET=$(get s3-frontend-bucket)"       >> "$GITHUB_ENV"
+          echo "CF_DIST_ID=$(get cf-dist-id)"                       >> "$GITHUB_ENV"
+
+      - name: Set up Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: npm
+          cache-dependency-path: storybook/frontend/storybook-ui/package-lock.json
+
+      - name: Install dependencies
+        run: cd storybook/frontend/storybook-ui && npm install --legacy-peer-deps
+
+      - name: Build frontend
+        env:
+          VITE_API_URL:                  ${{ env.VITE_API_URL }}
+          VITE_AWS_COGNITO_USER_POOL_ID: ${{ env.VITE_COGNITO_POOL_ID }}
+          VITE_AWS_COGNITO_APP_CLIENT_ID: ${{ env.VITE_COGNITO_CLIENT_ID }}
+          VITE_AWS_COGNITO_DOMAIN:       ${{ env.VITE_COGNITO_DOMAIN }}
+        run: cd storybook/frontend/storybook-ui && npm run build
+
+      - name: Sync hashed assets (long cache)
+        run: |
+          aws s3 sync storybook/frontend/storybook-ui/dist/ \
+            "s3://${S3_FRONTEND_BUCKET}/app/" \
+            --region "${{ env.AWS_REGION }}" \
+            --delete \
+            --cache-control "public,max-age=31536000,immutable" \
+            --exclude "*.html"
+
+      - name: Sync HTML (no cache)
+        run: |
+          aws s3 sync storybook/frontend/storybook-ui/dist/ \
+            "s3://${S3_FRONTEND_BUCKET}/app/" \
+            --region "${{ env.AWS_REGION }}" \
+            --cache-control "no-cache,no-store,must-revalidate" \
+            --include "*.html"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${CF_DIST_ID}" \
+            --paths "/*"

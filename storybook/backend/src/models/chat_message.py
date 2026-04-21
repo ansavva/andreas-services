@@ -34,7 +34,6 @@ class ChatMessage:
     VALID_ROLES = [ROLE_USER, ROLE_ASSISTANT, ROLE_SYSTEM]
 
     def to_dict(self):
-        """Convert to dictionary for MongoDB storage"""
         return {
             '_id': self.id,
             'project_id': self.project_id,
@@ -50,7 +49,6 @@ class ChatMessage:
 
     @staticmethod
     def from_dict(data: dict) -> 'ChatMessage':
-        """Create ChatMessage from MongoDB document"""
         return ChatMessage(
             id=str(data.get('_id')),
             project_id=data.get('project_id'),

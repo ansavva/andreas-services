@@ -601,7 +601,7 @@ const TrainingStep: React.FC<TrainingStepProps> = ({
             />
             <p>No training runs yet</p>
             <p className="text-sm mt-2">
-              Upload images and click "Start Training" to create your first
+              Upload images and click &quot;Start Training&quot; to create your first
               training run
             </p>
           </div>

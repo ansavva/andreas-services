@@ -47,7 +47,7 @@ class ModelProjectService:
         Delete a project and all associated data:
         - Training runs (all historical training sessions)
         - Generation history entries
-        - All images (from S3 and MongoDB)
+        - All images (from S3 and DynamoDB)
         - Replicate model (if exists)
         - Project metadata
 
@@ -78,7 +78,7 @@ class ModelProjectService:
         except Exception as e:
             print(f"Error deleting chat messages for project {project_id}: {e}")
 
-        # 4. Delete all images for this project (S3 + MongoDB, including reference images)
+        # 4. Delete all images for this project (S3 + DynamoDB, including reference images)
         try:
             self.image_repo.delete_project_images(project_id)
         except Exception as e:
