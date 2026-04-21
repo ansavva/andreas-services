@@ -3,7 +3,3 @@
 # Copy this file to terraform.tfvars and fill in your actual values
 
 aws_region = "us-east-1"
-
-
-# DocumentDB credentials (store real values only in terraform.tfvars, not version control)
-docdb_master_password = "your_docdb_master_password_here"

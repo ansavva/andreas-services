@@ -34,7 +34,6 @@ class StoryState:
     updated_at: Optional[datetime] = None
 
     def to_dict(self):
-        """Convert to dictionary for MongoDB storage"""
         return {
             '_id': self.id,
             'project_id': self.project_id,
@@ -55,7 +54,6 @@ class StoryState:
 
     @staticmethod
     def from_dict(data: dict) -> 'StoryState':
-        """Create StoryState from MongoDB document"""
         return StoryState(
             id=str(data.get('_id')),
             project_id=data.get('project_id'),

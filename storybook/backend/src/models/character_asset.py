@@ -37,7 +37,6 @@ class CharacterAsset:
     VALID_TYPES = [TYPE_PORTRAIT, TYPE_PREVIEW_SCENE, TYPE_CHARACTER_BIBLE]
 
     def to_dict(self):
-        """Convert to dictionary for MongoDB storage"""
         return {
             '_id': self.id,
             'project_id': self.project_id,
@@ -56,7 +55,6 @@ class CharacterAsset:
 
     @staticmethod
     def from_dict(data: dict) -> 'CharacterAsset':
-        """Create CharacterAsset from MongoDB document"""
         return CharacterAsset(
             id=str(data.get('_id')),
             project_id=data.get('project_id'),

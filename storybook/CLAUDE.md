@@ -55,7 +55,7 @@ A single Route53 A-alias record for `storybook.andreas.services` is added by the
 ## Local Development
 
 ```bash
-# Backend (requires local MongoDB for the legacy dev-server path, plus a valid .env)
+# Backend (requires a valid .env with AWS credentials and DynamoDB table names)
 cd storybook/backend
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt

@@ -41,7 +41,6 @@ class StoryPage:
     updated_at: Optional[datetime] = None
 
     def to_dict(self):
-        """Convert to dictionary for MongoDB storage"""
         return {
             '_id': self.id,
             'project_id': self.project_id,
@@ -66,7 +65,6 @@ class StoryPage:
 
     @staticmethod
     def from_dict(data: dict) -> 'StoryPage':
-        """Create StoryPage from MongoDB document"""
         return StoryPage(
             id=str(data.get('_id')),
             project_id=data.get('project_id'),

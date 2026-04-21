@@ -8,7 +8,7 @@ class GenerationHistory:
     Generation History model - represents a prompt + generated images entry
     Immutable history of image generation for a project
     """
-    id: str  # UUID or MongoDB _id
+    id: str  # UUID
     project_id: str  # Reference to Project
     user_id: str  # Cognito user ID (sub claim) - the creator
     prompt: str  # The exact prompt submitted

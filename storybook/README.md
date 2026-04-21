@@ -4,9 +4,9 @@ Storybook is an AI portrait studio that lets authenticated users upload training
 
 ## Architecture
 
-- **`backend/`** – Python/Flask API running on AWS Lambda (containerized), secured with AWS Cognito, persists project metadata in MongoDB/DocumentDB, stores images in S3, and orchestrates Replicate trainings/inference. It exposes Blueprints for images, model management, and project CRUD plus health endpoints for monitoring.
+- **`backend/`** – Python/Flask API running on AWS Lambda (containerized), secured with AWS Cognito, persists project metadata in DynamoDB, stores images in S3, and orchestrates Replicate trainings/inference. It exposes Blueprints for images, model management, and project CRUD plus health endpoints for monitoring.
 - **`frontend/`** – `frontend/storybook-ui` is a Vite + React + NextUI experience (Tailwind-enabled) served via S3 + CloudFront. Handles AWS Cognito authentication and provides project/image management tooling.
-- **`terraform/`** – Modular Terraform configuration for provisioning all AWS resources (Lambda, VPC, DocumentDB, S3, CloudFront, Cognito, Route53, etc.)
+- **`terraform/`** – Modular Terraform configuration for provisioning all AWS resources (Lambda, DynamoDB, S3, CloudFront, Cognito, Route53, etc.)
 - **`dev-docs/`** – Development documentation and guides
 
 ## Prerequisites
@@ -15,16 +15,12 @@ Install the required tooling (Homebrew commands shown for macOS):
 
 - **Python 3.11** – `brew install python@3.11`
 - **Node.js 18+** – `brew install node`
-- **MongoDB 7.0** (local dev) – `brew tap mongodb/brew && brew install mongodb-community@7.0`
 
 ## Run Backend Locally
 
 To run locally:
 
 ```bash
-# Start MongoDB
-brew services start mongodb-community@7.0
-
 # Run backend
 cd backend
 python3 -m venv venv && source venv/bin/activate

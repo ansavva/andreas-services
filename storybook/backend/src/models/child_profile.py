@@ -20,7 +20,6 @@ class ChildProfile:
     updated_at: Optional[datetime] = None
 
     def to_dict(self):
-        """Convert to dictionary for MongoDB storage"""
         return {
             '_id': self.id,
             'project_id': self.project_id,
@@ -36,7 +35,6 @@ class ChildProfile:
 
     @staticmethod
     def from_dict(data: dict) -> 'ChildProfile':
-        """Create ChildProfile from MongoDB document"""
         return ChildProfile(
             id=str(data.get('_id')),
             project_id=data.get('project_id'),
