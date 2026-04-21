@@ -125,23 +125,19 @@ def get_event_by_id(event_id):
 # Request routing
 # ---------------------------------------------------------------------------
 
-def route_request(http_method, path, query_params):
-    """Dispatch to the appropriate handler based on method and path."""
+def route_request(http_method, resource, path_params, query_params):
+    """Dispatch to the appropriate handler based on method and resource template."""
     if http_method == "OPTIONS":
         return cors_preflight()
 
-    # Collapse double slashes but preserve trailing slash (trailing slash = missing event ID)
-    while "//" in path:
-        path = path.replace("//", "/")
-
     if http_method == "GET":
-        if path == "/api/events":
+        if resource == "/api/events":
             upcoming = (query_params or {}).get("upcoming", "").lower() == "true"
             events = get_all_events(upcoming_only=upcoming)
             return ok({"events": events, "count": len(events)})
 
-        if path.startswith("/api/events/"):
-            event_id = path[len("/api/events/"):]
+        if resource == "/api/events/{id}":
+            event_id = (path_params or {}).get("id", "")
             if not event_id:
                 return bad_request("Missing event ID")
             event = get_event_by_id(event_id)
@@ -161,9 +157,14 @@ def lambda_handler(event, context):
 
     try:
         http_method = event.get("httpMethod", "GET")
-        path = event.get("path", "/api/events")
+        # Use `resource` (the API Gateway resource template) rather than `path`
+        # because API Gateway does not strip the custom-domain base path from
+        # `event["path"]` — e.g. via scout-api-pr.andreas.services/33/api/events
+        # the path arrives as "/33/api/events" while resource is always "/api/events".
+        resource = event.get("resource") or event.get("path", "/api/events")
+        path_params = event.get("pathParameters") or {}
         query_params = event.get("queryStringParameters") or {}
-        return route_request(http_method, path, query_params)
+        return route_request(http_method, resource, path_params, query_params)
 
     except Exception as exc:  # pylint: disable=broad-except
         logger.error("Unhandled exception: %s", exc, exc_info=True)
