@@ -201,6 +201,19 @@ jobs:
           aws s3 cp scout/lambda/events-api/events-api.zip \
             "s3://${{ env.LAMBDA_CODE_BUCKET }}/pr/${{ env.PR_NUMBER }}/events-api.zip"
 
+      - name: Package email-processor Lambda
+        run: |
+          cd scout/lambda/email-processor
+          mkdir -p package
+          pip install -q -r requirements.txt --target package/
+          cp lambda_function.py package/
+          cd package && zip -q -r ../email-processor.zip .
+
+      - name: Upload email-processor zip to S3
+        run: |
+          aws s3 cp scout/lambda/email-processor/email-processor.zip \
+            "s3://${{ env.LAMBDA_CODE_BUCKET }}/pr/${{ env.PR_NUMBER }}/email-processor.zip"
+
       # ------------------------------------------------------------------
       # Deploy the per-PR CloudFormation stack
       # ------------------------------------------------------------------
@@ -224,7 +237,14 @@ jobs:
               "PrNumber=${{ env.PR_NUMBER }}" \
               "LambdaCodeBucket=${{ env.LAMBDA_CODE_BUCKET }}" \
               "EventsApiZipKey=pr/${{ env.PR_NUMBER }}/events-api.zip" \
-              "SharedApiDomainName=${{ steps.preview.outputs.api_domain }}"
+              "EmailProcessorZipKey=pr/${{ env.PR_NUMBER }}/email-processor.zip" \
+              "SharedApiDomainName=${{ steps.preview.outputs.api_domain }}" \
+              "AnthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }}" \
+              "GmailClientId=${{ secrets.GMAIL_CLIENT_ID }}" \
+              "GmailClientSecret=${{ secrets.GMAIL_CLIENT_SECRET }}" \
+              "GmailAccessToken=${{ secrets.GMAIL_ACCESS_TOKEN }}" \
+              "GmailRefreshToken=${{ secrets.GMAIL_REFRESH_TOKEN }}" \
+              "MaxEmailsPerRun=3"
 
       - name: Force Lambda to pick up the latest zip
         run: |
@@ -235,6 +255,54 @@ jobs:
             --region "${{ env.AWS_REGION }}" \
             --output table \
             --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
+
+          aws lambda update-function-code \
+            --function-name "scout-email-processor-pr-${{ env.PR_NUMBER }}" \
+            --s3-bucket "${{ env.LAMBDA_CODE_BUCKET }}" \
+            --s3-key "pr/${{ env.PR_NUMBER }}/email-processor.zip" \
+            --region "${{ env.AWS_REGION }}" \
+            --output table \
+            --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
+
+          aws lambda wait function-updated \
+            --function-name "scout-email-processor-pr-${{ env.PR_NUMBER }}" \
+            --region "${{ env.AWS_REGION }}"
+
+      - name: Invoke email-processor to seed PR table
+        run: |
+          aws lambda invoke \
+            --function-name "scout-email-processor-pr-${{ env.PR_NUMBER }}" \
+            --invocation-type RequestResponse \
+            --region "${{ env.AWS_REGION }}" \
+            --payload '{}' \
+            --cli-binary-format raw-in-base64-out \
+            /tmp/email-processor-response.json
+
+          cat /tmp/email-processor-response.json
+
+          STATUS=$(python3 -c "
+          import sys, json
+          d = json.load(open('/tmp/email-processor-response.json'))
+          print(d.get('statusCode', ''))
+          ")
+          ERRORS=$(python3 -c "
+          import sys, json
+          d = json.load(open('/tmp/email-processor-response.json'))
+          body = json.loads(d.get('body', '{}'))
+          print(json.dumps(body.get('errors', [])))
+          ")
+
+          echo "statusCode: $STATUS"
+          echo "errors: $ERRORS"
+
+          if [ "$STATUS" != "200" ]; then
+            echo "email-processor returned non-200 statusCode: $STATUS"
+            exit 1
+          fi
+          if [ "$ERRORS" != "[]" ]; then
+            echo "email-processor reported errors: $ERRORS"
+            exit 1
+          fi
 
       - name: Read PR stack outputs
         id: outputs
@@ -313,6 +381,8 @@ jobs:
       - name: Run integration tests
         env:
           SCOUT_API_URL: ${{ steps.outputs.outputs.api_url }}
+          SCOUT_EMAIL_PROCESSOR_FUNCTION: scout-email-processor-pr-${{ env.PR_NUMBER }}
+          AWS_DEFAULT_REGION: ${{ env.AWS_REGION }}
         run: pytest scout/tests/integration/ -v
 
       # ------------------------------------------------------------------

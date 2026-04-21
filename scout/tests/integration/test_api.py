@@ -11,8 +11,10 @@ Run after deploying an ephemeral PR stack:
   SCOUT_API_URL=<url> pytest scout/tests/integration/
 """
 
+import json
 import os
 
+import boto3
 import pytest
 import requests
 
@@ -21,6 +23,8 @@ import requests
 # ------------------------------------------------------------------
 
 API_URL = os.environ.get("SCOUT_API_URL", "").rstrip("/")
+EMAIL_PROCESSOR_FUNCTION = os.environ.get("SCOUT_EMAIL_PROCESSOR_FUNCTION", "")
+AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -155,3 +159,55 @@ class TestErrorCases:
     def test_nonexistent_path_returns_404(self):
         resp = get("/does-not-exist")
         assert resp.status_code == 404
+
+
+# ------------------------------------------------------------------
+# Email processor end-to-end
+# ------------------------------------------------------------------
+
+class TestEmailProcessor:
+    """
+    Validates that the email-processor ran successfully and that events
+    are visible through the API.
+
+    The workflow seeds the table by invoking the processor before tests
+    run. These tests confirm:
+      1. A direct Lambda invocation returns a valid response contract.
+      2. The API reflects at least one stored event.
+    """
+
+    @pytest.fixture(scope="class", autouse=True)
+    def require_processor_function(self):
+        if not EMAIL_PROCESSOR_FUNCTION:
+            pytest.skip("SCOUT_EMAIL_PROCESSOR_FUNCTION not set — skipping email-processor tests")
+
+    def test_processor_invocation_returns_valid_contract(self):
+        client = boto3.client("lambda", region_name=AWS_REGION)
+        response = client.invoke(
+            FunctionName=EMAIL_PROCESSOR_FUNCTION,
+            InvocationType="RequestResponse",
+            Payload=b"{}",
+        )
+        body = json.loads(response["Payload"].read())
+        assert body["statusCode"] == 200, f"Non-200 from processor: {body}"
+
+        result = json.loads(body["body"])
+        assert "emails_processed" in result, f"Missing emails_processed: {result}"
+        assert "events_stored" in result, f"Missing events_stored: {result}"
+        assert "errors" in result, f"Missing errors: {result}"
+        assert result["errors"] == [], f"Processor reported errors: {result['errors']}"
+
+    def test_api_reflects_processed_events(self):
+        resp = get("/events")
+        data = resp.json()
+        assert data["count"] > 0, (
+            "Expected at least one event after email-processor ran, but /events returned empty. "
+            "Check CloudWatch logs for scout-email-processor-pr-* for details."
+        )
+
+    def test_processed_events_have_complete_schema(self):
+        resp = get("/events")
+        required = {"event_id", "event_name", "date", "time", "venue", "price", "description"}
+        for event in resp.json()["events"]:
+            missing = required - event.keys()
+            assert not missing, f"Event missing fields {missing}: {event}"

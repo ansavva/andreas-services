@@ -36,6 +36,44 @@ Parameters:
       The API Gateway custom domain owned by the shared scout-pr-preview stack.
       This stack attaches a BasePathMapping (BasePath = PrNumber) to it.
 
+  EmailProcessorZipKey:
+    Type: String
+    Description: >
+      S3 key under LambdaCodeBucket for the email-processor Lambda zip for
+      this PR (e.g. pr/42/email-processor.zip).
+
+  AnthropicApiKey:
+    Type: String
+    NoEcho: true
+    Description: Anthropic API key used by the email-processor Lambda.
+
+  GmailClientId:
+    Type: String
+    NoEcho: true
+    Description: Google OAuth client ID.
+
+  GmailClientSecret:
+    Type: String
+    NoEcho: true
+    Description: Google OAuth client secret.
+
+  GmailAccessToken:
+    Type: String
+    NoEcho: true
+    Description: Google OAuth access token.
+
+  GmailRefreshToken:
+    Type: String
+    NoEcho: true
+    Description: Google OAuth refresh token.
+
+  MaxEmailsPerRun:
+    Type: Number
+    Default: 3
+    Description: >
+      Maximum emails processed per invocation. Kept low for PR envs to
+      limit Anthropic API usage during integration tests.
+
   FrontendBaseUrl:
     Type: String
     Default: https://scout-pr.andreas.services
@@ -101,10 +139,40 @@ Resources:
                 Resource: !GetAtt EventsTable.Arn
 
   # -------------------------------------------------------------------------
+  # Lambda — email-processor for this PR
+  # Capped at MaxEmailsPerRun (default 3) to keep Anthropic API costs low.
+  # Invoked once by the CI workflow after stack deploy to seed the table
+  # before integration tests run.
+  # -------------------------------------------------------------------------
+  EmailProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "scout-email-processor-pr-${PrNumber}"
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300
+      MemorySize: 256
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref EmailProcessorZipKey
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref EventsTable
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          GMAIL_CLIENT_ID: !Ref GmailClientId
+          GMAIL_CLIENT_SECRET: !Ref GmailClientSecret
+          GMAIL_ACCESS_TOKEN: !Ref GmailAccessToken
+          GMAIL_REFRESH_TOKEN: !Ref GmailRefreshToken
+          MAX_EMAILS_PER_RUN: !Ref MaxEmailsPerRun
+      Tags:
+        - Key: Project
+          Value: scout
+        - Key: PrNumber
+          Value: !Ref PrNumber
+
+  # -------------------------------------------------------------------------
   # Lambda — events-api for this PR
-  # The email-processor is intentionally omitted from PR stacks to avoid
-  # burning API quota; PR previews read whatever sample data is seeded into
-  # the per-PR DynamoDB table (or just show an empty state).
   # -------------------------------------------------------------------------
   EventsApiFunction:
     Type: AWS::Lambda::Function
@@ -346,6 +414,10 @@ Outputs:
   UserPoolClientId:
     Description: Cognito App Client ID for this PR.
     Value: !Ref UserPoolClient
+
+  EmailProcessorFunctionName:
+    Description: Name of the per-PR email-processor Lambda.
+    Value: !Sub "scout-email-processor-pr-${PrNumber}"
 
   FrontendURL:
     Description: Public frontend URL for this PR.
