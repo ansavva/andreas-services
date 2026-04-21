@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  Scout – serverless NYC events aggregator stack.
+  Scout – serverless events aggregator stack.
   Includes DynamoDB, two Lambda functions, API Gateway (custom domain
   scout-api.andreas.services), EventBridge, S3 static site, and CloudFront CDN
   at scout.andreas.services serving the SPA under /app.

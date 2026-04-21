@@ -18,7 +18,7 @@ export function Header({ onRefresh, loading }: HeaderProps) {
             Scout
           </h1>
           <p className="text-xs text-[var(--color-text-muted)] hidden sm:block">
-            NYC events from your inbox
+            Scout events from your inbox
           </p>
         </div>
 

@@ -11,7 +11,7 @@ Each subdirectory is a **fully self-contained deployable unit** — it has its o
 |-----------|---------|-------|
 | `storybook/` | AI portrait studio | Flask + React/Vite/HeroUI + Lambda (Docker) + MongoDB |
 | `humbugg/` | Gift-exchange platform | Flask + React/Vite + Lambda + MongoDB |
-| `scout/` | NYC events from Gmail | Python Lambdas + React/Vite/TS + DynamoDB |
+| `scout/` | Events from Gmail | Python Lambdas + React/Vite/TS + DynamoDB |
 | `my-tools/` | Utility scripts | Python |
 | `terraform/` | Shared infrastructure | Terraform |
 
@@ -68,14 +68,14 @@ data "aws_route53_zone" "main" {
 - **Auth**: AWS Cognito JWT validation
 - **DB access**: DynamoDB via boto3 (no ORM, no VPC needed)
 
-### Backend (Lambda-only services like nyc-events)
+### Backend (Lambda-only services like scout-events)
 - **Language**: Python 3.11
 - **Logging**: Standard `logging` module; output goes to CloudWatch automatically
 - **AWS SDK**: boto3 — never hardcode credentials; rely on IAM role
 
 ### Infrastructure
 - Storybook and Humbugg use **Terraform** (`<service>/terraform/`)
-- nyc-events uses **CloudFormation** — either approach is acceptable for new services
+- scout-events uses **CloudFormation** — either approach is acceptable for new services
 - All CloudFront distributions use the shared ACM certificate and Route53 zone from `terraform/`
 - S3 + CloudFront for all static frontends
 - Lambda for all backends (containerised Docker for Flask services, zip for pure Lambda)

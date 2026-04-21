@@ -35,7 +35,6 @@ humbugg/
 ├── infra/
 │   ├── backend-lambda.yaml     # Lambda container + API Gateway + Cognito references
 │   ├── frontend-cloudfront.yaml # S3 + CloudFront + Route53 alias
-│   └── deploy.sh               # Manual local deploy (CI-equivalent)
 └── CLAUDE.md                   # ← this file
 ```
 

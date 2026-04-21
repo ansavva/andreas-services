@@ -2,7 +2,7 @@
 
 ## What this service does
 
-Aggregates NYC event listings from Gmail subscriptions and displays them at `scout.andreas.services/app`:
+Scout event listings from Gmail subscriptions and displays them at `scout.andreas.services/app`:
 
 1. **EventBridge** triggers `email-processor` Lambda every Monday at 08:00 UTC
 2. Lambda fetches emails with the **"Events"** Gmail label, extracts structured event data via Claude (claude-haiku-4-5), stores results in DynamoDB
@@ -17,7 +17,6 @@ scout/
 │   ├── cloudformation.yaml             # Prod infrastructure (DynamoDB, Lambdas, API GW at scout-api.andreas.services, S3, CloudFront at scout.andreas.services/app, Route53)
 │   ├── cloudformation-pr-preview.yaml  # Shared PR preview infra (scout-pr.andreas.services bucket+CDN + scout-api-pr.andreas.services custom domain) — deployed once
 │   └── cloudformation-pr.yaml          # Per-PR stack scout-pr-<N> (Lambda + API GW + DynamoDB-pr-<N> + Cognito pool + BasePathMapping)
-├── deploy.sh                       # Local/manual end-to-end deployment script
 ├── setup-frontend.sh            # Frontend local dev bootstrap
 ├── .env.example                 # Required env var template (copy to .env for local use)
 ├── lambda/
@@ -150,14 +149,6 @@ App jobs use `needs: [detect-changes, deploy-infra]` and an `if:` that fires whe
 **Concurrency**
 
 Group `scout-prod` with `cancel-in-progress: false` — queued pushes wait for the previous run instead of racing on `update-function-code`.
-
-**Manual (local):**
-```bash
-cp .env.example .env   # fill in secrets
-./deploy.sh            # packages lambdas, deploys CFn, builds + syncs frontend
-```
-
-See `docs/SETUP.md` for the full guide including Gmail OAuth setup.
 
 ## Local Frontend Development
 

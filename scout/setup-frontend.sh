@@ -13,7 +13,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONTEND_DIR="${PROJECT_ROOT}/frontend"
 API_ENDPOINT="${1:-http://localhost:3001/api}"
 
-echo "Setting up NYC Events frontend..."
+echo "Setting up Scout Events frontend..."
 echo "  API endpoint: ${API_ENDPOINT}"
 
 cd "${FRONTEND_DIR}"

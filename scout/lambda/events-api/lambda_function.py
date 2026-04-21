@@ -1,7 +1,7 @@
 """
 Events API Lambda Function
 
-Serves a REST API via API Gateway for querying NYC events stored in DynamoDB.
+Serves a REST API via API Gateway for querying events stored in DynamoDB.
 
 Endpoints:
   GET  /api/events          - List events (optional ?upcoming=true filter)

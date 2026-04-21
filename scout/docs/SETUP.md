@@ -1,16 +1,14 @@
-# NYC Events Aggregator – Setup Guide
+# Scout – Setup Guide
 
 ## Overview
 
-This project is a serverless NYC events aggregator that:
+This project is a serverless email aggregator that:
 
 1. Runs a Lambda weekly to fetch emails labelled **"Events"** from Gmail
-2. Uses OpenAI GPT-3.5-turbo to extract structured event data
+2. Uses Claude to extract structured event data
 3. Stores events in DynamoDB
 4. Serves them via a REST API (API Gateway + Lambda)
 5. Displays them on a static React site hosted on S3 + CloudFront
-
-Monthly AWS cost target: **< $2** (pay-per-request DynamoDB, minimal Lambda invocations, S3 + CloudFront free tier).
 
 ---
 
@@ -20,7 +18,6 @@ Monthly AWS cost target: **< $2** (pay-per-request DynamoDB, minimal Lambda invo
 |------|---------|-------|
 | AWS CLI | v2+ | Configured with `aws configure` |
 | Python | 3.11+ | For local Lambda packaging |
-| pip | latest | Used inside deploy.sh |
 | Node.js | 18+ | For React build |
 | npm | 9+ | Bundled with Node.js |
 
@@ -45,7 +42,7 @@ Your AWS IAM user/role needs:
 ### 1.1 Create a Google Cloud project
 
 1. Go to [console.cloud.google.com](https://console.cloud.google.com)
-2. Create a new project (e.g., *nyc-events*)
+2. Create a new project (e.g., *andreas-services*)
 3. Enable the **Gmail API** under *APIs & Services → Library*
 
 ### 1.2 Create OAuth credentials
@@ -111,32 +108,6 @@ cp .env.example .env
 
 ---
 
-## Step 5 – Deploy everything
-
-```bash
-chmod +x deploy.sh
-./deploy.sh
-```
-
-The script will:
-
-1. Package both Lambda functions with their dependencies
-2. Upload the zip files to S3
-3. Deploy (or update) the CloudFormation stack
-4. Retrieve API endpoint and S3 bucket from stack outputs
-5. Update Lambda function code
-6. Build the React app with the correct API endpoint
-7. Sync the build to S3
-
-At the end you'll see:
-
-```
-  Website : https://xxxxxxxx.cloudfront.net
-  API     : https://xxxxxxxx.execute-api.us-east-1.amazonaws.com/prod
-```
-
----
-
 ## Step 6 – Verify
 
 ### Test the API
@@ -151,7 +122,7 @@ curl https://<api-id>.execute-api.us-east-1.amazonaws.com/prod/api/events
 
 ```bash
 aws lambda invoke \
-  --function-name nyc-events-email-processor \
+  --function-name scout-events-email-processor \
   --payload '{}' \
   response.json
 cat response.json
@@ -160,8 +131,8 @@ cat response.json
 ### Check CloudWatch logs
 
 ```bash
-aws logs tail /aws/lambda/nyc-events-email-processor --follow
-aws logs tail /aws/lambda/nyc-events-events-api --follow
+aws logs tail /aws/lambda/scout-events-email-processor --follow
+aws logs tail /aws/lambda/scout-events-events-api --follow
 ```
 
 ---
@@ -197,9 +168,9 @@ Step 1.3 and update the Lambda environment variables:
 
 ```bash
 aws lambda update-function-configuration \
-  --function-name nyc-events-email-processor \
+  --function-name scout-events-email-processor \
   --environment "Variables={
-    DYNAMODB_TABLE_NAME=nyc-events-events,
+    DYNAMODB_TABLE_NAME=scout-events,
     ANTHROPIC_API_KEY=<key>,
     GMAIL_CLIENT_ID=<id>,
     GMAIL_CLIENT_SECRET=<secret>,
@@ -244,7 +215,7 @@ Force a cache invalidation after deploying a new frontend build:
 
 ```bash
 DIST_ID=$(aws cloudformation describe-stacks \
-  --stack-name nyc-events \
+  --stack-name scout-events \
   --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDomain'].OutputValue" \
   --output text)
 
