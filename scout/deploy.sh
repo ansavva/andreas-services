@@ -128,7 +128,7 @@ aws s3 cp "${PROJECT_ROOT}/lambda/events-api.zip" \
 section "Deploying CloudFormation stack: ${STACK_NAME}"
 
 aws cloudformation deploy \
-  --template-file "${PROJECT_ROOT}/cloudformation.yaml" \
+  --template-file "${PROJECT_ROOT}/infra/cloudformation.yaml" \
   --stack-name "${STACK_NAME}" \
   --region "${REGION}" \
   --capabilities CAPABILITY_NAMED_IAM \

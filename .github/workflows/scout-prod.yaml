@@ -18,7 +18,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'scout/cloudformation.yaml'
+      - 'scout/infra/cloudformation.yaml'
       - 'scout/lambda/**'
       - 'scout/frontend/**'
       - '.github/workflows/scout-prod.yaml'
@@ -62,7 +62,7 @@ jobs:
         with:
           filters: |
             infra:
-              - 'scout/cloudformation.yaml'
+              - 'scout/infra/cloudformation.yaml'
             backend:
               - 'scout/lambda/**'
             frontend:
@@ -110,7 +110,7 @@ jobs:
       - name: Deploy CloudFormation stack
         run: |
           aws cloudformation deploy \
-            --template-file scout/cloudformation.yaml \
+            --template-file scout/infra/cloudformation.yaml \
             --stack-name "${{ env.STACK_NAME }}" \
             --region "${{ env.AWS_REGION }}" \
             --capabilities CAPABILITY_NAMED_IAM \

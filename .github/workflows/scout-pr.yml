@@ -125,7 +125,7 @@ jobs:
       - name: Deploy PR preview infrastructure
         run: |
           aws cloudformation deploy \
-            --template-file scout/cloudformation-pr-preview.yaml \
+            --template-file scout/infra/cloudformation-pr-preview.yaml \
             --stack-name scout-pr-preview \
             --region "${{ env.AWS_REGION }}" \
             --capabilities CAPABILITY_IAM \
@@ -228,7 +228,7 @@ jobs:
       - name: Deploy per-PR CloudFormation stack
         run: |
           aws cloudformation deploy \
-            --template-file scout/cloudformation-pr.yaml \
+            --template-file scout/infra/cloudformation-pr.yaml \
             --stack-name "${{ env.STACK_NAME }}" \
             --region "${{ env.AWS_REGION }}" \
             --capabilities CAPABILITY_NAMED_IAM \

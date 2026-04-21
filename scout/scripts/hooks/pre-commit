@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# pre-commit hook — runs scout unit tests + frontend lint when scout/ files are staged.
+# Install: scout/scripts/install-hooks.sh
+set -euo pipefail
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+
+if ! git diff --cached --name-only | grep -q '^scout/'; then
+    exit 0
+fi
+
+echo "Scout files staged — running unit tests and lint..."
+
+(
+    cd "${REPO_ROOT}/scout/lambda/events-api"
+    pip3 install -q -r requirements-test.txt
+    python3 -m pytest tests/ -v
+) || { echo "FAIL: events-api unit tests"; exit 1; }
+
+(
+    cd "${REPO_ROOT}/scout/lambda/email-processor"
+    pip3 install -q -r requirements-test.txt
+    python3 -m pytest tests/ -v
+) || { echo "FAIL: email-processor unit tests"; exit 1; }
+
+(
+    cd "${REPO_ROOT}/scout/frontend"
+    [[ ! -d node_modules ]] && npm install --silent
+    npm run lint
+) || { echo "FAIL: frontend lint"; exit 1; }
+
+echo "Scout pre-commit checks passed."

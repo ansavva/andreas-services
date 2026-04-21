@@ -73,10 +73,22 @@ class TestEventsApi(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def _call(self, method="GET", path="/api/events", query=None):
+        # Simulate the API Gateway event shape: resource holds the route template
+        # (e.g. "/api/events/{id}") and pathParameters holds the extracted values.
+        if path.startswith("/api/events/"):
+            suffix = path[len("/api/events/"):]
+            resource = "/api/events/{id}"
+            path_params = {"id": suffix}
+        else:
+            resource = path
+            path_params = {}
+
         return self.lf.lambda_handler(
             {
                 "httpMethod": method,
+                "resource": resource,
                 "path": path,
+                "pathParameters": path_params,
                 "queryStringParameters": query or {},
             },
             {},

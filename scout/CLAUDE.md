@@ -13,9 +13,10 @@ Aggregates NYC event listings from Gmail subscriptions and displays them at `sco
 
 ```
 scout/
-├── cloudformation.yaml             # Prod infrastructure (DynamoDB, Lambdas, API GW at scout-api.andreas.services, S3, CloudFront at scout.andreas.services/app, Route53)
-├── cloudformation-pr-preview.yaml  # Shared PR preview infra (scout-pr.andreas.services bucket+CDN + scout-api-pr.andreas.services custom domain) — deployed once
-├── cloudformation-pr.yaml          # Per-PR stack scout-pr-<N> (Lambda + API GW + DynamoDB-pr-<N> + Cognito pool + BasePathMapping)
+├── infra/
+│   ├── cloudformation.yaml             # Prod infrastructure (DynamoDB, Lambdas, API GW at scout-api.andreas.services, S3, CloudFront at scout.andreas.services/app, Route53)
+│   ├── cloudformation-pr-preview.yaml  # Shared PR preview infra (scout-pr.andreas.services bucket+CDN + scout-api-pr.andreas.services custom domain) — deployed once
+│   └── cloudformation-pr.yaml          # Per-PR stack scout-pr-<N> (Lambda + API GW + DynamoDB-pr-<N> + Cognito pool + BasePathMapping)
 ├── deploy.sh                       # Local/manual end-to-end deployment script
 ├── setup-frontend.sh            # Frontend local dev bootstrap
 ├── .env.example                 # Required env var template (copy to .env for local use)
