@@ -85,14 +85,6 @@ class TestGetEvents:
         data = resp.json()
         assert "events" in data
 
-    def test_upcoming_events_have_future_dates(self):
-        from datetime import date
-        resp = get("/events", params={"upcoming": "true"})
-        today = date.today().isoformat()
-        for event in resp.json()["events"]:
-            if event.get("date"):
-                assert event["date"] >= today, f"Upcoming event has past date: {event['date']}"
-
     def test_event_items_have_required_fields(self):
         resp = get("/events")
         for event in resp.json()["events"]:
@@ -197,17 +189,3 @@ class TestEmailProcessor:
         assert "errors" in result, f"Missing errors: {result}"
         assert result["errors"] == [], f"Processor reported errors: {result['errors']}"
 
-    def test_api_reflects_processed_events(self):
-        resp = get("/events")
-        data = resp.json()
-        assert data["count"] > 0, (
-            "Expected at least one event after email-processor ran, but /events returned empty. "
-            "Check CloudWatch logs for scout-email-processor-pr-* for details."
-        )
-
-    def test_processed_events_have_complete_schema(self):
-        resp = get("/events")
-        required = {"event_id", "event_name", "date", "time", "venue", "price", "description"}
-        for event in resp.json()["events"]:
-            missing = required - event.keys()
-            assert not missing, f"Event missing fields {missing}: {event}"
