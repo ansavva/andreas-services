@@ -41,7 +41,10 @@ resource "aws_dynamodb_table" "user_profiles" {
   name         = "storybook-user-profiles"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "user_id"
-  attribute { name = "user_id"; type = "S" }
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
   server_side_encryption { enabled = true }
   tags = local.common_tags
 }
@@ -50,8 +53,14 @@ resource "aws_dynamodb_table" "child_profiles" {
   name         = "storybook-child-profiles"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "profile_id"
-  attribute { name = "profile_id"; type = "S" }
-  attribute { name = "project_id"; type = "S" }
+  attribute {
+    name = "profile_id"
+    type = "S"
+  }
+  attribute {
+    name = "project_id"
+    type = "S"
+  }
   global_secondary_index {
     name            = "project_id-index"
     hash_key        = "project_id"
@@ -65,9 +74,18 @@ resource "aws_dynamodb_table" "story_projects" {
   name         = "storybook-story-projects"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "project_id"
-  attribute { name = "project_id"; type = "S" }
-  attribute { name = "user_id";    type = "S" }
-  attribute { name = "created_at"; type = "S" }
+  attribute {
+    name = "project_id"
+    type = "S"
+  }
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+  attribute {
+    name = "created_at"
+    type = "S"
+  }
   global_secondary_index {
     name            = "user_id-created_at-index"
     hash_key        = "user_id"
@@ -82,9 +100,18 @@ resource "aws_dynamodb_table" "story_pages" {
   name         = "storybook-story-pages"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "page_id"
-  attribute { name = "page_id";     type = "S" }
-  attribute { name = "project_id";  type = "S" }
-  attribute { name = "page_number"; type = "N" }
+  attribute {
+    name = "page_id"
+    type = "S"
+  }
+  attribute {
+    name = "project_id"
+    type = "S"
+  }
+  attribute {
+    name = "page_number"
+    type = "N"
+  }
   global_secondary_index {
     name            = "project_id-page_number-index"
     hash_key        = "project_id"
@@ -99,9 +126,18 @@ resource "aws_dynamodb_table" "chat_messages" {
   name         = "storybook-chat-messages"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "message_id"
-  attribute { name = "message_id"; type = "S" }
-  attribute { name = "project_id"; type = "S" }
-  attribute { name = "sequence";   type = "S" }
+  attribute {
+    name = "message_id"
+    type = "S"
+  }
+  attribute {
+    name = "project_id"
+    type = "S"
+  }
+  attribute {
+    name = "sequence"
+    type = "S"
+  }
   global_secondary_index {
     name            = "project_id-sequence-index"
     hash_key        = "project_id"
@@ -116,9 +152,18 @@ resource "aws_dynamodb_table" "character_assets" {
   name         = "storybook-character-assets"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "asset_id"
-  attribute { name = "asset_id";   type = "S" }
-  attribute { name = "project_id"; type = "S" }
-  attribute { name = "created_at"; type = "S" }
+  attribute {
+    name = "asset_id"
+    type = "S"
+  }
+  attribute {
+    name = "project_id"
+    type = "S"
+  }
+  attribute {
+    name = "created_at"
+    type = "S"
+  }
   global_secondary_index {
     name            = "project_id-created_at-index"
     hash_key        = "project_id"
@@ -133,9 +178,18 @@ resource "aws_dynamodb_table" "story_states" {
   name         = "storybook-story-states"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "state_id"
-  attribute { name = "state_id";   type = "S" }
-  attribute { name = "project_id"; type = "S" }
-  attribute { name = "version";    type = "N" }
+  attribute {
+    name = "state_id"
+    type = "S"
+  }
+  attribute {
+    name = "project_id"
+    type = "S"
+  }
+  attribute {
+    name = "version"
+    type = "N"
+  }
   global_secondary_index {
     name            = "project_id-version-index"
     hash_key        = "project_id"
@@ -150,9 +204,18 @@ resource "aws_dynamodb_table" "images" {
   name         = "storybook-images"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "image_id"
-  attribute { name = "image_id";   type = "S" }
-  attribute { name = "project_id"; type = "S" }
-  attribute { name = "created_at"; type = "S" }
+  attribute {
+    name = "image_id"
+    type = "S"
+  }
+  attribute {
+    name = "project_id"
+    type = "S"
+  }
+  attribute {
+    name = "created_at"
+    type = "S"
+  }
   global_secondary_index {
     name            = "project_id-created_at-index"
     hash_key        = "project_id"
@@ -167,9 +230,18 @@ resource "aws_dynamodb_table" "model_projects" {
   name         = "storybook-model-projects"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "project_id"
-  attribute { name = "project_id"; type = "S" }
-  attribute { name = "user_id";    type = "S" }
-  attribute { name = "created_at"; type = "S" }
+  attribute {
+    name = "project_id"
+    type = "S"
+  }
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+  attribute {
+    name = "created_at"
+    type = "S"
+  }
   global_secondary_index {
     name            = "user_id-created_at-index"
     hash_key        = "user_id"
@@ -184,9 +256,18 @@ resource "aws_dynamodb_table" "generation_history" {
   name         = "storybook-generation-history"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "generation_id"
-  attribute { name = "generation_id"; type = "S" }
-  attribute { name = "project_id";    type = "S" }
-  attribute { name = "created_at";    type = "S" }
+  attribute {
+    name = "generation_id"
+    type = "S"
+  }
+  attribute {
+    name = "project_id"
+    type = "S"
+  }
+  attribute {
+    name = "created_at"
+    type = "S"
+  }
   global_secondary_index {
     name            = "project_id-created_at-index"
     hash_key        = "project_id"
@@ -201,9 +282,18 @@ resource "aws_dynamodb_table" "training_runs" {
   name         = "storybook-training-runs"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "training_run_id"
-  attribute { name = "training_run_id"; type = "S" }
-  attribute { name = "project_id";      type = "S" }
-  attribute { name = "created_at";      type = "S" }
+  attribute {
+    name = "training_run_id"
+    type = "S"
+  }
+  attribute {
+    name = "project_id"
+    type = "S"
+  }
+  attribute {
+    name = "created_at"
+    type = "S"
+  }
   global_secondary_index {
     name            = "project_id-created_at-index"
     hash_key        = "project_id"
