@@ -109,6 +109,21 @@ jobs:
         working-directory: ${{ env.TF_DIR }}
         run: terraform init -input=false
 
+      # Prune stale resources left in state after the VPC/DocumentDB removal.
+      # The CI role no longer has ec2:DescribeSecurityGroups, so refreshing
+      # these stale resources blocks every apply. `state rm` is idempotent —
+      # once each address is gone, subsequent runs are no-ops.
+      - name: Prune stale VPC resources from state
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          for addr in \
+            'aws_security_group_rule.lambda_to_docdb' \
+            'aws_security_group_rule.image_worker_to_docdb' \
+            'module.compute.aws_security_group.lambda[0]' \
+            'module.image_worker.aws_security_group.worker[0]'; do
+            terraform state rm "$addr" || true
+          done
+
       - name: Terraform Apply
         working-directory: ${{ env.TF_DIR }}
         run: terraform apply -auto-approve -input=false
