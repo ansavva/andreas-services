@@ -220,3 +220,6 @@ storybook/infra/outputs.txt
 .terraform.lock.hcl
 *.tfstate
 *.tfstate.backup
+
+# Claude Code worktrees
+.claude/worktrees/
