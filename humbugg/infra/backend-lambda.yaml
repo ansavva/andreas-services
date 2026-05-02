@@ -7,8 +7,7 @@ Parameters:
     Default: humbugg-backend-production
   ImageUri:
     Type: String
-    # Placeholder used only on first stack creation; deploy workflow updates the image thereafter.
-    Default: public.ecr.aws/lambda/python:3.11
+    Description: ECR image URI for the backend Lambda. Supplied by the deploy workflow.
   Timeout:
     Type: Number
     Default: 30
@@ -25,33 +24,12 @@ Parameters:
 Resources:
 
   # ---------------------------------------------------------------------------
-  # ECR
-  # ---------------------------------------------------------------------------
-
-  HumbuggBackendECR:
-    Type: AWS::ECR::Repository
-    Properties:
-      RepositoryName: humbugg-backend-production
-      ImageScanningConfiguration:
-        ScanOnPush: true
-      LifecyclePolicy:
-        LifecyclePolicyText: |
-          {
-            "rules": [{
-              "rulePriority": 1,
-              "description": "Keep last 10 images",
-              "selection": {
-                "tagStatus": "any",
-                "countType": "imageCountMoreThan",
-                "countNumber": 10
-              },
-              "action": { "type": "expire" }
-            }]
-          }
-
-  # ---------------------------------------------------------------------------
   # Cognito
   # ---------------------------------------------------------------------------
+  # Note: the ECR repository (humbugg-backend-production) is owned outside
+  # this stack — the deploy workflow ensures it exists and pushes the
+  # bootstrap image before `cloudformation deploy` runs. This mirrors
+  # scout's pattern of owning the Lambda code S3 bucket externally.
 
   CognitoUserPool:
     Type: AWS::Cognito::UserPool
@@ -271,7 +249,7 @@ Outputs:
   LambdaFunctionName:
     Value: !Ref BackendFunction
   EcrRepositoryUri:
-    Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${HumbuggBackendECR}
+    Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/humbugg-backend-production
   ApiInvokeUrl:
     Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}
   CognitoUserPoolId:
