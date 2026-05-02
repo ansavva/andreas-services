@@ -91,6 +91,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -109,6 +114,27 @@ jobs:
             --output text | sed 's|/hostedzone/||')
           echo "acm_arn=${ACM_ARN}" >> "$GITHUB_OUTPUT"
           echo "zone_id=${ZONE_ID}" >> "$GITHUB_OUTPUT"
+
+      # CloudFormation creates the Lambda functions referencing the zips at
+      # s3://${LAMBDA_CODE_BUCKET}/lambda/*.zip — those have to exist before
+      # the stack is created or the first apply fails with NoSuchKey.
+      # deploy-backend rebuilds and update-function-code's the real artifacts
+      # afterwards.
+      - name: Package and upload Lambda code (bootstrap)
+        run: |
+          cd scout/lambda/email-processor
+          pip install -q -r requirements.txt -t package/
+          cp lambda_function.py package/
+          (cd package && zip -q -r ../email-processor.zip .)
+          cd ../events-api
+          mkdir -p package
+          cp lambda_function.py package/
+          (cd package && zip -q -r ../events-api.zip .)
+          cd ../../..
+          aws s3 cp scout/lambda/email-processor/email-processor.zip \
+            "s3://${{ env.LAMBDA_CODE_BUCKET }}/lambda/email-processor.zip"
+          aws s3 cp scout/lambda/events-api/events-api.zip \
+            "s3://${{ env.LAMBDA_CODE_BUCKET }}/lambda/events-api.zip"
 
       - name: Deploy CloudFormation stack
         run: |
@@ -201,9 +227,9 @@ jobs:
 
       - name: Upload Lambda packages to S3
         run: |
-          aws s3 cp scout/lambda/email-processor.zip \
+          aws s3 cp scout/lambda/email-processor/email-processor.zip \
             "s3://${{ env.LAMBDA_CODE_BUCKET }}/lambda/email-processor.zip"
-          aws s3 cp scout/lambda/events-api.zip \
+          aws s3 cp scout/lambda/events-api/events-api.zip \
             "s3://${{ env.LAMBDA_CODE_BUCKET }}/lambda/events-api.zip"
 
       - name: Update Lambda function code
