@@ -117,6 +117,8 @@ Resources:
           AllowedMethods: [GET, HEAD, OPTIONS]
           CachedMethods: [GET, HEAD]
           Compress: true
+          # AWS-managed CachingOptimized policy (static SPA assets).
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
           FunctionAssociations:
             - EventType: viewer-request
               FunctionARN: !GetAtt RewriteFunction.FunctionARN
@@ -127,6 +129,12 @@ Resources:
             AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
             CachedMethods: [GET, HEAD]
             Compress: true
+            # AWS-managed CachingDisabled (API responses must not be cached
+            # by CloudFront) + AllViewerExceptHostHeader (forward query
+            # strings, cookies, and most headers — but not Host, since the
+            # API Gateway custom domain expects its own host).
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
         CustomErrorResponses:
           - ErrorCode: 403
             ResponseCode: 200
