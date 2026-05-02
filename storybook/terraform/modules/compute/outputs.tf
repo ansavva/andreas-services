@@ -24,8 +24,3 @@ output "api_gateway_id" {
   description = "API Gateway ID"
   value       = aws_apigatewayv2_api.backend.id
 }
-
-output "lambda_security_group_id" {
-  description = "Lambda security group ID (null if no VPC)"
-  value       = var.enable_vpc ? aws_security_group.lambda[0].id : null
-}
