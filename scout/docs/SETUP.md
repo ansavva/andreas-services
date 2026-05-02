@@ -159,25 +159,17 @@ sam local start-api --port 3001
 
 ## Updating credentials
 
-Because Gmail OAuth tokens expire after some time (access tokens last ~1 hour;
-refresh tokens are long-lived), the Lambda automatically refreshes the access
-token using the stored refresh token.
+The Lambda mints a fresh access token from the stored refresh token on each
+cold start, so only `GMAIL_REFRESH_TOKEN` needs to be persisted. Refresh
+tokens are long-lived **only when the OAuth consent screen is published**
+("In production" in Google Cloud Console) — Testing-mode refresh tokens
+expire after 7 days.
 
-If the refresh token ever becomes invalid (e.g., after revoking access), repeat
-Step 1.3 and update the Lambda environment variables:
-
-```bash
-aws lambda update-function-configuration \
-  --function-name scout-events-email-processor \
-  --environment "Variables={
-    DYNAMODB_TABLE_NAME=scout-events,
-    ANTHROPIC_API_KEY=<key>,
-    GMAIL_CLIENT_ID=<id>,
-    GMAIL_CLIENT_SECRET=<secret>,
-    GMAIL_ACCESS_TOKEN=<new-access-token>,
-    GMAIL_REFRESH_TOKEN=<new-refresh-token>
-  }"
-```
+If the refresh token is revoked (e.g., app access removed in Google Account
+settings, or the OAuth client was reset), repeat Step 1.3 to mint a new one
+and update the GitHub secrets `GMAIL_REFRESH_TOKEN` in both the
+`scout-production` environment and at the repo level (used by PR runs). The
+next deploy will roll the new value into the Lambda env.
 
 ---
 

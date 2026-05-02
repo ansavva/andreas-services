@@ -74,7 +74,6 @@ class TestEmailProcessor(unittest.TestCase):
         os.environ["ANTHROPIC_API_KEY"] = "test-key"
         os.environ["GMAIL_CLIENT_ID"] = "test-client-id"
         os.environ["GMAIL_CLIENT_SECRET"] = "test-secret"
-        os.environ["GMAIL_ACCESS_TOKEN"] = "test-access-token"
         os.environ["GMAIL_REFRESH_TOKEN"] = "test-refresh-token"
         os.environ["MAX_EMAILS_PER_RUN"] = "5"
         os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")

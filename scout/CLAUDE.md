@@ -65,8 +65,7 @@ All secrets live in the `scout-production` GitHub Actions environment, never in 
 | `ANTHROPIC_API_KEY` | GitHub secret | Anthropic API key |
 | `GMAIL_CLIENT_ID` | GitHub secret | Google OAuth client ID |
 | `GMAIL_CLIENT_SECRET` | GitHub secret | Google OAuth client secret |
-| `GMAIL_ACCESS_TOKEN` | GitHub secret | OAuth access token (auto-refreshed by Lambda) |
-| `GMAIL_REFRESH_TOKEN` | GitHub secret | OAuth refresh token |
+| `GMAIL_REFRESH_TOKEN` | GitHub secret | OAuth refresh token (Lambda mints access tokens from this on each cold start) |
 | `LAMBDA_CODE_BUCKET` | GitHub var | S3 bucket for Lambda zip uploads |
 | `VITE_API_URL` | GitHub var | API Gateway endpoint URL |
 | `S3_BUCKET_NAME` | GitHub var | Website S3 bucket name |
@@ -81,7 +80,7 @@ For local use: `cp .env.example .env` and fill in values.
 
 - **Trigger**: EventBridge `cron(0 8 ? * MON *)` — weekly
 - **Runtime**: Python 3.11, 256 MB, 300 s timeout
-- Authenticates Gmail via OAuth (auto-refreshes token using stored refresh token)
+- Authenticates Gmail via OAuth — mints a fresh access token from the stored refresh token on each cold start. The OAuth consent screen **must** be in "In production" status; Testing-mode refresh tokens expire after 7 days.
 - Skips emails already in DynamoDB (dedup by Gmail `email_id`)
 - Converts HTML bodies to plain text via `html2text` before sending to OpenAI
 - Claude (claude-haiku-4-5) returns a JSON array — one object per event in the email
