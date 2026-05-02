@@ -55,10 +55,13 @@ jobs:
           filters: |
             infra:
               - 'humbugg/infra/**'
+              - '.github/workflows/humbugg-prod.yaml'
             backend:
               - 'humbugg/backend/**'
+              - '.github/workflows/humbugg-prod.yaml'
             frontend:
               - 'humbugg/frontend/**'
+              - '.github/workflows/humbugg-prod.yaml'
 
   # ---------------------------------------------------------------------------
   # Deploy CloudFormation stacks (backend then frontend) and publish the

@@ -69,10 +69,13 @@ jobs:
           filters: |
             infra:
               - 'storybook/terraform/**'
+              - '.github/workflows/storybook-prod.yaml'
             backend:
               - 'storybook/backend/**'
+              - '.github/workflows/storybook-prod.yaml'
             frontend:
               - 'storybook/frontend/**'
+              - '.github/workflows/storybook-prod.yaml'
 
   # ---------------------------------------------------------------------------
   # Terraform apply (storybook/terraform/envs/prod) and publish outputs to SSM.
