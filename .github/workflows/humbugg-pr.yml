@@ -12,6 +12,29 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
+  # Tier 0 – validate CloudFormation templates (catches schema bugs offline)
+  # ---------------------------------------------------------------------------
+  lint-cloudformation:
+    name: Lint CloudFormation Templates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install cfn-lint
+        run: pip install --quiet cfn-lint
+
+      - name: Lint humbugg/infra
+        run: cfn-lint --non-zero-exit-code error humbugg/infra/*.yaml
+
+  # ---------------------------------------------------------------------------
   # Tier 1 – verify Docker build + frontend build (no push, no deploy)
   # ---------------------------------------------------------------------------
   build-backend:
