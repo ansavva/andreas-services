@@ -86,7 +86,7 @@ resource "aws_iam_role_policy" "lambda" {
         ]
         Resource = var.image_queue_arn
       }
-    ,{
+    ],[{
       Effect = "Allow"
       Action = [
         "dynamodb:GetItem",
@@ -102,7 +102,7 @@ resource "aws_iam_role_policy" "lambda" {
         values(var.dynamodb_table_arns),
         [for arn in values(var.dynamodb_table_arns) : "${arn}/index/*"]
       )
-    }]
+    }])
   })
 }
 
