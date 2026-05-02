@@ -11,7 +11,6 @@ import {
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faEllipsisVertical,
-  faTrash,
   faWandMagicSparkles,
 } from "@fortawesome/free-solid-svg-icons";
 
