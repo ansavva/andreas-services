@@ -60,6 +60,9 @@ Resources:
     Properties:
       Name: !Sub ${StackName}-rewrite
       AutoPublish: true
+      FunctionConfig:
+        Comment: !Sub Rewrite handler for ${StackName}
+        Runtime: cloudfront-js-2.0
       FunctionCode: !Sub |
         function handler(event) {
           var request = event.request;

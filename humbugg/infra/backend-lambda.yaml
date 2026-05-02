@@ -61,12 +61,13 @@ Resources:
         - email
       AutoVerifiedAttributes:
         - email
-      PasswordPolicy:
-        MinimumLength: 8
-        RequireUppercase: true
-        RequireLowercase: true
-        RequireNumbers: true
-        RequireSymbols: false
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
       Schema:
         - Name: given_name
           AttributeDataType: String
