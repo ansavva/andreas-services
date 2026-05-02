@@ -88,4 +88,5 @@ jobs:
 
       - name: Skip (stack not found)
         if: steps.check-stack.outputs.status == 'DOES_NOT_EXIST'
-        run: echo "No Scout PR stack found for PR #${{ github.event.pull_request.number }} — nothing to delete."
+        run: |
+          echo "No Scout PR stack found for PR #${{ github.event.pull_request.number }} — nothing to delete."
