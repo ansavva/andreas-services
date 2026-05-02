@@ -49,6 +49,12 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install cfn-lint
+        run: pip install --quiet cfn-lint
+
+      - name: Lint CloudFormation templates
+        run: cfn-lint --non-zero-exit-code error scout/infra/*.yaml
+
       - name: Install events-api test deps
         run: pip install -q -r scout/lambda/events-api/requirements-test.txt
 
