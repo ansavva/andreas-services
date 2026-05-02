@@ -30,11 +30,6 @@ Parameters:
     NoEcho: true
     Description: Google OAuth client secret.
 
-  GmailAccessToken:
-    Type: String
-    NoEcho: true
-    Description: Google OAuth access token.
-
   GmailRefreshToken:
     Type: String
     NoEcho: true
@@ -149,7 +144,6 @@ Resources:
           ANTHROPIC_API_KEY: !Ref AnthropicApiKey
           GMAIL_CLIENT_ID: !Ref GmailClientId
           GMAIL_CLIENT_SECRET: !Ref GmailClientSecret
-          GMAIL_ACCESS_TOKEN: !Ref GmailAccessToken
           GMAIL_REFRESH_TOKEN: !Ref GmailRefreshToken
           MAX_EMAILS_PER_RUN: !Ref MaxEmailsPerRun
       Tags:

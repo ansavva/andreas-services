@@ -29,7 +29,6 @@ DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 GMAIL_CLIENT_ID = os.environ["GMAIL_CLIENT_ID"]
 GMAIL_CLIENT_SECRET = os.environ["GMAIL_CLIENT_SECRET"]
-GMAIL_ACCESS_TOKEN = os.environ["GMAIL_ACCESS_TOKEN"]
 GMAIL_REFRESH_TOKEN = os.environ["GMAIL_REFRESH_TOKEN"]
 
 # Constants
@@ -45,7 +44,7 @@ table = dynamodb.Table(DYNAMODB_TABLE_NAME)
 def get_gmail_service():
     """Build an authenticated Gmail API service client."""
     creds = Credentials(
-        token=GMAIL_ACCESS_TOKEN,
+        token=None,
         refresh_token=GMAIL_REFRESH_TOKEN,
         token_uri="https://oauth2.googleapis.com/token",
         client_id=GMAIL_CLIENT_ID,
@@ -53,11 +52,10 @@ def get_gmail_service():
         scopes=GMAIL_SCOPES,
     )
 
-    if creds.expired and creds.refresh_token:
-        logger.info("Refreshing expired Gmail OAuth token")
+    if not creds.valid:
         creds.refresh(Request())
 
-    return build("gmail", "v1", credentials=creds)
+    return build("gmail", "v1", credentials=creds, cache_discovery=False)
 
 
 def get_events_label_id(service):

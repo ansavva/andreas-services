@@ -248,7 +248,6 @@ jobs:
               "AnthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }}" \
               "GmailClientId=${{ secrets.GMAIL_CLIENT_ID }}" \
               "GmailClientSecret=${{ secrets.GMAIL_CLIENT_SECRET }}" \
-              "GmailAccessToken=${{ secrets.GMAIL_ACCESS_TOKEN }}" \
               "GmailRefreshToken=${{ secrets.GMAIL_REFRESH_TOKEN }}" \
               "MaxEmailsPerRun=3"
 
