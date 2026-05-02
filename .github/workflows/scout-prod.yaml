@@ -63,10 +63,13 @@ jobs:
           filters: |
             infra:
               - 'scout/infra/cloudformation.yaml'
+              - '.github/workflows/scout-prod.yaml'
             backend:
               - 'scout/lambda/**'
+              - '.github/workflows/scout-prod.yaml'
             frontend:
               - 'scout/frontend/**'
+              - '.github/workflows/scout-prod.yaml'
 
   # ---------------------------------------------------------------------------
   # Production stack (scout) — Lambdas, API GW @ scout-api.andreas.services,
