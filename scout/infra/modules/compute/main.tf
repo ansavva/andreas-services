@@ -133,7 +133,7 @@ resource "aws_lambda_function" "email_processor" {
   tags = var.tags
 
   lifecycle {
-    ignore_changes = [image_uri, environment]
+    ignore_changes = [image_uri]
   }
 }
 
@@ -161,7 +161,7 @@ resource "aws_lambda_function" "events_api" {
   tags = var.tags
 
   lifecycle {
-    ignore_changes = [image_uri, environment]
+    ignore_changes = [image_uri]
   }
 }
 
