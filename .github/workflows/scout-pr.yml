@@ -246,6 +246,41 @@ jobs:
       # ------------------------------------------------------------------
       # Deploy the per-PR CloudFormation stack
       # ------------------------------------------------------------------
+      # CFN can't switch a custom-named Lambda's PackageType from Zip→Image
+      # in place. Delete the old stack if it has zip-based Lambdas so it
+      # gets recreated clean. No-op for new stacks or image-based stacks.
+      - name: Delete stack if it uses zip-based Lambdas
+        run: |
+          STACK_STATUS=$(aws cloudformation describe-stacks \
+            --stack-name "${{ env.STACK_NAME }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --query "Stacks[0].StackStatus" \
+            --output text 2>/dev/null || echo "DOES_NOT_EXIST")
+
+          if [ "${STACK_STATUS}" = "DOES_NOT_EXIST" ]; then
+            echo "Stack does not exist — nothing to check."
+            exit 0
+          fi
+
+          PACKAGE_TYPE=$(aws lambda get-function-configuration \
+            --function-name "scout-events-api-pr-${{ env.PR_NUMBER }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --query "PackageType" \
+            --output text 2>/dev/null || echo "NONE")
+
+          if [ "${PACKAGE_TYPE}" = "Zip" ]; then
+            echo "Stack has zip-based Lambdas — deleting for migration to Docker..."
+            aws cloudformation delete-stack \
+              --stack-name "${{ env.STACK_NAME }}" \
+              --region "${{ env.AWS_REGION }}"
+            aws cloudformation wait stack-delete-complete \
+              --stack-name "${{ env.STACK_NAME }}" \
+              --region "${{ env.AWS_REGION }}"
+            echo "Stack deleted — will be recreated with image-based Lambdas."
+          else
+            echo "Stack uses ${PACKAGE_TYPE} packaging — no migration needed."
+          fi
+
       - name: Read shared PR preview API domain from SSM
         id: preview
         run: |
