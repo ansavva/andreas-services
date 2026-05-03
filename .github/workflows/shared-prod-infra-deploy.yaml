@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'terraform/**'
+      - 'infra/**'
       - '.github/workflows/shared-prod-infra-deploy.yaml'
   workflow_dispatch:
 
@@ -14,7 +14,7 @@ concurrency:
 
 env:
   AWS_REGION: us-east-1
-  TF_DIR: terraform/envs/shared
+  TF_DIR: infra/envs/shared
 
 jobs:
   apply:

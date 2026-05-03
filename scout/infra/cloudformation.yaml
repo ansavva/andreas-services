@@ -4,7 +4,7 @@ Description: >
   Includes DynamoDB, two Lambda functions, API Gateway (custom domain
   scout-api.andreas.services), EventBridge, S3 static site, and CloudFront CDN
   at scout.andreas.services serving the SPA under /app.
-  ACM certificate and Route53 zone are owned by the shared terraform/ stack.
+  ACM certificate and Route53 zone are owned by the shared infra/ stack.
 
 # ---------------------------------------------------------------------------
 # Parameters
@@ -54,18 +54,18 @@ Parameters:
     Default: 20
     Description: Maximum number of emails processed per Lambda invocation.
 
-  # Resolved from the shared terraform/ stack at deploy time — never hard-code.
+  # Resolved from the shared infra/ stack at deploy time — never hard-code.
   AcmCertificateArn:
     Type: String
     Description: >
       ARN of the shared *.andreas.services ACM wildcard certificate (us-east-1).
-      Owned by terraform/envs/shared.
+      Owned by infra/envs/shared.
 
   Route53HostedZoneId:
     Type: String
     Description: >
       ID of the shared andreas.services Route53 hosted zone.
-      Owned by terraform/envs/shared.
+      Owned by infra/envs/shared.
 
 # ---------------------------------------------------------------------------
 # Resources
@@ -439,7 +439,7 @@ Resources:
 
   # -------------------------------------------------------------------------
   # CloudFront – serves scout.andreas.services/app
-  # Uses the shared *.andreas.services ACM certificate from terraform/
+  # Uses the shared *.andreas.services ACM certificate from infra/
   # -------------------------------------------------------------------------
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution

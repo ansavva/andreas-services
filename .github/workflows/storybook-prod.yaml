@@ -1,11 +1,11 @@
 name: Storybook · Deploy · Prod
 
-# Combined prod deploy for storybook. Runs infra first (when terraform files
+# Combined prod deploy for storybook. Runs infra first (when infra files
 # change or manual dispatch requests it), then backend + frontend in parallel.
 # Infra writes SSM params under /storybook/prod/* that the app jobs read.
 #
 # DAG:
-#   detect-changes ─► deploy-infra (if storybook/terraform/** changed)
+#   detect-changes ─► deploy-infra (if storybook/infra/** changed)
 #                          │
 #                          ├─► deploy-backend  (if backend changed OR infra ran)
 #                          └─► deploy-frontend (if frontend changed OR infra ran)
@@ -39,7 +39,7 @@ concurrency:
 
 env:
   AWS_REGION: us-east-1
-  TF_DIR: storybook/terraform/envs/prod
+  TF_DIR: storybook/infra/envs/prod
   STORYBOOK_USER_PROFILES_TABLE:    storybook-user-profiles
   STORYBOOK_CHILD_PROFILES_TABLE:   storybook-child-profiles
   STORYBOOK_STORY_PROJECTS_TABLE:   storybook-story-projects
@@ -68,7 +68,7 @@ jobs:
         with:
           filters: |
             infra:
-              - 'storybook/terraform/**'
+              - 'storybook/infra/**'
               - '.github/workflows/storybook-prod.yaml'
             backend:
               - 'storybook/backend/**'
@@ -78,7 +78,7 @@ jobs:
               - '.github/workflows/storybook-prod.yaml'
 
   # ---------------------------------------------------------------------------
-  # Terraform apply (storybook/terraform/envs/prod) and publish outputs to SSM.
+  # Terraform apply (storybook/infra/envs/prod) and publish outputs to SSM.
   # ---------------------------------------------------------------------------
   deploy-infra:
     name: Terraform Apply

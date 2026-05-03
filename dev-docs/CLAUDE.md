@@ -34,6 +34,6 @@ See root `CLAUDE.md` for the full service index.
 
 ## Shared Infrastructure
 
-`terraform/` at the repo root owns the shared Route53 zone, ACM wildcard cert, VPC,
-and DocumentDB. See `terraform/README.md` for full documentation.
+`infra/` at the repo root owns the shared Route53 zone, ACM wildcard cert, VPC,
+and DocumentDB. See `infra/README.md` for full documentation.
 **Never recreate these resources inside a service.**

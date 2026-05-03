@@ -19,7 +19,7 @@ Storybook is an AI portrait studio at `storybook.andreas.services`:
 | Data | DynamoDB — many `storybook-*` tables (see backend env vars) |
 | Images | S3 (backend bucket) |
 | ML | Replicate (fine-tune + inference) plus OpenAI / Stability fallbacks |
-| Infra | Terraform in `storybook/terraform/` (envs/prod) |
+| Infra | Terraform in `storybook/infra/` (envs/prod) |
 
 ## Directory Structure
 
@@ -37,7 +37,7 @@ storybook/
 │       ├── vite.config.ts
 │       ├── tsconfig.json        # strict mode
 │       └── src/
-├── terraform/
+├── infra/
 │   ├── envs/prod/               # Prod Terraform root (state in S3)
 │   └── modules/                 # Lambda, Cognito, CloudFront, SQS, DynamoDB, etc.
 ├── dev-docs/                    # SQS debugging, CloudWatch tailing guides
@@ -46,7 +46,7 @@ storybook/
 
 ## Shared Infrastructure
 
-Terraform looks up (rather than owns) shared resources from `terraform/envs/shared`:
+Terraform looks up (rather than owns) shared resources from `infra/envs/shared`:
 
 - **ACM wildcard certificate** for `*.andreas.services` (us-east-1 for CloudFront)
 - **Route53 hosted zone** for `andreas.services`
@@ -101,14 +101,14 @@ API-key secrets (`OPENAI_API_KEY`, `STABILITY_API_KEY`, `REPLICATE_API_TOKEN`) a
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `.github/workflows/storybook-pr.yml` | PR touching `storybook/**` | Verify backend Docker build, lint + build frontend. No push, no AWS writes. |
-| `.github/workflows/storybook-prod.yaml` | Push to `main` touching `storybook/**`, or `workflow_dispatch`, or `workflow_run` after shared infra applies | Single combined deploy. `detect-changes` → `deploy-infra` (terraform apply, writes `/storybook/prod/*` SSM) → `deploy-backend` (updates api + image-worker Lambdas) + `deploy-frontend` (S3 + CloudFront) in parallel. Gated by `storybook-production` environment. |
+| `.github/workflows/storybook-prod.yaml` | Push to `main` touching `storybook/**`, or `workflow_dispatch`, or `workflow_run` after shared infra applies | Single combined deploy. `detect-changes` → `deploy-infra` (terraform apply, writes `/storybook/prod/*` SSM from `storybook/infra/envs/prod`) → `deploy-backend` (updates api + image-worker Lambdas) + `deploy-frontend` (S3 + CloudFront) in parallel. Gated by `storybook-production` environment. |
 
 ### Combined deploy workflow (`storybook-prod.yaml`)
 
 **DAG**
 
 ```
-detect-changes ─► deploy-infra (if storybook/terraform/** changed)
+detect-changes ─► deploy-infra (if storybook/infra/** changed)
                        │
                        ├─► deploy-backend  (api + image-worker Lambdas)
                        └─► deploy-frontend
