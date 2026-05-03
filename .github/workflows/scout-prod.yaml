@@ -175,6 +175,48 @@ jobs:
           docker push "${IMAGE}:${{ github.sha }}"
           docker push "${IMAGE}:latest"
 
+      - name: Update Lambda env vars
+        env:
+          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
+          GMAIL_CLIENT_ID:     ${{ secrets.GMAIL_CLIENT_ID }}
+          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+          GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg table        "scout-events" \
+            --arg anthropic    "${ANTHROPIC_API_KEY}" \
+            --arg client_id    "${GMAIL_CLIENT_ID}" \
+            --arg client_secret "${GMAIL_CLIENT_SECRET}" \
+            --arg refresh_token "${GMAIL_REFRESH_TOKEN}" \
+            '{Variables: {
+              DYNAMODB_TABLE_NAME:  $table,
+              ANTHROPIC_API_KEY:    $anthropic,
+              GMAIL_CLIENT_ID:      $client_id,
+              GMAIL_CLIENT_SECRET:  $client_secret,
+              GMAIL_REFRESH_TOKEN:  $refresh_token
+            }}' > /tmp/env-email-processor.json
+
+          jq -n \
+            --arg table "scout-events" \
+            '{Variables: {DYNAMODB_TABLE_NAME: $table}}' \
+            > /tmp/env-events-api.json
+
+          aws lambda update-function-configuration \
+            --function-name "scout-email-processor" \
+            --region "${{ env.AWS_REGION }}" \
+            --environment file:///tmp/env-email-processor.json
+
+          aws lambda update-function-configuration \
+            --function-name "scout-events-api" \
+            --region "${{ env.AWS_REGION }}" \
+            --environment file:///tmp/env-events-api.json
+
+          aws lambda wait function-updated \
+            --function-name "scout-email-processor" --region "${{ env.AWS_REGION }}"
+          aws lambda wait function-updated \
+            --function-name "scout-events-api" --region "${{ env.AWS_REGION }}"
+
       - name: Update Lambda function code
         run: |
           for FN in scout-email-processor scout-events-api; do

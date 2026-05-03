@@ -106,7 +106,7 @@ infra/
 
 - Modules contain reusable resource definitions; environments wire them together with environment-specific values.
 - Sensitive variables are declared with `sensitive = true` and passed via `TF_VAR_*` in CI — never committed to the repo.
-- `lifecycle { ignore_changes = [image_uri, environment] }` on Lambda resources — CI/CD manages code and env vars outside of Terraform.
+- `lifecycle { ignore_changes = [image_uri, environment] }` on Lambda resources — the deploy workflow owns both: `update-function-code` for the image and `update-function-configuration` for env vars. Terraform sets initial values on first creation only.
 
 ### Deployment (CI/CD)
 - **Standard**: GitHub Actions. Filenames follow `<service>-<env>.yaml` (combined deploy) and `<service>-pr.yml` (combined PR workflow) — e.g. `humbugg-prod.yaml`, `scout-pr.yml` — so the service and the trigger environment (PR vs Prod) are visible at a glance. Auxiliary workflows append a scope suffix after the env segment (e.g. `scout-pr-teardown.yaml`, `shared-prod-infra-plan.yaml`).
