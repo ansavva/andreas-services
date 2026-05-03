@@ -28,11 +28,18 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install cfn-lint
-        run: pip install --quiet cfn-lint
+      - name: Install Poetry
+        run: pip install --quiet poetry==2.2.1
+
+      - name: Install dev deps (includes cfn-lint)
+        run: |
+          cd humbugg/backend
+          poetry install --with dev --no-root --no-interaction --no-ansi
 
       - name: Lint humbugg/infra
-        run: cfn-lint --non-zero-exit-code error humbugg/infra/*.yaml
+        run: |
+          cd humbugg/backend
+          poetry run cfn-lint --non-zero-exit-code error ../infra/*.yaml
 
   # ---------------------------------------------------------------------------
   # Tier 1 – verify Docker build + frontend build (no push, no deploy)

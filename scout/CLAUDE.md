@@ -22,9 +22,12 @@ scout/
 ├── lambda/
 │   ├── email-processor/
 │   │   ├── lambda_function.py   # Gmail → OpenAI → DynamoDB
-│   │   └── requirements.txt
+│   │   ├── pyproject.toml
+│   │   └── poetry.lock
 │   └── events-api/
-│       └── lambda_function.py   # GET /events, GET /events/{id}
+│       ├── lambda_function.py   # GET /events, GET /events/{id}
+│       ├── pyproject.toml
+│       └── poetry.lock
 ├── frontend/
 │   ├── index.html               # Vite entry point
 │   ├── vite.config.ts

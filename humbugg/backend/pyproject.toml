@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "humbugg-backend"
+version = "0.1.0"
+description = "Humbugg gift-exchange platform backend"
+authors = []
+packages = []
+
+[tool.poetry.dependencies]
+python = "^3.11"
+Flask = "3.0.0"
+Flask-Cors = "4.0.0"
+click = "8.1.7"
+python-jose = "3.3.0"
+requests = "2.31.0"
+watchtower = "3.0.1"
+boto3 = "1.28.72"
+python-dotenv = "1.0.1"
+mangum = "0.17.0"
+awslambdaric = "2.0.8"
+
+[tool.poetry.group.dev.dependencies]
+cfn-lint = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

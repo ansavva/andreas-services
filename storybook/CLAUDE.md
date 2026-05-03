@@ -27,7 +27,8 @@ Storybook is an AI portrait studio at `storybook.andreas.services`:
 storybook/
 ├── backend/                     # Flask + Dockerfile, shipped as container Lambda
 │   ├── Dockerfile
-│   ├── requirements.txt
+│   ├── pyproject.toml
+│   ├── poetry.lock
 │   ├── src/                     # Blueprint-based routes → controllers → services → repositories
 │   └── assets/                  # Prompts, styles, reference assets shipped with the image
 ├── frontend/
@@ -57,8 +58,7 @@ A single Route53 A-alias record for `storybook.andreas.services` is added by the
 ```bash
 # Backend (requires a valid .env with AWS credentials and DynamoDB table names)
 cd storybook/backend
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+poetry install
 python -m src.handlers.local.api.api_dev_server
 
 # Image worker (SQS poller loop against the real prod queue URL)

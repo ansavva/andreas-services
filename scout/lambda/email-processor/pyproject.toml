@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "scout-email-processor"
+version = "0.1.0"
+description = "Scout Gmail email processor Lambda"
+authors = []
+packages = []
+
+[tool.poetry.dependencies]
+python = "^3.11"
+google-auth = "2.17.3"
+google-auth-oauthlib = "0.4.6"
+google-auth-httplib2 = "0.1.0"
+google-api-python-client = "2.88.0"
+anthropic = "0.49.0"
+boto3 = "1.26.137"
+html2text = "2020.1.16"
+
+[tool.poetry.group.dev.dependencies]
+moto = {version = "4.2.14", extras = ["dynamodb"]}
+pytest = "7.4.3"
+cfn-lint = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
