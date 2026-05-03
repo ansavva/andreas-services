@@ -18,7 +18,6 @@ html2text = "2020.1.16"
 [tool.poetry.group.dev.dependencies]
 moto = {version = "4.2.14", extras = ["dynamodb"]}
 pytest = "7.4.3"
-cfn-lint = "*"
 
 [build-system]
 requires = ["poetry-core"]

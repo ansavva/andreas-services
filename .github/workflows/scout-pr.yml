@@ -61,15 +61,10 @@ jobs:
           cd scout/backend/events-api
           poetry run pytest tests/ -v
 
-      - name: Install email-processor test deps (includes cfn-lint)
+      - name: Install email-processor test deps
         run: |
           cd scout/backend/email-processor
           poetry install --with dev --no-root --no-interaction --no-ansi
-
-      - name: Lint CloudFormation templates
-        run: |
-          cd scout/backend/email-processor
-          poetry run cfn-lint --non-zero-exit-code error ../../infra/*.yaml
 
       - name: Run email-processor unit tests
         run: |
@@ -104,6 +99,16 @@ jobs:
           VITE_BASE: /app/
         run: cd scout/frontend && npm run build
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Validate Terraform (all scout envs)
+        run: |
+          for env in prod pr-preview pr; do
+            terraform -chdir=scout/infra/envs/$env init -backend=false -input=false
+            terraform -chdir=scout/infra/envs/$env validate
+          done
+
   # ---------------------------------------------------------------------------
   # Ensure the shared PR-preview infrastructure exists. This is an idempotent
   # CloudFormation deploy of the scout-pr-preview stack (S3 bucket + CloudFront
@@ -134,51 +139,27 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Resolve shared infrastructure
-        id: shared
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform init (pr-preview)
+        run: terraform -chdir=scout/infra/envs/pr-preview init -input=false
+
+      - name: Terraform apply (pr-preview)
+        run: terraform -chdir=scout/infra/envs/pr-preview apply -auto-approve -input=false
+
+      - name: Write pr-preview outputs to SSM
         run: |
-          ACM_ARN=$(aws acm list-certificates \
-            --region us-east-1 \
-            --query "CertificateSummaryList[?DomainName=='*.andreas.services'].CertificateArn | [0]" \
-            --output text)
-          ZONE_ID=$(aws route53 list-hosted-zones \
-            --query "HostedZones[?Name=='andreas.services.'].Id | [0]" \
-            --output text | sed 's|/hostedzone/||')
-          echo "acm_arn=${ACM_ARN}" >> "$GITHUB_OUTPUT"
-          echo "zone_id=${ZONE_ID}" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy PR preview infrastructure
-        run: |
-          aws cloudformation deploy \
-            --template-file scout/infra/cloudformation-pr-preview.yaml \
-            --stack-name scout-pr-preview \
-            --region "${{ env.AWS_REGION }}" \
-            --capabilities CAPABILITY_IAM \
-            --no-fail-on-empty-changeset \
-            --parameter-overrides \
-              "AcmCertificateArn=${{ steps.shared.outputs.acm_arn }}" \
-              "Route53HostedZoneId=${{ steps.shared.outputs.zone_id }}"
-
-      - name: Store PR preview infrastructure outputs in SSM
-        run: |
-          get_pr() {
-            aws cloudformation describe-stacks \
-              --stack-name scout-pr-preview \
-              --query "Stacks[0].Outputs[?OutputKey=='${1}'].OutputValue | [0]" \
-              --output text
-          }
-
+          set -euo pipefail
+          tf() { terraform -chdir=scout/infra/envs/pr-preview output -raw "$1"; }
           aws ssm put-parameter --overwrite --type String \
-            --name /scout/pr-preview/s3-bucket \
-            --value "$(get_pr S3BucketName)"
-
+            --name /scout/pr-preview/s3-bucket  --value "$(tf s3_bucket_id)"
           aws ssm put-parameter --overwrite --type String \
-            --name /scout/pr-preview/cf-dist-id \
-            --value "$(get_pr CloudFrontDistributionId)"
-
+            --name /scout/pr-preview/cf-dist-id --value "$(tf cloudfront_distribution_id)"
           aws ssm put-parameter --overwrite --type String \
-            --name /scout/pr-preview/api-domain \
-            --value "$(get_pr ApiDomainName)"
+            --name /scout/pr-preview/api-domain  --value "$(tf api_domain_name)"
 
   # ---------------------------------------------------------------------------
   # Deploy per-PR preview stack (only runs if validation + shared infra passed).
@@ -244,69 +225,39 @@ jobs:
           docker push "${IMAGE}:pr-${{ env.PR_NUMBER }}"
 
       # ------------------------------------------------------------------
-      # Deploy the per-PR CloudFormation stack
+      # Deploy per-PR Terraform stack
       # ------------------------------------------------------------------
-      # CFN can't switch a custom-named Lambda's PackageType from Zip→Image
-      # in place. Delete the old stack if it has zip-based Lambdas so it
-      # gets recreated clean. No-op for new stacks or image-based stacks.
-      - name: Delete stack if it uses zip-based Lambdas
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform init (pr)
         run: |
-          STACK_STATUS=$(aws cloudformation describe-stacks \
-            --stack-name "${{ env.STACK_NAME }}" \
-            --region "${{ env.AWS_REGION }}" \
-            --query "Stacks[0].StackStatus" \
-            --output text 2>/dev/null || echo "DOES_NOT_EXIST")
+          terraform -chdir=scout/infra/envs/pr init -input=false \
+            -backend-config="key=scout/pr/${{ env.PR_NUMBER }}/terraform.tfstate"
 
-          if [ "${STACK_STATUS}" = "DOES_NOT_EXIST" ]; then
-            echo "Stack does not exist — nothing to check."
-            exit 0
-          fi
+      - name: Terraform apply (pr)
+        env:
+          TF_VAR_pr_number:                  "${{ env.PR_NUMBER }}"
+          TF_VAR_email_processor_image_uri:  "${{ env.ECR_REGISTRY }}/scout-email-processor:pr-${{ env.PR_NUMBER }}"
+          TF_VAR_events_api_image_uri:       "${{ env.ECR_REGISTRY }}/scout-events-api:pr-${{ env.PR_NUMBER }}"
+          TF_VAR_anthropic_api_key:          ${{ secrets.ANTHROPIC_API_KEY }}
+          TF_VAR_gmail_client_id:            ${{ secrets.GMAIL_CLIENT_ID }}
+          TF_VAR_gmail_client_secret:        ${{ secrets.GMAIL_CLIENT_SECRET }}
+          TF_VAR_gmail_refresh_token:        ${{ secrets.GMAIL_REFRESH_TOKEN }}
+          TF_VAR_max_emails_per_run:         "3"
+        run: terraform -chdir=scout/infra/envs/pr apply -auto-approve -input=false
 
-          PACKAGE_TYPE=$(aws lambda get-function-configuration \
-            --function-name "scout-events-api-pr-${{ env.PR_NUMBER }}" \
-            --region "${{ env.AWS_REGION }}" \
-            --query "PackageType" \
-            --output text 2>/dev/null || echo "NONE")
-
-          if [ "${PACKAGE_TYPE}" = "Zip" ]; then
-            echo "Stack has zip-based Lambdas — deleting for migration to Docker..."
-            aws cloudformation delete-stack \
-              --stack-name "${{ env.STACK_NAME }}" \
-              --region "${{ env.AWS_REGION }}"
-            aws cloudformation wait stack-delete-complete \
-              --stack-name "${{ env.STACK_NAME }}" \
-              --region "${{ env.AWS_REGION }}"
-            echo "Stack deleted — will be recreated with image-based Lambdas."
-          else
-            echo "Stack uses ${PACKAGE_TYPE} packaging — no migration needed."
-          fi
-
-      - name: Read shared PR preview API domain from SSM
-        id: preview
+      - name: Read PR outputs
+        id: outputs
         run: |
-          API_DOMAIN=$(aws ssm get-parameter \
-            --name /scout/pr-preview/api-domain \
-            --query Parameter.Value --output text)
-          echo "api_domain=${API_DOMAIN}" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy per-PR CloudFormation stack
-        run: |
-          aws cloudformation deploy \
-            --template-file scout/infra/cloudformation-pr.yaml \
-            --stack-name "${{ env.STACK_NAME }}" \
-            --region "${{ env.AWS_REGION }}" \
-            --capabilities CAPABILITY_NAMED_IAM \
-            --no-fail-on-empty-changeset \
-            --parameter-overrides \
-              "PrNumber=${{ env.PR_NUMBER }}" \
-              "EmailProcessorImageUri=${ECR_REGISTRY}/scout-email-processor:pr-${{ env.PR_NUMBER }}" \
-              "EventsApiImageUri=${ECR_REGISTRY}/scout-events-api:pr-${{ env.PR_NUMBER }}" \
-              "SharedApiDomainName=${{ steps.preview.outputs.api_domain }}" \
-              "AnthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }}" \
-              "GmailClientId=${{ secrets.GMAIL_CLIENT_ID }}" \
-              "GmailClientSecret=${{ secrets.GMAIL_CLIENT_SECRET }}" \
-              "GmailRefreshToken=${{ secrets.GMAIL_REFRESH_TOKEN }}" \
-              "MaxEmailsPerRun=3"
+          set -euo pipefail
+          tf() { terraform -chdir=scout/infra/envs/pr output -raw "$1"; }
+          echo "api_url=$(tf api_endpoint)"          >> "$GITHUB_OUTPUT"
+          echo "pool_id=$(tf user_pool_id)"          >> "$GITHUB_OUTPUT"
+          echo "client_id=$(tf user_pool_client_id)" >> "$GITHUB_OUTPUT"
+          echo "frontend_url=$(tf frontend_url)"     >> "$GITHUB_OUTPUT"
 
       - name: Force Lambda to pick up the latest image
         run: |
@@ -363,20 +314,6 @@ jobs:
             echo "email-processor reported errors: $ERRORS"
             exit 1
           fi
-
-      - name: Read PR stack outputs
-        id: outputs
-        run: |
-          get_output() {
-            aws cloudformation describe-stacks \
-              --stack-name "${{ env.STACK_NAME }}" \
-              --query "Stacks[0].Outputs[?OutputKey=='${1}'].OutputValue | [0]" \
-              --output text
-          }
-          echo "api_url=$(get_output ApiEndpoint)"           >> "$GITHUB_OUTPUT"
-          echo "pool_id=$(get_output UserPoolId)"            >> "$GITHUB_OUTPUT"
-          echo "client_id=$(get_output UserPoolClientId)"    >> "$GITHUB_OUTPUT"
-          echo "frontend_url=$(get_output FrontendURL)"      >> "$GITHUB_OUTPUT"
 
       # ------------------------------------------------------------------
       # Build + publish the frontend under /<N>/app/
