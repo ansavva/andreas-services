@@ -12,7 +12,6 @@ Each subdirectory is a **fully self-contained deployable unit** — it has its o
 | `storybook/` | AI portrait studio | Flask + React/Vite/HeroUI + Lambda (Docker) + MongoDB |
 | `humbugg/` | Gift-exchange platform | Flask + React/Vite + Lambda + MongoDB |
 | `scout/` | Events from Gmail | Python Lambdas + React/Vite/TS + DynamoDB |
-| `my-tools/` | Utility scripts | Python |
 | `terraform/` | Shared infrastructure | Terraform |
 
 ## Shared Infrastructure (`terraform/`)

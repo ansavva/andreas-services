@@ -96,6 +96,9 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install Poetry
+        run: pip install --quiet poetry==2.2.1 poetry-plugin-export
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -123,7 +126,9 @@ jobs:
       - name: Package and upload Lambda code (bootstrap)
         run: |
           cd scout/lambda/email-processor
-          pip install -q -r requirements.txt -t package/
+          mkdir -p package
+          poetry export --without-hashes -f requirements.txt -o /tmp/email-processor-requirements.txt
+          pip install -q -r /tmp/email-processor-requirements.txt -t package/
           cp lambda_function.py package/
           (cd package && zip -q -r ../email-processor.zip .)
           cd ../events-api
@@ -204,6 +209,9 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install Poetry
+        run: pip install --quiet poetry==2.2.1 poetry-plugin-export
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -213,7 +221,9 @@ jobs:
       - name: Package email-processor Lambda
         run: |
           cd scout/lambda/email-processor
-          pip install -q -r requirements.txt -t package/
+          mkdir -p package
+          poetry export --without-hashes -f requirements.txt -o /tmp/email-processor-requirements.txt
+          pip install -q -r /tmp/email-processor-requirements.txt -t package/
           cp lambda_function.py package/
           cd package && zip -q -r ../email-processor.zip .
 

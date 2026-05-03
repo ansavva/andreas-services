@@ -5,8 +5,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir poetry==2.2.1 && \
+    poetry config virtualenvs.create false
+
+# Copy dependency manifests first for layer caching
+COPY pyproject.toml poetry.lock ./
+
+RUN poetry install --only main --no-root --no-interaction --no-ansi
 
 COPY src ./src
 

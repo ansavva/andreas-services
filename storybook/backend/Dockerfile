@@ -1,11 +1,13 @@
 # Use AWS Lambda Python base image
 FROM public.ecr.aws/lambda/python:3.12
 
-# Copy requirements first for better caching
-COPY requirements.txt ${LAMBDA_TASK_ROOT}/
+RUN pip install --no-cache-dir poetry==2.2.1 && \
+    poetry config virtualenvs.create false
 
-# Install dependencies
-RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
+# Copy dependency manifests first for layer caching
+COPY pyproject.toml poetry.lock ${LAMBDA_TASK_ROOT}/
+
+RUN cd ${LAMBDA_TASK_ROOT} && poetry install --only main --no-root --no-interaction --no-ansi
 
 # Copy application code
 COPY . ${LAMBDA_TASK_ROOT}/

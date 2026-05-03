@@ -1,0 +1,40 @@
+[tool.poetry]
+name = "storybook-backend"
+version = "0.1.0"
+description = "Storybook AI portrait studio backend"
+authors = []
+packages = []
+
+[tool.poetry.dependencies]
+python = "^3.12"
+blinker = "1.8.2"
+cffi = "1.17.1"
+click = "8.1.7"
+cryptography = "43.0.1"
+Flask = "3.0.3"
+Flask-Cors = "5.0.0"
+itsdangerous = "2.2.0"
+Jinja2 = "3.1.4"
+MarkupSafe = "2.1.5"
+pycparser = "2.22"
+python-dotenv = "1.0.1"
+Werkzeug = "3.0.4"
+requests = "*"
+boto3 = "*"
+replicate = "*"
+openai = "*"
+stability-sdk = "*"
+python-jose = {version = "*", extras = ["cryptography"]}
+cognitojwt = "*"
+mangum = "0.17.0"
+asgiref = "3.8.1"
+certifi = "*"
+reportlab = "*"
+Pillow = "*"
+pillow-heif = "*"
+PyYAML = "6.0.1"
+structlog = "24.4.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

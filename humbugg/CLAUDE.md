@@ -24,7 +24,8 @@ Humbugg is a gift-exchange platform served at `humbugg.andreas.services`:
 humbugg/
 ├── backend/                    # Flask app + Dockerfile, shipped as container Lambda
 │   ├── Dockerfile
-│   ├── requirements.txt
+│   ├── pyproject.toml
+│   ├── poetry.lock
 │   └── src/                    # routes → controllers → services → repositories
 ├── frontend/                   # Vite + React SPA
 │   ├── index.html
@@ -52,7 +53,7 @@ The frontend stack adds a single Route53 A-alias record for `humbugg.andreas.ser
 ```bash
 # Backend
 cd humbugg/backend
-pip install -r requirements.txt
+poetry install
 python src/app.py   # http://localhost:5000
 
 # Frontend (separate terminal)

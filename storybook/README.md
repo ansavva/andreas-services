@@ -23,8 +23,7 @@ To run locally:
 ```bash
 # Run backend
 cd backend
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+poetry install
 python -m src.handlers.local.api.api_dev_server
 ```
 

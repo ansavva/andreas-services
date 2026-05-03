@@ -49,23 +49,33 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install cfn-lint
-        run: pip install --quiet cfn-lint
-
-      - name: Lint CloudFormation templates
-        run: cfn-lint --non-zero-exit-code error scout/infra/*.yaml
+      - name: Install Poetry
+        run: pip install --quiet poetry==2.2.1 poetry-plugin-export
 
       - name: Install events-api test deps
-        run: pip install -q -r scout/lambda/events-api/requirements-test.txt
+        run: |
+          cd scout/lambda/events-api
+          poetry install --with dev --no-root --no-interaction --no-ansi
 
       - name: Run events-api unit tests
-        run: pytest scout/lambda/events-api/tests/ -v
+        run: |
+          cd scout/lambda/events-api
+          poetry run pytest tests/ -v
 
-      - name: Install email-processor test deps
-        run: pip install -q -r scout/lambda/email-processor/requirements-test.txt
+      - name: Install email-processor test deps (includes cfn-lint)
+        run: |
+          cd scout/lambda/email-processor
+          poetry install --with dev --no-root --no-interaction --no-ansi
+
+      - name: Lint CloudFormation templates
+        run: |
+          cd scout/lambda/email-processor
+          poetry run cfn-lint --non-zero-exit-code error ../../infra/*.yaml
 
       - name: Run email-processor unit tests
-        run: pytest scout/lambda/email-processor/tests/ -v
+        run: |
+          cd scout/lambda/email-processor
+          poetry run pytest tests/ -v
 
       - name: Set up Node.js 18
         uses: actions/setup-node@v4
@@ -195,6 +205,9 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install Poetry
+        run: pip install --quiet poetry==2.2.1 poetry-plugin-export
+
       - name: Package events-api Lambda
         run: |
           cd scout/lambda/events-api
@@ -211,7 +224,8 @@ jobs:
         run: |
           cd scout/lambda/email-processor
           mkdir -p package
-          pip install -q -r requirements.txt --target package/
+          poetry export --without-hashes -f requirements.txt -o /tmp/email-processor-requirements.txt
+          pip install -q -r /tmp/email-processor-requirements.txt --target package/
           cp lambda_function.py package/
           cd package && zip -q -r ../email-processor.zip .
 
@@ -381,14 +395,18 @@ jobs:
       # Integration tests against the freshly deployed PR API
       # ------------------------------------------------------------------
       - name: Install integration test deps
-        run: pip install -q -r scout/tests/integration/requirements-test.txt
+        run: |
+          cd scout/tests/integration
+          poetry install --with dev --no-root --no-interaction --no-ansi
 
       - name: Run integration tests
         env:
           SCOUT_API_URL: ${{ steps.outputs.outputs.api_url }}
           SCOUT_EMAIL_PROCESSOR_FUNCTION: scout-email-processor-pr-${{ env.PR_NUMBER }}
           AWS_DEFAULT_REGION: ${{ env.AWS_REGION }}
-        run: pytest scout/tests/integration/ -v
+        run: |
+          cd scout/tests/integration
+          poetry run pytest . -v
 
       # ------------------------------------------------------------------
       # Comment the PR with the preview URLs
