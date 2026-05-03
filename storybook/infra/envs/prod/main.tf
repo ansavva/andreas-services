@@ -373,8 +373,8 @@ module "image_worker" {
 module "compute" {
   source = "../../modules/compute"
 
-  project     = local.project
-  environment = local.environment
+  project             = local.project
+  environment         = local.environment
   s3_bucket_arn       = module.storage.backend_files_bucket_arn
   image_queue_arn     = module.image_queue.queue_arn
   dynamodb_table_arns = local.dynamodb_table_arns
