@@ -112,6 +112,11 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
+      - name: Setup tflint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.62.0
+
       - name: Terraform fmt check
         run: terraform -chdir=scout/infra/envs/prod fmt -check -recursive ../../
 
@@ -121,6 +126,12 @@ jobs:
             terraform -chdir=scout/infra/envs/$env init -backend=false -input=false
             terraform -chdir=scout/infra/envs/$env validate
           done
+
+      - name: tflint init
+        run: tflint --init --config "$(pwd)/.tflint.hcl"
+
+      - name: tflint
+        run: tflint --recursive --chdir=scout/infra --config "$(pwd)/.tflint.hcl"
 
   # ---------------------------------------------------------------------------
   # Ensure the shared PR-preview infrastructure exists. This is an idempotent

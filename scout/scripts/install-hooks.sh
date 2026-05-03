@@ -5,8 +5,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT=$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel)
-GIT_COMMON_DIR=$(git -C "${SCRIPT_DIR}" rev-parse --git-common-dir)
-HOOKS_DIR="${GIT_COMMON_DIR}/hooks"
+GIT_COMMON_DIR=$(cd "${SCRIPT_DIR}" && git rev-parse --git-common-dir)
+HOOKS_DIR="${SCRIPT_DIR}/${GIT_COMMON_DIR}/hooks"
 
 cp "${SCRIPT_DIR}/hooks/pre-commit" "${HOOKS_DIR}/pre-commit"
 chmod +x "${HOOKS_DIR}/pre-commit"

@@ -33,3 +33,27 @@ echo "Scout files staged — running unit tests and lint..."
 ) || { echo "FAIL: frontend lint"; exit 1; }
 
 echo "Scout pre-commit checks passed."
+
+# ---------------------------------------------------------------------------
+# tflint — run on any staged infra files
+# ---------------------------------------------------------------------------
+if ! git diff --cached --name-only | grep -q 'infra/'; then
+    exit 0
+fi
+
+if ! command -v tflint &>/dev/null; then
+    echo "WARNING: tflint not installed — skipping infra lint (brew install tflint)"
+    exit 0
+fi
+
+echo "Infra files staged — running tflint..."
+
+for SERVICE in humbugg scout storybook; do
+    if git diff --cached --name-only | grep -q "^${SERVICE}/infra/"; then
+        tflint --recursive --chdir="${REPO_ROOT}/${SERVICE}/infra" \
+            --config "${REPO_ROOT}/.tflint.hcl" \
+            || { echo "FAIL: tflint ${SERVICE}"; exit 1; }
+    fi
+done
+
+echo "tflint passed."

@@ -375,12 +375,6 @@ module "compute" {
 
   project     = local.project
   environment = local.environment
-  aws_region  = var.aws_region
-
-  cognito_user_pool_id = module.auth.user_pool_id
-  cognito_client_id    = module.auth.user_pool_client_id
-
-  s3_bucket_id        = module.storage.backend_files_bucket_id
   s3_bucket_arn       = module.storage.backend_files_bucket_arn
   image_queue_arn     = module.image_queue.queue_arn
   dynamodb_table_arns = local.dynamodb_table_arns

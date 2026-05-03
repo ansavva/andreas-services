@@ -26,6 +26,11 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
+      - name: Setup tflint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.62.0
+
       - name: Terraform fmt check
         run: terraform -chdir=humbugg/infra/envs/prod fmt -check -recursive ../../
 
@@ -33,6 +38,12 @@ jobs:
         run: |
           terraform -chdir=humbugg/infra/envs/prod init -backend=false -input=false
           terraform -chdir=humbugg/infra/envs/prod validate
+
+      - name: tflint init
+        run: tflint --init --config "$(pwd)/.tflint.hcl"
+
+      - name: tflint
+        run: tflint --recursive --chdir=humbugg/infra --config "$(pwd)/.tflint.hcl"
 
   # ---------------------------------------------------------------------------
   # Tier 1 – verify Docker build + frontend build (no push, no deploy)

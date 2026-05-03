@@ -122,7 +122,7 @@ resource "aws_lambda_function" "email_processor" {
   function_name = local.email_processor_name
   role          = aws_iam_role.lambda.arn
   package_type  = "Image"
-  image_uri     = "${var.email_processor_image_uri}"
+  image_uri     = var.email_processor_image_uri
   timeout       = 300
   memory_size   = 256
 
@@ -148,7 +148,7 @@ resource "aws_lambda_function" "events_api" {
   function_name = local.events_api_name
   role          = aws_iam_role.lambda.arn
   package_type  = "Image"
-  image_uri     = "${var.events_api_image_uri}"
+  image_uri     = var.events_api_image_uri
   timeout       = 30
   memory_size   = 128
 
