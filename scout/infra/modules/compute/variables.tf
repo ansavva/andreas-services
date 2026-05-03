@@ -15,13 +15,15 @@ variable "events_table_name" {
 }
 
 variable "email_processor_image_uri" {
-  description = "ECR image URI for the email processor Lambda"
+  description = "ECR image URI for the email processor Lambda (required when create_ecr = false)"
   type        = string
+  default     = ""
 }
 
 variable "events_api_image_uri" {
-  description = "ECR image URI for the events API Lambda"
+  description = "ECR image URI for the events API Lambda (required when create_ecr = false)"
   type        = string
+  default     = ""
 }
 
 variable "email_processor_env_vars" {

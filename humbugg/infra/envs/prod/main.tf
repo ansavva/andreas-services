@@ -103,6 +103,11 @@ module "storage" {
   tags = local.common_tags
 }
 
+import {
+  to = module.compute.aws_ecr_repository.backend
+  id = "humbugg-backend-production"
+}
+
 module "compute" {
   source = "../../modules/compute"
 

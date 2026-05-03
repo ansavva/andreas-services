@@ -1,5 +1,5 @@
 resource "aws_s3_bucket" "frontend" {
-  bucket = "${var.project}-frontend-${var.environment}"
+  bucket = "${var.project}-web-${var.environment}"
 
   tags = var.tags
 }

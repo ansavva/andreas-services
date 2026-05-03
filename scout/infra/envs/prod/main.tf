@@ -32,20 +32,33 @@ resource "aws_dynamodb_table" "events" {
 module "storage" {
   source = "../../modules/storage"
 
-  bucket_name = "scout-frontend-production"
+  bucket_name = "${local.project}-web-${local.environment}"
 
   tags = local.common_tags
+}
+
+import {
+  to = module.compute.aws_ecr_repository.email_processor[0]
+  id = "scout-email-processor"
+}
+
+import {
+  to = module.compute.aws_ecr_repository.events_api[0]
+  id = "scout-events-api"
+}
+
+import {
+  to = module.hosting.aws_cloudfront_function.spa_fallback
+  id = "scout-spa-fallback"
 }
 
 module "compute" {
   source = "../../modules/compute"
 
-  dynamodb_table_arn        = aws_dynamodb_table.events.arn
-  events_table_name         = aws_dynamodb_table.events.name
-  email_processor_image_uri = "public.ecr.aws/lambda/python:3.11"
-  events_api_image_uri      = "public.ecr.aws/lambda/python:3.11"
-  create_ecr                = true
-  create_eventbridge        = true
+  dynamodb_table_arn = aws_dynamodb_table.events.arn
+  events_table_name  = aws_dynamodb_table.events.name
+  create_ecr         = true
+  create_eventbridge = true
 
   email_processor_env_vars = {
     ANTHROPIC_API_KEY   = var.anthropic_api_key
