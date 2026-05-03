@@ -48,11 +48,11 @@ fi
 
 echo "Infra files staged — running tflint..."
 
-for SERVICE in humbugg scout storybook; do
-    if git diff --cached --name-only | grep -q "^${SERVICE}/infra/"; then
-        tflint --recursive --chdir="${REPO_ROOT}/${SERVICE}/infra" \
+for DIR in infra humbugg/infra scout/infra storybook/infra; do
+    if git diff --cached --name-only | grep -q "^${DIR}/\|^\.tflint\.hcl$"; then
+        tflint --recursive --chdir="${REPO_ROOT}/${DIR}" \
             --config "${REPO_ROOT}/.tflint.hcl" \
-            || { echo "FAIL: tflint ${SERVICE}"; exit 1; }
+            || { echo "FAIL: tflint ${DIR}"; exit 1; }
     fi
 done
 
