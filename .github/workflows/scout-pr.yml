@@ -50,7 +50,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install Poetry
-        run: pip install --quiet poetry==2.2.1
+        run: pip install --quiet poetry==2.2.1 poetry-plugin-export
 
       - name: Install events-api test deps
         run: |
@@ -206,7 +206,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install Poetry
-        run: pip install --quiet poetry==2.2.1
+        run: pip install --quiet poetry==2.2.1 poetry-plugin-export
 
       - name: Package events-api Lambda
         run: |

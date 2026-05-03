@@ -97,7 +97,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install Poetry
-        run: pip install --quiet poetry==2.2.1
+        run: pip install --quiet poetry==2.2.1 poetry-plugin-export
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -210,7 +210,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install Poetry
-        run: pip install --quiet poetry==2.2.1
+        run: pip install --quiet poetry==2.2.1 poetry-plugin-export
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
