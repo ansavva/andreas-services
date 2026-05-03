@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'infra/**'
+      - '.tflint.hcl'
       - '.github/workflows/shared-prod-infra-plan.yaml'
 
 env:
@@ -27,6 +28,17 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: '~1.0'
+
+      - name: Setup tflint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.62.0
+
+      - name: tflint init
+        run: tflint --init --config "$(pwd)/.tflint.hcl"
+
+      - name: tflint
+        run: tflint --recursive --chdir=infra --config "$(pwd)/.tflint.hcl"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4

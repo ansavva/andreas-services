@@ -10,26 +10,6 @@ variable "environment" {
   type        = string
 }
 
-variable "aws_region" {
-  description = "AWS region"
-  type        = string
-}
-
-variable "cognito_user_pool_id" {
-  description = "Cognito User Pool ID"
-  type        = string
-}
-
-variable "cognito_client_id" {
-  description = "Cognito Client ID"
-  type        = string
-}
-
-variable "s3_bucket_id" {
-  description = "S3 bucket ID for backend files"
-  type        = string
-}
-
 variable "s3_bucket_arn" {
   description = "S3 bucket ARN for backend files"
   type        = string

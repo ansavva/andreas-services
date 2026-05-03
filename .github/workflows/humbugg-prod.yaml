@@ -64,11 +64,10 @@ jobs:
               - '.github/workflows/humbugg-prod.yaml'
 
   # ---------------------------------------------------------------------------
-  # Deploy CloudFormation stacks (backend then frontend) and publish the
-  # resolved IDs into SSM for the app jobs to consume.
+  # Apply Terraform and publish the resolved IDs into SSM for the app jobs.
   # ---------------------------------------------------------------------------
   deploy-infra:
-    name: Deploy CloudFormation Stacks
+    name: Terraform Apply
     needs: detect-changes
     if: |
       (github.event_name == 'push' && needs.detect-changes.outputs.infra == 'true')
@@ -89,119 +88,30 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Resolve shared resources (ACM cert + Route53 zone)
-        id: shared
-        run: |
-          ACM_ARN=$(aws acm list-certificates \
-            --region us-east-1 \
-            --query "CertificateSummaryList[?DomainName=='*.andreas.services'].CertificateArn | [0]" \
-            --output text)
-          ZONE_ID=$(aws route53 list-hosted-zones \
-            --query "HostedZones[?Name=='andreas.services.'].Id | [0]" \
-            --output text | sed 's|/hostedzone/||')
-          echo "acm_arn=${ACM_ARN}" >> "$GITHUB_OUTPUT"
-          echo "zone_id=${ZONE_ID}" >> "$GITHUB_OUTPUT"
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
 
-      # The ECR repo is owned outside the stack (mirrors scout's S3 zip
-      # bucket). On a fresh AWS account, create it and push a placeholder
-      # image so CloudFormation has a valid ImageUri to point Lambda at.
-      # deploy-backend rebuilds and update-function-code's the real image
-      # afterwards.
-      - name: Bootstrap ECR repo and image
-        id: bootstrap
+      - name: Terraform init
+        run: terraform -chdir=humbugg/infra/envs/prod init -input=false
+
+      - name: Terraform apply
+        run: terraform -chdir=humbugg/infra/envs/prod apply -auto-approve -input=false
+
+      - name: Write outputs to SSM
         run: |
           set -euo pipefail
-          REPO=humbugg-backend-production
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-          REPO_URI="${REGISTRY}/${REPO}"
-
-          if ! aws ecr describe-repositories --repository-names "$REPO" --region "$AWS_REGION" >/dev/null 2>&1; then
-            aws ecr create-repository \
-              --repository-name "$REPO" \
-              --region "$AWS_REGION" \
-              --image-scanning-configuration scanOnPush=true >/dev/null
-            aws ecr put-lifecycle-policy \
-              --repository-name "$REPO" \
-              --region "$AWS_REGION" \
-              --lifecycle-policy-text '{"rules":[{"rulePriority":1,"description":"Keep last 10 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":10},"action":{"type":"expire"}}]}' >/dev/null
-          fi
-
-          if ! aws ecr describe-images --repository-name "$REPO" --image-ids imageTag=latest --region "$AWS_REGION" >/dev/null 2>&1; then
-            aws ecr get-login-password --region "$AWS_REGION" \
-              | docker login --username AWS --password-stdin "$REGISTRY"
-            docker pull public.ecr.aws/lambda/python:3.11
-            docker tag public.ecr.aws/lambda/python:3.11 "${REPO_URI}:latest"
-            docker push "${REPO_URI}:latest"
-          fi
-
-          echo "image_uri=${REPO_URI}:latest" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy backend stack
-        run: |
-          aws cloudformation deploy \
-            --template-file humbugg/infra/backend-lambda.yaml \
-            --stack-name humbugg-backend \
-            --region "${{ env.AWS_REGION }}" \
-            --capabilities CAPABILITY_NAMED_IAM \
-            --no-fail-on-empty-changeset \
-            --parameter-overrides \
-              "EnvCorsOrigin=https://humbugg.andreas.services" \
-              "ImageUri=${{ steps.bootstrap.outputs.image_uri }}"
-
-      - name: Read backend outputs and write to SSM
-        run: |
-          set -euo pipefail
-          get() {
-            aws cloudformation describe-stacks --stack-name humbugg-backend \
-              --query "Stacks[0].Outputs[?OutputKey=='${1}'].OutputValue | [0]" \
-              --output text
-          }
+          tf() { terraform -chdir=humbugg/infra/envs/prod output -raw "$1"; }
           put() { aws ssm put-parameter --overwrite --type String \
             --name "/humbugg/prod/${1}" --value "${2}"; }
-
-          API_URL="$(get ApiInvokeUrl)"
-          API_DOMAIN=$(echo "${API_URL}" | sed -E 's#https?://([^/]+)/.*#\1#')
-          API_STAGE=$(echo "${API_URL}" | awk -F/ '{print $NF}')
-
-          put api-url              "${API_URL}"
-          put lambda-name          "$(get LambdaFunctionName)"
-          put ecr-url              "$(get EcrRepositoryUri)"
-          put cognito-user-pool-id "$(get CognitoUserPoolId)"
-          put cognito-client-id    "$(get CognitoClientId)"
-
-          echo "API_DOMAIN=${API_DOMAIN}" >> "$GITHUB_ENV"
-          echo "API_STAGE=${API_STAGE}"   >> "$GITHUB_ENV"
-
-      - name: Deploy frontend stack
-        run: |
-          aws cloudformation deploy \
-            --template-file humbugg/infra/frontend-cloudfront.yaml \
-            --stack-name humbugg-frontend \
-            --region "${{ env.AWS_REGION }}" \
-            --capabilities CAPABILITY_IAM \
-            --no-fail-on-empty-changeset \
-            --parameter-overrides \
-              "StackName=humbugg-frontend" \
-              "DomainName=humbugg.andreas.services" \
-              "HostedZoneId=${{ steps.shared.outputs.zone_id }}" \
-              "CertificateArn=${{ steps.shared.outputs.acm_arn }}" \
-              "ApiDomainName=${{ env.API_DOMAIN }}" \
-              "ApiStageName=${{ env.API_STAGE }}"
-
-      - name: Read frontend outputs and write to SSM
-        run: |
-          set -euo pipefail
-          get() {
-            aws cloudformation describe-stacks --stack-name humbugg-frontend \
-              --query "Stacks[0].Outputs[?OutputKey=='${1}'].OutputValue | [0]" \
-              --output text
-          }
-          put() { aws ssm put-parameter --overwrite --type String \
-            --name "/humbugg/prod/${1}" --value "${2}"; }
-
-          put s3-bucket  "$(get SiteBucketName)"
-          put cf-dist-id "$(get DistributionId)"
+          put api-url              "$(tf api_endpoint)"
+          put lambda-name          "$(tf lambda_function_name)"
+          put ecr-url              "$(tf ecr_repository_url)"
+          put cognito-user-pool-id "$(tf cognito_user_pool_id)"
+          put cognito-client-id    "$(tf cognito_client_id)"
+          put s3-bucket            "$(tf s3_frontend_bucket)"
+          put cf-dist-id           "$(tf cloudfront_distribution_id)"
 
   # ---------------------------------------------------------------------------
   # Build Docker image, push to ECR, update Lambda function code + env vars

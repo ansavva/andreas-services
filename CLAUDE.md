@@ -9,8 +9,8 @@ Each subdirectory is a **fully self-contained deployable unit** — it has its o
 
 | Directory | Purpose | Stack |
 |-----------|---------|-------|
-| `storybook/` | AI portrait studio | Flask + React/Vite/HeroUI + Lambda (Docker) + MongoDB |
-| `humbugg/` | Gift-exchange platform | Flask + React/Vite + Lambda + MongoDB |
+| `storybook/` | AI portrait studio | Flask + React/Vite/HeroUI + Lambda (Docker) + DynamoDB |
+| `humbugg/` | Gift-exchange platform | Flask + React/Vite + Lambda + DynamoDB |
 | `scout/` | Events from Gmail | Python Lambdas + React/Vite/TS + DynamoDB |
 | `infra/` | Shared infrastructure | Terraform |
 
@@ -25,7 +25,8 @@ The root `infra/` directory owns **cross-cutting AWS resources** shared by all s
 
 State is in S3: `s3://andreas-services-terraform-state/`
 - Shared: `root/terraform.tfstate`
-- Per-service: `<service>/<env>/terraform.tfstate`
+- Per-service: `<service>/<env>/terraform.tfstate` (e.g. `humbugg/prod/`, `scout/prod/`, `scout/pr-preview/`)
+- Per-PR ephemeral: `scout/pr/<N>/terraform.tfstate` (key injected at `terraform init` via `-backend-config`)
 
 Services reference shared resources via Terraform data sources — never duplicate them:
 ```hcl
@@ -73,14 +74,39 @@ data "aws_route53_zone" "main" {
 - **AWS SDK**: boto3 — never hardcode credentials; rely on IAM role
 
 ### Infrastructure
-- Storybook uses **Terraform** (`<service>/infra/`); Humbugg and Scout use **CloudFormation** (`<service>/infra/`) — either approach is acceptable for new services
+- All services use **Terraform** (`<service>/infra/`). CloudFormation is not used.
 - All CloudFront distributions use the shared ACM certificate and Route53 zone from `infra/`
 - S3 + CloudFront for all static frontends
 - Lambda for all backends (containerised Docker images in ECR — Flask services and pure Lambda functions alike)
 
 ### Infrastructure directory naming
 
-All per-service and shared infrastructure directories must be named `infra/` — never `terraform/` or any other name. This applies regardless of whether the service uses Terraform, CloudFormation, or another IaC tool.
+All per-service and shared infrastructure directories must be named `infra/` — never `terraform/` or any other name.
+
+### Terraform directory structure
+
+Every service's `infra/` directory must follow this layout:
+
+```
+infra/
+├── modules/          # One subdirectory per logical concern (auth, storage, compute, hosting, …)
+│   └── <module>/
+│       ├── main.tf
+│       ├── variables.tf
+│       └── outputs.tf
+└── envs/             # One subdirectory per deployed environment
+    └── <env>/        # e.g. prod, pr-preview, pr
+        ├── main.tf
+        ├── variables.tf
+        ├── providers.tf
+        ├── backend.tf
+        ├── outputs.tf
+        └── terraform.tfvars.example
+```
+
+- Modules contain reusable resource definitions; environments wire them together with environment-specific values.
+- Sensitive variables are declared with `sensitive = true` and passed via `TF_VAR_*` in CI — never committed to the repo.
+- `lifecycle { ignore_changes = [image_uri, environment] }` on Lambda resources — the deploy workflow owns both: `update-function-code` for the image and `update-function-configuration` for env vars. Terraform sets initial values on first creation only.
 
 ### Deployment (CI/CD)
 - **Standard**: GitHub Actions. Filenames follow `<service>-<env>.yaml` (combined deploy) and `<service>-pr.yml` (combined PR workflow) — e.g. `humbugg-prod.yaml`, `scout-pr.yml` — so the service and the trigger environment (PR vs Prod) are visible at a glance. Auxiliary workflows append a scope suffix after the env segment (e.g. `scout-pr-teardown.yaml`, `shared-prod-infra-plan.yaml`).

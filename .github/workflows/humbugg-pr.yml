@@ -12,10 +12,10 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Tier 0 – validate CloudFormation templates (catches schema bugs offline)
+  # Tier 0 – validate Terraform configuration
   # ---------------------------------------------------------------------------
-  lint-cloudformation:
-    name: Lint CloudFormation Templates
+  validate-terraform:
+    name: Validate Terraform
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -23,23 +23,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Setup tflint
+        uses: terraform-linters/setup-tflint@v4
         with:
-          python-version: '3.11'
+          tflint_version: v0.62.0
 
-      - name: Install Poetry
-        run: pip install --quiet poetry==2.2.1 poetry-plugin-export
+      - name: Terraform fmt check
+        run: terraform -chdir=humbugg/infra/envs/prod fmt -check -recursive ../../
 
-      - name: Install dev deps (includes cfn-lint)
+      - name: Terraform validate
         run: |
-          cd humbugg/backend
-          poetry install --with dev --no-root --no-interaction --no-ansi
+          terraform -chdir=humbugg/infra/envs/prod init -backend=false -input=false
+          terraform -chdir=humbugg/infra/envs/prod validate
 
-      - name: Lint humbugg/infra
-        run: |
-          cd humbugg/backend
-          poetry run cfn-lint --non-zero-exit-code error ../infra/*.yaml
+      - name: tflint init
+        run: tflint --init --config "$(pwd)/.tflint.hcl"
+
+      - name: tflint
+        run: tflint --recursive --chdir=humbugg/infra --config "$(pwd)/.tflint.hcl"
 
   # ---------------------------------------------------------------------------
   # Tier 1 – verify Docker build + frontend build (no push, no deploy)

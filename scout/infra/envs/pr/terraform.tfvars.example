@@ -1,0 +1,9 @@
+aws_region                = "us-east-1"
+pr_number                 = "42"
+email_processor_image_uri = "123456789.dkr.ecr.us-east-1.amazonaws.com/scout-email-processor:pr-42"
+events_api_image_uri      = "123456789.dkr.ecr.us-east-1.amazonaws.com/scout-events-api:pr-42"
+anthropic_api_key         = "sk-ant-..."
+gmail_client_id           = "..."
+gmail_client_secret       = "..."
+gmail_refresh_token       = "..."
+max_emails_per_run        = 3
