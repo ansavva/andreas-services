@@ -5,7 +5,7 @@ Clean multi-environment Terraform configuration using reusable modules and separ
 ## Directory Structure
 
 ```
-terraform/
+infra/
 ├── modules/              # Reusable modules
 │   ├── auth/            # Cognito authentication
 │   ├── storage/         # S3 buckets
@@ -20,7 +20,7 @@ terraform/
 
 ### Root Infrastructure
 
-Storybook depends on **root-level cross-cutting infrastructure** managed at `/terraform/`:
+Storybook depends on **root-level cross-cutting infrastructure** managed at `/infra/`:
 
 - **Route53 Hosted Zone**: `andreas.services`
 - **ACM Certificate**: `*.andreas.services` wildcard cert
@@ -32,7 +32,7 @@ terraform init
 terraform apply
 ```
 
-See [root terraform README](../../terraform/README.md) for details.
+See [root terraform README](../../infra/README.md) for details.
 
 ## Environments
 
@@ -58,7 +58,7 @@ See [root terraform README](../../terraform/README.md) for details.
 - ❌ Easy to accidentally deploy wrong environment
 - ❌ Complex variable management
 
-### After (this terraform/ directory)
+### After (this infra/ directory)
 - ✅ Clean module calls, no conditionals
 - ✅ Separate state files (impossible to mix environments)
 - ✅ Must explicitly `cd` into environment directory
@@ -180,7 +180,7 @@ The old `storybook/infra/` directory used a single root with conditionals. This 
 
 To migrate:
 1. Keep the old `infra/` directory until ready to switch
-2. Deploy new `terraform/envs/dev` first to test
+2. Deploy new `infra/envs/dev` first to test
 3. Compare outputs to ensure parity
 4. When ready, migrate production state carefully
 5. Archive old `infra/` directory

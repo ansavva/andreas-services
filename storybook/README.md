@@ -6,7 +6,7 @@ Storybook is an AI portrait studio that lets authenticated users upload training
 
 - **`backend/`** – Python/Flask API running on AWS Lambda (containerized), secured with AWS Cognito, persists project metadata in DynamoDB, stores images in S3, and orchestrates Replicate trainings/inference. It exposes Blueprints for images, model management, and project CRUD plus health endpoints for monitoring.
 - **`frontend/`** – `frontend/storybook-ui` is a Vite + React + NextUI experience (Tailwind-enabled) served via S3 + CloudFront. Handles AWS Cognito authentication and provides project/image management tooling.
-- **`terraform/`** – Modular Terraform configuration for provisioning all AWS resources (Lambda, DynamoDB, S3, CloudFront, Cognito, Route53, etc.)
+- **`infra/`** – Modular Terraform configuration for provisioning all AWS resources (Lambda, DynamoDB, S3, CloudFront, Cognito, Route53, etc.)
 - **`dev-docs/`** – Development documentation and guides
 
 ## Prerequisites
@@ -54,7 +54,7 @@ For local development, copy `.env.local.example` to `.env.local` and fill in the
 ### Automatic Deployment (Recommended)
 
 Push changes to the `main` branch. GitHub Actions runs a single combined workflow that:
-- Applies Terraform when `storybook/terraform/**` changes
+- Applies Terraform when `storybook/infra/**` changes
 - Builds and deploys the backend (api + image-worker Lambdas) when `storybook/backend/**` changes or infra ran
 - Builds and deploys the frontend to S3/CloudFront when `storybook/frontend/**` changes or infra ran
 

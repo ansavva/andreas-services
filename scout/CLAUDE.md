@@ -52,7 +52,7 @@ scout/
 
 ## Shared Infrastructure
 
-The CloudFormation stack references (but does not own) two shared resources from `terraform/envs/shared`:
+The CloudFormation stack references (but does not own) two shared resources from `infra/envs/shared`:
 
 - **ACM wildcard certificate** (`*.andreas.services`) — looked up at deploy time via `aws acm list-certificates`
 - **Route53 hosted zone** (`andreas.services`) — looked up at deploy time via `aws route53 list-hosted-zones`
@@ -209,6 +209,6 @@ deletes the stack, empties the S3 prefix, and invalidates CloudFront.
   inside the API itself.
 - Regional API Gateway custom domains require a regional ACM cert; the shared
   `*.andreas.services` wildcard lives in `us-east-1`, which satisfies that.
-- The shared GitHub Actions OIDC trust policy (`terraform/envs/shared`)
+- The shared GitHub Actions OIDC trust policy (`infra/envs/shared`)
   already allows `repo:<org>/<repo>:*`, so `pull_request` refs can assume
   the CI role without any changes.

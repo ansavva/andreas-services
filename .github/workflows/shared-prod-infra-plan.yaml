@@ -3,12 +3,12 @@ name: Shared infra · Terraform plan · PR
 on:
   pull_request:
     paths:
-      - 'terraform/**'
+      - 'infra/**'
       - '.github/workflows/shared-prod-infra-plan.yaml'
 
 env:
   AWS_REGION: us-east-1
-  TF_DIR: terraform/envs/shared
+  TF_DIR: infra/envs/shared
 
 jobs:
   terraform-plan:
