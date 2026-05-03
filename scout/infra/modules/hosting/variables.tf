@@ -8,8 +8,18 @@ variable "route53_zone_id" {
   type        = string
 }
 
-variable "s3_website_endpoint" {
-  description = "S3 website HTTP endpoint (without protocol)"
+variable "s3_bucket_id" {
+  description = "S3 bucket name"
+  type        = string
+}
+
+variable "s3_bucket_arn" {
+  description = "S3 bucket ARN"
+  type        = string
+}
+
+variable "s3_bucket_regional_domain_name" {
+  description = "S3 bucket regional domain name"
   type        = string
 }
 

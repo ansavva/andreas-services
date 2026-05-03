@@ -99,6 +99,26 @@ jobs:
         with:
           terraform_wrapper: false
 
+      - name: Ensure ECR :latest tags exist
+        run: |
+          set -euo pipefail
+          for REPO in scout-email-processor scout-events-api; do
+            EXISTS=$(aws ecr describe-images --repository-name "$REPO" \
+              --image-ids imageTag=latest --query 'imageDetails[0].imageDigest' \
+              --output text 2>/dev/null || echo "")
+            if [ -z "$EXISTS" ] || [ "$EXISTS" = "None" ]; then
+              echo "$REPO has no :latest tag — tagging most recent image"
+              DIGEST=$(aws ecr describe-images --repository-name "$REPO" \
+                --query 'sort_by(imageDetails,&imagePushedAt)[-1].imageDigest' \
+                --output text)
+              MANIFEST=$(aws ecr batch-get-image --repository-name "$REPO" \
+                --image-ids imageDigest="$DIGEST" \
+                --query 'images[0].imageManifest' --output text)
+              aws ecr put-image --repository-name "$REPO" \
+                --image-tag latest --image-manifest "$MANIFEST"
+            fi
+          done
+
       - name: Terraform init
         run: terraform -chdir=scout/infra/envs/prod init -input=false
 

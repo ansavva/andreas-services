@@ -8,7 +8,7 @@ output "bucket_arn" {
   value       = aws_s3_bucket.main.arn
 }
 
-output "website_endpoint" {
-  description = "S3 website HTTP endpoint (without protocol)"
-  value       = aws_s3_bucket_website_configuration.main.website_endpoint
+output "bucket_regional_domain_name" {
+  description = "S3 bucket regional domain name"
+  value       = aws_s3_bucket.main.bucket_regional_domain_name
 }

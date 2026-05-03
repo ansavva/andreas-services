@@ -14,6 +14,14 @@ data "aws_acm_certificate" "wildcard" {
   most_recent = true
 }
 
+resource "aws_cloudfront_origin_access_control" "frontend" {
+  name                              = "${var.domain_name}-oac"
+  description                       = "OAC for scout frontend S3 bucket"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
 resource "aws_cloudfront_function" "spa_fallback" {
   name    = "scout-spa-fallback"
   runtime = "cloudfront-js-1.0"
@@ -54,21 +62,15 @@ resource "aws_cloudfront_distribution" "app" {
   aliases         = [var.domain_name]
 
   origin {
-    domain_name = var.s3_website_endpoint
-    origin_id   = "S3-website"
-
-    custom_origin_config {
-      http_port              = 80
-      https_port             = 443
-      origin_protocol_policy = "http-only"
-      origin_ssl_protocols   = ["TLSv1.2"]
-    }
+    domain_name              = var.s3_bucket_regional_domain_name
+    origin_id                = "S3-frontend"
+    origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
   }
 
   default_cache_behavior {
     allowed_methods  = ["GET", "HEAD"]
     cached_methods   = ["GET", "HEAD"]
-    target_origin_id = "S3-website"
+    target_origin_id = "S3-frontend"
 
     forwarded_values {
       query_string = false
@@ -90,6 +92,12 @@ resource "aws_cloudfront_distribution" "app" {
   }
 
   custom_error_response {
+    error_code         = 403
+    response_code      = 200
+    response_page_path = "/app/index.html"
+  }
+
+  custom_error_response {
     error_code         = 404
     response_code      = 200
     response_page_path = "/app/index.html"
@@ -108,6 +116,28 @@ resource "aws_cloudfront_distribution" "app" {
   }
 
   tags = var.tags
+}
+
+resource "aws_s3_bucket_policy" "frontend" {
+  bucket = var.s3_bucket_id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowCloudFrontServicePrincipal"
+      Effect = "Allow"
+      Principal = {
+        Service = "cloudfront.amazonaws.com"
+      }
+      Action   = "s3:GetObject"
+      Resource = "${var.s3_bucket_arn}/*"
+      Condition = {
+        StringEquals = {
+          "AWS:SourceArn" = aws_cloudfront_distribution.app.arn
+        }
+      }
+    }]
+  })
 }
 
 resource "aws_route53_record" "app" {
