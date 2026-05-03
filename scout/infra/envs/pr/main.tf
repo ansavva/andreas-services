@@ -41,7 +41,7 @@ module "compute" {
     GMAIL_CLIENT_SECRET = var.gmail_client_secret
     GMAIL_REFRESH_TOKEN = var.gmail_refresh_token
     MAX_EMAILS_PER_RUN  = tostring(var.max_emails_per_run)
-    EVENTS_TABLE_NAME   = aws_dynamodb_table.events.name
+    DYNAMODB_TABLE_NAME = aws_dynamodb_table.events.name
   }
 
   tags = local.common_tags

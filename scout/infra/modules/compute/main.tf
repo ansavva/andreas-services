@@ -154,7 +154,7 @@ resource "aws_lambda_function" "events_api" {
 
   environment {
     variables = {
-      EVENTS_TABLE_NAME = var.events_table_name
+      DYNAMODB_TABLE_NAME = var.events_table_name
     }
   }
 
