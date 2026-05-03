@@ -32,7 +32,7 @@ resource "aws_dynamodb_table" "events" {
 module "storage" {
   source = "../../modules/storage"
 
-  bucket_name = "scout-static-prod"
+  bucket_name = "scout-frontend-prod"
 
   tags = local.common_tags
 }
