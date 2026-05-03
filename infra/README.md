@@ -21,8 +21,8 @@ These resources are **cross-cutting** - they're shared by multiple services:
 
 ❌ **Bad**: Each service creates its own certificate
 ```
-storybook/terraform → Creates cert for storybook.andreas.services
-humbugg/terraform   → Creates cert for humbugg.andreas.services
+storybook/infra → Creates cert for storybook.andreas.services
+humbugg/infra   → Creates cert for humbugg.andreas.services
 ```
 Problems:
 - Hits ACM certificate limits (20 per account)
@@ -31,9 +31,9 @@ Problems:
 
 ✅ **Good**: One wildcard cert shared by all services
 ```
-terraform/          → Creates *.andreas.services cert
-storybook/terraform → Uses shared cert via data source
-humbugg/terraform   → Uses shared cert via data source
+infra/          → Creates *.andreas.services cert
+storybook/infra → Uses shared cert via data source
+humbugg/infra   → Uses shared cert via data source
 ```
 Benefits:
 - Single certificate for all subdomains
@@ -43,12 +43,12 @@ Benefits:
 ## Architecture
 
 ```
-terraform/                    # ROOT LEVEL (this directory)
+infra/                        # ROOT LEVEL (this directory)
 ├── main.tf                  # Route53 zone + ACM cert
 ├── outputs.tf               # Exports zone_id, cert_arn
 └── backend.tf               # S3 state: root/terraform.tfstate
 
-storybook/terraform/         # SERVICE LEVEL
+storybook/infra/             # SERVICE LEVEL
 └── modules/hosting/
     └── main.tf              # References root cert via data source
 ```
@@ -56,7 +56,7 @@ storybook/terraform/         # SERVICE LEVEL
 ## Layout
 
 ```
-terraform/
+infra/
 ├── envs/
 │   └── shared/              # Root/shared environment
 │       ├── backend.tf
@@ -67,14 +67,14 @@ terraform/
 └── README.md
 ```
 
-Service-specific code (e.g., Storybook) lives under `storybook/terraform`, but references the shared outputs via Terraform remote state.
+Service-specific code (e.g., Storybook) lives under `storybook/infra`, but references the shared outputs via Terraform remote state.
 
 ## First-Time Setup
 
 ### 1. Initialize and Apply (shared env)
 
 ```bash
-cd /Users/andreassavva/Repos/andreas-services/terraform/envs/shared
+cd /Users/andreassavva/Repos/andreas-services/infra/envs/shared
 terraform init
 terraform plan
 terraform apply
@@ -114,7 +114,7 @@ Wait until status is `"ISSUED"`.
 Services reference the shared infrastructure using Terraform data sources:
 
 ```hcl
-# In storybook/terraform/modules/hosting/main.tf
+# In storybook/infra/modules/hosting/main.tf
 
 # Reference the shared ACM certificate
 data "aws_acm_certificate" "wildcard" {
@@ -219,6 +219,6 @@ terraform output route53_name_servers
 ## Support
 
 For questions about root infrastructure, see:
-- Individual service docs: `storybook/terraform/README.md`
+- Individual service docs: `storybook/infra/README.md`
 - AWS Route53 docs: https://docs.aws.amazon.com/route53/
 - AWS ACM docs: https://docs.aws.amazon.com/acm/

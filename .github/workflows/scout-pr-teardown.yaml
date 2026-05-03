@@ -11,7 +11,6 @@ concurrency:
 
 env:
   AWS_REGION: us-east-1
-  LAMBDA_CODE_BUCKET: andreas-services-lambda-code
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -57,13 +56,6 @@ jobs:
             --region "${{ env.AWS_REGION }}"
 
           echo "Stack ${{ env.STACK_NAME }} deleted successfully."
-
-      - name: Clean up S3 Lambda artifacts
-        if: steps.check-stack.outputs.status != 'DOES_NOT_EXIST'
-        run: |
-          aws s3 rm \
-            "s3://${{ env.LAMBDA_CODE_BUCKET }}/pr/${{ github.event.pull_request.number }}/" \
-            --recursive || true
 
       - name: Delete PR frontend from shared preview bucket
         run: |

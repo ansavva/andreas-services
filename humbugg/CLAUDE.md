@@ -41,7 +41,7 @@ humbugg/
 
 ## Shared Infrastructure
 
-The CloudFormation templates reference (but don't own) two shared resources from `terraform/envs/shared`:
+The CloudFormation templates reference (but don't own) two shared resources from `infra/envs/shared`:
 
 - **ACM wildcard certificate** (`*.andreas.services`) — looked up at deploy time via `aws acm list-certificates`
 - **Route53 hosted zone** (`andreas.services`) — looked up at deploy time via `aws route53 list-hosted-zones`

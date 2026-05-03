@@ -12,11 +12,11 @@ Each subdirectory is a **fully self-contained deployable unit** — it has its o
 | `storybook/` | AI portrait studio | Flask + React/Vite/HeroUI + Lambda (Docker) + MongoDB |
 | `humbugg/` | Gift-exchange platform | Flask + React/Vite + Lambda + MongoDB |
 | `scout/` | Events from Gmail | Python Lambdas + React/Vite/TS + DynamoDB |
-| `terraform/` | Shared infrastructure | Terraform |
+| `infra/` | Shared infrastructure | Terraform |
 
-## Shared Infrastructure (`terraform/`)
+## Shared Infrastructure (`infra/`)
 
-The root `terraform/` directory owns **cross-cutting AWS resources** shared by all services. Never create these inside an individual service's infra:
+The root `infra/` directory owns **cross-cutting AWS resources** shared by all services. Never create these inside an individual service's infra:
 
 - **Route53** hosted zone for `andreas.services`
 - **ACM wildcard certificate** for `*.andreas.services` (us-east-1, required for CloudFront)
@@ -73,11 +73,14 @@ data "aws_route53_zone" "main" {
 - **AWS SDK**: boto3 — never hardcode credentials; rely on IAM role
 
 ### Infrastructure
-- Storybook and Humbugg use **Terraform** (`<service>/terraform/`)
-- scout-events uses **CloudFormation** — either approach is acceptable for new services
-- All CloudFront distributions use the shared ACM certificate and Route53 zone from `terraform/`
+- Storybook uses **Terraform** (`<service>/infra/`); Humbugg and Scout use **CloudFormation** (`<service>/infra/`) — either approach is acceptable for new services
+- All CloudFront distributions use the shared ACM certificate and Route53 zone from `infra/`
 - S3 + CloudFront for all static frontends
-- Lambda for all backends (containerised Docker for Flask services, zip for pure Lambda)
+- Lambda for all backends (containerised Docker images in ECR — Flask services and pure Lambda functions alike)
+
+### Infrastructure directory naming
+
+All per-service and shared infrastructure directories must be named `infra/` — never `terraform/` or any other name. This applies regardless of whether the service uses Terraform, CloudFormation, or another IaC tool.
 
 ### Deployment (CI/CD)
 - **Standard**: GitHub Actions. Filenames follow `<service>-<env>.yaml` (combined deploy) and `<service>-pr.yml` (combined PR workflow) — e.g. `humbugg-prod.yaml`, `scout-pr.yml` — so the service and the trigger environment (PR vs Prod) are visible at a glance. Auxiliary workflows append a scope suffix after the env segment (e.g. `scout-pr-teardown.yaml`, `shared-prod-infra-plan.yaml`).

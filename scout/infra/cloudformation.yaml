@@ -4,7 +4,7 @@ Description: >
   Includes DynamoDB, two Lambda functions, API Gateway (custom domain
   scout-api.andreas.services), EventBridge, S3 static site, and CloudFront CDN
   at scout.andreas.services serving the SPA under /app.
-  ACM certificate and Route53 zone are owned by the shared terraform/ stack.
+  ACM certificate and Route53 zone are owned by the shared infra/ stack.
 
 # ---------------------------------------------------------------------------
 # Parameters
@@ -35,37 +35,31 @@ Parameters:
     NoEcho: true
     Description: Google OAuth refresh token.
 
-  EmailProcessorZipKey:
+  EmailProcessorImageUri:
     Type: String
-    Default: lambda/email-processor.zip
-    Description: S3 key for the email-processor Lambda deployment package.
+    Description: ECR image URI for the email-processor Lambda (e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com/scout-email-processor:latest).
 
-  EventsApiZipKey:
+  EventsApiImageUri:
     Type: String
-    Default: lambda/events-api.zip
-    Description: S3 key for the events-api Lambda deployment package.
-
-  LambdaCodeBucket:
-    Type: String
-    Description: S3 bucket that holds Lambda deployment zip files.
+    Description: ECR image URI for the events-api Lambda.
 
   MaxEmailsPerRun:
     Type: Number
     Default: 20
     Description: Maximum number of emails processed per Lambda invocation.
 
-  # Resolved from the shared terraform/ stack at deploy time — never hard-code.
+  # Resolved from the shared infra/ stack at deploy time — never hard-code.
   AcmCertificateArn:
     Type: String
     Description: >
       ARN of the shared *.andreas.services ACM wildcard certificate (us-east-1).
-      Owned by terraform/envs/shared.
+      Owned by infra/envs/shared.
 
   Route53HostedZoneId:
     Type: String
     Description: >
       ID of the shared andreas.services Route53 hosted zone.
-      Owned by terraform/envs/shared.
+      Owned by infra/envs/shared.
 
 # ---------------------------------------------------------------------------
 # Resources
@@ -130,14 +124,12 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: !Sub "${ProjectName}-email-processor"
-      Runtime: python3.11
-      Handler: lambda_function.lambda_handler
+      PackageType: Image
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 300
       MemorySize: 256
       Code:
-        S3Bucket: !Ref LambdaCodeBucket
-        S3Key: !Ref EmailProcessorZipKey
+        ImageUri: !Ref EmailProcessorImageUri
       Environment:
         Variables:
           DYNAMODB_TABLE_NAME: !Ref EventsTable
@@ -157,14 +149,12 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: !Sub "${ProjectName}-events-api"
-      Runtime: python3.11
-      Handler: lambda_function.lambda_handler
+      PackageType: Image
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 30
       MemorySize: 128
       Code:
-        S3Bucket: !Ref LambdaCodeBucket
-        S3Key: !Ref EventsApiZipKey
+        ImageUri: !Ref EventsApiImageUri
       Environment:
         Variables:
           DYNAMODB_TABLE_NAME: !Ref EventsTable
@@ -439,7 +429,7 @@ Resources:
 
   # -------------------------------------------------------------------------
   # CloudFront – serves scout.andreas.services/app
-  # Uses the shared *.andreas.services ACM certificate from terraform/
+  # Uses the shared *.andreas.services ACM certificate from infra/
   # -------------------------------------------------------------------------
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution

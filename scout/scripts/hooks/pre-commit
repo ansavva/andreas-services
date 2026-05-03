@@ -9,18 +9,21 @@ if ! git diff --cached --name-only | grep -q '^scout/'; then
     exit 0
 fi
 
+# Git hooks run in non-interactive shells; poetry may not be on PATH.
+export PATH="$(python3 -m site --user-base)/bin:$PATH"
+
 echo "Scout files staged — running unit tests and lint..."
 
 (
-    cd "${REPO_ROOT}/scout/lambda/events-api"
-    pip3 install -q -r requirements-test.txt
-    python3 -m pytest tests/ -v
+    cd "${REPO_ROOT}/scout/backend/events-api"
+    poetry install --with dev --no-root --no-interaction --no-ansi -q
+    poetry run pytest tests/ -v
 ) || { echo "FAIL: events-api unit tests"; exit 1; }
 
 (
-    cd "${REPO_ROOT}/scout/lambda/email-processor"
-    pip3 install -q -r requirements-test.txt
-    python3 -m pytest tests/ -v
+    cd "${REPO_ROOT}/scout/backend/email-processor"
+    poetry install --with dev --no-root --no-interaction --no-ansi -q
+    poetry run pytest tests/ -v
 ) || { echo "FAIL: email-processor unit tests"; exit 1; }
 
 (

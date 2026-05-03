@@ -15,14 +15,14 @@ Parameters:
     Type: String
     Description: >
       ARN of the shared *.andreas.services ACM wildcard certificate (us-east-1).
-      Owned by terraform/envs/shared. Used by both CloudFront (global-friendly)
+      Owned by infra/envs/shared. Used by both CloudFront (global-friendly)
       and API Gateway Regional (cert must live in us-east-1, which it does).
 
   Route53HostedZoneId:
     Type: String
     Description: >
       ID of the shared andreas.services Route53 hosted zone.
-      Owned by terraform/envs/shared.
+      Owned by infra/envs/shared.
 
 Resources:
 

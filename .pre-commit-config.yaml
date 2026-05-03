@@ -23,4 +23,4 @@ repos:
       - id: terraform_validate
         # Only validate root configs (envs). Reusable modules have no
         # provider config and fail standalone validate.
-        files: ^(storybook/terraform/envs|terraform)/.*\.tf$
+        files: ^(storybook/infra/envs|infra)/.*\.tf$

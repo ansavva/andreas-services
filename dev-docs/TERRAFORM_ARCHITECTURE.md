@@ -7,7 +7,7 @@ This document explains the terraform structure across the andreas-services monor
 The monorepo uses a **two-level terraform structure**:
 
 1. **Root Level** (`/terraform/`) - Cross-cutting infrastructure
-2. **Service Level** (`/storybook/terraform/`, `/humbugg/terraform/`) - Service-specific infrastructure
+2. **Service Level** (`/storybook/infra/`, `/humbugg/infra/`) - Service-specific infrastructure
 
 ## Architecture Diagram
 
@@ -62,7 +62,7 @@ terraform apply
 
 ## Service-Level Infrastructure
 
-**Location**: `/storybook/terraform/`, `/humbugg/terraform/`, etc.
+**Location**: `/storybook/infra/`, `/humbugg/infra/`, etc.
 
 **Manages**: Service-specific resources
 
@@ -97,7 +97,7 @@ s3://andreas-services-terraform-state/
 Services use Terraform **data sources** to reference root infrastructure:
 
 ```hcl
-# In storybook/terraform/modules/hosting/main.tf
+# In storybook/infra/modules/hosting/main.tf
 
 # Get the shared ACM certificate
 data "aws_acm_certificate" "wildcard" {
@@ -137,7 +137,7 @@ resource "aws_route53_record" "app" {
 
 2. **Deploy service infrastructure** (per service)
    ```bash
-   cd storybook/terraform/envs/dev
+   cd storybook/infra/envs/dev
    terraform init && terraform apply
    ```
 
@@ -146,7 +146,7 @@ resource "aws_route53_record" "app" {
 Root infrastructure rarely changes. You'll mostly work with service-level terraform:
 
 ```bash
-cd storybook/terraform/envs/dev
+cd storybook/infra/envs/dev
 terraform plan
 terraform apply
 ```
@@ -199,14 +199,14 @@ To add a new service (e.g., `humbugg`):
 
 2. **Copy the service-level pattern**:
    ```bash
-   cp -r storybook/terraform humbugg/terraform
+   cp -r storybook/infra humbugg/infra
    ```
 
 3. **Update service-specific values** in the new terraform
 
 4. **Deploy**:
    ```bash
-   cd humbugg/terraform/envs/prod
+   cd humbugg/infra/envs/prod
    terraform init
    terraform apply
    ```
@@ -218,7 +218,7 @@ The service will automatically use the shared Route53 zone and ACM certificate.
 ### Safe to Destroy
 ✅ Individual service environments:
 ```bash
-cd storybook/terraform/envs/dev
+cd storybook/infra/envs/dev
 terraform destroy  # Only affects storybook dev
 ```
 
@@ -233,10 +233,10 @@ Only destroy root infrastructure if you're tearing down the entire monorepo.
 
 ## Documentation
 
-- **Root terraform**: See `/terraform/README.md`
-- **Storybook terraform**: See `/storybook/terraform/README.md`
-- **Quick start**: See `/storybook/terraform/QUICKSTART.md`
-- **Migration guide**: See `/storybook/terraform/MIGRATION.md`
+- **Root terraform**: See `/infra/README.md`
+- **Storybook terraform**: See `/storybook/infra/README.md`
+- **Quick start**: See `/storybook/infra/QUICKSTART.md`
+- **Migration guide**: See `/storybook/infra/MIGRATION.md`
 
 ## Questions?
 
