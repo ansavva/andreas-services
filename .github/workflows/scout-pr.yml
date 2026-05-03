@@ -435,6 +435,14 @@ jobs:
       # ------------------------------------------------------------------
       # Integration tests against the freshly deployed PR API
       # ------------------------------------------------------------------
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Poetry
+        run: pip install --quiet poetry==2.2.1
+
       - name: Install integration test deps
         run: |
           cd scout/tests/integration
