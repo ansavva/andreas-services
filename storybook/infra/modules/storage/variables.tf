@@ -21,12 +21,6 @@ variable "create_frontend_bucket" {
   default     = false
 }
 
-variable "frontend_bucket_name" {
-  description = "S3 bucket name for frontend (overrides the default project-frontend-environment pattern)"
-  type        = string
-  default     = ""
-}
-
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

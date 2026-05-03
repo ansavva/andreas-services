@@ -1,5 +1,5 @@
 resource "aws_s3_bucket" "frontend" {
-  bucket = var.bucket_name != "" ? var.bucket_name : "${var.project}-frontend-${var.environment}"
+  bucket = "${var.project}-web-${var.environment}"
 
   tags = var.tags
 }

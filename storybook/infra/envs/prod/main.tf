@@ -339,7 +339,6 @@ module "storage" {
   ]
 
   create_frontend_bucket = true
-  frontend_bucket_name   = "storybook-frontend-prod"
 
   tags = local.common_tags
 }

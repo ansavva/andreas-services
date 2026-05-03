@@ -99,7 +99,6 @@ module "storage" {
 
   project     = local.project
   environment = local.environment
-  bucket_name = "humbugg-frontend-prod"
 
   tags = local.common_tags
 }
