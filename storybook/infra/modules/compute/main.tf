@@ -21,9 +21,9 @@ resource "aws_ecr_lifecycle_policy" "backend" {
       rulePriority = 1
       description  = "Keep last 10 images"
       selection = {
-        tagStatus     = "any"
-        countType     = "imageCountMoreThan"
-        countNumber   = 10
+        tagStatus   = "any"
+        countType   = "imageCountMoreThan"
+        countNumber = 10
       }
       action = {
         type = "expire"
@@ -86,22 +86,22 @@ resource "aws_iam_role_policy" "lambda" {
         ]
         Resource = var.image_queue_arn
       }
-    ],[{
-      Effect = "Allow"
-      Action = [
-        "dynamodb:GetItem",
-        "dynamodb:PutItem",
-        "dynamodb:UpdateItem",
-        "dynamodb:DeleteItem",
-        "dynamodb:Query",
-        "dynamodb:Scan",
-        "dynamodb:BatchWriteItem",
-        "dynamodb:BatchGetItem",
-      ]
-      Resource = concat(
-        values(var.dynamodb_table_arns),
-        [for arn in values(var.dynamodb_table_arns) : "${arn}/index/*"]
-      )
+      ], [{
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Query",
+          "dynamodb:Scan",
+          "dynamodb:BatchWriteItem",
+          "dynamodb:BatchGetItem",
+        ]
+        Resource = concat(
+          values(var.dynamodb_table_arns),
+          [for arn in values(var.dynamodb_table_arns) : "${arn}/index/*"]
+        )
     }])
   })
 }
