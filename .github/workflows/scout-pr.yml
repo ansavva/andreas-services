@@ -99,10 +99,23 @@ jobs:
           VITE_BASE: /app/
         run: cd scout/frontend && npm run build
 
+  # ---------------------------------------------------------------------------
+  # Validate Terraform configuration for all scout environments.
+  # ---------------------------------------------------------------------------
+  validate-terraform:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      - name: Validate Terraform (all scout envs)
+      - name: Terraform fmt check
+        run: terraform -chdir=scout/infra/envs/prod fmt -check -recursive ../../
+
+      - name: Terraform validate (all scout envs)
         run: |
           for env in prod pr-preview pr; do
             terraform -chdir=scout/infra/envs/$env init -backend=false -input=false
@@ -111,19 +124,19 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Ensure the shared PR-preview infrastructure exists. This is an idempotent
-  # CloudFormation deploy of the scout-pr-preview stack (S3 bucket + CloudFront
+  # Terraform apply of the scout pr-preview env (S3 bucket + CloudFront
   # at scout-pr.andreas.services + API Gateway custom domain at
   # scout-api-pr.andreas.services). Outputs are published to SSM under
   # /scout/pr-preview/*, which the per-PR deploy consumes.
   #
   # Concurrency: every PR job in this workflow queues behind the previous PR
   # via the scout-preview-pr-<N> group above, but parallel PRs can each hit
-  # this job simultaneously. CFN's own per-stack locking serialises the
-  # deploys safely; on empty changesets CFN is a no-op.
+  # this job simultaneously. Terraform's S3 state locking serialises the
+  # applies safely; on empty plans Terraform is a no-op.
   # ---------------------------------------------------------------------------
   deploy-preview-infra:
     name: Ensure shared PR preview infra
-    needs: lint-unit-build
+    needs: [lint-unit-build, validate-terraform]
     runs-on: ubuntu-latest
     environment: scout-pr
     permissions:
