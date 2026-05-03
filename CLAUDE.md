@@ -76,7 +76,7 @@ data "aws_route53_zone" "main" {
 - Storybook uses **Terraform** (`<service>/infra/`); Humbugg and Scout use **CloudFormation** (`<service>/infra/`) — either approach is acceptable for new services
 - All CloudFront distributions use the shared ACM certificate and Route53 zone from `infra/`
 - S3 + CloudFront for all static frontends
-- Lambda for all backends (containerised Docker for Flask services, zip for pure Lambda)
+- Lambda for all backends (containerised Docker images in ECR — Flask services and pure Lambda functions alike)
 
 ### Infrastructure directory naming
 

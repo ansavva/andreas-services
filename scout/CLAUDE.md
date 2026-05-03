@@ -19,12 +19,14 @@ scout/
 │   └── cloudformation-pr.yaml          # Per-PR stack scout-pr-<N> (Lambda + API GW + DynamoDB-pr-<N> + Cognito pool + BasePathMapping)
 ├── setup-frontend.sh            # Frontend local dev bootstrap
 ├── .env.example                 # Required env var template (copy to .env for local use)
-├── lambda/
+├── backend/
 │   ├── email-processor/
-│   │   ├── lambda_function.py   # Gmail → OpenAI → DynamoDB
+│   │   ├── Dockerfile           # ECR image — public.ecr.aws/lambda/python:3.11 base
+│   │   ├── lambda_function.py   # Gmail → Claude → DynamoDB
 │   │   ├── pyproject.toml
 │   │   └── poetry.lock
 │   └── events-api/
+│       ├── Dockerfile           # ECR image — public.ecr.aws/lambda/python:3.11 base
 │       ├── lambda_function.py   # GET /events, GET /events/{id}
 │       ├── pyproject.toml
 │       └── poetry.lock
@@ -69,7 +71,6 @@ All secrets live in the `scout-production` GitHub Actions environment, never in 
 | `GMAIL_CLIENT_ID` | GitHub secret | Google OAuth client ID |
 | `GMAIL_CLIENT_SECRET` | GitHub secret | Google OAuth client secret |
 | `GMAIL_REFRESH_TOKEN` | GitHub secret | OAuth refresh token (Lambda mints access tokens from this on each cold start) |
-| `LAMBDA_CODE_BUCKET` | GitHub var | S3 bucket for Lambda zip uploads |
 | `VITE_API_URL` | GitHub var | API Gateway endpoint URL |
 | `S3_BUCKET_NAME` | GitHub var | Website S3 bucket name |
 | `CLOUDFRONT_DISTRIBUTION_ID` | GitHub var | CloudFront distribution ID |
@@ -127,7 +128,7 @@ Table: `scout-events` · Primary key: `event_id` (UUID string)
 **Automated (preferred):** Push to `main` — GitHub Actions runs the combined `.github/workflows/scout-prod.yaml` workflow (`detect-changes` → `deploy-infra` → `deploy-backend` + `deploy-frontend`). Paths determine which jobs run:
 
 - `scout/cloudformation.yaml` → `deploy-infra` runs, then fans out to both app jobs (fresh SSM values)
-- `scout/lambda/**` → `deploy-backend` only
+- `scout/backend/**` → `deploy-backend` only
 - `scout/frontend/**` → `deploy-frontend` only
 
 ### Combined deploy workflow (`scout-prod.yaml`)

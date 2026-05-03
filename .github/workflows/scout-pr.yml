@@ -29,7 +29,6 @@ concurrency:
 
 env:
   AWS_REGION: us-east-1
-  LAMBDA_CODE_BUCKET: andreas-services-lambda-code
   STACK_NAME: scout-pr-${{ github.event.pull_request.number }}
   PR_NUMBER: ${{ github.event.pull_request.number }}
 
@@ -54,28 +53,38 @@ jobs:
 
       - name: Install events-api test deps
         run: |
-          cd scout/lambda/events-api
+          cd scout/backend/events-api
           poetry install --with dev --no-root --no-interaction --no-ansi
 
       - name: Run events-api unit tests
         run: |
-          cd scout/lambda/events-api
+          cd scout/backend/events-api
           poetry run pytest tests/ -v
 
       - name: Install email-processor test deps (includes cfn-lint)
         run: |
-          cd scout/lambda/email-processor
+          cd scout/backend/email-processor
           poetry install --with dev --no-root --no-interaction --no-ansi
 
       - name: Lint CloudFormation templates
         run: |
-          cd scout/lambda/email-processor
+          cd scout/backend/email-processor
           poetry run cfn-lint --non-zero-exit-code error ../../infra/*.yaml
 
       - name: Run email-processor unit tests
         run: |
-          cd scout/lambda/email-processor
+          cd scout/backend/email-processor
           poetry run pytest tests/ -v
+
+      - name: Build email-processor Docker image (verify only)
+        run: |
+          cd scout/backend/email-processor
+          docker build -t scout-email-processor:ci-verify .
+
+      - name: Build events-api Docker image (verify only)
+        run: |
+          cd scout/backend/events-api
+          docker build -t scout-events-api:ci-verify .
 
       - name: Set up Node.js 18
         uses: actions/setup-node@v4
@@ -198,41 +207,41 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       # ------------------------------------------------------------------
-      # Build + upload the events-api Lambda zip to a per-PR S3 key
+      # Build + push Docker images to ECR with pr-<N> tags
       # ------------------------------------------------------------------
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Poetry
-        run: pip install --quiet poetry==2.2.1 poetry-plugin-export
-
-      - name: Package events-api Lambda
+      - name: Set ECR registry
         run: |
-          cd scout/lambda/events-api
-          mkdir -p package
-          cp lambda_function.py package/
-          cd package && zip -q -r ../events-api.zip .
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "ECR_REGISTRY=${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> "$GITHUB_ENV"
 
-      - name: Upload Lambda zip to S3
+      - name: Ensure ECR repositories exist
         run: |
-          aws s3 cp scout/lambda/events-api/events-api.zip \
-            "s3://${{ env.LAMBDA_CODE_BUCKET }}/pr/${{ env.PR_NUMBER }}/events-api.zip"
+          for REPO in scout-email-processor scout-events-api; do
+            aws ecr describe-repositories --repository-names "${REPO}" \
+              --region "${{ env.AWS_REGION }}" > /dev/null 2>&1 || \
+            aws ecr create-repository \
+              --repository-name "${REPO}" \
+              --region "${{ env.AWS_REGION }}" \
+              --image-scanning-configuration scanOnPush=true \
+              --tags Key=Project,Value=scout
+          done
 
-      - name: Package email-processor Lambda
-        run: |
-          cd scout/lambda/email-processor
-          mkdir -p package
-          poetry export --without-hashes -f requirements.txt -o /tmp/email-processor-requirements.txt
-          pip install -q -r /tmp/email-processor-requirements.txt --target package/
-          cp lambda_function.py package/
-          cd package && zip -q -r ../email-processor.zip .
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Upload email-processor zip to S3
+      - name: Build & push email-processor
         run: |
-          aws s3 cp scout/lambda/email-processor/email-processor.zip \
-            "s3://${{ env.LAMBDA_CODE_BUCKET }}/pr/${{ env.PR_NUMBER }}/email-processor.zip"
+          IMAGE="${ECR_REGISTRY}/scout-email-processor"
+          cd scout/backend/email-processor
+          docker build -t "${IMAGE}:pr-${{ env.PR_NUMBER }}" .
+          docker push "${IMAGE}:pr-${{ env.PR_NUMBER }}"
+
+      - name: Build & push events-api
+        run: |
+          IMAGE="${ECR_REGISTRY}/scout-events-api"
+          cd scout/backend/events-api
+          docker build -t "${IMAGE}:pr-${{ env.PR_NUMBER }}" .
+          docker push "${IMAGE}:pr-${{ env.PR_NUMBER }}"
 
       # ------------------------------------------------------------------
       # Deploy the per-PR CloudFormation stack
@@ -255,9 +264,8 @@ jobs:
             --no-fail-on-empty-changeset \
             --parameter-overrides \
               "PrNumber=${{ env.PR_NUMBER }}" \
-              "LambdaCodeBucket=${{ env.LAMBDA_CODE_BUCKET }}" \
-              "EventsApiZipKey=pr/${{ env.PR_NUMBER }}/events-api.zip" \
-              "EmailProcessorZipKey=pr/${{ env.PR_NUMBER }}/email-processor.zip" \
+              "EmailProcessorImageUri=${ECR_REGISTRY}/scout-email-processor:pr-${{ env.PR_NUMBER }}" \
+              "EventsApiImageUri=${ECR_REGISTRY}/scout-events-api:pr-${{ env.PR_NUMBER }}" \
               "SharedApiDomainName=${{ steps.preview.outputs.api_domain }}" \
               "AnthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }}" \
               "GmailClientId=${{ secrets.GMAIL_CLIENT_ID }}" \
@@ -265,20 +273,18 @@ jobs:
               "GmailRefreshToken=${{ secrets.GMAIL_REFRESH_TOKEN }}" \
               "MaxEmailsPerRun=3"
 
-      - name: Force Lambda to pick up the latest zip
+      - name: Force Lambda to pick up the latest image
         run: |
           aws lambda update-function-code \
             --function-name "scout-events-api-pr-${{ env.PR_NUMBER }}" \
-            --s3-bucket "${{ env.LAMBDA_CODE_BUCKET }}" \
-            --s3-key "pr/${{ env.PR_NUMBER }}/events-api.zip" \
+            --image-uri "${ECR_REGISTRY}/scout-events-api:pr-${{ env.PR_NUMBER }}" \
             --region "${{ env.AWS_REGION }}" \
             --output table \
             --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
 
           aws lambda update-function-code \
             --function-name "scout-email-processor-pr-${{ env.PR_NUMBER }}" \
-            --s3-bucket "${{ env.LAMBDA_CODE_BUCKET }}" \
-            --s3-key "pr/${{ env.PR_NUMBER }}/email-processor.zip" \
+            --image-uri "${ECR_REGISTRY}/scout-email-processor:pr-${{ env.PR_NUMBER }}" \
             --region "${{ env.AWS_REGION }}" \
             --output table \
             --query '{FunctionName:FunctionName,CodeSize:CodeSize}'

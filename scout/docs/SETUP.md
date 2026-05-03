@@ -87,19 +87,7 @@ emails you want the processor to read.
 
 ---
 
-## Step 3 – Create the Lambda code S3 bucket
-
-The deployment script needs an existing S3 bucket to upload Lambda zip files.
-
-```bash
-aws s3 mb s3://my-deployment-bucket --region us-east-1
-```
-
-Set `LAMBDA_CODE_BUCKET=my-deployment-bucket` in your `.env`.
-
----
-
-## Step 4 – Configure environment
+## Step 3 – Configure environment
 
 ```bash
 cp .env.example .env

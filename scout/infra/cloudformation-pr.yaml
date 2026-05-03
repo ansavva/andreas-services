@@ -19,15 +19,11 @@ Parameters:
     Description: Pull request number used as the resource suffix and API base path.
     AllowedPattern: "^[0-9]+$"
 
-  LambdaCodeBucket:
-    Type: String
-    Description: S3 bucket that holds Lambda deployment zip files.
-
-  EventsApiZipKey:
+  EventsApiImageUri:
     Type: String
     Description: >
-      S3 key under LambdaCodeBucket for the events-api Lambda zip for this PR
-      (e.g. pr/42/events-api.zip).
+      ECR image URI for the events-api Lambda for this PR
+      (e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com/scout-events-api:pr-42).
 
   SharedApiDomainName:
     Type: String
@@ -36,11 +32,11 @@ Parameters:
       The API Gateway custom domain owned by the shared scout-pr-preview stack.
       This stack attaches a BasePathMapping (BasePath = PrNumber) to it.
 
-  EmailProcessorZipKey:
+  EmailProcessorImageUri:
     Type: String
     Description: >
-      S3 key under LambdaCodeBucket for the email-processor Lambda zip for
-      this PR (e.g. pr/42/email-processor.zip).
+      ECR image URI for the email-processor Lambda for this PR
+      (e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com/scout-email-processor:pr-42).
 
   AnthropicApiKey:
     Type: String
@@ -143,14 +139,12 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: !Sub "scout-email-processor-pr-${PrNumber}"
-      Runtime: python3.11
-      Handler: lambda_function.lambda_handler
+      PackageType: Image
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 300
       MemorySize: 256
       Code:
-        S3Bucket: !Ref LambdaCodeBucket
-        S3Key: !Ref EmailProcessorZipKey
+        ImageUri: !Ref EmailProcessorImageUri
       Environment:
         Variables:
           DYNAMODB_TABLE_NAME: !Ref EventsTable
@@ -172,14 +166,12 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: !Sub "scout-events-api-pr-${PrNumber}"
-      Runtime: python3.11
-      Handler: lambda_function.lambda_handler
+      PackageType: Image
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 30
       MemorySize: 128
       Code:
-        S3Bucket: !Ref LambdaCodeBucket
-        S3Key: !Ref EventsApiZipKey
+        ImageUri: !Ref EventsApiImageUri
       Environment:
         Variables:
           DYNAMODB_TABLE_NAME: !Ref EventsTable
