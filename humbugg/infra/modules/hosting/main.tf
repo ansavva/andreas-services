@@ -61,7 +61,7 @@ resource "aws_cloudfront_distribution" "app" {
   }
 
   origin {
-    domain_name = replace(var.api_endpoint, "https://", "")
+    domain_name = trimsuffix(replace(var.api_endpoint, "https://", ""), "/")
     origin_id   = "APIGateway-backend"
 
     custom_origin_config {
