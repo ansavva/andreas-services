@@ -1,16 +1,18 @@
 name: Storybook · Deploy · Prod
 
-# Combined prod deploy for storybook. Runs infra first (when infra files
-# change or manual dispatch requests it), then backend + frontend in parallel.
-# Infra writes SSM params under /storybook/prod/* that the app jobs read.
+# Combined prod deploy for storybook.
 #
-# DAG:
-#   detect-changes ─► deploy-infra (if storybook/infra/** changed)
+# DAG (image is a prerequisite of Terraform Lambda creation, so build-and-push
+# runs before deploy-infra to eliminate the chicken-and-egg of an empty ECR
+# repo on first deploy):
+#
+#   detect-changes ─► build-and-push (1 image, pushed to api + image-worker repos)
 #                          │
-#                          ├─► deploy-backend  (if backend changed OR infra ran)
-#                          └─► deploy-frontend (if frontend changed OR infra ran)
-#
-# deploy-backend updates both the api Lambda and the image-worker Lambda.
+#                          ▼
+#                     deploy-infra (terraform apply)
+#                          │
+#                          ├─► update-lambda  (env vars + pin both Lambdas to :sha)
+#                          └─► deploy-frontend
 
 on:
   push:
@@ -25,7 +27,7 @@ on:
         type: boolean
         default: true
       run_app:
-        description: 'Run the deploy-backend and deploy-frontend jobs'
+        description: 'Run update-lambda and deploy-frontend'
         type: boolean
         default: true
   workflow_run:
@@ -40,6 +42,8 @@ concurrency:
 env:
   AWS_REGION: us-east-1
   TF_DIR: storybook/infra/envs/prod
+  ECR_API_REPO: storybook-backend-production
+  ECR_WORKER_REPO: storybook-image-normalization-production
   STORYBOOK_USER_PROFILES_TABLE:    storybook-user-profiles
   STORYBOOK_CHILD_PROFILES_TABLE:   storybook-child-profiles
   STORYBOOK_STORY_PROJECTS_TABLE:   storybook-story-projects
@@ -78,15 +82,86 @@ jobs:
               - '.github/workflows/storybook-prod.yaml'
 
   # ---------------------------------------------------------------------------
+  # Build Docker image and push to both ECR repos (api + image-worker).
+  # Runs BEFORE deploy-infra so Lambda image_uri references always resolve.
+  # ---------------------------------------------------------------------------
+  build-and-push:
+    name: Build & Push Docker Image
+    needs: detect-changes
+    if: |
+      !cancelled()
+      && (
+        (github.event_name == 'push'
+         && (needs.detect-changes.outputs.infra == 'true'
+             || needs.detect-changes.outputs.backend == 'true'))
+        || (github.event_name == 'workflow_dispatch'
+            && (inputs.run_infra || inputs.run_app))
+        || github.event_name == 'workflow_run'
+      )
+    runs-on: ubuntu-latest
+    environment: storybook-production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set ECR registry
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          REGISTRY="${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
+          echo "ECR_URL=${REGISTRY}/${ECR_API_REPO}"             >> "$GITHUB_ENV"
+          echo "IMAGE_WORKER_ECR_URL=${REGISTRY}/${ECR_WORKER_REPO}" >> "$GITHUB_ENV"
+
+      - name: Ensure ECR repositories exist
+        run: |
+          for REPO in "${ECR_API_REPO}" "${ECR_WORKER_REPO}"; do
+            aws ecr describe-repositories --repository-names "$REPO" \
+              --region "${{ env.AWS_REGION }}" >/dev/null 2>&1 || \
+            aws ecr create-repository \
+              --repository-name "$REPO" \
+              --region "${{ env.AWS_REGION }}" \
+              --image-scanning-configuration scanOnPush=true \
+              --tags Key=Project,Value=storybook
+          done
+
+      - name: Build & push image (single build, two repos)
+        run: |
+          cd storybook/backend
+          DOCKER_BUILDKIT=0 docker build \
+            -t "${ECR_URL}:${{ github.sha }}" \
+            -t "${ECR_URL}:latest" \
+            -t "${IMAGE_WORKER_ECR_URL}:${{ github.sha }}" \
+            -t "${IMAGE_WORKER_ECR_URL}:latest" \
+            .
+          docker push "${ECR_URL}:${{ github.sha }}"
+          docker push "${ECR_URL}:latest"
+          docker push "${IMAGE_WORKER_ECR_URL}:${{ github.sha }}"
+          docker push "${IMAGE_WORKER_ECR_URL}:latest"
+
+  # ---------------------------------------------------------------------------
   # Terraform apply (storybook/infra/envs/prod) and publish outputs to SSM.
   # ---------------------------------------------------------------------------
   deploy-infra:
     name: Terraform Apply
-    needs: detect-changes
+    needs: [detect-changes, build-and-push]
     if: |
-      (github.event_name == 'push' && needs.detect-changes.outputs.infra == 'true')
-      || (github.event_name == 'workflow_dispatch' && inputs.run_infra)
-      || github.event_name == 'workflow_run'
+      !cancelled()
+      && needs.build-and-push.result != 'failure'
+      && (
+        (github.event_name == 'push' && needs.detect-changes.outputs.infra == 'true')
+        || (github.event_name == 'workflow_dispatch' && inputs.run_infra)
+        || github.event_name == 'workflow_run'
+      )
     runs-on: ubuntu-latest
     environment: storybook-production
     permissions:
@@ -154,14 +229,16 @@ jobs:
           put image-worker-ecr-url    "$(terraform output -raw image_worker_ecr_repository_url)"
 
   # ---------------------------------------------------------------------------
-  # Build Docker image, push to ECR, update both Lambda functions + env vars
-  # ECR URLs and Lambda names come from SSM (written by deploy-infra)
+  # Update both Lambda functions (api + image-worker) — env vars and pin to :sha.
+  # No Docker work — build-and-push has already pushed images to both repos.
+  # ECR URLs and Lambda names come from SSM (written by deploy-infra).
   # ---------------------------------------------------------------------------
-  deploy-backend:
-    name: Build & Deploy Backend
-    needs: [detect-changes, deploy-infra]
+  update-lambda:
+    name: Update Lambda Functions
+    needs: [detect-changes, build-and-push, deploy-infra]
     if: |
       !cancelled()
+      && needs.build-and-push.result == 'success'
       && needs.deploy-infra.result != 'failure'
       && ((github.event_name == 'workflow_dispatch' && inputs.run_app)
           || (github.event_name == 'push'
@@ -198,26 +275,6 @@ jobs:
           echo "IMAGE_QUEUE_URL=$(get image-queue-url)"         >> "$GITHUB_ENV"
           echo "COGNITO_POOL_ID=$(get cognito-user-pool-id)"    >> "$GITHUB_ENV"
           echo "COGNITO_CLIENT_ID=$(get cognito-client-id)"     >> "$GITHUB_ENV"
-
-      - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build Docker image
-        run: |
-          cd storybook/backend
-          DOCKER_BUILDKIT=0 docker build \
-            -t "${ECR_URL}:${{ github.sha }}" \
-            -t "${ECR_URL}:latest" \
-            -t "${IMAGE_WORKER_ECR_URL}:${{ github.sha }}" \
-            -t "${IMAGE_WORKER_ECR_URL}:latest" \
-            .
-
-      - name: Push Docker image
-        run: |
-          docker push "${ECR_URL}:${{ github.sha }}"
-          docker push "${ECR_URL}:latest"
-          docker push "${IMAGE_WORKER_ECR_URL}:${{ github.sha }}"
-          docker push "${IMAGE_WORKER_ECR_URL}:latest"
 
       - name: Update API Lambda env vars + code
         env:
@@ -355,7 +412,7 @@ jobs:
           cache-dependency-path: storybook/frontend/storybook-ui/package-lock.json
 
       - name: Install dependencies
-        run: cd storybook/frontend/storybook-ui && npm install --legacy-peer-deps
+        run: cd storybook/frontend/storybook-ui && npm ci --legacy-peer-deps
 
       - name: Build frontend
         env:

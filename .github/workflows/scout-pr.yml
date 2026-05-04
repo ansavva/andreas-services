@@ -71,33 +71,27 @@ jobs:
           cd scout/backend/email-processor
           poetry run pytest tests/ -v
 
-      - name: Build email-processor Docker image (verify only)
-        run: |
-          cd scout/backend/email-processor
-          docker build -t scout-email-processor:ci-verify .
-
-      - name: Build events-api Docker image (verify only)
-        run: |
-          cd scout/backend/events-api
-          docker build -t scout-events-api:ci-verify .
+      # Dockerfile build verification is handled by the deploy-preview job
+      # below — same Dockerfile, same failure mode, ~1 min later. No need
+      # to build a throwaway :ci-verify image here.
 
       - name: Set up Node.js 18
         uses: actions/setup-node@v4
         with:
           node-version: '18'
+          cache: npm
+          cache-dependency-path: scout/frontend/package-lock.json
 
       - name: Install frontend deps
-        run: cd scout/frontend && npm install
+        run: cd scout/frontend && npm ci
 
       - name: Lint frontend
         run: cd scout/frontend && npm run lint
 
-      - name: Build frontend
-        env:
-          # Placeholder values — only used to satisfy build-time env references.
-          VITE_API_URL: https://example.execute-api.us-east-1.amazonaws.com/prod/api
-          VITE_BASE: /app/
-        run: cd scout/frontend && npm run build
+      - name: Type-check frontend
+        # Catches TS errors without invoking the bundler. The actual bundler
+        # build runs in deploy-preview with PR-specific VITE_* env vars.
+        run: cd scout/frontend && npx tsc --noEmit
 
   # ---------------------------------------------------------------------------
   # Validate Terraform configuration for all scout environments.
@@ -392,9 +386,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
+          cache: npm
+          cache-dependency-path: scout/frontend/package-lock.json
 
       - name: Install frontend dependencies
-        run: cd scout/frontend && npm install
+        run: cd scout/frontend && npm ci
 
       - name: Build frontend
         env:

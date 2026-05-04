@@ -43,11 +43,17 @@ jobs:
       - name: Check if Terraform state exists
         id: check-state
         run: |
-          EXISTS=$(aws s3api head-object \
-            --bucket andreas-services-terraform-state \
-            --key "scout/pr/${{ github.event.pull_request.number }}/terraform.tfstate" \
-            2>/dev/null && echo "true" || echo "false")
-          echo "exists=${EXISTS}" >> "$GITHUB_OUTPUT"
+          # Suppress BOTH stdout and stderr — head-object writes JSON metadata
+          # to stdout when the key exists, which would otherwise corrupt
+          # $GITHUB_OUTPUT with multi-line content.
+          if aws s3api head-object \
+              --bucket andreas-services-terraform-state \
+              --key "scout/pr/${{ github.event.pull_request.number }}/terraform.tfstate" \
+              >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Terraform destroy (pr)
         if: steps.check-state.outputs.exists == 'true'

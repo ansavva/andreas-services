@@ -1,18 +1,22 @@
 name: Scout · Deploy · Prod
 
-# Combined prod deploy for scout. Runs infra first (when the prod CFN template
-# changes or manual dispatch requests it), then backend + frontend in parallel.
-# Infra writes SSM params under /scout/prod/* that the app jobs read.
+# Combined prod deploy for scout.
 #
-# DAG:
-#   detect-changes ─► deploy-infra (if scout/cloudformation.yaml changed)
+# DAG (image is a prerequisite of Terraform Lambda creation, so build-and-push
+# runs before deploy-infra to eliminate the chicken-and-egg of an empty ECR
+# repo on first deploy):
+#
+#   detect-changes ─► build-and-push (always, when infra OR backend changes)
 #                          │
-#                          ├─► deploy-backend  (if scout/backend/** changed OR infra ran)
-#                          └─► deploy-frontend (if scout/frontend/** changed OR infra ran)
+#                          ▼
+#                     deploy-infra (terraform apply)
+#                          │
+#                          ├─► update-lambda  (env vars + pin Lambdas to :sha)
+#                          └─► deploy-frontend
 #
 # PR previews live in a different environment (scout-pr). Their workflows
-# (scout-pr.yaml and scout-pr-teardown.yaml) stay separate. The shared
-# preview infra is deployed as part of scout-pr.yaml itself.
+# (scout-pr.yml and scout-pr-teardown.yaml) stay separate. The shared
+# preview infra is deployed as part of scout-pr.yml itself.
 
 on:
   push:
@@ -29,7 +33,7 @@ on:
         type: boolean
         default: true
       run_app:
-        description: 'Run the deploy-backend and deploy-frontend jobs'
+        description: 'Run update-lambda and deploy-frontend'
         type: boolean
         default: true
   workflow_run:
@@ -70,15 +74,88 @@ jobs:
               - '.github/workflows/scout-prod.yaml'
 
   # ---------------------------------------------------------------------------
+  # Build Docker images and push to ECR. Runs BEFORE deploy-infra so the
+  # Lambda image_uri it references always exists.
+  # ---------------------------------------------------------------------------
+  build-and-push:
+    name: Build & Push Docker Images
+    needs: detect-changes
+    if: |
+      !cancelled()
+      && (
+        (github.event_name == 'push'
+         && (needs.detect-changes.outputs.infra == 'true'
+             || needs.detect-changes.outputs.backend == 'true'))
+        || (github.event_name == 'workflow_dispatch'
+            && (inputs.run_infra || inputs.run_app))
+        || github.event_name == 'workflow_run'
+      )
+    runs-on: ubuntu-latest
+    environment: scout-production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set ECR registry
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "ECR_REGISTRY=${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> "$GITHUB_ENV"
+
+      - name: Ensure ECR repositories exist
+        run: |
+          for REPO in scout-email-processor scout-events-api; do
+            aws ecr describe-repositories --repository-names "$REPO" \
+              --region "${{ env.AWS_REGION }}" >/dev/null 2>&1 || \
+            aws ecr create-repository \
+              --repository-name "$REPO" \
+              --region "${{ env.AWS_REGION }}" \
+              --image-scanning-configuration scanOnPush=true \
+              --tags Key=Project,Value=scout
+          done
+
+      - name: Build & push email-processor
+        run: |
+          IMAGE="${ECR_REGISTRY}/scout-email-processor"
+          cd scout/backend/email-processor
+          docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${{ github.sha }}"
+          docker push "${IMAGE}:latest"
+
+      - name: Build & push events-api
+        run: |
+          IMAGE="${ECR_REGISTRY}/scout-events-api"
+          cd scout/backend/events-api
+          docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${{ github.sha }}"
+          docker push "${IMAGE}:latest"
+
+  # ---------------------------------------------------------------------------
   # Apply Terraform and publish the resolved IDs into SSM for the app jobs.
+  # By the time we get here :latest exists in ECR, so Lambda creation works
+  # even on a fresh AWS account.
   # ---------------------------------------------------------------------------
   deploy-infra:
     name: Terraform Apply
-    needs: detect-changes
+    needs: [detect-changes, build-and-push]
     if: |
-      (github.event_name == 'push' && needs.detect-changes.outputs.infra == 'true')
-      || (github.event_name == 'workflow_dispatch' && inputs.run_infra)
-      || github.event_name == 'workflow_run'
+      !cancelled()
+      && needs.build-and-push.result != 'failure'
+      && (
+        (github.event_name == 'push' && needs.detect-changes.outputs.infra == 'true')
+        || (github.event_name == 'workflow_dispatch' && inputs.run_infra)
+        || github.event_name == 'workflow_run'
+      )
     runs-on: ubuntu-latest
     environment: scout-production
     permissions:
@@ -122,20 +199,24 @@ jobs:
             --name /scout/prod/cf-dist-id --value "$(tf cloudfront_distribution_id)"
 
   # ---------------------------------------------------------------------------
-  # Build Docker images and push to ECR, then update Lambda functions
+  # Update Lambda env vars and pin function code to :sha. No Docker work —
+  # build-and-push has already pushed both :latest and :sha tags.
   # ---------------------------------------------------------------------------
-  deploy-backend:
-    name: Deploy Lambda Functions
-    needs: [detect-changes, deploy-infra]
+  update-lambda:
+    name: Update Lambda Functions
+    needs: [detect-changes, build-and-push, deploy-infra]
     if: |
       !cancelled()
+      && needs.build-and-push.result == 'success'
       && needs.deploy-infra.result != 'failure'
-      && ((github.event_name == 'workflow_dispatch' && inputs.run_app)
-          || (github.event_name == 'push'
-              && (needs.detect-changes.outputs.backend == 'true'
-                  || needs.deploy-infra.result == 'success'))
-          || (github.event_name == 'workflow_run'
-              && needs.deploy-infra.result == 'success'))
+      && (
+        (github.event_name == 'workflow_dispatch' && inputs.run_app)
+        || (github.event_name == 'push'
+            && (needs.detect-changes.outputs.backend == 'true'
+                || needs.deploy-infra.result == 'success'))
+        || (github.event_name == 'workflow_run'
+            && needs.deploy-infra.result == 'success')
+      )
     runs-on: ubuntu-latest
     environment: scout-production
     permissions:
@@ -151,29 +232,10 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v2
-
       - name: Set ECR registry
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           echo "ECR_REGISTRY=${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> "$GITHUB_ENV"
-
-      - name: Build & push email-processor
-        run: |
-          IMAGE="${ECR_REGISTRY}/scout-email-processor"
-          cd scout/backend/email-processor
-          docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
-          docker push "${IMAGE}:${{ github.sha }}"
-          docker push "${IMAGE}:latest"
-
-      - name: Build & push events-api
-        run: |
-          IMAGE="${ECR_REGISTRY}/scout-events-api"
-          cd scout/backend/events-api
-          docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
-          docker push "${IMAGE}:${{ github.sha }}"
-          docker push "${IMAGE}:latest"
 
       - name: Update Lambda env vars
         env:
@@ -229,8 +291,8 @@ jobs:
           done
 
   # ---------------------------------------------------------------------------
-  # Build Vite SPA and sync to S3 + CloudFront
-  # Values come from SSM (written by deploy-infra)
+  # Build Vite SPA and sync to S3 + CloudFront.
+  # Values come from SSM (written by deploy-infra).
   # ---------------------------------------------------------------------------
   deploy-frontend:
     name: Deploy Frontend
