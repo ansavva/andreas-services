@@ -29,9 +29,11 @@ module "hosting" {
     aws.us_east_1 = aws.us_east_1
   }
 
-  domain_name         = "scout-pr.andreas.services"
-  route53_zone_id     = data.aws_route53_zone.main.zone_id
-  s3_website_endpoint = module.storage.website_endpoint
+  domain_name                    = "scout-pr.andreas.services"
+  route53_zone_id                = data.aws_route53_zone.main.zone_id
+  s3_bucket_id                   = module.storage.bucket_id
+  s3_bucket_arn                  = module.storage.bucket_arn
+  s3_bucket_regional_domain_name = module.storage.bucket_regional_domain_name
 
   tags = local.common_tags
 }

@@ -1,14 +1,18 @@
 name: Humbugg · Deploy · Prod
 
-# Combined prod deploy for humbugg. Runs infra first (when infra files change
-# or manual dispatch requests it), then backend + frontend in parallel. Infra
-# writes SSM params under /humbugg/prod/* that the app jobs read.
+# Combined prod deploy for humbugg.
 #
-# DAG:
-#   detect-changes ─► deploy-infra (if infra changed)
+# DAG (image is a prerequisite of Terraform Lambda creation, so build-and-push
+# runs before deploy-infra to eliminate the chicken-and-egg of an empty ECR
+# repo on first deploy):
+#
+#   detect-changes ─► build-and-push (always, when infra OR backend changes)
 #                          │
-#                          ├─► deploy-backend  (if backend changed OR infra ran)
-#                          └─► deploy-frontend (if frontend changed OR infra ran)
+#                          ▼
+#                     deploy-infra (terraform apply)
+#                          │
+#                          ├─► update-lambda  (env vars + pin Lambda to :sha)
+#                          └─► deploy-frontend
 
 on:
   push:
@@ -23,7 +27,7 @@ on:
         type: boolean
         default: true
       run_app:
-        description: 'Run the deploy-backend and deploy-frontend jobs'
+        description: 'Run update-lambda and deploy-frontend'
         type: boolean
         default: true
   workflow_run:
@@ -37,6 +41,8 @@ concurrency:
 
 env:
   AWS_REGION: us-east-1
+  ECR_REPO: humbugg-backend-production
+  LAMBDA_NAME: humbugg-backend-production
 
 jobs:
   detect-changes:
@@ -64,15 +70,77 @@ jobs:
               - '.github/workflows/humbugg-prod.yaml'
 
   # ---------------------------------------------------------------------------
+  # Build Docker image and push to ECR. Runs BEFORE deploy-infra so the
+  # Lambda image_uri it references always exists.
+  # ---------------------------------------------------------------------------
+  build-and-push:
+    name: Build & Push Docker Image
+    needs: detect-changes
+    if: |
+      !cancelled()
+      && (
+        (github.event_name == 'push'
+         && (needs.detect-changes.outputs.infra == 'true'
+             || needs.detect-changes.outputs.backend == 'true'))
+        || (github.event_name == 'workflow_dispatch'
+            && (inputs.run_infra || inputs.run_app))
+        || github.event_name == 'workflow_run'
+      )
+    runs-on: ubuntu-latest
+    environment: humbugg-production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set ECR registry
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "ECR_URL=${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${ECR_REPO}" >> "$GITHUB_ENV"
+
+      - name: Ensure ECR repository exists
+        run: |
+          aws ecr describe-repositories --repository-names "${ECR_REPO}" \
+            --region "${{ env.AWS_REGION }}" >/dev/null 2>&1 || \
+          aws ecr create-repository \
+            --repository-name "${ECR_REPO}" \
+            --region "${{ env.AWS_REGION }}" \
+            --image-scanning-configuration scanOnPush=true \
+            --tags Key=Project,Value=humbugg
+
+      - name: Build & push backend
+        run: |
+          cd humbugg/backend
+          DOCKER_BUILDKIT=0 docker build \
+            -t "${ECR_URL}:${{ github.sha }}" \
+            -t "${ECR_URL}:latest" .
+          docker push "${ECR_URL}:${{ github.sha }}"
+          docker push "${ECR_URL}:latest"
+
+  # ---------------------------------------------------------------------------
   # Apply Terraform and publish the resolved IDs into SSM for the app jobs.
   # ---------------------------------------------------------------------------
   deploy-infra:
     name: Terraform Apply
-    needs: detect-changes
+    needs: [detect-changes, build-and-push]
     if: |
-      (github.event_name == 'push' && needs.detect-changes.outputs.infra == 'true')
-      || (github.event_name == 'workflow_dispatch' && inputs.run_infra)
-      || github.event_name == 'workflow_run'
+      !cancelled()
+      && needs.build-and-push.result != 'failure'
+      && (
+        (github.event_name == 'push' && needs.detect-changes.outputs.infra == 'true')
+        || (github.event_name == 'workflow_dispatch' && inputs.run_infra)
+        || github.event_name == 'workflow_run'
+      )
     runs-on: ubuntu-latest
     environment: humbugg-production
     permissions:
@@ -114,20 +182,24 @@ jobs:
           put cf-dist-id           "$(tf cloudfront_distribution_id)"
 
   # ---------------------------------------------------------------------------
-  # Build Docker image, push to ECR, update Lambda function code + env vars
+  # Update Lambda env vars and pin function code to :sha.
+  # No Docker work — build-and-push has already pushed both :latest and :sha.
   # ---------------------------------------------------------------------------
-  deploy-backend:
-    name: Build & Deploy Backend
-    needs: [detect-changes, deploy-infra]
+  update-lambda:
+    name: Update Lambda Function
+    needs: [detect-changes, build-and-push, deploy-infra]
     if: |
       !cancelled()
+      && needs.build-and-push.result == 'success'
       && needs.deploy-infra.result != 'failure'
-      && ((github.event_name == 'workflow_dispatch' && inputs.run_app)
-          || (github.event_name == 'push'
-              && (needs.detect-changes.outputs.backend == 'true'
-                  || needs.deploy-infra.result == 'success'))
-          || (github.event_name == 'workflow_run'
-              && needs.deploy-infra.result == 'success'))
+      && (
+        (github.event_name == 'workflow_dispatch' && inputs.run_app)
+        || (github.event_name == 'push'
+            && (needs.detect-changes.outputs.backend == 'true'
+                || needs.deploy-infra.result == 'success'))
+        || (github.event_name == 'workflow_run'
+            && needs.deploy-infra.result == 'success')
+      )
     runs-on: ubuntu-latest
     environment: humbugg-production
     permissions:
@@ -147,27 +219,9 @@ jobs:
         run: |
           get() { aws ssm get-parameter --name "/humbugg/prod/${1}" \
             --query Parameter.Value --output text; }
-
           echo "ECR_URL=$(get ecr-url)"                             >> "$GITHUB_ENV"
-          echo "LAMBDA_NAME=$(get lambda-name)"                     >> "$GITHUB_ENV"
           echo "COGNITO_USER_POOL_ID=$(get cognito-user-pool-id)"   >> "$GITHUB_ENV"
           echo "COGNITO_CLIENT_ID=$(get cognito-client-id)"         >> "$GITHUB_ENV"
-
-      - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build Docker image
-        run: |
-          cd humbugg/backend
-          DOCKER_BUILDKIT=0 docker build \
-            -t "${ECR_URL}:${{ github.sha }}" \
-            -t "${ECR_URL}:latest" \
-            .
-
-      - name: Push Docker image
-        run: |
-          docker push "${ECR_URL}:${{ github.sha }}"
-          docker push "${ECR_URL}:latest"
 
       - name: Update Lambda env vars + code
         run: |
@@ -251,9 +305,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
+          cache: npm
+          cache-dependency-path: humbugg/frontend/package-lock.json
 
       - name: Install dependencies
-        run: cd humbugg/frontend && npm install --legacy-peer-deps
+        run: cd humbugg/frontend && npm ci --legacy-peer-deps
 
       - name: Build frontend
         env:
