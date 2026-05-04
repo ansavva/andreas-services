@@ -4,9 +4,15 @@ on:
   pull_request:
     types:
       - closed
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number whose preview to tear down'
+        required: true
+        type: string
 
 concurrency:
-  group: scout-preview-pr-${{ github.event.pull_request.number }}
+  group: scout-preview-pr-${{ github.event.pull_request.number || inputs.pr_number }}
   cancel-in-progress: true
 
 env:
@@ -14,9 +20,11 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Delete the Scout ephemeral stack when a PR closes (merged or abandoned).
-  # Runs for every PR close; the check-stack step short-circuits if there is
-  # no scout-pr stack for this PR number.
+  # Delete the Scout ephemeral stack when a PR closes (merged or abandoned),
+  # or via manual workflow_dispatch when an auto-teardown failed and left
+  # orphaned resources behind.
+  # The check-state step short-circuits if there is no terraform state for
+  # the given PR number.
   # ---------------------------------------------------------------------------
   teardown-scout:
     name: Teardown Scout PR Stack
@@ -26,7 +34,7 @@ jobs:
       id-token: write
       contents: read
     env:
-      STACK_NAME: scout-pr-${{ github.event.pull_request.number }}
+      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
 
     steps:
       - uses: actions/checkout@v4
@@ -50,7 +58,7 @@ jobs:
           # $GITHUB_OUTPUT with multi-line content.
           if aws s3api head-object \
               --bucket andreas-services-terraform-state \
-              --key "scout/pr/${{ github.event.pull_request.number }}/terraform.tfstate" \
+              --key "scout/pr/${PR_NUMBER}/terraform.tfstate" \
               >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
@@ -60,22 +68,22 @@ jobs:
       - name: Terraform destroy (pr)
         if: steps.check-state.outputs.exists == 'true'
         env:
-          TF_VAR_pr_number:                  "${{ github.event.pull_request.number }}"
-          TF_VAR_email_processor_image_uri:  "placeholder"
-          TF_VAR_events_api_image_uri:       "placeholder"
+          TF_VAR_pr_number:                  ${{ env.PR_NUMBER }}
+          TF_VAR_email_processor_image_uri:  placeholder
+          TF_VAR_events_api_image_uri:       placeholder
           TF_VAR_anthropic_api_key:          ${{ secrets.ANTHROPIC_API_KEY }}
           TF_VAR_gmail_client_id:            ${{ secrets.GMAIL_CLIENT_ID }}
           TF_VAR_gmail_client_secret:        ${{ secrets.GMAIL_CLIENT_SECRET }}
           TF_VAR_gmail_refresh_token:        ${{ secrets.GMAIL_REFRESH_TOKEN }}
         run: |
           terraform -chdir=scout/infra/envs/pr init -input=false \
-            -backend-config="key=scout/pr/${{ github.event.pull_request.number }}/terraform.tfstate"
+            -backend-config="key=scout/pr/${PR_NUMBER}/terraform.tfstate"
           terraform -chdir=scout/infra/envs/pr destroy -auto-approve -input=false
 
       - name: Skip (no Terraform state found)
         if: steps.check-state.outputs.exists == 'false'
         run: |
-          echo "No Terraform state for PR ${{ github.event.pull_request.number }} — nothing to destroy."
+          echo "No Terraform state for PR ${PR_NUMBER} — nothing to destroy."
 
       - name: Delete PR frontend from shared preview bucket
         run: |
@@ -83,7 +91,7 @@ jobs:
             --name /scout/pr-preview/s3-bucket \
             --query Parameter.Value --output text 2>/dev/null || echo "")
           if [ -n "${PR_PREVIEW_BUCKET}" ]; then
-            aws s3 rm "s3://${PR_PREVIEW_BUCKET}/${{ github.event.pull_request.number }}/" \
+            aws s3 rm "s3://${PR_PREVIEW_BUCKET}/${PR_NUMBER}/" \
               --recursive || true
           fi
 
@@ -95,10 +103,5 @@ jobs:
           if [ -n "${PR_PREVIEW_CF_DIST}" ]; then
             aws cloudfront create-invalidation \
               --distribution-id "${PR_PREVIEW_CF_DIST}" \
-              --paths "/${{ github.event.pull_request.number }}/*"
+              --paths "/${PR_NUMBER}/*"
           fi
-
-      - name: Skip (stack not found)
-        if: steps.check-stack.outputs.status == 'DOES_NOT_EXIST'
-        run: |
-          echo "No Scout PR stack found for PR #${{ github.event.pull_request.number }} — nothing to delete."
