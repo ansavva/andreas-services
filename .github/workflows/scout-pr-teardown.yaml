@@ -74,7 +74,8 @@ jobs:
 
       - name: Skip (no Terraform state found)
         if: steps.check-state.outputs.exists == 'false'
-        run: echo "No Terraform state for PR #${{ github.event.pull_request.number }} — nothing to destroy."
+        run: |
+          echo "No Terraform state for PR ${{ github.event.pull_request.number }} — nothing to destroy."
 
       - name: Delete PR frontend from shared preview bucket
         run: |
