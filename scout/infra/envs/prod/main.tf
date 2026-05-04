@@ -52,6 +52,16 @@ import {
   id = "scout-spa-fallback"
 }
 
+import {
+  to = module.compute.aws_cloudwatch_log_group.email_processor
+  id = "/aws/lambda/scout-email-processor"
+}
+
+import {
+  to = module.compute.aws_cloudwatch_log_group.events_api
+  id = "/aws/lambda/scout-events-api"
+}
+
 module "compute" {
   source = "../../modules/compute"
 
