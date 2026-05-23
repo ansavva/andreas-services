@@ -8,6 +8,7 @@ const config: Config = {
       colors: {
         background: "var(--color-background)",
         surface: "var(--color-surface)",
+        "surface-hover": "var(--color-surface-hover)",
         border: "var(--color-border)",
         primary: "var(--color-primary)",
         "primary-hover": "var(--color-primary-hover)",
@@ -21,8 +22,9 @@ const config: Config = {
         sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
       },
       boxShadow: {
-        card: "0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)",
-        "card-hover": "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
+        card: "0 1px 3px 0 rgb(0 0 0 / 0.12), 0 1px 2px -1px rgb(0 0 0 / 0.12)",
+        "card-hover":
+          "0 8px 24px -4px rgb(0 0 0 / 0.3), 0 0 0 1px rgba(167,139,250,0.15)",
       },
     },
   },

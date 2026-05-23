@@ -10,6 +10,7 @@ Triggered weekly via EventBridge.
 import json
 import logging
 import os
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -39,6 +40,33 @@ EVENTS_LABEL = "Events"
 _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(DYNAMODB_TABLE_NAME)
+
+
+_TRACKING_PIXEL_SIGNALS = (
+    "pixel.",
+    "tracking.",
+    "/open.",
+    "/beacon",
+    "1x1",
+    "spacer",
+    "blank.gif",
+    "track.",
+)
+
+_IMG_SRC_RE = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
+
+
+def _extract_first_image_url(html: str) -> str:
+    """Return the first non-tracking external image URL found in the HTML, or empty string."""
+    for m in _IMG_SRC_RE.finditer(html):
+        url = m.group(1)
+        if not url.startswith(("http://", "https://")):
+            continue
+        url_lower = url.lower()
+        if any(signal in url_lower for signal in _TRACKING_PIXEL_SIGNALS):
+            continue
+        return url
+    return ""
 
 
 def get_gmail_service():
@@ -152,6 +180,8 @@ def extract_email_content(message):
             else:
                 plain_body = raw
 
+    image_url = _extract_first_image_url(html_body) if html_body else ""
+
     if html_body:
         converter = html2text.HTML2Text()
         converter.ignore_links = False
@@ -160,7 +190,7 @@ def extract_email_content(message):
     else:
         content = plain_body
 
-    return subject, sender, date_str, content[:6000]  # cap to control token usage
+    return subject, sender, date_str, content[:6000], image_url
 
 
 def extract_events_with_claude(subject, sender, content):
@@ -203,7 +233,7 @@ Return only valid JSON array, no other text:"""
     return json.loads(raw)
 
 
-def store_events(events, email_id, subject, sender, source_date):
+def store_events(events, email_id, subject, sender, source_date, image_url=""):
     """Persist a list of extracted event dicts to DynamoDB."""
     stored = 0
     for event in events:
@@ -218,6 +248,7 @@ def store_events(events, email_id, subject, sender, source_date):
             "price": event.get("price") or "",
             "description": event.get("description") or "",
             "links": event.get("links") or [],
+            "image_url": image_url,
             "email_subject": subject,
             "email_sender": sender,
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -261,12 +292,12 @@ def lambda_handler(event, context):
 
             try:
                 message = get_message_detail(service, email_id)
-                subject, sender, source_date, content = extract_email_content(message)
+                subject, sender, source_date, content, image_url = extract_email_content(message)
                 logger.info("Processing email: %s from %s", subject, sender)
 
                 events = extract_events_with_claude(subject, sender, content)
                 if events:
-                    count = store_events(events, email_id, subject, sender, source_date)
+                    count = store_events(events, email_id, subject, sender, source_date, image_url)
                     total_events += count
                 else:
                     logger.info("No events found in email: %s", subject)
