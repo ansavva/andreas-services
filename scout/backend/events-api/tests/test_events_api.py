@@ -15,13 +15,21 @@ import boto3
 import pytest
 from moto import mock_dynamodb
 
-TABLE_NAME = "test-scout-events"
+EVENTS_TABLE_NAME = "test-scout-events"
+EMAILS_TABLE_NAME = "test-scout-emails"
 
 
-def _seed_table(table, events):
-    """Write a list of event dicts directly into the mock DynamoDB table."""
+def _seed_events(table, events):
+    """Write a list of event dicts directly into the mock events table."""
     with table.batch_writer() as batch:
         for item in events:
+            batch.put_item(Item=item)
+
+
+def _seed_emails(table, emails):
+    """Write a list of email dicts directly into the mock emails table."""
+    with table.batch_writer() as batch:
+        for item in emails:
             batch.put_item(Item=item)
 
 
@@ -36,10 +44,19 @@ def _make_event(event_id, name, event_date="", email_id="email-1"):
         "price": "Free",
         "description": "A test event",
         "links": [],
-        "email_subject": "Test Subject",
-        "email_sender": "test@example.com",
-        "created_at": "2026-04-16T00:00:00+00:00",
+    }
+
+
+def _make_email(email_id="email-1", subject="Test Subject", sender="test@example.com",
+                processed_at="2026-04-16T00:00:00+00:00", event_count=1):
+    return {
+        "email_id": email_id,
+        "email_subject": subject,
+        "email_sender": sender,
         "source_email_date": "Wed, 16 Apr 2026 00:00:00 +0000",
+        "image_url": "",
+        "processed_at": processed_at,
+        "event_count": event_count,
     }
 
 
@@ -47,21 +64,26 @@ def _make_event(event_id, name, event_date="", email_id="email-1"):
 class TestEventsApi(unittest.TestCase):
 
     def setUp(self):
-        # Spin up a fresh mock DynamoDB table for every test.
         self.dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+
         self.table = self.dynamodb.create_table(
-            TableName=TABLE_NAME,
+            TableName=EVENTS_TABLE_NAME,
             KeySchema=[{"AttributeName": "event_id", "KeyType": "HASH"}],
             AttributeDefinitions=[{"AttributeName": "event_id", "AttributeType": "S"}],
             BillingMode="PAY_PER_REQUEST",
         )
 
-        # Point the module at our test table and reload so the module-level
-        # `table` variable picks up the mock resource.
-        os.environ["DYNAMODB_TABLE_NAME"] = TABLE_NAME
+        self.emails_table = self.dynamodb.create_table(
+            TableName=EMAILS_TABLE_NAME,
+            KeySchema=[{"AttributeName": "email_id", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "email_id", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        os.environ["DYNAMODB_TABLE_NAME"] = EVENTS_TABLE_NAME
+        os.environ["DYNAMODB_EMAILS_TABLE_NAME"] = EMAILS_TABLE_NAME
         os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
-        # Remove cached module so the reload picks up the patched env var.
         sys.modules.pop("lambda_function", None)
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
         import lambda_function as lf
@@ -133,7 +155,7 @@ class TestEventsApi(unittest.TestCase):
         assert body["count"] == 0
 
     def test_get_events_returns_all(self):
-        _seed_table(
+        _seed_events(
             self.table,
             [
                 _make_event("1", "Concert", "2026-05-01"),
@@ -145,7 +167,7 @@ class TestEventsApi(unittest.TestCase):
         assert body["count"] == 2
 
     def test_get_events_sorted(self):
-        _seed_table(
+        _seed_events(
             self.table,
             [
                 _make_event("1", "Late Event", "2026-12-01"),
@@ -159,6 +181,20 @@ class TestEventsApi(unittest.TestCase):
         assert names.index("Early Event") < names.index("Late Event")
         assert names[-1] == "No Date Event"
 
+    def test_get_events_joins_email_metadata(self):
+        _seed_events(self.table, [_make_event("1", "Concert", "2026-05-01", email_id="email-1")])
+        _seed_emails(self.emails_table, [_make_email(
+            email_id="email-1",
+            subject="Concert Newsletter",
+            sender="venue@example.com",
+        )])
+        resp = self._call()
+        body = json.loads(resp["body"])
+        assert body["count"] == 1
+        event = body["events"][0]
+        assert event["email_subject"] == "Concert Newsletter"
+        assert event["email_sender"] == "venue@example.com"
+
     # ------------------------------------------------------------------
     # GET /api/events?upcoming=true
     # ------------------------------------------------------------------
@@ -168,7 +204,7 @@ class TestEventsApi(unittest.TestCase):
         yesterday = (date.today() - timedelta(days=1)).isoformat()
         tomorrow = (date.today() + timedelta(days=1)).isoformat()
 
-        _seed_table(
+        _seed_events(
             self.table,
             [
                 _make_event("1", "Past Event", yesterday),
@@ -185,7 +221,7 @@ class TestEventsApi(unittest.TestCase):
 
     def test_get_events_upcoming_false_returns_all(self):
         yesterday = (date.today() - timedelta(days=1)).isoformat()
-        _seed_table(self.table, [_make_event("1", "Past", yesterday)])
+        _seed_events(self.table, [_make_event("1", "Past", yesterday)])
         resp = self._call(query={"upcoming": "false"})
         body = json.loads(resp["body"])
         assert body["count"] == 1
@@ -195,12 +231,19 @@ class TestEventsApi(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_get_event_by_id_found(self):
-        _seed_table(self.table, [_make_event("abc-123", "My Event", "2026-06-15")])
+        _seed_events(self.table, [_make_event("abc-123", "My Event", "2026-06-15")])
         resp = self._call(path="/api/events/abc-123")
         assert resp["statusCode"] == 200
         body = json.loads(resp["body"])
         assert body["event_id"] == "abc-123"
         assert body["event_name"] == "My Event"
+
+    def test_get_event_by_id_joins_email_metadata(self):
+        _seed_events(self.table, [_make_event("abc-123", "My Event", email_id="email-1")])
+        _seed_emails(self.emails_table, [_make_email(email_id="email-1", subject="The Newsletter")])
+        resp = self._call(path="/api/events/abc-123")
+        body = json.loads(resp["body"])
+        assert body["email_subject"] == "The Newsletter"
 
     def test_get_event_by_id_not_found(self):
         resp = self._call(path="/api/events/nonexistent")
@@ -209,6 +252,53 @@ class TestEventsApi(unittest.TestCase):
     def test_get_event_by_id_missing_id(self):
         resp = self._call(path="/api/events/")
         assert resp["statusCode"] in (400, 404)
+
+    # ------------------------------------------------------------------
+    # GET /api/admin/emails
+    # ------------------------------------------------------------------
+
+    def test_get_admin_emails_empty(self):
+        resp = self._call(path="/api/admin/emails")
+        assert resp["statusCode"] == 200
+        body = json.loads(resp["body"])
+        assert body["emails"] == []
+        assert body["count"] == 0
+
+    def test_get_admin_emails_returns_emails(self):
+        _seed_emails(self.emails_table, [
+            _make_email("email-1", subject="Newsletter A", processed_at="2026-05-01T10:00:00+00:00", event_count=3),
+            _make_email("email-2", subject="Newsletter B", processed_at="2026-04-01T10:00:00+00:00", event_count=1),
+        ])
+        resp = self._call(path="/api/admin/emails")
+        body = json.loads(resp["body"])
+        assert body["count"] == 2
+
+    def test_get_admin_emails_sorted_newest_first(self):
+        _seed_emails(self.emails_table, [
+            _make_email("email-1", processed_at="2026-03-01T10:00:00+00:00"),
+            _make_email("email-2", processed_at="2026-05-01T10:00:00+00:00"),
+        ])
+        resp = self._call(path="/api/admin/emails")
+        body = json.loads(resp["body"])
+        dates = [e["processed_at"] for e in body["emails"]]
+        assert dates == sorted(dates, reverse=True)
+
+    def test_get_admin_emails_has_required_fields(self):
+        _seed_emails(self.emails_table, [_make_email(
+            email_id="email-1",
+            subject="Test Subject",
+            sender="test@example.com",
+            processed_at="2026-05-01T10:00:00+00:00",
+            event_count=2,
+        )])
+        resp = self._call(path="/api/admin/emails")
+        body = json.loads(resp["body"])
+        email = body["emails"][0]
+        assert email["email_id"] == "email-1"
+        assert email["email_subject"] == "Test Subject"
+        assert email["email_sender"] == "test@example.com"
+        assert email["processed_at"] == "2026-05-01T10:00:00+00:00"
+        assert email["event_count"] == 2
 
     # ------------------------------------------------------------------
     # CORS preflight

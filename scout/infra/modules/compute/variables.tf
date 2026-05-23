@@ -14,6 +14,16 @@ variable "events_table_name" {
   type        = string
 }
 
+variable "emails_table_arn" {
+  description = "DynamoDB emails table ARN"
+  type        = string
+}
+
+variable "emails_table_name" {
+  description = "DynamoDB emails table name"
+  type        = string
+}
+
 variable "email_processor_image_uri" {
   description = "ECR image URI for the email processor Lambda (required when create_ecr = false)"
   type        = string

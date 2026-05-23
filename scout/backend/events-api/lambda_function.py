@@ -6,6 +6,7 @@ Serves a REST API via API Gateway for querying events stored in DynamoDB.
 Endpoints:
   GET  /api/events          - List events (optional ?upcoming=true filter)
   GET  /api/events/{id}     - Get a single event by event_id
+  GET  /api/admin/emails    - List all processed emails (admin dashboard)
   OPTIONS /*                - CORS preflight
 
 Route prefix is /api/... so prod (scout-api.andreas.services) and PR previews
@@ -26,9 +27,11 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
+DYNAMODB_EMAILS_TABLE_NAME = os.environ["DYNAMODB_EMAILS_TABLE_NAME"]
 
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(DYNAMODB_TABLE_NAME)
+emails_table = dynamodb.Table(DYNAMODB_EMAILS_TABLE_NAME)
 
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
@@ -91,34 +94,96 @@ def sort_events(events):
     return dated + undated
 
 
+def _fetch_email_data(email_ids):
+    """
+    BatchGetItem on scout-emails for a set of email_ids.
+    Returns a dict mapping email_id -> email record.
+    """
+    if not email_ids:
+        return {}
+
+    keys = [{"email_id": eid} for eid in email_ids]
+    email_map = {}
+
+    # BatchGetItem supports up to 100 keys per call
+    for i in range(0, len(keys), 100):
+        batch = keys[i:i + 100]
+        response = dynamodb.batch_get_item(
+            RequestItems={
+                DYNAMODB_EMAILS_TABLE_NAME: {"Keys": batch}
+            }
+        )
+        for item in response.get("Responses", {}).get(DYNAMODB_EMAILS_TABLE_NAME, []):
+            email_map[item["email_id"]] = item
+
+    return email_map
+
+
+def _merge_email_fields(event, email_map):
+    """Attach email metadata fields to an event dict, if available."""
+    email_data = email_map.get(event.get("email_id"), {})
+    event["image_url"] = email_data.get("image_url", "")
+    event["email_subject"] = email_data.get("email_subject", "")
+    event["email_sender"] = email_data.get("email_sender", "")
+    event["source_email_date"] = email_data.get("source_email_date", "")
+    return event
+
+
 def get_all_events(upcoming_only=False):
-    """Scan the DynamoDB table and return all events, optionally filtering to upcoming."""
+    """Scan scout-events, join email metadata, and return all events."""
     today = date.today().isoformat()
 
     if upcoming_only:
-        result = table.scan(
-            FilterExpression=Attr("date").gte(today),
-        )
+        result = table.scan(FilterExpression=Attr("date").gte(today))
     else:
         result = table.scan()
 
     items = result.get("Items", [])
 
-    # Handle DynamoDB pagination
     while "LastEvaluatedKey" in result:
-        result = table.scan(
-            ExclusiveStartKey=result["LastEvaluatedKey"],
-            FilterExpression=Attr("date").gte(today) if upcoming_only else None,
-        )
+        kwargs = {"ExclusiveStartKey": result["LastEvaluatedKey"]}
+        if upcoming_only:
+            kwargs["FilterExpression"] = Attr("date").gte(today)
+        result = table.scan(**kwargs)
         items.extend(result.get("Items", []))
 
-    return sort_events(items)
+    unique_email_ids = {item["email_id"] for item in items if item.get("email_id")}
+    email_map = _fetch_email_data(unique_email_ids)
+
+    events = [_merge_email_fields(item, email_map) for item in items]
+    return sort_events(events)
 
 
 def get_event_by_id(event_id):
-    """Retrieve a single event by its primary key."""
+    """Retrieve a single event by its primary key, joined with email metadata."""
     result = table.get_item(Key={"event_id": event_id})
-    return result.get("Item")
+    event = result.get("Item")
+    if event is None:
+        return None
+
+    email_id = event.get("email_id", "")
+    if email_id:
+        email_result = emails_table.get_item(Key={"email_id": email_id})
+        email_data = email_result.get("Item", {})
+        event["image_url"] = email_data.get("image_url", "")
+        event["email_subject"] = email_data.get("email_subject", "")
+        event["email_sender"] = email_data.get("email_sender", "")
+        event["source_email_date"] = email_data.get("source_email_date", "")
+
+    return event
+
+
+def get_all_emails():
+    """Scan scout-emails and return all processed emails, newest first."""
+    result = emails_table.scan()
+    items = result.get("Items", [])
+
+    while "LastEvaluatedKey" in result:
+        result = emails_table.scan(ExclusiveStartKey=result["LastEvaluatedKey"])
+        items.extend(result.get("Items", []))
+
+    items.sort(key=lambda e: e.get("processed_at", ""), reverse=True)
+    return items
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +209,10 @@ def route_request(http_method, resource, path_params, query_params):
             if event is None:
                 return not_found(f"Event {event_id!r} not found")
             return ok(event)
+
+        if resource == "/api/admin/emails":
+            emails = get_all_emails()
+            return ok({"emails": emails, "count": len(emails)})
 
     return not_found("Unknown endpoint")
 

@@ -286,26 +286,33 @@ jobs:
         run: |
           set -euo pipefail
           TABLE="scout-events-pr-${{ env.PR_NUMBER }}"
+          EMAILS_TABLE="scout-emails-pr-${{ env.PR_NUMBER }}"
 
           jq -n \
             --arg table         "${TABLE}" \
+            --arg emails_table  "${EMAILS_TABLE}" \
             --arg anthropic     "${ANTHROPIC_API_KEY}" \
             --arg client_id     "${GMAIL_CLIENT_ID}" \
             --arg client_secret "${GMAIL_CLIENT_SECRET}" \
             --arg refresh_token "${GMAIL_REFRESH_TOKEN}" \
             --arg max_emails    "3" \
             '{Variables: {
-              DYNAMODB_TABLE_NAME:  $table,
-              ANTHROPIC_API_KEY:    $anthropic,
-              GMAIL_CLIENT_ID:      $client_id,
-              GMAIL_CLIENT_SECRET:  $client_secret,
-              GMAIL_REFRESH_TOKEN:  $refresh_token,
-              MAX_EMAILS_PER_RUN:   $max_emails
+              DYNAMODB_TABLE_NAME:        $table,
+              DYNAMODB_EMAILS_TABLE_NAME: $emails_table,
+              ANTHROPIC_API_KEY:          $anthropic,
+              GMAIL_CLIENT_ID:            $client_id,
+              GMAIL_CLIENT_SECRET:        $client_secret,
+              GMAIL_REFRESH_TOKEN:        $refresh_token,
+              MAX_EMAILS_PER_RUN:         $max_emails
             }}' > /tmp/env-email-processor.json
 
           jq -n \
-            --arg table "${TABLE}" \
-            '{Variables: {DYNAMODB_TABLE_NAME: $table}}' \
+            --arg table        "${TABLE}" \
+            --arg emails_table "${EMAILS_TABLE}" \
+            '{Variables: {
+              DYNAMODB_TABLE_NAME:        $table,
+              DYNAMODB_EMAILS_TABLE_NAME: $emails_table
+            }}' \
             > /tmp/env-events-api.json
 
           aws lambda update-function-configuration \

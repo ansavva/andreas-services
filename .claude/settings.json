@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "INPUT=$(cat); CMD=$(printf '%s' \"$INPUT\" | jq -r '.tool_input.command // \"\"' 2>/dev/null); if ! printf '%s' \"$CMD\" | grep -qE '^[[:space:]]*git[[:space:]]+push'; then exit 0; fi; REPO=$(git rev-parse --show-toplevel 2>/dev/null || pwd); command -v poetry >/dev/null 2>&1 || pip install -q --break-system-packages poetry 2>/dev/null; FAIL=0; for d in scout/backend/email-processor scout/backend/events-api; do [ -d \"$REPO/$d\" ] || continue; echo \"=== Testing $d ===\" >&2; (cd \"$REPO/$d\" && poetry install --with dev --no-root --no-interaction --no-ansi -q 2>/dev/null && poetry run pytest tests/ -q) || FAIL=1; done; [ \"$FAIL\" -eq 0 ] || { printf '{\"decision\":\"block\",\"reason\":\"Scout unit tests failed — fix before pushing\"}\\n'; exit 2; }",
+            "timeout": 120,
+            "statusMessage": "Running Scout unit tests before push..."
+          }
+        ]
+      }
+    ]
+  }
+}

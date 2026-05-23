@@ -11,8 +11,17 @@ export interface Event {
   image_url: string;
   email_subject: string;
   email_sender: string;
-  created_at: string;
   source_email_date: string;
+}
+
+export interface ProcessedEmail {
+  email_id: string;
+  email_subject: string;
+  email_sender: string;
+  source_email_date: string;
+  image_url: string;
+  processed_at: string;
+  event_count: number;
 }
 
 export type SortOrder = "date-asc" | "date-desc" | "name-asc";
