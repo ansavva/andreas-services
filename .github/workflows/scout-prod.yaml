@@ -197,6 +197,10 @@ jobs:
             --name /scout/prod/s3-bucket  --value "$(tf s3_bucket)"
           aws ssm put-parameter --overwrite --type String \
             --name /scout/prod/cf-dist-id --value "$(tf cloudfront_distribution_id)"
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/prod/cognito-user-pool-id --value "$(tf cognito_user_pool_id)"
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/prod/cognito-client-id --value "$(tf cognito_user_pool_client_id)"
 
   # ---------------------------------------------------------------------------
   # Update Lambda env vars and pin function code to :sha. No Docker work —
@@ -338,6 +342,8 @@ jobs:
           echo "VITE_API_URL=$(get api-url)"            >> "$GITHUB_ENV"
           echo "S3_BUCKET=$(get s3-bucket)"             >> "$GITHUB_ENV"
           echo "CF_DIST_ID=$(get cf-dist-id)"           >> "$GITHUB_ENV"
+          echo "VITE_COGNITO_USER_POOL_ID=$(get cognito-user-pool-id)" >> "$GITHUB_ENV"
+          echo "VITE_COGNITO_CLIENT_ID=$(get cognito-client-id)"       >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: cd scout/frontend && npm ci
