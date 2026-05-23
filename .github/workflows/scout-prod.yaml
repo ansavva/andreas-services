@@ -246,22 +246,19 @@ jobs:
         run: |
           set -euo pipefail
           jq -n \
-            --arg table        "scout-events" \
-            --arg anthropic    "${ANTHROPIC_API_KEY}" \
-            --arg client_id    "${GMAIL_CLIENT_ID}" \
+            --arg anthropic     "${ANTHROPIC_API_KEY}" \
+            --arg client_id     "${GMAIL_CLIENT_ID}" \
             --arg client_secret "${GMAIL_CLIENT_SECRET}" \
             --arg refresh_token "${GMAIL_REFRESH_TOKEN}" \
             '{Variables: {
-              DYNAMODB_TABLE_NAME:  $table,
+              SCOUT_TABLE_SUFFIX:   "",
               ANTHROPIC_API_KEY:    $anthropic,
               GMAIL_CLIENT_ID:      $client_id,
               GMAIL_CLIENT_SECRET:  $client_secret,
               GMAIL_REFRESH_TOKEN:  $refresh_token
             }}' > /tmp/env-email-processor.json
 
-          jq -n \
-            --arg table "scout-events" \
-            '{Variables: {DYNAMODB_TABLE_NAME: $table}}' \
+          jq -n '{Variables: {SCOUT_TABLE_SUFFIX: ""}}' \
             > /tmp/env-events-api.json
 
           aws lambda update-function-configuration \
@@ -278,6 +275,11 @@ jobs:
             --function-name "scout-email-processor" --region "${{ env.AWS_REGION }}"
           aws lambda wait function-updated \
             --function-name "scout-events-api" --region "${{ env.AWS_REGION }}"
+
+      - name: Run data migration
+        run: |
+          pip install --quiet boto3
+          SCOUT_TABLE_SUFFIX="" python scout/backend/migrations/populate_emails_table.py
 
       - name: Update Lambda function code
         run: |

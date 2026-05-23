@@ -24,23 +24,21 @@ from googleapiclient.discovery import build
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Environment variables
-DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
-DYNAMODB_EMAILS_TABLE_NAME = os.environ["DYNAMODB_EMAILS_TABLE_NAME"]
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 GMAIL_CLIENT_ID = os.environ["GMAIL_CLIENT_ID"]
 GMAIL_CLIENT_SECRET = os.environ["GMAIL_CLIENT_SECRET"]
 GMAIL_REFRESH_TOKEN = os.environ["GMAIL_REFRESH_TOKEN"]
 
-# Constants
 MAX_EMAILS_PER_RUN = int(os.environ.get("MAX_EMAILS_PER_RUN", "20"))
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 EVENTS_LABEL = "Events"
 
+_SUFFIX = os.environ.get("SCOUT_TABLE_SUFFIX", "")
+
 _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 dynamodb = boto3.resource("dynamodb")
-table = dynamodb.Table(DYNAMODB_TABLE_NAME)
-emails_table = dynamodb.Table(DYNAMODB_EMAILS_TABLE_NAME)
+table = dynamodb.Table(f"scout-events{_SUFFIX}")
+emails_table = dynamodb.Table(f"scout-emails{_SUFFIX}")
 
 
 _TRACKING_PIXEL_SIGNALS = (

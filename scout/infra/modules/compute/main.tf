@@ -4,6 +4,9 @@ locals {
   events_api_name      = "scout-events-api${local.name_suffix}"
 }
 
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
 resource "aws_ecr_repository" "email_processor" {
   count                = var.create_ecr ? 1 : 0
   name                 = "scout-email-processor"
@@ -110,10 +113,8 @@ resource "aws_iam_role_policy" "lambda" {
           "dynamodb:BatchGetItem",
         ]
         Resource = [
-          var.dynamodb_table_arn,
-          "${var.dynamodb_table_arn}/index/*",
-          var.emails_table_arn,
-          "${var.emails_table_arn}/index/*",
+          "arn:aws:dynamodb:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/scout-*",
+          "arn:aws:dynamodb:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/scout-*/index/*",
         ]
       },
     ]
@@ -129,7 +130,9 @@ resource "aws_lambda_function" "email_processor" {
   memory_size   = 256
 
   environment {
-    variables = var.email_processor_env_vars
+    variables = merge(var.email_processor_env_vars, {
+      SCOUT_TABLE_SUFFIX = var.table_suffix
+    })
   }
 
   tags = var.tags
@@ -156,8 +159,7 @@ resource "aws_lambda_function" "events_api" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE_NAME        = var.events_table_name
-      DYNAMODB_EMAILS_TABLE_NAME = var.emails_table_name
+      SCOUT_TABLE_SUFFIX = var.table_suffix
     }
   }
 

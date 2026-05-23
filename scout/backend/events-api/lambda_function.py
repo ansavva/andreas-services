@@ -26,12 +26,13 @@ from boto3.dynamodb.conditions import Attr
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
-DYNAMODB_EMAILS_TABLE_NAME = os.environ["DYNAMODB_EMAILS_TABLE_NAME"]
+_SUFFIX = os.environ.get("SCOUT_TABLE_SUFFIX", "")
+_EVENTS_TABLE = f"scout-events{_SUFFIX}"
+_EMAILS_TABLE = f"scout-emails{_SUFFIX}"
 
 dynamodb = boto3.resource("dynamodb")
-table = dynamodb.Table(DYNAMODB_TABLE_NAME)
-emails_table = dynamodb.Table(DYNAMODB_EMAILS_TABLE_NAME)
+table = dynamodb.Table(_EVENTS_TABLE)
+emails_table = dynamodb.Table(_EMAILS_TABLE)
 
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
@@ -110,10 +111,10 @@ def _fetch_email_data(email_ids):
         batch = keys[i:i + 100]
         response = dynamodb.batch_get_item(
             RequestItems={
-                DYNAMODB_EMAILS_TABLE_NAME: {"Keys": batch}
+                _EMAILS_TABLE: {"Keys": batch}
             }
         )
-        for item in response.get("Responses", {}).get(DYNAMODB_EMAILS_TABLE_NAME, []):
+        for item in response.get("Responses", {}).get(_EMAILS_TABLE, []):
             email_map[item["email_id"]] = item
 
     return email_map
