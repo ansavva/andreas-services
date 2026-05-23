@@ -160,33 +160,93 @@ resource "aws_api_gateway_integration_response" "event_by_id_options" {
   depends_on = [aws_api_gateway_method_response.event_by_id_options_200]
 }
 
-# GET /api/admin/emails
+# /api/admin/* — protected by a Cognito authorizer when a user pool is wired in.
+# A single {proxy+} resource fronts every admin route (events queue, senders,
+# categories, emails); the events-api Lambda dispatches by path.
 resource "aws_api_gateway_resource" "admin" {
   rest_api_id = aws_api_gateway_rest_api.main.id
   parent_id   = aws_api_gateway_resource.api.id
   path_part   = "admin"
 }
 
-resource "aws_api_gateway_resource" "admin_emails" {
+resource "aws_api_gateway_authorizer" "cognito" {
+  count           = var.cognito_user_pool_arn != "" ? 1 : 0
+  name            = "scout-admin-cognito${var.pr_number != "" ? "-pr-${var.pr_number}" : ""}"
+  rest_api_id     = aws_api_gateway_rest_api.main.id
+  type            = "COGNITO_USER_POOLS"
+  provider_arns   = [var.cognito_user_pool_arn]
+  identity_source = "method.request.header.Authorization"
+}
+
+resource "aws_api_gateway_resource" "admin_proxy" {
   rest_api_id = aws_api_gateway_rest_api.main.id
   parent_id   = aws_api_gateway_resource.admin.id
-  path_part   = "emails"
+  path_part   = "{proxy+}"
 }
 
-resource "aws_api_gateway_method" "admin_emails_get" {
+# ANY /api/admin/{proxy+} — the protected admin surface
+resource "aws_api_gateway_method" "admin_proxy_any" {
   rest_api_id   = aws_api_gateway_rest_api.main.id
-  resource_id   = aws_api_gateway_resource.admin_emails.id
-  http_method   = "GET"
-  authorization = "NONE"
+  resource_id   = aws_api_gateway_resource.admin_proxy.id
+  http_method   = "ANY"
+  authorization = var.cognito_user_pool_arn != "" ? "COGNITO_USER_POOLS" : "NONE"
+  authorizer_id = var.cognito_user_pool_arn != "" ? aws_api_gateway_authorizer.cognito[0].id : null
 }
 
-resource "aws_api_gateway_integration" "admin_emails_get" {
+resource "aws_api_gateway_integration" "admin_proxy_any" {
   rest_api_id             = aws_api_gateway_rest_api.main.id
-  resource_id             = aws_api_gateway_resource.admin_emails.id
-  http_method             = aws_api_gateway_method.admin_emails_get.http_method
+  resource_id             = aws_api_gateway_resource.admin_proxy.id
+  http_method             = aws_api_gateway_method.admin_proxy_any.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = var.lambda_invoke_arn
+}
+
+# OPTIONS /api/admin/{proxy+} (CORS preflight — must stay unauthenticated)
+resource "aws_api_gateway_method" "admin_proxy_options" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.admin_proxy.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "admin_proxy_options" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.admin_proxy.id
+  http_method = aws_api_gateway_method.admin_proxy_options.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = jsonencode({ statusCode = 200 })
+  }
+}
+
+resource "aws_api_gateway_method_response" "admin_proxy_options_200" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.admin_proxy.id
+  http_method = aws_api_gateway_method.admin_proxy_options.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "admin_proxy_options" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.admin_proxy.id
+  http_method = aws_api_gateway_method.admin_proxy_options.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,DELETE,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+
+  depends_on = [aws_api_gateway_method_response.admin_proxy_options_200]
 }
 
 # ANY /api/{proxy+}
@@ -215,18 +275,20 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_resource.events.id,
       aws_api_gateway_resource.event_by_id.id,
       aws_api_gateway_resource.admin.id,
-      aws_api_gateway_resource.admin_emails.id,
+      aws_api_gateway_resource.admin_proxy.id,
       aws_api_gateway_resource.proxy.id,
       aws_api_gateway_method.events_get.id,
       aws_api_gateway_method.events_options.id,
       aws_api_gateway_method.event_by_id_get.id,
       aws_api_gateway_method.event_by_id_options.id,
-      aws_api_gateway_method.admin_emails_get.id,
+      aws_api_gateway_method.admin_proxy_any.id,
+      aws_api_gateway_method.admin_proxy_options.id,
       aws_api_gateway_method.proxy_any.id,
       aws_api_gateway_integration.events_get.id,
       aws_api_gateway_integration.event_by_id_get.id,
-      aws_api_gateway_integration.admin_emails_get.id,
+      aws_api_gateway_integration.admin_proxy_any.id,
       aws_api_gateway_integration.proxy_any.id,
+      var.cognito_user_pool_arn,
     ]))
   }
 
@@ -239,7 +301,8 @@ resource "aws_api_gateway_deployment" "main" {
     aws_api_gateway_integration.events_options,
     aws_api_gateway_integration.event_by_id_get,
     aws_api_gateway_integration.event_by_id_options,
-    aws_api_gateway_integration.admin_emails_get,
+    aws_api_gateway_integration.admin_proxy_any,
+    aws_api_gateway_integration.admin_proxy_options,
     aws_api_gateway_integration.proxy_any,
   ]
 }

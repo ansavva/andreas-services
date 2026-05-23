@@ -43,6 +43,12 @@ variable "base_path" {
   default     = ""
 }
 
+variable "cognito_user_pool_arn" {
+  description = "Cognito user pool ARN protecting the /api/admin/* routes. Empty leaves admin routes unauthenticated."
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

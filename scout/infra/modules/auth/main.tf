@@ -1,5 +1,11 @@
 resource "aws_cognito_user_pool" "main" {
-  name = "scout-pr-${var.pr_number}"
+  name = var.name
+
+  # Admin-only: users are provisioned via `aws cognito-idp admin-create-user`,
+  # there is no public self-signup.
+  admin_create_user_config {
+    allow_admin_create_user_only = true
+  }
 
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
@@ -23,7 +29,7 @@ resource "aws_cognito_user_pool" "main" {
 }
 
 resource "aws_cognito_user_pool_client" "main" {
-  name         = "scout-pr-${var.pr_number}-web"
+  name         = "${var.name}-web"
   user_pool_id = aws_cognito_user_pool.main.id
 
   generate_secret = false
@@ -32,15 +38,8 @@ resource "aws_cognito_user_pool_client" "main" {
   allowed_oauth_flows                  = ["code", "implicit"]
   allowed_oauth_scopes                 = ["openid", "email", "profile"]
 
-  callback_urls = [
-    "${var.frontend_base_url}/${var.pr_number}/app",
-    "http://localhost:5173/app",
-  ]
-
-  logout_urls = [
-    "${var.frontend_base_url}/${var.pr_number}/app",
-    "http://localhost:5173/app",
-  ]
+  callback_urls = var.callback_urls
+  logout_urls   = var.logout_urls
 
   supported_identity_providers = ["COGNITO"]
 
