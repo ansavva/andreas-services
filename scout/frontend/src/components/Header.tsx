@@ -1,5 +1,6 @@
 import { useContext } from "react";
-import { Moon, RefreshCw, Sun } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { ArrowLeft, Moon, RefreshCw, Settings, Sun } from "lucide-react";
 import { ThemeContext } from "@/context/ThemeContext";
 
 interface HeaderProps {
@@ -9,6 +10,8 @@ interface HeaderProps {
 
 export function Header({ onRefresh, loading }: HeaderProps) {
   const { theme, toggleTheme } = useContext(ThemeContext);
+  const { pathname } = useLocation();
+  const isAdmin = pathname === "/admin";
 
   return (
     <header className="sticky top-0 z-10 theme-transition bg-[var(--color-surface)] border-b border-[var(--color-border)] shadow-sm">
@@ -26,7 +29,7 @@ export function Header({ onRefresh, loading }: HeaderProps) {
           <button
             onClick={onRefresh}
             disabled={loading}
-            title="Refresh events"
+            title="Refresh"
             className="p-2 rounded-lg text-[var(--color-text-secondary)] hover:bg-[var(--color-border)] transition-colors disabled:opacity-40"
           >
             <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
@@ -39,6 +42,24 @@ export function Header({ onRefresh, loading }: HeaderProps) {
           >
             {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
           </button>
+
+          {isAdmin ? (
+            <Link
+              to="/"
+              title="Back to events"
+              className="p-2 rounded-lg text-[var(--color-text-secondary)] hover:bg-[var(--color-border)] transition-colors"
+            >
+              <ArrowLeft size={18} />
+            </Link>
+          ) : (
+            <Link
+              to="/admin"
+              title="Admin"
+              className="p-2 rounded-lg text-[var(--color-text-secondary)] hover:bg-[var(--color-border)] transition-colors"
+            >
+              <Settings size={18} />
+            </Link>
+          )}
         </div>
       </div>
     </header>
