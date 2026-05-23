@@ -246,22 +246,28 @@ jobs:
         run: |
           set -euo pipefail
           jq -n \
-            --arg table        "scout-events" \
-            --arg anthropic    "${ANTHROPIC_API_KEY}" \
-            --arg client_id    "${GMAIL_CLIENT_ID}" \
+            --arg table         "scout-events" \
+            --arg emails_table  "scout-emails" \
+            --arg anthropic     "${ANTHROPIC_API_KEY}" \
+            --arg client_id     "${GMAIL_CLIENT_ID}" \
             --arg client_secret "${GMAIL_CLIENT_SECRET}" \
             --arg refresh_token "${GMAIL_REFRESH_TOKEN}" \
             '{Variables: {
-              DYNAMODB_TABLE_NAME:  $table,
-              ANTHROPIC_API_KEY:    $anthropic,
-              GMAIL_CLIENT_ID:      $client_id,
-              GMAIL_CLIENT_SECRET:  $client_secret,
-              GMAIL_REFRESH_TOKEN:  $refresh_token
+              DYNAMODB_TABLE_NAME:        $table,
+              DYNAMODB_EMAILS_TABLE_NAME: $emails_table,
+              ANTHROPIC_API_KEY:          $anthropic,
+              GMAIL_CLIENT_ID:            $client_id,
+              GMAIL_CLIENT_SECRET:        $client_secret,
+              GMAIL_REFRESH_TOKEN:        $refresh_token
             }}' > /tmp/env-email-processor.json
 
           jq -n \
-            --arg table "scout-events" \
-            '{Variables: {DYNAMODB_TABLE_NAME: $table}}' \
+            --arg table        "scout-events" \
+            --arg emails_table "scout-emails" \
+            '{Variables: {
+              DYNAMODB_TABLE_NAME:        $table,
+              DYNAMODB_EMAILS_TABLE_NAME: $emails_table
+            }}' \
             > /tmp/env-events-api.json
 
           aws lambda update-function-configuration \
