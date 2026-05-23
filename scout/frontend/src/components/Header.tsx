@@ -10,8 +10,10 @@ interface HeaderProps {
 
 export function Header({ onRefresh, loading }: HeaderProps) {
   const { theme, toggleTheme } = useContext(ThemeContext);
-  const { pathname } = useLocation();
+  const location = useLocation();
+  const { pathname } = location;
   const isAdmin = pathname === "/admin";
+  const fromSearch = (location.state as { fromSearch?: string } | null)?.fromSearch ?? "";
 
   return (
     <header className="sticky top-0 z-10 theme-transition bg-[var(--color-surface)] border-b border-[var(--color-border)] shadow-sm">
@@ -45,7 +47,7 @@ export function Header({ onRefresh, loading }: HeaderProps) {
 
           {isAdmin ? (
             <Link
-              to="/"
+              to={{ pathname: "/", search: fromSearch }}
               title="Back to events"
               className="p-2 rounded-lg text-[var(--color-text-secondary)] hover:bg-[var(--color-border)] transition-colors"
             >
@@ -54,6 +56,7 @@ export function Header({ onRefresh, loading }: HeaderProps) {
           ) : (
             <Link
               to="/admin"
+              state={{ fromSearch: location.search }}
               title="Admin"
               className="p-2 rounded-lg text-[var(--color-text-secondary)] hover:bg-[var(--color-border)] transition-colors"
             >
