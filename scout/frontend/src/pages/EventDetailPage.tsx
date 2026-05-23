@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Calendar,
@@ -18,6 +18,8 @@ import { displayUrl, formatDate, isUpcoming } from "@/utils/formatters";
 
 export function EventDetailPage() {
   const { eventId } = useParams<{ eventId: string }>();
+  const location = useLocation();
+  const fromSearch = (location.state as { fromSearch?: string } | null)?.fromSearch ?? "";
   const { event, loading, error } = useEvent(eventId ?? "");
   const [copied, setCopied] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
@@ -41,8 +43,7 @@ export function EventDetailPage() {
       <main className="max-w-3xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <Link
-            to=".."
-            relative="path"
+            to={{ pathname: "/", search: fromSearch }}
             className="inline-flex items-center gap-1.5 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
           >
             <ArrowLeft size={16} />

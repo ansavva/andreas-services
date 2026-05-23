@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { ArrowUpRight, Calendar, DollarSign, ExternalLink, MapPin } from "lucide-react";
 import type { Event } from "@/types";
 import { displayUrl, formatDate, isUpcoming, truncate } from "@/utils/formatters";
@@ -9,6 +9,7 @@ interface EventCardProps {
 }
 
 export function EventCard({ event }: EventCardProps) {
+  const location = useLocation();
   const upcoming = isUpcoming(event.date);
   const [expanded, setExpanded] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
@@ -32,6 +33,7 @@ export function EventCard({ event }: EventCardProps) {
         <div className="flex items-start justify-between gap-2">
           <Link
             to={`/events/${event.event_id}`}
+            state={{ fromSearch: location.search }}
             className="flex-1 group"
           >
             <h2 className="text-base font-semibold text-[var(--color-text-primary)] leading-snug group-hover:text-[var(--color-primary)] transition-colors inline-flex items-start gap-1">
