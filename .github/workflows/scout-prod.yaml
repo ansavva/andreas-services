@@ -276,6 +276,11 @@ jobs:
           aws lambda wait function-updated \
             --function-name "scout-events-api" --region "${{ env.AWS_REGION }}"
 
+      - name: Run data migration
+        run: |
+          pip install --quiet boto3
+          SCOUT_TABLE_SUFFIX="" python scout/backend/migrations/populate_emails_table.py
+
       - name: Update Lambda function code
         run: |
           for FN in scout-email-processor scout-events-api; do

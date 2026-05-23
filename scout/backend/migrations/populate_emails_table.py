@@ -1,24 +1,24 @@
 """
-One-time migration: populate scout-emails from existing scout-events data.
+Idempotent migration: populate scout-emails from existing scout-events data.
 
-For each unique email_id in scout-events, creates one record in scout-emails
-using the email metadata fields stored on the event records. Then removes the
-now-redundant email fields from every scout-events item.
+For each unique email_id in scout-events that carries legacy email metadata
+fields, creates one record in scout-emails, then removes the redundant fields
+from scout-events. Safe to run on every deployment — exits immediately when
+there is nothing to migrate.
+
+Table names are derived from SCOUT_TABLE_SUFFIX (empty for prod,
+"-pr-N" for PR previews). Override with --events-table / --emails-table.
 
 Usage:
-    python populate_emails_table.py \
-        --events-table scout-events \
-        --emails-table scout-emails \
-        [--dry-run]
-        [--region us-east-1]
+    SCOUT_TABLE_SUFFIX="" python populate_emails_table.py [--dry-run]
 """
 
 import argparse
+import os
 import sys
 from collections import defaultdict
 
 import boto3
-from boto3.dynamodb.conditions import Key
 
 EMAIL_FIELDS = {"email_subject", "email_sender", "source_email_date", "image_url", "created_at"}
 
@@ -101,17 +101,21 @@ def remove_email_fields_from_events(table, events, dry_run):
 
 def main():
     parser = argparse.ArgumentParser(description="Migrate email metadata to scout-emails table")
-    parser.add_argument("--events-table", required=True, help="scout-events table name")
-    parser.add_argument("--emails-table", required=True, help="scout-emails table name")
+    parser.add_argument("--events-table", help="Override events table name")
+    parser.add_argument("--emails-table", help="Override emails table name")
     parser.add_argument("--dry-run", action="store_true", help="Print actions without writing")
     parser.add_argument("--region", default="us-east-1", help="AWS region")
     args = parser.parse_args()
 
-    dynamodb = boto3.resource("dynamodb", region_name=args.region)
-    events_table = dynamodb.Table(args.events_table)
-    emails_table = dynamodb.Table(args.emails_table)
+    suffix = os.environ.get("SCOUT_TABLE_SUFFIX", "")
+    events_table_name = args.events_table or f"scout-events{suffix}"
+    emails_table_name = args.emails_table or f"scout-emails{suffix}"
 
-    print(f"Scanning {args.events_table}...")
+    dynamodb = boto3.resource("dynamodb", region_name=args.region)
+    events_table = dynamodb.Table(events_table_name)
+    emails_table = dynamodb.Table(emails_table_name)
+
+    print(f"Scanning {events_table_name}...")
     events = scan_all(events_table)
     print(f"Found {len(events)} events")
 
@@ -126,13 +130,13 @@ def main():
         print(f"  {rec['email_id'][:12]}... | {rec['email_subject'][:50]} | {rec['event_count']} events")
 
     if args.dry_run:
-        print("\n[dry-run] Would write the above records to", args.emails_table)
+        print("\n[dry-run] Would write the above records to", emails_table_name)
     else:
-        print(f"\nWriting {len(email_records)} records to {args.emails_table}...")
+        print(f"\nWriting {len(email_records)} records to {emails_table_name}...")
         batch_write(emails_table, email_records)
         print("Done.")
 
-    print(f"\nRemoving email fields from {args.events_table} items...")
+    print(f"\nRemoving email fields from {events_table_name} items...")
     updated, skipped = remove_email_fields_from_events(events_table, events, args.dry_run)
     print(f"Updated {updated} items, skipped {skipped} (already clean)")
 
