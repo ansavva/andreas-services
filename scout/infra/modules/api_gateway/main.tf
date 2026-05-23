@@ -160,6 +160,35 @@ resource "aws_api_gateway_integration_response" "event_by_id_options" {
   depends_on = [aws_api_gateway_method_response.event_by_id_options_200]
 }
 
+# GET /api/admin/emails
+resource "aws_api_gateway_resource" "admin" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.api.id
+  path_part   = "admin"
+}
+
+resource "aws_api_gateway_resource" "admin_emails" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.admin.id
+  path_part   = "emails"
+}
+
+resource "aws_api_gateway_method" "admin_emails_get" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.admin_emails.id
+  http_method   = "GET"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "admin_emails_get" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.admin_emails.id
+  http_method             = aws_api_gateway_method.admin_emails_get.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.lambda_invoke_arn
+}
+
 # ANY /api/{proxy+}
 resource "aws_api_gateway_method" "proxy_any" {
   rest_api_id   = aws_api_gateway_rest_api.main.id
@@ -185,14 +214,18 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_resource.api.id,
       aws_api_gateway_resource.events.id,
       aws_api_gateway_resource.event_by_id.id,
+      aws_api_gateway_resource.admin.id,
+      aws_api_gateway_resource.admin_emails.id,
       aws_api_gateway_resource.proxy.id,
       aws_api_gateway_method.events_get.id,
       aws_api_gateway_method.events_options.id,
       aws_api_gateway_method.event_by_id_get.id,
       aws_api_gateway_method.event_by_id_options.id,
+      aws_api_gateway_method.admin_emails_get.id,
       aws_api_gateway_method.proxy_any.id,
       aws_api_gateway_integration.events_get.id,
       aws_api_gateway_integration.event_by_id_get.id,
+      aws_api_gateway_integration.admin_emails_get.id,
       aws_api_gateway_integration.proxy_any.id,
     ]))
   }
@@ -206,6 +239,7 @@ resource "aws_api_gateway_deployment" "main" {
     aws_api_gateway_integration.events_options,
     aws_api_gateway_integration.event_by_id_get,
     aws_api_gateway_integration.event_by_id_options,
+    aws_api_gateway_integration.admin_emails_get,
     aws_api_gateway_integration.proxy_any,
   ]
 }

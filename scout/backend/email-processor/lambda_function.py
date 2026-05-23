@@ -17,7 +17,6 @@ from datetime import datetime, timedelta, timezone
 import anthropic
 import boto3
 import html2text
-from boto3.dynamodb.conditions import Attr
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -27,6 +26,7 @@ logger.setLevel(logging.INFO)
 
 # Environment variables
 DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
+DYNAMODB_EMAILS_TABLE_NAME = os.environ["DYNAMODB_EMAILS_TABLE_NAME"]
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 GMAIL_CLIENT_ID = os.environ["GMAIL_CLIENT_ID"]
 GMAIL_CLIENT_SECRET = os.environ["GMAIL_CLIENT_SECRET"]
@@ -40,6 +40,7 @@ EVENTS_LABEL = "Events"
 _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(DYNAMODB_TABLE_NAME)
+emails_table = dynamodb.Table(DYNAMODB_EMAILS_TABLE_NAME)
 
 
 _TRACKING_PIXEL_SIGNALS = (
@@ -234,7 +235,24 @@ Return only valid JSON array, no other text:"""
 
 
 def store_events(events, email_id, subject, sender, source_date, image_url=""):
-    """Persist a list of extracted event dicts to DynamoDB."""
+    """
+    Persist extracted events to DynamoDB.
+
+    Writes one record to scout-emails (email metadata) and one record per
+    event to scout-events (event data only, no duplicated email fields).
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    emails_table.put_item(Item={
+        "email_id": email_id,
+        "email_subject": subject,
+        "email_sender": sender,
+        "source_email_date": source_date,
+        "image_url": image_url,
+        "processed_at": now_iso,
+        "event_count": len(events),
+    })
+
     stored = 0
     for event in events:
         event_id = str(uuid.uuid4())
@@ -248,11 +266,6 @@ def store_events(events, email_id, subject, sender, source_date, image_url=""):
             "price": event.get("price") or "",
             "description": event.get("description") or "",
             "links": event.get("links") or [],
-            "image_url": image_url,
-            "email_subject": subject,
-            "email_sender": sender,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "source_email_date": source_date,
         }
         table.put_item(Item=item)
         stored += 1
@@ -261,13 +274,9 @@ def store_events(events, email_id, subject, sender, source_date, image_url=""):
 
 
 def email_already_processed(email_id):
-    """Check DynamoDB to see if this email has already been processed."""
-    result = table.scan(
-        FilterExpression=Attr("email_id").eq(email_id),
-        ProjectionExpression="event_id",
-        Limit=1,
-    )
-    return len(result.get("Items", [])) > 0
+    """Check scout-emails table for an existing record — O(1) key lookup."""
+    result = emails_table.get_item(Key={"email_id": email_id})
+    return "Item" in result
 
 
 def lambda_handler(event, context):

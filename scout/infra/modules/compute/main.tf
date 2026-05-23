@@ -112,6 +112,8 @@ resource "aws_iam_role_policy" "lambda" {
         Resource = [
           var.dynamodb_table_arn,
           "${var.dynamodb_table_arn}/index/*",
+          var.emails_table_arn,
+          "${var.emails_table_arn}/index/*",
         ]
       },
     ]
@@ -154,7 +156,8 @@ resource "aws_lambda_function" "events_api" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE_NAME = var.events_table_name
+      DYNAMODB_TABLE_NAME        = var.events_table_name
+      DYNAMODB_EMAILS_TABLE_NAME = var.emails_table_name
     }
   }
 
