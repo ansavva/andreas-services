@@ -8,6 +8,7 @@ export interface Event {
   price: string;
   description: string;
   links: string[];
+  image_url: string;
   email_subject: string;
   email_sender: string;
   created_at: string;

@@ -6,28 +6,30 @@
 :root {
   --color-background:    #f8fafc;
   --color-surface:       #ffffff;
+  --color-surface-hover: #f1f5f9;
   --color-border:        #e2e8f0;
-  --color-primary:       #6366f1;
-  --color-primary-hover: #4f46e5;
+  --color-primary:       #7c3aed;
+  --color-primary-hover: #6d28d9;
   --color-text-primary:  #0f172a;
   --color-text-secondary:#334155;
   --color-text-muted:    #64748b;
-  --color-badge:         #dcfce7;
-  --color-badge-text:    #166534;
+  --color-badge:         #ede9fe;
+  --color-badge-text:    #5b21b6;
 }
 
 /* ─── Dark theme ─────────────────────────────────────────────────────────── */
 .dark {
-  --color-background:    #0f172a;
-  --color-surface:       #1e293b;
-  --color-border:        #334155;
-  --color-primary:       #818cf8;
-  --color-primary-hover: #6366f1;
-  --color-text-primary:  #f1f5f9;
-  --color-text-secondary:#cbd5e1;
-  --color-text-muted:    #94a3b8;
-  --color-badge:         #14532d;
-  --color-badge-text:    #86efac;
+  --color-background:    #09090b;
+  --color-surface:       #141417;
+  --color-surface-hover: #1c1c21;
+  --color-border:        #27272a;
+  --color-primary:       #a78bfa;
+  --color-primary-hover: #8b5cf6;
+  --color-text-primary:  #fafafa;
+  --color-text-secondary:#a1a1aa;
+  --color-text-muted:    #71717a;
+  --color-badge:         #1e1b4b;
+  --color-badge-text:    #a5b4fc;
 }
 
 * {

@@ -97,7 +97,7 @@ class TestEmailProcessor(unittest.TestCase):
 
     def test_extract_email_content_html(self):
         msg = _make_message(body_html="<h1>Concert Tonight</h1><p>Doors open at 7pm</p>")
-        subject, sender, date_str, content = self.lf.extract_email_content(msg)
+        subject, sender, date_str, content, image_url = self.lf.extract_email_content(msg)
         assert subject == "Test Subject"
         assert "Concert Tonight" in content
         assert "7pm" in content
@@ -106,7 +106,7 @@ class TestEmailProcessor(unittest.TestCase):
         msg = _make_message(body_html=None, body_plain="Just plain text content")
         # Overwrite the html part so it has no data
         msg["payload"]["parts"][0]["body"]["data"] = ""
-        subject, sender, date_str, content = self.lf.extract_email_content(msg)
+        subject, sender, date_str, content, image_url = self.lf.extract_email_content(msg)
         assert "Just plain text content" in content
 
     def test_extract_email_content_single_part(self):
@@ -123,7 +123,7 @@ class TestEmailProcessor(unittest.TestCase):
                 "body": {"data": _b64("Hello from a single-part email.")},
             },
         }
-        subject, sender, date_str, content = self.lf.extract_email_content(msg)
+        subject, sender, date_str, content, image_url = self.lf.extract_email_content(msg)
         assert subject == "Single Part"
         assert "Hello from a single-part email." in content
 
@@ -131,8 +131,25 @@ class TestEmailProcessor(unittest.TestCase):
         long_body = "x" * 10000
         msg = _make_message(body_plain=long_body, body_html=None)
         msg["payload"]["parts"][0]["body"]["data"] = ""
-        _, _, _, content = self.lf.extract_email_content(msg)
+        _, _, _, content, _ = self.lf.extract_email_content(msg)
         assert len(content) <= 6000
+
+    def test_extract_email_content_returns_image_url(self):
+        html = '<img src="https://cdn.example.com/banner.jpg" /><p>Event info</p>'
+        msg = _make_message(body_html=html)
+        _, _, _, _, image_url = self.lf.extract_email_content(msg)
+        assert image_url == "https://cdn.example.com/banner.jpg"
+
+    def test_extract_email_content_skips_tracking_pixels(self):
+        html = '<img src="https://pixel.example.com/track.gif" /><img src="https://cdn.example.com/real.jpg" />'
+        msg = _make_message(body_html=html)
+        _, _, _, _, image_url = self.lf.extract_email_content(msg)
+        assert image_url == "https://cdn.example.com/real.jpg"
+
+    def test_extract_email_content_no_image_returns_empty(self):
+        msg = _make_message(body_html="<p>No images here</p>")
+        _, _, _, _, image_url = self.lf.extract_email_content(msg)
+        assert image_url == ""
 
     # ------------------------------------------------------------------
     # store_events
