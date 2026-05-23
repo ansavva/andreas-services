@@ -21,6 +21,8 @@ from moto import mock_dynamodb
 
 EVENTS_TABLE_NAME = "scout-events"
 EMAILS_TABLE_NAME = "scout-emails"
+SENDERS_TABLE_NAME = "scout-senders"
+CATEGORIES_TABLE_NAME = "scout-categories"
 
 
 def _b64(text: str) -> str:
@@ -75,6 +77,20 @@ class TestEmailProcessor(unittest.TestCase):
             TableName=EMAILS_TABLE_NAME,
             KeySchema=[{"AttributeName": "email_id", "KeyType": "HASH"}],
             AttributeDefinitions=[{"AttributeName": "email_id", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        self.senders_table = self.dynamodb.create_table(
+            TableName=SENDERS_TABLE_NAME,
+            KeySchema=[{"AttributeName": "sender_key", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "sender_key", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        self.categories_table = self.dynamodb.create_table(
+            TableName=CATEGORIES_TABLE_NAME,
+            KeySchema=[{"AttributeName": "slug", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "slug", "AttributeType": "S"}],
             BillingMode="PAY_PER_REQUEST",
         )
 
@@ -225,6 +241,74 @@ class TestEmailProcessor(unittest.TestCase):
         assert item["date"] == ""
         assert item["venue"] == ""
         assert item["links"] == []
+
+    # ------------------------------------------------------------------
+    # taxonomy helpers
+    # ------------------------------------------------------------------
+
+    def test_normalize_sender_extracts_address(self):
+        import taxonomy
+        key, display = taxonomy.normalize_sender("Time Out New York <News@TimeOut.com>")
+        assert key == "news@timeout.com"
+        assert display == "Time Out New York <News@TimeOut.com>"
+
+    def test_normalize_sender_bare_address(self):
+        import taxonomy
+        key, _ = taxonomy.normalize_sender("Hello@Example.COM")
+        assert key == "hello@example.com"
+
+    def test_slugify(self):
+        import taxonomy
+        assert taxonomy.slugify("Art & Design") == "art-design"
+        assert taxonomy.slugify("  Food  ") == "food"
+
+    # ------------------------------------------------------------------
+    # regions / categories / status on stored events
+    # ------------------------------------------------------------------
+
+    def test_new_event_is_pending_and_regionless(self):
+        events = [{"event_name": "Mystery Event", "links": []}]
+        self.lf.store_events(events, "email-new", "Subj", "new@sender.com", "")
+        item = self.table.scan()["Items"][0]
+        assert item["status"] == "pending"
+        assert item["regions"] == []
+
+    def test_unknown_sender_creates_pending_classification(self):
+        self.lf.store_events([{"event_name": "E"}], "email-x", "S", "Promo <promo@venue.com>", "")
+        sender = self.senders_table.get_item(Key={"sender_key": "promo@venue.com"}).get("Item")
+        assert sender is not None
+        assert sender["status"] == "pending"
+        assert sender["regions"] == []
+
+    def test_classified_sender_stamps_regions(self):
+        self.senders_table.put_item(Item={
+            "sender_key": "nyc@news.com",
+            "display_sender": "NYC News",
+            "regions": ["nyc"],
+            "status": "classified",
+        })
+        self.lf.store_events([{"event_name": "Gig"}], "email-c", "S", "NYC News <nyc@news.com>", "")
+        item = self.table.scan()["Items"][0]
+        assert item["regions"] == ["nyc"]
+        email_item = self.emails_table.get_item(Key={"email_id": "email-c"}).get("Item")
+        assert email_item["regions"] == ["nyc"]
+        assert email_item["sender_key"] == "nyc@news.com"
+
+    def test_categories_kept_only_from_active_vocab(self):
+        self.categories_table.put_item(Item={"slug": "food", "name": "Food", "status": "active"})
+        events = [{"event_name": "Dinner", "categories": ["food", "not-a-real-cat"]}]
+        self.lf.store_events(events, "email-cat", "S", "a@b.com", "")
+        item = self.table.scan()["Items"][0]
+        assert item["categories"] == ["food"]
+
+    def test_new_category_proposal_recorded_as_suggested(self):
+        events = [{"event_name": "Runway", "categories": [], "new_categories": ["Fashion"]}]
+        self.lf.store_events(events, "email-sug", "S", "a@b.com", "")
+        item = self.table.scan()["Items"][0]
+        assert "fashion" in item["categories"]
+        suggested = self.categories_table.get_item(Key={"slug": "fashion"}).get("Item")
+        assert suggested is not None
+        assert suggested["status"] == "suggested"
 
     # ------------------------------------------------------------------
     # email_already_processed
