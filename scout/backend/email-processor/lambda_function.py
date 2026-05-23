@@ -305,10 +305,9 @@ def lambda_handler(event, context):
                 logger.info("Processing email: %s from %s", subject, sender)
 
                 events = extract_events_with_claude(subject, sender, content)
-                if events:
-                    count = store_events(events, email_id, subject, sender, source_date, image_url)
-                    total_events += count
-                else:
+                count = store_events(events, email_id, subject, sender, source_date, image_url)
+                total_events += count
+                if not events:
                     logger.info("No events found in email: %s", subject)
 
                 total_emails += 1

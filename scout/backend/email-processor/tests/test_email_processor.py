@@ -19,7 +19,8 @@ import boto3
 import pytest
 from moto import mock_dynamodb
 
-TABLE_NAME = "test-scout-events"
+EVENTS_TABLE_NAME = "test-scout-events"
+EMAILS_TABLE_NAME = "test-scout-emails"
 
 
 def _b64(text: str) -> str:
@@ -61,16 +62,24 @@ def _make_message(subject="Test Subject", sender="test@example.com", body_html=N
 class TestEmailProcessor(unittest.TestCase):
 
     def setUp(self):
-        # Mock DynamoDB table
         self.dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+
         self.table = self.dynamodb.create_table(
-            TableName=TABLE_NAME,
+            TableName=EVENTS_TABLE_NAME,
             KeySchema=[{"AttributeName": "event_id", "KeyType": "HASH"}],
             AttributeDefinitions=[{"AttributeName": "event_id", "AttributeType": "S"}],
             BillingMode="PAY_PER_REQUEST",
         )
 
-        os.environ["DYNAMODB_TABLE_NAME"] = TABLE_NAME
+        self.emails_table = self.dynamodb.create_table(
+            TableName=EMAILS_TABLE_NAME,
+            KeySchema=[{"AttributeName": "email_id", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "email_id", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        os.environ["DYNAMODB_TABLE_NAME"] = EVENTS_TABLE_NAME
+        os.environ["DYNAMODB_EMAILS_TABLE_NAME"] = EMAILS_TABLE_NAME
         os.environ["ANTHROPIC_API_KEY"] = "test-key"
         os.environ["GMAIL_CLIENT_ID"] = "test-client-id"
         os.environ["GMAIL_CLIENT_SECRET"] = "test-secret"
@@ -177,6 +186,28 @@ class TestEmailProcessor(unittest.TestCase):
         assert item["email_id"] == "email-001"
         assert item["venue"] == "Blue Note"
 
+    def test_store_events_writes_email_record(self):
+        events = [{"event_name": "Jazz Night", "date": "2026-05-10", "time": "", "venue": "", "price": "", "description": "", "links": []}]
+        self.lf.store_events(events, "email-001", "Jazz Subject", "venue@example.com", "Thu, 10 Apr 2026", "https://img.example.com/banner.jpg")
+
+        email_item = self.emails_table.get_item(Key={"email_id": "email-001"}).get("Item")
+        assert email_item is not None
+        assert email_item["email_subject"] == "Jazz Subject"
+        assert email_item["email_sender"] == "venue@example.com"
+        assert email_item["image_url"] == "https://img.example.com/banner.jpg"
+        assert email_item["event_count"] == 1
+
+    def test_store_events_writes_email_record_with_zero_events(self):
+        count = self.lf.store_events([], "email-empty", "No Events Subject", "a@b.com", "")
+        assert count == 0
+
+        email_item = self.emails_table.get_item(Key={"email_id": "email-empty"}).get("Item")
+        assert email_item is not None
+        assert email_item["event_count"] == 0
+
+        result = self.table.scan()
+        assert len(result["Items"]) == 0
+
     def test_store_events_multiple(self):
         events = [
             {"event_name": "Event A", "date": "2026-06-01", "time": "", "venue": "", "price": "", "description": "", "links": []},
@@ -210,29 +241,28 @@ class TestEmailProcessor(unittest.TestCase):
         self.lf.store_events(events, "email-dup", "Subj", "s@s.com", "")
         assert self.lf.email_already_processed("email-dup") is True
 
+    def test_email_already_processed_true_even_when_no_events(self):
+        # Emails with zero extracted events should still be marked processed
+        # so the processor doesn't re-fetch them every week.
+        self.lf.store_events([], "email-empty", "Empty Subj", "x@x.com", "")
+        assert self.lf.email_already_processed("email-empty") is True
+
     # ------------------------------------------------------------------
-    # lambda_handler — integration with mocked Gmail + OpenAI
+    # lambda_handler — integration with mocked Gmail + Claude
     # ------------------------------------------------------------------
 
     def _make_gmail_service(self, messages, label_id="LABEL_1"):
         """Return a mock Gmail service that yields the given message stubs."""
         service = MagicMock()
-        # labels().list()
         service.users().labels().list().execute.return_value = {
             "labels": [{"id": label_id, "name": "Events"}]
         }
-        # messages().list()
         service.users().messages().list().execute.return_value = {
             "messages": [{"id": m["id"]} for m in messages]
         }
-        # messages().get() — return the full message dict for each id
         msg_map = {m["id"]: m for m in messages}
         service.users().messages().get().execute.side_effect = lambda: None
 
-        def _get_execute(msg_id):
-            return msg_map[msg_id]
-
-        # Wire up the call chain: .get(userId=…, id=msg_id, …).execute()
         def _get_side_effect(**kwargs):
             mock_get = MagicMock()
             mock_get.execute.return_value = msg_map[kwargs["id"]]
@@ -267,7 +297,7 @@ class TestEmailProcessor(unittest.TestCase):
     @patch("lambda_function.get_gmail_service")
     @patch("lambda_function._anthropic_client.messages.create")
     def test_lambda_handler_skips_already_processed(self, mock_claude, mock_gmail):
-        # Pre-seed the table so email-exists looks up the email as processed.
+        # Pre-seed emails table so the email is marked as already processed.
         events = [{"event_name": "Pre-existing", "date": "", "time": "", "venue": "", "price": "", "description": "", "links": []}]
         self.lf.store_events(events, "msg-dup", "Subj", "a@a.com", "")
 
@@ -294,6 +324,9 @@ class TestEmailProcessor(unittest.TestCase):
         body = json.loads(resp["body"])
         assert body["emails_processed"] == 1
         assert body["events_stored"] == 0
+
+        # Email with no extracted events should still be marked as processed
+        assert self.lf.email_already_processed("msg-empty") is True
 
     @patch("lambda_function.get_gmail_service")
     def test_lambda_handler_fatal_error_returns_500(self, mock_gmail):
