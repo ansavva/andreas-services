@@ -1,28 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ProcessedEmail } from "@/types";
+import type { Category } from "@/types";
 
 const API_BASE = import.meta.env.VITE_API_URL as string;
 
-interface UseEmailsResult {
-  emails: ProcessedEmail[];
+interface UseCategoriesResult {
+  categories: Category[];
   loading: boolean;
   error: string | null;
   refetch: () => void;
 }
 
-export function useEmails(): UseEmailsResult {
-  const [emails, setEmails] = useState<ProcessedEmail[]>([]);
+export function useCategories(): UseCategoriesResult {
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchEmails = useCallback(async () => {
+  const fetchCategories = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/admin/emails`);
+      const res = await fetch(`${API_BASE}/categories`);
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      const data = (await res.json()) as { emails: ProcessedEmail[] };
-      setEmails(data.emails ?? []);
+      const data = (await res.json()) as { categories: Category[] };
+      setCategories(data.categories ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -31,8 +31,8 @@ export function useEmails(): UseEmailsResult {
   }, []);
 
   useEffect(() => {
-    void fetchEmails();
-  }, [fetchEmails]);
+    void fetchCategories();
+  }, [fetchCategories]);
 
-  return { emails, loading, error, refetch: fetchEmails };
+  return { categories, loading, error, refetch: fetchCategories };
 }

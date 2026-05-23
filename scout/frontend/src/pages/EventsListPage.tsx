@@ -1,7 +1,8 @@
 import { useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { Calendar } from "lucide-react";
 import { useEvents } from "@/hooks/useEvents";
+import { useCategories } from "@/hooks/useCategories";
 import { Header } from "@/components/Header";
 import { EventFilters } from "@/components/EventFilters";
 import { EventCard } from "@/components/EventCard";
@@ -9,10 +10,12 @@ import { SkeletonCard } from "@/components/SkeletonCard";
 import type { SortOrder } from "@/types";
 
 export function EventsListPage() {
+  const { region } = useParams<{ region: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const upcomingOnly = searchParams.get("upcoming") === "true";
   const sortOrder = (searchParams.get("sort") as SortOrder | null) ?? "date-asc";
+  const category = searchParams.get("category");
 
   function setUpcomingOnly(value: boolean) {
     setSearchParams(
@@ -38,7 +41,24 @@ export function EventsListPage() {
     );
   }
 
-  const { events, loading, error, refetch } = useEvents(upcomingOnly);
+  function setCategory(slug: string | null) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (slug) next.set("category", slug);
+        else next.delete("category");
+        return next;
+      },
+      { replace: true }
+    );
+  }
+
+  const { events, loading, error, refetch } = useEvents({
+    region,
+    category: category ?? undefined,
+    upcoming: upcomingOnly,
+  });
+  const { categories } = useCategories();
 
   const sortedEvents = useMemo(() => {
     const copy = [...events];
@@ -57,7 +77,7 @@ export function EventsListPage() {
 
   return (
     <div className="min-h-screen bg-[var(--color-background)]">
-      <Header onRefresh={refetch} loading={loading} />
+      <Header onRefresh={refetch} loading={loading} showRegionSelector />
 
       <main className="max-w-6xl mx-auto px-4 py-8">
         <EventFilters
@@ -66,6 +86,9 @@ export function EventsListPage() {
           sortOrder={sortOrder}
           setSortOrder={setSortOrder}
           total={sortedEvents.length}
+          categories={categories}
+          selectedCategory={category}
+          setCategory={setCategory}
         />
 
         {error && (
@@ -85,7 +108,7 @@ export function EventsListPage() {
         {!loading && !error && sortedEvents.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {sortedEvents.map((ev) => (
-              <EventCard key={ev.event_id} event={ev} />
+              <EventCard key={ev.event_id} event={ev} categories={categories} />
             ))}
           </div>
         )}
@@ -97,16 +120,19 @@ export function EventsListPage() {
               No events found
             </h2>
             <p className="text-sm text-[var(--color-text-muted)] max-w-sm">
-              {upcomingOnly
-                ? "No upcoming events. Try turning off the upcoming filter."
+              {upcomingOnly || category
+                ? "No events match the current filters. Try clearing them."
                 : "No events yet. Run the email processor to populate events."}
             </p>
-            {upcomingOnly && (
+            {(upcomingOnly || category) && (
               <button
-                onClick={() => setUpcomingOnly(false)}
+                onClick={() => {
+                  setUpcomingOnly(false);
+                  setCategory(null);
+                }}
                 className="text-sm text-[var(--color-primary)] hover:underline"
               >
-                Show all events
+                Clear filters
               </button>
             )}
           </div>

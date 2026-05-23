@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ArrowUpRight, Calendar, DollarSign, ExternalLink, MapPin } from "lucide-react";
-import type { Event } from "@/types";
+import type { Category, Event } from "@/types";
+import { CategoryChips } from "@/components/CategoryChips";
 import { displayUrl, formatDate, isUpcoming, truncate } from "@/utils/formatters";
 
 interface EventCardProps {
   event: Event;
+  categories?: Category[];
 }
 
-export function EventCard({ event }: EventCardProps) {
+export function EventCard({ event, categories = [] }: EventCardProps) {
   const location = useLocation();
   const upcoming = isUpcoming(event.date);
   const [expanded, setExpanded] = useState(false);
@@ -74,6 +76,8 @@ export function EventCard({ event }: EventCardProps) {
             </div>
           )}
         </dl>
+
+        <CategoryChips slugs={event.categories ?? []} categories={categories} />
 
         {description && (
           <div className="text-sm text-[var(--color-text-secondary)] leading-relaxed">
