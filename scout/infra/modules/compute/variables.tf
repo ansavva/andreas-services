@@ -4,24 +4,10 @@ variable "pr_number" {
   default     = ""
 }
 
-variable "dynamodb_table_arn" {
-  description = "DynamoDB events table ARN"
+variable "table_suffix" {
+  description = "Suffix for all DynamoDB table names (empty for prod, '-pr-N' for previews)"
   type        = string
-}
-
-variable "events_table_name" {
-  description = "DynamoDB events table name"
-  type        = string
-}
-
-variable "emails_table_arn" {
-  description = "DynamoDB emails table ARN"
-  type        = string
-}
-
-variable "emails_table_name" {
-  description = "DynamoDB emails table name"
-  type        = string
+  default     = ""
 }
 
 variable "email_processor_image_uri" {

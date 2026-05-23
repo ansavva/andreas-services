@@ -42,23 +42,18 @@ module "compute" {
   source = "../../modules/compute"
 
   pr_number                 = var.pr_number
-  dynamodb_table_arn        = aws_dynamodb_table.events.arn
-  events_table_name         = aws_dynamodb_table.events.name
-  emails_table_arn          = aws_dynamodb_table.emails.arn
-  emails_table_name         = aws_dynamodb_table.emails.name
+  table_suffix              = "-pr-${var.pr_number}"
   email_processor_image_uri = var.email_processor_image_uri
   events_api_image_uri      = var.events_api_image_uri
   create_ecr                = false
   create_eventbridge        = false
 
   email_processor_env_vars = {
-    ANTHROPIC_API_KEY          = var.anthropic_api_key
-    GMAIL_CLIENT_ID            = var.gmail_client_id
-    GMAIL_CLIENT_SECRET        = var.gmail_client_secret
-    GMAIL_REFRESH_TOKEN        = var.gmail_refresh_token
-    MAX_EMAILS_PER_RUN         = tostring(var.max_emails_per_run)
-    DYNAMODB_TABLE_NAME        = aws_dynamodb_table.events.name
-    DYNAMODB_EMAILS_TABLE_NAME = aws_dynamodb_table.emails.name
+    ANTHROPIC_API_KEY   = var.anthropic_api_key
+    GMAIL_CLIENT_ID     = var.gmail_client_id
+    GMAIL_CLIENT_SECRET = var.gmail_client_secret
+    GMAIL_REFRESH_TOKEN = var.gmail_refresh_token
+    MAX_EMAILS_PER_RUN  = tostring(var.max_emails_per_run)
   }
 
   tags = local.common_tags

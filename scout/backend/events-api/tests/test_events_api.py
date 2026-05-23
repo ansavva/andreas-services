@@ -15,8 +15,8 @@ import boto3
 import pytest
 from moto import mock_dynamodb
 
-EVENTS_TABLE_NAME = "test-scout-events"
-EMAILS_TABLE_NAME = "test-scout-emails"
+EVENTS_TABLE_NAME = "scout-events"
+EMAILS_TABLE_NAME = "scout-emails"
 
 
 def _seed_events(table, events):
@@ -80,8 +80,7 @@ class TestEventsApi(unittest.TestCase):
             BillingMode="PAY_PER_REQUEST",
         )
 
-        os.environ["DYNAMODB_TABLE_NAME"] = EVENTS_TABLE_NAME
-        os.environ["DYNAMODB_EMAILS_TABLE_NAME"] = EMAILS_TABLE_NAME
+        os.environ.pop("SCOUT_TABLE_SUFFIX", None)
         os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
         sys.modules.pop("lambda_function", None)
