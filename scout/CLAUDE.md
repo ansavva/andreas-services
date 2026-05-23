@@ -89,8 +89,10 @@ All secrets live in the `scout-production` GitHub Actions environment, never in 
 | `S3_BUCKET_NAME` | GitHub var | Website S3 bucket name |
 | `CLOUDFRONT_DISTRIBUTION_ID` | GitHub var | CloudFront distribution ID |
 | `AWS_ROLE_ARN` | GitHub secret | OIDC IAM role for GitHub Actions |
+| `SCOUT_ADMIN_EMAIL` | GitHub secret | Admin console login email — bootstrapped into Cognito by CI |
+| `SCOUT_ADMIN_PASSWORD` | GitHub secret | Admin console password (set permanent by CI) |
 
-Admin users are created with `aws cognito-idp admin-create-user` (no public self-signup).
+Admin users are bootstrapped automatically: the `bootstrap-admin` job in `scout-prod.yaml` runs `scripts/create-admin-user.sh` after the pool is applied (idempotent — skips when the secrets are unset or the user already exists). To add an admin manually instead: `aws cognito-idp admin-create-user` + `admin-set-user-password --permanent` (no public self-signup).
 
 For local use: `cp .env.example .env` and fill in values.
 
