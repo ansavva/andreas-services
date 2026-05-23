@@ -17,23 +17,25 @@ from moto import mock_dynamodb
 
 EVENTS_TABLE_NAME = "scout-events"
 EMAILS_TABLE_NAME = "scout-emails"
+SENDERS_TABLE_NAME = "scout-senders"
+REGIONS_TABLE_NAME = "scout-regions"
+CATEGORIES_TABLE_NAME = "scout-categories"
 
 
-def _seed_events(table, events):
-    """Write a list of event dicts directly into the mock events table."""
+def _seed(table, items):
+    """Write a list of item dicts directly into a mock table."""
     with table.batch_writer() as batch:
-        for item in events:
+        for item in items:
             batch.put_item(Item=item)
 
 
-def _seed_emails(table, emails):
-    """Write a list of email dicts directly into the mock emails table."""
-    with table.batch_writer() as batch:
-        for item in emails:
-            batch.put_item(Item=item)
+# Backwards-compatible aliases used throughout the suite.
+_seed_events = _seed
+_seed_emails = _seed
 
 
-def _make_event(event_id, name, event_date="", email_id="email-1"):
+def _make_event(event_id, name, event_date="", email_id="email-1", status="published",
+                regions=None, categories=None, sender_key="news@example.com"):
     return {
         "event_id": event_id,
         "email_id": email_id,
@@ -44,6 +46,10 @@ def _make_event(event_id, name, event_date="", email_id="email-1"):
         "price": "Free",
         "description": "A test event",
         "links": [],
+        "status": status,
+        "regions": regions if regions is not None else ["nyc"],
+        "categories": categories if categories is not None else [],
+        "sender_key": sender_key,
     }
 
 
@@ -80,6 +86,27 @@ class TestEventsApi(unittest.TestCase):
             BillingMode="PAY_PER_REQUEST",
         )
 
+        self.senders_table = self.dynamodb.create_table(
+            TableName=SENDERS_TABLE_NAME,
+            KeySchema=[{"AttributeName": "sender_key", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "sender_key", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        self.regions_table = self.dynamodb.create_table(
+            TableName=REGIONS_TABLE_NAME,
+            KeySchema=[{"AttributeName": "slug", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "slug", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        self.categories_table = self.dynamodb.create_table(
+            TableName=CATEGORIES_TABLE_NAME,
+            KeySchema=[{"AttributeName": "slug", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "slug", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
         os.environ.pop("SCOUT_TABLE_SUFFIX", None)
         os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
@@ -93,24 +120,17 @@ class TestEventsApi(unittest.TestCase):
     # Helper: call the Lambda handler with a synthetic API GW event
     # ------------------------------------------------------------------
 
-    def _call(self, method="GET", path="/api/events", query=None):
-        # Simulate the API Gateway event shape: resource holds the route template
-        # (e.g. "/api/events/{id}") and pathParameters holds the extracted values.
-        if path.startswith("/api/events/"):
-            suffix = path[len("/api/events/"):]
-            resource = "/api/events/{id}"
-            path_params = {"id": suffix}
-        else:
-            resource = path
-            path_params = {}
-
+    def _call(self, method="GET", path="/api/events", query=None, body=None):
+        # Simulate an API Gateway proxy event. Routing anchors on the "/api/"
+        # segment of `path`, so we don't need to model resource templates.
         return self.lf.lambda_handler(
             {
                 "httpMethod": method,
-                "resource": resource,
+                "resource": path,
                 "path": path,
-                "pathParameters": path_params,
+                "pathParameters": {},
                 "queryStringParameters": query or {},
+                "body": json.dumps(body) if body is not None else None,
             },
             {},
         )
@@ -298,6 +318,156 @@ class TestEventsApi(unittest.TestCase):
         assert email["email_sender"] == "test@example.com"
         assert email["processed_at"] == "2026-05-01T10:00:00+00:00"
         assert email["event_count"] == 2
+
+    # ------------------------------------------------------------------
+    # status / region / category filtering (public)
+    # ------------------------------------------------------------------
+
+    def test_public_events_only_published(self):
+        _seed_events(self.table, [
+            _make_event("1", "Live", "2026-05-01", status="published"),
+            _make_event("2", "Pending", "2026-05-02", status="pending"),
+            _make_event("3", "Rejected", "2026-05-03", status="rejected"),
+        ])
+        body = json.loads(self._call()["body"])
+        names = [e["event_name"] for e in body["events"]]
+        assert names == ["Live"]
+
+    def test_public_events_filter_by_region(self):
+        _seed_events(self.table, [
+            _make_event("1", "NYC Show", "2026-05-01", regions=["nyc"]),
+            _make_event("2", "SF Show", "2026-05-02", regions=["sf"]),
+        ])
+        body = json.loads(self._call(query={"region": "sf"})["body"])
+        names = [e["event_name"] for e in body["events"]]
+        assert names == ["SF Show"]
+
+    def test_public_events_filter_by_category(self):
+        _seed_events(self.table, [
+            _make_event("1", "Gallery", "2026-05-01", categories=["art"]),
+            _make_event("2", "Dinner", "2026-05-02", categories=["food"]),
+        ])
+        body = json.loads(self._call(query={"category": "food"})["body"])
+        names = [e["event_name"] for e in body["events"]]
+        assert names == ["Dinner"]
+
+    def test_regionless_event_hidden_under_region_filter(self):
+        _seed_events(self.table, [_make_event("1", "Unclassified", "2026-05-01", regions=[])])
+        body = json.loads(self._call(query={"region": "nyc"})["body"])
+        assert body["count"] == 0
+
+    # ------------------------------------------------------------------
+    # GET /api/regions and /api/categories
+    # ------------------------------------------------------------------
+
+    def test_get_regions_only_with_events(self):
+        _seed(self.regions_table, [
+            {"slug": "nyc", "name": "New York City"},
+            {"slug": "sf", "name": "San Francisco"},
+        ])
+        _seed_events(self.table, [_make_event("1", "NYC", "2026-05-01", regions=["nyc"])])
+        body = json.loads(self._call(path="/api/regions")["body"])
+        slugs = [r["slug"] for r in body["regions"]]
+        assert slugs == ["nyc"]  # sf has no events
+        assert body["regions"][0]["count"] == 1
+
+    def test_get_categories_only_active(self):
+        _seed(self.categories_table, [
+            {"slug": "food", "name": "Food", "status": "active"},
+            {"slug": "fashion", "name": "Fashion", "status": "suggested"},
+        ])
+        _seed_events(self.table, [_make_event("1", "Dinner", "2026-05-01", categories=["food"])])
+        body = json.loads(self._call(path="/api/categories")["body"])
+        slugs = [c["slug"] for c in body["categories"]]
+        assert slugs == ["food"]
+        assert body["categories"][0]["count"] == 1
+
+    # ------------------------------------------------------------------
+    # Admin: event approval lifecycle
+    # ------------------------------------------------------------------
+
+    def test_admin_events_lists_all_statuses(self):
+        _seed_events(self.table, [
+            _make_event("1", "Live", status="published"),
+            _make_event("2", "Pending", status="pending"),
+        ])
+        body = json.loads(self._call(path="/api/admin/events", query={"status": "pending"})["body"])
+        assert [e["event_name"] for e in body["events"]] == ["Pending"]
+
+    def test_admin_approve_publishes_event(self):
+        _seed_events(self.table, [_make_event("e1", "Pending", "2026-05-01", status="pending")])
+        resp = self._call(method="POST", path="/api/admin/events/e1/approve")
+        assert resp["statusCode"] == 200
+        # Now visible publicly
+        body = json.loads(self._call()["body"])
+        assert [e["event_name"] for e in body["events"]] == ["Pending"]
+
+    def test_admin_reject_hides_event(self):
+        _seed_events(self.table, [_make_event("e1", "Bad", "2026-05-01", status="pending")])
+        self._call(method="POST", path="/api/admin/events/e1/reject")
+        item = self.table.get_item(Key={"event_id": "e1"})["Item"]
+        assert item["status"] == "rejected"
+
+    def test_admin_unpublish_returns_to_pending(self):
+        _seed_events(self.table, [_make_event("e1", "Live", "2026-05-01", status="published")])
+        self._call(method="POST", path="/api/admin/events/e1/unpublish")
+        item = self.table.get_item(Key={"event_id": "e1"})["Item"]
+        assert item["status"] == "pending"
+        assert json.loads(self._call()["body"])["count"] == 0
+
+    def test_admin_edit_event_fields(self):
+        _seed_events(self.table, [_make_event("e1", "Typo", "2026-05-01")])
+        resp = self._call(method="PUT", path="/api/admin/events/e1",
+                          body={"event_name": "Fixed", "categories": ["music"]})
+        assert resp["statusCode"] == 200
+        item = self.table.get_item(Key={"event_id": "e1"})["Item"]
+        assert item["event_name"] == "Fixed"
+        assert item["categories"] == ["music"]
+
+    # ------------------------------------------------------------------
+    # Admin: sender classification re-tags events
+    # ------------------------------------------------------------------
+
+    def test_admin_classify_sender_retags_and_reveals(self):
+        _seed(self.senders_table, [{
+            "sender_key": "promo@venue.com", "display_sender": "Promo",
+            "regions": [], "status": "pending", "first_seen": "2026-01-01T00:00:00+00:00",
+        }])
+        _seed_events(self.table, [
+            _make_event("e1", "Hidden", "2026-05-01", status="published",
+                        regions=[], sender_key="promo@venue.com"),
+        ])
+        # Initially hidden under any region
+        assert json.loads(self._call(query={"region": "nyc"})["body"])["count"] == 0
+
+        resp = self._call(method="PUT", path="/api/admin/senders/promo@venue.com",
+                          body={"regions": ["nyc"]})
+        assert resp["statusCode"] == 200
+
+        sender = self.senders_table.get_item(Key={"sender_key": "promo@venue.com"})["Item"]
+        assert sender["status"] == "classified"
+        assert sender["regions"] == ["nyc"]
+        # Region registry auto-created, and the event now shows under nyc
+        assert self.regions_table.get_item(Key={"slug": "nyc"}).get("Item") is not None
+        assert json.loads(self._call(query={"region": "nyc"})["body"])["count"] == 1
+
+    # ------------------------------------------------------------------
+    # Admin: category review queue
+    # ------------------------------------------------------------------
+
+    def test_admin_approve_category_makes_it_active(self):
+        _seed(self.categories_table, [
+            {"slug": "fashion", "name": "Fashion", "status": "suggested", "suggested_count": 3},
+        ])
+        resp = self._call(method="POST", path="/api/admin/categories", body={"slug": "fashion"})
+        assert resp["statusCode"] == 200
+        item = self.categories_table.get_item(Key={"slug": "fashion"})["Item"]
+        assert item["status"] == "active"
+
+    def test_admin_reject_category_deletes_it(self):
+        _seed(self.categories_table, [{"slug": "junk", "name": "Junk", "status": "suggested"}])
+        self._call(method="DELETE", path="/api/admin/categories/junk")
+        assert self.categories_table.get_item(Key={"slug": "junk"}).get("Item") is None
 
     # ------------------------------------------------------------------
     # CORS preflight
