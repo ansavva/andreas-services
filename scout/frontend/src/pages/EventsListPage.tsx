@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Calendar } from "lucide-react";
 import { useEvents } from "@/hooks/useEvents";
 import { Header } from "@/components/Header";
@@ -8,8 +9,34 @@ import { SkeletonCard } from "@/components/SkeletonCard";
 import type { SortOrder } from "@/types";
 
 export function EventsListPage() {
-  const [upcomingOnly, setUpcomingOnly] = useState(false);
-  const [sortOrder, setSortOrder] = useState<SortOrder>("date-asc");
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const upcomingOnly = searchParams.get("upcoming") === "true";
+  const sortOrder = (searchParams.get("sort") as SortOrder | null) ?? "date-asc";
+
+  function setUpcomingOnly(value: boolean) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value) next.set("upcoming", "true");
+        else next.delete("upcoming");
+        return next;
+      },
+      { replace: true }
+    );
+  }
+
+  function setSortOrder(value: SortOrder) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value === "date-asc") next.delete("sort");
+        else next.set("sort", value);
+        return next;
+      },
+      { replace: true }
+    );
+  }
 
   const { events, loading, error, refetch } = useEvents(upcomingOnly);
 
