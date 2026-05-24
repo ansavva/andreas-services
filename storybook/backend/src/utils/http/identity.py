@@ -1,10 +1,7 @@
-import json
 from functools import wraps
 from flask import request, jsonify
 from jose import jwt, JWTError
-from jose.utils import base64url_decode
 import requests
-import os
 
 class CognitoJWTValidator:
     def __init__(self, region, user_pool_id, app_client_id):

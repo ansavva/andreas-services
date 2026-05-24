@@ -1,5 +1,4 @@
-from flask import Blueprint, request, jsonify, send_file
-from io import BytesIO
+from flask import Blueprint, request, jsonify
 
 from src.services.image_service import ImageService
 from src.utils.logging.error_logging import log_error

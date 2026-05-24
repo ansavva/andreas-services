@@ -1,4 +1,3 @@
-from typing import Optional
 from flask import request
 
 from src.models.model_project import ModelProject

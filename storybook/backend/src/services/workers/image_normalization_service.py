@@ -1,5 +1,4 @@
 import json
-import uuid
 from datetime import datetime
 from io import BytesIO
 from typing import Any, Dict, Iterable

@@ -12,11 +12,9 @@ import json
 import os
 import sys
 import unittest
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import boto3
-import pytest
 from moto import mock_dynamodb
 
 EVENTS_TABLE_NAME = "scout-events"

@@ -168,7 +168,7 @@ class CharacterAssetRepo:
         First unapproves all other assets of the same type in the project (read-modify-write).
         """
         asset = self.get_by_id(asset_id)
-        user_id = self._get_user_id()
+        _user_id = self._get_user_id()
         now = datetime.now(timezone.utc).isoformat()
 
         # Unapprove all other assets of the same type in the project

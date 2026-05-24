@@ -24,3 +24,9 @@ repos:
         # Only validate root configs (envs). Reusable modules have no
         # provider config and fail standalone validate.
         files: ^(storybook/infra/envs|infra)/.*\.tf$
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.8
+    hooks:
+      - id: ruff-check
+        files: ^(scout|storybook|humbugg)/.*\.py$

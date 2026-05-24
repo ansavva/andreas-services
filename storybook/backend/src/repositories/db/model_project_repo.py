@@ -3,7 +3,7 @@ from flask import request
 import uuid
 from datetime import datetime, timezone
 
-from boto3.dynamodb.conditions import Key, Attr
+from boto3.dynamodb.conditions import Key
 from src.repositories.db.database import _table
 from src.models.model_project import ModelProject
 

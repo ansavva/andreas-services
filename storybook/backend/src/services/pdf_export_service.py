@@ -6,7 +6,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 from reportlab.platypus import Paragraph, Frame
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.enums import TA_CENTER
 from PIL import Image
 import io
 
@@ -129,7 +129,6 @@ class PDFExportService:
 
         # Calculate layout
         image_area_height = height * 0.65  # 65% for image
-        text_area_height = height * 0.25   # 25% for text
         footer_height = height * 0.10      # 10% for footer
 
         # Draw illustration if available
@@ -163,7 +162,7 @@ class PDFExportService:
                 img_reader = ImageReader(io.BytesIO(image_bytes))
                 pdf.drawImage(img_reader, x, y, img_width, img_height)
 
-            except Exception as e:
+            except Exception:
                 # If image fails, draw placeholder
                 self._draw_image_placeholder(pdf, width, height, image_area_height)
         else:

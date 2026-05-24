@@ -3,7 +3,6 @@ import uuid
 from typing import List, Optional
 
 import boto3
-from boto3.dynamodb.conditions import Key, Attr
 
 from src.repositories.helpers import normalize_document, normalize_many
 

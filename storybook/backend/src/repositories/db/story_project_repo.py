@@ -1,9 +1,9 @@
-from typing import List, Optional
+from typing import List
 from flask import request
 import uuid
 from datetime import datetime, timezone
 
-from boto3.dynamodb.conditions import Key, Attr
+from boto3.dynamodb.conditions import Key
 from src.repositories.db.database import _table
 from src.models.story_project import StoryProject
 
@@ -144,12 +144,6 @@ class StoryProjectRepo:
         Raises:
             ValueError: If project not found or doesn't belong to user
         """
-        from src.repositories.db.child_profile_repo import ChildProfileRepo
-        from src.repositories.db.character_asset_repo import CharacterAssetRepo
-        from src.repositories.db.story_state_repo import StoryStateRepo
-        from src.repositories.db.story_page_repo import StoryPageRepo
-        from src.repositories.db.chat_message_repo import ChatMessageRepo
-        from src.repositories.db.image_repo import ImageRepo
 
         # Validates ownership
         self.get_project(project_id)

@@ -179,7 +179,7 @@ class ImageService:
             raise ValueError("IMAGE_UPLOAD_QUEUE_URL must be set")
 
         image_id = image_id or str(uuid.uuid4())
-        user_id = self._get_user_id()
+        _user_id = self._get_user_id()
         project_id = str(project_id)
 
         temp_key = temp_key or self._build_temp_upload_key(project_id, image_id, filename)

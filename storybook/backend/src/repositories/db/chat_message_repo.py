@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any
 from flask import request
 import uuid
 from datetime import datetime, timezone

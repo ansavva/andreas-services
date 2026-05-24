@@ -46,6 +46,28 @@ jobs:
         run: tflint --recursive --chdir=storybook/infra --config "$(pwd)/.tflint.hcl"
 
   # ---------------------------------------------------------------------------
+  # Lint Python backend with ruff.
+  # ---------------------------------------------------------------------------
+  lint-python:
+    name: Lint Python (ruff)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Lint Python (ruff)
+        run: |
+          pip install --quiet ruff==0.15.8
+          ruff check storybook
+
+  # ---------------------------------------------------------------------------
   # Tier 1 – verify Docker build + frontend build (no push, no deploy)
   # ---------------------------------------------------------------------------
   build-backend:

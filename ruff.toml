@@ -1,0 +1,10 @@
+# Shared ruff config for every Python backend in the monorepo.
+# Mirrors the pre-commit hook and the per-service CI `ruff check` step.
+target-version = "py311"
+line-length = 100
+
+[lint]
+# ruff's default rule set: pyflakes (F) + the pycodestyle error subset
+# (E4 imports, E7 statements, E9 syntax/runtime). Keeps the baseline
+# meaningful without the noise of full pycodestyle/line-length churn.
+select = ["E4", "E7", "E9", "F"]
