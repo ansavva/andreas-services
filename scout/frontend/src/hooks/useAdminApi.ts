@@ -73,6 +73,11 @@ export function useAdminApi() {
         }),
       listAdminEmails: () =>
         request<{ emails: ProcessedEmail[]; count: number }>(`/admin/emails`),
+      triggerEmailProcessor: () =>
+        request<{ status: string; function: string; invocation_status: number }>(
+          `/admin/email-processor/run`,
+          { method: "POST" }
+        ),
       listSenders: (status: string) =>
         request<{ senders: Sender[]; count: number }>(
           `/admin/senders?status=${encodeURIComponent(status)}`

@@ -10,6 +10,7 @@ import os
 import sys
 import unittest
 from datetime import date, timedelta
+from unittest import mock
 
 import boto3
 from moto import mock_dynamodb
@@ -316,6 +317,35 @@ class TestEventsApi(unittest.TestCase):
         assert email["email_sender"] == "test@example.com"
         assert email["processed_at"] == "2026-05-01T10:00:00+00:00"
         assert email["event_count"] == 2
+
+    # ------------------------------------------------------------------
+    # POST /api/admin/email-processor/run
+    # ------------------------------------------------------------------
+
+    def test_trigger_email_processor_invokes_async(self):
+        with mock.patch.object(
+            self.lf.lambda_client, "invoke", return_value={"StatusCode": 202}
+        ) as invoke:
+            resp = self._call(method="POST", path="/api/admin/email-processor/run")
+
+        assert resp["statusCode"] == 200
+        body = json.loads(resp["body"])
+        assert body["status"] == "started"
+        assert body["function"] == "scout-email-processor"
+        assert body["invocation_status"] == 202
+
+        invoke.assert_called_once()
+        kwargs = invoke.call_args.kwargs
+        assert kwargs["FunctionName"] == "scout-email-processor"
+        assert kwargs["InvocationType"] == "Event"
+
+    def test_trigger_email_processor_rejects_get(self):
+        resp = self._call(method="GET", path="/api/admin/email-processor/run")
+        assert resp["statusCode"] == 404
+
+    def test_email_processor_unknown_subpath_404(self):
+        resp = self._call(method="POST", path="/api/admin/email-processor")
+        assert resp["statusCode"] == 404
 
     # ------------------------------------------------------------------
     # status / region / category filtering (public)

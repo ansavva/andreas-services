@@ -36,7 +36,12 @@ _SENDERS_TABLE = f"scout-senders{_SUFFIX}"
 _REGIONS_TABLE = f"scout-regions{_SUFFIX}"
 _CATEGORIES_TABLE = f"scout-categories{_SUFFIX}"
 
+# The email-processor Lambda shares the suffix convention, so its name is
+# derived the same way the table names are.
+_EMAIL_PROCESSOR_FN = f"scout-email-processor{_SUFFIX}"
+
 dynamodb = boto3.resource("dynamodb")
+lambda_client = boto3.client("lambda")
 table = dynamodb.Table(_EVENTS_TABLE)
 emails_table = dynamodb.Table(_EMAILS_TABLE)
 senders_table = dynamodb.Table(_SENDERS_TABLE)
@@ -381,6 +386,25 @@ def delete_category(slug):
     categories_table.delete_item(Key={"slug": slug})
 
 
+def trigger_email_processor():
+    """
+    Fire the email-processor Lambda on demand. Invoked asynchronously
+    (InvocationType="Event") because the processor can run up to 300s, well past
+    this Lambda's 30s timeout and API Gateway's 29s integration cap — so we
+    return immediately and the run continues in the background.
+    """
+    resp = lambda_client.invoke(
+        FunctionName=_EMAIL_PROCESSOR_FN,
+        InvocationType="Event",
+        Payload=b"{}",
+    )
+    return {
+        "status": "started",
+        "function": _EMAIL_PROCESSOR_FN,
+        "invocation_status": resp["StatusCode"],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Request routing
 # ---------------------------------------------------------------------------
@@ -447,6 +471,10 @@ def _route_admin(method, parts, query, body):
     if sub == ["emails"] and method == "GET":
         emails = get_all_emails()
         return ok({"emails": emails, "count": len(emails)})
+
+    if sub and sub[0] == "email-processor":
+        if sub[1:] == ["run"] and method == "POST":
+            return ok(trigger_email_processor())
 
     if sub and sub[0] == "events":
         rest = sub[1:]
