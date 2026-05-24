@@ -85,6 +85,22 @@ jobs:
         run: |
           echo "No Terraform state for PR ${PR_NUMBER} — nothing to destroy."
 
+      # AWS Lambda auto-creates /aws/lambda/<fn> (no retention) on first
+      # invocation if Terraform hasn't already. Those auto-created groups are
+      # not in the PR's Terraform state, so `terraform destroy` deletes the
+      # function but orphans the log group. Delete them explicitly by name so
+      # teardown is complete regardless of who created them. Idempotent.
+      - name: Delete Lambda CloudWatch log groups
+        run: |
+          for FN in scout-email-processor scout-events-api; do
+            LG="/aws/lambda/${FN}-pr-${PR_NUMBER}"
+            if aws logs delete-log-group --log-group-name "${LG}" 2>/dev/null; then
+              echo "Deleted log group ${LG}"
+            else
+              echo "No log group ${LG} to delete (already gone)."
+            fi
+          done
+
       - name: Delete PR frontend from shared preview bucket
         run: |
           PR_PREVIEW_BUCKET=$(aws ssm get-parameter \
