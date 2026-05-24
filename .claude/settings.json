@@ -1,5 +1,17 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if ! command -v aws >/dev/null 2>&1; then pip install -q --break-system-packages awscli; fi",
+            "timeout": 60,
+            "statusMessage": "Setting up AWS CLI..."
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
