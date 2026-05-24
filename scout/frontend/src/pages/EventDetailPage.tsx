@@ -13,7 +13,9 @@ import {
   Share2,
 } from "lucide-react";
 import { useEvent } from "@/hooks/useEvent";
+import { useCategories } from "@/hooks/useCategories";
 import { Header } from "@/components/Header";
+import { CategoryChips } from "@/components/CategoryChips";
 import { displayUrl, formatDate, isUpcoming } from "@/utils/formatters";
 
 export function EventDetailPage() {
@@ -21,6 +23,8 @@ export function EventDetailPage() {
   const location = useLocation();
   const fromSearch = (location.state as { fromSearch?: string } | null)?.fromSearch ?? "";
   const { event, loading, error } = useEvent(eventId ?? "");
+  const { categories } = useCategories();
+  const backTo = event?.regions?.[0] ? `/${event.regions[0]}` : "/";
   const [copied, setCopied] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
 
@@ -43,7 +47,7 @@ export function EventDetailPage() {
       <main className="max-w-3xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <Link
-            to={{ pathname: "/", search: fromSearch }}
+            to={{ pathname: backTo, search: fromSearch }}
             className="inline-flex items-center gap-1.5 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
           >
             <ArrowLeft size={16} />
@@ -99,6 +103,8 @@ export function EventDetailPage() {
                   </span>
                 )}
               </div>
+
+              <CategoryChips slugs={event.categories ?? []} categories={categories} />
 
               <dl className="flex flex-col gap-2.5 text-sm text-[var(--color-text-secondary)]">
                 {event.date && (

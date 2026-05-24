@@ -43,6 +43,48 @@ resource "aws_dynamodb_table" "emails" {
   tags = local.common_tags
 }
 
+resource "aws_dynamodb_table" "senders" {
+  name         = "scout-senders"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "sender_key"
+
+  attribute {
+    name = "sender_key"
+    type = "S"
+  }
+
+  server_side_encryption { enabled = true }
+  tags = local.common_tags
+}
+
+resource "aws_dynamodb_table" "regions" {
+  name         = "scout-regions"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "slug"
+
+  attribute {
+    name = "slug"
+    type = "S"
+  }
+
+  server_side_encryption { enabled = true }
+  tags = local.common_tags
+}
+
+resource "aws_dynamodb_table" "categories" {
+  name         = "scout-categories"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "slug"
+
+  attribute {
+    name = "slug"
+    type = "S"
+  }
+
+  server_side_encryption { enabled = true }
+  tags = local.common_tags
+}
+
 module "storage" {
   source = "../../modules/storage"
 
@@ -107,16 +149,34 @@ module "api_domain" {
   tags = local.common_tags
 }
 
+module "auth" {
+  source = "../../modules/auth"
+
+  name = "scout"
+  callback_urls = [
+    "https://${local.domain_name}/app",
+    "http://localhost:5173/app",
+  ]
+  logout_urls = [
+    "https://${local.domain_name}/app",
+    "http://localhost:5173/app",
+  ]
+
+  tags = local.common_tags
+}
+
 module "api_gateway" {
   source = "../../modules/api_gateway"
 
-  lambda_invoke_arn    = module.compute.events_api_invoke_arn
-  lambda_function_name = module.compute.events_api_function_name
-  custom_domain_name   = module.api_domain.domain_name
-  base_path            = ""
-  stage_name           = "prod"
-  throttle_rate        = 10
-  throttle_burst       = 50
+  lambda_invoke_arn         = module.compute.events_api_invoke_arn
+  lambda_function_name      = module.compute.events_api_function_name
+  custom_domain_name        = module.api_domain.domain_name
+  base_path                 = ""
+  stage_name                = "prod"
+  throttle_rate             = 10
+  throttle_burst            = 50
+  cognito_user_pool_arn     = module.auth.user_pool_arn
+  enable_cognito_authorizer = true
 
   tags = local.common_tags
 }

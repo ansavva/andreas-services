@@ -1,12 +1,16 @@
-variable "pr_number" {
-  description = "PR number for naming this ephemeral Cognito pool"
+variable "name" {
+  description = "Name for the Cognito user pool (e.g. \"scout\" for prod, \"scout-pr-<N>\" for previews)"
   type        = string
 }
 
-variable "frontend_base_url" {
-  description = "Base URL of the PR preview frontend (e.g. https://scout-pr.andreas.services)"
-  type        = string
-  default     = "https://scout-pr.andreas.services"
+variable "callback_urls" {
+  description = "Allowed OAuth callback URLs for the user pool client"
+  type        = list(string)
+}
+
+variable "logout_urls" {
+  description = "Allowed logout URLs for the user pool client"
+  type        = list(string)
 }
 
 variable "tags" {

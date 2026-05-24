@@ -197,6 +197,52 @@ jobs:
             --name /scout/prod/s3-bucket  --value "$(tf s3_bucket)"
           aws ssm put-parameter --overwrite --type String \
             --name /scout/prod/cf-dist-id --value "$(tf cloudfront_distribution_id)"
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/prod/cognito-user-pool-id --value "$(tf cognito_user_pool_id)"
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/prod/cognito-client-id --value "$(tf cognito_user_pool_client_id)"
+
+  # ---------------------------------------------------------------------------
+  # Bootstrap the first Cognito admin user (the pool is admin-create-user only).
+  # Idempotent and self-skipping: does nothing if the admin secrets are unset or
+  # the user already exists, so it never blocks a deploy.
+  # ---------------------------------------------------------------------------
+  bootstrap-admin:
+    name: Bootstrap Admin User
+    needs: [deploy-infra]
+    if: |
+      !cancelled()
+      && needs.deploy-infra.result == 'success'
+    runs-on: ubuntu-latest
+    environment: scout-production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create admin user
+        env:
+          ADMIN_EMAIL: ${{ secrets.SCOUT_ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.SCOUT_ADMIN_PASSWORD }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ADMIN_EMAIL}" ] || [ -z "${ADMIN_PASSWORD}" ]; then
+            echo "SCOUT_ADMIN_EMAIL / SCOUT_ADMIN_PASSWORD not set — skipping admin bootstrap."
+            exit 0
+          fi
+          USER_POOL_ID=$(aws ssm get-parameter --name /scout/prod/cognito-user-pool-id \
+            --query Parameter.Value --output text)
+          export USER_POOL_ID
+          bash scout/scripts/create-admin-user.sh
 
   # ---------------------------------------------------------------------------
   # Update Lambda env vars and pin function code to :sha. No Docker work —
@@ -338,6 +384,8 @@ jobs:
           echo "VITE_API_URL=$(get api-url)"            >> "$GITHUB_ENV"
           echo "S3_BUCKET=$(get s3-bucket)"             >> "$GITHUB_ENV"
           echo "CF_DIST_ID=$(get cf-dist-id)"           >> "$GITHUB_ENV"
+          echo "VITE_COGNITO_USER_POOL_ID=$(get cognito-user-pool-id)" >> "$GITHUB_ENV"
+          echo "VITE_COGNITO_CLIENT_ID=$(get cognito-client-id)"       >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: cd scout/frontend && npm ci

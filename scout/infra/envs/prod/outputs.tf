@@ -32,3 +32,13 @@ output "ecr_events_api_url" {
   description = "ECR URL for events API"
   value       = module.compute.ecr_events_api_url
 }
+
+output "cognito_user_pool_id" {
+  description = "Cognito user pool ID for the admin console (VITE_COGNITO_USER_POOL_ID)"
+  value       = module.auth.user_pool_id
+}
+
+output "cognito_user_pool_client_id" {
+  description = "Cognito user pool client ID for the admin console (VITE_COGNITO_CLIENT_ID)"
+  value       = module.auth.user_pool_client_id
+}

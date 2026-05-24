@@ -143,54 +143,50 @@ class TestCors:
 
 
 # ------------------------------------------------------------------
-# GET /admin/emails
+# Admin routes are protected by the Cognito authorizer
 # ------------------------------------------------------------------
 
-class TestAdminEmails:
+class TestAdminAuth:
+    """
+    The /api/admin/* subtree sits behind a Cognito authorizer, so
+    unauthenticated requests must be rejected. CORS preflight (OPTIONS) stays
+    open so the browser can negotiate before attaching the token.
+    """
 
-    def test_returns_200(self):
+    def test_admin_emails_requires_auth(self):
         resp = get("/admin/emails")
+        assert resp.status_code in (401, 403)
+
+    def test_admin_events_requires_auth(self):
+        resp = get("/admin/events")
+        assert resp.status_code in (401, 403)
+
+    def test_admin_senders_requires_auth(self):
+        resp = get("/admin/senders")
+        assert resp.status_code in (401, 403)
+
+    def test_admin_options_preflight_is_open(self):
+        resp = options("/admin/emails")
         assert resp.status_code == 200
 
-    def test_response_is_json(self):
-        resp = get("/admin/emails")
-        assert isinstance(resp.json(), dict)
 
-    def test_response_has_emails_and_count(self):
-        resp = get("/admin/emails")
+# ------------------------------------------------------------------
+# Public registries
+# ------------------------------------------------------------------
+
+class TestRegionsAndCategories:
+
+    def test_regions_returns_list(self):
+        resp = get("/regions")
+        assert resp.status_code == 200
         data = resp.json()
-        assert "emails" in data
-        assert "count" in data
+        assert isinstance(data.get("regions"), list)
 
-    def test_emails_is_a_list(self):
-        resp = get("/admin/emails")
-        assert isinstance(resp.json()["emails"], list)
-
-    def test_count_matches_emails_length(self):
-        resp = get("/admin/emails")
+    def test_categories_returns_list(self):
+        resp = get("/categories")
+        assert resp.status_code == 200
         data = resp.json()
-        assert data["count"] == len(data["emails"])
-
-    def test_cors_header_present(self):
-        resp = get("/admin/emails")
-        assert "access-control-allow-origin" in {k.lower() for k in resp.headers}
-
-    def test_email_items_have_required_fields(self):
-        resp = get("/admin/emails")
-        for email in resp.json()["emails"]:
-            assert "email_id" in email, f"Missing email_id in {email}"
-            assert "email_subject" in email, f"Missing email_subject in {email}"
-            assert "email_sender" in email, f"Missing email_sender in {email}"
-            assert "processed_at" in email, f"Missing processed_at in {email}"
-            assert "event_count" in email, f"Missing event_count in {email}"
-
-    def test_emails_sorted_newest_first(self):
-        resp = get("/admin/emails")
-        emails = resp.json()["emails"]
-        if len(emails) < 2:
-            pytest.skip("Fewer than 2 emails — skipping sort order test")
-        dates = [e["processed_at"] for e in emails]
-        assert dates == sorted(dates, reverse=True)
+        assert isinstance(data.get("categories"), list)
 
 
 # ------------------------------------------------------------------

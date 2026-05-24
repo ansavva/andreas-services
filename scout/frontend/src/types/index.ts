@@ -12,6 +12,32 @@ export interface Event {
   email_subject: string;
   email_sender: string;
   source_email_date: string;
+  status: string;
+  regions: string[];
+  categories: string[];
+  sender_key?: string;
+}
+
+export interface Region {
+  slug: string;
+  name: string;
+  count: number;
+}
+
+export interface Category {
+  slug: string;
+  name: string;
+  status?: string;
+  count?: number;
+  suggested_count?: number;
+}
+
+export interface Sender {
+  sender_key: string;
+  display_sender: string;
+  regions: string[];
+  status: string;
+  first_seen?: string;
 }
 
 export interface ProcessedEmail {

@@ -17,9 +17,12 @@ from datetime import datetime, timedelta, timezone
 import anthropic
 import boto3
 import html2text
+from boto3.dynamodb.conditions import Attr
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+
+import taxonomy
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -39,6 +42,8 @@ _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(f"scout-events{_SUFFIX}")
 emails_table = dynamodb.Table(f"scout-emails{_SUFFIX}")
+senders_table = dynamodb.Table(f"scout-senders{_SUFFIX}")
+categories_table = dynamodb.Table(f"scout-categories{_SUFFIX}")
 
 
 _TRACKING_PIXEL_SIGNALS = (
@@ -192,12 +197,102 @@ def extract_email_content(message):
     return subject, sender, date_str, content[:6000], image_url
 
 
-def extract_events_with_claude(subject, sender, content):
+def resolve_sender_regions(sender_key, display):
+    """
+    Look up a sender's region classification, creating a pending record the
+    first time a sender is seen.
+
+    Returns the list of region slugs for the sender. Unknown / pending senders
+    return [] — their events are stored region-less and stay hidden from the
+    public site until an admin classifies the sender.
+    """
+    result = senders_table.get_item(Key={"sender_key": sender_key})
+    item = result.get("Item")
+    if item is not None:
+        return item.get("regions") or []
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    senders_table.put_item(Item={
+        "sender_key": sender_key,
+        "display_sender": display,
+        "regions": [],
+        "status": "pending",
+        "first_seen": now_iso,
+        "updated_at": now_iso,
+    })
+    return []
+
+
+def load_active_category_vocab():
+    """Return active categories as a list of {'slug', 'name'} dicts."""
+    items = []
+    result = categories_table.scan(FilterExpression=Attr("status").eq("active"))
+    items.extend(result.get("Items", []))
+    while "LastEvaluatedKey" in result:
+        result = categories_table.scan(
+            FilterExpression=Attr("status").eq("active"),
+            ExclusiveStartKey=result["LastEvaluatedKey"],
+        )
+        items.extend(result.get("Items", []))
+    return [{"slug": i["slug"], "name": i.get("name", i["slug"])} for i in items]
+
+
+def record_suggested_category(name):
+    """
+    Upsert an AI-proposed category as 'suggested' (the admin review queue) and
+    return its slug. Existing active categories are left untouched; repeat
+    suggestions bump suggested_count.
+    """
+    slug = taxonomy.slugify(name)
+    if not slug:
+        return None
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    existing = categories_table.get_item(Key={"slug": slug}).get("Item")
+    if existing is None:
+        categories_table.put_item(Item={
+            "slug": slug,
+            "name": name.strip(),
+            "status": "suggested",
+            "created_at": now_iso,
+            "suggested_count": 1,
+        })
+    elif existing.get("status") == "suggested":
+        categories_table.update_item(
+            Key={"slug": slug},
+            UpdateExpression=(
+                "SET suggested_count = if_not_exists(suggested_count, :z) + :one, "
+                "updated_at = :now"
+            ),
+            ExpressionAttributeValues={":one": 1, ":z": 0, ":now": now_iso},
+        )
+    return slug
+
+
+def resolve_event_categories(event, vocab_slugs):
+    """
+    Combine the categories Claude picked from the controlled vocabulary with
+    any new proposals (recorded as suggested) into the event's final slug list.
+    """
+    chosen = [c for c in (event.get("categories") or []) if c in vocab_slugs]
+    for proposed in event.get("new_categories") or []:
+        slug = record_suggested_category(proposed)
+        if slug and slug not in chosen:
+            chosen.append(slug)
+    return chosen
+
+
+def extract_events_with_claude(subject, sender, content, category_vocab=None):
     """
     Call Claude to extract structured event data from email content.
 
-    Returns a list of event dicts (an email may contain multiple events).
+    Returns a list of event dicts (an email may contain multiple events). When
+    a controlled category vocabulary is supplied, Claude tags each event from
+    it and may propose new categories under `new_categories`.
     """
+    vocab = category_vocab or []
+    vocab_str = ", ".join(c["slug"] for c in vocab) if vocab else "(none defined yet)"
+
     prompt = f"""Extract event information from this email. Return ONLY a JSON array where each element is an event object with these exact fields:
 - event_name: string
 - date: ISO date string (YYYY-MM-DD) or null if not found
@@ -206,6 +301,8 @@ def extract_events_with_claude(subject, sender, content):
 - price: string or null if not found
 - description: string (brief summary)
 - links: array of relevant URLs found in the email
+- categories: array of category slugs that best describe this event, chosen ONLY from this controlled list: [{vocab_str}]
+- new_categories: array of short, lowercase human-readable category names that this event clearly needs but that are NOT already in the list above (empty array if none)
 
 If the email contains multiple events, return one object per event.
 If no events are found, return an empty array [].
@@ -232,19 +329,30 @@ Return only valid JSON array, no other text:"""
     return json.loads(raw)
 
 
-def store_events(events, email_id, subject, sender, source_date, image_url=""):
+def store_events(events, email_id, subject, sender, source_date, image_url="", category_vocab=None):
     """
     Persist extracted events to DynamoDB.
 
     Writes one record to scout-emails (email metadata) and one record per
-    event to scout-events (event data only, no duplicated email fields).
+    event to scout-events. Each event is stamped with:
+      - status="pending" (awaits admin approval before it is published),
+      - regions resolved from the sender's classification (empty until the
+        sender is classified, which keeps the event hidden from the public),
+      - categories chosen from the controlled vocabulary plus any AI proposals.
     """
     now_iso = datetime.now(timezone.utc).isoformat()
+
+    sender_key, display = taxonomy.normalize_sender(sender)
+    regions = resolve_sender_regions(sender_key, display)
+    vocab = load_active_category_vocab() if category_vocab is None else category_vocab
+    vocab_slugs = {c["slug"] for c in vocab}
 
     emails_table.put_item(Item={
         "email_id": email_id,
         "email_subject": subject,
         "email_sender": sender,
+        "sender_key": sender_key,
+        "regions": regions,
         "source_email_date": source_date,
         "image_url": image_url,
         "processed_at": now_iso,
@@ -264,6 +372,10 @@ def store_events(events, email_id, subject, sender, source_date, image_url=""):
             "price": event.get("price") or "",
             "description": event.get("description") or "",
             "links": event.get("links") or [],
+            "status": "pending",
+            "regions": regions,
+            "categories": resolve_event_categories(event, vocab_slugs),
+            "sender_key": sender_key,
         }
         table.put_item(Item=item)
         stored += 1
@@ -290,6 +402,8 @@ def lambda_handler(event, context):
         messages = list_recent_messages(service, label_id)
         logger.info("Found %d messages to process", len(messages))
 
+        category_vocab = load_active_category_vocab()
+
         for msg_stub in messages:
             email_id = msg_stub["id"]
 
@@ -302,8 +416,10 @@ def lambda_handler(event, context):
                 subject, sender, source_date, content, image_url = extract_email_content(message)
                 logger.info("Processing email: %s from %s", subject, sender)
 
-                events = extract_events_with_claude(subject, sender, content)
-                count = store_events(events, email_id, subject, sender, source_date, image_url)
+                events = extract_events_with_claude(subject, sender, content, category_vocab)
+                count = store_events(
+                    events, email_id, subject, sender, source_date, image_url, category_vocab
+                )
                 total_events += count
                 if not events:
                     logger.info("No events found in email: %s", subject)

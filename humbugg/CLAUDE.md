@@ -16,7 +16,7 @@ Humbugg is a gift-exchange platform served at `humbugg.andreas.services`:
 | Frontend | Vite + React + Tailwind SPA on S3 + CloudFront |
 | Auth | AWS Cognito (User Pool + App Client); backend validates JWTs, SPA uses password-grant via `/oauth2/token` |
 | Data | DynamoDB — tables `humbugg-profiles`, `humbugg-groups`, `humbugg-groupmembers` |
-| Infra | CloudFormation in `humbugg/infra/` |
+| Infra | Terraform in `humbugg/infra/` (`modules/` + `envs/prod`) |
 
 ## Directory Structure
 
@@ -33,18 +33,18 @@ humbugg/
 │   ├── tsconfig.json
 │   ├── tailwind.config.js
 │   └── src/
-├── infra/
-│   ├── backend-lambda.yaml     # Lambda container + API Gateway + Cognito references
-│   ├── frontend-cloudfront.yaml # S3 + CloudFront + Route53 alias
+├── infra/                      # Terraform
+│   ├── modules/                # auth, compute, hosting, storage
+│   └── envs/prod/              # Lambda + API Gateway + Cognito, S3 + CloudFront + Route53 alias
 └── CLAUDE.md                   # ← this file
 ```
 
 ## Shared Infrastructure
 
-The CloudFormation templates reference (but don't own) two shared resources from `infra/envs/shared`:
+Terraform references (but doesn't own) two shared resources via `data` sources:
 
-- **ACM wildcard certificate** (`*.andreas.services`) — looked up at deploy time via `aws acm list-certificates`
-- **Route53 hosted zone** (`andreas.services`) — looked up at deploy time via `aws route53 list-hosted-zones`
+- **ACM wildcard certificate** (`*.andreas.services`, us-east-1) — `data "aws_acm_certificate"`
+- **Route53 hosted zone** (`andreas.services`) — `data "aws_route53_zone"`
 
 The frontend stack adds a single Route53 A-alias record for `humbugg.andreas.services` pointing at its CloudFront distribution.
 
@@ -90,7 +90,7 @@ All secrets/values live in the `humbugg-production` GitHub Actions environment. 
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `.github/workflows/humbugg-pr.yml` | PR touching `humbugg/**` | Build backend Docker image (verify only), build frontend, no push |
-| `.github/workflows/humbugg-prod.yaml` | Push to `main` touching `humbugg/**`, or `workflow_dispatch`, or `workflow_run` after shared infra applies | Single combined deploy. `detect-changes` → `deploy-infra` (CloudFormation backend + frontend stacks, writes `/humbugg/prod/*` SSM) → `deploy-backend` + `deploy-frontend` in parallel. Gated by `humbugg-production` environment. |
+| `.github/workflows/humbugg-prod.yaml` | Push to `main` touching `humbugg/**`, or `workflow_dispatch`, or `workflow_run` after shared infra applies | Single combined deploy. `detect-changes` → `deploy-infra` (Terraform apply on `humbugg/infra/envs/prod`) → `deploy-backend` + `deploy-frontend` in parallel. Gated by `humbugg-production` environment. |
 
 ### Combined deploy workflow (`humbugg-prod.yaml`)
 
