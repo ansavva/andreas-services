@@ -51,6 +51,11 @@ jobs:
       - name: Install Poetry
         run: pip install --quiet poetry==2.2.1 poetry-plugin-export
 
+      - name: Lint Python (ruff)
+        run: |
+          pip install --quiet ruff==0.15.8
+          ruff check scout
+
       - name: Install events-api test deps
         run: |
           cd scout/backend/events-api

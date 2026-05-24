@@ -2,7 +2,6 @@ from flask import request
 from typing import Optional, List
 from datetime import datetime, timezone
 
-from boto3.dynamodb.conditions import Key
 from src.repositories.db.database import _table
 from src.models.user_profile import UserProfile
 
@@ -83,7 +82,6 @@ class UserProfileRepo:
         now = datetime.now(timezone.utc).isoformat()
         set_parts = ['updated_at = :updated_at']
         expr_values = {':updated_at': now}
-        expr_names = {}
 
         if display_name is not None:
             set_parts.append('display_name = :display_name')

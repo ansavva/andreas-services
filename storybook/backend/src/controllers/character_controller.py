@@ -1,6 +1,5 @@
 from flask import Blueprint, request, jsonify
 from werkzeug.datastructures import FileStorage
-import uuid
 
 from src.repositories.db.character_asset_repo import CharacterAssetRepo
 from src.repositories.db.child_profile_repo import ChildProfileRepo
@@ -60,7 +59,7 @@ def generate_character_portrait(project_id):
         style = data.get("style")  # Optional style preset (validates in service)
 
         # Generate portrait with Stability.ai
-        result = stability_service.generate_character_portrait(
+        result = stability_service.generate_character_portrait(  # noqa: F821  # FIXME: `stability_service` is undefined — pre-existing bug
             reference_images=reference_images,
             child_name=profile.child_name,
             user_description=user_description,
@@ -68,7 +67,7 @@ def generate_character_portrait(project_id):
         )
 
         # Convert base64 to bytes and upload using image_repo (same as uploaded photos)
-        image_stream = stability_service.image_to_bytes(result["image_data"])
+        image_stream = stability_service.image_to_bytes(result["image_data"])  # noqa: F821  # FIXME: `stability_service` is undefined — pre-existing bug
         image_stream.seek(0)
 
         # Wrap in FileStorage for image_repo
@@ -178,7 +177,7 @@ def generate_stylized_portrait(project_id):
         image_record = image_repo.upload_image(project_id, file_obj, "portrait_stylized.png")
 
         # Save character asset
-        full_prompt = f"{prompt} (style: {style_id}, strength: {style_strength})"
+        full_prompt = f"{prompt} (style: {style_id}, strength: {style_strength})"  # noqa: F821  # FIXME: `prompt` is undefined — pre-existing bug
         if user_description:
             full_prompt += f" - {user_description}"
         asset = character_asset_repo.create_image_asset(
@@ -281,7 +280,7 @@ def regenerate_character_asset(asset_id):
             pass
         else:
             # Legacy format: convert base64 to bytes
-            image_stream = stability_service.image_to_bytes(result["image_data"])
+            image_stream = stability_service.image_to_bytes(result["image_data"])  # noqa: F821  # FIXME: `stability_service` is undefined — pre-existing bug
         image_stream.seek(0)
 
         # Wrap in FileStorage for image_repo

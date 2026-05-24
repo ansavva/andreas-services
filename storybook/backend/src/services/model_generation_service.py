@@ -1,7 +1,6 @@
 from typing import Optional, Dict, Any, List
 
 from src.models.generation_history import GenerationHistory
-from src.models.model_project import ModelProject
 from src.repositories.db.generation_history_repo import GenerationHistoryRepo
 from src.repositories.db.model_project_repo import ModelProjectRepo
 from src.services.external.replicate_service import ReplicateService

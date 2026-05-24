@@ -2,7 +2,6 @@ import os
 from typing import Optional
 
 import boto3
-from boto3.dynamodb.conditions import Key, Attr
 
 from src.repositories.helpers import normalize_document
 

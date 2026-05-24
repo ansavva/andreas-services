@@ -316,7 +316,7 @@ class StabilityService:
             try:
                 error_detail = response.json()
                 error_msg += f" - {error_detail}"
-            except:
+            except Exception:
                 error_msg += f" - {response.text[:200]}"
             raise Exception(error_msg)
 

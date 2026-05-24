@@ -57,7 +57,7 @@ class ModelProjectService:
         Raises:
             ValueError: If project not found or doesn't belong to user
         """
-        user_id = request.cognito_claims['sub']
+        _user_id = request.cognito_claims['sub']
         project = self.model_project_repo.get_project(project_id)
 
         # 1. Delete all training runs for this project

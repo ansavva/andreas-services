@@ -12,7 +12,6 @@ import unittest
 from datetime import date, timedelta
 
 import boto3
-import pytest
 from moto import mock_dynamodb
 
 EVENTS_TABLE_NAME = "scout-events"
@@ -199,7 +198,6 @@ class TestEventsApi(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_get_events_upcoming_only(self):
-        today = date.today().isoformat()
         yesterday = (date.today() - timedelta(days=1)).isoformat()
         tomorrow = (date.today() + timedelta(days=1)).isoformat()
 

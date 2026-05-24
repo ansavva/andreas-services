@@ -55,7 +55,7 @@ class ReplicateService:
         try:
             replicate.models.get(f"{owner}/{resolved_name}")
             return True
-        except:
+        except Exception:
             return False
 
     def create_model(self,
@@ -104,7 +104,7 @@ class ReplicateService:
 
         try:
             model = replicate.models.get(f"{self.owner}/{model_name}")
-        except:
+        except Exception:
             model = self.create_model(
                 model_name=model_name,
                 visibility=training_config.get("visibility"),
@@ -291,7 +291,7 @@ class ReplicateService:
             training = replicate.trainings.get(training_id)
             training.cancel()
             return True
-        except:
+        except Exception:
             return False
 
     def delete_model(self, model_name: str) -> bool:
@@ -315,7 +315,7 @@ class ReplicateService:
             model = replicate.models.get(f"{owner}/{resolved_name}")
             model.delete()
             return True
-        except:
+        except Exception:
             return False
 
     def _delete_model_via_http(self, owner: str, model_name: str) -> bool:

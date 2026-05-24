@@ -2,7 +2,7 @@
 OpenAI Service - Wrapper for OpenAI API interactions
 Handles story chat, text generation, and content moderation
 """
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import json
 from openai import OpenAI
 from src.utils.config import AppConfig

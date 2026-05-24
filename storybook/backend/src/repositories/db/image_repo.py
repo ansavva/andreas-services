@@ -1,4 +1,3 @@
-import os
 from flask import request
 from werkzeug.datastructures import FileStorage
 from typing import List, Optional

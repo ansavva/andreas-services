@@ -107,7 +107,7 @@ def resize_image(file: FileStorage, filename: str):
                 file.stream.seek(0)
                 return file, filename
 
-            print(f"[IMAGE NORMALIZE] Converting HEIC to PNG")
+            print("[IMAGE NORMALIZE] Converting HEIC to PNG")
             heif_file = pillow_heif.read_heif(file_data)
             img = PILImage.frombytes(heif_file.mode, heif_file.size, heif_file.data, "raw")
             print(f"[IMAGE NORMALIZE] HEIC converted, mode: {img.mode}, size: {img.size}")
