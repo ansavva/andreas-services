@@ -32,21 +32,23 @@ resource "aws_cloudfront_function" "spa_fallback" {
       var request = event.request;
       var uri = request.uri;
 
+      // Real files (they carry an extension like .js/.css/.html) are served as-is.
+      if (uri.match(/\.[a-zA-Z0-9]+$/)) {
+        return request;
+      }
+
+      // The SPA is mounted at /app (prod) or /<N>/app (PR previews). Any
+      // extension-less path under a mount is a client-side route, so rewrite
+      // it to that mount's index.html.
+      var m = uri.match(/^(\/(?:[0-9]+\/)?app)(?:\/.*)?$/);
+      if (m) {
+        request.uri = m[1] + '/index.html';
+        return request;
+      }
+
+      // Bare domain root falls back to the prod app.
       if (uri === '/' || uri === '') {
         request.uri = '/app/index.html';
-        return request;
-      }
-
-      if (uri === '/app' || uri === '/app/') {
-        request.uri = '/app/index.html';
-        return request;
-      }
-
-      if (uri.startsWith('/app/')) {
-        if (!uri.match(/\.[a-zA-Z0-9]+$/)) {
-          request.uri = '/app/index.html';
-        }
-        return request;
       }
 
       return request;
