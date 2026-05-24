@@ -170,7 +170,7 @@ resource "aws_api_gateway_resource" "admin" {
 }
 
 resource "aws_api_gateway_authorizer" "cognito" {
-  count           = var.cognito_user_pool_arn != "" ? 1 : 0
+  count           = var.enable_cognito_authorizer ? 1 : 0
   name            = "scout-admin-cognito${var.pr_number != "" ? "-pr-${var.pr_number}" : ""}"
   rest_api_id     = aws_api_gateway_rest_api.main.id
   type            = "COGNITO_USER_POOLS"
@@ -189,8 +189,8 @@ resource "aws_api_gateway_method" "admin_proxy_any" {
   rest_api_id   = aws_api_gateway_rest_api.main.id
   resource_id   = aws_api_gateway_resource.admin_proxy.id
   http_method   = "ANY"
-  authorization = var.cognito_user_pool_arn != "" ? "COGNITO_USER_POOLS" : "NONE"
-  authorizer_id = var.cognito_user_pool_arn != "" ? aws_api_gateway_authorizer.cognito[0].id : null
+  authorization = var.enable_cognito_authorizer ? "COGNITO_USER_POOLS" : "NONE"
+  authorizer_id = var.enable_cognito_authorizer ? aws_api_gateway_authorizer.cognito[0].id : null
 }
 
 resource "aws_api_gateway_integration" "admin_proxy_any" {

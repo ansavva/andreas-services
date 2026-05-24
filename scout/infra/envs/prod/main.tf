@@ -168,14 +168,15 @@ module "auth" {
 module "api_gateway" {
   source = "../../modules/api_gateway"
 
-  lambda_invoke_arn     = module.compute.events_api_invoke_arn
-  lambda_function_name  = module.compute.events_api_function_name
-  custom_domain_name    = module.api_domain.domain_name
-  base_path             = ""
-  stage_name            = "prod"
-  throttle_rate         = 10
-  throttle_burst        = 50
-  cognito_user_pool_arn = module.auth.user_pool_arn
+  lambda_invoke_arn         = module.compute.events_api_invoke_arn
+  lambda_function_name      = module.compute.events_api_function_name
+  custom_domain_name        = module.api_domain.domain_name
+  base_path                 = ""
+  stage_name                = "prod"
+  throttle_rate             = 10
+  throttle_burst            = 50
+  cognito_user_pool_arn     = module.auth.user_pool_arn
+  enable_cognito_authorizer = true
 
   tags = local.common_tags
 }

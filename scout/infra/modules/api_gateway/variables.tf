@@ -49,6 +49,12 @@ variable "cognito_user_pool_arn" {
   default     = ""
 }
 
+variable "enable_cognito_authorizer" {
+  description = "Whether to attach a Cognito authorizer to /api/admin/*. Kept separate from cognito_user_pool_arn so `count` stays known at plan time even when the pool ARN is created in the same apply."
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

@@ -120,15 +120,16 @@ module "auth" {
 module "api_gateway" {
   source = "../../modules/api_gateway"
 
-  pr_number             = var.pr_number
-  lambda_invoke_arn     = module.compute.events_api_invoke_arn
-  lambda_function_name  = module.compute.events_api_function_name
-  custom_domain_name    = "scout-api-pr.andreas.services"
-  base_path             = var.pr_number
-  stage_name            = "prod"
-  throttle_rate         = 5
-  throttle_burst        = 20
-  cognito_user_pool_arn = module.auth.user_pool_arn
+  pr_number                 = var.pr_number
+  lambda_invoke_arn         = module.compute.events_api_invoke_arn
+  lambda_function_name      = module.compute.events_api_function_name
+  custom_domain_name        = "scout-api-pr.andreas.services"
+  base_path                 = var.pr_number
+  stage_name                = "prod"
+  throttle_rate             = 5
+  throttle_burst            = 20
+  cognito_user_pool_arn     = module.auth.user_pool_arn
+  enable_cognito_authorizer = true
 
   tags = local.common_tags
 }
