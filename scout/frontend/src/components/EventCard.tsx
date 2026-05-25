@@ -1,113 +1,71 @@
-import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { ArrowUpRight, Calendar, DollarSign, ExternalLink, MapPin } from "lucide-react";
-import type { Category, Event } from "@/types";
-import { CategoryChips } from "@/components/CategoryChips";
-import { displayUrl, formatDate, isUpcoming, truncate } from "@/utils/formatters";
+import { Link } from "react-router-dom";
+import { ArrowUpRight, CalendarDays, MapPin } from "lucide-react";
+import type { PublicEvent } from "@/types";
+import { Chip } from "@/components/ui";
+import { formatDate, truncate } from "@/utils/formatters";
 
-interface EventCardProps {
-  event: Event;
-  categories?: Category[];
+function firstImage(event: PublicEvent): string | null {
+  const img = event.images.find((i) => i.url || i.s3_ref);
+  return img?.url ?? null;
 }
 
-export function EventCard({ event, categories = [] }: EventCardProps) {
-  const location = useLocation();
-  const upcoming = isUpcoming(event.date);
-  const [expanded, setExpanded] = useState(false);
-  const [imgFailed, setImgFailed] = useState(false);
-  const description = event.description ?? "";
-  const isLong = description.length > 160;
-  const displayDesc = expanded ? description : truncate(description, 160);
-  const showImage = !!event.image_url && !imgFailed;
+export function EventCard({ event }: { event: PublicEvent }) {
+  const image = firstImage(event);
+  const labels = [...event.event_labels, ...event.location_labels];
 
   return (
-    <article className="theme-transition flex flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card hover:shadow-card-hover hover:bg-[var(--color-surface-hover)] transition-all overflow-hidden">
-      {showImage && (
-        <img
-          src={event.image_url}
-          alt={event.event_name}
-          className="w-full h-40 object-cover"
-          onError={() => setImgFailed(true)}
-        />
+    <article className="theme-transition flex flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card transition-all hover:bg-[var(--color-surface-hover)]">
+      {image && (
+        <img src={image} alt={event.title} className="h-40 w-full object-cover" />
       )}
-
-      <div className="flex flex-col gap-3 p-5 flex-1">
-        <div className="flex items-start justify-between gap-2">
-          <Link
-            to={`/events/${event.event_id}`}
-            state={{ fromSearch: location.search }}
-            className="flex-1 group"
-          >
-            <h2 className="text-base font-semibold text-[var(--color-text-primary)] leading-snug group-hover:text-[var(--color-primary)] transition-colors inline-flex items-start gap-1">
-              {event.event_name || "Untitled Event"}
-              <ArrowUpRight
-                size={14}
-                className="shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity text-[var(--color-primary)]"
-              />
-            </h2>
-          </Link>
-          {upcoming && (
-            <span className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-[var(--color-badge)] text-[var(--color-badge-text)]">
-              Upcoming
-            </span>
-          )}
-        </div>
+      <div className="flex flex-1 flex-col gap-3 p-5">
+        <Link to={`/events/${event.event_id}`} className="group no-underline">
+          <h2 className="inline-flex items-start gap-1 text-base font-semibold leading-snug text-[var(--color-text-primary)] transition-colors group-hover:text-[var(--color-primary)]">
+            {event.title || "Untitled event"}
+            <ArrowUpRight
+              size={14}
+              className="mt-0.5 shrink-0 text-[var(--color-primary)] opacity-0 transition-opacity group-hover:opacity-100"
+            />
+          </h2>
+        </Link>
 
         <dl className="flex flex-col gap-1.5 text-sm text-[var(--color-text-secondary)]">
-          {event.date && (
+          {event.start_date && (
             <div className="flex items-center gap-2">
-              <Calendar size={14} className="shrink-0 text-[var(--color-text-muted)]" />
+              <CalendarDays size={14} className="shrink-0 text-[var(--color-text-muted)]" />
               <dd>
-                {formatDate(event.date)}
-                {event.time ? ` · ${event.time}` : ""}
+                {formatDate(event.start_date)}
+                {event.start_time ? ` · ${event.start_time}` : ""}
               </dd>
             </div>
           )}
-          {event.venue && (
+          {event.location && (
             <div className="flex items-center gap-2">
               <MapPin size={14} className="shrink-0 text-[var(--color-text-muted)]" />
-              <dd>{event.venue}</dd>
-            </div>
-          )}
-          {event.price && (
-            <div className="flex items-center gap-2">
-              <DollarSign size={14} className="shrink-0 text-[var(--color-text-muted)]" />
-              <dd>{event.price}</dd>
+              <dd>{event.location.name}</dd>
             </div>
           )}
         </dl>
 
-        <CategoryChips slugs={event.categories ?? []} categories={categories} />
-
-        {description && (
-          <div className="text-sm text-[var(--color-text-secondary)] leading-relaxed">
-            <p>{displayDesc}</p>
-            {isLong && (
-              <button
-                onClick={() => setExpanded((v) => !v)}
-                className="mt-1 text-[var(--color-primary)] hover:underline text-xs"
-              >
-                {expanded ? "Show less" : "Show more"}
-              </button>
-            )}
+        {labels.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {labels.map((l) => (
+              <Chip key={l.id} label={l.name} />
+            ))}
           </div>
         )}
 
-        {event.links && event.links.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-auto pt-2 border-t border-[var(--color-border)]">
-            {event.links.slice(0, 3).map((url, i) => (
-              <a
-                key={i}
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] hover:underline"
-              >
-                <ExternalLink size={11} />
-                {displayUrl(url)}
-              </a>
-            ))}
-          </div>
+        {event.description && (
+          <p className="text-sm leading-relaxed text-[var(--color-text-secondary)]">
+            {truncate(event.description, 160)}
+          </p>
+        )}
+
+        {event.sub_events.length > 0 && (
+          <p className="mt-auto pt-2 text-xs text-[var(--color-text-muted)]">
+            {event.sub_events.length} upcoming date
+            {event.sub_events.length === 1 ? "" : "s"}
+          </p>
         )}
       </div>
     </article>
