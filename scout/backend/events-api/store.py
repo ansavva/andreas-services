@@ -169,6 +169,29 @@ def get(pk, sk):
     return core().get_item(Key={"PK": pk, "SK": sk}).get("Item")
 
 
+def set_attrs(pk, sk, attrs):
+    """SET the given attributes on an item. Uses name placeholders so reserved
+    words (e.g. `name`, `status`) are safe. No-op for an empty mapping."""
+    if not attrs:
+        return
+    keys = list(attrs)
+    names = {f"#k{i}": k for i, k in enumerate(keys)}
+    values = {f":v{i}": attrs[k] for i, k in enumerate(keys)}
+    set_expr = ", ".join(f"#k{i} = :v{i}" for i in range(len(keys)))
+    core().update_item(
+        Key={"PK": pk, "SK": sk},
+        UpdateExpression="SET " + set_expr,
+        ExpressionAttributeNames=names,
+        ExpressionAttributeValues=values,
+    )
+
+
+def delete(pk, sk):
+    """Hard-delete a single item (used for ephemeral edges like detaching a
+    label or moving a location pointer — entity rows are always soft-deleted)."""
+    core().delete_item(Key={"PK": pk, "SK": sk})
+
+
 def query_all(pk, *, sk_begins_with=None, live_only=True, ascending=True):
     """Query a base-table partition, following pagination. Returns a list."""
     cond = Key("PK").eq(pk)
