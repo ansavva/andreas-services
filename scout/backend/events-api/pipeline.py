@@ -20,6 +20,7 @@ import json
 import artifacts
 import extractor as extractor_mod
 import fetcher
+import notifications
 import runs
 import sources
 import store
@@ -128,6 +129,7 @@ def execute_run(source, trigger, *, fetch_fn=fetcher.fetch_url,
         result = extractor(pages)
     except Exception as exc:  # pylint: disable=broad-except
         runs.finish_run(source_id, run_id, status=runs.ERROR, error_reason=str(exc))
+        notifications.notify_run_failure(source_id, run_id, str(exc))
         return runs.get_run(source_id, run_id)
 
     if result.transcript:
@@ -144,8 +146,11 @@ def execute_run(source, trigger, *, fetch_fn=fetcher.fetch_url,
     elif result.status == extractor_mod.STATUS_BUDGET_EXCEEDED:
         runs.finish_run(source_id, run_id, status=runs.ERROR,
                         error_reason=runs.REASON_BUDGET_EXCEEDED)
+        notifications.notify_budget_exceeded(source_id, run_id)
     else:
         runs.finish_run(source_id, run_id, status=runs.ERROR,
                         error_reason=result.error or "extraction failed")
+        notifications.notify_run_failure(source_id, run_id,
+                                         result.error or "extraction failed")
 
     return runs.get_run(source_id, run_id)

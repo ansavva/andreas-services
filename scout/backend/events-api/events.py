@@ -244,13 +244,36 @@ def cancel_event(event_id):
     return store.get(pk, "META")
 
 
-def delete_event(event_id):
-    """Soft-delete an event (cascade to sub-events with opt-out is the deletion
-    layer's job in a later phase)."""
-    store.soft_delete(
-        store.event_pk(event_id), "META", store.EVENT,
-        hot_index_attrs=("GSI1PK", "GSI1SK", "GSI3PK", "GSI3SK", "GSI4PK", "GSI4SK"),
-    )
+def restore_event(event_id):
+    """Restore a soft-deleted event, re-establishing its review/dedup indexes and
+    public visibility if it still qualifies."""
+    pk = store.event_pk(event_id)
+    if store.get(pk, "META") is None:
+        return None
+    store.restore(pk, "META")
+    event = store.get(pk, "META")
+    store.set_attrs(pk, "META", {
+        "GSI4PK": f"REVIEW#{event['review_status']}", "GSI4SK": event["created_at"],
+        "GSI3PK": f"DUP#{event['dup_key']}", "GSI3SK": f"EVT#{event_id}",
+    })
+    if _event_qualifies_pubvis(event):
+        _set_pubvis(pk, "META", event.get("effective_end_utc"))
+    return store.get(pk, "META")
+
+
+def restore_subevent(parent_event_id, sub_id):
+    sub = _get_sub(parent_event_id, sub_id)
+    if sub is None:
+        return None
+    pk = store.event_pk(parent_event_id)
+    store.restore(pk, sub["SK"])
+    sub = _get_sub(parent_event_id, sub_id)
+    store.set_attrs(pk, sub["SK"], {
+        "GSI4PK": f"REVIEW#{sub['review_status']}", "GSI4SK": sub["created_at"],
+        "GSI3PK": f"DUP#{sub['dup_key']}", "GSI3SK": f"SUB#{sub_id}",
+    })
+    _reindex_sub_pubvis(sub, get_event(parent_event_id))
+    return _get_sub(parent_event_id, sub_id)
 
 
 # ---------------------------------------------------------------------------

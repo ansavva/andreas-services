@@ -11,6 +11,7 @@ os.environ["SCOUT_ARTIFACTS_BUCKET"] = "scout-artifacts-test"
 
 import artifacts  # noqa: E402
 import extractor  # noqa: E402
+import notifications  # noqa: E402
 import pipeline  # noqa: E402
 import runs  # noqa: E402
 import sources  # noqa: E402
@@ -136,6 +137,9 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(run["status"], "error")
         self.assertEqual(run["error_reason"], runs.REASON_BUDGET_EXCEEDED)
         self.assertEqual(int(run["events_count"]), 0)  # partial output discarded
+        # A distinct budget-exceeded notification is raised.
+        notes = notifications.list_notifications()
+        self.assertEqual([n["type"] for n in notes], ["budget_exceeded"])
 
     def test_execute_run_records_error_on_root_failure(self):
         def boom(_url):
