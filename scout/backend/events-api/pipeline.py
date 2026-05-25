@@ -18,6 +18,7 @@ Claude Agent SDK extractor is supplied by the caller via make_extractor().
 import json
 
 import artifacts
+import events as events_mod
 import extractor as extractor_mod
 import fetcher
 import notifications
@@ -107,8 +108,8 @@ def execute_run(source, trigger, *, fetch_fn=fetcher.fetch_url,
     source_id = source["source_id"]
     run = runs.start_run(source_id, trigger)
     run_id = run["run_id"]
-    if trigger == runs.TRIGGER_SCHEDULED:
-        sources.advance_schedule(source_id)
+    # Note: advancing the schedule on scheduled runs is the scheduler's job (it
+    # claims the slot at dispatch); manual runs never shift the schedule.
 
     try:
         def _store_linked(index, content):
@@ -138,11 +139,12 @@ def execute_run(source, trigger, *, fetch_fn=fetcher.fetch_url,
     runs.set_tool_use_summary(source_id, run_id, result.tool_use_summary)
 
     if result.status == extractor_mod.STATUS_COMPLETED:
-        # Event records are persisted by the conversion layer (Phase 4); here we
-        # finish the run and record the count.
+        # Persist the extracted events as pending records (dedup + fuzzy location
+        # match applied), then finish the run with the created count.
+        conversion = events_mod.convert_extraction(source_id, result.events)
         runs.finish_run(source_id, run_id, status=runs.SUCCESS,
-                        events_count=len(result.events),
-                        summary={"events": len(result.events), "pages": len(pages)})
+                        events_count=conversion["created"],
+                        summary={**conversion, "pages": len(pages)})
     elif result.status == extractor_mod.STATUS_BUDGET_EXCEEDED:
         runs.finish_run(source_id, run_id, status=runs.ERROR,
                         error_reason=runs.REASON_BUDGET_EXCEEDED)

@@ -11,5 +11,6 @@ RUN poetry install --only main --no-root --no-interaction --no-ansi
 
 COPY lambda_function.py taxonomy.py store.py labels.py locations.py \
      sources.py runs.py fetcher.py artifacts.py extractor.py pipeline.py \
-     events.py images.py timeutil.py deletion.py notifications.py public.py ./
+     events.py images.py timeutil.py deletion.py notifications.py public.py \
+     processor_handler.py scheduler_handler.py sweep_handler.py ./
 CMD ["lambda_function.lambda_handler"]
