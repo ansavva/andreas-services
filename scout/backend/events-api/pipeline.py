@@ -1,27 +1,50 @@
 """
 Run pipeline orchestration.
 
-Ties together fetching (fetcher), artifact storage (artifacts) and the run
-lifecycle (runs) for both real runs and preview dry-runs. Our code acquires the
-content; an injected extract_fn turns the fetched pages into events. Extraction
-is stubbed in this phase — the Claude Agent SDK extractor is wired in Phase 3 —
-so extract_fn defaults to "no events".
+Ties together fetching (fetcher), artifact storage (artifacts), the run
+lifecycle (runs) and extraction (extractor). Our code acquires the content; an
+injected `extractor` callable (pages -> ExtractionResult) turns the fetched
+pages into events. The default is a no-op extractor (zero events); the real
+Claude Agent SDK extractor is supplied by the caller via make_extractor().
 
 - preview(): fetch + extract in memory, persisting nothing (no run, no S3).
-- execute_run(): create a run record, store all fetched content to S3, record
-  per-link outcomes, extract, and finish the run. Scheduled runs advance the
-  source's schedule; manual runs never shift it.
+- execute_run(): create a run record, store all fetched content + the agent
+  transcript to S3, record per-link outcomes and the tool-use summary, and
+  finish the run — success on a completed extraction, error (with the distinct
+  budget_exceeded reason) otherwise, discarding partial output.
+  Scheduled runs advance the source's schedule; manual runs never shift it.
 """
 
+import json
+
 import artifacts
+import extractor as extractor_mod
 import fetcher
 import runs
 import sources
 import store
 
 
-def _no_events(_pages):
-    return []
+def noop_extractor(_pages):
+    return extractor_mod.ExtractionResult(extractor_mod.STATUS_COMPLETED, events=[])
+
+
+def make_extractor(source, settings, *, runner=None):
+    """Build a pages->ExtractionResult callable for a source, applying the
+    per-source model/budget overrides on top of the system defaults."""
+    model = source.get("agent_model_override") or settings["default_agent_model"]
+    budget_tokens = (source.get("agent_budget_tokens_override")
+                     or settings["default_agent_budget_tokens"])
+    budget_seconds = (source.get("agent_budget_seconds_override")
+                      or settings["default_agent_budget_seconds"])
+
+    def _extract(pages):
+        return extractor_mod.extract(
+            pages, model=model, budget_tokens=int(budget_tokens),
+            budget_seconds=int(budget_seconds), runner=runner,
+        )
+
+    return _extract
 
 
 def _acquire_root(source, fetch_fn, email_body):
@@ -30,7 +53,6 @@ def _acquire_root(source, fetch_fn, email_body):
         url = source["identity"]
         _status, html = fetch_fn(url)
         return html, None, url, fetcher.host_of(url)
-    # Email: the body is supplied by the caller (Gmail ingestion lives elsewhere).
     body = email_body or ""
     return body, body, None, source.get("identity", "")
 
@@ -38,8 +60,7 @@ def _acquire_root(source, fetch_fn, email_body):
 def _gather_pages(source, *, fetch_fn, email_body, on_link_outcome=None,
                   store_linked=None):
     """Acquire the root plus (optionally) one level of same-domain links.
-    Returns (pages, root_html, root_text). on_link_outcome / store_linked are
-    callbacks used by execute_run to persist outcomes + pages."""
+    Returns (pages, root_html, root_text)."""
     html, text, base_url, root_domain = _acquire_root(source, fetch_fn, email_body)
     pages = [{"url": base_url, "content": text or html or ""}]
 
@@ -60,7 +81,7 @@ def _gather_pages(source, *, fetch_fn, email_body, on_link_outcome=None,
     return pages, html, text
 
 
-def preview(source, *, fetch_fn=fetcher.fetch_url, extract_fn=_no_events,
+def preview(source, *, fetch_fn=fetcher.fetch_url, extractor=noop_extractor,
             email_body=None):
     """Dry-run: fetch + extract without persisting any run or event records."""
     link_outcomes = []
@@ -68,17 +89,20 @@ def preview(source, *, fetch_fn=fetcher.fetch_url, extract_fn=_no_events,
         source, fetch_fn=fetch_fn, email_body=email_body,
         on_link_outcome=link_outcomes.append,
     )
+    result = extractor(pages)
     return {
-        "events": extract_fn(pages),
+        "status": result.status,
+        "events": result.events,
+        "tool_use_summary": result.tool_use_summary,
         "link_outcomes": link_outcomes,
         "pages_fetched": len(pages),
     }
 
 
 def execute_run(source, trigger, *, fetch_fn=fetcher.fetch_url,
-                extract_fn=_no_events, email_body=None):
-    """Run a source for real: persist a run record, store fetched content to S3,
-    record per-link outcomes, extract, and finish the run."""
+                extractor=noop_extractor, email_body=None):
+    """Run a source for real: persist a run, store fetched content + transcript
+    to S3, record outcomes + tool-use, and finish the run."""
     source_id = source["source_id"]
     run = runs.start_run(source_id, trigger)
     run_id = run["run_id"]
@@ -101,11 +125,27 @@ def execute_run(source, trigger, *, fetch_fn=fetcher.fetch_url,
             runs.set_artifacts(source_id, run_id,
                                root_body=artifacts.store_root_body(source_id, run_id, root_text))
 
-        events = extract_fn(pages)
-        runs.finish_run(source_id, run_id, status=runs.SUCCESS,
-                        events_count=len(events),
-                        summary={"events": len(events), "pages": len(pages)})
+        result = extractor(pages)
     except Exception as exc:  # pylint: disable=broad-except
         runs.finish_run(source_id, run_id, status=runs.ERROR, error_reason=str(exc))
+        return runs.get_run(source_id, run_id)
+
+    if result.transcript:
+        runs.set_artifacts(source_id, run_id, transcript=artifacts.store_transcript(
+            source_id, run_id, json.dumps(result.transcript)))
+    runs.set_tool_use_summary(source_id, run_id, result.tool_use_summary)
+
+    if result.status == extractor_mod.STATUS_COMPLETED:
+        # Event records are persisted by the conversion layer (Phase 4); here we
+        # finish the run and record the count.
+        runs.finish_run(source_id, run_id, status=runs.SUCCESS,
+                        events_count=len(result.events),
+                        summary={"events": len(result.events), "pages": len(pages)})
+    elif result.status == extractor_mod.STATUS_BUDGET_EXCEEDED:
+        runs.finish_run(source_id, run_id, status=runs.ERROR,
+                        error_reason=runs.REASON_BUDGET_EXCEEDED)
+    else:
+        runs.finish_run(source_id, run_id, status=runs.ERROR,
+                        error_reason=result.error or "extraction failed")
 
     return runs.get_run(source_id, run_id)
