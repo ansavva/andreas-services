@@ -307,7 +307,9 @@ jobs:
           GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
         run: |
           set -euo pipefail
-          SUFFIX="-pr-${{ env.PR_NUMBER }}"
+          PR="${{ env.PR_NUMBER }}"
+          SUFFIX="-pr-${PR}"
+          PROCESSOR_FN="scout-source-run-processor${SUFFIX}"
 
           jq -n \
             --arg suffix        "${SUFFIX}" \
@@ -325,45 +327,55 @@ jobs:
               MAX_EMAILS_PER_RUN:   $max_emails
             }}' > /tmp/env-email-processor.json
 
-          jq -n \
-            --arg suffix "${SUFFIX}" \
-            '{Variables: {SCOUT_TABLE_SUFFIX: $suffix}}' \
+          jq -n --arg suffix "${SUFFIX}" --arg fn "${PROCESSOR_FN}" \
+            '{Variables: {SCOUT_TABLE_SUFFIX: $suffix, SCOUT_PROCESSOR_FN: $fn}}' \
             > /tmp/env-events-api.json
 
-          aws lambda update-function-configuration \
-            --function-name "scout-email-processor-pr-${{ env.PR_NUMBER }}" \
-            --region "${{ env.AWS_REGION }}" \
-            --environment file:///tmp/env-email-processor.json
+          jq -n --arg suffix "${SUFFIX}" --arg anthropic "${ANTHROPIC_API_KEY}" --arg pr "${PR}" \
+            '{Variables: {
+              SCOUT_TABLE_SUFFIX:     $suffix,
+              SCOUT_ARTIFACTS_BUCKET: ("scout-artifacts-pr-" + $pr),
+              SCOUT_IMAGES_BUCKET:    ("scout-images-pr-" + $pr),
+              ANTHROPIC_API_KEY:      $anthropic
+            }}' > /tmp/env-processor.json
 
-          aws lambda update-function-configuration \
-            --function-name "scout-events-api-pr-${{ env.PR_NUMBER }}" \
-            --region "${{ env.AWS_REGION }}" \
-            --environment file:///tmp/env-events-api.json
+          jq -n --arg suffix "${SUFFIX}" --arg fn "${PROCESSOR_FN}" \
+            '{Variables: {SCOUT_TABLE_SUFFIX: $suffix, SCOUT_PROCESSOR_FN: $fn}}' \
+            > /tmp/env-scheduler.json
 
-          aws lambda wait function-updated \
-            --function-name "scout-email-processor-pr-${{ env.PR_NUMBER }}" --region "${{ env.AWS_REGION }}"
-          aws lambda wait function-updated \
-            --function-name "scout-events-api-pr-${{ env.PR_NUMBER }}" --region "${{ env.AWS_REGION }}"
+          jq -n --arg suffix "${SUFFIX}" \
+            '{Variables: {SCOUT_TABLE_SUFFIX: $suffix}}' > /tmp/env-sweep.json
+
+          set_env() {
+            aws lambda update-function-configuration \
+              --function-name "$1" --region "${{ env.AWS_REGION }}" \
+              --environment "file://$2"
+            aws lambda wait function-updated \
+              --function-name "$1" --region "${{ env.AWS_REGION }}"
+          }
+          set_env "scout-email-processor${SUFFIX}"      /tmp/env-email-processor.json
+          set_env "scout-events-api${SUFFIX}"           /tmp/env-events-api.json
+          set_env "${PROCESSOR_FN}"                     /tmp/env-processor.json
+          set_env "scout-scheduler${SUFFIX}"            /tmp/env-scheduler.json
+          set_env "scout-sweep${SUFFIX}"                /tmp/env-sweep.json
 
       - name: Force Lambda to pick up the latest image
         run: |
-          aws lambda update-function-code \
-            --function-name "scout-events-api-pr-${{ env.PR_NUMBER }}" \
-            --image-uri "${ECR_REGISTRY}/scout-events-api:pr-${{ env.PR_NUMBER }}" \
-            --region "${{ env.AWS_REGION }}" \
-            --output table \
-            --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
-
-          aws lambda update-function-code \
-            --function-name "scout-email-processor-pr-${{ env.PR_NUMBER }}" \
-            --image-uri "${ECR_REGISTRY}/scout-email-processor:pr-${{ env.PR_NUMBER }}" \
-            --region "${{ env.AWS_REGION }}" \
-            --output table \
-            --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
-
-          aws lambda wait function-updated \
-            --function-name "scout-email-processor-pr-${{ env.PR_NUMBER }}" \
-            --region "${{ env.AWS_REGION }}"
+          set -euo pipefail
+          SUFFIX="-pr-${{ env.PR_NUMBER }}"
+          update_code() {
+            aws lambda update-function-code \
+              --function-name "$1" --image-uri "$2" \
+              --region "${{ env.AWS_REGION }}" \
+              --output table --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
+            aws lambda wait function-updated \
+              --function-name "$1" --region "${{ env.AWS_REGION }}"
+          }
+          EVENTS_IMAGE="${ECR_REGISTRY}/scout-events-api:pr-${{ env.PR_NUMBER }}"
+          update_code "scout-email-processor${SUFFIX}" "${ECR_REGISTRY}/scout-email-processor:pr-${{ env.PR_NUMBER }}"
+          for NAME in scout-events-api scout-source-run-processor scout-scheduler scout-sweep; do
+            update_code "${NAME}${SUFFIX}" "${EVENTS_IMAGE}"
+          done
 
       - name: Invoke email-processor to seed PR table
         run: |

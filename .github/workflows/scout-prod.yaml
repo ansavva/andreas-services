@@ -304,23 +304,34 @@ jobs:
               GMAIL_REFRESH_TOKEN:  $refresh_token
             }}' > /tmp/env-email-processor.json
 
-          jq -n '{Variables: {SCOUT_TABLE_SUFFIX: ""}}' \
+          jq -n '{Variables: {SCOUT_TABLE_SUFFIX: "", SCOUT_PROCESSOR_FN: "scout-source-run-processor"}}' \
             > /tmp/env-events-api.json
 
-          aws lambda update-function-configuration \
-            --function-name "scout-email-processor" \
-            --region "${{ env.AWS_REGION }}" \
-            --environment file:///tmp/env-email-processor.json
+          jq -n --arg anthropic "${ANTHROPIC_API_KEY}" \
+            '{Variables: {
+              SCOUT_TABLE_SUFFIX:     "",
+              SCOUT_ARTIFACTS_BUCKET: "scout-artifacts-production",
+              SCOUT_IMAGES_BUCKET:    "scout-images-production",
+              ANTHROPIC_API_KEY:      $anthropic
+            }}' > /tmp/env-processor.json
 
-          aws lambda update-function-configuration \
-            --function-name "scout-events-api" \
-            --region "${{ env.AWS_REGION }}" \
-            --environment file:///tmp/env-events-api.json
+          jq -n '{Variables: {SCOUT_TABLE_SUFFIX: "", SCOUT_PROCESSOR_FN: "scout-source-run-processor"}}' \
+            > /tmp/env-scheduler.json
 
-          aws lambda wait function-updated \
-            --function-name "scout-email-processor" --region "${{ env.AWS_REGION }}"
-          aws lambda wait function-updated \
-            --function-name "scout-events-api" --region "${{ env.AWS_REGION }}"
+          jq -n '{Variables: {SCOUT_TABLE_SUFFIX: ""}}' > /tmp/env-sweep.json
+
+          set_env() {
+            aws lambda update-function-configuration \
+              --function-name "$1" --region "${{ env.AWS_REGION }}" \
+              --environment "file://$2"
+            aws lambda wait function-updated \
+              --function-name "$1" --region "${{ env.AWS_REGION }}"
+          }
+          set_env scout-email-processor      /tmp/env-email-processor.json
+          set_env scout-events-api           /tmp/env-events-api.json
+          set_env scout-source-run-processor /tmp/env-processor.json
+          set_env scout-scheduler            /tmp/env-scheduler.json
+          set_env scout-sweep                /tmp/env-sweep.json
 
       - name: Run data migration
         run: |
@@ -329,13 +340,20 @@ jobs:
 
       - name: Update Lambda function code
         run: |
-          for FN in scout-email-processor scout-events-api; do
+          set -euo pipefail
+          update_code() {
             aws lambda update-function-code \
-              --function-name "${FN}" \
-              --image-uri "${ECR_REGISTRY}/${FN}:${{ github.sha }}" \
+              --function-name "$1" \
+              --image-uri "$2" \
               --region "${{ env.AWS_REGION }}" \
               --output table \
               --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
+          }
+          # email-processor ships its own image; events-api + the run-pipeline
+          # Lambdas (processor/scheduler/sweep) all share the events-api image.
+          update_code scout-email-processor "${ECR_REGISTRY}/scout-email-processor:${{ github.sha }}"
+          for FN in scout-events-api scout-source-run-processor scout-scheduler scout-sweep; do
+            update_code "${FN}" "${ECR_REGISTRY}/scout-events-api:${{ github.sha }}"
           done
 
   # ---------------------------------------------------------------------------

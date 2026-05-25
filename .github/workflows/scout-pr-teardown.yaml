@@ -92,7 +92,7 @@ jobs:
       # teardown is complete regardless of who created them. Idempotent.
       - name: Delete Lambda CloudWatch log groups
         run: |
-          for FN in scout-email-processor scout-events-api; do
+          for FN in scout-email-processor scout-events-api scout-source-run-processor scout-scheduler scout-sweep; do
             LG="/aws/lambda/${FN}-pr-${PR_NUMBER}"
             if aws logs delete-log-group --log-group-name "${LG}" 2>/dev/null; then
               echo "Deleted log group ${LG}"
