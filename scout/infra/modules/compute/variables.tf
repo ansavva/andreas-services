@@ -29,6 +29,25 @@ variable "email_processor_env_vars" {
   default     = {}
 }
 
+variable "processor_env_vars" {
+  description = "Environment variables for the source-run processor Lambda (e.g. ANTHROPIC_API_KEY)"
+  type        = map(string)
+  sensitive   = true
+  default     = {}
+}
+
+variable "artifacts_bucket" {
+  description = "S3 bucket for source-run artifacts (root bodies, linked pages, transcripts)"
+  type        = string
+  default     = ""
+}
+
+variable "images_bucket" {
+  description = "S3 bucket for event images"
+  type        = string
+  default     = ""
+}
+
 variable "create_ecr" {
   description = "Whether to create ECR repositories (false for PR environments)"
   type        = bool

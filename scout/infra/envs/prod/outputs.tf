@@ -43,6 +43,21 @@ output "events_api_function_name" {
   value       = module.compute.events_api_function_name
 }
 
+output "source_run_processor_function_name" {
+  description = "Source-run processor Lambda function name"
+  value       = module.compute.source_run_processor_function_name
+}
+
+output "scheduler_function_name" {
+  description = "Scheduler Lambda function name"
+  value       = module.compute.scheduler_function_name
+}
+
+output "sweep_function_name" {
+  description = "Sweep Lambda function name"
+  value       = module.compute.sweep_function_name
+}
+
 output "ecr_email_processor_url" {
   description = "ECR URL for email processor"
   value       = module.compute.ecr_email_processor_url

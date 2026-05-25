@@ -153,12 +153,19 @@ module "compute" {
   create_ecr         = true
   create_eventbridge = true
 
+  artifacts_bucket = module.artifacts_storage.bucket_id
+  images_bucket    = module.images_storage.bucket_id
+
   email_processor_env_vars = {
     ANTHROPIC_API_KEY   = var.anthropic_api_key
     GMAIL_CLIENT_ID     = var.gmail_client_id
     GMAIL_CLIENT_SECRET = var.gmail_client_secret
     GMAIL_REFRESH_TOKEN = var.gmail_refresh_token
     MAX_EMAILS_PER_RUN  = "20"
+  }
+
+  processor_env_vars = {
+    ANTHROPIC_API_KEY = var.anthropic_api_key
   }
 
   tags = local.common_tags
