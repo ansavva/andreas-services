@@ -186,6 +186,19 @@ def set_attrs(pk, sk, attrs):
     )
 
 
+def remove_attrs(pk, sk, attr_names):
+    """REMOVE the given attributes from an item. No-op for an empty list."""
+    names = list(attr_names)
+    if not names:
+        return
+    placeholders = {f"#r{i}": n for i, n in enumerate(names)}
+    core().update_item(
+        Key={"PK": pk, "SK": sk},
+        UpdateExpression="REMOVE " + ", ".join(placeholders),
+        ExpressionAttributeNames=placeholders,
+    )
+
+
 def delete(pk, sk):
     """Hard-delete a single item (used for ephemeral edges like detaching a
     label or moving a location pointer — entity rows are always soft-deleted)."""
