@@ -271,6 +271,26 @@ def due_sources(now_iso=None):
     return [s for s in candidates if s.get("next_run_at", "") <= now_iso]
 
 
+def health_report(now=None):
+    """Surface unhealthy sources for the admin health view: most recent run
+    errored, N consecutive zero-event runs, or overdue past the threshold."""
+    settings = store.get_settings()
+    now = now or _now()
+    overdue_cutoff = _iso(now - timedelta(hours=float(settings["health_overdue_hours"])))
+    zero_threshold = int(settings["health_zero_event_runs"])
+
+    errored, stale, overdue = [], [], []
+    for source in list_sources():
+        if source.get("last_run_status") == "error":
+            errored.append(source)
+        if int(source.get("consecutive_zero_event_runs", 0) or 0) >= zero_threshold:
+            stale.append(source)
+        next_run = source.get("next_run_at")
+        if next_run and next_run < overdue_cutoff:
+            overdue.append(source)
+    return {"errored": errored, "stale": stale, "overdue": overdue}
+
+
 def advance_schedule(source_id):
     """Move a scheduled source's next_run_at forward by one interval (used after
     a scheduled run is dispatched). One-off sources fall off the schedule."""
