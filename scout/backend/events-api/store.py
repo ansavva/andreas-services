@@ -309,6 +309,21 @@ def restore(pk, sk):
     )
 
 
+def scan_by_type(entity_type, *, live_only=True):
+    """Full-table scan filtered to one entity type. Admin/cron use only (e.g.
+    the past-status sweep) — not a hot path."""
+    expr = Attr("entity_type").eq(entity_type)
+    if live_only:
+        expr = expr & Attr(DELETED_AT).not_exists()
+    resp = core().scan(FilterExpression=expr)
+    items = resp.get("Items", [])
+    while "LastEvaluatedKey" in resp:
+        resp = core().scan(FilterExpression=expr,
+                           ExclusiveStartKey=resp["LastEvaluatedKey"])
+        items.extend(resp.get("Items", []))
+    return items
+
+
 def query_deleted(entity_type, *, ascending=False):
     """List soft-deleted items of one entity type (the deleted-filter view)."""
     return query_index_all(

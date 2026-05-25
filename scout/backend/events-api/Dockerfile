@@ -10,5 +10,6 @@ COPY pyproject.toml poetry.lock ./
 RUN poetry install --only main --no-root --no-interaction --no-ansi
 
 COPY lambda_function.py taxonomy.py store.py labels.py locations.py \
-     sources.py runs.py fetcher.py artifacts.py extractor.py pipeline.py ./
+     sources.py runs.py fetcher.py artifacts.py extractor.py pipeline.py \
+     events.py images.py timeutil.py ./
 CMD ["lambda_function.lambda_handler"]

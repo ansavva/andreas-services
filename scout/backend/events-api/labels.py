@@ -161,6 +161,23 @@ def entities_with_label(taxonomy, label_id):
     return [(link["target_type"], link["target_id"]) for link in links]
 
 
+def find_by_name(taxonomy, name):
+    """First live label in a taxonomy whose normalized name matches, else None."""
+    norm = tax.normalize_name(name)
+    if not norm:
+        return None
+    for label in list_labels(taxonomy):
+        if label.get("name_norm") == norm:
+            return label
+    return None
+
+
+def find_or_create(taxonomy, name):
+    """Resolve a label by name, creating it if it does not exist yet. Used when
+    converting agent-suggested labels into records."""
+    return find_by_name(taxonomy, name) or create_label(taxonomy, name)
+
+
 def resolve_labels(taxonomy, label_ids):
     """Hydrate label ids into their (live) META items, preserving order."""
     out = []

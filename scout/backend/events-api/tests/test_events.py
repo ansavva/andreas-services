@@ -1,0 +1,244 @@
+"""Unit tests for the event/sub-event service layer (events.py)."""
+
+import os
+import unittest
+
+import boto3
+from moto import mock_dynamodb
+
+os.environ.setdefault("SCOUT_TABLE_SUFFIX", "")
+
+import events  # noqa: E402
+import images  # noqa: E402
+import labels  # noqa: E402
+import locations  # noqa: E402
+import store  # noqa: E402
+
+_GSI_ATTRS = [
+    "GSI1PK", "GSI1SK", "GSI2PK", "GSI2SK", "GSI3PK", "GSI3SK",
+    "GSI4PK", "GSI4SK", "GSI5PK", "GSI5SK",
+]
+
+
+def _create_core(dynamodb):
+    attribute_definitions = [
+        {"AttributeName": "PK", "AttributeType": "S"},
+        {"AttributeName": "SK", "AttributeType": "S"},
+    ] + [{"AttributeName": n, "AttributeType": "S"} for n in _GSI_ATTRS]
+    gsis = [{
+        "IndexName": f"GSI{i}",
+        "KeySchema": [
+            {"AttributeName": f"GSI{i}PK", "KeyType": "HASH"},
+            {"AttributeName": f"GSI{i}SK", "KeyType": "RANGE"},
+        ],
+        "Projection": {"ProjectionType": "ALL"},
+    } for i in range(1, 6)]
+    dynamodb.create_table(
+        TableName="scout-core",
+        KeySchema=[
+            {"AttributeName": "PK", "KeyType": "HASH"},
+            {"AttributeName": "SK", "KeyType": "RANGE"},
+        ],
+        AttributeDefinitions=attribute_definitions,
+        GlobalSecondaryIndexes=gsis,
+        BillingMode="PAY_PER_REQUEST",
+    )
+
+
+def _create_settings(dynamodb):
+    dynamodb.create_table(
+        TableName="scout-settings",
+        KeySchema=[{"AttributeName": "setting_id", "KeyType": "HASH"}],
+        AttributeDefinitions=[{"AttributeName": "setting_id", "AttributeType": "S"}],
+        BillingMode="PAY_PER_REQUEST",
+    )
+
+
+def _pubvis_ids():
+    return {i.get("event_id") or i.get("subevent_id")
+            for i in store.query_index_all("GSI1", "PUBVIS", live_only=True)}
+
+
+@mock_dynamodb
+class TestEvents(unittest.TestCase):
+    def setUp(self):
+        store._dynamodb = None
+        store.reset_settings_cache()
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        _create_core(dynamodb)
+        _create_settings(dynamodb)
+
+    # --- creation & review queue ----------------------------------------
+    def test_create_event_pending_unpublished(self):
+        ev = events.create_event("src1", title="Show", start_date="2099-01-01")
+        self.assertEqual(ev["review_status"], "pending")
+        self.assertEqual(ev["publish_status"], "unpublished")
+        self.assertFalse(ev["past"])
+        # In the pending review queue, not in public visibility.
+        pending = events.list_by_review("pending")
+        self.assertEqual([e["event_id"] for e in pending], [ev["event_id"]])
+        self.assertNotIn(ev["event_id"], _pubvis_ids())
+
+    def test_review_transition_moves_queue(self):
+        ev = events.create_event("src1", title="Show", start_date="2099-01-01")
+        events.set_review(ev["event_id"], events.REVIEW_APPROVED)
+        self.assertEqual(events.list_by_review("pending"), [])
+        self.assertEqual(len(events.list_by_review("approved")), 1)
+
+    def test_bulk_review(self):
+        ids = [events.create_event("s", title=f"E{i}", start_date="2099-01-01")["event_id"]
+               for i in range(3)]
+        events.bulk_review(ids, events.REVIEW_APPROVED)
+        self.assertEqual(len(events.list_by_review("approved")), 3)
+
+    # --- publish / visibility -------------------------------------------
+    def test_publish_adds_to_pubvis_unpublish_removes(self):
+        ev = events.create_event("s", title="Show", start_date="2099-01-01")
+        events.set_publish(ev["event_id"], True)
+        self.assertIn(ev["event_id"], _pubvis_ids())
+        events.set_publish(ev["event_id"], False)
+        self.assertNotIn(ev["event_id"], _pubvis_ids())
+
+    def test_cancel_clears_visibility_and_cascades_to_subs(self):
+        ev = events.create_event("s", title="Show", start_date="2099-01-01")
+        events.set_publish(ev["event_id"], True)
+        sub = events.create_subevent(ev["event_id"], start_date="2099-01-02",
+                                     publish_status=events.PUBLISHED)
+        # Parent published -> sub can be visible.
+        self.assertIn(sub["subevent_id"], _pubvis_ids())
+
+        events.cancel_event(ev["event_id"])
+        self.assertNotIn(ev["event_id"], _pubvis_ids())
+        self.assertNotIn(sub["subevent_id"], _pubvis_ids())
+        refreshed_sub = events._get_sub(ev["event_id"], sub["subevent_id"])
+        self.assertTrue(refreshed_sub["lifecycle_cancelled"])
+
+    # --- sub-events: publishing dependency ------------------------------
+    def test_sub_cannot_publish_while_parent_unpublished(self):
+        ev = events.create_event("s", title="Show", start_date="2099-01-01")
+        sub = events.create_subevent(ev["event_id"], start_date="2099-01-02")
+        with self.assertRaises(ValueError):
+            events.set_subevent_publish(ev["event_id"], sub["subevent_id"], True)
+
+    def test_unpublishing_parent_hides_subs(self):
+        ev = events.create_event("s", title="Show", start_date="2099-01-01")
+        events.set_publish(ev["event_id"], True)
+        sub = events.create_subevent(ev["event_id"], start_date="2099-01-02",
+                                     publish_status=events.PUBLISHED)
+        self.assertIn(sub["subevent_id"], _pubvis_ids())
+        events.set_publish(ev["event_id"], False)
+        self.assertNotIn(sub["subevent_id"], _pubvis_ids())
+
+    # --- inheritance & overrides ----------------------------------------
+    def test_inheritance_and_overrides(self):
+        loc = locations.create_location("Parent Venue", timezone="UTC")
+        loc2 = locations.create_location("Override Venue", timezone="UTC")
+        plabel = labels.create_label(store.EVENT_LABEL, "music")
+        loclabel = labels.create_label(store.LOCATION_LABEL, "outdoor")
+        labels.attach_label(store.LOCATION_LABEL, loclabel["label_id"],
+                            store.LOCATION, loc["location_id"])
+
+        ev = events.create_event("s", title="Show", start_date="2099-01-01",
+                                 location_id=loc["location_id"],
+                                 event_label_ids=[plabel["label_id"]])
+        inheriting = events.create_subevent(ev["event_id"], start_date="2099-01-02")
+        overriding = events.create_subevent(
+            ev["event_id"], start_date="2099-01-03",
+            location_id_override=loc2["location_id"], event_label_ids=[])
+
+        # Inheriting sub picks up the parent's location, event-labels and the
+        # location's labels.
+        self.assertEqual(events.effective_location_id(ev, inheriting), loc["location_id"])
+        self.assertEqual(events.effective_event_label_ids(ev, inheriting),
+                         [plabel["label_id"]])
+        self.assertEqual(events.effective_location_label_ids(ev, inheriting),
+                         [loclabel["label_id"]])
+        # Overriding sub replaces location (new location has no labels) and
+        # short-circuits event-label inheritance (explicit empty override).
+        self.assertEqual(events.effective_location_id(ev, overriding), loc2["location_id"])
+        self.assertEqual(events.effective_event_label_ids(ev, overriding), [])
+        self.assertEqual(events.effective_location_label_ids(ev, overriding), [])
+
+    # --- dedup / re-extraction ------------------------------------------
+    def test_convert_extraction_dedupes_repeat_runs(self):
+        extracted = [{
+            "title": "Jazz Night", "start_date": "2099-05-01",
+            "description": "x", "event_labels": ["jazz"],
+            "location": {"name": "Blue Note", "timezone": "UTC"},
+            "images": ["https://x/a.jpg"], "sub_events": [],
+        }]
+        first = events.convert_extraction("s", extracted)
+        self.assertEqual(first["created"], 1)
+        # Agent image attached pending approval.
+        imgs = images.list_images(store.EVENT, first["event_ids"][0])
+        self.assertEqual(len(imgs), 1)
+        self.assertFalse(imgs[0]["approved"])
+
+        # Re-running the same extraction creates nothing (duplicate).
+        second = events.convert_extraction("s", extracted)
+        self.assertEqual(second["created"], 0)
+        self.assertEqual(second["skipped"], 1)
+
+    def test_rejected_duplicate_is_not_recreated(self):
+        extracted = [{"title": "Gig", "start_date": "2099-05-01",
+                      "location": None, "event_labels": [], "sub_events": []}]
+        result = events.convert_extraction("s", extracted)
+        events.set_review(result["event_ids"][0], events.REVIEW_REJECTED)
+        again = events.convert_extraction("s", extracted)
+        self.assertEqual(again["created"], 0)
+        # The rejected event was not resurrected.
+        self.assertEqual(len(events.list_by_review("rejected")), 1)
+        self.assertEqual(events.list_by_review("pending"), [])
+
+    def test_convert_creates_subevents(self):
+        extracted = [{
+            "title": "Tour", "start_date": "2099-05-01", "location": None,
+            "event_labels": [], "images": [],
+            "sub_events": [
+                {"start_date": "2099-05-01"},
+                {"start_date": "2099-05-02"},
+            ],
+        }]
+        result = events.convert_extraction("s", extracted)
+        subs = events.list_subevents(result["event_ids"][0])
+        self.assertEqual(len(subs), 2)
+
+    # --- update ----------------------------------------------------------
+    def test_update_marks_edited_and_recomputes_dup_key(self):
+        ev = events.create_event("s", title="Old Title", start_date="2099-01-01")
+        before = ev["dup_key"]
+        updated = events.update_event(ev["event_id"], {"title": "New Title"})
+        self.assertTrue(updated["edited"])
+        self.assertNotEqual(updated["dup_key"], before)
+        self.assertEqual(updated["title_norm"], "new title")
+
+    # --- sweep -----------------------------------------------------------
+    def test_sweep_keeps_past_flag_correct(self):
+        past = events.create_event("s", title="Old", start_date="2000-01-01")
+        future = events.create_event("s", title="New", start_date="2099-01-01")
+        events.sweep()
+        self.assertTrue(events.get_event(past["event_id"])["past"])
+        self.assertFalse(events.get_event(future["event_id"])["past"])
+
+    def test_sweep_auto_past_parent_when_all_subs_past(self):
+        ev = events.create_event("s", title="Series", start_date="2099-01-01",
+                                 auto_past_parent=True)
+        events.create_subevent(ev["event_id"], start_date="2000-01-01")
+        events.create_subevent(ev["event_id"], start_date="2000-02-01")
+        events.sweep()
+        # Parent's own date is in the future, but all sub-events are past.
+        self.assertTrue(events.get_event(ev["event_id"])["past"])
+
+    def test_auto_cancel_parent_when_all_subs_cancelled(self):
+        ev = events.create_event("s", title="Series", start_date="2099-01-01",
+                                 auto_cancel_parent=True)
+        s1 = events.create_subevent(ev["event_id"], start_date="2099-01-02")
+        s2 = events.create_subevent(ev["event_id"], start_date="2099-01-03")
+        events.cancel_subevent(ev["event_id"], s1["subevent_id"])
+        self.assertFalse(events.get_event(ev["event_id"])["lifecycle_cancelled"])
+        events.cancel_subevent(ev["event_id"], s2["subevent_id"])
+        self.assertTrue(events.get_event(ev["event_id"])["lifecycle_cancelled"])
+
+
+if __name__ == "__main__":
+    unittest.main()
