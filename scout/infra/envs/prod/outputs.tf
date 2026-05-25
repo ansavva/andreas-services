@@ -8,6 +8,26 @@ output "s3_bucket" {
   value       = module.storage.bucket_id
 }
 
+output "core_table_name" {
+  description = "scout-core DynamoDB table name"
+  value       = module.data.core_table_name
+}
+
+output "settings_table_name" {
+  description = "scout-settings DynamoDB table name"
+  value       = module.data.settings_table_name
+}
+
+output "artifacts_bucket" {
+  description = "Source-run artifacts S3 bucket name"
+  value       = module.artifacts_storage.bucket_id
+}
+
+output "images_bucket" {
+  description = "Event images S3 bucket name"
+  value       = module.images_storage.bucket_id
+}
+
 output "cloudfront_distribution_id" {
   description = "CloudFront distribution ID"
   value       = module.hosting.cloudfront_distribution_id

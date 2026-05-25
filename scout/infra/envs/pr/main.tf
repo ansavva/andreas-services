@@ -80,6 +80,14 @@ resource "aws_dynamodb_table" "categories" {
   tags = local.common_tags
 }
 
+module "data" {
+  source = "../../modules/data"
+
+  table_suffix = "-pr-${var.pr_number}"
+
+  tags = local.common_tags
+}
+
 module "compute" {
   source = "../../modules/compute"
 

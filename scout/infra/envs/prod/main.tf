@@ -85,10 +85,38 @@ resource "aws_dynamodb_table" "categories" {
   tags = local.common_tags
 }
 
+module "data" {
+  source = "../../modules/data"
+
+  table_suffix = ""
+
+  tags = local.common_tags
+}
+
 module "storage" {
   source = "../../modules/storage"
 
   bucket_name = "${local.project}-web-${local.environment}"
+
+  tags = local.common_tags
+}
+
+# Private bucket for source-run artifacts: root bodies, linked-page archives,
+# and agent transcripts, organized under runs/<source_id>/<run_id>/.
+module "artifacts_storage" {
+  source = "../../modules/storage"
+
+  bucket_name = "${local.project}-artifacts-${local.environment}"
+
+  tags = local.common_tags
+}
+
+# Private bucket for event images (admin-uploaded + auto-extracted), kept
+# separate from source-body storage per the data model.
+module "images_storage" {
+  source = "../../modules/storage"
+
+  bucket_name = "${local.project}-images-${local.environment}"
 
   tags = local.common_tags
 }
