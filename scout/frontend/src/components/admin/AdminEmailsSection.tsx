@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Inbox, Mail } from "lucide-react";
+import { ChevronDown, ChevronRight, Inbox, Mail, RefreshCw } from "lucide-react";
 import type { ProcessedEmail } from "@/types";
 import { useAdminApi } from "@/hooks/useAdminApi";
 import { useAuth } from "@/context/AuthContext";
@@ -116,6 +116,9 @@ export function AdminEmailsSection() {
   const [emails, setEmails] = useState<ProcessedEmail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [runMessage, setRunMessage] = useState<string | null>(null);
 
   const fetchEmails = useCallback(async () => {
     if (!idToken) return;
@@ -135,14 +138,57 @@ export function AdminEmailsSection() {
     void fetchEmails();
   }, [fetchEmails]);
 
+  const runProcessor = useCallback(async () => {
+    setRunning(true);
+    setRunError(null);
+    setRunMessage(null);
+    try {
+      await api.triggerEmailProcessor();
+      setRunMessage(
+        "Processing started — new emails will appear here shortly. Refreshing in a minute."
+      );
+      // The run is asynchronous (up to ~5 min), so give it a head start
+      // before reloading the list.
+      window.setTimeout(() => void fetchEmails(), 60_000);
+    } catch (err) {
+      setRunError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setRunning(false);
+    }
+  }, [api, fetchEmails]);
+
   return (
     <div>
-      <div className="mb-4">
-        <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Processed emails</h3>
-        <p className="text-xs text-[var(--color-text-muted)]">
-          Emails Scout has fetched and extracted events from.
-        </p>
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Processed emails</h3>
+          <p className="text-xs text-[var(--color-text-muted)]">
+            Emails Scout has fetched and extracted events from.
+          </p>
+        </div>
+
+        <button
+          onClick={() => void runProcessor()}
+          disabled={running}
+          title="Fetch new emails and extract events now"
+          className="flex-shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <RefreshCw size={15} className={running ? "animate-spin" : ""} />
+          {running ? "Starting…" : "Run email processor now"}
+        </button>
       </div>
+
+      {runMessage && (
+        <div className="mb-4 rounded-lg border border-green-300 bg-green-50 dark:border-green-900 dark:bg-green-950/40 px-4 py-3 text-sm text-green-700 dark:text-green-400">
+          {runMessage}
+        </div>
+      )}
+
+      {runError && (
+        <div className="mb-4 rounded-lg border border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/40 px-4 py-3 text-sm text-red-700 dark:text-red-400">
+          <strong>Could not start processing:</strong> {runError}
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 rounded-lg border border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/40 px-4 py-3 text-sm text-red-700 dark:text-red-400">

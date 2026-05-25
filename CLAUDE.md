@@ -5,6 +5,17 @@
 A monorepo of independently deployed services, all under the `andreas.services` domain.
 Each subdirectory is a **fully self-contained deployable unit** — it has its own backend, frontend, infra code, and deployment pipeline. Services do **not** share code or libraries.
 
+## Environment access
+
+The AWS CLI is available and authenticated in this environment (`aws ...`), so
+prefer it for read-only investigation of live infrastructure (CloudFront, S3,
+Lambda, DynamoDB, SSM, etc.) when diagnosing issues. Note: outbound HTTP to
+`*.andreas.services` is blocked by the sandbox network policy (responses look
+like `403 host_not_allowed` / "Host not in allowlist"), so use AWS APIs rather
+than `curl` against the live sites; final browser verification is on the user.
+Prefer fixing infrastructure through Terraform + the deploy pipeline over manual
+CLI mutations, to avoid IaC drift.
+
 ## Services
 
 | Directory | Purpose | Stack |

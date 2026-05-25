@@ -117,6 +117,11 @@ resource "aws_iam_role_policy" "lambda" {
           "arn:aws:dynamodb:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/scout-*/index/*",
         ]
       },
+      {
+        Effect   = "Allow"
+        Action   = ["lambda:InvokeFunction"]
+        Resource = "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:scout-email-processor*"
+      },
     ]
   })
 }

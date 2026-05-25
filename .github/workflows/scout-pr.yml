@@ -282,6 +282,23 @@ jobs:
           echo "client_id=$(tf user_pool_client_id)" >> "$GITHUB_OUTPUT"
           echo "frontend_url=$(tf frontend_url)"     >> "$GITHUB_OUTPUT"
 
+      # Bootstrap the admin console login for this PR's fresh Cognito pool
+      # (admin-create-user only — no self-signup). Mirrors prod's bootstrap-admin
+      # job; idempotent and self-skipping when the secrets are unset.
+      - name: Bootstrap admin user
+        env:
+          ADMIN_EMAIL:    ${{ secrets.SCOUT_ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.SCOUT_ADMIN_PASSWORD }}
+          USER_POOL_ID:   ${{ steps.outputs.outputs.pool_id }}
+          AWS_REGION:     ${{ env.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ADMIN_EMAIL}" ] || [ -z "${ADMIN_PASSWORD}" ]; then
+            echo "SCOUT_ADMIN_EMAIL / SCOUT_ADMIN_PASSWORD not set — skipping admin bootstrap."
+            exit 0
+          fi
+          bash scout/scripts/create-admin-user.sh
+
       - name: Update Lambda env vars
         env:
           ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}

@@ -92,7 +92,7 @@ All secrets live in the `scout-production` GitHub Actions environment, never in 
 | `SCOUT_ADMIN_EMAIL` | GitHub secret | Admin console login email — bootstrapped into Cognito by CI |
 | `SCOUT_ADMIN_PASSWORD` | GitHub secret | Admin console password (set permanent by CI) |
 
-Admin users are bootstrapped automatically: the `bootstrap-admin` job in `scout-prod.yaml` runs `scripts/create-admin-user.sh` after the pool is applied (idempotent — skips when the secrets are unset or the user already exists). To add an admin manually instead: `aws cognito-idp admin-create-user` + `admin-set-user-password --permanent` (no public self-signup).
+Admin users are bootstrapped automatically: the `bootstrap-admin` job in `scout-prod.yaml` (prod) and the `Bootstrap admin user` step of `scout-pr.yml`'s `deploy-preview` job (each fresh per-PR pool) run `scripts/create-admin-user.sh` after the pool is applied (idempotent — skips when the secrets are unset or the user already exists). The PR step uses the same `SCOUT_ADMIN_EMAIL`/`SCOUT_ADMIN_PASSWORD` secrets, so they must be available to the `scout-pr` GitHub environment (not only `scout-production`). To add an admin manually instead: `aws cognito-idp admin-create-user` + `admin-set-user-password --permanent` (no public self-signup).
 
 For local use: `cp .env.example .env` and fill in values.
 
