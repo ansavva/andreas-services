@@ -7,7 +7,7 @@ network problem. Notifications are global (no per-admin audit) and live in a
 single partition, newest-first. Email/SMS alerting is out of scope.
 """
 
-import store
+from scout_core.adapters import store
 
 TYPE_RUN_FAILURE = "run_failure"
 TYPE_BUDGET_EXCEEDED = "budget_exceeded"

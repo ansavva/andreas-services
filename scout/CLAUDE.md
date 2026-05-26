@@ -67,19 +67,21 @@ scout/
 │   ├── modules/                 # auth, api_domain, api_gateway, compute, hosting, storage, data
 │   └── envs/                    # prod, pr (per-PR ephemeral), pr-preview (shared)
 ├── backend/
-│   ├── events-api/              # the scout-core service layer + all Lambda entrypoints
-│   │   ├── Dockerfile           # one image, multiple Lambda commands
-│   │   ├── lambda_function.py   # HTTP router (public + /api/admin/*)
-│   │   ├── processor_handler.py # source-run-processor entrypoint
-│   │   ├── scheduler_handler.py # scheduler entrypoint
-│   │   ├── sweep_handler.py     # sweep entrypoint
-│   │   ├── store.py             # single-table data access (scout-core) + settings
-│   │   ├── sources.py runs.py fetcher.py gmail.py artifacts.py extractor.py
-│   │   ├── pipeline.py events.py images.py timeutil.py deletion.py public.py
-│   │   ├── notifications.py labels.py locations.py taxonomy.py
-│   │   └── tests/               # moto-based unit tests
+│   ├── events-api/              # scout-core service (one image, 4 Lambda commands)
+│   │   ├── Dockerfile  pyproject.toml  poetry.lock
+│   │   ├── scout_core/          # the importable package
+│   │   │   ├── handlers/        # thin Lambda entrypoints: api, processor, scheduler, sweep
+│   │   │   ├── domain/          # events, sources, runs, labels, locations, deletion,
+│   │   │   │                    #   public, images, pipeline, notifications
+│   │   │   ├── adapters/        # store (DynamoDB), artifacts (S3), gmail, fetcher, extractor
+│   │   │   └── common/          # taxonomy, timeutil (pure, dependency-free)
+│   │   └── tests/               # moto-based unit tests (mirror the package)
 └── frontend/                    # Vite + React + TS SPA (public site + admin console)
 ```
+
+Imports are absolute within the package, e.g. `from scout_core.adapters import
+store`, `from scout_core.domain import events`. Lambda handlers are referenced as
+`scout_core.handlers.<api|processor|scheduler|sweep>.lambda_handler`.
 
 ## Data model (DynamoDB)
 
@@ -116,10 +118,10 @@ and ship from **one** `scout-events-api` image with different container commands
 
 | Function | Entrypoint | Trigger | Notes |
 |----------|-----------|---------|-------|
-| `scout-events-api` | `lambda_function.lambda_handler` | API Gateway | 128 MB / 30 s |
-| `scout-source-run-processor` | `processor_handler.lambda_handler` | async invoke | 512 MB / 300 s; needs `ANTHROPIC_API_KEY`, `SCOUT_ARTIFACTS_BUCKET`, `SCOUT_IMAGES_BUCKET`, `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` (Gmail ingestion + `mode=discover`) |
-| `scout-scheduler` | `scheduler_handler.lambda_handler` | EventBridge `rate(15 minutes)` | Gmail discovery pass + dispatches due sources |
-| `scout-sweep` | `sweep_handler.lambda_handler` | EventBridge `rate(1 hour)` | orphan recovery + past flags |
+| `scout-events-api` | `scout_core.handlers.api.lambda_handler` | API Gateway | 128 MB / 30 s |
+| `scout-source-run-processor` | `scout_core.handlers.processor.lambda_handler` | async invoke | 512 MB / 300 s; needs `ANTHROPIC_API_KEY`, `SCOUT_ARTIFACTS_BUCKET`, `SCOUT_IMAGES_BUCKET`, `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` (Gmail ingestion + `mode=discover`) |
+| `scout-scheduler` | `scout_core.handlers.scheduler.lambda_handler` | EventBridge `rate(15 minutes)` | Gmail discovery pass + dispatches due sources |
+| `scout-sweep` | `scout_core.handlers.sweep.lambda_handler` | EventBridge `rate(1 hour)` | orphan recovery + past flags |
 
 EventBridge rules are created only in prod (`create_eventbridge=true`).
 
@@ -188,8 +190,10 @@ cd scout/frontend && npm ci && npm run lint && npm run build && npm run dev
 
 ## Conventions
 
-- DynamoDB via boto3, no ORM, no VPC. New domain logic goes in a service module
-  under `events-api/` with moto-based unit tests; the HTTP router stays thin.
+- DynamoDB via boto3, no ORM, no VPC. New business logic goes in
+  `scout_core/domain/` (AWS/HTTP-free), I/O behind `scout_core/adapters/`, pure
+  helpers in `scout_core/common/`, with moto-based unit tests; the handlers in
+  `scout_core/handlers/` stay thin.
 - Never hardcode AWS credentials or secrets. Sensitive Terraform vars come via
   `TF_VAR_*` in CI.
 - Infra dirs are always named `infra/`; modules under `modules/`, environments

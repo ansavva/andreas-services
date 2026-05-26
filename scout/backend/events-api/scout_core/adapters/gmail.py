@@ -21,7 +21,7 @@ import os
 import re
 from datetime import datetime, timedelta, timezone
 
-import taxonomy
+from scout_core.common import taxonomy
 
 EVENTS_LABEL = "Events"
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]

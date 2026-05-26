@@ -16,8 +16,8 @@ runs.py / fetcher.py / artifacts.py.
 
 from datetime import datetime, timedelta, timezone
 
-import labels
-import store
+from scout_core.domain import labels
+from scout_core.adapters import store
 
 EMAIL = "email"
 WEBPAGE = "webpage"

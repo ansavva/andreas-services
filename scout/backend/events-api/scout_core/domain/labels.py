@@ -12,8 +12,8 @@ soft-deleting a label drops it out of that listing (and reverse-direction
 queries via the live-only filter) without cascading to the tagged entities.
 """
 
-import store
-import taxonomy as tax
+from scout_core.adapters import store
+from scout_core.common import taxonomy as tax
 
 TAXONOMIES = (store.SOURCE_LABEL, store.EVENT_LABEL, store.LOCATION_LABEL)
 

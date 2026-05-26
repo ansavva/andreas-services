@@ -14,8 +14,8 @@ import os
 
 import boto3
 
-import runs
-import sources
+from scout_core.domain import runs
+from scout_core.domain import sources
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

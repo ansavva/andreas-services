@@ -18,14 +18,14 @@ Claude Agent SDK extractor is supplied by the caller via make_extractor().
 import json
 import time
 
-import artifacts
-import events as events_mod
-import extractor as extractor_mod
-import fetcher
-import notifications
-import runs
-import sources
-import store
+from scout_core.adapters import artifacts
+from scout_core.domain import events as events_mod
+from scout_core.adapters import extractor as extractor_mod
+from scout_core.adapters import fetcher
+from scout_core.domain import notifications
+from scout_core.domain import runs
+from scout_core.domain import sources
+from scout_core.adapters import store
 
 
 def noop_extractor(_pages):

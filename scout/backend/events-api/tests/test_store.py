@@ -13,8 +13,8 @@ from moto import mock_dynamodb
 
 os.environ.setdefault("SCOUT_TABLE_SUFFIX", "")
 
-import store  # noqa: E402  (import after env is set)
-import taxonomy  # noqa: E402
+from scout_core.adapters import store  # noqa: E402  (import after env is set)
+from scout_core.common import taxonomy  # noqa: E402
 
 CORE_TABLE = "scout-core"
 SETTINGS_TABLE = "scout-settings"

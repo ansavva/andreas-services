@@ -14,11 +14,11 @@ Cascade rules (§7.2):
 - label   -> no cascade (handled in labels.delete_label; references removed only).
 """
 
-import events
-import locations
-import runs
-import sources
-import store
+from scout_core.domain import events
+from scout_core.domain import locations
+from scout_core.domain import runs
+from scout_core.domain import sources
+from scout_core.adapters import store
 
 # Per-entity hot index attributes to strip on soft-delete (so the row leaves its
 # listing/visibility/dedup paths). GSI5 (deleted view) is added by store.soft_delete.

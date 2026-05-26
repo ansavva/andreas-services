@@ -12,7 +12,7 @@ Finishing a run updates the owning source's materialized health fields
 source-health view. Preview (dry-run) executions never call this module.
 """
 
-import store
+from scout_core.adapters import store
 
 TRIGGER_SCHEDULED = "scheduled"
 TRIGGER_MANUAL = "manual"

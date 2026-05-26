@@ -3,7 +3,7 @@
 import json
 import unittest
 
-import extractor
+from scout_core.adapters import extractor
 
 
 def _runner_from(messages):

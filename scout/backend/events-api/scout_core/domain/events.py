@@ -21,12 +21,12 @@ applies fuzzy location matching and the duplicate-detection rules.
 
 from datetime import datetime, timezone
 
-import images
-import labels
-import locations
-import store
-import taxonomy
-import timeutil
+from scout_core.domain import images
+from scout_core.domain import labels
+from scout_core.domain import locations
+from scout_core.adapters import store
+from scout_core.common import taxonomy
+from scout_core.common import timeutil
 
 REVIEW_PENDING = "pending"
 REVIEW_APPROVED = "approved"

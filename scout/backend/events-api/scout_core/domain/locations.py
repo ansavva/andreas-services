@@ -14,9 +14,9 @@ to a target location and soft-deletes the source locations.
 
 import difflib
 
-import labels
-import store
-import taxonomy as tax
+from scout_core.domain import labels
+from scout_core.adapters import store
+from scout_core.common import taxonomy as tax
 
 _LISTING_PK = "LOC#ALL"
 

@@ -8,8 +8,8 @@ events/sub-events, applying the per-event auto-past-when-all-subs-past rule.
 
 import logging
 
-import events
-import runs
+from scout_core.domain import events
+from scout_core.domain import runs
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

@@ -8,12 +8,12 @@ from moto import mock_dynamodb
 
 os.environ.setdefault("SCOUT_TABLE_SUFFIX", "")
 
-import deletion  # noqa: E402
-import events  # noqa: E402
-import locations  # noqa: E402
-import runs  # noqa: E402
-import sources  # noqa: E402
-import store  # noqa: E402
+from scout_core.domain import deletion  # noqa: E402
+from scout_core.domain import events  # noqa: E402
+from scout_core.domain import locations  # noqa: E402
+from scout_core.domain import runs  # noqa: E402
+from scout_core.domain import sources  # noqa: E402
+from scout_core.adapters import store  # noqa: E402
 
 _GSI_ATTRS = [
     "GSI1PK", "GSI1SK", "GSI2PK", "GSI2SK", "GSI3PK", "GSI3SK",

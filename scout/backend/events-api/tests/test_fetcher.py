@@ -2,7 +2,7 @@
 
 import unittest
 
-import fetcher
+from scout_core.adapters import fetcher
 
 
 class TestFetcherPure(unittest.TestCase):

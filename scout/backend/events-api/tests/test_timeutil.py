@@ -3,7 +3,7 @@
 import unittest
 from datetime import datetime, timezone
 
-import timeutil
+from scout_core.common import timeutil
 
 
 class TestTimeutil(unittest.TestCase):

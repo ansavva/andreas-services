@@ -15,11 +15,11 @@ Event payload:
 
 import logging
 
-import gmail
-import pipeline
-import runs
-import sources
-import store
+from scout_core.adapters import gmail
+from scout_core.domain import pipeline
+from scout_core.domain import runs
+from scout_core.domain import sources
+from scout_core.adapters import store
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

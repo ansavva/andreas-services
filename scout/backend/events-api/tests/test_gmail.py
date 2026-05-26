@@ -11,8 +11,8 @@ import unittest
 
 os.environ.setdefault("SCOUT_TABLE_SUFFIX", "")
 
-import gmail  # noqa: E402
-import taxonomy  # noqa: E402
+from scout_core.adapters import gmail  # noqa: E402
+from scout_core.common import taxonomy  # noqa: E402
 
 
 def _b64(text):

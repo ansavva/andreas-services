@@ -9,7 +9,7 @@ independent of the owning event's review status. Binary uploads live in the
 images S3 bucket (s3_ref); agent images reference a source url.
 """
 
-import store
+from scout_core.adapters import store
 
 ADMIN = "admin"
 AGENT = "agent"

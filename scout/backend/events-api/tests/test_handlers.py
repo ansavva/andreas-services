@@ -11,16 +11,16 @@ from moto import mock_dynamodb, mock_s3
 os.environ.setdefault("SCOUT_TABLE_SUFFIX", "")
 os.environ["SCOUT_ARTIFACTS_BUCKET"] = "scout-artifacts-test"
 
-import artifacts  # noqa: E402
-import events  # noqa: E402
-import extractor  # noqa: E402
-import pipeline  # noqa: E402
-import processor_handler  # noqa: E402
-import runs  # noqa: E402
-import scheduler_handler  # noqa: E402
-import sources  # noqa: E402
-import store  # noqa: E402
-import sweep_handler  # noqa: E402
+from scout_core.adapters import artifacts  # noqa: E402
+from scout_core.domain import events  # noqa: E402
+from scout_core.adapters import extractor  # noqa: E402
+from scout_core.domain import pipeline  # noqa: E402
+from scout_core.handlers import processor as processor_handler  # noqa: E402
+from scout_core.domain import runs  # noqa: E402
+from scout_core.handlers import scheduler as scheduler_handler  # noqa: E402
+from scout_core.domain import sources  # noqa: E402
+from scout_core.adapters import store  # noqa: E402
+from scout_core.handlers import sweep as sweep_handler  # noqa: E402
 
 _GSI_ATTRS = [
     "GSI1PK", "GSI1SK", "GSI2PK", "GSI2SK", "GSI3PK", "GSI3SK",

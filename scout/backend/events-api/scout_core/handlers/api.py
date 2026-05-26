@@ -20,16 +20,16 @@ from urllib.parse import unquote
 
 import boto3
 
-import deletion
-import events
-import images
-import labels
-import locations
-import notifications
-import public
-import runs
-import sources
-import store
+from scout_core.domain import deletion
+from scout_core.domain import events
+from scout_core.domain import images
+from scout_core.domain import labels
+from scout_core.domain import locations
+from scout_core.domain import notifications
+from scout_core.domain import public
+from scout_core.domain import runs
+from scout_core.domain import sources
+from scout_core.adapters import store
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
