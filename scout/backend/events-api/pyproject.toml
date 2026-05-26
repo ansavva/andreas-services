@@ -9,6 +9,7 @@ packages = []
 python = "^3.11"
 boto3 = "1.26.137"
 claude-agent-sdk = "^0.1.0"
+tzdata = ">=2024.1"
 
 [tool.poetry.group.dev.dependencies]
 moto = {version = "4.2.14", extras = ["dynamodb"]}
