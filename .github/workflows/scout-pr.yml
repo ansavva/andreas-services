@@ -377,42 +377,6 @@ jobs:
             update_code "${NAME}${SUFFIX}" "${EVENTS_IMAGE}"
           done
 
-      - name: Invoke email-processor to seed PR table
-        run: |
-          aws lambda invoke \
-            --function-name "scout-email-processor-pr-${{ env.PR_NUMBER }}" \
-            --invocation-type RequestResponse \
-            --region "${{ env.AWS_REGION }}" \
-            --payload '{}' \
-            --cli-binary-format raw-in-base64-out \
-            /tmp/email-processor-response.json
-
-          cat /tmp/email-processor-response.json
-
-          STATUS=$(python3 -c "
-          import sys, json
-          d = json.load(open('/tmp/email-processor-response.json'))
-          print(d.get('statusCode', ''))
-          ")
-          ERRORS=$(python3 -c "
-          import sys, json
-          d = json.load(open('/tmp/email-processor-response.json'))
-          body = json.loads(d.get('body', '{}'))
-          print(json.dumps(body.get('errors', [])))
-          ")
-
-          echo "statusCode: $STATUS"
-          echo "errors: $ERRORS"
-
-          if [ "$STATUS" != "200" ]; then
-            echo "email-processor returned non-200 statusCode: $STATUS"
-            exit 1
-          fi
-          if [ "$ERRORS" != "[]" ]; then
-            echo "email-processor reported errors: $ERRORS"
-            exit 1
-          fi
-
       # ------------------------------------------------------------------
       # Build + publish the frontend under /<N>/app/
       # ------------------------------------------------------------------
@@ -488,7 +452,6 @@ jobs:
       - name: Run integration tests
         env:
           SCOUT_API_URL: ${{ steps.outputs.outputs.api_url }}
-          SCOUT_EMAIL_PROCESSOR_FUNCTION: scout-email-processor-pr-${{ env.PR_NUMBER }}
           AWS_DEFAULT_REGION: ${{ env.AWS_REGION }}
         run: |
           cd scout/tests/integration
