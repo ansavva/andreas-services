@@ -6,13 +6,17 @@ Scout discovers events from configured **sources**, extracts them with a Claude
 Agent SDK agent, lets an admin review/curate them, and publishes the approved
 ones at `scout.andreas.services/app`.
 
-1. **Sources** (email or webpage) are configured in the admin console. A
-   **scheduler** Lambda (EventBridge, every 15 min) dispatches sources whose
-   `next_run_at` is due; admins can also trigger a run or a preview on demand.
+1. **Sources** (email or webpage). Webpage sources are configured by hand in the
+   admin console; **email sources are auto-discovered** from the Gmail "Events"
+   label — one active source per sender domain. A **scheduler** Lambda
+   (EventBridge, every 15 min) runs a Gmail discovery pass, then dispatches
+   sources whose `next_run_at` is due; admins can also "Scan inbox", trigger a
+   run, or preview on demand.
 2. The **source-run-processor** Lambda fetches the source content (our code —
-   webpage HTTP fetch or email body), optionally follows one level of
-   same-domain links, stores everything to S3, then invokes the **Claude Agent
-   SDK** (Read + WebFetch + WebSearch) to extract structured events.
+   webpage HTTP fetch, or the sender's recent "Events"-labeled mail via the
+   Gmail API in `gmail.py`), optionally follows one level of same-domain links,
+   stores everything to S3, then invokes the **Claude Agent SDK** (Read +
+   WebFetch + WebSearch) to extract structured events.
 3. Extracted events become **pending** records (dedup + fuzzy location match
    applied). An admin reviews (approve/reject), publishes, cancels, edits, and
    manages locations, labels, images, and settings.
@@ -22,9 +26,12 @@ ones at `scout.andreas.services/app`.
    UI) and the admin console API. A Vite + React + TypeScript SPA (S3 +
    CloudFront) renders both.
 
-> **Migration note:** the legacy Gmail→Claude `email-processor` Lambda and the
-> old `scout-events/emails/senders/regions/categories` tables still exist but are
-> being retired; nothing in the new model reads or triggers them.
+> **Migration note:** the standalone legacy Gmail→Claude `email-processor`
+> Lambda and the old `scout-events/emails/senders/regions/categories` tables
+> still exist but are being retired. The Gmail "Events"-label ingestion concept
+> lives on, re-implemented inside the new source-run-processor (`gmail.py` +
+> the processor's `mode=discover`); nothing in the new model reads the old
+> tables or triggers the legacy Lambda.
 
 ### Core domain concepts
 
@@ -70,9 +77,9 @@ scout/
 │   │   ├── scheduler_handler.py # scheduler entrypoint
 │   │   ├── sweep_handler.py     # sweep entrypoint
 │   │   ├── store.py             # single-table data access (scout-core) + settings
-│   │   ├── sources.py runs.py fetcher.py artifacts.py extractor.py pipeline.py
-│   │   ├── events.py images.py timeutil.py deletion.py notifications.py public.py
-│   │   ├── labels.py locations.py taxonomy.py
+│   │   ├── sources.py runs.py fetcher.py gmail.py artifacts.py extractor.py
+│   │   ├── pipeline.py events.py images.py timeutil.py deletion.py public.py
+│   │   ├── notifications.py labels.py locations.py taxonomy.py
 │   │   └── tests/               # moto-based unit tests
 │   └── migrations/              # legacy backfill scripts
 └── frontend/                    # Vite + React + TS SPA (public site + admin console)
@@ -114,8 +121,8 @@ different container commands (`image_config.command`):
 | Function | Entrypoint | Trigger | Notes |
 |----------|-----------|---------|-------|
 | `scout-events-api` | `lambda_function.lambda_handler` | API Gateway | 128 MB / 30 s |
-| `scout-source-run-processor` | `processor_handler.lambda_handler` | async invoke | 512 MB / 300 s; needs `ANTHROPIC_API_KEY`, `SCOUT_ARTIFACTS_BUCKET`, `SCOUT_IMAGES_BUCKET` |
-| `scout-scheduler` | `scheduler_handler.lambda_handler` | EventBridge `rate(15 minutes)` | dispatches due sources |
+| `scout-source-run-processor` | `processor_handler.lambda_handler` | async invoke | 512 MB / 300 s; needs `ANTHROPIC_API_KEY`, `SCOUT_ARTIFACTS_BUCKET`, `SCOUT_IMAGES_BUCKET`, `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` (Gmail ingestion + `mode=discover`) |
+| `scout-scheduler` | `scheduler_handler.lambda_handler` | EventBridge `rate(15 minutes)` | Gmail discovery pass + dispatches due sources |
 | `scout-sweep` | `sweep_handler.lambda_handler` | EventBridge `rate(1 hour)` | orphan recovery + past flags |
 | `scout-email-processor` | legacy | weekly EventBridge | being retired |
 
@@ -130,9 +137,10 @@ catch-all, and PR base paths).
   `GET /api/public/events` (filters: `location_id`, `event_labels`,
   `location_labels` (all AND), `q`, `sort`, `cursor`), `GET /api/public/events/{id}`,
   `GET /api/public/facets`.
-- **Admin** (`/api/admin/*`, Cognito authorizer): sources, events/sub-events,
-  locations, labels/{source|event|location}, settings, notifications,
-  `deleted/{type}`, `restore`.
+- **Admin** (`/api/admin/*`, Cognito authorizer): sources (incl.
+  `sources/scan-inbox` → Gmail discovery), events/sub-events, locations,
+  labels/{source|event|location}, settings, notifications, `deleted/{type}`,
+  `restore`.
 
 ## Extraction (Claude Agent SDK)
 
@@ -151,6 +159,7 @@ Notable additions for the redesign:
 | Variable | Where | Purpose |
 |----------|-------|---------|
 | `ANTHROPIC_API_KEY` | secret → processor env | Agent SDK key |
+| `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN` | secret → processor env | Gmail API (OAuth refresh token) for "Events"-label ingestion |
 | `SCOUT_ARTIFACTS_BUCKET` / `SCOUT_IMAGES_BUCKET` | Lambda env | S3 buckets (`scout-artifacts-<env>` / `scout-images-<env>`) |
 | `SCOUT_PROCESSOR_FN` | events-api / scheduler env | processor function name for invocations |
 | `SCOUT_TABLE_SUFFIX` | Lambda env | `""` in prod, `-pr-<N>` in previews |

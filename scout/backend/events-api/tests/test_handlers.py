@@ -1,5 +1,6 @@
 """Tests for the processor / scheduler / sweep Lambda entrypoints."""
 
+import json
 import os
 import unittest
 from unittest import mock
@@ -105,14 +106,28 @@ class TestHandlers(unittest.TestCase):
         self.assertEqual(processor_handler.lambda_handler({"source_id": "nope"}, None),
                          {"error": "source not found"})
 
-    def test_scheduler_dispatches_due_and_advances(self):
+    def test_processor_discover_ensures_email_sources(self):
+        with mock.patch.object(processor_handler.gmail, "discover_domains",
+                               return_value=["eventbrite.com", "venue.org"]):
+            result = processor_handler.lambda_handler({"mode": "discover"}, None)
+        self.assertEqual(result["mode"], "discover")
+        self.assertEqual(len(result["ensured"]), 2)
+        self.assertTrue(all(e["created"] for e in result["ensured"]))
+        created = {s["identity"] for s in sources.list_sources()}
+        self.assertEqual(created, {"eventbrite.com", "venue.org"})
+
+    def test_scheduler_discovers_then_dispatches_due(self):
         src = sources.create_source(sources.WEBPAGE, "https://x.com",
                                     config={"mode": "one-off"})
         fake_client = mock.Mock()
         scheduler_handler._lambda_client = fake_client
         result = scheduler_handler.lambda_handler({}, None)
         self.assertEqual(result["dispatched"], [src["source_id"]])
-        fake_client.invoke.assert_called_once()
+        # One discover invoke + one due-source invoke.
+        self.assertEqual(fake_client.invoke.call_count, 2)
+        payloads = [json.loads(c.kwargs["Payload"])
+                    for c in fake_client.invoke.call_args_list]
+        self.assertIn({"mode": "discover"}, payloads)
         # Schedule advanced -> one-off no longer due.
         self.assertEqual(sources.due_sources(), [])
 

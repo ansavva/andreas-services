@@ -157,6 +157,49 @@ class TestPipeline(unittest.TestCase):
                              fetch_fn=_fetch_fn, extractor=_extract_one)
         self.assertEqual(store.get(pk, "META")["next_run_at"], before)
 
+    def test_email_run_fetches_via_gmail_and_advances_cursor(self):
+        email_src = sources.create_source(sources.EMAIL, "venue.org")
+        captured = {}
+
+        def gmail_fetch(domain, since):
+            captured["domain"] = domain
+            captured["since"] = since
+            return [
+                {"message_id": "m1", "subject": "Show", "image_url": "",
+                 "body_markdown": "Jazz Night, Friday"},
+                {"message_id": "m2", "subject": "Gig", "image_url": "",
+                 "body_markdown": "Blues Sat"},
+            ]
+
+        run = pipeline.execute_run(email_src, runs.TRIGGER_SCHEDULED,
+                                   extractor=_extract_one, gmail_fetch=gmail_fetch)
+        self.assertEqual(run["status"], "success")
+        self.assertEqual(captured["domain"], "venue.org")
+        # Two messages stored as run artifacts + readable in S3.
+        self.assertEqual(len(run["link_outcomes"]), 2)
+        self.assertIn("Jazz Night", artifacts.get_text(run["link_outcomes"][0]["s3_ref"]))
+        # Cursor advanced for the next run.
+        updated = store.get(store.source_pk(email_src["source_id"]), "META")
+        self.assertIn("last_email_fetch_epoch", updated)
+
+    def test_email_run_resumes_from_stored_cursor(self):
+        email_src = sources.create_source(sources.EMAIL, "venue.org")
+        store.set_attrs(store.source_pk(email_src["source_id"]), "META",
+                        {"last_email_fetch_epoch": 1700000000})
+        email_src = store.get(store.source_pk(email_src["source_id"]), "META")
+        seen = {}
+
+        def gmail_fetch(domain, since):
+            seen["since"] = since
+            return []
+
+        # since_epoch is supplied by the caller (processor); here we pass it
+        # through explicitly to assert the pipeline forwards it.
+        pipeline.execute_run(email_src, runs.TRIGGER_SCHEDULED,
+                             extractor=_extract_one, gmail_fetch=gmail_fetch,
+                             since_epoch=email_src["last_email_fetch_epoch"])
+        self.assertEqual(int(seen["since"]), 1700000000)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -39,6 +39,15 @@ def _lambda():
 
 
 def lambda_handler(event, context):
+    # Scan the Gmail "Events" label first so newly-seen sender domains become
+    # active email sources (picked up on a subsequent tick once due). Gmail
+    # access lives in the processor, so this is a fire-and-forget invoke.
+    _lambda().invoke(
+        FunctionName=_PROCESSOR_FN,
+        InvocationType="Event",
+        Payload=json.dumps({"mode": "discover"}).encode(),
+    )
+
     dispatched = []
     for source in sources.due_sources():
         source_id = source["source_id"]

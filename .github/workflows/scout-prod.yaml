@@ -308,11 +308,16 @@ jobs:
             > /tmp/env-events-api.json
 
           jq -n --arg anthropic "${ANTHROPIC_API_KEY}" \
+            --arg client_id "${GMAIL_CLIENT_ID}" --arg client_secret "${GMAIL_CLIENT_SECRET}" \
+            --arg refresh_token "${GMAIL_REFRESH_TOKEN}" \
             '{Variables: {
               SCOUT_TABLE_SUFFIX:     "",
               SCOUT_ARTIFACTS_BUCKET: "scout-artifacts-production",
               SCOUT_IMAGES_BUCKET:    "scout-images-production",
-              ANTHROPIC_API_KEY:      $anthropic
+              ANTHROPIC_API_KEY:      $anthropic,
+              GMAIL_CLIENT_ID:        $client_id,
+              GMAIL_CLIENT_SECRET:    $client_secret,
+              GMAIL_REFRESH_TOKEN:    $refresh_token
             }}' > /tmp/env-processor.json
 
           jq -n '{Variables: {SCOUT_TABLE_SUFFIX: "", SCOUT_PROCESSOR_FN: "scout-source-run-processor"}}' \

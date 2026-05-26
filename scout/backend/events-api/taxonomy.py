@@ -30,6 +30,16 @@ def slugify(name):
     return slug.strip("-")
 
 
+def sender_domain(from_header):
+    """Registrable sender domain from a raw "From" header, lowercased and without
+    a leading www. — the identity of an email source. Empty when absent."""
+    sender_key, _ = normalize_sender(from_header)
+    if "@" not in sender_key:
+        return ""
+    domain = sender_key.rsplit("@", 1)[1].strip().strip(">").strip()
+    return domain[4:] if domain.startswith("www.") else domain
+
+
 def normalize_title(title):
     """Normalize an event title for duplicate detection: NFKC fold, lowercase,
     strip punctuation, drop a single leading article, collapse whitespace."""

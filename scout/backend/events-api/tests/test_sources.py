@@ -148,6 +148,33 @@ class TestSources(unittest.TestCase):
         self.assertEqual(src["agent_model_override"], "claude-sonnet-4-6")
         self.assertEqual(src["agent_budget_tokens_override"], 50000)
 
+    def test_ensure_email_source_creates_active_and_due_now(self):
+        src, created = sources.ensure_email_source("Eventbrite.com")
+        self.assertTrue(created)
+        self.assertEqual(src["type"], "email")
+        self.assertEqual(src["identity"], "eventbrite.com")
+        self.assertEqual(src["status"], "active")
+        # Due immediately so the next scheduler tick ingests its backlog.
+        self.assertLessEqual(src["next_run_at"], sources._iso(sources._now()))
+        self.assertEqual([s["source_id"] for s in sources.due_sources()],
+                         [src["source_id"]])
+
+    def test_ensure_email_source_is_idempotent(self):
+        first, created1 = sources.ensure_email_source("venue.org")
+        second, created2 = sources.ensure_email_source("venue.org")
+        self.assertTrue(created1)
+        self.assertFalse(created2)
+        self.assertEqual(first["source_id"], second["source_id"])
+        self.assertEqual(len(sources.list_sources()), 1)
+
+    def test_ensure_email_source_leaves_archived_untouched(self):
+        src, _ = sources.ensure_email_source("venue.org")
+        sources.set_archived(src["source_id"], True)
+        again, created = sources.ensure_email_source("venue.org")
+        self.assertFalse(created)
+        self.assertEqual(again["source_id"], src["source_id"])
+        self.assertTrue(again["archived"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Play, Plus, Trash2 } from "lucide-react";
+import { Inbox, Play, Plus, Trash2 } from "lucide-react";
 import { useApi } from "@/api";
 import { Badge, Button, ErrorBanner, Modal, Spinner } from "@/components/ui";
 import type { Source, SourceType } from "@/types";
@@ -117,6 +117,18 @@ export function SourcesSection() {
     }
   };
 
+  const scanInbox = async () => {
+    try {
+      await api.scanInbox();
+      setError(null);
+      window.alert(
+        "Scanning the Gmail \"Events\" label. New sender domains will appear as active email sources shortly."
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Scan failed");
+    }
+  };
+
   const remove = async (s: Source) => {
     try {
       const preview = await api.deleteSourcePreview(s.source_id);
@@ -151,10 +163,16 @@ export function SourcesSection() {
             Archived
           </button>
         </div>
-        <Button variant="primary" onClick={() => setCreating(true)}>
-          <Plus size={15} />
-          New source
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => void scanInbox()} title="Scan the Gmail Events label for new email sources">
+            <Inbox size={15} />
+            Scan inbox
+          </Button>
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            <Plus size={15} />
+            New source
+          </Button>
+        </div>
       </div>
 
       {error && <ErrorBanner message={error} />}

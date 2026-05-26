@@ -90,6 +90,7 @@ export function useApi() {
           `/admin/sources${buildQuery({ archived: archived ? "true" : undefined })}`
         ),
       createSource: (body: unknown) => post(`/admin/sources`, body) as Promise<Source>,
+      scanInbox: () => post(`/admin/sources/scan-inbox`, {}),
       updateSource: (id: string, body: unknown) =>
         put(`/admin/sources/${id}`, body) as Promise<Source>,
       archiveSource: (id: string, archived: boolean) =>

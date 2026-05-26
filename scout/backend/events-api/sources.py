@@ -175,6 +175,39 @@ def get_source(source_id):
     return store.get(store.source_pk(source_id), "META")
 
 
+def get_by_identity(source_type, identity):
+    """The live source matching a type + normalized identity, or None. Backed by
+    GSI1 (listed + archived partitions), which excludes soft-deleted sources."""
+    identity_norm = (identity or "").strip().lower()
+    for pk in (_LISTED_PK, _ARCHIVED_PK):
+        for source in store.query_index_all("GSI1", pk, ascending=True):
+            if (source.get("type") == source_type
+                    and source.get("identity_norm") == identity_norm):
+                return source
+    return None
+
+
+def ensure_email_source(domain):
+    """Idempotently ensure an active email source exists for a sender domain
+    discovered under the Gmail "Events" label. Returns (source, created).
+
+    A brand-new source is made due immediately (next_run_at = now) so the next
+    scheduler tick — or a manual run — ingests its backlog rather than waiting a
+    full check_frequency interval. An already-known source (even archived or
+    disabled by an admin) is returned untouched."""
+    domain = (domain or "").strip().lower()
+    if not domain:
+        raise ValueError("domain is required")
+    existing = get_by_identity(EMAIL, domain)
+    if existing is not None:
+        return existing, False
+
+    source = create_source(EMAIL, domain, status=ACTIVE)
+    store.set_attrs(store.source_pk(source["source_id"]), "META",
+                    {"next_run_at": _iso(_now())})
+    return _reindex(source["source_id"]), True
+
+
 def list_sources(*, archived=False, status=None):
     """Default view (archived=False) or the archived view, optionally filtered
     to a status."""

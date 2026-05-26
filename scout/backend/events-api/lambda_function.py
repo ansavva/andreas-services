@@ -173,6 +173,14 @@ def _trigger(source_id, mode):
     return {"status": "started", "source_id": source_id, "mode": mode}
 
 
+def _scan_inbox():
+    _lambda().invoke(
+        FunctionName=_PROCESSOR_FN, InvocationType="Event",
+        Payload=json.dumps({"mode": "discover"}).encode(),
+    )
+    return {"status": "started", "mode": "discover"}
+
+
 def _admin_sources(method, rest, query, body):
     if rest == [] and method == "GET":
         archived = (query or {}).get("archived") == "true"
@@ -188,6 +196,8 @@ def _admin_sources(method, rest, query, body):
         return created(src)
     if rest == ["health"] and method == "GET":
         return ok(sources.health_report())
+    if rest == ["scan-inbox"] and method == "POST":
+        return ok(_scan_inbox())
 
     if not rest:
         return None
