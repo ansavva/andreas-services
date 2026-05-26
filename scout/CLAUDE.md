@@ -26,12 +26,10 @@ ones at `scout.andreas.services/app`.
    UI) and the admin console API. A Vite + React + TypeScript SPA (S3 +
    CloudFront) renders both.
 
-> **Migration note:** the standalone legacy Gmail→Claude `email-processor`
-> Lambda and the old `scout-events/emails/senders/regions/categories` tables
-> still exist but are being retired. The Gmail "Events"-label ingestion concept
-> lives on, re-implemented inside the new source-run-processor (`gmail.py` +
-> the processor's `mode=discover`); nothing in the new model reads the old
-> tables or triggers the legacy Lambda.
+> The Gmail "Events"-label ingestion now lives inside the source-run-processor
+> (`gmail.py` + the processor's `mode=discover`). The standalone legacy
+> Gmail→Claude `email-processor` Lambda and the old
+> `scout-events/emails/senders/regions/categories` tables have been removed.
 
 ### Core domain concepts
 
@@ -69,7 +67,6 @@ scout/
 │   ├── modules/                 # auth, api_domain, api_gateway, compute, hosting, storage, data
 │   └── envs/                    # prod, pr (per-PR ephemeral), pr-preview (shared)
 ├── backend/
-│   ├── email-processor/         # LEGACY Gmail→Claude Lambda (being retired)
 │   ├── events-api/              # the scout-core service layer + all Lambda entrypoints
 │   │   ├── Dockerfile           # one image, multiple Lambda commands
 │   │   ├── lambda_function.py   # HTTP router (public + /api/admin/*)
@@ -81,7 +78,6 @@ scout/
 │   │   ├── pipeline.py events.py images.py timeutil.py deletion.py public.py
 │   │   ├── notifications.py labels.py locations.py taxonomy.py
 │   │   └── tests/               # moto-based unit tests
-│   └── migrations/              # legacy backfill scripts
 └── frontend/                    # Vite + React + TS SPA (public site + admin console)
 ```
 
@@ -113,10 +109,10 @@ resolved once at write) is indexed instead; the sweep refreshes the boolean.
 
 ## Lambda Functions
 
-All five share IAM role `scout-lambda-role` (DynamoDB on `scout-*` incl. GSIs,
-S3 on `scout-artifacts-*`/`scout-images-*`, invoke `scout-source-run-processor*`).
-The four scout-core Lambdas ship from **one** `scout-events-api` image with
-different container commands (`image_config.command`):
+All four share IAM role `scout-lambda-role` (DynamoDB on `scout-*` incl. GSIs,
+S3 on `scout-artifacts-*`/`scout-images-*`, invoke `scout-source-run-processor*`)
+and ship from **one** `scout-events-api` image with different container commands
+(`image_config.command`):
 
 | Function | Entrypoint | Trigger | Notes |
 |----------|-----------|---------|-------|
@@ -124,7 +120,6 @@ different container commands (`image_config.command`):
 | `scout-source-run-processor` | `processor_handler.lambda_handler` | async invoke | 512 MB / 300 s; needs `ANTHROPIC_API_KEY`, `SCOUT_ARTIFACTS_BUCKET`, `SCOUT_IMAGES_BUCKET`, `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` (Gmail ingestion + `mode=discover`) |
 | `scout-scheduler` | `scheduler_handler.lambda_handler` | EventBridge `rate(15 minutes)` | Gmail discovery pass + dispatches due sources |
 | `scout-sweep` | `sweep_handler.lambda_handler` | EventBridge `rate(1 hour)` | orphan recovery + past flags |
-| `scout-email-processor` | legacy | weekly EventBridge | being retired |
 
 EventBridge rules are created only in prod (`create_eventbridge=true`).
 
@@ -171,9 +166,9 @@ Push to `main` runs `.github/workflows/scout-prod.yaml`:
 `detect-changes → build-and-push → deploy-infra → update-lambda + deploy-frontend`.
 Image build runs first because the Lambdas reference `:latest` with
 `lifecycle { ignore_changes = [image_uri, environment] }`. `update-lambda` sets
-env vars and pins **all four** scout-core Lambdas to `:${sha}` — `scout-events-api`,
-`scout-source-run-processor`, `scout-scheduler`, `scout-sweep` all use the
-`scout-events-api` image; `scout-email-processor` uses its own.
+env vars and pins **all four** Lambdas to `:${sha}` — `scout-events-api`,
+`scout-source-run-processor`, `scout-scheduler`, `scout-sweep` all use the one
+`scout-events-api` image.
 
 PR previews (`.github/workflows/scout-pr.yml`): validate first
 (`lint-unit-build`: backend pytest + frontend lint/tsc/build), then

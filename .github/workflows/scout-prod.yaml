@@ -114,7 +114,7 @@ jobs:
 
       - name: Ensure ECR repositories exist
         run: |
-          for REPO in scout-email-processor scout-events-api; do
+          for REPO in scout-events-api; do
             aws ecr describe-repositories --repository-names "$REPO" \
               --region "${{ env.AWS_REGION }}" >/dev/null 2>&1 || \
             aws ecr create-repository \
@@ -123,14 +123,6 @@ jobs:
               --image-scanning-configuration scanOnPush=true \
               --tags Key=Project,Value=scout
           done
-
-      - name: Build & push email-processor
-        run: |
-          IMAGE="${ECR_REGISTRY}/scout-email-processor"
-          cd scout/backend/email-processor
-          docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
-          docker push "${IMAGE}:${{ github.sha }}"
-          docker push "${IMAGE}:latest"
 
       - name: Build & push events-api
         run: |
@@ -181,10 +173,7 @@ jobs:
 
       - name: Terraform apply
         env:
-          TF_VAR_anthropic_api_key:   ${{ secrets.ANTHROPIC_API_KEY }}
-          TF_VAR_gmail_client_id:     ${{ secrets.GMAIL_CLIENT_ID }}
-          TF_VAR_gmail_client_secret: ${{ secrets.GMAIL_CLIENT_SECRET }}
-          TF_VAR_gmail_refresh_token: ${{ secrets.GMAIL_REFRESH_TOKEN }}
+          TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
         run: terraform -chdir=scout/infra/envs/prod apply -auto-approve -input=false
 
       - name: Write outputs to SSM
@@ -291,19 +280,6 @@ jobs:
           GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
         run: |
           set -euo pipefail
-          jq -n \
-            --arg anthropic     "${ANTHROPIC_API_KEY}" \
-            --arg client_id     "${GMAIL_CLIENT_ID}" \
-            --arg client_secret "${GMAIL_CLIENT_SECRET}" \
-            --arg refresh_token "${GMAIL_REFRESH_TOKEN}" \
-            '{Variables: {
-              SCOUT_TABLE_SUFFIX:   "",
-              ANTHROPIC_API_KEY:    $anthropic,
-              GMAIL_CLIENT_ID:      $client_id,
-              GMAIL_CLIENT_SECRET:  $client_secret,
-              GMAIL_REFRESH_TOKEN:  $refresh_token
-            }}' > /tmp/env-email-processor.json
-
           jq -n '{Variables: {SCOUT_TABLE_SUFFIX: "", SCOUT_PROCESSOR_FN: "scout-source-run-processor"}}' \
             > /tmp/env-events-api.json
 
@@ -332,16 +308,10 @@ jobs:
             aws lambda wait function-updated \
               --function-name "$1" --region "${{ env.AWS_REGION }}"
           }
-          set_env scout-email-processor      /tmp/env-email-processor.json
           set_env scout-events-api           /tmp/env-events-api.json
           set_env scout-source-run-processor /tmp/env-processor.json
           set_env scout-scheduler            /tmp/env-scheduler.json
           set_env scout-sweep                /tmp/env-sweep.json
-
-      - name: Run data migration
-        run: |
-          pip install --quiet boto3
-          SCOUT_TABLE_SUFFIX="" python scout/backend/migrations/populate_emails_table.py
 
       - name: Update Lambda function code
         run: |
@@ -354,9 +324,8 @@ jobs:
               --output table \
               --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
           }
-          # email-processor ships its own image; events-api + the run-pipeline
-          # Lambdas (processor/scheduler/sweep) all share the events-api image.
-          update_code scout-email-processor "${ECR_REGISTRY}/scout-email-processor:${{ github.sha }}"
+          # events-api + the run-pipeline Lambdas (processor/scheduler/sweep)
+          # all share the one events-api image.
           for FN in scout-events-api scout-source-run-processor scout-scheduler scout-sweep; do
             update_code "${FN}" "${ECR_REGISTRY}/scout-events-api:${{ github.sha }}"
           done

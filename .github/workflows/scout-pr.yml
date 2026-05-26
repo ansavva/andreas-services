@@ -66,16 +66,6 @@ jobs:
           cd scout/backend/events-api
           poetry run pytest tests/ -v
 
-      - name: Install email-processor test deps
-        run: |
-          cd scout/backend/email-processor
-          poetry install --with dev --no-root --no-interaction --no-ansi
-
-      - name: Run email-processor unit tests
-        run: |
-          cd scout/backend/email-processor
-          poetry run pytest tests/ -v
-
       # Dockerfile build verification is handled by the deploy-preview job
       # below — same Dockerfile, same failure mode, ~1 min later. No need
       # to build a throwaway :ci-verify image here.
@@ -220,7 +210,7 @@ jobs:
 
       - name: Ensure ECR repositories exist
         run: |
-          for REPO in scout-email-processor scout-events-api; do
+          for REPO in scout-events-api; do
             aws ecr describe-repositories --repository-names "${REPO}" \
               --region "${{ env.AWS_REGION }}" > /dev/null 2>&1 || \
             aws ecr create-repository \
@@ -232,13 +222,6 @@ jobs:
 
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build & push email-processor
-        run: |
-          IMAGE="${ECR_REGISTRY}/scout-email-processor"
-          cd scout/backend/email-processor
-          docker build -t "${IMAGE}:pr-${{ env.PR_NUMBER }}" .
-          docker push "${IMAGE}:pr-${{ env.PR_NUMBER }}"
 
       - name: Build & push events-api
         run: |
@@ -263,13 +246,8 @@ jobs:
       - name: Terraform apply (pr)
         env:
           TF_VAR_pr_number:                  "${{ env.PR_NUMBER }}"
-          TF_VAR_email_processor_image_uri:  "${{ env.ECR_REGISTRY }}/scout-email-processor:pr-${{ env.PR_NUMBER }}"
           TF_VAR_events_api_image_uri:       "${{ env.ECR_REGISTRY }}/scout-events-api:pr-${{ env.PR_NUMBER }}"
           TF_VAR_anthropic_api_key:          ${{ secrets.ANTHROPIC_API_KEY }}
-          TF_VAR_gmail_client_id:            ${{ secrets.GMAIL_CLIENT_ID }}
-          TF_VAR_gmail_client_secret:        ${{ secrets.GMAIL_CLIENT_SECRET }}
-          TF_VAR_gmail_refresh_token:        ${{ secrets.GMAIL_REFRESH_TOKEN }}
-          TF_VAR_max_emails_per_run:         "3"
         run: terraform -chdir=scout/infra/envs/pr apply -auto-approve -input=false
 
       - name: Read PR outputs
@@ -311,22 +289,6 @@ jobs:
           SUFFIX="-pr-${PR}"
           PROCESSOR_FN="scout-source-run-processor${SUFFIX}"
 
-          jq -n \
-            --arg suffix        "${SUFFIX}" \
-            --arg anthropic     "${ANTHROPIC_API_KEY}" \
-            --arg client_id     "${GMAIL_CLIENT_ID}" \
-            --arg client_secret "${GMAIL_CLIENT_SECRET}" \
-            --arg refresh_token "${GMAIL_REFRESH_TOKEN}" \
-            --arg max_emails    "3" \
-            '{Variables: {
-              SCOUT_TABLE_SUFFIX:   $suffix,
-              ANTHROPIC_API_KEY:    $anthropic,
-              GMAIL_CLIENT_ID:      $client_id,
-              GMAIL_CLIENT_SECRET:  $client_secret,
-              GMAIL_REFRESH_TOKEN:  $refresh_token,
-              MAX_EMAILS_PER_RUN:   $max_emails
-            }}' > /tmp/env-email-processor.json
-
           jq -n --arg suffix "${SUFFIX}" --arg fn "${PROCESSOR_FN}" \
             '{Variables: {SCOUT_TABLE_SUFFIX: $suffix, SCOUT_PROCESSOR_FN: $fn}}' \
             > /tmp/env-events-api.json
@@ -358,7 +320,6 @@ jobs:
             aws lambda wait function-updated \
               --function-name "$1" --region "${{ env.AWS_REGION }}"
           }
-          set_env "scout-email-processor${SUFFIX}"      /tmp/env-email-processor.json
           set_env "scout-events-api${SUFFIX}"           /tmp/env-events-api.json
           set_env "${PROCESSOR_FN}"                     /tmp/env-processor.json
           set_env "scout-scheduler${SUFFIX}"            /tmp/env-scheduler.json
@@ -377,7 +338,6 @@ jobs:
               --function-name "$1" --region "${{ env.AWS_REGION }}"
           }
           EVENTS_IMAGE="${ECR_REGISTRY}/scout-events-api:pr-${{ env.PR_NUMBER }}"
-          update_code "scout-email-processor${SUFFIX}" "${ECR_REGISTRY}/scout-email-processor:pr-${{ env.PR_NUMBER }}"
           for NAME in scout-events-api scout-source-run-processor scout-scheduler scout-sweep; do
             update_code "${NAME}${SUFFIX}" "${EVENTS_IMAGE}"
           done

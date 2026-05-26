@@ -5,25 +5,7 @@ variable "aws_region" {
 }
 
 variable "anthropic_api_key" {
-  description = "Anthropic API key for email processor"
-  type        = string
-  sensitive   = true
-}
-
-variable "gmail_client_id" {
-  description = "Gmail OAuth client ID"
-  type        = string
-  sensitive   = true
-}
-
-variable "gmail_client_secret" {
-  description = "Gmail OAuth client secret"
-  type        = string
-  sensitive   = true
-}
-
-variable "gmail_refresh_token" {
-  description = "Gmail OAuth refresh token"
+  description = "Anthropic API key for the source-run processor (Agent SDK)"
   type        = string
   sensitive   = true
 }

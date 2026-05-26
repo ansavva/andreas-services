@@ -1,8 +1,7 @@
 """
-Pure helpers for sender normalization and slugging.
+Pure helpers for sender normalization, slugging, and dedup/normalization keys.
 
-This is an intentional copy of the email-processor's taxonomy module — the two
-Lambdas ship as independent images and do not share a package.
+Dependency-free so it is trivial to unit test and safe to import from any layer.
 """
 
 import re

@@ -33,11 +33,6 @@ output "cloudfront_distribution_id" {
   value       = module.hosting.cloudfront_distribution_id
 }
 
-output "email_processor_function_name" {
-  description = "Email processor Lambda function name"
-  value       = module.compute.email_processor_function_name
-}
-
 output "events_api_function_name" {
   description = "Events API Lambda function name"
   value       = module.compute.events_api_function_name
@@ -56,11 +51,6 @@ output "scheduler_function_name" {
 output "sweep_function_name" {
   description = "Sweep Lambda function name"
   value       = module.compute.sweep_function_name
-}
-
-output "ecr_email_processor_url" {
-  description = "ECR URL for email processor"
-  value       = module.compute.ecr_email_processor_url
 }
 
 output "ecr_events_api_url" {
