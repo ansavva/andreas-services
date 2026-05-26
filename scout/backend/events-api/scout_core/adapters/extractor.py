@@ -201,6 +201,7 @@ def default_runner(*, prompt, files, model, allowed_tools, budget_seconds):
     normalized message dicts. Imported lazily so this module loads without the
     SDK installed (the source-run-processor image declares the dependency)."""
     import asyncio
+    import os
     import tempfile
 
     from claude_agent_sdk import (  # noqa: PLC0415
@@ -211,6 +212,16 @@ def default_runner(*, prompt, files, model, allowed_tools, budget_seconds):
         ToolUseBlock,
         query,
     )
+
+    # The bundled Claude Code CLI writes config/state under $HOME (and the XDG
+    # dirs) when it initializes. In Lambda the default HOME is read-only and only
+    # /tmp is writable, so without this the CLI hangs on startup and the SDK
+    # fails with "Control request timeout: initialize". Point HOME at /tmp.
+    agent_home = os.path.join(tempfile.gettempdir(), "claude-home")
+    os.makedirs(agent_home, exist_ok=True)
+    os.environ["HOME"] = agent_home
+    os.environ["XDG_CONFIG_HOME"] = os.path.join(agent_home, ".config")
+    os.environ["XDG_CACHE_HOME"] = os.path.join(agent_home, ".cache")
 
     with tempfile.TemporaryDirectory() as workdir:
         for name, content in files.items():
