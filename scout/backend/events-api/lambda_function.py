@@ -61,7 +61,12 @@ _lambda_client = None
 def _lambda():
     global _lambda_client
     if _lambda_client is None:
-        _lambda_client = boto3.client("lambda")
+        region = (
+            os.environ.get("AWS_REGION")
+            or os.environ.get("AWS_DEFAULT_REGION")
+            or "us-east-1"
+        )
+        _lambda_client = boto3.client("lambda", region_name=region)
     return _lambda_client
 
 

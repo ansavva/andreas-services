@@ -49,6 +49,14 @@ _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 _dynamodb = None
 
 
+def _region():
+    return (
+        os.environ.get("AWS_REGION")
+        or os.environ.get("AWS_DEFAULT_REGION")
+        or "us-east-1"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Resource / table handles (lazy so importing under moto/tests is side-effect free)
 # ---------------------------------------------------------------------------
@@ -56,7 +64,7 @@ _dynamodb = None
 def _resource():
     global _dynamodb
     if _dynamodb is None:
-        _dynamodb = boto3.resource("dynamodb")
+        _dynamodb = boto3.resource("dynamodb", region_name=_region())
     return _dynamodb
 
 

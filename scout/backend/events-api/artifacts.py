@@ -14,10 +14,18 @@ import boto3
 _s3 = None
 
 
+def _region():
+    return (
+        os.environ.get("AWS_REGION")
+        or os.environ.get("AWS_DEFAULT_REGION")
+        or "us-east-1"
+    )
+
+
 def _client():
     global _s3
     if _s3 is None:
-        _s3 = boto3.client("s3")
+        _s3 = boto3.client("s3", region_name=_region())
     return _s3
 
 
