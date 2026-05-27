@@ -1,7 +1,5 @@
 // Domain types for the Scout admin console and public UI.
 
-export type Theme = "light" | "dark";
-
 // --- Public ---------------------------------------------------------------
 
 export interface LabelRef {

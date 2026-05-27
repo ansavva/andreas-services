@@ -24,7 +24,7 @@ function CreateLocationForm({ onClose, onCreated }: { onClose: () => void; onCre
   };
 
   const field =
-    "w-full rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm text-[var(--color-text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]";
+    "w-full rounded-none border-b border-[var(--color-rule)] bg-transparent py-2 text-sm text-[var(--color-text-primary)] focus:outline-none";
 
   return (
     <Modal title="New location" onClose={onClose}>
@@ -122,16 +122,21 @@ export function LocationsSection() {
       ) : locations.length === 0 ? (
         <p className="py-12 text-center text-sm text-[var(--color-text-muted)]">No locations.</p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="border-t border-[var(--color-rule)]">
           {locations.map((loc) => (
             <li
               key={loc.location_id}
-              className="flex items-center justify-between gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
+              className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] py-4"
             >
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={selected.has(loc.location_id)} onChange={() => toggle(loc.location_id)} />
+              <label className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={selected.has(loc.location_id)}
+                  onChange={() => toggle(loc.location_id)}
+                  className="h-4 w-4 shrink-0 accent-[var(--color-primary)]"
+                />
                 <span>
-                  <span className="text-sm font-medium text-[var(--color-text-primary)]">{loc.name}</span>
+                  <span className="font-serif text-base text-[var(--color-text-primary)]">{loc.name}</span>
                   <span className="ml-2 text-xs text-[var(--color-text-muted)]">
                     {loc.address} · {loc.timezone}
                   </span>

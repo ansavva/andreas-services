@@ -60,12 +60,12 @@ export function SettingsSection() {
     <form onSubmit={(e) => void save(e)} className="flex max-w-lg flex-col gap-3">
       {error && <ErrorBanner message={error} />}
       {Object.keys(LABELS).map((key) => (
-        <label key={key} className="flex flex-col gap-1 text-sm text-[var(--color-text-secondary)]">
-          {LABELS[key]}
+        <label key={key} className="flex flex-col gap-1.5">
+          <span className="eyebrow text-[var(--color-text-muted)]">{LABELS[key]}</span>
           <input
             value={String(settings[key] ?? "")}
             onChange={(e) => setSettings((s) => ({ ...s, [key]: e.target.value }))}
-            className="rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm text-[var(--color-text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
+            className="rounded-none border-b border-[var(--color-rule)] bg-transparent py-2 text-sm text-[var(--color-text-primary)] focus:outline-none"
           />
         </label>
       ))}
@@ -73,7 +73,7 @@ export function SettingsSection() {
         <Button type="submit" variant="primary" disabled={saving}>
           {saving ? "Saving…" : "Save settings"}
         </Button>
-        {saved && <span className="text-sm text-emerald-600">Saved</span>}
+        {saved && <span className="eyebrow text-[var(--color-text-primary)]">Saved</span>}
       </div>
     </form>
   );

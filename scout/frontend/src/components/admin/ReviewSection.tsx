@@ -53,16 +53,16 @@ export function ReviewSection() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1">
           {REVIEWS.map((r) => (
             <button
               key={r}
               onClick={() => setReview(r)}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium capitalize transition-colors ${
+              className={`shrink-0 whitespace-nowrap rounded-none px-3 py-2 text-[11px] font-medium uppercase tracking-[0.12em] transition-colors ${
                 review === r
                   ? "bg-[var(--color-primary)] text-white"
-                  : "text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]"
+                  : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
               }`}
             >
               {r}
@@ -98,7 +98,7 @@ export function ReviewSection() {
           Nothing {review}.
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="border-t border-[var(--color-rule)]">
           {items.map((it) => {
             const id = it.event_id;
             const sub = isSub(it);
@@ -106,19 +106,19 @@ export function ReviewSection() {
             return (
               <li
                 key={key}
-                className="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 sm:flex-row sm:items-center sm:justify-between"
+                className="flex flex-col gap-3 border-b border-[var(--color-border)] py-4 sm:flex-row sm:items-center sm:justify-between"
               >
-                <div className="flex items-start gap-2">
+                <div className="flex items-start gap-3">
                   {!sub && review === "pending" && (
                     <input
                       type="checkbox"
                       checked={selected.has(id)}
                       onChange={() => toggleSelect(id)}
-                      className="mt-1"
+                      className="mt-1.5 h-4 w-4 shrink-0 accent-[var(--color-primary)]"
                     />
                   )}
                   <div>
-                    <div className="text-sm font-medium text-[var(--color-text-primary)]">
+                    <div className="font-serif text-base text-[var(--color-text-primary)]">
                       {sub ? "↳ occurrence" : it.title || "Untitled"}
                       {it.edited && (
                         <span className="ml-2 text-[11px] text-[var(--color-text-muted)]">
@@ -199,7 +199,7 @@ export function ReviewSection() {
       {eventIds.length > 0 && review === "pending" && (
         <button
           onClick={() => setSelected(new Set(eventIds))}
-          className="self-start text-xs text-[var(--color-primary)] hover:underline"
+          className="eyebrow self-start text-[var(--color-text-secondary)] underline-offset-4 hover:text-[var(--color-text-primary)] hover:underline"
         >
           Select all events
         </button>

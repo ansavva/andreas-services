@@ -1,19 +1,5 @@
-import { useContext, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  ArrowLeft,
-  Bell,
-  CalendarCheck,
-  LogOut,
-  MapPin,
-  Moon,
-  Rss,
-  Settings as SettingsIcon,
-  Sun,
-  Tag,
-  Trash2,
-} from "lucide-react";
-import { ThemeContext } from "@/context/ThemeContext";
 import { useAuth } from "@/context/AuthContext";
 import { ReviewSection } from "@/components/admin/ReviewSection";
 import { SourcesSection } from "@/components/admin/SourcesSection";
@@ -32,74 +18,69 @@ type Tab =
   | "deleted"
   | "settings";
 
-const TABS: { key: Tab; label: string; icon: typeof CalendarCheck }[] = [
-  { key: "review", label: "Review queue", icon: CalendarCheck },
-  { key: "sources", label: "Sources", icon: Rss },
-  { key: "locations", label: "Locations", icon: MapPin },
-  { key: "labels", label: "Labels", icon: Tag },
-  { key: "notifications", label: "Notifications", icon: Bell },
-  { key: "deleted", label: "Deleted", icon: Trash2 },
-  { key: "settings", label: "Settings", icon: SettingsIcon },
+const TABS: { key: Tab; label: string }[] = [
+  { key: "review", label: "Review queue" },
+  { key: "sources", label: "Sources" },
+  { key: "locations", label: "Locations" },
+  { key: "labels", label: "Labels" },
+  { key: "notifications", label: "Notifications" },
+  { key: "deleted", label: "Deleted" },
+  { key: "settings", label: "Settings" },
 ];
 
 export function AdminPage() {
-  const { theme, toggleTheme } = useContext(ThemeContext);
   const { user, logout } = useAuth();
   const [tab, setTab] = useState<Tab>("review");
 
   return (
     <div className="min-h-screen bg-[var(--color-background)]">
-      <header className="sticky top-0 z-10 theme-transition border-b border-[var(--color-border)] bg-[var(--color-surface)] shadow-sm">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3">
-          <div>
-            <h1 className="text-xl font-bold leading-tight text-[var(--color-text-primary)]">
-              Scout admin
+      <header className="sticky top-0 z-10 border-b border-[var(--color-rule)] bg-[var(--color-surface)]">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-5 py-4 sm:px-6">
+          <div className="flex items-baseline gap-3">
+            <h1 className="font-serif text-xl leading-none text-[var(--color-text-primary)]">
+              Scout
             </h1>
-            {user && <p className="hidden text-xs text-[var(--color-text-muted)] sm:block">{user}</p>}
+            <span className="eyebrow text-[var(--color-text-muted)]">Admin</span>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={toggleTheme}
-              title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-              className="rounded-lg p-2 text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)]"
-            >
-              {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
+          <div className="flex items-center gap-5">
+            {user && (
+              <span className="hidden max-w-[12rem] truncate text-xs text-[var(--color-text-muted)] md:block">
+                {user}
+              </span>
+            )}
             <Link
               to="/"
-              title="Back to events"
-              className="rounded-lg p-2 text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)]"
+              className="eyebrow text-[var(--color-text-secondary)] no-underline hover:text-[var(--color-text-primary)] hover:underline"
             >
-              <ArrowLeft size={18} />
+              View site
             </Link>
             <button
               onClick={logout}
-              title="Sign out"
-              className="inline-flex items-center gap-1.5 rounded-lg p-2 text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)]"
+              className="eyebrow text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:underline"
             >
-              <LogOut size={18} />
-              <span className="hidden text-sm sm:inline">Sign out</span>
+              Sign out
             </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-8">
-        <nav className="mb-6 flex flex-wrap gap-2 border-b border-[var(--color-border)]">
-          {TABS.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              className={`-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
-                tab === key
-                  ? "border-[var(--color-primary)] text-[var(--color-primary)]"
-                  : "border-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
-              }`}
-            >
-              <Icon size={15} />
-              {label}
-            </button>
-          ))}
+      <main className="mx-auto max-w-5xl px-5 py-8 sm:px-6">
+        <nav className="mb-8 border-b border-[var(--color-rule)]">
+          <div className="no-scrollbar -mb-px flex gap-6 overflow-x-auto">
+            {TABS.map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                className={`shrink-0 whitespace-nowrap border-b-2 px-1 py-3 text-[11px] font-medium uppercase tracking-[0.14em] transition-colors ${
+                  tab === key
+                    ? "border-[var(--color-primary)] text-[var(--color-text-primary)]"
+                    : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </nav>
 
         {tab === "review" && <ReviewSection />}

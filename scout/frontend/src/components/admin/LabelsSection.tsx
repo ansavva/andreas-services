@@ -58,15 +58,15 @@ export function LabelsSection() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex gap-2">
+      <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1">
         {TAXONOMIES.map((t) => (
           <button
             key={t.key}
             onClick={() => setTaxonomy(t.key)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`shrink-0 whitespace-nowrap rounded-none px-3 py-2 text-[11px] font-medium uppercase tracking-[0.12em] transition-colors ${
               taxonomy === t.key
                 ? "bg-[var(--color-primary)] text-white"
-                : "text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
             }`}
           >
             {t.label}
@@ -74,12 +74,12 @@ export function LabelsSection() {
         ))}
       </div>
 
-      <form onSubmit={(e) => void create(e)} className="flex gap-2">
+      <form onSubmit={(e) => void create(e)} className="flex gap-3">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="New label name"
-          className="flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm text-[var(--color-text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
+          className="flex-1 rounded-none border-b border-[var(--color-rule)] bg-transparent py-2 text-sm text-[var(--color-text-primary)] focus:outline-none"
         />
         <Button type="submit" variant="primary">
           <Plus size={15} />
@@ -98,12 +98,12 @@ export function LabelsSection() {
           {labels.map((l) => (
             <li
               key={l.label_id}
-              className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] py-1 pl-3 pr-1.5 text-sm text-[var(--color-text-primary)]"
+              className="inline-flex items-center gap-2 rounded-none border border-[var(--color-border)] py-1 pl-3 pr-1.5 text-[11px] uppercase tracking-[0.12em] text-[var(--color-text-primary)]"
             >
               {l.name}
               <button
                 onClick={() => void remove(l.label_id)}
-                className="rounded-full p-1 text-[var(--color-text-muted)] hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950/40"
+                className="rounded-none p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
                 title="Delete"
               >
                 <Trash2 size={13} />

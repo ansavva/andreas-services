@@ -2,34 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── Light theme ────────────────────────────────────────────────────────── */
+/* ─── Editorial monochrome palette ───────────────────────────────────────── */
 :root {
-  --color-background:    #f8fafc;
+  --color-background:    #ffffff;
   --color-surface:       #ffffff;
-  --color-surface-hover: #f1f5f9;
-  --color-border:        #e2e8f0;
-  --color-primary:       #7c3aed;
-  --color-primary-hover: #6d28d9;
-  --color-text-primary:  #0f172a;
-  --color-text-secondary:#334155;
-  --color-text-muted:    #64748b;
-  --color-badge:         #ede9fe;
-  --color-badge-text:    #5b21b6;
-}
-
-/* ─── Dark theme ─────────────────────────────────────────────────────────── */
-.dark {
-  --color-background:    #09090b;
-  --color-surface:       #141417;
-  --color-surface-hover: #1c1c21;
-  --color-border:        #27272a;
-  --color-primary:       #a78bfa;
-  --color-primary-hover: #8b5cf6;
-  --color-text-primary:  #fafafa;
-  --color-text-secondary:#a1a1aa;
-  --color-text-muted:    #71717a;
-  --color-badge:         #1e1b4b;
-  --color-badge-text:    #a5b4fc;
+  --color-surface-hover: #f5f5f5;
+  --color-border:        #e5e5e5;
+  --color-rule:          #0a0a0a;
+  --color-primary:       #0a0a0a;
+  --color-primary-hover: #000000;
+  --color-text-primary:  #0a0a0a;
+  --color-text-secondary:#4b4b4b;
+  --color-text-muted:    #8a8a8a;
+  --color-badge:         #f5f5f5;
+  --color-badge-text:    #0a0a0a;
 }
 
 * {
@@ -45,21 +31,35 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-.theme-transition {
-  transition: background-color 0.2s ease, color 0.2s ease,
-              border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
 a {
   color: var(--color-primary);
   text-decoration: none;
 }
 a:hover {
   text-decoration: underline;
+  text-underline-offset: 3px;
   color: var(--color-primary-hover);
 }
 
 :focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
+}
+
+/* Uppercase tracked label used for section kickers, meta and nav. */
+.eyebrow {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-weight: 500;
+  font-size: 0.6875rem;
+}
+
+/* Hide scrollbars on horizontally-scrollable strips (e.g. admin tabs on mobile). */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
