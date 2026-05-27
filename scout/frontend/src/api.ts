@@ -117,6 +117,8 @@ export function useApi() {
         ),
       getEvent: (id: string) =>
         request<{ event: AdminEvent; subevents: SubEvent[] }>(`/admin/events/${id}`),
+      previewEvent: (id: string) =>
+        request<PublicEvent>(`/admin/events/${encodeURIComponent(id)}/preview`),
       reviewEvent: (id: string, status: string) =>
         post(`/admin/events/${id}/review`, { status }),
       bulkReview: (ids: string[], status: string) =>
