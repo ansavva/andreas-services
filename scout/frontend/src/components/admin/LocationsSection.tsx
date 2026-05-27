@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useApi } from "@/api";
-import { Button, ErrorBanner, Modal, Spinner } from "@/components/ui";
+import { Button, ErrorBanner, Spinner } from "@/components/ui";
 import type { Location } from "@/types";
 
 function CreateLocationForm({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
@@ -27,15 +27,21 @@ function CreateLocationForm({ onClose, onCreated }: { onClose: () => void; onCre
     "w-full rounded-none border-b border-[var(--color-rule)] bg-transparent py-2 text-sm text-[var(--color-text-primary)] focus:outline-none";
 
   return (
-    <Modal title="New location" onClose={onClose}>
+    <div className="border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+      <h2 className="mb-4 font-serif text-xl leading-none text-[var(--color-text-primary)]">
+        New location
+      </h2>
       <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
         {error && <ErrorBanner message={error} />}
         <input className={field} placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} required />
         <input className={field} placeholder="Address" value={address} onChange={(e) => setAddress(e.target.value)} />
         <input className={field} placeholder="IANA timezone (e.g. America/New_York)" value={timezone} onChange={(e) => setTimezone(e.target.value)} />
-        <Button type="submit" variant="primary">Create</Button>
+        <div className="flex gap-2">
+          <Button type="submit" variant="primary">Create</Button>
+          <Button onClick={onClose}>Cancel</Button>
+        </div>
       </form>
-    </Modal>
+    </div>
   );
 }
 
@@ -46,10 +52,14 @@ export function LocationsSection() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [pendingDelete, setPendingDelete] = useState<Location | null>(null);
+  const [confirmMerge, setConfirmMerge] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setPendingDelete(null);
+    setConfirmMerge(false);
     try {
       const data = await api.listLocations();
       setLocations(data.locations);
@@ -72,24 +82,27 @@ export function LocationsSection() {
       return next;
     });
 
-  const remove = async (loc: Location) => {
-    if (!window.confirm(`Delete "${loc.name}"? Associated events cascade.`)) return;
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
     try {
-      await api.deleteLocation(loc.location_id, true);
+      await api.deleteLocation(pendingDelete.location_id, true);
+      setPendingDelete(null);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
     }
   };
 
-  const merge = async () => {
+  const mergeNames = locations
+    .filter((l) => selected.has(l.location_id))
+    .map((l) => l.name);
+
+  const doMerge = async () => {
     const ids = [...selected];
     if (ids.length < 2) return;
-    const target = ids[0];
-    const names = locations.filter((l) => ids.includes(l.location_id)).map((l) => l.name);
-    if (!window.confirm(`Merge ${names.join(", ")} into "${names[0]}"? Other locations are soft-deleted.`)) return;
     try {
-      await api.mergeLocations(target, ids.slice(1));
+      await api.mergeLocations(ids[0], ids.slice(1));
+      setConfirmMerge(false);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Merge failed");
@@ -106,9 +119,9 @@ export function LocationsSection() {
         </p>
         <div className="flex gap-2">
           {selected.size >= 2 && (
-            <Button onClick={() => void merge()}>Merge {selected.size}</Button>
+            <Button onClick={() => setConfirmMerge(true)}>Merge {selected.size}</Button>
           )}
-          <Button variant="primary" onClick={() => setCreating(true)}>
+          <Button variant="primary" onClick={() => setCreating((c) => !c)}>
             <Plus size={15} />
             New
           </Button>
@@ -116,6 +129,25 @@ export function LocationsSection() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+
+      {confirmMerge && selected.size >= 2 && (
+        <div className="flex flex-col gap-2 border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-secondary)] sm:flex-row sm:items-center sm:justify-between">
+          <span>
+            Merge {mergeNames.join(", ")} into &ldquo;{mergeNames[0]}&rdquo;? Other locations are
+            soft-deleted.
+          </span>
+          <div className="flex shrink-0 gap-2">
+            <Button variant="danger" onClick={() => void doMerge()}>
+              Merge
+            </Button>
+            <Button onClick={() => setConfirmMerge(false)}>Cancel</Button>
+          </div>
+        </div>
+      )}
+
+      {creating && (
+        <CreateLocationForm onClose={() => setCreating(false)} onCreated={() => void refresh()} />
+      )}
 
       {loading ? (
         <div className="flex justify-center py-16"><Spinner /></div>
@@ -126,31 +158,43 @@ export function LocationsSection() {
           {locations.map((loc) => (
             <li
               key={loc.location_id}
-              className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] py-4"
+              className="flex flex-col gap-3 border-b border-[var(--color-border)] py-4"
             >
-              <label className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={selected.has(loc.location_id)}
-                  onChange={() => toggle(loc.location_id)}
-                  className="h-4 w-4 shrink-0 accent-[var(--color-primary)]"
-                />
-                <span>
-                  <span className="font-serif text-base text-[var(--color-text-primary)]">{loc.name}</span>
-                  <span className="ml-2 text-xs text-[var(--color-text-muted)]">
-                    {loc.address} · {loc.timezone}
+              <div className="flex items-center justify-between gap-3">
+                <label className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(loc.location_id)}
+                    onChange={() => toggle(loc.location_id)}
+                    className="h-4 w-4 shrink-0 accent-[var(--color-primary)]"
+                  />
+                  <span>
+                    <span className="font-serif text-base text-[var(--color-text-primary)]">{loc.name}</span>
+                    <span className="ml-2 text-xs text-[var(--color-text-muted)]">
+                      {loc.address} · {loc.timezone}
+                    </span>
                   </span>
-                </span>
-              </label>
-              <Button variant="danger" onClick={() => void remove(loc)}>
-                <Trash2 size={14} />
-              </Button>
+                </label>
+                <Button variant="danger" onClick={() => setPendingDelete(loc)}>
+                  <Trash2 size={14} />
+                </Button>
+              </div>
+
+              {pendingDelete?.location_id === loc.location_id && (
+                <div className="flex flex-col gap-2 border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-secondary)] sm:flex-row sm:items-center sm:justify-between">
+                  <span>Delete &ldquo;{loc.name}&rdquo;? Associated events cascade.</span>
+                  <div className="flex shrink-0 gap-2">
+                    <Button variant="danger" onClick={() => void confirmDelete()}>
+                      Delete
+                    </Button>
+                    <Button onClick={() => setPendingDelete(null)}>Cancel</Button>
+                  </div>
+                </div>
+              )}
             </li>
           ))}
         </ul>
       )}
-
-      {creating && <CreateLocationForm onClose={() => setCreating(false)} onCreated={() => void refresh()} />}
     </div>
   );
 }
