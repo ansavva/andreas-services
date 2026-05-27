@@ -13,11 +13,6 @@ output "user_pool_client_id" {
   value       = module.auth.user_pool_client_id
 }
 
-output "email_processor_function_name" {
-  description = "Email processor Lambda function name"
-  value       = module.compute.email_processor_function_name
-}
-
 output "frontend_url" {
   description = "PR preview frontend URL"
   value       = "https://scout-pr.andreas.services/${var.pr_number}/app"

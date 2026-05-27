@@ -15,73 +15,11 @@ data "aws_route53_zone" "main" {
   private_zone = false
 }
 
-resource "aws_dynamodb_table" "events" {
-  name         = "scout-events"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "event_id"
+module "data" {
+  source = "../../modules/data"
 
-  attribute {
-    name = "event_id"
-    type = "S"
-  }
+  table_suffix = ""
 
-  server_side_encryption { enabled = true }
-  tags = local.common_tags
-}
-
-resource "aws_dynamodb_table" "emails" {
-  name         = "scout-emails"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "email_id"
-
-  attribute {
-    name = "email_id"
-    type = "S"
-  }
-
-  server_side_encryption { enabled = true }
-  tags = local.common_tags
-}
-
-resource "aws_dynamodb_table" "senders" {
-  name         = "scout-senders"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "sender_key"
-
-  attribute {
-    name = "sender_key"
-    type = "S"
-  }
-
-  server_side_encryption { enabled = true }
-  tags = local.common_tags
-}
-
-resource "aws_dynamodb_table" "regions" {
-  name         = "scout-regions"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "slug"
-
-  attribute {
-    name = "slug"
-    type = "S"
-  }
-
-  server_side_encryption { enabled = true }
-  tags = local.common_tags
-}
-
-resource "aws_dynamodb_table" "categories" {
-  name         = "scout-categories"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "slug"
-
-  attribute {
-    name = "slug"
-    type = "S"
-  }
-
-  server_side_encryption { enabled = true }
   tags = local.common_tags
 }
 
@@ -93,9 +31,24 @@ module "storage" {
   tags = local.common_tags
 }
 
-import {
-  to = module.compute.aws_ecr_repository.email_processor[0]
-  id = "scout-email-processor"
+# Private bucket for source-run artifacts: root bodies, linked-page archives,
+# and agent transcripts, organized under runs/<source_id>/<run_id>/.
+module "artifacts_storage" {
+  source = "../../modules/storage"
+
+  bucket_name = "${local.project}-artifacts-${local.environment}"
+
+  tags = local.common_tags
+}
+
+# Private bucket for event images (admin-uploaded + auto-extracted), kept
+# separate from source-body storage per the data model.
+module "images_storage" {
+  source = "../../modules/storage"
+
+  bucket_name = "${local.project}-images-${local.environment}"
+
+  tags = local.common_tags
 }
 
 import {
@@ -106,11 +59,6 @@ import {
 import {
   to = module.hosting.aws_cloudfront_function.spa_fallback
   id = "scout-spa-fallback"
-}
-
-import {
-  to = module.compute.aws_cloudwatch_log_group.email_processor
-  id = "/aws/lambda/scout-email-processor"
 }
 
 import {
@@ -125,12 +73,11 @@ module "compute" {
   create_ecr         = true
   create_eventbridge = true
 
-  email_processor_env_vars = {
-    ANTHROPIC_API_KEY   = var.anthropic_api_key
-    GMAIL_CLIENT_ID     = var.gmail_client_id
-    GMAIL_CLIENT_SECRET = var.gmail_client_secret
-    GMAIL_REFRESH_TOKEN = var.gmail_refresh_token
-    MAX_EMAILS_PER_RUN  = "20"
+  artifacts_bucket = module.artifacts_storage.bucket_id
+  images_bucket    = module.images_storage.bucket_id
+
+  processor_env_vars = {
+    ANTHROPIC_API_KEY = var.anthropic_api_key
   }
 
   tags = local.common_tags

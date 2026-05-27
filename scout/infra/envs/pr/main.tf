@@ -10,92 +10,44 @@ locals {
   }
 }
 
-resource "aws_dynamodb_table" "events" {
-  name         = "scout-events-pr-${var.pr_number}"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "event_id"
+module "data" {
+  source = "../../modules/data"
 
-  attribute {
-    name = "event_id"
-    type = "S"
-  }
+  table_suffix = "-pr-${var.pr_number}"
 
-  server_side_encryption { enabled = true }
   tags = local.common_tags
 }
 
-resource "aws_dynamodb_table" "emails" {
-  name         = "scout-emails-pr-${var.pr_number}"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "email_id"
+module "artifacts_storage" {
+  source = "../../modules/storage"
 
-  attribute {
-    name = "email_id"
-    type = "S"
-  }
+  bucket_name = "scout-artifacts-pr-${var.pr_number}"
 
-  server_side_encryption { enabled = true }
   tags = local.common_tags
 }
 
-resource "aws_dynamodb_table" "senders" {
-  name         = "scout-senders-pr-${var.pr_number}"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "sender_key"
+module "images_storage" {
+  source = "../../modules/storage"
 
-  attribute {
-    name = "sender_key"
-    type = "S"
-  }
+  bucket_name = "scout-images-pr-${var.pr_number}"
 
-  server_side_encryption { enabled = true }
-  tags = local.common_tags
-}
-
-resource "aws_dynamodb_table" "regions" {
-  name         = "scout-regions-pr-${var.pr_number}"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "slug"
-
-  attribute {
-    name = "slug"
-    type = "S"
-  }
-
-  server_side_encryption { enabled = true }
-  tags = local.common_tags
-}
-
-resource "aws_dynamodb_table" "categories" {
-  name         = "scout-categories-pr-${var.pr_number}"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "slug"
-
-  attribute {
-    name = "slug"
-    type = "S"
-  }
-
-  server_side_encryption { enabled = true }
   tags = local.common_tags
 }
 
 module "compute" {
   source = "../../modules/compute"
 
-  pr_number                 = var.pr_number
-  table_suffix              = "-pr-${var.pr_number}"
-  email_processor_image_uri = var.email_processor_image_uri
-  events_api_image_uri      = var.events_api_image_uri
-  create_ecr                = false
-  create_eventbridge        = false
+  pr_number            = var.pr_number
+  table_suffix         = "-pr-${var.pr_number}"
+  events_api_image_uri = var.events_api_image_uri
+  create_ecr           = false
+  create_eventbridge   = false
 
-  email_processor_env_vars = {
-    ANTHROPIC_API_KEY   = var.anthropic_api_key
-    GMAIL_CLIENT_ID     = var.gmail_client_id
-    GMAIL_CLIENT_SECRET = var.gmail_client_secret
-    GMAIL_REFRESH_TOKEN = var.gmail_refresh_token
-    MAX_EMAILS_PER_RUN  = tostring(var.max_emails_per_run)
+  artifacts_bucket = module.artifacts_storage.bucket_id
+  images_bucket    = module.images_storage.bucket_id
+
+  processor_env_vars = {
+    ANTHROPIC_API_KEY = var.anthropic_api_key
   }
 
   tags = local.common_tags

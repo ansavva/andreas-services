@@ -8,14 +8,29 @@ output "s3_bucket" {
   value       = module.storage.bucket_id
 }
 
+output "core_table_name" {
+  description = "scout-core DynamoDB table name"
+  value       = module.data.core_table_name
+}
+
+output "settings_table_name" {
+  description = "scout-settings DynamoDB table name"
+  value       = module.data.settings_table_name
+}
+
+output "artifacts_bucket" {
+  description = "Source-run artifacts S3 bucket name"
+  value       = module.artifacts_storage.bucket_id
+}
+
+output "images_bucket" {
+  description = "Event images S3 bucket name"
+  value       = module.images_storage.bucket_id
+}
+
 output "cloudfront_distribution_id" {
   description = "CloudFront distribution ID"
   value       = module.hosting.cloudfront_distribution_id
-}
-
-output "email_processor_function_name" {
-  description = "Email processor Lambda function name"
-  value       = module.compute.email_processor_function_name
 }
 
 output "events_api_function_name" {
@@ -23,9 +38,19 @@ output "events_api_function_name" {
   value       = module.compute.events_api_function_name
 }
 
-output "ecr_email_processor_url" {
-  description = "ECR URL for email processor"
-  value       = module.compute.ecr_email_processor_url
+output "source_run_processor_function_name" {
+  description = "Source-run processor Lambda function name"
+  value       = module.compute.source_run_processor_function_name
+}
+
+output "scheduler_function_name" {
+  description = "Scheduler Lambda function name"
+  value       = module.compute.scheduler_function_name
+}
+
+output "sweep_function_name" {
+  description = "Sweep Lambda function name"
+  value       = module.compute.sweep_function_name
 }
 
 output "ecr_events_api_url" {

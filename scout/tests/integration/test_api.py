@@ -9,12 +9,15 @@ prefix, without trailing slash), e.g.:
 
 Run after deploying an ephemeral PR stack:
   SCOUT_API_URL=<url> pytest scout/tests/integration/
+
+They exercise the public read surface (consumed by the UI) and confirm the
+admin subtree is gated by the Cognito authorizer. A freshly deployed PR stack
+has an empty scout-core table, so the feed-shape assertions are written to hold
+whether or not any events are present.
 """
 
-import json
 import os
 
-import boto3
 import pytest
 import requests
 
@@ -23,8 +26,6 @@ import requests
 # ------------------------------------------------------------------
 
 API_URL = os.environ.get("SCOUT_API_URL", "").rstrip("/")
-EMAIL_PROCESSOR_FUNCTION = os.environ.get("SCOUT_EMAIL_PROCESSOR_FUNCTION", "")
-AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -46,98 +47,94 @@ def options(path):
 
 
 # ------------------------------------------------------------------
-# GET /events
+# GET /public/events — the paginated public feed
 # ------------------------------------------------------------------
 
-class TestGetEvents:
+class TestPublicEvents:
 
     def test_returns_200(self):
-        resp = get("/events")
+        resp = get("/public/events")
         assert resp.status_code == 200
 
-    def test_response_is_json(self):
-        resp = get("/events")
-        data = resp.json()
+    def test_response_is_json_object(self):
+        data = get("/public/events").json()
         assert isinstance(data, dict)
 
-    def test_response_has_events_and_count(self):
-        resp = get("/events")
-        data = resp.json()
+    def test_has_events_total_and_cursor(self):
+        data = get("/public/events").json()
         assert "events" in data
-        assert "count" in data
+        assert "total" in data
+        assert "next_cursor" in data
 
     def test_events_is_a_list(self):
-        resp = get("/events")
-        assert isinstance(resp.json()["events"], list)
+        assert isinstance(get("/public/events").json()["events"], list)
 
-    def test_count_matches_events_length(self):
-        resp = get("/events")
-        data = resp.json()
-        assert data["count"] == len(data["events"])
+    def test_total_is_int(self):
+        assert isinstance(get("/public/events").json()["total"], int)
 
     def test_cors_header_present(self):
-        resp = get("/events")
+        resp = get("/public/events")
         assert "access-control-allow-origin" in {k.lower() for k in resp.headers}
 
-    def test_upcoming_filter_accepted(self):
-        resp = get("/events", params={"upcoming": "true"})
+    def test_filters_are_accepted(self):
+        resp = get("/public/events", params={"q": "music", "sort": "date"})
         assert resp.status_code == 200
-        data = resp.json()
-        assert "events" in data
+        assert "events" in resp.json()
 
     def test_event_items_have_required_fields(self):
-        resp = get("/events")
-        for event in resp.json()["events"]:
+        for event in get("/public/events").json()["events"]:
             assert "event_id" in event, f"Missing event_id in {event}"
-            assert "event_name" in event, f"Missing event_name in {event}"
+            assert "title" in event, f"Missing title in {event}"
+            assert "sub_events" in event, f"Missing sub_events in {event}"
 
 
 # ------------------------------------------------------------------
-# GET /events/{id}
+# GET /public/events/{id}
 # ------------------------------------------------------------------
 
-class TestGetEventById:
+class TestPublicEventById:
 
-    def test_known_id_returns_200_or_404(self):
-        # We don't know IDs ahead of time; first get the list then look one up.
-        all_resp = get("/events")
-        events = all_resp.json().get("events", [])
+    def test_known_id_returns_200(self):
+        events = get("/public/events").json().get("events", [])
         if not events:
             pytest.skip("No events in the table — skipping by-ID test")
-
         event_id = events[0]["event_id"]
-        resp = get(f"/events/{event_id}")
+        resp = get(f"/public/events/{event_id}")
         assert resp.status_code == 200
-
-    def test_known_id_returns_correct_event(self):
-        all_resp = get("/events")
-        events = all_resp.json().get("events", [])
-        if not events:
-            pytest.skip("No events in the table — skipping by-ID test")
-
-        first = events[0]
-        resp = get(f"/events/{first['event_id']}")
-        data = resp.json()
-        assert data["event_id"] == first["event_id"]
-        assert data["event_name"] == first["event_name"]
+        assert resp.json()["event_id"] == event_id
 
     def test_unknown_id_returns_404(self):
-        resp = get("/events/does-not-exist-xyz-999")
+        resp = get("/public/events/does-not-exist-xyz-999")
         assert resp.status_code == 404
 
 
 # ------------------------------------------------------------------
-# CORS preflight
+# GET /public/facets — filter options
+# ------------------------------------------------------------------
+
+class TestPublicFacets:
+
+    def test_returns_200(self):
+        assert get("/public/facets").status_code == 200
+
+    def test_has_facet_lists(self):
+        data = get("/public/facets").json()
+        assert isinstance(data.get("locations"), list)
+        assert isinstance(data.get("event_labels"), list)
+        assert isinstance(data.get("location_labels"), list)
+
+
+# ------------------------------------------------------------------
+# CORS preflight on the public surface
 # ------------------------------------------------------------------
 
 class TestCors:
 
-    def test_options_events_returns_200(self):
-        resp = options("/events")
-        assert resp.status_code == 200
+    def test_options_returns_200(self):
+        assert options("/public/events").status_code == 200
 
     def test_options_has_allow_origin(self):
-        resp = options("/events")
+        resp = options("/public/events")
         headers_lower = {k.lower(): v for k, v in resp.headers.items()}
         assert "access-control-allow-origin" in headers_lower
 
@@ -153,40 +150,17 @@ class TestAdminAuth:
     open so the browser can negotiate before attaching the token.
     """
 
-    def test_admin_emails_requires_auth(self):
-        resp = get("/admin/emails")
-        assert resp.status_code in (401, 403)
+    def test_admin_sources_requires_auth(self):
+        assert get("/admin/sources").status_code in (401, 403)
 
     def test_admin_events_requires_auth(self):
-        resp = get("/admin/events")
-        assert resp.status_code in (401, 403)
+        assert get("/admin/events").status_code in (401, 403)
 
-    def test_admin_senders_requires_auth(self):
-        resp = get("/admin/senders")
-        assert resp.status_code in (401, 403)
+    def test_admin_settings_requires_auth(self):
+        assert get("/admin/settings").status_code in (401, 403)
 
     def test_admin_options_preflight_is_open(self):
-        resp = options("/admin/emails")
-        assert resp.status_code == 200
-
-
-# ------------------------------------------------------------------
-# Public registries
-# ------------------------------------------------------------------
-
-class TestRegionsAndCategories:
-
-    def test_regions_returns_list(self):
-        resp = get("/regions")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert isinstance(data.get("regions"), list)
-
-    def test_categories_returns_list(self):
-        resp = get("/categories")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert isinstance(data.get("categories"), list)
+        assert options("/admin/sources").status_code == 200
 
 
 # ------------------------------------------------------------------
@@ -196,43 +170,4 @@ class TestRegionsAndCategories:
 class TestErrorCases:
 
     def test_nonexistent_path_returns_404(self):
-        resp = get("/does-not-exist")
-        assert resp.status_code == 404
-
-
-# ------------------------------------------------------------------
-# Email processor end-to-end
-# ------------------------------------------------------------------
-
-class TestEmailProcessor:
-    """
-    Validates that the email-processor ran successfully and that events
-    are visible through the API.
-
-    The workflow seeds the table by invoking the processor before tests
-    run. These tests confirm:
-      1. A direct Lambda invocation returns a valid response contract.
-      2. The API reflects at least one stored event.
-    """
-
-    @pytest.fixture(scope="class", autouse=True)
-    def require_processor_function(self):
-        if not EMAIL_PROCESSOR_FUNCTION:
-            pytest.skip("SCOUT_EMAIL_PROCESSOR_FUNCTION not set — skipping email-processor tests")
-
-    def test_processor_invocation_returns_valid_contract(self):
-        client = boto3.client("lambda", region_name=AWS_REGION)
-        response = client.invoke(
-            FunctionName=EMAIL_PROCESSOR_FUNCTION,
-            InvocationType="RequestResponse",
-            Payload=b"{}",
-        )
-        body = json.loads(response["Payload"].read())
-        assert body["statusCode"] == 200, f"Non-200 from processor: {body}"
-
-        result = json.loads(body["body"])
-        assert "emails_processed" in result, f"Missing emails_processed: {result}"
-        assert "events_stored" in result, f"Missing events_stored: {result}"
-        assert "errors" in result, f"Missing errors: {result}"
-        assert result["errors"] == [], f"Processor reported errors: {result['errors']}"
-
+        assert get("/does-not-exist").status_code == 404

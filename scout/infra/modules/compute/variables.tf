@@ -10,23 +10,29 @@ variable "table_suffix" {
   default     = ""
 }
 
-variable "email_processor_image_uri" {
-  description = "ECR image URI for the email processor Lambda (required when create_ecr = false)"
-  type        = string
-  default     = ""
-}
-
 variable "events_api_image_uri" {
   description = "ECR image URI for the events API Lambda (required when create_ecr = false)"
   type        = string
   default     = ""
 }
 
-variable "email_processor_env_vars" {
-  description = "Environment variables for the email processor Lambda"
+variable "processor_env_vars" {
+  description = "Environment variables for the source-run processor Lambda (e.g. ANTHROPIC_API_KEY)"
   type        = map(string)
   sensitive   = true
   default     = {}
+}
+
+variable "artifacts_bucket" {
+  description = "S3 bucket for source-run artifacts (root bodies, linked pages, transcripts)"
+  type        = string
+  default     = ""
+}
+
+variable "images_bucket" {
+  description = "S3 bucket for event images"
+  type        = string
+  default     = ""
 }
 
 variable "create_ecr" {

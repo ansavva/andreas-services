@@ -2,241 +2,203 @@
 
 ## What this service does
 
-Scout event listings from Gmail subscriptions and displays them at `scout.andreas.services/app`:
+Scout discovers events from configured **sources**, extracts them with a Claude
+model (Anthropic Messages API), lets an admin review/curate them, and publishes
+the approved ones at `scout.andreas.services/app`.
 
-1. **EventBridge** triggers `email-processor` Lambda every Monday at 08:00 UTC
-2. Lambda fetches emails with the **"Events"** Gmail label, extracts structured event data via Claude (claude-haiku-4-5), stores results in DynamoDB
-3. **events-api** Lambda serves a REST API via API Gateway
-4. Vite + React + TypeScript SPA (S3 + CloudFront) displays events
+1. **Sources** (email or webpage). Webpage sources are configured by hand in the
+   admin console; **email sources are auto-discovered** from the Gmail "Events"
+   label — one active source per sender domain. A **scheduler** Lambda
+   (EventBridge, every 15 min) runs a Gmail discovery pass, then dispatches
+   sources whose `next_run_at` is due; admins can also "Scan inbox", trigger a
+   run, or preview on demand.
+2. The **source-run-processor** Lambda fetches the source content (our code —
+   webpage HTTP fetch, or the sender's recent "Events"-labeled mail via the
+   Gmail API in `gmail.py`), optionally follows one level of same-domain links,
+   stores everything to S3, then sends the fetched text to the **Anthropic
+   Messages API** (one call) to extract structured events.
+3. Extracted events become **pending** records (dedup + fuzzy location match
+   applied). An admin reviews (approve/reject), publishes, cancels, edits, and
+   manages locations, labels, images, and settings.
+4. A **sweep** Lambda (EventBridge, hourly) reconciles runs orphaned by a
+   restart and refreshes the materialized `past` flag (incl. parent auto-past).
+5. The **events-api** Lambda serves the public read endpoints (consumed by the
+   UI) and the admin console API. A Vite + React + TypeScript SPA (S3 +
+   CloudFront) renders both.
 
-### Regions, categories & the approval workflow
+> The Gmail "Events"-label ingestion now lives inside the source-run-processor
+> (`gmail.py` + the processor's `mode=discover`). The standalone legacy
+> Gmail→Claude `email-processor` Lambda and the old
+> `scout-events/emails/senders/regions/categories` tables have been removed.
 
-Events are governed by three concepts surfaced through an **admin console** (behind Cognito login):
+### Core domain concepts
 
-- **Approval** — extracted events start as `status="pending"` and are invisible to the public until an admin approves (publishes) them; an admin can also reject, edit (any field, any state), or unpublish.
-- **Region** (`where`) — derived from a **sender → region(s) mapping** (`scout-senders`). A sender may map to several regions. Unknown senders are recorded as `pending` and their events stay hidden (region-less) until classified; classifying re-tags the sender's existing events.
-- **Category** (`what`) — Claude tags each event from a controlled vocabulary (`scout-categories`, active rows) and may propose new ones, which land as `suggested` for the admin to approve/reject.
-
-A published event is public iff `status=published` **and** it has region(s). End users browse by region (URL path `/:region` + dropdown) and filter by category (chips). Region/category lists are discovered dynamically from event data.
+- **Source** — email (identity = sender domain) or webpage (identity = root
+  URL). Has `status` (active|disabled) and an independent `archived` flag (each
+  stops scheduled runs), a `follow_links` toggle, per-source agent model/budget
+  overrides, source labels, and a `next_run_at` schedule cursor.
+- **Source run** — one record per scheduled/manual execution (previews are
+  dry-runs and persist nothing): status (in_progress|success|error, with the
+  distinct `budget_exceeded` / `orphaned-by-restart` reasons), S3 refs (root
+  body/html, linked pages, agent transcript), per-link outcomes, tool-use
+  summary.
+- **Event / Sub-event** — first-class sub-events. **Independent status fields**:
+  `review_status` (pending|approved|rejected), `publish_status`
+  (published|unpublished), admin-set `lifecycle_cancelled`, and a materialized
+  `past`. Sub-events inherit location + event-labels (and transitively
+  location-labels) from the parent unless they override; a sub can't be
+  published while its parent is unpublished; cancelling a parent cascades.
+- **Location** — name, address, IANA timezone (drives past computation). Fuzzy
+  matched on extraction; admin merge tool reassigns references.
+- **Labels** — three independent taxonomies (source / event / location), each a
+  separate keyspace. Many-to-many; deleting a label removes references without
+  deleting entities.
+- **Soft delete** everywhere with cascade (admin opt-out) and recursive restore
+  via a shared `cascade_id`; deleted-filter views per entity.
+- **Public visibility** (single source of truth in `public.py`): published AND
+  not cancelled AND within the grace period; AND-only filtering by location /
+  event-labels / inherited location-labels; source attribution never exposed.
 
 ## Directory Structure
 
 ```
 scout/
 ├── infra/                       # Terraform (CloudFormation is NOT used)
-│   ├── modules/                 # auth, api_domain, api_gateway, compute, hosting, storage
+│   ├── modules/                 # auth, api_domain, api_gateway, compute, hosting, storage, data
 │   └── envs/                    # prod, pr (per-PR ephemeral), pr-preview (shared)
-├── setup-frontend.sh            # Frontend local dev bootstrap
-├── .env.example                 # Required env var template (copy to .env for local use)
 ├── backend/
-│   ├── email-processor/
-│   │   ├── Dockerfile           # ECR image — public.ecr.aws/lambda/python:3.11 base
-│   │   ├── lambda_function.py   # Gmail → Claude → DynamoDB
-│   │   ├── taxonomy.py          # sender normalization + slug helpers
-│   │   ├── pyproject.toml
-│   │   └── poetry.lock
-│   ├── events-api/
-│   │   ├── Dockerfile           # ECR image — public.ecr.aws/lambda/python:3.11 base
-│   │   ├── lambda_function.py   # public read API + /api/admin/* console API
-│   │   ├── taxonomy.py          # copy of the email-processor helper (separate image)
-│   │   ├── pyproject.toml
-│   │   └── poetry.lock
-│   └── migrations/              # one-off backfill scripts (populate_emails_table, backfill_taxonomy)
-├── frontend/
-│   ├── index.html               # Vite entry point
-│   ├── vite.config.ts
-│   ├── tsconfig.json
-│   ├── tailwind.config.ts
-│   ├── postcss.config.js
-│   ├── .eslintrc.json
-│   ├── .prettierrc
-│   └── src/
-│       ├── main.tsx             # React entry point
-│       ├── App.tsx              # Root component
-│       ├── index.css            # CSS custom properties for light/dark theme
-│       ├── vite-env.d.ts        # VITE_ env var types
-│       ├── components/          # Header, EventCard, EventFilters, SkeletonCard
-│       ├── context/             # ThemeContext (light/dark mode)
-│       ├── hooks/               # useEvents (API fetching)
-│       ├── utils/               # formatters (formatDate, isUpcoming, etc.)
-│       └── types/               # Event, SortOrder, Theme interfaces
-└── docs/
-    └── SETUP.md                 # Full deployment walkthrough
+│   ├── events-api/              # scout-core service (one image, 4 Lambda commands)
+│   │   ├── Dockerfile  pyproject.toml  poetry.lock
+│   │   ├── scout_core/          # the importable package
+│   │   │   ├── handlers/        # thin Lambda entrypoints: api, processor, scheduler, sweep
+│   │   │   ├── domain/          # events, sources, runs, labels, locations, deletion,
+│   │   │   │                    #   public, images, pipeline, notifications
+│   │   │   ├── adapters/        # store (DynamoDB), artifacts (S3), gmail, fetcher, extractor
+│   │   │   └── common/          # taxonomy, timeutil (pure, dependency-free)
+│   │   └── tests/               # moto-based unit tests (mirror the package)
+└── frontend/                    # Vite + React + TS SPA (public site + admin console)
 ```
 
-## Shared Infrastructure
+Imports are absolute within the package, e.g. `from scout_core.adapters import
+store`, `from scout_core.domain import events`. Lambda handlers are referenced as
+`scout_core.handlers.<api|processor|scheduler|sweep>.lambda_handler`.
 
-Terraform references (but does not own) two shared resources via `data` sources:
+## Data model (DynamoDB)
 
-- **ACM wildcard certificate** (`*.andreas.services`, us-east-1) — `data "aws_acm_certificate"`
-- **Route53 hosted zone** (`andreas.services`) — `data "aws_route53_zone"`
+Two tables (`scout-<name>`, suffixed `-pr-<N>` for previews, all
+`PAY_PER_REQUEST` + SSE), defined by the `data` Terraform module:
 
-Scout's Terraform adds Route53 A-alias records for `scout.andreas.services` (CloudFront) and `scout-api.andreas.services` (API Gateway). It does **not** manage the zone or certificate.
+- **`scout-core`** — single table for the whole entity graph (sources, runs,
+  events, sub-events, locations, the three label taxonomies, M2M junctions),
+  generic `PK`/`SK` + five GSIs:
+  - **GSI1** — admin status queues (`LBL#…`, `LOC#ALL`, `SRC#LISTED/ARCHIVED`,
+    `RUN#INPROGRESS`) and public visibility (`PUBVIS`, sparse, keyed by
+    `effective_end_utc` for the grace range query).
+  - **GSI2** — entity→labels reverse index (display + query-time inheritance).
+  - **GSI3** — dedup (`DUP#<key>`), sparse over live events.
+  - **GSI4** — source health/schedule (`SRCHEALTH` by `next_run_at`) and the
+    event review queue (`REVIEW#<status>`).
+  - **GSI5** — deleted-filter view + cascade restore (`DELETED#<type>`).
+- **`scout-settings`** — singleton (`setting_id="system"`): timezones, grace
+  period, health thresholds, link-follow cap, default agent model/budget.
 
-## Environment Variables
+Soft-delete is uniform: every row carries `deleted_at`; hot indexes (GSI1/GSI3)
+are sparse so deleted rows leave public/dedup paths automatically; `cascade_id`
+(recorded under a `CASCADE#<id>` partition) drives recursive restore.
 
-All secrets live in the `scout-production` GitHub Actions environment, never in committed files.
-
-| Variable | Where set | Description |
-|----------|-----------|-------------|
-| `ANTHROPIC_API_KEY` | GitHub secret | Anthropic API key |
-| `GMAIL_CLIENT_ID` | GitHub secret | Google OAuth client ID |
-| `GMAIL_CLIENT_SECRET` | GitHub secret | Google OAuth client secret |
-| `GMAIL_REFRESH_TOKEN` | GitHub secret | OAuth refresh token (Lambda mints access tokens from this on each cold start) |
-| `VITE_API_URL` | GitHub var | API Gateway endpoint URL |
-| `VITE_COGNITO_USER_POOL_ID` | GitHub var | Cognito user pool ID for the admin login (Terraform output `cognito_user_pool_id`) |
-| `VITE_COGNITO_CLIENT_ID` | GitHub var | Cognito app client ID for the admin login (Terraform output `cognito_user_pool_client_id`) |
-| `S3_BUCKET_NAME` | GitHub var | Website S3 bucket name |
-| `CLOUDFRONT_DISTRIBUTION_ID` | GitHub var | CloudFront distribution ID |
-| `AWS_ROLE_ARN` | GitHub secret | OIDC IAM role for GitHub Actions |
-| `SCOUT_ADMIN_EMAIL` | GitHub secret | Admin console login email — bootstrapped into Cognito by CI |
-| `SCOUT_ADMIN_PASSWORD` | GitHub secret | Admin console password (set permanent by CI) |
-
-Admin users are bootstrapped automatically: the `bootstrap-admin` job in `scout-prod.yaml` (prod) and the `Bootstrap admin user` step of `scout-pr.yml`'s `deploy-preview` job (each fresh per-PR pool) run `scripts/create-admin-user.sh` after the pool is applied (idempotent — skips when the secrets are unset or the user already exists). The PR step uses the same `SCOUT_ADMIN_EMAIL`/`SCOUT_ADMIN_PASSWORD` secrets, so they must be available to the `scout-pr` GitHub environment (not only `scout-production`). To add an admin manually instead: `aws cognito-idp admin-create-user` + `admin-set-user-password --permanent` (no public self-signup).
-
-For local use: `cp .env.example .env` and fill in values.
+`past` can't be indexed, so a stable `effective_end_utc` (location tz + grace
+resolved once at write) is indexed instead; the sweep refreshes the boolean.
 
 ## Lambda Functions
 
-### email-processor
+All four share IAM role `scout-lambda-role` (DynamoDB on `scout-*` incl. GSIs,
+S3 on `scout-artifacts-*`/`scout-images-*`, invoke `scout-source-run-processor*`)
+and ship from **one** `scout-events-api` image with different container commands
+(`image_config.command`):
 
-- **Trigger**: EventBridge `cron(0 8 ? * MON *)` — weekly
-- **Runtime**: Python 3.11, 256 MB, 300 s timeout
-- Authenticates Gmail via OAuth — mints a fresh access token from the stored refresh token on each cold start. The OAuth consent screen **must** be in "In production" status; Testing-mode refresh tokens expire after 7 days.
-- Skips emails already in DynamoDB (dedup by Gmail `email_id`)
-- Converts HTML bodies to plain text via `html2text` before sending to Claude
-- Claude (claude-haiku-4-5) returns a JSON array — one object per event in the email — tagged with categories from the active vocabulary, plus any `new_categories` proposals
-- Resolves the sender's region(s) (creating a pending classification for unknown senders) and stamps `status=pending`, `regions`, `categories`, `sender_key` on each event
+| Function | Entrypoint | Trigger | Notes |
+|----------|-----------|---------|-------|
+| `scout-events-api` | `scout_core.handlers.api.lambda_handler` | API Gateway | 128 MB / 30 s |
+| `scout-source-run-processor` | `scout_core.handlers.processor.lambda_handler` | async invoke | 512 MB / 300 s; needs `ANTHROPIC_API_KEY`, `SCOUT_ARTIFACTS_BUCKET`, `SCOUT_IMAGES_BUCKET`, `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` (Gmail ingestion + `mode=discover`) |
+| `scout-scheduler` | `scout_core.handlers.scheduler.lambda_handler` | EventBridge `rate(15 minutes)` | Gmail discovery pass + dispatches due sources |
+| `scout-sweep` | `scout_core.handlers.sweep.lambda_handler` | EventBridge `rate(1 hour)` | orphan recovery + past flags |
 
-### events-api
+EventBridge rules are created only in prod (`create_eventbridge=true`).
 
-- **Trigger**: API Gateway
-- **Runtime**: Python 3.11, 128 MB, 30 s timeout
-- Public (no auth): `GET /api/events` (`?upcoming` `?region` `?category`, published only), `GET /api/events/{id}`, `GET /api/regions`, `GET /api/categories`
-- Admin (Cognito authorizer on `/api/admin/{proxy+}`): `GET/POST/PUT/DELETE /api/admin/events|senders|categories|emails` — approval queue, sender classification (+re-tag), category review
-- `OPTIONS /*` — CORS preflight
+### API surface (events-api)
 
-Routing anchors on the `/api/` path segment, so the one Lambda serves explicit
-resources, the `{proxy+}` catch-all, and any custom-domain base path.
+Routing anchors on the `/api/` path segment (works for prod, the `{proxy+}`
+catch-all, and PR base paths).
 
-Routes live under `/api/...` so the same Lambda code serves both prod
-(`scout-api.andreas.services/api/events`) and PR previews
-(`scout-api-pr.andreas.services/<N>/api/events`). In both cases the API
-Gateway base path mapping strips everything before `/api` before the Lambda
-sees the request.
+- **Public** (no auth, under the `/api/{proxy+}` catch-all):
+  `GET /api/public/events` (filters: `location_id`, `event_labels`,
+  `location_labels` (all AND), `q`, `sort`, `cursor`), `GET /api/public/events/{id}`,
+  `GET /api/public/facets`.
+- **Admin** (`/api/admin/*`, Cognito authorizer): sources (incl.
+  `sources/scan-inbox` → Gmail discovery), events/sub-events, locations,
+  labels/{source|event|location}, settings, notifications, `deleted/{type}`,
+  `restore`.
 
-## DynamoDB Schema
+## Extraction (Anthropic Messages API)
 
-Email metadata lives in `scout-emails`, not on the event records (they were split
-out — there is no `created_at` field). All tables are `PAY_PER_REQUEST` + SSE, and
-PR previews suffix every table name with `-pr-<N>`.
+`extractor.py` embeds the fetched page text in a prompt and makes a single
+Anthropic Messages API call behind an injectable `runner` (default uses the
+`anthropic` package, imported lazily), parsing the JSON event list from the
+response. It enforces a token + runtime budget and maps outcomes to completed /
+`budget_exceeded` / error. (Extraction is content-only — there is no WebFetch/
+WebSearch; our fetcher/link-follower already gathers the pages.) `pipeline.py`
+stores artifacts + transcript to S3, converts a completed extraction into pending
+event records (dedup + fuzzy location match), and raises in-app notifications on
+failure.
 
-**`scout-events`** · PK `event_id` (UUID)
+## Environment Variables
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `event_id` | String | UUID primary key |
-| `email_id` | String | Source email (Gmail message ID); join key to `scout-emails` |
-| `event_name` / `date` / `time` / `venue` / `price` / `description` | String | `date` is YYYY-MM-DD or empty |
-| `links` | List[String] | URLs extracted from the email |
-| `status` | String | `pending` \| `published` \| `rejected` — public API serves only `published` |
-| `regions` | List[String] | region slugs (empty ⇒ hidden until the sender is classified) |
-| `categories` | List[String] | category slugs (may include not-yet-approved ones) |
-| `sender_key` | String | normalized sender; join key for re-tagging on classification |
-| `reviewed_at` / `reviewed_by` | String | set on approve/reject |
+Secrets live in the `scout-production` / `scout-pr` GitHub Actions environments.
+Notable additions for the redesign:
 
-**`scout-emails`** · PK `email_id` — `email_subject`, `email_sender`, `sender_key`, `regions`, `source_email_date`, `image_url`, `processed_at`, `event_count`
-
-**`scout-senders`** · PK `sender_key` — `display_sender`, `regions` (List), `status` (`pending`\|`classified`), `first_seen`, `updated_at`
-
-**`scout-regions`** · PK `slug` — `name`, `created_at`
-
-**`scout-categories`** · PK `slug` — `name`, `status` (`active`\|`suggested`), `created_at`, `suggested_count`
+| Variable | Where | Purpose |
+|----------|-------|---------|
+| `ANTHROPIC_API_KEY` | secret → processor env | Anthropic Messages API key |
+| `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN` | secret → processor env | Gmail API (OAuth refresh token) for "Events"-label ingestion |
+| `SCOUT_ARTIFACTS_BUCKET` / `SCOUT_IMAGES_BUCKET` | Lambda env | S3 buckets (`scout-artifacts-<env>` / `scout-images-<env>`) |
+| `SCOUT_PROCESSOR_FN` | events-api / scheduler env | processor function name for invocations |
+| `SCOUT_TABLE_SUFFIX` | Lambda env | `""` in prod, `-pr-<N>` in previews |
+| `VITE_API_URL` / `VITE_COGNITO_*` | GitHub vars | frontend build |
 
 ## Deployment
 
-**Automated (preferred):** Push to `main` — GitHub Actions runs the combined `.github/workflows/scout-prod.yaml` workflow. Per the monorepo convention the jobs are `detect-changes → build-and-push → deploy-infra → update-lambda + deploy-frontend` (Terraform `apply` on `scout/infra/envs/prod`). The image build runs before Terraform because Lambdas reference `${ecr_repo}:latest` with `lifecycle { ignore_changes = [image_uri, environment] }`.
+Push to `main` runs `.github/workflows/scout-prod.yaml`:
+`detect-changes → build-and-push → deploy-infra → update-lambda + deploy-frontend`.
+Image build runs first because the Lambdas reference `:latest` with
+`lifecycle { ignore_changes = [image_uri, environment] }`. `update-lambda` sets
+env vars and pins **all four** Lambdas to `:${sha}` — `scout-events-api`,
+`scout-source-run-processor`, `scout-scheduler`, `scout-sweep` all use the one
+`scout-events-api` image.
 
-- `scout/infra/**` → `deploy-infra` runs, then fans out to both app jobs
-- `scout/backend/**` → image build + `update-lambda` only
-- `scout/frontend/**` → `deploy-frontend` only
+PR previews (`.github/workflows/scout-pr.yml`): validate first
+(`lint-unit-build`: backend pytest + frontend lint/tsc/build), then
+`deploy-preview-infra` (shared stack) → `deploy-preview` (per-PR ephemeral env
+under `infra/envs/pr`, tables/functions suffixed `-pr-<N>`). Teardown destroys
+the per-PR env on PR close.
 
-### Combined deploy workflow (`scout-prod.yaml`)
-
-**DAG**
-
-```
-detect-changes ─► build-and-push ─► deploy-infra (terraform apply, if scout/infra/** changed)
-                                          │
-                                          ├─► update-lambda   (set env vars, pin image to :${sha})
-                                          └─► deploy-frontend  (Vite build → S3 + CloudFront)
-```
-
-**`workflow_dispatch` inputs**
-
-- `run_infra` (default `true`) — run `deploy-infra`.
-- `run_app` (default `true`) — run `update-lambda` and `deploy-frontend`.
-
-**Concurrency**
-
-Group `scout-prod` with `cancel-in-progress: false` — queued pushes wait for the previous run instead of racing on `update-function-code`.
-
-## Local Frontend Development
+## Local development
 
 ```bash
-./setup-frontend.sh https://scout-api.andreas.services/api   # or any /api-suffixed URL
-cd frontend && npm run dev
+# backend tests (events-api)
+cd scout/backend/events-api && python -m pytest
+
+# frontend
+cd scout/frontend && npm ci && npm run lint && npm run build && npm run dev
 ```
 
-`setup-frontend.sh` writes `frontend/.env.local` with `VITE_API_URL` and
-`VITE_BASE=/app/`.
+## Conventions
 
-## PR Previews
-
-Every `pull_request` (opened / synchronize / reopened) whose diff touches
-`scout/**` runs `.github/workflows/scout-pr.yml`. The workflow validates
-first (`lint-unit-build`: Python unit tests + frontend lint + frontend build);
-only if that job succeeds does `deploy-preview-infra` reapply the shared
-PR-preview stack, and only then does `deploy-preview` spin up the per-PR
-ephemeral environment:
-
-| | Prod | PR `<N>` |
-|---|---|---|
-| Frontend | `scout.andreas.services/app` | `scout-pr.andreas.services/<N>/app` |
-| API      | `scout-api.andreas.services/api` | `scout-api-pr.andreas.services/<N>/api` |
-
-The shared PR-preview infrastructure (one S3 bucket, one CloudFront
-distribution with a CloudFront Function for SPA fallback, and one API Gateway
-custom domain) lives in Terraform under `infra/envs/pr-preview`. It is applied
-by the `deploy-preview-infra` job inside `scout-pr.yml` itself — every PR
-reapplies it (idempotent). The per-PR `deploy-preview` job then applies
-`infra/envs/pr` with a `-backend-config` state key of `scout/pr/<N>/terraform.tfstate`.
-
-### DAG
-
-```
-lint-unit-build ─► deploy-preview-infra ─► deploy-preview
-```
-
-This removes the old "bootstrap on fresh AWS account by running
-scout-deploy-preview-infra manually first" step — every PR self-heals the
-shared stack, so a brand-new account just needs the first PR to complete.
-
-Per-PR resources live in `infra/envs/pr` (state key `scout/pr/<N>/...`):
-Lambda + REST API with `/api/...` routes, DynamoDB tables suffixed
-`-pr-<N>`, a fresh Cognito User Pool + Client with the PR's preview URL as
-callback, and a base path mapping that attaches the PR's API to the shared
-custom domain under `/<N>`.
-
-Closing the PR triggers `.github/workflows/scout-pr-teardown.yaml`, which
-`terraform destroy`s the per-PR env, empties the S3 prefix, and invalidates CloudFront.
-
-### Constraints
-- REST API Gateway `BasePathMapping` base paths are a **single path segment**
-  — that's why the base path is just `<N>` and the `/api/` prefix lives
-  inside the API itself.
-- Regional API Gateway custom domains require a regional ACM cert; the shared
-  `*.andreas.services` wildcard lives in `us-east-1`, which satisfies that.
-- The shared GitHub Actions OIDC trust policy (`infra/envs/shared`)
-  already allows `repo:<org>/<repo>:*`, so `pull_request` refs can assume
-  the CI role without any changes.
+- DynamoDB via boto3, no ORM, no VPC. New business logic goes in
+  `scout_core/domain/` (AWS/HTTP-free), I/O behind `scout_core/adapters/`, pure
+  helpers in `scout_core/common/`, with moto-based unit tests; the handlers in
+  `scout_core/handlers/` stay thin.
+- Never hardcode AWS credentials or secrets. Sensitive Terraform vars come via
+  `TF_VAR_*` in CI.
+- Infra dirs are always named `infra/`; modules under `modules/`, environments
+  under `envs/`. Shared ACM cert + Route53 zone are referenced via `data`
+  sources, never recreated.
