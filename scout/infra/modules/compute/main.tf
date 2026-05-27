@@ -155,7 +155,7 @@ resource "aws_lambda_function" "source_run_processor" {
   package_type  = "Image"
   image_uri     = local.events_api_image
   timeout       = 300
-  memory_size   = 512
+  memory_size   = 2048
 
   image_config {
     command = ["scout_core.handlers.processor.lambda_handler"]
