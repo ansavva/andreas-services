@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useApi } from "@/api";
+import { EventDetailView } from "@/components/EventDetailView";
 import { Badge, Button, ErrorBanner, Spinner } from "@/components/ui";
-import { formatDate } from "@/utils/formatters";
-import type { AdminEvent } from "@/types";
+import { formatDate, truncate } from "@/utils/formatters";
+import type { AdminEvent, PublicEvent } from "@/types";
 
 const REVIEWS = ["pending", "approved", "rejected"] as const;
 
@@ -13,10 +14,16 @@ export function ReviewSection() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openPreview, setOpenPreview] = useState<string | null>(null);
+  const [previews, setPreviews] = useState<Record<string, PublicEvent>>({});
+  const [previewLoading, setPreviewLoading] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setOpenPreview(null);
+    setPreviews({});
     try {
       const data = await api.listEvents(review);
       setItems(data.events);
@@ -27,6 +34,28 @@ export function ReviewSection() {
       setLoading(false);
     }
   }, [api, review]);
+
+  const togglePreview = useCallback(
+    async (id: string) => {
+      if (openPreview === id) {
+        setOpenPreview(null);
+        return;
+      }
+      setOpenPreview(id);
+      setPreviewError(null);
+      if (previews[id]) return;
+      setPreviewLoading(id);
+      try {
+        const data = await api.previewEvent(id);
+        setPreviews((p) => ({ ...p, [id]: data }));
+      } catch (err) {
+        setPreviewError(err instanceof Error ? err.message : "Preview failed");
+      } finally {
+        setPreviewLoading(null);
+      }
+    },
+    [api, openPreview, previews]
+  );
 
   useEffect(() => {
     void refresh();
@@ -106,9 +135,10 @@ export function ReviewSection() {
             return (
               <li
                 key={key}
-                className="flex flex-col gap-3 border-b border-[var(--color-border)] py-4 sm:flex-row sm:items-center sm:justify-between"
+                className="flex flex-col gap-3 border-b border-[var(--color-border)] py-4"
               >
-                <div className="flex items-start gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
                   {!sub && review === "pending" && (
                     <input
                       type="checkbox"
@@ -117,7 +147,7 @@ export function ReviewSection() {
                       className="mt-1.5 h-4 w-4 shrink-0 accent-[var(--color-primary)]"
                     />
                   )}
-                  <div>
+                  <div className="min-w-0">
                     <div className="font-serif text-base text-[var(--color-text-primary)]">
                       {sub ? "↳ occurrence" : it.title || "Untitled"}
                       {it.edited && (
@@ -132,6 +162,11 @@ export function ReviewSection() {
                       {it.publish_status && <Badge value={it.publish_status} />}
                       {it.lifecycle_cancelled && <Badge value="cancelled" />}
                     </div>
+                    {!sub && it.description_md && (
+                      <p className="mt-1.5 text-sm leading-relaxed text-[var(--color-text-secondary)]">
+                        {truncate(it.description_md, 160)}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -163,6 +198,9 @@ export function ReviewSection() {
                     </>
                   ) : (
                     <>
+                      <Button onClick={() => void togglePreview(id)}>
+                        {openPreview === id ? "Hide" : "Preview"}
+                      </Button>
                       {it.review_status !== "approved" && (
                         <Button onClick={() => void act(() => api.reviewEvent(id, "approved"))}>
                           Approve
@@ -190,6 +228,21 @@ export function ReviewSection() {
                     </>
                   )}
                 </div>
+                </div>
+
+                {!sub && openPreview === id && (
+                  <div className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-6 sm:px-6 sm:py-8">
+                    {previewLoading === id ? (
+                      <div className="flex justify-center py-8">
+                        <Spinner />
+                      </div>
+                    ) : previewError ? (
+                      <ErrorBanner message={previewError} />
+                    ) : previews[id] ? (
+                      <EventDetailView event={previews[id]} />
+                    ) : null}
+                  </div>
+                )}
               </li>
             );
           })}

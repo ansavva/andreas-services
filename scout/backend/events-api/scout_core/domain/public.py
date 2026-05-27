@@ -256,6 +256,21 @@ def event_detail(event_id, *, now=None, settings=None):
     return data
 
 
+def preview_detail(event_id):
+    """Admin preview of an event in the public-detail shape, ignoring publish
+    and grace visibility so a pending/unpublished event renders exactly as its
+    public page would. Includes every non-deleted sub-event (date-sorted).
+    Returns None only for a missing or deleted event."""
+    event = events.get_event(event_id)
+    if event is None or event.get("deleted_at"):
+        return None
+    subs = sorted(events.list_subevents(event_id),
+                  key=lambda s: s.get("start_date") or "")
+    data = _serialize_event(event, subs)
+    data["no_upcoming_dates"] = False
+    return data
+
+
 def facets(*, now=None, settings=None):
     """Filter options derived from the currently-visible feed: the locations,
     event-labels and location-labels that appear on visible events."""

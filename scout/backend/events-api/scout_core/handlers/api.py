@@ -249,6 +249,9 @@ def _admin_events(method, rest, query, body):
         if not ev:
             return not_found("Event not found")
         return ok({"event": ev, "subevents": events.list_subevents(event_id)})
+    if action == ["preview"] and method == "GET":
+        detail = public.preview_detail(event_id)
+        return ok(detail) if detail else not_found("Event not found")
     if action == [] and method == "PUT":
         ev = events.update_event(event_id, body)
         return ok(ev) if ev else not_found("Event not found")

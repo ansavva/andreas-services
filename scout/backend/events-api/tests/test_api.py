@@ -165,6 +165,20 @@ class TestApi(unittest.TestCase):
         self.assertEqual(
             _request("GET", f"/public/events/{ev['event_id']}")["statusCode"], 404)
 
+    def test_admin_preview_renders_unpublished_event(self):
+        ev = events.create_event("s", title="Draft", start_date="2099-01-01",
+                                 description="Not live yet")
+        # Public detail is hidden, but the admin preview returns the page shape.
+        self.assertEqual(
+            _request("GET", f"/public/events/{ev['event_id']}")["statusCode"], 404)
+        detail = _json(_request("GET", f"/admin/events/{ev['event_id']}/preview"))
+        self.assertEqual(detail["title"], "Draft")
+        self.assertEqual(detail["description"], "Not live yet")
+
+    def test_admin_preview_404_when_missing(self):
+        self.assertEqual(
+            _request("GET", "/admin/events/nope/preview")["statusCode"], 404)
+
     # --- settings --------------------------------------------------------
     def test_settings_get_and_update(self):
         defaults = _json(_request("GET", "/admin/settings"))

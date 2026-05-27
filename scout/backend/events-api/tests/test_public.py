@@ -168,6 +168,23 @@ class TestPublic(unittest.TestCase):
         ev = events.create_event("s", title="Hidden", start_date="2099-01-01")
         self.assertIsNone(public.event_detail(ev["event_id"]))
 
+    def test_preview_renders_unpublished_event_with_all_subs(self):
+        ev = events.create_event("s", title="Draft", start_date="2099-01-01",
+                                 description="A pending event")
+        # Unpublished + past sub-events that the public detail would hide.
+        future = events.create_subevent(ev["event_id"], start_date="2099-02-01")
+        past = events.create_subevent(ev["event_id"], start_date="2000-01-01")
+
+        detail = public.preview_detail(ev["event_id"])
+        self.assertEqual(detail["title"], "Draft")
+        self.assertEqual(detail["description"], "A pending event")
+        self.assertFalse(detail["no_upcoming_dates"])
+        self.assertEqual([s["subevent_id"] for s in detail["sub_events"]],
+                         [past["subevent_id"], future["subevent_id"]])
+
+    def test_preview_of_missing_event_is_none(self):
+        self.assertIsNone(public.preview_detail("does-not-exist"))
+
     def test_facets_only_reflect_visible_events(self):
         loc = locations.create_location("Venue")
         music = labels.create_label(store.EVENT_LABEL, "music")
