@@ -1,5 +1,3 @@
-import { X } from "lucide-react";
-
 export function Spinner() {
   return (
     <div className="h-6 w-6 rounded-full border-2 border-[var(--color-border)] border-t-[var(--color-primary)] animate-spin" />
@@ -88,43 +86,6 @@ export function Button({
     >
       {children}
     </button>
-  );
-}
-
-export function Modal({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-30 flex items-end justify-center bg-black/30 sm:items-center sm:px-4"
-      onClick={onClose}
-    >
-      <div
-        className="flex max-h-[100dvh] w-full flex-col overflow-hidden border border-[var(--color-rule)] bg-[var(--color-surface)] sm:max-h-[85vh] sm:max-w-lg"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-[var(--color-border)] px-5 py-4">
-          <h2 className="font-serif text-xl leading-none text-[var(--color-text-primary)]">
-            {title}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="-mr-1 rounded-none p-2 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
-          >
-            <X size={18} />
-          </button>
-        </div>
-        <div className="overflow-y-auto p-5">{children}</div>
-      </div>
-    </div>
   );
 }
 

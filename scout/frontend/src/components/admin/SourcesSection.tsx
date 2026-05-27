@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Inbox, Play, Plus, Trash2 } from "lucide-react";
 import { useApi } from "@/api";
-import { Badge, Button, ErrorBanner, Modal, Spinner } from "@/components/ui";
+import { Badge, Button, ErrorBanner, Spinner } from "@/components/ui";
 import type { Source, SourceType } from "@/types";
 
 function CreateSourceForm({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
@@ -34,7 +34,10 @@ function CreateSourceForm({ onClose, onCreated }: { onClose: () => void; onCreat
     "w-full rounded-none border-b border-[var(--color-rule)] bg-transparent py-2 text-sm text-[var(--color-text-primary)] focus:outline-none";
 
   return (
-    <Modal title="New source" onClose={onClose}>
+    <div className="border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+      <h2 className="mb-4 font-serif text-xl leading-none text-[var(--color-text-primary)]">
+        New source
+      </h2>
       <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
         {error && <ErrorBanner message={error} />}
         <label className="flex flex-col gap-1 text-sm text-[var(--color-text-secondary)]">
@@ -75,11 +78,14 @@ function CreateSourceForm({ onClose, onCreated }: { onClose: () => void; onCreat
           <input type="checkbox" checked={followLinks} onChange={(e) => setFollowLinks(e.target.checked)} />
           Follow same-domain links (one level)
         </label>
-        <Button type="submit" variant="primary">
-          Create
-        </Button>
+        <div className="flex gap-2">
+          <Button type="submit" variant="primary">
+            Create
+          </Button>
+          <Button onClick={onClose}>Cancel</Button>
+        </div>
       </form>
-    </Modal>
+    </div>
   );
 }
 
@@ -89,7 +95,11 @@ export function SourcesSection() {
   const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<
+    { source: Source; events: number; subevents: number; runs: number } | null
+  >(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -121,22 +131,29 @@ export function SourcesSection() {
     try {
       await api.scanInbox();
       setError(null);
-      window.alert(
-        "Scanning the Gmail \"Events\" label. New sender domains will appear as active email sources shortly."
+      setNotice(
+        'Scanning the Gmail "Events" label. New sender domains will appear as active email sources shortly.'
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Scan failed");
     }
   };
 
-  const remove = async (s: Source) => {
+  const startDelete = async (s: Source) => {
     try {
       const preview = await api.deleteSourcePreview(s.source_id);
-      const msg = `Delete "${s.name}"? This cascades ${preview.events} event(s), ${preview.subevents} sub-event(s) and soft-deletes ${preview.runs} run(s).`;
-      if (window.confirm(msg)) {
-        await api.deleteSource(s.source_id, true);
-        await refresh();
-      }
+      setPendingDelete({ source: s, ...preview });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    try {
+      await api.deleteSource(pendingDelete.source.source_id, true);
+      setPendingDelete(null);
+      await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
     }
@@ -168,7 +185,7 @@ export function SourcesSection() {
             <Inbox size={15} />
             Scan inbox
           </Button>
-          <Button variant="primary" onClick={() => setCreating(true)}>
+          <Button variant="primary" onClick={() => setCreating((c) => !c)}>
             <Plus size={15} />
             New source
           </Button>
@@ -176,6 +193,22 @@ export function SourcesSection() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      {notice && (
+        <div className="flex items-start justify-between gap-3 border-l-2 border-[var(--color-rule)] bg-[var(--color-surface-hover)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
+          <span>{notice}</span>
+          <button
+            type="button"
+            onClick={() => setNotice(null)}
+            className="shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {creating && (
+        <CreateSourceForm onClose={() => setCreating(false)} onCreated={() => void refresh()} />
+      )}
 
       {loading ? (
         <div className="flex justify-center py-16">
@@ -188,36 +221,51 @@ export function SourcesSection() {
           {sources.map((s) => (
             <li
               key={s.source_id}
-              className="flex flex-col gap-3 border-b border-[var(--color-border)] py-4 sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-3 border-b border-[var(--color-border)] py-4"
             >
-              <div>
-                <div className="font-serif text-base text-[var(--color-text-primary)]">{s.name}</div>
-                <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-muted)]">
-                  <span>{s.type}</span>
-                  <span className="truncate">{s.identity}</span>
-                  <Badge value={s.status} />
-                  {s.last_run_status && <Badge value={s.last_run_status} />}
-                  {s.follow_links && <span>follows links</span>}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="font-serif text-base text-[var(--color-text-primary)]">{s.name}</div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-muted)]">
+                    <span>{s.type}</span>
+                    <span className="truncate">{s.identity}</span>
+                    <Badge value={s.status} />
+                    {s.last_run_status && <Badge value={s.last_run_status} />}
+                    {s.follow_links && <span>follows links</span>}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <Button onClick={() => void act(() => api.runSource(s.source_id))} title="Run now">
+                    <Play size={14} />
+                    Run
+                  </Button>
+                  <Button onClick={() => void act(() => api.archiveSource(s.source_id, !s.archived))}>
+                    {s.archived ? "Unarchive" : "Archive"}
+                  </Button>
+                  <Button variant="danger" onClick={() => void startDelete(s)} title="Delete">
+                    <Trash2 size={14} />
+                  </Button>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                <Button onClick={() => void act(() => api.runSource(s.source_id))} title="Run now">
-                  <Play size={14} />
-                  Run
-                </Button>
-                <Button onClick={() => void act(() => api.archiveSource(s.source_id, !s.archived))}>
-                  {s.archived ? "Unarchive" : "Archive"}
-                </Button>
-                <Button variant="danger" onClick={() => void remove(s)} title="Delete">
-                  <Trash2 size={14} />
-                </Button>
-              </div>
+
+              {pendingDelete?.source.source_id === s.source_id && (
+                <div className="flex flex-col gap-2 border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-secondary)] sm:flex-row sm:items-center sm:justify-between">
+                  <span>
+                    Delete &ldquo;{s.name}&rdquo;? Cascades {pendingDelete.events} event(s),{" "}
+                    {pendingDelete.subevents} sub-event(s) and soft-deletes {pendingDelete.runs} run(s).
+                  </span>
+                  <div className="flex shrink-0 gap-2">
+                    <Button variant="danger" onClick={() => void confirmDelete()}>
+                      Delete
+                    </Button>
+                    <Button onClick={() => setPendingDelete(null)}>Cancel</Button>
+                  </div>
+                </div>
+              )}
             </li>
           ))}
         </ul>
       )}
-
-      {creating && <CreateSourceForm onClose={() => setCreating(false)} onCreated={() => void refresh()} />}
     </div>
   );
 }
