@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Lock, LogIn } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { ErrorBanner } from "@/components/ui";
 
 export function LoginForm() {
   const { login, configured } = useAuth();
@@ -22,62 +22,58 @@ export function LoginForm() {
     }
   };
 
+  const field =
+    "w-full rounded-none border-b border-[var(--color-rule)] bg-transparent py-2 text-sm text-[var(--color-text-primary)] focus:outline-none";
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--color-background)] px-4">
-      <div className="w-full max-w-sm rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
-        <div className="flex flex-col items-center gap-2 mb-6">
-          <span className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-[var(--color-badge)] text-[var(--color-badge-text)]">
-            <Lock size={20} />
-          </span>
-          <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Admin sign in</h1>
-          <p className="text-xs text-[var(--color-text-muted)] text-center">
-            Sign in with your Scout admin credentials.
-          </p>
-        </div>
+    <div className="flex min-h-screen items-center justify-center bg-[var(--color-background)] px-5">
+      <div className="w-full max-w-sm border border-[var(--color-rule)] bg-[var(--color-surface)] p-8">
+        <p className="eyebrow text-[var(--color-text-muted)]">Scout</p>
+        <h1 className="mt-3 font-serif text-2xl text-[var(--color-text-primary)]">
+          Admin sign in
+        </h1>
+        <p className="mt-2 text-sm text-[var(--color-text-muted)]">
+          Sign in with your Scout admin credentials.
+        </p>
 
         {!configured && (
-          <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          <div className="mt-6 border-l-2 border-[var(--color-rule)] bg-[var(--color-surface-hover)] px-4 py-3 text-xs text-[var(--color-text-secondary)]">
             Cognito is not configured for this environment.
           </div>
         )}
 
-        <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1 text-sm text-[var(--color-text-secondary)]">
-            Email
+        <form onSubmit={(e) => void handleSubmit(e)} className="mt-6 flex flex-col gap-5">
+          <label className="flex flex-col gap-1.5">
+            <span className="eyebrow text-[var(--color-text-muted)]">Email</span>
             <input
               type="email"
               autoComplete="username"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="rounded-md border border-[var(--color-border)] bg-[var(--color-background)] text-[var(--color-text-primary)] px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
+              className={field}
             />
           </label>
 
-          <label className="flex flex-col gap-1 text-sm text-[var(--color-text-secondary)]">
-            Password
+          <label className="flex flex-col gap-1.5">
+            <span className="eyebrow text-[var(--color-text-muted)]">Password</span>
             <input
               type="password"
               autoComplete="current-password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="rounded-md border border-[var(--color-border)] bg-[var(--color-background)] text-[var(--color-text-primary)] px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
+              className={field}
             />
           </label>
 
-          {error && (
-            <div className="rounded-lg border border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/40 px-3 py-2 text-xs text-red-700 dark:text-red-400">
-              {error}
-            </div>
-          )}
+          {error && <ErrorBanner message={error} />}
 
           <button
             type="submit"
             disabled={submitting || !configured}
-            className="mt-1 inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50"
+            className="mt-1 min-h-[44px] w-full rounded-none border border-[var(--color-primary)] bg-[var(--color-primary)] px-4 py-3 text-[11px] font-medium uppercase tracking-[0.14em] text-white transition-colors hover:bg-[var(--color-primary-hover)] disabled:opacity-40"
           >
-            <LogIn size={16} />
             {submitting ? "Signing in…" : "Sign in"}
           </button>
         </form>

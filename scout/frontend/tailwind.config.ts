@@ -1,7 +1,6 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  darkMode: "class",
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
@@ -10,6 +9,7 @@ const config: Config = {
         surface: "var(--color-surface)",
         "surface-hover": "var(--color-surface-hover)",
         border: "var(--color-border)",
+        rule: "var(--color-rule)",
         primary: "var(--color-primary)",
         "primary-hover": "var(--color-primary-hover)",
         "text-primary": "var(--color-text-primary)",
@@ -19,12 +19,15 @@ const config: Config = {
         "badge-text": "var(--color-badge-text)",
       },
       fontFamily: {
+        serif: ["Fraunces", "Georgia", "Times New Roman", "serif"],
         sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
       },
-      boxShadow: {
-        card: "0 1px 3px 0 rgb(0 0 0 / 0.12), 0 1px 2px -1px rgb(0 0 0 / 0.12)",
-        "card-hover":
-          "0 8px 24px -4px rgb(0 0 0 / 0.3), 0 0 0 1px rgba(167,139,250,0.15)",
+      fontSize: {
+        display: ["clamp(2.5rem, 8vw, 5.5rem)", { lineHeight: "0.95", letterSpacing: "-0.02em" }],
+        hero: ["clamp(2rem, 5.5vw, 3.5rem)", { lineHeight: "1.02", letterSpacing: "-0.015em" }],
+      },
+      letterSpacing: {
+        eyebrow: "0.22em",
       },
     },
   },

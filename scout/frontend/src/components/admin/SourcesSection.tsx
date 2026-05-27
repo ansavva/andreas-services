@@ -31,7 +31,7 @@ function CreateSourceForm({ onClose, onCreated }: { onClose: () => void; onCreat
   };
 
   const field =
-    "w-full rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm text-[var(--color-text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]";
+    "w-full rounded-none border-b border-[var(--color-rule)] bg-transparent py-2 text-sm text-[var(--color-text-primary)] focus:outline-none";
 
   return (
     <Modal title="New source" onClose={onClose}>
@@ -144,20 +144,20 @@ export function SourcesSection() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-2">
           <button
             onClick={() => setArchived(false)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-              !archived ? "bg-[var(--color-primary)] text-white" : "text-[var(--color-text-secondary)]"
+            className={`rounded-none px-3 py-2 text-[11px] font-medium uppercase tracking-[0.12em] transition-colors ${
+              !archived ? "bg-[var(--color-primary)] text-white" : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
             }`}
           >
             Active
           </button>
           <button
             onClick={() => setArchived(true)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-              archived ? "bg-[var(--color-primary)] text-white" : "text-[var(--color-text-secondary)]"
+            className={`rounded-none px-3 py-2 text-[11px] font-medium uppercase tracking-[0.12em] transition-colors ${
+              archived ? "bg-[var(--color-primary)] text-white" : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
             }`}
           >
             Archived
@@ -184,14 +184,14 @@ export function SourcesSection() {
       ) : sources.length === 0 ? (
         <p className="py-12 text-center text-sm text-[var(--color-text-muted)]">No sources.</p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="border-t border-[var(--color-rule)]">
           {sources.map((s) => (
             <li
               key={s.source_id}
-              className="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-3 border-b border-[var(--color-border)] py-4 sm:flex-row sm:items-center sm:justify-between"
             >
               <div>
-                <div className="text-sm font-medium text-[var(--color-text-primary)]">{s.name}</div>
+                <div className="font-serif text-base text-[var(--color-text-primary)]">{s.name}</div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-muted)]">
                   <span>{s.type}</span>
                   <span className="truncate">{s.identity}</span>

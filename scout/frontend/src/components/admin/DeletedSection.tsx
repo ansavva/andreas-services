@@ -52,15 +52,15 @@ export function DeletedSection() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap gap-2">
+      <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1">
         {TYPES.map((t) => (
           <button
             key={t.key}
             onClick={() => setType(t.key)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`shrink-0 whitespace-nowrap rounded-none px-3 py-2 text-[11px] font-medium uppercase tracking-[0.12em] transition-colors ${
               type === t.key
                 ? "bg-[var(--color-primary)] text-white"
-                : "text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
             }`}
           >
             {t.label}
@@ -75,11 +75,11 @@ export function DeletedSection() {
       ) : items.length === 0 ? (
         <p className="py-8 text-center text-sm text-[var(--color-text-muted)]">Nothing deleted.</p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="border-t border-[var(--color-rule)]">
           {items.map((item) => (
             <li
               key={`${item.PK}#${item.SK}`}
-              className="flex items-center justify-between gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
+              className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] py-4"
             >
               <span className="text-sm text-[var(--color-text-primary)]">{describe(item)}</span>
               <Button onClick={() => void restore(item)}>
