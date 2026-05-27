@@ -1,4 +1,4 @@
-"""Unit tests for the Agent SDK extractor (extractor.py). The SDK call is stubbed."""
+"""Unit tests for the Anthropic-API extractor (extractor.py). The API call is stubbed."""
 
 import json
 import unittest
@@ -26,26 +26,20 @@ _EVENTS_JSON = json.dumps({"events": [{
 
 
 class TestExtractor(unittest.TestCase):
-    def test_build_prompt_lists_files(self):
-        prompt, files = extractor.build_prompt(
-            [{"url": "https://x.com", "content": "root"},
-             {"url": "https://x.com/1", "content": "linked"}])
-        self.assertEqual(set(files), {"page_0.txt", "page_1.txt"})
-        self.assertEqual(files["page_0.txt"], "root")
-        self.assertIn("page_1.txt", prompt)
+    def test_build_prompt_embeds_content(self):
+        prompt = extractor.build_prompt(
+            [{"url": "https://x.com", "content": "root body"},
+             {"url": "https://x.com/1", "content": "linked body"}])
+        self.assertIn("root body", prompt)
+        self.assertIn("linked body", prompt)
+        self.assertIn("https://x.com/1", prompt)
 
-    def test_completed_parses_events_and_summarizes_tools(self):
+    def test_completed_parses_events_and_tracks_usage(self):
         messages = [
-            {"role": "assistant", "text": "let me look",
-             "tools": [{"name": "WebFetch", "input": {"url": "https://x.com"}}],
-             "usage": {"input_tokens": 100, "output_tokens": 50}},
-            {"role": "assistant", "text": "searching",
-             "tools": [{"name": "WebSearch", "input": {"q": "blue note"}},
-                       {"name": "WebFetch", "input": {"url": "https://x.com/2"}}]},
             {"role": "result", "text": _EVENTS_JSON,
-             "usage": {"input_tokens": 200, "output_tokens": 80}},
+             "usage": {"input_tokens": 300, "output_tokens": 130}},
         ]
-        result = extractor.extract(messages and [{"content": "c"}], model="m",
+        result = extractor.extract([{"content": "c"}], model="m",
                                    budget_tokens=100000, budget_seconds=60,
                                    runner=_runner_from(messages))
         self.assertEqual(result.status, extractor.STATUS_COMPLETED)
@@ -55,8 +49,6 @@ class TestExtractor(unittest.TestCase):
         self.assertEqual(len(event["sub_events"]), 1)
         self.assertEqual(event["location"]["name"], "The Blue Note")
 
-        tools = {t["tool"]: t["count"] for t in result.tool_use_summary}
-        self.assertEqual(tools, {"WebFetch": 2, "WebSearch": 1})
         self.assertEqual(result.usage["input_tokens"], 300)
         self.assertEqual(result.usage["output_tokens"], 130)
 

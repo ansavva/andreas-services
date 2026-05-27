@@ -1,34 +1,34 @@
 """
-Event extraction via the Claude Agent SDK.
+Event extraction via the Anthropic Messages API.
 
-Our own code acquires the source content (fetcher/pipeline); this module hands
-the pre-fetched pages to a Claude Agent SDK agent whose only job is extraction.
-The agent is granted Read (to read the fetched content written to its working
-directory) plus unconstrained WebFetch and WebSearch. We record the full
-transcript and a per-tool usage summary, and enforce a token + runtime budget,
-aborting cleanly if either is exceeded.
+Our own code acquires the source content (fetcher / gmail / pipeline); this
+module sends that fetched text to Claude in a single Messages API call and parses
+the structured events out of the JSON response. We previously drove this through
+the Claude Agent SDK (which spawns the Claude Code CLI), but that subprocess is
+unreliable inside Lambda — a direct API call is simpler, faster, and cheaper.
 
-The SDK call is isolated behind `runner` so the pipeline and tests can inject a
-scripted message stream; the default runner uses the real `claude_agent_sdk`
-package (imported lazily so this module loads without it). The runner yields
-normalized message dicts:
+The API call is isolated behind `runner` so the pipeline and tests can inject a
+scripted response; the default runner uses the `anthropic` package (imported
+lazily so this module loads without it). The runner yields normalized message
+dicts:
 
-    {"role": "assistant"|"result", "text": str,
-     "tools": [{"name": str, "input": dict}], "usage": {"input_tokens", "output_tokens"}}
+    {"role": "result", "text": str, "usage": {"input_tokens", "output_tokens"}}
 """
 
 import json
 import time
 
-ALLOWED_TOOLS = ["Read", "WebFetch", "WebSearch"]
-
 STATUS_COMPLETED = "completed"
 STATUS_BUDGET_EXCEEDED = "budget_exceeded"
 STATUS_ERROR = "error"
 
+# Cap the prompt's embedded source content (~30k tokens) and the model's output.
+MAX_CONTENT_CHARS = 120000
+MAX_OUTPUT_TOKENS = 8000
+
 
 class BudgetExceeded(Exception):
-    """Raised when a token or runtime budget cap is hit mid-run."""
+    """Raised when a token or runtime budget cap is hit."""
 
 
 class ExtractionResult:
@@ -71,22 +71,19 @@ are present, return {"events": []}. Output only the JSON, no prose."""
 
 
 def build_prompt(pages):
-    """Return (prompt, files) where files maps a filename to its content; the
-    agent reads those files from its working directory via the Read tool."""
-    files = {}
-    listing = []
-    for index, page in enumerate(pages):
-        name = f"page_{index}.txt"
-        files[name] = page.get("content") or ""
-        listing.append(f"- {name} (from: {page.get('url') or 'root content'})")
-    prompt = (
-        "You extract structured event listings from fetched source content.\n"
-        "Read each of these files in your working directory:\n"
-        + "\n".join(listing)
-        + "\n\nYou may use WebFetch and WebSearch to resolve missing details "
-        "(dates, venue, address). " + _SCHEMA
+    """A single extraction prompt with the fetched page contents embedded inline
+    (the model extracts from this text directly — no tools)."""
+    sections = []
+    for page in pages:
+        src = page.get("url") or "root content"
+        sections.append(f"----- SOURCE: {src} -----\n{page.get('content') or ''}")
+    body = "\n\n".join(sections)
+    if len(body) > MAX_CONTENT_CHARS:
+        body = body[:MAX_CONTENT_CHARS]
+    return (
+        "You extract structured event listings from the fetched source content "
+        "below. " + _SCHEMA + "\n\n===== SOURCE CONTENT =====\n" + body
     )
-    return prompt, files
 
 
 # ---------------------------------------------------------------------------
@@ -148,26 +145,18 @@ def parse_events(transcript):
 # ---------------------------------------------------------------------------
 
 def extract(pages, *, model, budget_tokens=None, budget_seconds=None, runner=None):
-    """Run the extraction agent over the fetched pages under a budget cap.
-    Returns an ExtractionResult; partial output is discarded on budget/error."""
+    """Run the extraction over the fetched pages under a budget cap. Returns an
+    ExtractionResult; partial output is discarded on budget/error."""
     runner = runner or default_runner
-    prompt, files = build_prompt(pages)
+    prompt = build_prompt(pages)
 
     transcript = []
-    tool_counts = {}
     usage = {"input_tokens": 0, "output_tokens": 0}
     started = time.monotonic()
 
     try:
-        for message in runner(prompt=prompt, files=files, model=model,
-                              allowed_tools=ALLOWED_TOOLS,
-                              budget_seconds=budget_seconds):
+        for message in runner(prompt=prompt, model=model, budget_seconds=budget_seconds):
             transcript.append(message)
-            for tool in message.get("tools", []):
-                rec = tool_counts.setdefault(
-                    tool["name"], {"tool": tool["name"], "count": 0, "args": []})
-                rec["count"] += 1
-                rec["args"].append(tool.get("input", {}))
             msg_usage = message.get("usage") or {}
             usage["input_tokens"] += int(msg_usage.get("input_tokens", 0) or 0)
             usage["output_tokens"] += int(msg_usage.get("output_tokens", 0) or 0)
@@ -178,96 +167,47 @@ def extract(pages, *, model, budget_tokens=None, budget_seconds=None, runner=Non
                 raise BudgetExceeded("token budget exceeded")
     except BudgetExceeded as exc:
         return ExtractionResult(STATUS_BUDGET_EXCEEDED, transcript=transcript,
-                                tool_use_summary=list(tool_counts.values()),
                                 usage=usage, error=str(exc))
     except Exception as exc:  # pylint: disable=broad-except
         return ExtractionResult(STATUS_ERROR, transcript=transcript,
-                                tool_use_summary=list(tool_counts.values()),
                                 usage=usage, error=str(exc))
 
     try:
         events = parse_events(transcript)
     except (ValueError, TypeError) as exc:
         return ExtractionResult(STATUS_ERROR, transcript=transcript,
-                                tool_use_summary=list(tool_counts.values()),
-                                usage=usage, error=f"failed to parse agent output: {exc}")
+                                usage=usage, error=f"failed to parse model output: {exc}")
 
     return ExtractionResult(STATUS_COMPLETED, events=events, transcript=transcript,
-                            tool_use_summary=list(tool_counts.values()), usage=usage)
+                            usage=usage)
 
 
-def default_runner(*, prompt, files, model, allowed_tools, budget_seconds):
-    """Run the real Claude Agent SDK, enforcing the runtime budget, and yield
-    normalized message dicts. Imported lazily so this module loads without the
-    SDK installed (the source-run-processor image declares the dependency)."""
-    import asyncio
-    import os
-    import tempfile
+def default_runner(*, prompt, model, budget_seconds):
+    """One Anthropic Messages API call. Yields a single normalized result message.
+    Imported lazily so this module loads without the SDK installed."""
+    import anthropic  # noqa: PLC0415
 
-    from claude_agent_sdk import (  # noqa: PLC0415
-        AssistantMessage,
-        ClaudeAgentOptions,
-        ResultMessage,
-        TextBlock,
-        ToolUseBlock,
-        query,
-    )
-
-    # The bundled Claude Code CLI writes config/state under $HOME (and the XDG
-    # dirs) when it initializes. In Lambda the default HOME is read-only and only
-    # /tmp is writable, so without this the CLI hangs on startup and the SDK
-    # fails with "Control request timeout: initialize". Point HOME at /tmp.
-    agent_home = os.path.join(tempfile.gettempdir(), "claude-home")
-    os.makedirs(agent_home, exist_ok=True)
-    os.environ["HOME"] = agent_home
-    os.environ["XDG_CONFIG_HOME"] = os.path.join(agent_home, ".config")
-    os.environ["XDG_CACHE_HOME"] = os.path.join(agent_home, ".cache")
-
-    with tempfile.TemporaryDirectory() as workdir:
-        for name, content in files.items():
-            with open(f"{workdir}/{name}", "w", encoding="utf-8") as handle:
-                handle.write(content)
-
-        options = ClaudeAgentOptions(
+    client = anthropic.Anthropic()
+    try:
+        response = client.messages.create(
             model=model,
-            allowed_tools=allowed_tools,
-            permission_mode="acceptEdits",
-            cwd=workdir,
+            max_tokens=MAX_OUTPUT_TOKENS,
+            messages=[{"role": "user", "content": prompt}],
+            timeout=float(budget_seconds) if budget_seconds else 120.0,
         )
+    except anthropic.APITimeoutError as exc:
+        raise BudgetExceeded("runtime budget exceeded") from exc
 
-        async def _collect():
-            collected = []
-            async for message in query(prompt=prompt, options=options):
-                collected.append(_normalize_sdk_message(
-                    message, AssistantMessage, ResultMessage, TextBlock, ToolUseBlock))
-            return collected
-
-        try:
-            messages = asyncio.run(asyncio.wait_for(_collect(), timeout=budget_seconds))
-        except asyncio.TimeoutError as exc:
-            raise BudgetExceeded("runtime budget exceeded") from exc
-
-    yield from messages
-
-
-def _normalize_sdk_message(message, AssistantMessage, ResultMessage, TextBlock,
-                           ToolUseBlock):
-    if isinstance(message, AssistantMessage):
-        text_parts, tools = [], []
-        for block in message.content:
-            if isinstance(block, TextBlock):
-                text_parts.append(block.text)
-            elif isinstance(block, ToolUseBlock):
-                tools.append({"name": block.name, "input": block.input})
-        return {"role": "assistant", "text": "".join(text_parts), "tools": tools}
-    if isinstance(message, ResultMessage):
-        usage = getattr(message, "usage", None) or {}
-        return {
-            "role": "result",
-            "text": getattr(message, "result", "") or "",
-            "usage": {
-                "input_tokens": usage.get("input_tokens", 0),
-                "output_tokens": usage.get("output_tokens", 0),
-            },
-        }
-    return {"role": "other", "text": ""}
+    text = "".join(
+        block.text for block in response.content
+        if getattr(block, "type", None) == "text"
+    )
+    usage = getattr(response, "usage", None)
+    yield {
+        "role": "result",
+        "text": text,
+        "usage": {
+            "input_tokens": getattr(usage, "input_tokens", 0) or 0,
+            "output_tokens": getattr(usage, "output_tokens", 0) or 0,
+        },
+    }

@@ -3,8 +3,8 @@
 ## What this service does
 
 Scout discovers events from configured **sources**, extracts them with a Claude
-Agent SDK agent, lets an admin review/curate them, and publishes the approved
-ones at `scout.andreas.services/app`.
+model (Anthropic Messages API), lets an admin review/curate them, and publishes
+the approved ones at `scout.andreas.services/app`.
 
 1. **Sources** (email or webpage). Webpage sources are configured by hand in the
    admin console; **email sources are auto-discovered** from the Gmail "Events"
@@ -15,8 +15,8 @@ ones at `scout.andreas.services/app`.
 2. The **source-run-processor** Lambda fetches the source content (our code —
    webpage HTTP fetch, or the sender's recent "Events"-labeled mail via the
    Gmail API in `gmail.py`), optionally follows one level of same-domain links,
-   stores everything to S3, then invokes the **Claude Agent SDK** (Read +
-   WebFetch + WebSearch) to extract structured events.
+   stores everything to S3, then sends the fetched text to the **Anthropic
+   Messages API** (one call) to extract structured events.
 3. Extracted events become **pending** records (dedup + fuzzy location match
    applied). An admin reviews (approve/reject), publishes, cancels, edits, and
    manages locations, labels, images, and settings.
@@ -119,7 +119,7 @@ and ship from **one** `scout-events-api` image with different container commands
 | Function | Entrypoint | Trigger | Notes |
 |----------|-----------|---------|-------|
 | `scout-events-api` | `scout_core.handlers.api.lambda_handler` | API Gateway | 128 MB / 30 s |
-| `scout-source-run-processor` | `scout_core.handlers.processor.lambda_handler` | async invoke | 2048 MB / 300 s; needs `ANTHROPIC_API_KEY`, `SCOUT_ARTIFACTS_BUCKET`, `SCOUT_IMAGES_BUCKET`, `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` (Gmail ingestion + `mode=discover`) |
+| `scout-source-run-processor` | `scout_core.handlers.processor.lambda_handler` | async invoke | 512 MB / 300 s; needs `ANTHROPIC_API_KEY`, `SCOUT_ARTIFACTS_BUCKET`, `SCOUT_IMAGES_BUCKET`, `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` (Gmail ingestion + `mode=discover`) |
 | `scout-scheduler` | `scout_core.handlers.scheduler.lambda_handler` | EventBridge `rate(15 minutes)` | Gmail discovery pass + dispatches due sources |
 | `scout-sweep` | `scout_core.handlers.sweep.lambda_handler` | EventBridge `rate(1 hour)` | orphan recovery + past flags |
 
@@ -139,14 +139,17 @@ catch-all, and PR base paths).
   labels/{source|event|location}, settings, notifications, `deleted/{type}`,
   `restore`.
 
-## Extraction (Claude Agent SDK)
+## Extraction (Anthropic Messages API)
 
-`extractor.py` runs the agent behind an injectable `runner` (default uses the
-`claude-agent-sdk` package, imported lazily). It enforces a token + runtime
-budget, records the transcript and per-tool usage summary, and maps outcomes to
-completed / `budget_exceeded` / error. `pipeline.py` stores artifacts +
-transcript to S3, converts a completed extraction into pending event records
-(dedup + fuzzy location match), and raises in-app notifications on failure.
+`extractor.py` embeds the fetched page text in a prompt and makes a single
+Anthropic Messages API call behind an injectable `runner` (default uses the
+`anthropic` package, imported lazily), parsing the JSON event list from the
+response. It enforces a token + runtime budget and maps outcomes to completed /
+`budget_exceeded` / error. (Extraction is content-only — there is no WebFetch/
+WebSearch; our fetcher/link-follower already gathers the pages.) `pipeline.py`
+stores artifacts + transcript to S3, converts a completed extraction into pending
+event records (dedup + fuzzy location match), and raises in-app notifications on
+failure.
 
 ## Environment Variables
 
@@ -155,7 +158,7 @@ Notable additions for the redesign:
 
 | Variable | Where | Purpose |
 |----------|-------|---------|
-| `ANTHROPIC_API_KEY` | secret → processor env | Agent SDK key |
+| `ANTHROPIC_API_KEY` | secret → processor env | Anthropic Messages API key |
 | `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN` | secret → processor env | Gmail API (OAuth refresh token) for "Events"-label ingestion |
 | `SCOUT_ARTIFACTS_BUCKET` / `SCOUT_IMAGES_BUCKET` | Lambda env | S3 buckets (`scout-artifacts-<env>` / `scout-images-<env>`) |
 | `SCOUT_PROCESSOR_FN` | events-api / scheduler env | processor function name for invocations |
