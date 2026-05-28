@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import { useApi } from "@/api";
 import { Button, ErrorBanner, Spinner } from "@/components/ui";
 import type { Location } from "@/types";
@@ -54,20 +54,25 @@ export function LocationsSection() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pendingDelete, setPendingDelete] = useState<Location | null>(null);
   const [confirmMerge, setConfirmMerge] = useState(false);
+  // Single in-flight action key (e.g. "<location_id>:delete" or "merge").
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const isBusy = (key: string) => actionBusy === key;
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setPendingDelete(null);
-    setConfirmMerge(false);
+  const refresh = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    if (!silent) setError(null);
+    if (!silent) {
+      setPendingDelete(null);
+      setConfirmMerge(false);
+    }
     try {
       const data = await api.listLocations();
       setLocations(data.locations);
-      setSelected(new Set());
+      if (!silent) setSelected(new Set());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
+      if (!silent) setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [api]);
 
@@ -82,31 +87,54 @@ export function LocationsSection() {
       return next;
     });
 
-  const confirmDelete = async () => {
-    if (!pendingDelete) return;
+  const runAction = async (
+    key: string,
+    call: () => Promise<unknown>,
+    applyOptimistic?: () => void
+  ) => {
+    setActionBusy(key);
+    setError(null);
     try {
-      await api.deleteLocation(pendingDelete.location_id, true);
-      setPendingDelete(null);
-      await refresh();
+      await call();
+      applyOptimistic?.();
+      void refresh(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      setError(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setActionBusy(null);
     }
+  };
+
+  const confirmDelete = () => {
+    if (!pendingDelete) return Promise.resolve();
+    const lid = pendingDelete.location_id;
+    return runAction(
+      `${lid}:delete`,
+      () => api.deleteLocation(lid, true),
+      () => {
+        setPendingDelete(null);
+        setLocations((prev) => prev.filter((l) => l.location_id !== lid));
+      }
+    );
   };
 
   const mergeNames = locations
     .filter((l) => selected.has(l.location_id))
     .map((l) => l.name);
 
-  const doMerge = async () => {
+  const doMerge = () => {
     const ids = [...selected];
-    if (ids.length < 2) return;
-    try {
-      await api.mergeLocations(ids[0], ids.slice(1));
-      setConfirmMerge(false);
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Merge failed");
-    }
+    if (ids.length < 2) return Promise.resolve();
+    const dropped = new Set(ids.slice(1));
+    return runAction(
+      "merge",
+      () => api.mergeLocations(ids[0], ids.slice(1)),
+      () => {
+        setConfirmMerge(false);
+        setSelected(new Set());
+        setLocations((prev) => prev.filter((l) => !dropped.has(l.location_id)));
+      }
+    );
   };
 
   return (
@@ -137,7 +165,12 @@ export function LocationsSection() {
             soft-deleted.
           </span>
           <div className="flex shrink-0 gap-2">
-            <Button variant="danger" onClick={() => void doMerge()}>
+            <Button
+              variant="danger"
+              disabled={isBusy("merge")}
+              onClick={() => void doMerge()}
+            >
+              {isBusy("merge") && <Loader2 size={14} className="animate-spin" />}
               Merge
             </Button>
             <Button onClick={() => setConfirmMerge(false)}>Cancel</Button>
@@ -146,7 +179,7 @@ export function LocationsSection() {
       )}
 
       {creating && (
-        <CreateLocationForm onClose={() => setCreating(false)} onCreated={() => void refresh()} />
+        <CreateLocationForm onClose={() => setCreating(false)} onCreated={() => void refresh(true)} />
       )}
 
       {loading ? (
@@ -175,7 +208,11 @@ export function LocationsSection() {
                     </span>
                   </span>
                 </label>
-                <Button variant="danger" onClick={() => setPendingDelete(loc)}>
+                <Button
+                  variant="danger"
+                  disabled={isBusy(`${loc.location_id}:delete`)}
+                  onClick={() => setPendingDelete(loc)}
+                >
                   <Trash2 size={14} />
                 </Button>
               </div>
@@ -184,7 +221,14 @@ export function LocationsSection() {
                 <div className="flex flex-col gap-2 border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-secondary)] sm:flex-row sm:items-center sm:justify-between">
                   <span>Delete &ldquo;{loc.name}&rdquo;? Associated events cascade.</span>
                   <div className="flex shrink-0 gap-2">
-                    <Button variant="danger" onClick={() => void confirmDelete()}>
+                    <Button
+                      variant="danger"
+                      disabled={isBusy(`${loc.location_id}:delete`)}
+                      onClick={() => void confirmDelete()}
+                    >
+                      {isBusy(`${loc.location_id}:delete`) && (
+                        <Loader2 size={14} className="animate-spin" />
+                      )}
                       Delete
                     </Button>
                     <Button onClick={() => setPendingDelete(null)}>Cancel</Button>
