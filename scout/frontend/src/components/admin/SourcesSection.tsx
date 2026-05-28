@@ -99,10 +99,34 @@ function CreateSourceForm({ onClose, onCreated }: { onClose: () => void; onCreat
   );
 }
 
+function runArtifacts(r: SourceRun): { label: string; kind: string; index?: number }[] {
+  const out: { label: string; kind: string; index?: number }[] = [];
+  if (r.agent_transcript_ref) out.push({ label: "Transcript", kind: "transcript" });
+  if (r.s3_root_body_ref) out.push({ label: "Fetched text", kind: "root_body" });
+  if (r.s3_root_html_ref) out.push({ label: "HTML", kind: "root_html" });
+  (r.link_outcomes ?? []).forEach((l, i) => {
+    if (l.s3_ref) out.push({ label: `Link ${i + 1}`, kind: "linked", index: i });
+  });
+  return out;
+}
+
+// Stored logs are JSON (transcript) or raw text; pretty-print JSON when we can.
+function prettyLog(text: string): string {
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2);
+  } catch {
+    return text;
+  }
+}
+
 function RunsPanel({ sourceId }: { sourceId: string }) {
   const api = useApi();
   const [runs, setRuns] = useState<SourceRun[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [openLog, setOpenLog] = useState<string | null>(null);
+  const [logContent, setLogContent] = useState<Record<string, string>>({});
+  const [logLoading, setLogLoading] = useState<string | null>(null);
+  const [logError, setLogError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -116,6 +140,26 @@ function RunsPanel({ sourceId }: { sourceId: string }) {
       active = false;
     };
   }, [api, sourceId]);
+
+  const toggleLog = async (run: SourceRun, kind: string, index?: number) => {
+    const key = `${run.run_id}:${kind}:${index ?? ""}`;
+    if (openLog === key) {
+      setOpenLog(null);
+      return;
+    }
+    setOpenLog(key);
+    setLogError(null);
+    if (logContent[key] !== undefined) return;
+    setLogLoading(key);
+    try {
+      const data = await api.runArtifact(sourceId, run.run_id, kind, index);
+      setLogContent((c) => ({ ...c, [key]: data.content }));
+    } catch (err) {
+      setLogError(err instanceof Error ? err.message : "Failed to load log");
+    } finally {
+      setLogLoading(null);
+    }
+  };
 
   return (
     <div className="border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
@@ -134,10 +178,13 @@ function RunsPanel({ sourceId }: { sourceId: string }) {
             const links = r.link_outcomes ?? [];
             const okLinks = links.filter((l) => l.ok).length;
             const count = r.events_count ?? 0;
+            const summary = r.extracted_summary;
+            const logs = runArtifacts(r);
+            const openKey = openLog && openLog.startsWith(`${r.run_id}:`) ? openLog : null;
             return (
               <li
                 key={r.run_id}
-                className="flex flex-col gap-1 border-b border-[var(--color-border)] py-3 text-sm last:border-b-0"
+                className="flex flex-col gap-1.5 border-b border-[var(--color-border)] py-3 text-sm last:border-b-0"
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge value={r.status} />
@@ -153,6 +200,12 @@ function RunsPanel({ sourceId }: { sourceId: string }) {
                   <span>
                     {count} event{count === 1 ? "" : "s"} extracted
                   </span>
+                  {summary?.skipped ? <span>{summary.skipped} duplicate(s) skipped</span> : null}
+                  {summary?.pages ? (
+                    <span>
+                      {summary.pages} page{summary.pages === 1 ? "" : "s"} read
+                    </span>
+                  ) : null}
                   {links.length > 0 && (
                     <span>
                       {okLinks}/{links.length} link{links.length === 1 ? "" : "s"} fetched
@@ -162,6 +215,39 @@ function RunsPanel({ sourceId }: { sourceId: string }) {
                     <span className="text-[var(--color-text-primary)]">{r.error_reason}</span>
                   )}
                 </div>
+
+                {logs.length > 0 && (
+                  <div className="-mx-1 flex flex-wrap gap-x-1">
+                    {logs.map((log) => {
+                      const key = `${r.run_id}:${log.kind}:${log.index ?? ""}`;
+                      return (
+                        <Button
+                          key={key}
+                          variant="ghost"
+                          onClick={() => void toggleLog(r, log.kind, log.index)}
+                        >
+                          {openLog === key ? `Hide ${log.label.toLowerCase()}` : log.label}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {openKey && (
+                  <div className="mt-1">
+                    {logLoading === openKey ? (
+                      <div className="flex justify-center py-4">
+                        <Spinner />
+                      </div>
+                    ) : logError ? (
+                      <ErrorBanner message={logError} />
+                    ) : (
+                      <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words border border-[var(--color-border)] bg-[var(--color-background)] p-3 text-xs text-[var(--color-text-secondary)]">
+                        {prettyLog(logContent[openKey] ?? "")}
+                      </pre>
+                    )}
+                  </div>
+                )}
               </li>
             );
           })}
@@ -361,21 +447,14 @@ export function SourcesSection() {
                       <span>{s.type}</span>
                       <span className="truncate">{s.identity}</span>
                       <Badge value={s.status} />
-                      {running ? (
-                        <span className="inline-flex items-center gap-1 text-[var(--color-primary)]">
-                          <Loader2 size={12} className="animate-spin" />
-                          running
-                        </span>
-                      ) : (
-                        s.last_run_status && <Badge value={s.last_run_status} />
-                      )}
+                      {s.last_run_status && <Badge value={s.last_run_status} />}
                       {s.follow_links && <span>follows links</span>}
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     <Button onClick={() => void run(s)} disabled={running} title="Run now">
-                      <Play size={14} />
-                      Run
+                      {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                      {running ? "Running" : "Run"}
                     </Button>
                     <Button
                       onClick={() => setOpenRuns((o) => (o === s.source_id ? null : s.source_id))}

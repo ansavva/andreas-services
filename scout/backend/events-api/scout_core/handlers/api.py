@@ -29,6 +29,7 @@ from scout_core.domain import notifications
 from scout_core.domain import public
 from scout_core.domain import runs
 from scout_core.domain import sources
+from scout_core.adapters import artifacts
 from scout_core.adapters import store
 
 logger = logging.getLogger()
@@ -224,6 +225,17 @@ def _admin_sources(method, rest, query, body):
         return ok(sources.set_archived(source_id, body.get("archived", True)))
     if action == ["runs"] and method == "GET":
         return ok({"runs": runs.list_runs(source_id)})
+    if len(action) == 3 and action[0] == "runs" and action[2] == "artifact" \
+            and method == "GET":
+        run = runs.get_run(source_id, action[1])
+        if run is None:
+            return not_found("Run not found")
+        kind = (query or {}).get("kind", "transcript")
+        index = (query or {}).get("index")
+        ref = runs.artifact_ref(run, kind, int(index) if index is not None else None)
+        if not ref:
+            return not_found("Artifact not found")
+        return ok({"kind": kind, "ref": ref, "content": artifacts.get_text(ref)})
     if action == ["run"] and method == "POST":
         return ok(_trigger(source_id, "run"))
     if action == ["preview"] and method == "POST":

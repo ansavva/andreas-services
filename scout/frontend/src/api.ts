@@ -11,6 +11,7 @@ import type {
   Notification,
   PublicEvent,
   PublicFilters,
+  RunArtifact,
   Settings,
   Source,
   SourceRun,
@@ -99,6 +100,13 @@ export function useApi() {
       previewSource: (id: string) => post(`/admin/sources/${id}/preview`),
       listRuns: (id: string) =>
         request<{ runs: SourceRun[] }>(`/admin/sources/${id}/runs`),
+      runArtifact: (sourceId: string, runId: string, kind: string, index?: number) =>
+        request<RunArtifact>(
+          `/admin/sources/${sourceId}/runs/${runId}/artifact${buildQuery({
+            kind,
+            index: index !== undefined ? String(index) : undefined,
+          })}`
+        ),
       sourceHealth: () =>
         request<{ errored: Source[]; stale: Source[]; overdue: Source[] }>(
           `/admin/sources/health`

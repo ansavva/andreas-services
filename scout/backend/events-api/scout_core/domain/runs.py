@@ -69,6 +69,31 @@ def in_progress_source_ids():
     return {r["source_id"] for r in rows}
 
 
+# Stored-artifact kinds and the run attribute that holds each S3 ref. Linked
+# pages are addressed positionally via the run's link_outcomes.
+_ARTIFACT_ATTRS = {
+    "root_body": "s3_root_body_ref",
+    "root_html": "s3_root_html_ref",
+    "transcript": "agent_transcript_ref",
+}
+
+ARTIFACT_KINDS = (*_ARTIFACT_ATTRS, "linked")
+
+
+def artifact_ref(run, kind, index=None):
+    """Resolve the S3 ref for one of a run's stored artifacts, or None if the
+    run never produced it. ``linked`` selects the index-th followed page."""
+    if run is None:
+        return None
+    if kind == "linked":
+        outcomes = run.get("link_outcomes") or []
+        if index is None or index < 0 or index >= len(outcomes):
+            return None
+        return outcomes[index].get("s3_ref")
+    attr = _ARTIFACT_ATTRS.get(kind)
+    return run.get(attr) if attr else None
+
+
 def set_artifacts(source_id, run_id, **refs):
     """Attach S3 references (root_body, root_html, transcript) to a run."""
     key_map = {
