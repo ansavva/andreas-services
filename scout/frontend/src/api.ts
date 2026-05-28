@@ -12,6 +12,7 @@ import type {
   Notification,
   PublicEvent,
   PublicFilters,
+  ReviewGroup,
   Settings,
   Source,
   SourceRun,
@@ -136,7 +137,7 @@ export function useApi() {
 
       // --- events ---
       listEvents: (review: string, cursor?: string, pageSize?: number) =>
-        request<{ events: AdminEvent[]; next_cursor: string | null }>(
+        request<{ groups: ReviewGroup[]; next_cursor: string | null }>(
           `/admin/events${buildQuery({
             review,
             cursor,

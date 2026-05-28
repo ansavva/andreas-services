@@ -4,7 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useApi } from "@/api";
 import { Badge, Button, ErrorBanner, Spinner, SubTabs } from "@/components/ui";
 import { formatDate, truncate } from "@/utils/formatters";
-import type { AdminEvent } from "@/types";
+import type { ReviewGroup } from "@/types";
 
 const REVIEWS = ["pending", "approved", "rejected"] as const;
 const REVIEW_TABS = REVIEWS.map((r) => ({ key: r, label: r }));
@@ -13,6 +13,14 @@ const REVIEW_TABS = REVIEWS.map((r) => ({ key: r, label: r }));
 // check share the same prefix. Events use evt:<id>, sub-events sub:<id>.
 const eventKey = (id: string) => `evt:${id}`;
 const subKey = (id: string) => `sub:${id}`;
+
+// Append a freshly-loaded page, skipping parents already on screen. A parent can
+// re-emit across a page split (it's introduced by whichever of its rows the index
+// returns first); the re-emitted group is identical, so first-seen wins.
+function mergeGroups(prev: ReviewGroup[], next: ReviewGroup[]): ReviewGroup[] {
+  const seen = new Set(prev.map((g) => g.event.event_id));
+  return [...prev, ...next.filter((g) => !seen.has(g.event.event_id))];
+}
 
 export function ReviewSection() {
   const api = useApi();
@@ -31,7 +39,7 @@ export function ReviewSection() {
       { replace: true }
     );
 
-  const [items, setItems] = useState<AdminEvent[]>([]);
+  const [groups, setGroups] = useState<ReviewGroup[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -49,7 +57,7 @@ export function ReviewSection() {
       if (!silent) setError(null);
       try {
         const data = await api.listEvents(review);
-        setItems(data.events);
+        setGroups(data.groups);
         setCursor(data.next_cursor);
         if (!silent) setSelected(new Set());
       } catch (err) {
@@ -70,7 +78,7 @@ export function ReviewSection() {
     setLoadingMore(true);
     try {
       const data = await api.listEvents(review, cursor);
-      setItems((prev) => [...prev, ...data.events]);
+      setGroups((prev) => mergeGroups(prev, data.groups));
       setCursor(data.next_cursor);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load more");
@@ -79,14 +87,30 @@ export function ReviewSection() {
     }
   };
 
-  const isSub = (it: AdminEvent) => it.entity_type === "subevent";
   const isBusy = (key: string) => busy === key;
   const rowBusy = (rowKey: string) => busy?.startsWith(`${rowKey}:`) ?? false;
+
+  // A group belongs in the current tab when its parent's own status matches or
+  // any of its occurrences do. Used after an optimistic edit to drop a group that
+  // no longer has anything to show in this tab.
+  const groupVisible = (g: ReviewGroup) =>
+    g.event.review_status === review ||
+    g.subevents.some((s) => s.review_status === review);
+
+  // Maps over groups, applies `fn` to the matching parent's group, then prunes
+  // any group that's no longer visible in this tab.
+  const updateGroup = (
+    eventId: string,
+    fn: (g: ReviewGroup) => ReviewGroup
+  ) =>
+    setGroups((prev) =>
+      prev.map((g) => (g.event.event_id === eventId ? fn(g) : g)).filter(groupVisible)
+    );
 
   // Runs an action with per-button spinner + row lock, applies an optimistic
   // local update on success, then quietly re-reads the page so server-side
   // cascades (e.g. cancel-parent flipping its sub-events) catch up. Errors
-  // surface on the row's section-level banner; local state isn't mutated.
+  // surface on the section-level banner; local state isn't mutated.
   const runAction = async (
     actionKey: string,
     call: () => Promise<unknown>,
@@ -105,12 +129,17 @@ export function ReviewSection() {
     }
   };
 
-  // ─── event row actions ───────────────────────────────────────────────────
+  // ─── parent (event) row actions ──────────────────────────────────────────
   const reviewEvt = (id: string, status: string) =>
     runAction(
       `${eventKey(id)}:review`,
       () => api.reviewEvent(id, status),
-      () => setItems((prev) => prev.filter((i) => isSub(i) || i.event_id !== id))
+      () =>
+        updateGroup(id, (g) => ({
+          ...g,
+          event: { ...g.event, review_status: status },
+          parent_matches: status === review,
+        }))
     );
 
   const publishEvt = (id: string, nextPublished: boolean) =>
@@ -118,13 +147,13 @@ export function ReviewSection() {
       `${eventKey(id)}:publish`,
       () => api.publishEvent(id, nextPublished),
       () =>
-        setItems((prev) =>
-          prev.map((i) =>
-            !isSub(i) && i.event_id === id
-              ? { ...i, publish_status: nextPublished ? "published" : "unpublished" }
-              : i
-          )
-        )
+        updateGroup(id, (g) => ({
+          ...g,
+          event: {
+            ...g.event,
+            publish_status: nextPublished ? "published" : "unpublished",
+          },
+        }))
     );
 
   const cancelEvt = (id: string) =>
@@ -132,12 +161,11 @@ export function ReviewSection() {
       `${eventKey(id)}:cancel`,
       () => api.cancelEvent(id),
       () =>
-        setItems((prev) =>
-          prev.map((i) =>
-            !isSub(i) && i.event_id === id ? { ...i, lifecycle_cancelled: true } : i
-          )
-        )
-      // verify() picks up the cascade to any sub-events visible in this view.
+        updateGroup(id, (g) => ({
+          ...g,
+          event: { ...g.event, lifecycle_cancelled: true },
+        }))
+      // verify() picks up the cascade to the occurrences.
     );
 
   const deleteEvt = (id: string) =>
@@ -146,22 +174,22 @@ export function ReviewSection() {
       () => api.deleteEvent(id, true),
       () => {
         setPendingDeleteId(null);
-        setItems((prev) =>
-          prev.filter(
-            (i) =>
-              !(i.event_id === id && !isSub(i)) && // parent
-              !(isSub(i) && i.parent_event_id === id) // its visible subs
-          )
-        );
+        setGroups((prev) => prev.filter((g) => g.event.event_id !== id));
       }
     );
 
-  // ─── sub-event row actions ───────────────────────────────────────────────
+  // ─── occurrence (sub-event) row actions ──────────────────────────────────
   const reviewSub = (parentId: string, subId: string, status: string) =>
     runAction(
       `${subKey(subId)}:review`,
       () => api.reviewSub(parentId, subId, status),
-      () => setItems((prev) => prev.filter((i) => !isSub(i) || i.subevent_id !== subId))
+      () =>
+        updateGroup(parentId, (g) => ({
+          ...g,
+          subevents: g.subevents.map((s) =>
+            s.subevent_id === subId ? { ...s, review_status: status } : s
+          ),
+        }))
     );
 
   const publishSub = (parentId: string, subId: string, nextPublished: boolean) =>
@@ -169,13 +197,14 @@ export function ReviewSection() {
       `${subKey(subId)}:publish`,
       () => api.publishSub(parentId, subId, nextPublished),
       () =>
-        setItems((prev) =>
-          prev.map((i) =>
-            isSub(i) && i.subevent_id === subId
-              ? { ...i, publish_status: nextPublished ? "published" : "unpublished" }
-              : i
-          )
-        )
+        updateGroup(parentId, (g) => ({
+          ...g,
+          subevents: g.subevents.map((s) =>
+            s.subevent_id === subId
+              ? { ...s, publish_status: nextPublished ? "published" : "unpublished" }
+              : s
+          ),
+        }))
     );
 
   const deleteSub = (parentId: string, subId: string) =>
@@ -184,26 +213,42 @@ export function ReviewSection() {
       () => api.deleteSub(parentId, subId),
       () => {
         setPendingDeleteSubId(null);
-        setItems((prev) => prev.filter((i) => !isSub(i) || i.subevent_id !== subId));
+        updateGroup(parentId, (g) => ({
+          ...g,
+          subevents: g.subevents.filter((s) => s.subevent_id !== subId),
+        }));
       }
     );
 
-  // ─── bulk review ─────────────────────────────────────────────────────────
+  // ─── bulk review (actionable pending parents only) ───────────────────────
   const bulkReview = (status: string) => {
     const ids = [...selected];
     return runAction(
       `bulk:${status}`,
       () => api.bulkReview(ids, status),
       () => {
-        setItems((prev) =>
-          prev.filter((i) => isSub(i) || !ids.includes(i.event_id))
+        setGroups((prev) =>
+          prev
+            .map((g) =>
+              ids.includes(g.event.event_id)
+                ? {
+                    ...g,
+                    event: { ...g.event, review_status: status },
+                    parent_matches: status === review,
+                  }
+                : g
+            )
+            .filter(groupVisible)
         );
         setSelected(new Set());
       }
     );
   };
 
-  const eventIds = items.filter((i) => !isSub(i)).map((i) => i.event_id);
+  // Parents the admin can bulk-act on: own status matches the pending tab.
+  const selectableIds = groups
+    .filter((g) => g.parent_matches && review === "pending")
+    .map((g) => g.event.event_id);
   const toggleSelect = (id: string) =>
     setSelected((s) => {
       const next = new Set(s);
@@ -246,26 +291,33 @@ export function ReviewSection() {
         <div className="flex justify-center py-16">
           <Spinner />
         </div>
-      ) : items.length === 0 ? (
+      ) : groups.length === 0 ? (
         <p className="py-12 text-center text-sm text-[var(--color-text-muted)]">
           Nothing {review}.
         </p>
       ) : (
         <ul className="border-t border-[var(--color-rule)]">
-          {items.map((it) => {
-            const id = it.event_id;
-            const sub = isSub(it);
-            const rowKey = sub ? subKey(it.subevent_id ?? "") : eventKey(id);
-            const liKey = sub ? `sub-${it.subevent_id}` : id;
+          {groups.map((g) => {
+            const ev = g.event;
+            const id = ev.event_id;
+            const rowKey = eventKey(id);
             const locked = rowBusy(rowKey);
+            // Parent surfaced only for context (its own state differs from the
+            // tab) — shown muted with no actions; you act on the occurrences.
+            const contextOnly = !g.parent_matches;
             return (
               <li
-                key={liKey}
+                key={id}
                 className="flex flex-col gap-3 border-b border-[var(--color-border)] py-4"
               >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                {/* ── parent header ── */}
+                <div
+                  className={`flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between ${
+                    contextOnly ? "opacity-60" : ""
+                  }`}
+                >
                   <div className="flex min-w-0 items-start gap-3">
-                    {!sub && review === "pending" && (
+                    {!contextOnly && review === "pending" && (
                       <input
                         type="checkbox"
                         checked={selected.has(id)}
@@ -275,127 +327,84 @@ export function ReviewSection() {
                     )}
                     <div className="min-w-0">
                       <div className="font-serif text-base text-[var(--color-text-primary)]">
-                        {sub ? "↳ occurrence" : it.title || "Untitled"}
-                        {it.edited && (
+                        {ev.title || "Untitled"}
+                        {ev.edited && (
                           <span className="ml-2 text-[11px] text-[var(--color-text-muted)]">
                             edited
                           </span>
                         )}
+                        {contextOnly && (
+                          <span className="ml-2 text-[11px] text-[var(--color-text-muted)]">
+                            shown for context · {ev.review_status}
+                          </span>
+                        )}
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-muted)]">
-                        {it.start_date && <span>{formatDate(it.start_date)}</span>}
-                        {it.review_status && <Badge value={it.review_status} />}
-                        {it.publish_status && <Badge value={it.publish_status} />}
-                        {it.lifecycle_cancelled && <Badge value="cancelled" />}
+                        {ev.start_date && <span>{formatDate(ev.start_date)}</span>}
+                        {ev.review_status && <Badge value={ev.review_status} />}
+                        {ev.publish_status && <Badge value={ev.publish_status} />}
+                        {ev.lifecycle_cancelled && <Badge value="cancelled" />}
                       </div>
-                      {!sub && it.description_md && (
+                      {ev.description_md && (
                         <p className="mt-1.5 text-sm leading-relaxed text-[var(--color-text-secondary)]">
-                          {truncate(it.description_md, 160)}
+                          {truncate(ev.description_md, 160)}
                         </p>
                       )}
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-1.5">
-                    {sub ? (
-                      <>
+                  {!contextOnly && (
+                    <div className="flex flex-wrap gap-1.5">
+                      <Link to={`/admin/events/${encodeURIComponent(id)}/preview`}>
+                        <Button>Preview</Button>
+                      </Link>
+                      {ev.review_status !== "approved" && (
                         <Button
                           disabled={locked}
-                          onClick={() =>
-                            void reviewSub(
-                              it.parent_event_id ?? "",
-                              it.subevent_id ?? "",
-                              "approved"
-                            )
-                          }
+                          onClick={() => void reviewEvt(id, "approved")}
                         >
                           {labelWithSpinner("Approve", `${rowKey}:review`)}
                         </Button>
+                      )}
+                      {ev.review_status !== "rejected" && (
                         <Button
                           disabled={locked}
-                          onClick={() =>
-                            void publishSub(
-                              it.parent_event_id ?? "",
-                              it.subevent_id ?? "",
-                              it.publish_status !== "published"
-                            )
-                          }
+                          onClick={() => void reviewEvt(id, "rejected")}
                         >
-                          {labelWithSpinner(
-                            it.publish_status === "published" ? "Unpublish" : "Publish",
-                            `${rowKey}:publish`
-                          )}
+                          {labelWithSpinner("Reject", `${rowKey}:review`)}
                         </Button>
-                        <Button
-                          variant="danger"
-                          disabled={locked}
-                          onClick={() => setPendingDeleteSubId(it.subevent_id ?? "")}
-                        >
-                          Delete
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <Link to={`/admin/events/${encodeURIComponent(id)}/preview`}>
-                          <Button>Preview</Button>
-                        </Link>
-                        {it.review_status !== "approved" && (
-                          <Button
-                            disabled={locked}
-                            onClick={() => void reviewEvt(id, "approved")}
-                          >
-                            {labelWithSpinner("Approve", `${rowKey}:review`)}
-                          </Button>
+                      )}
+                      <Button
+                        disabled={locked}
+                        onClick={() => void publishEvt(id, ev.publish_status !== "published")}
+                      >
+                        {labelWithSpinner(
+                          ev.publish_status === "published" ? "Unpublish" : "Publish",
+                          `${rowKey}:publish`
                         )}
-                        {it.review_status !== "rejected" && (
-                          <Button
-                            disabled={locked}
-                            onClick={() => void reviewEvt(id, "rejected")}
-                          >
-                            {labelWithSpinner("Reject", `${rowKey}:review`)}
-                          </Button>
-                        )}
-                        <Button
-                          disabled={locked}
-                          onClick={() =>
-                            void publishEvt(id, it.publish_status !== "published")
-                          }
-                        >
-                          {labelWithSpinner(
-                            it.publish_status === "published" ? "Unpublish" : "Publish",
-                            `${rowKey}:publish`
-                          )}
-                        </Button>
-                        <Button
-                          disabled={locked}
-                          onClick={() => void cancelEvt(id)}
-                        >
-                          {labelWithSpinner("Cancel", `${rowKey}:cancel`)}
-                        </Button>
-                        <Button
-                          variant="danger"
-                          disabled={locked}
-                          onClick={() => setPendingDeleteId(id)}
-                        >
-                          Delete
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {!sub && pendingDeleteId === id && (
-                  <div className="flex flex-col gap-2 border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-secondary)] sm:flex-row sm:items-center sm:justify-between">
-                    <span>
-                      Delete &ldquo;{it.title || "Untitled"}&rdquo;? Permanently removes the
-                      event and its sub-events.
-                    </span>
-                    <div className="flex shrink-0 gap-2">
+                      </Button>
+                      <Button disabled={locked} onClick={() => void cancelEvt(id)}>
+                        {labelWithSpinner("Cancel", `${rowKey}:cancel`)}
+                      </Button>
                       <Button
                         variant="danger"
                         disabled={locked}
-                        onClick={() => void deleteEvt(id)}
+                        onClick={() => setPendingDeleteId(id)}
                       >
+                        Delete
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {pendingDeleteId === id && (
+                  <div className="flex flex-col gap-2 border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-secondary)] sm:flex-row sm:items-center sm:justify-between">
+                    <span>
+                      Delete &ldquo;{ev.title || "Untitled"}&rdquo;? Permanently removes the
+                      event and its occurrences.
+                    </span>
+                    <div className="flex shrink-0 gap-2">
+                      <Button variant="danger" disabled={locked} onClick={() => void deleteEvt(id)}>
                         {labelWithSpinner("Delete", `${rowKey}:delete`)}
                       </Button>
                       <Button onClick={() => setPendingDeleteId(null)}>Cancel</Button>
@@ -403,22 +412,89 @@ export function ReviewSection() {
                   </div>
                 )}
 
-                {sub && pendingDeleteSubId === it.subevent_id && (
-                  <div className="flex flex-col gap-2 border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-secondary)] sm:flex-row sm:items-center sm:justify-between">
-                    <span>Delete this occurrence? Permanently removes the sub-event.</span>
-                    <div className="flex shrink-0 gap-2">
-                      <Button
-                        variant="danger"
-                        disabled={locked}
-                        onClick={() =>
-                          void deleteSub(it.parent_event_id ?? "", it.subevent_id ?? "")
-                        }
-                      >
-                        {labelWithSpinner("Delete", `${rowKey}:delete`)}
-                      </Button>
-                      <Button onClick={() => setPendingDeleteSubId(null)}>Cancel</Button>
-                    </div>
-                  </div>
+                {/* ── occurrences, always nested under their parent ── */}
+                {g.subevents.length > 0 && (
+                  <ul className="ml-3 flex flex-col gap-2 border-l border-[var(--color-border)] pl-4">
+                    {g.subevents.map((sub) => {
+                      const subRowKey = subKey(sub.subevent_id);
+                      const subLocked = rowBusy(subRowKey);
+                      return (
+                        <li key={sub.subevent_id} className="flex flex-col gap-2">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-muted)]">
+                              <span className="text-[var(--color-text-secondary)]">
+                                ↳ occurrence
+                              </span>
+                              {sub.start_date && <span>{formatDate(sub.start_date)}</span>}
+                              {sub.review_status && <Badge value={sub.review_status} />}
+                              {sub.publish_status && <Badge value={sub.publish_status} />}
+                              {sub.lifecycle_cancelled && <Badge value="cancelled" />}
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {sub.review_status !== "approved" && (
+                                <Button
+                                  disabled={subLocked}
+                                  onClick={() =>
+                                    void reviewSub(id, sub.subevent_id, "approved")
+                                  }
+                                >
+                                  {labelWithSpinner("Approve", `${subRowKey}:review`)}
+                                </Button>
+                              )}
+                              {sub.review_status !== "rejected" && (
+                                <Button
+                                  disabled={subLocked}
+                                  onClick={() =>
+                                    void reviewSub(id, sub.subevent_id, "rejected")
+                                  }
+                                >
+                                  {labelWithSpinner("Reject", `${subRowKey}:review`)}
+                                </Button>
+                              )}
+                              <Button
+                                disabled={subLocked}
+                                onClick={() =>
+                                  void publishSub(
+                                    id,
+                                    sub.subevent_id,
+                                    sub.publish_status !== "published"
+                                  )
+                                }
+                              >
+                                {labelWithSpinner(
+                                  sub.publish_status === "published" ? "Unpublish" : "Publish",
+                                  `${subRowKey}:publish`
+                                )}
+                              </Button>
+                              <Button
+                                variant="danger"
+                                disabled={subLocked}
+                                onClick={() => setPendingDeleteSubId(sub.subevent_id)}
+                              >
+                                Delete
+                              </Button>
+                            </div>
+                          </div>
+
+                          {pendingDeleteSubId === sub.subevent_id && (
+                            <div className="flex flex-col gap-2 border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-secondary)] sm:flex-row sm:items-center sm:justify-between">
+                              <span>Delete this occurrence? Permanently removes the sub-event.</span>
+                              <div className="flex shrink-0 gap-2">
+                                <Button
+                                  variant="danger"
+                                  disabled={subLocked}
+                                  onClick={() => void deleteSub(id, sub.subevent_id)}
+                                >
+                                  {labelWithSpinner("Delete", `${subRowKey}:delete`)}
+                                </Button>
+                                <Button onClick={() => setPendingDeleteSubId(null)}>Cancel</Button>
+                              </div>
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
                 )}
               </li>
             );
@@ -432,9 +508,9 @@ export function ReviewSection() {
         </Button>
       )}
 
-      {eventIds.length > 0 && review === "pending" && (
+      {selectableIds.length > 0 && review === "pending" && (
         <button
-          onClick={() => setSelected(new Set(eventIds))}
+          onClick={() => setSelected(new Set(selectableIds))}
           className="eyebrow self-start text-[var(--color-text-secondary)] underline-offset-4 hover:text-[var(--color-text-primary)] hover:underline"
         >
           Select all events

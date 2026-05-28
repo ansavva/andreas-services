@@ -305,9 +305,9 @@ def _admin_events(method, rest, query, body):
         review = (query or {}).get("review", events.REVIEW_PENDING)
         limit = int((query or {}).get("page_size", "20"))
         start_key = store.decode_cursor((query or {}).get("cursor"))
-        items, next_key = events.list_by_review_page(
+        groups, next_key = events.list_review_groups(
             review, limit=limit, start_key=start_key)
-        return ok({"events": items, "next_cursor": store.encode_cursor(next_key)})
+        return ok({"groups": groups, "next_cursor": store.encode_cursor(next_key)})
     if rest == ["review"] and method == "POST":  # bulk
         return ok({"updated": len(events.bulk_review(body.get("ids", []),
                                                      body["status"]))})

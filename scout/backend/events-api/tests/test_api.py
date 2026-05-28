@@ -165,9 +165,11 @@ class TestApi(unittest.TestCase):
         ev = events.create_event(source_id, title="Concert", start_date="2099-06-01")
         event_id = ev["event_id"]
 
-        # Shows up in the admin pending queue.
+        # Shows up in the admin pending queue (parent-centric groups).
         pending = _json(_request("GET", "/admin/events", query={"review": "pending"}))
-        self.assertEqual([e["event_id"] for e in pending["events"]], [event_id])
+        self.assertEqual([g["event"]["event_id"] for g in pending["groups"]], [event_id])
+        self.assertTrue(pending["groups"][0]["parent_matches"])
+        self.assertEqual(pending["groups"][0]["subevents"], [])
 
         # Not yet public.
         self.assertEqual(_json(_request("GET", "/public/events"))["events"], [])
@@ -267,7 +269,7 @@ class TestApi(unittest.TestCase):
 
         first = _json(_request("GET", "/admin/events", query={
             "review": "pending", "page_size": "2"}))
-        self.assertEqual(len(first["events"]), 2)
+        self.assertEqual(len(first["groups"]), 2)
         self.assertIsNotNone(first["next_cursor"])
 
         second = _json(_request("GET", "/admin/events", query={
@@ -277,8 +279,8 @@ class TestApi(unittest.TestCase):
             "review": "pending", "page_size": "2",
             "cursor": second["next_cursor"]}))
 
-        ids = {e["event_id"] for page in (first, second, third)
-               for e in page["events"]}
+        ids = {g["event"]["event_id"] for page in (first, second, third)
+               for g in page["groups"]}
         self.assertEqual(len(ids), 5)
         self.assertIsNone(third["next_cursor"])
 

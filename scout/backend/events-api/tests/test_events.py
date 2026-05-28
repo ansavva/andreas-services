@@ -91,6 +91,36 @@ class TestEvents(unittest.TestCase):
         events.bulk_review(ids, events.REVIEW_APPROVED)
         self.assertEqual(len(events.list_by_review("approved")), 3)
 
+    def test_review_groups_nest_occurrences_under_parent(self):
+        ev = events.create_event("s", title="Series", start_date="2099-01-01")
+        sub = events.create_subevent(ev["event_id"], start_date="2099-01-02")
+
+        groups, _ = events.list_review_groups("pending")
+        self.assertEqual(len(groups), 1)  # one parent, no standalone occurrence row
+        self.assertEqual(groups[0]["event"]["event_id"], ev["event_id"])
+        self.assertTrue(groups[0]["parent_matches"])
+        self.assertEqual([s["subevent_id"] for s in groups[0]["subevents"]],
+                         [sub["subevent_id"]])
+
+    def test_review_groups_show_divergent_parent_as_context(self):
+        ev = events.create_event("s", title="Series", start_date="2099-01-01")
+        events.create_subevent(ev["event_id"], start_date="2099-01-02")
+        # Approve the parent; its occurrence stays pending.
+        events.set_review(ev["event_id"], events.REVIEW_APPROVED)
+
+        # Pending tab still surfaces the parent (for context) with its occurrence,
+        # but flagged not-matching so the UI renders it muted / non-actionable.
+        pending, _ = events.list_review_groups("pending")
+        self.assertEqual([g["event"]["event_id"] for g in pending], [ev["event_id"]])
+        self.assertFalse(pending[0]["parent_matches"])
+        self.assertEqual(len(pending[0]["subevents"]), 1)
+
+        # Approved tab shows the same parent, now actionable, with all occurrences.
+        approved, _ = events.list_review_groups("approved")
+        self.assertEqual([g["event"]["event_id"] for g in approved], [ev["event_id"]])
+        self.assertTrue(approved[0]["parent_matches"])
+        self.assertEqual(len(approved[0]["subevents"]), 1)
+
     # --- publish / visibility -------------------------------------------
     def test_publish_adds_to_pubvis_unpublish_removes(self):
         ev = events.create_event("s", title="Show", start_date="2099-01-01")

@@ -158,6 +158,46 @@ def list_by_review_page(review_status, *, include_subevents=True,
     return items, next_key
 
 
+def list_review_groups(review_status, *, limit=None, start_key=None):
+    """Parent-centric admin review queue, newest-first. Returns (groups, next_key).
+
+    A parent event is surfaced when its own ``review_status`` matches OR any of
+    its sub-events do; a surfaced parent always carries *all* its sub-events (each
+    keeping its own status) so occurrences are shown in context, never as
+    standalone rows. Each group is::
+
+        {"event": <parent>, "parent_matches": bool, "subevents": [<all subs>]}
+
+    ``parent_matches`` is False when the parent appears only because of its
+    occurrences (its own state differs from the tab) — the client renders such a
+    parent as a muted, non-actionable container. ``parent_matches`` is computed
+    from the parent's own status, so it's stable no matter which row introduced
+    the group; a parent split across pages re-emits the same group, which the
+    client merges by ``event_id``.
+    """
+    rows, next_key = store.query_index_page(
+        "GSI4", f"REVIEW#{review_status}", ascending=False,
+        limit=limit, start_key=start_key,
+    )
+    groups = []
+    seen = set()
+    for row in rows:
+        parent_id = (row["event_id"] if row.get("entity_type") == store.EVENT
+                     else row.get("parent_event_id"))
+        if not parent_id or parent_id in seen:
+            continue
+        seen.add(parent_id)
+        parent = get_event(parent_id)
+        if parent is None:
+            continue
+        groups.append({
+            "event": parent,
+            "parent_matches": parent.get("review_status") == review_status,
+            "subevents": list_subevents(parent_id),
+        })
+    return groups, next_key
+
+
 def update_event(event_id, fields):
     """Edit an event (marks it edited, which dedup honors) and reindex."""
     pk = store.event_pk(event_id)
