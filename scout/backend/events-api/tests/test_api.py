@@ -184,6 +184,33 @@ class TestApi(unittest.TestCase):
         detail = _json(_request("GET", f"/public/events/{event_id}"))
         self.assertEqual(detail["title"], "Concert")
 
+    def test_decide_endpoint_approves_publishes_and_records_feedback(self):
+        ev = events.create_event("s", title="Concert", start_date="2099-06-01")
+        events.create_subevent(ev["event_id"], start_date="2099-06-02")
+
+        result = _json(_request(
+            "POST", f"/admin/events/{ev['event_id']}/decide",
+            body={"decision": "approved", "feedback": "looks great"}))
+        self.assertEqual(result["event"]["review_status"], "approved")
+        self.assertEqual(result["event"]["publish_status"], "published")
+        self.assertEqual(result["subevents"][0]["publish_status"], "published")
+        self.assertEqual(result["event"]["review_feedback"][0]["text"], "looks great")
+
+        # Now publicly visible end-to-end.
+        feed = _json(_request("GET", "/public/events"))["events"]
+        self.assertEqual([e["event_id"] for e in feed], [ev["event_id"]])
+
+    def test_decide_endpoint_404_for_missing_event(self):
+        resp = _request("POST", "/admin/events/nope/decide",
+                        body={"decision": "approved"})
+        self.assertEqual(resp["statusCode"], 404)
+
+    def test_decide_endpoint_rejects_invalid_decision(self):
+        ev = events.create_event("s", title="X", start_date="2099-06-01")
+        resp = _request("POST", f"/admin/events/{ev['event_id']}/decide",
+                        body={"decision": "maybe"})
+        self.assertEqual(resp["statusCode"], 400)
+
     def test_public_detail_404_when_unpublished(self):
         ev = events.create_event("s", title="Hidden", start_date="2099-01-01")
         self.assertEqual(

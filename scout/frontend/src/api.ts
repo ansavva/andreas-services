@@ -150,6 +150,14 @@ export function useApi() {
         request<PublicEvent>(`/admin/events/${encodeURIComponent(id)}/preview`),
       reviewEvent: (id: string, status: string) =>
         post(`/admin/events/${id}/review`, { status }),
+      // Swipe decision: approve (publish event + all occurrences) or reject
+      // (unpublish them), with an optional feedback note. Returns the refreshed
+      // parent + occurrences.
+      decideEvent: (id: string, decision: "approved" | "rejected", feedback?: string) =>
+        post(`/admin/events/${id}/decide`, { decision, feedback }) as Promise<{
+          event: AdminEvent;
+          subevents: SubEvent[];
+        }>,
       bulkReview: (ids: string[], status: string) =>
         post(`/admin/events/review`, { ids, status }),
       publishEvent: (id: string, published: boolean) =>

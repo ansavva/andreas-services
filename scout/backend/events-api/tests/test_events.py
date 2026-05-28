@@ -121,6 +121,50 @@ class TestEvents(unittest.TestCase):
         self.assertTrue(approved[0]["parent_matches"])
         self.assertEqual(len(approved[0]["subevents"]), 1)
 
+    # --- swipe decision (review + publish in one) -----------------------
+    def test_approve_decision_publishes_event_and_all_occurrences(self):
+        ev = events.create_event("s", title="Series", start_date="2099-01-01")
+        sub = events.create_subevent(ev["event_id"], start_date="2099-01-02")
+
+        result = events.review_with_feedback(ev["event_id"], events.REVIEW_APPROVED)
+        self.assertEqual(result["event"]["review_status"], "approved")
+        self.assertEqual(result["event"]["publish_status"], "published")
+        self.assertEqual(result["subevents"][0]["review_status"], "approved")
+        self.assertEqual(result["subevents"][0]["publish_status"], "published")
+        # Both parent and occurrence are now publicly visible.
+        self.assertEqual(_pubvis_ids(), {ev["event_id"], sub["subevent_id"]})
+
+    def test_reject_decision_unpublishes_event_and_all_occurrences(self):
+        ev = events.create_event("s", title="Series", start_date="2099-01-01")
+        sub = events.create_subevent(ev["event_id"], start_date="2099-01-02")
+        events.review_with_feedback(ev["event_id"], events.REVIEW_APPROVED)
+        self.assertEqual(_pubvis_ids(), {ev["event_id"], sub["subevent_id"]})
+
+        # Changing the mind: reject flips status and pulls everything offline.
+        result = events.review_with_feedback(ev["event_id"], events.REVIEW_REJECTED)
+        self.assertEqual(result["event"]["review_status"], "rejected")
+        self.assertEqual(result["event"]["publish_status"], "unpublished")
+        self.assertEqual(result["subevents"][0]["review_status"], "rejected")
+        self.assertEqual(_pubvis_ids(), set())
+
+    def test_decision_rejects_invalid_value_and_missing_event(self):
+        ev = events.create_event("s", title="Show", start_date="2099-01-01")
+        with self.assertRaises(ValueError):
+            events.review_with_feedback(ev["event_id"], "pending")
+        self.assertIsNone(events.review_with_feedback("nope", events.REVIEW_APPROVED))
+
+    def test_feedback_history_appends_in_order(self):
+        ev = events.create_event("s", title="Show", start_date="2099-01-01")
+        events.review_with_feedback(ev["event_id"], events.REVIEW_REJECTED,
+                                    feedback="too vague", author="a@b.com")
+        events.review_with_feedback(ev["event_id"], events.REVIEW_APPROVED,
+                                    feedback="fixed up")
+        notes = events.get_event(ev["event_id"])["review_feedback"]
+        self.assertEqual([n["text"] for n in notes], ["too vague", "fixed up"])
+        self.assertEqual([n["decision"] for n in notes], ["rejected", "approved"])
+        self.assertEqual(notes[0]["author"], "a@b.com")
+        self.assertNotIn("author", notes[1])
+
     # --- publish / visibility -------------------------------------------
     def test_publish_adds_to_pubvis_unpublish_removes(self):
         ev = events.create_event("s", title="Show", start_date="2099-01-01")

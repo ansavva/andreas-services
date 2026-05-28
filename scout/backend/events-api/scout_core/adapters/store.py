@@ -194,6 +194,17 @@ def set_attrs(pk, sk, attrs):
     )
 
 
+def append_to_list(pk, sk, attr, value):
+    """Append one element to a list attribute, creating the list when absent.
+    Atomic (no read-modify-write), so concurrent appends don't clobber."""
+    core().update_item(
+        Key={"PK": pk, "SK": sk},
+        UpdateExpression="SET #a = list_append(if_not_exists(#a, :empty), :item)",
+        ExpressionAttributeNames={"#a": attr},
+        ExpressionAttributeValues={":empty": [], ":item": [value]},
+    )
+
+
 def remove_attrs(pk, sk, attr_names):
     """REMOVE the given attributes from an item. No-op for an empty list."""
     names = list(attr_names)

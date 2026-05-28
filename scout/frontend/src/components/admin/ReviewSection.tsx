@@ -264,7 +264,17 @@ export function ReviewSection() {
 
   return (
     <div className="flex flex-col gap-4">
-      <SubTabs tabs={REVIEW_TABS} value={review} onChange={setReview} />
+      <div className="flex items-end justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <SubTabs tabs={REVIEW_TABS} value={review} onChange={setReview} />
+        </div>
+        <Link
+          to="/admin/review-queue"
+          className="eyebrow shrink-0 whitespace-nowrap pb-3 text-[var(--color-text-secondary)] no-underline hover:text-[var(--color-text-primary)] hover:underline"
+        >
+          Swipe review →
+        </Link>
+      </div>
       {review === "pending" && selected.size > 0 && (
         <div className="flex gap-2">
           <Button
@@ -348,6 +358,18 @@ export function ReviewSection() {
                         <p className="mt-1.5 text-sm leading-relaxed text-[var(--color-text-secondary)]">
                           {truncate(ev.description_md, 160)}
                         </p>
+                      )}
+                      {ev.review_feedback && ev.review_feedback.length > 0 && (
+                        <ul className="mt-2 flex flex-col gap-1 border-l-2 border-[var(--color-rule)] pl-3">
+                          {ev.review_feedback.map((f, i) => (
+                            <li key={i} className="text-xs text-[var(--color-text-muted)]">
+                              <span className="uppercase tracking-[0.1em]">{f.decision}</span>
+                              {" · "}
+                              {f.text}
+                              {f.author && <span className="opacity-70"> — {f.author}</span>}
+                            </li>
+                          ))}
+                        </ul>
                       )}
                     </div>
                   </div>

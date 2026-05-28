@@ -265,6 +265,57 @@ def bulk_review(event_ids, review_status):
     return [set_review(eid, review_status) for eid in event_ids]
 
 
+def add_review_feedback(event_id, *, decision, text, author=None):
+    """Append a reviewer's note to an event's append-only feedback history.
+
+    Each entry records when it was left, the decision it accompanied, the note
+    text and (optionally) who left it — an internal admin trail, never exposed
+    on the public/preview shapes. Returns the refreshed event, or None."""
+    pk = store.event_pk(event_id)
+    if store.get(pk, "META") is None:
+        return None
+    entry = {"at": store.now_iso(), "decision": decision, "text": text}
+    if author:
+        entry["author"] = author
+    store.append_to_list(pk, "META", "review_feedback", entry)
+    return store.get(pk, "META")
+
+
+def review_with_feedback(event_id, decision, *, feedback=None, author=None):
+    """Apply an admin swipe decision to an event and all its occurrences.
+
+    Approve -> review_status=approved and publish the event + every occurrence.
+    Reject  -> review_status=rejected and unpublish the event + every occurrence
+    (so a rejected event never lingers public). The decision is mirrored onto
+    every sub-event so occurrences match their parent. An optional feedback note
+    is appended to the event's review history. Returns {"event", "subevents"}
+    with the refreshed records, or None when the event is missing."""
+    if decision not in (REVIEW_APPROVED, REVIEW_REJECTED):
+        raise ValueError(f"invalid decision: {decision!r}")
+    pk = store.event_pk(event_id)
+    if store.get(pk, "META") is None:
+        return None
+
+    publish = decision == REVIEW_APPROVED
+    subs = list_subevents(event_id)
+
+    # Review status on the parent and every occurrence.
+    set_review(event_id, decision)
+    for sub in subs:
+        set_subevent_review(event_id, sub["subevent_id"], decision)
+
+    # Publish state: the parent first (a sub can't be published while its parent
+    # is unpublished), then cascade the same change to every occurrence.
+    set_publish(event_id, publish)
+    for sub in subs:
+        set_subevent_publish(event_id, sub["subevent_id"], publish)
+
+    if feedback:
+        add_review_feedback(event_id, decision=decision, text=feedback, author=author)
+
+    return {"event": store.get(pk, "META"), "subevents": list_subevents(event_id)}
+
+
 def set_publish(event_id, published):
     """Publish/unpublish an event, cascading the visibility change to its
     sub-events (a sub can't be visible while its parent is unpublished)."""

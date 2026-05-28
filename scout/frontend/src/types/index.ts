@@ -156,6 +156,15 @@ export interface CursorPage<T> {
   items: T[];
 }
 
+// One entry in an event's append-only review trail. Internal admin record —
+// never surfaced on the public/preview shapes.
+export interface ReviewFeedback {
+  at: string;
+  decision: string;
+  text: string;
+  author?: string;
+}
+
 export interface AdminEvent {
   PK?: string;
   SK?: string;
@@ -175,6 +184,7 @@ export interface AdminEvent {
   lifecycle_cancelled?: boolean;
   past?: boolean;
   edited?: boolean;
+  review_feedback?: ReviewFeedback[];
 }
 
 export interface SubEvent {
