@@ -3,8 +3,7 @@ import type { PublicEvent } from "@/types";
 import { formatDate, truncate } from "@/utils/formatters";
 
 function firstImage(event: PublicEvent): string | null {
-  const img = event.images.find((i) => i.url || i.s3_ref);
-  return img?.url ?? null;
+  return event.images[0]?.url ?? null;
 }
 
 export function EventCard({ event }: { event: PublicEvent }) {

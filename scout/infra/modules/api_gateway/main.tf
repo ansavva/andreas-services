@@ -5,6 +5,11 @@ resource "aws_api_gateway_rest_api" "main" {
     types = ["REGIONAL"]
   }
 
+  # Listed content types are treated as binary, so the Lambda's
+  # isBase64Encoded responses get decoded back to raw bytes on the wire.
+  # JSON endpoints are unaffected (application/json isn't listed).
+  binary_media_types = ["image/png", "image/jpeg", "image/webp", "image/gif"]
+
   tags = var.tags
 }
 

@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useApi } from "@/api";
-import { EventDetailView } from "@/components/EventDetailView";
 import { Badge, Button, ErrorBanner, Spinner, SubTabs } from "@/components/ui";
 import { formatDate, truncate } from "@/utils/formatters";
-import type { AdminEvent, PublicEvent } from "@/types";
+import type { AdminEvent } from "@/types";
 
 const REVIEWS = ["pending", "approved", "rejected"] as const;
 const REVIEW_TABS = REVIEWS.map((r) => ({ key: r, label: r }));
@@ -26,22 +25,19 @@ export function ReviewSection() {
       { replace: true }
     );
   const [items, setItems] = useState<AdminEvent[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [openPreview, setOpenPreview] = useState<string | null>(null);
-  const [previews, setPreviews] = useState<Record<string, PublicEvent>>({});
-  const [previewLoading, setPreviewLoading] = useState<string | null>(null);
-  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
-    setOpenPreview(null);
-    setPreviews({});
     try {
       const data = await api.listEvents(review);
       setItems(data.events);
+      setCursor(data.next_cursor);
       setSelected(new Set());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
@@ -50,31 +46,23 @@ export function ReviewSection() {
     }
   }, [api, review]);
 
-  const togglePreview = useCallback(
-    async (id: string) => {
-      if (openPreview === id) {
-        setOpenPreview(null);
-        return;
-      }
-      setOpenPreview(id);
-      setPreviewError(null);
-      if (previews[id]) return;
-      setPreviewLoading(id);
-      try {
-        const data = await api.previewEvent(id);
-        setPreviews((p) => ({ ...p, [id]: data }));
-      } catch (err) {
-        setPreviewError(err instanceof Error ? err.message : "Preview failed");
-      } finally {
-        setPreviewLoading(null);
-      }
-    },
-    [api, openPreview, previews]
-  );
-
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const loadMore = async () => {
+    if (!cursor) return;
+    setLoadingMore(true);
+    try {
+      const data = await api.listEvents(review, cursor);
+      setItems((prev) => [...prev, ...data.events]);
+      setCursor(data.next_cursor);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load more");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const isSub = (it: AdminEvent) => it.entity_type === "subevent";
 
@@ -134,9 +122,8 @@ export function ReviewSection() {
             return (
               <li
                 key={key}
-                className="flex flex-col gap-3 border-b border-[var(--color-border)] py-4"
+                className="flex flex-col gap-3 border-b border-[var(--color-border)] py-4 sm:flex-row sm:items-start sm:justify-between"
               >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex min-w-0 items-start gap-3">
                   {!sub && review === "pending" && (
                     <input
@@ -197,9 +184,9 @@ export function ReviewSection() {
                     </>
                   ) : (
                     <>
-                      <Button onClick={() => void togglePreview(id)}>
-                        {openPreview === id ? "Hide" : "Preview"}
-                      </Button>
+                      <Link to={`/admin/events/${encodeURIComponent(id)}/preview`}>
+                        <Button>Preview</Button>
+                      </Link>
                       {it.review_status !== "approved" && (
                         <Button onClick={() => void act(() => api.reviewEvent(id, "approved"))}>
                           Approve
@@ -227,25 +214,16 @@ export function ReviewSection() {
                     </>
                   )}
                 </div>
-                </div>
-
-                {!sub && openPreview === id && (
-                  <div className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-6 sm:px-6 sm:py-8">
-                    {previewLoading === id ? (
-                      <div className="flex justify-center py-8">
-                        <Spinner />
-                      </div>
-                    ) : previewError ? (
-                      <ErrorBanner message={previewError} />
-                    ) : previews[id] ? (
-                      <EventDetailView event={previews[id]} />
-                    ) : null}
-                  </div>
-                )}
               </li>
             );
           })}
         </ul>
+      )}
+
+      {cursor && (
+        <Button onClick={() => void loadMore()} disabled={loadingMore}>
+          {loadingMore ? "Loading…" : "Load more"}
+        </Button>
       )}
 
       {eventIds.length > 0 && review === "pending" && (

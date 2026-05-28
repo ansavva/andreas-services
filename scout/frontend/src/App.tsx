@@ -4,6 +4,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { PublicListPage } from "@/pages/PublicListPage";
 import { PublicDetailPage } from "@/pages/PublicDetailPage";
 import { AdminPage } from "@/pages/AdminPage";
+import { AdminPreviewPage } from "@/pages/AdminPreviewPage";
 import "@/index.css";
 
 // Strip trailing slash so React Router's basename is well-formed (e.g. "/app" not "/app/")
@@ -21,6 +22,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <AdminPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/events/:eventId/preview"
+            element={
+              <ProtectedRoute>
+                <AdminPreviewPage />
               </ProtectedRoute>
             }
           />
