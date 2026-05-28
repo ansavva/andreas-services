@@ -189,6 +189,15 @@ export interface SubEvent {
   lifecycle_cancelled?: boolean;
 }
 
+// Parent-centric review-queue entry: a parent event with all its occurrences.
+// `parent_matches` is false when the parent surfaces only because an occurrence
+// matches the current tab — it's then shown as a muted, non-actionable container.
+export interface ReviewGroup {
+  event: AdminEvent;
+  parent_matches: boolean;
+  subevents: SubEvent[];
+}
+
 export type Settings = Record<string, string | number>;
 
 export interface Notification {

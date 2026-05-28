@@ -126,6 +126,30 @@ class TestDeletion(unittest.TestCase):
         self.assertIsNotNone(events.get_event(ev["event_id"])["deleted_at"])
         self.assertEqual(len(events.list_subevents(ev["event_id"])), 1)
 
+    def test_delete_subevent_leaves_parent_and_siblings(self):
+        ev = events.create_event("s", title="Show", start_date="2099-01-01")
+        keep = events.create_subevent(ev["event_id"], start_date="2099-01-02")
+        drop = events.create_subevent(ev["event_id"], start_date="2099-01-03")
+
+        result = deletion.delete_subevent(ev["event_id"], drop["subevent_id"])
+        self.assertEqual(result["subevent_id"], drop["subevent_id"])
+
+        # Parent stays live; only the targeted sub-event is gone from the listing.
+        self.assertNotIn("deleted_at", events.get_event(ev["event_id"]))
+        live = [s["subevent_id"] for s in events.list_subevents(ev["event_id"])]
+        self.assertEqual(live, [keep["subevent_id"]])
+        self.assertEqual(len(store.query_deleted(store.SUBEVENT)), 1)
+
+        # Restore brings just that sub-event back.
+        deletion.restore(store.event_pk(ev["event_id"]), drop["SK"])
+        self.assertEqual(len(events.list_subevents(ev["event_id"])), 2)
+        self.assertEqual(store.query_deleted(store.SUBEVENT), [])
+
+    def test_delete_subevent_missing_returns_none(self):
+        ev = events.create_event("s", title="Show", start_date="2099-01-01")
+        self.assertIsNone(deletion.delete_subevent(ev["event_id"], "nope"))
+        self.assertIsNone(deletion.delete_subevent("missing", "nope"))
+
     def test_restore_via_entity_key_restores_cascade(self):
         src, ev = self._source_with_event()
         deletion.delete_source(src["source_id"])
