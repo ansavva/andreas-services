@@ -51,23 +51,20 @@ export function ReviewSection() {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [pendingDeleteSubId, setPendingDeleteSubId] = useState<string | null>(null);
 
-  const refresh = useCallback(
-    async (silent = false) => {
-      if (!silent) setLoading(true);
-      if (!silent) setError(null);
-      try {
-        const data = await api.listEvents(review);
-        setGroups(data.groups);
-        setCursor(data.next_cursor);
-        if (!silent) setSelected(new Set());
-      } catch (err) {
-        if (!silent) setError(err instanceof Error ? err.message : "Failed to load");
-      } finally {
-        if (!silent) setLoading(false);
-      }
-    },
-    [api, review]
-  );
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await api.listEvents(review);
+      setGroups(data.groups);
+      setCursor(data.next_cursor);
+      setSelected(new Set());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  }, [api, review]);
 
   useEffect(() => {
     void refresh();
@@ -107,10 +104,12 @@ export function ReviewSection() {
       prev.map((g) => (g.event.event_id === eventId ? fn(g) : g)).filter(groupVisible)
     );
 
-  // Runs an action with per-button spinner + row lock, applies an optimistic
-  // local update on success, then quietly re-reads the page so server-side
-  // cascades (e.g. cancel-parent flipping its sub-events) catch up. Errors
-  // surface on the section-level banner; local state isn't mutated.
+  // Runs an action with per-button spinner + row lock, then applies an exact
+  // optimistic update to the affected group only. We don't re-read the queue:
+  // the server-side effects that change what this view displays are reproduced
+  // locally (review/publish/delete are self-contained; cancel cascades
+  // `cancelled` to the occurrences, handled in cancelEvt). Errors surface on the
+  // section-level banner; local state isn't mutated on failure.
   const runAction = async (
     actionKey: string,
     call: () => Promise<unknown>,
@@ -121,7 +120,6 @@ export function ReviewSection() {
     try {
       await call();
       applyOptimistic();
-      void refresh(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Action failed");
     } finally {
@@ -161,11 +159,12 @@ export function ReviewSection() {
       `${eventKey(id)}:cancel`,
       () => api.cancelEvent(id),
       () =>
+        // cancel_event cascades `cancelled` to every occurrence — mirror that.
         updateGroup(id, (g) => ({
           ...g,
           event: { ...g.event, lifecycle_cancelled: true },
+          subevents: g.subevents.map((s) => ({ ...s, lifecycle_cancelled: true })),
         }))
-      // verify() picks up the cascade to the occurrences.
     );
 
   const deleteEvt = (id: string) =>
