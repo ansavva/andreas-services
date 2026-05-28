@@ -203,6 +203,48 @@ class TestEvents(unittest.TestCase):
         subs = events.list_subevents(result["event_ids"][0])
         self.assertEqual(len(subs), 2)
 
+    def test_convert_extraction_downloads_agent_image_bytes(self):
+        from unittest.mock import patch  # noqa: PLC0415
+        from scout_core.adapters import image_store  # noqa: PLC0415
+        from scout_core.domain import images  # noqa: PLC0415
+
+        extracted = [{
+            "title": "With Image", "start_date": "2099-07-01", "location": None,
+            "event_labels": [], "images": ["https://example.com/p.png"],
+            "sub_events": [],
+        }]
+        # Stub the downloader; assert the image record picks up the s3_ref.
+        with patch.object(image_store, "download",
+                          return_value=(b"\x89PNG\r\n", "image/png")), \
+                patch.object(image_store, "put_bytes",
+                             return_value="s3://b/images/abc") as put_mock:
+            result = events.convert_extraction("s", extracted)
+        event_id = result["event_ids"][0]
+        stored = images.list_images(store.EVENT, event_id)
+        self.assertEqual(len(stored), 1)
+        self.assertEqual(stored[0]["s3_ref"], "s3://b/images/abc")
+        # The image_id passed to put_bytes is what the public route uses.
+        put_mock.assert_called_once_with(stored[0]["image_id"],
+                                         b"\x89PNG\r\n", "image/png")
+
+    def test_convert_extraction_keeps_url_when_image_download_fails(self):
+        from unittest.mock import patch  # noqa: PLC0415
+        from scout_core.adapters import image_store  # noqa: PLC0415
+        from scout_core.domain import images  # noqa: PLC0415
+
+        extracted = [{
+            "title": "Url Only", "start_date": "2099-07-02", "location": None,
+            "event_labels": [], "images": ["https://example.com/q.png"],
+            "sub_events": [],
+        }]
+        with patch.object(image_store, "download",
+                          side_effect=image_store.DownloadError("blocked")):
+            result = events.convert_extraction("s", extracted)
+        stored = images.list_images(store.EVENT, result["event_ids"][0])
+        self.assertEqual(len(stored), 1)
+        self.assertEqual(stored[0]["url"], "https://example.com/q.png")
+        self.assertIsNone(stored[0].get("s3_ref"))
+
     # --- update ----------------------------------------------------------
     def test_update_marks_edited_and_recomputes_dup_key(self):
         ev = events.create_event("s", title="Old Title", start_date="2099-01-01")

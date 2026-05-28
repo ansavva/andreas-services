@@ -218,6 +218,19 @@ def list_sources(*, archived=False, status=None):
     return items
 
 
+def list_sources_page(*, archived=False, status=None, limit=None, start_key=None):
+    """Cursor-paginated sources view. Returns (items, next_key). The status
+    filter is applied within the page — fine because the sources list is small
+    and the frontend doesn't pass status."""
+    pk = _ARCHIVED_PK if archived else _LISTED_PK
+    items, next_key = store.query_index_page(
+        "GSI1", pk, ascending=True, limit=limit, start_key=start_key,
+    )
+    if status:
+        items = [s for s in items if s.get("status") == status]
+    return items, next_key
+
+
 def update_source(source_id, fields):
     """Apply allowed field changes and recompute scheduling/listing indexes."""
     pk = store.source_pk(source_id)

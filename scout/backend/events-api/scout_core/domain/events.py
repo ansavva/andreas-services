@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from scout_core.domain import images
 from scout_core.domain import labels
 from scout_core.domain import locations
+from scout_core.adapters import image_store
 from scout_core.adapters import store
 from scout_core.common import taxonomy
 from scout_core.common import timeutil
@@ -143,6 +144,18 @@ def list_by_review(review_status, *, include_subevents=True):
     if not include_subevents:
         items = [i for i in items if i.get("entity_type") == store.EVENT]
     return items
+
+
+def list_by_review_page(review_status, *, include_subevents=True,
+                        limit=None, start_key=None):
+    """Cursor-paginated admin review queue. Returns (items, next_key)."""
+    items, next_key = store.query_index_page(
+        "GSI4", f"REVIEW#{review_status}", ascending=False,
+        limit=limit, start_key=start_key,
+    )
+    if not include_subevents:
+        items = [i for i in items if i.get("entity_type") == store.EVENT]
+    return items, next_key
 
 
 def update_event(event_id, fields):
@@ -477,7 +490,20 @@ def convert_extraction(source_id, extracted_events, *, settings=None):
         created_ids.append(event_id)
 
         for url in raw.get("images", []):
-            images.add_image(store.EVENT, event_id, url=url, source=images.AGENT)
+            image = images.add_image(
+                store.EVENT, event_id, url=url, source=images.AGENT)
+            # Download the bytes so we own and serve the image via our domain.
+            # Failures are non-fatal — the original url stays as a fallback.
+            try:
+                data, content_type = image_store.download(url)
+                ref = image_store.put_bytes(image["image_id"], data, content_type)
+                store.set_attrs(
+                    store.event_pk(event_id),
+                    f"IMG#{image['image_id']}",
+                    {"s3_ref": ref},
+                )
+            except image_store.DownloadError:
+                pass
 
         for sub in raw.get("sub_events", []):
             sub_location = _resolve_location(sub.get("location"), settings)

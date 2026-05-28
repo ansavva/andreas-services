@@ -61,6 +61,41 @@ def list_runs(source_id, *, include_deleted=False):
     )
 
 
+def list_runs_page(source_id, *, include_deleted=False, limit=None, start_key=None):
+    """Cursor-paginated runs for a source, newest-first. Returns (items, next_key)."""
+    return store.query_page(
+        store.source_pk(source_id), sk_begins_with="RUN#",
+        live_only=not include_deleted, ascending=False,
+        limit=limit, start_key=start_key,
+    )
+
+
+# Stored-artifact label per kind, used to render the run history UI.
+_ARTIFACT_LABELS = {
+    "transcript": "Transcript",
+    "root_body": "Fetched text",
+    "root_html": "HTML",
+}
+
+
+def artifact_descriptors(run):
+    """List the artifacts a given run actually produced, as {kind, label[, index]}.
+
+    Only descriptors for refs the run carries are returned, so the UI never
+    offers buttons that 404. Linked pages are expanded positionally.
+    """
+    if run is None:
+        return []
+    out = []
+    for kind, label in _ARTIFACT_LABELS.items():
+        if run.get(_ARTIFACT_ATTRS[kind]):
+            out.append({"kind": kind, "label": label})
+    for i, outcome in enumerate(run.get("link_outcomes") or []):
+        if outcome.get("s3_ref"):
+            out.append({"kind": "linked", "label": f"Link {i + 1}", "index": i})
+    return out
+
+
 def in_progress_source_ids():
     """Source ids that currently have an in-progress run, resolved in a single
     GSI1 query against the RUN#INPROGRESS partition."""

@@ -185,6 +185,28 @@ class TestPublic(unittest.TestCase):
     def test_preview_of_missing_event_is_none(self):
         self.assertIsNone(public.preview_detail("does-not-exist"))
 
+    def test_preview_includes_unapproved_images(self):
+        from scout_core.domain import images  # noqa: PLC0415
+
+        ev = events.create_event("s", title="Draft", start_date="2099-01-01")
+        # Agent images land unapproved; they should still appear in preview
+        # so admins see what the page will look like before approval.
+        images.add_image(store.EVENT, ev["event_id"],
+                         url="https://example.com/a.png", source=images.AGENT)
+
+        public_detail = public.event_detail(ev["event_id"])  # not yet published
+        self.assertIsNone(public_detail)
+
+        # After publishing, the public detail still hides unapproved images.
+        _publish(ev["event_id"])
+        published = public.event_detail(ev["event_id"])
+        self.assertEqual(published["images"], [])
+
+        # Preview surfaces them regardless of approval.
+        preview = public.preview_detail(ev["event_id"])
+        self.assertEqual(len(preview["images"]), 1)
+        self.assertEqual(preview["images"][0]["url"], "https://example.com/a.png")
+
     def test_facets_only_reflect_visible_events(self):
         loc = locations.create_location("Venue")
         music = labels.create_label(store.EVENT_LABEL, "music")

@@ -22,6 +22,7 @@ from scout_core.domain import images
 from scout_core.domain import labels
 from scout_core.domain import locations
 from scout_core.adapters import store
+from scout_core.common import config
 from scout_core.common import timeutil
 
 _PUBVIS = "PUBVIS"
@@ -128,16 +129,32 @@ def _serialize_labels(taxonomy, label_ids):
     return out
 
 
-def _serialize_images(owner_type, owner_id, *, parent_event_id=None):
+def _image_url(image):
+    """Resolve a serialized image to a single client-usable URL.
+
+    Stored images get an absolute our-own-domain URL (the public image route
+    streams the bytes), so the browser never talks to S3. Legacy url-only
+    images (no s3_ref captured yet) fall back to the external source URL.
+    """
+    if image.get("s3_ref"):
+        base = config.public_api_base()
+        return f"{base}/public/images/{image['image_id']}"
+    return image.get("url")
+
+
+def _serialize_images(owner_type, owner_id, *, parent_event_id=None,
+                      approved_only=True):
     out = []
     for image in images.list_images(owner_type, owner_id,
                                     parent_event_id=parent_event_id,
-                                    approved_only=True):
-        out.append({"url": image.get("url"), "s3_ref": image.get("s3_ref")})
+                                    approved_only=approved_only):
+        url = _image_url(image)
+        if url:
+            out.append({"url": url})
     return out
 
 
-def _serialize_sub(sub, parent):
+def _serialize_sub(sub, parent, *, approved_only=True):
     return {
         "subevent_id": sub["subevent_id"],
         "start_date": sub.get("start_date", ""),
@@ -149,11 +166,12 @@ def _serialize_sub(sub, parent):
         "location_labels": _serialize_labels(
             store.LOCATION_LABEL, events.effective_location_label_ids(parent, sub)),
         "images": _serialize_images(store.SUBEVENT, sub["subevent_id"],
-                                    parent_event_id=parent["event_id"]),
+                                    parent_event_id=parent["event_id"],
+                                    approved_only=approved_only),
     }
 
 
-def _serialize_event(event, visible_subs):
+def _serialize_event(event, visible_subs, *, approved_only=True):
     return {
         "event_id": event["event_id"],
         "title": event.get("title", ""),
@@ -166,8 +184,10 @@ def _serialize_event(event, visible_subs):
             store.EVENT_LABEL, events.effective_event_label_ids(event)),
         "location_labels": _serialize_labels(
             store.LOCATION_LABEL, events.effective_location_label_ids(event)),
-        "images": _serialize_images(store.EVENT, event["event_id"]),
-        "sub_events": [_serialize_sub(s, event) for s in visible_subs],
+        "images": _serialize_images(store.EVENT, event["event_id"],
+                                    approved_only=approved_only),
+        "sub_events": [_serialize_sub(s, event, approved_only=approved_only)
+                       for s in visible_subs],
     }
 
 
@@ -259,14 +279,16 @@ def event_detail(event_id, *, now=None, settings=None):
 def preview_detail(event_id):
     """Admin preview of an event in the public-detail shape, ignoring publish
     and grace visibility so a pending/unpublished event renders exactly as its
-    public page would. Includes every non-deleted sub-event (date-sorted).
+    public page would. Includes every non-deleted sub-event (date-sorted) and
+    every non-deleted image (approved or not) — admins are previewing what's
+    about to be published, so unapproved agent images belong in the view.
     Returns None only for a missing or deleted event."""
     event = events.get_event(event_id)
     if event is None or event.get("deleted_at"):
         return None
     subs = sorted(events.list_subevents(event_id),
                   key=lambda s: s.get("start_date") or "")
-    data = _serialize_event(event, subs)
+    data = _serialize_event(event, subs, approved_only=False)
     data["no_upcoming_dates"] = False
     return data
 
