@@ -132,14 +132,14 @@ def _serialize_labels(taxonomy, label_ids):
 def _image_url(image):
     """Resolve a serialized image to a single client-usable URL.
 
-    Stored images get an absolute our-own-domain URL (the public image route
-    streams the bytes), so the browser never talks to S3. Legacy url-only
-    images (no s3_ref captured yet) fall back to the external source URL.
+    Only images we own (have an s3_ref) are served. The route streams the
+    bytes from our private bucket under our own domain. Images without an
+    s3_ref are dropped — we never fall back to an external source URL.
     """
-    if image.get("s3_ref"):
-        base = config.public_api_base()
-        return f"{base}/public/images/{image['image_id']}"
-    return image.get("url")
+    if not image.get("s3_ref"):
+        return None
+    base = config.public_api_base()
+    return f"{base}/public/images/{image['image_id']}"
 
 
 def _serialize_images(owner_type, owner_id, *, parent_event_id=None,

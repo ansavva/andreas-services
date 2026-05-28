@@ -161,13 +161,21 @@ class TestEvents(unittest.TestCase):
 
     # --- dedup / re-extraction ------------------------------------------
     def test_convert_extraction_dedupes_repeat_runs(self):
+        from unittest.mock import patch  # noqa: PLC0415
+        from scout_core.adapters import image_store as _image_store  # noqa: PLC0415
+
         extracted = [{
             "title": "Jazz Night", "start_date": "2099-05-01",
             "description": "x", "event_labels": ["jazz"],
             "location": {"name": "Blue Note", "timezone": "UTC"},
             "images": ["https://x/a.jpg"], "sub_events": [],
         }]
-        first = events.convert_extraction("s", extracted)
+        # Stub the image download so the agent image gets stored with an s3_ref.
+        with patch.object(_image_store, "download",
+                          return_value=(b"\x89PNG", "image/png")), \
+                patch.object(_image_store, "put_bytes",
+                             return_value="s3://b/images/x"):
+            first = events.convert_extraction("s", extracted)
         self.assertEqual(first["created"], 1)
         # Agent image attached pending approval.
         imgs = images.list_images(store.EVENT, first["event_ids"][0])
@@ -227,23 +235,23 @@ class TestEvents(unittest.TestCase):
         put_mock.assert_called_once_with(stored[0]["image_id"],
                                          b"\x89PNG\r\n", "image/png")
 
-    def test_convert_extraction_keeps_url_when_image_download_fails(self):
+    def test_convert_extraction_drops_image_when_download_fails(self):
         from unittest.mock import patch  # noqa: PLC0415
         from scout_core.adapters import image_store  # noqa: PLC0415
         from scout_core.domain import images  # noqa: PLC0415
 
         extracted = [{
-            "title": "Url Only", "start_date": "2099-07-02", "location": None,
+            "title": "Skipped Image", "start_date": "2099-07-02", "location": None,
             "event_labels": [], "images": ["https://example.com/q.png"],
             "sub_events": [],
         }]
         with patch.object(image_store, "download",
                           side_effect=image_store.DownloadError("blocked")):
             result = events.convert_extraction("s", extracted)
+        # Strict policy: failed download → no image record. There is no
+        # external-url fallback.
         stored = images.list_images(store.EVENT, result["event_ids"][0])
-        self.assertEqual(len(stored), 1)
-        self.assertEqual(stored[0]["url"], "https://example.com/q.png")
-        self.assertIsNone(stored[0].get("s3_ref"))
+        self.assertEqual(stored, [])
 
     # --- update ----------------------------------------------------------
     def test_update_marks_edited_and_recomputes_dup_key(self):

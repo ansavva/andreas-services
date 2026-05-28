@@ -189,10 +189,13 @@ class TestPublic(unittest.TestCase):
         from scout_core.domain import images  # noqa: PLC0415
 
         ev = events.create_event("s", title="Draft", start_date="2099-01-01")
-        # Agent images land unapproved; they should still appear in preview
-        # so admins see what the page will look like before approval.
-        images.add_image(store.EVENT, ev["event_id"],
-                         url="https://example.com/a.png", source=images.AGENT)
+        # Agent images land unapproved with the bytes already stored under
+        # their image_id; they should still appear in preview so admins see
+        # what the page will look like before approval.
+        image = images.add_image(
+            store.EVENT, ev["event_id"],
+            url="https://example.com/a.png", s3_ref="s3://b/images/x",
+            source=images.AGENT)
 
         public_detail = public.event_detail(ev["event_id"])  # not yet published
         self.assertIsNone(public_detail)
@@ -202,10 +205,13 @@ class TestPublic(unittest.TestCase):
         published = public.event_detail(ev["event_id"])
         self.assertEqual(published["images"], [])
 
-        # Preview surfaces them regardless of approval.
+        # Preview surfaces them regardless of approval, via the our-domain URL.
         preview = public.preview_detail(ev["event_id"])
         self.assertEqual(len(preview["images"]), 1)
-        self.assertEqual(preview["images"][0]["url"], "https://example.com/a.png")
+        self.assertEqual(
+            preview["images"][0]["url"],
+            f"/public/images/{image['image_id']}",
+        )
 
     def test_facets_only_reflect_visible_events(self):
         loc = locations.create_location("Venue")
