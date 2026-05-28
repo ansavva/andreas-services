@@ -77,7 +77,6 @@ def _extract_one(pages):
         extractor.STATUS_COMPLETED,
         events=[{"title": "Extracted", "pages": len(pages)}],
         transcript=[{"role": "result", "text": "{\"events\": []}"}],
-        tool_use_summary=[{"tool": "WebFetch", "count": 1, "args": [{"url": "x"}]}],
     )
 
 
@@ -113,7 +112,6 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(int(run["events_count"]), 1)
         self.assertIn("s3_root_html_ref", run)
         self.assertIn("agent_transcript_ref", run)
-        self.assertEqual(run["tool_use_summary"][0]["tool"], "WebFetch")
         self.assertEqual(len(run["link_outcomes"]), 1)
         self.assertTrue(run["link_outcomes"][0]["ok"])
         self.assertIn("s3_ref", run["link_outcomes"][0])

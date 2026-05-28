@@ -129,7 +129,6 @@ export interface SourceRun {
   error_reason?: string;
   events_count?: number;
   link_outcomes?: LinkOutcome[];
-  tool_use_summary?: unknown[];
   extracted_summary?: RunSummary;
   s3_root_body_ref?: string;
   s3_root_html_ref?: string;

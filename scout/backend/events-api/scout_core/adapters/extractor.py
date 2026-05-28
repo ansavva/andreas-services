@@ -33,11 +33,10 @@ class BudgetExceeded(Exception):
 
 class ExtractionResult:
     def __init__(self, status, *, events=None, transcript=None,
-                 tool_use_summary=None, usage=None, error=None):
+                 usage=None, error=None):
         self.status = status
         self.events = events or []
         self.transcript = transcript or []
-        self.tool_use_summary = tool_use_summary or []
         self.usage = usage or {"input_tokens": 0, "output_tokens": 0}
         self.error = error
 

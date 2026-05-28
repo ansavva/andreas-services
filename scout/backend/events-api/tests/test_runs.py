@@ -87,7 +87,6 @@ class TestRuns(unittest.TestCase):
         runs.add_link_outcome(self.sid, rid, {"url": "https://x.com/1", "ok": True})
         runs.add_link_outcome(self.sid, rid, {"url": "https://x.com/2", "ok": False,
                                               "reason": "http 404"})
-        runs.set_tool_use_summary(self.sid, rid, [{"tool": "WebFetch", "count": 2}])
 
         got = runs.get_run(self.sid, rid)
         self.assertNotIn("s3_root_body_ref", got)
@@ -95,7 +94,6 @@ class TestRuns(unittest.TestCase):
         self.assertEqual(got["agent_transcript_ref"], "s3://b/t.json")
         self.assertEqual(len(got["link_outcomes"]), 2)
         self.assertFalse(got["link_outcomes"][1]["ok"])
-        self.assertEqual(got["tool_use_summary"][0]["tool"], "WebFetch")
 
     def test_list_runs_newest_first(self):
         ids = []
