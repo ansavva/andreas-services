@@ -31,17 +31,21 @@ def _prefix(owner_type, owner_id):
     return "IMG#" if owner_type == store.EVENT else f"SUBIMG#{owner_id}#"
 
 
-def add_image(owner_type, owner_id, *, url=None, s3_ref=None, source=ADMIN,
+def add_image(owner_type, owner_id, *, s3_ref, url=None, source=ADMIN,
               parent_event_id=None, image_id=None):
     """Attach an image. Admin uploads are auto-approved; agent images await
     admin approval before becoming publicly visible.
+
+    Every image must have an `s3_ref` — we only serve images we own, streamed
+    from the private images bucket under our own domain. The optional `url`
+    is kept only as provenance (the original source link).
 
     Callers may pre-generate `image_id` so they can put image bytes to S3
     under that id before the DynamoDB record exists — keeps the on-disk and
     in-DB views consistent on the success path.
     """
-    if not url and not s3_ref:
-        raise ValueError("image requires a url or an s3_ref")
+    if not s3_ref:
+        raise ValueError("image requires an s3_ref")
     image_id = image_id or store.new_id()
     pk, sk = _keys(owner_type, owner_id, image_id, parent_event_id)
     item = store.base_item(

@@ -51,19 +51,24 @@ class TestImages(unittest.TestCase):
     def test_admin_image_is_approved_agent_image_is_not(self):
         admin = images.add_image(store.EVENT, "e1", s3_ref="s3://b/a.jpg",
                                  source=images.ADMIN)
-        agent = images.add_image(store.EVENT, "e1", url="https://x/p.jpg",
-                                 source=images.AGENT)
+        agent = images.add_image(store.EVENT, "e1", s3_ref="s3://b/p.jpg",
+                                 url="https://x/p.jpg", source=images.AGENT)
         self.assertTrue(admin["approved"])
         self.assertFalse(agent["approved"])
 
-    def test_requires_url_or_s3_ref(self):
+    def test_requires_s3_ref(self):
+        # Missing entirely (signature-level) and falsy (validation-level)
+        # both fail — we only serve images we own.
+        with self.assertRaises(TypeError):
+            images.add_image(store.EVENT, "e1")  # type: ignore[call-arg]
         with self.assertRaises(ValueError):
-            images.add_image(store.EVENT, "e1")
+            images.add_image(store.EVENT, "e1", s3_ref="",
+                             url="https://x/p.jpg")
 
     def test_list_and_approved_filter(self):
         images.add_image(store.EVENT, "e1", s3_ref="s3://b/a.jpg", source=images.ADMIN)
-        agent = images.add_image(store.EVENT, "e1", url="https://x/p.jpg",
-                                 source=images.AGENT)
+        agent = images.add_image(store.EVENT, "e1", s3_ref="s3://b/p.jpg",
+                                 url="https://x/p.jpg", source=images.AGENT)
         self.assertEqual(len(images.list_images(store.EVENT, "e1")), 2)
         self.assertEqual(len(images.list_images(store.EVENT, "e1", approved_only=True)), 1)
 
@@ -71,14 +76,14 @@ class TestImages(unittest.TestCase):
         self.assertEqual(len(images.list_images(store.EVENT, "e1", approved_only=True)), 2)
 
     def test_subevent_images_scoped_to_parent(self):
-        images.add_image(store.SUBEVENT, "s1", url="https://x/1.jpg",
+        images.add_image(store.SUBEVENT, "s1", s3_ref="s3://b/1.jpg",
                          source=images.AGENT, parent_event_id="e1")
         subimgs = images.list_images(store.SUBEVENT, "s1", parent_event_id="e1")
         self.assertEqual(len(subimgs), 1)
         # Event-level listing does not pick up the sub-event image.
         self.assertEqual(images.list_images(store.EVENT, "e1"), [])
         with self.assertRaises(ValueError):
-            images.add_image(store.SUBEVENT, "s1", url="https://x/1.jpg")
+            images.add_image(store.SUBEVENT, "s1", s3_ref="s3://b/1.jpg")
 
     def test_delete_image(self):
         img = images.add_image(store.EVENT, "e1", s3_ref="s3://b/a.jpg")

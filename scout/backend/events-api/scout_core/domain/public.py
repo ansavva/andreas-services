@@ -129,29 +129,19 @@ def _serialize_labels(taxonomy, label_ids):
     return out
 
 
-def _image_url(image):
-    """Resolve a serialized image to a single client-usable URL.
-
-    Only images we own (have an s3_ref) are served. The route streams the
-    bytes from our private bucket under our own domain. Images without an
-    s3_ref are dropped — we never fall back to an external source URL.
-    """
-    if not image.get("s3_ref"):
-        return None
-    base = config.public_api_base()
-    return f"{base}/public/images/{image['image_id']}"
-
-
 def _serialize_images(owner_type, owner_id, *, parent_event_id=None,
                       approved_only=True):
-    out = []
-    for image in images.list_images(owner_type, owner_id,
-                                    parent_event_id=parent_event_id,
-                                    approved_only=approved_only):
-        url = _image_url(image)
-        if url:
-            out.append({"url": url})
-    return out
+    """Serialize each image to its public-route URL. Every image we keep has
+    an `s3_ref`; the route streams the bytes from our private bucket under
+    our own domain, so the client only ever sees our-domain URLs."""
+    base = config.public_api_base()
+    return [
+        {"url": f"{base}/public/images/{image['image_id']}"}
+        for image in images.list_images(
+            owner_type, owner_id, parent_event_id=parent_event_id,
+            approved_only=approved_only,
+        )
+    ]
 
 
 def _serialize_sub(sub, parent, *, approved_only=True):
