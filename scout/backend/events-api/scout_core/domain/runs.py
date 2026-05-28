@@ -43,7 +43,6 @@ def start_run(source_id, trigger):
         started_at=started_at,
         events_count=0,
         link_outcomes=[],
-        tool_use_summary=[],
         GSI1PK=_INPROGRESS_PK,
         GSI1SK=started_at,
     )
@@ -115,11 +114,6 @@ def add_link_outcome(source_id, run_id, outcome):
         ),
         ExpressionAttributeValues={":e": [], ":o": [outcome]},
     )
-
-
-def set_tool_use_summary(source_id, run_id, summary):
-    store.set_attrs(store.source_pk(source_id), store.run_sk(run_id),
-                    {"tool_use_summary": summary})
 
 
 def finish_run(source_id, run_id, *, status, events_count=0, error_reason=None,

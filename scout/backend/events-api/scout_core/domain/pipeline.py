@@ -129,7 +129,6 @@ def preview(source, *, fetch_fn=fetcher.fetch_url, extractor=noop_extractor,
     return {
         "status": result.status,
         "events": result.events,
-        "tool_use_summary": result.tool_use_summary,
         "link_outcomes": link_outcomes,
         "pages_fetched": len(pages),
     }
@@ -173,7 +172,6 @@ def execute_run(source, trigger, *, fetch_fn=fetcher.fetch_url,
     if result.transcript:
         runs.set_artifacts(source_id, run_id, transcript=artifacts.store_transcript(
             source_id, run_id, json.dumps(result.transcript)))
-    runs.set_tool_use_summary(source_id, run_id, result.tool_use_summary)
 
     if result.status == extractor_mod.STATUS_COMPLETED:
         # Persist the extracted events as pending records (dedup + fuzzy location
