@@ -1,15 +1,30 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useApi } from "@/api";
 import { EventDetailView } from "@/components/EventDetailView";
-import { Badge, Button, ErrorBanner, Spinner } from "@/components/ui";
+import { Badge, Button, ErrorBanner, Spinner, SubTabs } from "@/components/ui";
 import { formatDate, truncate } from "@/utils/formatters";
 import type { AdminEvent, PublicEvent } from "@/types";
 
 const REVIEWS = ["pending", "approved", "rejected"] as const;
+const REVIEW_TABS = REVIEWS.map((r) => ({ key: r, label: r }));
 
 export function ReviewSection() {
   const api = useApi();
-  const [review, setReview] = useState<string>("pending");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const reviewParam = searchParams.get("review");
+  const review = (REVIEWS as readonly string[]).includes(reviewParam ?? "")
+    ? (reviewParam as string)
+    : "pending";
+  const setReview = (r: string) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("review", r);
+        return next;
+      },
+      { replace: true }
+    );
   const [items, setItems] = useState<AdminEvent[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -82,39 +97,23 @@ export function ReviewSection() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1">
-          {REVIEWS.map((r) => (
-            <button
-              key={r}
-              onClick={() => setReview(r)}
-              className={`shrink-0 whitespace-nowrap rounded-none px-3 py-2 text-[11px] font-medium uppercase tracking-[0.12em] transition-colors ${
-                review === r
-                  ? "bg-[var(--color-primary)] text-white"
-                  : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
-              }`}
-            >
-              {r}
-            </button>
-          ))}
+      <SubTabs tabs={REVIEW_TABS} value={review} onChange={setReview} />
+      {review === "pending" && selected.size > 0 && (
+        <div className="flex gap-2">
+          <Button
+            variant="primary"
+            onClick={() => void act(() => api.bulkReview([...selected], "approved"))}
+          >
+            Approve {selected.size}
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => void act(() => api.bulkReview([...selected], "rejected"))}
+          >
+            Reject {selected.size}
+          </Button>
         </div>
-        {review === "pending" && selected.size > 0 && (
-          <div className="flex gap-2">
-            <Button
-              variant="primary"
-              onClick={() => void act(() => api.bulkReview([...selected], "approved"))}
-            >
-              Approve {selected.size}
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => void act(() => api.bulkReview([...selected], "rejected"))}
-            >
-              Reject {selected.size}
-            </Button>
-          </div>
-        )}
-      </div>
+      )}
 
       {error && <ErrorBanner message={error} />}
 

@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
-import { Inbox, Play, Plus, Trash2 } from "lucide-react";
+import { Inbox, Loader2, Play, Plus, Trash2 } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { useApi } from "@/api";
-import { Badge, Button, ErrorBanner, Spinner } from "@/components/ui";
-import type { Source, SourceType } from "@/types";
+import { Badge, Button, ErrorBanner, Spinner, SubTabs } from "@/components/ui";
+import { formatDateTime } from "@/utils/formatters";
+import type { Source, SourceRun, SourceType } from "@/types";
+
+const SOURCE_TABS = [
+  { key: "active", label: "Active" },
+  { key: "archived", label: "Archived" },
+];
+const POLL_MS = 3000;
+// Stop waiting on a triggered run that never reports back (processor max ~5 min).
+const PENDING_TIMEOUT_MS = 6 * 60 * 1000;
 
 function CreateSourceForm({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const api = useApi();
@@ -89,53 +99,185 @@ function CreateSourceForm({ onClose, onCreated }: { onClose: () => void; onCreat
   );
 }
 
+function RunsPanel({ sourceId }: { sourceId: string }) {
+  const api = useApi();
+  const [runs, setRuns] = useState<SourceRun[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .listRuns(sourceId)
+      .then((data) => active && setRuns(data.runs))
+      .catch((err) =>
+        active && setError(err instanceof Error ? err.message : "Failed to load runs")
+      );
+    return () => {
+      active = false;
+    };
+  }, [api, sourceId]);
+
+  return (
+    <div className="border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+      <h3 className="eyebrow mb-3 text-[var(--color-text-muted)]">Run history</h3>
+      {error ? (
+        <ErrorBanner message={error} />
+      ) : !runs ? (
+        <div className="flex justify-center py-6">
+          <Spinner />
+        </div>
+      ) : runs.length === 0 ? (
+        <p className="py-2 text-sm text-[var(--color-text-muted)]">No runs yet.</p>
+      ) : (
+        <ul className="flex flex-col">
+          {runs.map((r) => {
+            const links = r.link_outcomes ?? [];
+            const okLinks = links.filter((l) => l.ok).length;
+            const count = r.events_count ?? 0;
+            return (
+              <li
+                key={r.run_id}
+                className="flex flex-col gap-1 border-b border-[var(--color-border)] py-3 text-sm last:border-b-0"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge value={r.status} />
+                  <span className="text-[11px] uppercase tracking-[0.1em] text-[var(--color-text-muted)]">
+                    {r.trigger}
+                  </span>
+                  <span className="text-xs text-[var(--color-text-muted)]">
+                    {formatDateTime(r.started_at)}
+                    {r.finished_at ? ` → ${formatDateTime(r.finished_at)}` : ""}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[var(--color-text-secondary)]">
+                  <span>
+                    {count} event{count === 1 ? "" : "s"} extracted
+                  </span>
+                  {links.length > 0 && (
+                    <span>
+                      {okLinks}/{links.length} link{links.length === 1 ? "" : "s"} fetched
+                    </span>
+                  )}
+                  {r.error_reason && (
+                    <span className="text-[var(--color-text-primary)]">{r.error_reason}</span>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function SourcesSection() {
   const api = useApi();
-  const [archived, setArchived] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const archived = searchParams.get("archived") === "true";
+  const setArchived = (val: boolean) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (val) next.set("archived", "true");
+        else next.delete("archived");
+        return next;
+      },
+      { replace: true }
+    );
+
   const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [openRuns, setOpenRuns] = useState<string | null>(null);
+  // Sources we just triggered a run on, keyed by id → baseline last_run_at + click time.
+  const [pending, setPending] = useState<Record<string, { since: string; at: number }>>({});
   const [pendingDelete, setPendingDelete] = useState<
     { source: Source; events: number; subevents: number; runs: number } | null
   >(null);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await api.listSources(archived);
-      setSources(data.sources);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  }, [api, archived]);
+  const reload = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      setError(null);
+      try {
+        const data = await api.listSources(archived);
+        setSources(data.sources);
+        setPending((prev) => {
+          const next = { ...prev };
+          const now = Date.now();
+          const byId = new Map(data.sources.map((s) => [s.source_id, s]));
+          for (const id of Object.keys(next)) {
+            const s = byId.get(id);
+            if (s && !s.running && (s.last_run_at ?? "") !== next[id].since) delete next[id];
+            else if (now - next[id].at > PENDING_TIMEOUT_MS) delete next[id];
+          }
+          return next;
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load");
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [api, archived]
+  );
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void reload();
+  }, [reload]);
+
+  // While any source is running (server-confirmed or just-triggered), poll
+  // quietly so the spinner clears itself when the lambda finishes.
+  const busy = sources.some((s) => s.running) || Object.keys(pending).length > 0;
+  useEffect(() => {
+    if (!busy) return;
+    const id = window.setInterval(() => void reload(true), POLL_MS);
+    return () => window.clearInterval(id);
+  }, [busy, reload]);
+
+  const isRunning = (s: Source) => Boolean(s.running) || s.source_id in pending;
 
   const act = async (fn: () => Promise<unknown>) => {
     try {
       await fn();
-      await refresh();
+      await reload(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Action failed");
     }
   };
 
+  const run = async (s: Source) => {
+    setError(null);
+    setPending((p) => ({ ...p, [s.source_id]: { since: s.last_run_at ?? "", at: Date.now() } }));
+    try {
+      await api.runSource(s.source_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Run failed");
+      setPending((p) => {
+        const next = { ...p };
+        delete next[s.source_id];
+        return next;
+      });
+    }
+  };
+
   const scanInbox = async () => {
+    setScanning(true);
+    setError(null);
     try {
       await api.scanInbox();
-      setError(null);
       setNotice(
         'Scanning the Gmail "Events" label. New sender domains will appear as active email sources shortly.'
       );
+      window.setTimeout(() => void reload(true), 5000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Scan failed");
+    } finally {
+      setScanning(false);
     }
   };
 
@@ -153,7 +295,7 @@ export function SourcesSection() {
     try {
       await api.deleteSource(pendingDelete.source.source_id, true);
       setPendingDelete(null);
-      await refresh();
+      await reload(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
     }
@@ -162,27 +304,14 @@ export function SourcesSection() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
+        <SubTabs
+          tabs={SOURCE_TABS}
+          value={archived ? "archived" : "active"}
+          onChange={(k) => setArchived(k === "archived")}
+        />
         <div className="flex gap-2">
-          <button
-            onClick={() => setArchived(false)}
-            className={`rounded-none px-3 py-2 text-[11px] font-medium uppercase tracking-[0.12em] transition-colors ${
-              !archived ? "bg-[var(--color-primary)] text-white" : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
-            }`}
-          >
-            Active
-          </button>
-          <button
-            onClick={() => setArchived(true)}
-            className={`rounded-none px-3 py-2 text-[11px] font-medium uppercase tracking-[0.12em] transition-colors ${
-              archived ? "bg-[var(--color-primary)] text-white" : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
-            }`}
-          >
-            Archived
-          </button>
-        </div>
-        <div className="flex gap-2">
-          <Button onClick={() => void scanInbox()} title="Scan the Gmail Events label for new email sources">
-            <Inbox size={15} />
+          <Button onClick={() => void scanInbox()} disabled={scanning} title="Scan the Gmail Events label for new email sources">
+            {scanning ? <Loader2 size={15} className="animate-spin" /> : <Inbox size={15} />}
             Scan inbox
           </Button>
           <Button variant="primary" onClick={() => setCreating((c) => !c)}>
@@ -207,7 +336,7 @@ export function SourcesSection() {
       )}
 
       {creating && (
-        <CreateSourceForm onClose={() => setCreating(false)} onCreated={() => void refresh()} />
+        <CreateSourceForm onClose={() => setCreating(false)} onCreated={() => void reload(true)} />
       )}
 
       {loading ? (
@@ -218,52 +347,69 @@ export function SourcesSection() {
         <p className="py-12 text-center text-sm text-[var(--color-text-muted)]">No sources.</p>
       ) : (
         <ul className="border-t border-[var(--color-rule)]">
-          {sources.map((s) => (
-            <li
-              key={s.source_id}
-              className="flex flex-col gap-3 border-b border-[var(--color-border)] py-4"
-            >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="font-serif text-base text-[var(--color-text-primary)]">{s.name}</div>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-muted)]">
-                    <span>{s.type}</span>
-                    <span className="truncate">{s.identity}</span>
-                    <Badge value={s.status} />
-                    {s.last_run_status && <Badge value={s.last_run_status} />}
-                    {s.follow_links && <span>follows links</span>}
+          {sources.map((s) => {
+            const running = isRunning(s);
+            return (
+              <li
+                key={s.source_id}
+                className="flex flex-col gap-3 border-b border-[var(--color-border)] py-4"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="font-serif text-base text-[var(--color-text-primary)]">{s.name}</div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-muted)]">
+                      <span>{s.type}</span>
+                      <span className="truncate">{s.identity}</span>
+                      <Badge value={s.status} />
+                      {running ? (
+                        <span className="inline-flex items-center gap-1 text-[var(--color-primary)]">
+                          <Loader2 size={12} className="animate-spin" />
+                          running
+                        </span>
+                      ) : (
+                        s.last_run_status && <Badge value={s.last_run_status} />
+                      )}
+                      {s.follow_links && <span>follows links</span>}
+                    </div>
                   </div>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  <Button onClick={() => void act(() => api.runSource(s.source_id))} title="Run now">
-                    <Play size={14} />
-                    Run
-                  </Button>
-                  <Button onClick={() => void act(() => api.archiveSource(s.source_id, !s.archived))}>
-                    {s.archived ? "Unarchive" : "Archive"}
-                  </Button>
-                  <Button variant="danger" onClick={() => void startDelete(s)} title="Delete">
-                    <Trash2 size={14} />
-                  </Button>
-                </div>
-              </div>
-
-              {pendingDelete?.source.source_id === s.source_id && (
-                <div className="flex flex-col gap-2 border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-secondary)] sm:flex-row sm:items-center sm:justify-between">
-                  <span>
-                    Delete &ldquo;{s.name}&rdquo;? Cascades {pendingDelete.events} event(s),{" "}
-                    {pendingDelete.subevents} sub-event(s) and soft-deletes {pendingDelete.runs} run(s).
-                  </span>
-                  <div className="flex shrink-0 gap-2">
-                    <Button variant="danger" onClick={() => void confirmDelete()}>
-                      Delete
+                  <div className="flex flex-wrap gap-1.5">
+                    <Button onClick={() => void run(s)} disabled={running} title="Run now">
+                      <Play size={14} />
+                      Run
                     </Button>
-                    <Button onClick={() => setPendingDelete(null)}>Cancel</Button>
+                    <Button
+                      onClick={() => setOpenRuns((o) => (o === s.source_id ? null : s.source_id))}
+                    >
+                      {openRuns === s.source_id ? "Hide runs" : "Runs"}
+                    </Button>
+                    <Button onClick={() => void act(() => api.archiveSource(s.source_id, !s.archived))}>
+                      {s.archived ? "Unarchive" : "Archive"}
+                    </Button>
+                    <Button variant="danger" onClick={() => void startDelete(s)} title="Delete">
+                      <Trash2 size={14} />
+                    </Button>
                   </div>
                 </div>
-              )}
-            </li>
-          ))}
+
+                {openRuns === s.source_id && <RunsPanel sourceId={s.source_id} />}
+
+                {pendingDelete?.source.source_id === s.source_id && (
+                  <div className="flex flex-col gap-2 border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-secondary)] sm:flex-row sm:items-center sm:justify-between">
+                    <span>
+                      Delete &ldquo;{s.name}&rdquo;? Cascades {pendingDelete.events} event(s),{" "}
+                      {pendingDelete.subevents} sub-event(s) and soft-deletes {pendingDelete.runs} run(s).
+                    </span>
+                    <div className="flex shrink-0 gap-2">
+                      <Button variant="danger" onClick={() => void confirmDelete()}>
+                        Delete
+                      </Button>
+                      <Button onClick={() => setPendingDelete(null)}>Cancel</Button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

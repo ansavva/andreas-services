@@ -18,6 +18,21 @@ export function formatDate(dateStr: string): string {
 }
 
 /**
+ * Format an ISO datetime string into a short human-readable date + time.
+ */
+export function formatDateTime(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/**
  * Return true when the event's date is today or in the future.
  */
 export function isUpcoming(dateStr: string): boolean {
