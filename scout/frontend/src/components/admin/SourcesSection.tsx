@@ -315,10 +315,15 @@ export function SourcesSection() {
   const [pendingDelete, setPendingDelete] = useState<
     { source: Source; events: number; subevents: number; runs: number } | null
   >(null);
+  // Single in-flight action key (`<source_id>:<action>`) for the per-button
+  // spinner and to disable the rest of that row while it's running.
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const isBusy = (key: string) => actionBusy === key;
+  const rowLocked = (sid: string) => actionBusy?.startsWith(`${sid}:`) ?? false;
 
-  const reload = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const reload = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    if (!silent) setError(null);
     try {
       const data = await api.listSources(archived);
       setSources(data.sources);
@@ -341,9 +346,9 @@ export function SourcesSection() {
         return next;
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
+      if (!silent) setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [api, archived]);
 
@@ -406,17 +411,28 @@ export function SourcesSection() {
   // last_run_status/at fields catch up. Triggered by busy transitioning to false.
   const wasBusy = useBusyTransition(busy);
   useEffect(() => {
-    if (wasBusy && !busy) void reload();
+    if (wasBusy && !busy) void reload(true);
   }, [wasBusy, busy, reload]);
 
   const isRunning = (s: Source) => runningIds.has(s.source_id) || s.source_id in pending;
 
-  const act = async (fn: () => Promise<unknown>) => {
+  // Runs a row-scoped action with per-button spinner + row lock, then quietly
+  // re-reads the page in the background so server-side cascades catch up.
+  const runAction = async (
+    actionKey: string,
+    call: () => Promise<unknown>,
+    applyOptimistic?: () => void
+  ) => {
+    setActionBusy(actionKey);
+    setError(null);
     try {
-      await fn();
-      await reload();
+      await call();
+      applyOptimistic?.();
+      void reload(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setActionBusy(null);
     }
   };
 
@@ -460,16 +476,29 @@ export function SourcesSection() {
     }
   };
 
-  const confirmDelete = async () => {
-    if (!pendingDelete) return;
-    try {
-      await api.deleteSource(pendingDelete.source.source_id, true);
-      setPendingDelete(null);
-      await reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
-    }
+  const confirmDelete = () => {
+    if (!pendingDelete) return Promise.resolve();
+    const sid = pendingDelete.source.source_id;
+    return runAction(
+      `${sid}:delete`,
+      () => api.deleteSource(sid, true),
+      () => {
+        setPendingDelete(null);
+        setSources((prev) => prev.filter((s) => s.source_id !== sid));
+      }
+    );
   };
+
+  const archive = (s: Source) =>
+    runAction(
+      `${s.source_id}:archive`,
+      () => api.archiveSource(s.source_id, !s.archived),
+      () =>
+        // Toggling Archive moves the row between the Active and Archived
+        // tabs, so it leaves the current view; verify() will catch any
+        // edge cases.
+        setSources((prev) => prev.filter((x) => x.source_id !== s.source_id))
+    );
 
   return (
     <div className="flex flex-col gap-4">
@@ -545,10 +574,21 @@ export function SourcesSection() {
                     >
                       {openRuns === s.source_id ? "Hide runs" : "Runs"}
                     </Button>
-                    <Button onClick={() => void act(() => api.archiveSource(s.source_id, !s.archived))}>
+                    <Button
+                      disabled={rowLocked(s.source_id)}
+                      onClick={() => void archive(s)}
+                    >
+                      {isBusy(`${s.source_id}:archive`) && (
+                        <Loader2 size={14} className="animate-spin" />
+                      )}
                       {s.archived ? "Unarchive" : "Archive"}
                     </Button>
-                    <Button variant="danger" onClick={() => void startDelete(s)} title="Delete">
+                    <Button
+                      variant="danger"
+                      disabled={rowLocked(s.source_id)}
+                      onClick={() => void startDelete(s)}
+                      title="Delete"
+                    >
                       <Trash2 size={14} />
                     </Button>
                   </div>
@@ -563,7 +603,14 @@ export function SourcesSection() {
                       {pendingDelete.subevents} sub-event(s) and soft-deletes {pendingDelete.runs} run(s).
                     </span>
                     <div className="flex shrink-0 gap-2">
-                      <Button variant="danger" onClick={() => void confirmDelete()}>
+                      <Button
+                        variant="danger"
+                        disabled={isBusy(`${s.source_id}:delete`)}
+                        onClick={() => void confirmDelete()}
+                      >
+                        {isBusy(`${s.source_id}:delete`) && (
+                          <Loader2 size={14} className="animate-spin" />
+                        )}
                         Delete
                       </Button>
                       <Button onClick={() => setPendingDelete(null)}>Cancel</Button>
