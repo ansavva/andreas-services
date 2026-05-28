@@ -490,20 +490,18 @@ def convert_extraction(source_id, extracted_events, *, settings=None):
         created_ids.append(event_id)
 
         for url in raw.get("images", []):
-            image = images.add_image(
-                store.EVENT, event_id, url=url, source=images.AGENT)
-            # Download the bytes so we own and serve the image via our domain.
-            # Failures are non-fatal — the original url stays as a fallback.
+            # We only attach images we successfully own. If the download fails
+            # the image is dropped (no DB record); we never serve an external
+            # url as a fallback because that's hostile to our own-domain model.
             try:
                 data, content_type = image_store.download(url)
-                ref = image_store.put_bytes(image["image_id"], data, content_type)
-                store.set_attrs(
-                    store.event_pk(event_id),
-                    f"IMG#{image['image_id']}",
-                    {"s3_ref": ref},
-                )
             except image_store.DownloadError:
-                pass
+                continue
+            image_id = store.new_id()
+            ref = image_store.put_bytes(image_id, data, content_type)
+            images.add_image(
+                store.EVENT, event_id, image_id=image_id,
+                url=url, s3_ref=ref, source=images.AGENT)
 
         for sub in raw.get("sub_events", []):
             sub_location = _resolve_location(sub.get("location"), settings)
