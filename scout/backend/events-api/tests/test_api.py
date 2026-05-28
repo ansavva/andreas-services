@@ -140,6 +140,24 @@ class TestApi(unittest.TestCase):
         self.assertEqual(len(_json(_request("GET", "/admin/sources"))["sources"]), 1)
         self.assertNotIn("deleted_at", events.get_event(ev["event_id"]))
 
+    def test_delete_subevent_via_api(self):
+        ev = events.create_event("s", title="Show", start_date="2099-01-01")
+        sub = events.create_subevent(ev["event_id"], start_date="2099-01-02")
+
+        resp = _request("DELETE",
+                        f"/admin/events/{ev['event_id']}/subevents/{sub['subevent_id']}")
+        self.assertEqual(resp["statusCode"], 200)
+        self.assertEqual(events.list_subevents(ev["event_id"]), [])
+        self.assertNotIn("deleted_at", events.get_event(ev["event_id"]))
+
+        deleted = _json(_request("GET", "/admin/deleted/subevent"))["items"]
+        self.assertEqual(len(deleted), 1)
+
+    def test_delete_missing_subevent_is_404(self):
+        ev = events.create_event("s", title="Show", start_date="2099-01-01")
+        resp = _request("DELETE", f"/admin/events/{ev['event_id']}/subevents/nope")
+        self.assertEqual(resp["statusCode"], 404)
+
     # --- events review/publish + public feed ----------------------------
     def test_event_review_publish_and_public_feed(self):
         source_id = _json(_request("POST", "/admin/sources", body={

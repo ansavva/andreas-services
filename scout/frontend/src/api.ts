@@ -163,6 +163,8 @@ export function useApi() {
         post(`/admin/events/${eventId}/subevents/${subId}/publish`, { published }),
       cancelSub: (eventId: string, subId: string) =>
         post(`/admin/events/${eventId}/subevents/${subId}/cancel`),
+      deleteSub: (eventId: string, subId: string) =>
+        del(`/admin/events/${eventId}/subevents/${subId}`),
 
       // --- locations ---
       listLocations: () => request<{ locations: Location[] }>(`/admin/locations`),

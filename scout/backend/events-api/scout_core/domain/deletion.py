@@ -147,6 +147,21 @@ def delete_event(event_id, *, cascade_subs=True):
     return {"cascade_id": cascade_id, "subevents": subs_removed}
 
 
+def delete_subevent(event_id, sub_id):
+    """Soft-delete a single sub-event, leaving its parent and siblings live.
+    Returns None if the parent or sub-event doesn't exist."""
+    pk = store.event_pk(event_id)
+    if store.get(pk, "META") is None:
+        return None
+    sub = next((s for s in events.list_subevents(event_id, include_deleted=True)
+                if s.get("subevent_id") == sub_id), None)
+    if sub is None:
+        return None
+    cascade_id = store.new_id()
+    _soft_delete(cascade_id, pk, sub["SK"], store.SUBEVENT, via_cascade=False)
+    return {"cascade_id": cascade_id, "subevent_id": sub_id}
+
+
 # ---------------------------------------------------------------------------
 # Recursive restore
 # ---------------------------------------------------------------------------

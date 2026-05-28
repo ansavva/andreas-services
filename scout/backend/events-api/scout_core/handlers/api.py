@@ -356,6 +356,9 @@ def _admin_subevents(method, event_id, action, body):
             start_time=body.get("start_time"), end_time=body.get("end_time"),
             location_id_override=body.get("location_id_override"),
             event_label_ids=body.get("event_label_ids")))
+    if len(action) == 2 and action[0] == "subevents" and method == "DELETE":
+        result = deletion.delete_subevent(event_id, action[1])
+        return ok(result) if result else not_found("Sub-event not found")
     if len(action) >= 3 and action[0] == "subevents" and method == "POST":
         sub_id, op = action[1], action[2]
         if op == "review":

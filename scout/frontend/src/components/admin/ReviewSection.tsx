@@ -41,6 +41,7 @@ export function ReviewSection() {
   // per-button spinner and disables the rest of the affected row.
   const [busy, setBusy] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [pendingDeleteSubId, setPendingDeleteSubId] = useState<string | null>(null);
 
   const refresh = useCallback(
     async (silent = false) => {
@@ -175,6 +176,16 @@ export function ReviewSection() {
               : i
           )
         )
+    );
+
+  const deleteSub = (parentId: string, subId: string) =>
+    runAction(
+      `${subKey(subId)}:delete`,
+      () => api.deleteSub(parentId, subId),
+      () => {
+        setPendingDeleteSubId(null);
+        setItems((prev) => prev.filter((i) => !isSub(i) || i.subevent_id !== subId));
+      }
     );
 
   // ─── bulk review ─────────────────────────────────────────────────────────
@@ -315,6 +326,13 @@ export function ReviewSection() {
                             `${rowKey}:publish`
                           )}
                         </Button>
+                        <Button
+                          variant="danger"
+                          disabled={locked}
+                          onClick={() => setPendingDeleteSubId(it.subevent_id ?? "")}
+                        >
+                          Delete
+                        </Button>
                       </>
                     ) : (
                       <>
@@ -381,6 +399,24 @@ export function ReviewSection() {
                         {labelWithSpinner("Delete", `${rowKey}:delete`)}
                       </Button>
                       <Button onClick={() => setPendingDeleteId(null)}>Cancel</Button>
+                    </div>
+                  </div>
+                )}
+
+                {sub && pendingDeleteSubId === it.subevent_id && (
+                  <div className="flex flex-col gap-2 border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-secondary)] sm:flex-row sm:items-center sm:justify-between">
+                    <span>Delete this occurrence? Permanently removes the sub-event.</span>
+                    <div className="flex shrink-0 gap-2">
+                      <Button
+                        variant="danger"
+                        disabled={locked}
+                        onClick={() =>
+                          void deleteSub(it.parent_event_id ?? "", it.subevent_id ?? "")
+                        }
+                      >
+                        {labelWithSpinner("Delete", `${rowKey}:delete`)}
+                      </Button>
+                      <Button onClick={() => setPendingDeleteSubId(null)}>Cancel</Button>
                     </div>
                   </div>
                 )}
