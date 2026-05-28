@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { ReviewSection } from "@/components/admin/ReviewSection";
 import { SourcesSection } from "@/components/admin/SourcesSection";
@@ -30,7 +29,18 @@ const TABS: { key: Tab; label: string }[] = [
 
 export function AdminPage() {
   const { user, logout } = useAuth();
-  const [tab, setTab] = useState<Tab>("review");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const tab: Tab = TABS.some((t) => t.key === tabParam) ? (tabParam as Tab) : "review";
+  const setTab = (key: Tab) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("tab", key);
+        return next;
+      },
+      { replace: true }
+    );
 
   return (
     <div className="min-h-screen bg-[var(--color-background)]">

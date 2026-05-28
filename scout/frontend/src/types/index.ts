@@ -97,9 +97,18 @@ export interface Source {
   follow_links: boolean;
   config: Record<string, string>;
   next_run_at?: string;
+  last_run_at?: string;
   last_run_status?: string;
   consecutive_zero_event_runs?: number;
   agent_model_override?: string | null;
+  running?: boolean;
+}
+
+export interface LinkOutcome {
+  url: string;
+  ok: boolean;
+  status?: number;
+  reason?: string;
 }
 
 export interface SourceRun {
@@ -111,6 +120,7 @@ export interface SourceRun {
   finished_at?: string;
   error_reason?: string;
   events_count?: number;
+  link_outcomes?: LinkOutcome[];
 }
 
 export interface AdminEvent {

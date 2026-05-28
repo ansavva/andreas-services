@@ -62,6 +62,13 @@ def list_runs(source_id, *, include_deleted=False):
     )
 
 
+def in_progress_source_ids():
+    """Source ids that currently have an in-progress run, resolved in a single
+    GSI1 query against the RUN#INPROGRESS partition."""
+    rows = store.query_index_all("GSI1", _INPROGRESS_PK)
+    return {r["source_id"] for r in rows}
+
+
 def set_artifacts(source_id, run_id, **refs):
     """Attach S3 references (root_body, root_html, transcript) to a run."""
     key_map = {

@@ -184,8 +184,12 @@ def _scan_inbox():
 def _admin_sources(method, rest, query, body):
     if rest == [] and method == "GET":
         archived = (query or {}).get("archived") == "true"
-        return ok({"sources": sources.list_sources(
-            archived=archived, status=(query or {}).get("status"))})
+        items = sources.list_sources(
+            archived=archived, status=(query or {}).get("status"))
+        running = runs.in_progress_source_ids()
+        for item in items:
+            item["running"] = item["source_id"] in running
+        return ok({"sources": items})
     if rest == [] and method == "POST":
         src = sources.create_source(
             body.get("type"), body.get("identity"), name=body.get("name"),

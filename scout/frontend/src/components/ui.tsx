@@ -89,6 +89,35 @@ export function Button({
   );
 }
 
+export function SubTabs({
+  tabs,
+  value,
+  onChange,
+}: {
+  tabs: { key: string; label: string }[];
+  value: string;
+  onChange: (key: string) => void;
+}) {
+  return (
+    <div className="no-scrollbar -mb-px flex gap-6 overflow-x-auto border-b border-[var(--color-rule)]">
+      {tabs.map(({ key, label }) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => onChange(key)}
+          className={`shrink-0 whitespace-nowrap border-b-2 px-1 py-3 text-[11px] font-medium uppercase tracking-[0.14em] transition-colors ${
+            value === key
+              ? "border-[var(--color-primary)] text-[var(--color-text-primary)]"
+              : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function ErrorBanner({ message }: { message: string }) {
   return (
     <div className="border-l-2 border-[var(--color-rule)] bg-[var(--color-surface-hover)] px-4 py-3 text-sm text-[var(--color-text-primary)]">

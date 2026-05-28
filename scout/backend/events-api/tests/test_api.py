@@ -10,6 +10,7 @@ from moto import mock_dynamodb
 os.environ.setdefault("SCOUT_TABLE_SUFFIX", "")
 
 from scout_core.domain import events  # noqa: E402
+from scout_core.domain import runs  # noqa: E402
 from scout_core.handlers import api  # noqa: E402
 from scout_core.adapters import store  # noqa: E402
 
@@ -180,6 +181,21 @@ class TestApi(unittest.TestCase):
             _request("GET", "/admin/events/nope/preview")["statusCode"], 404)
 
     # --- settings --------------------------------------------------------
+    def test_sources_list_flags_in_progress_runs(self):
+        source_id = _json(_request("POST", "/admin/sources", body={
+            "type": "email", "identity": "x@y.com"}))["source_id"]
+
+        listed = _json(_request("GET", "/admin/sources"))["sources"]
+        self.assertEqual([s["running"] for s in listed], [False])
+
+        run = runs.start_run(source_id, runs.TRIGGER_MANUAL)
+        listed = _json(_request("GET", "/admin/sources"))["sources"]
+        self.assertTrue(listed[0]["running"])
+
+        runs.finish_run(source_id, run["run_id"], status=runs.SUCCESS, events_count=2)
+        listed = _json(_request("GET", "/admin/sources"))["sources"]
+        self.assertFalse(listed[0]["running"])
+
     def test_settings_get_and_update(self):
         defaults = _json(_request("GET", "/admin/settings"))
         self.assertEqual(defaults["link_follow_cap"], 10)
