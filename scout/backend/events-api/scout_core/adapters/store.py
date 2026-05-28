@@ -260,6 +260,62 @@ def query_index_page(index, pk, *, sk_begins_with=None, live_only=True,
     return resp.get("Items", []), resp.get("LastEvaluatedKey")
 
 
+def query_page(pk, *, sk_begins_with=None, live_only=True, ascending=True,
+               limit=None, start_key=None):
+    """Single base-table page for cursor pagination. Returns (items, next_start_key)."""
+    cond = Key("PK").eq(pk)
+    if sk_begins_with is not None:
+        cond = cond & Key("SK").begins_with(sk_begins_with)
+    kwargs = {"KeyConditionExpression": cond, "ScanIndexForward": ascending}
+    if live_only:
+        kwargs["FilterExpression"] = Attr(DELETED_AT).not_exists()
+    if limit is not None:
+        kwargs["Limit"] = limit
+    if start_key is not None:
+        kwargs["ExclusiveStartKey"] = start_key
+    resp = core().query(**kwargs)
+    return resp.get("Items", []), resp.get("LastEvaluatedKey")
+
+
+# ---------------------------------------------------------------------------
+# Cursor encoding (opaque round-trip of DynamoDB LastEvaluatedKey)
+# ---------------------------------------------------------------------------
+
+def encode_cursor(last_key):
+    """Opaque base64(JSON) wrapper around a DynamoDB LastEvaluatedKey.
+
+    Returns None when there is no more data. Decimals (DynamoDB number type)
+    are stringified so the JSON round-trip is lossless.
+    """
+    if not last_key:
+        return None
+    import base64  # noqa: PLC0415  (rare path)
+    import json  # noqa: PLC0415
+
+    def _default(o):
+        from decimal import Decimal  # noqa: PLC0415
+        if isinstance(o, Decimal):
+            return str(o)
+        raise TypeError(f"unserializable: {type(o)}")
+
+    payload = json.dumps(last_key, default=_default, sort_keys=True)
+    return base64.urlsafe_b64encode(payload.encode()).decode()
+
+
+def decode_cursor(cursor):
+    """Inverse of `encode_cursor`. Returns None for missing/invalid cursors so
+    the caller can treat 'no cursor' and 'bad cursor' the same — start from
+    the beginning."""
+    if not cursor:
+        return None
+    import base64  # noqa: PLC0415
+    import json  # noqa: PLC0415
+    try:
+        return json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
+    except (ValueError, TypeError):
+        return None
+
+
 def _drain(kwargs):
     resp = core().query(**kwargs)
     items = resp.get("Items", [])

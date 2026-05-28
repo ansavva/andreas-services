@@ -30,7 +30,9 @@ from scout_core.domain import public
 from scout_core.domain import runs
 from scout_core.domain import sources
 from scout_core.adapters import artifacts
+from scout_core.adapters import image_store
 from scout_core.adapters import store
+from scout_core.common import config
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -85,6 +87,15 @@ class _DecimalEncoder(json.JSONEncoder):
 def _resp(status, body):
     return {"statusCode": status, "headers": CORS_HEADERS,
             "body": json.dumps(body, cls=_DecimalEncoder)}
+
+
+def _binary_resp(status, data, content_type):
+    """Raw binary response. API Gateway base64-decodes when it sees the response
+    Content-Type in the REST API's `binary_media_types` list."""
+    import base64  # noqa: PLC0415
+    headers = {**CORS_HEADERS, "Content-Type": content_type}
+    return {"statusCode": status, "headers": headers,
+            "body": base64.b64encode(data).decode(), "isBase64Encoded": True}
 
 
 def ok(body):
@@ -159,12 +170,31 @@ def _route_public(method, parts, query):
         return ok(detail) if detail else not_found("Event not found")
     if rest == ["facets"]:
         return ok(public.facets())
+    if len(rest) == 2 and rest[0] == "images":
+        data, content_type = image_store.get_bytes(rest[1])
+        if data is None:
+            return not_found("Image not found")
+        return _binary_resp(200, data, content_type)
     return None
 
 
 # ---------------------------------------------------------------------------
 # Admin routes
 # ---------------------------------------------------------------------------
+
+# Server-controlled artifact chunk size. Stays well under the ~6 MB Lambda
+# response cap even after JSON-string escaping.
+_ARTIFACT_CHUNK = 512 * 1024
+
+
+def _artifact_url(base, source_id, run_id, descriptor):
+    """Build an absolute our-domain URL the client can fetch chunks from."""
+    path = (f"{base}/admin/sources/{source_id}/runs/{run_id}/artifact"
+            f"?kind={descriptor['kind']}")
+    if "index" in descriptor:
+        path += f"&index={descriptor['index']}"
+    return path
+
 
 def _trigger(source_id, mode):
     _lambda().invoke(
@@ -185,12 +215,18 @@ def _scan_inbox():
 def _admin_sources(method, rest, query, body):
     if rest == [] and method == "GET":
         archived = (query or {}).get("archived") == "true"
-        items = sources.list_sources(
-            archived=archived, status=(query or {}).get("status"))
+        limit = int((query or {}).get("page_size", "50"))
+        start_key = store.decode_cursor((query or {}).get("cursor"))
+        items, next_key = sources.list_sources_page(
+            archived=archived, status=(query or {}).get("status"),
+            limit=limit, start_key=start_key,
+        )
         running = runs.in_progress_source_ids()
         for item in items:
             item["running"] = item["source_id"] in running
-        return ok({"sources": items})
+        return ok({"sources": items, "next_cursor": store.encode_cursor(next_key)})
+    if rest == ["running"] and method == "GET":
+        return ok({"running": sorted(runs.in_progress_source_ids())})
     if rest == [] and method == "POST":
         src = sources.create_source(
             body.get("type"), body.get("identity"), name=body.get("name"),
@@ -224,7 +260,17 @@ def _admin_sources(method, rest, query, body):
     if action == ["archive"] and method == "POST":
         return ok(sources.set_archived(source_id, body.get("archived", True)))
     if action == ["runs"] and method == "GET":
-        return ok({"runs": runs.list_runs(source_id)})
+        limit = int((query or {}).get("page_size", "20"))
+        start_key = store.decode_cursor((query or {}).get("cursor"))
+        items, next_key = runs.list_runs_page(
+            source_id, limit=limit, start_key=start_key)
+        base = config.public_api_base()
+        for run in items:
+            run["artifacts"] = [
+                {**d, "url": _artifact_url(base, source_id, run["run_id"], d)}
+                for d in runs.artifact_descriptors(run)
+            ]
+        return ok({"runs": items, "next_cursor": store.encode_cursor(next_key)})
     if len(action) == 3 and action[0] == "runs" and action[2] == "artifact" \
             and method == "GET":
         run = runs.get_run(source_id, action[1])
@@ -235,7 +281,13 @@ def _admin_sources(method, rest, query, body):
         ref = runs.artifact_ref(run, kind, int(index) if index is not None else None)
         if not ref:
             return not_found("Artifact not found")
-        return ok({"kind": kind, "ref": ref, "content": artifacts.get_text(ref)})
+        offset = int((query or {}).get("offset", "0"))
+        chunk = int((query or {}).get("chunk_size", str(_ARTIFACT_CHUNK)))
+        text, next_offset, total = artifacts.get_range(ref, offset, chunk)
+        return ok({
+            "kind": kind, "content": text,
+            "offset": offset, "next_offset": next_offset, "total": total,
+        })
     if action == ["run"] and method == "POST":
         return ok(_trigger(source_id, "run"))
     if action == ["preview"] and method == "POST":
@@ -251,7 +303,11 @@ def _admin_sources(method, rest, query, body):
 def _admin_events(method, rest, query, body):
     if rest == [] and method == "GET":
         review = (query or {}).get("review", events.REVIEW_PENDING)
-        return ok({"events": events.list_by_review(review)})
+        limit = int((query or {}).get("page_size", "20"))
+        start_key = store.decode_cursor((query or {}).get("cursor"))
+        items, next_key = events.list_by_review_page(
+            review, limit=limit, start_key=start_key)
+        return ok({"events": items, "next_cursor": store.encode_cursor(next_key)})
     if rest == ["review"] and method == "POST":  # bulk
         return ok({"updated": len(events.bulk_review(body.get("ids", []),
                                                      body["status"]))})
