@@ -109,6 +109,14 @@ export interface LinkOutcome {
   ok: boolean;
   status?: number;
   reason?: string;
+  s3_ref?: string;
+}
+
+export interface RunSummary {
+  created?: number;
+  skipped?: number;
+  pages?: number;
+  event_ids?: string[];
 }
 
 export interface SourceRun {
@@ -121,6 +129,17 @@ export interface SourceRun {
   error_reason?: string;
   events_count?: number;
   link_outcomes?: LinkOutcome[];
+  tool_use_summary?: unknown[];
+  extracted_summary?: RunSummary;
+  s3_root_body_ref?: string;
+  s3_root_html_ref?: string;
+  agent_transcript_ref?: string;
+}
+
+export interface RunArtifact {
+  kind: string;
+  ref: string;
+  content: string;
 }
 
 export interface AdminEvent {

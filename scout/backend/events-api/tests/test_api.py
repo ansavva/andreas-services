@@ -5,13 +5,15 @@ import os
 import unittest
 
 import boto3
-from moto import mock_dynamodb
+from moto import mock_dynamodb, mock_s3
 
 os.environ.setdefault("SCOUT_TABLE_SUFFIX", "")
+os.environ.setdefault("SCOUT_ARTIFACTS_BUCKET", "scout-artifacts-test")
 
 from scout_core.domain import events  # noqa: E402
 from scout_core.domain import runs  # noqa: E402
 from scout_core.handlers import api  # noqa: E402
+from scout_core.adapters import artifacts  # noqa: E402
 from scout_core.adapters import store  # noqa: E402
 
 _GSI_ATTRS = [
@@ -195,6 +197,25 @@ class TestApi(unittest.TestCase):
         runs.finish_run(source_id, run["run_id"], status=runs.SUCCESS, events_count=2)
         listed = _json(_request("GET", "/admin/sources"))["sources"]
         self.assertFalse(listed[0]["running"])
+
+    @mock_s3
+    def test_run_artifact_returns_stored_log(self):
+        artifacts._s3 = None
+        boto3.client("s3", region_name="us-east-1").create_bucket(
+            Bucket="scout-artifacts-test")
+        source_id = _json(_request("POST", "/admin/sources", body={
+            "type": "email", "identity": "x@y.com"}))["source_id"]
+        run = runs.start_run(source_id, runs.TRIGGER_MANUAL)
+        ref = artifacts.store_transcript(source_id, run["run_id"], '{"log": "what it did"}')
+        runs.set_artifacts(source_id, run["run_id"], transcript=ref)
+
+        path = f"/admin/sources/{source_id}/runs/{run['run_id']}/artifact"
+        resp = _request("GET", path, query={"kind": "transcript"})
+        self.assertEqual(resp["statusCode"], 200)
+        self.assertIn("what it did", _json(resp)["content"])
+
+        missing = _request("GET", path, query={"kind": "root_body"})
+        self.assertEqual(missing["statusCode"], 404)
 
     def test_settings_get_and_update(self):
         defaults = _json(_request("GET", "/admin/settings"))
