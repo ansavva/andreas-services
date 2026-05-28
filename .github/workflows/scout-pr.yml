@@ -283,14 +283,18 @@ jobs:
           GMAIL_CLIENT_ID:     ${{ secrets.GMAIL_CLIENT_ID }}
           GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
           GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
+          # Same per-PR public API base used to build VITE_API_URL — lets the
+          # Lambda emit absolute our-domain URLs that resolve under the PR's
+          # subdomain + base path.
+          SCOUT_PUBLIC_API_URL: ${{ steps.outputs.outputs.api_url }}
         run: |
           set -euo pipefail
           PR="${{ env.PR_NUMBER }}"
           SUFFIX="-pr-${PR}"
           PROCESSOR_FN="scout-source-run-processor${SUFFIX}"
 
-          jq -n --arg suffix "${SUFFIX}" --arg fn "${PROCESSOR_FN}" \
-            '{Variables: {SCOUT_TABLE_SUFFIX: $suffix, SCOUT_PROCESSOR_FN: $fn}}' \
+          jq -n --arg suffix "${SUFFIX}" --arg fn "${PROCESSOR_FN}" --arg api_url "${SCOUT_PUBLIC_API_URL}" \
+            '{Variables: {SCOUT_TABLE_SUFFIX: $suffix, SCOUT_PROCESSOR_FN: $fn, SCOUT_PUBLIC_API_URL: $api_url}}' \
             > /tmp/env-events-api.json
 
           jq -n --arg suffix "${SUFFIX}" --arg anthropic "${ANTHROPIC_API_KEY}" --arg pr "${PR}" \

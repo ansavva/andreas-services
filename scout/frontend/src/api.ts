@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
 import type {
   AdminEvent,
+  ArtifactChunk,
   DeletedItem,
   Facets,
   Feed,
@@ -11,7 +12,6 @@ import type {
   Notification,
   PublicEvent,
   PublicFilters,
-  RunArtifact,
   Settings,
   Source,
   SourceRun,
@@ -86,10 +86,16 @@ export function useApi() {
       facets: () => request<Facets>(`/public/facets`),
 
       // --- sources ---
-      listSources: (archived?: boolean) =>
-        request<{ sources: Source[] }>(
-          `/admin/sources${buildQuery({ archived: archived ? "true" : undefined })}`
+      listSources: (archived?: boolean, cursor?: string, pageSize?: number) =>
+        request<{ sources: Source[]; next_cursor: string | null }>(
+          `/admin/sources${buildQuery({
+            archived: archived ? "true" : undefined,
+            cursor,
+            page_size: pageSize ? String(pageSize) : undefined,
+          })}`
         ),
+      sourcesRunning: () =>
+        request<{ running: string[] }>(`/admin/sources/running`),
       createSource: (body: unknown) => post(`/admin/sources`, body) as Promise<Source>,
       scanInbox: () => post(`/admin/sources/scan-inbox`, {}),
       updateSource: (id: string, body: unknown) =>
@@ -98,15 +104,25 @@ export function useApi() {
         post(`/admin/sources/${id}/archive`, { archived }) as Promise<Source>,
       runSource: (id: string) => post(`/admin/sources/${id}/run`),
       previewSource: (id: string) => post(`/admin/sources/${id}/preview`),
-      listRuns: (id: string) =>
-        request<{ runs: SourceRun[] }>(`/admin/sources/${id}/runs`),
-      runArtifact: (sourceId: string, runId: string, kind: string, index?: number) =>
-        request<RunArtifact>(
-          `/admin/sources/${sourceId}/runs/${runId}/artifact${buildQuery({
-            kind,
-            index: index !== undefined ? String(index) : undefined,
+      listRuns: (id: string, cursor?: string, pageSize?: number) =>
+        request<{ runs: SourceRun[]; next_cursor: string | null }>(
+          `/admin/sources/${id}/runs${buildQuery({
+            cursor,
+            page_size: pageSize ? String(pageSize) : undefined,
           })}`
         ),
+      // Fetches one byte-range chunk of a run artifact from an absolute URL the
+      // server emitted alongside the run. Looped by the UI until next_offset is
+      // null so any file size renders inline without hitting the response cap.
+      fetchArtifactChunk: async (url: string, offset: number): Promise<ArtifactChunk> => {
+        const sep = url.includes("?") ? "&" : "?";
+        const full = `${url}${sep}offset=${offset}`;
+        const headers: Record<string, string> = {};
+        if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+        const res = await fetch(full, { headers });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return (await res.json()) as ArtifactChunk;
+      },
       sourceHealth: () =>
         request<{ errored: Source[]; stale: Source[]; overdue: Source[] }>(
           `/admin/sources/health`
@@ -119,9 +135,13 @@ export function useApi() {
         del(`/admin/sources/${id}${buildQuery({ cascade: cascade ? "true" : "false" })}`),
 
       // --- events ---
-      listEvents: (review: string) =>
-        request<{ events: AdminEvent[] }>(
-          `/admin/events${buildQuery({ review })}`
+      listEvents: (review: string, cursor?: string, pageSize?: number) =>
+        request<{ events: AdminEvent[]; next_cursor: string | null }>(
+          `/admin/events${buildQuery({
+            review,
+            cursor,
+            page_size: pageSize ? String(pageSize) : undefined,
+          })}`
         ),
       getEvent: (id: string) =>
         request<{ event: AdminEvent; subevents: SubEvent[] }>(`/admin/events/${id}`),
@@ -177,7 +197,7 @@ export function useApi() {
         request<{ items: DeletedItem[] }>(`/admin/deleted/${entityType}`),
       restore: (pk: string, sk: string) => post(`/admin/restore`, { pk, sk }),
     };
-  }, [request]);
+  }, [request, idToken]);
 }
 
 export type ScoutApi = ReturnType<typeof useApi>;

@@ -280,7 +280,12 @@ jobs:
           GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
         run: |
           set -euo pipefail
-          jq -n '{Variables: {SCOUT_TABLE_SUFFIX: "", SCOUT_PROCESSOR_FN: "scout-source-run-processor"}}' \
+          # Public API base, used by the Lambda to emit absolute our-domain URLs
+          # for images and run artifacts. Mirrors VITE_API_URL.
+          API_URL=$(aws ssm get-parameter --name /scout/prod/api-url \
+            --query 'Parameter.Value' --output text)
+          jq -n --arg api_url "${API_URL}" \
+            '{Variables: {SCOUT_TABLE_SUFFIX: "", SCOUT_PROCESSOR_FN: "scout-source-run-processor", SCOUT_PUBLIC_API_URL: $api_url}}' \
             > /tmp/env-events-api.json
 
           jq -n --arg anthropic "${ANTHROPIC_API_KEY}" \

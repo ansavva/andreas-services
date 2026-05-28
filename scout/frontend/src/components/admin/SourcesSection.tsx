@@ -4,7 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { useApi } from "@/api";
 import { Badge, Button, ErrorBanner, Spinner, SubTabs } from "@/components/ui";
 import { formatDateTime } from "@/utils/formatters";
-import type { Source, SourceRun, SourceType } from "@/types";
+import type { ArtifactDescriptor, Source, SourceRun, SourceType } from "@/types";
 
 const SOURCE_TABS = [
   { key: "active", label: "Active" },
@@ -99,17 +99,6 @@ function CreateSourceForm({ onClose, onCreated }: { onClose: () => void; onCreat
   );
 }
 
-function runArtifacts(r: SourceRun): { label: string; kind: string; index?: number }[] {
-  const out: { label: string; kind: string; index?: number }[] = [];
-  if (r.agent_transcript_ref) out.push({ label: "Transcript", kind: "transcript" });
-  if (r.s3_root_body_ref) out.push({ label: "Fetched text", kind: "root_body" });
-  if (r.s3_root_html_ref) out.push({ label: "HTML", kind: "root_html" });
-  (r.link_outcomes ?? []).forEach((l, i) => {
-    if (l.s3_ref) out.push({ label: `Link ${i + 1}`, kind: "linked", index: i });
-  });
-  return out;
-}
-
 // Stored logs are JSON (transcript) or raw text; pretty-print JSON when we can.
 function prettyLog(text: string): string {
   try {
@@ -122,6 +111,8 @@ function prettyLog(text: string): string {
 function RunsPanel({ sourceId }: { sourceId: string }) {
   const api = useApi();
   const [runs, setRuns] = useState<SourceRun[] | null>(null);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openLog, setOpenLog] = useState<string | null>(null);
   const [logContent, setLogContent] = useState<Record<string, string>>({});
@@ -132,7 +123,11 @@ function RunsPanel({ sourceId }: { sourceId: string }) {
     let active = true;
     api
       .listRuns(sourceId)
-      .then((data) => active && setRuns(data.runs))
+      .then((data) => {
+        if (!active) return;
+        setRuns(data.runs);
+        setCursor(data.next_cursor);
+      })
       .catch((err) =>
         active && setError(err instanceof Error ? err.message : "Failed to load runs")
       );
@@ -141,8 +136,25 @@ function RunsPanel({ sourceId }: { sourceId: string }) {
     };
   }, [api, sourceId]);
 
-  const toggleLog = async (run: SourceRun, kind: string, index?: number) => {
-    const key = `${run.run_id}:${kind}:${index ?? ""}`;
+  const loadMoreRuns = async () => {
+    if (!cursor) return;
+    setLoadingMore(true);
+    try {
+      const data = await api.listRuns(sourceId, cursor);
+      setRuns((prev) => [...(prev ?? []), ...data.runs]);
+      setCursor(data.next_cursor);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load more");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // Fetch the artifact in byte-range chunks until the server reports EOF,
+  // accumulating the text so the inline <pre> renders the full file even when
+  // it's much larger than the per-call response cap.
+  const toggleLog = async (run: SourceRun, descriptor: ArtifactDescriptor) => {
+    const key = `${run.run_id}:${descriptor.kind}:${descriptor.index ?? ""}`;
     if (openLog === key) {
       setOpenLog(null);
       return;
@@ -152,8 +164,16 @@ function RunsPanel({ sourceId }: { sourceId: string }) {
     if (logContent[key] !== undefined) return;
     setLogLoading(key);
     try {
-      const data = await api.runArtifact(sourceId, run.run_id, kind, index);
-      setLogContent((c) => ({ ...c, [key]: data.content }));
+      let assembled = "";
+      let offset = 0;
+      // Safety cap so a misconfigured server can't loop forever.
+      for (let i = 0; i < 200; i++) {
+        const chunk = await api.fetchArtifactChunk(descriptor.url, offset);
+        assembled += chunk.content;
+        if (chunk.next_offset === null) break;
+        offset = chunk.next_offset;
+      }
+      setLogContent((c) => ({ ...c, [key]: assembled }));
     } catch (err) {
       setLogError(err instanceof Error ? err.message : "Failed to load log");
     } finally {
@@ -179,7 +199,7 @@ function RunsPanel({ sourceId }: { sourceId: string }) {
             const okLinks = links.filter((l) => l.ok).length;
             const count = r.events_count ?? 0;
             const summary = r.extracted_summary;
-            const logs = runArtifacts(r);
+            const logs = r.artifacts ?? [];
             const openKey = openLog && openLog.startsWith(`${r.run_id}:`) ? openLog : null;
             return (
               <li
@@ -224,7 +244,7 @@ function RunsPanel({ sourceId }: { sourceId: string }) {
                         <Button
                           key={key}
                           variant="ghost"
-                          onClick={() => void toggleLog(r, log.kind, log.index)}
+                          onClick={() => void toggleLog(r, log)}
                         >
                           {openLog === key ? `Hide ${log.label.toLowerCase()}` : log.label}
                         </Button>
@@ -253,6 +273,13 @@ function RunsPanel({ sourceId }: { sourceId: string }) {
           })}
         </ul>
       )}
+      {cursor && (
+        <div className="mt-3">
+          <Button onClick={() => void loadMoreRuns()} disabled={loadingMore}>
+            {loadingMore ? "Loading…" : "Load more runs"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -273,64 +300,121 @@ export function SourcesSection() {
     );
 
   const [sources, setSources] = useState<Source[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [creating, setCreating] = useState(false);
   const [openRuns, setOpenRuns] = useState<string | null>(null);
-  // Sources we just triggered a run on, keyed by id → baseline last_run_at + click time.
+  // Running-source ids as reported by the lightweight /admin/sources/running
+  // endpoint, plus optimistic ids for sources we just clicked Run on.
+  const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState<Record<string, { since: string; at: number }>>({});
   const [pendingDelete, setPendingDelete] = useState<
     { source: Source; events: number; subevents: number; runs: number } | null
   >(null);
 
-  const reload = useCallback(
-    async (silent = false) => {
-      if (!silent) setLoading(true);
-      setError(null);
-      try {
-        const data = await api.listSources(archived);
-        setSources(data.sources);
-        setPending((prev) => {
-          const next = { ...prev };
-          const now = Date.now();
-          const byId = new Map(data.sources.map((s) => [s.source_id, s]));
-          for (const id of Object.keys(next)) {
-            const s = byId.get(id);
-            if (s && !s.running && (s.last_run_at ?? "") !== next[id].since) delete next[id];
-            else if (now - next[id].at > PENDING_TIMEOUT_MS) delete next[id];
-          }
-          return next;
-        });
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load");
-      } finally {
-        if (!silent) setLoading(false);
-      }
-    },
-    [api, archived]
-  );
+  const reload = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await api.listSources(archived);
+      setSources(data.sources);
+      setCursor(data.next_cursor);
+      const serverRunning = new Set(
+        data.sources.filter((s) => s.running).map((s) => s.source_id)
+      );
+      setRunningIds(serverRunning);
+      // Drop pending entries the server already reports finished (last_run_at
+      // moved) or that timed out.
+      setPending((prev) => {
+        const next = { ...prev };
+        const now = Date.now();
+        const byId = new Map(data.sources.map((s) => [s.source_id, s]));
+        for (const id of Object.keys(next)) {
+          const s = byId.get(id);
+          if (s && !s.running && (s.last_run_at ?? "") !== next[id].since) delete next[id];
+          else if (now - next[id].at > PENDING_TIMEOUT_MS) delete next[id];
+        }
+        return next;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  }, [api, archived]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
-  // While any source is running (server-confirmed or just-triggered), poll
-  // quietly so the spinner clears itself when the lambda finishes.
-  const busy = sources.some((s) => s.running) || Object.keys(pending).length > 0;
+  const loadMore = async () => {
+    if (!cursor) return;
+    setLoadingMore(true);
+    try {
+      const data = await api.listSources(archived, cursor);
+      setSources((prev) => [...prev, ...data.sources]);
+      setCursor(data.next_cursor);
+      setRunningIds((prev) => {
+        const next = new Set(prev);
+        for (const s of data.sources) {
+          if (s.running) next.add(s.source_id);
+        }
+        return next;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load more");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // Lightweight running-spinner poll: hits the dedicated /admin/sources/running
+  // endpoint so the spinner state updates without re-paginating the list.
+  const busy = runningIds.size > 0 || Object.keys(pending).length > 0;
   useEffect(() => {
     if (!busy) return;
-    const id = window.setInterval(() => void reload(true), POLL_MS);
+    const id = window.setInterval(() => {
+      void api
+        .sourcesRunning()
+        .then((data) => {
+          setRunningIds(new Set(data.running));
+          // Once a pending source either appears as no-longer-running OR is
+          // older than the timeout, drop it.
+          setPending((prev) => {
+            const next = { ...prev };
+            const now = Date.now();
+            for (const sid of Object.keys(next)) {
+              if (!data.running.includes(sid) || now - next[sid].at > PENDING_TIMEOUT_MS) {
+                delete next[sid];
+              }
+            }
+            return next;
+          });
+        })
+        .catch(() => {
+          /* transient — keep polling */
+        });
+    }, POLL_MS);
     return () => window.clearInterval(id);
-  }, [busy, reload]);
+  }, [busy, api]);
 
-  const isRunning = (s: Source) => Boolean(s.running) || s.source_id in pending;
+  // When polling clears the spinner, refresh the visible page once so any
+  // last_run_status/at fields catch up. Triggered by busy transitioning to false.
+  const wasBusy = useBusyTransition(busy);
+  useEffect(() => {
+    if (wasBusy && !busy) void reload();
+  }, [wasBusy, busy, reload]);
+
+  const isRunning = (s: Source) => runningIds.has(s.source_id) || s.source_id in pending;
 
   const act = async (fn: () => Promise<unknown>) => {
     try {
       await fn();
-      await reload(true);
+      await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Action failed");
     }
@@ -359,7 +443,7 @@ export function SourcesSection() {
       setNotice(
         'Scanning the Gmail "Events" label. New sender domains will appear as active email sources shortly.'
       );
-      window.setTimeout(() => void reload(true), 5000);
+      window.setTimeout(() => void reload(), 5000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Scan failed");
     } finally {
@@ -381,7 +465,7 @@ export function SourcesSection() {
     try {
       await api.deleteSource(pendingDelete.source.source_id, true);
       setPendingDelete(null);
-      await reload(true);
+      await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
     }
@@ -422,7 +506,7 @@ export function SourcesSection() {
       )}
 
       {creating && (
-        <CreateSourceForm onClose={() => setCreating(false)} onCreated={() => void reload(true)} />
+        <CreateSourceForm onClose={() => setCreating(false)} onCreated={() => void reload()} />
       )}
 
       {loading ? (
@@ -491,6 +575,22 @@ export function SourcesSection() {
           })}
         </ul>
       )}
+
+      {cursor && (
+        <Button onClick={() => void loadMore()} disabled={loadingMore}>
+          {loadingMore ? "Loading…" : "Load more"}
+        </Button>
+      )}
     </div>
   );
+}
+
+// Returns the previous value of `busy` so an effect can detect the transition
+// from "polling" back to "idle" and refresh the visible page once.
+function useBusyTransition(busy: boolean): boolean {
+  const [prev, setPrev] = useState(busy);
+  useEffect(() => {
+    setPrev(busy);
+  }, [busy]);
+  return prev;
 }

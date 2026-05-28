@@ -13,8 +13,9 @@ export interface PublicLocation {
 }
 
 export interface PublicImage {
-  url?: string | null;
-  s3_ref?: string | null;
+  // Absolute URL on our own API domain (or external source URL for legacy
+  // url-only images); always usable as an `<img src>` directly.
+  url: string;
 }
 
 export interface PublicSubEvent {
@@ -119,6 +120,14 @@ export interface RunSummary {
   event_ids?: string[];
 }
 
+export interface ArtifactDescriptor {
+  kind: string;
+  label: string;
+  index?: number;
+  // Absolute our-domain URL for fetching the artifact in chunks.
+  url: string;
+}
+
 export interface SourceRun {
   run_id: string;
   source_id: string;
@@ -130,15 +139,21 @@ export interface SourceRun {
   events_count?: number;
   link_outcomes?: LinkOutcome[];
   extracted_summary?: RunSummary;
-  s3_root_body_ref?: string;
-  s3_root_html_ref?: string;
-  agent_transcript_ref?: string;
+  artifacts?: ArtifactDescriptor[];
 }
 
-export interface RunArtifact {
+export interface ArtifactChunk {
   kind: string;
-  ref: string;
   content: string;
+  offset: number;
+  next_offset: number | null;
+  total: number;
+}
+
+// Paginated admin list response: items + opaque cursor for the next page.
+export interface CursorPage<T> {
+  next_cursor: string | null;
+  items: T[];
 }
 
 export interface AdminEvent {
