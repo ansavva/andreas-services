@@ -336,6 +336,89 @@ class TestEvents(unittest.TestCase):
         self.assertNotEqual(updated["dup_key"], before)
         self.assertEqual(updated["title_norm"], "new title")
 
+    def test_update_event_syncs_event_labels(self):
+        ev = events.create_event("s", title="Show", start_date="2099-01-01")
+        a = labels.create_label(store.EVENT_LABEL, "Music")
+        b = labels.create_label(store.EVENT_LABEL, "Art")
+        events.update_event(ev["event_id"], {"event_label_ids": [a["label_id"]]})
+        self.assertEqual(
+            labels.label_ids_of(store.EVENT, ev["event_id"], store.EVENT_LABEL),
+            [a["label_id"]])
+        # Swap labels: old detached, new attached.
+        events.update_event(ev["event_id"], {"event_label_ids": [b["label_id"]]})
+        self.assertEqual(
+            labels.label_ids_of(store.EVENT, ev["event_id"], store.EVENT_LABEL),
+            [b["label_id"]])
+
+    def test_admin_detail_includes_label_ids(self):
+        lbl = labels.create_label(store.EVENT_LABEL, "Music")
+        ev = events.create_event("s", title="Show", start_date="2099-01-01",
+                                 event_label_ids=[lbl["label_id"]])
+        sub = events.create_subevent(ev["event_id"], start_date="2099-02-01",
+                                     event_label_ids=[lbl["label_id"]])
+        detail = events.admin_detail(ev["event_id"])
+        self.assertEqual(detail["event"]["event_label_ids"], [lbl["label_id"]])
+        self.assertEqual(detail["subevents"][0]["subevent_id"], sub["subevent_id"])
+        self.assertEqual(detail["subevents"][0]["event_label_ids"], [lbl["label_id"]])
+        self.assertIsNone(events.admin_detail("nope"))
+
+    def test_update_subevent_in_place_when_date_unchanged(self):
+        ev = events.create_event("s", title="Series", start_date="2099-01-01")
+        sub = events.create_subevent(ev["event_id"], start_date="2099-02-01")
+        before_sk = sub["SK"]
+        updated = events.update_subevent(
+            ev["event_id"], sub["subevent_id"],
+            {"start_time": "19:00", "end_time": "21:00"})
+        self.assertEqual(updated["SK"], before_sk)  # same row
+        self.assertEqual(updated["start_time"], "19:00")
+        self.assertEqual(updated["end_time"], "21:00")
+
+    def test_update_subevent_date_change_moves_row(self):
+        ev = events.create_event("s", title="Series", start_date="2099-01-01")
+        sub = events.create_subevent(ev["event_id"], start_date="2099-02-01")
+        old_sk = sub["SK"]
+        updated = events.update_subevent(
+            ev["event_id"], sub["subevent_id"], {"start_date": "2099-03-15"})
+        self.assertNotEqual(updated["SK"], old_sk)
+        self.assertEqual(updated["start_date"], "2099-03-15")
+        self.assertEqual(updated["subevent_id"], sub["subevent_id"])  # identity kept
+        self.assertEqual(updated["created_at"], sub["created_at"])
+        # Old row is gone; exactly one occurrence remains.
+        self.assertIsNone(store.get(store.event_pk(ev["event_id"]), old_sk))
+        self.assertEqual(len(events.list_subevents(ev["event_id"])), 1)
+
+    def test_update_subevent_reindexes_pubvis_on_move(self):
+        ev = events.create_event("s", title="Series", start_date="2099-01-01")
+        events.set_publish(ev["event_id"], True)
+        sub = events.create_subevent(ev["event_id"], start_date="2099-02-01")
+        events.set_subevent_publish(ev["event_id"], sub["subevent_id"], True)
+        self.assertIn(sub["subevent_id"], _pubvis_ids())
+        # Moving the date keeps it publicly visible under the new key.
+        events.update_subevent(ev["event_id"], sub["subevent_id"],
+                               {"start_date": "2099-04-01"})
+        self.assertIn(sub["subevent_id"], _pubvis_ids())
+
+    def test_update_subevent_sets_location_and_label_overrides(self):
+        loc = locations.create_location("Hall", address="1 St", timezone="UTC")
+        lbl = labels.create_label(store.EVENT_LABEL, "Jazz")
+        ev = events.create_event("s", title="Series", start_date="2099-01-01")
+        sub = events.create_subevent(ev["event_id"], start_date="2099-02-01")
+        self.assertFalse(sub.get("event_labels_overridden"))
+        updated = events.update_subevent(
+            ev["event_id"], sub["subevent_id"],
+            {"location_id_override": loc["location_id"],
+             "event_label_ids": [lbl["label_id"]]})
+        self.assertEqual(updated["location_id_override"], loc["location_id"])
+        self.assertTrue(updated["event_labels_overridden"])
+        self.assertEqual(
+            labels.label_ids_of(store.SUBEVENT, sub["subevent_id"], store.EVENT_LABEL),
+            [lbl["label_id"]])
+
+    def test_update_subevent_missing_returns_none(self):
+        ev = events.create_event("s", title="Series", start_date="2099-01-01")
+        self.assertIsNone(events.update_subevent(ev["event_id"], "nope", {}))
+        self.assertIsNone(events.update_subevent("nope", "nope", {}))
+
     # --- sweep -----------------------------------------------------------
     def test_sweep_keeps_past_flag_correct(self):
         past = events.create_event("s", title="Old", start_date="2000-01-01")

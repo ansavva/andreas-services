@@ -84,6 +84,17 @@ def _event_timezone(location_id, settings):
     return settings["fallback_timezone"]
 
 
+def _sync_event_labels(target_type, target_id, desired_ids):
+    """Reconcile an entity's event-label edges to exactly ``desired_ids``:
+    detach removed labels, attach added ones (idempotent)."""
+    current = set(labels.label_ids_of(target_type, target_id, store.EVENT_LABEL))
+    desired = set(desired_ids)
+    for label_id in current - desired:
+        labels.detach_label(store.EVENT_LABEL, label_id, target_type, target_id)
+    for label_id in desired - current:
+        labels.attach_label(store.EVENT_LABEL, label_id, target_type, target_id)
+
+
 # ---------------------------------------------------------------------------
 # Events
 # ---------------------------------------------------------------------------
@@ -135,6 +146,22 @@ def create_event(source_id, *, title, start_date, description="", start_time=Non
 
 def get_event(event_id):
     return store.get(store.event_pk(event_id), "META")
+
+
+def admin_detail(event_id):
+    """Event + its sub-events, each enriched with its own attached event-label
+    ids. The stored rows don't carry label ids (labels live as separate edges),
+    but the admin editor needs them to seed the label picker. Returns
+    {"event", "subevents"} or None when the event is missing."""
+    event = get_event(event_id)
+    if event is None:
+        return None
+    event = {**event,
+             "event_label_ids": labels.label_ids_of(store.EVENT, event_id, store.EVENT_LABEL)}
+    subs = [{**s, "event_label_ids": labels.label_ids_of(
+                store.SUBEVENT, s["subevent_id"], store.EVENT_LABEL)}
+            for s in list_subevents(event_id)]
+    return {"event": event, "subevents": subs}
 
 
 def list_by_review(review_status, *, include_subevents=True):
@@ -221,6 +248,9 @@ def update_event(event_id, fields):
         if fields["location_id"]:
             locations.link_event_to_location(fields["location_id"], store.EVENT, event_id)
         updates["location_id"] = fields["location_id"]
+
+    if "event_label_ids" in fields:
+        _sync_event_labels(store.EVENT, event_id, fields["event_label_ids"] or [])
 
     merged = dict(event)
     merged.update(updates)
@@ -438,6 +468,68 @@ def _reindex_sub_pubvis(sub, parent):
         _set_pubvis(pk, sub["SK"], sub.get("effective_end_utc"))
     else:
         _clear_pubvis(pk, sub["SK"])
+
+
+def update_subevent(parent_event_id, sub_id, fields):
+    """Edit a sub-event's date/time, location override and label overrides, then
+    reindex. Mirrors :func:`update_event`. Because the sort key embeds the date
+    (``SUB#<start_date>#<id>``), a start_date change moves the row to a new SK
+    (put-new + delete-old); other edits update in place. Returns the refreshed
+    sub-event, or None when the parent or sub is missing."""
+    parent = get_event(parent_event_id)
+    if parent is None:
+        return None
+    sub = _get_sub(parent_event_id, sub_id)
+    if sub is None:
+        return None
+    settings = store.get_settings()
+    pk = store.event_pk(parent_event_id)
+    old_sk = sub["SK"]
+
+    updates = {}
+    for key in ("start_date", "start_time", "end_time", "location_id_override"):
+        if key in fields:
+            updates[key] = fields[key]
+
+    old_override = sub.get("location_id_override")
+    if "location_id_override" in fields and fields["location_id_override"] != old_override:
+        if old_override:
+            locations.unlink_event_from_location(old_override, store.SUBEVENT, sub_id)
+        if fields["location_id_override"]:
+            locations.link_event_to_location(fields["location_id_override"], store.SUBEVENT, sub_id)
+
+    if "event_label_ids" in fields:
+        _sync_event_labels(store.SUBEVENT, sub_id, fields["event_label_ids"] or [])
+        updates["event_labels_overridden"] = True
+
+    merged = dict(sub)
+    merged.update(updates)
+    effective_location = merged.get("location_id_override") or parent.get("location_id")
+    tz = _event_timezone(effective_location, settings)
+    effective_end = timeutil.effective_end_utc(
+        merged.get("start_date"), merged.get("start_time"), merged.get("end_time"),
+        tz=tz, fallback_tz=settings["fallback_timezone"])
+    dup = taxonomy.dup_key(parent.get("title", ""), merged.get("start_date"), effective_location)
+    updates.update({
+        "effective_end_utc": effective_end,
+        "past": timeutil.is_past(effective_end, settings["past_grace_hours"]),
+        "dup_key": dup,
+        "GSI3PK": f"DUP#{dup}", "GSI3SK": f"SUB#{sub_id}",
+    })
+
+    new_sk = store.sub_sk(merged.get("start_date") or "", sub_id)
+    if new_sk == old_sk:
+        store.set_attrs(pk, old_sk, updates)
+    else:
+        moved = dict(merged)
+        moved.update(updates)
+        moved["SK"] = new_sk
+        store.put(moved)
+        store.delete(pk, old_sk)
+
+    refreshed = _get_sub(parent_event_id, sub_id)
+    _reindex_sub_pubvis(refreshed, parent)
+    return _get_sub(parent_event_id, sub_id)
 
 
 def set_subevent_publish(parent_event_id, sub_id, published):

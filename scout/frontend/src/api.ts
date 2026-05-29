@@ -164,6 +164,8 @@ export function useApi() {
         post(`/admin/events/${id}/publish`, { published }),
       cancelEvent: (id: string) => post(`/admin/events/${id}/cancel`),
       updateEvent: (id: string, body: unknown) => put(`/admin/events/${id}`, body),
+      updateSubevent: (eventId: string, subId: string, body: unknown) =>
+        put(`/admin/events/${eventId}/subevents/${subId}`, body),
       deleteEvent: (id: string, cascade: boolean) =>
         del(`/admin/events/${id}${buildQuery({ cascade: cascade ? "true" : "false" })}`),
       reviewSub: (eventId: string, subId: string, status: string) =>

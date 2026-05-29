@@ -179,6 +179,8 @@ export interface AdminEvent {
   start_time?: string | null;
   end_time?: string | null;
   location_id?: string | null;
+  // The event's own attached event-label ids (admin_detail enriches GET).
+  event_label_ids?: string[];
   review_status?: string;
   publish_status?: string;
   lifecycle_cancelled?: boolean;
@@ -194,9 +196,41 @@ export interface SubEvent {
   start_date: string;
   start_time?: string | null;
   end_time?: string | null;
+  location_id_override?: string | null;
+  event_labels_overridden?: boolean;
+  // The sub-event's own attached event-label ids (admin_detail enriches GET).
+  event_label_ids?: string[];
   review_status: string;
   publish_status: string;
   lifecycle_cancelled?: boolean;
+}
+
+// --- Inline edit drafts ---------------------------------------------------
+
+// Local working copy of a sub-event while editing the preview. `event_label_ids`
+// being present (non-undefined) means the occurrence overrides its parent's
+// labels; location_id_override null means it inherits the parent location.
+export interface SubEventDraft {
+  subevent_id: string;
+  start_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  location_id_override: string | null;
+  event_labels_overridden: boolean;
+  event_label_ids: string[];
+}
+
+// Local working copy of an event (and its occurrences) while editing the
+// preview. `description` edits the stored `description_md` as plain text.
+export interface EventDraft {
+  title: string;
+  description: string;
+  start_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  location_id: string | null;
+  event_label_ids: string[];
+  sub_events: SubEventDraft[];
 }
 
 // Parent-centric review-queue entry: a parent event with all its occurrences.

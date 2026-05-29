@@ -22,6 +22,18 @@
   box-sizing: border-box;
 }
 
+/* On touch devices, iOS Safari auto-zooms when a focused form control's
+   font-size is under 16px (and modern iOS ignores maximum-scale/user-scalable,
+   so the viewport meta can't prevent it). Force inputs/selects to 16px on
+   coarse pointers only — desktop keeps the design's smaller input sizes, and
+   textareas are left alone so the hero-serif title editor keeps its size. */
+@media (pointer: coarse) {
+  input,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 body {
   margin: 0;
   font-family: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
