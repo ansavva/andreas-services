@@ -207,7 +207,9 @@ export function AdminReviewQueuePage() {
                     }))
                   }
                   placeholder="Optional feedback (saved with your decision)…"
-                  className="w-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-text-primary)] focus:outline-none"
+                  /* text-base (16px) on mobile stops iOS Safari auto-zooming on
+                     focus; sm:text-sm restores the UI's small size on larger screens. */
+                  className="w-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-base text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-text-primary)] focus:outline-none sm:text-sm"
                 />
                 <div className="flex items-center justify-center gap-5">
                   <button
