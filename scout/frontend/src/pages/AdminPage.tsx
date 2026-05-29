@@ -1,4 +1,4 @@
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { ReviewSection } from "@/components/admin/ReviewSection";
 import { SourcesSection } from "@/components/admin/SourcesSection";
@@ -27,8 +27,13 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "settings", label: "Settings" },
 ];
 
+// Sentinel value for the mobile dropdown: not a tab, navigates to the
+// full-screen swipe-review page instead of switching the active section.
+const SWIPE_REVIEW = "__swipe_review";
+
 export function AdminPage() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
   const tab: Tab = TABS.some((t) => t.key === tabParam) ? (tabParam as Tab) : "review";
@@ -76,7 +81,28 @@ export function AdminPage() {
 
       <main className="mx-auto max-w-5xl px-5 py-8 sm:px-6">
         <nav className="mb-8 border-b border-[var(--color-rule)]">
-          <div className="no-scrollbar -mb-px flex gap-6 overflow-x-auto">
+          {/* Mobile: a single dropdown instead of a horizontally-scrolling tab
+              strip (which clashed with the per-section sub-tabs). */}
+          <div className="pb-3 sm:hidden">
+            <select
+              value={tab}
+              onChange={(e) => {
+                if (e.target.value === SWIPE_REVIEW) navigate("/admin/review-queue");
+                else setTab(e.target.value as Tab);
+              }}
+              className="w-full rounded-none border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm uppercase tracking-[0.1em] text-[var(--color-text-primary)] focus:border-[var(--color-text-primary)] focus:outline-none"
+            >
+              {TABS.map(({ key, label }) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+              <option value={SWIPE_REVIEW}>Swipe review →</option>
+            </select>
+          </div>
+
+          {/* Desktop: the full horizontal tab row. */}
+          <div className="no-scrollbar -mb-px hidden gap-6 overflow-x-auto sm:flex">
             {TABS.map(({ key, label }) => (
               <button
                 key={key}
