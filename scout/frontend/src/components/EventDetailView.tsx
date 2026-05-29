@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef } from "react";
 import { Chip } from "@/components/ui";
 import { LocationPicker } from "@/components/edit/LocationPicker";
 import { LabelEditor } from "@/components/edit/LabelEditor";
-import { formatDate } from "@/utils/formatters";
+import { formatDateTimeLine } from "@/utils/formatters";
 import type {
   EventDraft,
   Label,
@@ -154,12 +154,17 @@ function SubEventRow({
     );
   }
 
+  const when = formatDateTimeLine(sub.start_date, sub.start_time, sub.end_time);
   return (
     <li className="border-b border-[var(--color-border)] py-5">
-      <div className="font-serif text-lg leading-tight text-[var(--color-text-primary)]">
-        {formatDate(sub.start_date)}
-        {sub.start_time ? ` · ${sub.start_time}` : ""}
-        {sub.end_time ? `–${sub.end_time}` : ""}
+      <div
+        className={
+          when
+            ? "font-serif text-lg leading-tight text-[var(--color-text-primary)]"
+            : "font-serif text-lg italic leading-tight text-[var(--color-text-muted)]"
+        }
+      >
+        {when || "Date to be announced"}
       </div>
       {locationLine(sub.location) && (
         <div className="eyebrow mt-2 text-[var(--color-text-secondary)]">
@@ -193,6 +198,12 @@ export function EventDetailView({
   const labels = [...event.event_labels, ...event.location_labels];
   const image = event.images.find((i) => i.url)?.url ?? null;
   const place = locationLine(event.location);
+  const when = formatDateTimeLine(event.start_date, event.start_time, event.end_time);
+  // The date/location band carries top+bottom rules; only draw it when there's
+  // something to sit between them, so a date-less, location-less event doesn't
+  // render as an empty boxed strip.
+  const metaBand =
+    "eyebrow mt-6 flex flex-wrap items-center gap-x-3 gap-y-2 border-y border-[var(--color-rule)] py-4 text-[var(--color-text-secondary)]";
 
   return (
     <article>
@@ -226,36 +237,29 @@ export function EventDetailView({
         </h1>
       )}
 
-      <div className="eyebrow mt-6 flex flex-wrap items-center gap-x-3 gap-y-2 border-y border-[var(--color-rule)] py-4 text-[var(--color-text-secondary)]">
-        {edit ? (
-          <>
-            <DateTimeFields
-              startDate={edit.draft.start_date}
-              startTime={edit.draft.start_time}
-              endTime={edit.draft.end_time}
-              onChange={(patch) => edit.onChange(patch)}
-            />
-            <span aria-hidden>—</span>
-            <LocationPicker
-              value={edit.draft.location_id}
-              locations={edit.locations}
-              onChange={(id) => edit.onChange({ location_id: id })}
-              onCreate={edit.onCreateLocation}
-            />
-          </>
-        ) : (
-          <>
-            {event.start_date && (
-              <span>
-                {formatDate(event.start_date)}
-                {event.start_time ? ` · ${event.start_time}` : ""}
-              </span>
-            )}
-            {event.start_date && place && <span aria-hidden>—</span>}
-            {place && <span>{place}</span>}
-          </>
-        )}
-      </div>
+      {edit ? (
+        <div className={metaBand}>
+          <DateTimeFields
+            startDate={edit.draft.start_date}
+            startTime={edit.draft.start_time}
+            endTime={edit.draft.end_time}
+            onChange={(patch) => edit.onChange(patch)}
+          />
+          <span aria-hidden>—</span>
+          <LocationPicker
+            value={edit.draft.location_id}
+            locations={edit.locations}
+            onChange={(id) => edit.onChange({ location_id: id })}
+            onCreate={edit.onCreateLocation}
+          />
+        </div>
+      ) : when || place ? (
+        <div className={metaBand}>
+          {when && <span>{when}</span>}
+          {when && place && <span aria-hidden>—</span>}
+          {place && <span>{place}</span>}
+        </div>
+      ) : null}
 
       {image && (
         <img
