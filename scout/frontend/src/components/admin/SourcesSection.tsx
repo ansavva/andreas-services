@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Inbox, Loader2, Play, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, Inbox, Loader2, Play, Plus, Trash2 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useApi } from "@/api";
 import { Badge, Button, ErrorBanner, Spinner, SubTabs } from "@/components/ui";
@@ -554,25 +554,34 @@ export function SourcesSection() {
                 className="flex flex-col gap-3 border-b border-[var(--color-border)] py-4"
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <div className="font-serif text-base text-[var(--color-text-primary)]">{s.name}</div>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-muted)]">
-                      <span>{s.type}</span>
-                      <span className="truncate">{s.identity}</span>
-                      <Badge value={s.status} />
-                      {s.last_run_status && <Badge value={s.last_run_status} />}
-                      {s.follow_links && <span>follows links</span>}
+                  <button
+                    type="button"
+                    onClick={() => setOpenRuns((o) => (o === s.source_id ? null : s.source_id))}
+                    aria-expanded={openRuns === s.source_id}
+                    title="Show run history"
+                    className="flex min-w-0 items-start gap-2 text-left"
+                  >
+                    <ChevronRight
+                      size={16}
+                      className={`mt-1 shrink-0 text-[var(--color-text-muted)] transition-transform ${
+                        openRuns === s.source_id ? "rotate-90" : ""
+                      }`}
+                    />
+                    <div className="min-w-0">
+                      <div className="font-serif text-base text-[var(--color-text-primary)]">{s.name}</div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-muted)]">
+                        <span>{s.type}</span>
+                        <span className="truncate">{s.identity}</span>
+                        <Badge value={s.status} />
+                        {s.last_run_status && <Badge value={s.last_run_status} />}
+                        {s.follow_links && <span>follows links</span>}
+                      </div>
                     </div>
-                  </div>
+                  </button>
                   <div className="flex flex-wrap gap-1.5">
                     <Button onClick={() => void run(s)} disabled={running} title="Run now">
                       {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
                       {running ? "Running" : "Run"}
-                    </Button>
-                    <Button
-                      onClick={() => setOpenRuns((o) => (o === s.source_id ? null : s.source_id))}
-                    >
-                      {openRuns === s.source_id ? "Hide runs" : "Runs"}
                     </Button>
                     <Button
                       disabled={rowLocked(s.source_id)}
