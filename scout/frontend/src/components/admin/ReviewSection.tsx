@@ -350,13 +350,18 @@ export function ReviewSection() {
                         </p>
                       )}
                       {ev.review_feedback && ev.review_feedback.length > 0 && (
-                        <ul className="mt-2 flex flex-col gap-1 border-l-2 border-[var(--color-rule)] pl-3">
+                        <ul className="mt-2 flex flex-col gap-2 border-l-2 border-[var(--color-rule)] pl-3">
                           {ev.review_feedback.map((f, i) => (
                             <li key={i} className="text-xs text-[var(--color-text-muted)]">
-                              <span className="uppercase tracking-[0.1em]">{f.decision}</span>
-                              {" · "}
-                              {f.text}
-                              {f.author && <span className="opacity-70"> — {f.author}</span>}
+                              <div className="uppercase tracking-[0.1em]">
+                                {f.decision}
+                                {f.author && (
+                                  <span className="opacity-70"> — {f.author}</span>
+                                )}
+                              </div>
+                              <div className="mt-0.5 whitespace-pre-line normal-case text-[var(--color-text-secondary)]">
+                                {f.text}
+                              </div>
                             </li>
                           ))}
                         </ul>
