@@ -2,12 +2,16 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useApi } from "@/api";
+import { ConfirmDeleteButton } from "@/components/admin/ConfirmDeleteButton";
+import { DeletedList } from "@/components/admin/DeletedList";
 import { Badge, Button, ErrorBanner, Spinner, SubTabs } from "@/components/ui";
 import { formatDate, truncate } from "@/utils/formatters";
 import type { ReviewGroup } from "@/types";
 
 const REVIEWS = ["pending", "approved", "rejected"] as const;
-const REVIEW_TABS = REVIEWS.map((r) => ({ key: r, label: r }));
+// "deleted" is a view, not a review_status — it lists soft-deleted events.
+const VIEWS = [...REVIEWS, "deleted"] as const;
+const REVIEW_TABS = VIEWS.map((r) => ({ key: r, label: r }));
 
 // Row-scoped busy keys so the per-button spinner and the "disable siblings"
 // check share the same prefix. Events use evt:<id>, sub-events sub:<id>.
@@ -26,7 +30,7 @@ export function ReviewSection() {
   const api = useApi();
   const [searchParams, setSearchParams] = useSearchParams();
   const reviewParam = searchParams.get("review");
-  const review = (REVIEWS as readonly string[]).includes(reviewParam ?? "")
+  const review = (VIEWS as readonly string[]).includes(reviewParam ?? "")
     ? (reviewParam as string)
     : "pending";
   const setReview = (r: string) =>
@@ -47,10 +51,13 @@ export function ReviewSection() {
   // The single in-flight action on the screen ("rowKey:action"). Drives the
   // per-button spinner and disables the rest of the affected row.
   const [busy, setBusy] = useState<string | null>(null);
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-  const [pendingDeleteSubId, setPendingDeleteSubId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    // The Deleted view is rendered by <DeletedList>, which loads itself.
+    if (review === "deleted") {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -169,10 +176,7 @@ export function ReviewSection() {
     runAction(
       `${eventKey(id)}:delete`,
       () => api.deleteEvent(id, true),
-      () => {
-        setPendingDeleteId(null);
-        setGroups((prev) => prev.filter((g) => g.event.event_id !== id));
-      }
+      () => setGroups((prev) => prev.filter((g) => g.event.event_id !== id))
     );
 
   // ─── occurrence (sub-event) row actions ──────────────────────────────────
@@ -208,13 +212,11 @@ export function ReviewSection() {
     runAction(
       `${subKey(subId)}:delete`,
       () => api.deleteSub(parentId, subId),
-      () => {
-        setPendingDeleteSubId(null);
+      () =>
         updateGroup(parentId, (g) => ({
           ...g,
           subevents: g.subevents.filter((s) => s.subevent_id !== subId),
-        }));
-      }
+        }))
     );
 
   const labelWithSpinner = (label: string, key: string) => (
@@ -230,7 +232,9 @@ export function ReviewSection() {
 
       {error && <ErrorBanner message={error} />}
 
-      {loading ? (
+      {review === "deleted" ? (
+        <DeletedList entityType="event" />
+      ) : loading ? (
         <div className="flex justify-center py-16">
           <Spinner />
         </div>
@@ -340,31 +344,15 @@ export function ReviewSection() {
                       <Button disabled={locked} onClick={() => void cancelEvt(id)}>
                         {labelWithSpinner("Cancel", `${rowKey}:cancel`)}
                       </Button>
-                      <Button
-                        variant="danger"
+                      <ConfirmDeleteButton
                         disabled={locked}
-                        onClick={() => setPendingDeleteId(id)}
-                      >
-                        Delete
-                      </Button>
+                        busy={isBusy(`${rowKey}:delete`)}
+                        onConfirm={() => void deleteEvt(id)}
+                        title="Delete event and its occurrences"
+                      />
                     </div>
                   )}
                 </div>
-
-                {pendingDeleteId === id && (
-                  <div className="flex flex-col gap-2 border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-secondary)] sm:flex-row sm:items-center sm:justify-between">
-                    <span>
-                      Delete &ldquo;{ev.title || "Untitled"}&rdquo;? Permanently removes the
-                      event and its occurrences.
-                    </span>
-                    <div className="flex shrink-0 gap-2">
-                      <Button variant="danger" disabled={locked} onClick={() => void deleteEvt(id)}>
-                        {labelWithSpinner("Delete", `${rowKey}:delete`)}
-                      </Button>
-                      <Button onClick={() => setPendingDeleteId(null)}>Cancel</Button>
-                    </div>
-                  </div>
-                )}
 
                 {/* ── occurrences, always nested under their parent ── */}
                 {g.subevents.length > 0 && (
@@ -420,31 +408,14 @@ export function ReviewSection() {
                                   `${subRowKey}:publish`
                                 )}
                               </Button>
-                              <Button
-                                variant="danger"
+                              <ConfirmDeleteButton
                                 disabled={subLocked}
-                                onClick={() => setPendingDeleteSubId(sub.subevent_id)}
-                              >
-                                Delete
-                              </Button>
+                                busy={isBusy(`${subRowKey}:delete`)}
+                                onConfirm={() => void deleteSub(id, sub.subevent_id)}
+                                title="Delete occurrence"
+                              />
                             </div>
                           </div>
-
-                          {pendingDeleteSubId === sub.subevent_id && (
-                            <div className="flex flex-col gap-2 border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-secondary)] sm:flex-row sm:items-center sm:justify-between">
-                              <span>Delete this occurrence? Permanently removes the sub-event.</span>
-                              <div className="flex shrink-0 gap-2">
-                                <Button
-                                  variant="danger"
-                                  disabled={subLocked}
-                                  onClick={() => void deleteSub(id, sub.subevent_id)}
-                                >
-                                  {labelWithSpinner("Delete", `${subRowKey}:delete`)}
-                                </Button>
-                                <Button onClick={() => setPendingDeleteSubId(null)}>Cancel</Button>
-                              </div>
-                            </div>
-                          )}
                         </li>
                       );
                     })}

@@ -6,7 +6,6 @@ import { LocationsSection } from "@/components/admin/LocationsSection";
 import { LabelsSection } from "@/components/admin/LabelsSection";
 import { SettingsSection } from "@/components/admin/SettingsSection";
 import { NotificationsSection } from "@/components/admin/NotificationsSection";
-import { DeletedSection } from "@/components/admin/DeletedSection";
 
 type Tab =
   | "review"
@@ -14,7 +13,6 @@ type Tab =
   | "locations"
   | "labels"
   | "notifications"
-  | "deleted"
   | "settings";
 
 const TABS: { key: Tab; label: string }[] = [
@@ -23,7 +21,6 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "locations", label: "Locations" },
   { key: "labels", label: "Labels" },
   { key: "notifications", label: "Notifications" },
-  { key: "deleted", label: "Deleted" },
   { key: "settings", label: "Settings" },
 ];
 
@@ -130,7 +127,6 @@ export function AdminPage() {
         {tab === "locations" && <LocationsSection />}
         {tab === "labels" && <LabelsSection />}
         {tab === "notifications" && <NotificationsSection />}
-        {tab === "deleted" && <DeletedSection />}
         {tab === "settings" && <SettingsSection />}
       </main>
     </div>

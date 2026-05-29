@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useApi } from "@/api";
-import { Button, ErrorBanner, Spinner } from "@/components/ui";
+import { ConfirmDeleteButton } from "@/components/admin/ConfirmDeleteButton";
+import { DeletedList } from "@/components/admin/DeletedList";
+import { Button, ErrorBanner, Spinner, SubTabs } from "@/components/ui";
 import type { Label, LabelTaxonomy } from "@/types";
 
 const TAXONOMIES: { key: LabelTaxonomy; label: string }[] = [
@@ -10,13 +12,27 @@ const TAXONOMIES: { key: LabelTaxonomy; label: string }[] = [
   { key: "source", label: "Source labels" },
 ];
 
+const VIEW_TABS = [
+  { key: "active", label: "Active" },
+  { key: "deleted", label: "Deleted" },
+];
+
+// Soft-deleted label entity type for the active taxonomy.
+const DELETED_TYPE: Record<LabelTaxonomy, string> = {
+  event: "event_label",
+  location: "location_label",
+  source: "source_label",
+};
+
 export function LabelsSection() {
   const api = useApi();
   const [taxonomy, setTaxonomy] = useState<LabelTaxonomy>("event");
+  const [view, setView] = useState<"active" | "deleted">("active");
   const [labels, setLabels] = useState<Label[]>([]);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -48,11 +64,15 @@ export function LabelsSection() {
   };
 
   const remove = async (id: string) => {
+    setDeletingId(id);
+    setError(null);
     try {
       await api.deleteLabel(taxonomy, id);
-      await refresh();
+      setLabels((prev) => prev.filter((l) => l.label_id !== id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -74,6 +94,12 @@ export function LabelsSection() {
         ))}
       </div>
 
+      <SubTabs tabs={VIEW_TABS} value={view} onChange={(k) => setView(k as "active" | "deleted")} />
+
+      {view === "deleted" ? (
+        <DeletedList entityType={DELETED_TYPE[taxonomy]} />
+      ) : (
+        <>
       <form onSubmit={(e) => void create(e)} className="flex gap-3">
         <input
           value={name}
@@ -101,16 +127,16 @@ export function LabelsSection() {
               className="inline-flex items-center gap-2 rounded-none border border-[var(--color-border)] py-1 pl-3 pr-1.5 text-[11px] uppercase tracking-[0.12em] text-[var(--color-text-primary)]"
             >
               {l.name}
-              <button
-                onClick={() => void remove(l.label_id)}
-                className="rounded-none p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
-                title="Delete"
-              >
-                <Trash2 size={13} />
-              </button>
+              <ConfirmDeleteButton
+                compact
+                busy={deletingId === l.label_id}
+                onConfirm={() => void remove(l.label_id)}
+              />
             </li>
           ))}
         </ul>
+      )}
+        </>
       )}
     </div>
   );

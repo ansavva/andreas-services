@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { useApi } from "@/api";
-import { Button, ErrorBanner, Spinner } from "@/components/ui";
+import { ConfirmDeleteButton } from "@/components/admin/ConfirmDeleteButton";
+import { DeletedList } from "@/components/admin/DeletedList";
+import { Button, ErrorBanner, Spinner, SubTabs } from "@/components/ui";
 import type { Location } from "@/types";
+
+const VIEW_TABS = [
+  { key: "active", label: "Active" },
+  { key: "deleted", label: "Deleted" },
+];
 
 function CreateLocationForm({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const api = useApi();
@@ -51,8 +58,8 @@ export function LocationsSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [view, setView] = useState<"active" | "deleted">("active");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [pendingDelete, setPendingDelete] = useState<Location | null>(null);
   const [confirmMerge, setConfirmMerge] = useState(false);
   // Single in-flight action key (e.g. "<location_id>:delete" or "merge").
   const [actionBusy, setActionBusy] = useState<string | null>(null);
@@ -62,7 +69,6 @@ export function LocationsSection() {
     if (!silent) setLoading(true);
     if (!silent) setError(null);
     if (!silent) {
-      setPendingDelete(null);
       setConfirmMerge(false);
     }
     try {
@@ -105,18 +111,12 @@ export function LocationsSection() {
     }
   };
 
-  const confirmDelete = () => {
-    if (!pendingDelete) return Promise.resolve();
-    const lid = pendingDelete.location_id;
-    return runAction(
-      `${lid}:delete`,
-      () => api.deleteLocation(lid, true),
-      () => {
-        setPendingDelete(null);
-        setLocations((prev) => prev.filter((l) => l.location_id !== lid));
-      }
+  const deleteLoc = (loc: Location) =>
+    runAction(
+      `${loc.location_id}:delete`,
+      () => api.deleteLocation(loc.location_id, true),
+      () => setLocations((prev) => prev.filter((l) => l.location_id !== loc.location_id))
     );
-  };
 
   const mergeNames = locations
     .filter((l) => selected.has(l.location_id))
@@ -139,6 +139,12 @@ export function LocationsSection() {
 
   return (
     <div className="flex flex-col gap-4">
+      <SubTabs tabs={VIEW_TABS} value={view} onChange={(k) => setView(k as "active" | "deleted")} />
+
+      {view === "deleted" ? (
+        <DeletedList entityType="location" />
+      ) : (
+        <>
       <div className="flex items-center justify-between">
         <p className="text-sm text-[var(--color-text-muted)]">
           {selected.size >= 2
@@ -208,36 +214,18 @@ export function LocationsSection() {
                     </span>
                   </span>
                 </label>
-                <Button
-                  variant="danger"
+                <ConfirmDeleteButton
                   disabled={isBusy(`${loc.location_id}:delete`)}
-                  onClick={() => setPendingDelete(loc)}
-                >
-                  <Trash2 size={14} />
-                </Button>
+                  busy={isBusy(`${loc.location_id}:delete`)}
+                  onConfirm={() => void deleteLoc(loc)}
+                  title="Delete location (associated events cascade)"
+                />
               </div>
-
-              {pendingDelete?.location_id === loc.location_id && (
-                <div className="flex flex-col gap-2 border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-secondary)] sm:flex-row sm:items-center sm:justify-between">
-                  <span>Delete &ldquo;{loc.name}&rdquo;? Associated events cascade.</span>
-                  <div className="flex shrink-0 gap-2">
-                    <Button
-                      variant="danger"
-                      disabled={isBusy(`${loc.location_id}:delete`)}
-                      onClick={() => void confirmDelete()}
-                    >
-                      {isBusy(`${loc.location_id}:delete`) && (
-                        <Loader2 size={14} className="animate-spin" />
-                      )}
-                      Delete
-                    </Button>
-                    <Button onClick={() => setPendingDelete(null)}>Cancel</Button>
-                  </div>
-                </div>
-              )}
             </li>
           ))}
         </ul>
+      )}
+        </>
       )}
     </div>
   );
