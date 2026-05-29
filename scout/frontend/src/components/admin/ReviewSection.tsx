@@ -264,17 +264,7 @@ export function ReviewSection() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-end justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <SubTabs tabs={REVIEW_TABS} value={review} onChange={setReview} />
-        </div>
-        <Link
-          to="/admin/review-queue"
-          className="eyebrow shrink-0 whitespace-nowrap pb-3 text-[var(--color-text-secondary)] no-underline hover:text-[var(--color-text-primary)] hover:underline"
-        >
-          Swipe review →
-        </Link>
-      </div>
+      <SubTabs tabs={REVIEW_TABS} value={review} onChange={setReview} />
       {review === "pending" && selected.size > 0 && (
         <div className="flex gap-2">
           <Button

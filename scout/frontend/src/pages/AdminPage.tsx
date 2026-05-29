@@ -90,6 +90,12 @@ export function AdminPage() {
                 {label}
               </button>
             ))}
+            <Link
+              to="/admin/review-queue"
+              className="shrink-0 whitespace-nowrap border-b-2 border-transparent px-1 py-3 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--color-text-muted)] no-underline transition-colors hover:text-[var(--color-text-primary)]"
+            >
+              Swipe review
+            </Link>
           </div>
         </nav>
 
