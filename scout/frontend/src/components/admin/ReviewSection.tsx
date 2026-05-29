@@ -312,9 +312,6 @@ export function ReviewSection() {
 
                   {!contextOnly && (
                     <div className="flex flex-wrap gap-1.5">
-                      <Link to={`/admin/events/${encodeURIComponent(id)}/preview`}>
-                        <Button>Preview</Button>
-                      </Link>
                       {ev.review_status !== "approved" && (
                         <Button
                           disabled={locked}
