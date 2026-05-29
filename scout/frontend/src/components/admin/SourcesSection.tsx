@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Inbox, Loader2, Play, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, Inbox, Loader2, Play, Plus } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useApi } from "@/api";
+import { ConfirmDeleteButton } from "@/components/admin/ConfirmDeleteButton";
+import { DeletedList } from "@/components/admin/DeletedList";
 import { Badge, Button, ErrorBanner, Spinner, SubTabs } from "@/components/ui";
 import { formatDateTime } from "@/utils/formatters";
 import type { ArtifactDescriptor, Source, SourceRun, SourceType } from "@/types";
@@ -9,6 +11,7 @@ import type { ArtifactDescriptor, Source, SourceRun, SourceType } from "@/types"
 const SOURCE_TABS = [
   { key: "active", label: "Active" },
   { key: "archived", label: "Archived" },
+  { key: "deleted", label: "Deleted" },
 ];
 const POLL_MS = 3000;
 // Stop waiting on a triggered run that never reports back (processor max ~5 min).
@@ -287,13 +290,16 @@ function RunsPanel({ sourceId }: { sourceId: string }) {
 export function SourcesSection() {
   const api = useApi();
   const [searchParams, setSearchParams] = useSearchParams();
-  const archived = searchParams.get("archived") === "true";
-  const setArchived = (val: boolean) =>
+  const viewParam = searchParams.get("view");
+  const view: "active" | "archived" | "deleted" =
+    viewParam === "archived" || viewParam === "deleted" ? viewParam : "active";
+  const archived = view === "archived";
+  const setView = (v: string) =>
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
-        if (val) next.set("archived", "true");
-        else next.delete("archived");
+        if (v === "active") next.delete("view");
+        else next.set("view", v);
         return next;
       },
       { replace: true }
@@ -312,9 +318,11 @@ export function SourcesSection() {
   // endpoint, plus optimistic ids for sources we just clicked Run on.
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState<Record<string, { since: string; at: number }>>({});
-  const [pendingDelete, setPendingDelete] = useState<
-    { source: Source; events: number; subevents: number; runs: number } | null
-  >(null);
+  // Cascade counts fetched when a row's delete is armed, keyed by source id, so
+  // the confirm step can warn how much the delete will take down.
+  const [deletePreview, setDeletePreview] = useState<
+    Record<string, { events: number; subevents: number; runs: number }>
+  >({});
   // Single in-flight action key (`<source_id>:<action>`) for the per-button
   // spinner and to disable the rest of that row while it's running.
   const [actionBusy, setActionBusy] = useState<string | null>(null);
@@ -322,6 +330,11 @@ export function SourcesSection() {
   const rowLocked = (sid: string) => actionBusy?.startsWith(`${sid}:`) ?? false;
 
   const reload = useCallback(async (silent = false) => {
+    // The Deleted view is rendered by <DeletedList>, which loads itself.
+    if (view === "deleted") {
+      if (!silent) setLoading(false);
+      return;
+    }
     if (!silent) setLoading(true);
     if (!silent) setError(null);
     try {
@@ -350,7 +363,7 @@ export function SourcesSection() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [api, archived]);
+  }, [api, archived, view]);
 
   useEffect(() => {
     void reload();
@@ -467,26 +480,27 @@ export function SourcesSection() {
     }
   };
 
-  const startDelete = async (s: Source) => {
+  // Fetch the cascade counts when delete is armed so the confirm step can warn.
+  const primeDelete = async (s: Source) => {
+    if (deletePreview[s.source_id]) return;
     try {
       const preview = await api.deleteSourcePreview(s.source_id);
-      setPendingDelete({ source: s, ...preview });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      setDeletePreview((prev) => ({ ...prev, [s.source_id]: preview }));
+    } catch {
+      /* non-fatal — the confirm just won't show counts */
     }
   };
 
-  const confirmDelete = () => {
-    if (!pendingDelete) return Promise.resolve();
-    const sid = pendingDelete.source.source_id;
-    return runAction(
-      `${sid}:delete`,
-      () => api.deleteSource(sid, true),
-      () => {
-        setPendingDelete(null);
-        setSources((prev) => prev.filter((s) => s.source_id !== sid));
-      }
+  const deleteSrc = (s: Source) =>
+    runAction(
+      `${s.source_id}:delete`,
+      () => api.deleteSource(s.source_id, true),
+      () => setSources((prev) => prev.filter((x) => x.source_id !== s.source_id))
     );
+
+  const confirmDeleteLabel = (s: Source) => {
+    const p = deletePreview[s.source_id];
+    return p ? `Delete ${p.events} event(s)?` : "Confirm?";
   };
 
   const archive = (s: Source) =>
@@ -503,21 +517,19 @@ export function SourcesSection() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <SubTabs
-          tabs={SOURCE_TABS}
-          value={archived ? "archived" : "active"}
-          onChange={(k) => setArchived(k === "archived")}
-        />
-        <div className="flex gap-2">
-          <Button onClick={() => void scanInbox()} disabled={scanning} title="Scan the Gmail Events label for new email sources">
-            {scanning ? <Loader2 size={15} className="animate-spin" /> : <Inbox size={15} />}
-            Scan inbox
-          </Button>
-          <Button variant="primary" onClick={() => setCreating((c) => !c)}>
-            <Plus size={15} />
-            New source
-          </Button>
-        </div>
+        <SubTabs tabs={SOURCE_TABS} value={view} onChange={setView} />
+        {view !== "deleted" && (
+          <div className="flex gap-2">
+            <Button onClick={() => void scanInbox()} disabled={scanning} title="Scan the Gmail Events label for new email sources">
+              {scanning ? <Loader2 size={15} className="animate-spin" /> : <Inbox size={15} />}
+              Scan inbox
+            </Button>
+            <Button variant="primary" onClick={() => setCreating((c) => !c)}>
+              <Plus size={15} />
+              New source
+            </Button>
+          </div>
+        )}
       </div>
 
       {error && <ErrorBanner message={error} />}
@@ -534,6 +546,10 @@ export function SourcesSection() {
         </div>
       )}
 
+      {view === "deleted" ? (
+        <DeletedList entityType="source" />
+      ) : (
+        <>
       {creating && (
         <CreateSourceForm onClose={() => setCreating(false)} onCreated={() => void reload()} />
       )}
@@ -554,25 +570,34 @@ export function SourcesSection() {
                 className="flex flex-col gap-3 border-b border-[var(--color-border)] py-4"
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <div className="font-serif text-base text-[var(--color-text-primary)]">{s.name}</div>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-muted)]">
-                      <span>{s.type}</span>
-                      <span className="truncate">{s.identity}</span>
-                      <Badge value={s.status} />
-                      {s.last_run_status && <Badge value={s.last_run_status} />}
-                      {s.follow_links && <span>follows links</span>}
+                  <button
+                    type="button"
+                    onClick={() => setOpenRuns((o) => (o === s.source_id ? null : s.source_id))}
+                    aria-expanded={openRuns === s.source_id}
+                    title="Show run history"
+                    className="flex min-w-0 items-start gap-2 text-left"
+                  >
+                    <ChevronRight
+                      size={16}
+                      className={`mt-1 shrink-0 text-[var(--color-text-muted)] transition-transform ${
+                        openRuns === s.source_id ? "rotate-90" : ""
+                      }`}
+                    />
+                    <div className="min-w-0">
+                      <div className="font-serif text-base text-[var(--color-text-primary)]">{s.name}</div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-muted)]">
+                        <span>{s.type}</span>
+                        <span className="truncate">{s.identity}</span>
+                        <Badge value={s.status} />
+                        {s.last_run_status && <Badge value={s.last_run_status} />}
+                        {s.follow_links && <span>follows links</span>}
+                      </div>
                     </div>
-                  </div>
+                  </button>
                   <div className="flex flex-wrap gap-1.5">
                     <Button onClick={() => void run(s)} disabled={running} title="Run now">
                       {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
                       {running ? "Running" : "Run"}
-                    </Button>
-                    <Button
-                      onClick={() => setOpenRuns((o) => (o === s.source_id ? null : s.source_id))}
-                    >
-                      {openRuns === s.source_id ? "Hide runs" : "Runs"}
                     </Button>
                     <Button
                       disabled={rowLocked(s.source_id)}
@@ -583,40 +608,18 @@ export function SourcesSection() {
                       )}
                       {s.archived ? "Unarchive" : "Archive"}
                     </Button>
-                    <Button
-                      variant="danger"
+                    <ConfirmDeleteButton
                       disabled={rowLocked(s.source_id)}
-                      onClick={() => void startDelete(s)}
-                      title="Delete"
-                    >
-                      <Trash2 size={14} />
-                    </Button>
+                      busy={isBusy(`${s.source_id}:delete`)}
+                      onArm={() => void primeDelete(s)}
+                      confirmLabel={confirmDeleteLabel(s)}
+                      onConfirm={() => void deleteSrc(s)}
+                      title="Delete source (events cascade)"
+                    />
                   </div>
                 </div>
 
                 {openRuns === s.source_id && <RunsPanel sourceId={s.source_id} />}
-
-                {pendingDelete?.source.source_id === s.source_id && (
-                  <div className="flex flex-col gap-2 border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-secondary)] sm:flex-row sm:items-center sm:justify-between">
-                    <span>
-                      Delete &ldquo;{s.name}&rdquo;? Cascades {pendingDelete.events} event(s),{" "}
-                      {pendingDelete.subevents} sub-event(s) and soft-deletes {pendingDelete.runs} run(s).
-                    </span>
-                    <div className="flex shrink-0 gap-2">
-                      <Button
-                        variant="danger"
-                        disabled={isBusy(`${s.source_id}:delete`)}
-                        onClick={() => void confirmDelete()}
-                      >
-                        {isBusy(`${s.source_id}:delete`) && (
-                          <Loader2 size={14} className="animate-spin" />
-                        )}
-                        Delete
-                      </Button>
-                      <Button onClick={() => setPendingDelete(null)}>Cancel</Button>
-                    </div>
-                  </div>
-                )}
               </li>
             );
           })}
@@ -627,6 +630,8 @@ export function SourcesSection() {
         <Button onClick={() => void loadMore()} disabled={loadingMore}>
           {loadingMore ? "Loading…" : "Load more"}
         </Button>
+      )}
+        </>
       )}
     </div>
   );

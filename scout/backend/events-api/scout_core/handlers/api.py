@@ -141,6 +141,14 @@ def _body(event):
         return {}
 
 
+def _actor(event):
+    """Reviewer identity from the API Gateway Cognito authorizer claims, or None
+    (e.g. in PR previews where the authorizer is disabled)."""
+    claims = (((event.get("requestContext") or {}).get("authorizer") or {})
+              .get("claims") or {})
+    return claims.get("email") or claims.get("cognito:username")
+
+
 def _csv(query, key):
     value = (query or {}).get(key)
     return [v for v in value.split(",") if v] if value else None
@@ -333,6 +341,17 @@ def _admin_events(method, rest, query, body):
         return ok(result) if result else not_found("Event not found")
     if action == ["review"] and method == "POST":
         return ok(events.set_review(event_id, body["status"]))
+    if action == ["decide"] and method == "POST":
+        result = events.review_with_feedback(
+            event_id, body["decision"],
+            feedback=(body.get("feedback") or "").strip() or None,
+            author=body.get("_actor"))
+        return ok(result) if result else not_found("Event not found")
+    if action == ["feedback"] and method == "POST":
+        result = events.add_review_feedback(
+            event_id, decision=body.get("decision", ""),
+            text=body["text"], author=body.get("_actor"))
+        return ok(result) if result else not_found("Event not found")
     if action == ["publish"] and method == "POST":
         return ok(events.set_publish(event_id, body.get("published", True)))
     if action == ["cancel"] and method == "POST":
@@ -466,7 +485,11 @@ def route_request(event):
         if parts and parts[0] == "public":
             response = _route_public(method, parts, query)
         elif parts and parts[0] == "admin":
-            response = _route_admin(method, parts, query, _body(event))
+            body = _body(event)
+            # Stamp the reviewer's identity (from the Cognito authorizer claims)
+            # so review feedback can be attributed without trusting the client.
+            body.setdefault("_actor", _actor(event))
+            response = _route_admin(method, parts, query, body)
         else:
             response = None
     except KeyError as exc:

@@ -1,4 +1,4 @@
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { ReviewSection } from "@/components/admin/ReviewSection";
 import { SourcesSection } from "@/components/admin/SourcesSection";
@@ -6,7 +6,6 @@ import { LocationsSection } from "@/components/admin/LocationsSection";
 import { LabelsSection } from "@/components/admin/LabelsSection";
 import { SettingsSection } from "@/components/admin/SettingsSection";
 import { NotificationsSection } from "@/components/admin/NotificationsSection";
-import { DeletedSection } from "@/components/admin/DeletedSection";
 
 type Tab =
   | "review"
@@ -14,7 +13,6 @@ type Tab =
   | "locations"
   | "labels"
   | "notifications"
-  | "deleted"
   | "settings";
 
 const TABS: { key: Tab; label: string }[] = [
@@ -23,12 +21,16 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "locations", label: "Locations" },
   { key: "labels", label: "Labels" },
   { key: "notifications", label: "Notifications" },
-  { key: "deleted", label: "Deleted" },
   { key: "settings", label: "Settings" },
 ];
 
+// Sentinel value for the mobile dropdown: not a tab, navigates to the
+// full-screen swipe-review page instead of switching the active section.
+const SWIPE_REVIEW = "__swipe_review";
+
 export function AdminPage() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
   const tab: Tab = TABS.some((t) => t.key === tabParam) ? (tabParam as Tab) : "review";
@@ -76,7 +78,28 @@ export function AdminPage() {
 
       <main className="mx-auto max-w-5xl px-5 py-8 sm:px-6">
         <nav className="mb-8 border-b border-[var(--color-rule)]">
-          <div className="no-scrollbar -mb-px flex gap-6 overflow-x-auto">
+          {/* Mobile: a single dropdown instead of a horizontally-scrolling tab
+              strip (which clashed with the per-section sub-tabs). */}
+          <div className="pb-3 sm:hidden">
+            <select
+              value={tab}
+              onChange={(e) => {
+                if (e.target.value === SWIPE_REVIEW) navigate("/admin/review-queue");
+                else setTab(e.target.value as Tab);
+              }}
+              className="w-full rounded-none border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm uppercase tracking-[0.1em] text-[var(--color-text-primary)] focus:border-[var(--color-text-primary)] focus:outline-none"
+            >
+              {TABS.map(({ key, label }) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+              <option value={SWIPE_REVIEW}>Swipe review →</option>
+            </select>
+          </div>
+
+          {/* Desktop: the full horizontal tab row. */}
+          <div className="no-scrollbar -mb-px hidden gap-6 overflow-x-auto sm:flex">
             {TABS.map(({ key, label }) => (
               <button
                 key={key}
@@ -90,6 +113,12 @@ export function AdminPage() {
                 {label}
               </button>
             ))}
+            <Link
+              to="/admin/review-queue"
+              className="shrink-0 whitespace-nowrap border-b-2 border-transparent px-1 py-3 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--color-text-muted)] no-underline transition-colors hover:text-[var(--color-text-primary)]"
+            >
+              Swipe review
+            </Link>
           </div>
         </nav>
 
@@ -98,7 +127,6 @@ export function AdminPage() {
         {tab === "locations" && <LocationsSection />}
         {tab === "labels" && <LabelsSection />}
         {tab === "notifications" && <NotificationsSection />}
-        {tab === "deleted" && <DeletedSection />}
         {tab === "settings" && <SettingsSection />}
       </main>
     </div>
