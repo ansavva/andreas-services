@@ -21,7 +21,8 @@ module "data" {
 module "artifacts_storage" {
   source = "../../modules/storage"
 
-  bucket_name = "scout-artifacts-pr-${var.pr_number}"
+  bucket_name   = "scout-artifacts-pr-${var.pr_number}"
+  force_destroy = true
 
   tags = local.common_tags
 }
@@ -29,7 +30,8 @@ module "artifacts_storage" {
 module "images_storage" {
   source = "../../modules/storage"
 
-  bucket_name = "scout-images-pr-${var.pr_number}"
+  bucket_name   = "scout-images-pr-${var.pr_number}"
+  force_destroy = true
 
   tags = local.common_tags
 }
