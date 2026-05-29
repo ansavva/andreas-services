@@ -41,7 +41,6 @@ export function ReviewSection() {
 
   const [groups, setGroups] = useState<ReviewGroup[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +57,6 @@ export function ReviewSection() {
       const data = await api.listEvents(review);
       setGroups(data.groups);
       setCursor(data.next_cursor);
-      setSelected(new Set());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
@@ -219,42 +217,6 @@ export function ReviewSection() {
       }
     );
 
-  // ─── bulk review (actionable pending parents only) ───────────────────────
-  const bulkReview = (status: string) => {
-    const ids = [...selected];
-    return runAction(
-      `bulk:${status}`,
-      () => api.bulkReview(ids, status),
-      () => {
-        setGroups((prev) =>
-          prev
-            .map((g) =>
-              ids.includes(g.event.event_id)
-                ? {
-                    ...g,
-                    event: { ...g.event, review_status: status },
-                    parent_matches: status === review,
-                  }
-                : g
-            )
-            .filter(groupVisible)
-        );
-        setSelected(new Set());
-      }
-    );
-  };
-
-  // Parents the admin can bulk-act on: own status matches the pending tab.
-  const selectableIds = groups
-    .filter((g) => g.parent_matches && review === "pending")
-    .map((g) => g.event.event_id);
-  const toggleSelect = (id: string) =>
-    setSelected((s) => {
-      const next = new Set(s);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-
   const labelWithSpinner = (label: string, key: string) => (
     <>
       {isBusy(key) && <Loader2 size={14} className="animate-spin" />}
@@ -265,24 +227,6 @@ export function ReviewSection() {
   return (
     <div className="flex flex-col gap-4">
       <SubTabs tabs={REVIEW_TABS} value={review} onChange={setReview} />
-      {review === "pending" && selected.size > 0 && (
-        <div className="flex gap-2">
-          <Button
-            variant="primary"
-            disabled={busy !== null}
-            onClick={() => void bulkReview("approved")}
-          >
-            {labelWithSpinner(`Approve ${selected.size}`, "bulk:approved")}
-          </Button>
-          <Button
-            variant="danger"
-            disabled={busy !== null}
-            onClick={() => void bulkReview("rejected")}
-          >
-            {labelWithSpinner(`Reject ${selected.size}`, "bulk:rejected")}
-          </Button>
-        </div>
-      )}
 
       {error && <ErrorBanner message={error} />}
 
@@ -316,17 +260,14 @@ export function ReviewSection() {
                   }`}
                 >
                   <div className="flex min-w-0 items-start gap-3">
-                    {!contextOnly && review === "pending" && (
-                      <input
-                        type="checkbox"
-                        checked={selected.has(id)}
-                        onChange={() => toggleSelect(id)}
-                        className="mt-1.5 h-4 w-4 shrink-0 accent-[var(--color-primary)]"
-                      />
-                    )}
                     <div className="min-w-0">
                       <div className="font-serif text-base text-[var(--color-text-primary)]">
-                        {ev.title || "Untitled"}
+                        <Link
+                          to={`/admin/events/${encodeURIComponent(id)}/preview`}
+                          className="text-[var(--color-text-primary)] no-underline hover:underline"
+                        >
+                          {ev.title || "Untitled"}
+                        </Link>
                         {ev.edited && (
                           <span className="ml-2 text-[11px] text-[var(--color-text-muted)]">
                             edited
@@ -522,15 +463,6 @@ export function ReviewSection() {
         <Button onClick={() => void loadMore()} disabled={loadingMore}>
           {loadingMore ? "Loading…" : "Load more"}
         </Button>
-      )}
-
-      {selectableIds.length > 0 && review === "pending" && (
-        <button
-          onClick={() => setSelected(new Set(selectableIds))}
-          className="eyebrow self-start text-[var(--color-text-secondary)] underline-offset-4 hover:text-[var(--color-text-primary)] hover:underline"
-        >
-          Select all events
-        </button>
       )}
     </div>
   );
