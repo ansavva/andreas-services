@@ -325,10 +325,8 @@ def _admin_events(method, rest, query, body):
     event_id = rest[0]
     action = rest[1:]
     if action == [] and method == "GET":
-        ev = events.get_event(event_id)
-        if not ev:
-            return not_found("Event not found")
-        return ok({"event": ev, "subevents": events.list_subevents(event_id)})
+        detail = events.admin_detail(event_id)
+        return ok(detail) if detail else not_found("Event not found")
     if action == ["preview"] and method == "GET":
         detail = public.preview_detail(event_id)
         return ok(detail) if detail else not_found("Event not found")
@@ -375,6 +373,9 @@ def _admin_subevents(method, event_id, action, body):
             start_time=body.get("start_time"), end_time=body.get("end_time"),
             location_id_override=body.get("location_id_override"),
             event_label_ids=body.get("event_label_ids")))
+    if len(action) == 2 and action[0] == "subevents" and method == "PUT":
+        result = events.update_subevent(event_id, action[1], body)
+        return ok(result) if result else not_found("Sub-event not found")
     if len(action) == 2 and action[0] == "subevents" and method == "DELETE":
         result = deletion.delete_subevent(event_id, action[1])
         return ok(result) if result else not_found("Sub-event not found")
