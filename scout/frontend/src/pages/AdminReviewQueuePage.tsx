@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Check, Loader2, RotateCcw, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useApi } from "@/api";
-import { SwipeCard, type Decision } from "@/components/admin/SwipeCard";
+import { EventDetailView } from "@/components/EventDetailView";
 import { ErrorBanner, Spinner } from "@/components/ui";
 import type { PublicEvent, ReviewGroup } from "@/types";
+
+type Decision = "approved" | "rejected";
 
 // Prefetch the next card's preview this far ahead, and pull another page when
 // the deck runs this low.
@@ -11,11 +14,12 @@ const PREFETCH_AHEAD = 1;
 const LOAD_MORE_AT = 3;
 
 /**
- * Full-screen swipe review of the pending queue. Each card previews an event
- * exactly as the public detail page renders it; swiping right approves +
- * publishes the event and all its occurrences, left rejects + unpublishes them.
- * A back control re-visits the previous card so a reviewer can change their mind
- * (re-deciding overwrites). The deck only carries genuinely-pending parents.
+ * Full-screen review of the pending queue. Each event is shown exactly as its
+ * public detail page renders it (shared EventDetailView) — the reviewer is
+ * looking at the real preview, not a summary. Approve publishes the event and
+ * all its occurrences; reject unpublishes them. A back control re-visits the
+ * previous event so a reviewer can change their mind (re-deciding overwrites).
+ * Gated behind ProtectedRoute. The deck only carries genuinely-pending parents.
  */
 export function AdminReviewQueuePage() {
   const api = useApi();
@@ -32,8 +36,8 @@ export function AdminReviewQueuePage() {
   const [error, setError] = useState<string | null>(null);
 
   // The pending tab surfaces some parents only for context (already approved,
-  // with a pending occurrence). The swipe deck is an inbox of decisions to make,
-  // so we keep only parents whose own status is pending.
+  // with a pending occurrence). The review deck is an inbox of decisions to
+  // make, so we keep only parents whose own status is pending.
   const actionable = (groups: ReviewGroup[]) => groups.filter((g) => g.parent_matches);
 
   const refresh = useCallback(async () => {
@@ -79,7 +83,7 @@ export function AdminReviewQueuePage() {
     if (cursor && deck.length - index <= LOAD_MORE_AT) void loadMore();
   }, [cursor, deck.length, index, loadMore]);
 
-  // Fetch the current card's preview (and one ahead) on demand, once each.
+  // Fetch the current event's preview (and one ahead) on demand, once each.
   const pending = useRef(new Set<string>());
   useEffect(() => {
     for (let i = index; i <= index + PREFETCH_AHEAD && i < deck.length; i++) {
@@ -100,9 +104,10 @@ export function AdminReviewQueuePage() {
   }, [index, deck, previews, previewErrors, api]);
 
   const current = deck[index];
+  const currentId = current?.event.event_id;
 
   const decide = async (decision: Decision) => {
-    if (!current) return;
+    if (!current || busy) return;
     const id = current.event.event_id;
     setBusy(true);
     setError(null);
@@ -118,16 +123,17 @@ export function AdminReviewQueuePage() {
   };
 
   const goBack = () => {
-    if (index > 0) setIndex((i) => i - 1);
+    if (index > 0 && !busy) setIndex((i) => i - 1);
   };
 
   const total = deck.length;
   const done = !loading && current === undefined;
+  const priorDecision = currentId ? decisions[currentId] : undefined;
 
   return (
     <div className="min-h-screen bg-[var(--color-background)]">
-      <header className="sticky top-0 z-10 border-b border-[var(--color-rule)] bg-[var(--color-surface)]">
-        <div className="mx-auto flex max-w-2xl items-center justify-between gap-4 px-5 py-4 sm:px-6">
+      <header className="border-b border-[var(--color-rule)] bg-[var(--color-surface)]">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-5 py-4 sm:px-6">
           <Link
             to="/admin?tab=review"
             className="eyebrow text-[var(--color-text-secondary)] no-underline hover:text-[var(--color-text-primary)] hover:underline"
@@ -135,14 +141,16 @@ export function AdminReviewQueuePage() {
             ← Review queue
           </Link>
           <span className="eyebrow text-[var(--color-text-muted)]">
-            {total === 0 ? "Swipe review" : `${Math.min(index + 1, total)} of ${total}${cursor ? "+" : ""}`}
+            {total === 0
+              ? "Review"
+              : `${Math.min(index + 1, total)} of ${total}${cursor ? "+" : ""}`}
           </span>
         </div>
       </header>
 
-      <main className="mx-auto max-w-2xl px-5 py-8 sm:px-6">
+      <main className="mx-auto max-w-3xl px-5 py-8 sm:px-6 sm:py-12">
         {error && (
-          <div className="mb-5">
+          <div className="mb-6">
             <ErrorBanner message={error} />
           </div>
         )}
@@ -168,21 +176,70 @@ export function AdminReviewQueuePage() {
           </div>
         ) : (
           current && (
-            <SwipeCard
-              key={current.event.event_id}
-              group={current}
-              preview={previews[current.event.event_id] ?? null}
-              previewError={previewErrors[current.event.event_id] ?? null}
-              priorDecision={decisions[current.event.event_id]}
-              feedback={feedbacks[current.event.event_id] ?? ""}
-              onFeedbackChange={(value) =>
-                setFeedbacks((prev) => ({ ...prev, [current.event.event_id]: value }))
-              }
-              onDecide={(d) => void decide(d)}
-              onBack={goBack}
-              canGoBack={index > 0}
-              busy={busy}
-            />
+            <>
+              {priorDecision && (
+                <p className="mb-6 border-l-2 border-[var(--color-rule)] bg-[var(--color-surface-hover)] px-4 py-2 text-xs text-[var(--color-text-secondary)]">
+                  You {priorDecision} this — re-decide below to change it.
+                </p>
+              )}
+              {previewErrors[current.event.event_id] ? (
+                <p className="py-16 text-center text-sm text-[var(--color-text-muted)]">
+                  Could not load preview: {previewErrors[current.event.event_id]}
+                </p>
+              ) : previews[current.event.event_id] ? (
+                <EventDetailView event={previews[current.event.event_id]} />
+              ) : (
+                <div className="flex justify-center py-24">
+                  <Spinner />
+                </div>
+              )}
+
+              {/* Action bar — the last block on the page, reached by scrolling
+                  the whole preview as on the public detail page. */}
+              <div className="mt-12 flex flex-col gap-4 border-t border-[var(--color-rule)] pt-8">
+                <input
+                  type="text"
+                  value={feedbacks[current.event.event_id] ?? ""}
+                  onChange={(e) =>
+                    setFeedbacks((prev) => ({
+                      ...prev,
+                      [current.event.event_id]: e.target.value,
+                    }))
+                  }
+                  placeholder="Optional feedback (saved with your decision)…"
+                  className="w-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-text-primary)] focus:outline-none"
+                />
+                <div className="flex items-center justify-center gap-5">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void decide("rejected")}
+                    title="Reject (unpublishes the event and all occurrences)"
+                    className="flex h-14 w-14 items-center justify-center rounded-full border border-[var(--color-text-primary)] text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-text-primary)] hover:text-white disabled:opacity-40"
+                  >
+                    {busy ? <Loader2 size={22} className="animate-spin" /> : <X size={24} />}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={index === 0 || busy}
+                    onClick={goBack}
+                    title="Back to previous event"
+                    className="flex h-12 w-12 items-center justify-center rounded-full border border-[var(--color-border)] text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-text-primary)] hover:text-[var(--color-text-primary)] disabled:opacity-40"
+                  >
+                    <RotateCcw size={20} />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void decide("approved")}
+                    title="Approve & publish (the event and all occurrences)"
+                    className="flex h-14 w-14 items-center justify-center rounded-full border border-[var(--color-primary)] bg-[var(--color-primary)] text-white transition-colors hover:bg-[var(--color-primary-hover)] disabled:opacity-40"
+                  >
+                    {busy ? <Loader2 size={22} className="animate-spin" /> : <Check size={24} />}
+                  </button>
+                </div>
+              </div>
+            </>
           )
         )}
       </main>
