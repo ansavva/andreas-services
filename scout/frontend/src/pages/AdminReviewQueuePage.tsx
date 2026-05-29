@@ -197,8 +197,7 @@ export function AdminReviewQueuePage() {
               {/* Action bar — the last block on the page, reached by scrolling
                   the whole preview as on the public detail page. */}
               <div className="mt-12 flex flex-col gap-4 border-t border-[var(--color-rule)] pt-8">
-                <input
-                  type="text"
+                <textarea
                   value={feedbacks[current.event.event_id] ?? ""}
                   onChange={(e) =>
                     setFeedbacks((prev) => ({
@@ -206,10 +205,11 @@ export function AdminReviewQueuePage() {
                       [current.event.event_id]: e.target.value,
                     }))
                   }
-                  placeholder="Optional feedback (saved with your decision)…"
+                  placeholder="Was this Chic Goose?"
+                  rows={4}
                   /* text-base (16px) on mobile stops iOS Safari auto-zooming on
                      focus; sm:text-sm restores the UI's small size on larger screens. */
-                  className="w-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-base text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-text-primary)] focus:outline-none sm:text-sm"
+                  className="w-full resize-y border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-base text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-text-primary)] focus:outline-none sm:text-sm"
                 />
                 <div className="flex items-center justify-center gap-5">
                   <button
