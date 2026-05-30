@@ -33,6 +33,9 @@ export interface PublicEvent {
   event_id: string;
   title: string;
   description: string;
+  // Link to the event's own source page (organizer / ticketing / event page),
+  // when one was captured during extraction.
+  event_url?: string | null;
   start_date: string;
   start_time?: string | null;
   end_time?: string | null;

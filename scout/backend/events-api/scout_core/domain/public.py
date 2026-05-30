@@ -166,6 +166,7 @@ def _serialize_event(event, visible_subs, *, approved_only=True):
         "event_id": event["event_id"],
         "title": event.get("title", ""),
         "description": event.get("description_md", ""),
+        "event_url": event.get("event_url") or None,
         "start_date": event.get("start_date", ""),
         "start_time": event.get("start_time"),
         "end_time": event.get("end_time"),

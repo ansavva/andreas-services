@@ -341,6 +341,7 @@ def _normalize_event(raw):
         "location": _normalize_location(raw.get("location")),
         "event_labels": [s for s in (raw.get("event_labels") or []) if s],
         "images": [s for s in (raw.get("images") or []) if s],
+        "event_url": raw.get("event_url") or None,
         "sub_events": [],
     }
     for sub in raw.get("sub_events") or []:

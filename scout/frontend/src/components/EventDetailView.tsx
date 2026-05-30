@@ -284,6 +284,19 @@ export function EventDetailView({
         )
       )}
 
+      {!edit && event.event_url && (
+        <p className="mt-8">
+          <a
+            href={event.event_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="eyebrow text-[var(--color-text-primary)] underline underline-offset-4 hover:text-[var(--color-text-secondary)]"
+          >
+            More info &amp; tickets ↗
+          </a>
+        </p>
+      )}
+
       {event.sub_events.length > 0 ? (
         <section className="mt-12">
           <h2 className="eyebrow text-[var(--color-text-muted)]">Dates</h2>

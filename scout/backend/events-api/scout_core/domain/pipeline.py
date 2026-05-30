@@ -237,7 +237,11 @@ def run_extraction(source, pages, *, triage, enrich, fetch_fn,
     # Pass 2: fetch each candidate's detail page + enrich; fall back otherwise.
     events = []
     for candidate, page in candidates:
-        page_text = _fetch(candidate.get("detail_url"))
+        # The event's own detail URL (organizer / ticketing / event page) is
+        # carried onto every event we keep so the public detail view can link
+        # back to the original source.
+        detail_url = candidate.get("detail_url")
+        page_text = _fetch(detail_url)
         if page_text:
             result = enrich(candidate, page_text, source_ref=page.get("url"),
                             date=page.get("date"))
@@ -247,11 +251,14 @@ def run_extraction(source, pages, *, triage, enrich, fetch_fn,
                     extractor_mod.STATUS_BUDGET_EXCEEDED, transcript=transcript,
                     usage=usage, error=result.error)
             if result.status == extractor_mod.STATUS_COMPLETED and result.events:
+                for event in result.events:
+                    event["event_url"] = detail_url
                 events.extend(result.events)
                 continue
             # Enrich failed/empty — fall back to the triage event below.
         fallback = candidate.get("fallback_event")
         if fallback:
+            fallback["event_url"] = detail_url
             events.append(fallback)
 
     return extractor_mod.ExtractionResult(

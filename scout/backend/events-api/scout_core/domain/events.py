@@ -101,6 +101,7 @@ def _sync_event_labels(target_type, target_id, desired_ids):
 
 def create_event(source_id, *, title, start_date, description="", start_time=None,
                  end_time=None, location_id=None, event_label_ids=None,
+                 event_url=None,
                  review_status=REVIEW_PENDING, publish_status=UNPUBLISHED,
                  cancelled=False, auto_cancel_parent=False, auto_past_parent=True,
                  settings=None):
@@ -122,6 +123,7 @@ def create_event(source_id, *, title, start_date, description="", start_time=Non
         event_id=event_id, source_id=source_id,
         title=title, title_norm=taxonomy.normalize_title(title),
         description_md=description or "",
+        event_url=event_url or "",
         start_date=start_date or "", start_time=start_time, end_time=end_time,
         location_id=location_id,
         review_status=review_status, publish_status=publish_status,
@@ -668,7 +670,8 @@ def convert_extraction(source_id, extracted_events, *, settings=None):
             source_id, title=title, start_date=raw.get("start_date", ""),
             description=raw.get("description", ""),
             start_time=raw.get("start_time"), end_time=raw.get("end_time"),
-            location_id=location_id, event_label_ids=label_ids, settings=settings)
+            location_id=location_id, event_label_ids=label_ids,
+            event_url=raw.get("event_url"), settings=settings)
         event_id = event["event_id"]
         created_ids.append(event_id)
 
