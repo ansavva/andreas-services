@@ -9,10 +9,38 @@ Each subdirectory is a **fully self-contained deployable unit** — it has its o
 
 The AWS CLI is available and authenticated in this environment (`aws ...`), so
 prefer it for read-only investigation of live infrastructure (CloudFront, S3,
-Lambda, DynamoDB, SSM, etc.) when diagnosing issues. Note: outbound HTTP to
-`*.andreas.services` is blocked by the sandbox network policy (responses look
-like `403 host_not_allowed` / "Host not in allowlist"), so use AWS APIs rather
-than `curl` against the live sites; final browser verification is on the user.
+Lambda, DynamoDB, SSM, etc.) when diagnosing issues.
+
+### Network policy (Claude Code cloud environments)
+
+Sessions run in an Anthropic-managed cloud environment whose outbound network is
+governed by the **environment's Network access policy** — an allowlist enforced
+by a managed proxy at the VM level, chosen when the environment was created.
+
+- **It cannot be disabled or widened from inside a running session.** No flag,
+  settings file, or the Bash `dangerouslyDisableSandbox` option changes it —
+  that option is the *local* Bash sandbox escape hatch and is the wrong lever
+  here, because the constraint is the network proxy, not a local Bash sandbox.
+- **To change it:** at [claude.ai/code](https://claude.ai/code), edit the
+  **environment → Network access** (e.g. Trusted = package registries only /
+  None = localhost only / a broader custom allowlist depending on plan), then
+  start a **new** session. There is no clean "full open internet" toggle, and
+  the proxy does not TLS-inspect, so broad allowlists are a known exfiltration
+  surface.
+- Docs: https://code.claude.com/docs/en/claude-code-on-the-web (network access)
+  and https://code.claude.com/docs/en/sandboxing (local Bash sandbox).
+
+What this means in practice:
+
+- Outbound HTTP to `*.andreas.services` is blocked (responses look like
+  `403 host_not_allowed` / "Host not in allowlist") and is expected to stay
+  blocked. Use AWS APIs to investigate live infra rather than `curl` against the
+  live sites; final browser verification of the deployed site is on the user.
+- Package registries (PyPI, npm, etc.) are reachable under the default "Trusted"
+  policy, so `poetry install` / `npm ci` work; full internet does not.
+- Backend unit tests need **no** network (they use `moto`); a network error in a
+  test run is an environment/config issue, not a reason to loosen the policy.
+
 Prefer fixing infrastructure through Terraform + the deploy pipeline over manual
 CLI mutations, to avoid IaC drift.
 
