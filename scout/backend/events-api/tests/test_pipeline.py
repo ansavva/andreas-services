@@ -125,6 +125,25 @@ class TestPipeline(unittest.TestCase):
         # No run record created.
         self.assertEqual(runs.list_runs(self.src["source_id"]), [])
 
+    def test_enriched_event_carries_candidate_detail_url(self):
+        # The candidate's detail_url is attached to each enriched event so the
+        # public detail view can link back to the original source.
+        result = pipeline.preview(self.src, fetch_fn=_fetch_fn,
+                                  triage=_triage_one, enrich=_enrich_one)
+        self.assertEqual(result["events"][0]["event_url"],
+                         "https://example.com/show")
+
+    def test_fallback_event_carries_candidate_detail_url(self):
+        # When enrich yields nothing, the triage fallback still carries the URL.
+        def enrich_empty(candidate, page_text, **_kwargs):
+            return extractor.ExtractionResult(extractor.STATUS_COMPLETED, events=[])
+
+        result = pipeline.preview(self.src, fetch_fn=_fetch_fn,
+                                  triage=_triage_one, enrich=enrich_empty)
+        self.assertEqual(result["events"][0]["title"], "Live Show")  # fallback
+        self.assertEqual(result["events"][0]["event_url"],
+                         "https://example.com/show")
+
     def test_execute_run_stores_artifacts_transcript_and_finishes(self):
         run = pipeline.execute_run(self.src, runs.TRIGGER_SCHEDULED,
                                    fetch_fn=_fetch_fn, triage=_triage_one,

@@ -79,6 +79,25 @@ class TestEvents(unittest.TestCase):
         self.assertEqual([e["event_id"] for e in pending], [ev["event_id"]])
         self.assertNotIn(ev["event_id"], _pubvis_ids())
 
+    def test_create_event_persists_event_url(self):
+        ev = events.create_event("src1", title="Gig", start_date="2099-01-01",
+                                 event_url="https://venue.test/gig")
+        self.assertEqual(ev["event_url"], "https://venue.test/gig")
+        self.assertEqual(events.get_event(ev["event_id"])["event_url"],
+                         "https://venue.test/gig")
+
+    def test_create_event_event_url_defaults_empty(self):
+        ev = events.create_event("src1", title="No Link", start_date="2099-01-01")
+        self.assertEqual(ev["event_url"], "")
+
+    def test_convert_extraction_carries_event_url(self):
+        extracted = [{"title": "Linked", "start_date": "2099-05-01",
+                      "location": None, "event_labels": [], "images": [],
+                      "event_url": "https://venue.test/linked", "sub_events": []}]
+        result = events.convert_extraction("s", extracted)
+        ev = events.get_event(result["event_ids"][0])
+        self.assertEqual(ev["event_url"], "https://venue.test/linked")
+
     def test_review_transition_moves_queue(self):
         ev = events.create_event("src1", title="Show", start_date="2099-01-01")
         events.set_review(ev["event_id"], events.REVIEW_APPROVED)

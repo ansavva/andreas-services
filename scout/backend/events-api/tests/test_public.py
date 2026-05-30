@@ -164,6 +164,19 @@ class TestPublic(unittest.TestCase):
         self.assertTrue(detail["no_upcoming_dates"])
         self.assertEqual(detail["sub_events"], [])
 
+    def test_event_detail_includes_event_url(self):
+        ev = events.create_event("s", title="Linked", start_date="2099-01-01",
+                                 event_url="https://venue.test/gig")
+        _publish(ev["event_id"])
+        detail = public.event_detail(ev["event_id"])
+        self.assertEqual(detail["event_url"], "https://venue.test/gig")
+
+    def test_event_detail_event_url_none_when_absent(self):
+        ev = events.create_event("s", title="No Link", start_date="2099-01-01")
+        _publish(ev["event_id"])
+        detail = public.event_detail(ev["event_id"])
+        self.assertIsNone(detail["event_url"])
+
     def test_unpublished_event_detail_is_none(self):
         ev = events.create_event("s", title="Hidden", start_date="2099-01-01")
         self.assertIsNone(public.event_detail(ev["event_id"]))

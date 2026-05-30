@@ -133,6 +133,18 @@ class TestEnrich(unittest.TestCase):
         self.assertEqual(result.status, extractor.STATUS_COMPLETED)
         self.assertEqual(result.events[0]["title"], "Jazz Night")
 
+    def test_enrich_event_url_absent_from_model_output(self):
+        # The enrich model never reports the source URL; a normalized event
+        # carries event_url=None until the pipeline attaches the candidate's
+        # detail_url.
+        messages = [{"role": "result", "tool_input": _EVENT_INPUT}]
+        result = extractor.enrich({"title": "Jazz Night",
+                                   "detail_url": "https://venue.org/jazz"},
+                                  "detail page text", model="sonnet",
+                                  now="2026-05-29", timezone="UTC",
+                                  runner=_runner_from(messages))
+        self.assertIsNone(result.events[0]["event_url"])
+
     def test_enrich_zero_events_is_completed(self):
         messages = [{"role": "result", "tool_input": {"events": []}}]
         result = extractor.enrich({"title": "X"}, "p", model="sonnet",
