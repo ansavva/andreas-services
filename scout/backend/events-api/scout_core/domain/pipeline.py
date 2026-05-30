@@ -5,14 +5,20 @@ Ties together fetching (fetcher), artifact storage (artifacts), the run
 lifecycle (runs) and extraction (extractor). Our code acquires the root content
 (webpage root or email bodies); extraction then runs in two passes:
 
-1. triage  — a cheap model reads each fetched page and reports the distinct
-   candidate events plus, per candidate, the best "detail" URL to open.
+1. triage  — a cheap model reads each fetched page and reports (a) the distinct
+   candidate events, each with its own "detail" URL, and (b) "listing" URLs:
+   links to pages that list *more* events (a "what's on" / index page). Listing
+   pages are fetched and re-triaged up to MAX_LISTING_DEPTH hops, so an email
+   that merely links to a calendar still yields its events.
 2. for each candidate with a usable detail URL (cross-domain for email,
-   same-domain for webpage; junk-filtered; capped at the link-follow cap) we
-   fetch and clean that page, then run an enrich pass — a stronger model turns
-   the mention + detail page into the full event record.
+   same-domain for webpage; junk-filtered) we fetch and clean that page, then
+   run an enrich pass — a stronger model turns the mention + detail page into
+   the full event record.
 3. candidates with no usable/fetchable link fall back to the best-effort event
    the triage pass already produced (no second call), so nothing is lost.
+
+All listing + detail fetches share one global budget (link_follow_cap) and a
+URL de-dup set, so cost stays bounded on large digests.
 
 The two passes are injected as callables (triage / enrich) so tests can script
 them; make_passes() binds the real extractor with the source's models, budgets,
@@ -130,15 +136,28 @@ def _followable(url, *, same_domain_only, root_domain):
     return True
 
 
+# How many hops of "listing → more events" links to follow. The root pages are
+# depth 0; an email body or webpage that links to a "what's on" page is followed
+# to depth 1, and that page's own listing links to depth 2. Per-event detail
+# pages are reached via enrich, not this recursion.
+MAX_LISTING_DEPTH = 2
+
+
 def run_extraction(source, pages, *, triage, enrich, fetch_fn,
                    on_link_outcome=None, store_linked=None, settings=None):
-    """Two-pass extraction over the gathered pages. Returns an ExtractionResult.
+    """Two-pass extraction with bounded link recursion. Returns ExtractionResult.
 
-    Triage runs per page (so each candidate inherits that page's date/url for
-    relative-date anchoring). Detail pages chosen by triage are fetched (junk-
-    filtered; same-domain for webpage, cross-domain for email), recorded as link
-    outcomes, and stored; each fetched candidate is enriched. Linkless or beyond
-    the fan-out cap → the triage fallback event is used directly."""
+    Pass 1 triages each page into (a) candidate events, each with its own detail
+    URL, and (b) listing URLs — links to pages that list *more* events (a
+    "what's on" / index page). Listing pages are fetched and re-triaged up to
+    MAX_LISTING_DEPTH hops, so an email that just links to a calendar still
+    yields its events. Pass 2 fetches each candidate's detail page and enriches
+    it into a full record; candidates with no usable/fetchable link fall back to
+    the best-effort event triage already produced.
+
+    Detail and listing fetches share one global budget (link_follow_cap) and a
+    URL de-dup set, so cost stays predictable on large digests. Webpage sources
+    stay same-domain; email follows cross-domain (organizer/ticketing) links."""
     settings = settings or store.get_settings()
     link_cap = int(settings["link_follow_cap"])
     same_domain_only = source["type"] != sources.EMAIL
@@ -146,16 +165,51 @@ def run_extraction(source, pages, *, triage, enrich, fetch_fn,
 
     transcript = []
     usage = {"input_tokens": 0, "output_tokens": 0}
+    fetched_urls = set()
+    fetch_count = [0]
 
     def _add(result):
         transcript.extend(result.transcript)
         usage["input_tokens"] += int(result.usage.get("input_tokens", 0) or 0)
         usage["output_tokens"] += int(result.usage.get("output_tokens", 0) or 0)
 
-    # Pass 1: triage each page into candidates (carrying the page's url + date).
+    def _fetch(url):
+        """Fetch + clean one URL under the shared cap, record the outcome, and
+        return its text ("" on cap/dup/failure)."""
+        if url in fetched_urls or not _followable(
+                url, same_domain_only=same_domain_only, root_domain=root_domain):
+            return ""
+        if fetch_count[0] >= link_cap:
+            return ""
+        index = fetch_count[0]
+        fetch_count[0] += 1
+        fetched_urls.add(url)
+        try:
+            status, text = fetcher.fetch_text(url, fetch_fn=fetch_fn)
+            ok = 200 <= status < 300
+            record = {"url": url, "ok": ok}
+            if ok:
+                record["http_status"] = status
+                if store_linked is not None:
+                    record["s3_ref"] = store_linked(index, text)
+            else:
+                record["reason"] = f"http {status}"
+                text = ""
+        except Exception as exc:  # pylint: disable=broad-except
+            record = {"url": url, "ok": False, "reason": str(exc)}
+            text = ""
+        if on_link_outcome is not None:
+            on_link_outcome(record)
+        return text
+
+    # Pass 1: triage the root pages, following listing links breadth-first up to
+    # MAX_LISTING_DEPTH. Each candidate carries the page it was found on (for
+    # relative-date anchoring and source attribution).
     candidates = []  # list of (candidate, page)
     triage_error = None
-    for page in pages:
+    queue = [(page, 0) for page in pages]
+    while queue:
+        page, depth = queue.pop(0)
         result = triage([page])
         _add(result)
         if result.status == extractor_mod.STATUS_BUDGET_EXCEEDED:
@@ -166,43 +220,32 @@ def run_extraction(source, pages, *, triage, enrich, fetch_fn,
             triage_error = result.error or "triage failed"
             continue
         candidates.extend((c, page) for c in result.candidates)
+        if depth < MAX_LISTING_DEPTH:
+            for listing_url in result.listing_urls:
+                if fetch_count[0] >= link_cap:
+                    break
+                text = _fetch(listing_url)
+                if text:
+                    queue.append(({"url": listing_url, "content": text,
+                                   "date": page.get("date")}, depth + 1))
 
     if not candidates and triage_error:
         return extractor_mod.ExtractionResult(
             extractor_mod.STATUS_ERROR, transcript=transcript, usage=usage,
             error=triage_error)
 
-    # Pass 2: fetch the chosen detail pages + enrich; fall back otherwise.
+    # Pass 2: fetch each candidate's detail page + enrich; fall back otherwise.
     events = []
-    fetches = 0
     for candidate, page in candidates:
-        page_text = ""
-        detail_url = candidate.get("detail_url")
-        if (fetches < link_cap
-                and _followable(detail_url, same_domain_only=same_domain_only,
-                                root_domain=root_domain)):
-            index = fetches
-            fetches += 1
-            try:
-                status, text = fetcher.fetch_text(detail_url, fetch_fn=fetch_fn)
-                ok = 200 <= status < 300
-                record = {"url": detail_url, "ok": ok}
-                if ok:
-                    page_text = text
-                    record["http_status"] = status
-                    if store_linked is not None:
-                        record["s3_ref"] = store_linked(index, text)
-                else:
-                    record["reason"] = f"http {status}"
-            except Exception as exc:  # pylint: disable=broad-except
-                record = {"url": detail_url, "ok": False, "reason": str(exc)}
-            if on_link_outcome is not None:
-                on_link_outcome(record)
-
+        page_text = _fetch(candidate.get("detail_url"))
         if page_text:
             result = enrich(candidate, page_text, source_ref=page.get("url"),
                             date=page.get("date"))
             _add(result)
+            if result.status == extractor_mod.STATUS_BUDGET_EXCEEDED:
+                return extractor_mod.ExtractionResult(
+                    extractor_mod.STATUS_BUDGET_EXCEEDED, transcript=transcript,
+                    usage=usage, error=result.error)
             if result.status == extractor_mod.STATUS_COMPLETED and result.events:
                 events.extend(result.events)
                 continue

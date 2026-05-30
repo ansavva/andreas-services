@@ -71,6 +71,19 @@ class TestTriage(unittest.TestCase):
         # The page's received date is surfaced in the user content for anchoring.
         self.assertIn("Tue 27 May 2026", captured[0]["prompt"])
 
+    def test_triage_reports_listing_urls(self):
+        messages = [{"role": "result", "tool_input": {
+            "candidates": [],
+            "listing_urls": ["https://venue.org/whats-on", ""],
+        }}]
+        result = extractor.triage([{"content": "see our calendar"}],
+                                  model="haiku", now="2026-05-29", timezone="UTC",
+                                  runner=_runner_from(messages))
+        self.assertEqual(result.status, extractor.STATUS_COMPLETED)
+        self.assertEqual(result.candidates, [])
+        # Empty strings are filtered out.
+        self.assertEqual(result.listing_urls, ["https://venue.org/whats-on"])
+
     def test_triage_retries_once_on_malformed_then_fails(self):
         calls = {"n": 0}
 

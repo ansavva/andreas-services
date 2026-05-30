@@ -54,10 +54,11 @@ class ExtractionResult:
 
 
 class TriageResult:
-    def __init__(self, status, *, candidates=None, transcript=None,
-                 usage=None, error=None):
+    def __init__(self, status, *, candidates=None, listing_urls=None,
+                 transcript=None, usage=None, error=None):
         self.status = status
         self.candidates = candidates or []
+        self.listing_urls = listing_urls or []
         self.transcript = transcript or []
         self.usage = usage or {"input_tokens": 0, "output_tokens": 0}
         self.error = error
@@ -121,7 +122,8 @@ RECORD_EVENTS_TOOL = {
 
 REPORT_CANDIDATES_TOOL = {
     "name": "report_candidates",
-    "description": "Report each distinct, attendable event found in the content.",
+    "description": "Report each distinct, attendable event found in the content, "
+                   "plus any links to pages listing further events.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -137,7 +139,8 @@ REPORT_CANDIDATES_TOOL = {
                         },
                         "detail_url": {
                             "type": ["string", "null"],
-                            "description": "best URL for this event's full details, or null",
+                            "description": "URL of THIS event's own full-details page "
+                                           "(organizer / ticketing / event page), or null",
                         },
                         "fallback_event": {
                             "type": "object",
@@ -147,6 +150,13 @@ REPORT_CANDIDATES_TOOL = {
                     },
                     "required": ["title"],
                 },
+            },
+            "listing_urls": {
+                "type": "array",
+                "description": "URLs of pages that list MORE events (a 'what's on' / "
+                               "events index / category page), not a single event. "
+                               "Used to discover events not detailed in this content.",
+                "items": {"type": "string"},
             },
         },
         "required": ["candidates"],
@@ -176,15 +186,19 @@ def build_triage_system(*, now, timezone):
         + _date_clause(now, timezone) + "\n\n"
         "Do not extract full details yet. For each event capture: a short "
         "title; any date/time/venue hints visible here (verbatim is fine); and "
-        "the single best detail URL from the content where this event's full "
-        "info lives (organizer / ticketing / listing page) — pick the link "
-        "whose anchor text or surroundings clearly belong to THIS event, or "
-        "leave it null if none fits. Also fill fallback_event with whatever "
-        "fields you can already tell from this content, in case no detail page "
-        "is available.\n\n"
+        "detail_url — the link to THIS event's own full-details page (organizer "
+        "/ ticketing / event page), or null if none clearly belongs to it. Also "
+        "fill fallback_event with whatever fields you can already tell from this "
+        "content, in case no detail page is available.\n\n"
+        "Separately, put into listing_urls any links that lead to a page listing "
+        "MORE events — a 'what's on', events index, calendar, or category page — "
+        "rather than one specific event. These are followed to discover events "
+        "not described here. A link is a listing only when it plausibly contains "
+        "several events; when in doubt, treat a single-event page as detail_url, "
+        "not a listing.\n\n"
         "Ignore navigation, ads, unsubscribe/preferences/social links, and "
-        "anything that is not an attendable event. If there are no events, "
-        "report an empty list."
+        "anything that is not an attendable event. If there are no events and no "
+        "listing links, report empty lists."
     )
 
 
@@ -378,13 +392,23 @@ def parse_events(transcript):
     return []
 
 
-def _candidates_from_payload(payload):
-    raw = payload.get("candidates", []) if isinstance(payload, dict) else payload
-    normalized = [_normalize_candidate(c) for c in (raw or []) if isinstance(c, dict)]
-    return [c for c in normalized if c is not None]
+def _triage_from_payload(payload):
+    """Return (candidates, listing_urls) from a report_candidates payload."""
+    if not isinstance(payload, dict):
+        raw_candidates, raw_listings = payload, []
+    else:
+        raw_candidates = payload.get("candidates", [])
+        raw_listings = payload.get("listing_urls", [])
+    candidates = [_normalize_candidate(c) for c in (raw_candidates or [])
+                  if isinstance(c, dict)]
+    candidates = [c for c in candidates if c is not None]
+    listings = [u for u in (raw_listings or []) if isinstance(u, str) and u]
+    return candidates, listings
 
 
 def parse_candidates(transcript):
+    """Find the final tool_input (or text) and parse it into (candidates,
+    listing_urls)."""
     for message in reversed(transcript):
         payload = message.get("tool_input")
         if payload is None:
@@ -392,8 +416,8 @@ def parse_candidates(transcript):
             if not text:
                 continue
             payload = json.loads(_strip_fences(text))
-        return _candidates_from_payload(payload)
-    return []
+        return _triage_from_payload(payload)
+    return [], []
 
 
 # ---------------------------------------------------------------------------
@@ -457,17 +481,19 @@ def _call_with_retry(runner, *, system, prompt, model, tools, tool_choice,
 
 def triage(pages, *, model, now, timezone, budget_tokens=None,
            budget_seconds=None, runner=None):
-    """Pass 1: report candidate events (+ detail URLs) from the fetched pages."""
+    """Pass 1: report candidate events (+ their detail URLs) and any links to
+    pages listing further events."""
     system = build_triage_system(now=now, timezone=timezone)
     prompt = build_triage_prompt(pages)
-    status, candidates, transcript, usage, error = _call_with_retry(
+    status, parsed, transcript, usage, error = _call_with_retry(
         runner, system=system, prompt=prompt, model=model,
         tools=[REPORT_CANDIDATES_TOOL],
         tool_choice={"type": "tool", "name": "report_candidates"},
         parse=parse_candidates, budget_tokens=budget_tokens,
         budget_seconds=budget_seconds)
-    return TriageResult(status, candidates=candidates, transcript=transcript,
-                        usage=usage, error=error)
+    candidates, listing_urls = parsed if parsed else ([], [])
+    return TriageResult(status, candidates=candidates, listing_urls=listing_urls,
+                        transcript=transcript, usage=usage, error=error)
 
 
 def enrich(candidate, page_text, *, model, now, timezone, known_labels=None,

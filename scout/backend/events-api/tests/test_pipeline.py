@@ -143,6 +143,76 @@ class TestPipeline(unittest.TestCase):
         self.assertIn("Live Show", artifacts.get_text(artifacts.root_html_key(sid, rid)))
         self.assertIn("events", artifacts.get_text(run["agent_transcript_ref"]))
 
+    def test_email_listing_page_is_followed_and_re_triaged(self):
+        # Email body has no events itself, only a link to a "what's on" page;
+        # that page (re-triaged) yields the actual event + its detail link.
+        email_src = sources.create_source(sources.EMAIL, "venue.org",
+                                          follow_links=True)
+
+        def gmail_fetch(domain, since):
+            return [{"message_id": "m1", "subject": "This week", "image_url": "",
+                     "date": "Tue, 27 May 2026 09:00:00 +0100",
+                     "body_markdown": "See everything on at our venue!",
+                     "links": ["https://venue.org/whats-on"]}]
+
+        def fetch_fn(url):
+            if url == "https://venue.org/whats-on":
+                return 200, "<main>Jazz Night — details</main>"
+            if url == "https://venue.org/jazz":
+                return 200, "<main><p>Jazz Night full detail</p></main>"
+            raise AssertionError(f"unexpected fetch: {url}")
+
+        def triage(pages):
+            if "whats-on" in (pages[0].get("url") or ""):
+                # The listing page surfaces the real event + its detail link.
+                return extractor.TriageResult(
+                    extractor.STATUS_COMPLETED,
+                    candidates=[{"title": "Jazz Night",
+                                 "detail_url": "https://venue.org/jazz",
+                                 "fallback_event": {"title": "Jazz Night",
+                                                    "start_date": "2099-05-30"}}])
+            # The email body itself only points at the listing page.
+            return extractor.TriageResult(
+                extractor.STATUS_COMPLETED, candidates=[],
+                listing_urls=["https://venue.org/whats-on"])
+
+        run = pipeline.execute_run(email_src, runs.TRIGGER_SCHEDULED,
+                                   fetch_fn=fetch_fn, triage=triage,
+                                   enrich=_enrich_one, gmail_fetch=gmail_fetch)
+        self.assertEqual(run["status"], "success")
+        self.assertEqual(int(run["events_count"]), 1)
+        # Both the listing page and the per-event detail page were fetched.
+        urls = {o["url"] for o in run["link_outcomes"]}
+        self.assertEqual(urls, {"https://venue.org/whats-on", "https://venue.org/jazz"})
+
+    def test_listing_recursion_respects_global_fetch_cap(self):
+        store.put_settings({"link_follow_cap": 1})
+        email_src = sources.create_source(sources.EMAIL, "venue.org",
+                                          follow_links=True)
+
+        def gmail_fetch(domain, since):
+            return [{"message_id": "m1", "subject": "x", "image_url": "", "date": "",
+                     "body_markdown": "see listing",
+                     "links": ["https://venue.org/whats-on"]}]
+
+        def fetch_fn(url):
+            return 200, "<main>stuff</main>"
+
+        def triage(pages):
+            # Always surfaces a candidate-with-link and another listing link;
+            # the global cap of 1 must stop the fan-out after a single fetch.
+            return extractor.TriageResult(
+                extractor.STATUS_COMPLETED,
+                candidates=[{"title": "E", "detail_url": "https://venue.org/e",
+                             "fallback_event": {"title": "E", "start_date": "2099-01-01"}}],
+                listing_urls=["https://venue.org/whats-on"])
+
+        run = pipeline.execute_run(email_src, runs.TRIGGER_SCHEDULED,
+                                   fetch_fn=fetch_fn, triage=triage,
+                                   enrich=_enrich_one, gmail_fetch=gmail_fetch)
+        self.assertEqual(run["status"], "success")
+        self.assertEqual(len(run["link_outcomes"]), 1)  # capped
+
     def test_budget_exceeded_marks_error_and_discards_output(self):
         def over_budget(_pages):
             return extractor.TriageResult(
