@@ -417,9 +417,10 @@ DEFAULT_SETTINGS = {
     "health_zero_event_runs": 3,
     "health_overdue_hours": 26,
     "link_follow_cap": 10,
-    "default_agent_model": "claude-haiku-4-5",
-    "default_agent_budget_tokens": 200000,
-    "default_agent_budget_seconds": 120,
+    "default_triage_model": "claude-haiku-4-5",
+    "default_agent_model": "claude-sonnet-4-6",
+    "default_agent_budget_tokens": 400000,
+    "default_agent_budget_seconds": 240,
 }
 
 _settings_cache = None

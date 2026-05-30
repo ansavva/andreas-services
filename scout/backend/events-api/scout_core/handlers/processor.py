@@ -49,7 +49,7 @@ def lambda_handler(event, context):
         return {"error": "source not found"}
 
     settings = store.get_settings()
-    extractor = pipeline.make_extractor(source, settings)
+    triage, enrich = pipeline.make_passes(source, settings)
     email_body = event.get("email_body")
 
     # For email sources we pull the sender's recent Events-labeled mail from
@@ -63,11 +63,12 @@ def lambda_handler(event, context):
         since_epoch = source.get("last_email_fetch_epoch")
 
     if event.get("mode") == "preview":
-        return pipeline.preview(source, extractor=extractor, email_body=email_body,
-                                gmail_fetch=gmail_fetch, since_epoch=since_epoch)
+        return pipeline.preview(source, triage=triage, enrich=enrich,
+                                email_body=email_body, gmail_fetch=gmail_fetch,
+                                since_epoch=since_epoch)
 
     trigger = event.get("trigger", runs.TRIGGER_MANUAL)
-    run = pipeline.execute_run(source, trigger, extractor=extractor,
+    run = pipeline.execute_run(source, trigger, triage=triage, enrich=enrich,
                                email_body=email_body, gmail_fetch=gmail_fetch,
                                since_epoch=since_epoch)
     logger.info("Run %s for source %s finished: %s", run["run_id"], source_id,

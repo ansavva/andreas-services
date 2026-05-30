@@ -15,6 +15,7 @@ google-auth-oauthlib = "0.4.6"
 google-auth-httplib2 = "0.1.0"
 google-api-python-client = "2.88.0"
 html2text = "2020.1.16"
+beautifulsoup4 = "4.12.3"
 
 [tool.poetry.group.dev.dependencies]
 moto = {version = "4.2.14", extras = ["dynamodb"]}

@@ -14,9 +14,16 @@ the approved ones at `scout.andreas.services/app`.
    run, or preview on demand.
 2. The **source-run-processor** Lambda fetches the source content (our code —
    webpage HTTP fetch, or the sender's recent "Events"-labeled mail via the
-   Gmail API in `gmail.py`), optionally follows one level of same-domain links,
-   stores everything to S3, then sends the fetched text to the **Anthropic
-   Messages API** (one call) to extract structured events.
+   Gmail API in `gmail.py`), stores it to S3, then runs a **two-pass Anthropic
+   tool-use extraction**: a cheap triage pass finds candidate events (each with
+   its own detail URL) plus "listing" URLs — links to pages that list *more*
+   events. Listing pages are fetched and re-triaged up to a small depth bound,
+   so an email that merely links to a "what's on" page still yields its events.
+   We then fetch each candidate's detail page (cleaned to text; cross-domain for
+   email, same-domain for webpage; junk-filtered) and a stronger enrich pass
+   turns each mention + detail page into a full structured event. All listing +
+   detail fetches share one global budget (link-follow cap) with URL de-dup;
+   candidates with no usable link fall back to the triage event directly.
 3. Extracted events become **pending** records (dedup + fuzzy location match
    applied). An admin reviews (approve/reject), publishes, cancels, edits, and
    manages locations, labels, images, and settings.
@@ -100,7 +107,7 @@ Two tables (`scout-<name>`, suffixed `-pr-<N>` for previews, all
     event review queue (`REVIEW#<status>`).
   - **GSI5** — deleted-filter view + cascade restore (`DELETED#<type>`).
 - **`scout-settings`** — singleton (`setting_id="system"`): timezones, grace
-  period, health thresholds, link-follow cap, default agent model/budget.
+  period, health thresholds, link-follow cap, default triage/agent models + budget.
 
 Soft-delete is uniform: every row carries `deleted_at`; hot indexes (GSI1/GSI3)
 are sparse so deleted rows leave public/dedup paths automatically; `cascade_id`
@@ -139,17 +146,35 @@ catch-all, and PR base paths).
   labels/{source|event|location}, settings, notifications, `deleted/{type}`,
   `restore`.
 
-## Extraction (Anthropic Messages API)
+## Extraction (Anthropic Messages API, two-pass tool-use)
 
-`extractor.py` embeds the fetched page text in a prompt and makes a single
-Anthropic Messages API call behind an injectable `runner` (default uses the
-`anthropic` package, imported lazily), parsing the JSON event list from the
-response. It enforces a token + runtime budget and maps outcomes to completed /
-`budget_exceeded` / error. (Extraction is content-only — there is no WebFetch/
-WebSearch; our fetcher/link-follower already gathers the pages.) `pipeline.py`
-stores artifacts + transcript to S3, converts a completed extraction into pending
-event records (dedup + fuzzy location match), and raises in-app notifications on
-failure.
+`extractor.py` runs extraction in two passes, each a forced Anthropic tool-use
+call (validated structured output, no fragile free-text parsing) behind an
+injectable `runner` (default uses the `anthropic` package, imported lazily):
+
+- `triage(pages, …)` → `report_candidates` tool: per page, the distinct
+  candidate events (date/venue hints, the event's own detail URL, a best-effort
+  `fallback_event`) **and** `listing_urls` — links to pages listing *more*
+  events. Default model `default_triage_model` (Haiku).
+- `enrich(candidate, page_text, …)` → `record_events` tool: one full event from
+  a mention + its fetched detail page. Default model `default_agent_model`
+  (Sonnet).
+
+Both prompts carry a system message that anchors relative dates to today +
+`system_timezone` (so "this Saturday"/the year resolve correctly), run at
+temperature 0, and mark the static system + tool blocks for prompt caching; the
+enrich prompt also lists the existing event-label vocabulary (model prefers it,
+may add new). `MAX_OUTPUT_TOKENS` is 16k and each logical call retries once on a
+parse/empty failure. `pipeline.run_extraction` orchestrates triage → follow
+`listing_urls` breadth-first up to `MAX_LISTING_DEPTH` (re-triaging each) →
+fetch each candidate's detail page → enrich. All listing + detail fetches go
+through `fetcher.fetch_text` (junk-filtered, cleaned) under one shared
+`link_follow_cap` budget with URL de-dup. It stores artifacts + the combined
+transcript to S3, aggregates token/runtime usage under the per-source budget,
+converts the result into pending event records (dedup + fuzzy location match),
+and raises in-app notifications on failure. The legacy single-pass `extract()`
+is retained for back-compat. (Extraction is
+content-only — no WebFetch/WebSearch; our fetcher gathers the pages.)
 
 ## Environment Variables
 

@@ -240,6 +240,7 @@ def _admin_sources(method, rest, query, body):
             body.get("type"), body.get("identity"), name=body.get("name"),
             config=body.get("config"), follow_links=body.get("follow_links", False),
             agent_model=body.get("agent_model"),
+            triage_model=body.get("triage_model"),
             agent_budget_tokens=body.get("agent_budget_tokens"),
             agent_budget_seconds=body.get("agent_budget_seconds"))
         return created(src)
