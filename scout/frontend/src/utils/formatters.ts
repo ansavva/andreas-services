@@ -18,6 +18,24 @@ export function formatDate(dateStr: string): string {
 }
 
 /**
+ * Compose a single "date · time–time" line for display, omitting whichever
+ * parts are missing so an event with only a time (or only a date) never shows
+ * a dangling separator. Returns "" when there is nothing to show, letting the
+ * caller drop the row entirely.
+ */
+export function formatDateTimeLine(
+  dateStr: string,
+  startTime?: string | null,
+  endTime?: string | null,
+): string {
+  const date = formatDate(dateStr);
+  let time = startTime ?? "";
+  if (time && endTime) time += `–${endTime}`;
+  if (date && time) return `${date} · ${time}`;
+  return date || time;
+}
+
+/**
  * Format an ISO datetime string into a short human-readable date + time.
  */
 export function formatDateTime(iso: string): string {
