@@ -182,7 +182,8 @@ class TestStore(unittest.TestCase):
         settings = store.get_settings()
         self.assertEqual(settings["system_timezone"], "UTC")
         self.assertEqual(settings["link_follow_cap"], 10)
-        self.assertEqual(settings["default_agent_model"], "claude-haiku-4-5")
+        self.assertEqual(settings["default_agent_model"], "claude-sonnet-4-6")
+        self.assertEqual(settings["default_triage_model"], "claude-haiku-4-5")
 
     def test_settings_override_and_cache_invalidation(self):
         store.put_settings({"link_follow_cap": 25, "system_timezone": "America/New_York"})

@@ -14,9 +14,13 @@ the approved ones at `scout.andreas.services/app`.
    run, or preview on demand.
 2. The **source-run-processor** Lambda fetches the source content (our code —
    webpage HTTP fetch, or the sender's recent "Events"-labeled mail via the
-   Gmail API in `gmail.py`), optionally follows one level of same-domain links,
-   stores everything to S3, then sends the fetched text to the **Anthropic
-   Messages API** (one call) to extract structured events.
+   Gmail API in `gmail.py`), stores it to S3, then runs a **two-pass Anthropic
+   tool-use extraction**: a cheap triage pass finds the candidate events and the
+   best detail URL for each; we fetch those detail pages (cleaned to text;
+   cross-domain for email, same-domain for webpage; junk-filtered, capped at the
+   link-follow cap); a stronger enrich pass then turns each mention + its detail
+   page into a full structured event. Candidates with no usable link fall back
+   to the triage event directly.
 3. Extracted events become **pending** records (dedup + fuzzy location match
    applied). An admin reviews (approve/reject), publishes, cancels, edits, and
    manages locations, labels, images, and settings.
@@ -100,7 +104,7 @@ Two tables (`scout-<name>`, suffixed `-pr-<N>` for previews, all
     event review queue (`REVIEW#<status>`).
   - **GSI5** — deleted-filter view + cascade restore (`DELETED#<type>`).
 - **`scout-settings`** — singleton (`setting_id="system"`): timezones, grace
-  period, health thresholds, link-follow cap, default agent model/budget.
+  period, health thresholds, link-follow cap, default triage/agent models + budget.
 
 Soft-delete is uniform: every row carries `deleted_at`; hot indexes (GSI1/GSI3)
 are sparse so deleted rows leave public/dedup paths automatically; `cascade_id`
@@ -139,17 +143,31 @@ catch-all, and PR base paths).
   labels/{source|event|location}, settings, notifications, `deleted/{type}`,
   `restore`.
 
-## Extraction (Anthropic Messages API)
+## Extraction (Anthropic Messages API, two-pass tool-use)
 
-`extractor.py` embeds the fetched page text in a prompt and makes a single
-Anthropic Messages API call behind an injectable `runner` (default uses the
-`anthropic` package, imported lazily), parsing the JSON event list from the
-response. It enforces a token + runtime budget and maps outcomes to completed /
-`budget_exceeded` / error. (Extraction is content-only — there is no WebFetch/
-WebSearch; our fetcher/link-follower already gathers the pages.) `pipeline.py`
-stores artifacts + transcript to S3, converts a completed extraction into pending
-event records (dedup + fuzzy location match), and raises in-app notifications on
-failure.
+`extractor.py` runs extraction in two passes, each a forced Anthropic tool-use
+call (validated structured output, no fragile free-text parsing) behind an
+injectable `runner` (default uses the `anthropic` package, imported lazily):
+
+- `triage(pages, …)` → `report_candidates` tool: per page, the distinct
+  candidate events with date/venue hints, the best detail URL, and a best-effort
+  `fallback_event`. Default model `default_triage_model` (Haiku).
+- `enrich(candidate, page_text, …)` → `record_events` tool: one full event from
+  a mention + its fetched detail page. Default model `default_agent_model`
+  (Sonnet).
+
+Both prompts carry a system message that anchors relative dates to today +
+`system_timezone` (so "this Saturday"/the year resolve correctly), run at
+temperature 0, and mark the static system + tool blocks for prompt caching; the
+enrich prompt also lists the existing event-label vocabulary (model prefers it,
+may add new). `MAX_OUTPUT_TOKENS` is 16k and each logical call retries once on a
+parse/empty failure. `pipeline.py` orchestrates triage → fetch detail pages
+(`fetcher.fetch_text`, junk-filtered, capped at `link_follow_cap`) → enrich,
+stores artifacts + the combined transcript to S3, aggregates token/runtime usage
+under the per-source budget, converts the result into pending event records
+(dedup + fuzzy location match), and raises in-app notifications on failure. The
+legacy single-pass `extract()` is retained for back-compat. (Extraction is
+content-only — no WebFetch/WebSearch; our fetcher gathers the pages.)
 
 ## Environment Variables
 

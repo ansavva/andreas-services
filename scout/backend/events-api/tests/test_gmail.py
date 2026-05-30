@@ -114,6 +114,19 @@ class TestExtractContent(unittest.TestCase):
         content = gmail.extract_content(_message("m1", "x@example.com", plain="just text"))
         self.assertEqual(content["body_markdown"].strip(), "just text")
 
+    def test_links_extracted_and_junk_dropped(self):
+        html = ('<p><a href="https://offsite.com/jazz">Tickets</a></p>'
+                '<p><a href="https://mailchi.mp/x/unsubscribe">Unsubscribe</a></p>'
+                '<p><a href="https://instagram.com/venue">IG</a></p>')
+        content = gmail.extract_content(_message("m1", "x@example.com", html=html))
+        self.assertEqual(content["links"], ["https://offsite.com/jazz"])
+
+    def test_body_cap_is_generous(self):
+        big = "<p>" + ("event " * 5000) + "</p>"
+        content = gmail.extract_content(_message("m1", "x@example.com", html=big))
+        # Old cap was 6000 chars; the body should now exceed it.
+        self.assertGreater(len(content["body_markdown"]), 6000)
+
 
 class TestDiscoverAndFetch(unittest.TestCase):
     def setUp(self):

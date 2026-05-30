@@ -62,10 +62,20 @@ def _create_settings(dynamodb):
     )
 
 
-def _stub_extractor(_pages):
-    return extractor.ExtractionResult(
+def _stub_triage(_pages):
+    return extractor.TriageResult(
         extractor.STATUS_COMPLETED,
-        events=[{"title": "From Agent", "start_date": "2099-07-01"}])
+        candidates=[{"title": "From Agent", "detail_url": None,
+                     "fallback_event": {"title": "From Agent",
+                                        "start_date": "2099-07-01"}}])
+
+
+def _stub_enrich(_candidate, _page_text, **_kwargs):  # pragma: no cover
+    raise AssertionError("enrich should not run for a linkless candidate")
+
+
+def _stub_passes(*_args, **_kwargs):
+    return _stub_triage, _stub_enrich
 
 
 @mock_dynamodb
@@ -83,7 +93,7 @@ class TestHandlers(unittest.TestCase):
 
     def test_processor_runs_email_source_and_persists_events(self):
         src = sources.create_source(sources.EMAIL, "venue@example.com")
-        with mock.patch.object(pipeline, "make_extractor", return_value=_stub_extractor):
+        with mock.patch.object(pipeline, "make_passes", side_effect=_stub_passes):
             result = processor_handler.lambda_handler(
                 {"source_id": src["source_id"], "trigger": "manual",
                  "email_body": "<p>show</p>"}, None)
@@ -94,7 +104,7 @@ class TestHandlers(unittest.TestCase):
 
     def test_processor_preview_persists_nothing(self):
         src = sources.create_source(sources.EMAIL, "venue@example.com")
-        with mock.patch.object(pipeline, "make_extractor", return_value=_stub_extractor):
+        with mock.patch.object(pipeline, "make_passes", side_effect=_stub_passes):
             result = processor_handler.lambda_handler(
                 {"source_id": src["source_id"], "mode": "preview",
                  "email_body": "<p>show</p>"}, None)

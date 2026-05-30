@@ -24,10 +24,35 @@ _GSI_ATTRS = [
 
 ROOT_HTML = """
   <html><body>
-    <a href="https://example.com/show">show</a>
-    <a href="https://offsite.com/x">offsite</a>
+    <main>
+      <h1>Live Show</h1>
+      <a href="https://example.com/show">show details</a>
+      <a href="https://offsite.com/x">offsite</a>
+    </main>
   </body></html>
 """
+
+
+def _triage_one(pages):
+    """Stub triage: one candidate pointing at the same-domain detail page."""
+    return extractor.TriageResult(
+        extractor.STATUS_COMPLETED,
+        candidates=[{
+            "title": "Live Show",
+            "hints": "Friday",
+            "detail_url": "https://example.com/show",
+            "fallback_event": {"title": "Live Show", "start_date": "2099-01-01"},
+        }],
+        transcript=[{"role": "result", "tool_input": {"candidates": []}}],
+    )
+
+
+def _enrich_one(candidate, page_text, **_kwargs):
+    return extractor.ExtractionResult(
+        extractor.STATUS_COMPLETED,
+        events=[{"title": "Extracted", "saw_detail": bool(page_text)}],
+        transcript=[{"role": "result", "tool_input": {"events": []}}],
+    )
 
 
 def _create_core(dynamodb):
@@ -68,16 +93,8 @@ def _fetch_fn(url):
     if url == "https://example.com":
         return 200, ROOT_HTML
     if url == "https://example.com/show":
-        return 200, "<p>Show details</p>"
+        return 200, "<main><p>Show details</p></main>"
     raise AssertionError(f"unexpected fetch: {url}")
-
-
-def _extract_one(pages):
-    return extractor.ExtractionResult(
-        extractor.STATUS_COMPLETED,
-        events=[{"title": "Extracted", "pages": len(pages)}],
-        transcript=[{"role": "result", "text": "{\"events\": []}"}],
-    )
 
 
 @mock_dynamodb
@@ -98,16 +115,20 @@ class TestPipeline(unittest.TestCase):
         )
 
     def test_preview_persists_nothing(self):
-        result = pipeline.preview(self.src, fetch_fn=_fetch_fn, extractor=_extract_one)
+        result = pipeline.preview(self.src, fetch_fn=_fetch_fn,
+                                  triage=_triage_one, enrich=_enrich_one)
         self.assertEqual(len(result["events"]), 1)
-        self.assertEqual(result["pages_fetched"], 2)  # root + 1 same-domain link
+        # Root page + 1 fetched detail page.
+        self.assertEqual(result["pages_fetched"], 2)
         self.assertEqual(len(result["link_outcomes"]), 1)
+        self.assertTrue(result["events"][0]["saw_detail"])
         # No run record created.
         self.assertEqual(runs.list_runs(self.src["source_id"]), [])
 
     def test_execute_run_stores_artifacts_transcript_and_finishes(self):
         run = pipeline.execute_run(self.src, runs.TRIGGER_SCHEDULED,
-                                   fetch_fn=_fetch_fn, extractor=_extract_one)
+                                   fetch_fn=_fetch_fn, triage=_triage_one,
+                                   enrich=_enrich_one)
         self.assertEqual(run["status"], "success")
         self.assertEqual(int(run["events_count"]), 1)
         self.assertIn("s3_root_html_ref", run)
@@ -116,22 +137,22 @@ class TestPipeline(unittest.TestCase):
         self.assertTrue(run["link_outcomes"][0]["ok"])
         self.assertIn("s3_ref", run["link_outcomes"][0])
 
-        # Root, linked page and transcript are in S3 and readable.
+        # Root, fetched detail page and transcript are in S3 and readable.
         sid, rid = self.src["source_id"], run["run_id"]
         self.assertIn("Show details", artifacts.get_text(run["link_outcomes"][0]["s3_ref"]))
-        self.assertIn("offsite", artifacts.get_text(artifacts.root_html_key(sid, rid)))
+        self.assertIn("Live Show", artifacts.get_text(artifacts.root_html_key(sid, rid)))
         self.assertIn("events", artifacts.get_text(run["agent_transcript_ref"]))
 
     def test_budget_exceeded_marks_error_and_discards_output(self):
         def over_budget(_pages):
-            return extractor.ExtractionResult(
+            return extractor.TriageResult(
                 extractor.STATUS_BUDGET_EXCEEDED,
-                events=[{"title": "partial"}],
                 transcript=[{"role": "assistant", "text": "..."}],
             )
 
         run = pipeline.execute_run(self.src, runs.TRIGGER_MANUAL,
-                                   fetch_fn=_fetch_fn, extractor=over_budget)
+                                   fetch_fn=_fetch_fn, triage=over_budget,
+                                   enrich=_enrich_one)
         self.assertEqual(run["status"], "error")
         self.assertEqual(run["error_reason"], runs.REASON_BUDGET_EXCEEDED)
         self.assertEqual(int(run["events_count"]), 0)  # partial output discarded
@@ -139,12 +160,33 @@ class TestPipeline(unittest.TestCase):
         notes = notifications.list_notifications()
         self.assertEqual([n["type"] for n in notes], ["budget_exceeded"])
 
+    def test_linkless_candidate_uses_fallback_without_enrich(self):
+        def triage_no_link(pages):
+            return extractor.TriageResult(
+                extractor.STATUS_COMPLETED,
+                candidates=[{
+                    "title": "Body Only Event",
+                    "detail_url": None,
+                    "fallback_event": {"title": "Body Only Event",
+                                       "start_date": "2099-03-03"},
+                }])
+
+        def enrich_should_not_run(candidate, page_text, **_kwargs):
+            raise AssertionError("enrich must not run for a linkless candidate")
+
+        result = pipeline.preview(self.src, fetch_fn=_fetch_fn,
+                                  triage=triage_no_link, enrich=enrich_should_not_run)
+        self.assertEqual(len(result["events"]), 1)
+        self.assertEqual(result["events"][0]["title"], "Body Only Event")
+        self.assertEqual(result["link_outcomes"], [])
+
     def test_execute_run_records_error_on_root_failure(self):
         def boom(_url):
             raise ConnectionError("dns fail")
 
         run = pipeline.execute_run(self.src, runs.TRIGGER_MANUAL,
-                                   fetch_fn=boom, extractor=_extract_one)
+                                   fetch_fn=boom, triage=_triage_one,
+                                   enrich=_enrich_one)
         self.assertEqual(run["status"], "error")
         self.assertIn("dns fail", run["error_reason"])
 
@@ -152,11 +194,13 @@ class TestPipeline(unittest.TestCase):
         pk = store.source_pk(self.src["source_id"])
         before = store.get(pk, "META")["next_run_at"]
         pipeline.execute_run(self.src, runs.TRIGGER_MANUAL,
-                             fetch_fn=_fetch_fn, extractor=_extract_one)
+                             fetch_fn=_fetch_fn, triage=_triage_one,
+                             enrich=_enrich_one)
         self.assertEqual(store.get(pk, "META")["next_run_at"], before)
 
-    def test_email_run_fetches_via_gmail_and_advances_cursor(self):
-        email_src = sources.create_source(sources.EMAIL, "venue.org")
+    def test_email_run_follows_cross_domain_links_and_advances_cursor(self):
+        email_src = sources.create_source(sources.EMAIL, "venue.org",
+                                          follow_links=True)
         captured = {}
 
         def gmail_fetch(domain, since):
@@ -164,18 +208,35 @@ class TestPipeline(unittest.TestCase):
             captured["since"] = since
             return [
                 {"message_id": "m1", "subject": "Show", "image_url": "",
-                 "body_markdown": "Jazz Night, Friday"},
-                {"message_id": "m2", "subject": "Gig", "image_url": "",
-                 "body_markdown": "Blues Sat"},
+                 "date": "Tue, 27 May 2026 09:00:00 +0100",
+                 "body_markdown": "Jazz Night, Friday — tickets at offsite",
+                 "links": ["https://offsite.com/jazz"]},
             ]
 
+        def triage_email(pages):
+            return extractor.TriageResult(
+                extractor.STATUS_COMPLETED,
+                candidates=[{
+                    "title": "Jazz Night",
+                    "detail_url": "https://offsite.com/jazz",
+                    "fallback_event": {"title": "Jazz Night", "start_date": "2099-05-30"},
+                }])
+
+        def fetch_offsite(url):
+            assert url == "https://offsite.com/jazz", url
+            return 200, "<main><p>Jazz Night detail</p></main>"
+
         run = pipeline.execute_run(email_src, runs.TRIGGER_SCHEDULED,
-                                   extractor=_extract_one, gmail_fetch=gmail_fetch)
+                                   fetch_fn=fetch_offsite, triage=triage_email,
+                                   enrich=_enrich_one, gmail_fetch=gmail_fetch)
         self.assertEqual(run["status"], "success")
         self.assertEqual(captured["domain"], "venue.org")
-        # Two messages stored as run artifacts + readable in S3.
-        self.assertEqual(len(run["link_outcomes"]), 2)
-        self.assertIn("Jazz Night", artifacts.get_text(run["link_outcomes"][0]["s3_ref"]))
+        # The cross-domain detail link was followed + stored.
+        self.assertEqual(len(run["link_outcomes"]), 1)
+        self.assertEqual(run["link_outcomes"][0]["url"], "https://offsite.com/jazz")
+        self.assertIn("Jazz Night detail",
+                      artifacts.get_text(run["link_outcomes"][0]["s3_ref"]))
+        self.assertTrue(run["events_count"])
         # Cursor advanced for the next run.
         updated = store.get(store.source_pk(email_src["source_id"]), "META")
         self.assertIn("last_email_fetch_epoch", updated)
@@ -194,7 +255,8 @@ class TestPipeline(unittest.TestCase):
         # since_epoch is supplied by the caller (processor); here we pass it
         # through explicitly to assert the pipeline forwards it.
         pipeline.execute_run(email_src, runs.TRIGGER_SCHEDULED,
-                             extractor=_extract_one, gmail_fetch=gmail_fetch,
+                             triage=_triage_one, enrich=_enrich_one,
+                             gmail_fetch=gmail_fetch,
                              since_epoch=email_src["last_email_fetch_epoch"])
         self.assertEqual(int(seen["since"]), 1700000000)
 

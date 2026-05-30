@@ -21,12 +21,14 @@ import os
 import re
 from datetime import datetime, timedelta, timezone
 
+from scout_core.adapters import fetcher
 from scout_core.common import taxonomy
 
 EVENTS_LABEL = "Events"
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 DEFAULT_LOOKBACK_DAYS = 7
 MAX_MESSAGES = int(os.environ.get("MAX_EMAILS_PER_RUN", "20"))
+MAX_BODY_CHARS = int(os.environ.get("MAX_EMAIL_BODY_CHARS", "20000"))
 
 _TRACKING_PIXEL_SIGNALS = (
     "pixel.", "tracking.", "/open.", "/beacon", "1x1", "spacer", "blank.gif",
@@ -124,7 +126,8 @@ def _b64(data):
 
 def extract_content(message):
     """Parse a Gmail message payload into a content dict: subject, sender, date,
-    body_markdown (HTML preferred and converted), and a candidate image_url."""
+    body_markdown (HTML preferred and converted), candidate image_url, and the
+    (non-junk) links found in the body for cross-domain link-following."""
     payload = message.get("payload", {})
     headers = {h["name"]: h["value"] for h in payload.get("headers", [])}
     html_body = ""
@@ -159,16 +162,21 @@ def extract_content(message):
         converter = html2text.HTML2Text()
         converter.ignore_links = False
         converter.ignore_images = True
+        converter.body_width = 0
         body = converter.handle(html_body)
     else:
         body = plain_body
+
+    links = [u for u in fetcher.extract_links(html_body)
+             if not fetcher.is_junk_link(u)] if html_body else []
 
     return {
         "subject": headers.get("Subject", "(no subject)"),
         "sender": headers.get("From", ""),
         "date": headers.get("Date", ""),
-        "body_markdown": body[:6000],
+        "body_markdown": body[:MAX_BODY_CHARS],
         "image_url": image_url,
+        "links": links,
     }
 
 

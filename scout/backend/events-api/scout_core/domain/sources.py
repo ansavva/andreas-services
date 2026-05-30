@@ -135,6 +135,7 @@ def _reindex(source_id):
 
 def create_source(source_type, identity, *, name=None, config=None,
                   follow_links=False, status=ACTIVE, agent_model=None,
+                  triage_model=None,
                   agent_budget_tokens=None, agent_budget_seconds=None):
     if source_type not in SOURCE_TYPES:
         raise ValueError(f"unknown source type: {source_type!r}")
@@ -158,6 +159,7 @@ def create_source(source_type, identity, *, name=None, config=None,
         archived=False,
         consecutive_zero_event_runs=0,
         agent_model_override=agent_model,
+        triage_model_override=triage_model,
         agent_budget_tokens_override=agent_budget_tokens,
         agent_budget_seconds_override=agent_budget_seconds,
         GSI1PK=_LISTED_PK,
@@ -202,7 +204,9 @@ def ensure_email_source(domain):
     if existing is not None:
         return existing, False
 
-    source = create_source(EMAIL, domain, status=ACTIVE)
+    # Email digests link out to the organizer / ticketing pages (cross-domain),
+    # so follow links by default — the body alone is usually just a teaser.
+    source = create_source(EMAIL, domain, status=ACTIVE, follow_links=True)
     store.set_attrs(store.source_pk(source["source_id"]), "META",
                     {"next_run_at": _iso(_now())})
     return _reindex(source["source_id"]), True
@@ -251,8 +255,8 @@ def update_source(source_id, fields):
         updates["archived"] = bool(fields["archived"])
     if "config" in fields:
         updates["config"] = _validate_config(source["type"], fields["config"])
-    for key in ("agent_model_override", "agent_budget_tokens_override",
-                "agent_budget_seconds_override"):
+    for key in ("agent_model_override", "triage_model_override",
+                "agent_budget_tokens_override", "agent_budget_seconds_override"):
         if key in fields:
             updates[key] = fields[key]
 
