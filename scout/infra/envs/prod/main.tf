@@ -57,6 +57,11 @@ import {
 }
 
 import {
+  to = module.compute.aws_ecr_repository.renderer[0]
+  id = "scout-renderer"
+}
+
+import {
   to = module.hosting.aws_cloudfront_function.spa_fallback
   id = "scout-spa-fallback"
 }

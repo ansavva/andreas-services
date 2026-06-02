@@ -1,4 +1,5 @@
 aws_region           = "us-east-1"
 pr_number            = "42"
 events_api_image_uri = "123456789.dkr.ecr.us-east-1.amazonaws.com/scout-events-api:pr-42"
+renderer_image_uri   = "123456789.dkr.ecr.us-east-1.amazonaws.com/scout-renderer:pr-42"
 anthropic_api_key    = "sk-ant-..."

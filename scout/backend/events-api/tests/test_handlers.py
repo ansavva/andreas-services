@@ -116,6 +116,28 @@ class TestHandlers(unittest.TestCase):
         self.assertEqual(processor_handler.lambda_handler({"source_id": "nope"}, None),
                          {"error": "source not found"})
 
+    def test_processor_selects_renderer_for_render_js_webpage(self):
+        src = sources.create_source(sources.WEBPAGE, "https://x.com",
+                                    config={"mode": "one-off"}, render_js=True)
+        with mock.patch.object(pipeline, "make_passes", side_effect=_stub_passes), \
+                mock.patch.object(pipeline, "execute_run") as run:
+            run.return_value = {"run_id": "r", "status": "success", "events_count": 0}
+            processor_handler.lambda_handler(
+                {"source_id": src["source_id"], "trigger": "manual"}, None)
+        self.assertIs(run.call_args.kwargs["fetch_fn"],
+                      processor_handler.renderer_client.fetch_rendered)
+
+    def test_processor_uses_plain_fetch_without_render_js(self):
+        src = sources.create_source(sources.WEBPAGE, "https://x.com",
+                                    config={"mode": "one-off"})
+        with mock.patch.object(pipeline, "make_passes", side_effect=_stub_passes), \
+                mock.patch.object(pipeline, "execute_run") as run:
+            run.return_value = {"run_id": "r", "status": "success", "events_count": 0}
+            processor_handler.lambda_handler(
+                {"source_id": src["source_id"], "trigger": "manual"}, None)
+        self.assertIs(run.call_args.kwargs["fetch_fn"],
+                      processor_handler.fetcher.fetch_url)
+
     def test_processor_discover_ensures_email_sources(self):
         with mock.patch.object(processor_handler.gmail, "discover_domains",
                                return_value=["eventbrite.com", "venue.org"]):

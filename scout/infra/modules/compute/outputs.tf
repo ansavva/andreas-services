@@ -23,6 +23,16 @@ output "sweep_function_name" {
   value       = aws_lambda_function.sweep.function_name
 }
 
+output "source_renderer_function_name" {
+  description = "Source renderer Lambda function name"
+  value       = aws_lambda_function.source_renderer.function_name
+}
+
+output "ecr_renderer_url" {
+  description = "ECR repository URL for the headless renderer"
+  value       = var.create_ecr ? aws_ecr_repository.renderer[0].repository_url : null
+}
+
 output "ecr_events_api_url" {
   description = "ECR repository URL for events API"
   value       = var.create_ecr ? aws_ecr_repository.events_api[0].repository_url : null

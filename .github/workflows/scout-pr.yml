@@ -210,7 +210,7 @@ jobs:
 
       - name: Ensure ECR repositories exist
         run: |
-          for REPO in scout-events-api; do
+          for REPO in scout-events-api scout-renderer; do
             aws ecr describe-repositories --repository-names "${REPO}" \
               --region "${{ env.AWS_REGION }}" > /dev/null 2>&1 || \
             aws ecr create-repository \
@@ -227,6 +227,13 @@ jobs:
         run: |
           IMAGE="${ECR_REGISTRY}/scout-events-api"
           cd scout/backend/events-api
+          docker build -t "${IMAGE}:pr-${{ env.PR_NUMBER }}" .
+          docker push "${IMAGE}:pr-${{ env.PR_NUMBER }}"
+
+      - name: Build & push renderer
+        run: |
+          IMAGE="${ECR_REGISTRY}/scout-renderer"
+          cd scout/backend/renderer
           docker build -t "${IMAGE}:pr-${{ env.PR_NUMBER }}" .
           docker push "${IMAGE}:pr-${{ env.PR_NUMBER }}"
 
@@ -247,6 +254,7 @@ jobs:
         env:
           TF_VAR_pr_number:                  "${{ env.PR_NUMBER }}"
           TF_VAR_events_api_image_uri:       "${{ env.ECR_REGISTRY }}/scout-events-api:pr-${{ env.PR_NUMBER }}"
+          TF_VAR_renderer_image_uri:         "${{ env.ECR_REGISTRY }}/scout-renderer:pr-${{ env.PR_NUMBER }}"
           TF_VAR_anthropic_api_key:          ${{ secrets.ANTHROPIC_API_KEY }}
         run: terraform -chdir=scout/infra/envs/pr apply -auto-approve -input=false
 
@@ -304,6 +312,7 @@ jobs:
               SCOUT_TABLE_SUFFIX:     $suffix,
               SCOUT_ARTIFACTS_BUCKET: ("scout-artifacts-pr-" + $pr),
               SCOUT_IMAGES_BUCKET:    ("scout-images-pr-" + $pr),
+              SCOUT_RENDERER_FN:      ("scout-source-renderer-pr-" + $pr),
               ANTHROPIC_API_KEY:      $anthropic,
               GMAIL_CLIENT_ID:        $client_id,
               GMAIL_CLIENT_SECRET:    $client_secret,
@@ -345,6 +354,8 @@ jobs:
           for NAME in scout-events-api scout-source-run-processor scout-scheduler scout-sweep; do
             update_code "${NAME}${SUFFIX}" "${EVENTS_IMAGE}"
           done
+          RENDERER_IMAGE="${ECR_REGISTRY}/scout-renderer:pr-${{ env.PR_NUMBER }}"
+          update_code "scout-source-renderer${SUFFIX}" "${RENDERER_IMAGE}"
 
       # ------------------------------------------------------------------
       # Build + publish the frontend under /<N>/app/

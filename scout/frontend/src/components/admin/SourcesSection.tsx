@@ -25,6 +25,7 @@ function CreateSourceForm({ onClose, onCreated }: { onClose: () => void; onCreat
   const [preset, setPreset] = useState("daily");
   const [mode, setMode] = useState("scheduled");
   const [followLinks, setFollowLinks] = useState(false);
+  const [renderJs, setRenderJs] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const submit = async (e: React.FormEvent) => {
@@ -35,7 +36,14 @@ function CreateSourceForm({ onClose, onCreated }: { onClose: () => void; onCreat
         ? { check_frequency: preset }
         : { mode, schedule_preset: preset };
     try {
-      await api.createSource({ type, identity, name: name || undefined, config, follow_links: followLinks });
+      await api.createSource({
+        type,
+        identity,
+        name: name || undefined,
+        config,
+        follow_links: followLinks,
+        ...(type === "webpage" ? { render_js: renderJs } : {}),
+      });
       onCreated();
       onClose();
     } catch (err) {
@@ -91,6 +99,12 @@ function CreateSourceForm({ onClose, onCreated }: { onClose: () => void; onCreat
           <input type="checkbox" checked={followLinks} onChange={(e) => setFollowLinks(e.target.checked)} />
           Follow same-domain links (one level)
         </label>
+        {type === "webpage" && (
+          <label className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
+            <input type="checkbox" checked={renderJs} onChange={(e) => setRenderJs(e.target.checked)} />
+            Render JavaScript (headless browser — for JS-rendered or bot-challenged sites)
+          </label>
+        )}
         <div className="flex gap-2">
           <Button type="submit" variant="primary">
             Create
@@ -591,6 +605,7 @@ export function SourcesSection() {
                         <Badge value={s.status} />
                         {s.last_run_status && <Badge value={s.last_run_status} />}
                         {s.follow_links && <span>follows links</span>}
+                        {s.render_js && <span>renders JS</span>}
                       </div>
                     </div>
                   </button>
