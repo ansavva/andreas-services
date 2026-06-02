@@ -49,6 +49,12 @@ _CHALLENGE_MARKERS = (
     "Checking the site connection security",
 )
 
+# After the page settles, wait this long (at most) for the network to go idle so
+# SPAs that fill content via XHR after DOMContentLoaded are captured fully.
+# Bounded so a site with long-polling / persistent connections can't burn the
+# whole invocation budget waiting for an idle that never comes.
+_NETWORK_IDLE_MS = 8000
+
 _pw = None
 _browser = None
 _context = None
@@ -113,6 +119,16 @@ def lambda_handler(event, _context):
         try:
             resp = page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
             _settle_challenge(page, deadline)
+            # Let async/lazy-loaded content (XHR after DOMContentLoaded) land
+            # before we snapshot. Bounded by both _NETWORK_IDLE_MS and the
+            # remaining invocation budget.
+            idle_ms = min(_NETWORK_IDLE_MS,
+                          max(0, int((deadline - time.time()) * 1000)))
+            if idle_ms:
+                try:
+                    page.wait_for_load_state("networkidle", timeout=idle_ms)
+                except PlaywrightError:
+                    pass
             status = resp.status if resp is not None else 200
             # The initial response is the challenge stub (HTTP 202) for gated
             # sites; once we've settled onto real content, report success so the
