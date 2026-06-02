@@ -15,7 +15,9 @@ Event payload:
 
 import logging
 
+from scout_core.adapters import fetcher
 from scout_core.adapters import gmail
+from scout_core.adapters import renderer_client
 from scout_core.domain import pipeline
 from scout_core.domain import runs
 from scout_core.domain import sources
@@ -52,6 +54,13 @@ def lambda_handler(event, context):
     triage, enrich = pipeline.make_passes(source, settings)
     email_body = event.get("email_body")
 
+    # Webpage sources flagged render_js are fetched through the headless-browser
+    # renderer (runs the site's JS / passes bot challenges); everything else uses
+    # the in-process urllib fetch.
+    fetch_fn = fetcher.fetch_url
+    if source["type"] == sources.WEBPAGE and source.get("render_js"):
+        fetch_fn = renderer_client.fetch_rendered
+
     # For email sources we pull the sender's recent Events-labeled mail from
     # Gmail, resuming from the source's stored cursor. An inline email_body
     # (tests / manual replay) bypasses the live fetch.
@@ -63,14 +72,14 @@ def lambda_handler(event, context):
         since_epoch = source.get("last_email_fetch_epoch")
 
     if event.get("mode") == "preview":
-        return pipeline.preview(source, triage=triage, enrich=enrich,
-                                email_body=email_body, gmail_fetch=gmail_fetch,
-                                since_epoch=since_epoch)
+        return pipeline.preview(source, fetch_fn=fetch_fn, triage=triage,
+                                enrich=enrich, email_body=email_body,
+                                gmail_fetch=gmail_fetch, since_epoch=since_epoch)
 
     trigger = event.get("trigger", runs.TRIGGER_MANUAL)
-    run = pipeline.execute_run(source, trigger, triage=triage, enrich=enrich,
-                               email_body=email_body, gmail_fetch=gmail_fetch,
-                               since_epoch=since_epoch)
+    run = pipeline.execute_run(source, trigger, fetch_fn=fetch_fn, triage=triage,
+                               enrich=enrich, email_body=email_body,
+                               gmail_fetch=gmail_fetch, since_epoch=since_epoch)
     logger.info("Run %s for source %s finished: %s", run["run_id"], source_id,
                 run["status"])
     return {"run_id": run["run_id"], "status": run["status"],

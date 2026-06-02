@@ -16,6 +16,12 @@ variable "events_api_image_uri" {
   default     = ""
 }
 
+variable "renderer_image_uri" {
+  description = "ECR image URI for the headless renderer Lambda (required when create_ecr = false)"
+  type        = string
+  default     = ""
+}
+
 variable "processor_env_vars" {
   description = "Environment variables for the source-run processor Lambda (e.g. ANTHROPIC_API_KEY)"
   type        = map(string)

@@ -1,0 +1,6 @@
+# Pinned to the Playwright version baked into the base image
+# (mcr.microsoft.com/playwright/python) so the Python client matches the
+# bundled Chromium build. awslambdaric is the AWS Lambda Runtime Interface
+# Client that turns this Ubuntu image into a valid Lambda container.
+awslambdaric==3.1.1
+playwright==1.55.0

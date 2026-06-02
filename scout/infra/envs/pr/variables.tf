@@ -14,6 +14,11 @@ variable "events_api_image_uri" {
   type        = string
 }
 
+variable "renderer_image_uri" {
+  description = "ECR image URI for the headless renderer Lambda"
+  type        = string
+}
+
 variable "anthropic_api_key" {
   description = "Anthropic API key"
   type        = string

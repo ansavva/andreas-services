@@ -96,6 +96,7 @@ export interface Source {
   status: "active" | "disabled";
   archived: boolean;
   follow_links: boolean;
+  render_js?: boolean;
   config: Record<string, string>;
   next_run_at?: string;
   last_run_at?: string;

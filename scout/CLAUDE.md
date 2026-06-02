@@ -42,8 +42,10 @@ the approved ones at `scout.andreas.services/app`.
 
 - **Source** — email (identity = sender domain) or webpage (identity = root
   URL). Has `status` (active|disabled) and an independent `archived` flag (each
-  stops scheduled runs), a `follow_links` toggle, per-source agent model/budget
-  overrides, source labels, and a `next_run_at` schedule cursor.
+  stops scheduled runs), a `follow_links` toggle, a `render_js` toggle (webpage
+  only — fetch through the headless renderer instead of a plain HTTP GET, for
+  JS-rendered or bot-challenged sites), per-source agent model/budget overrides,
+  source labels, and a `next_run_at` schedule cursor.
 - **Source run** — one record per scheduled/manual execution (previews are
   dry-runs and persist nothing): status (in_progress|success|error, with the
   distinct `budget_exceeded` / `orphaned-by-restart` reasons), S3 refs (root
@@ -80,9 +82,12 @@ scout/
 │   │   │   ├── handlers/        # thin Lambda entrypoints: api, processor, scheduler, sweep
 │   │   │   ├── domain/          # events, sources, runs, labels, locations, deletion,
 │   │   │   │                    #   public, images, pipeline, notifications
-│   │   │   ├── adapters/        # store (DynamoDB), artifacts (S3), gmail, fetcher, extractor
+│   │   │   ├── adapters/        # store (DynamoDB), artifacts (S3), gmail, fetcher,
+│   │   │   │                    #   extractor, renderer_client (invokes scout-source-renderer)
 │   │   │   └── common/          # taxonomy, timeutil (pure, dependency-free)
 │   │   └── tests/               # moto-based unit tests (mirror the package)
+│   └── renderer/                # headless-browser Lambda (own image: Playwright + Chromium)
+│       └── Dockerfile  requirements.txt  handler.py
 └── frontend/                    # Vite + React + TS SPA (public site + admin console)
 ```
 
@@ -118,19 +123,27 @@ resolved once at write) is indexed instead; the sweep refreshes the boolean.
 
 ## Lambda Functions
 
-All four share IAM role `scout-lambda-role` (DynamoDB on `scout-*` incl. GSIs,
-S3 on `scout-artifacts-*`/`scout-images-*`, invoke `scout-source-run-processor*`)
-and ship from **one** `scout-events-api` image with different container commands
-(`image_config.command`):
+The first four share IAM role `scout-lambda-role` (DynamoDB on `scout-*` incl.
+GSIs, S3 on `scout-artifacts-*`/`scout-images-*`, invoke
+`scout-source-run-processor*` and `scout-source-renderer*`) and ship from **one**
+`scout-events-api` image with different container commands
+(`image_config.command`). The renderer ships from its **own** image
+(`scout-renderer`) because Chromium is too heavy for the shared image:
 
 | Function | Entrypoint | Trigger | Notes |
 |----------|-----------|---------|-------|
 | `scout-events-api` | `scout_core.handlers.api.lambda_handler` | API Gateway | 128 MB / 30 s |
-| `scout-source-run-processor` | `scout_core.handlers.processor.lambda_handler` | async invoke | 512 MB / 300 s; needs `ANTHROPIC_API_KEY`, `SCOUT_ARTIFACTS_BUCKET`, `SCOUT_IMAGES_BUCKET`, `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` (Gmail ingestion + `mode=discover`) |
+| `scout-source-run-processor` | `scout_core.handlers.processor.lambda_handler` | async invoke | 512 MB / 300 s; needs `ANTHROPIC_API_KEY`, `SCOUT_ARTIFACTS_BUCKET`, `SCOUT_IMAGES_BUCKET`, `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` (Gmail ingestion + `mode=discover`), `SCOUT_RENDERER_FN` (render_js sources) |
 | `scout-scheduler` | `scout_core.handlers.scheduler.lambda_handler` | EventBridge `rate(15 minutes)` | Gmail discovery pass + dispatches due sources |
 | `scout-sweep` | `scout_core.handlers.sweep.lambda_handler` | EventBridge `rate(1 hour)` | orphan recovery + past flags |
+| `scout-source-renderer` | `handler.lambda_handler` (own image) | sync invoke (by processor) | 2048 MB / 90 s; Playwright + Chromium; renders `render_js` webpage sources (runs JS / passes bot challenges), returns HTML |
 
 EventBridge rules are created only in prod (`create_eventbridge=true`).
+
+For a `render_js` webpage source, the processor swaps its injected `fetch_fn`
+from `fetcher.fetch_url` to `renderer_client.fetch_rendered`, which synchronously
+invokes `scout-source-renderer`; everything downstream (clean → triage → enrich)
+is unchanged. Non-render sources never touch the renderer.
 
 ### API surface (events-api)
 
@@ -187,6 +200,7 @@ Notable additions for the redesign:
 | `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN` | secret → processor env | Gmail API (OAuth refresh token) for "Events"-label ingestion |
 | `SCOUT_ARTIFACTS_BUCKET` / `SCOUT_IMAGES_BUCKET` | Lambda env | S3 buckets (`scout-artifacts-<env>` / `scout-images-<env>`) |
 | `SCOUT_PROCESSOR_FN` | events-api / scheduler env | processor function name for invocations |
+| `SCOUT_RENDERER_FN` | processor env | renderer function name (sync-invoked for `render_js` sources) |
 | `SCOUT_TABLE_SUFFIX` | Lambda env | `""` in prod, `-pr-<N>` in previews |
 | `VITE_API_URL` / `VITE_COGNITO_*` | GitHub vars | frontend build |
 
@@ -195,10 +209,12 @@ Notable additions for the redesign:
 Push to `main` runs `.github/workflows/scout-prod.yaml`:
 `detect-changes → build-and-push → deploy-infra → update-lambda + deploy-frontend`.
 Image build runs first because the Lambdas reference `:latest` with
-`lifecycle { ignore_changes = [image_uri, environment] }`. `update-lambda` sets
-env vars and pins **all four** Lambdas to `:${sha}` — `scout-events-api`,
-`scout-source-run-processor`, `scout-scheduler`, `scout-sweep` all use the one
-`scout-events-api` image.
+`lifecycle { ignore_changes = [image_uri, environment] }`. Two images are built:
+the shared `scout-events-api` image and the `scout-renderer` image (Playwright +
+Chromium). `update-lambda` sets env vars and pins all five Lambdas to `:${sha}` —
+`scout-events-api`, `scout-source-run-processor`, `scout-scheduler`,
+`scout-sweep` use the `scout-events-api` image; `scout-source-renderer` uses the
+`scout-renderer` image.
 
 PR previews (`.github/workflows/scout-pr.yml`): validate first
 (`lint-unit-build`: backend pytest + frontend lint/tsc/build), then

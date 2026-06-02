@@ -114,7 +114,7 @@ jobs:
 
       - name: Ensure ECR repositories exist
         run: |
-          for REPO in scout-events-api; do
+          for REPO in scout-events-api scout-renderer; do
             aws ecr describe-repositories --repository-names "$REPO" \
               --region "${{ env.AWS_REGION }}" >/dev/null 2>&1 || \
             aws ecr create-repository \
@@ -128,6 +128,14 @@ jobs:
         run: |
           IMAGE="${ECR_REGISTRY}/scout-events-api"
           cd scout/backend/events-api
+          docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${{ github.sha }}"
+          docker push "${IMAGE}:latest"
+
+      - name: Build & push renderer
+        run: |
+          IMAGE="${ECR_REGISTRY}/scout-renderer"
+          cd scout/backend/renderer
           docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
           docker push "${IMAGE}:${{ github.sha }}"
           docker push "${IMAGE}:latest"
@@ -295,6 +303,7 @@ jobs:
               SCOUT_TABLE_SUFFIX:     "",
               SCOUT_ARTIFACTS_BUCKET: "scout-artifacts-production",
               SCOUT_IMAGES_BUCKET:    "scout-images-production",
+              SCOUT_RENDERER_FN:      "scout-source-renderer",
               ANTHROPIC_API_KEY:      $anthropic,
               GMAIL_CLIENT_ID:        $client_id,
               GMAIL_CLIENT_SECRET:    $client_secret,
@@ -334,6 +343,8 @@ jobs:
           for FN in scout-events-api scout-source-run-processor scout-scheduler scout-sweep; do
             update_code "${FN}" "${ECR_REGISTRY}/scout-events-api:${{ github.sha }}"
           done
+          # The renderer ships from its own image.
+          update_code scout-source-renderer "${ECR_REGISTRY}/scout-renderer:${{ github.sha }}"
 
   # ---------------------------------------------------------------------------
   # Build Vite SPA and sync to S3 + CloudFront.

@@ -42,6 +42,7 @@ module "compute" {
   pr_number            = var.pr_number
   table_suffix         = "-pr-${var.pr_number}"
   events_api_image_uri = var.events_api_image_uri
+  renderer_image_uri   = var.renderer_image_uri
   create_ecr           = false
   create_eventbridge   = false
 

@@ -4,10 +4,15 @@ locals {
   processor_name  = "scout-source-run-processor${local.name_suffix}"
   scheduler_name  = "scout-scheduler${local.name_suffix}"
   sweep_name      = "scout-sweep${local.name_suffix}"
+  renderer_name   = "scout-source-renderer${local.name_suffix}"
 
   # The source-run processor, scheduler and sweep share the events-api image and
   # only override the container command, so the image is built once.
   events_api_image = var.create_ecr ? "${aws_ecr_repository.events_api[0].repository_url}:latest" : var.events_api_image_uri
+
+  # The renderer (headless Chromium) is too heavy for the shared image, so it
+  # ships from its own ECR repo.
+  renderer_image = var.create_ecr ? "${aws_ecr_repository.renderer[0].repository_url}:latest" : var.renderer_image_uri
 }
 
 data "aws_caller_identity" "current" {}
@@ -28,6 +33,36 @@ resource "aws_ecr_repository" "events_api" {
 resource "aws_ecr_lifecycle_policy" "events_api" {
   count      = var.create_ecr ? 1 : 0
   repository = aws_ecr_repository.events_api[0].name
+
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "Keep last 10 images"
+      selection = {
+        tagStatus   = "any"
+        countType   = "imageCountMoreThan"
+        countNumber = 10
+      }
+      action = { type = "expire" }
+    }]
+  })
+}
+
+resource "aws_ecr_repository" "renderer" {
+  count                = var.create_ecr ? 1 : 0
+  name                 = "scout-renderer"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = var.tags
+}
+
+resource "aws_ecr_lifecycle_policy" "renderer" {
+  count      = var.create_ecr ? 1 : 0
+  repository = aws_ecr_repository.renderer[0].name
 
   policy = jsonencode({
     rules = [{
@@ -98,6 +133,7 @@ resource "aws_iam_role_policy" "lambda" {
         Action = ["lambda:InvokeFunction"]
         Resource = [
           "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:scout-source-run-processor*",
+          "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:scout-source-renderer*",
         ]
       },
       {
@@ -166,6 +202,7 @@ resource "aws_lambda_function" "source_run_processor" {
       SCOUT_TABLE_SUFFIX     = var.table_suffix
       SCOUT_ARTIFACTS_BUCKET = var.artifacts_bucket
       SCOUT_IMAGES_BUCKET    = var.images_bucket
+      SCOUT_RENDERER_FN      = local.renderer_name
     })
   }
 
@@ -245,6 +282,33 @@ resource "aws_lambda_function" "sweep" {
 
 resource "aws_cloudwatch_log_group" "sweep" {
   name              = "/aws/lambda/${aws_lambda_function.sweep.function_name}"
+  retention_in_days = 14
+
+  tags = var.tags
+}
+
+# --- Source renderer (headless Chromium; invoked sync by the processor) --------
+resource "aws_lambda_function" "source_renderer" {
+  function_name = local.renderer_name
+  role          = aws_iam_role.lambda.arn
+  package_type  = "Image"
+  image_uri     = local.renderer_image
+  timeout       = 90
+  memory_size   = 2048
+
+  ephemeral_storage {
+    size = 1024
+  }
+
+  tags = var.tags
+
+  lifecycle {
+    ignore_changes = [image_uri, environment]
+  }
+}
+
+resource "aws_cloudwatch_log_group" "source_renderer" {
+  name              = "/aws/lambda/${aws_lambda_function.source_renderer.function_name}"
   retention_in_days = 14
 
   tags = var.tags
