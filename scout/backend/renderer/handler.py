@@ -14,32 +14,69 @@ Contract (mirrors ``fetcher.fetch_url`` on the caller side):
 - output: ``{"status": int, "html": str, "final_url": str}`` on success,
           ``{"status": 0, "error": str}`` on failure.
 
-Chromium is launched once per warm container and the browser context is reused
-across invocations, so within a run the clearance cookie obtained on the first
-page is reused for the listing/detail fetches that follow (no re-solving) while
-the container stays warm.
+The browser is patchright-driven real Chrome — patchright is a drop-in,
+undetected Playwright fork that fixes the signals modern bot-management keys on
+(the CDP ``Runtime.enable`` leak, the ``HeadlessChrome`` UA token,
+``navigator.webdriver``). Note this hardens the *browser* fingerprint only; from
+a data-center (Lambda) IP, IP-reputation-based defenses (Cloudflare/DataDome) can
+still block regardless — that needs residential proxies, which we don't do here.
+
+Chrome runs *headful* under an Xvfb virtual display (headless Chrome leaks a
+``HeadlessChrome`` UA token); both Xvfb and Chrome start once per warm container
+and the browser context is reused across invocations, so within a run the
+clearance cookie obtained on the first page is reused for the listing/detail
+fetches that follow (no re-solving) while the container stays warm.
 """
 
 import logging
+import os
+import subprocess
 import time
 
-from playwright.sync_api import Error as PlaywrightError
-from playwright.sync_api import sync_playwright
+from patchright.sync_api import Error as PlaywrightError
+from patchright.sync_api import sync_playwright
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-
-# Lambda only mounts /tmp writable and /dev/shm is tiny, so steer Chromium's
-# scratch space there and drop the sandbox (the function is already isolated).
+# Lambda runs as root with a tiny /dev/shm, so these two flags are environment
+# necessities. We deliberately keep the arg list minimal — patchright manages
+# the anti-detection flags (e.g. AutomationControlled) itself, and extra cosmetic
+# flags only add fingerprint surface.
 _LAUNCH_ARGS = [
     "--no-sandbox",
     "--disable-dev-shm-usage",
-    "--disable-gpu",
-    "--disable-setuid-sandbox",
 ]
+
+# We run Chrome *headful* under a virtual framebuffer rather than headless:
+# headless Chrome leaks a "HeadlessChrome" UA token (a detection signal that
+# patchright can't scrub), whereas headful Chrome on Xvfb reports a normal UA.
+_DISPLAY = ":99"
+
+
+def _ensure_display():
+    """Start an Xvfb virtual display once per warm container so Chrome can run
+    headful. /tmp is the only writable path in Lambda, which is where Xvfb's
+    socket/lock live."""
+    if os.environ.get("DISPLAY"):
+        return
+    os.makedirs("/tmp/.X11-unix", exist_ok=True)
+    proc = subprocess.Popen(
+        ["Xvfb", _DISPLAY, "-screen", "0", "1280x1800x24", "-nolisten", "tcp"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        start_new_session=True)
+    os.environ["DISPLAY"] = _DISPLAY
+    # Wait until the X socket is up — but only trust it if the server is still
+    # alive (a stale socket from a crashed Xvfb would otherwise look "ready").
+    deadline = time.time() + 10
+    sock = f"/tmp/.X11-unix/X{_DISPLAY.lstrip(':')}"
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            raise RuntimeError("Xvfb exited during startup")
+        if os.path.exists(sock):
+            return
+        time.sleep(0.1)
+    raise RuntimeError("Xvfb failed to start")
 
 # Substrings / paths that mark a page as still showing an anti-bot challenge
 # interstitial rather than the real content.
@@ -61,17 +98,20 @@ _context = None
 
 
 def _ensure_context():
-    """Lazily start Playwright + Chromium and a reusable browser context,
-    re-launching if a previous one was torn down."""
+    """Lazily start patchright + real Chrome and a reusable browser context,
+    re-launching if a previous one was torn down. Per patchright guidance we use
+    the real Chrome channel and set no custom user-agent/headers/viewport — real
+    Chrome supplies a consistent UA, client hints and TLS, which is the point."""
     global _pw, _browser, _context
     if _pw is None:
         _pw = sync_playwright().start()
     if _browser is None or not _browser.is_connected():
-        _browser = _pw.chromium.launch(headless=True, args=_LAUNCH_ARGS)
+        _ensure_display()
+        _browser = _pw.chromium.launch(
+            channel="chrome", headless=False, args=_LAUNCH_ARGS)
         _context = None
     if _context is None:
-        _context = _browser.new_context(
-            user_agent=_UA, viewport={"width": 1280, "height": 1800})
+        _context = _browser.new_context(no_viewport=True)
     return _context
 
 

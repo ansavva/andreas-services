@@ -287,14 +287,14 @@ resource "aws_cloudwatch_log_group" "sweep" {
   tags = var.tags
 }
 
-# --- Source renderer (headless Chromium; invoked sync by the processor) --------
+# --- Source renderer (patchright/Chrome headful via Xvfb; invoked sync) --------
 resource "aws_lambda_function" "source_renderer" {
   function_name = local.renderer_name
   role          = aws_iam_role.lambda.arn
   package_type  = "Image"
   image_uri     = local.renderer_image
   timeout       = 90
-  memory_size   = 2048
+  memory_size   = 3008
 
   ephemeral_storage {
     size = 1024

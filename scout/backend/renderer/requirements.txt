@@ -1,6 +1,7 @@
-# Pinned to the Playwright version baked into the base image
-# (mcr.microsoft.com/playwright/python) so the Python client matches the
-# bundled Chromium build. awslambdaric is the AWS Lambda Runtime Interface
-# Client that turns this Ubuntu image into a valid Lambda container.
+# patchright is a drop-in, undetected fork of Playwright (patches the CDP
+# Runtime.enable leak + headless tells). Its version tracks Playwright's, so the
+# base image tag in the Dockerfile is pinned to match. awslambdaric is the AWS
+# Lambda Runtime Interface Client that turns this Ubuntu image into a valid
+# Lambda container.
 awslambdaric==3.1.1
-playwright==1.55.0
+patchright==1.60.0

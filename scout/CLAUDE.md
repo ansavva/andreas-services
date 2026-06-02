@@ -86,7 +86,7 @@ scout/
 │   │   │   │                    #   extractor, renderer_client (invokes scout-source-renderer)
 │   │   │   └── common/          # taxonomy, timeutil (pure, dependency-free)
 │   │   └── tests/               # moto-based unit tests (mirror the package)
-│   └── renderer/                # headless-browser Lambda (own image: Playwright + Chromium)
+│   └── renderer/                # browser-render Lambda (own image: patchright + headful Chrome/Xvfb)
 │       └── Dockerfile  requirements.txt  handler.py
 └── frontend/                    # Vite + React + TS SPA (public site + admin console)
 ```
@@ -136,7 +136,7 @@ GSIs, S3 on `scout-artifacts-*`/`scout-images-*`, invoke
 | `scout-source-run-processor` | `scout_core.handlers.processor.lambda_handler` | async invoke | 512 MB / 300 s; needs `ANTHROPIC_API_KEY`, `SCOUT_ARTIFACTS_BUCKET`, `SCOUT_IMAGES_BUCKET`, `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` (Gmail ingestion + `mode=discover`), `SCOUT_RENDERER_FN` (render_js sources) |
 | `scout-scheduler` | `scout_core.handlers.scheduler.lambda_handler` | EventBridge `rate(15 minutes)` | Gmail discovery pass + dispatches due sources |
 | `scout-sweep` | `scout_core.handlers.sweep.lambda_handler` | EventBridge `rate(1 hour)` | orphan recovery + past flags |
-| `scout-source-renderer` | `handler.lambda_handler` (own image) | sync invoke (by processor) | 2048 MB / 90 s; Playwright + Chromium; renders `render_js` webpage sources (runs JS / passes bot challenges), returns HTML |
+| `scout-source-renderer` | `handler.lambda_handler` (own image) | sync invoke (by processor) | 3008 MB / 90 s; patchright (undetected Playwright) + headful Chrome via Xvfb; renders `render_js` webpage sources (runs JS / passes bot challenges), returns HTML |
 
 EventBridge rules are created only in prod (`create_eventbridge=true`).
 
