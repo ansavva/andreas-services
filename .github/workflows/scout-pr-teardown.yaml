@@ -70,6 +70,7 @@ jobs:
         env:
           TF_VAR_pr_number:            ${{ env.PR_NUMBER }}
           TF_VAR_events_api_image_uri: placeholder
+          TF_VAR_renderer_image_uri:   placeholder
           TF_VAR_anthropic_api_key:    ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           terraform -chdir=scout/infra/envs/pr init -input=false \
