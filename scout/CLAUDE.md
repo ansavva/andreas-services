@@ -43,15 +43,16 @@ the approved ones at `scout.andreas.services/app`.
 - **Source** — email (identity = sender domain), webpage (identity = root URL),
   or **ical** (identity = an `.ics` feed URL). Has `status` (active|disabled) and
   an independent `archived` flag (each stops scheduled runs), a `follow_links`
-  toggle, a `render_js` toggle (webpage only — fetch through the headless
-  renderer instead of a plain HTTP GET, for JS-rendered or bot-challenged sites),
-  per-source agent model/budget overrides, source labels, and a `next_run_at`
-  schedule cursor. **iCal** sources bypass fetching+LLM extraction entirely: the
-  processor parses the feed's `VEVENT`s straight into pending events
-  (`adapters/ical.py` → `pipeline.execute_ical_run` → `events.convert_extraction`).
-  This is the reliable path for events owned by a hosted calendar widget (e.g.
-  Tockify/Google Calendar), whose host page renders client-side and exposes no
-  events to a fetch or render.
+  toggle, per-source agent model/budget overrides, source labels, and a
+  `next_run_at` schedule cursor. **All web-page retrieval** — webpage roots,
+  followed links, and the links followed out of email digests — goes through the
+  headless renderer (`renderer_client.fetch_rendered`), so JS-rendered and
+  bot-challenged pages work everywhere. **iCal** sources bypass fetching+LLM
+  extraction entirely: the processor parses the feed's `VEVENT`s straight into
+  pending events (`adapters/ical.py` → `pipeline.execute_ical_run` →
+  `events.convert_extraction`). This is the reliable path for events owned by a
+  hosted calendar widget (e.g. Tockify/Google Calendar), whose host page renders
+  client-side and exposes no events to a fetch or render.
 - **Source run** — one record per scheduled/manual execution (previews are
   dry-runs and persist nothing): status (in_progress|success|error, with the
   distinct `budget_exceeded` / `orphaned-by-restart` reasons), S3 refs (root
@@ -139,17 +140,18 @@ GSIs, S3 on `scout-artifacts-*`/`scout-images-*`, invoke
 | Function | Entrypoint | Trigger | Notes |
 |----------|-----------|---------|-------|
 | `scout-events-api` | `scout_core.handlers.api.lambda_handler` | API Gateway | 128 MB / 30 s |
-| `scout-source-run-processor` | `scout_core.handlers.processor.lambda_handler` | async invoke | 512 MB / 300 s; needs `ANTHROPIC_API_KEY`, `SCOUT_ARTIFACTS_BUCKET`, `SCOUT_IMAGES_BUCKET`, `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` (Gmail ingestion + `mode=discover`), `SCOUT_RENDERER_FN` (render_js sources) |
+| `scout-source-run-processor` | `scout_core.handlers.processor.lambda_handler` | async invoke | 512 MB / 300 s; needs `ANTHROPIC_API_KEY`, `SCOUT_ARTIFACTS_BUCKET`, `SCOUT_IMAGES_BUCKET`, `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` (Gmail ingestion + `mode=discover`), `SCOUT_RENDERER_FN` (page rendering) |
 | `scout-scheduler` | `scout_core.handlers.scheduler.lambda_handler` | EventBridge `rate(15 minutes)` | Gmail discovery pass + dispatches due sources |
 | `scout-sweep` | `scout_core.handlers.sweep.lambda_handler` | EventBridge `rate(1 hour)` | orphan recovery + past flags |
-| `scout-source-renderer` | `handler.lambda_handler` (own image) | sync invoke (by processor) | 3008 MB / 90 s; patchright (undetected Playwright) + headful Chrome via Xvfb; renders `render_js` webpage sources (runs JS / passes bot challenges), returns HTML |
+| `scout-source-renderer` | `handler.lambda_handler` (own image) | sync invoke (by processor) | 3008 MB / 90 s; patchright (undetected Playwright) + headful Chrome via Xvfb; renders every fetched page (runs JS / passes bot challenges), returns HTML |
 
 EventBridge rules are created only in prod (`create_eventbridge=true`).
 
-For a `render_js` webpage source, the processor swaps its injected `fetch_fn`
-from `fetcher.fetch_url` to `renderer_client.fetch_rendered`, which synchronously
-invokes `scout-source-renderer`; everything downstream (clean → triage → enrich)
-is unchanged. Non-render sources never touch the renderer.
+The processor injects `renderer_client.fetch_rendered` as the `fetch_fn` for
+**all** page retrieval — webpage roots, followed links, and the links followed
+out of email digests — which synchronously invokes `scout-source-renderer`;
+everything downstream (clean → triage → enrich) is unchanged. Only iCal feeds
+(parsed directly) and email bodies (pulled from Gmail) are not page fetches.
 
 ### API surface (events-api)
 
@@ -206,7 +208,7 @@ Notable additions for the redesign:
 | `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN` | secret → processor env | Gmail API (OAuth refresh token) for "Events"-label ingestion |
 | `SCOUT_ARTIFACTS_BUCKET` / `SCOUT_IMAGES_BUCKET` | Lambda env | S3 buckets (`scout-artifacts-<env>` / `scout-images-<env>`) |
 | `SCOUT_PROCESSOR_FN` | events-api / scheduler env | processor function name for invocations |
-| `SCOUT_RENDERER_FN` | processor env | renderer function name (sync-invoked for `render_js` sources) |
+| `SCOUT_RENDERER_FN` | processor env | renderer function name (sync-invoked for every page fetch) |
 | `SCOUT_TABLE_SUFFIX` | Lambda env | `""` in prod, `-pr-<N>` in previews |
 | `VITE_API_URL` / `VITE_COGNITO_*` | GitHub vars | frontend build |
 

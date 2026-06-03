@@ -1,12 +1,13 @@
 """
 Headless-render fetch backend.
 
-Some webpage sources don't serve their content to a plain HTTP GET: the markup
-arrives only after client-side JavaScript runs, or the site sits behind a
-JS/proof-of-work bot challenge (e.g. SiteGround's sgcaptcha) that returns a
-challenge stub to anything that isn't a real browser. For those sources the
-admin sets `render_js` and the processor swaps the in-process `fetcher.fetch_url`
-for `fetch_rendered` here.
+Many pages don't serve their content to a plain HTTP GET: the markup arrives only
+after client-side JavaScript runs, or the site sits behind a JS/proof-of-work bot
+challenge (e.g. SiteGround's sgcaptcha) that returns a challenge stub to anything
+that isn't a real browser. So the processor injects `fetch_rendered` as the
+`fetch_fn` for *all* page retrieval — webpage roots, followed links, and the
+links followed out of email digests — rather than the in-process
+`fetcher.fetch_url`.
 
 `fetch_rendered` is a drop-in for `fetch_url`: same `(url, timeout) -> (status,
 html)` contract, so it slots straight into the pipeline's injectable `fetch_fn`.

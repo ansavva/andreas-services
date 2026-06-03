@@ -58,19 +58,6 @@ class TestSources(unittest.TestCase):
         self.assertIn("next_run_at", src)  # schedulable
         self.assertEqual(src["GSI1PK"], "SRC#LISTED")
 
-    def test_render_js_round_trips(self):
-        # Defaults off; persists when set on create; toggled by update.
-        plain = sources.create_source(sources.WEBPAGE, "https://x.com",
-                                      config={"mode": "one-off"})
-        self.assertFalse(plain["render_js"])
-
-        src = sources.create_source(sources.WEBPAGE, "https://y.com",
-                                    config={"mode": "one-off"}, render_js=True)
-        self.assertTrue(src["render_js"])
-
-        updated = sources.update_source(src["source_id"], {"render_js": False})
-        self.assertFalse(updated["render_js"])
-
     def test_create_ical_source_is_schedulable(self):
         src = sources.create_source(sources.ICAL, "https://feed.test/cal.ics",
                                     config={"mode": "scheduled",

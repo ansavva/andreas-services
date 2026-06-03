@@ -41,10 +41,6 @@ function CreateSourceForm({ onClose, onCreated }: { onClose: () => void; onCreat
         name: name || undefined,
         config,
         follow_links: followLinks,
-        // Webpage sources are always rendered with a headless browser — modern
-        // event pages are JS-rendered and/or bot-challenged, so a plain fetch
-        // silently returns no events. This is intentionally not optional.
-        ...(type === "webpage" ? { render_js: true } : {}),
       });
       onCreated();
       onClose();
@@ -106,8 +102,9 @@ function CreateSourceForm({ onClose, onCreated }: { onClose: () => void; onCreat
         )}
         {type === "webpage" && (
           <p className="text-xs text-[var(--color-text-muted)]">
-            Webpage sources are fetched with a headless browser (JavaScript rendered),
-            so JS-rendered and bot-challenged pages work automatically.
+            Pages are fetched with a headless browser (JavaScript rendered), so
+            JS-rendered and bot-challenged pages — including links followed out of
+            email digests — work automatically.
           </p>
         )}
         {type === "ical" && (
@@ -616,7 +613,6 @@ export function SourcesSection() {
                         <Badge value={s.status} />
                         {s.last_run_status && <Badge value={s.last_run_status} />}
                         {s.follow_links && <span>follows links</span>}
-                        {s.render_js && <span>renders JS</span>}
                       </div>
                     </div>
                   </button>

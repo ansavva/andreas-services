@@ -15,7 +15,6 @@ Event payload:
 
 import logging
 
-from scout_core.adapters import fetcher
 from scout_core.adapters import gmail
 from scout_core.adapters import renderer_client
 from scout_core.domain import pipeline
@@ -66,12 +65,12 @@ def lambda_handler(event, context):
     triage, enrich = pipeline.make_passes(source, settings)
     email_body = event.get("email_body")
 
-    # Webpage sources flagged render_js are fetched through the headless-browser
-    # renderer (runs the site's JS / passes bot challenges); everything else uses
-    # the in-process urllib fetch.
-    fetch_fn = fetcher.fetch_url
-    if source["type"] == sources.WEBPAGE and source.get("render_js"):
-        fetch_fn = renderer_client.fetch_rendered
+    # All web-page retrieval goes through the headless renderer — webpage source
+    # roots and their followed links, plus the links followed out of email
+    # digests — so JS-rendered and bot-challenged pages work everywhere, not just
+    # at a webpage source's root. (iCal feeds, handled above, and email bodies,
+    # pulled from Gmail, are not page fetches.)
+    fetch_fn = renderer_client.fetch_rendered
 
     # For email sources we pull the sender's recent Events-labeled mail from
     # Gmail, resuming from the source's stored cursor. An inline email_body

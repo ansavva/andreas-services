@@ -135,7 +135,7 @@ def _reindex(source_id):
 # ---------------------------------------------------------------------------
 
 def create_source(source_type, identity, *, name=None, config=None,
-                  follow_links=False, render_js=False, status=ACTIVE,
+                  follow_links=False, status=ACTIVE,
                   agent_model=None, triage_model=None,
                   agent_budget_tokens=None, agent_budget_seconds=None):
     if source_type not in SOURCE_TYPES:
@@ -156,7 +156,6 @@ def create_source(source_type, identity, *, name=None, config=None,
         name=(name or identity).strip(),
         config=config,
         follow_links=bool(follow_links),
-        render_js=bool(render_js),
         status=status,
         archived=False,
         consecutive_zero_event_runs=0,
@@ -249,8 +248,6 @@ def update_source(source_id, fields):
         updates["name"] = fields["name"].strip()
     if "follow_links" in fields:
         updates["follow_links"] = bool(fields["follow_links"])
-    if "render_js" in fields:
-        updates["render_js"] = bool(fields["render_js"])
     if "status" in fields:
         if fields["status"] not in (ACTIVE, DISABLED):
             raise ValueError(f"invalid status: {fields['status']!r}")
