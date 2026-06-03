@@ -25,7 +25,6 @@ function CreateSourceForm({ onClose, onCreated }: { onClose: () => void; onCreat
   const [preset, setPreset] = useState("daily");
   const [mode, setMode] = useState("scheduled");
   const [followLinks, setFollowLinks] = useState(false);
-  const [renderJs, setRenderJs] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const submit = async (e: React.FormEvent) => {
@@ -42,7 +41,10 @@ function CreateSourceForm({ onClose, onCreated }: { onClose: () => void; onCreat
         name: name || undefined,
         config,
         follow_links: followLinks,
-        ...(type === "webpage" ? { render_js: renderJs } : {}),
+        // Webpage sources are always rendered with a headless browser — modern
+        // event pages are JS-rendered and/or bot-challenged, so a plain fetch
+        // silently returns no events. This is intentionally not optional.
+        ...(type === "webpage" ? { render_js: true } : {}),
       });
       onCreated();
       onClose();
@@ -100,10 +102,10 @@ function CreateSourceForm({ onClose, onCreated }: { onClose: () => void; onCreat
           Follow same-domain links (one level)
         </label>
         {type === "webpage" && (
-          <label className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
-            <input type="checkbox" checked={renderJs} onChange={(e) => setRenderJs(e.target.checked)} />
-            Render JavaScript (headless browser — for JS-rendered or bot-challenged sites)
-          </label>
+          <p className="text-xs text-[var(--color-text-muted)]">
+            Webpage sources are fetched with a headless browser (JavaScript rendered),
+            so JS-rendered and bot-challenged pages work automatically.
+          </p>
         )}
         <div className="flex gap-2">
           <Button type="submit" variant="primary">
