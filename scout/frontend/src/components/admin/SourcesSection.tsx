@@ -67,18 +67,19 @@ function CreateSourceForm({ onClose, onCreated }: { onClose: () => void; onCreat
           Type
           <select value={type} onChange={(e) => setType(e.target.value as SourceType)} className={field}>
             <option value="webpage">Webpage</option>
+            <option value="ical">iCal feed</option>
             <option value="email">Email</option>
           </select>
         </label>
         <label className="flex flex-col gap-1 text-sm text-[var(--color-text-secondary)]">
-          {type === "email" ? "Sender domain" : "Root URL"}
+          {type === "email" ? "Sender domain" : type === "ical" ? "Feed URL (.ics)" : "Root URL"}
           <input value={identity} onChange={(e) => setIdentity(e.target.value)} required className={field} />
         </label>
         <label className="flex flex-col gap-1 text-sm text-[var(--color-text-secondary)]">
           Name (optional)
           <input value={name} onChange={(e) => setName(e.target.value)} className={field} />
         </label>
-        {type === "webpage" && (
+        {(type === "webpage" || type === "ical") && (
           <label className="flex flex-col gap-1 text-sm text-[var(--color-text-secondary)]">
             Mode
             <select value={mode} onChange={(e) => setMode(e.target.value)} className={field}>
@@ -97,14 +98,22 @@ function CreateSourceForm({ onClose, onCreated }: { onClose: () => void; onCreat
             </select>
           </label>
         )}
-        <label className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
-          <input type="checkbox" checked={followLinks} onChange={(e) => setFollowLinks(e.target.checked)} />
-          Follow same-domain links (one level)
-        </label>
+        {type !== "ical" && (
+          <label className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
+            <input type="checkbox" checked={followLinks} onChange={(e) => setFollowLinks(e.target.checked)} />
+            Follow same-domain links (one level)
+          </label>
+        )}
         {type === "webpage" && (
           <p className="text-xs text-[var(--color-text-muted)]">
             Webpage sources are fetched with a headless browser (JavaScript rendered),
             so JS-rendered and bot-challenged pages work automatically.
+          </p>
+        )}
+        {type === "ical" && (
+          <p className="text-xs text-[var(--color-text-muted)]">
+            An iCal/.ics feed (e.g. a Google Calendar or Tockify export). Events are
+            read directly from the feed — no page rendering or AI extraction.
           </p>
         )}
         <div className="flex gap-2">

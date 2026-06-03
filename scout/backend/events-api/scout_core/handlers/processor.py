@@ -50,6 +50,18 @@ def lambda_handler(event, context):
     if source is None:
         return {"error": "source not found"}
 
+    # iCal feed sources skip the fetch + LLM pipeline entirely: we parse the
+    # feed's VEVENTs straight into pending events.
+    if source["type"] == sources.ICAL:
+        if event.get("mode") == "preview":
+            return pipeline.preview_ical(source)
+        trigger = event.get("trigger", runs.TRIGGER_MANUAL)
+        run = pipeline.execute_ical_run(source, trigger)
+        logger.info("iCal run %s for source %s finished: %s", run["run_id"],
+                    source_id, run["status"])
+        return {"run_id": run["run_id"], "status": run["status"],
+                "events_count": int(run.get("events_count", 0))}
+
     settings = store.get_settings()
     triage, enrich = pipeline.make_passes(source, settings)
     email_body = event.get("email_body")

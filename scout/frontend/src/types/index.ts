@@ -86,7 +86,7 @@ export interface Location {
   timezone: string;
 }
 
-export type SourceType = "email" | "webpage";
+export type SourceType = "email" | "webpage" | "ical";
 
 export interface Source {
   source_id: string;

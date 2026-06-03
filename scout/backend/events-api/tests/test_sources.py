@@ -71,6 +71,14 @@ class TestSources(unittest.TestCase):
         updated = sources.update_source(src["source_id"], {"render_js": False})
         self.assertFalse(updated["render_js"])
 
+    def test_create_ical_source_is_schedulable(self):
+        src = sources.create_source(sources.ICAL, "https://feed.test/cal.ics",
+                                    config={"mode": "scheduled",
+                                            "schedule_preset": "daily"})
+        self.assertEqual(src["type"], "ical")
+        self.assertIn("next_run_at", src)  # schedulable like a webpage
+        self.assertGreater(src["next_run_at"], store.now_iso())
+
     def test_create_validates_config(self):
         with self.assertRaises(ValueError):
             sources.create_source(sources.EMAIL, "x@y.com",

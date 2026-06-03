@@ -21,7 +21,8 @@ from scout_core.adapters import store
 
 EMAIL = "email"
 WEBPAGE = "webpage"
-SOURCE_TYPES = (EMAIL, WEBPAGE)
+ICAL = "ical"
+SOURCE_TYPES = (EMAIL, WEBPAGE, ICAL)
 
 SCHEDULED = "scheduled"
 ONE_OFF = "one-off"
@@ -60,7 +61,7 @@ def _validate_config(source_type, config):
         if freq not in PRESETS:
             raise ValueError(f"invalid email check_frequency: {freq!r}")
         config["check_frequency"] = freq
-    else:  # WEBPAGE
+    else:  # WEBPAGE / ICAL — schedulable by mode + preset
         mode = config.get("mode", SCHEDULED)
         if mode not in WEBPAGE_MODES:
             raise ValueError(f"invalid webpage mode: {mode!r}")

@@ -40,12 +40,18 @@ the approved ones at `scout.andreas.services/app`.
 
 ### Core domain concepts
 
-- **Source** — email (identity = sender domain) or webpage (identity = root
-  URL). Has `status` (active|disabled) and an independent `archived` flag (each
-  stops scheduled runs), a `follow_links` toggle, a `render_js` toggle (webpage
-  only — fetch through the headless renderer instead of a plain HTTP GET, for
-  JS-rendered or bot-challenged sites), per-source agent model/budget overrides,
-  source labels, and a `next_run_at` schedule cursor.
+- **Source** — email (identity = sender domain), webpage (identity = root URL),
+  or **ical** (identity = an `.ics` feed URL). Has `status` (active|disabled) and
+  an independent `archived` flag (each stops scheduled runs), a `follow_links`
+  toggle, a `render_js` toggle (webpage only — fetch through the headless
+  renderer instead of a plain HTTP GET, for JS-rendered or bot-challenged sites),
+  per-source agent model/budget overrides, source labels, and a `next_run_at`
+  schedule cursor. **iCal** sources bypass fetching+LLM extraction entirely: the
+  processor parses the feed's `VEVENT`s straight into pending events
+  (`adapters/ical.py` → `pipeline.execute_ical_run` → `events.convert_extraction`).
+  This is the reliable path for events owned by a hosted calendar widget (e.g.
+  Tockify/Google Calendar), whose host page renders client-side and exposes no
+  events to a fetch or render.
 - **Source run** — one record per scheduled/manual execution (previews are
   dry-runs and persist nothing): status (in_progress|success|error, with the
   distinct `budget_exceeded` / `orphaned-by-restart` reasons), S3 refs (root
