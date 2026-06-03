@@ -77,6 +77,26 @@ jobs:
             -backend-config="key=scout/pr/${PR_NUMBER}/terraform.tfstate"
           terraform -chdir=scout/infra/envs/pr destroy -auto-approve -input=false
 
+      # After a successful destroy the state is empty but the S3 object lingers
+      # forever (Terraform never deletes its own backend state). Remove it — and
+      # every version/delete-marker, since the state bucket is versioned — so a
+      # torn-down PR leaves nothing behind.
+      - name: Remove Terraform state from S3
+        if: steps.check-state.outputs.exists == 'true'
+        env:
+          STATE_BUCKET: andreas-services-terraform-state
+        run: |
+          KEY="scout/pr/${PR_NUMBER}/terraform.tfstate"
+          aws s3api list-object-versions \
+            --bucket "$STATE_BUCKET" --prefix "$KEY" \
+            --query '[Versions[?Key==`'"$KEY"'`].VersionId, DeleteMarkers[?Key==`'"$KEY"'`].VersionId][]' \
+            --output text | tr '\t' '\n' | while read -r VID; do
+              [ -n "$VID" ] && [ "$VID" != "None" ] && \
+                aws s3api delete-object \
+                  --bucket "$STATE_BUCKET" --key "$KEY" --version-id "$VID" >/dev/null
+            done
+          echo "Removed Terraform state object ${KEY} (all versions)."
+
       - name: Skip (no Terraform state found)
         if: steps.check-state.outputs.exists == 'false'
         run: |
