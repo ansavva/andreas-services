@@ -40,6 +40,7 @@ from scout_core.adapters import artifacts
 from scout_core.domain import events as events_mod
 from scout_core.adapters import extractor as extractor_mod
 from scout_core.adapters import fetcher
+from scout_core.adapters import ical
 from scout_core.domain import labels
 from scout_core.domain import notifications
 from scout_core.domain import runs
@@ -278,6 +279,59 @@ def preview(source, *, fetch_fn=fetcher.fetch_url, triage=noop_triage,
         "link_outcomes": link_outcomes,
         "pages_fetched": len(pages) + len(link_outcomes),
     }
+
+
+# ---------------------------------------------------------------------------
+# iCal feed ingestion (no LLM): parse VEVENTs straight into pending events.
+# ---------------------------------------------------------------------------
+
+def _ical_events(source, *, fetch_fn, settings):
+    """Fetch the source's iCal feed and parse it into extracted-event dicts."""
+    status, text = fetch_fn(source["identity"])
+    if not 200 <= int(status) < 300:
+        raise RuntimeError(f"feed fetch failed (http {status})")
+    tz = settings.get("system_timezone", "UTC")
+    return text or "", ical.parse_events(text or "", default_tz=tz)
+
+
+def preview_ical(source, *, fetch_fn=None, settings=None):
+    """Dry-run an iCal source: fetch + parse without persisting anything."""
+    settings = settings or store.get_settings()
+    _text, extracted = _ical_events(
+        source, fetch_fn=fetch_fn or fetcher.fetch_url, settings=settings)
+    return {
+        "status": extractor_mod.STATUS_COMPLETED,
+        "events": extracted,
+        "link_outcomes": [],
+        "pages_fetched": 1,
+    }
+
+
+def execute_ical_run(source, trigger, *, fetch_fn=None, settings=None):
+    """Run an iCal source for real: persist a run, store the fetched feed, parse
+    its VEVENTs into pending event records (dedup + fuzzy location match), and
+    finish the run. Bypasses the two-pass LLM extraction entirely."""
+    settings = settings or store.get_settings()
+    fetch_fn = fetch_fn or fetcher.fetch_url
+    source_id = source["source_id"]
+    run = runs.start_run(source_id, trigger)
+    run_id = run["run_id"]
+    try:
+        text, extracted = _ical_events(source, fetch_fn=fetch_fn, settings=settings)
+        if text:
+            runs.set_artifacts(source_id, run_id,
+                               root_html=artifacts.store_root_html(source_id, run_id, text))
+    except Exception as exc:  # pylint: disable=broad-except
+        runs.finish_run(source_id, run_id, status=runs.ERROR, error_reason=str(exc))
+        notifications.notify_run_failure(source_id, run_id, str(exc))
+        return runs.get_run(source_id, run_id)
+
+    conversion = events_mod.convert_extraction(source_id, extracted)
+    runs.finish_run(source_id, run_id, status=runs.SUCCESS,
+                    events_count=conversion["created"],
+                    summary={**conversion, "pages": 1,
+                             "events_found": len(extracted)})
+    return runs.get_run(source_id, run_id)
 
 
 def execute_run(source, trigger, *, fetch_fn=fetcher.fetch_url,

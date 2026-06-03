@@ -116,18 +116,7 @@ class TestHandlers(unittest.TestCase):
         self.assertEqual(processor_handler.lambda_handler({"source_id": "nope"}, None),
                          {"error": "source not found"})
 
-    def test_processor_selects_renderer_for_render_js_webpage(self):
-        src = sources.create_source(sources.WEBPAGE, "https://x.com",
-                                    config={"mode": "one-off"}, render_js=True)
-        with mock.patch.object(pipeline, "make_passes", side_effect=_stub_passes), \
-                mock.patch.object(pipeline, "execute_run") as run:
-            run.return_value = {"run_id": "r", "status": "success", "events_count": 0}
-            processor_handler.lambda_handler(
-                {"source_id": src["source_id"], "trigger": "manual"}, None)
-        self.assertIs(run.call_args.kwargs["fetch_fn"],
-                      processor_handler.renderer_client.fetch_rendered)
-
-    def test_processor_uses_plain_fetch_without_render_js(self):
+    def test_processor_renders_webpage_fetches(self):
         src = sources.create_source(sources.WEBPAGE, "https://x.com",
                                     config={"mode": "one-off"})
         with mock.patch.object(pipeline, "make_passes", side_effect=_stub_passes), \
@@ -136,7 +125,36 @@ class TestHandlers(unittest.TestCase):
             processor_handler.lambda_handler(
                 {"source_id": src["source_id"], "trigger": "manual"}, None)
         self.assertIs(run.call_args.kwargs["fetch_fn"],
-                      processor_handler.fetcher.fetch_url)
+                      processor_handler.renderer_client.fetch_rendered)
+
+    def test_processor_runs_ical_source_and_persists_events(self):
+        src = sources.create_source(sources.ICAL, "https://feed.test/cal.ics",
+                                    config={"mode": "one-off"})
+        ics = ("BEGIN:VCALENDAR\r\nX-WR-TIMEZONE:UTC\r\nBEGIN:VEVENT\r\n"
+               "SUMMARY:Gallery Opening\r\nDTSTART:20990701T180000Z\r\n"
+               "LOCATION:Main St Gallery\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+        with mock.patch.object(pipeline.fetcher, "fetch_url",
+                               return_value=(200, ics)):
+            result = processor_handler.lambda_handler(
+                {"source_id": src["source_id"], "trigger": "manual"}, None)
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["events_count"], 1)
+        pending = events.list_by_review("pending")
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0]["title"], "Gallery Opening")
+
+    def test_processor_renders_email_followed_links(self):
+        # Email bodies come from Gmail, but the links followed out of them are
+        # page fetches and must render too.
+        src = sources.create_source(sources.EMAIL, "venue@example.com")
+        with mock.patch.object(pipeline, "make_passes", side_effect=_stub_passes), \
+                mock.patch.object(pipeline, "execute_run") as run:
+            run.return_value = {"run_id": "r", "status": "success", "events_count": 0}
+            processor_handler.lambda_handler(
+                {"source_id": src["source_id"], "trigger": "manual",
+                 "email_body": "<p>x</p>"}, None)
+        self.assertIs(run.call_args.kwargs["fetch_fn"],
+                      processor_handler.renderer_client.fetch_rendered)
 
     def test_processor_discover_ensures_email_sources(self):
         with mock.patch.object(processor_handler.gmail, "discover_domains",

@@ -86,7 +86,7 @@ export interface Location {
   timezone: string;
 }
 
-export type SourceType = "email" | "webpage";
+export type SourceType = "email" | "webpage" | "ical";
 
 export interface Source {
   source_id: string;
@@ -96,7 +96,6 @@ export interface Source {
   status: "active" | "disabled";
   archived: boolean;
   follow_links: boolean;
-  render_js?: boolean;
   config: Record<string, string>;
   next_run_at?: string;
   last_run_at?: string;

@@ -239,7 +239,6 @@ def _admin_sources(method, rest, query, body):
         src = sources.create_source(
             body.get("type"), body.get("identity"), name=body.get("name"),
             config=body.get("config"), follow_links=body.get("follow_links", False),
-            render_js=body.get("render_js", False),
             agent_model=body.get("agent_model"),
             triage_model=body.get("triage_model"),
             agent_budget_tokens=body.get("agent_budget_tokens"),
