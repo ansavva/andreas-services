@@ -144,6 +144,31 @@ def _serialize_images(owner_type, owner_id, *, parent_event_id=None,
     ]
 
 
+def _serialize_admin_image(image):
+    """Admin-console shape: enough to render a thumbnail and act on it. The
+    bytes route (`/public/images/<id>`) streams regardless of approval, so the
+    same url previews unapproved images too."""
+    base = config.public_api_base()
+    return {
+        "image_id": image["image_id"],
+        "url": f"{base}/public/images/{image['image_id']}",
+        "approved": bool(image.get("approved")),
+        "source": image.get("source"),
+    }
+
+
+def admin_images(event_id):
+    """Every live image attached to an event, in admin shape, so the review UI
+    can curate which ones go public. Agent extraction only ever attaches images
+    at the event level, so event-scoped listing covers them all. Returns None
+    for a missing or deleted event."""
+    event = events.get_event(event_id)
+    if event is None or event.get("deleted_at"):
+        return None
+    return {"images": [_serialize_admin_image(i)
+                       for i in images.list_images(store.EVENT, event_id)]}
+
+
 def _serialize_sub(sub, parent, *, approved_only=True):
     return {
         "subevent_id": sub["subevent_id"],

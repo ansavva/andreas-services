@@ -368,6 +368,37 @@ class TestApi(unittest.TestCase):
         finally:
             del os.environ["SCOUT_IMAGES_BUCKET"]
 
+    def test_admin_event_images_list_approve_reject_delete(self):
+        from scout_core.domain import images
+
+        ev = events.create_event("s", title="Has images", start_date="2099-01-01")
+        eid = ev["event_id"]
+        img = images.add_image(store.EVENT, eid, s3_ref="s3://b/p.jpg",
+                               url="https://x/p.jpg", source=images.AGENT)
+        iid = img["image_id"]
+
+        # Listed for the admin with its (unapproved) state and a streamable url.
+        listed = _json(_request("GET", f"/admin/events/{eid}/images"))["images"]
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(listed[0]["image_id"], iid)
+        self.assertFalse(listed[0]["approved"])
+        self.assertEqual(listed[0]["url"], f"/public/images/{iid}")
+
+        # Approve → visible to the public serializer; reject → hidden again.
+        approved = _json(_request("POST", f"/admin/events/{eid}/images/{iid}/approve"))
+        self.assertTrue(approved["approved"])
+        rejected = _json(_request("POST", f"/admin/events/{eid}/images/{iid}/reject"))
+        self.assertFalse(rejected["approved"])
+
+        # Delete drops the record entirely.
+        self.assertEqual(
+            _request("DELETE", f"/admin/events/{eid}/images/{iid}")["statusCode"], 200)
+        self.assertEqual(_json(_request("GET", f"/admin/events/{eid}/images"))["images"], [])
+
+    def test_admin_event_images_404_when_event_missing(self):
+        self.assertEqual(
+            _request("GET", "/admin/events/nope/images")["statusCode"], 404)
+
     def test_settings_get_and_update(self):
         defaults = _json(_request("GET", "/admin/settings"))
         self.assertEqual(defaults["link_follow_cap"], 10)

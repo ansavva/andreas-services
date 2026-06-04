@@ -85,6 +85,20 @@ class TestImages(unittest.TestCase):
         with self.assertRaises(ValueError):
             images.add_image(store.SUBEVENT, "s1", s3_ref="s3://b/1.jpg")
 
+    def test_set_image_approved_toggles_visibility(self):
+        agent = images.add_image(store.EVENT, "e1", s3_ref="s3://b/p.jpg",
+                                 url="https://x/p.jpg", source=images.AGENT)
+        approved = images.set_image_approved(store.EVENT, "e1",
+                                             agent["image_id"], True)
+        self.assertTrue(approved["approved"])
+        self.assertEqual(len(images.list_images(store.EVENT, "e1", approved_only=True)), 1)
+        # Rejecting hides it again without deleting the record.
+        rejected = images.set_image_approved(store.EVENT, "e1",
+                                             agent["image_id"], False)
+        self.assertFalse(rejected["approved"])
+        self.assertEqual(images.list_images(store.EVENT, "e1", approved_only=True), [])
+        self.assertEqual(len(images.list_images(store.EVENT, "e1")), 1)
+
     def test_delete_image(self):
         img = images.add_image(store.EVENT, "e1", s3_ref="s3://b/a.jpg")
         images.delete_image(store.EVENT, "e1", img["image_id"])
