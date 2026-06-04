@@ -3,6 +3,7 @@ import { Check, Loader2, RotateCcw, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useApi } from "@/api";
 import { EventDetailView } from "@/components/EventDetailView";
+import { EventImagesPanel } from "@/components/admin/EventImagesPanel";
 import { ErrorBanner, Spinner } from "@/components/ui";
 import type { PublicEvent, ReviewGroup } from "@/types";
 
@@ -187,7 +188,14 @@ export function AdminReviewQueuePage() {
                   Could not load preview: {previewErrors[current.event.event_id]}
                 </p>
               ) : previews[current.event.event_id] ? (
-                <EventDetailView event={previews[current.event.event_id]} />
+                <>
+                  <EventDetailView event={previews[current.event.event_id]} />
+                  {/* Curate pending images alongside the preview so they can be
+                      approved before (or as part of) approving the event. */}
+                  <div className="mt-10 border-t border-[var(--color-rule)] pt-8">
+                    <EventImagesPanel eventId={current.event.event_id} />
+                  </div>
+                </>
               ) : (
                 <div className="flex justify-center py-24">
                   <Spinner />

@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
 import type {
   AdminEvent,
+  AdminImage,
   ArtifactChunk,
   DeletedItem,
   Facets,
@@ -168,6 +169,18 @@ export function useApi() {
         put(`/admin/events/${eventId}/subevents/${subId}`, body),
       deleteEvent: (id: string, cascade: boolean) =>
         del(`/admin/events/${id}${buildQuery({ cascade: cascade ? "true" : "false" })}`),
+      // --- event images (admin curation) ---
+      // Agent-extracted images land unapproved; the public site serves only
+      // approved ones, so an admin approves/rejects (or deletes) each here.
+      listEventImages: (id: string) =>
+        request<{ images: AdminImage[] }>(`/admin/events/${id}/images`),
+      approveImage: (eventId: string, imageId: string) =>
+        post(`/admin/events/${eventId}/images/${imageId}/approve`) as Promise<AdminImage>,
+      rejectImage: (eventId: string, imageId: string) =>
+        post(`/admin/events/${eventId}/images/${imageId}/reject`) as Promise<AdminImage>,
+      deleteImage: (eventId: string, imageId: string) =>
+        del(`/admin/events/${eventId}/images/${imageId}`),
+
       reviewSub: (eventId: string, subId: string, status: string) =>
         post(`/admin/events/${eventId}/subevents/${subId}/review`, { status }),
       publishSub: (eventId: string, subId: string, published: boolean) =>

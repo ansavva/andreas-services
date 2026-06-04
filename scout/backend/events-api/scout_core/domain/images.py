@@ -73,10 +73,19 @@ def list_images(owner_type, owner_id, *, parent_event_id=None,
     return items
 
 
-def approve_image(owner_type, owner_id, image_id, *, parent_event_id=None):
+def set_image_approved(owner_type, owner_id, image_id, approved, *,
+                       parent_event_id=None):
+    """Flip an image's public visibility. Approving an agent image publishes it;
+    rejecting (approved=False) hides it again without deleting it, so an admin can
+    change their mind. Returns the refreshed record."""
     pk, sk = _keys(owner_type, owner_id, image_id, parent_event_id)
-    store.set_attrs(pk, sk, {"approved": True})
+    store.set_attrs(pk, sk, {"approved": bool(approved)})
     return store.get(pk, sk)
+
+
+def approve_image(owner_type, owner_id, image_id, *, parent_event_id=None):
+    return set_image_approved(owner_type, owner_id, image_id, True,
+                              parent_event_id=parent_event_id)
 
 
 def delete_image(owner_type, owner_id, image_id, *, parent_event_id=None):

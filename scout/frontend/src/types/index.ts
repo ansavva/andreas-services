@@ -242,6 +242,15 @@ export interface ReviewGroup {
   subevents: SubEvent[];
 }
 
+// An event's image as seen by the admin console: enough to render a thumbnail
+// and curate it. `approved` images are the only ones the public site serves.
+export interface AdminImage {
+  image_id: string;
+  url: string;
+  approved: boolean;
+  source?: string;
+}
+
 export type Settings = Record<string, string | number>;
 
 export interface Notification {

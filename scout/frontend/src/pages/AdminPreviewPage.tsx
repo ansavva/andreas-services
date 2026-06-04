@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useApi } from "@/api";
 import { Header } from "@/components/Header";
 import { EventDetailView, type EventEditContext } from "@/components/EventDetailView";
+import { EventImagesPanel } from "@/components/admin/EventImagesPanel";
 import { Button, ErrorBanner, Spinner } from "@/components/ui";
 import type {
   AdminEvent,
@@ -246,6 +247,13 @@ export function AdminPreviewPage() {
         {!loading && !error && event && (
           <div className="mt-10">
             <EventDetailView event={event} edit={editCtx} />
+            {/* Image curation lives below the preview so an admin can see and
+                approve pending images before the event is ever published. */}
+            {!editing && eventId && (
+              <div className="mt-12 border-t border-[var(--color-rule)] pt-8">
+                <EventImagesPanel eventId={eventId} />
+              </div>
+            )}
           </div>
         )}
       </main>

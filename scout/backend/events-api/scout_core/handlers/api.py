@@ -355,6 +355,9 @@ def _admin_events(method, rest, query, body):
         return ok(events.set_publish(event_id, body.get("published", True)))
     if action == ["cancel"] and method == "POST":
         return ok(events.cancel_event(event_id))
+    if action == ["images"] and method == "GET":
+        result = public.admin_images(event_id)
+        return ok(result) if result is not None else not_found("Event not found")
     if action == ["images"] and method == "POST":
         return created(images.add_image(
             store.EVENT, event_id, url=body.get("url"), s3_ref=body.get("s3_ref"),
@@ -362,8 +365,12 @@ def _admin_events(method, rest, query, body):
     if len(action) == 2 and action[0] == "images" and method == "DELETE":
         images.delete_image(store.EVENT, event_id, action[1])
         return ok({"deleted": action[1]})
-    if len(action) == 3 and action[0] == "images" and action[2] == "approve":
-        return ok(images.approve_image(store.EVENT, event_id, action[1]))
+    if len(action) == 3 and action[0] == "images" and action[2] == "approve" \
+            and method == "POST":
+        return ok(images.set_image_approved(store.EVENT, event_id, action[1], True))
+    if len(action) == 3 and action[0] == "images" and action[2] == "reject" \
+            and method == "POST":
+        return ok(images.set_image_approved(store.EVENT, event_id, action[1], False))
     return _admin_subevents(method, event_id, action, body)
 
 
