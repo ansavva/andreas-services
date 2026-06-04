@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 import { Chip } from "@/components/ui";
+import { RichText } from "@/components/RichText";
 import { LocationPicker } from "@/components/edit/LocationPicker";
 import { LabelEditor } from "@/components/edit/LabelEditor";
 import { formatDateTimeLine } from "@/utils/formatters";
@@ -278,9 +279,10 @@ export function EventDetailView({
         />
       ) : (
         event.description && (
-          <div className="mt-8 max-w-prose whitespace-pre-line text-base leading-relaxed text-[var(--color-text-secondary)] sm:text-lg">
-            {event.description}
-          </div>
+          <RichText
+            text={event.description}
+            className="mt-8 max-w-prose whitespace-pre-line text-base leading-relaxed text-[var(--color-text-secondary)] sm:text-lg"
+          />
         )
       )}
 
