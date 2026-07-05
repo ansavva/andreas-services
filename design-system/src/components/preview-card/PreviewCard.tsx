@@ -10,7 +10,7 @@ const PreviewCardPopup = React.forwardRef<HTMLDivElement, PreviewCardNamespace.P
     <BasePreviewCard.Popup
       ref={ref}
       className={cn(
-        'w-80 rounded-lg border border-neutral-200 bg-neutral-0 p-4 shadow-lg',
+        'w-80 rounded-lg border border-line bg-card p-4 shadow-lg',
         'transition-opacity data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
         className,
       )}
@@ -22,7 +22,7 @@ PreviewCardPopup.displayName = 'PreviewCard.Popup';
 
 const PreviewCardArrow = React.forwardRef<HTMLDivElement, PreviewCardNamespace.Arrow.Props>(
   ({ className, ...props }, ref) => (
-    <BasePreviewCard.Arrow ref={ref} className={cn('fill-neutral-0', className)} {...props} />
+    <BasePreviewCard.Arrow ref={ref} className={cn('fill-card', className)} {...props} />
   ),
 );
 PreviewCardArrow.displayName = 'PreviewCard.Arrow';

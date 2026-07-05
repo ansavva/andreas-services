@@ -16,7 +16,7 @@ const MeterLabel = React.forwardRef<HTMLSpanElement, MeterNamespace.Label.Props>
   ({ className, ...props }, ref) => (
     <BaseMeter.Label
       ref={ref}
-      className={cn('text-sm font-medium text-neutral-900', className)}
+      className={cn('text-sm font-medium text-ink', className)}
       {...props}
     />
   ),
@@ -25,7 +25,7 @@ MeterLabel.displayName = 'Meter.Label';
 
 const MeterValue = React.forwardRef<HTMLSpanElement, MeterNamespace.Value.Props>(
   ({ className, ...props }, ref) => (
-    <BaseMeter.Value ref={ref} className={cn('text-sm text-neutral-500', className)} {...props} />
+    <BaseMeter.Value ref={ref} className={cn('text-sm text-muted', className)} {...props} />
   ),
 );
 MeterValue.displayName = 'Meter.Value';
@@ -34,7 +34,7 @@ const MeterTrack = React.forwardRef<HTMLDivElement, MeterNamespace.Track.Props>(
   ({ className, ...props }, ref) => (
     <BaseMeter.Track
       ref={ref}
-      className={cn('h-2 overflow-hidden rounded-full bg-neutral-200', className)}
+      className={cn('h-2 overflow-hidden rounded-full bg-track', className)}
       {...props}
     />
   ),
@@ -45,7 +45,7 @@ const MeterIndicator = React.forwardRef<HTMLDivElement, MeterNamespace.Indicator
   ({ className, ...props }, ref) => (
     <BaseMeter.Indicator
       ref={ref}
-      className={cn('h-full rounded-full bg-brand-600 transition-all', className)}
+      className={cn('h-full rounded-full bg-primary transition-all', className)}
       {...props}
     />
   ),

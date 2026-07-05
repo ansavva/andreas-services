@@ -13,7 +13,7 @@ const DialogBackdrop = React.forwardRef<HTMLDivElement, DialogNamespace.Backdrop
   ({ className, ...props }, ref) => (
     <BaseDialog.Backdrop
       ref={ref}
-      className={cn('fixed inset-0 bg-neutral-950/40', transition, className)}
+      className={cn('fixed inset-0 bg-forest/40', transition, className)}
       {...props}
     />
   ),
@@ -36,7 +36,7 @@ const DialogPopup = React.forwardRef<HTMLDivElement, DialogNamespace.Popup.Props
     <BaseDialog.Popup
       ref={ref}
       className={cn(
-        'w-full max-w-md rounded-lg border border-neutral-200 bg-neutral-0 p-6 shadow-lg',
+        'w-full max-w-md rounded-lg border border-line bg-card p-6 shadow-lg',
         transition,
         'data-[starting-style]:scale-95 data-[ending-style]:scale-95',
         className,
@@ -51,7 +51,7 @@ const DialogTitle = React.forwardRef<HTMLHeadingElement, DialogNamespace.Title.P
   ({ className, ...props }, ref) => (
     <BaseDialog.Title
       ref={ref}
-      className={cn('text-lg font-semibold text-neutral-900', className)}
+      className={cn('text-lg font-semibold text-ink', className)}
       {...props}
     />
   ),
@@ -62,7 +62,7 @@ const DialogDescription = React.forwardRef<HTMLParagraphElement, DialogNamespace
   ({ className, ...props }, ref) => (
     <BaseDialog.Description
       ref={ref}
-      className={cn('mt-2 text-sm text-neutral-500', className)}
+      className={cn('mt-2 text-sm text-muted', className)}
       {...props}
     />
   ),
@@ -74,7 +74,7 @@ const DialogClose = React.forwardRef<HTMLButtonElement, DialogNamespace.Close.Pr
     <BaseDialog.Close
       ref={ref}
       className={cn(
-        'inline-flex h-8 items-center justify-center rounded-md px-3 text-sm font-medium text-neutral-700 hover:bg-neutral-100',
+        'inline-flex h-8 items-center justify-center rounded-md px-3 text-sm font-medium text-ink hover:bg-surface-alt',
         focusRing,
         disabledStyles,
         className,

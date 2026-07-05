@@ -10,7 +10,7 @@ const AvatarRoot = React.forwardRef<HTMLSpanElement, AvatarNamespace.Root.Props>
     <BaseAvatar.Root
       ref={ref}
       className={cn(
-        'flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100',
+        'flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-alt',
         className,
       )}
       {...props}
@@ -30,7 +30,7 @@ const AvatarFallback = React.forwardRef<HTMLSpanElement, AvatarNamespace.Fallbac
   ({ className, ...props }, ref) => (
     <BaseAvatar.Fallback
       ref={ref}
-      className={cn('text-sm font-medium text-neutral-600', className)}
+      className={cn('text-sm font-medium text-muted', className)}
       {...props}
     />
   ),

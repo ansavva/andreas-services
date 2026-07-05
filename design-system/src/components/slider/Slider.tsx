@@ -21,7 +21,7 @@ const SliderLabel = React.forwardRef<HTMLDivElement, SliderNamespace.Label.Props
   ({ className, ...props }, ref) => (
     <BaseSlider.Label
       ref={ref}
-      className={cn('text-sm font-medium text-neutral-900', className)}
+      className={cn('text-sm font-medium text-ink', className)}
       {...props}
     />
   ),
@@ -30,7 +30,7 @@ SliderLabel.displayName = 'Slider.Label';
 
 const SliderValue = React.forwardRef<HTMLOutputElement, SliderNamespace.Value.Props>(
   ({ className, ...props }, ref) => (
-    <BaseSlider.Value ref={ref} className={cn('text-sm text-neutral-500', className)} {...props} />
+    <BaseSlider.Value ref={ref} className={cn('text-sm text-muted', className)} {...props} />
   ),
 );
 SliderValue.displayName = 'Slider.Value';
@@ -50,7 +50,7 @@ const SliderTrack = React.forwardRef<HTMLDivElement, SliderNamespace.Track.Props
   ({ className, ...props }, ref) => (
     <BaseSlider.Track
       ref={ref}
-      className={cn('h-1.5 w-full rounded-full bg-neutral-200', className)}
+      className={cn('h-1.5 w-full rounded-full bg-track', className)}
       {...props}
     />
   ),
@@ -61,7 +61,7 @@ const SliderIndicator = React.forwardRef<HTMLDivElement, SliderNamespace.Indicat
   ({ className, ...props }, ref) => (
     <BaseSlider.Indicator
       ref={ref}
-      className={cn('rounded-full bg-brand-600', className)}
+      className={cn('rounded-full bg-primary', className)}
       {...props}
     />
   ),
@@ -73,7 +73,7 @@ const SliderThumb = React.forwardRef<HTMLDivElement, SliderNamespace.Thumb.Props
     <BaseSlider.Thumb
       ref={ref}
       className={cn(
-        'size-4 rounded-full border-2 border-brand-600 bg-neutral-0 shadow-sm',
+        'size-4 rounded-full border-2 border-primary bg-card shadow-sm',
         focusRing,
         className,
       )}

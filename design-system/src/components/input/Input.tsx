@@ -13,11 +13,11 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     <BaseInput
       ref={ref}
       className={cn(
-        'h-10 w-full rounded-md border border-neutral-300 bg-neutral-0 px-3 text-sm text-neutral-900',
-        'placeholder:text-neutral-400',
+        'h-10 w-full rounded-md border border-line bg-card px-3 text-sm text-ink',
+        'placeholder:text-muted',
         focusRing,
-        'data-[disabled]:cursor-not-allowed data-[disabled]:bg-neutral-100 data-[disabled]:text-neutral-400',
-        'data-[invalid]:border-danger-500',
+        'data-[disabled]:cursor-not-allowed data-[disabled]:bg-surface-alt data-[disabled]:text-muted',
+        'data-[invalid]:border-danger',
         className,
       )}
       {...props}

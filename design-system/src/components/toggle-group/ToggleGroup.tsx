@@ -11,7 +11,7 @@ export const ToggleGroup = React.forwardRef<HTMLDivElement, ToggleGroupProps>(
   ({ className, ...props }, ref) => (
     <BaseToggleGroup
       ref={ref}
-      className={cn('inline-flex gap-1 rounded-md bg-neutral-50 p-1', className)}
+      className={cn('inline-flex gap-1 rounded-md bg-surface-alt p-1', className)}
       {...props}
     />
   ),

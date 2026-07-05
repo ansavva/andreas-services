@@ -13,9 +13,9 @@ const RadioRoot = React.forwardRef<HTMLButtonElement, RadioNamespace.Root.Props>
     <BaseRadio.Root
       ref={ref}
       className={cn(
-        'flex size-5 items-center justify-center rounded-full border border-neutral-300 bg-neutral-0',
-        'data-[checked]:border-brand-600',
-        'data-[invalid]:border-danger-500',
+        'flex size-5 items-center justify-center rounded-full border border-line bg-card',
+        'data-[checked]:border-primary',
+        'data-[invalid]:border-danger',
         focusRing,
         disabledStyles,
         className,
@@ -30,7 +30,7 @@ const RadioIndicator = React.forwardRef<HTMLSpanElement, RadioNamespace.Indicato
   ({ className, ...props }, ref) => (
     <BaseRadio.Indicator
       ref={ref}
-      className={cn('size-2.5 rounded-full bg-brand-600', className)}
+      className={cn('size-2.5 rounded-full bg-primary', className)}
       {...props}
     />
   ),

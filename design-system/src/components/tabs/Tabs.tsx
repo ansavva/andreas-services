@@ -17,7 +17,7 @@ const TabsList = React.forwardRef<HTMLDivElement, TabsNamespace.List.Props>(
   ({ className, ...props }, ref) => (
     <BaseTabs.List
       ref={ref}
-      className={cn('relative flex gap-1 border-b border-neutral-200', className)}
+      className={cn('relative flex gap-1 border-b border-line', className)}
       {...props}
     />
   ),
@@ -29,8 +29,8 @@ const TabsTab = React.forwardRef<HTMLElement, TabsNamespace.Tab.Props>(
     <BaseTabs.Tab
       ref={ref}
       className={cn(
-        'px-3 py-2 text-sm font-medium text-neutral-600 outline-none hover:text-neutral-900',
-        'data-[selected]:text-brand-700',
+        'px-3 py-2 text-sm font-medium text-muted outline-none hover:text-ink',
+        'data-[selected]:text-accent',
         focusRing,
         disabledStyles,
         className,
@@ -46,7 +46,7 @@ const TabsIndicator = React.forwardRef<HTMLSpanElement, TabsNamespace.Indicator.
     <BaseTabs.Indicator
       ref={ref}
       className={cn(
-        'absolute bottom-0 h-0.5 rounded-full bg-brand-600 transition-all',
+        'absolute bottom-0 h-0.5 rounded-full bg-accent transition-all',
         'left-[var(--active-tab-left)] w-[var(--active-tab-width)]',
         className,
       )}
@@ -58,11 +58,7 @@ TabsIndicator.displayName = 'Tabs.Indicator';
 
 const TabsPanel = React.forwardRef<HTMLDivElement, TabsNamespace.Panel.Props>(
   ({ className, ...props }, ref) => (
-    <BaseTabs.Panel
-      ref={ref}
-      className={cn('pt-4 text-sm text-neutral-700', className)}
-      {...props}
-    />
+    <BaseTabs.Panel ref={ref} className={cn('pt-4 text-sm text-ink', className)} {...props} />
   ),
 );
 TabsPanel.displayName = 'Tabs.Panel';

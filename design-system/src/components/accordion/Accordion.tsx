@@ -13,11 +13,7 @@ AccordionRoot.displayName = 'Accordion.Root';
 
 const AccordionItem = React.forwardRef<HTMLDivElement, AccordionNamespace.Item.Props>(
   ({ className, ...props }, ref) => (
-    <BaseAccordion.Item
-      ref={ref}
-      className={cn('border-b border-neutral-200', className)}
-      {...props}
-    />
+    <BaseAccordion.Item ref={ref} className={cn('border-b border-line', className)} {...props} />
   ),
 );
 AccordionItem.displayName = 'Accordion.Item';
@@ -34,7 +30,7 @@ const AccordionTrigger = React.forwardRef<HTMLElement, AccordionNamespace.Trigge
     <BaseAccordion.Trigger
       ref={ref}
       className={cn(
-        'flex flex-1 items-center justify-between py-3 text-sm font-medium text-neutral-900',
+        'flex flex-1 items-center justify-between py-3 text-sm font-medium text-ink',
         focusRing,
         disabledStyles,
         className,
@@ -50,7 +46,7 @@ const AccordionPanel = React.forwardRef<HTMLDivElement, AccordionNamespace.Panel
     <BaseAccordion.Panel
       ref={ref}
       className={cn(
-        'h-[var(--accordion-panel-height)] overflow-hidden text-sm text-neutral-700 transition-[height]',
+        'h-[var(--accordion-panel-height)] overflow-hidden text-sm text-ink transition-[height]',
         className,
       )}
       {...props}

@@ -11,7 +11,7 @@ const SelectLabel = React.forwardRef<HTMLDivElement, SelectNamespace.Label.Props
   ({ className, ...props }, ref) => (
     <BaseSelect.Label
       ref={ref}
-      className={cn('text-sm font-medium text-neutral-900', className)}
+      className={cn('text-sm font-medium text-ink', className)}
       {...props}
     />
   ),
@@ -23,9 +23,9 @@ const SelectTrigger = React.forwardRef<HTMLButtonElement, SelectNamespace.Trigge
     <BaseSelect.Trigger
       ref={ref}
       className={cn(
-        'flex h-10 w-full items-center justify-between gap-2 rounded-md border border-neutral-300',
-        'bg-neutral-0 px-3 text-sm text-neutral-900',
-        'data-[invalid]:border-danger-500',
+        'flex h-10 w-full items-center justify-between gap-2 rounded-md border border-line',
+        'bg-card px-3 text-sm text-ink',
+        'data-[invalid]:border-danger',
         focusRing,
         disabledStyles,
         className,
@@ -45,7 +45,7 @@ SelectValue.displayName = 'Select.Value';
 
 const SelectIcon = React.forwardRef<HTMLSpanElement, SelectNamespace.Icon.Props>(
   ({ className, ...props }, ref) => (
-    <BaseSelect.Icon ref={ref} className={cn('text-neutral-500', className)} {...props}>
+    <BaseSelect.Icon ref={ref} className={cn('text-muted', className)} {...props}>
       <svg viewBox="0 0 16 16" fill="none" className="size-4" aria-hidden="true">
         <path
           d="M4 6l4 4 4-4"
@@ -72,8 +72,8 @@ const SelectPopup = React.forwardRef<HTMLDivElement, SelectNamespace.Popup.Props
     <BaseSelect.Popup
       ref={ref}
       className={cn(
-        'max-h-[min(24rem,var(--available-height))] overflow-y-auto rounded-md border border-neutral-200',
-        'bg-neutral-0 py-1 shadow-lg',
+        'max-h-[min(24rem,var(--available-height))] overflow-y-auto rounded-md border border-line',
+        'bg-card py-1 shadow-lg',
         'data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 transition-opacity',
         className,
       )}
@@ -101,7 +101,7 @@ const SelectGroupLabel = React.forwardRef<HTMLDivElement, SelectNamespace.GroupL
   ({ className, ...props }, ref) => (
     <BaseSelect.GroupLabel
       ref={ref}
-      className={cn('px-3 py-1.5 text-xs font-semibold uppercase text-neutral-500', className)}
+      className={cn('px-3 py-1.5 text-xs font-semibold uppercase text-muted', className)}
       {...props}
     />
   ),
@@ -113,8 +113,8 @@ const SelectItem = React.forwardRef<HTMLDivElement, SelectNamespace.Item.Props>(
     <BaseSelect.Item
       ref={ref}
       className={cn(
-        'flex cursor-default items-center justify-between gap-2 px-3 py-2 text-sm text-neutral-900',
-        'data-[highlighted]:bg-brand-50 data-[highlighted]:text-brand-900',
+        'flex cursor-default items-center justify-between gap-2 px-3 py-2 text-sm text-ink',
+        'data-[highlighted]:bg-surface-alt data-[highlighted]:text-ink',
         disabledStyles,
         className,
       )}
@@ -133,7 +133,7 @@ SelectItemText.displayName = 'Select.ItemText';
 
 const SelectItemIndicator = React.forwardRef<HTMLSpanElement, SelectNamespace.ItemIndicator.Props>(
   ({ className, ...props }, ref) => (
-    <BaseSelect.ItemIndicator ref={ref} className={cn('flex text-brand-600', className)} {...props}>
+    <BaseSelect.ItemIndicator ref={ref} className={cn('flex text-primary', className)} {...props}>
       <svg viewBox="0 0 16 16" fill="none" className="size-3.5" aria-hidden="true">
         <path
           d="M3.5 8.5L6.5 11.5L12.5 4.5"
@@ -148,7 +148,7 @@ const SelectItemIndicator = React.forwardRef<HTMLSpanElement, SelectNamespace.It
 );
 SelectItemIndicator.displayName = 'Select.ItemIndicator';
 
-const scrollArrowStyles = 'flex h-6 items-center justify-center text-neutral-500';
+const scrollArrowStyles = 'flex h-6 items-center justify-center text-muted';
 
 const SelectScrollUpArrow = React.forwardRef<HTMLDivElement, SelectNamespace.ScrollUpArrow.Props>(
   ({ className, ...props }, ref) => (

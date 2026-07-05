@@ -34,7 +34,7 @@ const NavigationMenuTrigger = React.forwardRef<
   <BaseNavigationMenu.Trigger
     ref={ref}
     className={cn(
-      'inline-flex h-9 items-center gap-1 rounded-md px-3 text-sm font-medium text-neutral-700 hover:bg-neutral-100',
+      'inline-flex h-9 items-center gap-1 rounded-md px-3 text-sm font-medium text-ink hover:bg-surface-alt',
       focusRing,
       className,
     )}
@@ -48,8 +48,8 @@ const NavigationMenuLink = React.forwardRef<HTMLAnchorElement, NavigationMenuNam
     <BaseNavigationMenu.Link
       ref={ref}
       className={cn(
-        'inline-flex h-9 items-center rounded-md px-3 text-sm font-medium text-neutral-700 hover:bg-neutral-100',
-        'data-[active]:text-brand-700',
+        'inline-flex h-9 items-center rounded-md px-3 text-sm font-medium text-ink hover:bg-surface-alt',
+        'data-[active]:text-accent',
         focusRing,
         className,
       )}
@@ -61,7 +61,7 @@ NavigationMenuLink.displayName = 'NavigationMenu.Link';
 
 const NavigationMenuIcon = React.forwardRef<HTMLSpanElement, NavigationMenuNamespace.Icon.Props>(
   ({ className, ...props }, ref) => (
-    <BaseNavigationMenu.Icon ref={ref} className={cn('text-neutral-500', className)} {...props} />
+    <BaseNavigationMenu.Icon ref={ref} className={cn('text-muted', className)} {...props} />
   ),
 );
 NavigationMenuIcon.displayName = 'NavigationMenu.Icon';
@@ -79,7 +79,7 @@ const NavigationMenuPopup = React.forwardRef<HTMLElement, NavigationMenuNamespac
     <BaseNavigationMenu.Popup
       ref={ref}
       className={cn(
-        'w-[var(--popup-width)] rounded-lg border border-neutral-200 bg-neutral-0 p-4 shadow-lg',
+        'w-[var(--popup-width)] rounded-lg border border-line bg-card p-4 shadow-lg',
         'transition-opacity data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
         className,
       )}
@@ -103,7 +103,7 @@ NavigationMenuViewport.displayName = 'NavigationMenu.Viewport';
 
 const NavigationMenuArrow = React.forwardRef<HTMLDivElement, NavigationMenuNamespace.Arrow.Props>(
   ({ className, ...props }, ref) => (
-    <BaseNavigationMenu.Arrow ref={ref} className={cn('fill-neutral-0', className)} {...props} />
+    <BaseNavigationMenu.Arrow ref={ref} className={cn('fill-card', className)} {...props} />
   ),
 );
 NavigationMenuArrow.displayName = 'NavigationMenu.Arrow';
@@ -112,11 +112,7 @@ const NavigationMenuContent = React.forwardRef<
   HTMLDivElement,
   NavigationMenuNamespace.Content.Props
 >(({ className, ...props }, ref) => (
-  <BaseNavigationMenu.Content
-    ref={ref}
-    className={cn('text-sm text-neutral-700', className)}
-    {...props}
-  />
+  <BaseNavigationMenu.Content ref={ref} className={cn('text-sm text-ink', className)} {...props} />
 ));
 NavigationMenuContent.displayName = 'NavigationMenu.Content';
 

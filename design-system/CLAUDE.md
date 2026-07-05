@@ -54,8 +54,7 @@ design-system/
 ├── src/
 │   ├── components/<Name>/<Name>.tsx   # one dir per Base UI primitive
 │   ├── lib/cn.ts                       # class-merge helper
-│   ├── styles/theme.css                # design tokens (Tailwind v4 @theme) — PLACEHOLDER
-│   │                                    # values until the brand style guide is applied
+│   ├── styles/theme.css                # design tokens (Tailwind v4 @theme) — brand palette
 │   └── index.ts                        # barrel export
 ├── .storybook/                         # docs/preview, imports theme.css + tailwindcss
 ├── tsup.config.ts                       # build (external: react, react-dom, @base-ui/react)
@@ -87,9 +86,27 @@ Pushing to `main` with changes under `design-system/**` runs
 GitHub Packages. Bump `version` in `package.json` before merging — the workflow does not
 auto-bump.
 
-## Style guide status
+## Brand: "Evergreen × Heritage"
 
-`src/styles/theme.css` currently holds **placeholder** token values (generic blue brand
-scale, slate neutrals). Replace them with the real andreas-services brand colors/fonts as
-soon as they're available — component source shouldn't need to change since everything
-reads from these tokens.
+`src/styles/theme.css` holds the real Andreas Services brand tokens (not placeholders):
+
+- **Raw palette** (stable across themes): `forest`, `fern`, `ivory`, `linen`, `brass`,
+  `clay`.
+- **Semantic tokens** (redefined under `[data-theme="dark"]`, so component code never
+  branches on theme): `ink`/`muted`/`line` (text/border), `bg`/`card`/`surface-alt`/`frame`
+  (surfaces), `accent` (brass — links, focus rings, "look here" detail, active
+  tabs/tags), `danger` (clay — destructive actions only, never decorative), `primary`/
+  `primary-hover`/`primary-active`/`primary-text` (forest — primary buttons and
+  affirmative on/off state: checked checkboxes/radios/switches).
+- Dark-mode values are derived with CSS `color-mix()` directly in `theme.css`, matching
+  the brand spec's `mix(a, b, x%)` formulas — not hand-picked hex values.
+- Fonts (Spectral heading / Archivo body) are loaded via `<link>` tags in the consuming
+  app's HTML `<head>` (see README), **not** a CSS `@import` in `theme.css` — a nested
+  `@import` gets silently dropped once bundled since it's no longer the first rule in the
+  flattened stylesheet.
+
+Component source should never hardcode a raw palette color for something that needs to
+adapt between light/dark — always use the semantic token (e.g. `bg-primary`, not
+`bg-forest`) unless the surface is deliberately meant to stay stable across both themes
+(e.g. `Tooltip` uses `bg-forest`/`text-ivory` directly so it stays legible regardless of
+page theme).

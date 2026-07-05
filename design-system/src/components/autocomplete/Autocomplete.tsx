@@ -14,8 +14,8 @@ const AutocompleteInputGroup = React.forwardRef<
   <BaseAutocomplete.InputGroup
     ref={ref}
     className={cn(
-      'flex h-10 items-center gap-1.5 rounded-md border border-neutral-300 bg-neutral-0 px-3',
-      'data-[invalid]:border-danger-500',
+      'flex h-10 items-center gap-1.5 rounded-md border border-line bg-card px-3',
+      'data-[invalid]:border-danger',
       focusRing,
       disabledStyles,
       className,
@@ -31,7 +31,7 @@ const AutocompleteTrigger = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <BaseAutocomplete.Trigger
     ref={ref}
-    className={cn('flex items-center text-neutral-500', className)}
+    className={cn('flex items-center text-muted', className)}
     {...props}
   />
 ));
@@ -42,8 +42,8 @@ const AutocompleteItem = React.forwardRef<HTMLDivElement, AutocompleteNamespace.
     <BaseAutocomplete.Item
       ref={ref}
       className={cn(
-        'flex cursor-default items-center justify-between gap-2 px-3 py-2 text-sm text-neutral-900',
-        'data-[highlighted]:bg-brand-50 data-[highlighted]:text-brand-900',
+        'flex cursor-default items-center justify-between gap-2 px-3 py-2 text-sm text-ink',
+        'data-[highlighted]:bg-surface-alt data-[highlighted]:text-ink',
         disabledStyles,
         className,
       )}

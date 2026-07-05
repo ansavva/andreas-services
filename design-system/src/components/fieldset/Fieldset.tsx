@@ -9,7 +9,7 @@ const FieldsetRoot = React.forwardRef<HTMLFieldSetElement, FieldsetNamespace.Roo
   ({ className, ...props }, ref) => (
     <BaseFieldset.Root
       ref={ref}
-      className={cn('flex flex-col gap-4 rounded-md border border-neutral-200 p-4', className)}
+      className={cn('flex flex-col gap-4 rounded-md border border-line p-4', className)}
       {...props}
     />
   ),
@@ -20,7 +20,7 @@ const FieldsetLegend = React.forwardRef<HTMLDivElement, FieldsetNamespace.Legend
   ({ className, ...props }, ref) => (
     <BaseFieldset.Legend
       ref={ref}
-      className={cn('text-base font-semibold text-neutral-900', className)}
+      className={cn('text-base font-semibold text-ink', className)}
       {...props}
     />
   ),

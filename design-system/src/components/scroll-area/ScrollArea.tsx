@@ -34,7 +34,7 @@ const ScrollAreaScrollbar = React.forwardRef<HTMLDivElement, ScrollAreaNamespace
       ref={ref}
       orientation={orientation}
       className={cn(
-        'flex touch-none select-none bg-neutral-100 p-0.5 transition-opacity',
+        'flex touch-none select-none bg-surface-alt p-0.5 transition-opacity',
         'data-[orientation=vertical]:w-2.5',
         'data-[orientation=horizontal]:h-2.5 data-[orientation=horizontal]:flex-col',
         className,
@@ -49,7 +49,7 @@ const ScrollAreaThumb = React.forwardRef<HTMLDivElement, ScrollAreaNamespace.Thu
   ({ className, ...props }, ref) => (
     <BaseScrollArea.Thumb
       ref={ref}
-      className={cn('flex-1 rounded-full bg-neutral-400', className)}
+      className={cn('flex-1 rounded-full bg-muted', className)}
       {...props}
     />
   ),

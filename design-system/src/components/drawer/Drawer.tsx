@@ -12,7 +12,7 @@ const DrawerBackdrop = React.forwardRef<HTMLDivElement, DrawerNamespace.Backdrop
   ({ className, ...props }, ref) => (
     <BaseDrawer.Backdrop
       ref={ref}
-      className={cn('fixed inset-0 bg-neutral-950/40', transition, className)}
+      className={cn('fixed inset-0 bg-forest/40', transition, className)}
       {...props}
     />
   ),
@@ -31,7 +31,7 @@ const DrawerPopup = React.forwardRef<HTMLDivElement, DrawerNamespace.Popup.Props
     <BaseDrawer.Popup
       ref={ref}
       className={cn(
-        'ml-auto flex h-full w-full max-w-sm flex-col bg-neutral-0 p-6 shadow-lg',
+        'ml-auto flex h-full w-full max-w-sm flex-col bg-card p-6 shadow-lg',
         transition,
         className,
       )}
@@ -50,18 +50,13 @@ DrawerContent.displayName = 'Drawer.Content';
 
 function DrawerTitle({ className, ...props }: DrawerNamespace.Title.Props) {
   return (
-    <BaseDrawer.Title
-      className={cn('text-lg font-semibold text-neutral-900', className)}
-      {...props}
-    />
+    <BaseDrawer.Title className={cn('text-lg font-semibold text-ink', className)} {...props} />
   );
 }
 DrawerTitle.displayName = 'Drawer.Title';
 
 function DrawerDescription({ className, ...props }: DrawerNamespace.Description.Props) {
-  return (
-    <BaseDrawer.Description className={cn('mt-2 text-sm text-neutral-500', className)} {...props} />
-  );
+  return <BaseDrawer.Description className={cn('mt-2 text-sm text-muted', className)} {...props} />;
 }
 DrawerDescription.displayName = 'Drawer.Description';
 
@@ -69,7 +64,7 @@ function DrawerClose({ className, ...props }: DrawerNamespace.Close.Props) {
   return (
     <BaseDrawer.Close
       className={cn(
-        'inline-flex h-8 items-center justify-center rounded-md px-3 text-sm font-medium text-neutral-700 hover:bg-neutral-100',
+        'inline-flex h-8 items-center justify-center rounded-md px-3 text-sm font-medium text-ink hover:bg-surface-alt',
         focusRing,
         disabledStyles,
         className,

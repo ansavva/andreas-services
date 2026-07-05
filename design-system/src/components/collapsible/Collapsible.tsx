@@ -18,7 +18,7 @@ const CollapsibleTrigger = React.forwardRef<HTMLButtonElement, CollapsibleNamesp
     <BaseCollapsible.Trigger
       ref={ref}
       className={cn(
-        'flex items-center gap-2 text-sm font-medium text-neutral-900',
+        'flex items-center gap-2 text-sm font-medium text-ink',
         focusRing,
         disabledStyles,
         className,
@@ -34,7 +34,7 @@ const CollapsiblePanel = React.forwardRef<HTMLDivElement, CollapsibleNamespace.P
     <BaseCollapsible.Panel
       ref={ref}
       className={cn(
-        'overflow-hidden text-sm text-neutral-700 transition-[height]',
+        'overflow-hidden text-sm text-ink transition-[height]',
         'h-[var(--collapsible-panel-height)]',
         className,
       )}

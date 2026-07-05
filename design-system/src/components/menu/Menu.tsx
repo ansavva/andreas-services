@@ -8,8 +8,8 @@ import { disabledStyles } from '../../lib/styles';
 import { Separator } from '../separator';
 
 const menuItemStyles = cn(
-  'flex cursor-default items-center gap-2 px-3 py-2 text-sm text-neutral-900 outline-none',
-  'data-[highlighted]:bg-brand-50 data-[highlighted]:text-brand-900',
+  'flex cursor-default items-center gap-2 px-3 py-2 text-sm text-ink outline-none',
+  'data-[highlighted]:bg-surface-alt data-[highlighted]:text-ink',
   disabledStyles,
 );
 
@@ -25,7 +25,7 @@ const MenuPopup = React.forwardRef<HTMLDivElement, MenuNamespace.Popup.Props>(
     <BaseMenu.Popup
       ref={ref}
       className={cn(
-        'min-w-[10rem] rounded-md border border-neutral-200 bg-neutral-0 py-1 shadow-lg',
+        'min-w-[10rem] rounded-md border border-line bg-card py-1 shadow-lg',
         'transition-opacity data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
         className,
       )}
@@ -37,7 +37,7 @@ MenuPopup.displayName = 'Menu.Popup';
 
 const MenuArrow = React.forwardRef<HTMLDivElement, MenuNamespace.Arrow.Props>(
   ({ className, ...props }, ref) => (
-    <BaseMenu.Arrow ref={ref} className={cn('fill-neutral-0', className)} {...props} />
+    <BaseMenu.Arrow ref={ref} className={cn('fill-card', className)} {...props} />
   ),
 );
 MenuArrow.displayName = 'Menu.Arrow';
@@ -81,7 +81,7 @@ const MenuRadioItem = React.forwardRef<HTMLElement, MenuNamespace.RadioItem.Prop
 );
 MenuRadioItem.displayName = 'Menu.RadioItem';
 
-const itemIndicatorStyles = 'flex w-4 text-brand-600';
+const itemIndicatorStyles = 'flex w-4 text-primary';
 
 const MenuCheckboxItemIndicator = React.forwardRef<
   HTMLSpanElement,
@@ -128,7 +128,7 @@ const MenuGroupLabel = React.forwardRef<HTMLDivElement, MenuNamespace.GroupLabel
   ({ className, ...props }, ref) => (
     <BaseMenu.GroupLabel
       ref={ref}
-      className={cn('px-3 py-1.5 text-xs font-semibold uppercase text-neutral-500', className)}
+      className={cn('px-3 py-1.5 text-xs font-semibold uppercase text-muted', className)}
       {...props}
     />
   ),

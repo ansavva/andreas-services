@@ -18,8 +18,8 @@ const NumberFieldGroup = React.forwardRef<HTMLDivElement, NumberFieldNamespace.G
     <BaseNumberField.Group
       ref={ref}
       className={cn(
-        'flex h-10 items-stretch overflow-hidden rounded-md border border-neutral-300 bg-neutral-0',
-        'data-[invalid]:border-danger-500',
+        'flex h-10 items-stretch overflow-hidden rounded-md border border-line bg-card',
+        'data-[invalid]:border-danger',
         className,
       )}
       {...props}
@@ -33,8 +33,8 @@ const NumberFieldInput = React.forwardRef<HTMLInputElement, NumberFieldNamespace
     <BaseNumberField.Input
       ref={ref}
       className={cn(
-        'w-full min-w-0 flex-1 px-3 text-sm text-neutral-900 focus:outline-none',
-        'data-[disabled]:cursor-not-allowed data-[disabled]:bg-neutral-100 data-[disabled]:text-neutral-400',
+        'w-full min-w-0 flex-1 px-3 text-sm text-ink focus:outline-none',
+        'data-[disabled]:cursor-not-allowed data-[disabled]:bg-surface-alt data-[disabled]:text-muted',
         className,
       )}
       {...props}
@@ -44,7 +44,7 @@ const NumberFieldInput = React.forwardRef<HTMLInputElement, NumberFieldNamespace
 NumberFieldInput.displayName = 'NumberField.Input';
 
 const stepperButtonStyles = cn(
-  'flex w-8 items-center justify-center text-neutral-500 hover:bg-neutral-100 active:bg-neutral-200',
+  'flex w-8 items-center justify-center text-muted hover:bg-surface-alt active:bg-line',
   disabledStyles,
   focusRing,
 );

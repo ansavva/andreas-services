@@ -10,7 +10,7 @@ const TooltipPopup = React.forwardRef<HTMLDivElement, TooltipNamespace.Popup.Pro
     <BaseTooltip.Popup
       ref={ref}
       className={cn(
-        'rounded-md bg-neutral-900 px-2.5 py-1.5 text-xs text-neutral-0 shadow-md',
+        'rounded-md bg-forest px-2.5 py-1.5 text-xs text-ivory shadow-md',
         'transition-opacity data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
         className,
       )}
@@ -22,7 +22,7 @@ TooltipPopup.displayName = 'Tooltip.Popup';
 
 const TooltipArrow = React.forwardRef<HTMLDivElement, TooltipNamespace.Arrow.Props>(
   ({ className, ...props }, ref) => (
-    <BaseTooltip.Arrow ref={ref} className={cn('fill-neutral-900', className)} {...props} />
+    <BaseTooltip.Arrow ref={ref} className={cn('fill-forest', className)} {...props} />
   ),
 );
 TooltipArrow.displayName = 'Tooltip.Arrow';

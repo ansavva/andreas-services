@@ -19,9 +19,9 @@ const OTPFieldInput = React.forwardRef<HTMLInputElement, OTPFieldNamespace.Input
     <BaseOTPField.Input
       ref={ref}
       className={cn(
-        'size-10 rounded-md border border-neutral-300 text-center text-lg text-neutral-900',
+        'size-10 rounded-md border border-line text-center text-lg text-ink',
         focusRing,
-        'data-[invalid]:border-danger-500',
+        'data-[invalid]:border-danger',
         className,
       )}
       {...props}

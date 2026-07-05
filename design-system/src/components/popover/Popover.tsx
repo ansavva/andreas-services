@@ -14,7 +14,7 @@ const PopoverPopup = React.forwardRef<HTMLDivElement, PopoverNamespace.Popup.Pro
     <BasePopover.Popup
       ref={ref}
       className={cn(
-        'w-72 rounded-lg border border-neutral-200 bg-neutral-0 p-4 shadow-lg',
+        'w-72 rounded-lg border border-line bg-card p-4 shadow-lg',
         transition,
         className,
       )}
@@ -26,7 +26,7 @@ PopoverPopup.displayName = 'Popover.Popup';
 
 const PopoverArrow = React.forwardRef<HTMLDivElement, PopoverNamespace.Arrow.Props>(
   ({ className, ...props }, ref) => (
-    <BasePopover.Arrow ref={ref} className={cn('fill-neutral-0', className)} {...props} />
+    <BasePopover.Arrow ref={ref} className={cn('fill-card', className)} {...props} />
   ),
 );
 PopoverArrow.displayName = 'Popover.Arrow';
@@ -35,7 +35,7 @@ const PopoverTitle = React.forwardRef<HTMLHeadingElement, PopoverNamespace.Title
   ({ className, ...props }, ref) => (
     <BasePopover.Title
       ref={ref}
-      className={cn('text-sm font-semibold text-neutral-900', className)}
+      className={cn('text-sm font-semibold text-ink', className)}
       {...props}
     />
   ),
@@ -48,7 +48,7 @@ const PopoverDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <BasePopover.Description
     ref={ref}
-    className={cn('mt-1 text-sm text-neutral-500', className)}
+    className={cn('mt-1 text-sm text-muted', className)}
     {...props}
   />
 ));
@@ -59,7 +59,7 @@ const PopoverClose = React.forwardRef<HTMLButtonElement, PopoverNamespace.Close.
     <BasePopover.Close
       ref={ref}
       className={cn(
-        'inline-flex h-8 items-center justify-center rounded-md px-3 text-sm font-medium text-neutral-700 hover:bg-neutral-100',
+        'inline-flex h-8 items-center justify-center rounded-md px-3 text-sm font-medium text-ink hover:bg-surface-alt',
         focusRing,
         disabledStyles,
         className,

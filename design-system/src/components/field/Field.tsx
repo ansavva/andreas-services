@@ -16,10 +16,7 @@ const FieldLabel = React.forwardRef<HTMLLabelElement, FieldNamespace.Label.Props
   ({ className, ...props }, ref) => (
     <BaseField.Label
       ref={ref}
-      className={cn(
-        'text-sm font-medium text-neutral-900 data-[disabled]:text-neutral-400',
-        className,
-      )}
+      className={cn('text-sm font-medium text-ink data-[disabled]:text-muted', className)}
       {...props}
     />
   ),
@@ -31,11 +28,11 @@ const FieldControl = React.forwardRef<HTMLInputElement, FieldNamespace.Control.P
     <BaseField.Control
       ref={ref}
       className={cn(
-        'h-10 rounded-md border border-neutral-300 bg-neutral-0 px-3 text-sm text-neutral-900',
-        'placeholder:text-neutral-400',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2',
-        'data-[disabled]:cursor-not-allowed data-[disabled]:bg-neutral-100 data-[disabled]:text-neutral-400',
-        'data-[invalid]:border-danger-500',
+        'h-10 rounded-md border border-line bg-card px-3 text-sm text-ink',
+        'placeholder:text-muted',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2',
+        'data-[disabled]:cursor-not-allowed data-[disabled]:bg-surface-alt data-[disabled]:text-muted',
+        'data-[invalid]:border-danger',
         className,
       )}
       {...props}
@@ -46,18 +43,14 @@ FieldControl.displayName = 'Field.Control';
 
 const FieldDescription = React.forwardRef<HTMLParagraphElement, FieldNamespace.Description.Props>(
   ({ className, ...props }, ref) => (
-    <BaseField.Description
-      ref={ref}
-      className={cn('text-sm text-neutral-500', className)}
-      {...props}
-    />
+    <BaseField.Description ref={ref} className={cn('text-sm text-muted', className)} {...props} />
   ),
 );
 FieldDescription.displayName = 'Field.Description';
 
 const FieldError = React.forwardRef<HTMLParagraphElement, FieldNamespace.Error.Props>(
   ({ className, ...props }, ref) => (
-    <BaseField.Error ref={ref} className={cn('text-sm text-danger-600', className)} {...props} />
+    <BaseField.Error ref={ref} className={cn('text-sm text-danger', className)} {...props} />
   ),
 );
 FieldError.displayName = 'Field.Error';

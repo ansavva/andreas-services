@@ -11,8 +11,8 @@ const SwitchRoot = React.forwardRef<HTMLButtonElement, SwitchNamespace.Root.Prop
     <BaseSwitch.Root
       ref={ref}
       className={cn(
-        'relative flex h-6 w-10 items-center rounded-full bg-neutral-300 transition-colors',
-        'data-[checked]:bg-brand-600',
+        'relative flex h-6 w-10 items-center rounded-full bg-track transition-colors',
+        'data-[checked]:bg-primary',
         focusRing,
         disabledStyles,
         className,
@@ -28,7 +28,7 @@ const SwitchThumb = React.forwardRef<HTMLSpanElement, SwitchNamespace.Thumb.Prop
     <BaseSwitch.Thumb
       ref={ref}
       className={cn(
-        'size-4.5 translate-x-1 rounded-full bg-neutral-0 shadow-sm transition-transform',
+        'size-4.5 translate-x-1 rounded-full bg-card shadow-sm transition-transform',
         'data-[checked]:translate-x-[1.125rem]',
         className,
       )}

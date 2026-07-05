@@ -16,10 +16,10 @@ export interface ButtonProps extends Omit<ButtonNamespace.Props, 'className'> {
 }
 
 const intentStyles: Record<ButtonIntent, string> = {
-  primary: 'bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800',
-  secondary: 'bg-neutral-100 text-neutral-900 hover:bg-neutral-200 active:bg-neutral-300',
-  danger: 'bg-danger-600 text-white hover:bg-danger-700 active:bg-danger-700',
-  ghost: 'bg-transparent text-neutral-900 hover:bg-neutral-100 active:bg-neutral-200',
+  primary: 'bg-primary text-primary-text hover:bg-primary-hover active:bg-primary-active',
+  secondary: 'bg-surface-alt text-ink hover:bg-line active:bg-line',
+  danger: 'bg-danger text-ivory hover:bg-danger-hover active:bg-danger-hover',
+  ghost: 'bg-transparent text-ink hover:bg-surface-alt active:bg-line',
 };
 
 const sizeStyles: Record<ButtonSize, string> = {

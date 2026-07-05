@@ -11,10 +11,7 @@ export const Menubar = React.forwardRef<HTMLDivElement, MenubarProps>(
   ({ className, ...props }, ref) => (
     <BaseMenubar
       ref={ref}
-      className={cn(
-        'flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-0 p-1',
-        className,
-      )}
+      className={cn('flex items-center gap-1 rounded-md border border-line bg-card p-1', className)}
       {...props}
     />
   ),

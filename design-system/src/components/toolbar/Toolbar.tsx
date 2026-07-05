@@ -10,10 +10,7 @@ const ToolbarRoot = React.forwardRef<HTMLDivElement, ToolbarNamespace.Root.Props
   ({ className, ...props }, ref) => (
     <BaseToolbar.Root
       ref={ref}
-      className={cn(
-        'flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-0 p-1',
-        className,
-      )}
+      className={cn('flex items-center gap-1 rounded-md border border-line bg-card p-1', className)}
       {...props}
     />
   ),
@@ -28,8 +25,8 @@ const ToolbarGroup = React.forwardRef<HTMLDivElement, ToolbarNamespace.Group.Pro
 ToolbarGroup.displayName = 'Toolbar.Group';
 
 const toolbarItemStyles = cn(
-  'inline-flex h-8 items-center justify-center rounded px-2 text-sm font-medium text-neutral-700',
-  'hover:bg-neutral-100 data-[pressed]:bg-brand-100 data-[pressed]:text-brand-700',
+  'inline-flex h-8 items-center justify-center rounded px-2 text-sm font-medium text-ink',
+  'hover:bg-surface-alt data-[pressed]:bg-surface-alt data-[pressed]:text-accent',
   focusRing,
   disabledStyles,
 );
@@ -52,11 +49,7 @@ const ToolbarInput = React.forwardRef<HTMLInputElement, ToolbarNamespace.Input.P
   ({ className, ...props }, ref) => (
     <BaseToolbar.Input
       ref={ref}
-      className={cn(
-        'h-8 rounded border border-neutral-300 px-2 text-sm text-neutral-900',
-        focusRing,
-        className,
-      )}
+      className={cn('h-8 rounded border border-line px-2 text-sm text-ink', focusRing, className)}
       {...props}
     />
   ),
@@ -69,7 +62,7 @@ const ToolbarSeparator = React.forwardRef<HTMLDivElement, ToolbarNamespace.Separ
       ref={ref}
       orientation={orientation}
       className={cn(
-        'bg-neutral-200',
+        'bg-line',
         orientation === 'vertical' ? 'mx-1 h-6 w-px' : 'my-1 h-px w-full',
         className,
       )}

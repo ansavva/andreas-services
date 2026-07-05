@@ -22,7 +22,7 @@ const ToastRoot = React.forwardRef<HTMLDivElement, ToastNamespace.Root.Props>(
     <BaseToast.Root
       ref={ref}
       className={cn(
-        'rounded-lg border border-neutral-200 bg-neutral-0 p-4 shadow-lg',
+        'rounded-lg border border-line bg-card p-4 shadow-lg',
         'transition-all data-[starting-style]:translate-x-full data-[ending-style]:opacity-0',
         className,
       )}
@@ -36,7 +36,7 @@ const ToastTitle = React.forwardRef<HTMLHeadingElement, ToastNamespace.Title.Pro
   ({ className, ...props }, ref) => (
     <BaseToast.Title
       ref={ref}
-      className={cn('text-sm font-semibold text-neutral-900', className)}
+      className={cn('text-sm font-semibold text-ink', className)}
       {...props}
     />
   ),
@@ -47,7 +47,7 @@ const ToastDescription = React.forwardRef<HTMLParagraphElement, ToastNamespace.D
   ({ className, ...props }, ref) => (
     <BaseToast.Description
       ref={ref}
-      className={cn('mt-1 text-sm text-neutral-500', className)}
+      className={cn('mt-1 text-sm text-muted', className)}
       {...props}
     />
   ),
@@ -59,7 +59,7 @@ const ToastClose = React.forwardRef<HTMLButtonElement, ToastNamespace.Close.Prop
     <BaseToast.Close
       ref={ref}
       className={cn(
-        'absolute right-2 top-2 rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700',
+        'absolute right-2 top-2 rounded p-1 text-muted hover:bg-surface-alt hover:text-ink',
         focusRing,
         className,
       )}
@@ -74,7 +74,7 @@ const ToastAction = React.forwardRef<HTMLButtonElement, ToastNamespace.Action.Pr
     <BaseToast.Action
       ref={ref}
       className={cn(
-        'mt-2 inline-flex h-8 items-center justify-center rounded-md px-3 text-sm font-medium text-brand-700 hover:bg-brand-50',
+        'mt-2 inline-flex h-8 items-center justify-center rounded-md px-3 text-sm font-medium text-accent hover:bg-surface-alt',
         focusRing,
         disabledStyles,
         className,

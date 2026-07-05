@@ -13,9 +13,9 @@ export const Toggle = React.forwardRef<HTMLButtonElement, ToggleProps>(
     <BaseToggle
       ref={ref}
       className={cn(
-        'inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium text-neutral-700',
-        'hover:bg-neutral-100',
-        'data-[pressed]:bg-brand-100 data-[pressed]:text-brand-700',
+        'inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium text-ink',
+        'hover:bg-surface-alt',
+        'data-[pressed]:bg-surface-alt data-[pressed]:text-accent',
         focusRing,
         disabledStyles,
         className,

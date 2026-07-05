@@ -11,7 +11,7 @@ const ComboboxLabel = React.forwardRef<HTMLDivElement, ComboboxNamespace.Label.P
   ({ className, ...props }, ref) => (
     <BaseCombobox.Label
       ref={ref}
-      className={cn('text-sm font-medium text-neutral-900', className)}
+      className={cn('text-sm font-medium text-ink', className)}
       {...props}
     />
   ),
@@ -23,8 +23,8 @@ const ComboboxInputGroup = React.forwardRef<HTMLDivElement, ComboboxNamespace.In
     <BaseCombobox.InputGroup
       ref={ref}
       className={cn(
-        'flex h-10 items-center gap-1.5 rounded-md border border-neutral-300 bg-neutral-0 px-3',
-        'data-[invalid]:border-danger-500',
+        'flex h-10 items-center gap-1.5 rounded-md border border-line bg-card px-3',
+        'data-[invalid]:border-danger',
         focusRing,
         disabledStyles,
         className,
@@ -40,7 +40,7 @@ const ComboboxInput = React.forwardRef<HTMLInputElement, ComboboxNamespace.Input
     <BaseCombobox.Input
       ref={ref}
       className={cn(
-        'w-full min-w-0 flex-1 bg-transparent text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none',
+        'w-full min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-muted focus:outline-none',
         className,
       )}
       {...props}
@@ -53,7 +53,7 @@ const ComboboxTrigger = React.forwardRef<HTMLButtonElement, ComboboxNamespace.Tr
   ({ className, ...props }, ref) => (
     <BaseCombobox.Trigger
       ref={ref}
-      className={cn('flex items-center text-neutral-500', className)}
+      className={cn('flex items-center text-muted', className)}
       {...props}
     />
   ),
@@ -62,7 +62,7 @@ ComboboxTrigger.displayName = 'Combobox.Trigger';
 
 const ComboboxIcon = React.forwardRef<HTMLSpanElement, ComboboxNamespace.Icon.Props>(
   ({ className, ...props }, ref) => (
-    <BaseCombobox.Icon ref={ref} className={cn('text-neutral-500', className)} {...props} />
+    <BaseCombobox.Icon ref={ref} className={cn('text-muted', className)} {...props} />
   ),
 );
 ComboboxIcon.displayName = 'Combobox.Icon';
@@ -71,7 +71,7 @@ const ComboboxClear = React.forwardRef<HTMLButtonElement, ComboboxNamespace.Clea
   ({ className, ...props }, ref) => (
     <BaseCombobox.Clear
       ref={ref}
-      className={cn('flex text-neutral-400 hover:text-neutral-600', className)}
+      className={cn('flex text-muted hover:text-ink', className)}
       {...props}
     />
   ),
@@ -94,7 +94,7 @@ const ComboboxChip = React.forwardRef<HTMLDivElement, ComboboxNamespace.Chip.Pro
     <BaseCombobox.Chip
       ref={ref}
       className={cn(
-        'flex items-center gap-1 rounded bg-neutral-100 px-2 py-0.5 text-sm text-neutral-900',
+        'flex items-center gap-1 rounded bg-surface-alt px-2 py-0.5 text-sm text-ink',
         className,
       )}
       {...props}
@@ -107,7 +107,7 @@ const ComboboxChipRemove = React.forwardRef<HTMLButtonElement, ComboboxNamespace
   ({ className, ...props }, ref) => (
     <BaseCombobox.ChipRemove
       ref={ref}
-      className={cn('text-neutral-400 hover:text-neutral-700', className)}
+      className={cn('text-muted hover:text-ink', className)}
       {...props}
     />
   ),
@@ -126,8 +126,8 @@ const ComboboxPopup = React.forwardRef<HTMLDivElement, ComboboxNamespace.Popup.P
     <BaseCombobox.Popup
       ref={ref}
       className={cn(
-        'max-h-[min(24rem,var(--available-height))] overflow-y-auto rounded-md border border-neutral-200',
-        'bg-neutral-0 py-1 shadow-lg',
+        'max-h-[min(24rem,var(--available-height))] overflow-y-auto rounded-md border border-line',
+        'bg-card py-1 shadow-lg',
         'transition-opacity data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
         className,
       )}
@@ -139,7 +139,7 @@ ComboboxPopup.displayName = 'Combobox.Popup';
 
 const ComboboxArrow = React.forwardRef<HTMLDivElement, ComboboxNamespace.Arrow.Props>(
   ({ className, ...props }, ref) => (
-    <BaseCombobox.Arrow ref={ref} className={cn('fill-neutral-0', className)} {...props} />
+    <BaseCombobox.Arrow ref={ref} className={cn('fill-card', className)} {...props} />
   ),
 );
 ComboboxArrow.displayName = 'Combobox.Arrow';
@@ -160,7 +160,7 @@ const ComboboxStatus = React.forwardRef<HTMLDivElement, ComboboxNamespace.Status
   ({ className, ...props }, ref) => (
     <BaseCombobox.Status
       ref={ref}
-      className={cn('px-3 py-2 text-sm text-neutral-500', className)}
+      className={cn('px-3 py-2 text-sm text-muted', className)}
       {...props}
     />
   ),
@@ -171,7 +171,7 @@ const ComboboxEmpty = React.forwardRef<HTMLDivElement, ComboboxNamespace.Empty.P
   ({ className, ...props }, ref) => (
     <BaseCombobox.Empty
       ref={ref}
-      className={cn('px-3 py-2 text-sm text-neutral-500', className)}
+      className={cn('px-3 py-2 text-sm text-muted', className)}
       {...props}
     />
   ),
@@ -189,7 +189,7 @@ const ComboboxGroupLabel = React.forwardRef<HTMLDivElement, ComboboxNamespace.Gr
   ({ className, ...props }, ref) => (
     <BaseCombobox.GroupLabel
       ref={ref}
-      className={cn('px-3 py-1.5 text-xs font-semibold uppercase text-neutral-500', className)}
+      className={cn('px-3 py-1.5 text-xs font-semibold uppercase text-muted', className)}
       {...props}
     />
   ),
@@ -201,8 +201,8 @@ const ComboboxItem = React.forwardRef<HTMLDivElement, ComboboxNamespace.Item.Pro
     <BaseCombobox.Item
       ref={ref}
       className={cn(
-        'flex cursor-default items-center justify-between gap-2 px-3 py-2 text-sm text-neutral-900',
-        'data-[highlighted]:bg-brand-50 data-[highlighted]:text-brand-900',
+        'flex cursor-default items-center justify-between gap-2 px-3 py-2 text-sm text-ink',
+        'data-[highlighted]:bg-surface-alt data-[highlighted]:text-ink',
         disabledStyles,
         className,
       )}
@@ -216,7 +216,7 @@ const ComboboxItemIndicator = React.forwardRef<
   HTMLSpanElement,
   ComboboxNamespace.ItemIndicator.Props
 >(({ className, ...props }, ref) => (
-  <BaseCombobox.ItemIndicator ref={ref} className={cn('flex text-brand-600', className)} {...props}>
+  <BaseCombobox.ItemIndicator ref={ref} className={cn('flex text-primary', className)} {...props}>
     <svg viewBox="0 0 16 16" fill="none" className="size-3.5" aria-hidden="true">
       <path
         d="M3.5 8.5L6.5 11.5L12.5 4.5"
