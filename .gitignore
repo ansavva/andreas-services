@@ -214,6 +214,7 @@ package-lock.json
 !scout/frontend/package-lock.json
 !storybook/frontend/storybook-ui/package-lock.json
 !humbugg/frontend/package-lock.json
+!design-system/package-lock.json
 storybook/infra/outputs.txt
 
 # Terraform
