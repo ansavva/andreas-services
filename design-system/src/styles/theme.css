@@ -1,0 +1,99 @@
+/*
+ * Design tokens for @ansavva/design-system — "Evergreen × Heritage"
+ * (Andreas Services brand: earthy + luxe, forest green over ivory).
+ *
+ * Consuming apps import this file from their Tailwind v4 CSS entrypoint:
+ *
+ *   @import "tailwindcss";
+ *   @import "@ansavva/design-system/theme.css";
+ *   @source "../node_modules/@ansavva/design-system/dist";
+ *
+ * Dark mode is toggled by setting `data-theme="dark"` on a root element
+ * (e.g. <html data-theme="dark">) — every component reads the semantic
+ * tokens below, so nothing in component source needs to change per theme.
+ *
+ * Fonts (Spectral + Archivo) are NOT loaded via @import here — a CSS
+ * @import nested inside another @import gets silently dropped once
+ * bundled (it's no longer the first rule in the flattened stylesheet,
+ * which the CSS spec requires), and Google Fonts itself recommends
+ * <link> tags over @import for render performance anyway. Add these to
+ * your app's HTML <head> instead:
+ *
+ *   <link rel="preconnect" href="https://fonts.googleapis.com">
+ *   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+ *   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Spectral:wght@400;500;600;700&display=swap">
+ */
+
+@theme {
+  /* Swap fonts brand-wide by changing only this pair (e.g. Newsreader / DM Sans). */
+  --font-heading: 'Spectral', ui-serif, Georgia, serif;
+  --font-body: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+
+  /* Raw brand palette — stable hues, not redefined per theme. */
+  --color-forest: #1f3d2b;
+  --color-fern: #2f5e3a;
+  --color-ivory: #fdfbf4;
+  --color-linen: #efe8d6;
+  --color-brass: #b8925a;
+  --color-clay: #c2683f;
+
+  /* Semantic tokens — redefined under [data-theme="dark"] below, so
+   * component code always reads these, never the raw palette above
+   * (except forest/fern/ivory/linen/brass/clay used deliberately for
+   * surfaces that must stay stable across both themes, e.g. tooltips). */
+  --color-ink: #16261b;
+  --color-muted: #6f7a6c;
+  --color-line: #e7ddc6;
+
+  --color-bg: var(--color-ivory);
+  --color-card: var(--color-ivory);
+  --color-surface-alt: var(--color-linen);
+  --color-frame: var(--color-forest);
+
+  --color-accent: var(--color-brass);
+  --color-accent-hover: color-mix(in srgb, var(--color-accent) 88%, black 12%);
+  --color-danger: var(--color-clay);
+  --color-danger-hover: color-mix(in srgb, var(--color-danger) 88%, black 12%);
+  --color-primary: var(--color-forest);
+  --color-primary-hover: var(--color-fern);
+  --color-primary-active: color-mix(in srgb, var(--color-forest) 84%, black 16%);
+  --color-primary-text: var(--color-ivory);
+
+  /* Muted, theme-reactive fill for tracks/chips/disabled surfaces. */
+  --color-track: color-mix(in srgb, var(--color-muted) 30%, var(--color-bg) 70%);
+
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+/* Stable reference to the light-mode ink value, used only to derive the
+ * dark theme's surface tones below — kept independent of --color-ink
+ * itself since that variable's *meaning* (primary text) flips value
+ * between themes. */
+:root {
+  --ink-static: #16261b;
+}
+
+[data-theme='dark'] {
+  --color-ink: #f4efe2;
+  --color-muted: rgb(244 239 226 / 0.6);
+  --color-line: rgb(244 239 226 / 0.13);
+
+  --color-bg: color-mix(in srgb, var(--ink-static) 82%, black 18%);
+  --color-frame: color-mix(in srgb, var(--color-bg) 50%, black 50%);
+  --color-card: color-mix(in srgb, var(--color-bg) 92%, white 8%);
+  --color-surface-alt: color-mix(in srgb, var(--color-bg) 86%, var(--color-linen) 14%);
+
+  --color-accent: color-mix(in srgb, var(--color-brass) 80%, white 20%);
+  --color-danger: color-mix(in srgb, var(--color-clay) 84%, white 16%);
+  --color-primary: color-mix(in srgb, var(--color-forest) 66%, white 34%);
+  --color-primary-hover: color-mix(in srgb, var(--color-primary) 88%, white 12%);
+  --color-primary-active: color-mix(in srgb, var(--color-primary) 84%, black 16%);
+  --color-primary-text: var(--color-forest);
+}

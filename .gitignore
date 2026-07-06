@@ -214,6 +214,12 @@ package-lock.json
 !scout/frontend/package-lock.json
 !storybook/frontend/storybook-ui/package-lock.json
 !humbugg/frontend/package-lock.json
+!design-system/package-lock.json
+
+# The generic Python "lib/" rule above unintentionally matches
+# design-system/src/lib/ (a real TS source directory, not a Python venv dir).
+!design-system/src/lib/
+!design-system/src/lib/**
 storybook/infra/outputs.txt
 
 # Terraform
