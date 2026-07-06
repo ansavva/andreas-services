@@ -5,6 +5,8 @@ import './preview.css';
 import type { Preview } from '@storybook/react';
 
 const preview: Preview = {
+  // Generate an autodocs page for every component from its stories + prop types.
+  tags: ['autodocs'],
   parameters: {
     controls: { expanded: true },
   },
@@ -28,10 +30,13 @@ const preview: Preview = {
   decorators: [
     (Story, context) => {
       const theme = context.globals.theme ?? 'light';
+      // Fill the viewport in single-story canvas view; stay compact inside the
+      // stacked story blocks of an autodocs page.
+      const sizing = context.viewMode === 'docs' ? 'p-4' : 'min-h-screen p-8';
 
       return React.createElement(
         'div',
-        { 'data-theme': theme, className: 'bg-bg text-ink min-h-screen p-8 transition-colors' },
+        { 'data-theme': theme, className: `bg-bg text-ink transition-colors ${sizing}` },
         React.createElement(Story),
       );
     },
