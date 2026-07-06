@@ -1,0 +1,73 @@
+@import "tailwindcss";
+@import "@ansavva/design-system/theme.css";
+
+/* Let Tailwind scan the compiled design-system output for the utility classes
+   its components rely on, so they aren't tree-shaken out of our build. */
+@source "../../node_modules/@ansavva/design-system/dist";
+
+/* Typographic styling for rendered markdown (companion blog posts). Uses the
+   design-system brand tokens so articles match the rest of the site. */
+.article {
+  color: var(--color-ink);
+  line-height: 1.75;
+}
+.article > * + * {
+  margin-top: 1.25rem;
+}
+.article h2 {
+  font-family: var(--font-heading);
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin-top: 2.5rem;
+}
+.article h3 {
+  font-family: var(--font-heading);
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-top: 2rem;
+}
+.article p,
+.article li {
+  color: var(--color-muted);
+}
+.article a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.article ul,
+.article ol {
+  padding-left: 1.5rem;
+}
+.article ul {
+  list-style: disc;
+}
+.article ol {
+  list-style: decimal;
+}
+.article blockquote {
+  border-left: 3px solid var(--color-accent);
+  padding-left: 1rem;
+  font-style: italic;
+  color: var(--color-ink);
+}
+.article code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  background: var(--color-surface-alt);
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius-sm);
+}
+.article pre {
+  background: var(--color-frame);
+  color: var(--color-ivory);
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+}
+.article pre code {
+  background: transparent;
+  padding: 0;
+}

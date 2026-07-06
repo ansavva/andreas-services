@@ -1,0 +1,13 @@
+node_modules
+.react-router
+app
+public
+infra
+.github
+*.md
+.npmrc
+.git
+.gitignore
+tsconfig.json
+vite.config.ts
+react-router.config.ts
