@@ -15,12 +15,14 @@ type Story = StoryObj<typeof Switch.Root>;
 
 export const Default: Story = {
   render: (args) => (
-    <Field.Item>
-      <Switch.Root {...args} defaultChecked>
-        <Switch.Thumb />
-      </Switch.Root>
-      <Field.Label>Enable notifications</Field.Label>
-    </Field.Item>
+    <Field.Root>
+      <Field.Item>
+        <Switch.Root {...args} defaultChecked>
+          <Switch.Thumb />
+        </Switch.Root>
+        <Field.Label>Enable notifications</Field.Label>
+      </Field.Item>
+    </Field.Root>
   ),
 };
 

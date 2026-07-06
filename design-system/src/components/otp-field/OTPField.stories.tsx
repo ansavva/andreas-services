@@ -13,7 +13,7 @@ type Story = StoryObj<typeof OTPField.Root>;
 
 export const Default: Story = {
   render: (args) => (
-    <OTPField.Root {...args} aria-label="Verification code">
+    <OTPField.Root {...args} length={6} aria-label="Verification code">
       {Array.from({ length: 6 }, (_, i) => (
         <OTPField.Input key={i} />
       ))}

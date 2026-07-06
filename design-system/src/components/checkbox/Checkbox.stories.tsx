@@ -15,12 +15,14 @@ type Story = StoryObj<typeof Checkbox.Root>;
 
 export const Default: Story = {
   render: (args) => (
-    <Field.Item>
-      <Checkbox.Root {...args} defaultChecked>
-        <Checkbox.Indicator />
-      </Checkbox.Root>
-      <Field.Label>Accept terms and conditions</Field.Label>
-    </Field.Item>
+    <Field.Root>
+      <Field.Item>
+        <Checkbox.Root {...args} defaultChecked>
+          <Checkbox.Indicator />
+        </Checkbox.Root>
+        <Field.Label>Accept terms and conditions</Field.Label>
+      </Field.Item>
+    </Field.Root>
   ),
 };
 

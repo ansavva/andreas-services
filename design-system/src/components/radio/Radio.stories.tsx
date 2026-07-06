@@ -17,15 +17,17 @@ const plans = ['free', 'pro', 'enterprise'];
 
 export const Default: Story = {
   render: (args) => (
-    <RadioGroup {...args} defaultValue="pro" aria-label="Plan">
-      {plans.map((plan) => (
-        <Field.Item key={plan}>
-          <Radio.Root value={plan}>
-            <Radio.Indicator />
-          </Radio.Root>
-          <Field.Label className="capitalize">{plan}</Field.Label>
-        </Field.Item>
-      ))}
-    </RadioGroup>
+    <Field.Root>
+      <RadioGroup {...args} defaultValue="pro" aria-label="Plan">
+        {plans.map((plan) => (
+          <Field.Item key={plan}>
+            <Radio.Root value={plan}>
+              <Radio.Indicator />
+            </Radio.Root>
+            <Field.Label className="capitalize">{plan}</Field.Label>
+          </Field.Item>
+        ))}
+      </RadioGroup>
+    </Field.Root>
   ),
 };

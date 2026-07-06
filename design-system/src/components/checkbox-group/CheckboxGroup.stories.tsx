@@ -18,15 +18,17 @@ const labels = ['Email', 'SMS', 'Push notifications'];
 
 export const Default: Story = {
   render: (args) => (
-    <CheckboxGroup {...args} defaultValue={['email']} aria-label="Notification channels">
-      {labels.map((label) => (
-        <Field.Item key={label}>
-          <Checkbox.Root name={label.toLowerCase()}>
-            <Checkbox.Indicator />
-          </Checkbox.Root>
-          <Field.Label>{label}</Field.Label>
-        </Field.Item>
-      ))}
-    </CheckboxGroup>
+    <Field.Root>
+      <CheckboxGroup {...args} defaultValue={['email']} aria-label="Notification channels">
+        {labels.map((label) => (
+          <Field.Item key={label}>
+            <Checkbox.Root name={label.toLowerCase()}>
+              <Checkbox.Indicator />
+            </Checkbox.Root>
+            <Field.Label>{label}</Field.Label>
+          </Field.Item>
+        ))}
+      </CheckboxGroup>
+    </Field.Root>
   ),
 };
