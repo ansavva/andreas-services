@@ -94,7 +94,7 @@ export default function Services() {
       {/* Booking */}
       <section className="mx-auto max-w-3xl px-6 py-16">
         <h2 className="font-heading text-3xl font-semibold text-ink">Prefer to talk first?</h2>
-        <p className="mt-3 text-muted">Grab a short intro call — 20 minutes, no obligation.</p>
+        <p className="mt-3 text-muted">Grab a short intro call</p>
         <div className="mt-6 overflow-hidden rounded-lg border border-line">
           <iframe
             title="Book an intro call"
