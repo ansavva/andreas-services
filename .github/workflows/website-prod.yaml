@@ -220,14 +220,18 @@ jobs:
   update-lambda:
     name: Update Lambda Functions
     needs: [detect-changes, build-and-push, deploy-infra]
+    # Deploy the freshly-built image whenever the build succeeded and infra did
+    # not fail. deploy-infra legitimately *skips* on app-only changes (it is
+    # gated on infra paths), so gating on its success would strand every
+    # frontend/backend-only image in ECR, never repointing the Lambda.
     if: |
       !cancelled()
       && needs.build-and-push.result == 'success'
       && needs.deploy-infra.result != 'failure'
       && (
         (github.event_name == 'workflow_dispatch' && inputs.run_app)
-        || (github.event_name == 'push' && needs.deploy-infra.result == 'success')
-        || (github.event_name == 'workflow_run' && needs.deploy-infra.result == 'success')
+        || github.event_name == 'push'
+        || github.event_name == 'workflow_run'
       )
     runs-on: ubuntu-latest
     environment: website-production
@@ -342,14 +346,16 @@ jobs:
   deploy-frontend-assets:
     name: Deploy Frontend Assets
     needs: [detect-changes, build-and-push, deploy-infra]
+    # Same gating as update-lambda: ship the assets built alongside the image
+    # even when deploy-infra skipped (app-only change).
     if: |
       !cancelled()
       && needs.build-and-push.result == 'success'
       && needs.deploy-infra.result != 'failure'
       && (
         (github.event_name == 'workflow_dispatch' && inputs.run_app)
-        || (github.event_name == 'push' && needs.deploy-infra.result == 'success')
-        || (github.event_name == 'workflow_run' && needs.deploy-infra.result == 'success')
+        || github.event_name == 'push'
+        || github.event_name == 'workflow_run'
       )
     runs-on: ubuntu-latest
     environment: website-production
