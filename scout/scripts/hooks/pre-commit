@@ -14,17 +14,24 @@ export PATH="$(python3 -m site --user-base)/bin:$PATH"
 
 echo "Scout files staged — running unit tests and lint..."
 
-(
-    cd "${REPO_ROOT}/scout/backend/events-api"
-    poetry install --with dev --no-root --no-interaction --no-ansi -q
-    poetry run pytest tests/ -v
-) || { echo "FAIL: events-api unit tests"; exit 1; }
+run_poetry_tests() {
+    local name="$1"
+    local dir="$2"
 
-(
-    cd "${REPO_ROOT}/scout/backend/email-processor"
-    poetry install --with dev --no-root --no-interaction --no-ansi -q
-    poetry run pytest tests/ -v
-) || { echo "FAIL: email-processor unit tests"; exit 1; }
+    if [[ ! -d "${dir}" ]]; then
+        echo "Skipping ${name} unit tests — ${dir} does not exist."
+        return 0
+    fi
+
+    (
+        cd "${dir}"
+        poetry install --with dev --no-root --no-interaction --no-ansi -q
+        poetry run pytest tests/ -v
+    ) || { echo "FAIL: ${name} unit tests"; exit 1; }
+}
+
+run_poetry_tests "events-api" "${REPO_ROOT}/scout/backend/events-api"
+run_poetry_tests "email-processor" "${REPO_ROOT}/scout/backend/email-processor"
 
 (
     cd "${REPO_ROOT}/scout/frontend"

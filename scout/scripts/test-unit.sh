@@ -25,23 +25,29 @@ done
 pass() { echo "[PASS] $*"; }
 fail() { echo "[FAIL] $*"; exit 1; }
 
-if [[ "$RUN_PYTHON" == "true" ]]; then
-    echo "--- events-api unit tests ---"
+run_poetry_tests() {
+    local name="$1"
+    local dir="$2"
+
+    if [[ ! -d "${dir}" ]]; then
+        echo "[SKIP] ${name} tests (${dir} does not exist)"
+        return 0
+    fi
+
+    echo "--- ${name} unit tests ---"
     (
-        cd "${SCOUT_ROOT}/lambda/events-api"
-        pip3 install -q -r requirements-test.txt
-        python3 -m pytest tests/ -v
-    ) || fail "events-api tests"
-    pass "events-api tests"
+        cd "${dir}"
+        poetry install --with dev --no-root --no-interaction --no-ansi -q
+        poetry run pytest tests/ -v
+    ) || fail "${name} tests"
+    pass "${name} tests"
+}
+
+if [[ "$RUN_PYTHON" == "true" ]]; then
+    run_poetry_tests "events-api" "${SCOUT_ROOT}/backend/events-api"
 
     echo
-    echo "--- email-processor unit tests ---"
-    (
-        cd "${SCOUT_ROOT}/lambda/email-processor"
-        pip3 install -q -r requirements-test.txt
-        python3 -m pytest tests/ -v
-    ) || fail "email-processor tests"
-    pass "email-processor tests"
+    run_poetry_tests "email-processor" "${SCOUT_ROOT}/backend/email-processor"
 fi
 
 if [[ "$RUN_FRONTEND" == "true" ]]; then
