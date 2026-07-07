@@ -19,8 +19,27 @@ data "aws_cloudfront_cache_policy" "optimized" {
   name = "Managed-CachingOptimized"
 }
 
-data "aws_cloudfront_origin_request_policy" "all_viewer_except_host" {
-  name = "Managed-AllViewerExceptHostHeader"
+# Forward all viewer headers/cookies/query-strings to the SSR Lambda origin
+# EXCEPT Host and Authorization. Excluding Authorization is required for OAC:
+# if the origin request policy forwards Authorization, CloudFront skips adding
+# its SigV4 signature and the Function URL returns 403 Forbidden. The SSR app
+# doesn't need the viewer Authorization header (admin auth uses a cookie).
+resource "aws_cloudfront_origin_request_policy" "ssr" {
+  name    = "website-ssr-origin-request"
+  comment = "All viewer data except Host + Authorization (OAC-signed Lambda origin)"
+
+  headers_config {
+    header_behavior = "allExcept"
+    headers {
+      items = ["host", "authorization"]
+    }
+  }
+  cookies_config {
+    cookie_behavior = "all"
+  }
+  query_strings_config {
+    query_string_behavior = "all"
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -118,7 +137,7 @@ resource "aws_cloudfront_distribution" "main" {
     viewer_protocol_policy   = "redirect-to-https"
     compress                 = true
     cache_policy_id          = data.aws_cloudfront_cache_policy.disabled.id
-    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
+    origin_request_policy_id = aws_cloudfront_origin_request_policy.ssr.id
 
     function_association {
       event_type   = "viewer-request"
