@@ -86,11 +86,10 @@ module "hosting" {
     aws.us_east_1 = aws.us_east_1
   }
 
-  www_domain             = local.www_domain
-  apex_domain            = local.apex_domain
-  assets_bucket_name     = "andreas-services-website-assets-${local.environment}"
-  frontend_function_url  = module.compute.frontend_function_url
-  frontend_function_name = module.compute.frontend_function_name
-  route53_zone_id        = data.aws_route53_zone.main.zone_id
-  tags                   = local.common_tags
+  www_domain          = local.www_domain
+  apex_domain         = local.apex_domain
+  assets_bucket_name  = "andreas-services-website-assets-${local.environment}"
+  frontend_api_domain = module.compute.frontend_api_domain
+  route53_zone_id     = data.aws_route53_zone.main.zone_id
+  tags                = local.common_tags
 }

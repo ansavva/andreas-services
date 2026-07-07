@@ -13,13 +13,8 @@ variable "assets_bucket_name" {
   type        = string
 }
 
-variable "frontend_function_url" {
-  description = "SSR Lambda Function URL (https://...on.aws/)"
-  type        = string
-}
-
-variable "frontend_function_name" {
-  description = "SSR Lambda function name (for the CloudFront invoke permission)"
+variable "frontend_api_domain" {
+  description = "SSR HTTP API host used as the CloudFront default origin (no scheme)"
   type        = string
 }
 

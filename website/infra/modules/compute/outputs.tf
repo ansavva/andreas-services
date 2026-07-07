@@ -13,9 +13,9 @@ output "frontend_function_name" {
   value       = aws_lambda_function.frontend.function_name
 }
 
-output "frontend_function_url" {
-  description = "SSR frontend Lambda Function URL (https://<id>.lambda-url.<region>.on.aws/)"
-  value       = aws_lambda_function_url.frontend.function_url
+output "frontend_api_domain" {
+  description = "SSR frontend HTTP API host (for the CloudFront origin), no scheme/path"
+  value       = replace(aws_apigatewayv2_api.frontend.api_endpoint, "https://", "")
 }
 
 output "api_ecr_repository_url" {

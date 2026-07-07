@@ -1,7 +1,3 @@
-locals {
-  ssr_origin_domain = replace(replace(var.frontend_function_url, "https://", ""), "/", "")
-}
-
 data "aws_acm_certificate" "wildcard" {
   provider    = aws.us_east_1
   domain      = "*.andreas.services"
@@ -59,18 +55,11 @@ resource "aws_s3_bucket_public_access_block" "assets" {
 }
 
 # ---------------------------------------------------------------------------
-# Origin Access Control (S3 + Lambda Function URL)
+# Origin Access Control (S3 assets only; the SSR origin is a public HTTP API)
 # ---------------------------------------------------------------------------
 resource "aws_cloudfront_origin_access_control" "s3" {
   name                              = "website-assets-oac"
   origin_access_control_origin_type = "s3"
-  signing_behavior                  = "always"
-  signing_protocol                  = "sigv4"
-}
-
-resource "aws_cloudfront_origin_access_control" "lambda" {
-  name                              = "website-ssr-oac"
-  origin_access_control_origin_type = "lambda"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
 }
@@ -109,11 +98,10 @@ resource "aws_cloudfront_distribution" "main" {
   price_class     = "PriceClass_100"
   aliases         = [var.www_domain, var.apex_domain]
 
-  # SSR Lambda Function URL (default origin)
+  # SSR HTTP API (default origin)
   origin {
-    domain_name              = local.ssr_origin_domain
-    origin_id                = "ssr-lambda"
-    origin_access_control_id = aws_cloudfront_origin_access_control.lambda.id
+    domain_name = var.frontend_api_domain
+    origin_id   = "ssr-lambda"
 
     custom_origin_config {
       http_port              = 80
@@ -171,7 +159,8 @@ resource "aws_cloudfront_distribution" "main" {
 }
 
 # ---------------------------------------------------------------------------
-# Grants: CloudFront -> S3 (read) and CloudFront -> Lambda Function URL (invoke)
+# Grant: CloudFront -> S3 (read). The SSR origin is a public API Gateway HTTP
+# API, so it needs no CloudFront-specific grant.
 # ---------------------------------------------------------------------------
 data "aws_iam_policy_document" "assets_bucket" {
   statement {
@@ -192,15 +181,6 @@ data "aws_iam_policy_document" "assets_bucket" {
 resource "aws_s3_bucket_policy" "assets" {
   bucket = aws_s3_bucket.assets.id
   policy = data.aws_iam_policy_document.assets_bucket.json
-}
-
-resource "aws_lambda_permission" "cloudfront_ssr" {
-  statement_id           = "AllowCloudFrontInvokeUrl"
-  action                 = "lambda:InvokeFunctionUrl"
-  function_name          = var.frontend_function_name
-  principal              = "cloudfront.amazonaws.com"
-  source_arn             = aws_cloudfront_distribution.main.arn
-  function_url_auth_type = "AWS_IAM"
 }
 
 # ---------------------------------------------------------------------------
