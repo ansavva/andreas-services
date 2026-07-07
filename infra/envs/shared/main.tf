@@ -56,8 +56,8 @@ resource "aws_route53_record" "cert_validation" {
 # ─── GitHub Actions OIDC ──────────────────────────────────────────────────────
 
 resource "aws_iam_openid_connect_provider" "github_actions" {
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
+  url            = "https://token.actions.githubusercontent.com"
+  client_id_list = ["sts.amazonaws.com"]
   # AWS auto-validates GitHub's TLS cert; thumbprint is ignored but required by the API
   thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
 
@@ -228,6 +228,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
       "arn:aws:ssm:*:*:parameter/scout/*",
       "arn:aws:ssm:*:*:parameter/storybook/*",
       "arn:aws:ssm:*:*:parameter/humbugg/*",
+      "arn:aws:ssm:*:*:parameter/website/*",
     ]
   }
 }
