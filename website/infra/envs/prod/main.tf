@@ -30,6 +30,16 @@ module "auth" {
   tags   = local.common_tags
 }
 
+import {
+  to = module.compute.aws_ecr_repository.api[0]
+  id = "website-api"
+}
+
+import {
+  to = module.compute.aws_ecr_repository.frontend[0]
+  id = "website-frontend"
+}
+
 module "compute" {
   source           = "../../modules/compute"
   table_suffix     = ""
