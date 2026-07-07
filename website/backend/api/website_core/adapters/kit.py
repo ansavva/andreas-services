@@ -1,6 +1,9 @@
 """Kit (formerly ConvertKit) adapter — adds newsletter subscribers.
 
-Uses the v3 form-subscribe endpoint. Kept on the stdlib (urllib) so the Lambda
+Uses the Kit **v4** API: the account issues a v4 API key (`kit_…`) sent as the
+`X-Kit-Api-Key` header, and subscribers are added to a form via
+`POST /v4/forms/{form_id}/subscribers`. (The legacy v3 `?api_key=` form-subscribe
+endpoint rejects v4 keys with 401.) Kept on the stdlib (urllib) so the Lambda
 image carries no extra HTTP dependency.
 """
 
@@ -11,7 +14,7 @@ import urllib.request
 from website_core.common import config
 from website_core.common.errors import ConfigError, UpstreamError
 
-_BASE = "https://api.convertkit.com/v3"
+_BASE = "https://api.kit.com/v4"
 _TIMEOUT = 10
 
 
@@ -22,14 +25,18 @@ def subscribe(email, first_name=None):
     if not api_key or not form_id:
         raise ConfigError("Kit (ConvertKit) is not configured")
 
-    payload = {"api_key": api_key, "email": email}
+    payload = {"email_address": email}
     if first_name:
         payload["first_name"] = first_name
 
     request = urllib.request.Request(
-        f"{_BASE}/forms/{form_id}/subscribe",
+        f"{_BASE}/forms/{form_id}/subscribers",
         data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-Kit-Api-Key": api_key,
+        },
         method="POST",
     )
     try:
