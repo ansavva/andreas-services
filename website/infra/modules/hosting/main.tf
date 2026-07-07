@@ -64,6 +64,18 @@ resource "aws_cloudfront_origin_access_control" "s3" {
   signing_protocol                  = "sigv4"
 }
 
+# Unreferenced, retained for one deploy only. Deleting this in the same apply
+# that repoints the distribution off it races CloudFront's "OriginAccessControl
+# still in use" (409) check. Kept here so this apply is a clean origin repoint
+# with no OAC delete; removed in a follow-up once the distribution no longer
+# references it. (TODO: delete in a follow-up PR.)
+resource "aws_cloudfront_origin_access_control" "lambda" {
+  name                              = "website-ssr-oac"
+  origin_access_control_origin_type = "lambda"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
 # ---------------------------------------------------------------------------
 # Apex -> www 301 redirect (viewer-request)
 # ---------------------------------------------------------------------------
