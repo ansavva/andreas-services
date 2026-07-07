@@ -161,10 +161,44 @@ resource "aws_lambda_function" "frontend" {
   }
 }
 
-# HTTPS endpoint for the SSR Lambda, signed by the CloudFront OAC (IAM auth).
-resource "aws_lambda_function_url" "frontend" {
-  function_name      = aws_lambda_function.frontend.function_name
-  authorization_type = "AWS_IAM"
+# HTTP API fronting the SSR Lambda ($default proxy). Payload format 2.0 emits
+# the same event shape the @react-router/architect handler consumes. CloudFront
+# uses this API's endpoint as the SSR origin (like the other services front
+# their Lambdas with API Gateway), which avoids the OAC-to-Function-URL path.
+resource "aws_apigatewayv2_api" "frontend" {
+  name          = local.frontend_name
+  protocol_type = "HTTP"
+  tags          = var.tags
+}
+
+resource "aws_apigatewayv2_integration" "frontend" {
+  api_id                 = aws_apigatewayv2_api.frontend.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = aws_lambda_function.frontend.invoke_arn
+  integration_method     = "POST"
+  payload_format_version = "2.0"
+  timeout_milliseconds   = 30000
+}
+
+resource "aws_apigatewayv2_route" "frontend_default" {
+  api_id    = aws_apigatewayv2_api.frontend.id
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.frontend.id}"
+}
+
+resource "aws_apigatewayv2_stage" "frontend" {
+  api_id      = aws_apigatewayv2_api.frontend.id
+  name        = "$default"
+  auto_deploy = true
+  tags        = var.tags
+}
+
+resource "aws_lambda_permission" "frontend_apigw" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.frontend.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.frontend.execution_arn}/*/*"
 }
 
 resource "aws_cloudwatch_log_group" "api" {
