@@ -5,6 +5,66 @@
    its components rely on, so they aren't tree-shaken out of our build. */
 @source "../../node_modules/@ansavva/design-system/dist";
 
+@theme {
+  --font-heading: 'Spectral', ui-serif, Georgia, serif;
+  --font-body: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+
+  --color-forest: #1f3d2b;
+  --color-fern: #2f5e3a;
+  --color-ivory: #fdfbf4;
+  --color-linen: #efe8d6;
+  --color-brass: #b8925a;
+  --color-clay: #c2683f;
+
+  --color-ink: #16261b;
+  --color-muted: #6f7a6c;
+  --color-line: #e7ddc6;
+
+  --color-bg: var(--color-ivory);
+  --color-card: var(--color-ivory);
+  --color-surface-alt: var(--color-linen);
+  --color-frame: var(--color-forest);
+  --color-frame-text: var(--color-ivory);
+  --color-overlay: rgb(31 61 43 / 0.42);
+
+  --color-accent: var(--color-brass);
+  --color-accent-hover: color-mix(in srgb, var(--color-accent) 88%, black 12%);
+  --color-danger: var(--color-clay);
+  --color-danger-hover: color-mix(in srgb, var(--color-danger) 88%, black 12%);
+  --color-danger-text: var(--color-ivory);
+  --color-primary: var(--color-forest);
+  --color-primary-hover: var(--color-fern);
+  --color-primary-active: color-mix(in srgb, var(--color-forest) 84%, black 16%);
+  --color-primary-text: var(--color-ivory);
+  --color-tooltip: var(--color-forest);
+  --color-tooltip-text: var(--color-ivory);
+  --color-track: color-mix(in srgb, var(--color-muted) 30%, var(--color-bg) 70%);
+}
+
+[data-theme='dark'] {
+  --color-ink: #f7f1e4;
+  --color-muted: rgb(247 241 228 / 0.64);
+  --color-line: rgb(247 241 228 / 0.14);
+
+  --color-bg: #030503;
+  --color-card: #0c100d;
+  --color-surface-alt: #151b16;
+  --color-frame: #050806;
+  --color-frame-text: var(--color-ivory);
+  --color-overlay: rgb(0 0 0 / 0.66);
+
+  --color-accent: color-mix(in srgb, var(--color-brass) 78%, white 22%);
+  --color-danger: color-mix(in srgb, var(--color-clay) 82%, white 18%);
+  --color-danger-text: #030503;
+  --color-primary: #4f9a63;
+  --color-primary-hover: #62ad75;
+  --color-primary-active: #3f8151;
+  --color-primary-text: var(--color-ivory);
+  --color-tooltip: var(--color-ivory);
+  --color-tooltip-text: #030503;
+  --color-track: rgb(247 241 228 / 0.18);
+}
+
 /* Typographic styling for rendered markdown (companion blog posts). Uses the
    design-system brand tokens so articles match the rest of the site. */
 .article {

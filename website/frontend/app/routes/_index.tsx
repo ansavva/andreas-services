@@ -53,7 +53,7 @@ export default function Home({ loaderData }: { loaderData: { posts: ReturnType<t
         <div className="mt-8 flex flex-wrap items-center gap-4">
           <Link
             to="/services"
-            className="rounded-md bg-primary px-6 py-3 font-medium text-primary-text transition-colors hover:bg-primary-hover"
+            className="inline-flex items-center whitespace-nowrap rounded-md bg-primary px-6 py-3 font-medium text-primary-text transition-colors hover:bg-primary-hover"
           >
             Get a scoped quote
           </Link>
@@ -102,7 +102,7 @@ export default function Home({ loaderData }: { loaderData: { posts: ReturnType<t
           <div className="mt-10">
             <Link
               to="/services"
-              className="rounded-md bg-primary px-6 py-3 font-medium text-primary-text transition-colors hover:bg-primary-hover"
+              className="inline-flex items-center whitespace-nowrap rounded-md bg-primary px-6 py-3 font-medium text-primary-text transition-colors hover:bg-primary-hover"
             >
               See the offer
             </Link>

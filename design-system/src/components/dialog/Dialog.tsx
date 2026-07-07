@@ -13,7 +13,7 @@ const DialogBackdrop = React.forwardRef<HTMLDivElement, DialogNamespace.Backdrop
   ({ className, ...props }, ref) => (
     <BaseDialog.Backdrop
       ref={ref}
-      className={cn('fixed inset-0 bg-forest/40', transition, className)}
+      className={cn('fixed inset-0 bg-overlay', transition, className)}
       {...props}
     />
   ),

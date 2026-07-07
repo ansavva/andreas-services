@@ -18,7 +18,7 @@ export interface ButtonProps extends Omit<ButtonNamespace.Props, 'className'> {
 const intentStyles: Record<ButtonIntent, string> = {
   primary: 'bg-primary text-primary-text hover:bg-primary-hover active:bg-primary-active',
   secondary: 'bg-surface-alt text-ink hover:bg-line active:bg-line',
-  danger: 'bg-danger text-ivory hover:bg-danger-hover active:bg-danger-hover',
+  danger: 'bg-danger text-danger-text hover:bg-danger-hover active:bg-danger-hover',
   ghost: 'bg-transparent text-ink hover:bg-surface-alt active:bg-line',
 };
 
@@ -34,7 +34,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <BaseButton
         ref={ref}
         className={cn(
-          'inline-flex items-center justify-center rounded-md font-medium transition-colors',
+          'inline-flex items-center justify-center whitespace-nowrap rounded-md font-medium transition-colors',
           focusRing,
           disabledStyles,
           intentStyles[intent],

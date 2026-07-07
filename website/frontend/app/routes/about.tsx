@@ -48,13 +48,13 @@ export default function About() {
         <div className="mt-12 flex flex-wrap gap-4">
           <Link
             to="/services"
-            className="rounded-md bg-primary px-6 py-3 font-medium text-primary-text transition-colors hover:bg-primary-hover"
+            className="inline-flex items-center whitespace-nowrap rounded-md bg-primary px-6 py-3 font-medium text-primary-text transition-colors hover:bg-primary-hover"
           >
             Work with me
           </Link>
           <Link
             to="/writing"
-            className="rounded-md border border-line px-6 py-3 font-medium text-ink transition-colors hover:bg-surface-alt"
+            className="inline-flex items-center whitespace-nowrap rounded-md border border-line px-6 py-3 font-medium text-ink transition-colors hover:bg-surface-alt"
           >
             Read the writing
           </Link>

@@ -11,6 +11,7 @@ import {
 } from "react-router";
 
 import { useTheme } from "./components/ThemeToggle";
+import faviconUrl from "./assets/favicon.svg?url";
 import { getTheme } from "./lib/theme.server";
 import stylesheet from "./styles/app.css?url";
 
@@ -25,6 +26,7 @@ export const links: LinksFunction = () => [
     rel: "stylesheet",
     href: "https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Spectral:wght@400;500;600;700&display=swap",
   },
+  { rel: "icon", type: "image/svg+xml", href: faviconUrl },
   { rel: "stylesheet", href: stylesheet },
 ];
 

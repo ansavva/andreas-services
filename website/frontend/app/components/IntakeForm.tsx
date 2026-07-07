@@ -74,7 +74,7 @@ export function IntakeForm({ sourcePage = "/services" }: { sourcePage?: string }
       {fetcher.data?.error ? <p className="text-sm text-danger">{fetcher.data.error}</p> : null}
 
       <div className="flex items-center gap-4">
-        <Button type="submit" intent="primary" size="lg" disabled={submitting}>
+        <Button type="submit" intent="primary" size="lg" className="whitespace-nowrap" disabled={submitting}>
           {submitting ? "Sending…" : "Get a scoped quote"}
         </Button>
         <span className="text-xs text-muted">48-hour turnaround · no sales pitch</span>
