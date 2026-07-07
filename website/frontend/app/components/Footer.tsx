@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 
 import { NAV_LINKS, SITE, SOCIALS } from "~/lib/site";
+import { SOCIAL_ICONS } from "./SocialIcons";
 
 /** Footer doubles as the sitemap + link hub (every path + every social). */
 export function Footer() {
@@ -33,20 +34,21 @@ export function Footer() {
 
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">Elsewhere</p>
-          <ul className="mt-3 space-y-2 text-sm">
+          <div className="mt-3 flex gap-2">
             {SOCIALS.map((social) => (
-              <li key={social.label}>
-                <a
-                  href={social.href}
-                  className="text-ink transition-colors hover:text-primary"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {social.label}
-                </a>
-              </li>
+              <a
+                key={social.label}
+                href={social.href}
+                aria-label={social.label}
+                title={social.label}
+                target="_blank"
+                rel="noreferrer"
+                className="grid h-9 w-9 place-items-center rounded-md border border-line text-muted transition-colors hover:border-primary hover:bg-primary hover:text-primary-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+              >
+                {SOCIAL_ICONS[social.label]}
+              </a>
             ))}
-          </ul>
+          </div>
         </div>
       </div>
       <div className="border-t border-line/70">
