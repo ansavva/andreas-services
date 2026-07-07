@@ -40,6 +40,11 @@ import {
   id = "website-frontend"
 }
 
+import {
+  to = module.hosting.aws_route53_record.apex
+  id = "Z06041001M39MUDQD1G76_andreas.services_A"
+}
+
 module "compute" {
   source           = "../../modules/compute"
   table_suffix     = ""
