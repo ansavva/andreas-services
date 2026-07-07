@@ -10,7 +10,7 @@ const TooltipPopup = React.forwardRef<HTMLDivElement, TooltipNamespace.Popup.Pro
     <BaseTooltip.Popup
       ref={ref}
       className={cn(
-        'rounded-md bg-forest px-2.5 py-1.5 text-xs text-ivory shadow-md',
+        'rounded-md bg-tooltip px-2.5 py-1.5 text-xs text-tooltip-text shadow-md',
         'transition-opacity data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
         className,
       )}

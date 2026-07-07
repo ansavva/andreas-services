@@ -1,0 +1,387 @@
+name: Website · Deploy · Prod
+
+# Combined prod deploy for the website service (SSR frontend + Python API).
+#
+#   detect-changes ─► build-and-push (both images, when infra/backend/frontend change)
+#                          │            (also uploads build/client for the asset sync)
+#                          ▼
+#                     deploy-infra (terraform apply → SSM outputs)
+#                          │
+#                          ├─► update-lambda        (env vars + pin both Lambdas to :sha)
+#                          ├─► bootstrap-admin       (idempotent Cognito admin user)
+#                          └─► deploy-frontend-assets (sync build/client → S3 + invalidate)
+#
+# Images are built BEFORE Terraform: the Lambdas reference :latest with
+# lifecycle ignore_changes=[image_uri,environment], so the images must already
+# exist in ECR on first apply.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/infra/**'
+      - 'website/backend/**'
+      - 'website/frontend/**'
+      - '.github/workflows/website-prod.yaml'
+  workflow_dispatch:
+    inputs:
+      run_infra:
+        description: 'Run the deploy-infra job'
+        type: boolean
+        default: true
+      run_app:
+        description: 'Run update-lambda and deploy-frontend-assets'
+        type: boolean
+        default: true
+  workflow_run:
+    workflows: ["Shared infra · Terraform apply · Prod"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: website-prod
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  detect-changes:
+    name: Detect Changes
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      infra: ${{ steps.filter.outputs.infra }}
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            infra:
+              - 'website/infra/**'
+              - '.github/workflows/website-prod.yaml'
+            backend:
+              - 'website/backend/**'
+              - '.github/workflows/website-prod.yaml'
+            frontend:
+              - 'website/frontend/**'
+              - '.github/workflows/website-prod.yaml'
+
+  # ---------------------------------------------------------------------------
+  # Build both Docker images and push to ECR. Also builds the frontend client
+  # bundle and uploads it so the asset sync uses the exact same hashes the
+  # server bundle references.
+  # ---------------------------------------------------------------------------
+  build-and-push:
+    name: Build & Push Images
+    needs: detect-changes
+    if: |
+      !cancelled()
+      && (
+        (github.event_name == 'push'
+         && (needs.detect-changes.outputs.infra == 'true'
+             || needs.detect-changes.outputs.backend == 'true'
+             || needs.detect-changes.outputs.frontend == 'true'))
+        || (github.event_name == 'workflow_dispatch' && (inputs.run_infra || inputs.run_app))
+        || github.event_name == 'workflow_run'
+      )
+    runs-on: ubuntu-latest
+    environment: website-production
+    permissions:
+      id-token: write
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: website/frontend/package-lock.json
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set ECR registry
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "ECR_REGISTRY=${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> "$GITHUB_ENV"
+
+      - name: Ensure ECR repositories exist
+        run: |
+          for REPO in website-api website-frontend; do
+            aws ecr describe-repositories --repository-names "$REPO" \
+              --region "${{ env.AWS_REGION }}" >/dev/null 2>&1 || \
+            aws ecr create-repository \
+              --repository-name "$REPO" \
+              --region "${{ env.AWS_REGION }}" \
+              --image-scanning-configuration scanOnPush=true \
+              --tags Key=Project,Value=website
+          done
+
+      - name: Build & push backend (website-api)
+        run: |
+          IMAGE="${ECR_REGISTRY}/website-api"
+          cd website/backend/api
+          docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${{ github.sha }}"
+          docker push "${IMAGE}:latest"
+
+      - name: Install frontend deps
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cd website/frontend && npm ci
+
+      - name: Build frontend (SSR + client assets)
+        env:
+          VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID }}
+          VITE_CAL_LINK: ${{ vars.VITE_CAL_LINK }}
+        run: cd website/frontend && npm run build
+
+      - name: Build & push frontend (website-frontend SSR image)
+        run: |
+          IMAGE="${ECR_REGISTRY}/website-frontend"
+          cd website/frontend
+          docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${{ github.sha }}"
+          docker push "${IMAGE}:latest"
+
+      - name: Upload client assets (for the S3 sync)
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-client
+          path: website/frontend/build/client
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # Terraform apply + publish resolved IDs to SSM.
+  # ---------------------------------------------------------------------------
+  deploy-infra:
+    name: Terraform Apply
+    needs: [detect-changes, build-and-push]
+    if: |
+      !cancelled()
+      && needs.build-and-push.result != 'failure'
+      && (
+        (github.event_name == 'push' && needs.detect-changes.outputs.infra == 'true')
+        || (github.event_name == 'workflow_dispatch' && inputs.run_infra)
+        || github.event_name == 'workflow_run'
+      )
+    runs-on: ubuntu-latest
+    environment: website-production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform init
+        run: terraform -chdir=website/infra/envs/prod init -input=false
+
+      - name: Terraform apply
+        run: terraform -chdir=website/infra/envs/prod apply -auto-approve -input=false
+
+      - name: Write outputs to SSM
+        run: |
+          set -euo pipefail
+          tf() { terraform -chdir=website/infra/envs/prod output -raw "$1"; }
+          put() { aws ssm put-parameter --overwrite --type String --name "$1" --value "$2"; }
+          put /website/prod/cf-dist-id             "$(tf cloudfront_distribution_id)"
+          put /website/prod/assets-bucket          "$(tf assets_bucket_name)"
+          put /website/prod/api-url                "$(tf api_domain)"
+          put /website/prod/cognito-user-pool-id   "$(tf cognito_user_pool_id)"
+          put /website/prod/cognito-client-id      "$(tf cognito_user_pool_client_id)"
+
+  # ---------------------------------------------------------------------------
+  # Set Lambda env vars and pin both functions to :sha.
+  # ---------------------------------------------------------------------------
+  update-lambda:
+    name: Update Lambda Functions
+    needs: [detect-changes, build-and-push, deploy-infra]
+    if: |
+      !cancelled()
+      && needs.build-and-push.result == 'success'
+      && needs.deploy-infra.result != 'failure'
+      && (
+        (github.event_name == 'workflow_dispatch' && inputs.run_app)
+        || (github.event_name == 'push' && needs.deploy-infra.result == 'success')
+        || (github.event_name == 'workflow_run' && needs.deploy-infra.result == 'success')
+      )
+    runs-on: ubuntu-latest
+    environment: website-production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set ECR registry
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "ECR_REGISTRY=${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> "$GITHUB_ENV"
+
+      - name: Update Lambda env vars
+        env:
+          KIT_API_KEY: ${{ secrets.KIT_API_KEY }}
+          KIT_FORM_ID: ${{ secrets.KIT_FORM_ID }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+        run: |
+          set -euo pipefail
+          get() { aws ssm get-parameter --name "/website/prod/${1}" --query Parameter.Value --output text; }
+          API_URL=$(get api-url)
+          POOL_ID=$(get cognito-user-pool-id)
+          CLIENT_ID=$(get cognito-client-id)
+
+          jq -n --arg origin "https://www.andreas.services" \
+                --arg kit "${KIT_API_KEY}" --arg form "${KIT_FORM_ID}" \
+            '{Variables: {
+              WEBSITE_TABLE_SUFFIX:   "",
+              WEBSITE_ALLOWED_ORIGIN: $origin,
+              KIT_API_KEY:            $kit,
+              KIT_FORM_ID:            $form
+            }}' > /tmp/env-api.json
+
+          jq -n --arg api "${API_URL}" --arg pool "${POOL_ID}" \
+                --arg client "${CLIENT_ID}" --arg secret "${SESSION_SECRET}" \
+            '{Variables: {
+              NODE_ENV:             "production",
+              WEBSITE_API_URL:      $api,
+              COGNITO_USER_POOL_ID: $pool,
+              COGNITO_CLIENT_ID:    $client,
+              SESSION_SECRET:       $secret
+            }}' > /tmp/env-frontend.json
+
+          set_env() {
+            aws lambda update-function-configuration \
+              --function-name "$1" --region "${{ env.AWS_REGION }}" --environment "file://$2"
+            aws lambda wait function-updated --function-name "$1" --region "${{ env.AWS_REGION }}"
+          }
+          set_env website-api      /tmp/env-api.json
+          set_env website-frontend /tmp/env-frontend.json
+
+      - name: Update Lambda function code
+        run: |
+          set -euo pipefail
+          update_code() {
+            aws lambda update-function-code \
+              --function-name "$1" --image-uri "$2" --region "${{ env.AWS_REGION }}" \
+              --output table --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
+            aws lambda wait function-updated --function-name "$1" --region "${{ env.AWS_REGION }}"
+          }
+          update_code website-api      "${ECR_REGISTRY}/website-api:${{ github.sha }}"
+          update_code website-frontend "${ECR_REGISTRY}/website-frontend:${{ github.sha }}"
+
+  # ---------------------------------------------------------------------------
+  # Bootstrap the single Cognito admin user. Idempotent + self-skipping.
+  # ---------------------------------------------------------------------------
+  bootstrap-admin:
+    name: Bootstrap Admin User
+    needs: [deploy-infra]
+    if: "!cancelled() && needs.deploy-infra.result == 'success'"
+    runs-on: ubuntu-latest
+    environment: website-production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create admin user
+        env:
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ADMIN_EMAIL}" ] || [ -z "${ADMIN_PASSWORD}" ]; then
+            echo "ADMIN_EMAIL / ADMIN_PASSWORD not set — skipping admin bootstrap."
+            exit 0
+          fi
+          USER_POOL_ID=$(aws ssm get-parameter --name /website/prod/cognito-user-pool-id \
+            --query Parameter.Value --output text)
+          export USER_POOL_ID
+          bash website/scripts/create-admin-user.sh
+
+  # ---------------------------------------------------------------------------
+  # Sync the client assets (built in build-and-push) to S3 and invalidate.
+  # ---------------------------------------------------------------------------
+  deploy-frontend-assets:
+    name: Deploy Frontend Assets
+    needs: [detect-changes, build-and-push, deploy-infra]
+    if: |
+      !cancelled()
+      && needs.build-and-push.result == 'success'
+      && needs.deploy-infra.result != 'failure'
+      && (
+        (github.event_name == 'workflow_dispatch' && inputs.run_app)
+        || (github.event_name == 'push' && needs.deploy-infra.result == 'success')
+        || (github.event_name == 'workflow_run' && needs.deploy-infra.result == 'success')
+      )
+    runs-on: ubuntu-latest
+    environment: website-production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download client assets
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-client
+          path: build/client
+
+      - name: Read infra values from SSM
+        run: |
+          get() { aws ssm get-parameter --name "/website/prod/${1}" --query Parameter.Value --output text; }
+          echo "S3_BUCKET=$(get assets-bucket)" >> "$GITHUB_ENV"
+          echo "CF_DIST_ID=$(get cf-dist-id)"    >> "$GITHUB_ENV"
+
+      - name: Sync assets to S3 (immutable)
+        run: |
+          aws s3 sync build/client/ "s3://${S3_BUCKET}/" \
+            --region "${{ env.AWS_REGION }}" \
+            --delete \
+            --cache-control "public,max-age=31536000,immutable"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation --distribution-id "${CF_DIST_ID}" --paths "/*"

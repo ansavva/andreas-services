@@ -1,6 +1,6 @@
 {
   "name": "@ansavva/design-system",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shared React design system for andreas-services, built on Base UI (https://base-ui.com/react).",
   "type": "module",
   "license": "UNLICENSED",

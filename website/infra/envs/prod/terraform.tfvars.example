@@ -1,0 +1,5 @@
+# Copy to terraform.tfvars for local plans. In CI these come from the
+# environment; runtime secrets (Kit keys, session secret, admin creds) are set
+# on the Lambdas by the deploy workflow, not by Terraform.
+
+aws_region = "us-east-1"

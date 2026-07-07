@@ -1,0 +1,20 @@
+.env
+.env.local
+
+# frontend
+frontend/node_modules
+frontend/build
+frontend/.react-router
+
+# backend
+backend/api/.venv
+backend/api/.pytest_cache
+**/__pycache__
+
+# terraform
+**/.terraform
+*.tfstate
+*.tfstate.*
+infra/**/terraform.tfvars
+
+.DS_Store

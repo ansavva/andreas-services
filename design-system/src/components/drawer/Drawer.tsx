@@ -12,7 +12,7 @@ const DrawerBackdrop = React.forwardRef<HTMLDivElement, DrawerNamespace.Backdrop
   ({ className, ...props }, ref) => (
     <BaseDrawer.Backdrop
       ref={ref}
-      className={cn('fixed inset-0 bg-forest/40', transition, className)}
+      className={cn('fixed inset-0 bg-overlay', transition, className)}
       {...props}
     />
   ),
