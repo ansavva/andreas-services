@@ -7,9 +7,16 @@ import {
   ScrollRestoration,
   isRouteErrorResponse,
   type LinksFunction,
+  type LoaderFunctionArgs,
 } from "react-router";
 
+import { useTheme } from "./components/ThemeToggle";
+import { getTheme } from "./lib/theme.server";
 import stylesheet from "./styles/app.css?url";
+
+export async function loader({ request }: LoaderFunctionArgs) {
+  return { theme: await getTheme(request) };
+}
 
 export const links: LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -23,8 +30,9 @@ export const links: LinksFunction = () => [
 
 export function Layout({ children }: { children: ReactNode }) {
   const ga = import.meta.env.VITE_GA_MEASUREMENT_ID as string | undefined;
+  const theme = useTheme();
   return (
-    <html lang="en" data-theme="light">
+    <html lang="en" data-theme={theme}>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />

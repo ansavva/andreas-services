@@ -1,6 +1,7 @@
 import { Link, NavLink } from "react-router";
 
 import { NAV_LINKS, SITE } from "~/lib/site";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function Nav() {
   return (
@@ -23,6 +24,7 @@ export function Nav() {
               </NavLink>
             ))}
           </div>
+          <ThemeToggle />
           <Link
             to="/services"
             className="rounded-md bg-primary px-4 py-2 font-medium text-primary-text transition-colors hover:bg-primary-hover"
