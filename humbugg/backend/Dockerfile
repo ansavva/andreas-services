@@ -18,4 +18,4 @@ COPY humbugg_core ./humbugg_core
 ENV PYTHONPATH="/app"
 
 ENTRYPOINT ["python", "-m", "awslambdaric"]
-CMD ["humbugg_core.handlers.lambda.api.api_handler.handler"]
+CMD ["humbugg_core.handlers.aws.api.api_handler.handler"]

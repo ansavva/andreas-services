@@ -194,7 +194,7 @@ resource "aws_lambda_function" "source_run_processor" {
   memory_size   = 512
 
   image_config {
-    command = ["scout_core.handlers.lambda.jobs.processor_handler.lambda_handler"]
+    command = ["scout_core.handlers.aws.jobs.processor_handler.lambda_handler"]
   }
 
   environment {
@@ -230,7 +230,7 @@ resource "aws_lambda_function" "scheduler" {
   memory_size   = 256
 
   image_config {
-    command = ["scout_core.handlers.lambda.jobs.scheduler_handler.lambda_handler"]
+    command = ["scout_core.handlers.aws.jobs.scheduler_handler.lambda_handler"]
   }
 
   environment {
@@ -264,7 +264,7 @@ resource "aws_lambda_function" "sweep" {
   memory_size   = 256
 
   image_config {
-    command = ["scout_core.handlers.lambda.jobs.sweep_handler.lambda_handler"]
+    command = ["scout_core.handlers.aws.jobs.sweep_handler.lambda_handler"]
   }
 
   environment {

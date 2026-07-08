@@ -10,4 +10,4 @@ COPY pyproject.toml poetry.lock ./
 RUN poetry install --only main --no-root --no-interaction --no-ansi
 
 COPY website_core ./website_core
-CMD ["website_core.handlers.lambda.api.api_handler.handler"]
+CMD ["website_core.handlers.aws.api.api_handler.handler"]

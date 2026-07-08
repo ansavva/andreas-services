@@ -99,8 +99,8 @@ scout/
 
 Imports are absolute within the package, e.g. `from scout_core.repositories import
 store`, `from scout_core.services import events`. Lambda handlers are referenced as
-`scout_core.handlers.lambda.api.api_handler.handler` for the Flask + Mangum HTTP API, and
-`scout_core.handlers.lambda.jobs.<processor|scheduler|sweep>_handler.lambda_handler` for the
+`scout_core.handlers.aws.api.api_handler.handler` for the Flask + Mangum HTTP API, and
+`scout_core.handlers.aws.jobs.<processor|scheduler|sweep>_handler.lambda_handler` for the
 event-driven Lambdas.
 
 ## Data model (DynamoDB)
@@ -140,10 +140,10 @@ GSIs, S3 on `scout-artifacts-*`/`scout-images-*`, invoke
 
 | Function | Entrypoint | Trigger | Notes |
 |----------|-----------|---------|-------|
-| `scout-events-api` | `scout_core.handlers.lambda.api.api_handler.handler` | API Gateway | Flask + Mangum, 128 MB / 30 s |
-| `scout-source-run-processor` | `scout_core.handlers.lambda.jobs.processor_handler.lambda_handler` | async invoke | 512 MB / 300 s; needs `ANTHROPIC_API_KEY`, `SCOUT_ARTIFACTS_BUCKET`, `SCOUT_IMAGES_BUCKET`, `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` (Gmail ingestion + `mode=discover`), `SCOUT_RENDERER_FN` (page rendering) |
-| `scout-scheduler` | `scout_core.handlers.lambda.jobs.scheduler_handler.lambda_handler` | EventBridge `rate(15 minutes)` | Gmail discovery pass + dispatches due sources |
-| `scout-sweep` | `scout_core.handlers.lambda.jobs.sweep_handler.lambda_handler` | EventBridge `rate(1 hour)` | orphan recovery + past flags |
+| `scout-events-api` | `scout_core.handlers.aws.api.api_handler.handler` | API Gateway | Flask + Mangum, 128 MB / 30 s |
+| `scout-source-run-processor` | `scout_core.handlers.aws.jobs.processor_handler.lambda_handler` | async invoke | 512 MB / 300 s; needs `ANTHROPIC_API_KEY`, `SCOUT_ARTIFACTS_BUCKET`, `SCOUT_IMAGES_BUCKET`, `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` (Gmail ingestion + `mode=discover`), `SCOUT_RENDERER_FN` (page rendering) |
+| `scout-scheduler` | `scout_core.handlers.aws.jobs.scheduler_handler.lambda_handler` | EventBridge `rate(15 minutes)` | Gmail discovery pass + dispatches due sources |
+| `scout-sweep` | `scout_core.handlers.aws.jobs.sweep_handler.lambda_handler` | EventBridge `rate(1 hour)` | orphan recovery + past flags |
 | `scout-source-renderer` | `handler.lambda_handler` (own image) | sync invoke (by processor) | 3008 MB / 90 s; patchright (undetected Playwright) + headful Chrome via Xvfb; renders every fetched page (runs JS / passes bot challenges), returns HTML |
 
 EventBridge rules are created only in prod (`create_eventbridge=true`).

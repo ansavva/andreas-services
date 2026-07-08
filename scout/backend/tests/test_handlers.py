@@ -3,7 +3,6 @@
 import json
 import os
 import unittest
-from importlib import import_module
 from unittest import mock
 
 import boto3
@@ -20,10 +19,9 @@ from scout_core.services import runs  # noqa: E402
 from scout_core.services import sources  # noqa: E402
 from scout_core.repositories import store  # noqa: E402
 from scout_core.repositories import dynamodb as dynamodb_adapter  # noqa: E402
-
-processor_handler = import_module("scout_core.handlers.lambda.jobs.processor_handler")
-scheduler_handler = import_module("scout_core.handlers.lambda.jobs.scheduler_handler")
-sweep_handler = import_module("scout_core.handlers.lambda.jobs.sweep_handler")
+from scout_core.handlers.aws.jobs import processor_handler  # noqa: E402
+from scout_core.handlers.aws.jobs import scheduler_handler  # noqa: E402
+from scout_core.handlers.aws.jobs import sweep_handler  # noqa: E402
 
 _GSI_ATTRS = [
     "GSI1PK", "GSI1SK", "GSI2PK", "GSI2SK", "GSI3PK", "GSI3SK",

@@ -10,4 +10,4 @@ COPY pyproject.toml poetry.lock ./
 RUN poetry install --only main --no-root --no-interaction --no-ansi
 
 COPY scout_core ./scout_core
-CMD ["scout_core.handlers.lambda.api.api_handler.handler"]
+CMD ["scout_core.handlers.aws.api.api_handler.handler"]

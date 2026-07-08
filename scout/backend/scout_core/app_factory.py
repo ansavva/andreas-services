@@ -1,6 +1,5 @@
 """Flask application factory for the Scout events HTTP API."""
 
-import importlib
 import logging
 from decimal import Decimal
 
@@ -8,11 +7,7 @@ from flask import Flask, Response, jsonify, request
 from flask.json.provider import DefaultJSONProvider
 from flask_cors import CORS
 
-# The routing logic and Lambda entrypoint live in
-# scout_core.handlers.lambda.api.api_handler. "lambda" is a reserved keyword, so
-# that package can't be reached with a normal `import` statement — load it via
-# importlib.
-api_routes = importlib.import_module("scout_core.handlers.lambda.api.api_handler")
+from scout_core.handlers.aws.api import api_handler as api_routes
 
 logger = logging.getLogger(__name__)
 

@@ -13,4 +13,4 @@ RUN cd ${LAMBDA_TASK_ROOT} && poetry install --only main --no-root --no-interact
 COPY . ${LAMBDA_TASK_ROOT}/
 
 # Set the Lambda handler
-CMD ["storybook_core.handlers.lambda.api.api_handler.handler"]
+CMD ["storybook_core.handlers.aws.api.api_handler.handler"]
