@@ -9,7 +9,6 @@ from moto import mock_dynamodb
 os.environ.setdefault("SCOUT_TABLE_SUFFIX", "")
 
 from scout_core.services import notifications  # noqa: E402
-from scout_core.repositories import store  # noqa: E402
 from scout_core.repositories import dynamodb as dynamodb_adapter  # noqa: E402
 
 _GSI_ATTRS = [

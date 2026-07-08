@@ -1,4 +1,3 @@
-import os
 from typing import Optional
 
 from humbugg_core.repositories import dynamodb
