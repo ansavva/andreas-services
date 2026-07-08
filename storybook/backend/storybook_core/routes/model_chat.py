@@ -4,12 +4,12 @@ from storybook_core.services.chat.chat_message_service import ChatMessageService
 from storybook_core.services.chat.model_chat_service import ModelChatService
 from storybook_core.utils.logging.error_logging import log_error
 
-model_chat_controller = Blueprint("model_chat_controller", __name__)
+bp = Blueprint("model_chat", __name__, url_prefix="/api/chat")
 chat_message_service = ChatMessageService()
 model_chat_service = ModelChatService()
 
 
-@model_chat_controller.route("/model-project/<string:project_id>/chat/messages", methods=["GET"])
+@bp.route("/model-project/<string:project_id>/chat/messages", methods=["GET"])
 def get_model_chat_messages(project_id):
     """Get chat conversation for a model project."""
     try:
@@ -21,7 +21,7 @@ def get_model_chat_messages(project_id):
         return jsonify({"error": str(e)}), 500
 
 
-@model_chat_controller.route("/model-project/<string:project_id>/chat/messages", methods=["POST"])
+@bp.route("/model-project/<string:project_id>/chat/messages", methods=["POST"])
 def send_model_chat_message(project_id):
     """Send a model chat message and get AI response."""
     try:
@@ -52,7 +52,7 @@ def send_model_chat_message(project_id):
         return jsonify({"error": str(e)}), 500
 
 
-@model_chat_controller.route("/model-project/<string:project_id>/chat/messages", methods=["DELETE"])
+@bp.route("/model-project/<string:project_id>/chat/messages", methods=["DELETE"])
 def clear_model_chat(project_id):
     """Clear chat conversation for a model project."""
     try:

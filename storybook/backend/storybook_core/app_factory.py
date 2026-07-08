@@ -7,18 +7,18 @@ from storybook_core.config import AppConfig
 from storybook_core.utils.http.identity import CognitoJWTValidator, require_cognito_auth
 from storybook_core.repositories.dynamodb import init_db
 from storybook_core.utils.logging.logger import configure_logging
-from storybook_core.routes.image_controller import image_controller
-from storybook_core.routes.model_controller import model_controller
-from storybook_core.routes.model_project_controller import model_project_controller
-from storybook_core.routes.story_project_controller import story_project_controller
-from storybook_core.routes.child_profile_controller import child_profile_controller
-from storybook_core.routes.character_controller import character_controller
-from storybook_core.routes.model_chat_controller import model_chat_controller
-from storybook_core.routes.story_chat_controller import story_chat_controller
-from storybook_core.routes.story_page_controller import story_page_controller
-from storybook_core.routes.config_controller import config_controller
-from storybook_core.routes.generation_history_controller import generation_history_controller
-from storybook_core.routes.user_profile_controller import user_profile_controller
+from storybook_core.routes.image import bp as image_bp
+from storybook_core.routes.model import bp as model_bp
+from storybook_core.routes.model_project import bp as model_project_bp
+from storybook_core.routes.story_project import bp as story_project_bp
+from storybook_core.routes.child_profile import bp as child_profile_bp
+from storybook_core.routes.character import bp as character_bp
+from storybook_core.routes.model_chat import bp as model_chat_bp
+from storybook_core.routes.story_chat import bp as story_chat_bp
+from storybook_core.routes.story_page import bp as story_page_bp
+from storybook_core.routes.config import bp as config_bp
+from storybook_core.routes.generation_history import bp as generation_history_bp
+from storybook_core.routes.user_profile import bp as user_profile_bp
 
 load_dotenv()
 configure_logging()
@@ -54,83 +54,81 @@ def create_app() -> Flask:
     global _auth_configured
     if not _auth_configured:
         # Apply Cognito authentication to blueprints once.
-        @image_controller.before_request
+        @image_bp.before_request
         @require_cognito_auth(cognito_validator)
         def image_authentication():
             pass
 
-        @model_controller.before_request
+        @model_bp.before_request
         @require_cognito_auth(cognito_validator)
         def model_authentication():
             pass
 
-        @model_project_controller.before_request
+        @model_project_bp.before_request
         @require_cognito_auth(cognito_validator)
         def model_project_authentication():
             pass
 
-        @story_project_controller.before_request
+        @story_project_bp.before_request
         @require_cognito_auth(cognito_validator)
         def story_project_authentication():
             pass
 
-        @child_profile_controller.before_request
+        @child_profile_bp.before_request
         @require_cognito_auth(cognito_validator)
         def child_profile_authentication():
             pass
 
-        @character_controller.before_request
+        @character_bp.before_request
         @require_cognito_auth(cognito_validator)
         def character_authentication():
             pass
 
-        @story_chat_controller.before_request
+        @story_chat_bp.before_request
         @require_cognito_auth(cognito_validator)
         def story_chat_authentication():
             pass
 
-        @model_chat_controller.before_request
+        @model_chat_bp.before_request
         @require_cognito_auth(cognito_validator)
         def model_chat_authentication():
             pass
 
-        @story_page_controller.before_request
+        @story_page_bp.before_request
         @require_cognito_auth(cognito_validator)
         def story_page_authentication():
             pass
 
-        @config_controller.before_request
+        @config_bp.before_request
         @require_cognito_auth(cognito_validator)
         def config_authentication():
             pass
 
-        @generation_history_controller.before_request
+        @generation_history_bp.before_request
         @require_cognito_auth(cognito_validator)
         def generation_history_authentication():
             pass
 
-        @user_profile_controller.before_request
+        @user_profile_bp.before_request
         @require_cognito_auth(cognito_validator)
         def user_profile_authentication():
             pass
 
         _auth_configured = True
 
-    # Register Blueprints
-    app.register_blueprint(image_controller, url_prefix="/api/images")
-    app.register_blueprint(model_controller, url_prefix="/api/model")
-    app.register_blueprint(model_project_controller, url_prefix="/api/model-projects")
-    app.register_blueprint(story_project_controller, url_prefix="/api/story-projects")
-    app.register_blueprint(child_profile_controller, url_prefix="/api/child-profiles")
-    app.register_blueprint(character_controller, url_prefix="/api/characters")
-    app.register_blueprint(story_chat_controller, url_prefix="/api/chat")
-    app.register_blueprint(model_chat_controller, url_prefix="/api/chat")
-    app.register_blueprint(story_page_controller, url_prefix="/api/story-pages")
-    app.register_blueprint(config_controller, url_prefix="/api/config")
-    app.register_blueprint(
-        generation_history_controller, url_prefix="/api/generation-history"
-    )
-    app.register_blueprint(user_profile_controller, url_prefix="/api/user-profile")
+    # Register Blueprints (each carries its own /api/* url_prefix)
+    app.register_blueprint(image_bp)
+    app.register_blueprint(model_bp)
+    app.register_blueprint(model_project_bp)
+    app.register_blueprint(story_project_bp)
+    app.register_blueprint(child_profile_bp)
+    app.register_blueprint(character_bp)
+    app.register_blueprint(story_chat_bp)
+    app.register_blueprint(model_chat_bp)
+    app.register_blueprint(story_page_bp)
+    app.register_blueprint(config_bp)
+    app.register_blueprint(generation_history_bp)
+    app.register_blueprint(user_profile_bp)
 
     # Capture unexpected exceptions and log details to CloudWatch.
     @app.errorhandler(Exception)

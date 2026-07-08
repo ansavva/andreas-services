@@ -4,12 +4,12 @@ from storybook_core.services.chat.chat_message_service import ChatMessageService
 from storybook_core.services.chat.story_chat_service import StoryChatService
 from storybook_core.utils.logging.error_logging import log_error
 
-story_chat_controller = Blueprint("story_chat_controller", __name__)
+bp = Blueprint("story_chat", __name__, url_prefix="/api/chat")
 chat_message_service = ChatMessageService()
 story_chat_service = StoryChatService()
 
 
-@story_chat_controller.route("/story-project/<string:project_id>/chat/messages", methods=["GET"])
+@bp.route("/story-project/<string:project_id>/chat/messages", methods=["GET"])
 def get_story_chat_messages(project_id):
     """Get chat conversation for a story project."""
     try:
@@ -21,7 +21,7 @@ def get_story_chat_messages(project_id):
         return jsonify({"error": str(e)}), 500
 
 
-@story_chat_controller.route("/story-project/<string:project_id>/chat/messages", methods=["POST"])
+@bp.route("/story-project/<string:project_id>/chat/messages", methods=["POST"])
 def send_story_chat_message(project_id):
     """Send a story chat message and get AI response."""
     try:
@@ -52,7 +52,7 @@ def send_story_chat_message(project_id):
         return jsonify({"error": str(e)}), 500
 
 
-@story_chat_controller.route("/story-project/<string:project_id>/chat/state/generate", methods=["POST"])
+@bp.route("/story-project/<string:project_id>/chat/state/generate", methods=["POST"])
 def generate_story_state(project_id):
     """Generate structured story state from conversation."""
     try:
@@ -71,7 +71,7 @@ def generate_story_state(project_id):
         return jsonify({"error": str(e)}), 500
 
 
-@story_chat_controller.route("/story-project/<string:project_id>/chat/state", methods=["GET"])
+@bp.route("/story-project/<string:project_id>/chat/state", methods=["GET"])
 def get_story_state(project_id):
     """Get current story state for a project."""
     try:
@@ -84,7 +84,7 @@ def get_story_state(project_id):
         return jsonify({"error": str(e)}), 500
 
 
-@story_chat_controller.route("/story-project/<string:project_id>/chat/state/versions", methods=["GET"])
+@bp.route("/story-project/<string:project_id>/chat/state/versions", methods=["GET"])
 def get_story_state_versions(project_id):
     """Get all versions of story state."""
     try:
@@ -95,7 +95,7 @@ def get_story_state_versions(project_id):
         return jsonify({"error": str(e)}), 500
 
 
-@story_chat_controller.route("/story-project/<string:project_id>/chat/compile", methods=["POST"])
+@bp.route("/story-project/<string:project_id>/chat/compile", methods=["POST"])
 def compile_story(project_id):
     """Compile story into finalized pages with text and illustration prompts."""
     try:
@@ -112,7 +112,7 @@ def compile_story(project_id):
         return jsonify({"error": str(e)}), 500
 
 
-@story_chat_controller.route("/story-project/<string:project_id>/chat/messages", methods=["DELETE"])
+@bp.route("/story-project/<string:project_id>/chat/messages", methods=["DELETE"])
 def clear_story_chat(project_id):
     """Clear chat conversation for a story project."""
     try:

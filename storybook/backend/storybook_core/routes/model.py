@@ -3,10 +3,10 @@ import json
 
 from storybook_core.services.model_service import ModelService
 
-model_controller = Blueprint("model_controller", __name__)
+bp = Blueprint("model", __name__, url_prefix="/api/model")
 model_service = ModelService()
 
-@model_controller.route('/ready/<string:project_id>', methods=['GET'])
+@bp.route('/ready/<string:project_id>', methods=['GET'])
 def check_model_ready(project_id: str):
     try:
         model_ready = model_service.ready(project_id)
@@ -14,7 +14,7 @@ def check_model_ready(project_id: str):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@model_controller.route("/train", methods=["POST"])
+@bp.route("/train", methods=["POST"])
 def train():
     try:
         # Retrieve data from request body
@@ -41,7 +41,7 @@ def train():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@model_controller.route("/train/status/<string:training_id>", methods=["GET"])
+@bp.route("/train/status/<string:training_id>", methods=["GET"])
 def status(training_id):
     try:
         status = model_service.check_training_status(training_id)
@@ -49,7 +49,7 @@ def status(training_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@model_controller.route("/training-runs/<string:project_id>", methods=["GET"])
+@bp.route("/training-runs/<string:project_id>", methods=["GET"])
 def get_training_runs(project_id: str):
     """Get all training runs for a project"""
     try:
@@ -71,7 +71,7 @@ def get_training_runs(project_id: str):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@model_controller.route("/training-runs/<string:training_run_id>/status", methods=["GET"])
+@bp.route("/training-runs/<string:training_run_id>/status", methods=["GET"])
 def update_training_run_status(training_run_id: str):
     """Update and return the status of a training run"""
     try:
@@ -87,7 +87,7 @@ def update_training_run_status(training_run_id: str):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@model_controller.route("/training-runs/<string:training_run_id>", methods=["DELETE"])
+@bp.route("/training-runs/<string:training_run_id>", methods=["DELETE"])
 def delete_training_run(training_run_id: str):
     """Delete a training run (cancels in Replicate if still running)."""
     try:
@@ -98,7 +98,7 @@ def delete_training_run(training_run_id: str):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@model_controller.route("/generate", methods=["POST"])
+@bp.route("/generate", methods=["POST"])
 def generate():
     """
     Generate an image for a project

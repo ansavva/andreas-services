@@ -5,10 +5,10 @@ from storybook_core.models.model_project import ModelProject
 from storybook_core.config.replicate_config import replicate_config
 from storybook_core.config.generation_models_config import generation_models_config
 
-model_project_controller = Blueprint("model_project_controller", __name__)
+bp = Blueprint("model_project", __name__, url_prefix="/api/model-projects")
 model_project_service = ModelProjectService()
 
-@model_project_controller.route("/model-types", methods=["GET"])
+@bp.route("/model-types", methods=["GET"])
 def get_model_types():
     """
     Get all available model types (both training-based and generation-only)
@@ -63,7 +63,7 @@ def get_model_types():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@model_project_controller.route("", methods=["GET"])
+@bp.route("", methods=["GET"])
 def get_model_projects():
     try:
         # Fetch all model projects
@@ -74,7 +74,7 @@ def get_model_projects():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@model_project_controller.route("/<string:project_id>", methods=["GET"])
+@bp.route("/<string:project_id>", methods=["GET"])
 def get_model_project(project_id):
     try:
         # Fetch the model project by ID
@@ -84,7 +84,7 @@ def get_model_project(project_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@model_project_controller.route("", methods=["POST"])
+@bp.route("", methods=["POST"])
 def create_model_project():
     try:
         # Retrieve project name from request JSON
@@ -105,7 +105,7 @@ def create_model_project():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@model_project_controller.route("/<string:project_id>/status", methods=["PUT"])
+@bp.route("/<string:project_id>/status", methods=["PUT"])
 def update_model_project_status(project_id):
     """Update model project status"""
     try:
@@ -122,7 +122,7 @@ def update_model_project_status(project_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@model_project_controller.route("/<string:project_id>", methods=["PUT"])
+@bp.route("/<string:project_id>", methods=["PUT"])
 def update_model_project(project_id):
     """Update model project fields"""
     try:
@@ -141,7 +141,7 @@ def update_model_project(project_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@model_project_controller.route("/<string:project_id>", methods=["DELETE"])
+@bp.route("/<string:project_id>", methods=["DELETE"])
 def delete_model_project(project_id):
     """Delete a project and all associated data"""
     try:

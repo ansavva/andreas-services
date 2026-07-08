@@ -16,7 +16,7 @@ server-side** for SEO/OG and fast first paint.
   **CloudFront**; hashed client assets are served from **S3** at `/assets/*`.
   Consumes the shared **`@ansavva/design-system`** (Base UI + Tailwind v4).
 - **`backend/`** — Python API Lambda, **Flask + Mangum like storybook/humbugg**
-  (`/api/` blueprint routing; layered `handlers/`→`services` with persistence in
+  (`/api/` Blueprint routing in `routes/` → `services`, with persistence in
   `repositories/` and external APIs in `clients/`).
   Package `website_core`.
   Endpoints: `POST /api/intake`, `POST /api/subscribe`, `GET /api/admin/submissions`.

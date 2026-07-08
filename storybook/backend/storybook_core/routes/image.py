@@ -3,10 +3,10 @@ from flask import Blueprint, request, jsonify
 from storybook_core.services.image_service import ImageService
 from storybook_core.utils.logging.error_logging import log_error
 
-image_controller = Blueprint("image_controller", __name__)
+bp = Blueprint("image", __name__, url_prefix="/api/images")
 image_service = ImageService()
 
-@image_controller.route("/upload/presign", methods=["POST"])
+@bp.route("/upload/presign", methods=["POST"])
 def presign_image_upload():
     try:
         data = request.get_json() or {}
@@ -25,7 +25,7 @@ def presign_image_upload():
         log_error(e, "image presign")
         return jsonify({"error": str(e)}), 500
 
-@image_controller.route("/upload/dispatch", methods=["POST"])
+@bp.route("/upload/dispatch", methods=["POST"])
 def dispatch_image_upload():
     try:
         data = request.get_json() or {}
@@ -44,7 +44,7 @@ def dispatch_image_upload():
         log_error(e, "image complete upload")
         return jsonify({"error": str(e)}), 500
 
-@image_controller.route("/upload", methods=["POST"])
+@bp.route("/upload", methods=["POST"])
 def upload_image():
     try:
         # Retrieve project_id and image_type from request form data
@@ -97,7 +97,7 @@ def upload_image():
         log_error(e, "image upload")
         return jsonify({"error": str(e)}), 500
 
-@image_controller.route("/download/<image_id>", methods=["GET"])
+@bp.route("/download/<image_id>", methods=["GET"])
 def download_image(image_id):
     try:
         # Validate required data
@@ -118,7 +118,7 @@ def download_image(image_id):
         return jsonify({"error": str(e)}), 500
 
 
-@image_controller.route("/delete/<image_id>", methods=["DELETE"])
+@bp.route("/delete/<image_id>", methods=["DELETE"])
 def delete_image(image_id):
     try:
         # Validate required data
@@ -133,7 +133,7 @@ def delete_image(image_id):
         log_error(e, "image delete")
         return jsonify({"error": str(e)}), 500
 
-@image_controller.route("/list/<project_id>", methods=["GET"])
+@bp.route("/list/<project_id>", methods=["GET"])
 def list_images(project_id):
     try:
         # Validate required data
@@ -164,7 +164,7 @@ def list_images(project_id):
         return jsonify({"error": str(e)}), 500
 
 
-@image_controller.route("/draft/<project_id>", methods=["GET"])
+@bp.route("/draft/<project_id>", methods=["GET"])
 def list_draft_training_images(project_id):
     try:
         if not project_id:
@@ -187,7 +187,7 @@ def list_draft_training_images(project_id):
         return jsonify({"error": str(e)}), 500
 
 
-@image_controller.route("/status", methods=["GET"])
+@bp.route("/status", methods=["GET"])
 def image_status():
     try:
         ids_param = request.args.get("ids")

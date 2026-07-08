@@ -3,10 +3,10 @@ from flask import Blueprint, request, jsonify
 from storybook_core.repositories.story_project_repo import StoryProjectRepo
 from storybook_core.utils.logging.error_logging import log_error
 
-story_project_controller = Blueprint("story_project_controller", __name__)
+bp = Blueprint("story_project", __name__, url_prefix="/api/story-projects")
 story_project_repo = StoryProjectRepo()
 
-@story_project_controller.route("", methods=["GET"])
+@bp.route("", methods=["GET"])
 def get_story_projects():
     """Get all story projects for the current user"""
     try:
@@ -17,7 +17,7 @@ def get_story_projects():
         log_error(e, request.endpoint)
         return jsonify({"error": str(e)}), 500
 
-@story_project_controller.route("/<string:project_id>", methods=["GET"])
+@bp.route("/<string:project_id>", methods=["GET"])
 def get_story_project(project_id):
     """Get a specific story project by ID"""
     try:
@@ -29,7 +29,7 @@ def get_story_project(project_id):
         log_error(e, request.endpoint)
         return jsonify({"error": str(e)}), 500
 
-@story_project_controller.route("", methods=["POST"])
+@bp.route("", methods=["POST"])
 def create_story_project():
     """Create a new story project"""
     try:
@@ -45,7 +45,7 @@ def create_story_project():
         log_error(e, request.endpoint)
         return jsonify({"error": str(e)}), 500
 
-@story_project_controller.route("/<string:project_id>/status", methods=["PUT"])
+@bp.route("/<string:project_id>/status", methods=["PUT"])
 def update_project_status(project_id):
     """Update project status"""
     try:
@@ -63,7 +63,7 @@ def update_project_status(project_id):
         log_error(e, request.endpoint)
         return jsonify({"error": str(e)}), 500
 
-@story_project_controller.route("/<string:project_id>", methods=["PUT"])
+@bp.route("/<string:project_id>", methods=["PUT"])
 def update_story_project(project_id):
     """Update story project fields"""
     try:
@@ -83,7 +83,7 @@ def update_story_project(project_id):
         log_error(e, request.endpoint)
         return jsonify({"error": str(e)}), 500
 
-@story_project_controller.route("/<string:project_id>", methods=["DELETE"])
+@bp.route("/<string:project_id>", methods=["DELETE"])
 def delete_story_project(project_id):
     """Delete a story project and all associated data"""
     try:

@@ -3,13 +3,14 @@
 import logging
 from decimal import Decimal
 
-from flask import Blueprint, Flask, jsonify, request
+from flask import Flask, jsonify, request
 from flask.json.provider import DefaultJSONProvider
 from flask_cors import CORS
 
 from website_core import config
 from website_core.errors import ConfigError, UpstreamError, ValidationError
-from website_core.services import intake, newsletter
+from website_core.routes.intake import bp as intake_bp
+from website_core.routes.newsletter import bp as newsletter_bp
 
 logger = logging.getLogger(__name__)
 
@@ -33,32 +34,6 @@ class ApiPathMiddleware:
         return self.app(environ, start_response)
 
 
-api_bp = Blueprint("api", __name__, url_prefix="/api")
-
-
-@api_bp.post("/intake")
-def create_submission():
-    body = request.get_json(silent=True) or {}
-    item = intake.create_submission(body, source_page=body.get("source_page"))
-    return jsonify(item), 201
-
-
-@api_bp.post("/subscribe")
-def subscribe():
-    body = request.get_json(silent=True) or {}
-    return jsonify(newsletter.subscribe(body)), 201
-
-
-@api_bp.get("/admin/submissions")
-def list_submissions():
-    return jsonify(
-        intake.list_submissions(
-            limit=request.args.get("page_size", 50),
-            cursor=request.args.get("cursor"),
-        )
-    ), 200
-
-
 def create_app() -> Flask:
     app = Flask(__name__)
     app.json = DecimalJSONProvider(app)
@@ -71,7 +46,8 @@ def create_app() -> Flask:
         methods=["GET", "POST", "OPTIONS"],
     )
 
-    app.register_blueprint(api_bp)
+    app.register_blueprint(intake_bp)
+    app.register_blueprint(newsletter_bp)
 
     @app.before_request
     def handle_preflight():

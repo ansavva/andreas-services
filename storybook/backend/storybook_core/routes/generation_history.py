@@ -5,7 +5,7 @@ from storybook_core.repositories.image_repo import ImageRepo
 from storybook_core.repositories.user_profile_repo import UserProfileRepo
 from storybook_core.services.model_service import ModelService
 
-generation_history_controller = Blueprint("generation_history_controller", __name__)
+bp = Blueprint("generation_history", __name__, url_prefix="/api/generation-history")
 generation_history_repo = GenerationHistoryRepo()
 user_profile_repo = UserProfileRepo()
 image_repo = ImageRepo()
@@ -19,7 +19,7 @@ def _build_image_processing_map(image_ids):
     images = image_repo.get_images_by_ids(ids)
     return {img.id: img.processing for img in images}
 
-@generation_history_controller.route('/create', methods=['POST'])
+@bp.route('/create', methods=['POST'])
 def create_history():
     """
     Create a new generation history entry
@@ -84,7 +84,7 @@ def create_history():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@generation_history_controller.route('/<string:history_id>', methods=['GET'])
+@bp.route('/<string:history_id>', methods=['GET'])
 def get_history(history_id: str):
     """
     Get a generation history entry by ID
@@ -111,7 +111,7 @@ def get_history(history_id: str):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@generation_history_controller.route('/project/<string:project_id>', methods=['GET'])
+@bp.route('/project/<string:project_id>', methods=['GET'])
 def list_history_by_project(project_id: str):
     """
     List all generation history entries for a project (newest first)
@@ -160,7 +160,7 @@ def list_history_by_project(project_id: str):
         return jsonify({"error": str(e)}), 500
 
 
-@generation_history_controller.route('/draft/<string:project_id>', methods=['GET'])
+@bp.route('/draft/<string:project_id>', methods=['GET'])
 def get_draft_history(project_id: str):
     """
     Get the draft generation history for a project (reference images staging).
@@ -190,7 +190,7 @@ def get_draft_history(project_id: str):
         return jsonify({"error": str(e)}), 500
 
 
-@generation_history_controller.route('/draft/<string:project_id>/prompt', methods=['PUT'])
+@bp.route('/draft/<string:project_id>/prompt', methods=['PUT'])
 def update_draft_prompt(project_id: str):
     """
     Update the prompt for the draft generation history of a project.
@@ -222,7 +222,7 @@ def update_draft_prompt(project_id: str):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@generation_history_controller.route('/<string:history_id>/status', methods=['GET'])
+@bp.route('/<string:history_id>/status', methods=['GET'])
 def update_history_status(history_id: str):
     """
     Update and return the status of a generation history entry
@@ -248,7 +248,7 @@ def update_history_status(history_id: str):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@generation_history_controller.route('/<string:history_id>', methods=['DELETE'])
+@bp.route('/<string:history_id>', methods=['DELETE'])
 def delete_history(history_id: str):
     """
     Delete a generation history entry

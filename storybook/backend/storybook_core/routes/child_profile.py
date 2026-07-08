@@ -3,10 +3,10 @@ from flask import Blueprint, request, jsonify
 from storybook_core.repositories.child_profile_repo import ChildProfileRepo
 from storybook_core.utils.logging.error_logging import log_error
 
-child_profile_controller = Blueprint("child_profile_controller", __name__)
+bp = Blueprint("child_profile", __name__, url_prefix="/api/child-profiles")
 child_profile_repo = ChildProfileRepo()
 
-@child_profile_controller.route("/project/<string:project_id>", methods=["GET"])
+@bp.route("/project/<string:project_id>", methods=["GET"])
 def get_child_profile_by_project(project_id):
     """Get child profile for a specific project"""
     try:
@@ -18,7 +18,7 @@ def get_child_profile_by_project(project_id):
         log_error(e, request.endpoint)
         return jsonify({"error": str(e)}), 500
 
-@child_profile_controller.route("/project/<string:project_id>", methods=["PUT"])
+@bp.route("/project/<string:project_id>", methods=["PUT"])
 def update_child_profile_by_project(project_id):
     """Update child profile by project ID"""
     try:
@@ -48,7 +48,7 @@ def update_child_profile_by_project(project_id):
         log_error(e, request.endpoint)
         return jsonify({"error": str(e)}), 500
 
-@child_profile_controller.route("/<string:profile_id>", methods=["GET"])
+@bp.route("/<string:profile_id>", methods=["GET"])
 def get_child_profile(profile_id):
     """Get a specific child profile by ID"""
     try:
@@ -60,7 +60,7 @@ def get_child_profile(profile_id):
         log_error(e, request.endpoint)
         return jsonify({"error": str(e)}), 500
 
-@child_profile_controller.route("", methods=["POST"])
+@bp.route("", methods=["POST"])
 def create_child_profile():
     """Create a new child profile"""
     try:
@@ -95,7 +95,7 @@ def create_child_profile():
         log_error(e, request.endpoint)
         return jsonify({"error": str(e)}), 500
 
-@child_profile_controller.route("/<string:profile_id>", methods=["PUT"])
+@bp.route("/<string:profile_id>", methods=["PUT"])
 def update_child_profile(profile_id):
     """Update child profile"""
     try:
@@ -120,7 +120,7 @@ def update_child_profile(profile_id):
         log_error(e, request.endpoint)
         return jsonify({"error": str(e)}), 500
 
-@child_profile_controller.route("/<string:profile_id>", methods=["DELETE"])
+@bp.route("/<string:profile_id>", methods=["DELETE"])
 def delete_child_profile(profile_id):
     """Delete a child profile"""
     try:

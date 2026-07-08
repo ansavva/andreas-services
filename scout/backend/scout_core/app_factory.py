@@ -3,13 +3,26 @@
 import logging
 from decimal import Decimal
 
-from flask import Flask, Response, jsonify, request
+from flask import Flask, jsonify, request
 from flask.json.provider import DefaultJSONProvider
 from flask_cors import CORS
+from werkzeug.exceptions import HTTPException
 
-from scout_core.handlers.aws.api import api_handler as api_routes
+from scout_core.routes.deleted import bp as deleted_bp
+from scout_core.routes.events import bp as events_bp
+from scout_core.routes.labels import bp as labels_bp
+from scout_core.routes.locations import bp as locations_bp
+from scout_core.routes.notifications import bp as notifications_bp
+from scout_core.routes.public import bp as public_bp
+from scout_core.routes.settings import bp as settings_bp
+from scout_core.routes.sources import bp as sources_bp
 
 logger = logging.getLogger(__name__)
+
+_BLUEPRINTS = (
+    public_bp, sources_bp, events_bp, locations_bp,
+    labels_bp, settings_bp, notifications_bp, deleted_bp,
+)
 
 
 class DecimalJSONProvider(DefaultJSONProvider):
@@ -20,6 +33,9 @@ class DecimalJSONProvider(DefaultJSONProvider):
 
 
 class ApiPathMiddleware:
+    """Strip an API Gateway stage / base-path prefix so routing always sees
+    a path starting at ``/api/`` (prod, the ``{proxy+}`` catch-all, PR bases)."""
+
     def __init__(self, app):
         self.app = app
 
@@ -31,35 +47,12 @@ class ApiPathMiddleware:
         return self.app(environ, start_response)
 
 
-def _event_from_request():
-    return {
-        "httpMethod": request.method,
-        "path": request.path,
-        "body": request.get_data(as_text=True) or None,
-        "queryStringParameters": request.args.to_dict(flat=True),
-        "requestContext": {},
-    }
-
-
-def _flask_response(raw):
-    headers = dict(raw.get("headers") or {})
-    body = raw.get("body") or ""
-    status = raw.get("statusCode", 200)
-    if raw.get("isBase64Encoded"):
-        import base64  # noqa: PLC0415
-
-        return Response(
-            base64.b64decode(body),
-            status=status,
-            headers=headers,
-            content_type=headers.get("Content-Type"),
-        )
-    return Response(body, status=status, headers=headers, content_type=headers.get("Content-Type"))
-
-
 def create_app() -> Flask:
     app = Flask(__name__)
     app.json = DecimalJSONProvider(app)
+    # Match paths with or without a trailing slash (no 308 redirects) — the
+    # collection routes are registered without one.
+    app.url_map.strict_slashes = False
     app.wsgi_app = ApiPathMiddleware(app.wsgi_app)
 
     CORS(
@@ -69,11 +62,18 @@ def create_app() -> Flask:
         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     )
 
-    @app.route("/api", defaults={"path": ""}, methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-    @app.route("/api/<path:path>", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-    def dispatch(path):
-        del path
-        return _flask_response(api_routes.route_request(_event_from_request()))
+    for bp in _BLUEPRINTS:
+        app.register_blueprint(bp)
+
+    # Services signal bad input by raising: a missing required field surfaces as
+    # KeyError, an invalid value as ValueError. Map both to 400.
+    @app.errorhandler(KeyError)
+    def handle_missing_field(error):
+        return jsonify({"error": f"missing field: {error}"}), 400
+
+    @app.errorhandler(ValueError)
+    def handle_bad_value(error):
+        return jsonify({"error": str(error)}), 400
 
     @app.errorhandler(404)
     def handle_not_found(_error):
@@ -81,6 +81,8 @@ def create_app() -> Flask:
 
     @app.errorhandler(Exception)
     def handle_unexpected_error(error):
+        if isinstance(error, HTTPException):
+            return jsonify({"error": error.description}), error.code
         logger.exception("Unhandled error handling %s %s", request.method, request.path)
         return jsonify({"error": str(error)}), 500
 

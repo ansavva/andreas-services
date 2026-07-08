@@ -9,14 +9,14 @@ from storybook_core.clients.aws.s3 import S3Storage
 from storybook_core.utils.logging.error_logging import log_error
 from storybook_core.config.generation_models_config import generation_models_config
 
-character_controller = Blueprint("character_controller", __name__)
+bp = Blueprint("character", __name__, url_prefix="/api/characters")
 character_asset_repo = CharacterAssetRepo()
 child_profile_repo = ChildProfileRepo()
 image_repo = ImageRepo()
 character_generation_service = CharacterGenerationService()
 
 
-@character_controller.route("/project/<string:project_id>", methods=["GET"])
+@bp.route("/project/<string:project_id>", methods=["GET"])
 def get_character_assets(project_id):
     """Get all character assets for a project"""
     try:
@@ -29,7 +29,7 @@ def get_character_assets(project_id):
         return jsonify({"error": str(e)}), 500
 
 
-@character_controller.route("/project/<string:project_id>/portrait", methods=["POST"])
+@bp.route("/project/<string:project_id>/portrait", methods=["POST"])
 def generate_character_portrait(project_id):
     """Generate a character portrait from uploaded photos"""
     try:
@@ -97,7 +97,7 @@ def generate_character_portrait(project_id):
         return jsonify({"error": str(e)}), 500
 
 
-@character_controller.route("/project/<string:project_id>/portrait-stylized", methods=["POST"])
+@bp.route("/project/<string:project_id>/portrait-stylized", methods=["POST"])
 def generate_stylized_portrait(project_id):
     """
     Generate a stylized character portrait using Stability AI's style transfer
@@ -198,7 +198,7 @@ def generate_stylized_portrait(project_id):
         return jsonify({"error": str(e)}), 500
 
 
-@character_controller.route("/asset/<string:asset_id>/approve", methods=["POST"])
+@bp.route("/asset/<string:asset_id>/approve", methods=["POST"])
 def approve_character_asset(asset_id):
     """Approve a character asset (portrait or scene)"""
     try:
@@ -211,7 +211,7 @@ def approve_character_asset(asset_id):
         return jsonify({"error": str(e)}), 500
 
 
-@character_controller.route("/asset/<string:asset_id>/regenerate", methods=["POST"])
+@bp.route("/asset/<string:asset_id>/regenerate", methods=["POST"])
 def regenerate_character_asset(asset_id):
     """Regenerate a character asset"""
     try:
@@ -314,7 +314,7 @@ def regenerate_character_asset(asset_id):
         return jsonify({"error": str(e)}), 500
 
 
-@character_controller.route("/project/<string:project_id>/bible", methods=["POST"])
+@bp.route("/project/<string:project_id>/bible", methods=["POST"])
 def create_character_bible(project_id):
     """Create or update character bible"""
     try:
@@ -332,7 +332,7 @@ def create_character_bible(project_id):
         return jsonify({"error": str(e)}), 500
 
 
-@character_controller.route("/project/<string:project_id>/bible", methods=["GET"])
+@bp.route("/project/<string:project_id>/bible", methods=["GET"])
 def get_character_bible(project_id):
     """Get character bible for a project"""
     try:

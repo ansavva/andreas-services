@@ -4,12 +4,12 @@ from storybook_core.repositories.user_profile_repo import UserProfileRepo
 from storybook_core.repositories.image_repo import ImageRepo
 from storybook_core.services.image_service import ImageService
 
-user_profile_controller = Blueprint("user_profile_controller", __name__)
+bp = Blueprint("user_profile", __name__, url_prefix="/api/user-profile")
 user_profile_repo = UserProfileRepo()
 image_repo = ImageRepo()
 image_service = ImageService()
 
-@user_profile_controller.route('/me', methods=['GET'])
+@bp.route('/me', methods=['GET'])
 def get_my_profile():
     """
     Get the current user's profile (creates one if it doesn't exist)
@@ -28,7 +28,7 @@ def get_my_profile():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@user_profile_controller.route('/me', methods=['PUT'])
+@bp.route('/me', methods=['PUT'])
 def update_my_profile():
     """
     Update the current user's profile
@@ -55,7 +55,7 @@ def update_my_profile():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@user_profile_controller.route('/me/profile-image', methods=['POST'])
+@bp.route('/me/profile-image', methods=['POST'])
 def upload_profile_image():
     """
     Upload a profile image for the current user
@@ -94,7 +94,7 @@ def upload_profile_image():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@user_profile_controller.route('/<string:user_id>', methods=['GET'])
+@bp.route('/<string:user_id>', methods=['GET'])
 def get_profile_by_id(user_id: str):
     """
     Get a user profile by user_id (public endpoint for viewing other users)

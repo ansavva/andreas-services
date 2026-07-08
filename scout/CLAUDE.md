@@ -86,6 +86,8 @@ scout/
 │   ├── Dockerfile  pyproject.toml  poetry.lock
 │   ├── scout_core/              # the importable package
 │   │   ├── handlers/            # thin Lambda entrypoints: api, processor, scheduler, sweep
+│   │   ├── routes/              # Flask Blueprints (one per resource): public, sources,
+│   │   │                        #   events, locations, labels, settings, notifications, deleted
 │   │   ├── services/            # events, sources, runs, labels, locations, deletion,
 │   │   │                        #   public, images, pipeline, notifications
 │   │   ├── repositories/        # persistence: DynamoDB + S3-backed storage
@@ -98,8 +100,11 @@ scout/
 ```
 
 Imports are absolute within the package, e.g. `from scout_core.repositories import
-store`, `from scout_core.services import events`. Lambda handlers are referenced as
-`scout_core.handlers.aws.api.api_handler.handler` for the Flask + Mangum HTTP API, and
+store`, `from scout_core.services import events`. HTTP routing is Blueprint-based:
+one resource Blueprint per module in `scout_core/routes/`, registered by
+`scout_core.app_factory.create_app`. Lambda handlers are referenced as
+`scout_core.handlers.aws.api.api_handler.handler` for the Flask + Mangum HTTP API (a
+thin Mangum adapter over that app), and
 `scout_core.handlers.aws.jobs.<processor|scheduler|sweep>_handler.lambda_handler` for the
 event-driven Lambdas.
 

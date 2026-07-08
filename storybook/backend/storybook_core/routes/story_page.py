@@ -3,11 +3,11 @@ from flask import Blueprint, request, jsonify
 from storybook_core.repositories.story_page_repo import StoryPageRepo
 from storybook_core.utils.logging.error_logging import log_error
 
-story_page_controller = Blueprint("story_page_controller", __name__)
+bp = Blueprint("story_page", __name__, url_prefix="/api/story-pages")
 story_page_repo = StoryPageRepo()
 
 
-@story_page_controller.route("/project/<string:project_id>", methods=["GET"])
+@bp.route("/project/<string:project_id>", methods=["GET"])
 def get_story_pages(project_id):
     """Get all pages for a story project"""
     try:
@@ -19,7 +19,7 @@ def get_story_pages(project_id):
         return jsonify({"error": str(e)}), 500
 
 
-@story_page_controller.route("/<string:page_id>", methods=["GET"])
+@bp.route("/<string:page_id>", methods=["GET"])
 def get_story_page(page_id):
     """Get a specific story page"""
     try:
@@ -32,7 +32,7 @@ def get_story_page(page_id):
         return jsonify({"error": str(e)}), 500
 
 
-@story_page_controller.route("", methods=["POST"])
+@bp.route("", methods=["POST"])
 def create_story_page():
     """Create a new story page"""
     try:
@@ -62,7 +62,7 @@ def create_story_page():
         return jsonify({"error": str(e)}), 500
 
 
-@story_page_controller.route("/<string:page_id>/text", methods=["PUT"])
+@bp.route("/<string:page_id>/text", methods=["PUT"])
 def update_page_text(page_id):
     """Update page text (creates new version)"""
     try:
@@ -79,7 +79,7 @@ def update_page_text(page_id):
         return jsonify({"error": str(e)}), 500
 
 
-@story_page_controller.route("/<string:page_id>/prompt", methods=["PUT"])
+@bp.route("/<string:page_id>/prompt", methods=["PUT"])
 def update_illustration_prompt(page_id):
     """Update illustration prompt for a page"""
     try:
@@ -96,7 +96,7 @@ def update_illustration_prompt(page_id):
         return jsonify({"error": str(e)}), 500
 
 
-@story_page_controller.route("/<string:page_id>/generate-image", methods=["POST"])
+@bp.route("/<string:page_id>/generate-image", methods=["POST"])
 def generate_page_image(page_id):
     """Generate image for a page using Stability.ai"""
     try:
@@ -153,7 +153,7 @@ def generate_page_image(page_id):
         return jsonify({"error": str(e)}), 500
 
 
-@story_page_controller.route("/project/<string:project_id>/export", methods=["GET"])
+@bp.route("/project/<string:project_id>/export", methods=["GET"])
 def export_story_pdf(project_id):
     """Export story as PDF"""
     try:

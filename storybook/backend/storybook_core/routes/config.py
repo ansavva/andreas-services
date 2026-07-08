@@ -1,9 +1,9 @@
 from flask import Blueprint, jsonify
 from storybook_core.config.generation_models_config import generation_models_config
 
-config_controller = Blueprint("config_controller", __name__)
+bp = Blueprint("config", __name__, url_prefix="/api/config")
 
-@config_controller.route("/style-presets", methods=["GET"])
+@bp.route("/style-presets", methods=["GET"])
 def get_style_presets():
     """Get list of available style presets for character generation (style transfer)"""
     try:
