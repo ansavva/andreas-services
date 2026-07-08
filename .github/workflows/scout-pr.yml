@@ -58,12 +58,12 @@ jobs:
 
       - name: Install events-api test deps
         run: |
-          cd scout/backend/events-api
+          cd scout/backend
           poetry install --with dev --no-root --no-interaction --no-ansi
 
       - name: Run events-api unit tests
         run: |
-          cd scout/backend/events-api
+          cd scout/backend
           poetry run pytest tests/ -v
 
       # Dockerfile build verification is handled by the deploy-preview job
@@ -226,7 +226,7 @@ jobs:
       - name: Build & push events-api
         run: |
           IMAGE="${ECR_REGISTRY}/scout-events-api"
-          cd scout/backend/events-api
+          cd scout/backend
           docker build -t "${IMAGE}:pr-${{ env.PR_NUMBER }}" .
           docker push "${IMAGE}:pr-${{ env.PR_NUMBER }}"
 

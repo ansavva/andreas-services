@@ -24,10 +24,13 @@ To run locally:
 # Run backend
 cd backend
 poetry install
-python -m src.handlers.local.api.api_dev_server
+docker compose up dynamodb
+python -m storybook_core.handlers.local.api.api_dev_server
 ```
 
-For local development, copy `.env.example` to `.env` and fill in the values from Terraform outputs.
+The local backend writes to DynamoDB Local on `localhost:8001` and creates the
+`storybook-*` tables on startup. Copy `.env.example` to `.env` for non-DynamoDB
+values.
 
 ## Run Image Worker Locally
 
@@ -36,7 +39,7 @@ The image processor runs as a local SQS poller. You must set the queue URL.
 ```bash
 cd backend
 source venv/bin/activate
-python -m src.handlers.local.jobs.poll_image_normalization_handler
+python -m storybook_core.handlers.local.jobs.poll_image_normalization_handler
 ```
 
 ## Run Frontend Locally

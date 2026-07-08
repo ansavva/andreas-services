@@ -25,6 +25,13 @@ Marketing + blog pages render without a backend. The intake/newsletter forms and
 `/admin` need `WEBSITE_API_URL` (+ `COGNITO_*`, `SESSION_SECRET`) pointing at a
 running backend — set them in `.env` (see `../.env.example`).
 
+For local form/admin calls, run DynamoDB Local and the backend in separate
+terminals, then set:
+
+```bash
+WEBSITE_API_URL=http://localhost:8000/api
+```
+
 Type-check / lint / build:
 
 ```bash
@@ -34,16 +41,30 @@ npm run typecheck && npm run lint && npm run build
 ### Backend (Python API)
 
 ```bash
-cd backend/api
+cd backend
 poetry install
+docker compose up dynamodb
+```
+
+In another terminal:
+
+```bash
+cd backend
+poetry run python -m website_core.handlers.local.api.api_dev_server  # http://localhost:8000
 poetry run pytest        # moto-backed unit tests
 ```
+
+The dev server writes to DynamoDB Local at `localhost:8001` and creates the
+`website-intake` table on startup if it does not exist. Unit tests use moto
+instead of DynamoDB Local.
+`website_core.repositories.dynamodb` owns boto3/local table bootstrap; the store
+module owns website persistence operations.
 
 ### Validate the Lambda images (Docker)
 
 ```bash
 # Backend
-cd backend/api && docker build -t website-api:local .
+cd backend && docker build -t website-api:local .
 # Frontend (build first so build/ exists)
 cd ../../frontend && npm run build && docker build -t website-ssr:local .
 ```

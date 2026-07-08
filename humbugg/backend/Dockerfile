@@ -13,9 +13,9 @@ COPY pyproject.toml poetry.lock ./
 
 RUN poetry install --only main --no-root --no-interaction --no-ansi
 
-COPY src ./src
+COPY humbugg_core ./humbugg_core
 
 ENV PYTHONPATH="/app"
 
 ENTRYPOINT ["python", "-m", "awslambdaric"]
-CMD ["src.lambda_handler.handler"]
+CMD ["humbugg_core.handlers.aws.api.api_handler.handler"]

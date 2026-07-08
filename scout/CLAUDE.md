@@ -49,7 +49,7 @@ the approved ones at `scout.andreas.services/app`.
   headless renderer (`renderer_client.fetch_rendered`), so JS-rendered and
   bot-challenged pages work everywhere. **iCal** sources bypass fetching+LLM
   extraction entirely: the processor parses the feed's `VEVENT`s straight into
-  pending events (`adapters/ical.py` → `pipeline.execute_ical_run` →
+  pending events (`clients/ical.py` → `pipeline.execute_ical_run` →
   `events.convert_extraction`). This is the reliable path for events owned by a
   hosted calendar widget (e.g. Tockify/Google Calendar), whose host page renders
   client-side and exposes no events to a fetch or render.
@@ -83,24 +83,30 @@ scout/
 │   ├── modules/                 # auth, api_domain, api_gateway, compute, hosting, storage, data
 │   └── envs/                    # prod, pr (per-PR ephemeral), pr-preview (shared)
 ├── backend/
-│   ├── events-api/              # scout-core service (one image, 4 Lambda commands)
-│   │   ├── Dockerfile  pyproject.toml  poetry.lock
-│   │   ├── scout_core/          # the importable package
-│   │   │   ├── handlers/        # thin Lambda entrypoints: api, processor, scheduler, sweep
-│   │   │   ├── domain/          # events, sources, runs, labels, locations, deletion,
-│   │   │   │                    #   public, images, pipeline, notifications
-│   │   │   ├── adapters/        # store (DynamoDB), artifacts (S3), gmail, fetcher,
-│   │   │   │                    #   extractor, renderer_client (invokes scout-source-renderer)
-│   │   │   └── common/          # taxonomy, timeutil (pure, dependency-free)
-│   │   └── tests/               # moto-based unit tests (mirror the package)
+│   ├── Dockerfile  pyproject.toml  poetry.lock
+│   ├── scout_core/              # the importable package
+│   │   ├── handlers/            # thin Lambda entrypoints: api, processor, scheduler, sweep
+│   │   ├── routes/              # Flask Blueprints (one per resource): public, sources,
+│   │   │                        #   events, locations, labels, settings, notifications, deleted
+│   │   ├── services/            # events, sources, runs, labels, locations, deletion,
+│   │   │                        #   public, images, pipeline, notifications
+│   │   ├── repositories/        # persistence: DynamoDB + S3-backed storage
+│   │   ├── clients/             # external APIs/services: Gmail, fetcher, extractor, renderer
+│   │   └── utils/               # taxonomy, timeutil (pure, dependency-free)
+│   ├── tests/                   # moto-based unit tests (mirror the package)
 │   └── renderer/                # browser-render Lambda (own image: patchright + headful Chrome/Xvfb)
 │       └── Dockerfile  requirements.txt  handler.py
 └── frontend/                    # Vite + React + TS SPA (public site + admin console)
 ```
 
-Imports are absolute within the package, e.g. `from scout_core.adapters import
-store`, `from scout_core.domain import events`. Lambda handlers are referenced as
-`scout_core.handlers.<api|processor|scheduler|sweep>.lambda_handler`.
+Imports are absolute within the package, e.g. `from scout_core.repositories import
+store`, `from scout_core.services import events`. HTTP routing is Blueprint-based:
+one resource Blueprint per module in `scout_core/routes/`, registered by
+`scout_core.app_factory.create_app`. Lambda handlers are referenced as
+`scout_core.handlers.aws.api.api_handler.handler` for the Flask + Mangum HTTP API (a
+thin Mangum adapter over that app), and
+`scout_core.handlers.aws.jobs.<processor|scheduler|sweep>_handler.lambda_handler` for the
+event-driven Lambdas.
 
 ## Data model (DynamoDB)
 
@@ -139,10 +145,10 @@ GSIs, S3 on `scout-artifacts-*`/`scout-images-*`, invoke
 
 | Function | Entrypoint | Trigger | Notes |
 |----------|-----------|---------|-------|
-| `scout-events-api` | `scout_core.handlers.api.lambda_handler` | API Gateway | 128 MB / 30 s |
-| `scout-source-run-processor` | `scout_core.handlers.processor.lambda_handler` | async invoke | 512 MB / 300 s; needs `ANTHROPIC_API_KEY`, `SCOUT_ARTIFACTS_BUCKET`, `SCOUT_IMAGES_BUCKET`, `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` (Gmail ingestion + `mode=discover`), `SCOUT_RENDERER_FN` (page rendering) |
-| `scout-scheduler` | `scout_core.handlers.scheduler.lambda_handler` | EventBridge `rate(15 minutes)` | Gmail discovery pass + dispatches due sources |
-| `scout-sweep` | `scout_core.handlers.sweep.lambda_handler` | EventBridge `rate(1 hour)` | orphan recovery + past flags |
+| `scout-events-api` | `scout_core.handlers.aws.api.api_handler.handler` | API Gateway | Flask + Mangum, 128 MB / 30 s |
+| `scout-source-run-processor` | `scout_core.handlers.aws.jobs.processor_handler.lambda_handler` | async invoke | 512 MB / 300 s; needs `ANTHROPIC_API_KEY`, `SCOUT_ARTIFACTS_BUCKET`, `SCOUT_IMAGES_BUCKET`, `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` (Gmail ingestion + `mode=discover`), `SCOUT_RENDERER_FN` (page rendering) |
+| `scout-scheduler` | `scout_core.handlers.aws.jobs.scheduler_handler.lambda_handler` | EventBridge `rate(15 minutes)` | Gmail discovery pass + dispatches due sources |
+| `scout-sweep` | `scout_core.handlers.aws.jobs.sweep_handler.lambda_handler` | EventBridge `rate(1 hour)` | orphan recovery + past flags |
 | `scout-source-renderer` | `handler.lambda_handler` (own image) | sync invoke (by processor) | 3008 MB / 90 s; patchright (undetected Playwright) + headful Chrome via Xvfb; renders every fetched page (runs JS / passes bot challenges), returns HTML |
 
 EventBridge rules are created only in prod (`create_eventbridge=true`).
@@ -234,7 +240,12 @@ the per-PR env on PR close.
 
 ```bash
 # backend tests (events-api)
-cd scout/backend/events-api && python -m pytest
+cd scout/backend && python -m pytest
+
+# local DynamoDB + HTTP API server
+cd scout/backend
+docker compose up dynamodb
+poetry run python -m scout_core.handlers.local.api.api_dev_server
 
 # frontend
 cd scout/frontend && npm ci && npm run lint && npm run build && npm run dev
@@ -243,9 +254,13 @@ cd scout/frontend && npm ci && npm run lint && npm run build && npm run dev
 ## Conventions
 
 - DynamoDB via boto3, no ORM, no VPC. New business logic goes in
-  `scout_core/domain/` (AWS/HTTP-free), I/O behind `scout_core/adapters/`, pure
-  helpers in `scout_core/common/`, with moto-based unit tests; the handlers in
+  `scout_core/services/` (AWS/HTTP-free), persistence behind
+  `scout_core/repositories/`, external APIs behind `scout_core/clients/`, pure
+  helpers in `scout_core/utils/`, with moto-based unit tests; the handlers in
   `scout_core/handlers/` stay thin.
+  Local app/handler runs use DynamoDB Local on `localhost:8001`; unit tests keep
+  using moto. `scout_core.repositories.dynamodb` owns boto3/local table bootstrap;
+  `scout_core.repositories.store` owns Scout persistence operations.
 - Never hardcode AWS credentials or secrets. Sensitive Terraform vars come via
   `TF_VAR_*` in CI.
 - Infra dirs are always named `infra/`; modules under `modules/`, environments

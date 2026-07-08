@@ -29,7 +29,7 @@ storybook/
 │   ├── Dockerfile
 │   ├── pyproject.toml
 │   ├── poetry.lock
-│   ├── src/                     # Blueprint-based routes → controllers → services → repositories
+│   ├── storybook_core/             # routes → services → repositories, plus clients/models/config
 │   └── assets/                  # Prompts, styles, reference assets shipped with the image
 ├── frontend/
 │   └── storybook-ui/            # Vite + React + HeroUI + Tailwind SPA
@@ -56,13 +56,14 @@ A single Route53 A-alias record for `storybook.andreas.services` is added by the
 ## Local Development
 
 ```bash
-# Backend (requires a valid .env with AWS credentials and DynamoDB table names)
+# Backend (writes to DynamoDB Local on :8001)
 cd storybook/backend
 poetry install
-python -m src.handlers.local.api.api_dev_server
+docker compose up dynamodb
+python -m storybook_core.handlers.local.api.api_dev_server
 
 # Image worker (SQS poller loop against the real prod queue URL)
-python -m src.handlers.local.jobs.poll_image_normalization_handler
+python -m storybook_core.handlers.local.jobs.poll_image_normalization_handler
 
 # Frontend
 cd storybook/frontend/storybook-ui
@@ -70,7 +71,10 @@ npm install --legacy-peer-deps
 npm run dev
 ```
 
-Copy `backend/.env.example → backend/.env` and `frontend/storybook-ui/.env.local.example → .env.local`, filling values from Terraform outputs (or SSM under `/storybook/prod/*`).
+The local API server creates the `storybook-*` tables in DynamoDB Local on
+startup. Unit tests should keep mocking AWS integrations. Copy
+`backend/.env.example → backend/.env` and
+`frontend/storybook-ui/.env.local.example → .env.local` for non-DynamoDB values.
 
 ## Environment Variables (Prod)
 
@@ -138,3 +142,7 @@ The backend reads table names from env vars (`STORYBOOK_*_TABLE`) wired up by th
 - `storybook-model-projects`, `storybook-generation-history`, `storybook-training-runs`
 
 All accessed via boto3 directly from the Lambdas.
+Local app runs use DynamoDB Local via `DYNAMODB_ENDPOINT_URL=http://localhost:8001`;
+production leaves that unset and uses AWS DynamoDB.
+`storybook_core.repositories.dynamodb` owns boto3/local table bootstrap; repository modules
+own Storybook persistence operations.

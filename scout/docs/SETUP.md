@@ -136,12 +136,18 @@ cd frontend && npm start
 
 This starts a dev server at `http://localhost:3000`.
 
-### Backend (Lambda locally with SAM)
+### Backend API + DynamoDB Local
 
 ```bash
-sam local invoke EmailProcessorFunction --no-event
-sam local start-api --port 3001
+cd backend
+poetry install --no-root
+docker compose up dynamodb
+poetry run python -m scout_core.handlers.local.api.api_dev_server
 ```
+
+The local API server runs at `http://localhost:8000`, writes to DynamoDB Local
+on `localhost:8001`, and creates `scout-core` / `scout-settings` on startup.
+Unit tests use moto instead of DynamoDB Local.
 
 ---
 
