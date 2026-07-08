@@ -51,13 +51,13 @@ jobs:
         run: pipx install poetry==2.2.1
 
       - name: Install dependencies
-        run: cd website/backend/api && poetry install --no-root --no-interaction
+        run: cd website/backend && poetry install --no-root --no-interaction
 
       - name: Run tests
-        run: cd website/backend/api && poetry run pytest -q
+        run: cd website/backend && poetry run pytest -q
 
       - name: Docker build (packaging check)
-        run: cd website/backend/api && docker build -t website-api:ci .
+        run: cd website/backend && docker build -t website-api:ci .
 
   frontend:
     name: Frontend — lint/typecheck/build + image

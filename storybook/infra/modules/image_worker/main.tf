@@ -104,7 +104,7 @@ resource "aws_lambda_function" "worker" {
   memory_size   = 512
 
   image_config {
-    command = ["src.handlers.lambda.jobs.image_normalization_handler.handler"]
+    command = ["storybook_core.handlers.lambda.jobs.image_normalization_handler.handler"]
   }
 
   dynamic "environment" {

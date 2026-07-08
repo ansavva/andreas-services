@@ -26,7 +26,7 @@ humbugg/
 │   ├── Dockerfile
 │   ├── pyproject.toml
 │   ├── poetry.lock
-│   └── src/                    # routes → controllers → services → repositories
+│   └── humbugg_core/            # routes → services → repositories, plus auth/config
 ├── frontend/                   # Vite + React SPA
 │   ├── index.html
 │   ├── vite.config.ts
@@ -54,7 +54,8 @@ The frontend stack adds a single Route53 A-alias record for `humbugg.andreas.ser
 # Backend
 cd humbugg/backend
 poetry install
-python src/app.py   # http://localhost:5000
+docker compose up dynamodb
+python -m humbugg_core.handlers.local.api.api_dev_server   # http://localhost:5001
 
 # Frontend (separate terminal)
 cd humbugg/frontend
@@ -123,3 +124,7 @@ Group `humbugg-prod` with `cancel-in-progress: false` — queued pushes wait for
 - `humbugg-groupmembers` — group ↔ member relationship + assignment results
 
 All accessed via boto3 directly from the Lambda (no ORM, no VPC).
+Local app runs use DynamoDB Local on `localhost:8001` and create these tables on
+startup. Unit tests should mock DynamoDB rather than depending on the local
+container. `humbugg_core.repositories.dynamodb` owns boto3/local table bootstrap;
+repository modules own Humbugg persistence operations.

@@ -13,7 +13,7 @@ sitewide newsletter capture, and a video→companion-blog engine for SEO.
 | Part | Tech |
 |------|------|
 | Frontend | React Router v7 (framework mode, Vite) **SSR**, Tailwind v4, `@ansavva/design-system` |
-| Backend | Python 3.11 Lambda API (Scout-style raw handler), boto3, DynamoDB |
+| Backend | Python 3.11 Flask + Mangum Lambda API, boto3, DynamoDB |
 | Hosting | CloudFront → SSR Lambda (Function URL) + S3 (`/assets/*`); backend behind API Gateway at `website-api.andreas.services` |
 | Auth | AWS Cognito (admin dashboard) |
 | Infra | Terraform (`infra/modules` + `infra/envs/prod`) |
@@ -24,7 +24,7 @@ sitewide newsletter capture, and a video→companion-blog engine for SEO.
 ```
 website/
 ├── frontend/     # React Router SSR app + Dockerfile (Lambda handler)
-├── backend/api/  # Python API Lambda (website_core) + Dockerfile
+├── backend/      # Python API Lambda (website_core) + Dockerfile
 ├── infra/        # Terraform modules + envs/prod
 ├── scripts/      # create-admin-user.sh
 └── docs/SETUP.md # first-time setup + deploy notes

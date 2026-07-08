@@ -133,7 +133,7 @@ jobs:
       - name: Build & push backend (website-api)
         run: |
           IMAGE="${ECR_REGISTRY}/website-api"
-          cd website/backend/api
+          cd website/backend
           docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
           docker push "${IMAGE}:${{ github.sha }}"
           docker push "${IMAGE}:latest"

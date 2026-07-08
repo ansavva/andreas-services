@@ -127,7 +127,7 @@ jobs:
       - name: Build & push events-api
         run: |
           IMAGE="${ECR_REGISTRY}/scout-events-api"
-          cd scout/backend/events-api
+          cd scout/backend
           docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
           docker push "${IMAGE}:${{ github.sha }}"
           docker push "${IMAGE}:latest"

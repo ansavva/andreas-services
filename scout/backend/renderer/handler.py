@@ -2,7 +2,7 @@
 Headless-browser renderer Lambda.
 
 Invoked synchronously by the source-run processor (via
-``scout_core.adapters.renderer_client.fetch_rendered``) for webpage sources that
+``scout_core.clients.aws.renderer_client.fetch_rendered``) for webpage sources that
 need JavaScript to run before their content exists — client-rendered pages and,
 notably, sites behind a JS / proof-of-work bot challenge (e.g. SiteGround's
 ``sgcaptcha``) that serve a challenge stub to plain HTTP clients. A real browser

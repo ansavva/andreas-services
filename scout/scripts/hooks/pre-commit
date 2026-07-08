@@ -30,7 +30,7 @@ run_poetry_tests() {
     ) || { echo "FAIL: ${name} unit tests"; exit 1; }
 }
 
-run_poetry_tests "events-api" "${REPO_ROOT}/scout/backend/events-api"
+run_poetry_tests "events-api" "${REPO_ROOT}/scout/backend"
 run_poetry_tests "email-processor" "${REPO_ROOT}/scout/backend/email-processor"
 
 (

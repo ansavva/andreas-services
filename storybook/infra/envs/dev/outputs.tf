@@ -36,7 +36,7 @@ output "setup_instructions" {
        - VITE_AWS_COGNITO_APP_CLIENT_ID=${module.auth.user_pool_client_id}
        - VITE_AWS_COGNITO_DOMAIN=${module.auth.user_pool_domain}
 
-    Run local backend: python -m src.app
+    Run local backend: python -m storybook_core.handlers.local.api.api_dev_server
     Run local frontend: npm run dev
   EOT
 }

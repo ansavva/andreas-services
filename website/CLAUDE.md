@@ -15,9 +15,10 @@ server-side** for SEO/OG and fast first paint.
   Deployed as a Docker **Lambda** (`@react-router/architect` handler) behind
   **CloudFront**; hashed client assets are served from **S3** at `/assets/*`.
   Consumes the shared **`@ansavva/design-system`** (Base UI + Tailwind v4).
-- **`backend/api/`** — Python API Lambda, **same framework as Scout** (raw
-  handler, no web framework; `/api/` path routing; layered
-  `handlers/`→`domain/`→`adapters/`→`common/`). Package `website_core`.
+- **`backend/`** — Python API Lambda, **Flask + Mangum like storybook/humbugg**
+  (`/api/` blueprint routing; layered `handlers/`→`services` with persistence in
+  `repositories/` and external APIs in `clients/`).
+  Package `website_core`.
   Endpoints: `POST /api/intake`, `POST /api/subscribe`, `GET /api/admin/submissions`.
 - **`infra/`** — Terraform `modules/` (data, auth, api_gateway, api_domain,
   compute, hosting) + `envs/prod`, mirroring Scout.
@@ -61,8 +62,11 @@ export NODE_AUTH_TOKEN=$(gh auth token)   # needs read:packages
 npm ci
 npm run dev            # RR SSR dev server (needs WEBSITE_API_URL for forms/admin)
 
-cd ../backend/api
-poetry install && poetry run pytest       # backend unit tests (moto)
+cd ../backend
+poetry install
+docker compose up dynamodb                  # local DynamoDB on :8001
+poetry run python -m website_core.handlers.local.api.api_dev_server  # :8000
+poetry run pytest                         # backend unit tests (moto)
 ```
 
 Both images are validated with Docker locally (see `docs/SETUP.md`).

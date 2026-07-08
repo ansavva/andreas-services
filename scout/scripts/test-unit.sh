@@ -44,7 +44,7 @@ run_poetry_tests() {
 }
 
 if [[ "$RUN_PYTHON" == "true" ]]; then
-    run_poetry_tests "events-api" "${SCOUT_ROOT}/backend/events-api"
+    run_poetry_tests "events-api" "${SCOUT_ROOT}/backend"
 
     echo
     run_poetry_tests "email-processor" "${SCOUT_ROOT}/backend/email-processor"
