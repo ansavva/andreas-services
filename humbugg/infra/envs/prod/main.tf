@@ -9,11 +9,6 @@ locals {
     ManagedBy   = "Terraform"
   }
 
-  dynamodb_table_arns = {
-    profiles     = aws_dynamodb_table.profiles.arn
-    groups       = aws_dynamodb_table.groups.arn
-    groupmembers = aws_dynamodb_table.groupmembers.arn
-  }
 }
 
 data "aws_route53_zone" "main" {
@@ -21,68 +16,19 @@ data "aws_route53_zone" "main" {
   private_zone = false
 }
 
-resource "aws_dynamodb_table" "profiles" {
-  name         = "humbugg-profiles"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "user_id"
-
-  attribute {
-    name = "user_id"
-    type = "S"
-  }
-
-  server_side_encryption { enabled = true }
-  tags = local.common_tags
+moved {
+  from = aws_dynamodb_table.profiles
+  to   = module.storage.aws_dynamodb_table.profiles
 }
 
-resource "aws_dynamodb_table" "groups" {
-  name         = "humbugg-groups"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "group_id"
-
-  attribute {
-    name = "group_id"
-    type = "S"
-  }
-
-  server_side_encryption { enabled = true }
-  tags = local.common_tags
+moved {
+  from = aws_dynamodb_table.groups
+  to   = module.storage.aws_dynamodb_table.groups
 }
 
-resource "aws_dynamodb_table" "groupmembers" {
-  name         = "humbugg-groupmembers"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "member_id"
-
-  attribute {
-    name = "member_id"
-    type = "S"
-  }
-
-  attribute {
-    name = "user_id"
-    type = "S"
-  }
-
-  attribute {
-    name = "group_id"
-    type = "S"
-  }
-
-  global_secondary_index {
-    name            = "user_id-index"
-    hash_key        = "user_id"
-    projection_type = "ALL"
-  }
-
-  global_secondary_index {
-    name            = "group_id-index"
-    hash_key        = "group_id"
-    projection_type = "ALL"
-  }
-
-  server_side_encryption { enabled = true }
-  tags = local.common_tags
+moved {
+  from = aws_dynamodb_table.groupmembers
+  to   = module.storage.aws_dynamodb_table.groupmembers
 }
 
 module "auth" {
@@ -108,13 +54,20 @@ import {
   id = "humbugg-backend-production"
 }
 
+import {
+  to = module.compute.aws_ecr_repository.frontend
+  id = "humbugg-frontend-production"
+}
+
 module "compute" {
   source = "../../modules/compute"
 
   project     = local.project
   environment = local.environment
 
-  dynamodb_table_arns = local.dynamodb_table_arns
+  dynamodb_table_arns  = module.storage.dynamodb_table_arns
+  cognito_user_pool_id = module.auth.user_pool_id
+  cognito_client_id    = module.auth.user_pool_client_id
 
   tags = local.common_tags
 }
@@ -135,7 +88,8 @@ module "hosting" {
   frontend_bucket_arn                  = module.storage.bucket_arn
   frontend_bucket_regional_domain_name = module.storage.bucket_regional_domain_name
 
-  api_endpoint = module.compute.api_endpoint
+  api_endpoint        = module.compute.api_endpoint
+  frontend_api_domain = module.compute.frontend_api_domain
 
   tags = local.common_tags
 }

@@ -14,37 +14,40 @@ data "aws_acm_certificate" "wildcard" {
   most_recent = true
 }
 
+data "aws_cloudfront_cache_policy" "disabled" {
+  name = "Managed-CachingDisabled"
+}
+
+data "aws_cloudfront_cache_policy" "optimized" {
+  name = "Managed-CachingOptimized"
+}
+
+resource "aws_cloudfront_origin_request_policy" "ssr" {
+  name    = "${var.project}-ssr-origin-request"
+  comment = "Forward viewer data to the SSR origin except headers reserved for origin routing"
+
+  headers_config {
+    header_behavior = "allExcept"
+    headers {
+      items = ["host", "authorization"]
+    }
+  }
+
+  cookies_config {
+    cookie_behavior = "all"
+  }
+
+  query_strings_config {
+    query_string_behavior = "all"
+  }
+}
+
 resource "aws_cloudfront_origin_access_control" "frontend" {
   name                              = "${var.project}-frontend-oac"
   description                       = "OAC for ${var.project} frontend S3 bucket"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
-}
-
-resource "aws_cloudfront_function" "spa_rewrite" {
-  name    = "${var.project}-spa-rewrite"
-  runtime = "cloudfront-js-1.0"
-  comment = "SPA path rewrite for ${var.project}"
-  publish = true
-  code    = <<-EOT
-    function handler(event) {
-      var request = event.request;
-      var uri = request.uri;
-
-      if (uri === '/' || uri === '') {
-        request.uri = '/app/index.html';
-        return request;
-      }
-
-      if (uri.startsWith('/app') || uri.startsWith('/api')) {
-        return request;
-      }
-
-      request.uri = '/app' + uri;
-      return request;
-    }
-  EOT
 }
 
 resource "aws_cloudfront_distribution" "app" {
@@ -61,6 +64,18 @@ resource "aws_cloudfront_distribution" "app" {
   }
 
   origin {
+    domain_name = var.frontend_api_domain
+    origin_id   = "SSR-frontend"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  origin {
     domain_name = trimsuffix(replace(var.api_endpoint, "https://", ""), "/")
     origin_id   = "APIGateway-backend"
 
@@ -73,27 +88,23 @@ resource "aws_cloudfront_distribution" "app" {
   }
 
   default_cache_behavior {
-    allowed_methods  = ["GET", "HEAD"]
-    cached_methods   = ["GET", "HEAD"]
-    target_origin_id = "S3-frontend"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS"]
+    cached_methods           = ["GET", "HEAD"]
+    target_origin_id         = "SSR-frontend"
+    viewer_protocol_policy   = "redirect-to-https"
+    compress                 = true
+    cache_policy_id          = data.aws_cloudfront_cache_policy.disabled.id
+    origin_request_policy_id = aws_cloudfront_origin_request_policy.ssr.id
+  }
 
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
-      }
-    }
-
+  ordered_cache_behavior {
+    path_pattern           = "/assets/*"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "S3-frontend"
     viewer_protocol_policy = "redirect-to-https"
-    min_ttl                = 0
-    default_ttl            = 0
-    max_ttl                = 0
     compress               = true
-
-    function_association {
-      event_type   = "viewer-request"
-      function_arn = aws_cloudfront_function.spa_rewrite.arn
-    }
+    cache_policy_id        = data.aws_cloudfront_cache_policy.optimized.id
   }
 
   ordered_cache_behavior {
@@ -117,16 +128,24 @@ resource "aws_cloudfront_distribution" "app" {
     compress               = true
   }
 
-  custom_error_response {
-    error_code         = 403
-    response_code      = 200
-    response_page_path = "/app/index.html"
-  }
+  ordered_cache_behavior {
+    path_pattern     = "/health"
+    allowed_methods  = ["GET", "HEAD", "OPTIONS"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "APIGateway-backend"
 
-  custom_error_response {
-    error_code         = 404
-    response_code      = 200
-    response_page_path = "/app/index.html"
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
+      }
+    }
+
+    viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 0
+    default_ttl            = 0
+    max_ttl                = 0
+    compress               = true
   }
 
   restrictions {

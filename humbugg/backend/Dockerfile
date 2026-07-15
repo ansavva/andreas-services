@@ -1,21 +1,18 @@
-FROM python:3.11-slim AS base
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY Humbugg.Api/Humbugg.Api.csproj Humbugg.Api/
+RUN dotnet restore Humbugg.Api/Humbugg.Api.csproj
+COPY Humbugg.Api/ Humbugg.Api/
+RUN dotnet publish Humbugg.Api/Humbugg.Api.csproj --configuration Release --output /app/publish --no-restore
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS development
+WORKDIR /src
+COPY Humbugg.Api/Humbugg.Api.csproj Humbugg.Api/
+RUN dotnet restore Humbugg.Api/Humbugg.Api.csproj
+COPY Humbugg.Api/ Humbugg.Api/
+ENTRYPOINT ["dotnet", "watch", "--no-hot-reload", "--project", "Humbugg.Api/Humbugg.Api.csproj", "run", "--no-launch-profile"]
 
-WORKDIR /app
-
-RUN pip install --no-cache-dir poetry==2.2.1 && \
-    poetry config virtualenvs.create false
-
-# Copy dependency manifests first for layer caching
-COPY pyproject.toml poetry.lock ./
-
-RUN poetry install --only main --no-root --no-interaction --no-ansi
-
-COPY humbugg_core ./humbugg_core
-
-ENV PYTHONPATH="/app"
-
-ENTRYPOINT ["python", "-m", "awslambdaric"]
-CMD ["humbugg_core.handlers.aws.api.api_handler.handler"]
+FROM public.ecr.aws/lambda/dotnet:10 AS final
+WORKDIR ${LAMBDA_TASK_ROOT}
+COPY --from=build /app/publish .
+CMD ["Humbugg.Api"]

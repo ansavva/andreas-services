@@ -1,0 +1,202 @@
+using Amazon.DynamoDBv2;
+using Amazon.DynamoDBv2.Model;
+using Humbugg.Api.Models;
+
+namespace Humbugg.Api.Data;
+
+internal interface IGroupRepository
+{
+    Task<GroupRecord?> GetAsync(string groupId, CancellationToken cancellationToken = default);
+    Task<GroupRecord> CreateAsync(GroupRecord group, CancellationToken cancellationToken = default);
+    Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, AttributeValue> fields, GroupStatus? expectedStatus = null, CancellationToken cancellationToken = default);
+    Task DeleteAsync(string groupId, CancellationToken cancellationToken = default);
+    Task CreateDrawAsync(string groupId, IReadOnlyDictionary<string, string> assignments, string actorUserId, CancellationToken cancellationToken = default);
+    Task<DrawRecord?> GetDrawAsync(string groupId, CancellationToken cancellationToken = default);
+    Task ResetDrawAsync(string groupId, CancellationToken cancellationToken = default);
+    Task RecordRevealAsync(string groupId, string actorUserId, string reason, CancellationToken cancellationToken = default);
+}
+
+internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settings) : IGroupRepository
+{
+    public async Task<GroupRecord?> GetAsync(string groupId, CancellationToken cancellationToken = default)
+    {
+        var response = await db.GetItemAsync(new GetItemRequest
+        {
+            TableName = settings.GroupsTable,
+            Key = Key(groupId),
+            ConsistentRead = true
+        }, cancellationToken);
+        return response.IsItemSet ? Read(response.Item) : null;
+    }
+
+    public async Task<GroupRecord> CreateAsync(GroupRecord group, CancellationToken cancellationToken = default)
+    {
+        await db.PutItemAsync(new PutItemRequest
+        {
+            TableName = settings.GroupsTable,
+            Item = Write(group),
+            ConditionExpression = "attribute_not_exists(group_id)"
+        }, cancellationToken);
+        return group;
+    }
+
+    public async Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, AttributeValue> fields, GroupStatus? expectedStatus = null, CancellationToken cancellationToken = default)
+    {
+        var names = new Dictionary<string, string>();
+        var values = new Dictionary<string, AttributeValue>();
+        var setters = new List<string>();
+        var index = 0;
+        foreach (var (name, value) in fields)
+        {
+            names[$"#n{index}"] = name;
+            values[$":v{index}"] = value;
+            setters.Add($"#n{index} = :v{index}");
+            index++;
+        }
+        names["#updated"] = "updated_at";
+        values[":updated"] = DynamoValues.S(DateTimeOffset.UtcNow.ToString("O"));
+        setters.Add("#updated = :updated");
+
+        var request = new UpdateItemRequest
+        {
+            TableName = settings.GroupsTable,
+            Key = new() { ["group_id"] = DynamoValues.S(groupId) },
+            UpdateExpression = $"SET {string.Join(", ", setters)}",
+            ExpressionAttributeNames = names,
+            ExpressionAttributeValues = values,
+            ReturnValues = ReturnValue.ALL_NEW,
+            ConditionExpression = "attribute_exists(group_id)"
+        };
+        if (expectedStatus is not null)
+        {
+            names["#status"] = "status";
+            values[":expected"] = DynamoValues.S(Status(expectedStatus.Value));
+            request.ConditionExpression += " AND #status = :expected";
+        }
+        var response = await db.UpdateItemAsync(request, cancellationToken);
+        return Read(response.Attributes);
+    }
+
+    public async Task DeleteAsync(string groupId, CancellationToken cancellationToken = default)
+    {
+        await db.TransactWriteItemsAsync(new TransactWriteItemsRequest
+        {
+            TransactItems =
+            [
+                new() { Delete = new Delete { TableName = settings.GroupsTable, Key = Key(groupId) } },
+                new() { Delete = new Delete { TableName = settings.DrawsTable, Key = Key(groupId) } }
+            ]
+        }, cancellationToken);
+    }
+
+    public async Task CreateDrawAsync(string groupId, IReadOnlyDictionary<string, string> assignments, string actorUserId, CancellationToken cancellationToken = default)
+    {
+        var now = DateTimeOffset.UtcNow.ToString("O");
+        var item = new Dictionary<string, AttributeValue>
+        {
+            ["group_id"] = DynamoValues.S(groupId),
+            ["draw_id"] = DynamoValues.S(Guid.NewGuid().ToString()),
+            ["assignments"] = new() { M = assignments.ToDictionary(pair => pair.Key, pair => DynamoValues.S(pair.Value)) },
+            ["created_at"] = DynamoValues.S(now),
+            ["created_by"] = DynamoValues.S(actorUserId)
+        };
+        await db.TransactWriteItemsAsync(new TransactWriteItemsRequest
+        {
+            TransactItems =
+        [
+            new() { Put = new Put { TableName = settings.DrawsTable, Item = item, ConditionExpression = "attribute_not_exists(group_id)" } },
+            new() { Update = new Update
+            {
+                TableName = settings.GroupsTable, Key = Key(groupId),
+                UpdateExpression = "SET #status = :drawn, updated_at = :now",
+                ConditionExpression = "#status = :open",
+                ExpressionAttributeNames = new() { ["#status"] = "status" },
+                ExpressionAttributeValues = new()
+                {
+                    [":drawn"] = DynamoValues.S("drawn"), [":open"] = DynamoValues.S("open"), [":now"] = DynamoValues.S(now)
+                }
+            }}
+        ]
+        }, cancellationToken);
+    }
+
+    public async Task<DrawRecord?> GetDrawAsync(string groupId, CancellationToken cancellationToken = default)
+    {
+        var response = await db.GetItemAsync(new GetItemRequest
+        {
+            TableName = settings.DrawsTable,
+            Key = Key(groupId),
+            ConsistentRead = true
+        }, cancellationToken);
+        if (!response.IsItemSet) return null;
+        var assignments = response.Item.TryGetValue("assignments", out var map) && map.M is not null
+            ? map.M.ToDictionary(pair => pair.Key, pair => pair.Value.S ?? "") : [];
+        return new DrawRecord(groupId, response.Item.String("draw_id"), assignments,
+            response.Item.String("created_at"), response.Item.String("created_by"));
+    }
+
+    public Task ResetDrawAsync(string groupId, CancellationToken cancellationToken = default)
+    {
+        var now = DateTimeOffset.UtcNow.ToString("O");
+        return db.TransactWriteItemsAsync(new TransactWriteItemsRequest
+        {
+            TransactItems =
+        [
+            new() { Delete = new Delete { TableName = settings.DrawsTable, Key = Key(groupId), ConditionExpression = "attribute_exists(group_id)" } },
+            new() { Update = new Update
+            {
+                TableName = settings.GroupsTable, Key = Key(groupId),
+                UpdateExpression = "SET #status = :open, updated_at = :now",
+                ConditionExpression = "#status = :drawn",
+                ExpressionAttributeNames = new() { ["#status"] = "status" },
+                ExpressionAttributeValues = new()
+                {
+                    [":open"] = DynamoValues.S("open"), [":drawn"] = DynamoValues.S("drawn"), [":now"] = DynamoValues.S(now)
+                }
+            }}
+        ]
+        }, cancellationToken);
+    }
+
+    public Task RecordRevealAsync(string groupId, string actorUserId, string reason, CancellationToken cancellationToken = default)
+    {
+        var now = DateTimeOffset.UtcNow.ToString("O");
+        return db.PutItemAsync(settings.AuditEventsTable, new Dictionary<string, AttributeValue>
+        {
+            ["group_id"] = DynamoValues.S(groupId),
+            ["event_id"] = DynamoValues.S($"{now}#{Guid.NewGuid()}"),
+            ["event_type"] = DynamoValues.S("assignment_reveal"),
+            ["actor_user_id"] = DynamoValues.S(actorUserId),
+            ["reason"] = DynamoValues.S(reason),
+            ["created_at"] = DynamoValues.S(now)
+        }, cancellationToken);
+    }
+
+    private static Dictionary<string, AttributeValue> Key(string groupId) => new() { ["group_id"] = DynamoValues.S(groupId) };
+    private static string Status(GroupStatus status) => status == GroupStatus.Open ? "open" : "drawn";
+    private static GroupStatus ReadStatus(string status) => status == "drawn" ? GroupStatus.Drawn : GroupStatus.Open;
+
+    private static Dictionary<string, AttributeValue> Write(GroupRecord group) => new()
+    {
+        ["group_id"] = DynamoValues.S(group.GroupId),
+        ["owner_user_id"] = DynamoValues.S(group.OwnerUserId),
+        ["name"] = DynamoValues.S(group.Name),
+        ["description"] = DynamoValues.S(group.Description),
+        ["event_date"] = DynamoValues.S(group.EventDate ?? ""),
+        ["signup_deadline"] = DynamoValues.S(group.SignupDeadline ?? ""),
+        ["currency"] = DynamoValues.S(group.Currency),
+        ["status"] = DynamoValues.S(Status(group.Status)),
+        ["invite_hash"] = DynamoValues.S(group.InviteHash),
+        ["exclusions"] = DynamoValues.ExclusionsValue(group.Exclusions),
+        ["created_at"] = DynamoValues.S(group.CreatedAt),
+        ["updated_at"] = DynamoValues.S(group.UpdatedAt),
+        ["spending_limit_cents"] = group.SpendingLimitCents is null ? new AttributeValue { NULL = true } : DynamoValues.N(group.SpendingLimitCents.Value)
+    };
+
+    private static GroupRecord Read(IReadOnlyDictionary<string, AttributeValue> item) => new(
+        item.String("group_id"), item.String("owner_user_id"), item.String("name"), item.String("description"),
+        EmptyToNull(item.String("event_date")), EmptyToNull(item.String("signup_deadline")), item.Long("spending_limit_cents"),
+        item.String("currency", "USD"), ReadStatus(item.String("status")), item.String("invite_hash"), item.Exclusions(),
+        item.String("created_at"), item.String("updated_at"));
+    private static string? EmptyToNull(string value) => string.IsNullOrEmpty(value) ? null : value;
+}

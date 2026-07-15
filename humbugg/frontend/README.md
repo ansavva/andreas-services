@@ -1,24 +1,18 @@
-# Humbugg Web (React)
+# Humbugg web application
 
-This directory contains the standalone Humbugg web client.
+React Router framework mode, React, Tailwind CSS 4, AWS Amplify Auth, and
+`@ansavva/design-system` power the public marketing and authenticated customer
+experience. Public routes are server-rendered for crawlable marketing content,
+metadata, canonical URLs, robots, and sitemap support. Authenticated routes
+hydrate into the same React application in the browser.
 
-## Development
+Copy `.env.local.example` to `.env.local`, use the development Cognito outputs,
+then run `npm install && npm run dev`. Local `/api` and `/health` requests are
+proxied to the .NET API at `http://127.0.0.1:5001`; production uses the same
+public origin through CloudFront.
 
-```bash
-cd frontend
-npm install
-npm run dev # opens http://localhost:5173
-```
+`npm run build` creates `build/server` for the SSR Lambda and `build/client`
+for the S3 asset origin.
 
-Environment variables (via `.env` or `VITE_*`) can override defaults. The build output is configured (via `vite.config.ts`) to expect the app to be hosted under `/app/` in production:
-
-- `VITE_API_BASE_URL` – defaults to `http://localhost:5001`
-- `VITE_COGNITO_DOMAIN` – defaults to `https://your-domain.auth.us-east-1.amazoncognito.com`
-- `VITE_COGNITO_CLIENT_ID` – defaults to `humbugg-web`
-- `VITE_COGNITO_CLIENT_SECRET` – defaults to `replace-me`
-
-## Usage
-
-1. Ensure your AWS Cognito user pool (and app client) plus the backend API are running. Set the environment variables above (and the backend `.env`) to match your user pool/DocumentDB connection.
-2. Visit `http://localhost:5173` and sign in using the password grant form, or paste an existing bearer token issued by Cognito.
-3. The dashboard fetches your profile and groups directly from the API and lets you create groups, enroll members, and trigger matches.
+Never place a Cognito client secret or AWS credentials in frontend environment
+files. The web client is intentionally secretless.

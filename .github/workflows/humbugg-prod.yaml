@@ -6,13 +6,13 @@ name: Humbugg · Deploy · Prod
 # runs before deploy-infra to eliminate the chicken-and-egg of an empty ECR
 # repo on first deploy):
 #
-#   detect-changes ─► build-and-push (always, when infra OR backend changes)
+#   detect-changes ─► build-and-push (backend + SSR frontend images and assets)
 #                          │
 #                          ▼
 #                     deploy-infra (terraform apply)
 #                          │
-#                          ├─► update-lambda  (env vars + pin Lambda to :sha)
-#                          └─► deploy-frontend
+#                          ├─► update-lambda  (env vars + pin both Lambdas to :sha)
+#                          └─► deploy-frontend-assets
 
 on:
   push:
@@ -41,8 +41,10 @@ concurrency:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPO: humbugg-backend-production
-  LAMBDA_NAME: humbugg-backend-production
+  BACKEND_ECR_REPO: humbugg-backend-production
+  FRONTEND_ECR_REPO: humbugg-frontend-production
+  BACKEND_LAMBDA_NAME: humbugg-backend-production
+  FRONTEND_LAMBDA_NAME: humbugg-frontend-production
 
 jobs:
   detect-changes:
@@ -70,18 +72,19 @@ jobs:
               - '.github/workflows/humbugg-prod.yaml'
 
   # ---------------------------------------------------------------------------
-  # Build Docker image and push to ECR. Runs BEFORE deploy-infra so the
-  # Lambda image_uri it references always exists.
+  # Build both Lambda images and the matching client asset bundle before
+  # Terraform so first-time Lambda creation always has an image available.
   # ---------------------------------------------------------------------------
   build-and-push:
-    name: Build & Push Docker Image
+    name: Build & Push Images
     needs: detect-changes
     if: |
       !cancelled()
       && (
         (github.event_name == 'push'
          && (needs.detect-changes.outputs.infra == 'true'
-             || needs.detect-changes.outputs.backend == 'true'))
+             || needs.detect-changes.outputs.backend == 'true'
+             || needs.detect-changes.outputs.frontend == 'true'))
         || (github.event_name == 'workflow_dispatch'
             && (inputs.run_infra || inputs.run_app))
         || github.event_name == 'workflow_run'
@@ -91,8 +94,18 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v7
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@ansavva'
+          cache: npm
+          cache-dependency-path: humbugg/frontend/package-lock.json
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
@@ -106,26 +119,52 @@ jobs:
       - name: Set ECR registry
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          echo "ECR_URL=${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${ECR_REPO}" >> "$GITHUB_ENV"
+          echo "ECR_REGISTRY=${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> "$GITHUB_ENV"
 
-      - name: Ensure ECR repository exists
+      - name: Ensure ECR repositories exist
         run: |
-          aws ecr describe-repositories --repository-names "${ECR_REPO}" \
-            --region "${{ env.AWS_REGION }}" >/dev/null 2>&1 || \
-          aws ecr create-repository \
-            --repository-name "${ECR_REPO}" \
-            --region "${{ env.AWS_REGION }}" \
-            --image-scanning-configuration scanOnPush=true \
-            --tags Key=Project,Value=humbugg
+          for REPO in "${BACKEND_ECR_REPO}" "${FRONTEND_ECR_REPO}"; do
+            aws ecr describe-repositories --repository-names "${REPO}" \
+              --region "${{ env.AWS_REGION }}" >/dev/null 2>&1 || \
+            aws ecr create-repository \
+              --repository-name "${REPO}" \
+              --region "${{ env.AWS_REGION }}" \
+              --image-scanning-configuration scanOnPush=true \
+              --tags Key=Project,Value=humbugg
+          done
 
       - name: Build & push backend
         run: |
+          IMAGE="${ECR_REGISTRY}/${BACKEND_ECR_REPO}"
           cd humbugg/backend
           DOCKER_BUILDKIT=0 docker build \
-            -t "${ECR_URL}:${{ github.sha }}" \
-            -t "${ECR_URL}:latest" .
-          docker push "${ECR_URL}:${{ github.sha }}"
-          docker push "${ECR_URL}:latest"
+            -t "${IMAGE}:${{ github.sha }}" \
+            -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${{ github.sha }}"
+          docker push "${IMAGE}:latest"
+
+      - name: Install frontend dependencies
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cd humbugg/frontend && npm ci
+
+      - name: Build frontend SSR and client assets
+        run: cd humbugg/frontend && npm run build
+
+      - name: Build & push SSR frontend
+        run: |
+          IMAGE="${ECR_REGISTRY}/${FRONTEND_ECR_REPO}"
+          cd humbugg/frontend
+          docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${{ github.sha }}"
+          docker push "${IMAGE}:latest"
+
+      - name: Upload client assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: humbugg-frontend-client
+          path: humbugg/frontend/build/client
+          retention-days: 1
 
   # ---------------------------------------------------------------------------
   # Apply Terraform and publish the resolved IDs into SSM for the app jobs.
@@ -176,6 +215,8 @@ jobs:
           put api-url              "$(tf api_endpoint)"
           put lambda-name          "$(tf lambda_function_name)"
           put ecr-url              "$(tf ecr_repository_url)"
+          put frontend-lambda-name "$(tf frontend_lambda_function_name)"
+          put frontend-ecr-url     "$(tf frontend_ecr_repository_url)"
           put cognito-user-pool-id "$(tf cognito_user_pool_id)"
           put cognito-client-id    "$(tf cognito_client_id)"
           put s3-bucket            "$(tf s3_frontend_bucket)"
@@ -186,7 +227,7 @@ jobs:
   # No Docker work — build-and-push has already pushed both :latest and :sha.
   # ---------------------------------------------------------------------------
   update-lambda:
-    name: Update Lambda Function
+    name: Update Lambda Functions
     needs: [detect-changes, build-and-push, deploy-infra]
     if: |
       !cancelled()
@@ -194,9 +235,7 @@ jobs:
       && needs.deploy-infra.result != 'failure'
       && (
         (github.event_name == 'workflow_dispatch' && inputs.run_app)
-        || (github.event_name == 'push'
-            && (needs.detect-changes.outputs.backend == 'true'
-                || needs.deploy-infra.result == 'success'))
+        || github.event_name == 'push'
         || (github.event_name == 'workflow_run'
             && needs.deploy-infra.result == 'success')
       )
@@ -219,7 +258,8 @@ jobs:
         run: |
           get() { aws ssm get-parameter --name "/humbugg/prod/${1}" \
             --query Parameter.Value --output text; }
-          echo "ECR_URL=$(get ecr-url)"                             >> "$GITHUB_ENV"
+          echo "BACKEND_ECR_URL=$(get ecr-url)"                     >> "$GITHUB_ENV"
+          echo "FRONTEND_ECR_URL=$(get frontend-ecr-url)"           >> "$GITHUB_ENV"
           echo "COGNITO_USER_POOL_ID=$(get cognito-user-pool-id)"   >> "$GITHUB_ENV"
           echo "COGNITO_CLIENT_ID=$(get cognito-client-id)"         >> "$GITHUB_ENV"
 
@@ -234,6 +274,9 @@ jobs:
             --arg profiles_table "humbugg-profiles" \
             --arg groups_table "humbugg-groups" \
             --arg groupmembers_table "humbugg-groupmembers" \
+            --arg draws_table "humbugg-draws" \
+            --arg audit_events_table "humbugg-audit-events" \
+            --arg app_base_url "https://humbugg.andreas.services" \
             '{Variables: {
               CORS_ORIGIN: $cors_origin,
               COGNITO_REGION: $cognito_region,
@@ -241,33 +284,72 @@ jobs:
               COGNITO_CLIENT_ID: $cognito_client_id,
               HUMBUGG_PROFILES_TABLE: $profiles_table,
               HUMBUGG_GROUPS_TABLE: $groups_table,
-              HUMBUGG_GROUPMEMBERS_TABLE: $groupmembers_table
-            }}' > /tmp/env-humbugg.json
+              HUMBUGG_GROUPMEMBERS_TABLE: $groupmembers_table,
+              HUMBUGG_DRAWS_TABLE: $draws_table,
+              HUMBUGG_AUDIT_EVENTS_TABLE: $audit_events_table,
+              APP_BASE_URL: $app_base_url
+            }}' > /tmp/env-humbugg-backend.json
+
+          jq -n \
+            --arg cognito_region "${{ env.AWS_REGION }}" \
+            --arg cognito_pool_id "${COGNITO_USER_POOL_ID}" \
+            --arg cognito_client_id "${COGNITO_CLIENT_ID}" \
+            '{Variables: {
+              NODE_ENV: "production",
+              COGNITO_REGION: $cognito_region,
+              COGNITO_USER_POOL_ID: $cognito_pool_id,
+              COGNITO_CLIENT_ID: $cognito_client_id
+            }}' > /tmp/env-humbugg-frontend.json
 
           aws lambda update-function-configuration \
-            --function-name "${LAMBDA_NAME}" \
+            --function-name "${BACKEND_LAMBDA_NAME}" \
             --region "${{ env.AWS_REGION }}" \
-            --environment file:///tmp/env-humbugg.json
+            --environment file:///tmp/env-humbugg-backend.json
 
           aws lambda wait function-updated \
-            --function-name "${LAMBDA_NAME}" \
+            --function-name "${BACKEND_LAMBDA_NAME}" \
+            --region "${{ env.AWS_REGION }}"
+
+          aws lambda update-function-configuration \
+            --function-name "${FRONTEND_LAMBDA_NAME}" \
+            --region "${{ env.AWS_REGION }}" \
+            --environment file:///tmp/env-humbugg-frontend.json
+
+          aws lambda wait function-updated \
+            --function-name "${FRONTEND_LAMBDA_NAME}" \
             --region "${{ env.AWS_REGION }}"
 
           aws lambda update-function-code \
-            --function-name "${LAMBDA_NAME}" \
-            --image-uri "${ECR_URL}:${{ github.sha }}" \
+            --function-name "${BACKEND_LAMBDA_NAME}" \
+            --image-uri "${BACKEND_ECR_URL}:${{ github.sha }}" \
             --region "${{ env.AWS_REGION }}" \
             --output table \
             --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
 
+          aws lambda wait function-updated \
+            --function-name "${BACKEND_LAMBDA_NAME}" \
+            --region "${{ env.AWS_REGION }}"
+
+          aws lambda update-function-code \
+            --function-name "${FRONTEND_LAMBDA_NAME}" \
+            --image-uri "${FRONTEND_ECR_URL}:${{ github.sha }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --output table \
+            --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
+
+          aws lambda wait function-updated \
+            --function-name "${FRONTEND_LAMBDA_NAME}" \
+            --region "${{ env.AWS_REGION }}"
+
   # ---------------------------------------------------------------------------
-  # Build Vite SPA and sync to S3 + CloudFront
+  # Sync the client bundle built alongside the SSR image to S3.
   # ---------------------------------------------------------------------------
-  deploy-frontend:
-    name: Deploy Frontend
-    needs: [detect-changes, deploy-infra]
+  deploy-frontend-assets:
+    name: Deploy Frontend Assets
+    needs: [detect-changes, build-and-push, deploy-infra]
     if: |
       !cancelled()
+      && needs.build-and-push.result == 'success'
       && needs.deploy-infra.result != 'failure'
       && ((github.event_name == 'workflow_dispatch' && inputs.run_app)
           || (github.event_name == 'push'
@@ -282,60 +364,53 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v7
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Download client assets
+        uses: actions/download-artifact@v4
+        with:
+          name: humbugg-frontend-client
+          path: build/client
+
       - name: Read infrastructure values from SSM
         run: |
           get() { aws ssm get-parameter --name "/humbugg/prod/${1}" \
             --query Parameter.Value --output text; }
 
-          echo "VITE_API_URL=$(get api-url)"                              >> "$GITHUB_ENV"
-          echo "VITE_COGNITO_USER_POOL_ID=$(get cognito-user-pool-id)"   >> "$GITHUB_ENV"
-          echo "VITE_COGNITO_CLIENT_ID=$(get cognito-client-id)"         >> "$GITHUB_ENV"
-          echo "S3_BUCKET=$(get s3-bucket)"                              >> "$GITHUB_ENV"
-          echo "CF_DIST_ID=$(get cf-dist-id)"                            >> "$GITHUB_ENV"
-
-      - name: Set up Node.js 24
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: humbugg/frontend/package-lock.json
-
-      - name: Install dependencies
-        run: cd humbugg/frontend && npm ci --legacy-peer-deps
-
-      - name: Build frontend
-        env:
-          VITE_API_URL: ${{ env.VITE_API_URL }}
-          VITE_COGNITO_USER_POOL_ID: ${{ env.VITE_COGNITO_USER_POOL_ID }}
-          VITE_COGNITO_CLIENT_ID: ${{ env.VITE_COGNITO_CLIENT_ID }}
-          VITE_AWS_REGION: us-east-1
-        run: cd humbugg/frontend && npm run build
+          echo "S3_BUCKET=$(get s3-bucket)"   >> "$GITHUB_ENV"
+          echo "CF_DIST_ID=$(get cf-dist-id)" >> "$GITHUB_ENV"
 
       - name: Sync hashed assets (long cache)
         run: |
-          aws s3 sync humbugg/frontend/dist/ "s3://${S3_BUCKET}/app/" \
+          aws s3 sync build/client/ "s3://${S3_BUCKET}/" \
             --region "${{ env.AWS_REGION }}" \
             --delete \
-            --cache-control "public,max-age=31536000,immutable" \
-            --exclude "*.html"
-
-      - name: Sync HTML (no cache)
-        run: |
-          aws s3 sync humbugg/frontend/dist/ "s3://${S3_BUCKET}/app/" \
-            --region "${{ env.AWS_REGION }}" \
-            --cache-control "no-cache,no-store,must-revalidate" \
-            --include "*.html"
+            --cache-control "public,max-age=31536000,immutable"
 
       - name: Invalidate CloudFront
         run: |
           aws cloudfront create-invalidation \
             --distribution-id "${CF_DIST_ID}" \
             --paths "/*"
+
+  smoke-test:
+    name: Production Smoke Test
+    needs: [update-lambda, deploy-frontend-assets]
+    if: ${{ !cancelled() && needs.update-lambda.result == 'success' && needs.deploy-frontend-assets.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify public and protected routes
+        run: |
+          set -euo pipefail
+          marketing=$(curl --fail --silent --show-error --retry 5 --retry-delay 5 https://humbugg.andreas.services/)
+          grep -q "More wonder" <<< "$marketing"
+          grep -q '<meta name="description"' <<< "$marketing"
+          curl --fail --retry 5 --retry-delay 5 https://humbugg.andreas.services/robots.txt >/dev/null
+          curl --fail --retry 5 --retry-delay 5 https://humbugg.andreas.services/sitemap.xml >/dev/null
+          curl --fail --retry 5 --retry-delay 5 https://humbugg.andreas.services/health >/dev/null
+          status=$(curl --silent --output /dev/null --write-out '%{http_code}' https://humbugg.andreas.services/api/groups)
+          test "$status" = "401"

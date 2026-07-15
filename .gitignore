@@ -136,6 +136,8 @@ celerybeat.pid
 
 # Environments
 .env
+.env.local
+!.env.local.example
 .envrc
 .venv
 env/
@@ -209,6 +211,8 @@ __marimo__/
 # Node artifacts
 node_modules/
 **/node_modules/
+.react-router/
+**/.react-router/
 package-lock.json
 **/package-lock.json
 !scout/frontend/package-lock.json
@@ -216,6 +220,12 @@ package-lock.json
 !humbugg/frontend/package-lock.json
 !design-system/package-lock.json
 !website/frontend/package-lock.json
+
+# .NET artifacts
+**/bin/
+**/obj/
+*.user
+*.suo
 
 # The generic Python "lib/" rule above unintentionally matches real TS source
 # directories (not Python venv dirs), so re-include them explicitly.

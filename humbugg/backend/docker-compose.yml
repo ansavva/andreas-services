@@ -8,5 +8,38 @@ services:
     volumes:
       - dynamodb-local:/data
 
+  backend:
+    build:
+      context: .
+      target: development
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: "5001"
+      DOTNET_USE_POLLING_FILE_WATCHER: "1"
+      APP_BASE_URL: http://localhost:5173
+      CORS_ORIGIN: http://localhost:5173
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+      AWS_DEFAULT_REGION: us-east-1
+      DYNAMODB_ENDPOINT_URL: http://dynamodb:8000
+      HUMBUGG_PROFILES_TABLE: humbugg-profiles
+      HUMBUGG_GROUPS_TABLE: humbugg-groups
+      HUMBUGG_GROUPMEMBERS_TABLE: humbugg-groupmembers
+      HUMBUGG_DRAWS_TABLE: humbugg-draws
+      HUMBUGG_AUDIT_EVENTS_TABLE: humbugg-audit-events
+      COGNITO_REGION: ${COGNITO_REGION:-us-east-1}
+      COGNITO_USER_POOL_ID: ${COGNITO_USER_POOL_ID:-us-east-1_example}
+      COGNITO_CLIENT_ID: ${COGNITO_CLIENT_ID:-humbugg-web}
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./Humbugg.Api:/src/Humbugg.Api
+      - api-bin:/src/Humbugg.Api/bin
+      - api-obj:/src/Humbugg.Api/obj
+    depends_on:
+      - dynamodb
+
 volumes:
   dynamodb-local:
+  api-bin:
+  api-obj:

@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Humbugg.Api/Humbugg.Api.csproj" />
+  <Project Path="Humbugg.Api.Tests/Humbugg.Api.Tests.csproj" />
+</Solution>

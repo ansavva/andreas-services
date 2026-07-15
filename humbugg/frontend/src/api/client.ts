@@ -1,121 +1,57 @@
-import axios, { AxiosRequestConfig } from 'axios';
+import type {
+  GroupDetail,
+  GroupSummary,
+  Membership,
+  Profile,
+  RecipientAssignment,
+  RevealAssignment,
+} from '../types';
 
-import { Group, GroupMember, Profile } from '../types';
-import { mapGroup, mapGroupMember, mapProfile } from './transformers';
-
-const API_PREFIX = '/api';
-
-export interface ApiRequestOptions extends AxiosRequestConfig {
-  token?: string | null;
-  baseUrl: string;
+export class ApiError extends Error {
+  constructor(public status: number, public code: string, message: string) {
+    super(message);
+  }
 }
 
-const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
-
-const buildUrl = (baseUrl: string, path: string) => {
-  const prefix = path.startsWith('/') ? path : `/${path}`;
-  return `${trimTrailingSlash(baseUrl)}${API_PREFIX}${prefix}`;
-};
-
-async function request<T>(path: string, { baseUrl, token, ...config }: ApiRequestOptions): Promise<T> {
-  if (!baseUrl) {
-    throw new Error('Missing API base URL.');
-  }
-  const response = await axios.request<T>({
-    url: buildUrl(baseUrl, path),
+async function request<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(`/api${path}`, {
+    ...init,
     headers: {
       'Content-Type': 'application/json',
-      ...(config.headers || {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
+      Authorization: `Bearer ${token}`,
+      ...init.headers,
     },
-    ...config
   });
-  return response.data;
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new ApiError(response.status, body?.error?.code ?? 'request_failed', body?.error?.message ?? 'Request failed.');
+  }
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
 }
 
-export async function fetchProfile(options: ApiRequestOptions): Promise<Profile> {
-  const payload = await request('/profile', options);
-  return mapProfile(payload);
-}
+const json = (method: string, data?: unknown): RequestInit => ({
+  method,
+  body: data === undefined ? undefined : JSON.stringify(data),
+});
 
-export async function fetchGroups(options: ApiRequestOptions): Promise<Group[]> {
-  const payload = await request<any[]>('/group', options);
-  return payload.map(mapGroup);
-}
-
-export async function fetchGroup(groupId: string, options: ApiRequestOptions): Promise<Group> {
-  const payload = await request(`/group/${groupId}`, options);
-  return mapGroup(payload);
-}
-
-export interface GroupPayload {
-  Name: string;
-  Description?: string;
-  SecretQuestion?: string;
-  SecretQuestionAnswer?: string;
-  SignUpDeadline?: string;
-  EventDate?: string;
-  SpendingLimit?: number;
-  GroupRules?: any[];
-  GroupMembers: GroupMemberPayload[];
-}
-
-export interface GroupMemberPayload {
-  Id?: string;
-  GroupId?: string;
-  UserId?: string;
-  IsAdmin?: boolean;
-  IsParticipating?: boolean;
-  RecipientId?: string | null;
-  FirstName?: string;
-  MiddleName?: string;
-  LastName?: string;
-  Address1?: string;
-  Address2?: string;
-  City?: string;
-  State?: string;
-  PostalCode?: string;
-  GiftSuggestionsDescription?: string;
-  GiftAvoidancesDescription?: string;
-  SecretQuestionAnswer?: string;
-}
-
-export async function createGroup(payload: GroupPayload, options: ApiRequestOptions): Promise<Group> {
-  const response = await request('/group', {
-    ...options,
-    method: 'POST',
-    data: payload
-  });
-  return mapGroup(response);
-}
-
-export async function createGroupMember(payload: GroupMemberPayload, options: ApiRequestOptions): Promise<GroupMember> {
-  const response = await request('/groupmember', {
-    ...options,
-    method: 'POST',
-    data: payload
-  });
-  return mapGroupMember(response);
-}
-
-export async function deleteGroupMember(groupMemberId: string, options: ApiRequestOptions): Promise<void> {
-  await request(`/groupmember/${groupMemberId}`, {
-    ...options,
-    method: 'DELETE'
-  });
-}
-
-export async function deleteGroup(groupId: string, options: ApiRequestOptions): Promise<void> {
-  await request(`/group/${groupId}`, {
-    ...options,
-    method: 'DELETE'
-  });
-}
-
-export async function triggerMatches(groupId: string, options: ApiRequestOptions): Promise<Group> {
-  const response = await request(`/group/createMatches/${groupId}`, {
-    ...options,
-    method: 'GET'
-  });
-  return mapGroup(response);
-}
+export const api = {
+  getMe: (token: string) => request<Profile>('/me', token),
+  saveMe: (token: string, display_name: string) => request<Profile>('/me', token, json('PUT', { display_name })),
+  listGroups: (token: string) => request<GroupSummary[]>('/groups', token),
+  createGroup: (token: string, data: Record<string, unknown>) => request<GroupDetail>('/groups', token, json('POST', data)),
+  getGroup: (token: string, id: string) => request<GroupDetail>(`/groups/${id}`, token),
+  updateGroup: (token: string, id: string, data: Record<string, unknown>) => request<GroupDetail>(`/groups/${id}`, token, json('PATCH', data)),
+  deleteGroup: (token: string, id: string) => request<void>(`/groups/${id}`, token, json('DELETE')),
+  rotateInvite: (token: string, id: string) => request<{ invite_url: string }>(`/groups/${id}/invite`, token, json('POST')),
+  joinGroup: (token: string, id: string, invite_token: string) => request<GroupDetail>(`/groups/${id}/join`, token, json('POST', { invite_token })),
+  getMembership: (token: string, id: string) => request<Membership>(`/groups/${id}/members/me`, token),
+  updateMembership: (token: string, id: string, data: Record<string, unknown>) => request<Membership>(`/groups/${id}/members/me`, token, json('PATCH', data)),
+  leaveGroup: (token: string, id: string) => request<void>(`/groups/${id}/members/me`, token, json('DELETE')),
+  setParticipation: (token: string, id: string, memberId: string, is_participating: boolean) => request<Membership>(`/groups/${id}/members/${memberId}/participation`, token, json('PATCH', { is_participating })),
+  setExclusions: (token: string, id: string, exclusions: string[][]) => request<GroupDetail>(`/groups/${id}/exclusions`, token, json('PUT', { exclusions })),
+  draw: (token: string, id: string) => request<RecipientAssignment>(`/groups/${id}/draw`, token, json('POST')),
+  reset: (token: string, id: string) => request<GroupDetail>(`/groups/${id}/reset`, token, json('POST')),
+  getAssignment: (token: string, id: string) => request<RecipientAssignment>(`/groups/${id}/assignment`, token),
+  reveal: (token: string, id: string, reason: string) => request<{ assignments: RevealAssignment[] }>(`/groups/${id}/assignment/reveal`, token, json('POST', { reason })),
+};

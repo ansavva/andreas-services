@@ -33,6 +33,11 @@ variable "api_endpoint" {
   type        = string
 }
 
+variable "frontend_api_domain" {
+  description = "SSR frontend HTTP API host without a scheme"
+  type        = string
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

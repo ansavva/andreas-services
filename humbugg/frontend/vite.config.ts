@@ -1,14 +1,29 @@
+import { reactRouter } from '@react-router/dev/vite';
+import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
 
-const isProduction = process.env.NODE_ENV === 'production';
-const basePath = isProduction ? process.env.VITE_APP_BASE_PATH || '/app/' : '/';
-
-export default defineConfig({
-  base: basePath,
-  plugins: [react()],
+export default defineConfig(({ command }) => ({
+  plugins: [tailwindcss(), reactRouter()],
+  resolve: { tsconfigPaths: true },
+  ssr: {
+    noExternal: command === 'build'
+      ? [
+          '@ansavva/design-system',
+          /^@base-ui\//,
+          /^@floating-ui\//,
+          '@babel/runtime',
+          'use-sync-external-store',
+          'clsx',
+          'tailwind-merge',
+        ]
+      : [],
+  },
   server: {
     port: Number(process.env.PORT || 5173),
-    open: true
-  }
-});
+    open: true,
+    proxy: {
+      '/api': 'http://127.0.0.1:5001',
+      '/health': 'http://127.0.0.1:5001',
+    },
+  },
+}));
