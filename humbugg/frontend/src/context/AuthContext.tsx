@@ -1,211 +1,112 @@
+import { Amplify } from 'aws-amplify';
 import {
-  createContext,
-  type ReactNode,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState
-} from 'react';
-import { fetchProfile } from '../api/client';
-import { Profile } from '../types';
+  confirmResetPassword,
+  confirmSignUp,
+  fetchAuthSession,
+  getCurrentUser,
+  resetPassword,
+  signIn,
+  signOut,
+  signUp,
+} from 'aws-amplify/auth';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-interface AuthState {
-  token: string | null;
-  apiBaseUrl: string;
-  cognitoDomain: string;
-  clientId: string;
-  clientSecret: string;
-  profile: Profile | null;
+export interface AuthConfig {
+  region: string;
+  userPoolId: string;
+  userPoolClientId: string;
 }
 
-interface LoginPayload {
-  apiBaseUrl: string;
-  cognitoDomain: string;
-  clientId: string;
-  clientSecret: string;
-  username: string;
-  password: string;
-}
-
-interface AuthContextValue extends AuthState {
+interface AuthContextValue {
+  authenticated: boolean;
   loading: boolean;
-  error: string | null;
-  loginWithPassword: (payload: LoginPayload) => Promise<void>;
-  setTokenManually: (token: string, apiBaseUrl: string) => Promise<void>;
-  logout: () => void;
+  email: string | null;
+  login(email: string, password: string): Promise<void>;
+  register(email: string, password: string): Promise<void>;
+  confirm(email: string, code: string): Promise<void>;
+  beginReset(email: string): Promise<void>;
+  finishReset(email: string, code: string, password: string): Promise<void>;
+  logout(): Promise<void>;
+  accessToken(): Promise<string>;
 }
 
-const defaultApiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string) ?? 'http://localhost:5001';
-const defaultCognitoDomain =
-  (import.meta.env.VITE_COGNITO_DOMAIN as string) ?? 'https://your-domain.auth.us-east-1.amazoncognito.com';
-const defaultClientId = (import.meta.env.VITE_COGNITO_CLIENT_ID as string) ?? 'humbugg-web';
-const defaultClientSecret = (import.meta.env.VITE_COGNITO_CLIENT_SECRET as string) ?? 'replace-me';
+const AuthContext = createContext<AuthContextValue | null>(null);
 
-const initialState: AuthState = {
-  token: null,
-  apiBaseUrl: defaultApiBaseUrl,
-  cognitoDomain: defaultCognitoDomain,
-  clientId: defaultClientId,
-  clientSecret: defaultClientSecret,
-  profile: null
-};
+export function AuthProvider({ children, config }: { children: ReactNode; config: AuthConfig }) {
+  const [authenticated, setAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [email, setEmail] = useState<string | null>(null);
 
-const STORAGE_KEY = 'humbugg-web-auth';
-
-const AuthContext = createContext<AuthContextValue | undefined>(undefined);
-
-const saveState = (state: AuthState) => {
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      ...state,
-      profile: state.profile ?? null
-    })
-  );
-};
-
-const loadState = (): AuthState => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return initialState;
+  const refresh = useCallback(async () => {
+    try {
+      const user = await getCurrentUser();
+      setAuthenticated(true);
+      setEmail(user.signInDetails?.loginId ?? user.username);
+    } catch {
+      setAuthenticated(false);
+      setEmail(null);
+    } finally {
+      setLoading(false);
     }
-    const parsed = JSON.parse(raw);
-    return {
-      ...initialState,
-      ...parsed,
-      profile: parsed.profile ?? null
-    };
-  } catch {
-    return initialState;
-  }
-};
-
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AuthState>(() => loadState());
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchAndStoreProfile = useCallback(
-    async (token: string | null, apiBaseUrl: string) => {
-      if (!token) {
-        setState((prev) => ({ ...prev, profile: null }));
-        return;
-      }
-      try {
-        const profile = await fetchProfile({ baseUrl: apiBaseUrl, token });
-        setState((prev) => ({ ...prev, profile }));
-      } catch (profileError) {
-        console.error(profileError);
-        setState((prev) => ({ ...prev, profile: null }));
-      }
-    },
-    []
-  );
-
-  useEffect(() => {
-    saveState(state);
-  }, [state]);
-
-  useEffect(() => {
-    if (state.token && !state.profile) {
-      fetchAndStoreProfile(state.token, state.apiBaseUrl);
-    }
-  }, [fetchAndStoreProfile, state.apiBaseUrl, state.profile, state.token]);
-
-  const loginWithPassword = useCallback(
-    async (payload: LoginPayload) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const body = new URLSearchParams({
-          grant_type: 'password',
-          scope: 'openid profile email',
-          username: payload.username,
-          password: payload.password,
-          client_id: payload.clientId
-        });
-        if (payload.clientSecret.trim()) {
-          body.append('client_secret', payload.clientSecret);
-        }
-
-        const response = await fetch(`${payload.cognitoDomain.replace(/\/+$/, '')}/oauth2/token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body
-        });
-
-        const tokenPayload = await response.json();
-        if (!response.ok) {
-          throw new Error(tokenPayload.error_description || 'Unable to authenticate.');
-        }
-
-        const token = tokenPayload.access_token as string;
-        const nextState: AuthState = {
-          token,
-          apiBaseUrl: payload.apiBaseUrl,
-          cognitoDomain: payload.cognitoDomain,
-          clientId: payload.clientId,
-          clientSecret: payload.clientSecret,
-          profile: null
-        };
-        setState(nextState);
-        saveState(nextState);
-        await fetchAndStoreProfile(token, payload.apiBaseUrl);
-      } catch (authError) {
-        if (authError instanceof Error) {
-          setError(authError.message);
-        } else {
-          setError('Unable to authenticate.');
-        }
-        throw authError;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [fetchAndStoreProfile]
-  );
-
-  const setTokenManually = useCallback(
-    async (token: string, apiBaseUrl: string) => {
-      const nextState: AuthState = {
-        ...state,
-        token,
-        apiBaseUrl,
-        profile: null
-      };
-      setState(nextState);
-      saveState(nextState);
-      await fetchAndStoreProfile(token, apiBaseUrl);
-    },
-    [fetchAndStoreProfile, state]
-  );
-
-  const logout = useCallback(() => {
-    setState(initialState);
-    saveState(initialState);
   }, []);
 
-  const value = useMemo<AuthContextValue>(
-    () => ({
-      ...state,
-      loading,
-      error,
-      loginWithPassword,
-      setTokenManually,
-      logout
-    }),
-    [error, loading, loginWithPassword, logout, setTokenManually, state]
-  );
+  useEffect(() => {
+    if (!config.userPoolId || !config.userPoolClientId) {
+      setLoading(false);
+      return;
+    }
+    Amplify.configure({
+      Auth: {
+        Cognito: {
+          userPoolId: config.userPoolId,
+          userPoolClientId: config.userPoolClientId,
+          loginWith: { email: true },
+          signUpVerificationMethod: 'code',
+          userAttributes: { email: { required: true } },
+        },
+      },
+    });
+    void refresh();
+  }, [config.userPoolClientId, config.userPoolId, refresh]);
+
+  const value = useMemo<AuthContextValue>(() => ({
+    authenticated,
+    loading,
+    email,
+    async login(username, password) {
+      const result = await signIn({ username, password });
+      if (!result.isSignedIn) throw new Error('Additional sign-in steps are required.');
+      await refresh();
+    },
+    async register(username, password) {
+      await signUp({ username, password, options: { userAttributes: { email: username } } });
+    },
+    async confirm(username, confirmationCode) {
+      await confirmSignUp({ username, confirmationCode });
+    },
+    async beginReset(username) {
+      await resetPassword({ username });
+    },
+    async finishReset(username, confirmationCode, newPassword) {
+      await confirmResetPassword({ username, confirmationCode, newPassword });
+    },
+    async logout() {
+      await signOut();
+      await refresh();
+    },
+    async accessToken() {
+      const session = await fetchAuthSession();
+      const token = session.tokens?.accessToken?.toString();
+      if (!token) throw new Error('Your session has expired. Please sign in again.');
+      return token;
+    },
+  }), [authenticated, email, loading, refresh]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export const useAuth = (): AuthContextValue => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
-};
+export function useAuth() {
+  const value = useContext(AuthContext);
+  if (!value) throw new Error('useAuth must be used inside AuthProvider.');
+  return value;
+}

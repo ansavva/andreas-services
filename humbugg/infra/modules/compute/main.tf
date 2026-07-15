@@ -28,6 +28,36 @@ resource "aws_ecr_lifecycle_policy" "backend" {
   })
 }
 
+resource "aws_ecr_repository" "frontend" {
+  name                 = "${var.project}-frontend-${var.environment}"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = var.tags
+}
+
+resource "aws_ecr_lifecycle_policy" "frontend" {
+  repository = aws_ecr_repository.frontend.name
+
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "Keep last 10 images"
+      selection = {
+        tagStatus   = "any"
+        countType   = "imageCountMoreThan"
+        countNumber = 10
+      }
+      action = {
+        type = "expire"
+      }
+    }]
+  })
+}
+
 resource "aws_iam_role" "lambda" {
   name = "${var.project}-lambda-role-${var.environment}"
 
@@ -47,6 +77,28 @@ resource "aws_iam_role" "lambda" {
 
 resource "aws_iam_role_policy_attachment" "lambda_basic" {
   role       = aws_iam_role.lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role" "frontend" {
+  name = "${var.project}-frontend-lambda-role-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "frontend_basic" {
+  role       = aws_iam_role.frontend.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
@@ -94,8 +146,39 @@ resource "aws_lambda_function" "backend" {
   }
 }
 
+resource "aws_lambda_function" "frontend" {
+  function_name = "${var.project}-frontend-${var.environment}"
+  role          = aws_iam_role.frontend.arn
+  package_type  = "Image"
+  image_uri     = "${aws_ecr_repository.frontend.repository_url}:latest"
+  timeout       = 30
+  memory_size   = 512
+
+  environment {
+    variables = {
+      NODE_ENV = "production"
+    }
+  }
+
+  tags = var.tags
+
+  lifecycle {
+    ignore_changes = [
+      image_uri,
+      environment,
+    ]
+  }
+}
+
 resource "aws_cloudwatch_log_group" "lambda" {
   name              = "/aws/lambda/${aws_lambda_function.backend.function_name}"
+  retention_in_days = 14
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_log_group" "frontend" {
+  name              = "/aws/lambda/${aws_lambda_function.frontend.function_name}"
   retention_in_days = 14
 
   tags = var.tags
@@ -119,9 +202,29 @@ resource "aws_apigatewayv2_integration" "backend" {
 
 resource "aws_apigatewayv2_route" "backend" {
   api_id    = aws_apigatewayv2_api.backend.id
-  route_key = "$default"
+  route_key = "ANY /api/{proxy+}"
 
-  target = "integrations/${aws_apigatewayv2_integration.backend.id}"
+  target             = "integrations/${aws_apigatewayv2_integration.backend.id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "health" {
+  api_id    = aws_apigatewayv2_api.backend.id
+  route_key = "GET /health"
+  target    = "integrations/${aws_apigatewayv2_integration.backend.id}"
+}
+
+resource "aws_apigatewayv2_authorizer" "cognito" {
+  api_id           = aws_apigatewayv2_api.backend.id
+  authorizer_type  = "JWT"
+  identity_sources = ["$request.header.Authorization"]
+  name             = "${var.project}-cognito-${var.environment}"
+
+  jwt_configuration {
+    audience = [var.cognito_client_id]
+    issuer   = "https://cognito-idp.us-east-1.amazonaws.com/${var.cognito_user_pool_id}"
+  }
 }
 
 resource "aws_apigatewayv2_stage" "backend" {
@@ -138,4 +241,43 @@ resource "aws_lambda_permission" "api_gateway" {
   function_name = aws_lambda_function.backend.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.backend.execution_arn}/*/*"
+}
+
+resource "aws_apigatewayv2_api" "frontend" {
+  name          = "${var.project}-frontend-${var.environment}"
+  protocol_type = "HTTP"
+  description   = "${var.project} SSR frontend"
+
+  tags = var.tags
+}
+
+resource "aws_apigatewayv2_integration" "frontend" {
+  api_id                 = aws_apigatewayv2_api.frontend.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = aws_lambda_function.frontend.invoke_arn
+  integration_method     = "POST"
+  payload_format_version = "2.0"
+  timeout_milliseconds   = 30000
+}
+
+resource "aws_apigatewayv2_route" "frontend" {
+  api_id    = aws_apigatewayv2_api.frontend.id
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.frontend.id}"
+}
+
+resource "aws_apigatewayv2_stage" "frontend" {
+  api_id      = aws_apigatewayv2_api.frontend.id
+  name        = "$default"
+  auto_deploy = true
+
+  tags = var.tags
+}
+
+resource "aws_lambda_permission" "frontend_api_gateway" {
+  statement_id  = "AllowAPIGatewayInvokeFrontend"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.frontend.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.frontend.execution_arn}/*/*"
 }

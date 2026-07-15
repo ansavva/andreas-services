@@ -14,6 +14,16 @@ variable "dynamodb_table_arns" {
   default     = {}
 }
 
+variable "cognito_user_pool_id" {
+  description = "Cognito user pool used to authorize API requests"
+  type        = string
+}
+
+variable "cognito_client_id" {
+  description = "Cognito web client accepted by the API authorizer"
+  type        = string
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

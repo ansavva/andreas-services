@@ -30,3 +30,101 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "frontend" {
     }
   }
 }
+
+resource "aws_dynamodb_table" "profiles" {
+  name         = "${var.project}-profiles"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "user_id"
+
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+
+  server_side_encryption { enabled = true }
+  tags = var.tags
+}
+
+resource "aws_dynamodb_table" "groups" {
+  name         = "${var.project}-groups"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "group_id"
+
+  attribute {
+    name = "group_id"
+    type = "S"
+  }
+
+  server_side_encryption { enabled = true }
+  tags = var.tags
+}
+
+resource "aws_dynamodb_table" "groupmembers" {
+  name         = "${var.project}-groupmembers"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "member_id"
+
+  attribute {
+    name = "member_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "group_id"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "user_id-index"
+    hash_key        = "user_id"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = "group_id-index"
+    hash_key        = "group_id"
+    projection_type = "ALL"
+  }
+
+  server_side_encryption { enabled = true }
+  tags = var.tags
+}
+
+resource "aws_dynamodb_table" "draws" {
+  name         = "${var.project}-draws"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "group_id"
+
+  attribute {
+    name = "group_id"
+    type = "S"
+  }
+
+  server_side_encryption { enabled = true }
+  tags = var.tags
+}
+
+resource "aws_dynamodb_table" "audit_events" {
+  name         = "${var.project}-audit-events"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "group_id"
+  range_key    = "event_id"
+
+  attribute {
+    name = "group_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "event_id"
+    type = "S"
+  }
+
+  server_side_encryption { enabled = true }
+  tags = var.tags
+}

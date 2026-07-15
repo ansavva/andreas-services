@@ -1,0 +1,4 @@
+**/bin
+**/obj
+**/.vs
+Humbugg.Api.Tests

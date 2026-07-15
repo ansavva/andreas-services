@@ -12,21 +12,21 @@ Humbugg is a gift-exchange platform served at `humbugg.andreas.services`:
 
 | Layer | Choice |
 |---|---|
-| Backend | Flask (Python) packaged as a Docker container Lambda behind API Gateway HTTP API |
+| Backend | ASP.NET Core 10 (C# 14) packaged as a Docker container Lambda behind API Gateway HTTP API |
 | Frontend | Vite + React + Tailwind SPA on S3 + CloudFront |
-| Auth | AWS Cognito (User Pool + App Client); backend validates JWTs, SPA uses password-grant via `/oauth2/token` |
-| Data | DynamoDB — tables `humbugg-profiles`, `humbugg-groups`, `humbugg-groupmembers` |
+| Auth | AWS Cognito (User Pool + secretless App Client); branded SPA screens use SRP through Amplify Auth and the API validates access tokens |
+| Data | DynamoDB — profiles, groups, groupmembers, private draws, and reveal audit events |
 | Infra | Terraform in `humbugg/infra/` (`modules/` + `envs/prod`) |
 
 ## Directory Structure
 
 ```
 humbugg/
-├── backend/                    # Flask app + Dockerfile, shipped as container Lambda
+├── backend/                    # ASP.NET Core app + Dockerfile, shipped as container Lambda
 │   ├── Dockerfile
-│   ├── pyproject.toml
-│   ├── poetry.lock
-│   └── humbugg_core/            # routes → services → repositories, plus auth/config
+│   ├── Humbugg.slnx
+│   ├── Humbugg.Api/             # controllers → services → DynamoDB repositories
+│   └── Humbugg.Api.Tests/       # matching and domain tests
 ├── frontend/                   # Vite + React SPA
 │   ├── index.html
 │   ├── vite.config.ts
@@ -53,9 +53,8 @@ The frontend stack adds a single Route53 A-alias record for `humbugg.andreas.ser
 ```bash
 # Backend
 cd humbugg/backend
-poetry install
-docker compose up dynamodb
-python -m humbugg_core.handlers.local.api.api_dev_server   # http://localhost:5001
+dotnet restore Humbugg.slnx
+docker compose up --build                                  # http://localhost:5001
 
 # Frontend (separate terminal)
 cd humbugg/frontend
@@ -66,7 +65,7 @@ npm run dev         # http://localhost:5173
 The frontend expects these Vite env vars (create `frontend/.env.local`):
 
 ```
-VITE_API_URL=http://localhost:5000
+VITE_API_URL=http://localhost:5001
 VITE_COGNITO_USER_POOL_ID=us-east-1_xxx
 VITE_COGNITO_CLIENT_ID=xxx
 VITE_AWS_REGION=us-east-1
@@ -122,9 +121,11 @@ Group `humbugg-prod` with `cancel-in-progress: false` — queued pushes wait for
 - `humbugg-profiles` — per-user profile and wish-list data
 - `humbugg-groups` — group metadata (owner, name, member list)
 - `humbugg-groupmembers` — group ↔ member relationship + assignment results
+- `humbugg-draws` — private giver → recipient maps, separate from ordinary group responses
+- `humbugg-audit-events` — durable emergency-reveal audit records
 
-All accessed via boto3 directly from the Lambda (no ORM, no VPC).
+All accessed through the AWS SDK for .NET directly from the Lambda (no ORM, no VPC).
 Local app runs use DynamoDB Local on `localhost:8001` and create these tables on
-startup. Unit tests should mock DynamoDB rather than depending on the local
-container. `humbugg_core.repositories.dynamodb` owns boto3/local table bootstrap;
-repository modules own Humbugg persistence operations.
+startup. Unit tests use repository fakes; local end-to-end testing uses the
+container. `DynamoDbBootstrap` owns local-only table bootstrap; repository
+classes own Humbugg persistence operations.

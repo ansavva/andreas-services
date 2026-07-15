@@ -1,36 +1,66 @@
+export type GroupStatus = 'open' | 'drawn';
+
+export interface ApiErrorPayload {
+  error: { code: string; message: string };
+}
+
 export interface Profile {
-  id: string;
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  pictureUrl?: string;
+  user_id: string;
+  display_name: string;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface GroupMember {
-  id: string;
-  groupId: string;
-  firstName?: string;
-  lastName?: string;
-  address1?: string;
-  address2?: string;
+export interface Membership {
+  member_id: string;
+  display_name: string;
+  is_organizer: boolean;
+  is_participating: boolean;
+  wishlist?: string;
+  avoidances?: string;
+  address?: Address;
+}
+
+export interface Address {
+  line1?: string;
+  line2?: string;
   city?: string;
-  state?: string;
-  postalCode?: string;
-  isAdmin: boolean;
-  isParticipating: boolean;
-  recipientId?: string | null;
-  giftSuggestionsDescription?: string;
-  giftAvoidancesDescription?: string;
+  region?: string;
+  postal_code?: string;
+  country?: string;
 }
 
-export interface Group {
-  id: string;
+export type ExclusionPair = [string, string];
+
+export interface GroupSummary {
+  group_id: string;
   name: string;
-  description?: string;
-  secretQuestion?: string;
-  secretQuestionAnswer?: string;
-  signUpDeadline?: string;
-  eventDate?: string;
-  spendingLimit?: number;
-  groupMembers: GroupMember[];
+  status: GroupStatus;
+  event_date?: string | null;
+  spending_limit?: number | null;
+  currency: 'USD';
+  is_organizer: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroupDetail extends GroupSummary {
+  description: string;
+  signup_deadline?: string | null;
+  exclusions: ExclusionPair[];
+  members: Membership[];
+  invite_url?: string;
+}
+
+export interface RecipientAssignment {
+  member_id: string;
+  display_name: string;
+  wishlist: string;
+  avoidances: string;
+  address: Address;
+}
+
+export interface RevealAssignment {
+  giver: Membership;
+  recipient: RecipientAssignment;
 }

@@ -1,0 +1,42 @@
+using Amazon.DynamoDBv2;
+using Amazon.DynamoDBv2.Model;
+using Humbugg.Api.Models;
+
+namespace Humbugg.Api.Data;
+
+internal interface IProfileRepository
+{
+    Task<ProfileRecord?> GetAsync(string userId, CancellationToken cancellationToken = default);
+    Task<ProfileRecord> UpsertAsync(string userId, string displayName, CancellationToken cancellationToken = default);
+}
+
+internal sealed class ProfileRepository(IAmazonDynamoDB db, HumbuggSettings settings) : IProfileRepository
+{
+    public async Task<ProfileRecord?> GetAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        var response = await db.GetItemAsync(new GetItemRequest
+        {
+            TableName = settings.ProfilesTable,
+            Key = new() { ["user_id"] = DynamoValues.S(userId) },
+            ConsistentRead = true
+        }, cancellationToken);
+        return response.IsItemSet ? Read(response.Item) : null;
+    }
+
+    public async Task<ProfileRecord> UpsertAsync(string userId, string displayName, CancellationToken cancellationToken = default)
+    {
+        var now = DateTimeOffset.UtcNow.ToString("O");
+        var response = await db.UpdateItemAsync(new UpdateItemRequest
+        {
+            TableName = settings.ProfilesTable,
+            Key = new() { ["user_id"] = DynamoValues.S(userId) },
+            UpdateExpression = "SET display_name = :name, updated_at = :now, created_at = if_not_exists(created_at, :now)",
+            ExpressionAttributeValues = new() { [":name"] = DynamoValues.S(displayName), [":now"] = DynamoValues.S(now) },
+            ReturnValues = ReturnValue.ALL_NEW
+        }, cancellationToken);
+        return Read(response.Attributes);
+    }
+
+    private static ProfileRecord Read(IReadOnlyDictionary<string, AttributeValue> item) => new(
+        item.String("user_id"), item.String("display_name"), item.String("created_at"), item.String("updated_at"));
+}

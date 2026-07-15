@@ -13,6 +13,16 @@ output "lambda_function_name" {
   value       = module.compute.lambda_function_name
 }
 
+output "frontend_ecr_repository_url" {
+  description = "SSR frontend ECR repository URL"
+  value       = module.compute.frontend_ecr_repository_url
+}
+
+output "frontend_lambda_function_name" {
+  description = "SSR frontend Lambda function name"
+  value       = module.compute.frontend_lambda_function_name
+}
+
 output "cognito_user_pool_id" {
   description = "Cognito User Pool ID"
   value       = module.auth.user_pool_id
