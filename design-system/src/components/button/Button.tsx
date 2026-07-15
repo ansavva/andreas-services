@@ -34,7 +34,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <BaseButton
         ref={ref}
         className={cn(
-          'inline-flex items-center justify-center whitespace-nowrap rounded-md font-medium transition-colors',
+          'inline-flex cursor-pointer items-center justify-center whitespace-nowrap rounded-md font-medium transition-colors',
           focusRing,
           disabledStyles,
           intentStyles[intent],
