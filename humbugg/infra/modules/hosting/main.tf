@@ -50,34 +50,6 @@ resource "aws_cloudfront_origin_access_control" "frontend" {
   signing_protocol                  = "sigv4"
 }
 
-# Keep the legacy SPA rewrite function under Terraform ownership for the first
-# SSR rollout. It is intentionally not associated with the distribution below,
-# allowing CloudFront to detach it before a later cleanup removes the function.
-resource "aws_cloudfront_function" "spa_rewrite" {
-  name    = "${var.project}-spa-rewrite"
-  runtime = "cloudfront-js-1.0"
-  comment = "SPA path rewrite for ${var.project}"
-  publish = true
-  code    = <<-EOT
-    function handler(event) {
-      var request = event.request;
-      var uri = request.uri;
-
-      if (uri === '/' || uri === '') {
-        request.uri = '/app/index.html';
-        return request;
-      }
-
-      if (uri.startsWith('/app') || uri.startsWith('/api')) {
-        return request;
-      }
-
-      request.uri = '/app' + uri;
-      return request;
-    }
-  EOT
-}
-
 resource "aws_cloudfront_distribution" "app" {
   enabled         = true
   is_ipv6_enabled = true
