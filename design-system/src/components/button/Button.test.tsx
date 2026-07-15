@@ -11,6 +11,7 @@ describe('Button', () => {
 
     const button = screen.getByRole('button', { name: 'Save' });
 
+    expect(button).toHaveClass('cursor-pointer');
     button.click();
     expect(onClick).toHaveBeenCalledTimes(1);
   });
