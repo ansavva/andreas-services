@@ -186,6 +186,13 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     resources = ["*"]
   }
 
+  # SES — service email identities, domain authentication, and simulator smoke tests
+  statement {
+    effect    = "Allow"
+    actions   = ["ses:*"]
+    resources = ["*"]
+  }
+
   # IAM — creating Lambda execution roles via CloudFormation/Terraform
   statement {
     effect = "Allow"

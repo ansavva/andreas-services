@@ -60,3 +60,8 @@ for non-apex hosts before any route reaches an origin.
 The backend `APP_BASE_URL` and `CORS_ORIGIN`, frontend build URL, Cognito
 callback/logout URLs, metadata, robots file, sitemap, invite links, deployment
 smoke tests, and public documentation all use `https://humbugg.com`.
+
+Transactional product email originates from `no-reply@humbugg.com`. Terraform
+owns SES identity verification, Easy DKIM, the `mail.humbugg.com` MAIL FROM
+records, and the initial DMARC monitoring policy. Deployment verifies all three
+authentication states and sends only to the AWS SES success simulator.
