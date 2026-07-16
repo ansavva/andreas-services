@@ -32,7 +32,7 @@ jobs:
       - name: Setup tflint
         uses: terraform-linters/setup-tflint@v4
         with:
-          tflint_version: v0.62.0
+          tflint_version: v0.63.1
 
       - name: tflint init
         run: tflint --init --config "$(pwd)/.tflint.hcl"
