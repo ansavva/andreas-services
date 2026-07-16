@@ -2,6 +2,7 @@ import { Button } from '@ansavva/design-system';
 import { useNavigate } from 'react-router';
 
 import { Shell } from '../components/Layout';
+import { canonicalUrl } from '../config/site';
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -14,7 +15,7 @@ export default function LandingPage() {
             '@context': 'https://schema.org',
             '@type': 'WebApplication',
             name: 'Humbugg',
-            url: 'https://humbugg.andreas.services/',
+            url: canonicalUrl('/'),
             applicationCategory: 'LifestyleApplication',
             operatingSystem: 'Web',
             offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },

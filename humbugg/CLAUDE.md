@@ -2,7 +2,7 @@
 
 ## What this service does
 
-Humbugg is a gift-exchange platform served at `humbugg.andreas.services`:
+Humbugg is a gift-exchange platform served at `humbugg.com`:
 
 1. Organizers create a group, invite members, and each member fills in a wish list / "do-not-give" list.
 2. A matching engine assigns each member a recipient (Secret Santa-style) while respecting exclusions.
@@ -43,10 +43,11 @@ humbugg/
 
 Terraform references (but doesn't own) two shared resources via `data` sources:
 
-- **ACM wildcard certificate** (`*.andreas.services`, us-east-1) — `data "aws_acm_certificate"`
-- **Route53 hosted zone** (`andreas.services`) — `data "aws_route53_zone"`
+- **Route53 hosted zones** (`humbugg.com` and `andreas.services`) — Terraform data sources
 
-The frontend stack adds a single Route53 A-alias record for `humbugg.andreas.services` pointing at its CloudFront distribution.
+The frontend stack provisions the service-specific us-east-1 ACM certificate
+and points apex, `www`, and the legacy hostname at one CloudFront distribution.
+CloudFront permanently redirects non-apex requests to `https://humbugg.com`.
 
 ## Local Development
 

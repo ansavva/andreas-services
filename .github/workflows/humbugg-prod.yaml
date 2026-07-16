@@ -149,6 +149,8 @@ jobs:
         run: cd humbugg/frontend && npm ci
 
       - name: Build frontend SSR and client assets
+        env:
+          VITE_APP_BASE_URL: https://humbugg.com
         run: cd humbugg/frontend && npm run build
 
       - name: Build & push SSR frontend
@@ -267,7 +269,7 @@ jobs:
         run: |
           set -euo pipefail
           jq -n \
-            --arg cors_origin "https://humbugg.andreas.services" \
+            --arg cors_origin "https://humbugg.com" \
             --arg cognito_region "${{ env.AWS_REGION }}" \
             --arg cognito_pool_id "${COGNITO_USER_POOL_ID}" \
             --arg cognito_client_id "${COGNITO_CLIENT_ID}" \
@@ -276,7 +278,7 @@ jobs:
             --arg groupmembers_table "humbugg-groupmembers" \
             --arg draws_table "humbugg-draws" \
             --arg audit_events_table "humbugg-audit-events" \
-            --arg app_base_url "https://humbugg.andreas.services" \
+            --arg app_base_url "https://humbugg.com" \
             --arg free_participant_limit "${{ vars.HUMBUGG_FREE_PARTICIPANT_LIMIT || '6' }}" \
             --arg plus_participant_limit "${{ vars.HUMBUGG_PLUS_PARTICIPANT_LIMIT || '50' }}" \
             --arg work_participant_limit "${{ vars.HUMBUGG_WORK_PARTICIPANT_LIMIT || '10000' }}" \
@@ -312,8 +314,10 @@ jobs:
             --arg cognito_region "${{ env.AWS_REGION }}" \
             --arg cognito_pool_id "${COGNITO_USER_POOL_ID}" \
             --arg cognito_client_id "${COGNITO_CLIENT_ID}" \
+            --arg app_base_url "https://humbugg.com" \
             '{Variables: {
               NODE_ENV: "production",
+              APP_BASE_URL: $app_base_url,
               COGNITO_REGION: $cognito_region,
               COGNITO_USER_POOL_ID: $cognito_pool_id,
               COGNITO_CLIENT_ID: $cognito_client_id
@@ -424,11 +428,17 @@ jobs:
       - name: Verify public and protected routes
         run: |
           set -euo pipefail
-          marketing=$(curl --fail --silent --show-error --retry 5 --retry-delay 5 https://humbugg.andreas.services/)
+          marketing=$(curl --fail --silent --show-error --retry 5 --retry-delay 5 https://humbugg.com/)
           grep -q "More wonder" <<< "$marketing"
           grep -q '<meta name="description"' <<< "$marketing"
-          curl --fail --retry 5 --retry-delay 5 https://humbugg.andreas.services/robots.txt >/dev/null
-          curl --fail --retry 5 --retry-delay 5 https://humbugg.andreas.services/sitemap.xml >/dev/null
-          curl --fail --retry 5 --retry-delay 5 https://humbugg.andreas.services/health >/dev/null
-          status=$(curl --silent --output /dev/null --write-out '%{http_code}' https://humbugg.andreas.services/api/groups)
+          curl --fail --retry 5 --retry-delay 5 https://humbugg.com/robots.txt >/dev/null
+          curl --fail --retry 5 --retry-delay 5 https://humbugg.com/sitemap.xml >/dev/null
+          curl --fail --retry 5 --retry-delay 5 https://humbugg.com/health >/dev/null
+          status=$(curl --silent --output /dev/null --write-out '%{http_code}' https://humbugg.com/api/groups)
           test "$status" = "401"
+          legacy=$(curl --silent --output /dev/null --write-out '%{http_code} %{redirect_url}' \
+            'https://humbugg.andreas.services/join/example?source=legacy')
+          test "$legacy" = "308 https://humbugg.com/join/example?source=legacy"
+          www=$(curl --silent --output /dev/null --write-out '%{http_code} %{redirect_url}' \
+            'https://www.humbugg.com/signup?source=www')
+          test "$www" = "308 https://humbugg.com/signup?source=www"

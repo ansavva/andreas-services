@@ -1,7 +1,9 @@
 # Humbugg
 
-Humbugg is a public Secret Santa application at
-`https://humbugg.andreas.services`. Organizers create an exchange and share a
+Humbugg is a public Secret Santa application at `https://humbugg.com`.
+`https://www.humbugg.com` and the previous
+`https://humbugg.andreas.services` hostname permanently redirect to the apex
+while preserving paths and query strings. Organizers create an exchange and share a
 private invitation link. Participants manage their own wish list, avoidances,
 and optional mailing address. A constrained draw reveals exactly one recipient
 to each participant.
@@ -46,3 +48,15 @@ terraform fmt -check -recursive humbugg/infra
 ```
 
 Production deploys remain owned by `.github/workflows/humbugg-prod.yaml`.
+
+## Production domain
+
+Terraform reads the existing public `humbugg.com` and `andreas.services`
+Route53 hosted zones. It owns a us-east-1 ACM certificate for `humbugg.com`,
+`www.humbugg.com`, and `humbugg.andreas.services`, plus their validation and
+alias records. The CloudFront viewer-request function returns a `308` redirect
+for non-apex hosts before any route reaches an origin.
+
+The backend `APP_BASE_URL` and `CORS_ORIGIN`, frontend build URL, Cognito
+callback/logout URLs, metadata, robots file, sitemap, invite links, deployment
+smoke tests, and public documentation all use `https://humbugg.com`.
