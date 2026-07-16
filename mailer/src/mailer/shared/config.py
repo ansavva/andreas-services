@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 
-from mailer.errors import ValidationError
+from mailer.shared.errors import ValidationError
 
 
 @dataclass(frozen=True)
@@ -25,7 +24,7 @@ class ServiceConfig:
         return f"{self.sender_name} <{self.sender_address}>"
 
 
-def _registry(raw: str) -> dict[str, ServiceConfig]:
+def parse_service_registry(raw: str) -> dict[str, ServiceConfig]:
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -50,19 +49,3 @@ def _registry(raw: str) -> dict[str, ServiceConfig]:
             kill_switch_parameter=value.get("kill_switch_parameter"),
         )
     return result
-
-
-def load_service_registry(*, local: bool = False) -> dict[str, ServiceConfig]:
-    name = "MAILER_LOCAL_SERVICES_JSON" if local else "MAILER_SERVICE_REGISTRY_JSON"
-    raw = os.environ.get(name)
-    if not raw:
-        raise ValidationError(f"{name} is required")
-    return _registry(raw)
-
-
-def configuration_set_registry() -> dict[str, str]:
-    raw = os.environ.get("MAILER_CONFIGURATION_SET_REGISTRY_JSON", "{}")
-    parsed = json.loads(raw)
-    if not isinstance(parsed, dict):
-        raise ValidationError("MAILER_CONFIGURATION_SET_REGISTRY_JSON must be an object")
-    return {str(key): str(value) for key, value in parsed.items()}

@@ -9,6 +9,9 @@ message copy.
 
 ## Boundaries
 
+- `src/mailer/shared` contains environment-independent code only.
+- `src/mailer/production` may depend on `shared`, never on `local`.
+- `src/mailer/local` may depend on `shared`, never on `production` or AWS SDKs.
 - The production API is IAM-authenticated and is the only application ingress.
 - S3 object keys and internal SQS messages are implementation details.
 - Caller identity, sender, configuration set, and status routing come from the

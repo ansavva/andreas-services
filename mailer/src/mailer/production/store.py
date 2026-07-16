@@ -13,9 +13,9 @@ from typing import Any
 import boto3
 from botocore.exceptions import ClientError
 
-from mailer.config import ServiceConfig
-from mailer.errors import ConflictError, RetryableError, ValidationError
-from mailer.models import AttachmentUploadRequest, MessageRequest, canonical_json
+from mailer.shared.config import ServiceConfig
+from mailer.shared.errors import ConflictError, RetryableError, ValidationError
+from mailer.shared.models import AttachmentUploadRequest, MessageRequest, canonical_json
 
 
 def _now() -> int:

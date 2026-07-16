@@ -4,7 +4,7 @@ COPY requirements.txt ${LAMBDA_TASK_ROOT}/requirements.txt
 RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
 COPY src/ ${LAMBDA_TASK_ROOT}/
 
-CMD ["mailer.handlers.ingress.handler"]
+CMD ["mailer.production.ingress.handler"]
 
 FROM python:3.11-slim AS local
 
@@ -19,4 +19,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ src/
 
 EXPOSE 8026
-CMD ["gunicorn", "--bind", "0.0.0.0:8026", "--workers", "1", "--threads", "4", "mailer.local_gateway:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8026", "--workers", "1", "--threads", "4", "mailer.local.api:app"]

@@ -1,6 +1,6 @@
-from mailer.config import ServiceConfig
-from mailer.mime import AttachmentContent, build_message
-from mailer.models import MessageRequest
+from mailer.shared.config import ServiceConfig
+from mailer.shared.mime import AttachmentContent, build_message
+from mailer.shared.models import MessageRequest
 
 
 def service():

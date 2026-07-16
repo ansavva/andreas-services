@@ -2,9 +2,9 @@ import hashlib
 
 import pytest
 
-from mailer.config import ServiceConfig
-from mailer.errors import ValidationError
-from mailer.models import AttachmentUploadRequest, MessageRequest
+from mailer.shared.config import ServiceConfig
+from mailer.shared.errors import ValidationError
+from mailer.shared.models import AttachmentUploadRequest, MessageRequest
 
 
 @pytest.fixture

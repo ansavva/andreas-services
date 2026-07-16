@@ -1,10 +1,10 @@
 import pytest
 from botocore.exceptions import ClientError
 
-from mailer.aws_store import AwsStore
-from mailer.config import ServiceConfig
-from mailer.errors import ConflictError
-from mailer.models import MessageRequest
+from mailer.production.store import AwsStore
+from mailer.shared.config import ServiceConfig
+from mailer.shared.errors import ConflictError
+from mailer.shared.models import MessageRequest
 
 
 class FakeDdb:

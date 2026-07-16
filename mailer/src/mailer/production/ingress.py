@@ -5,17 +5,17 @@ import json
 import logging
 from typing import Any
 
-from mailer.auth import authorize, principal_from_event
-from mailer.aws_store import AwsStore
-from mailer.config import load_service_registry
-from mailer.errors import (
+from mailer.production.auth import authorize, principal_from_event
+from mailer.production.config import load_service_registry
+from mailer.production.store import AwsStore
+from mailer.shared.errors import (
     AuthorizationError,
     ConflictError,
     MailerError,
     RetryableError,
     ValidationError,
 )
-from mailer.models import MAX_REQUEST_BYTES, AttachmentUploadRequest, MessageRequest
+from mailer.shared.models import MAX_REQUEST_BYTES, AttachmentUploadRequest, MessageRequest
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

@@ -3,8 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from mailer.config import ServiceConfig
-from mailer.errors import AuthorizationError
+from mailer.shared.config import ServiceConfig
+from mailer.shared.errors import AuthorizationError
 
 ASSUMED_ROLE = re.compile(r"^arn:aws:sts::(\d+):assumed-role/([^/]+)/[^/]+$")
 

@@ -1,8 +1,8 @@
 import pytest
 
-from mailer.auth import authorize, normalize_principal, principal_from_event
-from mailer.config import ServiceConfig
-from mailer.errors import AuthorizationError
+from mailer.production.auth import authorize, normalize_principal, principal_from_event
+from mailer.shared.config import ServiceConfig
+from mailer.shared.errors import AuthorizationError
 
 
 def service():

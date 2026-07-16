@@ -26,8 +26,8 @@ class FakeSmtp:
 def gateway(monkeypatch):
     monkeypatch.setenv("MAILER_ENVIRONMENT", "local")
     monkeypatch.setattr("smtplib.SMTP", FakeSmtp)
-    sys.modules.pop("mailer.local_gateway", None)
-    module = importlib.import_module("mailer.local_gateway")
+    sys.modules.pop("mailer.local.api", None)
+    module = importlib.import_module("mailer.local.api")
     FakeSmtp.messages.clear()
     return module
 

@@ -18,6 +18,21 @@ suppression, and normalized feedback.
 Attachments use `POST /v1/services/<service>/attachment-uploads` to obtain a
 15-minute presigned `PUT`; raw attachment bytes never pass through API Gateway.
 
+## Code boundaries
+
+The source tree makes the runtime boundary explicit:
+
+```text
+src/mailer/
+├── shared/       # contracts, validation, configuration, MIME, and ports
+├── production/   # AWS adapters and Lambda entry points
+└── local/        # Flask API, in-memory state, worker, and Mailpit transport
+```
+
+Both runtime packages depend on `shared`. They never depend on one another, and
+`shared` cannot import AWS, Flask, `production`, or `local` code. An architecture
+test enforces those dependency rules.
+
 ## Local flow
 
 ```bash
@@ -27,7 +42,7 @@ docker compose up --build
 - Mailer API: <http://127.0.0.1:8026>
 - Mailpit inbox: <http://127.0.0.1:8025>
 
-The local API uses the production routes and schemas without SigV4. Product
+The local API uses the shared routes and schemas without SigV4. Product
 email is delivered only to Mailpit, which has no outbound relay configured.
 
 Example:
