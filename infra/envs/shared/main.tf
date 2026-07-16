@@ -250,8 +250,15 @@ data "aws_iam_policy_document" "github_actions_permissions" {
 
   # SSM — infra workflows write outputs; code workflows read them
   statement {
-    effect  = "Allow"
-    actions = ["ssm:PutParameter", "ssm:GetParameter", "ssm:DeleteParameter"]
+    effect = "Allow"
+    actions = [
+      "ssm:AddTagsToResource",
+      "ssm:DeleteParameter",
+      "ssm:GetParameter",
+      "ssm:ListTagsForResource",
+      "ssm:PutParameter",
+      "ssm:RemoveTagsFromResource",
+    ]
     resources = [
       "arn:aws:ssm:*:*:parameter/scout/*",
       "arn:aws:ssm:*:*:parameter/storybook/*",
