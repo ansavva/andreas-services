@@ -33,10 +33,9 @@ internal sealed class GroupService(
     IGroupRepository groups,
     IMembershipRepository memberships,
     IMatchingService matching,
+    IPlanCatalog plans,
     HumbuggSettings settings) : IGroupService
 {
-    private const int MaxMembers = 50;
-
     public async Task<IReadOnlyList<GroupSummary>> ListAsync(CancellationToken cancellationToken = default)
     {
         var result = new List<GroupSummary>();
@@ -59,7 +58,7 @@ internal sealed class GroupService(
             Guid.NewGuid().ToString(), user.UserId, Validation.Required(request.Name, "name", 120),
             Validation.Optional(request.Description, 1000), dates.EventDate,
             dates.SignupDeadline, Validation.SpendingLimit(request.SpendingLimit),
-            "USD", GroupStatus.Open, Hash(secret), [], now, now);
+            "USD", PlanCode.Free, null, GroupStatus.Open, Hash(secret), [], now, now);
         await groups.CreateAsync(group, cancellationToken);
         await memberships.CreateAsync(group.GroupId, user.UserId, profile.DisplayName, true, cancellationToken);
         var detail = await GetAsync(group.GroupId, cancellationToken);
@@ -120,8 +119,8 @@ internal sealed class GroupService(
         if (inviteToken is null || !CryptographicOperations.FixedTimeEquals(
                 Encoding.UTF8.GetBytes(Hash(inviteToken)), Encoding.UTF8.GetBytes(group.InviteHash)))
             throw ApiException.Forbidden("This invitation is invalid or has expired.");
-        if ((await memberships.GetByGroupAsync(groupId, cancellationToken)).Count >= MaxMembers)
-            throw ApiException.Conflict($"Groups support up to {MaxMembers} participants.");
+        var currentMembers = await memberships.GetByGroupAsync(groupId, cancellationToken);
+        plans.EnsureParticipantCapacity(group.Plan, currentMembers.Count(item => item.IsParticipating));
         try { await memberships.CreateAsync(groupId, user.UserId, profile.DisplayName, false, cancellationToken); }
         catch (ConditionalCheckFailedException) { }
         return await GetAsync(groupId, cancellationToken);
@@ -162,6 +161,11 @@ internal sealed class GroupService(
         if (member is null || member.GroupId != groupId) throw ApiException.NotFound("Participant not found.");
         if (request.IsParticipating is null) throw ApiException.BadRequest("is_participating must be true or false.");
         if (member.IsOrganizer && !request.IsParticipating.Value) throw ApiException.Conflict("The organizer must participate in the exchange.");
+        if (request.IsParticipating.Value && !member.IsParticipating)
+        {
+            var currentMembers = await memberships.GetByGroupAsync(groupId, cancellationToken);
+            plans.EnsureParticipantCapacity(group.Plan, currentMembers.Count(item => item.IsParticipating));
+        }
         return Public(await memberships.UpdateParticipationAsync(memberId, request.IsParticipating.Value, cancellationToken));
     }
 
@@ -246,11 +250,11 @@ internal sealed class GroupService(
 
     private GroupDetail Detail(GroupRecord group, MembershipRecord member, IReadOnlyList<MembershipRecord> all) => new(
         group.GroupId, group.Name, group.Status, group.EventDate, Amount(group.SpendingLimitCents), group.Currency,
-        member.IsOrganizer, group.CreatedAt, group.UpdatedAt, group.Description, group.SignupDeadline,
+        group.Plan, plans.Get(group.Plan).ParticipantLimit, member.IsOrganizer, group.CreatedAt, group.UpdatedAt, group.Description, group.SignupDeadline,
         member.IsOrganizer ? group.Exclusions : [], all.Select(Public).ToList());
-    private static GroupSummary Summary(GroupRecord group, MembershipRecord member) => new(
+    private GroupSummary Summary(GroupRecord group, MembershipRecord member) => new(
         group.GroupId, group.Name, group.Status, group.EventDate, Amount(group.SpendingLimitCents), group.Currency,
-        member.IsOrganizer, group.CreatedAt, group.UpdatedAt);
+        group.Plan, plans.Get(group.Plan).ParticipantLimit, member.IsOrganizer, group.CreatedAt, group.UpdatedAt);
     private static Membership Public(MembershipRecord member) => new(member.MemberId, member.DisplayName, member.IsOrganizer, member.IsParticipating);
     private static Membership Private(MembershipRecord member) => new(member.MemberId, member.DisplayName, member.IsOrganizer, member.IsParticipating, member.Wishlist, member.Avoidances, member.Address);
     private static RecipientAssignment Assignment(MembershipRecord member) => new(member.MemberId, member.DisplayName, member.Wishlist, member.Avoidances, member.Address);

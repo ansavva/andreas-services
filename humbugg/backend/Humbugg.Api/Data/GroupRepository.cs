@@ -185,6 +185,8 @@ internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settin
         ["event_date"] = DynamoValues.S(group.EventDate ?? ""),
         ["signup_deadline"] = DynamoValues.S(group.SignupDeadline ?? ""),
         ["currency"] = DynamoValues.S(group.Currency),
+        ["plan"] = DynamoValues.S(group.Plan.ToString().ToLowerInvariant()),
+        ["entitlement_id"] = group.EntitlementId is null ? new AttributeValue { NULL = true } : DynamoValues.S(group.EntitlementId),
         ["status"] = DynamoValues.S(Status(group.Status)),
         ["invite_hash"] = DynamoValues.S(group.InviteHash),
         ["exclusions"] = DynamoValues.ExclusionsValue(group.Exclusions),
@@ -196,7 +198,13 @@ internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settin
     private static GroupRecord Read(IReadOnlyDictionary<string, AttributeValue> item) => new(
         item.String("group_id"), item.String("owner_user_id"), item.String("name"), item.String("description"),
         EmptyToNull(item.String("event_date")), EmptyToNull(item.String("signup_deadline")), item.Long("spending_limit_cents"),
-        item.String("currency", "USD"), ReadStatus(item.String("status")), item.String("invite_hash"), item.Exclusions(),
+        item.String("currency", "USD"), ReadPlan(item.String("plan")), EmptyToNull(item.String("entitlement_id")),
+        ReadStatus(item.String("status")), item.String("invite_hash"), item.Exclusions(),
         item.String("created_at"), item.String("updated_at"));
+    internal static PlanCode ReadPlan(string value) => string.IsNullOrWhiteSpace(value)
+        ? PlanCode.Free
+        : Enum.TryParse<PlanCode>(value, true, out var plan)
+            ? plan
+            : throw new InvalidOperationException($"Group contains unsupported plan '{value}'.");
     private static string? EmptyToNull(string value) => string.IsNullOrEmpty(value) ? null : value;
 }

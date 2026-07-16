@@ -14,3 +14,23 @@ docker compose up --build
 
 The containerized local API is available at `http://localhost:5001` and creates
 the required tables in DynamoDB Local. It never connects to production tables.
+
+## Plan configuration
+
+`GET /api/plans` returns the authoritative Free, Plus, and Work contract used by
+the backend. New and legacy groups default to Free. Each group stores its plan,
+while participant limits and prices are read from environment configuration:
+
+| Variable | Default |
+|---|---:|
+| `HUMBUGG_FREE_PARTICIPANT_LIMIT` | `6` |
+| `HUMBUGG_PLUS_PARTICIPANT_LIMIT` | `50` |
+| `HUMBUGG_WORK_PARTICIPANT_LIMIT` | `10000` |
+| `HUMBUGG_PLUS_PRICE_CENTS` | `1200` |
+| `HUMBUGG_WORK_PRICE_CENTS` | `9900` |
+
+Stripe product and price identifiers use `HUMBUGG_PLUS_PRODUCT_ID`,
+`HUMBUGG_PLUS_PRICE_ID`, `HUMBUGG_WORK_PRODUCT_ID`, and
+`HUMBUGG_WORK_PRICE_ID`. They remain empty until test-mode billing is prepared.
+Production values are GitHub environment variables injected into the Lambda;
+changing them requires a targeted app redeploy, not an application code change.
