@@ -24,10 +24,10 @@ class FakeSmtp:
 
 @pytest.fixture
 def gateway(monkeypatch):
-    monkeypatch.setenv("MAILER_ENVIRONMENT", "local")
+    monkeypatch.setenv("MAILER_RUNTIME", "development")
     monkeypatch.setattr("smtplib.SMTP", FakeSmtp)
-    sys.modules.pop("mailer.local.api", None)
-    module = importlib.import_module("mailer.local.api")
+    sys.modules.pop("mailer.entrypoints.development_server", None)
+    module = importlib.import_module("mailer.entrypoints.development_server")
     FakeSmtp.messages.clear()
     return module
 
@@ -51,10 +51,10 @@ def wait_for_messages(count):
         if len(FakeSmtp.messages) >= count:
             return
         time.sleep(0.01)
-    raise AssertionError("local delivery worker did not capture the message")
+    raise AssertionError("development delivery worker did not capture the message")
 
 
-def test_local_submission_is_captured_once(gateway):
+def test_development_submission_is_captured_once(gateway):
     client = gateway.app.test_client()
 
     first = client.post("/v1/services/humbugg/messages", json=message())
@@ -67,7 +67,7 @@ def test_local_submission_is_captured_once(gateway):
     assert FakeSmtp.messages[0]["To"] == "recipient@example.com"
 
 
-def test_local_submission_rejects_conflicting_id(gateway):
+def test_development_submission_rejects_conflicting_id(gateway):
     client = gateway.app.test_client()
     assert client.post("/v1/services/humbugg/messages", json=message()).status_code == 202
 
@@ -78,7 +78,7 @@ def test_local_submission_rejects_conflicting_id(gateway):
     assert response.status_code == 409
 
 
-def test_local_attachment_upload_and_capture(gateway):
+def test_development_attachment_upload_and_capture(gateway):
     client = gateway.app.test_client()
     content = b"pdf-content"
     digest = hashlib.sha256(content).hexdigest()
@@ -125,4 +125,4 @@ def test_local_attachment_upload_and_capture(gateway):
 
 def test_unknown_service_is_rejected(gateway):
     response = gateway.app.test_client().post("/v1/services/scout/messages", json=message())
-    assert response.status_code == 400
+    assert response.status_code == 403

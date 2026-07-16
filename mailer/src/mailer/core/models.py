@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from email.utils import parseaddr
 from typing import Any
 
-from mailer.shared.config import ServiceConfig
-from mailer.shared.errors import ValidationError
+from mailer.core.config import ServiceConfig
+from mailer.core.errors import ValidationError
 
 SCHEMA_VERSION = 1
 MAX_REQUEST_BYTES = 4 * 1024 * 1024

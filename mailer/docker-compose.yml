@@ -2,10 +2,10 @@ services:
   api:
     build:
       context: .
-      target: local
+      target: development
     environment:
-      MAILER_ENVIRONMENT: local
-      MAILER_LOCAL_SERVICES_JSON: >-
+      MAILER_RUNTIME: development
+      MAILER_DEVELOPMENT_SERVICES_JSON: >-
         {"humbugg":{"sender_name":"Humbugg","sender_address":"no-reply@humbugg.com","allowed_categories":["invitation","reminder","draw_completed","assignment_available","account_exchange_event"],"allowed_message_classes":["exchange"]}}
       MAILER_SMTP_HOST: mailpit
       MAILER_SMTP_PORT: "1025"

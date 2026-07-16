@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from email.message import EmailMessage
 from email.policy import SMTP
 
-from mailer.shared.config import ServiceConfig
-from mailer.shared.errors import ValidationError
-from mailer.shared.models import MAX_SES_MESSAGE_BYTES, MessageRequest
+from mailer.core.config import ServiceConfig
+from mailer.core.errors import ValidationError
+from mailer.core.models import MAX_SES_MESSAGE_BYTES, MessageRequest
 
 
 @dataclass(frozen=True)

@@ -13,8 +13,8 @@ To register a service:
    it S3 or internal send-queue permissions.
 4. Implement the versioned message request and optional attachment-upload calls.
 5. Consume normalized events from the assigned status queue idempotently.
-6. Add the service to `MAILER_LOCAL_SERVICES_JSON` so the same routes work with
-   the shared local Mailer and Mailpit.
+6. Add the service to `MAILER_DEVELOPMENT_SERVICES_JSON` so the same routes work
+   with the shared development server and Mailpit.
 
 Every application message ID must be stable across retries. Reusing an ID with
 different content is a conflict.

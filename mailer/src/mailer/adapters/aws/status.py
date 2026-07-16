@@ -8,7 +8,7 @@ from typing import Any
 
 import boto3
 
-from mailer.shared.config import ServiceConfig
+from mailer.core.config import ServiceConfig
 
 
 def occurred_at(value: str | None = None) -> str:

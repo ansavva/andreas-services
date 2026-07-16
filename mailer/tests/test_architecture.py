@@ -20,13 +20,14 @@ def _imports(path: Path) -> set[str]:
 def test_environment_dependency_boundaries() -> None:
     violations: list[str] = []
     forbidden = {
-        "shared": ("mailer.local", "mailer.production", "boto3", "flask"),
-        "local": ("mailer.production", "boto3"),
-        "production": ("mailer.local", "flask"),
+        "core": ("mailer.api", "mailer.adapters", "mailer.entrypoints", "boto3", "flask"),
+        "api": ("mailer.adapters", "mailer.entrypoints", "boto3"),
+        "adapters": ("mailer.api", "mailer.entrypoints", "flask"),
+        "entrypoints": ("flask",),
     }
 
     for layer, prefixes in forbidden.items():
-        for path in sorted((PACKAGE / layer).glob("*.py")):
+        for path in sorted((PACKAGE / layer).rglob("*.py")):
             for imported in sorted(_imports(path)):
                 crosses_boundary = any(
                     imported == prefix or imported.startswith(f"{prefix}.")

@@ -9,9 +9,11 @@ message copy.
 
 ## Boundaries
 
-- `src/mailer/shared` contains environment-independent code only.
-- `src/mailer/production` may depend on `shared`, never on `local`.
-- `src/mailer/local` may depend on `shared`, never on `production` or AWS SDKs.
+- `src/mailer/core` contains environment-independent code only.
+- `src/mailer/api` contains the one Flask API used by every HTTP runtime.
+- `src/mailer/adapters` contains AWS, in-memory, and Mailpit implementations.
+- `src/mailer/entrypoints` composes adapters for Lambda and development.
+- `core` cannot depend on the other layers; `api` can depend only on `core`.
 - The production API is IAM-authenticated and is the only application ingress.
 - S3 object keys and internal SQS messages are implementation details.
 - Caller identity, sender, configuration set, and status routing come from the
@@ -28,7 +30,7 @@ message copy.
 - Terraform under `infra/modules` and `infra/envs`
 - pytest and ruff for validation
 
-## Local development
+## Development environment
 
 Run `docker compose up --build` from this directory. The API listens on
 `127.0.0.1:8026` and Mailpit on `127.0.0.1:8025`.

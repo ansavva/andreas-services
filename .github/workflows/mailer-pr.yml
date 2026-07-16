@@ -72,9 +72,9 @@ jobs:
         run: docker compose -f mailer/docker-compose.yml config
       - name: Build Lambda image
         run: docker build --target lambda -t mailer:ci mailer
-      - name: Build local image
-        run: docker build --target local -t mailer-local:ci mailer
-      - name: Exercise local Mailer and Mailpit
+      - name: Build development image
+        run: docker build --target development -t mailer-development:ci mailer
+      - name: Exercise development Mailer and Mailpit
         run: |
           docker compose -f mailer/docker-compose.yml up -d --build
           trap 'docker compose -f mailer/docker-compose.yml down -v' EXIT

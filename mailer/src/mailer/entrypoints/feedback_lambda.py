@@ -9,12 +9,12 @@ from typing import Any
 import boto3
 from botocore.exceptions import ClientError
 
-from mailer.production.config import configuration_set_registry, load_service_registry
-from mailer.production.status import STATUS_RANK, publish, ttl_90_days
-from mailer.production.status import event as status_event
-from mailer.production.store import AwsStore
-from mailer.shared.errors import RetryableError
-from mailer.shared.models import recipient_hash
+from mailer.adapters.aws.config import configuration_set_registry, load_service_registry
+from mailer.adapters.aws.status import STATUS_RANK, publish, ttl_90_days
+from mailer.adapters.aws.status import event as status_event
+from mailer.adapters.aws.store import AwsStore
+from mailer.core.errors import RetryableError
+from mailer.core.models import recipient_hash
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

@@ -24,16 +24,18 @@ The source tree makes the runtime boundary explicit:
 
 ```text
 src/mailer/
-├── shared/       # contracts, validation, configuration, MIME, and ports
-├── production/   # AWS adapters and Lambda entry points
-└── local/        # Flask API, in-memory state, worker, and Mailpit transport
+├── core/          # contracts, validation, MIME construction, and ports
+├── api/           # the single Flask application and versioned routes
+├── adapters/      # AWS, in-memory, and Mailpit implementations
+└── entrypoints/   # Lambda handlers and the development HTTP server
 ```
 
-Both runtime packages depend on `shared`. They never depend on one another, and
-`shared` cannot import AWS, Flask, `production`, or `local` code. An architecture
-test enforces those dependency rules.
+API Gateway and the development server both invoke the same Flask application.
+Only their injected adapters differ. `core` has no framework or infrastructure
+dependencies, `api` depends only on `core`, and an architecture test enforces
+those dependency rules.
 
-## Local flow
+## Development flow
 
 ```bash
 docker compose up --build
@@ -42,8 +44,9 @@ docker compose up --build
 - Mailer API: <http://127.0.0.1:8026>
 - Mailpit inbox: <http://127.0.0.1:8025>
 
-The local API uses the shared routes and schemas without SigV4. Product
-email is delivered only to Mailpit, which has no outbound relay configured.
+The development server uses the same Flask routes and schemas without SigV4.
+Product email is delivered only to Mailpit, which has no outbound relay
+configured.
 
 Example:
 

@@ -652,7 +652,7 @@ resource "aws_lambda_function" "ingress" {
   image_uri     = "${aws_ecr_repository.mailer.repository_url}:latest"
   timeout       = 30
   memory_size   = 512
-  image_config { command = ["mailer.production.ingress.handler"] }
+  image_config { command = ["mailer.entrypoints.api_lambda.handler"] }
   environment {
     variables = {
       MAILER_CONTENT_BUCKET        = aws_s3_bucket.content.id
@@ -674,7 +674,7 @@ resource "aws_lambda_function" "sender" {
   timeout                        = 120
   memory_size                    = 1024
   reserved_concurrent_executions = 5
-  image_config { command = ["mailer.production.sender.handler"] }
+  image_config { command = ["mailer.entrypoints.sender_lambda.handler"] }
   environment {
     variables = {
       MAILER_CONTENT_BUCKET        = aws_s3_bucket.content.id
@@ -695,7 +695,7 @@ resource "aws_lambda_function" "feedback" {
   image_uri     = "${aws_ecr_repository.mailer.repository_url}:latest"
   timeout       = 120
   memory_size   = 512
-  image_config { command = ["mailer.production.feedback.handler"] }
+  image_config { command = ["mailer.entrypoints.feedback_lambda.handler"] }
   environment {
     variables = {
       MAILER_CONTENT_BUCKET                  = aws_s3_bucket.content.id

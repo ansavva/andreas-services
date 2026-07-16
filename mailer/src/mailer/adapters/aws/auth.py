@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import re
+from contextvars import ContextVar, Token
 from typing import Any
 
-from mailer.shared.config import ServiceConfig
-from mailer.shared.errors import AuthorizationError
+from mailer.core.config import ServiceConfig
+from mailer.core.errors import AuthorizationError
 
 ASSUMED_ROLE = re.compile(r"^arn:aws:sts::(\d+):assumed-role/([^/]+)/[^/]+$")
+_principal: ContextVar[str | None] = ContextVar("mailer_aws_principal", default=None)
 
 
 def normalize_principal(arn: str) -> str:
@@ -30,3 +32,21 @@ def principal_from_event(event: dict[str, Any]) -> str:
 def authorize(service: ServiceConfig, principal: str) -> None:
     if principal not in service.allowed_role_arns:
         raise AuthorizationError("caller is not registered for this service")
+
+
+class IamAuthorizer:
+    """Authorizes Flask requests using identity set by the Lambda entry point."""
+
+    def authorize(self, service: ServiceConfig) -> None:
+        principal = _principal.get()
+        if not principal:
+            raise AuthorizationError("authenticated IAM principal is missing")
+        authorize(service, principal)
+
+
+def set_principal(principal: str) -> Token[str | None]:
+    return _principal.set(principal)
+
+
+def reset_principal(token: Token[str | None]) -> None:
+    _principal.reset(token)

@@ -6,7 +6,7 @@ from email.message import EmailMessage
 
 
 class MailpitTransport:
-    """Local-only SMTP transport targeting the private Mailpit container."""
+    """Development SMTP transport targeting the private Mailpit container."""
 
     def __init__(self) -> None:
         self.host = os.environ.get("MAILER_SMTP_HOST", "mailpit")

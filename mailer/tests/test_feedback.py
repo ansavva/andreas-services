@@ -1,5 +1,5 @@
-from mailer.production import feedback
-from mailer.shared.config import ServiceConfig
+from mailer.core.config import ServiceConfig
+from mailer.entrypoints import feedback_lambda as feedback
 
 
 def service():

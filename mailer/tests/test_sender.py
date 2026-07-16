@@ -2,8 +2,8 @@ from io import BytesIO
 
 import pytest
 
-from mailer.production.sender import _attachments
-from mailer.shared.errors import AttachmentBlockedError, RetryableError
+from mailer.core.errors import AttachmentBlockedError, RetryableError
+from mailer.entrypoints.sender_lambda import _attachments
 
 
 class FakeS3:

@@ -4,19 +4,19 @@ import logging
 import queue
 import threading
 
-from mailer.local.state import LocalDelivery
-from mailer.shared.mime import build_message
-from mailer.shared.ports import MailTransport
+from mailer.adapters.memory.store import MemoryDelivery
+from mailer.core.mime import build_message
+from mailer.core.ports import MailTransport
 
-logger = logging.getLogger("mailer.local")
+logger = logging.getLogger("mailer.development")
 
 
-class LocalDeliveryWorker:
-    """Drains the ephemeral local queue into the configured local transport."""
+class MemoryDeliveryWorker:
+    """Drains the ephemeral queue into the configured development transport."""
 
     def __init__(
         self,
-        deliveries: queue.Queue[LocalDelivery],
+        deliveries: queue.Queue[MemoryDelivery],
         transport: MailTransport,
     ) -> None:
         self.deliveries = deliveries
@@ -25,7 +25,7 @@ class LocalDeliveryWorker:
     def start(self) -> None:
         threading.Thread(
             target=self._run,
-            name="mailer-local-delivery",
+            name="mailer-development-delivery",
             daemon=True,
         ).start()
 
@@ -40,14 +40,15 @@ class LocalDeliveryWorker:
                 )
                 self.transport.send(message)
                 logger.info(
-                    "local email captured service_id=%s application_message_id=%s category=%s",
+                    "development email captured service_id=%s "
+                    "application_message_id=%s category=%s",
                     delivery.service.service_id,
                     delivery.request.application_message_id,
                     delivery.request.category,
                 )
             except Exception:
                 logger.exception(
-                    "local email capture failed service_id=%s application_message_id=%s",
+                    "development email capture failed service_id=%s application_message_id=%s",
                     delivery.service.service_id,
                     delivery.request.application_message_id,
                 )

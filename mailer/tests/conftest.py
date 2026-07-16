@@ -6,7 +6,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def local_registry(monkeypatch):
     monkeypatch.setenv(
-        "MAILER_LOCAL_SERVICES_JSON",
+        "MAILER_DEVELOPMENT_SERVICES_JSON",
         json.dumps(
             {
                 "humbugg": {

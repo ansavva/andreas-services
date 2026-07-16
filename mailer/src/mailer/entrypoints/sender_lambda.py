@@ -8,14 +8,14 @@ from typing import Any
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from mailer.production.config import load_service_registry
-from mailer.production.status import event as status_event
-from mailer.production.status import publish
-from mailer.production.store import AwsStore
-from mailer.shared.config import ServiceConfig
-from mailer.shared.errors import AttachmentBlockedError, RetryableError, ValidationError
-from mailer.shared.mime import AttachmentContent, build_message
-from mailer.shared.models import MessageRequest, recipient_hash
+from mailer.adapters.aws.config import load_service_registry
+from mailer.adapters.aws.status import event as status_event
+from mailer.adapters.aws.status import publish
+from mailer.adapters.aws.store import AwsStore
+from mailer.core.config import ServiceConfig
+from mailer.core.errors import AttachmentBlockedError, RetryableError, ValidationError
+from mailer.core.mime import AttachmentContent, build_message
+from mailer.core.models import MessageRequest, recipient_hash
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import os
 
-from mailer.shared.config import ServiceConfig, parse_service_registry
-from mailer.shared.errors import ValidationError
+from mailer.core.config import ServiceConfig, parse_service_registry
+from mailer.core.errors import ValidationError
 
 
 def load_service_registry() -> dict[str, ServiceConfig]:

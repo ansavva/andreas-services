@@ -13,9 +13,9 @@ from typing import Any
 import boto3
 from botocore.exceptions import ClientError
 
-from mailer.shared.config import ServiceConfig
-from mailer.shared.errors import ConflictError, RetryableError, ValidationError
-from mailer.shared.models import AttachmentUploadRequest, MessageRequest, canonical_json
+from mailer.core.config import ServiceConfig
+from mailer.core.errors import ConflictError, RetryableError, ValidationError
+from mailer.core.models import AttachmentUploadRequest, MessageRequest, canonical_json
 
 
 def _now() -> int:
@@ -44,7 +44,11 @@ class AwsStore:
         return f"attachments/{service_id}/{message_id}/{attachment_id}"
 
     def register_attachment(
-        self, service: ServiceConfig, upload: AttachmentUploadRequest
+        self,
+        service: ServiceConfig,
+        upload: AttachmentUploadRequest,
+        *,
+        base_url: str | None = None,
     ) -> dict[str, Any]:
         attachment_id = f"att_{secrets.token_urlsafe(18)}"
         object_key = self.attachment_key(

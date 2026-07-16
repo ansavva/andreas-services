@@ -7,14 +7,14 @@ import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from mailer.shared.config import ServiceConfig
-from mailer.shared.errors import ConflictError, ValidationError
-from mailer.shared.mime import AttachmentContent
-from mailer.shared.models import AttachmentUploadRequest, MessageRequest
+from mailer.core.config import ServiceConfig
+from mailer.core.errors import ConflictError, ValidationError
+from mailer.core.mime import AttachmentContent
+from mailer.core.models import AttachmentUploadRequest, MessageRequest
 
 
 @dataclass
-class LocalUpload:
+class MemoryUpload:
     service_id: str
     attachment_id: str
     token: str
@@ -24,27 +24,27 @@ class LocalUpload:
 
 
 @dataclass(frozen=True)
-class LocalDelivery:
+class MemoryDelivery:
     service: ServiceConfig
     request: MessageRequest
     attachments: list[AttachmentContent]
 
 
-class LocalState:
-    """Ephemeral local replacements for S3, DynamoDB, and SQS."""
+class MemoryStore:
+    """Ephemeral development replacements for S3, DynamoDB, and SQS."""
 
     def __init__(self) -> None:
         self.lock = threading.Lock()
-        self.uploads: dict[str, LocalUpload] = {}
+        self.uploads: dict[str, MemoryUpload] = {}
         self.messages: dict[str, str] = {}
-        self.deliveries: queue.Queue[LocalDelivery] = queue.Queue()
+        self.deliveries: queue.Queue[MemoryDelivery] = queue.Queue()
 
-    def register_upload(
+    def _register_upload(
         self, service_id: str, upload_request: AttachmentUploadRequest
-    ) -> LocalUpload:
+    ) -> MemoryUpload:
         attachment_id = f"att_{secrets.token_urlsafe(18)}"
         token = secrets.token_urlsafe(32)
-        upload = LocalUpload(
+        upload = MemoryUpload(
             service_id=service_id,
             attachment_id=attachment_id,
             token=token,
@@ -54,6 +54,27 @@ class LocalState:
         with self.lock:
             self.uploads[token] = upload
         return upload
+
+    def register_attachment(
+        self,
+        service: ServiceConfig,
+        upload: AttachmentUploadRequest,
+        *,
+        base_url: str | None = None,
+    ) -> dict[str, object]:
+        if not base_url:
+            raise ValidationError("development attachment uploads require an API base URL")
+        registered = self._register_upload(service.service_id, upload)
+        return {
+            "schema_version": 1,
+            "attachment_id": registered.attachment_id,
+            "upload_url": f"{base_url}/v1/development-uploads/{registered.token}",
+            "required_headers": {
+                "content-type": registered.request.content_type,
+                "x-mailer-content-sha256": registered.request.sha256,
+            },
+            "expires_at": registered.expires_at.isoformat().replace("+00:00", "Z"),
+        }
 
     def put_upload(self, token: str, data: bytes, content_type: str, checksum: str) -> None:
         with self.lock:
@@ -101,7 +122,7 @@ class LocalState:
                 )
         return result
 
-    def admit(self, service: ServiceConfig, message: MessageRequest) -> None:
+    def admit_message(self, service: ServiceConfig, message: MessageRequest) -> None:
         message_key = f"{service.service_id}#{message.application_message_id}"
         request_hash = message.canonical_hash()
         attachments = self.attachments_for(service.service_id, message)
@@ -112,4 +133,4 @@ class LocalState:
             if existing:
                 return
             self.messages[message_key] = request_hash
-        self.deliveries.put(LocalDelivery(service, message, attachments))
+        self.deliveries.put(MemoryDelivery(service, message, attachments))

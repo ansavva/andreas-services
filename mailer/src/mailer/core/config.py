@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-from mailer.shared.errors import ValidationError
+from mailer.core.errors import ValidationError
 
 
 @dataclass(frozen=True)
