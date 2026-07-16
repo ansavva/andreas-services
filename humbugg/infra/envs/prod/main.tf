@@ -104,3 +104,11 @@ module "hosting" {
 
   tags = local.common_tags
 }
+
+module "email" {
+  source = "../../modules/email"
+
+  aws_region      = var.aws_region
+  domain_name     = local.domain_name
+  route53_zone_id = data.aws_route53_zone.humbugg.zone_id
+}

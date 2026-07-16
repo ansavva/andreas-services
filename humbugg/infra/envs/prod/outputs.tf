@@ -42,3 +42,13 @@ output "cloudfront_distribution_id" {
   description = "CloudFront distribution ID"
   value       = module.hosting.cloudfront_distribution_id
 }
+
+output "email_from_address" {
+  description = "Verified transactional email From address"
+  value       = module.email.from_address
+}
+
+output "ses_identity_arn" {
+  description = "Verified SES domain identity ARN"
+  value       = module.email.identity_arn
+}

@@ -85,6 +85,7 @@ All secrets/values live in the `humbugg-production` GitHub Actions environment. 
 | `/humbugg/prod/cognito-client-id` | Cognito app-client ID |
 | `/humbugg/prod/s3-bucket` | Frontend S3 bucket |
 | `/humbugg/prod/cf-dist-id` | CloudFront distribution ID |
+| `/humbugg/prod/email-from-address` | Verified transactional sender (`no-reply@humbugg.com`) |
 
 ## GitHub Workflows
 

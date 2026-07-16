@@ -86,6 +86,11 @@ This creates:
 - GitHub Actions OIDC provider and IAM role
 - S3 bucket for Lambda code artifacts
 
+The shared GitHub Actions role also carries SES permissions so service-owned
+Terraform can manage email identities and deployment workflows can use the SES
+mailbox simulator. SES identities and DNS records remain in each service's
+Terraform state; the shared stack owns only the cross-service deployment role.
+
 ### 2. Update Domain Registrar
 
 After apply, get the name servers:

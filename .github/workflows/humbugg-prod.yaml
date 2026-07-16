@@ -55,6 +55,7 @@ jobs:
       infra: ${{ steps.filter.outputs.infra }}
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      shared_infra: ${{ steps.filter.outputs.shared_infra }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -70,6 +71,8 @@ jobs:
             frontend:
               - 'humbugg/frontend/**'
               - '.github/workflows/humbugg-prod.yaml'
+            shared_infra:
+              - 'infra/**'
 
   # ---------------------------------------------------------------------------
   # Build both Lambda images and the matching client asset bundle before
@@ -82,6 +85,7 @@ jobs:
       !cancelled()
       && (
         (github.event_name == 'push'
+         && needs.detect-changes.outputs.shared_infra != 'true'
          && (needs.detect-changes.outputs.infra == 'true'
              || needs.detect-changes.outputs.backend == 'true'
              || needs.detect-changes.outputs.frontend == 'true'))
@@ -178,7 +182,9 @@ jobs:
       !cancelled()
       && needs.build-and-push.result != 'failure'
       && (
-        (github.event_name == 'push' && needs.detect-changes.outputs.infra == 'true')
+        (github.event_name == 'push'
+         && needs.detect-changes.outputs.shared_infra != 'true'
+         && needs.detect-changes.outputs.infra == 'true')
         || (github.event_name == 'workflow_dispatch' && inputs.run_infra)
         || github.event_name == 'workflow_run'
       )
@@ -208,6 +214,34 @@ jobs:
       - name: Terraform apply
         run: terraform -chdir=humbugg/infra/envs/prod apply -auto-approve -input=false
 
+      - name: Wait for SES domain authentication
+        run: |
+          set -euo pipefail
+          for attempt in {1..60}; do
+            read -r verification dkim mail_from < <(aws sesv2 get-email-identity \
+              --region "${{ env.AWS_REGION }}" \
+              --email-identity humbugg.com \
+              --query '[VerificationStatus,DkimAttributes.Status,MailFromAttributes.MailFromDomainStatus]' \
+              --output text)
+            echo "SES status: identity=${verification} dkim=${dkim} mail-from=${mail_from}"
+            if [[ "$verification" == "SUCCESS" && "$dkim" == "SUCCESS" && "$mail_from" == "SUCCESS" ]]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          aws sesv2 get-email-identity --region "${{ env.AWS_REGION }}" --email-identity humbugg.com
+          exit 1
+
+      - name: Send SES mailbox-simulator smoke test
+        run: |
+          aws sesv2 send-email \
+            --region "${{ env.AWS_REGION }}" \
+            --from-email-address no-reply@humbugg.com \
+            --destination '{"ToAddresses":["success@simulator.amazonses.com"]}' \
+            --content '{"Simple":{"Subject":{"Data":"Humbugg SES authentication smoke test","Charset":"UTF-8"},"Body":{"Text":{"Data":"Automated deployment verification using the SES mailbox simulator.","Charset":"UTF-8"}}}}' \
+            --query MessageId \
+            --output text
+
       - name: Write outputs to SSM
         run: |
           set -euo pipefail
@@ -223,6 +257,7 @@ jobs:
           put cognito-client-id    "$(tf cognito_client_id)"
           put s3-bucket            "$(tf s3_frontend_bucket)"
           put cf-dist-id           "$(tf cloudfront_distribution_id)"
+          put email-from-address   "$(tf email_from_address)"
 
   # ---------------------------------------------------------------------------
   # Update Lambda env vars and pin function code to :sha.
@@ -264,6 +299,7 @@ jobs:
           echo "FRONTEND_ECR_URL=$(get frontend-ecr-url)"           >> "$GITHUB_ENV"
           echo "COGNITO_USER_POOL_ID=$(get cognito-user-pool-id)"   >> "$GITHUB_ENV"
           echo "COGNITO_CLIENT_ID=$(get cognito-client-id)"         >> "$GITHUB_ENV"
+          echo "HUMBUGG_EMAIL_FROM_ADDRESS=$(get email-from-address)" >> "$GITHUB_ENV"
 
       - name: Update Lambda env vars + code
         run: |
@@ -279,6 +315,7 @@ jobs:
             --arg draws_table "humbugg-draws" \
             --arg audit_events_table "humbugg-audit-events" \
             --arg app_base_url "https://humbugg.com" \
+            --arg email_from_address "${HUMBUGG_EMAIL_FROM_ADDRESS}" \
             --arg free_participant_limit "${{ vars.HUMBUGG_FREE_PARTICIPANT_LIMIT || '6' }}" \
             --arg plus_participant_limit "${{ vars.HUMBUGG_PLUS_PARTICIPANT_LIMIT || '50' }}" \
             --arg work_participant_limit "${{ vars.HUMBUGG_WORK_PARTICIPANT_LIMIT || '10000' }}" \
@@ -299,6 +336,7 @@ jobs:
               HUMBUGG_DRAWS_TABLE: $draws_table,
               HUMBUGG_AUDIT_EVENTS_TABLE: $audit_events_table,
               APP_BASE_URL: $app_base_url,
+              HUMBUGG_EMAIL_FROM_ADDRESS: $email_from_address,
               HUMBUGG_FREE_PARTICIPANT_LIMIT: $free_participant_limit,
               HUMBUGG_PLUS_PARTICIPANT_LIMIT: $plus_participant_limit,
               HUMBUGG_WORK_PARTICIPANT_LIMIT: $work_participant_limit,

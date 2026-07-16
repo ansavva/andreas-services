@@ -23,3 +23,20 @@ Viewer requests for `www.humbugg.com` or `humbugg.andreas.services` receive a
 permanent `308` redirect with the original path and raw query string. Redirect
 behavior is tested locally and in the PR workflow; the production workflow
 also verifies both legacy hostnames after deployment.
+
+## SES domain authentication
+
+The `email` module repairs or creates the `humbugg.com` SES domain identity in
+us-east-1 using the idempotent SES verification APIs. Terraform owns:
+
+- the `_amazonses` identity-verification TXT record;
+- three Easy DKIM CNAME records;
+- `mail.humbugg.com` as the custom MAIL FROM domain, with SES MX and SPF;
+- `_dmarc.humbugg.com` with an initial monitoring policy (`p=none`) and relaxed
+  DKIM/SPF alignment suitable for the MAIL FROM subdomain.
+
+Production transactional mail uses `no-reply@humbugg.com`. The deploy workflow
+waits for identity, DKIM, and MAIL FROM status to reach `SUCCESS`, then sends one
+message to the SES success mailbox simulator. It never sends a test message to
+a real recipient. Tighten DMARC only after deliverability monitoring is in
+place; issue #118 owns bounce, complaint, suppression, and sending-health work.
