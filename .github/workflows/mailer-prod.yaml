@@ -1,0 +1,215 @@
+name: Mailer · Deploy · Prod
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mailer/**'
+      - 'infra/**'
+      - '.github/workflows/mailer-prod.yaml'
+  workflow_dispatch:
+    inputs:
+      run_infra:
+        description: 'Run Terraform apply'
+        type: boolean
+        default: true
+      run_app:
+        description: 'Build and deploy Lambda image'
+        type: boolean
+        default: true
+  workflow_run:
+    workflows: ["Shared infra · Terraform apply · Prod"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: mailer-prod
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: mailer-production
+
+jobs:
+  detect-changes:
+    name: Detect Changes
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      infra: ${{ steps.filter.outputs.infra }}
+      app: ${{ steps.filter.outputs.app }}
+      shared_infra: ${{ steps.filter.outputs.shared_infra }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            infra:
+              - 'mailer/infra/**'
+              - '.github/workflows/mailer-prod.yaml'
+            app:
+              - 'mailer/src/**'
+              - 'mailer/Dockerfile'
+              - 'mailer/requirements.txt'
+              - '.github/workflows/mailer-prod.yaml'
+            shared_infra:
+              - 'infra/**'
+
+  bootstrap-ecr:
+    name: Bootstrap ECR
+    needs: detect-changes
+    if: |
+      !cancelled()
+      && (
+        github.event_name == 'workflow_run'
+        || (github.event_name == 'workflow_dispatch' && (inputs.run_infra || inputs.run_app))
+        || (github.event_name == 'push'
+            && needs.detect-changes.outputs.shared_infra != 'true'
+            && (needs.detect-changes.outputs.infra == 'true' || needs.detect-changes.outputs.app == 'true'))
+      )
+    runs-on: ubuntu-latest
+    environment: mailer-production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+      - name: Create the Terraform-owned image repository first
+        run: |
+          terraform -chdir=mailer/infra/envs/prod init -input=false
+          terraform -chdir=mailer/infra/envs/prod apply \
+            -auto-approve -input=false \
+            -target=module.platform.aws_ecr_repository.mailer \
+            -target=module.platform.aws_ecr_lifecycle_policy.mailer
+
+  build-and-push:
+    name: Build & Push Image
+    needs: [detect-changes, bootstrap-ecr]
+    if: |
+      !cancelled()
+      && (
+        github.event_name == 'workflow_run'
+        || (github.event_name == 'workflow_dispatch' && (inputs.run_infra || inputs.run_app))
+        || (github.event_name == 'push'
+            && needs.detect-changes.outputs.shared_infra != 'true'
+            && (needs.detect-changes.outputs.infra == 'true' || needs.detect-changes.outputs.app == 'true'))
+      )
+    runs-on: ubuntu-latest
+    environment: mailer-production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and push
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          IMAGE="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}"
+          docker build --target lambda -t "${IMAGE}:${GITHUB_SHA}" -t "${IMAGE}:latest" mailer
+          docker push "${IMAGE}:${GITHUB_SHA}"
+          docker push "${IMAGE}:latest"
+
+  deploy-infra:
+    name: Terraform Apply
+    needs: [detect-changes, bootstrap-ecr, build-and-push]
+    if: |
+      !cancelled()
+      && needs.build-and-push.result == 'success'
+      && (
+        github.event_name == 'workflow_run'
+        || (github.event_name == 'workflow_dispatch' && inputs.run_infra)
+        || (github.event_name == 'push' && needs.detect-changes.outputs.infra == 'true')
+      )
+    runs-on: ubuntu-latest
+    environment: mailer-production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: Apply
+        run: |
+          terraform -chdir=mailer/infra/envs/prod init -input=false
+          terraform -chdir=mailer/infra/envs/prod apply -auto-approve -input=false
+
+  update-lambda:
+    name: Update Lambda Functions
+    needs: [detect-changes, build-and-push, deploy-infra]
+    if: |
+      !cancelled()
+      && needs.build-and-push.result == 'success'
+      && needs.deploy-infra.result != 'failure'
+      && (
+        github.event_name == 'workflow_run'
+        || github.event_name == 'push'
+        || (github.event_name == 'workflow_dispatch' && inputs.run_app)
+      )
+    runs-on: ubuntu-latest
+    environment: mailer-production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: Read Terraform outputs
+        run: |
+          terraform -chdir=mailer/infra/envs/prod init -input=false
+          echo "ECR_URL=$(terraform -chdir=mailer/infra/envs/prod output -raw ecr_repository_url)" >> "$GITHUB_ENV"
+          echo "CONTENT_BUCKET=$(terraform -chdir=mailer/infra/envs/prod output -raw content_bucket)" >> "$GITHUB_ENV"
+          echo "MESSAGES_TABLE=$(terraform -chdir=mailer/infra/envs/prod output -raw messages_table)" >> "$GITHUB_ENV"
+          echo "SUPPRESSIONS_TABLE=$(terraform -chdir=mailer/infra/envs/prod output -raw suppressions_table)" >> "$GITHUB_ENV"
+          echo "SERVICE_REGISTRY=$(terraform -chdir=mailer/infra/envs/prod output -raw service_registry_json)" >> "$GITHUB_ENV"
+          echo "CONFIG_SET_REGISTRY=$(terraform -chdir=mailer/infra/envs/prod output -raw configuration_set_registry_json)" >> "$GITHUB_ENV"
+          terraform -chdir=mailer/infra/envs/prod output -json lambda_function_names > /tmp/functions.json
+      - name: Pin code and environment
+        run: |
+          set -euo pipefail
+          IMAGE="${ECR_URL}:${GITHUB_SHA}"
+          for KIND in ingress sender feedback; do
+            NAME=$(jq -r ".${KIND}" /tmp/functions.json)
+            aws lambda update-function-code --function-name "$NAME" --image-uri "$IMAGE" >/dev/null
+            aws lambda wait function-updated --function-name "$NAME"
+            if [[ "$KIND" == "feedback" ]]; then
+              jq -n \
+                --arg bucket "$CONTENT_BUCKET" \
+                --arg messages "$MESSAGES_TABLE" \
+                --arg suppressions "$SUPPRESSIONS_TABLE" \
+                --arg registry "$SERVICE_REGISTRY" \
+                --arg configSets "$CONFIG_SET_REGISTRY" \
+                '{Variables:{MAILER_CONTENT_BUCKET:$bucket,MAILER_MESSAGES_TABLE:$messages,MAILER_SUPPRESSIONS_TABLE:$suppressions,MAILER_SERVICE_REGISTRY_JSON:$registry,MAILER_CONFIGURATION_SET_REGISTRY_JSON:$configSets}}' > /tmp/env.json
+            else
+              jq -n \
+                --arg bucket "$CONTENT_BUCKET" \
+                --arg messages "$MESSAGES_TABLE" \
+                --arg suppressions "$SUPPRESSIONS_TABLE" \
+                --arg registry "$SERVICE_REGISTRY" \
+                '{Variables:{MAILER_CONTENT_BUCKET:$bucket,MAILER_MESSAGES_TABLE:$messages,MAILER_SUPPRESSIONS_TABLE:$suppressions,MAILER_SERVICE_REGISTRY_JSON:$registry}}' > /tmp/env.json
+            fi
+            aws lambda update-function-configuration --function-name "$NAME" --environment file:///tmp/env.json >/dev/null
+            aws lambda wait function-updated --function-name "$NAME"
+          done

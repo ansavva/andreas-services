@@ -15,6 +15,11 @@ This directory manages **cross-cutting infrastructure** shared by all services i
 - **Purpose**: SSL/TLS for all service subdomains
 - **Used by**: All CloudFront distributions
 
+### 3. SES Account Suppression
+- **Reasons**: hard bounces and complaints
+- **Purpose**: protect the shared AWS sender reputation across Mailer consumers
+- **Used by**: Mailer and every application sending through the AWS SES account
+
 ## Why Root-Level?
 
 These resources are **cross-cutting** - they're shared by multiple services:

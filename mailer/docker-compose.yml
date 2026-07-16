@@ -1,0 +1,25 @@
+services:
+  api:
+    build:
+      context: .
+      target: development
+    environment:
+      MAILER_RUNTIME: development
+      MAILER_DEVELOPMENT_SERVICES_JSON: >-
+        {"humbugg":{"sender_name":"Humbugg","sender_address":"no-reply@humbugg.com","allowed_categories":["invitation","reminder","draw_completed","assignment_available","account_exchange_event"],"allowed_message_classes":["exchange"]}}
+      MAILER_SMTP_HOST: mailpit
+      MAILER_SMTP_PORT: "1025"
+    ports:
+      - "127.0.0.1:8026:8026"
+    depends_on:
+      mailpit:
+        condition: service_started
+
+  mailpit:
+    image: axllent/mailpit:v1.27.8
+    environment:
+      MP_MAX_MESSAGES: "500"
+      MP_SMTP_AUTH_ACCEPT_ANY: "0"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "0"
+    ports:
+      - "127.0.0.1:8025:8025"

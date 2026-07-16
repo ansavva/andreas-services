@@ -172,6 +172,27 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     resources = ["*"]
   }
 
+  # CloudWatch — Mailer alarms and service health metrics
+  statement {
+    effect    = "Allow"
+    actions   = ["cloudwatch:*"]
+    resources = ["*"]
+  }
+
+  # SNS — SES feedback topics and subscriptions
+  statement {
+    effect    = "Allow"
+    actions   = ["sns:*"]
+    resources = ["*"]
+  }
+
+  # GuardDuty — Malware Protection for Mailer attachment storage
+  statement {
+    effect    = "Allow"
+    actions   = ["guardduty:*"]
+    resources = ["*"]
+  }
+
   # Cognito — storybook auth (Terraform)
   statement {
     effect    = "Allow"
@@ -235,6 +256,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
       "arn:aws:ssm:*:*:parameter/scout/*",
       "arn:aws:ssm:*:*:parameter/storybook/*",
       "arn:aws:ssm:*:*:parameter/humbugg/*",
+      "arn:aws:ssm:*:*:parameter/mailer/*",
       "arn:aws:ssm:*:*:parameter/website/*",
     ]
   }
@@ -257,4 +279,11 @@ resource "aws_acm_certificate_validation" "wildcard" {
   provider                = aws.us_east_1
   certificate_arn         = aws_acm_certificate.wildcard.arn
   validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
+}
+
+# SES reputation is account-wide even though individual applications use
+# separate configuration sets. Hard bounces and complaints therefore share one
+# suppression policy across every Mailer consumer.
+resource "aws_sesv2_account_suppression_attributes" "shared" {
+  suppressed_reasons = ["BOUNCE", "COMPLAINT"]
 }

@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "application_message_id": "hmb_invitation_example",
+  "category": "invitation",
+  "message_class": "exchange",
+  "to_address": "recipient@example.com",
+  "subject": "You have been invited to a Humbugg exchange",
+  "html_body": "<p>You have been invited.</p>",
+  "text_body": "You have been invited.",
+  "attachments": []
+}
