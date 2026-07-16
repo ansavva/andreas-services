@@ -1,6 +1,8 @@
 using Amazon.DynamoDBv2;
 using Amazon.Lambda.AspNetCoreServer.Hosting;
+using Amazon.SimpleEmailV2;
 using Humbugg.Api.Data;
+using Humbugg.Api.Email;
 using Humbugg.Api.Middleware;
 using Humbugg.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -80,6 +82,28 @@ builder.Services.AddSingleton<IAmazonDynamoDB>(_ =>
     }
     return new AmazonDynamoDBClient(config);
 });
+builder.Services.AddSingleton<ITransactionalEmailTemplates, TransactionalEmailTemplates>();
+if (settings.EmailProvider.Equals("ses", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddSingleton<IAmazonSimpleEmailServiceV2>(_ => new AmazonSimpleEmailServiceV2Client(
+        new AmazonSimpleEmailServiceV2Config
+        {
+            RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(settings.AwsRegion)
+        }));
+    builder.Services.AddSingleton<IEmailTransport, SesEmailTransport>();
+    builder.Services.AddScoped<IEmailDeliveryLedger, DynamoDbEmailDeliveryLedger>();
+}
+else if (settings.EmailProvider.Equals("capture", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddSingleton<CapturingEmailTransport>();
+    builder.Services.AddSingleton<IEmailTransport>(services => services.GetRequiredService<CapturingEmailTransport>());
+    builder.Services.AddSingleton<IEmailDeliveryLedger, InMemoryEmailDeliveryLedger>();
+}
+else
+{
+    throw new InvalidOperationException($"Unsupported HUMBUGG_EMAIL_PROVIDER '{settings.EmailProvider}'.");
+}
+builder.Services.AddScoped<ITransactionalEmailService, TransactionalEmailService>();
 builder.Services.AddScoped<IProfileRepository, ProfileRepository>();
 builder.Services.AddScoped<IGroupRepository, GroupRepository>();
 builder.Services.AddScoped<IMembershipRepository, MembershipRepository>();
@@ -114,7 +138,10 @@ public sealed record HumbuggSettings(
     string GroupsTable,
     string GroupMembersTable,
     string DrawsTable,
-    string AuditEventsTable)
+    string AuditEventsTable,
+    string EmailProvider = "capture",
+    string EmailFromAddress = "no-reply@humbugg.com",
+    string EmailMessagesTable = "humbugg-email-messages")
 {
     public static HumbuggSettings FromEnvironment() => new(
         Environment.GetEnvironmentVariable("AWS_REGION") ?? Environment.GetEnvironmentVariable("AWS_DEFAULT_REGION") ?? "us-east-1",
@@ -128,5 +155,8 @@ public sealed record HumbuggSettings(
         Environment.GetEnvironmentVariable("HUMBUGG_GROUPS_TABLE") ?? "humbugg-groups",
         Environment.GetEnvironmentVariable("HUMBUGG_GROUPMEMBERS_TABLE") ?? "humbugg-groupmembers",
         Environment.GetEnvironmentVariable("HUMBUGG_DRAWS_TABLE") ?? "humbugg-draws",
-        Environment.GetEnvironmentVariable("HUMBUGG_AUDIT_EVENTS_TABLE") ?? "humbugg-audit-events");
+        Environment.GetEnvironmentVariable("HUMBUGG_AUDIT_EVENTS_TABLE") ?? "humbugg-audit-events",
+        Environment.GetEnvironmentVariable("HUMBUGG_EMAIL_PROVIDER") ?? "capture",
+        Environment.GetEnvironmentVariable("HUMBUGG_EMAIL_FROM_ADDRESS") ?? "no-reply@humbugg.com",
+        Environment.GetEnvironmentVariable("HUMBUGG_EMAIL_MESSAGES_TABLE") ?? "humbugg-email-messages");
 }

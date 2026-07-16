@@ -74,9 +74,11 @@ module "compute" {
   project     = local.project
   environment = local.environment
 
-  dynamodb_table_arns  = module.storage.dynamodb_table_arns
-  cognito_user_pool_id = module.auth.user_pool_id
-  cognito_client_id    = module.auth.user_pool_client_id
+  dynamodb_table_arns      = module.storage.dynamodb_table_arns
+  email_messages_table_arn = module.storage.email_messages_table_arn
+  cognito_user_pool_id     = module.auth.user_pool_id
+  cognito_client_id        = module.auth.user_pool_client_id
+  ses_identity_arn         = module.email.identity_arn
 
   tags = local.common_tags
 }

@@ -15,7 +15,7 @@ Humbugg is a gift-exchange platform served at `humbugg.com`:
 | Backend | ASP.NET Core 10 (C# 14) packaged as a Docker container Lambda behind API Gateway HTTP API |
 | Frontend | Vite + React + Tailwind SPA on S3 + CloudFront |
 | Auth | AWS Cognito (User Pool + secretless App Client); branded SPA screens use SRP through Amplify Auth and the API validates access tokens |
-| Data | DynamoDB — profiles, groups, groupmembers, private draws, and reveal audit events |
+| Data | DynamoDB — profiles, groups, groupmembers, private draws, reveal audit events, and email delivery IDs |
 | Infra | Terraform in `humbugg/infra/` (`modules/` + `envs/prod`) |
 
 ## Directory Structure
@@ -125,9 +125,11 @@ Group `humbugg-prod` with `cancel-in-progress: false` — queued pushes wait for
 - `humbugg-groupmembers` — group ↔ member relationship + assignment results
 - `humbugg-draws` — private giver → recipient maps, separate from ordinary group responses
 - `humbugg-audit-events` — durable emergency-reveal audit records
+- `humbugg-email-messages` — stable transactional message IDs and delivery state
 
-All accessed through the AWS SDK for .NET directly from the Lambda (no ORM, no VPC).
-Local app runs use DynamoDB Local on `localhost:8001` and create these tables on
-startup. Unit tests use repository fakes; local end-to-end testing uses the
-container. `DynamoDbBootstrap` owns local-only table bootstrap; repository
-classes own Humbugg persistence operations.
+Production tables are accessed through the AWS SDK for .NET directly from the
+Lambda (no ORM, no VPC). Local app runs use DynamoDB Local on `localhost:8001`
+for product data and an in-memory capture adapter and delivery ledger for email,
+so local development never sends mail. Unit tests use repository fakes; local
+end-to-end testing uses the container. `DynamoDbBootstrap` owns local-only table
+bootstrap; repository classes own Humbugg persistence operations.

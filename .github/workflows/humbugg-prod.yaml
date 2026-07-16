@@ -314,6 +314,7 @@ jobs:
             --arg groupmembers_table "humbugg-groupmembers" \
             --arg draws_table "humbugg-draws" \
             --arg audit_events_table "humbugg-audit-events" \
+            --arg email_messages_table "humbugg-email-messages" \
             --arg app_base_url "https://humbugg.com" \
             --arg email_from_address "${HUMBUGG_EMAIL_FROM_ADDRESS}" \
             --arg free_participant_limit "${{ vars.HUMBUGG_FREE_PARTICIPANT_LIMIT || '6' }}" \
@@ -335,6 +336,8 @@ jobs:
               HUMBUGG_GROUPMEMBERS_TABLE: $groupmembers_table,
               HUMBUGG_DRAWS_TABLE: $draws_table,
               HUMBUGG_AUDIT_EVENTS_TABLE: $audit_events_table,
+              HUMBUGG_EMAIL_MESSAGES_TABLE: $email_messages_table,
+              HUMBUGG_EMAIL_PROVIDER: "ses",
               APP_BASE_URL: $app_base_url,
               HUMBUGG_EMAIL_FROM_ADDRESS: $email_from_address,
               HUMBUGG_FREE_PARTICIPANT_LIMIT: $free_participant_limit,
