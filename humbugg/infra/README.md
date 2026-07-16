@@ -40,3 +40,8 @@ waits for identity, DKIM, and MAIL FROM status to reach `SUCCESS`, then sends on
 message to the SES success mailbox simulator. It never sends a test message to
 a real recipient. Tighten DMARC only after deliverability monitoring is in
 place; issue #118 owns bounce, complaint, suppression, and sending-health work.
+
+The backend Lambda role may call only `ses:SendEmail` against the Humbugg domain
+identity. The `humbugg-email-messages` DynamoDB table records application
+message IDs and delivery state, providing conditional reservation before a
+provider call and durable duplicate suppression across Lambda retries.

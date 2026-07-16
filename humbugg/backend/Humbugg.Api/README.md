@@ -34,3 +34,24 @@ Stripe product and price identifiers use `HUMBUGG_PLUS_PRODUCT_ID`,
 `HUMBUGG_WORK_PRICE_ID`. They remain empty until test-mode billing is prepared.
 Production values are GitHub environment variables injected into the Lambda;
 changing them requires a targeted app redeploy, not an application code change.
+
+## Transactional email
+
+Application code depends on `ITransactionalEmailService` and
+`ITransactionalEmailTemplates`; it never calls the AWS SDK directly. The five
+typed templates cover invitations, reminders, completed draws, assignment
+availability, and account-relevant exchange events. Every template produces
+accessible HTML and a complete plain-text alternative with no marketing copy.
+
+Callers provide a durable event ID. The template combines that event ID with
+the category and recipient to produce a stable application message ID. Before
+sending, the service conditionally reserves that ID in
+`humbugg-email-messages`; repeated or concurrent delivery attempts are skipped,
+while a provider failure can be retried with the same ID. SES also receives the
+application message ID and category as message tags.
+The ledger stores no recipient address or message body.
+
+`HUMBUGG_EMAIL_PROVIDER` defaults to `capture`, so local runs and unit tests
+record messages in memory without making network calls. Production sets it to
+`ses`, uses `no-reply@humbugg.com`, and obtains AWS credentials solely from the
+Lambda execution role.

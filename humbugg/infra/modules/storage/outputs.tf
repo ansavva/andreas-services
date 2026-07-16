@@ -23,3 +23,8 @@ output "dynamodb_table_arns" {
     audit_events = aws_dynamodb_table.audit_events.arn
   }
 }
+
+output "email_messages_table_arn" {
+  description = "DynamoDB table ARN used for transactional email idempotency"
+  value       = aws_dynamodb_table.email_messages.arn
+}

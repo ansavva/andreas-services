@@ -65,3 +65,9 @@ Transactional product email originates from `no-reply@humbugg.com`. Terraform
 owns SES identity verification, Easy DKIM, the `mail.humbugg.com` MAIL FROM
 records, and the initial DMARC monitoring policy. Deployment verifies all three
 authentication states and sends only to the AWS SES success simulator.
+
+The backend exposes one provider-neutral transactional email interface. Local
+and test runs capture messages in memory; production uses SES through the
+Lambda IAM role. Typed templates provide both HTML and plain text, while a
+DynamoDB delivery ledger uses stable application message IDs to suppress
+duplicate sends during retries.

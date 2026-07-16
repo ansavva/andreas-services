@@ -24,6 +24,16 @@ variable "cognito_client_id" {
   type        = string
 }
 
+variable "ses_identity_arn" {
+  description = "SES domain identity the backend may use for transactional email"
+  type        = string
+}
+
+variable "email_messages_table_arn" {
+  description = "DynamoDB delivery-ledger table ARN"
+  type        = string
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

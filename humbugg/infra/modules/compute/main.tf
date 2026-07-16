@@ -128,6 +128,34 @@ resource "aws_iam_role_policy" "lambda_dynamodb" {
   })
 }
 
+resource "aws_iam_role_policy" "lambda_ses" {
+  name = "${var.project}-lambda-ses-policy"
+  role = aws_iam_role.lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["ses:SendEmail"]
+      Resource = var.ses_identity_arn
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "lambda_email_messages" {
+  name = "${var.project}-lambda-email-messages-policy"
+  role = aws_iam_role.lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["dynamodb:UpdateItem"]
+      Resource = var.email_messages_table_arn
+    }]
+  })
+}
+
 resource "aws_lambda_function" "backend" {
   function_name = "${var.project}-backend-${var.environment}"
   role          = aws_iam_role.lambda.arn

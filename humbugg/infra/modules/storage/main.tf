@@ -128,3 +128,17 @@ resource "aws_dynamodb_table" "audit_events" {
   server_side_encryption { enabled = true }
   tags = var.tags
 }
+
+resource "aws_dynamodb_table" "email_messages" {
+  name         = "${var.project}-email-messages"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "message_id"
+
+  attribute {
+    name = "message_id"
+    type = "S"
+  }
+
+  server_side_encryption { enabled = true }
+  tags = var.tags
+}
