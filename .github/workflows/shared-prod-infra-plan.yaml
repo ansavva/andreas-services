@@ -5,6 +5,7 @@ on:
     paths:
       - 'infra/**'
       - '.tflint.hcl'
+      - '.github/scripts/install-tflint-aws-plugin.sh'
       - '.github/workflows/shared-prod-infra-plan.yaml'
 
 env:
@@ -34,8 +35,8 @@ jobs:
         with:
           tflint_version: v0.63.1
 
-      - name: tflint init
-        run: tflint --init --config "$(pwd)/.tflint.hcl"
+      - name: Install tflint AWS plugin
+        run: bash .github/scripts/install-tflint-aws-plugin.sh
 
       - name: tflint
         run: tflint --recursive --chdir=infra --config "$(pwd)/.tflint.hcl"

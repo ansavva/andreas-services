@@ -5,6 +5,8 @@ on:
     paths:
       - 'mailer/**'
       - 'infra/**'
+      - '.tflint.hcl'
+      - '.github/scripts/install-tflint-aws-plugin.sh'
       - '.github/workflows/mailer-pr.yml'
       - '.github/workflows/mailer-prod.yaml'
 
@@ -55,7 +57,7 @@ jobs:
           terraform -chdir=infra/envs/shared validate
       - name: TFLint
         run: |
-          tflint --init --config "$(pwd)/.tflint.hcl"
+          bash .github/scripts/install-tflint-aws-plugin.sh
           tflint --recursive --chdir=mailer/infra --config "$(pwd)/.tflint.hcl"
           tflint --recursive --chdir=infra --config "$(pwd)/.tflint.hcl"
 
