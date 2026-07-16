@@ -267,6 +267,14 @@ data "aws_iam_policy_document" "github_actions_permissions" {
       "arn:aws:ssm:*:*:parameter/website/*",
     ]
   }
+
+  # DescribeParameters does not support resource-level permissions. Terraform
+  # uses it to read parameter metadata after creating or updating a parameter.
+  statement {
+    effect    = "Allow"
+    actions   = ["ssm:DescribeParameters"]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_policy" "github_actions" {
