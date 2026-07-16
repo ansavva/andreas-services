@@ -1,7 +1,9 @@
 locals {
-  project     = "humbugg"
-  environment = "production"
-  domain_name = "humbugg.andreas.services"
+  project            = "humbugg"
+  environment        = "production"
+  domain_name        = "humbugg.com"
+  legacy_domain_name = "humbugg.andreas.services"
+  app_base_url       = "https://${local.domain_name}"
 
   common_tags = {
     Project     = local.project
@@ -9,6 +11,11 @@ locals {
     ManagedBy   = "Terraform"
   }
 
+}
+
+data "aws_route53_zone" "humbugg" {
+  name         = "humbugg.com"
+  private_zone = false
 }
 
 data "aws_route53_zone" "main" {
@@ -34,8 +41,10 @@ moved {
 module "auth" {
   source = "../../modules/auth"
 
-  project     = local.project
-  environment = local.environment
+  project       = local.project
+  environment   = local.environment
+  callback_urls = [local.app_base_url]
+  logout_urls   = [local.app_base_url]
 
   tags = local.common_tags
 }
@@ -79,10 +88,12 @@ module "hosting" {
     aws.us_east_1 = aws.us_east_1
   }
 
-  project     = local.project
-  domain_name = local.domain_name
+  project            = local.project
+  domain_name        = local.domain_name
+  legacy_domain_name = local.legacy_domain_name
 
-  route53_zone_id = data.aws_route53_zone.main.zone_id
+  route53_zone_id        = data.aws_route53_zone.humbugg.zone_id
+  legacy_route53_zone_id = data.aws_route53_zone.main.zone_id
 
   frontend_bucket_id                   = module.storage.bucket_id
   frontend_bucket_arn                  = module.storage.bucket_arn

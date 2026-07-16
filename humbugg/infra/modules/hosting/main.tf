@@ -7,11 +7,40 @@ terraform {
   }
 }
 
-data "aws_acm_certificate" "wildcard" {
-  provider    = aws.us_east_1
-  domain      = "*.andreas.services"
-  statuses    = ["ISSUED"]
-  most_recent = true
+resource "aws_acm_certificate" "app" {
+  provider                  = aws.us_east_1
+  domain_name               = var.domain_name
+  subject_alternative_names = ["www.${var.domain_name}", var.legacy_domain_name]
+  validation_method         = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = var.tags
+}
+
+resource "aws_route53_record" "certificate_validation" {
+  for_each = {
+    for option in aws_acm_certificate.app.domain_validation_options : option.domain_name => {
+      name   = option.resource_record_name
+      record = option.resource_record_value
+      type   = option.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  zone_id         = each.key == var.legacy_domain_name ? var.legacy_route53_zone_id : var.route53_zone_id
+  name            = each.value.name
+  type            = each.value.type
+  ttl             = 300
+  records         = [each.value.record]
+}
+
+resource "aws_acm_certificate_validation" "app" {
+  provider                = aws.us_east_1
+  certificate_arn         = aws_acm_certificate.app.arn
+  validation_record_fqdns = [for record in aws_route53_record.certificate_validation : record.fqdn]
 }
 
 data "aws_cloudfront_cache_policy" "disabled" {
@@ -50,12 +79,20 @@ resource "aws_cloudfront_origin_access_control" "frontend" {
   signing_protocol                  = "sigv4"
 }
 
+resource "aws_cloudfront_function" "canonical_redirect" {
+  name    = "${var.project}-canonical-redirect"
+  runtime = "cloudfront-js-2.0"
+  comment = "Redirect non-canonical Humbugg hostnames to ${var.domain_name}"
+  publish = true
+  code    = file("${path.module}/canonical_redirect.js")
+}
+
 resource "aws_cloudfront_distribution" "app" {
   enabled         = true
   is_ipv6_enabled = true
   comment         = "${var.project} application distribution"
   price_class     = "PriceClass_100"
-  aliases         = [var.domain_name]
+  aliases         = [var.domain_name, "www.${var.domain_name}", var.legacy_domain_name]
 
   origin {
     domain_name              = var.frontend_bucket_regional_domain_name
@@ -95,6 +132,11 @@ resource "aws_cloudfront_distribution" "app" {
     compress                 = true
     cache_policy_id          = data.aws_cloudfront_cache_policy.disabled.id
     origin_request_policy_id = aws_cloudfront_origin_request_policy.ssr.id
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.canonical_redirect.arn
+    }
   }
 
   ordered_cache_behavior {
@@ -105,6 +147,11 @@ resource "aws_cloudfront_distribution" "app" {
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
     cache_policy_id        = data.aws_cloudfront_cache_policy.optimized.id
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.canonical_redirect.arn
+    }
   }
 
   ordered_cache_behavior {
@@ -126,6 +173,11 @@ resource "aws_cloudfront_distribution" "app" {
     default_ttl            = 0
     max_ttl                = 0
     compress               = true
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.canonical_redirect.arn
+    }
   }
 
   ordered_cache_behavior {
@@ -146,6 +198,11 @@ resource "aws_cloudfront_distribution" "app" {
     default_ttl            = 0
     max_ttl                = 0
     compress               = true
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.canonical_redirect.arn
+    }
   }
 
   restrictions {
@@ -155,7 +212,7 @@ resource "aws_cloudfront_distribution" "app" {
   }
 
   viewer_certificate {
-    acm_certificate_arn      = data.aws_acm_certificate.wildcard.arn
+    acm_certificate_arn      = aws_acm_certificate_validation.app.certificate_arn
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
   }
@@ -187,10 +244,52 @@ resource "aws_s3_bucket_policy" "frontend" {
   })
 }
 
+# Keep the existing Terraform address attached to the legacy A record so the
+# domain migration does not delete and recreate it before the redirect is live.
 resource "aws_route53_record" "app" {
+  zone_id = var.legacy_route53_zone_id
+  name    = var.legacy_domain_name
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.app.domain_name
+    zone_id                = aws_cloudfront_distribution.app.hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "legacy_ipv6" {
+  zone_id = var.legacy_route53_zone_id
+  name    = var.legacy_domain_name
+  type    = "AAAA"
+
+  alias {
+    name                   = aws_cloudfront_distribution.app.domain_name
+    zone_id                = aws_cloudfront_distribution.app.hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "canonical" {
+  for_each = toset(["A", "AAAA"])
+
   zone_id = var.route53_zone_id
   name    = var.domain_name
-  type    = "A"
+  type    = each.value
+
+  alias {
+    name                   = aws_cloudfront_distribution.app.domain_name
+    zone_id                = aws_cloudfront_distribution.app.hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "www" {
+  for_each = toset(["A", "AAAA"])
+
+  zone_id = var.route53_zone_id
+  name    = "www.${var.domain_name}"
+  type    = each.value
 
   alias {
     name                   = aws_cloudfront_distribution.app.domain_name

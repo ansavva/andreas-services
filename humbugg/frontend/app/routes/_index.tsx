@@ -1,11 +1,12 @@
 import type { MetaFunction } from 'react-router';
 
 import ogImageUrl from '../assets/og.png?url';
+import { canonicalUrl } from '../../src/config/site';
 
 export { default } from '../../src/pages/LandingPage';
 
 export const meta: MetaFunction = () => {
-  const socialImage = new URL(ogImageUrl, 'https://humbugg.andreas.services/').href;
+  const socialImage = canonicalUrl(ogImageUrl);
   return [
     { title: 'Humbugg · Secret Santa made simple' },
     {
@@ -20,13 +21,13 @@ export const meta: MetaFunction = () => {
       property: 'og:description',
       content: 'A calmer way to organize a thoughtful Secret Santa exchange.',
     },
-    { property: 'og:url', content: 'https://humbugg.andreas.services/' },
+    { property: 'og:url', content: canonicalUrl('/') },
     { property: 'og:image', content: socialImage },
     { property: 'og:image:width', content: '1731' },
     { property: 'og:image:height', content: '909' },
     { property: 'og:image:alt', content: 'Humbugg — More wonder. Less wrangling.' },
     { name: 'twitter:card', content: 'summary_large_image' },
     { name: 'twitter:image', content: socialImage },
-    { tagName: 'link', rel: 'canonical', href: 'https://humbugg.andreas.services/' },
+    { tagName: 'link', rel: 'canonical', href: canonicalUrl('/') },
   ];
 };

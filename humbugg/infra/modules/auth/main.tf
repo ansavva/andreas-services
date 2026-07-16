@@ -78,6 +78,8 @@ resource "aws_cognito_user_pool_client" "main" {
   user_pool_id = aws_cognito_user_pool.main.id
 
   generate_secret = false
+  callback_urls   = var.callback_urls
+  logout_urls     = var.logout_urls
 
   explicit_auth_flows = [
     "ALLOW_USER_SRP_AUTH",
