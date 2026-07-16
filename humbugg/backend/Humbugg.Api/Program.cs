@@ -12,6 +12,7 @@ using System.Text.Json.Serialization;
 var builder = WebApplication.CreateBuilder(args);
 var settings = HumbuggSettings.FromEnvironment();
 builder.Services.AddSingleton(settings);
+builder.Services.AddSingleton<IPlanCatalog>(PlanCatalog.FromEnvironment());
 
 builder.Services.AddControllers().AddJsonOptions(options =>
 {

@@ -3,6 +3,19 @@ using System.Text.Json.Serialization;
 namespace Humbugg.Api.Models;
 
 public enum GroupStatus { Open, Drawn }
+public enum PlanCode { Free, Plus, Work }
+public enum BillingCadence { Free, OneTime, Annual }
+
+public sealed record PlanDefinition(
+    PlanCode Code,
+    string Name,
+    int ParticipantLimit,
+    bool MarketedAsUnlimited,
+    long PriceCents,
+    string Currency,
+    BillingCadence BillingCadence,
+    string? ProductId = null,
+    string? PriceId = null);
 
 public sealed record Address(
     string? Line1 = null,
@@ -30,6 +43,8 @@ public sealed record GroupSummary(
     string? EventDate,
     decimal? SpendingLimit,
     string Currency,
+    PlanCode Plan,
+    int ParticipantLimit,
     bool IsOrganizer,
     string CreatedAt,
     string UpdatedAt);
@@ -41,6 +56,8 @@ public sealed record GroupDetail(
     string? EventDate,
     decimal? SpendingLimit,
     string Currency,
+    PlanCode Plan,
+    int ParticipantLimit,
     bool IsOrganizer,
     string CreatedAt,
     string UpdatedAt,
@@ -90,6 +107,8 @@ internal sealed record GroupRecord(
     string? SignupDeadline,
     long? SpendingLimitCents,
     string Currency,
+    PlanCode Plan,
+    string? EntitlementId,
     GroupStatus Status,
     string InviteHash,
     IReadOnlyList<string[]> Exclusions,

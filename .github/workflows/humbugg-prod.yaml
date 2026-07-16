@@ -277,6 +277,15 @@ jobs:
             --arg draws_table "humbugg-draws" \
             --arg audit_events_table "humbugg-audit-events" \
             --arg app_base_url "https://humbugg.andreas.services" \
+            --arg free_participant_limit "${{ vars.HUMBUGG_FREE_PARTICIPANT_LIMIT || '6' }}" \
+            --arg plus_participant_limit "${{ vars.HUMBUGG_PLUS_PARTICIPANT_LIMIT || '50' }}" \
+            --arg work_participant_limit "${{ vars.HUMBUGG_WORK_PARTICIPANT_LIMIT || '10000' }}" \
+            --arg plus_price_cents "${{ vars.HUMBUGG_PLUS_PRICE_CENTS || '1200' }}" \
+            --arg work_price_cents "${{ vars.HUMBUGG_WORK_PRICE_CENTS || '9900' }}" \
+            --arg plus_product_id "${{ vars.HUMBUGG_PLUS_PRODUCT_ID }}" \
+            --arg plus_price_id "${{ vars.HUMBUGG_PLUS_PRICE_ID }}" \
+            --arg work_product_id "${{ vars.HUMBUGG_WORK_PRODUCT_ID }}" \
+            --arg work_price_id "${{ vars.HUMBUGG_WORK_PRICE_ID }}" \
             '{Variables: {
               CORS_ORIGIN: $cors_origin,
               COGNITO_REGION: $cognito_region,
@@ -287,7 +296,16 @@ jobs:
               HUMBUGG_GROUPMEMBERS_TABLE: $groupmembers_table,
               HUMBUGG_DRAWS_TABLE: $draws_table,
               HUMBUGG_AUDIT_EVENTS_TABLE: $audit_events_table,
-              APP_BASE_URL: $app_base_url
+              APP_BASE_URL: $app_base_url,
+              HUMBUGG_FREE_PARTICIPANT_LIMIT: $free_participant_limit,
+              HUMBUGG_PLUS_PARTICIPANT_LIMIT: $plus_participant_limit,
+              HUMBUGG_WORK_PARTICIPANT_LIMIT: $work_participant_limit,
+              HUMBUGG_PLUS_PRICE_CENTS: $plus_price_cents,
+              HUMBUGG_WORK_PRICE_CENTS: $work_price_cents,
+              HUMBUGG_PLUS_PRODUCT_ID: $plus_product_id,
+              HUMBUGG_PLUS_PRICE_ID: $plus_price_id,
+              HUMBUGG_WORK_PRODUCT_ID: $work_product_id,
+              HUMBUGG_WORK_PRICE_ID: $work_price_id
             }}' > /tmp/env-humbugg-backend.json
 
           jq -n \

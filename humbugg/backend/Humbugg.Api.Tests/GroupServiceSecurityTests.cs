@@ -61,6 +61,21 @@ public sealed class GroupServiceSecurityTests
         Assert.Equal(0, fixture.Groups.CreateDrawCount);
     }
 
+    [Fact]
+    public async Task ServerRejectsReactivatingAMemberAtThePlanLimit()
+    {
+        var fixture = new Fixture(Fixture.Member("actor", organizer: true));
+        for (var index = 1; index < 6; index++)
+            fixture.Members.Items.Add(Fixture.Member($"active-{index}", organizer: false));
+        fixture.Members.Items.Add(Fixture.Member("inactive", organizer: false) with { IsParticipating = false });
+
+        var error = await Assert.ThrowsAsync<ApiException>(() => fixture.Subject.UpdateParticipationAsync(
+            "group", "inactive", new ParticipationRequest(true), TestContext.Current.CancellationToken));
+
+        Assert.Equal(409, error.StatusCode);
+        Assert.Contains("Free plan", error.Message);
+    }
+
     private sealed class Fixture
     {
         public FakeGroups Groups { get; }
@@ -71,7 +86,7 @@ public sealed class GroupServiceSecurityTests
         {
             Groups = new FakeGroups(Group(exclusions ?? [["actor", "other"]]));
             Members = new FakeMembers(member is null ? [] : [member]);
-            Subject = new GroupService(new FakeUser(), new FakeProfiles(), Groups, Members, new MatchingService(), new HumbuggSettings(
+            Subject = new GroupService(new FakeUser(), new FakeProfiles(), Groups, Members, new MatchingService(), new PlanCatalog(new()), new HumbuggSettings(
                 "us-east-1", "us-east-1", "pool", "client", "http://localhost:5173", "http://localhost:5173", null,
                 "profiles", "groups", "members", "draws", "audit"));
         }
@@ -80,7 +95,7 @@ public sealed class GroupServiceSecurityTests
             memberId, "group", memberId == "actor" ? "user" : $"user-{memberId}", memberId, organizer, true, "wish", "avoid", new Address("address"), "now", "now");
 
         private static GroupRecord Group(IReadOnlyList<string[]> exclusions) => new(
-            "group", "owner", "Exchange", "", null, null, null, "USD", GroupStatus.Open, "hash", exclusions, "now", "now");
+            "group", "owner", "Exchange", "", null, null, null, "USD", PlanCode.Free, null, GroupStatus.Open, "hash", exclusions, "now", "now");
     }
 
     private sealed class FakeUser : ICurrentUser { public string UserId => "user"; }

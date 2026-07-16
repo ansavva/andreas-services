@@ -1,4 +1,5 @@
 export type GroupStatus = 'open' | 'drawn';
+export type PlanCode = 'free' | 'plus' | 'work';
 
 export interface ApiErrorPayload {
   error: { code: string; message: string };
@@ -39,6 +40,8 @@ export interface GroupSummary {
   event_date?: string | null;
   spending_limit?: number | null;
   currency: 'USD';
+  plan: PlanCode;
+  participant_limit: number;
   is_organizer: boolean;
   created_at: string;
   updated_at: string;
