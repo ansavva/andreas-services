@@ -27,9 +27,9 @@ jobs:
         uses: hashicorp/setup-terraform@v4
 
       - name: Setup tflint
-        uses: terraform-linters/setup-tflint@v4
+        uses: terraform-linters/setup-tflint@v6
         with:
-          tflint_version: v0.62.0
+          tflint_version: v0.63.1
 
       - name: Terraform fmt check
         run: terraform -chdir=humbugg/infra/envs/prod fmt -check -recursive ../../
