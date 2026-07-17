@@ -5,7 +5,14 @@ the API accepts only Cognito access tokens for the configured secretless client.
 Profiles, groups, memberships, private draws, and reveal audit events are stored
 in DynamoDB.
 
-Run from `humbugg/backend`:
+Start the shared local Mailer and Mailpit first:
+
+```sh
+cd mailer
+docker compose up --build
+```
+
+Then run from `humbugg/backend`:
 
 ```sh
 dotnet test Humbugg.slnx
@@ -13,7 +20,10 @@ docker compose up --build
 ```
 
 The containerized local API is available at `http://localhost:5001` and creates
-the required tables in DynamoDB Local. It never connects to production tables.
+the required tables in DynamoDB Local. Product email goes to Mailer at
+`http://host.docker.internal:8026` and appears only in Mailpit at
+`http://localhost:8025`; Mailpit has no outbound relay. The local stack never
+connects to production tables.
 
 ## Plan configuration
 
@@ -45,13 +55,14 @@ accessible HTML and a complete plain-text alternative with no marketing copy.
 
 Callers provide a durable event ID. The template combines that event ID with
 the category and recipient to produce a stable application message ID. Before
-sending, the service conditionally reserves that ID in
+submission, the service conditionally reserves that ID in
 `humbugg-email-messages`; repeated or concurrent delivery attempts are skipped,
-while a provider failure can be retried with the same ID. SES also receives the
-application message ID and category as message tags.
-The ledger stores no recipient address or message body.
+while an admission failure can be retried with the same ID. Mailer owns durable
+queueing, SES delivery, suppression, and feedback. A dedicated status Lambda
+records normalized outcomes in the same table with 90-day expiry. The ledger
+stores no recipient address, subject, or message body.
 
-`HUMBUGG_EMAIL_PROVIDER` defaults to `capture`, so local runs and unit tests
-record messages in memory without making network calls. Production sets it to
-`ses`, uses `no-reply@humbugg.com`, and obtains AWS credentials solely from the
-Lambda execution role.
+Unit tests retain the in-memory capture adapter. The running local app uses the
+unsigned Mailer API and Mailpit; production signs the same HTTP routes with the
+backend Lambda role's temporary AWS credentials. Humbugg never receives S3,
+SQS-send, SMTP, Mailpit, or direct SES permissions.

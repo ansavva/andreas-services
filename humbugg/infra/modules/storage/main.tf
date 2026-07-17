@@ -140,5 +140,11 @@ resource "aws_dynamodb_table" "email_messages" {
   }
 
   server_side_encryption { enabled = true }
+
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
+
   tags = var.tags
 }

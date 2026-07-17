@@ -36,12 +36,18 @@ us-east-1 using the idempotent SES verification APIs. Terraform owns:
   DKIM/SPF alignment suitable for the MAIL FROM subdomain.
 
 Production transactional mail uses `no-reply@humbugg.com`. The deploy workflow
-waits for identity, DKIM, and MAIL FROM status to reach `SUCCESS`, then sends one
-message to the SES success mailbox simulator. It never sends a test message to
-a real recipient. Tighten DMARC only after deliverability monitoring is in
-place; issue #118 owns bounce, complaint, suppression, and sending-health work.
+waits for identity, DKIM, and MAIL FROM status to reach `SUCCESS`, then exercises
+delivery, bounce, and complaint feedback with SES mailbox-simulator addresses.
+It never sends a test message to a real recipient. Tighten DMARC only after
+deliverability monitoring is in place.
 
-The backend Lambda role may call only `ses:SendEmail` against the Humbugg domain
-identity. The `humbugg-email-messages` DynamoDB table records application
-message IDs and delivery state, providing conditional reservation before a
-provider call and durable duplicate suppression across Lambda retries.
+The backend Lambda has no direct SES, S3, SQS-send, or SMTP permissions. The
+shared Mailer platform grants it `execute-api:Invoke` only for Humbugg's message
+and attachment-registration routes. A separate least-privilege status Lambda
+consumes Humbugg's Mailer status queue and updates
+`humbugg-email-messages`. The table records normalized state and expires records
+after 90 days.
+
+Only the production Cognito pool uses `DEVELOPER` email with the Humbugg SES
+identity and Mailer's authentication configuration set. The development pool
+retains `COGNITO_DEFAULT`.

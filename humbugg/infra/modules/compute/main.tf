@@ -128,23 +128,64 @@ resource "aws_iam_role_policy" "lambda_dynamodb" {
   })
 }
 
-resource "aws_iam_role_policy" "lambda_ses" {
-  name = "${var.project}-lambda-ses-policy"
+resource "aws_iam_role_policy" "lambda_email_messages" {
+  name = "${var.project}-lambda-email-messages-policy"
   role = aws_iam_role.lambda.id
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Effect   = "Allow"
-      Action   = ["ses:SendEmail"]
-      Resource = var.ses_identity_arn
+      Action   = ["dynamodb:UpdateItem"]
+      Resource = var.email_messages_table_arn
     }]
   })
 }
 
-resource "aws_iam_role_policy" "lambda_email_messages" {
-  name = "${var.project}-lambda-email-messages-policy"
-  role = aws_iam_role.lambda.id
+resource "aws_iam_role" "email_status" {
+  name = "${var.project}-email-status-role-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "email_status_basic" {
+  role       = aws_iam_role.email_status.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "email_status_queue" {
+  name = "${var.project}-email-status-queue-${var.environment}"
+  role = aws_iam_role.email_status.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "sqs:ChangeMessageVisibility",
+        "sqs:DeleteMessage",
+        "sqs:GetQueueAttributes",
+        "sqs:ReceiveMessage",
+      ]
+      Resource = var.mailer_status_queue_arn
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "email_status_table" {
+  name = "${var.project}-email-status-table-${var.environment}"
+  role = aws_iam_role.email_status.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -172,6 +213,44 @@ resource "aws_lambda_function" "backend" {
       environment,
     ]
   }
+}
+
+resource "aws_lambda_function" "email_status" {
+  function_name = "${var.project}-email-status-${var.environment}"
+  role          = aws_iam_role.email_status.arn
+  package_type  = "Image"
+  image_uri     = "${aws_ecr_repository.backend.repository_url}:latest"
+  timeout       = 30
+  memory_size   = 256
+
+  environment {
+    variables = {
+      HUMBUGG_FUNCTION             = "email-status"
+      HUMBUGG_EMAIL_MESSAGES_TABLE = "${var.project}-email-messages"
+    }
+  }
+
+  tags = var.tags
+
+  lifecycle {
+    ignore_changes = [
+      image_uri,
+      environment,
+    ]
+  }
+}
+
+resource "aws_lambda_event_source_mapping" "email_status" {
+  event_source_arn                   = var.mailer_status_queue_arn
+  function_name                      = aws_lambda_function.email_status.arn
+  batch_size                         = 10
+  maximum_batching_window_in_seconds = 1
+  function_response_types            = ["ReportBatchItemFailures"]
+
+  depends_on = [
+    aws_iam_role_policy.email_status_queue,
+    aws_iam_role_policy_attachment.email_status_basic,
+  ]
 }
 
 resource "aws_lambda_function" "frontend" {
@@ -208,6 +287,31 @@ resource "aws_cloudwatch_log_group" "lambda" {
 resource "aws_cloudwatch_log_group" "frontend" {
   name              = "/aws/lambda/${aws_lambda_function.frontend.function_name}"
   retention_in_days = 14
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_log_group" "email_status" {
+  name              = "/aws/lambda/${aws_lambda_function.email_status.function_name}"
+  retention_in_days = 14
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "email_status_errors" {
+  alarm_name          = "${var.project}-email-status-errors-${var.environment}"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  metric_name         = "Errors"
+  namespace           = "AWS/Lambda"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 1
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    FunctionName = aws_lambda_function.email_status.function_name
+  }
 
   tags = var.tags
 }

@@ -42,7 +42,7 @@ public sealed record EmailSendResult(
     string MessageId,
     EmailCategory Category,
     bool AlreadyHandled,
-    string? ProviderMessageId);
+    string? AcceptedMessageId);
 
 public static class EmailMessageId
 {

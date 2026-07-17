@@ -13,6 +13,11 @@ output "lambda_function_name" {
   value       = module.compute.lambda_function_name
 }
 
+output "email_status_lambda_function_name" {
+  description = "Mailer status consumer Lambda function name"
+  value       = module.compute.email_status_lambda_function_name
+}
+
 output "frontend_ecr_repository_url" {
   description = "SSR frontend ECR repository URL"
   value       = module.compute.frontend_ecr_repository_url

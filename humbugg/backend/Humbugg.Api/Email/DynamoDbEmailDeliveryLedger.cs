@@ -9,24 +9,29 @@ internal sealed class DynamoDbEmailDeliveryLedger(
 {
     public async Task<bool> TryBeginAsync(TransactionalEmail email, CancellationToken cancellationToken)
     {
-        var now = DateTimeOffset.UtcNow.ToString("O");
+        var timestamp = DateTimeOffset.UtcNow;
+        var now = timestamp.ToString("O");
         try
         {
             await db.UpdateItemAsync(new UpdateItemRequest
             {
                 TableName = settings.EmailMessagesTable,
                 Key = new() { ["message_id"] = new AttributeValue { S = email.MessageId } },
-                UpdateExpression = "SET #status = :sending, category = :category, updated_at = :now, attempts = if_not_exists(attempts, :zero) + :one",
+                UpdateExpression = "SET #status = :submitting, category = :category, updated_at = :now, expires_at = :expires, attempts = if_not_exists(attempts, :zero) + :one",
                 ConditionExpression = "attribute_not_exists(message_id) OR #status = :failed",
                 ExpressionAttributeNames = new() { ["#status"] = "status" },
                 ExpressionAttributeValues = new()
                 {
-                    [":sending"] = new AttributeValue { S = "sending" },
+                    [":submitting"] = new AttributeValue { S = "submitting" },
                     [":failed"] = new AttributeValue { S = "failed" },
                     [":category"] = new AttributeValue { S = EmailMessageId.CategoryName(email.Category) },
                     [":now"] = new AttributeValue { S = now },
                     [":zero"] = new AttributeValue { N = "0" },
-                    [":one"] = new AttributeValue { N = "1" }
+                    [":one"] = new AttributeValue { N = "1" },
+                    [":expires"] = new AttributeValue
+                    {
+                        N = timestamp.AddDays(90).ToUnixTimeSeconds().ToString()
+                    }
                 }
             }, cancellationToken);
             return true;
@@ -37,16 +42,15 @@ internal sealed class DynamoDbEmailDeliveryLedger(
         }
     }
 
-    public Task MarkSentAsync(string messageId, string providerMessageId, CancellationToken cancellationToken) =>
-        SetStatusAsync(messageId, "sent", providerMessageId, cancellationToken);
+    public Task MarkAcceptedAsync(string messageId, CancellationToken cancellationToken) =>
+        SetStatusAsync(messageId, "accepted", cancellationToken);
 
     public Task MarkFailedAsync(string messageId, CancellationToken cancellationToken) =>
-        SetStatusAsync(messageId, "failed", null, cancellationToken);
+        SetStatusAsync(messageId, "failed", cancellationToken);
 
     private Task SetStatusAsync(
         string messageId,
         string status,
-        string? providerMessageId,
         CancellationToken cancellationToken)
     {
         var values = new Dictionary<string, AttributeValue>
@@ -55,12 +59,6 @@ internal sealed class DynamoDbEmailDeliveryLedger(
             [":now"] = new AttributeValue { S = DateTimeOffset.UtcNow.ToString("O") }
         };
         var update = "SET #status = :status, updated_at = :now";
-        if (providerMessageId is not null)
-        {
-            update += ", provider_message_id = :provider_message_id";
-            values[":provider_message_id"] = new AttributeValue { S = providerMessageId };
-        }
-
         return db.UpdateItemAsync(new UpdateItemRequest
         {
             TableName = settings.EmailMessagesTable,

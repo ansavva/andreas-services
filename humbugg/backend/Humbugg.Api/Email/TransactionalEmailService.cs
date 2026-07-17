@@ -13,7 +13,7 @@ internal interface IEmailTransport
 internal interface IEmailDeliveryLedger
 {
     Task<bool> TryBeginAsync(TransactionalEmail email, CancellationToken cancellationToken);
-    Task MarkSentAsync(string messageId, string providerMessageId, CancellationToken cancellationToken);
+    Task MarkAcceptedAsync(string messageId, CancellationToken cancellationToken);
     Task MarkFailedAsync(string messageId, CancellationToken cancellationToken);
 }
 
@@ -37,10 +37,10 @@ internal sealed class TransactionalEmailService(
             return new EmailSendResult(email.MessageId, email.Category, true, null);
         }
 
-        string providerMessageId;
+        string acceptedMessageId;
         try
         {
-            providerMessageId = await transport.SendAsync(email, cancellationToken);
+            acceptedMessageId = await transport.SendAsync(email, cancellationToken);
         }
         catch (Exception)
         {
@@ -59,14 +59,14 @@ internal sealed class TransactionalEmailService(
             throw;
         }
 
-        // Once SES returns a provider ID, keep the reservation in its non-retryable
-        // state even if this update fails. That favors duplicate prevention when the
-        // provider outcome is known but the ledger acknowledgement is interrupted.
-        await ledger.MarkSentAsync(email.MessageId, providerMessageId, cancellationToken);
+        // Mailer durably owns the message once it returns 202. Keep the reservation
+        // non-retryable even if this acknowledgement is interrupted; a later Mailer
+        // status event will still reconcile the delivery record.
+        await ledger.MarkAcceptedAsync(email.MessageId, cancellationToken);
         logger.LogInformation(
-            "Sent transactional email {MessageId} in category {Category}",
+            "Mailer accepted transactional email {MessageId} in category {Category}",
             email.MessageId,
             email.Category);
-        return new EmailSendResult(email.MessageId, email.Category, false, providerMessageId);
+        return new EmailSendResult(email.MessageId, email.Category, false, acceptedMessageId);
     }
 }

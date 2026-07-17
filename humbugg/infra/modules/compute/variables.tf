@@ -24,8 +24,8 @@ variable "cognito_client_id" {
   type        = string
 }
 
-variable "ses_identity_arn" {
-  description = "SES domain identity the backend may use for transactional email"
+variable "mailer_status_queue_arn" {
+  description = "Mailer status queue consumed by the Humbugg status Lambda"
   type        = string
 }
 

@@ -39,7 +39,7 @@ internal sealed class InMemoryEmailDeliveryLedger : IEmailDeliveryLedger
         }
     }
 
-    public Task MarkSentAsync(string messageId, string providerMessageId, CancellationToken cancellationToken)
+    public Task MarkAcceptedAsync(string messageId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         lock (sync) deliveries[messageId] = DeliveryState.Sent;

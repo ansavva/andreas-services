@@ -28,8 +28,10 @@ services:
       HUMBUGG_DRAWS_TABLE: humbugg-draws
       HUMBUGG_AUDIT_EVENTS_TABLE: humbugg-audit-events
       HUMBUGG_EMAIL_MESSAGES_TABLE: humbugg-email-messages
-      HUMBUGG_EMAIL_PROVIDER: capture
-      HUMBUGG_EMAIL_FROM_ADDRESS: no-reply@humbugg.com
+      HUMBUGG_EMAIL_PROVIDER: mailer
+      HUMBUGG_MAILER_BASE_URL: http://host.docker.internal:8026
+      HUMBUGG_MAILER_AUTH_MODE: none
+      HUMBUGG_MAILER_SERVICE_ID: humbugg
       HUMBUGG_FREE_PARTICIPANT_LIMIT: ${HUMBUGG_FREE_PARTICIPANT_LIMIT:-6}
       HUMBUGG_PLUS_PARTICIPANT_LIMIT: ${HUMBUGG_PLUS_PARTICIPANT_LIMIT:-50}
       HUMBUGG_WORK_PARTICIPANT_LIMIT: ${HUMBUGG_WORK_PARTICIPANT_LIMIT:-10000}
@@ -44,6 +46,8 @@ services:
       COGNITO_CLIENT_ID: ${COGNITO_CLIENT_ID:-humbugg-web}
     ports:
       - "5001:5001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./Humbugg.Api:/src/Humbugg.Api
       - api-bin:/src/Humbugg.Api/bin
