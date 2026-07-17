@@ -116,8 +116,8 @@ jobs:
             terraform -chdir=scout/infra/envs/$env validate
           done
 
-      - name: tflint init
-        run: tflint --init --config "$(pwd)/.tflint.hcl"
+      - name: Install tflint AWS plugin
+        run: bash .github/scripts/install-tflint-aws-plugin.sh
 
       - name: tflint
         run: tflint --recursive --chdir=scout/infra --config "$(pwd)/.tflint.hcl"
