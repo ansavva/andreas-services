@@ -15,12 +15,16 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+// ─── Background consumer hosting ────────────────────────────────────────────
+// Consumer Lambdas use this executable but do not start the ASP.NET Core API.
+// ConsumerHost is the single registry for all current and future consumers.
 if (ConsumerHost.IsConsumerProcess)
 {
     await ConsumerHost.RunConfiguredAsync();
     return;
 }
 
+// ─── HTTP API hosting ────────────────────────────────────────────────────────
 var builder = WebApplication.CreateBuilder(args);
 var settings = HumbuggSettings.FromEnvironment();
 builder.Services.AddSingleton(settings);
