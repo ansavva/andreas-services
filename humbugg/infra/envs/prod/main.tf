@@ -127,3 +127,26 @@ module "email" {
   domain_name     = local.domain_name
   route53_zone_id = data.aws_route53_zone.humbugg.zone_id
 }
+
+module "support_forwarding" {
+  source = "../../modules/support_forwarding"
+
+  project     = local.project
+  environment = local.environment
+  aws_region  = var.aws_region
+
+  domain_name       = local.domain_name
+  route53_zone_id   = data.aws_route53_zone.humbugg.zone_id
+  support_recipient = "support@${local.domain_name}"
+
+  from_address     = module.email.from_address
+  ses_identity_arn = module.email.identity_arn
+
+  # Human-provided secret; injected via TF_VAR_support_forward_to in CI. Empty
+  # here so nothing sensitive is committed.
+  support_forward_to = var.support_forward_to
+
+  lambda_source_dir = "${path.module}/../../../support-forwarding/src"
+
+  tags = local.common_tags
+}
