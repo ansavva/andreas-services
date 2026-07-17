@@ -127,3 +127,16 @@ module "email" {
   domain_name     = local.domain_name
   route53_zone_id = data.aws_route53_zone.humbugg.zone_id
 }
+
+module "billing" {
+  source = "../../modules/billing"
+
+  project     = local.project
+  environment = local.environment
+
+  stripe_publishable_key = var.stripe_publishable_key
+  stripe_secret_key      = var.stripe_secret_key
+  stripe_webhook_secret  = var.stripe_webhook_secret
+
+  tags = local.common_tags
+}

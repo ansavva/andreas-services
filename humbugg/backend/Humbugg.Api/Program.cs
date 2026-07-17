@@ -29,6 +29,9 @@ var builder = WebApplication.CreateBuilder(args);
 var settings = HumbuggSettings.FromEnvironment();
 builder.Services.AddSingleton(settings);
 builder.Services.AddSingleton<IPlanCatalog>(PlanCatalog.FromEnvironment());
+// Validates Stripe billing configuration at startup: fails fast on missing test-mode
+// credentials and refuses any live-mode key/mode (blocked pending issue #159).
+builder.Services.AddSingleton(StripeSettings.FromEnvironment());
 
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
