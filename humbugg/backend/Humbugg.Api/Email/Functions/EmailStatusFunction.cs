@@ -7,7 +7,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Humbugg.Api.Email;
+namespace Humbugg.Api.Email.Functions;
 
 internal static class EmailStatusRuntime
 {

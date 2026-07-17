@@ -1,4 +1,6 @@
-namespace Humbugg.Api.Email;
+using Humbugg.Api.Email.Core;
+
+namespace Humbugg.Api.Email.Adapters.Memory;
 
 internal sealed class CapturingEmailTransport : IEmailTransport
 {

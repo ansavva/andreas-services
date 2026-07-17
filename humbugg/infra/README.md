@@ -48,6 +48,9 @@ consumes Humbugg's Mailer status queue and updates
 `humbugg-email-messages`. The table records normalized state and expires records
 after 90 days.
 
-Only the production Cognito pool uses `DEVELOPER` email with the Humbugg SES
-identity and Mailer's authentication configuration set. The development pool
-retains `COGNITO_DEFAULT`.
+AWS names Cognito's custom-SES mode `DEVELOPER`; it is unrelated to Humbugg's
+development environment. The production Cognito pool uses that mode to send
+signup and recovery messages from the Humbugg SES identity. Those messages
+bypass the Mailer API, while the SES authentication configuration set sends
+their delivery feedback through Mailer. The development Cognito pool retains
+AWS's managed `COGNITO_DEFAULT` sender.

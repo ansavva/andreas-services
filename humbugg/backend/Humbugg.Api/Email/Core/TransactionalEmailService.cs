@@ -1,4 +1,4 @@
-namespace Humbugg.Api.Email;
+namespace Humbugg.Api.Email.Core;
 
 public interface ITransactionalEmailService
 {

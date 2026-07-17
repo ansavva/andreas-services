@@ -1,4 +1,5 @@
-using Humbugg.Api.Email;
+using Humbugg.Api.Email.Adapters.Memory;
+using Humbugg.Api.Email.Core;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 

@@ -23,9 +23,15 @@ handler's ordering and event-ID conditions make redrive safe.
 
 ## Cognito
 
-Only `humbugg-production` uses Cognito `DEVELOPER` email with the Humbugg SES
-identity and Mailer's authentication configuration set. Authentication
-feedback is stored under `auth_<SES message ID>`. `humbugg-development` remains
+AWS calls its custom-SES mode `DEVELOPER`; the name does not refer to Humbugg's
+development environment. The `humbugg-production` Cognito pool uses that mode
+so Cognito sends signup and recovery messages from `no-reply@humbugg.com`
+through this AWS account's SES identity. These messages still originate in
+Cognito and do not pass through the Mailer API or its send queue.
+
+The SES authentication configuration set copies delivery, bounce, and complaint
+events into Mailer's feedback processing. Humbugg stores that normalized
+feedback under `auth_<SES message ID>`. The `humbugg-development` pool remains
 on `COGNITO_DEFAULT`; local signup and recovery codes go to the real address
 entered and do not appear in Mailpit.
 

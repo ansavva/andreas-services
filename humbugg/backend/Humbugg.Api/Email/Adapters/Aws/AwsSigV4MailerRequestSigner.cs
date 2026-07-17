@@ -1,10 +1,11 @@
 using Amazon.Runtime;
+using Humbugg.Api.Email.Adapters.Http;
 using System.Globalization;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Humbugg.Api.Email;
+namespace Humbugg.Api.Email.Adapters.Aws;
 
 // Production signs the shared HTTP contract with the Lambda role's credentials.
 internal sealed class AwsSigV4MailerRequestSigner(

@@ -66,3 +66,18 @@ Unit tests retain the in-memory capture adapter. The running local app uses the
 unsigned Mailer API and Mailpit; production signs the same HTTP routes with the
 backend Lambda role's temporary AWS credentials. Humbugg never receives S3,
 SQS-send, SMTP, Mailpit, or direct SES permissions.
+
+The email feature follows the same responsibility-based layout as Mailer:
+
+```text
+Email/
+├── Core/             # messages, templates, service, and ports
+├── Adapters/
+│   ├── Aws/          # SigV4 and DynamoDB implementations
+│   ├── Http/         # shared Mailer API client and transport
+│   └── Memory/       # unit-test capture and idempotency
+└── Functions/        # the Mailer status Lambda function
+```
+
+Folders describe architectural roles, not deployment environments. Runtime
+composition in `Program.cs` selects unsigned HTTP locally and SigV4 in AWS.
