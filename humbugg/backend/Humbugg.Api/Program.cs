@@ -1,24 +1,23 @@
 using Amazon.DynamoDBv2;
 using Amazon.Lambda.AspNetCoreServer.Hosting;
 using Amazon.Runtime.Credentials;
+using Humbugg.Api.Consumers;
 using Humbugg.Api.Data;
-using Humbugg.Api.Email.Adapters.Aws;
-using Humbugg.Api.Email.Adapters.Http;
-using Humbugg.Api.Email.Adapters.Memory;
-using Humbugg.Api.Email.Core;
-using Humbugg.Api.Email.StatusProcessing;
 using Humbugg.Api.Middleware;
 using Humbugg.Api.Services;
+using Humbugg.Api.Services.Email.Adapters.Aws;
+using Humbugg.Api.Services.Email.Adapters.Http;
+using Humbugg.Api.Services.Email.Adapters.Memory;
+using Humbugg.Api.Services.Email.Core;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-if (Environment.GetEnvironmentVariable("HUMBUGG_FUNCTION")
-    ?.Equals("email-status", StringComparison.OrdinalIgnoreCase) == true)
+if (ConsumerHost.IsConsumerProcess)
 {
-    await AwsLambdaEmailStatusConsumer.RunAsync();
+    await ConsumerHost.RunConfiguredAsync();
     return;
 }
 

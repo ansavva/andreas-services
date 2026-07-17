@@ -1,9 +1,9 @@
-using Humbugg.Api.Email.Core;
+using Humbugg.Api.Services.Email.Core;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 
-namespace Humbugg.Api.Email.Adapters.Http;
+namespace Humbugg.Api.Services.Email.Adapters.Http;
 
 internal interface IMailerClient
 {

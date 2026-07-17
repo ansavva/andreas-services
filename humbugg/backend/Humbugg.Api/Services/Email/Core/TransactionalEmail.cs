@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Humbugg.Api.Email.Core;
+namespace Humbugg.Api.Services.Email.Core;
 
 public enum EmailCategory
 {

@@ -3,7 +3,7 @@ using Amazon.DynamoDBv2.Model;
 using System.Globalization;
 using System.Text.Json.Serialization;
 
-namespace Humbugg.Api.Email.StatusProcessing;
+namespace Humbugg.Api.Services.Email.StatusProcessing;
 
 internal sealed class EmailStatusHandler(
     IAmazonDynamoDB db,

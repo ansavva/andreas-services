@@ -70,16 +70,25 @@ SQS-send, SMTP, Mailpit, or direct SES permissions.
 The email feature follows the same responsibility-based layout as Mailer:
 
 ```text
-Email/
-├── Core/             # messages, templates, service, and ports
-├── Adapters/
-│   ├── Aws/          # SigV4 and DynamoDB implementations
-│   ├── Http/         # shared Mailer API client and transport
-│   └── Memory/       # unit-test capture and idempotency
-└── StatusProcessing/
-    ├── EmailStatusHandler.cs
+Services/
+└── Email/
+    ├── Core/             # messages, templates, service, and ports
+    ├── Adapters/
+    │   ├── Aws/          # SigV4 and DynamoDB implementations
+    │   ├── Http/         # shared Mailer API client and transport
+    │   └── Memory/       # unit-test capture and idempotency
+    └── StatusProcessing/
+        └── EmailStatusHandler.cs
+
+Consumers/
+├── ConsumerHost.cs       # registry and runtime selection for every consumer
+└── EmailStatus/
     └── AwsLambdaEmailStatusConsumer.cs
 ```
 
-Folders describe architectural roles, not deployment environments. Runtime
-composition in `Program.cs` selects unsigned HTTP locally and SigV4 in AWS.
+Folders describe architectural roles, not deployment environments.
+`ConsumerHost` is the single discovery and wiring point for background
+consumers. A future consumer gets its own directory under `Consumers/` and one
+registration in that host; `Program.cs` contains no consumer-specific branches.
+For ordinary API requests, runtime composition selects unsigned Mailer HTTP
+locally and SigV4 in AWS.

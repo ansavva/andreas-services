@@ -2,14 +2,17 @@ using Amazon.DynamoDBv2;
 using Amazon.Lambda.RuntimeSupport;
 using Amazon.Lambda.Serialization.SystemTextJson;
 using Amazon.Lambda.SQSEvents;
+using Humbugg.Api.Services.Email.StatusProcessing;
 using System.Text.Json;
 
-namespace Humbugg.Api.Email.StatusProcessing;
+namespace Humbugg.Api.Consumers.EmailStatus;
 
 internal sealed class AwsLambdaEmailStatusConsumer(
     EmailStatusHandler handler,
     ILogger<AwsLambdaEmailStatusConsumer> logger)
 {
+    public const string ConsumerName = "email-status";
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task<SQSBatchResponse> ConsumeAsync(SQSEvent sqsEvent)

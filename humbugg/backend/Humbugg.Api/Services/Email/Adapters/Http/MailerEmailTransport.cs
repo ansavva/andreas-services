@@ -1,6 +1,6 @@
-using Humbugg.Api.Email.Core;
+using Humbugg.Api.Services.Email.Core;
 
-namespace Humbugg.Api.Email.Adapters.Http;
+namespace Humbugg.Api.Services.Email.Adapters.Http;
 
 // Shared application transport: only the injected request signer varies by runtime.
 internal sealed class MailerEmailTransport(IMailerClient mailer) : IEmailTransport

@@ -1,8 +1,8 @@
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
-using Humbugg.Api.Email.Core;
+using Humbugg.Api.Services.Email.Core;
 
-namespace Humbugg.Api.Email.Adapters.Aws;
+namespace Humbugg.Api.Services.Email.Adapters.Aws;
 
 internal sealed class DynamoDbEmailDeliveryLedger(
     IAmazonDynamoDB db,

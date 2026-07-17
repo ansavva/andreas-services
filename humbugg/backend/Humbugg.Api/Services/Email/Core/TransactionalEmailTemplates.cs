@@ -1,7 +1,7 @@
 using System.Net.Mail;
 using System.Text.Encodings.Web;
 
-namespace Humbugg.Api.Email.Core;
+namespace Humbugg.Api.Services.Email.Core;
 
 public sealed record InvitationEmail(
     string EventId,

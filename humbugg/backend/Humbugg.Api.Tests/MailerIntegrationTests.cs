@@ -1,10 +1,10 @@
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using Amazon.Runtime;
-using Humbugg.Api.Email.Adapters.Aws;
-using Humbugg.Api.Email.Adapters.Http;
-using Humbugg.Api.Email.Core;
-using Humbugg.Api.Email.StatusProcessing;
+using Humbugg.Api.Services.Email.Adapters.Aws;
+using Humbugg.Api.Services.Email.Adapters.Http;
+using Humbugg.Api.Services.Email.Core;
+using Humbugg.Api.Services.Email.StatusProcessing;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Net;
 using System.Text;
