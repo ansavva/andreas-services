@@ -255,6 +255,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
       "ssm:AddTagsToResource",
       "ssm:DeleteParameter",
       "ssm:GetParameter",
+      "ssm:GetParameters",
       "ssm:ListTagsForResource",
       "ssm:PutParameter",
       "ssm:RemoveTagsFromResource",
