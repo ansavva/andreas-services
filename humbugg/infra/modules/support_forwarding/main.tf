@@ -162,7 +162,7 @@ resource "aws_iam_role_policy" "lambda" {
         Sid      = "SendForward"
         Effect   = "Allow"
         Action   = ["ses:SendRawEmail"]
-        Resource = "*"
+        Resource = var.ses_identity_arn
         Condition = {
           StringEquals = { "ses:FromAddress" = var.from_address }
         }
