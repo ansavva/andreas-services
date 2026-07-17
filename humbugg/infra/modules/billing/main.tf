@@ -7,7 +7,7 @@
 # Lambda as environment variables by the deploy workflow (they are not secrets).
 
 locals {
-  ssm_prefix = "/${var.project}/prod/stripe"
+  ssm_prefix = "/${var.project}/${var.environment}/stripe"
 }
 
 resource "aws_ssm_parameter" "publishable_key" {
