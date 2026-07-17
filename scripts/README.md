@@ -9,7 +9,7 @@ Two layers (see `CLAUDE.md` → "Install scripts"):
 
 | Script | Scope | Installs |
 |---|---|---|
-| `scripts/dev-setup.sh` | Shared base (all services) | Terraform, AWS CLI, Node.js, jq, zip (+ Docker check) |
+| `scripts/dev-setup.sh` | Shared base (all services) | Terraform, tflint (+ pinned AWS ruleset, best-effort), AWS CLI, Node.js, jq, zip (+ Docker check) |
 | `humbugg/scripts/dev-setup.sh` | Humbugg service | .NET SDK 10 (ASP.NET Core backend, pinned by `humbugg/backend/global.json`) |
 
 ## Targets

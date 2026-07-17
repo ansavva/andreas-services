@@ -117,6 +117,30 @@ apt_ensure() {
   apt_install "$pkg"
 }
 
+# tflint lints Terraform in CI (the "Validate Terraform" job). CI also installs
+# a pinned AWS ruleset plugin from GitHub releases; that download is best-effort
+# here because network-restricted sandboxes may block it. Even without the AWS
+# plugin, tflint's bundled `terraform` ruleset catches the common failures
+# (e.g. terraform_unused_declarations), so run it locally before pushing infra.
+install_tflint_aws_plugin_best_effort() {
+  local script=".github/scripts/install-tflint-aws-plugin.sh"
+  [[ -f "$script" ]] || return 0
+  if bash "$script" >/dev/null 2>&1; then
+    ok "tflint AWS ruleset plugin installed (full CI parity)"
+  else
+    warn "tflint AWS plugin not installed (network-restricted?); bundled terraform ruleset still catches unused-declaration errors"
+  fi
+}
+
+install_tflint_linux() {
+  if have tflint; then skip tflint "$(command -v tflint)"; else
+    if [[ "$CHECK_ONLY" -eq 1 ]]; then warn "tflint is MISSING (would install)"; return 0; fi
+    log "installing tflint ..."
+    curl -fsSL https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | $SUDO bash
+  fi
+  [[ "$CHECK_ONLY" -eq 1 ]] || install_tflint_aws_plugin_best_effort
+}
+
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
@@ -126,6 +150,8 @@ case "$OS" in
   Darwin)
     ensure_brew || true
     brew_ensure terraform terraform
+    brew_ensure tflint tflint
+    [[ "$CHECK_ONLY" -eq 1 ]] || install_tflint_aws_plugin_best_effort
     brew_ensure aws awscli
     brew_ensure node node
     brew_ensure jq jq
@@ -137,6 +163,7 @@ case "$OS" in
 
   Linux)
     install_terraform_linux
+    install_tflint_linux
     install_node_linux
     install_awscli_linux
     apt_ensure jq jq
