@@ -15,16 +15,23 @@ separate `humbugg-development` Cognito pool.
 
 1. Apply `infra/envs/dev` once, either with the manual **Humbugg · Auth · Dev**
    workflow or Terraform using an authenticated AWS profile.
-2. Copy `frontend/.env.local.example` to `frontend/.env.local` and fill in the
+2. Start the shared local Mailer and Mailpit:
+
+   ```bash
+   cd mailer
+   docker compose up --build
+   ```
+
+3. Copy `frontend/.env.local.example` to `frontend/.env.local` and fill in the
    two Terraform outputs from the development environment.
-3. Export those same Cognito values for Docker Compose, then start the .NET API:
+4. Export those same Cognito values for Docker Compose, then start the .NET API:
 
    ```bash
    cd humbugg/backend
    docker compose up --build
    ```
 
-4. In another terminal, start the web application:
+5. In another terminal, start the web application:
 
    ```bash
    cd humbugg/frontend
@@ -33,7 +40,11 @@ separate `humbugg-development` Cognito pool.
    ```
 
 The frontend runs at `http://localhost:5173`, the API at
-`http://localhost:5001`, and DynamoDB Local at `http://localhost:8001`.
+`http://localhost:5001`, DynamoDB Local at `http://localhost:8001`, and the
+Mailpit inbox at `http://localhost:8025`. Product messages are captured only by
+Mailpit and are never delivered externally. Development Cognito remains on
+`COGNITO_DEFAULT`, so signup and recovery codes still go to the real address
+entered and do not pass through Mailpit.
 
 The frontend uses React Router server rendering. Marketing HTML, page metadata,
 `robots.txt`, and `sitemap.xml` are rendered by the frontend server; browser
@@ -48,6 +59,8 @@ terraform fmt -check -recursive humbugg/infra
 ```
 
 Production deploys remain owned by `.github/workflows/humbugg-prod.yaml`.
+Email monitoring and recovery are documented in
+[`docs/email-operations.md`](docs/email-operations.md).
 
 ## Production domain
 
@@ -64,10 +77,12 @@ smoke tests, and public documentation all use `https://humbugg.com`.
 Transactional product email originates from `no-reply@humbugg.com`. Terraform
 owns SES identity verification, Easy DKIM, the `mail.humbugg.com` MAIL FROM
 records, and the initial DMARC monitoring policy. Deployment verifies all three
-authentication states and sends only to the AWS SES success simulator.
+authentication states and exercises SES delivery, bounce, and complaint
+feedback with the AWS mailbox simulator.
 
-The backend exposes one provider-neutral transactional email interface. Local
-and test runs capture messages in memory; production uses SES through the
-Lambda IAM role. Typed templates provide both HTML and plain text, while a
-DynamoDB delivery ledger uses stable application message IDs to suppress
-duplicate sends during retries.
+The backend keeps templates and copy but submits product messages through the
+shared Mailer HTTP API. Local development uses the unsigned API and Mailpit;
+production uses SigV4 and the backend Lambda role. Unit tests retain an
+in-memory capture adapter. A DynamoDB delivery ledger uses stable application
+message IDs to suppress duplicates, and a dedicated status Lambda records
+normalized Mailer feedback for 90 days.

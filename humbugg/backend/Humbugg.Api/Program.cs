@@ -1,16 +1,30 @@
 using Amazon.DynamoDBv2;
 using Amazon.Lambda.AspNetCoreServer.Hosting;
-using Amazon.SimpleEmailV2;
+using Amazon.Runtime.Credentials;
+using Humbugg.Api.Consumers;
 using Humbugg.Api.Data;
-using Humbugg.Api.Email;
 using Humbugg.Api.Middleware;
 using Humbugg.Api.Services;
+using Humbugg.Api.Services.Email.Adapters.Aws;
+using Humbugg.Api.Services.Email.Adapters.Http;
+using Humbugg.Api.Services.Email.Adapters.Memory;
+using Humbugg.Api.Services.Email.Core;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+// ─── Background consumer hosting ────────────────────────────────────────────
+// Consumer Lambdas use this executable but do not start the ASP.NET Core API.
+// ConsumerHost is the single registry for all current and future consumers.
+if (ConsumerHost.IsConsumerProcess)
+{
+    await ConsumerHost.RunConfiguredAsync();
+    return;
+}
+
+// ─── HTTP API hosting ────────────────────────────────────────────────────────
 var builder = WebApplication.CreateBuilder(args);
 var settings = HumbuggSettings.FromEnvironment();
 builder.Services.AddSingleton(settings);
@@ -83,14 +97,31 @@ builder.Services.AddSingleton<IAmazonDynamoDB>(_ =>
     return new AmazonDynamoDBClient(config);
 });
 builder.Services.AddSingleton<ITransactionalEmailTemplates, TransactionalEmailTemplates>();
-if (settings.EmailProvider.Equals("ses", StringComparison.OrdinalIgnoreCase))
+if (settings.EmailProvider.Equals("mailer", StringComparison.OrdinalIgnoreCase))
 {
-    builder.Services.AddSingleton<IAmazonSimpleEmailServiceV2>(_ => new AmazonSimpleEmailServiceV2Client(
-        new AmazonSimpleEmailServiceV2Config
+    builder.Services.AddSingleton<IMailerRequestSigner>(_ =>
+    {
+        if (settings.MailerAuthMode.Equals("none", StringComparison.OrdinalIgnoreCase))
+            return new UnsignedMailerRequestSigner();
+        if (settings.MailerAuthMode.Equals("sigv4", StringComparison.OrdinalIgnoreCase))
         {
-            RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(settings.AwsRegion)
-        }));
-    builder.Services.AddSingleton<IEmailTransport, SesEmailTransport>();
+            return new AwsSigV4MailerRequestSigner(
+                DefaultAWSCredentialsIdentityResolver.GetCredentials(
+                    new AmazonDynamoDBConfig
+                    {
+                        RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(settings.AwsRegion)
+                    }),
+                settings.AwsRegion);
+        }
+        throw new InvalidOperationException(
+            $"Unsupported HUMBUGG_MAILER_AUTH_MODE '{settings.MailerAuthMode}'.");
+    });
+    builder.Services.AddHttpClient<IMailerClient, MailerClient>(client =>
+    {
+        client.BaseAddress = new Uri(settings.MailerBaseUrl, UriKind.Absolute);
+        client.Timeout = TimeSpan.FromSeconds(15);
+    });
+    builder.Services.AddScoped<IEmailTransport, MailerEmailTransport>();
     builder.Services.AddScoped<IEmailDeliveryLedger, DynamoDbEmailDeliveryLedger>();
 }
 else if (settings.EmailProvider.Equals("capture", StringComparison.OrdinalIgnoreCase))
@@ -140,8 +171,10 @@ public sealed record HumbuggSettings(
     string DrawsTable,
     string AuditEventsTable,
     string EmailProvider = "capture",
-    string EmailFromAddress = "no-reply@humbugg.com",
-    string EmailMessagesTable = "humbugg-email-messages")
+    string EmailMessagesTable = "humbugg-email-messages",
+    string MailerBaseUrl = "http://host.docker.internal:8026",
+    string MailerAuthMode = "none",
+    string MailerServiceId = "humbugg")
 {
     public static HumbuggSettings FromEnvironment() => new(
         Environment.GetEnvironmentVariable("AWS_REGION") ?? Environment.GetEnvironmentVariable("AWS_DEFAULT_REGION") ?? "us-east-1",
@@ -157,6 +190,9 @@ public sealed record HumbuggSettings(
         Environment.GetEnvironmentVariable("HUMBUGG_DRAWS_TABLE") ?? "humbugg-draws",
         Environment.GetEnvironmentVariable("HUMBUGG_AUDIT_EVENTS_TABLE") ?? "humbugg-audit-events",
         Environment.GetEnvironmentVariable("HUMBUGG_EMAIL_PROVIDER") ?? "capture",
-        Environment.GetEnvironmentVariable("HUMBUGG_EMAIL_FROM_ADDRESS") ?? "no-reply@humbugg.com",
-        Environment.GetEnvironmentVariable("HUMBUGG_EMAIL_MESSAGES_TABLE") ?? "humbugg-email-messages");
+        Environment.GetEnvironmentVariable("HUMBUGG_EMAIL_MESSAGES_TABLE") ?? "humbugg-email-messages",
+        (Environment.GetEnvironmentVariable("HUMBUGG_MAILER_BASE_URL") ??
+            "http://host.docker.internal:8026").TrimEnd('/'),
+        Environment.GetEnvironmentVariable("HUMBUGG_MAILER_AUTH_MODE") ?? "none",
+        Environment.GetEnvironmentVariable("HUMBUGG_MAILER_SERVICE_ID") ?? "humbugg");
 }

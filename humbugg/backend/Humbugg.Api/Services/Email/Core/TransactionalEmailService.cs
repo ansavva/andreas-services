@@ -1,27 +1,53 @@
-namespace Humbugg.Api.Email;
+namespace Humbugg.Api.Services.Email.Core;
 
+/// <summary>
+/// Coordinates idempotent delivery of application-rendered transactional email.
+/// </summary>
 public interface ITransactionalEmailService
 {
+    /// <summary>
+    /// Sends a message unless its deterministic message ID is already being handled.
+    /// </summary>
     Task<EmailSendResult> SendAsync(TransactionalEmail email, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Delivers a rendered message to the runtime-specific email boundary.
+/// </summary>
 internal interface IEmailTransport
 {
+    /// <summary>
+    /// Transfers ownership of a message and returns the accepting system's message identifier.
+    /// </summary>
     Task<string> SendAsync(TransactionalEmail email, CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// Reserves message IDs and records whether an attempted handoff was accepted or failed.
+/// </summary>
 internal interface IEmailDeliveryLedger
 {
+    /// <summary>
+    /// Atomically reserves a message for delivery, returning false when it is already handled.
+    /// </summary>
     Task<bool> TryBeginAsync(TransactionalEmail email, CancellationToken cancellationToken);
-    Task MarkSentAsync(string messageId, string providerMessageId, CancellationToken cancellationToken);
+
+    /// <summary>Records that the transport durably accepted the message.</summary>
+    Task MarkAcceptedAsync(string messageId, CancellationToken cancellationToken);
+
+    /// <summary>Releases a failed reservation so a later attempt can retry it.</summary>
     Task MarkFailedAsync(string messageId, CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// Applies Humbugg's idempotency rules around the configured email transport.
+/// </summary>
 internal sealed class TransactionalEmailService(
     IEmailTransport transport,
     IEmailDeliveryLedger ledger,
     ILogger<TransactionalEmailService> logger) : ITransactionalEmailService
 {
+    /// <inheritdoc />
     public async Task<EmailSendResult> SendAsync(
         TransactionalEmail email,
         CancellationToken cancellationToken = default)
@@ -37,10 +63,10 @@ internal sealed class TransactionalEmailService(
             return new EmailSendResult(email.MessageId, email.Category, true, null);
         }
 
-        string providerMessageId;
+        string acceptedMessageId;
         try
         {
-            providerMessageId = await transport.SendAsync(email, cancellationToken);
+            acceptedMessageId = await transport.SendAsync(email, cancellationToken);
         }
         catch (Exception)
         {
@@ -59,14 +85,14 @@ internal sealed class TransactionalEmailService(
             throw;
         }
 
-        // Once SES returns a provider ID, keep the reservation in its non-retryable
-        // state even if this update fails. That favors duplicate prevention when the
-        // provider outcome is known but the ledger acknowledgement is interrupted.
-        await ledger.MarkSentAsync(email.MessageId, providerMessageId, cancellationToken);
+        // Mailer durably owns the message once it returns 202. Keep the reservation
+        // non-retryable even if this acknowledgement is interrupted; a later Mailer
+        // status event will still reconcile the delivery record.
+        await ledger.MarkAcceptedAsync(email.MessageId, cancellationToken);
         logger.LogInformation(
-            "Sent transactional email {MessageId} in category {Category}",
+            "Mailer accepted transactional email {MessageId} in category {Category}",
             email.MessageId,
             email.Category);
-        return new EmailSendResult(email.MessageId, email.Category, false, providerMessageId);
+        return new EmailSendResult(email.MessageId, email.Category, false, acceptedMessageId);
     }
 }

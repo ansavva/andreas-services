@@ -129,7 +129,9 @@ Group `humbugg-prod` with `cancel-in-progress: false` — queued pushes wait for
 
 Production tables are accessed through the AWS SDK for .NET directly from the
 Lambda (no ORM, no VPC). Local app runs use DynamoDB Local on `localhost:8001`
-for product data and an in-memory capture adapter and delivery ledger for email,
-so local development never sends mail. Unit tests use repository fakes; local
-end-to-end testing uses the container. `DynamoDbBootstrap` owns local-only table
+and the unsigned shared Mailer API with Mailpit for product email. Mailpit never
+relays externally. Unit tests retain the in-memory capture adapter and ledger.
+Production signs Mailer API requests with the backend Lambda role, and a
+separate status Lambda consumes normalized delivery feedback. Local end-to-end
+testing uses the containers. `DynamoDbBootstrap` owns local-only table
 bootstrap; repository classes own Humbugg persistence operations.

@@ -23,6 +23,14 @@ data "aws_route53_zone" "main" {
   private_zone = false
 }
 
+data "aws_ssm_parameter" "mailer_status_queue_arn" {
+  name = "/mailer/prod/humbugg/status-queue-arn"
+}
+
+data "aws_ssm_parameter" "mailer_auth_configuration_set" {
+  name = "/mailer/prod/humbugg/auth-configuration-set"
+}
+
 moved {
   from = aws_dynamodb_table.profiles
   to   = module.storage.aws_dynamodb_table.profiles
@@ -45,6 +53,11 @@ module "auth" {
   environment   = local.environment
   callback_urls = [local.app_base_url]
   logout_urls   = [local.app_base_url]
+
+  email_sending_account   = "DEVELOPER"
+  email_from_address      = module.email.from_address
+  email_source_arn        = module.email.identity_arn
+  email_configuration_set = data.aws_ssm_parameter.mailer_auth_configuration_set.value
 
   tags = local.common_tags
 }
@@ -76,9 +89,9 @@ module "compute" {
 
   dynamodb_table_arns      = module.storage.dynamodb_table_arns
   email_messages_table_arn = module.storage.email_messages_table_arn
+  mailer_status_queue_arn  = data.aws_ssm_parameter.mailer_status_queue_arn.value
   cognito_user_pool_id     = module.auth.user_pool_id
   cognito_client_id        = module.auth.user_pool_client_id
-  ses_identity_arn         = module.email.identity_arn
 
   tags = local.common_tags
 }

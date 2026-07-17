@@ -1,8 +1,9 @@
 using System.Net.Mail;
 using System.Text.Encodings.Web;
 
-namespace Humbugg.Api.Email;
+namespace Humbugg.Api.Services.Email.Core;
 
+/// <summary>Contains the application data needed to render an invitation email.</summary>
 public sealed record InvitationEmail(
     string EventId,
     string ToAddress,
@@ -11,6 +12,7 @@ public sealed record InvitationEmail(
     string ExchangeName,
     Uri InvitationUrl);
 
+/// <summary>Contains the application data needed to render an exchange reminder.</summary>
 public sealed record ReminderEmail(
     string EventId,
     string ToAddress,
@@ -19,6 +21,7 @@ public sealed record ReminderEmail(
     string Reminder,
     Uri ExchangeUrl);
 
+/// <summary>Contains the application data needed to announce a completed draw.</summary>
 public sealed record DrawCompletedEmail(
     string EventId,
     string ToAddress,
@@ -26,6 +29,7 @@ public sealed record DrawCompletedEmail(
     string ExchangeName,
     Uri ExchangeUrl);
 
+/// <summary>Contains the application data needed to announce an available assignment.</summary>
 public sealed record AssignmentAvailableEmail(
     string EventId,
     string ToAddress,
@@ -33,6 +37,7 @@ public sealed record AssignmentAvailableEmail(
     string ExchangeName,
     Uri AssignmentUrl);
 
+/// <summary>Contains the application data needed to render a general exchange update.</summary>
 public sealed record AccountExchangeEventEmail(
     string EventId,
     string ToAddress,
@@ -42,17 +47,33 @@ public sealed record AccountExchangeEventEmail(
     string ActionLabel,
     Uri ExchangeUrl);
 
+/// <summary>
+/// Renders Humbugg-owned product copy into transport-neutral transactional messages.
+/// </summary>
 public interface ITransactionalEmailTemplates
 {
+    /// <summary>Renders an invitation message.</summary>
     TransactionalEmail Invitation(InvitationEmail input);
+
+    /// <summary>Renders an exchange reminder.</summary>
     TransactionalEmail Reminder(ReminderEmail input);
+
+    /// <summary>Renders a draw-completed notification.</summary>
     TransactionalEmail DrawCompleted(DrawCompletedEmail input);
+
+    /// <summary>Renders an assignment-available notification.</summary>
     TransactionalEmail AssignmentAvailable(AssignmentAvailableEmail input);
+
+    /// <summary>Renders a general account or exchange event notification.</summary>
     TransactionalEmail AccountExchangeEvent(AccountExchangeEventEmail input);
 }
 
+/// <summary>
+/// Validates and safely renders Humbugg's HTML and plain-text email alternatives.
+/// </summary>
 internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
 {
+    /// <inheritdoc />
     public TransactionalEmail Invitation(InvitationEmail input)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -73,6 +94,7 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
             "This invitation is for an exchange you were invited to join.");
     }
 
+    /// <inheritdoc />
     public TransactionalEmail Reminder(ReminderEmail input)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -89,6 +111,7 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
             "You are receiving this reminder because you participate in this exchange.");
     }
 
+    /// <inheritdoc />
     public TransactionalEmail DrawCompleted(DrawCompletedEmail input)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -105,6 +128,7 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
             "Only you can view your assignment after signing in.");
     }
 
+    /// <inheritdoc />
     public TransactionalEmail AssignmentAvailable(AssignmentAvailableEmail input)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -121,6 +145,7 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
             "Humbugg never includes the recipient's name in email. Sign in to reveal it privately.");
     }
 
+    /// <inheritdoc />
     public TransactionalEmail AccountExchangeEvent(AccountExchangeEventEmail input)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -137,6 +162,9 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
             "This is an account-related update for an exchange you organize or participate in.");
     }
 
+    /// <summary>
+    /// Produces both body alternatives after validating the address and action URL.
+    /// </summary>
     private static TransactionalEmail Create(
         EmailCategory category,
         string eventId,
@@ -189,14 +217,19 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
             text);
     }
 
+    /// <summary>
+    /// Normalizes user-controlled display text so it cannot inject email headers or lines.
+    /// </summary>
     private static string Text(string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
         return value.Replace('\r', ' ').Replace('\n', ' ').Trim();
     }
 
+    /// <summary>Normalizes a subject using the same rules as other display text.</summary>
     private static string Subject(string value) => Text(value);
 
+    /// <summary>Requires exactly one syntactically valid recipient address.</summary>
     private static void ValidateAddress(string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value);

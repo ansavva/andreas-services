@@ -1,4 +1,5 @@
-using Humbugg.Api.Email;
+using Humbugg.Api.Services.Email.Adapters.Memory;
+using Humbugg.Api.Services.Email.Core;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -69,7 +70,7 @@ public sealed class TransactionalEmailTests
     }
 
     [Fact]
-    public async Task ProviderSuccessIsNotSentAgainWhenLedgerAcknowledgementFails()
+    public async Task MailerAcceptanceIsNotSubmittedAgainWhenLedgerAcknowledgementFails()
     {
         var transport = new CountingTransport();
         var service = new TransactionalEmailService(
@@ -144,7 +145,7 @@ public sealed class TransactionalEmailTests
         {
             Attempts++;
             if (Attempts == 1) throw new InvalidOperationException("Simulated provider failure.");
-            return Task.FromResult("provider-message-id");
+            return Task.FromResult(email.MessageId);
         }
     }
 
@@ -155,7 +156,7 @@ public sealed class TransactionalEmailTests
         public Task<string> SendAsync(TransactionalEmail email, CancellationToken cancellationToken)
         {
             Attempts++;
-            return Task.FromResult("provider-message-id");
+            return Task.FromResult(email.MessageId);
         }
     }
 
@@ -170,7 +171,7 @@ public sealed class TransactionalEmailTests
             return Task.FromResult(true);
         }
 
-        public Task MarkSentAsync(string messageId, string providerMessageId, CancellationToken cancellationToken) =>
+        public Task MarkAcceptedAsync(string messageId, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Simulated ledger acknowledgement failure.");
 
         public Task MarkFailedAsync(string messageId, CancellationToken cancellationToken) => Task.CompletedTask;

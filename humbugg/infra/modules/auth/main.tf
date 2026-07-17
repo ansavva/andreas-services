@@ -1,6 +1,20 @@
 resource "aws_cognito_user_pool" "main" {
   name = "${var.project}-${var.environment}"
 
+  lifecycle {
+    precondition {
+      condition = (
+        var.email_sending_account == "COGNITO_DEFAULT" ||
+        (
+          var.email_from_address != null &&
+          var.email_source_arn != null &&
+          var.email_configuration_set != null
+        )
+      )
+      error_message = "DEVELOPER email requires a From address, SES source ARN, and configuration set."
+    }
+  }
+
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
 
@@ -57,7 +71,16 @@ resource "aws_cognito_user_pool" "main" {
   }
 
   email_configuration {
-    email_sending_account = "COGNITO_DEFAULT"
+    email_sending_account = var.email_sending_account
+    from_email_address = (
+      var.email_sending_account == "DEVELOPER" ? var.email_from_address : null
+    )
+    source_arn = (
+      var.email_sending_account == "DEVELOPER" ? var.email_source_arn : null
+    )
+    configuration_set = (
+      var.email_sending_account == "DEVELOPER" ? var.email_configuration_set : null
+    )
   }
 
   mfa_configuration = "OFF"
