@@ -1,41 +1,15 @@
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
-using Amazon.Lambda.RuntimeSupport;
-using Amazon.Lambda.Serialization.SystemTextJson;
-using Amazon.Lambda.SQSEvents;
 using System.Globalization;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Humbugg.Api.Email.Functions;
-
-internal static class EmailStatusRuntime
-{
-    public static async Task RunAsync()
-    {
-        var settings = HumbuggSettings.FromEnvironment();
-        using var db = new AmazonDynamoDBClient(
-            Amazon.RegionEndpoint.GetBySystemName(settings.AwsRegion));
-        using var loggerFactory = LoggerFactory.Create(logging => logging.AddJsonConsole());
-        var handler = new EmailStatusHandler(
-            db,
-            settings.EmailMessagesTable,
-            loggerFactory.CreateLogger<EmailStatusHandler>());
-        using var bootstrap = LambdaBootstrapBuilder
-            .Create<SQSEvent, SQSBatchResponse>(
-                handler.HandleAsync,
-                new DefaultLambdaJsonSerializer())
-            .Build();
-        await bootstrap.RunAsync();
-    }
-}
+namespace Humbugg.Api.Email.StatusProcessing;
 
 internal sealed class EmailStatusHandler(
     IAmazonDynamoDB db,
     string tableName,
     ILogger<EmailStatusHandler> logger)
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly IReadOnlyDictionary<string, int> StatusRanks =
         new Dictionary<string, int>(StringComparer.Ordinal)
         {
@@ -49,33 +23,6 @@ internal sealed class EmailStatusHandler(
             ["attachment_blocked"] = 40,
             ["complaint"] = 50
         };
-
-    public async Task<SQSBatchResponse> HandleAsync(SQSEvent sqsEvent)
-    {
-        var failures = new List<SQSBatchResponse.BatchItemFailure>();
-        foreach (var record in sqsEvent.Records)
-        {
-            try
-            {
-                var statusEvent = JsonSerializer.Deserialize<MailerStatusEvent>(
-                    record.Body,
-                    JsonOptions) ?? throw new InvalidOperationException("Status event body is empty.");
-                await ApplyAsync(statusEvent, CancellationToken.None);
-            }
-            catch (Exception exception)
-            {
-                logger.LogError(
-                    exception,
-                    "Mailer status event {SqsMessageId} could not be processed",
-                    record.MessageId);
-                failures.Add(new SQSBatchResponse.BatchItemFailure
-                {
-                    ItemIdentifier = record.MessageId
-                });
-            }
-        }
-        return new SQSBatchResponse(failures);
-    }
 
     internal async Task ApplyAsync(
         MailerStatusEvent statusEvent,

@@ -76,7 +76,9 @@ Email/
 │   ├── Aws/          # SigV4 and DynamoDB implementations
 │   ├── Http/         # shared Mailer API client and transport
 │   └── Memory/       # unit-test capture and idempotency
-└── Functions/        # the Mailer status Lambda function
+└── StatusProcessing/
+    ├── EmailStatusHandler.cs
+    └── AwsLambdaEmailStatusConsumer.cs
 ```
 
 Folders describe architectural roles, not deployment environments. Runtime

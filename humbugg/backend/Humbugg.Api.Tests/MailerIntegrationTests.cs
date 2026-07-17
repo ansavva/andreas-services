@@ -4,7 +4,7 @@ using Amazon.Runtime;
 using Humbugg.Api.Email.Adapters.Aws;
 using Humbugg.Api.Email.Adapters.Http;
 using Humbugg.Api.Email.Core;
-using Humbugg.Api.Email.Functions;
+using Humbugg.Api.Email.StatusProcessing;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Net;
 using System.Text;

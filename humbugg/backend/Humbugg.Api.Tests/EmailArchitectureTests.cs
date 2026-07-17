@@ -13,10 +13,11 @@ public sealed class EmailArchitectureTests
         Assert.True(Directory.Exists(Path.Combine(email, "Adapters", "Aws")));
         Assert.True(Directory.Exists(Path.Combine(email, "Adapters", "Http")));
         Assert.True(Directory.Exists(Path.Combine(email, "Adapters", "Memory")));
-        Assert.True(Directory.Exists(Path.Combine(email, "Functions")));
+        Assert.True(Directory.Exists(Path.Combine(email, "StatusProcessing")));
         Assert.False(Directory.Exists(Path.Combine(email, "Local")));
         Assert.False(Directory.Exists(Path.Combine(email, "Production")));
         Assert.False(Directory.Exists(Path.Combine(email, "Entrypoints")));
+        Assert.False(Directory.Exists(Path.Combine(email, "Functions")));
     }
 
     [Fact]

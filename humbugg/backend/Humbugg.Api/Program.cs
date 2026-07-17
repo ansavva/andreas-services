@@ -6,7 +6,7 @@ using Humbugg.Api.Email.Adapters.Aws;
 using Humbugg.Api.Email.Adapters.Http;
 using Humbugg.Api.Email.Adapters.Memory;
 using Humbugg.Api.Email.Core;
-using Humbugg.Api.Email.Functions;
+using Humbugg.Api.Email.StatusProcessing;
 using Humbugg.Api.Middleware;
 using Humbugg.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -18,7 +18,7 @@ using System.Text.Json.Serialization;
 if (Environment.GetEnvironmentVariable("HUMBUGG_FUNCTION")
     ?.Equals("email-status", StringComparison.OrdinalIgnoreCase) == true)
 {
-    await EmailStatusRuntime.RunAsync();
+    await AwsLambdaEmailStatusConsumer.RunAsync();
     return;
 }
 
