@@ -3,6 +3,10 @@ using System.Text;
 
 namespace Humbugg.Api.Services.Email.Core;
 
+/// <summary>
+/// Identifies the application-owned reason for sending a transactional message.
+/// The Mailer registration restricts Humbugg to these categories.
+/// </summary>
 public enum EmailCategory
 {
     Invitation,
@@ -12,6 +16,10 @@ public enum EmailCategory
     AccountExchangeEvent
 }
 
+/// <summary>
+/// Represents a fully rendered, single-recipient message ready for the Mailer service.
+/// Sender identity and delivery configuration are deliberately not caller-controlled.
+/// </summary>
 public sealed record TransactionalEmail
 {
     internal TransactionalEmail(
@@ -30,22 +38,42 @@ public sealed record TransactionalEmail
         TextBody = textBody;
     }
 
+    /// <summary>Gets Humbugg's deterministic idempotency key for the message.</summary>
     public string MessageId { get; }
+
+    /// <summary>Gets the application-owned message category.</summary>
     public EmailCategory Category { get; }
+
+    /// <summary>Gets the message's sole recipient.</summary>
     public string ToAddress { get; }
+
+    /// <summary>Gets the rendered subject.</summary>
     public string Subject { get; }
+
+    /// <summary>Gets the rendered HTML alternative.</summary>
     public string HtmlBody { get; }
+
+    /// <summary>Gets the rendered plain-text alternative.</summary>
     public string TextBody { get; }
 }
 
+/// <summary>
+/// Describes the result of handing a transactional message to its configured transport.
+/// </summary>
 public sealed record EmailSendResult(
     string MessageId,
     EmailCategory Category,
     bool AlreadyHandled,
     string? AcceptedMessageId);
 
+/// <summary>
+/// Creates stable Mailer application-message identifiers from business-event identity.
+/// </summary>
 public static class EmailMessageId
 {
+    /// <summary>
+    /// Creates the same opaque identifier for retries of the same category, event, and recipient.
+    /// </summary>
     public static string Create(EmailCategory category, string eventId, string toAddress)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(eventId);
@@ -56,6 +84,9 @@ public static class EmailMessageId
         return $"hmb_{CategoryName(category)}_{hash[..24]}";
     }
 
+    /// <summary>
+    /// Converts the application enum to the category registered in Mailer's HTTP contract.
+    /// </summary>
     internal static string CategoryName(EmailCategory category) => category switch
     {
         EmailCategory.Invitation => "invitation",

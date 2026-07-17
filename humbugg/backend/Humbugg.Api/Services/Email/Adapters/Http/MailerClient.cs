@@ -5,23 +5,38 @@ using System.Text.Json;
 
 namespace Humbugg.Api.Services.Email.Adapters.Http;
 
+/// <summary>
+/// Defines Humbugg's client-side operations against the shared Mailer HTTP contract.
+/// </summary>
 internal interface IMailerClient
 {
+    /// <summary>
+    /// Submits a rendered message and optional previously uploaded attachments.
+    /// </summary>
     Task<MailerAcceptedResponse> SubmitMessageAsync(
         TransactionalEmail email,
         IReadOnlyCollection<MailerAttachmentReference>? attachments = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Registers attachment metadata and obtains a restricted upload location.
+    /// </summary>
     Task<MailerAttachmentUpload> RequestAttachmentUploadAsync(
         MailerAttachmentUploadRequest request,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Uploads attachment bytes using the URL and required headers issued by Mailer.
+    /// </summary>
     Task UploadAttachmentAsync(
         MailerAttachmentUpload upload,
         Stream content,
         CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Serializes, signs, and sends Humbugg requests using Mailer's versioned HTTP schema.
+/// </summary>
 internal sealed class MailerClient(
     HttpClient http,
     HumbuggSettings settings,
@@ -32,6 +47,7 @@ internal sealed class MailerClient(
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
     };
 
+    /// <inheritdoc />
     public async Task<MailerAcceptedResponse> SubmitMessageAsync(
         TransactionalEmail email,
         IReadOnlyCollection<MailerAttachmentReference>? attachments = null,
@@ -58,6 +74,7 @@ internal sealed class MailerClient(
         return await DeserializeAsync<MailerAcceptedResponse>(response, cancellationToken);
     }
 
+    /// <inheritdoc />
     public async Task<MailerAttachmentUpload> RequestAttachmentUploadAsync(
         MailerAttachmentUploadRequest request,
         CancellationToken cancellationToken = default)
@@ -71,6 +88,7 @@ internal sealed class MailerClient(
         return await DeserializeAsync<MailerAttachmentUpload>(response, cancellationToken);
     }
 
+    /// <inheritdoc />
     public async Task UploadAttachmentAsync(
         MailerAttachmentUpload upload,
         Stream content,
@@ -95,6 +113,10 @@ internal sealed class MailerClient(
             await EnsureSuccessAsync(response, HttpStatusCode.NoContent, cancellationToken);
     }
 
+    /// <summary>
+    /// Serializes an API request, gives the configured runtime signer the exact body
+    /// bytes, and sends the resulting HTTP message.
+    /// </summary>
     private async Task<HttpResponseMessage> SendJsonAsync<T>(
         HttpMethod method,
         string path,
@@ -116,6 +138,7 @@ internal sealed class MailerClient(
         return await http.SendAsync(request, cancellationToken);
     }
 
+    /// <summary>Deserializes a non-empty Mailer response using its snake-case contract.</summary>
     private static async Task<T> DeserializeAsync<T>(
         HttpResponseMessage response,
         CancellationToken cancellationToken)
@@ -125,6 +148,10 @@ internal sealed class MailerClient(
             ?? throw new MailerApiException("Mailer returned an empty response.");
     }
 
+    /// <summary>
+    /// Converts an unexpected HTTP response into a privacy-safe application exception.
+    /// The response body is deliberately excluded because it may contain message data.
+    /// </summary>
     private static async Task EnsureSuccessAsync(
         HttpResponseMessage response,
         HttpStatusCode expected,
@@ -142,23 +169,36 @@ internal sealed class MailerClient(
     }
 }
 
+/// <summary>
+/// Applies runtime-specific authentication to a serialized Mailer API request.
+/// </summary>
 internal interface IMailerRequestSigner
 {
+    /// <summary>
+    /// Signs the request in place; local implementations may intentionally do nothing.
+    /// </summary>
     Task SignAsync(
         HttpRequestMessage request,
         ReadOnlyMemory<byte> body,
         CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// Represents a failed Mailer API operation without retaining a sensitive response body.
+/// </summary>
 internal sealed class MailerApiException(
     string message,
     HttpStatusCode? statusCode = null,
     string? requestId = null) : Exception(message)
 {
+    /// <summary>Gets the HTTP status returned by Mailer, when available.</summary>
     public HttpStatusCode? StatusCode { get; } = statusCode;
+
+    /// <summary>Gets AWS's request identifier for operational correlation, when available.</summary>
     public string? RequestId { get; } = requestId;
 }
 
+/// <summary>Defines the versioned wire request for submitting one message.</summary>
 internal sealed record MailerMessageRequest(
     int SchemaVersion,
     string ApplicationMessageId,
@@ -170,11 +210,13 @@ internal sealed record MailerMessageRequest(
     string TextBody,
     IReadOnlyCollection<MailerAttachmentReference> Attachments);
 
+/// <summary>References attachment content already registered and uploaded with Mailer.</summary>
 internal sealed record MailerAttachmentReference(
     string AttachmentId,
     string Disposition = "attachment",
     string? ContentId = null);
 
+/// <summary>Defines the versioned metadata used to register an attachment upload.</summary>
 internal sealed record MailerAttachmentUploadRequest(
     int SchemaVersion,
     string ApplicationMessageId,
@@ -183,6 +225,7 @@ internal sealed record MailerAttachmentUploadRequest(
     long SizeBytes,
     string Sha256);
 
+/// <summary>Contains Mailer's restricted upload URL and the headers required to use it.</summary>
 internal sealed record MailerAttachmentUpload(
     int SchemaVersion,
     string AttachmentId,
@@ -190,6 +233,7 @@ internal sealed record MailerAttachmentUpload(
     IReadOnlyDictionary<string, string> RequiredHeaders,
     DateTimeOffset ExpiresAt);
 
+/// <summary>Represents Mailer's durable acceptance of an application message.</summary>
 internal sealed record MailerAcceptedResponse(
     int SchemaVersion,
     string ApplicationMessageId,

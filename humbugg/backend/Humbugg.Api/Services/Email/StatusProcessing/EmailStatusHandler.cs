@@ -5,6 +5,10 @@ using System.Text.Json.Serialization;
 
 namespace Humbugg.Api.Services.Email.StatusProcessing;
 
+/// <summary>
+/// Validates normalized Mailer status events and reconciles them into Humbugg's
+/// delivery ledger without allowing duplicates or stale events to regress state.
+/// </summary>
 internal sealed class EmailStatusHandler(
     IAmazonDynamoDB db,
     string tableName,
@@ -24,6 +28,9 @@ internal sealed class EmailStatusHandler(
             ["complaint"] = 50
         };
 
+    /// <summary>
+    /// Applies one status event when it advances the message's recorded delivery state.
+    /// </summary>
     internal async Task ApplyAsync(
         MailerStatusEvent statusEvent,
         CancellationToken cancellationToken)
@@ -113,6 +120,10 @@ internal sealed class EmailStatusHandler(
         }
     }
 
+    /// <summary>
+    /// Rejects incompatible schemas, cross-service events, incomplete identifiers,
+    /// and statuses outside the shared contract.
+    /// </summary>
     private static void Validate(MailerStatusEvent statusEvent)
     {
         if (statusEvent.SchemaVersion != 1)
@@ -129,6 +140,9 @@ internal sealed class EmailStatusHandler(
     }
 }
 
+/// <summary>
+/// Represents the versioned, privacy-safe delivery event published by Mailer.
+/// </summary>
 internal sealed record MailerStatusEvent(
     [property: JsonPropertyName("schema_version")] int SchemaVersion,
     [property: JsonPropertyName("event_id")] string EventId,

@@ -1,27 +1,53 @@
 namespace Humbugg.Api.Services.Email.Core;
 
+/// <summary>
+/// Coordinates idempotent delivery of application-rendered transactional email.
+/// </summary>
 public interface ITransactionalEmailService
 {
+    /// <summary>
+    /// Sends a message unless its deterministic message ID is already being handled.
+    /// </summary>
     Task<EmailSendResult> SendAsync(TransactionalEmail email, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Delivers a rendered message to the runtime-specific email boundary.
+/// </summary>
 internal interface IEmailTransport
 {
+    /// <summary>
+    /// Transfers ownership of a message and returns the accepting system's message identifier.
+    /// </summary>
     Task<string> SendAsync(TransactionalEmail email, CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// Reserves message IDs and records whether an attempted handoff was accepted or failed.
+/// </summary>
 internal interface IEmailDeliveryLedger
 {
+    /// <summary>
+    /// Atomically reserves a message for delivery, returning false when it is already handled.
+    /// </summary>
     Task<bool> TryBeginAsync(TransactionalEmail email, CancellationToken cancellationToken);
+
+    /// <summary>Records that the transport durably accepted the message.</summary>
     Task MarkAcceptedAsync(string messageId, CancellationToken cancellationToken);
+
+    /// <summary>Releases a failed reservation so a later attempt can retry it.</summary>
     Task MarkFailedAsync(string messageId, CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// Applies Humbugg's idempotency rules around the configured email transport.
+/// </summary>
 internal sealed class TransactionalEmailService(
     IEmailTransport transport,
     IEmailDeliveryLedger ledger,
     ILogger<TransactionalEmailService> logger) : ITransactionalEmailService
 {
+    /// <inheritdoc />
     public async Task<EmailSendResult> SendAsync(
         TransactionalEmail email,
         CancellationToken cancellationToken = default)

@@ -7,7 +7,9 @@ using System.Text;
 
 namespace Humbugg.Api.Services.Email.Adapters.Aws;
 
-// Production signs the shared HTTP contract with the Lambda role's credentials.
+/// <summary>
+/// Signs production Mailer API requests with the Lambda role's temporary AWS credentials.
+/// </summary>
 internal sealed class AwsSigV4MailerRequestSigner(
     AWSCredentials credentials,
     string region,
@@ -15,6 +17,7 @@ internal sealed class AwsSigV4MailerRequestSigner(
 {
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
 
+    /// <inheritdoc />
     public async Task SignAsync(
         HttpRequestMessage request,
         ReadOnlyMemory<byte> body,
@@ -78,14 +81,18 @@ internal sealed class AwsSigV4MailerRequestSigner(
             $"Credential={immutable.AccessKey}/{scope}, SignedHeaders={signedHeaders}, Signature={signature}");
     }
 
+    /// <summary>Encodes the request path using AWS SigV4 canonicalization rules.</summary>
     private static string CanonicalPath(Uri uri) =>
         string.Join('/', uri.AbsolutePath.Split('/').Select(Uri.EscapeDataString));
 
+    /// <summary>Collapses insignificant header whitespace for the canonical request.</summary>
     private static string Normalize(string value) =>
         string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
+    /// <summary>Calculates one step of the SigV4 signing-key derivation.</summary>
     private static byte[] Hmac(byte[] key, string value) =>
         HMACSHA256.HashData(key, Encoding.UTF8.GetBytes(value));
 
+    /// <summary>Formats bytes as the lowercase hexadecimal form required by SigV4.</summary>
     private static string Hex(ReadOnlySpan<byte> value) => Convert.ToHexStringLower(value);
 }

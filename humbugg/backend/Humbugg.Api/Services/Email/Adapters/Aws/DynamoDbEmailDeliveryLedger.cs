@@ -4,10 +4,14 @@ using Humbugg.Api.Services.Email.Core;
 
 namespace Humbugg.Api.Services.Email.Adapters.Aws;
 
+/// <summary>
+/// Persists Humbugg's message reservations and handoff state in DynamoDB.
+/// </summary>
 internal sealed class DynamoDbEmailDeliveryLedger(
     IAmazonDynamoDB db,
     HumbuggSettings settings) : IEmailDeliveryLedger
 {
+    /// <inheritdoc />
     public async Task<bool> TryBeginAsync(TransactionalEmail email, CancellationToken cancellationToken)
     {
         var timestamp = DateTimeOffset.UtcNow;
@@ -43,12 +47,15 @@ internal sealed class DynamoDbEmailDeliveryLedger(
         }
     }
 
+    /// <inheritdoc />
     public Task MarkAcceptedAsync(string messageId, CancellationToken cancellationToken) =>
         SetStatusAsync(messageId, "accepted", cancellationToken);
 
+    /// <inheritdoc />
     public Task MarkFailedAsync(string messageId, CancellationToken cancellationToken) =>
         SetStatusAsync(messageId, "failed", cancellationToken);
 
+    /// <summary>Conditionally updates an existing message reservation.</summary>
     private Task SetStatusAsync(
         string messageId,
         string status,

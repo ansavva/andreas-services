@@ -2,6 +2,10 @@ using Humbugg.Api.Consumers.EmailStatus;
 
 namespace Humbugg.Api.Consumers;
 
+/// <summary>
+/// Selects and starts the background consumer assigned to the current Lambda process.
+/// This is the single registry for all Humbugg consumers.
+/// </summary>
 internal static class ConsumerHost
 {
     private const string ConsumerEnvironmentVariable = "HUMBUGG_CONSUMER";
@@ -12,13 +16,26 @@ internal static class ConsumerHost
                 AwsLambdaEmailStatusConsumer.RunAsync
         };
 
+    /// <summary>
+    /// Gets the names accepted by <c>HUMBUGG_CONSUMER</c>.
+    /// </summary>
     internal static IReadOnlyCollection<string> RegisteredConsumerNames =>
         Consumers.Keys.ToArray();
 
+    /// <summary>
+    /// Gets whether this process was configured to host a background consumer instead
+    /// of the HTTP API.
+    /// </summary>
     public static bool IsConsumerProcess =>
         !string.IsNullOrWhiteSpace(
             Environment.GetEnvironmentVariable(ConsumerEnvironmentVariable));
 
+    /// <summary>
+    /// Runs the consumer named by <c>HUMBUGG_CONSUMER</c>.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the environment variable is missing or names an unregistered consumer.
+    /// </exception>
     public static Task RunConfiguredAsync()
     {
         var name = Environment.GetEnvironmentVariable(ConsumerEnvironmentVariable);
