@@ -71,15 +71,15 @@ public sealed class SecurityControlsTests
     // ─── Emergency-reveal audit: organizer-only, always recorded with actor + reason ──────────
 
     [Fact]
-    public async Task OrganizerRevealRecordsExactlyOneAuditEventWithActorAndReason()
+    public async Task OrganizerRevealRecordsExactlyOneAuditEventWithTheReason()
     {
         var fixture = new Fixture(Fixture.Organizer(), drawn: true);
 
         await fixture.Subject.RevealAsync("group", new RevealRequest("investigating a delivery complaint"), TestContext.Current.CancellationToken);
 
-        var record = Assert.Single(fixture.Groups.Reveals);
-        Assert.Equal("user", record.ActorUserId);
-        Assert.Equal("investigating a delivery complaint", record.Reason);
+        var record = Assert.Single(fixture.Audit.Events);
+        Assert.Equal(AuditAction.AssignmentRevealed, record.Action);
+        Assert.Equal("investigating a delivery complaint", record.Metadata?["reason"]);
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public sealed class SecurityControlsTests
             fixture.Subject.RevealAsync("group", new RevealRequest("curiosity"), TestContext.Current.CancellationToken));
 
         Assert.Equal(403, error.StatusCode);
-        Assert.Empty(fixture.Groups.Reveals);
+        Assert.Empty(fixture.Audit.Events);
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public sealed class SecurityControlsTests
             fixture.Subject.RevealAsync("group", new RevealRequest("   "), TestContext.Current.CancellationToken));
 
         Assert.Equal(400, error.StatusCode);
-        Assert.Empty(fixture.Groups.Reveals);
+        Assert.Empty(fixture.Audit.Events);
     }
 
     // ─── One uniform rate limit, configurable and on by default ───────────────────────────────
@@ -206,6 +206,7 @@ public sealed class SecurityControlsTests
     private sealed class Fixture
     {
         public FakeGroups Groups { get; }
+        public FakeAuditTrail Audit { get; } = new();
         public GroupService Subject { get; }
 
         public Fixture(MembershipRecord? member, bool drawn = false)
@@ -215,7 +216,7 @@ public sealed class SecurityControlsTests
             Groups = new FakeGroups(Group(drawn), drawn);
             Subject = new GroupService(
                 new FakeUser(), new FakeProfiles(), Groups, new FakeMembers(members),
-                new MatchingService(), new PlanCatalog(new()),
+                new MatchingService(), new PlanCatalog(new()), Audit,
                 new HumbuggSettings(
                     "us-east-1", "us-east-1", "pool", "client", "https://humbugg.example", "https://humbugg.example", null,
                     "profiles", "groups", "members", "draws", "audit"));
@@ -232,20 +233,12 @@ public sealed class SecurityControlsTests
             drawn ? GroupStatus.Drawn : GroupStatus.Open, "hash", [], "now", "now");
     }
 
-    private sealed record RevealCall(string ActorUserId, string Reason);
-
     private sealed class FakeGroups(GroupRecord group, bool drawn) : IGroupRepository
     {
-        public List<RevealCall> Reveals { get; } = [];
         public Task<GroupRecord?> GetAsync(string groupId, CancellationToken cancellationToken = default) => Task.FromResult<GroupRecord?>(group);
         public Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, AttributeValue> fields, GroupStatus? expectedStatus = null, CancellationToken cancellationToken = default) => Task.FromResult(group);
         public Task<DrawRecord?> GetDrawAsync(string groupId, CancellationToken cancellationToken = default) => Task.FromResult<DrawRecord?>(
             drawn ? new DrawRecord("group", "draw", new Dictionary<string, string> { ["actor"] = "other", ["other"] = "actor" }, "now", "user") : null);
-        public Task RecordRevealAsync(string groupId, string actorUserId, string reason, CancellationToken cancellationToken = default)
-        {
-            Reveals.Add(new RevealCall(actorUserId, reason));
-            return Task.CompletedTask;
-        }
         public Task<GroupRecord> CreateAsync(GroupRecord value, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task DeleteAsync(string groupId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task CreateDrawAsync(string groupId, IReadOnlyDictionary<string, string> assignments, string actorUserId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
@@ -253,6 +246,18 @@ public sealed class SecurityControlsTests
     }
 
     private sealed class FakeUser : ICurrentUser { public string UserId => "user"; }
+
+    private sealed class FakeAuditTrail : IAuditTrail
+    {
+        public List<(AuditAction Action, string GroupId, IReadOnlyDictionary<string, string>? Metadata)> Events { get; } = [];
+
+        public Task RecordAsync(AuditAction action, string groupId, AuditTarget target,
+            IReadOnlyDictionary<string, string>? metadata = null, string? organizationId = null, CancellationToken cancellationToken = default)
+        {
+            Events.Add((action, groupId, metadata));
+            return Task.CompletedTask;
+        }
+    }
 
     private sealed class FakeProfiles : IProfileRepository
     {
