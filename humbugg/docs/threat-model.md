@@ -136,8 +136,8 @@ are specified in §4.
     (`Validation.InviteToken`); malformed and wrong-but-well-formed tokens return the **identical**
     `403 "This invitation is invalid or has expired."` — no distinguishing signal.
   - Non-membership returns `403` uniformly (`RequireMembershipAsync`).
-  - Join attempts are rate-limited per account (§4) to cap brute-force throughput far below what
-    256-bit entropy already makes infeasible.
+  - Join attempts are throttled by the API Gateway stage limit (§4) to cap brute-force throughput far
+    below what 256-bit entropy already makes infeasible.
 - **Test:** `SecurityControlsTests.JoinRejectsMalformedAndWrongTokensWithTheIdenticalForbiddenResponse`.
 - **Residual:** `RequireGroupAsync` throws `404` for a missing group vs `403` for
   "exists but you're not a member". Because group IDs are GUIDs this is not a practical enumeration
@@ -148,8 +148,8 @@ are specified in §4.
 - **Status:** Humbugg does **not** send invitations by email today — the organizer copies a link. So
   there is no server-driven email-spam vector yet. Invite **rotation** is the only invite write and is
   organizer-only.
-- **Mitigation [NOW]:** `RotateInviteAsync` is organizer-only and covered by the uniform per-caller
-  rate limit (§4).
+- **Mitigation [NOW]:** `RotateInviteAsync` is organizer-only and covered by the API Gateway stage
+  throttle (§4).
 - **[FUTURE]** When email/SMS invitations ship: server-sent invites must be rate-limited per organizer
   **and** per group, deduplicated per recipient, capped per unit time, and every send audited
   (`reminder_sent` / an `invitation_sent` action). Recipients get an unsubscribe/report path. Bounce
@@ -205,7 +205,7 @@ are specified in §4.
     from the provider API keyed by the customer/subscription id, rather than trusting amounts/flags in
     the payload.
   - The webhook endpoint is exempt from Cognito auth (it has no user token) but is signature-gated and
-    rate-limited by IP; it must never accept an `entitlement`/`plan` field directly from the caller.
+    covered by the API Gateway stage throttle (§4); it must never accept an `entitlement`/`plan` field directly from the caller.
   - Every entitlement change is audited (`payment_entitlement_changed`) with actor = `system:payments`.
 
 ### 3.8 Entitlement tampering
@@ -233,46 +233,35 @@ are specified in §4.
 
 ## 4. Rate-limit specification
 
-Rate limiting is a **security control**, applied identically on every plan. It is implemented with the
-ASP.NET Core rate limiter (`humbugg/backend/Humbugg.Api/Services/RateLimiting.cs`, wired in
-`Program.cs`).
+Rate limiting is a **security control**, applied identically on every plan. It is enforced at the
+**edge, not in application code**: API Gateway throttles the request before the Lambda is ever
+invoked, so a throttled request costs no invocation and cannot exhaust Lambda concurrency.
 
-**One uniform limit, every endpoint.** Humbugg deliberately does **not** use endpoint-specific
-policies. A single global limiter (`options.GlobalLimiter`) applies to *every* request — read or
-write, known abuse vector or not, including `/health` — because an attack can come from any route.
-The limit is **configuration, not a constant**: it is read from an environment variable (populated
-from GitHub environment vars → Lambda env at deploy time) with a safe default.
+**One uniform limit, every route.** The backend is an API Gateway **HTTP API**; its stage sets
+`default_route_settings` throttling that applies to **every** route (read or write, known abuse vector
+or not, including `/health`) — there are no per-route overrides. It is a token bucket protecting
+aggregate throughput: a steady-state rate plus a burst capacity, defined in
+`humbugg/infra/modules/compute` and tunable via `api_throttling_rate_limit` /
+`api_throttling_burst_limit` (defaults **500 req/s, 1000 burst**). Over-limit requests get API
+Gateway's `429`.
 
-| Setting | Env prefix | Default | Scope |
-|---|---|---|---|
-| Uniform per-caller limit | `HUMBUGG_RATELIMIT_GLOBAL` | 300 / 60s | every endpoint |
+This is **aggregate, not per-caller**: it guards the backend from overload and smooths bursts, but a
+single abusive IP can consume the shared budget (the burst caps the spike). Per-IP and pattern-based
+protection is the job of the edge WAF layer below.
 
-`HUMBUGG_RATELIMIT_GLOBAL_LIMIT` and `HUMBUGG_RATELIMIT_GLOBAL_WINDOW_SECONDS` tune the count and
-window; `HUMBUGG_RATELIMIT_ENABLED` (default `true`) is a kill-switch. Rejections return `429` in the
-standard error envelope (`{ "error": { "code": "rate_limited", … } }`) with a `Retry-After` header.
-
-**Identifying the caller.** Partitioning is **per authenticated Cognito subject** (`user:{sub}`), so a
-limit follows the account across IPs. Unauthenticated callers fall back to the **trusted** client IP
-(`ip:{sourceIp}`) taken from `HttpContext.Connection.RemoteIpAddress`, which the API Gateway Lambda
-integration populates from the request-context `sourceIp`. The `X-Forwarded-For` header is **not**
-trusted: its left-most hop is caller-supplied and spoofable behind API Gateway, so keying on it would
-let an attacker rotate the header to mint unlimited IP partitions and evade the per-IP limit.
-
-Notes and layering:
-- **Account creation** in the identity sense (Cognito sign-up) happens **before** any Humbugg token
-  exists, so it is rate-limited **upstream** at Cognito (per-IP sign-up throttles) and, when added,
-  AWS WAF on the API Gateway/CloudFront edge.
-- The in-app per-caller limiter is one layer; an **edge WAF** rate limit keyed on IP is the
-  recommended first layer against unauthenticated floods and credential stuffing (tracked in §7).
+**Layering (AWS best practice — Well-Architected REL05-BP02 "throttle requests"):**
+- **Edge — AWS WAF rate-based rules, per-IP. [FUTURE — #183]** The recommended first layer against
+  unauthenticated floods, credential stuffing, and volumetric abuse. WAF does not attach to HTTP APIs,
+  so it needs CloudFront-in-front-of-API or a REST-API migration; tracked in **#183**.
+- **Gateway — API Gateway stage throttling, aggregate. [NOW]** Implemented here.
+- **Application — per-user/tenant limits. [not implemented]** An earlier in-app ASP.NET limiter was
+  removed as redundant Lambda overhead once the gateway throttle was in place. If a specific action
+  ever needs a tighter or per-user bound, that is a future decision, not a default.
+- **Account creation** in the identity sense (Cognito sign-up) happens before any Humbugg token
+  exists, so it is throttled **upstream** at Cognito (per-IP sign-up throttles) and, once #183 lands,
+  at the WAF edge.
 - **Reminders** additionally need *dedup/cooldown* per recipient (a rate limit alone doesn't stop one
   member being reminded repeatedly) — see §3.4.
-- If a specific action ever proves to need a tighter bound than the uniform limit, that is a future
-  hardening decision — not a default. The current posture is one uniform limit plus the edge WAF.
-
-Tests: `SecurityControlsTests` covers default values, env-override (configurability), rejection of a
-non-positive limit, that a single global limiter is registered (so every endpoint is covered), and the
-partition-key precedence (subject over IP, and that the trusted connection IP is used while a spoofed
-`X-Forwarded-For` is ignored).
 
 ---
 
@@ -336,7 +325,7 @@ assignment contents, addresses, or the invite secret.
 | # | Residual risk | Severity | Plan |
 |---|---|---|---|
 | RR1 | `404` vs `403` distinction on group existence is a weak enumeration oracle | Low | Harmonize to `404`; GUID IDs keep it low-risk meanwhile |
-| RR2 | No edge WAF; in-app limiter is the only rate control on unauthenticated floods | Medium | Add AWS WAF IP rate rules on the API/CloudFront edge |
+| RR2 | No edge WAF; the aggregate API Gateway throttle is the only rate control on unauthenticated floods | Medium | Add AWS WAF per-IP rate rules (CloudFront/REST-API edge) — #183 |
 | RR3 | Reveal audit is best-effort `PutItem`, not provably append-only | Medium | Adopt PR #177 generalized audit trail |
 | RR4 | Reveal `reason` free-text may contain PII | Low | UI guidance; consider redaction/validation |
 | RR5 | No reveal-frequency alerting | Medium | CloudWatch metric + alarm on reveal rate |
@@ -354,16 +343,16 @@ assignment contents, addresses, or the invite secret.
 - **Suspected assignment leak / misuse of reveal:** query `humbugg-audit-events` by `group_id` for
   `assignment_reveal` events to see actor, time, and reason. Escalate to disabling the organizer's
   account in Cognito if abuse is confirmed.
-- **Credential stuffing / floods:** the per-user limiter returns `429`; add/adjust WAF IP rules
-  (RR2). Tune `HUMBUGG_RATELIMIT_*` env vars via the `humbugg-production` GitHub environment (no code
-  change or redeploy of the image required — a config update + `update-function-configuration` run).
+- **Credential stuffing / floods:** the API Gateway stage throttle returns `429`; add per-IP WAF rules
+  (RR2, #183). Tune `api_throttling_rate_limit` / `api_throttling_burst_limit` in `humbugg/infra`
+  (a Terraform apply — no image rebuild).
 - **Webhook abuse [FUTURE]:** on signature-verification failures, alert and block the source IP at the
   edge; entitlements never change on an unverified event.
 - **Audit integrity:** treat `humbugg-audit-events` as evidence — restrict IAM to append + read, deny
   delete/update in the table's resource policy, and consider point-in-time recovery.
-- **Config tuning:** the rate limit is env-driven. Emergency tightening (e.g. drop
-  `HUMBUGG_RATELIMIT_GLOBAL_LIMIT`, or set `HUMBUGG_RATELIMIT_GLOBAL_WINDOW_SECONDS` higher) is a
-  config change, applied via the deploy workflow's `run_app` path.
+- **Config tuning:** the rate limit is a Terraform variable. Emergency tightening (lower
+  `api_throttling_rate_limit` / `api_throttling_burst_limit` in `humbugg/infra`) is applied via the
+  deploy workflow's `run_infra` path.
 
 ---
 
@@ -373,8 +362,8 @@ Before shipping co-organizers, reminders, questions, payments, or Work tenancy, 
 
 - [ ] New privileged routes call the central membership/role check (O1–O2, C1–C4, W1–W5) — no client
       role claim is trusted.
-- [ ] New endpoints are automatically covered by the uniform global rate limit (§4) — confirm none
-      opt out via `[DisableRateLimiting]`.
+- [ ] New endpoints are automatically covered by the API Gateway stage throttle (§4) — it applies to
+      every route with no per-route configuration.
 - [ ] No secret is ever placed in a path or query string (§5).
 - [ ] Every security- or privacy-relevant action is audited with actor, target, time, and (for Work)
       `organization_id`; metadata is redacted.

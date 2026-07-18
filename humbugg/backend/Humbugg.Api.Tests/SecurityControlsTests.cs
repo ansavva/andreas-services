@@ -3,12 +3,6 @@ using Humbugg.Api;
 using Humbugg.Api.Data;
 using Humbugg.Api.Models;
 using Humbugg.Api.Services;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
-using System.Net;
-using System.Security.Claims;
 using Xunit;
 
 namespace Humbugg.Api.Tests;
@@ -16,7 +10,8 @@ namespace Humbugg.Api.Tests;
 /// <summary>
 /// Security tests for the controls named in the Humbugg threat model (humbugg/docs/threat-model.md):
 /// invite-secret handling that never leaks through referrers or logs, enumeration resistance on
-/// join, the emergency-reveal audit, and the (configurable, plan-independent) rate-limit wiring.
+/// join, and the emergency-reveal audit. (Rate limiting is enforced at the API Gateway stage, not
+/// in-process — see humbugg/infra/modules/compute.)
 /// </summary>
 public sealed class SecurityControlsTests
 {
@@ -104,103 +99,6 @@ public sealed class SecurityControlsTests
 
         Assert.Equal(400, error.StatusCode);
         Assert.Empty(fixture.Audit.Events);
-    }
-
-    // ─── One uniform rate limit, configurable and on by default ───────────────────────────────
-
-    [Fact]
-    public void RateLimitSettingsUseSafeDefaultsWhenUnset()
-    {
-        var settings = WithEnvironment(new(), RateLimitSettings.FromEnvironment);
-
-        Assert.True(settings.Enabled);
-        Assert.Equal(300, settings.Global.PermitLimit);
-        Assert.Equal(60, settings.Global.WindowSeconds);
-    }
-
-    [Fact]
-    public void RateLimitSettingsAreOverridableFromTheEnvironment()
-    {
-        var settings = WithEnvironment(new()
-        {
-            ["HUMBUGG_RATELIMIT_ENABLED"] = "false",
-            ["HUMBUGG_RATELIMIT_GLOBAL_LIMIT"] = "3",
-            ["HUMBUGG_RATELIMIT_GLOBAL_WINDOW_SECONDS"] = "600",
-        }, RateLimitSettings.FromEnvironment);
-
-        Assert.False(settings.Enabled);
-        Assert.Equal(3, settings.Global.PermitLimit);
-        Assert.Equal(600, settings.Global.WindowSeconds);
-    }
-
-    [Fact]
-    public void RateLimitSettingsRejectNonPositiveLimits()
-    {
-        var error = Assert.Throws<InvalidOperationException>(() =>
-            WithEnvironment(new() { ["HUMBUGG_RATELIMIT_GLOBAL_LIMIT"] = "0" }, RateLimitSettings.FromEnvironment));
-
-        Assert.Contains("HUMBUGG_RATELIMIT_GLOBAL_LIMIT", error.Message);
-    }
-
-    // ─── One global limiter covers every endpoint — no per-endpoint policies ──────────────────
-
-    [Fact]
-    public void GlobalLimiterCoversEveryEndpoint()
-    {
-        var services = new ServiceCollection();
-        services.AddHumbuggRateLimiter(new RateLimitSettings(Enabled: true, Global: new RateLimitRule(300, 60)));
-
-        var options = services.BuildServiceProvider()
-            .GetRequiredService<IOptions<RateLimiterOptions>>().Value;
-
-        Assert.NotNull(options.GlobalLimiter);
-    }
-
-    // ─── Partition key follows the account across IPs, then falls back to the TRUSTED client IP ─
-
-    [Fact]
-    public void PartitionKeyPrefersTheCognitoSubject()
-    {
-        var context = new DefaultHttpContext
-        {
-            User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", "cognito-123")], "test"))
-        };
-        context.Request.Headers["X-Forwarded-For"] = "203.0.113.9";
-
-        Assert.Equal("user:cognito-123", RateLimiterConfiguration.PartitionKey(context));
-    }
-
-    [Fact]
-    public void PartitionKeyUsesTheTrustedConnectionIpAndIgnoresSpoofableForwardedHeader()
-    {
-        var context = new DefaultHttpContext();
-        context.Connection.RemoteIpAddress = IPAddress.Parse("198.51.100.7");
-        // A caller-supplied X-Forwarded-For must NOT influence the partition — otherwise an attacker
-        // could rotate the header to mint unlimited IP buckets and evade the per-IP limit.
-        context.Request.Headers["X-Forwarded-For"] = "203.0.113.9, 10.0.0.1";
-
-        Assert.Equal("ip:198.51.100.7", RateLimiterConfiguration.PartitionKey(context));
-    }
-
-    private static T WithEnvironment<T>(Dictionary<string, string> variables, Func<T> read)
-    {
-        var keys = new[]
-        {
-            "HUMBUGG_RATELIMIT_ENABLED",
-            "HUMBUGG_RATELIMIT_GLOBAL_LIMIT",
-            "HUMBUGG_RATELIMIT_GLOBAL_WINDOW_SECONDS",
-        };
-        var previous = keys.ToDictionary(key => key, Environment.GetEnvironmentVariable);
-        try
-        {
-            foreach (var key in keys) Environment.SetEnvironmentVariable(key, null);
-            foreach (var (key, value) in variables) Environment.SetEnvironmentVariable(key, value);
-            return read();
-        }
-        finally
-        {
-            foreach (var (key, value) in previous) Environment.SetEnvironmentVariable(key, value);
-        }
     }
 
     private sealed class Fixture

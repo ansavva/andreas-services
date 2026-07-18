@@ -29,9 +29,6 @@ var builder = WebApplication.CreateBuilder(args);
 var settings = HumbuggSettings.FromEnvironment();
 builder.Services.AddSingleton(settings);
 builder.Services.AddSingleton<IPlanCatalog>(PlanCatalog.FromEnvironment());
-var rateLimits = RateLimitSettings.FromEnvironment();
-builder.Services.AddSingleton(rateLimits);
-builder.Services.AddHumbuggRateLimiter(rateLimits);
 
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
@@ -158,9 +155,8 @@ app.UseCors();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
-// After authentication so the rate-limit partition key can use the Cognito subject. The global
-// limiter applies to every endpoint below (controllers and /health) — no per-endpoint policies.
-app.UseRateLimiter();
+// Rate limiting is enforced upstream at the API Gateway stage (default route throttling),
+// not in-process — see humbugg/infra/modules/compute and humbugg/docs/threat-model.md §4.
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapControllers();
 app.Run();
