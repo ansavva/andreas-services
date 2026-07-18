@@ -34,6 +34,7 @@ internal sealed class GroupService(
     IMembershipRepository memberships,
     IMatchingService matching,
     IPlanCatalog plans,
+    IAuditTrail audit,
     HumbuggSettings settings) : IGroupService
 {
     public async Task<IReadOnlyList<GroupSummary>> ListAsync(CancellationToken cancellationToken = default)
@@ -61,6 +62,8 @@ internal sealed class GroupService(
             "USD", PlanCode.Free, null, GroupStatus.Open, Hash(secret), [], now, now);
         await groups.CreateAsync(group, cancellationToken);
         await memberships.CreateAsync(group.GroupId, user.UserId, profile.DisplayName, true, cancellationToken);
+        await audit.RecordAsync(AuditAction.GroupCreated, group.GroupId, AuditTarget.Group(group.GroupId),
+            new Dictionary<string, string> { ["plan"] = group.Plan.ToString().ToLowerInvariant() }, cancellationToken: cancellationToken);
         var detail = await GetAsync(group.GroupId, cancellationToken);
         return detail with { InviteUrl = InviteUrl(group.GroupId, secret) };
     }
@@ -86,7 +89,12 @@ internal sealed class GroupService(
             if (request.SignupDeadline is not null) fields["signup_deadline"] = DynamoValues.S(dates.SignupDeadline ?? "");
         }
         if (request.SpendingLimit is not null) fields["spending_limit_cents"] = DynamoValues.N(Validation.SpendingLimit(request.SpendingLimit)!.Value);
-        if (fields.Count > 0) await groups.UpdateAsync(groupId, fields, cancellationToken: cancellationToken);
+        if (fields.Count > 0)
+        {
+            await groups.UpdateAsync(groupId, fields, cancellationToken: cancellationToken);
+            await audit.RecordAsync(AuditAction.GroupUpdated, groupId, AuditTarget.Group(groupId),
+                new Dictionary<string, string> { ["fields"] = string.Join(",", fields.Keys.Order(StringComparer.Ordinal)) }, cancellationToken: cancellationToken);
+        }
         return await GetAsync(groupId, cancellationToken);
     }
 
@@ -96,6 +104,7 @@ internal sealed class GroupService(
         RequireOrganizer(membership);
         await memberships.DeleteByGroupAsync(groupId, cancellationToken);
         await groups.DeleteAsync(groupId, cancellationToken);
+        await audit.RecordAsync(AuditAction.GroupDeleted, groupId, AuditTarget.Group(groupId), cancellationToken: cancellationToken);
     }
 
     public async Task<InviteResponse> RotateInviteAsync(string groupId, CancellationToken cancellationToken = default)
@@ -105,6 +114,7 @@ internal sealed class GroupService(
         var secret = NewSecret();
         await ConditionalGroupUpdate(() => groups.UpdateAsync(groupId,
             new Dictionary<string, AttributeValue> { ["invite_hash"] = DynamoValues.S(Hash(secret)) }, GroupStatus.Open, cancellationToken));
+        await audit.RecordAsync(AuditAction.InviteRotated, groupId, AuditTarget.Invite(groupId), cancellationToken: cancellationToken);
         return new InviteResponse(InviteUrl(groupId, secret));
     }
 
@@ -121,8 +131,11 @@ internal sealed class GroupService(
             throw ApiException.Forbidden("This invitation is invalid or has expired.");
         var currentMembers = await memberships.GetByGroupAsync(groupId, cancellationToken);
         plans.EnsureParticipantCapacity(group.Plan, currentMembers.Count(item => item.IsParticipating));
-        try { await memberships.CreateAsync(groupId, user.UserId, profile.DisplayName, false, cancellationToken); }
+        MembershipRecord? joined = null;
+        try { joined = await memberships.CreateAsync(groupId, user.UserId, profile.DisplayName, false, cancellationToken); }
         catch (ConditionalCheckFailedException) { }
+        if (joined is not null)
+            await audit.RecordAsync(AuditAction.ParticipantJoined, groupId, AuditTarget.Member(joined.MemberId), cancellationToken: cancellationToken);
         return await GetAsync(groupId, cancellationToken);
     }
 
@@ -147,6 +160,7 @@ internal sealed class GroupService(
         var (group, membership) = await RequireMembershipAsync(groupId, cancellationToken); RequireOpen(group);
         if (membership.IsOrganizer) throw ApiException.Conflict("The organizer must delete the group instead of leaving it.");
         await memberships.DeleteAsync(membership.MemberId, cancellationToken);
+        await audit.RecordAsync(AuditAction.ParticipantLeft, groupId, AuditTarget.Member(membership.MemberId), cancellationToken: cancellationToken);
         var remaining = group.Exclusions.Where(pair => !pair.Contains(membership.MemberId, StringComparer.Ordinal)).ToList();
         if (remaining.Count != group.Exclusions.Count)
             await ConditionalGroupUpdate(() => groups.UpdateAsync(groupId,
@@ -166,7 +180,10 @@ internal sealed class GroupService(
             var currentMembers = await memberships.GetByGroupAsync(groupId, cancellationToken);
             plans.EnsureParticipantCapacity(group.Plan, currentMembers.Count(item => item.IsParticipating));
         }
-        return Public(await memberships.UpdateParticipationAsync(memberId, request.IsParticipating.Value, cancellationToken));
+        var updated = await memberships.UpdateParticipationAsync(memberId, request.IsParticipating.Value, cancellationToken);
+        await audit.RecordAsync(AuditAction.ParticipationChanged, groupId, AuditTarget.Member(memberId),
+            new Dictionary<string, string> { ["is_participating"] = request.IsParticipating.Value ? "true" : "false" }, cancellationToken: cancellationToken);
+        return Public(updated);
     }
 
     public async Task<GroupDetail> SetExclusionsAsync(string groupId, ExclusionsRequest request, CancellationToken cancellationToken = default)
@@ -185,6 +202,8 @@ internal sealed class GroupService(
         }
         await ConditionalGroupUpdate(() => groups.UpdateAsync(groupId,
             new Dictionary<string, AttributeValue> { ["exclusions"] = DynamoValues.ExclusionsValue(normalized) }, GroupStatus.Open, cancellationToken));
+        await audit.RecordAsync(AuditAction.ExclusionsChanged, groupId, AuditTarget.Group(groupId),
+            new Dictionary<string, string> { ["exclusion_count"] = normalized.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) }, cancellationToken: cancellationToken);
         return await GetAsync(groupId, cancellationToken);
     }
 
@@ -195,6 +214,8 @@ internal sealed class GroupService(
             (await memberships.GetByGroupAsync(groupId, cancellationToken)).Where(item => item.IsParticipating).Select(item => item.MemberId), group.Exclusions);
         try { await groups.CreateDrawAsync(groupId, assignments, user.UserId, cancellationToken); }
         catch (TransactionCanceledException) { throw ApiException.Conflict("This group has already been drawn or changed."); }
+        await audit.RecordAsync(AuditAction.DrawCreated, groupId, AuditTarget.Draw(groupId),
+            new Dictionary<string, string> { ["participant_count"] = assignments.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) }, cancellationToken: cancellationToken);
         return await GetAssignmentAsync(groupId, cancellationToken);
     }
 
@@ -204,6 +225,7 @@ internal sealed class GroupService(
         if (group.Status != GroupStatus.Drawn) throw ApiException.Conflict("This group has not been drawn.");
         try { await groups.ResetDrawAsync(groupId, cancellationToken); }
         catch (TransactionCanceledException) { throw ApiException.Conflict("The draw was already reset or changed."); }
+        await audit.RecordAsync(AuditAction.DrawReset, groupId, AuditTarget.Draw(groupId), cancellationToken: cancellationToken);
         return await GetAsync(groupId, cancellationToken);
     }
 
@@ -225,7 +247,8 @@ internal sealed class GroupService(
         if (group.Status != GroupStatus.Drawn) throw ApiException.Conflict("Assignments have not been created yet.");
         var reason = Validation.Required(request.Reason, "reason", 500);
         var draw = await groups.GetDrawAsync(groupId, cancellationToken) ?? throw ApiException.NotFound("Draw record not found.");
-        await groups.RecordRevealAsync(groupId, user.UserId, reason, cancellationToken);
+        await audit.RecordAsync(AuditAction.AssignmentRevealed, groupId, AuditTarget.Group(groupId),
+            new Dictionary<string, string> { ["reason"] = reason }, cancellationToken: cancellationToken);
         var members = (await memberships.GetByGroupAsync(groupId, cancellationToken)).ToDictionary(item => item.MemberId, StringComparer.Ordinal);
         var revealed = draw.Assignments.Where(pair => members.ContainsKey(pair.Key) && members.ContainsKey(pair.Value))
             .Select(pair => new RevealAssignment(Public(members[pair.Key]), Assignment(members[pair.Value]))).ToList();
