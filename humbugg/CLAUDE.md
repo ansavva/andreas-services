@@ -52,6 +52,10 @@ CloudFront permanently redirects non-apex requests to `https://humbugg.com`.
 ## Local Development
 
 ```bash
+# One-time toolchain setup (from the repo root): installs .NET SDK 10, Node,
+# Terraform, tflint, etc. via Homebrew. Idempotent — safe to re-run.
+./scripts/dev-setup.sh && ./humbugg/scripts/dev-setup.sh
+
 # Backend
 cd humbugg/backend
 dotnet restore Humbugg.slnx
@@ -59,9 +63,15 @@ docker compose up --build                                  # http://localhost:50
 
 # Frontend (separate terminal)
 cd humbugg/frontend
+# The frontend depends on the private @ansavva/design-system package, so npm
+# needs a read:packages token exposed as NODE_AUTH_TOKEN (run from repo root):
+#   export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
+#   eval "$(./scripts/github-packages-auth.sh --export)"
 npm install --legacy-peer-deps
 npm run dev         # http://localhost:5173
 ```
+
+See [`scripts/README.md`](../scripts/README.md) for the setup scripts and GitHub Packages auth.
 
 The frontend expects these Vite env vars (create `frontend/.env.local`):
 
@@ -124,7 +134,7 @@ Group `humbugg-prod` with `cancel-in-progress: false` — queued pushes wait for
 - `humbugg-groups` — group metadata (owner, name, member list)
 - `humbugg-groupmembers` — group ↔ member relationship + assignment results
 - `humbugg-draws` — private giver → recipient maps, separate from ordinary group responses
-- `humbugg-audit-events` — durable emergency-reveal audit records
+- `humbugg-audit-events` — standard append-only audit trail for sensitive exchange actions (creation/deletion, participant/exclusion/role/entitlement/reminder changes, draws, resets, reveals); see `infra/README.md`
 - `humbugg-email-messages` — stable transactional message IDs and delivery state
 
 Production tables are accessed through the AWS SDK for .NET directly from the

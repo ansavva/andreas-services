@@ -13,6 +13,18 @@ to each participant.
 Local application data always uses DynamoDB Local. Authentication uses the
 separate `humbugg-development` Cognito pool.
 
+0. Install the toolchain once with the idempotent setup scripts (from the repo
+   root), and expose a `read:packages` token so npm can fetch the private
+   `@ansavva/design-system` package:
+
+   ```bash
+   ./scripts/dev-setup.sh && ./humbugg/scripts/dev-setup.sh
+   export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
+   eval "$(./scripts/github-packages-auth.sh --export)"   # sets NODE_AUTH_TOKEN
+   ```
+
+   See [`../scripts/README.md`](../scripts/README.md) for details.
+
 1. Apply `infra/envs/dev` once, either with the manual **Humbugg · Auth · Dev**
    workflow or Terraform using an authenticated AWS profile.
 2. Start the shared local Mailer and Mailpit:

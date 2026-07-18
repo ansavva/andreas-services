@@ -24,6 +24,46 @@ permanent `308` redirect with the original path and raw query string. Redirect
 behavior is tested locally and in the PR workflow; the production workflow
 also verifies both legacy hostnames after deployment.
 
+## Audit trail
+
+`humbugg-audit-events` is the standard, append-only audit log for security- and
+privacy-relevant exchange actions on **every** plan (Free, Plus, and Work — auditing is
+never gated on a plan). The application records an event for group creation/deletion and
+updates, participant joins/leaves/removals and participation changes, exclusion changes,
+invite rotation, draws and resets, and emergency assignment reveals. The model also defines
+`reminder_sent`, `role_changed`, and `payment_entitlement_changed` actions so those events
+are audited the moment those product features ship (see the Maintainer TODOs in the PR).
+
+Every record identifies the **actor** (`actor_user_id`), **action**, **target**
+(`target_type` + `target_id`, always a surrogate key), **group** (`group_id`, the partition
+key) or organization (`organization_id`), **timestamp** (`created_at`), and the request
+**correlation id** (`correlation_id`).
+
+**Redaction.** Records never contain sensitive values, addresses, invite secrets, tokens, or
+assignment contents. All metadata passes through `AuditRedaction` (in
+`Humbugg.Api/Services/AuditTrail.cs`) before persistence: any key that names a sensitive
+field, and any value that looks like an invite link or high-entropy token, is replaced with
+`[redacted]`. This is enforced in code and covered by `AuditTrailTests`.
+
+**Append-only.** The application has no update or delete code path for audit records:
+`IAuditRepository` exposes only `AppendAsync`, and each write uses a DynamoDB
+`attribute_not_exists` condition so an existing `(group_id, event_id)` record can never be
+overwritten. Writes are awaited and their failures propagate — an audited action cannot
+silently lose its audit record. Infra reinforces durability with point-in-time recovery and
+table `deletion_protection_enabled`. The Lambda's shared DynamoDB IAM policy still grants
+broad table actions, so append-only is an application guarantee, not an IAM one.
+
+**Internal access.** Reads are operational only. Engineers with the appropriate IAM
+permissions can inspect records through the DynamoDB console or API in the production
+account; there is no product or API surface that returns audit records. Access is governed by
+the same account IAM/SSO controls as every other production DynamoDB table.
+
+**Retention.** Retention is intentionally indefinite: the table has **no TTL**, so records are
+never expired automatically (unlike `humbugg-email-messages`, which expires after 90 days).
+Point-in-time recovery retains a 35-day continuous backup window for restore. A maintainer who
+later adopts a fixed retention policy should add a `ttl` block on an `expires_at` attribute and
+have the application stamp it — see the Maintainer TODOs in the PR.
+
 ## SES domain authentication
 
 The `email` module repairs or creates the `humbugg.com` SES domain identity in
