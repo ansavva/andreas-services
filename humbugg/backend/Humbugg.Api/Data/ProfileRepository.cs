@@ -8,6 +8,7 @@ internal interface IProfileRepository
 {
     Task<ProfileRecord?> GetAsync(string userId, CancellationToken cancellationToken = default);
     Task<ProfileRecord> UpsertAsync(string userId, string displayName, CancellationToken cancellationToken = default);
+    Task DeleteAsync(string userId, CancellationToken cancellationToken = default);
 }
 
 internal sealed class ProfileRepository(IAmazonDynamoDB db, HumbuggSettings settings) : IProfileRepository
@@ -36,6 +37,11 @@ internal sealed class ProfileRepository(IAmazonDynamoDB db, HumbuggSettings sett
         }, cancellationToken);
         return Read(response.Attributes);
     }
+
+    // Unconditional delete so account deletion is idempotent: removing an already-absent
+    // profile succeeds and is a no-op, making a retried deletion safe.
+    public Task DeleteAsync(string userId, CancellationToken cancellationToken = default) => db.DeleteItemAsync(
+        settings.ProfilesTable, new Dictionary<string, AttributeValue> { ["user_id"] = DynamoValues.S(userId) }, cancellationToken);
 
     private static ProfileRecord Read(IReadOnlyDictionary<string, AttributeValue> item) => new(
         item.String("user_id"), item.String("display_name"), item.String("created_at"), item.String("updated_at"));

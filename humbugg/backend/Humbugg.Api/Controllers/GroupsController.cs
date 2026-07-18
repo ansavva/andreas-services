@@ -50,6 +50,10 @@ public sealed class GroupsController(IGroupService groups) : ControllerBase
         return NoContent();
     }
 
+    [HttpDelete("{groupId}/members/me/private-data")]
+    public Task<Membership> ClearPrivateData(string groupId, CancellationToken cancellationToken) =>
+        groups.ClearMyPrivateDataAsync(groupId, cancellationToken);
+
     [HttpPatch("{groupId}/members/{memberId}/participation")]
     public Task<Membership> Participation(string groupId, string memberId, [FromBody] ParticipationRequest request, CancellationToken cancellationToken) =>
         groups.UpdateParticipationAsync(groupId, memberId, request, cancellationToken);

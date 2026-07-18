@@ -38,6 +38,7 @@ const json = (method: string, data?: unknown): RequestInit => ({
 export const api = {
   getMe: (token: string) => request<Profile>('/me', token),
   saveMe: (token: string, display_name: string) => request<Profile>('/me', token, json('PUT', { display_name })),
+  deleteAccount: (token: string) => request<void>('/me', token, json('DELETE')),
   listGroups: (token: string) => request<GroupSummary[]>('/groups', token),
   createGroup: (token: string, data: Record<string, unknown>) => request<GroupDetail>('/groups', token, json('POST', data)),
   getGroup: (token: string, id: string) => request<GroupDetail>(`/groups/${id}`, token),
@@ -47,6 +48,7 @@ export const api = {
   joinGroup: (token: string, id: string, invite_token: string) => request<GroupDetail>(`/groups/${id}/join`, token, json('POST', { invite_token })),
   getMembership: (token: string, id: string) => request<Membership>(`/groups/${id}/members/me`, token),
   updateMembership: (token: string, id: string, data: Record<string, unknown>) => request<Membership>(`/groups/${id}/members/me`, token, json('PATCH', data)),
+  clearMyGroupData: (token: string, id: string) => request<Membership>(`/groups/${id}/members/me/private-data`, token, json('DELETE')),
   leaveGroup: (token: string, id: string) => request<void>(`/groups/${id}/members/me`, token, json('DELETE')),
   setParticipation: (token: string, id: string, memberId: string, is_participating: boolean) => request<Membership>(`/groups/${id}/members/${memberId}/participation`, token, json('PATCH', { is_participating })),
   setExclusions: (token: string, id: string, exclusions: string[][]) => request<GroupDetail>(`/groups/${id}/exclusions`, token, json('PUT', { exclusions })),

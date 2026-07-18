@@ -18,6 +18,7 @@ public interface IGroupService
     Task<GroupDetail> JoinAsync(string groupId, JoinGroupRequest request, CancellationToken cancellationToken = default);
     Task<Membership> GetMyMembershipAsync(string groupId, CancellationToken cancellationToken = default);
     Task<Membership> UpdateMyMembershipAsync(string groupId, UpdateMembershipRequest request, CancellationToken cancellationToken = default);
+    Task<Membership> ClearMyPrivateDataAsync(string groupId, CancellationToken cancellationToken = default);
     Task LeaveAsync(string groupId, CancellationToken cancellationToken = default);
     Task<Membership> UpdateParticipationAsync(string groupId, string memberId, ParticipationRequest request, CancellationToken cancellationToken = default);
     Task<GroupDetail> SetExclusionsAsync(string groupId, ExclusionsRequest request, CancellationToken cancellationToken = default);
@@ -153,6 +154,17 @@ internal sealed class GroupService(
             Validation.Optional(request.Avoidances ?? membership.Avoidances, 2000),
             request.Address is null ? membership.Address : Validation.Address(request.Address), cancellationToken);
         return Private(updated);
+    }
+
+    public async Task<Membership> ClearMyPrivateDataAsync(string groupId, CancellationToken cancellationToken = default)
+    {
+        // Participant self-service: erase my own wishlist, avoidances, and mailing address for this
+        // exchange. Allowed at any time (open or drawn) — it is the participant's own data. Clearing
+        // already-empty fields is a harmless no-op, so the action is idempotent.
+        var (_, membership) = await RequireMembershipAsync(groupId, cancellationToken);
+        var cleared = await memberships.UpdatePrivateAsync(membership.MemberId, "", "", new Address(), cancellationToken);
+        await audit.RecordAsync(AuditAction.ParticipantDataCleared, groupId, AuditTarget.Member(membership.MemberId), cancellationToken: cancellationToken);
+        return Private(cleared);
     }
 
     public async Task LeaveAsync(string groupId, CancellationToken cancellationToken = default)

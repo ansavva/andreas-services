@@ -24,6 +24,9 @@ public enum AuditAction
     RoleChanged,
     PaymentEntitlementChanged,
     AssignmentRevealed,
+    ParticipantDataCleared,
+    MembershipAnonymized,
+    AccountDeleted,
 }
 
 /// <summary>
@@ -40,6 +43,8 @@ public sealed record AuditTarget(string Type, string Id)
     public static AuditTarget Entitlement(string entitlementId) => new("entitlement", entitlementId);
     public static AuditTarget Role(string memberId) => new("role", memberId);
     public static AuditTarget Reminder(string groupId) => new("reminder", groupId);
+    /// <summary>An account-scoped target. The id is always an anonymized pseudonym, never a raw Cognito subject.</summary>
+    public static AuditTarget Account(string pseudonym) => new("account", pseudonym);
 }
 
 /// <summary>

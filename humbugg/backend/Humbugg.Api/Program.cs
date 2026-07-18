@@ -139,11 +139,13 @@ builder.Services.AddScoped<IProfileRepository, ProfileRepository>();
 builder.Services.AddScoped<IGroupRepository, GroupRepository>();
 builder.Services.AddScoped<IMembershipRepository, MembershipRepository>();
 builder.Services.AddScoped<IAuditRepository, AuditRepository>();
+builder.Services.AddScoped<IAuditActorAnonymizer, AuditActorAnonymizer>();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddScoped<IRequestCorrelation, HttpRequestCorrelation>();
 builder.Services.AddScoped<IAuditTrail, AuditTrail>();
 builder.Services.AddScoped<IProfileService, ProfileService>();
 builder.Services.AddScoped<IGroupService, GroupService>();
+builder.Services.AddScoped<IAccountDeletionService, AccountDeletionService>();
 builder.Services.AddSingleton<IMatchingService, MatchingService>();
 if (!string.IsNullOrWhiteSpace(settings.DynamoDbEndpointUrl))
     builder.Services.AddHostedService<DynamoDbBootstrap>();

@@ -15,6 +15,7 @@ internal interface IMembershipRepository
     Task<MembershipRecord> CreateAsync(string groupId, string userId, string displayName, bool organizer, CancellationToken cancellationToken = default);
     Task<MembershipRecord> UpdatePrivateAsync(string memberId, string wishlist, string avoidances, Address address, CancellationToken cancellationToken = default);
     Task<MembershipRecord> UpdateParticipationAsync(string memberId, bool participating, CancellationToken cancellationToken = default);
+    Task AnonymizeAsync(string memberId, string pseudonym, string displayName, CancellationToken cancellationToken = default);
     Task DeleteAsync(string memberId, CancellationToken cancellationToken = default);
     Task DeleteByGroupAsync(string groupId, CancellationToken cancellationToken = default);
 }
@@ -89,6 +90,29 @@ internal sealed class MembershipRepository(IAmazonDynamoDB db, HumbuggSettings s
             ReturnValues = ReturnValue.ALL_NEW
         }, cancellationToken);
         return Read(response.Attributes);
+    }
+
+    // Strips the participant's product-profile data (name, wishlist, avoidances, address) and moves
+    // the row off the real Cognito subject onto an irreversible pseudonym, while keeping member_id so
+    // a completed draw that references it stays valid. Re-pointing user_id also makes account deletion
+    // idempotent: a retried deletion no longer finds the row through the user_id GSI.
+    public async Task AnonymizeAsync(string memberId, string pseudonym, string displayName, CancellationToken cancellationToken = default)
+    {
+        await db.UpdateItemAsync(new UpdateItemRequest
+        {
+            TableName = settings.GroupMembersTable,
+            Key = new() { ["member_id"] = DynamoValues.S(memberId) },
+            UpdateExpression = "SET user_id = :user, display_name = :name, wishlist = :empty, avoidances = :empty, address = :address, updated_at = :now",
+            ExpressionAttributeValues = new()
+            {
+                [":user"] = DynamoValues.S(pseudonym),
+                [":name"] = DynamoValues.S(displayName),
+                [":empty"] = DynamoValues.S(""),
+                [":address"] = DynamoValues.AddressValue(new Address()),
+                [":now"] = DynamoValues.S(DateTimeOffset.UtcNow.ToString("O"))
+            },
+            ConditionExpression = "attribute_exists(member_id)"
+        }, cancellationToken);
     }
 
     public Task DeleteAsync(string memberId, CancellationToken cancellationToken = default) => db.DeleteItemAsync(
