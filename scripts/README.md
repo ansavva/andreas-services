@@ -5,7 +5,7 @@ this monorepo. Safe to re-run: every tool is checked before install, so an
 already-installed dependency is never reinstalled. **Homebrew is the installer
 on both macOS and Linux.**
 
-Two layers (see `CLAUDE.md` → "Install scripts"):
+Two layers — a shared base plus thin per-service scripts:
 
 | Script | Scope | Installs |
 |---|---|---|

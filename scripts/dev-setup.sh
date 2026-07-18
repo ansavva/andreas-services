@@ -35,7 +35,16 @@ ok()   { printf '\033[1;32m[ ok ]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[warn]\033[0m %s\n' "$*"; }
 skip() { printf '\033[1;36m[skip]\033[0m %s already present: %s\n' "$1" "$2"; }
 
+# Detect platform from the kernel name. `uname -s` is the kernel identifier: it
+# is reliably "Darwin" on every macOS release (it does NOT track the macOS
+# marketing version) and "Linux" on Linux. Match with a glob and treat anything
+# else as unsupported rather than silently assuming Linux.
 OS="$(uname -s)"
+case "$OS" in
+  Darwin*) PLATFORM="macos" ;;
+  Linux*)  PLATFORM="linux" ;;
+  *) printf 'Unsupported OS: %s (this repo supports macOS and Linux only).\n' "$OS" >&2; exit 1 ;;
+esac
 have() { command -v "$1" >/dev/null 2>&1; }
 if [[ "$(id -u)" -eq 0 ]]; then SUDO=""; else SUDO="sudo"; fi
 
@@ -46,7 +55,7 @@ BREW_ENV=(HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINT
 
 # Run a brew command the right way for the platform.
 brew_run() {
-  if [[ "$OS" == "Darwin" ]]; then
+  if [[ "$PLATFORM" == "macos" ]]; then
     env "${BREW_ENV[@]}" brew "$@"
   else
     $SUDO -u "$LINUX_BREW_USER" env "${BREW_ENV[@]}" "$LINUXBREW_PREFIX/bin/brew" "$@"
@@ -56,7 +65,7 @@ brew_run() {
 apt_install() { $SUDO apt-get update -y >/dev/null && $SUDO apt-get install -y "$@"; }
 
 ensure_brew() {
-  if [[ "$OS" == "Darwin" ]]; then
+  if [[ "$PLATFORM" == "macos" ]]; then
     if have brew; then return 0; fi
     if [[ "$CHECK_ONLY" -eq 1 ]]; then warn "Homebrew is MISSING (required on macOS)"; return 1; fi
     log "installing Homebrew ..."
@@ -136,7 +145,7 @@ fi
 
 # Docker is a daemon/GUI concern — check only, never auto-install.
 if have docker; then skip docker "$(command -v docker)"; else
-  if [[ "$OS" == "Darwin" ]]; then
+  if [[ "$PLATFORM" == "macos" ]]; then
     warn "docker not found — install Docker Desktop: https://www.docker.com/products/docker-desktop/"
   else
     warn "docker not found — see https://docs.docker.com/engine/install/ubuntu/"
@@ -145,5 +154,5 @@ fi
 
 log "shared toolchain ready. For service runtimes run the per-service script, e.g.:"
 log "    ./humbugg/scripts/dev-setup.sh   # .NET SDK for the Humbugg backend"
-[[ "$OS" != "Darwin" && "$CHECK_ONLY" -ne 1 ]] && log "Tools are on PATH via /etc/profile.d/homebrew.sh (new shells) or: eval \"\$($LINUXBREW_PREFIX/bin/brew shellenv)\""
+[[ "$PLATFORM" == "linux" && "$CHECK_ONLY" -ne 1 ]] && log "Tools are on PATH via /etc/profile.d/homebrew.sh (new shells) or: eval \"\$($LINUXBREW_PREFIX/bin/brew shellenv)\""
 ok "done."

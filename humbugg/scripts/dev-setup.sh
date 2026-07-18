@@ -29,7 +29,15 @@ log()  { printf '\033[1;34m[humbugg-setup]\033[0m %s\n' "$*"; }
 ok()   { printf '\033[1;32m[ ok ]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[warn]\033[0m %s\n' "$*"; }
 
+# `uname -s` is the kernel name: reliably "Darwin" on every macOS release (it
+# does NOT track the macOS marketing version) and "Linux" on Linux. Match with a
+# glob and treat anything else as unsupported rather than assuming Linux.
 OS="$(uname -s)"
+case "$OS" in
+  Darwin*) PLATFORM="macos" ;;
+  Linux*)  PLATFORM="linux" ;;
+  *) printf 'Unsupported OS: %s (this repo supports macOS and Linux only).\n' "$OS" >&2; exit 1 ;;
+esac
 have() { command -v "$1" >/dev/null 2>&1; }
 if [[ "$(id -u)" -eq 0 ]]; then SUDO=""; else SUDO="sudo"; fi
 
@@ -38,10 +46,10 @@ LINUX_BREW_USER="ubuntu"
 BREW_ENV=(HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1)
 
 # Make brew-installed tools visible on Linux even in a fresh shell.
-[[ "$OS" != "Darwin" && -x "$LINUXBREW_PREFIX/bin/brew" ]] && eval "$("$LINUXBREW_PREFIX/bin/brew" shellenv)"
+[[ "$PLATFORM" == "linux" && -x "$LINUXBREW_PREFIX/bin/brew" ]] && eval "$("$LINUXBREW_PREFIX/bin/brew" shellenv)"
 
 brew_run() {
-  if [[ "$OS" == "Darwin" ]]; then
+  if [[ "$PLATFORM" == "macos" ]]; then
     env "${BREW_ENV[@]}" brew "$@"
   else
     $SUDO -u "$LINUX_BREW_USER" env "${BREW_ENV[@]}" "$LINUXBREW_PREFIX/bin/brew" "$@"
@@ -64,11 +72,11 @@ if [[ "$CHECK_ONLY" -eq 1 ]]; then
   exit 0
 fi
 
-if [[ "$OS" != "Darwin" && ! -x "$LINUXBREW_PREFIX/bin/brew" ]]; then
+if [[ "$PLATFORM" == "linux" && ! -x "$LINUXBREW_PREFIX/bin/brew" ]]; then
   warn "Homebrew not found. Run ./scripts/dev-setup.sh first (bootstraps Homebrew on Linux)."
   exit 1
 fi
-if [[ "$OS" == "Darwin" ]] && ! have brew; then
+if [[ "$PLATFORM" == "macos" ]] && ! have brew; then
   warn "Homebrew not found. Run ./scripts/dev-setup.sh first."
   exit 1
 fi
@@ -77,7 +85,7 @@ log "installing .NET SDK via Homebrew (brew dotnet == ${DOTNET_MAJOR_MINOR}.302)
 brew_run install dotnet
 
 # Re-expose PATH in case brew was just used for the first time.
-[[ "$OS" != "Darwin" && -x "$LINUXBREW_PREFIX/bin/brew" ]] && eval "$("$LINUXBREW_PREFIX/bin/brew" shellenv)"
+[[ "$PLATFORM" == "linux" && -x "$LINUXBREW_PREFIX/bin/brew" ]] && eval "$("$LINUXBREW_PREFIX/bin/brew" shellenv)"
 
 if dotnet_ok; then
   ok ".NET SDK ready: $(dotnet --list-sdks | grep "^${DOTNET_MAJOR_MINOR}\." | head -1)"
