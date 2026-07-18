@@ -321,6 +321,13 @@ jobs:
             --arg plus_price_id "${{ vars.HUMBUGG_PLUS_PRICE_ID }}" \
             --arg work_product_id "${{ vars.HUMBUGG_WORK_PRODUCT_ID }}" \
             --arg work_price_id "${{ vars.HUMBUGG_WORK_PRICE_ID }}" \
+            --arg ratelimit_enabled "${{ vars.HUMBUGG_RATELIMIT_ENABLED || 'true' }}" \
+            --arg ratelimit_global_limit "${{ vars.HUMBUGG_RATELIMIT_GLOBAL_LIMIT || '300' }}" \
+            --arg ratelimit_global_window "${{ vars.HUMBUGG_RATELIMIT_GLOBAL_WINDOW_SECONDS || '60' }}" \
+            --arg ratelimit_account_creation_limit "${{ vars.HUMBUGG_RATELIMIT_ACCOUNT_CREATION_LIMIT || '5' }}" \
+            --arg ratelimit_group_creation_limit "${{ vars.HUMBUGG_RATELIMIT_GROUP_CREATION_LIMIT || '20' }}" \
+            --arg ratelimit_invitation_limit "${{ vars.HUMBUGG_RATELIMIT_INVITATION_LIMIT || '30' }}" \
+            --arg ratelimit_join_limit "${{ vars.HUMBUGG_RATELIMIT_JOIN_LIMIT || '20' }}" \
             '{Variables: {
               CORS_ORIGIN: $cors_origin,
               COGNITO_REGION: $cognito_region,
@@ -345,7 +352,14 @@ jobs:
               HUMBUGG_PLUS_PRODUCT_ID: $plus_product_id,
               HUMBUGG_PLUS_PRICE_ID: $plus_price_id,
               HUMBUGG_WORK_PRODUCT_ID: $work_product_id,
-              HUMBUGG_WORK_PRICE_ID: $work_price_id
+              HUMBUGG_WORK_PRICE_ID: $work_price_id,
+              HUMBUGG_RATELIMIT_ENABLED: $ratelimit_enabled,
+              HUMBUGG_RATELIMIT_GLOBAL_LIMIT: $ratelimit_global_limit,
+              HUMBUGG_RATELIMIT_GLOBAL_WINDOW_SECONDS: $ratelimit_global_window,
+              HUMBUGG_RATELIMIT_ACCOUNT_CREATION_LIMIT: $ratelimit_account_creation_limit,
+              HUMBUGG_RATELIMIT_GROUP_CREATION_LIMIT: $ratelimit_group_creation_limit,
+              HUMBUGG_RATELIMIT_INVITATION_LIMIT: $ratelimit_invitation_limit,
+              HUMBUGG_RATELIMIT_JOIN_LIMIT: $ratelimit_join_limit
             }}' > /tmp/env-humbugg-backend.json
 
           jq -n \
