@@ -158,7 +158,9 @@ public sealed class AccountDeletionTests
         world.Groups.Add(Group("g", GroupStatus.Open));
         world.Members.Items.Add(Member("g", "user", organizer: false) with
         {
-            Wishlist = "a bike", Avoidances = "no socks", Address = new Address("10 Downing St", City: "London", PostalCode: "SW1", Country: "UK")
+            Wishlist = "a bike",
+            Avoidances = "no socks",
+            Address = new Address("10 Downing St", City: "London", PostalCode: "SW1", Country: "UK")
         });
 
         var cleared = await world.GroupService.ClearMyPrivateDataAsync("g", TestContext.Current.CancellationToken);
