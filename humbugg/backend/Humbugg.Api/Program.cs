@@ -155,8 +155,8 @@ app.UseCors();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
-// After authentication so the rate-limit partition key can use the Cognito subject; after
-// routing so per-endpoint [EnableRateLimiting] policies resolve.
+// After authentication so the rate-limit partition key can use the Cognito subject. The global
+// limiter applies to every endpoint below (controllers and /health) — no per-endpoint policies.
 app.UseRateLimiter();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapControllers();

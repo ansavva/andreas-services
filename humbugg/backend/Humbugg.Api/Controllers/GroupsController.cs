@@ -2,7 +2,6 @@ using Humbugg.Api.Models;
 using Humbugg.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
 
 namespace Humbugg.Api.Controllers;
 
@@ -12,7 +11,7 @@ public sealed class GroupsController(IGroupService groups) : ControllerBase
     [HttpGet]
     public Task<IReadOnlyList<GroupSummary>> List(CancellationToken cancellationToken) => groups.ListAsync(cancellationToken);
 
-    [HttpPost, EnableRateLimiting(RateLimitSettings.GroupCreationPolicy)]
+    [HttpPost]
     public async Task<ActionResult<GroupDetail>> Create([FromBody] CreateGroupRequest request, CancellationToken cancellationToken) =>
         StatusCode(StatusCodes.Status201Created, await groups.CreateAsync(request, cancellationToken));
 
@@ -30,10 +29,10 @@ public sealed class GroupsController(IGroupService groups) : ControllerBase
         return NoContent();
     }
 
-    [HttpPost("{groupId}/invite"), EnableRateLimiting(RateLimitSettings.InvitationPolicy)]
+    [HttpPost("{groupId}/invite")]
     public Task<InviteResponse> RotateInvite(string groupId, CancellationToken cancellationToken) => groups.RotateInviteAsync(groupId, cancellationToken);
 
-    [HttpPost("{groupId}/join"), EnableRateLimiting(RateLimitSettings.JoinPolicy)]
+    [HttpPost("{groupId}/join")]
     public Task<GroupDetail> Join(string groupId, [FromBody] JoinGroupRequest request, CancellationToken cancellationToken) =>
         groups.JoinAsync(groupId, request, cancellationToken);
 

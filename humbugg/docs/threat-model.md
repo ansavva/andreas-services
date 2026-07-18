@@ -148,8 +148,8 @@ are specified in §4.
 - **Status:** Humbugg does **not** send invitations by email today — the organizer copies a link. So
   there is no server-driven email-spam vector yet. Invite **rotation** is the only invite write and is
   organizer-only.
-- **Mitigation [NOW]:** `RotateInviteAsync` is organizer-only and rate-limited by the invitation
-  policy (§4).
+- **Mitigation [NOW]:** `RotateInviteAsync` is organizer-only and covered by the uniform per-caller
+  rate limit (§4).
 - **[FUTURE]** When email/SMS invitations ship: server-sent invites must be rate-limited per organizer
   **and** per group, deduplicated per recipient, capped per unit time, and every send audited
   (`reminder_sent` / an `invitation_sent` action). Recipients get an unsubscribe/report path. Bounce
@@ -235,43 +235,44 @@ are specified in §4.
 
 Rate limiting is a **security control**, applied identically on every plan. It is implemented with the
 ASP.NET Core rate limiter (`humbugg/backend/Humbugg.Api/Services/RateLimiting.cs`, wired in
-`Program.cs`). Every limit is **configuration, not a constant**: each is read from an environment
-variable (populated from GitHub environment vars → Lambda env at deploy time) with a safe default.
-Partitioning is **per authenticated Cognito subject**, falling back to the client IP
-(`X-Forwarded-For` first hop) for any unauthenticated path. Rejections return `429` in the standard
-error envelope (`{ "error": { "code": "rate_limited", … } }`) with a `Retry-After` header.
+`Program.cs`).
 
-| Action | Policy / env prefix | Default | Endpoint | Status |
-|---|---|---|---|---|
-| Global backstop (per user) | `HUMBUGG_RATELIMIT_GLOBAL` | 300 / 60s | all `/api/**` | **[NOW]** |
-| Account creation (profile first-write) | `HUMBUGG_RATELIMIT_ACCOUNT_CREATION` | 5 / 3600s | `PUT /api/me` | **[NOW]** |
-| Group creation | `HUMBUGG_RATELIMIT_GROUP_CREATION` | 20 / 3600s | `POST /api/groups` | **[NOW]** |
-| Invitations (rotate) | `HUMBUGG_RATELIMIT_INVITATION` | 30 / 3600s | `POST /api/groups/{id}/invite` | **[NOW]** |
-| Joins | `HUMBUGG_RATELIMIT_JOIN` | 20 / 3600s | `POST /api/groups/{id}/join` | **[NOW]** |
-| Reminders | `HUMBUGG_RATELIMIT_REMINDER` | 10 / 3600s | *(future)* | **[FUTURE]** — policy registered, endpoint TBD |
-| Questions | `HUMBUGG_RATELIMIT_QUESTION` | 60 / 3600s | *(future)* | **[FUTURE]** — policy registered, endpoint TBD |
-| Payment-session creation | `HUMBUGG_RATELIMIT_PAYMENT_SESSION` | 15 / 3600s | *(future)* | **[FUTURE]** — policy registered, endpoint TBD |
+**One uniform limit, every endpoint.** Humbugg deliberately does **not** use endpoint-specific
+policies. A single global limiter (`options.GlobalLimiter`) applies to *every* request — read or
+write, known abuse vector or not, including `/health` — because an attack can come from any route.
+The limit is **configuration, not a constant**: it is read from an environment variable (populated
+from GitHub environment vars → Lambda env at deploy time) with a safe default.
 
-Each policy has a matching `_LIMIT` and `_WINDOW_SECONDS` env var (e.g.
-`HUMBUGG_RATELIMIT_JOIN_LIMIT`, `HUMBUGG_RATELIMIT_JOIN_WINDOW_SECONDS`). `HUMBUGG_RATELIMIT_ENABLED`
-(default `true`) is a global kill-switch that still returns the standard `429` envelope shape.
+| Setting | Env prefix | Default | Scope |
+|---|---|---|---|
+| Uniform per-caller limit | `HUMBUGG_RATELIMIT_GLOBAL` | 300 / 60s | every endpoint |
+
+`HUMBUGG_RATELIMIT_GLOBAL_LIMIT` and `HUMBUGG_RATELIMIT_GLOBAL_WINDOW_SECONDS` tune the count and
+window; `HUMBUGG_RATELIMIT_ENABLED` (default `true`) is a kill-switch. Rejections return `429` in the
+standard error envelope (`{ "error": { "code": "rate_limited", … } }`) with a `Retry-After` header.
+
+**Identifying the caller.** Partitioning is **per authenticated Cognito subject** (`user:{sub}`), so a
+limit follows the account across IPs. Unauthenticated callers fall back to the **trusted** client IP
+(`ip:{sourceIp}`) taken from `HttpContext.Connection.RemoteIpAddress`, which the API Gateway Lambda
+integration populates from the request-context `sourceIp`. The `X-Forwarded-For` header is **not**
+trusted: its left-most hop is caller-supplied and spoofable behind API Gateway, so keying on it would
+let an attacker rotate the header to mint unlimited IP partitions and evade the per-IP limit.
 
 Notes and layering:
 - **Account creation** in the identity sense (Cognito sign-up) happens **before** any Humbugg token
   exists, so it is rate-limited **upstream** at Cognito (per-IP sign-up throttles) and, when added,
-  AWS WAF on the API Gateway/CloudFront edge. The in-app `PUT /api/me` limit covers the first-profile
-  write that turns a fresh identity into a usable Humbugg user.
-- The per-user in-app limiter is a second layer; an **edge WAF** rate limit keyed on IP is the
+  AWS WAF on the API Gateway/CloudFront edge.
+- The in-app per-caller limiter is one layer; an **edge WAF** rate limit keyed on IP is the
   recommended first layer against unauthenticated floods and credential stuffing (tracked in §7).
-- Reminder/question/payment policies are **already registered** so the limit is in force the moment
-  those endpoints are added — the endpoint just needs the matching `[EnableRateLimiting(...)]`
-  attribute.
 - **Reminders** additionally need *dedup/cooldown* per recipient (a rate limit alone doesn't stop one
   member being reminded repeatedly) — see §3.4.
+- If a specific action ever proves to need a tighter bound than the uniform limit, that is a future
+  hardening decision — not a default. The current posture is one uniform limit plus the edge WAF.
 
-Tests: `SecurityControlsTests` covers default values, env-override (configurability), rejection of
-non-positive limits, the partition-key precedence (subject over IP, forwarded-IP fallback), and that
-each existing sensitive endpoint carries the expected policy attribute.
+Tests: `SecurityControlsTests` covers default values, env-override (configurability), rejection of a
+non-positive limit, that a single global limiter is registered (so every endpoint is covered), and the
+partition-key precedence (subject over IP, and that the trusted connection IP is used while a spoofed
+`X-Forwarded-For` is ignored).
 
 ---
 
@@ -360,9 +361,9 @@ assignment contents, addresses, or the invite secret.
   edge; entitlements never change on an unverified event.
 - **Audit integrity:** treat `humbugg-audit-events` as evidence — restrict IAM to append + read, deny
   delete/update in the table's resource policy, and consider point-in-time recovery.
-- **Config tuning:** all rate limits are env-driven. Emergency tightening (e.g. drop
-  `HUMBUGG_RATELIMIT_JOIN_LIMIT` to `1`) is a config change, applied via the deploy workflow's
-  `run_app` path.
+- **Config tuning:** the rate limit is env-driven. Emergency tightening (e.g. drop
+  `HUMBUGG_RATELIMIT_GLOBAL_LIMIT`, or set `HUMBUGG_RATELIMIT_GLOBAL_WINDOW_SECONDS` higher) is a
+  config change, applied via the deploy workflow's `run_app` path.
 
 ---
 
@@ -372,7 +373,8 @@ Before shipping co-organizers, reminders, questions, payments, or Work tenancy, 
 
 - [ ] New privileged routes call the central membership/role check (O1–O2, C1–C4, W1–W5) — no client
       role claim is trusted.
-- [ ] New write endpoints have a rate-limit policy (§4) with env-configurable limits.
+- [ ] New endpoints are automatically covered by the uniform global rate limit (§4) — confirm none
+      opt out via `[DisableRateLimiting]`.
 - [ ] No secret is ever placed in a path or query string (§5).
 - [ ] Every security- or privacy-relevant action is audited with actor, target, time, and (for Work)
       `organization_id`; metadata is redacted.

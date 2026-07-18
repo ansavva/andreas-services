@@ -1,12 +1,13 @@
 using Amazon.DynamoDBv2.Model;
 using Humbugg.Api;
-using Humbugg.Api.Controllers;
 using Humbugg.Api.Data;
 using Humbugg.Api.Models;
 using Humbugg.Api.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
-using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using System.Net;
 using System.Security.Claims;
 using Xunit;
 
@@ -105,7 +106,7 @@ public sealed class SecurityControlsTests
         Assert.Empty(fixture.Groups.Reveals);
     }
 
-    // ─── Rate-limit specification is configurable, not hardcoded, and on by default ───────────
+    // ─── One uniform rate limit, configurable and on by default ───────────────────────────────
 
     [Fact]
     public void RateLimitSettingsUseSafeDefaultsWhenUnset()
@@ -115,9 +116,6 @@ public sealed class SecurityControlsTests
         Assert.True(settings.Enabled);
         Assert.Equal(300, settings.Global.PermitLimit);
         Assert.Equal(60, settings.Global.WindowSeconds);
-        Assert.Equal(20, settings.GroupCreation.PermitLimit);
-        Assert.Equal(5, settings.AccountCreation.PermitLimit);
-        Assert.Equal(3600, settings.Invitation.WindowSeconds);
     }
 
     [Fact]
@@ -126,25 +124,39 @@ public sealed class SecurityControlsTests
         var settings = WithEnvironment(new()
         {
             ["HUMBUGG_RATELIMIT_ENABLED"] = "false",
-            ["HUMBUGG_RATELIMIT_GROUP_CREATION_LIMIT"] = "3",
-            ["HUMBUGG_RATELIMIT_GROUP_CREATION_WINDOW_SECONDS"] = "600",
+            ["HUMBUGG_RATELIMIT_GLOBAL_LIMIT"] = "3",
+            ["HUMBUGG_RATELIMIT_GLOBAL_WINDOW_SECONDS"] = "600",
         }, RateLimitSettings.FromEnvironment);
 
         Assert.False(settings.Enabled);
-        Assert.Equal(3, settings.GroupCreation.PermitLimit);
-        Assert.Equal(600, settings.GroupCreation.WindowSeconds);
+        Assert.Equal(3, settings.Global.PermitLimit);
+        Assert.Equal(600, settings.Global.WindowSeconds);
     }
 
     [Fact]
     public void RateLimitSettingsRejectNonPositiveLimits()
     {
         var error = Assert.Throws<InvalidOperationException>(() =>
-            WithEnvironment(new() { ["HUMBUGG_RATELIMIT_JOIN_LIMIT"] = "0" }, RateLimitSettings.FromEnvironment));
+            WithEnvironment(new() { ["HUMBUGG_RATELIMIT_GLOBAL_LIMIT"] = "0" }, RateLimitSettings.FromEnvironment));
 
-        Assert.Contains("HUMBUGG_RATELIMIT_JOIN_LIMIT", error.Message);
+        Assert.Contains("HUMBUGG_RATELIMIT_GLOBAL_LIMIT", error.Message);
     }
 
-    // ─── Partition key follows the account across IPs, then falls back to client IP ───────────
+    // ─── One global limiter covers every endpoint — no per-endpoint policies ──────────────────
+
+    [Fact]
+    public void GlobalLimiterCoversEveryEndpoint()
+    {
+        var services = new ServiceCollection();
+        services.AddHumbuggRateLimiter(new RateLimitSettings(Enabled: true, Global: new RateLimitRule(300, 60)));
+
+        var options = services.BuildServiceProvider()
+            .GetRequiredService<IOptions<RateLimiterOptions>>().Value;
+
+        Assert.NotNull(options.GlobalLimiter);
+    }
+
+    // ─── Partition key follows the account across IPs, then falls back to the TRUSTED client IP ─
 
     [Fact]
     public void PartitionKeyPrefersTheCognitoSubject()
@@ -159,38 +171,24 @@ public sealed class SecurityControlsTests
     }
 
     [Fact]
-    public void PartitionKeyFallsBackToTheForwardedClientIp()
+    public void PartitionKeyUsesTheTrustedConnectionIpAndIgnoresSpoofableForwardedHeader()
     {
         var context = new DefaultHttpContext();
+        context.Connection.RemoteIpAddress = IPAddress.Parse("198.51.100.7");
+        // A caller-supplied X-Forwarded-For must NOT influence the partition — otherwise an attacker
+        // could rotate the header to mint unlimited IP buckets and evade the per-IP limit.
         context.Request.Headers["X-Forwarded-For"] = "203.0.113.9, 10.0.0.1";
 
-        Assert.Equal("ip:203.0.113.9", RateLimiterConfiguration.PartitionKey(context));
-    }
-
-    // ─── The abuse-sensitive endpoints that exist today all carry a rate-limit policy ─────────
-
-    [Theory]
-    [InlineData(typeof(GroupsController), nameof(GroupsController.Create), RateLimitSettings.GroupCreationPolicy)]
-    [InlineData(typeof(GroupsController), nameof(GroupsController.RotateInvite), RateLimitSettings.InvitationPolicy)]
-    [InlineData(typeof(GroupsController), nameof(GroupsController.Join), RateLimitSettings.JoinPolicy)]
-    [InlineData(typeof(MeController), nameof(MeController.Put), RateLimitSettings.AccountCreationPolicy)]
-    public void SensitiveEndpointsCarryTheExpectedRateLimitPolicy(Type controller, string action, string expectedPolicy)
-    {
-        var method = controller.GetMethod(action) ?? throw new InvalidOperationException($"{action} not found.");
-        var attribute = method.GetCustomAttribute<EnableRateLimitingAttribute>();
-
-        Assert.NotNull(attribute);
-        Assert.Equal(expectedPolicy, attribute!.PolicyName);
+        Assert.Equal("ip:198.51.100.7", RateLimiterConfiguration.PartitionKey(context));
     }
 
     private static T WithEnvironment<T>(Dictionary<string, string> variables, Func<T> read)
     {
         var keys = new[]
         {
-            "HUMBUGG_RATELIMIT_ENABLED", "HUMBUGG_RATELIMIT_GLOBAL_LIMIT", "HUMBUGG_RATELIMIT_GLOBAL_WINDOW_SECONDS",
-            "HUMBUGG_RATELIMIT_ACCOUNT_CREATION_LIMIT", "HUMBUGG_RATELIMIT_GROUP_CREATION_LIMIT",
-            "HUMBUGG_RATELIMIT_GROUP_CREATION_WINDOW_SECONDS", "HUMBUGG_RATELIMIT_INVITATION_LIMIT",
-            "HUMBUGG_RATELIMIT_JOIN_LIMIT",
+            "HUMBUGG_RATELIMIT_ENABLED",
+            "HUMBUGG_RATELIMIT_GLOBAL_LIMIT",
+            "HUMBUGG_RATELIMIT_GLOBAL_WINDOW_SECONDS",
         };
         var previous = keys.ToDictionary(key => key, Environment.GetEnvironmentVariable);
         try
