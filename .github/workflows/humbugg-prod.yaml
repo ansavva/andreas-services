@@ -309,6 +309,8 @@ jobs:
             --arg groupmembers_table "humbugg-groupmembers" \
             --arg draws_table "humbugg-draws" \
             --arg audit_events_table "humbugg-audit-events" \
+            --arg analytics_events_table "humbugg-analytics-events" \
+            --arg analytics_enabled "${{ vars.HUMBUGG_ANALYTICS_ENABLED || 'true' }}" \
             --arg email_messages_table "humbugg-email-messages" \
             --arg app_base_url "https://humbugg.com" \
             --arg mailer_base_url "${HUMBUGG_MAILER_BASE_URL}" \
@@ -331,6 +333,8 @@ jobs:
               HUMBUGG_GROUPMEMBERS_TABLE: $groupmembers_table,
               HUMBUGG_DRAWS_TABLE: $draws_table,
               HUMBUGG_AUDIT_EVENTS_TABLE: $audit_events_table,
+              HUMBUGG_ANALYTICS_EVENTS_TABLE: $analytics_events_table,
+              HUMBUGG_ANALYTICS_ENABLED: $analytics_enabled,
               HUMBUGG_EMAIL_MESSAGES_TABLE: $email_messages_table,
               HUMBUGG_EMAIL_PROVIDER: "mailer",
               HUMBUGG_MAILER_BASE_URL: $mailer_base_url,

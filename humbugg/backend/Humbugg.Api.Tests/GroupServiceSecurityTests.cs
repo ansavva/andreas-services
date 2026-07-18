@@ -86,9 +86,9 @@ public sealed class GroupServiceSecurityTests
         {
             Groups = new FakeGroups(Group(exclusions ?? [["actor", "other"]]));
             Members = new FakeMembers(member is null ? [] : [member]);
-            Subject = new GroupService(new FakeUser(), new FakeProfiles(), Groups, Members, new MatchingService(), new PlanCatalog(new()), new FakeAuditTrail(), new HumbuggSettings(
+            Subject = new GroupService(new FakeUser(), new FakeProfiles(), Groups, Members, new MatchingService(), new PlanCatalog(new()), new FakeAuditTrail(), new FakeProductAnalytics(), new HumbuggSettings(
                 "us-east-1", "us-east-1", "pool", "client", "http://localhost:5173", "http://localhost:5173", null,
-                "profiles", "groups", "members", "draws", "audit"));
+                "profiles", "groups", "members", "draws", "audit", "analytics"));
         }
 
         public static MembershipRecord Member(string memberId, bool organizer) => new(
@@ -122,6 +122,12 @@ public sealed class GroupServiceSecurityTests
     {
         public Task RecordAsync(AuditAction action, string groupId, AuditTarget target,
             IReadOnlyDictionary<string, string>? metadata = null, string? organizationId = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class FakeProductAnalytics : IProductAnalytics
+    {
+        public Task TrackAsync(AnalyticsEventType type, PlanCode plan, string groupId, string idempotencyKey,
+            IReadOnlyDictionary<string, string>? dimensions = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     private sealed class FakeMembers(IEnumerable<MembershipRecord> items) : IMembershipRepository

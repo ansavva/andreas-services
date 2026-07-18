@@ -29,6 +29,7 @@ var builder = WebApplication.CreateBuilder(args);
 var settings = HumbuggSettings.FromEnvironment();
 builder.Services.AddSingleton(settings);
 builder.Services.AddSingleton<IPlanCatalog>(PlanCatalog.FromEnvironment());
+builder.Services.AddSingleton(AnalyticsOptions.FromEnvironment());
 
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
@@ -139,9 +140,11 @@ builder.Services.AddScoped<IProfileRepository, ProfileRepository>();
 builder.Services.AddScoped<IGroupRepository, GroupRepository>();
 builder.Services.AddScoped<IMembershipRepository, MembershipRepository>();
 builder.Services.AddScoped<IAuditRepository, AuditRepository>();
+builder.Services.AddScoped<IAnalyticsSink, DynamoDbAnalyticsSink>();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddScoped<IRequestCorrelation, HttpRequestCorrelation>();
 builder.Services.AddScoped<IAuditTrail, AuditTrail>();
+builder.Services.AddScoped<IProductAnalytics, ProductAnalytics>();
 builder.Services.AddScoped<IProfileService, ProfileService>();
 builder.Services.AddScoped<IGroupService, GroupService>();
 builder.Services.AddSingleton<IMatchingService, MatchingService>();
@@ -173,6 +176,7 @@ public sealed record HumbuggSettings(
     string GroupMembersTable,
     string DrawsTable,
     string AuditEventsTable,
+    string AnalyticsEventsTable,
     string EmailProvider = "capture",
     string EmailMessagesTable = "humbugg-email-messages",
     string MailerBaseUrl = "http://host.docker.internal:8026",
@@ -192,6 +196,7 @@ public sealed record HumbuggSettings(
         Environment.GetEnvironmentVariable("HUMBUGG_GROUPMEMBERS_TABLE") ?? "humbugg-groupmembers",
         Environment.GetEnvironmentVariable("HUMBUGG_DRAWS_TABLE") ?? "humbugg-draws",
         Environment.GetEnvironmentVariable("HUMBUGG_AUDIT_EVENTS_TABLE") ?? "humbugg-audit-events",
+        Environment.GetEnvironmentVariable("HUMBUGG_ANALYTICS_EVENTS_TABLE") ?? "humbugg-analytics-events",
         Environment.GetEnvironmentVariable("HUMBUGG_EMAIL_PROVIDER") ?? "capture",
         Environment.GetEnvironmentVariable("HUMBUGG_EMAIL_MESSAGES_TABLE") ?? "humbugg-email-messages",
         (Environment.GetEnvironmentVariable("HUMBUGG_MAILER_BASE_URL") ??
