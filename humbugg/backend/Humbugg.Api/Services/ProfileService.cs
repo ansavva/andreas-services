@@ -27,7 +27,8 @@ internal sealed class ProfileService(
     public async Task<Profile> SaveAsync(SaveProfileRequest request, CancellationToken cancellationToken = default)
     {
         var displayName = Validation.Required(request.DisplayName, "display_name", 100);
-        return ToModel(await profiles.UpsertAsync(user.UserId, displayName, cancellationToken));
+        return ToModel(await profiles.UpsertAsync(
+            user.UserId, displayName, request.NonEssentialEmailsEnabled, cancellationToken));
     }
 
     public async Task<Profile> UploadAvatarAsync(UploadAvatarRequest request, CancellationToken cancellationToken = default)
@@ -65,7 +66,8 @@ internal sealed class ProfileService(
     }
 
     private Profile ToModel(ProfileRecord record) => new(
-        record.UserId, record.DisplayName, record.CreatedAt, record.UpdatedAt, AvatarUrl(record.AvatarKey));
+        record.UserId, record.DisplayName, record.CreatedAt, record.UpdatedAt, AvatarUrl(record.AvatarKey),
+        record.NonEssentialEmailsEnabled);
 
     private string? AvatarUrl(string? avatarKey) =>
         string.IsNullOrEmpty(avatarKey) ? null : $"{settings.AvatarBaseUrl}/{avatarKey}";

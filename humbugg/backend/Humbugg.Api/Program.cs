@@ -171,6 +171,8 @@ else
 {
     throw new InvalidOperationException($"Unsupported HUMBUGG_EMAIL_PROVIDER '{settings.EmailProvider}'.");
 }
+// Gates non-essential product email on the recipient's account opt-out; essential mail always sends.
+builder.Services.AddScoped<IEmailPreferenceGate, AccountEmailPreferenceGate>();
 builder.Services.AddScoped<ITransactionalEmailService, TransactionalEmailService>();
 builder.Services.AddScoped<IProfileRepository, ProfileRepository>();
 builder.Services.AddScoped<IGroupRepository, GroupRepository>();

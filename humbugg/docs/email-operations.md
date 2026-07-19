@@ -6,6 +6,50 @@ and the send and status DLQs. See
 [`mailer/docs/operations.md`](../../mailer/docs/operations.md) for platform
 recovery.
 
+## Essential vs non-essential email (opt-out)
+
+Each account has a `non_essential_emails_enabled` preference (default **on**),
+stored on the `humbugg-profiles` row, editable from **Settings → Email
+notifications**, and exposed on `GET`/`PUT /api/me`. It governs whether Humbugg
+sends that account **non-essential** product email.
+
+The single source of truth for what counts as essential is
+`EmailClassification` in
+`backend/Humbugg.Api/Services/Email/Core/EmailClassification.cs`. Change that
+switch — nowhere else — to reclassify a category.
+
+| Category (`EmailCategory`) | Importance | Governed by the toggle? |
+|---|---|---|
+| `Invitation` ("you've been invited") | Essential (join-critical) | No — always sends |
+| `DrawCompleted` ("your assignment is ready") | Essential (join-critical) | No — always sends |
+| `AssignmentAvailable` ("your assignment is ready") | Essential (join-critical) | No — always sends |
+| `Reminder` | Non-essential | Yes |
+| `AccountExchangeEvent` (group-activity / question-and-reply) | Non-essential | Yes |
+
+Cognito security/account mail (sign-up, resend-confirmation, forgot-password)
+originates in Cognito, never passes through this service, and is always
+essential.
+
+Enforcement is a single choke point: `TransactionalEmailService.SendAsync`
+consults `IEmailPreferenceGate` before reserving a delivery slot. The production
+gate (`AccountEmailPreferenceGate`) resolves the recipient's preference from
+their profile by the account id carried on the message
+(`TransactionalEmail.RecipientUserId`):
+
+- **Essential** categories are always allowed — the gate never reads the
+  preference.
+- **Non-essential** categories are **suppressed** when the recipient has opted
+  out. Suppression returns a normal `EmailSendResult` with `Suppressed = true`
+  (no exception, no ledger reservation, no transport call), so batch and
+  reminder jobs keep iterating over the rest of their recipients cleanly.
+- A non-essential message whose recipient cannot be tied to an account
+  (`RecipientUserId` is null, or no profile exists) **fails open** (sends) so a
+  missing account never silently drops mail. Only an explicit opt-out
+  suppresses.
+
+Opted-out users still see the same activity in-app; the toggle silences email
+delivery only, so nothing that matters is lost — it is just not emailed.
+
 ## Humbugg status consumer
 
 `humbugg-email-status-production` consumes only

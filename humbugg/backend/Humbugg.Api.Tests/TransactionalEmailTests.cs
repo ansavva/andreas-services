@@ -28,6 +28,7 @@ public sealed class TransactionalEmailTests
         var service = new TransactionalEmailService(
             capture,
             new InMemoryEmailDeliveryLedger(),
+            new AllowAllEmailPreferenceGate(),
             NullLogger<TransactionalEmailService>.Instance);
         var email = Templates().Invitation(new(
             "invite-123",
@@ -53,6 +54,7 @@ public sealed class TransactionalEmailTests
         var service = new TransactionalEmailService(
             transport,
             new InMemoryEmailDeliveryLedger(),
+            new AllowAllEmailPreferenceGate(),
             NullLogger<TransactionalEmailService>.Instance);
         var email = Templates().Reminder(new(
             "reminder-123",
@@ -76,6 +78,7 @@ public sealed class TransactionalEmailTests
         var service = new TransactionalEmailService(
             transport,
             new AcknowledgementFailingLedger(),
+            new AllowAllEmailPreferenceGate(),
             NullLogger<TransactionalEmailService>.Instance);
         var email = Templates().Reminder(new(
             "reminder-ack-1",

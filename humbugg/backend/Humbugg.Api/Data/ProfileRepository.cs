@@ -7,7 +7,7 @@ namespace Humbugg.Api.Data;
 internal interface IProfileRepository
 {
     Task<ProfileRecord?> GetAsync(string userId, CancellationToken cancellationToken = default);
-    Task<ProfileRecord> UpsertAsync(string userId, string displayName, CancellationToken cancellationToken = default);
+    Task<ProfileRecord> UpsertAsync(string userId, string displayName, bool? nonEssentialEmailsEnabled = null, CancellationToken cancellationToken = default);
     Task<ProfileRecord> SetAvatarKeyAsync(string userId, string? avatarKey, CancellationToken cancellationToken = default);
     Task DeleteAsync(string userId, CancellationToken cancellationToken = default);
 }
@@ -25,15 +25,35 @@ internal sealed class ProfileRepository(IAmazonDynamoDB db, HumbuggSettings sett
         return response.IsItemSet ? Read(response.Item) : null;
     }
 
-    public async Task<ProfileRecord> UpsertAsync(string userId, string displayName, CancellationToken cancellationToken = default)
+    public async Task<ProfileRecord> UpsertAsync(string userId, string displayName, bool? nonEssentialEmailsEnabled = null, CancellationToken cancellationToken = default)
     {
         var now = DateTimeOffset.UtcNow.ToString("O");
+        var values = new Dictionary<string, AttributeValue>
+        {
+            [":name"] = DynamoValues.S(displayName),
+            [":now"] = DynamoValues.S(now),
+        };
+        // Only overwrite the opt-out flag when the caller supplied one; otherwise seed it to enabled on
+        // first write and leave any existing preference untouched, so a display-name save never resets it.
+        string emailPreferenceAssignment;
+        if (nonEssentialEmailsEnabled is bool preference)
+        {
+            values[":ne"] = DynamoValues.B(preference);
+            emailPreferenceAssignment = "non_essential_emails_enabled = :ne";
+        }
+        else
+        {
+            values[":neDefault"] = DynamoValues.B(true);
+            emailPreferenceAssignment = "non_essential_emails_enabled = if_not_exists(non_essential_emails_enabled, :neDefault)";
+        }
+
         var response = await db.UpdateItemAsync(new UpdateItemRequest
         {
             TableName = settings.ProfilesTable,
             Key = new() { ["user_id"] = DynamoValues.S(userId) },
-            UpdateExpression = "SET display_name = :name, updated_at = :now, created_at = if_not_exists(created_at, :now)",
-            ExpressionAttributeValues = new() { [":name"] = DynamoValues.S(displayName), [":now"] = DynamoValues.S(now) },
+            UpdateExpression =
+                $"SET display_name = :name, updated_at = :now, created_at = if_not_exists(created_at, :now), {emailPreferenceAssignment}",
+            ExpressionAttributeValues = values,
             ReturnValues = ReturnValue.ALL_NEW
         }, cancellationToken);
         return Read(response.Attributes);
@@ -79,5 +99,6 @@ internal sealed class ProfileRepository(IAmazonDynamoDB db, HumbuggSettings sett
 
     private static ProfileRecord Read(IReadOnlyDictionary<string, AttributeValue> item) => new(
         item.String("user_id"), item.String("display_name"), item.String("created_at"), item.String("updated_at"),
-        item.TryGetValue("avatar_key", out var avatar) ? avatar.S : null);
+        item.TryGetValue("avatar_key", out var avatar) ? avatar.S : null,
+        item.BoolOrDefault("non_essential_emails_enabled", true));
 }

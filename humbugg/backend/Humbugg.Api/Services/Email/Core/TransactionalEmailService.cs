@@ -45,6 +45,7 @@ internal interface IEmailDeliveryLedger
 internal sealed class TransactionalEmailService(
     IEmailTransport transport,
     IEmailDeliveryLedger ledger,
+    IEmailPreferenceGate preferences,
     ILogger<TransactionalEmailService> logger) : ITransactionalEmailService
 {
     /// <inheritdoc />
@@ -54,13 +55,25 @@ internal sealed class TransactionalEmailService(
     {
         ArgumentNullException.ThrowIfNull(email);
 
+        // Honor the recipient's opt-out before reserving a delivery slot. Essential categories are always
+        // allowed by the gate; non-essential ones are skipped for opted-out recipients. Returning a normal
+        // (suppressed) result rather than throwing keeps batch and reminder jobs iterating cleanly.
+        if (!await preferences.IsAllowedAsync(email, cancellationToken))
+        {
+            logger.LogInformation(
+                "Suppressed non-essential transactional email {MessageId} in category {Category}; recipient opted out",
+                email.MessageId,
+                email.Category);
+            return new EmailSendResult(email.MessageId, email.Category, false, true, null);
+        }
+
         if (!await ledger.TryBeginAsync(email, cancellationToken))
         {
             logger.LogInformation(
                 "Skipped already handled transactional email {MessageId} in category {Category}",
                 email.MessageId,
                 email.Category);
-            return new EmailSendResult(email.MessageId, email.Category, true, null);
+            return new EmailSendResult(email.MessageId, email.Category, true, false, null);
         }
 
         string acceptedMessageId;
@@ -93,6 +106,6 @@ internal sealed class TransactionalEmailService(
             "Mailer accepted transactional email {MessageId} in category {Category}",
             email.MessageId,
             email.Category);
-        return new EmailSendResult(email.MessageId, email.Category, false, acceptedMessageId);
+        return new EmailSendResult(email.MessageId, email.Category, false, false, acceptedMessageId);
     }
 }

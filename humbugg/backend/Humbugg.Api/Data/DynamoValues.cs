@@ -12,6 +12,10 @@ internal static class DynamoValues
         item.TryGetValue(key, out var value) ? value.S ?? fallback : fallback;
     public static bool Bool(this IReadOnlyDictionary<string, AttributeValue> item, string key) =>
         item.TryGetValue(key, out var value) && value.BOOL == true;
+    // Reads a boolean attribute, falling back to the supplied default when the attribute is absent or
+    // not a boolean. Used for opt-out flags that default to enabled on rows written before the flag existed.
+    public static bool BoolOrDefault(this IReadOnlyDictionary<string, AttributeValue> item, string key, bool fallback) =>
+        item.TryGetValue(key, out var value) && value.BOOL is bool flag ? flag : fallback;
     public static long? Long(this IReadOnlyDictionary<string, AttributeValue> item, string key) =>
         item.TryGetValue(key, out var value) && long.TryParse(value.N, out var number) ? number : null;
 

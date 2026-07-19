@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
     created_at: 'now',
     updated_at: 'now',
     avatar_url: null as string | null,
+    non_essential_emails_enabled: true,
   },
 }));
 
@@ -85,6 +86,23 @@ describe('SettingsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
 
     await waitFor(() => expect(mocks.api.saveMe).toHaveBeenCalledWith('access-token', 'Alex Newname'));
+    await waitFor(() => expect(mocks.setProfile).toHaveBeenCalled());
+  });
+
+  it('shows the non-essential email toggle checked and explains that essential mail always sends', () => {
+    render(<SettingsPage />);
+    const toggle = screen.getByLabelText('Send me non-essential emails') as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    expect(screen.getByText(/always send/i)).toBeInTheDocument();
+  });
+
+  it('opts out of non-essential emails via PUT /me and refreshes the shared profile', async () => {
+    mocks.api.saveMe.mockResolvedValue({ ...mocks.profile, non_essential_emails_enabled: false });
+    render(<SettingsPage />);
+    fireEvent.click(screen.getByLabelText('Send me non-essential emails'));
+
+    await waitFor(() =>
+      expect(mocks.api.saveMe).toHaveBeenCalledWith('access-token', 'Alex Rivera', false));
     await waitFor(() => expect(mocks.setProfile).toHaveBeenCalled());
   });
 
