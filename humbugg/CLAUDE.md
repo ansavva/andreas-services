@@ -135,6 +135,7 @@ Group `humbugg-prod` with `cancel-in-progress: false` — queued pushes wait for
 - `humbugg-groupmembers` — group ↔ member relationship + assignment results
 - `humbugg-draws` — private giver → recipient maps, separate from ordinary group responses
 - `humbugg-audit-events` — standard append-only audit trail for sensitive exchange actions (creation/deletion, participant/exclusion/role/entitlement/reminder changes, draws, resets, reveals); see `infra/README.md`
+- `humbugg-analytics-events` — privacy-safe product-analytics funnel events (plan + aggregate counts only; no wishlist/address/email/token/assignment). Deduped by `idempotency_key`; disable via `HUMBUGG_ANALYTICS_ENABLED=false`; see `docs/analytics.md`
 - `humbugg-email-messages` — stable transactional message IDs and delivery state
 
 Production tables are accessed through the AWS SDK for .NET directly from the

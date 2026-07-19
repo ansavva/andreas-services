@@ -114,10 +114,10 @@ public sealed class SecurityControlsTests
             Groups = new FakeGroups(Group(drawn), drawn);
             Subject = new GroupService(
                 new FakeUser(), new FakeProfiles(), Groups, new FakeMembers(members),
-                new MatchingService(), new PlanCatalog(new()), Audit,
+                new MatchingService(), new PlanCatalog(new()), Audit, new FakeProductAnalytics(),
                 new HumbuggSettings(
                     "us-east-1", "us-east-1", "pool", "client", "https://humbugg.example", "https://humbugg.example", null,
-                    "profiles", "groups", "members", "draws", "audit"));
+                    "profiles", "groups", "members", "draws", "audit", "analytics"));
         }
 
         public static MembershipRecord Organizer() => Member("actor", organizer: true);
@@ -155,6 +155,12 @@ public sealed class SecurityControlsTests
             Events.Add((action, groupId, metadata));
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class FakeProductAnalytics : IProductAnalytics
+    {
+        public Task TrackAsync(AnalyticsEventType type, PlanCode plan, string groupId, string idempotencyKey,
+            IReadOnlyDictionary<string, string>? dimensions = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     private sealed class FakeProfiles : IProfileRepository

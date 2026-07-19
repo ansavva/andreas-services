@@ -64,6 +64,23 @@ Point-in-time recovery retains a 35-day continuous backup window for restore. A 
 later adopts a fixed retention policy should add a `ttl` block on an `expires_at` attribute and
 have the application stamp it — see the Maintainer TODOs in the PR.
 
+## Product analytics
+
+`humbugg-analytics-events` stores the **privacy-safe product-analytics funnel** — a stream separate
+from the security audit trail. Events record only `plan`, a `group_id` surrogate key, an
+`idempotency_key`, `occurred_at`, and an allow-listed map of aggregate dimensions (counts, plan
+codes, day spans). Wishlist text, addresses, email addresses, invite tokens, and assignments are
+structurally impossible to record; the `AnalyticsDimensions` allow-list (which reuses the audit
+`AuditRedaction` detector) drops anything else, and `ProductAnalyticsTests` fail if a prohibited
+field survives.
+
+Writes use `attribute_not_exists(idempotency_key)` so retries never double-count. The table has
+point-in-time recovery for a consistent reporting snapshot and no TTL (funnel history is retained).
+Analytics is opt-out via `HUMBUGG_ANALYTICS_ENABLED`. Reads are internal only — Logs Insights over
+the emitter's structured `analytics_event` lines, or a DynamoDB export to S3 + Athena. The full
+event catalogue, metric formulas, and reporting queries are in
+[`docs/analytics.md`](../docs/analytics.md).
+
 ## SES domain authentication
 
 The `email` module repairs or creates the `humbugg.com` SES domain identity in
