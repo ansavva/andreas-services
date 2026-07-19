@@ -52,6 +52,10 @@ CloudFront permanently redirects non-apex requests to `https://humbugg.com`.
 ## Local Development
 
 ```bash
+# One-time toolchain setup (from the repo root): installs .NET SDK 10, Node,
+# Terraform, tflint, etc. via Homebrew. Idempotent — safe to re-run.
+./scripts/dev-setup.sh && ./humbugg/scripts/dev-setup.sh
+
 # Backend
 cd humbugg/backend
 dotnet restore Humbugg.slnx
@@ -59,9 +63,15 @@ docker compose up --build                                  # http://localhost:50
 
 # Frontend (separate terminal)
 cd humbugg/frontend
+# The frontend depends on the private @ansavva/design-system package, so npm
+# needs a read:packages token exposed as NODE_AUTH_TOKEN (run from repo root):
+#   export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
+#   eval "$(./scripts/github-packages-auth.sh --export)"
 npm install --legacy-peer-deps
 npm run dev         # http://localhost:5173
 ```
+
+See [`scripts/README.md`](../scripts/README.md) for the setup scripts and GitHub Packages auth.
 
 The frontend expects these Vite env vars (create `frontend/.env.local`):
 
@@ -86,6 +96,7 @@ All secrets/values live in the `humbugg-production` GitHub Actions environment. 
 | `/humbugg/prod/s3-bucket` | Frontend S3 bucket |
 | `/humbugg/prod/cf-dist-id` | CloudFront distribution ID |
 | `/humbugg/prod/email-from-address` | Verified transactional sender (`no-reply@humbugg.com`) |
+| `/humbugg/prod/support-forward-to` | SecureString: private inbox for `support@humbugg.com` forwarding (human secret; see `docs/support-forwarding.md`) |
 | `/humbugg/prod/stripe/publishable-key` | Stripe **test-mode** publishable key (`String`; Terraform `billing` module) |
 | `/humbugg/prod/stripe/secret-key` | Stripe **test-mode** secret key (`SecureString`; Terraform `billing` module) |
 | `/humbugg/prod/stripe/webhook-secret` | Stripe webhook signing secret (`SecureString`; Terraform `billing` module) |
@@ -141,7 +152,8 @@ Group `humbugg-prod` with `cancel-in-progress: false` — queued pushes wait for
 - `humbugg-groups` — group metadata (owner, name, member list)
 - `humbugg-groupmembers` — group ↔ member relationship + assignment results
 - `humbugg-draws` — private giver → recipient maps, separate from ordinary group responses
-- `humbugg-audit-events` — durable emergency-reveal audit records
+- `humbugg-audit-events` — standard append-only audit trail for sensitive exchange actions (creation/deletion, participant/exclusion/role/entitlement/reminder changes, draws, resets, reveals, self-service data clears, membership anonymization, and account deletion); see `infra/README.md`. Account deletion never erases audit records — it anonymizes only the `actor_user_id` via the narrow `IAuditActorAnonymizer` seam. Retention/deletion policy is documented in `docs/data-retention-deletion.md`.
+- `humbugg-analytics-events` — privacy-safe product-analytics funnel events (plan + aggregate counts only; no wishlist/address/email/token/assignment). Deduped by `idempotency_key`; disable via `HUMBUGG_ANALYTICS_ENABLED=false`; see `docs/analytics.md`
 - `humbugg-email-messages` — stable transactional message IDs and delivery state
 
 Production tables are accessed through the AWS SDK for .NET directly from the

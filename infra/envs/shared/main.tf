@@ -248,6 +248,22 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     resources = ["*"]
   }
 
+  # IAM — Cognito creates a service-linked role the first time a user pool sends
+  # email through SES (email_sending_account = "DEVELOPER"). The UpdateUserPool
+  # call is made with these credentials, so the role must be allowed to create
+  # that specific service-linked role. Scoped to the Cognito email service only.
+  statement {
+    effect    = "Allow"
+    actions   = ["iam:CreateServiceLinkedRole"]
+    resources = ["arn:aws:iam::*:role/aws-service-role/email.cognito-idp.amazonaws.com/*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "iam:AWSServiceName"
+      values   = ["email.cognito-idp.amazonaws.com"]
+    }
+  }
+
   # SSM — infra workflows write outputs; code workflows read them
   statement {
     effect = "Allow"

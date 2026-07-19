@@ -8,6 +8,31 @@ This repository is a small portfolio of independently deployed applications that
 
 Because the projects have separate cloud resources and release cadences, changes should normally be scoped to a single directory. Refer to the README in each folder for details on setup, technology choices, prerequisites, and deployment assumptions.
 
+## Local development setup
+
+Bootstrap the toolchain with the idempotent setup scripts (Homebrew on both macOS
+and Linux; safe to re-run — already-installed tools are skipped). From the repo root:
+
+```bash
+./scripts/dev-setup.sh              # shared tools: Terraform, tflint, AWS CLI, Node.js, jq, zip
+./humbugg/scripts/dev-setup.sh      # + .NET SDK 10 for the Humbugg backend
+
+# See what's missing without installing anything:
+./scripts/dev-setup.sh --check
+```
+
+The `humbugg/` and `website/` frontends depend on the private
+`@ansavva/design-system` package on GitHub Packages, so `npm ci` needs a token
+with the `read:packages` scope exposed as `NODE_AUTH_TOKEN`:
+
+```bash
+export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
+eval "$(./scripts/github-packages-auth.sh --export)"   # sets NODE_AUTH_TOKEN
+```
+
+Full details (macOS vs. Linux specifics, how the Linux path runs Homebrew as a
+non-root user, per-service scripts) are in [`scripts/README.md`](scripts/README.md).
+
 ## Pre-commit hooks
 
 `.pre-commit-config.yaml` mirrors the PR-side checks (cfn-lint, terraform fmt + validate) so bad templates never make it into a PR. To enable locally:

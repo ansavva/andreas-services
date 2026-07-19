@@ -21,7 +21,7 @@ CLI mutations, to avoid IaC drift.
 | Directory | Purpose | Stack |
 |-----------|---------|-------|
 | `storybook/` | AI portrait studio | Flask + React/Vite/HeroUI + Lambda (Docker) + DynamoDB |
-| `humbugg/` | Gift-exchange platform | Flask + React/Vite + Lambda + DynamoDB |
+| `humbugg/` | Gift-exchange platform | ASP.NET Core 10 (C# 14) + React/Vite + Lambda (Docker) + DynamoDB |
 | `scout/` | Events from Gmail | Python Lambdas + React/Vite/TS + DynamoDB |
 | `infra/` | Shared infrastructure | Terraform |
 
@@ -72,12 +72,19 @@ data "aws_route53_zone" "main" {
   ```
 - **Environment variables**: `VITE_` prefix, set as GitHub Actions vars
 
-### Backend (Flask services)
+### Backend (Flask services — e.g. storybook)
 - **Framework**: Flask with Blueprint-based routing
 - **Pattern**: routes → controllers → services → repositories
 - **Logging**: structured JSON (structlog or watchtower → CloudWatch)
 - **Auth**: AWS Cognito JWT validation
 - **DB access**: DynamoDB via boto3 (no ORM, no VPC needed)
+
+### Backend (ASP.NET Core services — humbugg)
+- **Framework**: ASP.NET Core 10 (C# 14), packaged as a Docker container Lambda behind API Gateway HTTP API
+- **Pattern**: controllers → services → DynamoDB repositories
+- **Auth**: AWS Cognito access-token validation (SRP via Amplify Auth on the SPA)
+- **DB access**: DynamoDB via the AWS SDK for .NET (no ORM, no VPC needed)
+- **Note**: Humbugg was migrated from Python/Flask to ASP.NET Core — it is no longer a Python service. See `humbugg/CLAUDE.md` for details.
 
 ### Backend (Lambda-only services like scout-events)
 - **Language**: Python 3.11
@@ -88,7 +95,7 @@ data "aws_route53_zone" "main" {
 - All services use **Terraform** (`<service>/infra/`). CloudFormation is not used.
 - All CloudFront distributions use the shared ACM certificate and Route53 zone from `infra/`
 - S3 + CloudFront for all static frontends
-- Lambda for all backends (containerised Docker images in ECR — Flask services and pure Lambda functions alike)
+- Lambda for all backends (containerised Docker images in ECR — Flask, ASP.NET Core, and pure Lambda functions alike)
 
 ### Infrastructure directory naming
 

@@ -86,5 +86,15 @@ button, input, textarea, select { font: inherit; }
 @keyframes delete-button-morph { 0% { transform: scale(1); } 45% { transform: scale(.96); } 100% { transform: scale(1); } }
 @keyframes delete-label-arrive { 0% { opacity: 0; transform: translateY(3px); } 100% { opacity: 1; transform: translateY(0); } }
 @keyframes delete-confirmation-ttl { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.legal-prose { color: var(--color-ink); line-height: 1.75; }
+.legal-prose h2 { font-family: Spectral, Georgia, serif; font-size: 1.6rem; font-weight: 600; line-height: 1.25; margin-top: 2.5rem; margin-bottom: .5rem; color: var(--color-ink); }
+.legal-prose h2:first-child { margin-top: 0; }
+.legal-prose h3 { font-family: Spectral, Georgia, serif; font-size: 1.2rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: .4rem; color: var(--color-ink); }
+.legal-prose p { margin-top: 1rem; }
+.legal-prose ul { margin-top: 1rem; padding-left: 1.35rem; list-style: disc; }
+.legal-prose li { margin-top: .4rem; }
+.legal-prose a { color: var(--color-accent); text-decoration: underline; }
+.legal-prose a:hover { color: var(--color-accent-hover); }
+.legal-prose strong { font-weight: 600; color: var(--color-ink); }
 @media (min-width: 768px) { .group-heading { flex-direction: row; align-items: flex-end; justify-content: space-between; } .group-meta { justify-content: flex-end; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; } .delete-button-armed, .delete-button-armed .delete-button-label { animation: none; } .delete-button-timer { animation: none; transform: scaleX(1); } }

@@ -57,3 +57,18 @@ output "ses_identity_arn" {
   description = "Verified SES domain identity ARN"
   value       = module.email.identity_arn
 }
+
+output "support_forwarder_lambda_function_name" {
+  description = "Inbound support-forwarder Lambda function name"
+  value       = module.support_forwarding.forwarder_lambda_function_name
+}
+
+output "support_inbound_bucket" {
+  description = "S3 bucket holding raw inbound support mail"
+  value       = module.support_forwarding.inbound_bucket
+}
+
+output "support_forward_to_ssm_parameter" {
+  description = "SSM SecureString path holding the private support forward destination"
+  value       = module.support_forwarding.forward_to_ssm_parameter
+}

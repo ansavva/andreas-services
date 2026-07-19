@@ -51,8 +51,57 @@ export default function DashboardPage() {
           </Card>
           <CreateGroup onCreated={(id) => navigate(`/app/groups/${id}`)} />
         </div>
+        <AccountDangerZone />
       </div>
     </Shell>
+  );
+}
+
+function AccountDangerZone() {
+  const auth = useAuth();
+  const [confirmText, setConfirmText] = useState('');
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function deleteAccount() {
+    setBusy(true); setError(null);
+    try {
+      await api.deleteAccount(await auth.accessToken());
+      // Deletion is idempotent server-side; end the session so the erased account can't keep acting.
+      await auth.logout();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to delete your account.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="border-danger/30">
+      <p className="eyebrow">Danger zone</p>
+      <h2 className="mt-1 font-heading text-2xl font-semibold">Delete your account</h2>
+      <p className="mt-2 max-w-2xl text-sm text-muted">
+        Deleting your account erases your profile, wishlist, and mailing address. Groups you organize are deleted for
+        everyone; where a draw has already happened, your entry is anonymized so other participants keep their results.
+        Audit and any legally required financial records are retained in anonymized form. This cannot be undone.
+      </p>
+      {!open ? (
+        <Button intent="danger" size="sm" className="mt-4" onClick={() => setOpen(true)}>Delete my account…</Button>
+      ) : (
+        <div className="mt-4 space-y-3">
+          <label className="field-label">Type DELETE to confirm
+            <Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="DELETE" autoFocus />
+          </label>
+          <StatusMessage message={error} />
+          <div className="flex gap-2">
+            <Button intent="danger" size="sm" disabled={busy || confirmText !== 'DELETE'} onClick={() => void deleteAccount()}>
+              {busy ? 'Deleting…' : 'Permanently delete'}
+            </Button>
+            <Button intent="secondary" size="sm" disabled={busy} onClick={() => { setOpen(false); setConfirmText(''); setError(null); }}>Cancel</Button>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -77,5 +126,5 @@ function CreateGroup({ onCreated }: { onCreated(id: string): void }) {
       onCreated(group.group_id);
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to create the group.'); } finally { setBusy(false); }
   }
-  return <Card id="new-group"><p className="eyebrow">New exchange</p><h2 className="mt-1 font-heading text-2xl font-semibold">Start a group</h2><form className="mt-6 space-y-4" onSubmit={submit}><label className="field-label">Group name<Input name="name" required minLength={1} maxLength={120} placeholder="The Holly Jolly Crew" /></label><label className="field-label">A note for the group<Textarea name="description" maxLength={1000} placeholder="A little context, a theme, or what to expect." /></label><div className="grid grid-cols-2 gap-3"><label className="field-label">Event date<Input name="event_date" type="date" min={signupDeadline && signupDeadline > minimumDate ? signupDeadline : minimumDate} value={eventDate} onChange={(event) => { setEventDate(event.target.value); setError(null); }} /></label><label className="field-label">Join by<Input name="signup_deadline" type="date" min={minimumDate} max={eventDate || undefined} value={signupDeadline} onChange={(event) => { setSignupDeadline(event.target.value); setError(null); }} /></label></div><p className="text-xs text-muted">The join-by date must be on or before the event date.</p><label className="field-label">Spending limit (USD)<Input name="spending_limit" type="number" min="0.01" max="100000" step="0.01" placeholder="50" /></label><StatusMessage message={error} /><Button type="submit" className="w-full" disabled={busy}>{busy ? 'Creating…' : 'Create group'}</Button></form></Card>;
+  return <Card id="new-group"><p className="eyebrow">New exchange</p><h2 className="mt-1 font-heading text-2xl font-semibold">Start a group</h2><form className="mt-6 space-y-4" onSubmit={submit}><label className="field-label">Group name<Input name="name" required minLength={1} maxLength={120} placeholder="The Holly Jolly Crew" /></label><label className="field-label">A note for the group<Textarea name="description" maxLength={1000} placeholder="A little context, a theme, or what to expect." /></label><div className="grid grid-cols-2 gap-3"><label className="field-label">Event date<Input name="event_date" type="date" min={signupDeadline && signupDeadline > minimumDate ? signupDeadline : minimumDate} value={eventDate} onChange={(event) => { setEventDate(event.target.value); setError(null); }} /></label><label className="field-label">Join by<Input name="signup_deadline" type="date" min={minimumDate} max={eventDate || undefined} value={signupDeadline} onChange={(event) => { setSignupDeadline(event.target.value); setError(null); }} /></label></div><p className="text-xs text-muted">The join-by date must be on or before the event date.</p><label className="field-label">Spending limit (USD)<Input name="spending_limit" type="number" min="0.01" max="100000" step="0.01" placeholder="50" /></label><StatusMessage message={error} /><Button type="submit" className="w-full" disabled={busy}>{busy ? 'Creating…' : 'Create group'}</Button><p className="text-xs text-muted">Free for up to 6 participants. Larger exchanges use a paid plan — see our <Link className="text-accent hover:underline" to="/billing">Billing</Link> and <Link className="text-accent hover:underline" to="/refunds">Refund</Link> policies.</p></form></Card>;
 }

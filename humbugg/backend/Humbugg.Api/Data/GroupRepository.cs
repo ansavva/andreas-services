@@ -13,7 +13,6 @@ internal interface IGroupRepository
     Task CreateDrawAsync(string groupId, IReadOnlyDictionary<string, string> assignments, string actorUserId, CancellationToken cancellationToken = default);
     Task<DrawRecord?> GetDrawAsync(string groupId, CancellationToken cancellationToken = default);
     Task ResetDrawAsync(string groupId, CancellationToken cancellationToken = default);
-    Task RecordRevealAsync(string groupId, string actorUserId, string reason, CancellationToken cancellationToken = default);
 }
 
 internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settings) : IGroupRepository
@@ -155,20 +154,6 @@ internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settin
                 }
             }}
         ]
-        }, cancellationToken);
-    }
-
-    public Task RecordRevealAsync(string groupId, string actorUserId, string reason, CancellationToken cancellationToken = default)
-    {
-        var now = DateTimeOffset.UtcNow.ToString("O");
-        return db.PutItemAsync(settings.AuditEventsTable, new Dictionary<string, AttributeValue>
-        {
-            ["group_id"] = DynamoValues.S(groupId),
-            ["event_id"] = DynamoValues.S($"{now}#{Guid.NewGuid()}"),
-            ["event_type"] = DynamoValues.S("assignment_reveal"),
-            ["actor_user_id"] = DynamoValues.S(actorUserId),
-            ["reason"] = DynamoValues.S(reason),
-            ["created_at"] = DynamoValues.S(now)
         }, cancellationToken);
     }
 

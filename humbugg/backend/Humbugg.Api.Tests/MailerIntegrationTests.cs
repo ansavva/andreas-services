@@ -219,6 +219,7 @@ public sealed class MailerIntegrationTests
         GroupMembersTable: "members",
         DrawsTable: "draws",
         AuditEventsTable: "audit",
+        AnalyticsEventsTable: "analytics",
         EmailProvider: "mailer",
         EmailMessagesTable: "emails",
         MailerBaseUrl: "http://mailer.test",
