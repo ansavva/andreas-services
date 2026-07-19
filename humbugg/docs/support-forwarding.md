@@ -86,6 +86,44 @@ missing secret is loud, never silently dropped.
 For local plans you may pass `-var 'support_forward_to=you@example.com'` or
 `export TF_VAR_support_forward_to=...`; never write it into `terraform.tfvars`.
 
+## Replying as `support@humbugg.com`
+
+This path is **inbound only** — it *receives* support mail and drops a copy in the
+private inbox. It does **not** give you an outbound "reply as support@" identity.
+
+A forwarded message arrives `From: no-reply@humbugg.com` with `Reply-To:` the
+original sender. If you simply hit **Reply** in the private inbox, the reply goes
+to the customer (good) but `From:` **your personal address** — which is *not*
+`support@humbugg.com` and **leaks the private destination** this feature exists to
+hide. To answer as `support@humbugg.com`, set up **"Send mail as" over SES SMTP**
+in your mail client (one-time):
+
+1. **Create SES SMTP credentials.** AWS Console → **SES** → **SMTP settings** →
+   **Create SMTP credentials**. This provisions a small IAM user allowed only to
+   send email and derives an **SMTP username** (`AKIA…`-style) and **SMTP
+   password** (shown **once** — save it then). These are *not* your AWS console
+   login or your normal AWS access keys; they are a send-only username/password
+   your mail client uses, and they are distinct from the forwarder Lambda (which
+   sends via its own IAM role, not SMTP). Keep them in a password manager — never
+   in this repo.
+2. **Add the alias in your mail client.** In Gmail: **Settings → Accounts and
+   Import → "Send mail as" → Add another email address** → `support@humbugg.com`,
+   SMTP server `email-smtp.us-east-1.amazonaws.com`, port **587** (STARTTLS),
+   username/password = the SES SMTP credentials from step 1. Complete the
+   confirmation step.
+3. **Reply from the alias.** When answering a forwarded message, pick
+   `support@humbugg.com` in the **From** dropdown. The customer sees a branded
+   reply and never your personal address.
+
+Prerequisites: SES **sending** must be out of the sandbox for this account (the
+same requirement as product email from `no-reply@humbugg.com`), and the
+`humbugg.com` domain identity must be verified for sending (it already is for the
+Mailer platform), which is what authorizes `support@humbugg.com` as a `From`.
+
+> **TODO (human):** if support agents need to reply as `support@humbugg.com`,
+> perform the one-time SES SMTP + mail-client setup above. Without it, replies go
+> out from the agent's personal address.
+
 ## Verifying
 
 1. **DNS/MX** — confirm the apex MX resolves to SES inbound:
