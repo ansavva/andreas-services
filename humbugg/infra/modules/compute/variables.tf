@@ -39,3 +39,15 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "api_throttling_rate_limit" {
+  description = "Steady-state requests/second for the backend API stage (API Gateway default route throttling, applied to every route)."
+  type        = number
+  default     = 500
+}
+
+variable "api_throttling_burst_limit" {
+  description = "Token-bucket burst capacity for the backend API stage default throttling."
+  type        = number
+  default     = 1000
+}

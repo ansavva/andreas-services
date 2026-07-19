@@ -155,8 +155,11 @@ builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);
 var app = builder.Build();
 app.UseMiddleware<ApiExceptionMiddleware>();
 app.UseCors();
+app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
+// Rate limiting is enforced upstream at the API Gateway stage (default route throttling),
+// not in-process — see humbugg/infra/modules/compute and humbugg/docs/threat-model.md §4.
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapControllers();
 app.Run();
