@@ -34,6 +34,11 @@ variable "email_messages_table_arn" {
   type        = string
 }
 
+variable "avatars_bucket_arn" {
+  description = "S3 bucket ARN for user profile photos the backend Lambda writes to"
+  type        = string
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

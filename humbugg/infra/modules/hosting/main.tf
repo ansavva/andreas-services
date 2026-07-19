@@ -79,6 +79,14 @@ resource "aws_cloudfront_origin_access_control" "frontend" {
   signing_protocol                  = "sigv4"
 }
 
+resource "aws_cloudfront_origin_access_control" "avatars" {
+  name                              = "${var.project}-avatars-oac"
+  description                       = "OAC for ${var.project} avatars S3 bucket"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
 resource "aws_cloudfront_function" "canonical_redirect" {
   name    = "${var.project}-canonical-redirect"
   runtime = "cloudfront-js-2.0"
@@ -113,6 +121,12 @@ resource "aws_cloudfront_distribution" "app" {
   }
 
   origin {
+    domain_name              = var.avatars_bucket_regional_domain_name
+    origin_id                = "S3-avatars"
+    origin_access_control_id = aws_cloudfront_origin_access_control.avatars.id
+  }
+
+  origin {
     domain_name = trimsuffix(replace(var.api_endpoint, "https://", ""), "/")
     origin_id   = "APIGateway-backend"
 
@@ -144,6 +158,21 @@ resource "aws_cloudfront_distribution" "app" {
     allowed_methods        = ["GET", "HEAD"]
     cached_methods         = ["GET", "HEAD"]
     target_origin_id       = "S3-frontend"
+    viewer_protocol_policy = "redirect-to-https"
+    compress               = true
+    cache_policy_id        = data.aws_cloudfront_cache_policy.optimized.id
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.canonical_redirect.arn
+    }
+  }
+
+  ordered_cache_behavior {
+    path_pattern           = "/avatars/*"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "S3-avatars"
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
     cache_policy_id        = data.aws_cloudfront_cache_policy.optimized.id
@@ -234,6 +263,30 @@ resource "aws_s3_bucket_policy" "frontend" {
         }
         Action   = "s3:GetObject"
         Resource = "${var.frontend_bucket_arn}/*"
+        Condition = {
+          StringEquals = {
+            "AWS:SourceArn" = aws_cloudfront_distribution.app.arn
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_s3_bucket_policy" "avatars" {
+  bucket = var.avatars_bucket_id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowCloudFrontServicePrincipalReadOnly"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudfront.amazonaws.com"
+        }
+        Action   = "s3:GetObject"
+        Resource = "${var.avatars_bucket_arn}/*"
         Condition = {
           StringEquals = {
             "AWS:SourceArn" = aws_cloudfront_distribution.app.arn
