@@ -103,6 +103,7 @@ public sealed class GroupServiceSecurityTests
     {
         public Task<ProfileRecord?> GetAsync(string userId, CancellationToken cancellationToken = default) => Task.FromResult<ProfileRecord?>(new(userId, "User", "now", "now"));
         public Task<ProfileRecord> UpsertAsync(string userId, string displayName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task DeleteAsync(string userId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
     private sealed class FakeGroups(GroupRecord group) : IGroupRepository
@@ -142,5 +143,6 @@ public sealed class GroupServiceSecurityTests
         public Task<MembershipRecord> UpdateParticipationAsync(string memberId, bool participating, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task DeleteAsync(string memberId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task DeleteByGroupAsync(string groupId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task AnonymizeAsync(string memberId, string pseudonym, string displayName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 }

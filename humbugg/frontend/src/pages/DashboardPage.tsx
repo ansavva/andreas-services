@@ -51,8 +51,57 @@ export default function DashboardPage() {
           </Card>
           <CreateGroup onCreated={(id) => navigate(`/app/groups/${id}`)} />
         </div>
+        <AccountDangerZone />
       </div>
     </Shell>
+  );
+}
+
+function AccountDangerZone() {
+  const auth = useAuth();
+  const [confirmText, setConfirmText] = useState('');
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function deleteAccount() {
+    setBusy(true); setError(null);
+    try {
+      await api.deleteAccount(await auth.accessToken());
+      // Deletion is idempotent server-side; end the session so the erased account can't keep acting.
+      await auth.logout();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to delete your account.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="border-danger/30">
+      <p className="eyebrow">Danger zone</p>
+      <h2 className="mt-1 font-heading text-2xl font-semibold">Delete your account</h2>
+      <p className="mt-2 max-w-2xl text-sm text-muted">
+        Deleting your account erases your profile, wishlist, and mailing address. Groups you organize are deleted for
+        everyone; where a draw has already happened, your entry is anonymized so other participants keep their results.
+        Audit and any legally required financial records are retained in anonymized form. This cannot be undone.
+      </p>
+      {!open ? (
+        <Button intent="danger" size="sm" className="mt-4" onClick={() => setOpen(true)}>Delete my account…</Button>
+      ) : (
+        <div className="mt-4 space-y-3">
+          <label className="field-label">Type DELETE to confirm
+            <Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="DELETE" autoFocus />
+          </label>
+          <StatusMessage message={error} />
+          <div className="flex gap-2">
+            <Button intent="danger" size="sm" disabled={busy || confirmText !== 'DELETE'} onClick={() => void deleteAccount()}>
+              {busy ? 'Deleting…' : 'Permanently delete'}
+            </Button>
+            <Button intent="secondary" size="sm" disabled={busy} onClick={() => { setOpen(false); setConfirmText(''); setError(null); }}>Cancel</Button>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 
