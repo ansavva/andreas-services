@@ -243,7 +243,6 @@ jobs:
             --name "/humbugg/prod/${1}" --value "${2}"; }
           put api-url              "$(tf api_endpoint)"
           put lambda-name          "$(tf lambda_function_name)"
-          put email-status-lambda-name "$(tf email_status_lambda_function_name)"
           put ecr-url              "$(tf ecr_repository_url)"
           put frontend-lambda-name "$(tf frontend_lambda_function_name)"
           put frontend-ecr-url     "$(tf frontend_ecr_repository_url)"
@@ -293,8 +292,11 @@ jobs:
           echo "FRONTEND_ECR_URL=$(get frontend-ecr-url)"           >> "$GITHUB_ENV"
           echo "COGNITO_USER_POOL_ID=$(get cognito-user-pool-id)"   >> "$GITHUB_ENV"
           echo "COGNITO_CLIENT_ID=$(get cognito-client-id)"         >> "$GITHUB_ENV"
-          echo "EMAIL_STATUS_LAMBDA_NAME=$(get email-status-lambda-name)" >> "$GITHUB_ENV"
           echo "HUMBUGG_MAILER_BASE_URL=$(aws ssm get-parameter --name /mailer/prod/humbugg/api-url --query Parameter.Value --output text)" >> "$GITHUB_ENV"
+          # EMAIL_STATUS_LAMBDA_NAME is not read from SSM: the name is deterministic
+          # (humbugg-email-status-production) and already set as a job-level env default,
+          # matching BACKEND/FRONTEND. Reading a missing SSM param here silently produced an
+          # empty --function-name and broke the deploy.
 
       - name: Update Lambda env vars + code
         run: |
