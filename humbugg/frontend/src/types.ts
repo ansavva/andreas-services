@@ -10,6 +10,8 @@ export interface Profile {
   display_name: string;
   created_at: string;
   updated_at: string;
+  /** Absolute URL of the uploaded profile photo, or null/undefined when the initials fallback applies. */
+  avatar_url?: string | null;
 }
 
 export interface Membership {
