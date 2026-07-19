@@ -215,6 +215,13 @@ jobs:
         run: terraform -chdir=humbugg/infra/envs/prod init -input=false
 
       - name: Terraform apply
+        env:
+          # Stripe test-mode credentials from the humbugg-production environment.
+          # Empty until the Stripe test account is provisioned (issue #123); the
+          # billing module skips uncreated parameters. Live-mode is blocked (#159).
+          TF_VAR_stripe_publishable_key: ${{ vars.HUMBUGG_STRIPE_PUBLISHABLE_KEY }}
+          TF_VAR_stripe_secret_key: ${{ secrets.HUMBUGG_STRIPE_SECRET_KEY }}
+          TF_VAR_stripe_webhook_secret: ${{ secrets.HUMBUGG_STRIPE_WEBHOOK_SECRET }}
         run: terraform -chdir=humbugg/infra/envs/prod apply -auto-approve -input=false
 
       - name: Wait for SES domain authentication
@@ -325,6 +332,10 @@ jobs:
             --arg plus_price_id "${{ vars.HUMBUGG_PLUS_PRICE_ID }}" \
             --arg work_product_id "${{ vars.HUMBUGG_WORK_PRODUCT_ID }}" \
             --arg work_price_id "${{ vars.HUMBUGG_WORK_PRICE_ID }}" \
+            --arg stripe_mode "${{ vars.HUMBUGG_STRIPE_MODE || 'disabled' }}" \
+            --arg stripe_publishable_key "${{ vars.HUMBUGG_STRIPE_PUBLISHABLE_KEY }}" \
+            --arg stripe_secret_key "${{ secrets.HUMBUGG_STRIPE_SECRET_KEY }}" \
+            --arg stripe_webhook_secret "${{ secrets.HUMBUGG_STRIPE_WEBHOOK_SECRET }}" \
             '{Variables: {
               CORS_ORIGIN: $cors_origin,
               COGNITO_REGION: $cognito_region,
@@ -351,7 +362,11 @@ jobs:
               HUMBUGG_PLUS_PRODUCT_ID: $plus_product_id,
               HUMBUGG_PLUS_PRICE_ID: $plus_price_id,
               HUMBUGG_WORK_PRODUCT_ID: $work_product_id,
-              HUMBUGG_WORK_PRICE_ID: $work_price_id
+              HUMBUGG_WORK_PRICE_ID: $work_price_id,
+              HUMBUGG_STRIPE_MODE: $stripe_mode,
+              HUMBUGG_STRIPE_PUBLISHABLE_KEY: $stripe_publishable_key,
+              HUMBUGG_STRIPE_SECRET_KEY: $stripe_secret_key,
+              HUMBUGG_STRIPE_WEBHOOK_SECRET: $stripe_webhook_secret
             }}' > /tmp/env-humbugg-backend.json
 
           jq -n \

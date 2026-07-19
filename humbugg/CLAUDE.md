@@ -97,6 +97,23 @@ All secrets/values live in the `humbugg-production` GitHub Actions environment. 
 | `/humbugg/prod/cf-dist-id` | CloudFront distribution ID |
 | `/humbugg/prod/email-from-address` | Verified transactional sender (`no-reply@humbugg.com`) |
 | `/humbugg/prod/support-forward-to` | SecureString: private inbox for `support@humbugg.com` forwarding (human secret; see `docs/support-forwarding.md`) |
+| `/humbugg/prod/stripe/publishable-key` | Stripe **test-mode** publishable key (`String`; Terraform `billing` module) |
+| `/humbugg/prod/stripe/secret-key` | Stripe **test-mode** secret key (`SecureString`; Terraform `billing` module) |
+| `/humbugg/prod/stripe/webhook-secret` | Stripe webhook signing secret (`SecureString`; Terraform `billing` module) |
+
+### Stripe billing (test mode only)
+
+Billing config is **environment/SSM-sourced, never hardcoded**. Product/price IDs
+flow through GitHub env `vars.*` into Lambda env; the secret key and webhook secret
+are GitHub env `secrets.*`, injected via `TF_VAR_*` into the `billing` Terraform
+module (which stores them as SSM `SecureString`) and set as Lambda env vars in
+`update-lambda`. `StripeSettings.FromEnvironment()` validates at startup: it fails
+fast when `HUMBUGG_STRIPE_MODE=test` without the required test-mode credentials, and
+**blocks live mode** (`HUMBUGG_STRIPE_MODE=live` or any `sk_live_`/`pk_live_`/`rk_live_`
+key) pending merchant-identity review (issue #159). Backend Stripe env vars:
+`HUMBUGG_STRIPE_MODE` (`test`/`disabled`), `HUMBUGG_STRIPE_PUBLISHABLE_KEY`,
+`HUMBUGG_STRIPE_SECRET_KEY`, `HUMBUGG_STRIPE_WEBHOOK_SECRET`. Full runbook:
+`humbugg/docs/stripe-setup.md`.
 
 ## GitHub Workflows
 
