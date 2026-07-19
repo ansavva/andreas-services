@@ -1,1 +1,6 @@
 aws_region = "us-east-1"
+
+# Private support-forwarding destination. DO NOT commit the real value here.
+# Injected in CI via TF_VAR_support_forward_to from the SUPPORT_FORWARD_TO
+# GitHub environment secret. Placeholder shown for local plans only.
+# support_forward_to = "TODO-private-inbox@example.com"
