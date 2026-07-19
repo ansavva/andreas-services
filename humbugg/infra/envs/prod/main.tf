@@ -93,6 +93,9 @@ module "compute" {
   cognito_user_pool_id     = module.auth.user_pool_id
   cognito_client_id        = module.auth.user_pool_client_id
 
+  api_throttling_rate_limit  = var.api_throttling_rate_limit
+  api_throttling_burst_limit = var.api_throttling_burst_limit
+
   tags = local.common_tags
 }
 

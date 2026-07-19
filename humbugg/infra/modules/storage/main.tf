@@ -126,6 +126,34 @@ resource "aws_dynamodb_table" "audit_events" {
   }
 
   server_side_encryption { enabled = true }
+
+  # The audit trail is append-only and must not silently lose records: enable
+  # point-in-time recovery for durability and block accidental table deletion.
+  # Records have no TTL — retention is intentionally indefinite (see infra/README.md).
+  point_in_time_recovery { enabled = true }
+  deletion_protection_enabled = true
+
+  tags = var.tags
+}
+
+resource "aws_dynamodb_table" "analytics_events" {
+  name         = "${var.project}-analytics-events"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "idempotency_key"
+
+  attribute {
+    name = "idempotency_key"
+    type = "S"
+  }
+
+  server_side_encryption { enabled = true }
+
+  # Product-analytics events are privacy-safe aggregates (plan + counts only) and are written with
+  # an attribute_not_exists condition on idempotency_key, so retries never double-count. Point-in-
+  # time recovery lets the internal reporting path export a consistent snapshot; there is no TTL,
+  # so the funnel history is retained for trend analysis. See docs/analytics.md.
+  point_in_time_recovery { enabled = true }
+
   tags = var.tags
 }
 
