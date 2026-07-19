@@ -2,8 +2,16 @@ import { reactRouter } from '@react-router/dev/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
+// Vitest can't run the React Router dev plugin: it injects an HMR "preamble"
+// that the jsdom test environment never provides, so any rendered component
+// throws "React Router Vite plugin can't detect preamble." Under Vitest we drop
+// the framework/tailwind plugins and let esbuild's automatic JSX runtime
+// (matching tsconfig "jsx": "react-jsx") transform components for @testing-library.
+const isVitest = !!process.env.VITEST;
+
 export default defineConfig(({ command }) => ({
-  plugins: [tailwindcss(), reactRouter()],
+  plugins: isVitest ? [] : [tailwindcss(), reactRouter()],
+  esbuild: isVitest ? { jsx: 'automatic' } : undefined,
   resolve: { tsconfigPaths: true },
   ssr: {
     noExternal: command === 'build'
