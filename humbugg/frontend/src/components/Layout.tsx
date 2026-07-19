@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import type { HTMLAttributes, ReactNode } from 'react';
 
 import { useAuth } from '../context/AuthContext';
+import { LEGAL_LINKS, SERVICE_COUNTRY, SERVICE_CURRENCY } from '../config/policies';
 
 export function Brand() {
   return (
@@ -36,7 +37,28 @@ export function Shell({ children, compact = false }: { children: ReactNode; comp
         </div>
       </header>
       <main className={compact ? '' : 'mx-auto max-w-7xl px-5 py-10 lg:px-8'}>{children}</main>
+      <SiteFooter />
     </div>
+  );
+}
+
+export function SiteFooter() {
+  const year = new Date().getFullYear();
+  return (
+    <footer className="border-t border-line/80 bg-bg">
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-10 lg:px-8">
+        <nav aria-label="Policies" className="flex flex-wrap gap-x-6 gap-y-3">
+          {LEGAL_LINKS.map((link) => (
+            <Link key={link.to} to={link.to} className="text-sm font-medium text-muted hover:text-ink hover:underline">
+              {link.label}
+            </Link>
+          ))}
+        </nav>
+        <p className="text-sm text-muted">
+          © {year} Humbugg · Available in the {SERVICE_COUNTRY} · Prices in {SERVICE_CURRENCY}
+        </p>
+      </div>
+    </footer>
   );
 }
 

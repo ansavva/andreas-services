@@ -36,6 +36,7 @@ internal sealed class GroupService(
     IMatchingService matching,
     IPlanCatalog plans,
     IAuditTrail audit,
+    IProductAnalytics analytics,
     HumbuggSettings settings) : IGroupService
 {
     public async Task<IReadOnlyList<GroupSummary>> ListAsync(CancellationToken cancellationToken = default)
@@ -53,6 +54,7 @@ internal sealed class GroupService(
     {
         var profile = await profiles.GetAsync(user.UserId, cancellationToken)
             ?? throw ApiException.Conflict("Complete your profile before creating a group.");
+        var isRepeatOrganizer = (await memberships.GetByUserAsync(user.UserId, cancellationToken)).Any(item => item.IsOrganizer);
         var secret = NewSecret();
         var now = DateTimeOffset.UtcNow.ToString("O");
         var dates = Validation.GroupDates(request.EventDate, request.SignupDeadline);
@@ -65,6 +67,15 @@ internal sealed class GroupService(
         await memberships.CreateAsync(group.GroupId, user.UserId, profile.DisplayName, true, cancellationToken);
         await audit.RecordAsync(AuditAction.GroupCreated, group.GroupId, AuditTarget.Group(group.GroupId),
             new Dictionary<string, string> { ["plan"] = group.Plan.ToString().ToLowerInvariant() }, cancellationToken: cancellationToken);
+        await analytics.TrackAsync(AnalyticsEventType.GroupCreated, group.Plan, group.GroupId,
+            $"group_created:{group.GroupId}",
+            new Dictionary<string, string> { ["is_repeat"] = isRepeatOrganizer ? "true" : "false" }, cancellationToken);
+        if (isRepeatOrganizer)
+            await analytics.TrackAsync(AnalyticsEventType.RepeatExchangeCreated, group.Plan, group.GroupId,
+                $"repeat_exchange:{group.GroupId}", cancellationToken: cancellationToken);
+        // The first invite is created with the group; count it once so invite-to-join has a denominator.
+        await analytics.TrackAsync(AnalyticsEventType.InviteSent, group.Plan, group.GroupId,
+            $"invite_sent:{group.GroupId}", cancellationToken: cancellationToken);
         var detail = await GetAsync(group.GroupId, cancellationToken);
         return detail with { InviteUrl = InviteUrl(group.GroupId, secret) };
     }
@@ -116,6 +127,9 @@ internal sealed class GroupService(
         await ConditionalGroupUpdate(() => groups.UpdateAsync(groupId,
             new Dictionary<string, AttributeValue> { ["invite_hash"] = DynamoValues.S(Hash(secret)) }, GroupStatus.Open, cancellationToken));
         await audit.RecordAsync(AuditAction.InviteRotated, groupId, AuditTarget.Invite(groupId), cancellationToken: cancellationToken);
+        // Deduped per group: a group has "an invite" whether it was rotated once or many times.
+        await analytics.TrackAsync(AnalyticsEventType.InviteSent, group.Plan, groupId,
+            $"invite_sent:{groupId}", cancellationToken: cancellationToken);
         return new InviteResponse(InviteUrl(groupId, secret));
     }
 
@@ -136,7 +150,15 @@ internal sealed class GroupService(
         try { joined = await memberships.CreateAsync(groupId, user.UserId, profile.DisplayName, false, cancellationToken); }
         catch (ConditionalCheckFailedException) { }
         if (joined is not null)
+        {
             await audit.RecordAsync(AuditAction.ParticipantJoined, groupId, AuditTarget.Member(joined.MemberId), cancellationToken: cancellationToken);
+            await analytics.TrackAsync(AnalyticsEventType.ParticipantJoined, group.Plan, groupId,
+                $"participant_joined:{joined.MemberId}",
+                new Dictionary<string, string>
+                {
+                    ["member_count"] = (currentMembers.Count() + 1).ToString(System.Globalization.CultureInfo.InvariantCulture)
+                }, cancellationToken);
+        }
         return await GetAsync(groupId, cancellationToken);
     }
 
@@ -148,11 +170,16 @@ internal sealed class GroupService(
 
     public async Task<Membership> UpdateMyMembershipAsync(string groupId, UpdateMembershipRequest request, CancellationToken cancellationToken = default)
     {
-        var (_, membership) = await RequireMembershipAsync(groupId, cancellationToken);
+        var (group, membership) = await RequireMembershipAsync(groupId, cancellationToken);
         var updated = await memberships.UpdatePrivateAsync(membership.MemberId,
             Validation.Optional(request.Wishlist ?? membership.Wishlist, 2000),
             Validation.Optional(request.Avoidances ?? membership.Avoidances, 2000),
             request.Address is null ? membership.Address : Validation.Address(request.Address), cancellationToken);
+        // Readiness milestone: the member has provided a wish list. The content is never recorded —
+        // only the fact of readiness, deduped once per member.
+        if (!string.IsNullOrWhiteSpace(updated.Wishlist))
+            await analytics.TrackAsync(AnalyticsEventType.ParticipantReady, group.Plan, groupId,
+                $"participant_ready:{membership.MemberId}", cancellationToken: cancellationToken);
         return Private(updated);
     }
 
@@ -228,6 +255,13 @@ internal sealed class GroupService(
         catch (TransactionCanceledException) { throw ApiException.Conflict("This group has already been drawn or changed."); }
         await audit.RecordAsync(AuditAction.DrawCreated, groupId, AuditTarget.Draw(groupId),
             new Dictionary<string, string> { ["participant_count"] = assignments.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) }, cancellationToken: cancellationToken);
+        await analytics.TrackAsync(AnalyticsEventType.DrawCompleted, group.Plan, groupId,
+            $"draw_completed:{groupId}",
+            new Dictionary<string, string>
+            {
+                ["participant_count"] = assignments.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["days_to_draw"] = DaysSince(group.CreatedAt).ToString(System.Globalization.CultureInfo.InvariantCulture)
+            }, cancellationToken);
         return await GetAssignmentAsync(groupId, cancellationToken);
     }
 
@@ -250,6 +284,9 @@ internal sealed class GroupService(
             throw ApiException.NotFound("You do not have an assignment in this draw.");
         var recipient = await memberships.GetAsync(recipientId, cancellationToken)
             ?? throw ApiException.NotFound("Your assigned participant could not be found.");
+        // Assignment view milestone — recorded once per member; the assignment itself is never recorded.
+        await analytics.TrackAsync(AnalyticsEventType.AssignmentViewed, group.Plan, groupId,
+            $"assignment_viewed:{membership.MemberId}", cancellationToken: cancellationToken);
         return Assignment(recipient);
     }
 
@@ -294,6 +331,11 @@ internal sealed class GroupService(
     private static Membership Private(MembershipRecord member) => new(member.MemberId, member.DisplayName, member.IsOrganizer, member.IsParticipating, member.Wishlist, member.Avoidances, member.Address);
     private static RecipientAssignment Assignment(MembershipRecord member) => new(member.MemberId, member.DisplayName, member.Wishlist, member.Avoidances, member.Address);
     private static decimal? Amount(long? cents) => cents is null ? null : cents.Value / 100m;
+    private static long DaysSince(string isoTimestamp) =>
+        DateTimeOffset.TryParse(isoTimestamp, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.RoundtripKind, out var created)
+            ? Math.Max(0, (long)(DateTimeOffset.UtcNow - created).TotalDays)
+            : 0;
     private static string NewSecret() => WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
     private static string Hash(string secret) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(secret))).ToLowerInvariant();
     private string InviteUrl(string groupId, string secret) => $"{settings.AppBaseUrl}/join/{groupId}#invite={secret}";

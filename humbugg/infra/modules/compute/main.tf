@@ -364,6 +364,16 @@ resource "aws_apigatewayv2_stage" "backend" {
   name        = "$default"
   auto_deploy = true
 
+  # Global rate limit for the entire backend API, enforced by API Gateway before
+  # the Lambda is invoked (throttled requests cost no invocation). This applies
+  # to every route via the stage default — there are no per-route overrides. It
+  # is an aggregate throughput guard, not per-caller; per-IP edge protection is
+  # tracked separately as AWS WAF work (see humbugg/docs/threat-model.md §4).
+  default_route_settings {
+    throttling_rate_limit  = var.api_throttling_rate_limit
+    throttling_burst_limit = var.api_throttling_burst_limit
+  }
+
   tags = var.tags
 }
 

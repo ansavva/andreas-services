@@ -86,9 +86,9 @@ public sealed class GroupServiceSecurityTests
         {
             Groups = new FakeGroups(Group(exclusions ?? [["actor", "other"]]));
             Members = new FakeMembers(member is null ? [] : [member]);
-            Subject = new GroupService(new FakeUser(), new FakeProfiles(), Groups, Members, new MatchingService(), new PlanCatalog(new()), new FakeAuditTrail(), new HumbuggSettings(
+            Subject = new GroupService(new FakeUser(), new FakeProfiles(), Groups, Members, new MatchingService(), new PlanCatalog(new()), new FakeAuditTrail(), new FakeProductAnalytics(), new HumbuggSettings(
                 "us-east-1", "us-east-1", "pool", "client", "http://localhost:5173", "http://localhost:5173", null,
-                "profiles", "groups", "members", "draws", "audit"));
+                "profiles", "groups", "members", "draws", "audit", "analytics"));
         }
 
         public static MembershipRecord Member(string memberId, bool organizer) => new(
@@ -125,6 +125,12 @@ public sealed class GroupServiceSecurityTests
             IReadOnlyDictionary<string, string>? metadata = null, string? organizationId = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
+    private sealed class FakeProductAnalytics : IProductAnalytics
+    {
+        public Task TrackAsync(AnalyticsEventType type, PlanCode plan, string groupId, string idempotencyKey,
+            IReadOnlyDictionary<string, string>? dimensions = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
     private sealed class FakeMembers(IEnumerable<MembershipRecord> items) : IMembershipRepository
     {
         public List<MembershipRecord> Items { get; } = items.ToList();
@@ -135,8 +141,8 @@ public sealed class GroupServiceSecurityTests
         public Task<MembershipRecord> CreateAsync(string groupId, string userId, string displayName, bool organizer, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<MembershipRecord> UpdatePrivateAsync(string memberId, string wishlist, string avoidances, Address address, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<MembershipRecord> UpdateParticipationAsync(string memberId, bool participating, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task AnonymizeAsync(string memberId, string pseudonym, string displayName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task DeleteAsync(string memberId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task DeleteByGroupAsync(string groupId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task AnonymizeAsync(string memberId, string pseudonym, string displayName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 }

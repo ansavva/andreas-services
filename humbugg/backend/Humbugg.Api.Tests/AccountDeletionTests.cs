@@ -206,9 +206,9 @@ public sealed class AccountDeletionTests
         public World()
         {
             Deletion = new AccountDeletionService(User, Profiles, Groups, Members, Audit, Anonymizer);
-            GroupService = new GroupService(User, Profiles, Groups, Members, new MatchingService(), new PlanCatalog(new()), Audit,
+            GroupService = new GroupService(User, Profiles, Groups, Members, new MatchingService(), new PlanCatalog(new()), Audit, new NoopAnalytics(),
                 new HumbuggSettings("us-east-1", "us-east-1", "pool", "client", "http://localhost:5173", "http://localhost:5173", null,
-                    "profiles", "groups", "members", "draws", "audit"));
+                    "profiles", "groups", "members", "draws", "audit", "analytics"));
         }
     }
 
@@ -298,5 +298,11 @@ public sealed class AccountDeletionTests
             Calls.Add((userId, pseudonym));
             return Task.FromResult(0);
         }
+    }
+
+    private sealed class NoopAnalytics : IProductAnalytics
+    {
+        public Task TrackAsync(AnalyticsEventType type, PlanCode plan, string groupId, string idempotencyKey,
+            IReadOnlyDictionary<string, string>? dimensions = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }

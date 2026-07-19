@@ -57,6 +57,13 @@ export default function AuthPage({ mode }: { mode: Mode }) {
             <StatusMessage message={message} tone={message?.includes('confirmed') || message?.includes('updated') || message?.includes('sent') ? 'success' : 'error'} />
             <Button type="submit" className="w-full" size="lg" disabled={busy}>{busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : mode === 'signup' ? 'Create account' : mode === 'confirm' ? 'Confirm email' : stage === 'request' ? 'Send reset code' : 'Update password'}</Button>
           </form>
+          {mode === 'signup' && (
+            <p className="mt-5 text-sm text-muted">
+              By creating an account, you agree to our{' '}
+              <Link className="text-accent hover:underline" to="/terms">Terms of Service</Link> and{' '}
+              <Link className="text-accent hover:underline" to="/privacy">Privacy Policy</Link>.
+            </p>
+          )}
           <div className="mt-6 flex flex-wrap justify-between gap-3 text-sm">
             {mode !== 'login' ? <Link className="text-accent hover:underline" to="/login">Back to sign in</Link> : <><Link className="text-accent hover:underline" to="/signup">Create an account</Link><Link className="text-accent hover:underline" to="/forgot-password">Forgot password?</Link></>}
           </div>
