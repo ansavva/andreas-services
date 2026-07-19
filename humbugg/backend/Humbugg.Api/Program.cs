@@ -152,6 +152,7 @@ builder.Services.AddScoped<IProductAnalytics, ProductAnalytics>();
 builder.Services.AddScoped<IProfileService, ProfileService>();
 builder.Services.AddScoped<IGroupService, GroupService>();
 builder.Services.AddScoped<IAccountDeletionService, AccountDeletionService>();
+builder.Services.AddScoped<IDataExportService, DataExportService>();
 builder.Services.AddSingleton<IMatchingService, MatchingService>();
 if (!string.IsNullOrWhiteSpace(settings.DynamoDbEndpointUrl))
     builder.Services.AddHostedService<DynamoDbBootstrap>();

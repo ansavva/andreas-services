@@ -78,6 +78,51 @@ public sealed record RevealAssignment(Membership Giver, RecipientAssignment Reci
 public sealed record RevealResponse(IReadOnlyList<RevealAssignment> Assignments);
 public sealed record InviteResponse(string InviteUrl);
 
+// ─── Self-service data export (GDPR right of access / portability, issue #189) ──────────────────
+//
+// A portable, machine-readable snapshot of the CALLER'S OWN personal data. It contains only data the
+// requesting user authored or that identifies them; it never includes another member's wishlist,
+// avoidances, address, or draw assignment, and never reveals who the caller was assigned to give to
+// (that recipient's data belongs to the recipient, not the caller).
+public sealed record DataExport(
+    DataExportMetadata Metadata,
+    ExportedProfile Profile,
+    IReadOnlyList<ExportedMembership> Memberships);
+
+public sealed record DataExportMetadata(
+    string GeneratedAt,
+    string FormatVersion,
+    string SubjectUserId,
+    IReadOnlyList<string> Notes);
+
+public sealed record ExportedProfile(
+    string UserId,
+    string? DisplayName,
+    string? Email,
+    string? CreatedAt,
+    string? UpdatedAt,
+    // Reserved for the extended-profile fields other issues add, exported once they land so the export
+    // stays the single "everything we hold about you" view: avatar (#186), non-essential-email
+    // preference (#187), and recorded Terms/Privacy consent (#188). Null until those ship.
+    string? Avatar = null,
+    bool? NonEssentialEmailsEnabled = null,
+    ExportedConsent? Consent = null);
+
+public sealed record ExportedConsent(string PolicyVersion, string AgreedAt);
+
+public sealed record ExportedMembership(
+    string GroupId,
+    string GroupName,
+    GroupStatus GroupStatus,
+    string MemberId,
+    string Role,
+    bool IsParticipating,
+    string? Wishlist,
+    string? Avoidances,
+    Address? Address,
+    string JoinedAt,
+    string UpdatedAt);
+
 public sealed record SaveProfileRequest(string? DisplayName);
 public sealed record CreateGroupRequest(
     string? Name,

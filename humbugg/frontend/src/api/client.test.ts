@@ -25,6 +25,15 @@ describe('API client', () => {
     expect(fetchMock.mock.calls[0][1].method).toBe('DELETE');
   });
 
+  it('exports my own data with GET /me/export', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ metadata: { generated_at: 'now', format_version: '1.0', subject_user_id: 'u', notes: [] }, profile: { user_id: 'u' }, memberships: [] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await api.exportMyData('access-token');
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/me/export');
+    expect(fetchMock.mock.calls[0][1].method ?? 'GET').toBe('GET');
+    expect(result.profile.user_id).toBe('u');
+  });
+
   it('clears my own wishlist and address for a group', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ member_id: 'm', display_name: 'Alex', is_organizer: false, is_participating: true, wishlist: '', avoidances: '' }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
