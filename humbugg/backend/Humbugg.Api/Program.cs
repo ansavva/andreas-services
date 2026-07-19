@@ -100,6 +100,21 @@ builder.Services.AddSingleton<IAmazonDynamoDB>(_ =>
     }
     return new AmazonDynamoDBClient(config);
 });
+// Avatar object storage. In production an S3 bucket is configured and CloudFront serves the objects
+// read-only; locally (no bucket) an in-process store keeps the upload flow working without AWS.
+if (!string.IsNullOrWhiteSpace(settings.AvatarsBucket))
+{
+    builder.Services.AddSingleton<Amazon.S3.IAmazonS3>(_ =>
+        new Amazon.S3.AmazonS3Client(new Amazon.S3.AmazonS3Config
+        {
+            RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(settings.AwsRegion)
+        }));
+    builder.Services.AddScoped<IAvatarStore, S3AvatarStore>();
+}
+else
+{
+    builder.Services.AddSingleton<IAvatarStore, InMemoryAvatarStore>();
+}
 builder.Services.AddSingleton<ITransactionalEmailTemplates, TransactionalEmailTemplates>();
 if (settings.EmailProvider.Equals("mailer", StringComparison.OrdinalIgnoreCase))
 {
@@ -189,26 +204,34 @@ public sealed record HumbuggSettings(
     string EmailMessagesTable = "humbugg-email-messages",
     string MailerBaseUrl = "http://host.docker.internal:8026",
     string MailerAuthMode = "none",
-    string MailerServiceId = "humbugg")
+    string MailerServiceId = "humbugg",
+    string AvatarsBucket = "",
+    string AvatarBaseUrl = "http://localhost:5173")
 {
-    public static HumbuggSettings FromEnvironment() => new(
-        Environment.GetEnvironmentVariable("AWS_REGION") ?? Environment.GetEnvironmentVariable("AWS_DEFAULT_REGION") ?? "us-east-1",
-        Environment.GetEnvironmentVariable("COGNITO_REGION") ?? "us-east-1",
-        Environment.GetEnvironmentVariable("COGNITO_USER_POOL_ID") ?? "us-east-1_example",
-        Environment.GetEnvironmentVariable("COGNITO_CLIENT_ID") ?? "humbugg-web",
-        Environment.GetEnvironmentVariable("CORS_ORIGIN") ?? "http://localhost:5173",
-        (Environment.GetEnvironmentVariable("APP_BASE_URL") ?? "http://localhost:5173").TrimEnd('/'),
-        Environment.GetEnvironmentVariable("DYNAMODB_ENDPOINT_URL"),
-        Environment.GetEnvironmentVariable("HUMBUGG_PROFILES_TABLE") ?? "humbugg-profiles",
-        Environment.GetEnvironmentVariable("HUMBUGG_GROUPS_TABLE") ?? "humbugg-groups",
-        Environment.GetEnvironmentVariable("HUMBUGG_GROUPMEMBERS_TABLE") ?? "humbugg-groupmembers",
-        Environment.GetEnvironmentVariable("HUMBUGG_DRAWS_TABLE") ?? "humbugg-draws",
-        Environment.GetEnvironmentVariable("HUMBUGG_AUDIT_EVENTS_TABLE") ?? "humbugg-audit-events",
-        Environment.GetEnvironmentVariable("HUMBUGG_ANALYTICS_EVENTS_TABLE") ?? "humbugg-analytics-events",
-        Environment.GetEnvironmentVariable("HUMBUGG_EMAIL_PROVIDER") ?? "capture",
-        Environment.GetEnvironmentVariable("HUMBUGG_EMAIL_MESSAGES_TABLE") ?? "humbugg-email-messages",
-        (Environment.GetEnvironmentVariable("HUMBUGG_MAILER_BASE_URL") ??
-            "http://host.docker.internal:8026").TrimEnd('/'),
-        Environment.GetEnvironmentVariable("HUMBUGG_MAILER_AUTH_MODE") ?? "none",
-        Environment.GetEnvironmentVariable("HUMBUGG_MAILER_SERVICE_ID") ?? "humbugg");
+    public static HumbuggSettings FromEnvironment()
+    {
+        var appBaseUrl = (Environment.GetEnvironmentVariable("APP_BASE_URL") ?? "http://localhost:5173").TrimEnd('/');
+        return new(
+            Environment.GetEnvironmentVariable("AWS_REGION") ?? Environment.GetEnvironmentVariable("AWS_DEFAULT_REGION") ?? "us-east-1",
+            Environment.GetEnvironmentVariable("COGNITO_REGION") ?? "us-east-1",
+            Environment.GetEnvironmentVariable("COGNITO_USER_POOL_ID") ?? "us-east-1_example",
+            Environment.GetEnvironmentVariable("COGNITO_CLIENT_ID") ?? "humbugg-web",
+            Environment.GetEnvironmentVariable("CORS_ORIGIN") ?? "http://localhost:5173",
+            appBaseUrl,
+            Environment.GetEnvironmentVariable("DYNAMODB_ENDPOINT_URL"),
+            Environment.GetEnvironmentVariable("HUMBUGG_PROFILES_TABLE") ?? "humbugg-profiles",
+            Environment.GetEnvironmentVariable("HUMBUGG_GROUPS_TABLE") ?? "humbugg-groups",
+            Environment.GetEnvironmentVariable("HUMBUGG_GROUPMEMBERS_TABLE") ?? "humbugg-groupmembers",
+            Environment.GetEnvironmentVariable("HUMBUGG_DRAWS_TABLE") ?? "humbugg-draws",
+            Environment.GetEnvironmentVariable("HUMBUGG_AUDIT_EVENTS_TABLE") ?? "humbugg-audit-events",
+            Environment.GetEnvironmentVariable("HUMBUGG_ANALYTICS_EVENTS_TABLE") ?? "humbugg-analytics-events",
+            Environment.GetEnvironmentVariable("HUMBUGG_EMAIL_PROVIDER") ?? "capture",
+            Environment.GetEnvironmentVariable("HUMBUGG_EMAIL_MESSAGES_TABLE") ?? "humbugg-email-messages",
+            (Environment.GetEnvironmentVariable("HUMBUGG_MAILER_BASE_URL") ??
+                "http://host.docker.internal:8026").TrimEnd('/'),
+            Environment.GetEnvironmentVariable("HUMBUGG_MAILER_AUTH_MODE") ?? "none",
+            Environment.GetEnvironmentVariable("HUMBUGG_MAILER_SERVICE_ID") ?? "humbugg",
+            Environment.GetEnvironmentVariable("HUMBUGG_AVATARS_BUCKET") ?? "",
+            (Environment.GetEnvironmentVariable("HUMBUGG_AVATAR_BASE_URL")?.TrimEnd('/')) ?? appBaseUrl);
+    }
 }

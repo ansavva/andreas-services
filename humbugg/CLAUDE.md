@@ -96,6 +96,7 @@ All secrets/values live in the `humbugg-production` GitHub Actions environment. 
 | `/humbugg/prod/s3-bucket` | Frontend S3 bucket |
 | `/humbugg/prod/cf-dist-id` | CloudFront distribution ID |
 | `/humbugg/prod/email-from-address` | Verified transactional sender (`no-reply@humbugg.com`) |
+| _(env var, not SSM)_ `HUMBUGG_AVATARS_BUCKET` | Profile-photo S3 bucket (`humbugg-avatars-production`); set literally in `update-lambda`. Objects are private, written by the Lambda under `avatars/*` (least-privilege IAM) and served read-only at `/avatars/*` through the app CloudFront distribution via OAC. Avatar URLs derive from `APP_BASE_URL` unless `HUMBUGG_AVATAR_BASE_URL` overrides it. |
 | `/humbugg/prod/support-forward-to` | SecureString: private inbox for `support@humbugg.com` forwarding (human secret; see `docs/support-forwarding.md`) |
 | `/humbugg/prod/stripe/publishable-key` | Stripe **test-mode** publishable key (`String`; Terraform `billing` module) |
 | `/humbugg/prod/stripe/secret-key` | Stripe **test-mode** secret key (`SecureString`; Terraform `billing` module) |
@@ -155,6 +156,11 @@ Group `humbugg-prod` with `cancel-in-progress: false` — queued pushes wait for
 - `humbugg-audit-events` — standard append-only audit trail for sensitive exchange actions (creation/deletion, participant/exclusion/role/entitlement/reminder changes, draws, resets, reveals, self-service data clears, membership anonymization, and account deletion); see `infra/README.md`. Account deletion never erases audit records — it anonymizes only the `actor_user_id` via the narrow `IAuditActorAnonymizer` seam. Retention/deletion policy is documented in `docs/data-retention-deletion.md`.
 - `humbugg-analytics-events` — privacy-safe product-analytics funnel events (plan + aggregate counts only; no wishlist/address/email/token/assignment). Deduped by `idempotency_key`; disable via `HUMBUGG_ANALYTICS_ENABLED=false`; see `docs/analytics.md`
 - `humbugg-email-messages` — stable transactional message IDs and delivery state
+
+Profile photos are **not** in DynamoDB: the `humbugg-profiles` row stores only an `avatar_key`
+reference, and the image bytes live in the dedicated `humbugg-avatars-production` S3 bucket (Terraform
+`avatars` module). Uploads are validated and safely re-encoded to a square, metadata-free JPEG
+(`SixLabors.ImageSharp`) before storage; when no photo is set, the frontend renders an initials avatar.
 
 Production tables are accessed through the AWS SDK for .NET directly from the
 Lambda (no ORM, no VPC). Local app runs use DynamoDB Local on `localhost:8001`
