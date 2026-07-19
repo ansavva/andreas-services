@@ -25,6 +25,12 @@ public sealed record Address(
     string? PostalCode = null,
     string? Country = null);
 
+// Recorded proof that a user actively agreed to the published Terms of Service and Privacy Policy at
+// signup (GDPR Art. 7 — demonstrable consent). Version mirrors POLICY_VERSION in the frontend policy
+// config so the record stays in sync with the published policies; AcceptedAt is a UTC ISO-8601
+// timestamp of the moment the user ticked the consent box.
+public sealed record Consent(string Version, string AcceptedAt);
+
 public sealed record Profile(
     string UserId,
     string DisplayName,
@@ -33,7 +39,9 @@ public sealed record Profile(
     string? AvatarUrl = null,
     // Governs whether Humbugg sends this account non-essential product email (reminders,
     // group-activity notifications, product news). Essential mail always sends. Default on.
-    bool NonEssentialEmailsEnabled = true);
+    bool NonEssentialEmailsEnabled = true,
+    // Terms/Privacy consent captured at signup. Null only for rows written before consent was recorded.
+    Consent? Consent = null);
 
 public sealed record Membership(
     string MemberId,
@@ -131,7 +139,13 @@ public sealed record ExportedMembership(
     string JoinedAt,
     string UpdatedAt);
 
-public sealed record SaveProfileRequest(string? DisplayName, bool? NonEssentialEmailsEnabled = null);
+public sealed record SaveProfileRequest(
+    string? DisplayName,
+    bool? NonEssentialEmailsEnabled = null,
+    ConsentInput? Consent = null);
+// Client-supplied consent captured at the signup checkbox: the accepted policy version and the UTC
+// ISO-8601 timestamp of the tick. Validated and required the first time a profile is created.
+public sealed record ConsentInput(string? Version, string? AcceptedAt);
 // Avatar upload payload: a data URL ("data:image/png;base64,...") or bare base64. Sent as JSON so
 // the image flows through the same API Gateway/Lambda path as every other request; the raw decoded
 // size is capped well under the 6 MB Lambda payload limit (see AvatarImage.MaxBytes).
@@ -160,7 +174,9 @@ internal sealed record ProfileRecord(
     string CreatedAt,
     string UpdatedAt,
     string? AvatarKey = null,
-    bool NonEssentialEmailsEnabled = true);
+    bool NonEssentialEmailsEnabled = true,
+    string? ConsentVersion = null,
+    string? ConsentAcceptedAt = null);
 internal sealed record GroupRecord(
     string GroupId,
     string OwnerUserId,

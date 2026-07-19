@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 
 import { Card, Shell, StatusMessage } from '../components/Layout';
+import { recordPolicyConsent } from '../config/policies';
 import { useAuth } from '../context/AuthContext';
 import { validatePassword } from '../utils/validation';
 
@@ -17,6 +18,8 @@ export default function AuthPage({ mode }: { mode: Mode }) {
   const [stage, setStage] = useState<'request' | 'confirm'>('request');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  // Explicit, unchecked-by-default agreement to the Terms and Privacy Policy; gates account creation.
+  const [consented, setConsented] = useState(false);
 
   const title = mode === 'login' ? 'Welcome back' : mode === 'signup' ? 'Create your Humbugg account' : mode === 'confirm' ? 'Check your email' : 'Reset your password';
 
@@ -28,7 +31,11 @@ export default function AuthPage({ mode }: { mode: Mode }) {
         navigate(sessionStorage.getItem('humbugg:returnTo') ?? '/app');
       } else if (mode === 'signup') {
         const passwordError = validatePassword(password); if (passwordError) { setMessage(passwordError); return; }
-        const normalizedEmail = email.trim(); await auth.register(normalizedEmail, password); sessionStorage.setItem('humbugg:email', normalizedEmail); navigate('/confirm');
+        if (!consented) { setMessage('Please agree to the Terms of Service and Privacy Policy to create your account.'); return; }
+        // Capture the consent (policy version + UTC timestamp) at the moment of agreement, stash it so it
+        // survives the confirm → sign-in → profile-setup flow, and record it when the profile is created.
+        const consent = recordPolicyConsent();
+        const normalizedEmail = email.trim(); await auth.register(normalizedEmail, password); sessionStorage.setItem('humbugg:email', normalizedEmail); sessionStorage.setItem('humbugg:consent', JSON.stringify(consent)); navigate('/confirm');
       } else if (mode === 'confirm') {
         await auth.confirm(email.trim(), code.trim()); setMessage('Your email is confirmed. You can sign in now.');
       } else if (stage === 'request') {
@@ -54,16 +61,26 @@ export default function AuthPage({ mode }: { mode: Mode }) {
             <label className="field-label">Email address<Input type="email" autoComplete="email" required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} /></label>
             {needsCode && <label className="field-label">Confirmation code<Input inputMode="numeric" autoComplete="one-time-code" required minLength={6} maxLength={6} pattern="[0-9]{6}" title="Enter the six-digit code from your email." value={code} onChange={(e) => setCode(e.target.value)} /></label>}
             {needsPassword && <label className="field-label">{mode === 'forgot' ? 'New password' : 'Password'}<Input type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={8} maxLength={256} pattern={mode === 'login' ? undefined : '(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{8,}'} title={mode === 'login' ? undefined : 'Use at least 8 characters with uppercase, lowercase, and a number.'} required value={password} onChange={(e) => setPassword(e.target.value)} />{mode !== 'login' && <span className="font-normal text-muted">At least 8 characters with uppercase, lowercase, and a number.</span>}</label>}
+            {mode === 'signup' && (
+              <label className="flex items-start gap-3 text-sm text-muted">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-line text-accent focus:ring-accent"
+                  checked={consented}
+                  onChange={(event) => setConsented(event.target.checked)}
+                  aria-describedby="consent-help"
+                />
+                <span id="consent-help">
+                  I agree to Humbugg's{' '}
+                  <Link className="text-accent hover:underline" to="/terms" target="_blank" rel="noopener noreferrer">Terms of Service</Link>{' '}
+                  and{' '}
+                  <Link className="text-accent hover:underline" to="/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</Link>.
+                </span>
+              </label>
+            )}
             <StatusMessage message={message} tone={message?.includes('confirmed') || message?.includes('updated') || message?.includes('sent') ? 'success' : 'error'} />
             <Button type="submit" className="w-full" size="lg" disabled={busy}>{busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : mode === 'signup' ? 'Create account' : mode === 'confirm' ? 'Confirm email' : stage === 'request' ? 'Send reset code' : 'Update password'}</Button>
           </form>
-          {mode === 'signup' && (
-            <p className="mt-5 text-sm text-muted">
-              By creating an account, you agree to our{' '}
-              <Link className="text-accent hover:underline" to="/terms">Terms of Service</Link> and{' '}
-              <Link className="text-accent hover:underline" to="/privacy">Privacy Policy</Link>.
-            </p>
-          )}
           <div className="mt-6 flex flex-wrap justify-between gap-3 text-sm">
             {mode !== 'login' ? <Link className="text-accent hover:underline" to="/login">Back to sign in</Link> : <><Link className="text-accent hover:underline" to="/signup">Create an account</Link><Link className="text-accent hover:underline" to="/forgot-password">Forgot password?</Link></>}
           </div>

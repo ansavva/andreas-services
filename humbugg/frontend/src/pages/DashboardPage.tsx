@@ -4,10 +4,27 @@ import { Link, useNavigate } from 'react-router';
 
 import { api } from '../api/client';
 import { Card, Shell, StatusMessage } from '../components/Layout';
+import { recordPolicyConsent } from '../config/policies';
 import { useAuth } from '../context/AuthContext';
 import { useProfile } from '../context/ProfileContext';
-import type { GroupSummary, Profile } from '../types';
+import type { GroupSummary, PolicyConsent, Profile } from '../types';
 import { todayInputValue, validateGroupForm } from '../utils/validation';
+
+// Reads the consent captured at the signup checkbox (stashed until the profile row is created). Falls
+// back to a fresh record for the rare case the stash was lost (e.g. a new tab), since reaching profile
+// setup already required agreeing at signup.
+function consentForProfileCreation(): PolicyConsent {
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = sessionStorage.getItem('humbugg:consent');
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<PolicyConsent>;
+        if (parsed?.version && parsed?.accepted_at) return { version: parsed.version, accepted_at: parsed.accepted_at };
+      }
+    } catch { /* fall through to a fresh consent record */ }
+  }
+  return recordPolicyConsent();
+}
 
 export default function DashboardPage() {
   const auth = useAuth();
@@ -60,7 +77,7 @@ export default function DashboardPage() {
 
 function ProfileSetup({ onSaved }: { onSaved(profile: Profile): void }) {
   const auth = useAuth(); const [name, setName] = useState(''); const [error, setError] = useState<string | null>(null); const [busy, setBusy] = useState(false);
-  async function submit(event: FormEvent) { event.preventDefault(); const displayName = name.trim(); if (!displayName) { setError('Enter the name your group should see.'); return; } setBusy(true); setError(null); try { onSaved(await api.saveMe(await auth.accessToken(), displayName)); } catch (err) { setError(err instanceof Error ? err.message : 'Unable to save your profile.'); } finally { setBusy(false); } }
+  async function submit(event: FormEvent) { event.preventDefault(); const displayName = name.trim(); if (!displayName) { setError('Enter the name your group should see.'); return; } setBusy(true); setError(null); try { onSaved(await api.saveMe(await auth.accessToken(), displayName, undefined, consentForProfileCreation())); sessionStorage.removeItem('humbugg:consent'); } catch (err) { setError(err instanceof Error ? err.message : 'Unable to save your profile.'); } finally { setBusy(false); } }
   return <Card className="mx-auto mt-12 max-w-xl p-8"><p className="eyebrow">One last detail</p><h1 className="mt-2 font-heading text-3xl font-semibold">What should your group call you?</h1><p className="mt-3 text-muted">This is the name other participants will see.</p><form className="mt-7 space-y-5" onSubmit={submit}><label className="field-label">Display name<Input required minLength={1} maxLength={100} value={name} onChange={(e) => setName(e.target.value)} placeholder="Alex" autoFocus /></label><StatusMessage message={error} /><Button type="submit" className="w-full" size="lg" disabled={busy}>{busy ? 'Saving…' : 'Continue'}</Button></form></Card>;
 }
 

@@ -114,12 +114,14 @@ public sealed class ProfileServiceAvatarTests
         public Dictionary<string, ProfileRecord> Items { get; } = new(StringComparer.Ordinal);
         public Task<ProfileRecord?> GetAsync(string userId, CancellationToken cancellationToken = default) =>
             Task.FromResult(Items.TryGetValue(userId, out var record) ? record : null);
-        public Task<ProfileRecord> UpsertAsync(string userId, string displayName, bool? nonEssentialEmailsEnabled = null, CancellationToken cancellationToken = default)
+        public Task<ProfileRecord> UpsertAsync(string userId, string displayName, bool? nonEssentialEmailsEnabled = null, Consent? consent = null, CancellationToken cancellationToken = default)
         {
             var existing = Items.TryGetValue(userId, out var current) ? current : null;
             var record = new ProfileRecord(
                 userId, displayName, existing?.CreatedAt ?? "now", "now", existing?.AvatarKey,
-                nonEssentialEmailsEnabled ?? existing?.NonEssentialEmailsEnabled ?? true);
+                nonEssentialEmailsEnabled ?? existing?.NonEssentialEmailsEnabled ?? true,
+                existing?.ConsentVersion ?? consent?.Version,
+                existing?.ConsentAcceptedAt ?? consent?.AcceptedAt);
             Items[userId] = record;
             return Task.FromResult(record);
         }

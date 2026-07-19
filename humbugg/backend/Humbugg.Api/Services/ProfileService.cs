@@ -27,8 +27,13 @@ internal sealed class ProfileService(
     public async Task<Profile> SaveAsync(SaveProfileRequest request, CancellationToken cancellationToken = default)
     {
         var displayName = Validation.Required(request.DisplayName, "display_name", 100);
+        var existing = await profiles.GetAsync(user.UserId, cancellationToken);
+        // Consent is captured once, when the profile is first created, and is then immutable. A user who
+        // already has a recorded consent can save ordinary profile edits without re-supplying it; a
+        // first-time save without a valid consent payload is rejected (the server-side signup gate).
+        var consent = Validation.Consent(request.Consent, alreadyRecorded: existing?.ConsentVersion is not null);
         return ToModel(await profiles.UpsertAsync(
-            user.UserId, displayName, request.NonEssentialEmailsEnabled, cancellationToken));
+            user.UserId, displayName, request.NonEssentialEmailsEnabled, consent, cancellationToken));
     }
 
     public async Task<Profile> UploadAvatarAsync(UploadAvatarRequest request, CancellationToken cancellationToken = default)
@@ -67,7 +72,10 @@ internal sealed class ProfileService(
 
     private Profile ToModel(ProfileRecord record) => new(
         record.UserId, record.DisplayName, record.CreatedAt, record.UpdatedAt, AvatarUrl(record.AvatarKey),
-        record.NonEssentialEmailsEnabled);
+        record.NonEssentialEmailsEnabled,
+        record.ConsentVersion is not null && record.ConsentAcceptedAt is not null
+            ? new Consent(record.ConsentVersion, record.ConsentAcceptedAt)
+            : null);
 
     private string? AvatarUrl(string? avatarKey) =>
         string.IsNullOrEmpty(avatarKey) ? null : $"{settings.AvatarBaseUrl}/{avatarKey}";
@@ -81,6 +89,27 @@ internal static class Validation
         if (result.Length is 0 || result.Length > maxLength)
             throw ApiException.BadRequest($"{field} is required and must be {maxLength} characters or fewer.");
         return result;
+    }
+
+    // Validates the consent captured at signup. When the profile already has a recorded consent the
+    // input is ignored and null is returned — consent is immutable once given. Otherwise a valid policy
+    // version and a parseable UTC timestamp are required, so first-time profile creation (the point at
+    // which the signup flow reaches the backend) is rejected when the user has not agreed to the policies.
+    public static Consent? Consent(ConsentInput? input, bool alreadyRecorded)
+    {
+        if (alreadyRecorded) return null;
+
+        const string message = "You must agree to the Terms of Service and Privacy Policy to create an account.";
+        var version = input?.Version?.Trim() ?? "";
+        if (version.Length is 0 || version.Length > 32) throw ApiException.BadRequest(message);
+        if (string.IsNullOrWhiteSpace(input?.AcceptedAt) ||
+            !DateTimeOffset.TryParse(input.AcceptedAt, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind | System.Globalization.DateTimeStyles.AssumeUniversal,
+                out var acceptedAt))
+            throw ApiException.BadRequest(message);
+
+        // Normalize to a canonical UTC ISO-8601 string so every stored consent timestamp is comparable.
+        return new Consent(version, acceptedAt.ToUniversalTime().ToString("O", System.Globalization.CultureInfo.InvariantCulture));
     }
 
     public static string Optional(string? value, int maxLength)

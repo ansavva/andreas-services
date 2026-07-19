@@ -5,6 +5,16 @@ export interface ApiErrorPayload {
   error: { code: string; message: string };
 }
 
+/**
+ * Recorded proof that a user actively agreed to the Terms of Service and Privacy Policy at signup
+ * (GDPR Art. 7 — demonstrable consent). `version` mirrors POLICY_VERSION in config/policies so the
+ * record stays in sync with the published policies; `accepted_at` is a UTC ISO-8601 timestamp.
+ */
+export interface PolicyConsent {
+  version: string;
+  accepted_at: string;
+}
+
 export interface Profile {
   user_id: string;
   display_name: string;
@@ -17,6 +27,8 @@ export interface Profile {
    * notifications, product news). Essential mail (security/account and join-critical) always sends.
    */
   non_essential_emails_enabled: boolean;
+  /** Terms/Privacy consent recorded at signup; absent only for rows written before it was captured. */
+  consent?: PolicyConsent | null;
 }
 
 export interface Membership {
