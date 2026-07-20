@@ -156,6 +156,16 @@ public sealed record RecipientAssignment(
 
 public sealed record RevealAssignment(Membership Giver, RecipientAssignment Recipient);
 public sealed record RevealResponse(IReadOnlyList<RevealAssignment> Assignments);
+public sealed record LateParticipantPreview(
+    string ProposalId,
+    string MemberId,
+    int AffectedParticipantCount,
+    string ExpiresAt);
+public sealed record ConfirmLateParticipantRequest(string? ProposalId, bool Confirm);
+public sealed record LateParticipantResult(
+    string MemberId,
+    int AffectedParticipantCount,
+    string AssignmentVersion);
 public sealed record InviteResponse(string InviteUrl);
 public enum InvitationStatus { Sent, Delivered, Bounced, Accepted, Expired, Revoked }
 public sealed record ManagedInvitation(string InvitationId, string Email, InvitationStatus Status, string ExpiresAt, string? AcceptedAt, string? LastSentAt);
@@ -364,7 +374,21 @@ internal sealed record DrawRecord(
     string DrawId,
     IReadOnlyDictionary<string, string> Assignments,
     string CreatedAt,
-    string CreatedBy);
+    string CreatedBy,
+    LateParticipantProposalRecord? LateProposal = null,
+    string? LastLateProposalId = null,
+    string? LastLateMemberId = null,
+    IReadOnlyList<string>? LastAffectedMemberIds = null);
+internal sealed record LateParticipantProposalRecord(
+    string ProposalId,
+    string MemberId,
+    string ExpectedDrawId,
+    IReadOnlyDictionary<string, string> Assignments,
+    IReadOnlyList<string> AffectedMemberIds,
+    string ExpiresAt);
+public sealed record MinimalAssignmentResult(
+    IReadOnlyDictionary<string, string> Assignments,
+    IReadOnlyList<string> AffectedMemberIds);
 internal sealed record InvitationRecord(
     string InvitationId, string GroupId, string Email, string TokenHash, string Status,
     string ExpiresAt, string CreatedAt, string UpdatedAt, string? AcceptedAt = null,

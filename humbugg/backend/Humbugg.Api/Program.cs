@@ -195,6 +195,7 @@ builder.Services.AddScoped<IProfileService, ProfileService>();
 builder.Services.AddScoped<IGroupService, GroupService>();
 builder.Services.AddScoped<IWishService, WishService>();
 builder.Services.AddScoped<IInvitationService, InvitationService>();
+builder.Services.AddScoped<ILateParticipantService, LateParticipantService>();
 builder.Services.AddScoped<ReminderService>();
 builder.Services.AddScoped<IReminderService>(services => services.GetRequiredService<ReminderService>());
 builder.Services.AddScoped<IReminderProcessor>(services => services.GetRequiredService<ReminderService>());
