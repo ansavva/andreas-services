@@ -50,7 +50,9 @@ public sealed record Membership(
     bool IsParticipating,
     string? Wishlist = null,
     string? Avoidances = null,
-    Address? Address = null);
+    Address? Address = null,
+    bool IsOwner = false,
+    bool IsReady = false);
 
 public sealed record GroupSummary(
     string GroupId,
@@ -62,6 +64,7 @@ public sealed record GroupSummary(
     PlanCode Plan,
     int ParticipantLimit,
     bool IsOrganizer,
+    bool IsOwner,
     string CreatedAt,
     string UpdatedAt);
 
@@ -75,6 +78,7 @@ public sealed record GroupDetail(
     PlanCode Plan,
     int ParticipantLimit,
     bool IsOrganizer,
+    bool IsOwner,
     string CreatedAt,
     string UpdatedAt,
     string Description,
@@ -198,6 +202,7 @@ public sealed record UpdateGroupRequest(
 public sealed record JoinGroupRequest(string? InviteToken);
 public sealed record UpdateMembershipRequest(string? Wishlist, string? Avoidances, Address? Address);
 public sealed record ParticipationRequest(bool? IsParticipating);
+public sealed record OrganizerRoleRequest(bool? IsOrganizer);
 public sealed record ExclusionsRequest(IReadOnlyList<string[]>? Exclusions);
 public sealed record RevealRequest(string? Reason);
 

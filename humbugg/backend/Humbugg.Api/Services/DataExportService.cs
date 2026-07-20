@@ -54,7 +54,9 @@ internal sealed class DataExportService(
                 GroupName: group.Name,
                 GroupStatus: group.Status,
                 MemberId: membership.MemberId,
-                Role: membership.IsOrganizer ? "organizer" : "participant",
+                Role: group.OwnerUserId == userId
+                    ? "owner"
+                    : membership.IsOrganizer ? "co_organizer" : "participant",
                 IsParticipating: membership.IsParticipating,
                 // Only the caller's own authored content for this exchange.
                 Wishlist: NullIfEmpty(membership.Wishlist),

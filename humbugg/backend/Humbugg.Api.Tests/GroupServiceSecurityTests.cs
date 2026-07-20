@@ -49,6 +49,113 @@ public sealed class GroupServiceSecurityTests
     }
 
     [Fact]
+    public async Task OrdinaryMemberIsRejectedByEveryOrganizerEndpoint()
+    {
+        var fixture = new Fixture(member: Fixture.Member("actor", organizer: false));
+        fixture.Members.Items.Add(Fixture.Member("other", organizer: false));
+        var operations = new Func<Task>[]
+        {
+            () => fixture.Subject.UpdateAsync("group", new UpdateGroupRequest("New name", null, null, null, null), TestContext.Current.CancellationToken),
+            () => fixture.Subject.RotateInviteAsync("group", TestContext.Current.CancellationToken),
+            () => fixture.Subject.UpdateParticipationAsync("group", "other", new ParticipationRequest(false), TestContext.Current.CancellationToken),
+            () => fixture.Subject.SetExclusionsAsync("group", new ExclusionsRequest([]), TestContext.Current.CancellationToken),
+            () => fixture.Subject.DrawAsync("group", TestContext.Current.CancellationToken),
+            () => fixture.Subject.ResetAsync("group", TestContext.Current.CancellationToken),
+            () => fixture.Subject.DeleteAsync("group", TestContext.Current.CancellationToken),
+            () => fixture.Subject.RevealAsync("group", new RevealRequest("reason"), TestContext.Current.CancellationToken)
+        };
+
+        foreach (var operation in operations)
+        {
+            var error = await Assert.ThrowsAsync<ApiException>(operation);
+            Assert.Equal(403, error.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task CoOrganizerCannotDeleteOrRevealAssignments()
+    {
+        var fixture = new Fixture(Fixture.Member("actor", organizer: true));
+
+        var delete = await Assert.ThrowsAsync<ApiException>(() =>
+            fixture.Subject.DeleteAsync("group", TestContext.Current.CancellationToken));
+        var reveal = await Assert.ThrowsAsync<ApiException>(() =>
+            fixture.Subject.RevealAsync("group", new RevealRequest("reason"), TestContext.Current.CancellationToken));
+
+        Assert.Equal(403, delete.StatusCode);
+        Assert.Equal(403, reveal.StatusCode);
+    }
+
+    [Fact]
+    public async Task CoOrganizerCanUseEveryOrdinaryGroupManagementEndpoint()
+    {
+        var fixture = new Fixture(Fixture.Member("actor", organizer: true), exclusions: []);
+        fixture.Members.Items.Add(Fixture.Member("other", organizer: false));
+
+        await fixture.Subject.UpdateAsync(
+            "group",
+            new UpdateGroupRequest("Updated", null, null, null, null),
+            TestContext.Current.CancellationToken);
+        await fixture.Subject.RotateInviteAsync("group", TestContext.Current.CancellationToken);
+        await fixture.Subject.UpdateParticipationAsync(
+            "group",
+            "other",
+            new ParticipationRequest(false),
+            TestContext.Current.CancellationToken);
+        await fixture.Subject.UpdateParticipationAsync(
+            "group",
+            "other",
+            new ParticipationRequest(true),
+            TestContext.Current.CancellationToken);
+        await fixture.Subject.SetExclusionsAsync(
+            "group",
+            new ExclusionsRequest([]),
+            TestContext.Current.CancellationToken);
+        await fixture.Subject.DrawAsync("group", TestContext.Current.CancellationToken);
+        await fixture.Subject.ResetAsync("group", TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, fixture.Groups.UpdateCount);
+        Assert.Equal(1, fixture.Groups.CreateDrawCount);
+        Assert.Equal(1, fixture.Groups.ResetDrawCount);
+    }
+
+    [Fact]
+    public async Task OwnerCanPromoteAndDemoteACoOrganizerAndChangesAreAudited()
+    {
+        var fixture = new Fixture(
+            Fixture.Member("actor", organizer: true),
+            ownerUserId: "user",
+            plan: PlanCode.Plus,
+            entitlementId: "plus:paid");
+        fixture.Members.Items.Add(Fixture.Member("other", organizer: false));
+
+        var promoted = await fixture.Subject.UpdateOrganizerRoleAsync(
+            "group", "other", new OrganizerRoleRequest(true), TestContext.Current.CancellationToken);
+        var demoted = await fixture.Subject.UpdateOrganizerRoleAsync(
+            "group", "other", new OrganizerRoleRequest(false), TestContext.Current.CancellationToken);
+
+        Assert.True(promoted.IsOrganizer);
+        Assert.False(demoted.IsOrganizer);
+        Assert.Equal([AuditAction.RoleChanged, AuditAction.RoleChanged], fixture.Audit.Actions);
+    }
+
+    [Fact]
+    public async Task OwnerCannotRemoveTheirRequiredOwnership()
+    {
+        var fixture = new Fixture(
+            Fixture.Member("actor", organizer: true),
+            ownerUserId: "user",
+            plan: PlanCode.Plus,
+            entitlementId: "plus:paid");
+
+        var error = await Assert.ThrowsAsync<ApiException>(() => fixture.Subject.UpdateOrganizerRoleAsync(
+            "group", "actor", new OrganizerRoleRequest(false), TestContext.Current.CancellationToken));
+
+        Assert.Equal(409, error.StatusCode);
+        Assert.True(fixture.Members.Items.Single().IsOrganizer);
+    }
+
+    [Fact]
     public async Task ImpossibleDrawWritesNothing()
     {
         var organizer = Fixture.Member("actor", organizer: true);
@@ -81,13 +188,20 @@ public sealed class GroupServiceSecurityTests
     {
         public FakeGroups Groups { get; }
         public FakeMembers Members { get; }
+        public FakeAuditTrail Audit { get; }
         public GroupService Subject { get; }
 
-        public Fixture(MembershipRecord? member, IReadOnlyList<string[]>? exclusions = null)
+        public Fixture(
+            MembershipRecord? member,
+            IReadOnlyList<string[]>? exclusions = null,
+            string ownerUserId = "owner",
+            PlanCode plan = PlanCode.Free,
+            string? entitlementId = null)
         {
-            Groups = new FakeGroups(Group(exclusions ?? [["actor", "other"]]));
+            Groups = new FakeGroups(Group(exclusions ?? [["actor", "other"]], ownerUserId, plan, entitlementId));
             Members = new FakeMembers(member is null ? [] : [member]);
-            Subject = new GroupService(new FakeUser(), new FakeProfiles(), Groups, Members, new MatchingService(), new PlanCatalog(new()), new FakeAuditTrail(), new FakeProductAnalytics(), new HumbuggSettings(
+            Audit = new FakeAuditTrail();
+            Subject = new GroupService(new FakeUser(), new FakeProfiles(), Groups, Members, new MatchingService(), new PlanCatalog(new()), Audit, new FakeProductAnalytics(), new HumbuggSettings(
                 "us-east-1", "us-east-1", "pool", "client", ["http://localhost:5173"], "http://localhost:5173", null,
                 "profiles", "groups", "members", "draws", "audit", "analytics"));
         }
@@ -95,8 +209,12 @@ public sealed class GroupServiceSecurityTests
         public static MembershipRecord Member(string memberId, bool organizer) => new(
             memberId, "group", memberId == "actor" ? "user" : $"user-{memberId}", memberId, organizer, true, "wish", "avoid", new Address("address"), "now", "now");
 
-        private static GroupRecord Group(IReadOnlyList<string[]> exclusions) => new(
-            "group", "owner", "Exchange", "", null, null, null, "USD", PlanCode.Free, null, GroupStatus.Open, "hash", exclusions, "now", "now");
+        private static GroupRecord Group(
+            IReadOnlyList<string[]> exclusions,
+            string ownerUserId,
+            PlanCode plan,
+            string? entitlementId) => new(
+            "group", ownerUserId, "Exchange", "", null, null, null, "USD", plan, entitlementId, GroupStatus.Open, "hash", exclusions, "now", "now");
     }
 
     private sealed class FakeUser : ICurrentUser { public string UserId => "user"; }
@@ -110,21 +228,41 @@ public sealed class GroupServiceSecurityTests
 
     private sealed class FakeGroups(GroupRecord group) : IGroupRepository
     {
+        private GroupRecord group = group;
+        private DrawRecord? draw;
         public int UpdateCount { get; private set; }
         public int CreateDrawCount { get; private set; }
+        public int ResetDrawCount { get; private set; }
         public Task<GroupRecord?> GetAsync(string groupId, CancellationToken cancellationToken = default) => Task.FromResult<GroupRecord?>(group);
         public Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, AttributeValue> fields, GroupStatus? expectedStatus = null, CancellationToken cancellationToken = default) { UpdateCount++; return Task.FromResult(group); }
-        public Task CreateDrawAsync(string groupId, IReadOnlyDictionary<string, string> assignments, string actorUserId, CancellationToken cancellationToken = default) { CreateDrawCount++; return Task.CompletedTask; }
+        public Task CreateDrawAsync(string groupId, IReadOnlyDictionary<string, string> assignments, string actorUserId, CancellationToken cancellationToken = default)
+        {
+            CreateDrawCount++;
+            group = group with { Status = GroupStatus.Drawn };
+            draw = new(groupId, "draw", assignments, "now", actorUserId);
+            return Task.CompletedTask;
+        }
         public Task<GroupRecord> CreateAsync(GroupRecord value, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task DeleteAsync(string groupId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<DrawRecord?> GetDrawAsync(string groupId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task ResetDrawAsync(string groupId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<DrawRecord?> GetDrawAsync(string groupId, CancellationToken cancellationToken = default) => Task.FromResult(draw);
+        public Task ResetDrawAsync(string groupId, CancellationToken cancellationToken = default)
+        {
+            ResetDrawCount++;
+            group = group with { Status = GroupStatus.Open };
+            draw = null;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeAuditTrail : IAuditTrail
     {
+        public List<AuditAction> Actions { get; } = [];
         public Task RecordAsync(AuditAction action, string groupId, AuditTarget target,
-            IReadOnlyDictionary<string, string>? metadata = null, string? organizationId = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            IReadOnlyDictionary<string, string>? metadata = null, string? organizationId = null, CancellationToken cancellationToken = default)
+        {
+            Actions.Add(action);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeProductAnalytics : IProductAnalytics
@@ -142,7 +280,20 @@ public sealed class GroupServiceSecurityTests
         public Task<MembershipRecord?> GetAsync(string memberId, CancellationToken cancellationToken = default) => Task.FromResult(Items.FirstOrDefault(item => item.MemberId == memberId));
         public Task<MembershipRecord> CreateAsync(string groupId, string userId, string displayName, bool organizer, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<MembershipRecord> UpdatePrivateAsync(string memberId, string wishlist, string avoidances, Address address, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<MembershipRecord> UpdateParticipationAsync(string memberId, bool participating, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<MembershipRecord> UpdateParticipationAsync(string memberId, bool participating, CancellationToken cancellationToken = default)
+        {
+            var index = Items.FindIndex(item => item.MemberId == memberId);
+            var updated = Items[index] with { IsParticipating = participating };
+            Items[index] = updated;
+            return Task.FromResult(updated);
+        }
+        public Task<MembershipRecord> UpdateOrganizerAsync(string memberId, bool organizer, CancellationToken cancellationToken = default)
+        {
+            var index = Items.FindIndex(item => item.MemberId == memberId);
+            var updated = Items[index] with { IsOrganizer = organizer };
+            Items[index] = updated;
+            return Task.FromResult(updated);
+        }
         public Task DeleteAsync(string memberId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task DeleteByGroupAsync(string groupId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task AnonymizeAsync(string memberId, string pseudonym, string displayName, CancellationToken cancellationToken = default) => throw new NotImplementedException();

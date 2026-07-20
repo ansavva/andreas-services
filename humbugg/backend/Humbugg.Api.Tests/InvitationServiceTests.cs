@@ -65,6 +65,29 @@ public sealed class InvitationServiceTests
         Assert.Equal("group", invitations.CreatedMembership.GroupId);
     }
 
+    [Fact]
+    public async Task CoOrganizerCanManageInvitations()
+    {
+        var invitations = new FakeInvitations("token");
+        var subject = CreateSubject(invitations, new FakeMembers(organizer: true));
+
+        var result = await subject.ListAsync("group", TestContext.Current.CancellationToken);
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task OrdinaryParticipantCannotManageInvitations()
+    {
+        var invitations = new FakeInvitations("token");
+        var subject = CreateSubject(invitations, new FakeMembers(organizer: false));
+
+        var error = await Assert.ThrowsAsync<ApiException>(() =>
+            subject.ListAsync("group", TestContext.Current.CancellationToken));
+
+        Assert.Equal(403, error.StatusCode);
+    }
+
     private static InvitationService CreateSubject(FakeInvitations invitations, FakeMembers members) =>
         new(
             new FakeUser(),
@@ -112,11 +135,13 @@ public sealed class InvitationServiceTests
         public Task ResetDrawAsync(string groupId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
-    private sealed class FakeMembers : IMembershipRepository
+    private sealed class FakeMembers(bool organizer = false) : IMembershipRepository
     {
         public int CreateCalls { get; private set; }
         public Task<IReadOnlyList<MembershipRecord>> GetByGroupAsync(string groupId, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<MembershipRecord>>([]);
+        public Task<MembershipRecord?> GetByUserAndGroupAsync(string userId, string groupId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<MembershipRecord?>(MembershipRepository.NewRecord(groupId, userId, "Person", organizer));
         public Task<MembershipRecord> CreateAsync(string groupId, string userId, string displayName, bool organizer, CancellationToken cancellationToken = default)
         {
             CreateCalls++;
@@ -124,7 +149,6 @@ public sealed class InvitationServiceTests
         }
         public Task<MembershipRecord?> GetAsync(string memberId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<IReadOnlyList<MembershipRecord>> GetByUserAsync(string userId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<MembershipRecord?> GetByUserAndGroupAsync(string userId, string groupId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<MembershipRecord> UpdatePrivateAsync(string memberId, string wishlist, string avoidances, Address address, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<MembershipRecord> UpdateParticipationAsync(string memberId, bool participating, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task AnonymizeAsync(string memberId, string pseudonym, string displayName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
@@ -150,7 +174,8 @@ public sealed class InvitationServiceTests
             return Task.CompletedTask;
         }
         public Task CreateAsync(InvitationRecord value, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<IReadOnlyList<InvitationRecord>> GetByGroupAsync(string groupId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<IReadOnlyList<InvitationRecord>> GetByGroupAsync(string groupId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<InvitationRecord>>([]);
         public Task UpdateAsync(string invitationId, string status, string? tokenHash, string? expiresAt, string? messageId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<string?> GetDeliveryStatusAsync(string? messageId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
 

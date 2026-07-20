@@ -15,6 +15,8 @@ internal interface IMembershipRepository
     Task<MembershipRecord> CreateAsync(string groupId, string userId, string displayName, bool organizer, CancellationToken cancellationToken = default);
     Task<MembershipRecord> UpdatePrivateAsync(string memberId, string wishlist, string avoidances, Address address, CancellationToken cancellationToken = default);
     Task<MembershipRecord> UpdateParticipationAsync(string memberId, bool participating, CancellationToken cancellationToken = default);
+    Task<MembershipRecord> UpdateOrganizerAsync(string memberId, bool organizer, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("This membership repository does not support organizer role updates.");
     Task AnonymizeAsync(string memberId, string pseudonym, string displayName, CancellationToken cancellationToken = default);
     Task DeleteAsync(string memberId, CancellationToken cancellationToken = default);
     Task DeleteByGroupAsync(string groupId, CancellationToken cancellationToken = default);
@@ -75,6 +77,13 @@ internal sealed class MembershipRepository(IAmazonDynamoDB db, HumbuggSettings s
         UpdateAsync(memberId, "SET is_participating = :participating, updated_at = :now",
             new() { [":participating"] = DynamoValues.B(participating) }, cancellationToken);
 
+    public Task<MembershipRecord> UpdateOrganizerAsync(string memberId, bool organizer, CancellationToken cancellationToken = default) =>
+        UpdateAsync(
+            memberId,
+            "SET is_organizer = :organizer, updated_at = :now",
+            new() { [":organizer"] = DynamoValues.B(organizer) },
+            cancellationToken);
+
     private async Task<MembershipRecord> UpdateAsync(string memberId, string expression, Dictionary<string, AttributeValue> values, CancellationToken cancellationToken)
     {
         values[":now"] = DynamoValues.S(DateTimeOffset.UtcNow.ToString("O"));
@@ -100,11 +109,12 @@ internal sealed class MembershipRepository(IAmazonDynamoDB db, HumbuggSettings s
         {
             TableName = settings.GroupMembersTable,
             Key = new() { ["member_id"] = DynamoValues.S(memberId) },
-            UpdateExpression = "SET user_id = :user, display_name = :name, wishlist = :empty, avoidances = :empty, address = :address, updated_at = :now",
+            UpdateExpression = "SET user_id = :user, display_name = :name, is_organizer = :notOrganizer, wishlist = :empty, avoidances = :empty, address = :address, updated_at = :now",
             ExpressionAttributeValues = new()
             {
                 [":user"] = DynamoValues.S(pseudonym),
                 [":name"] = DynamoValues.S(displayName),
+                [":notOrganizer"] = DynamoValues.B(false),
                 [":empty"] = DynamoValues.S(""),
                 [":address"] = DynamoValues.AddressValue(new Address()),
                 [":now"] = DynamoValues.S(DateTimeOffset.UtcNow.ToString("O"))
