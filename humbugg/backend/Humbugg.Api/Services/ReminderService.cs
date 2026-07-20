@@ -223,7 +223,8 @@ internal sealed class ReminderService(
             group.Name,
             reminder,
             new Uri($"{settings.AppBaseUrl}/app/groups/{group.GroupId}"),
-            recipientUserId));
+            recipientUserId,
+            group.Customization));
         var result = await email.SendAsync(rendered, cancellationToken);
         var status = result.Suppressed ? "suppressed" : "sent";
         var history = new ReminderHistoryItem(

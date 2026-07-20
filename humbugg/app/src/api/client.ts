@@ -90,6 +90,11 @@ export const api = {
     if (!response.ok) throw new Error('This invitation is invalid or has expired.');
     return response.json() as Promise<InvitationPreview>;
   },
+  getManagedInvitation: async (id: string, invitationId: string, token: string) => {
+    const response = await fetch(`/api/groups/${id}/invitations/${invitationId}/preview?token=${encodeURIComponent(token)}`);
+    if (!response.ok) throw new Error('This invitation is invalid or has expired.');
+    return response.json() as Promise<InvitationPreview>;
+  },
   deleteGroup: (token: string, id: string) => request<void>(`/groups/${id}`, token, json('DELETE')),
   rotateInvite: (token: string, id: string) => request<{ invite_url: string }>(`/groups/${id}/invite`, token, json('POST')),
   listWishes: (token: string, id: string) => request<Wish[]>(`/groups/${id}/members/me/wishes`, token),
