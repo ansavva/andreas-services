@@ -9,6 +9,7 @@ output "table_names" {
     analytics_events = aws_dynamodb_table.analytics_events.name
     email_messages   = aws_dynamodb_table.email_messages.name
     billing          = aws_dynamodb_table.billing.name
+    invitations      = aws_dynamodb_table.invitations.name
   }
 }
 

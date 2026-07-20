@@ -131,3 +131,13 @@ export interface RevealAssignment {
   giver: Membership;
   recipient: RecipientAssignment;
 }
+
+export type InvitationStatus = 'sent' | 'delivered' | 'bounced' | 'accepted' | 'expired' | 'revoked';
+export interface ManagedInvitation {
+  invitation_id: string;
+  email: string;
+  status: InvitationStatus;
+  expires_at: string;
+  accepted_at?: string | null;
+  last_sent_at?: string | null;
+}

@@ -356,6 +356,7 @@ jobs:
             --arg cognito_client_id "${COGNITO_CLIENT_ID}" \
             --arg profiles_table "humbugg-prod-profiles" \
             --arg groups_table "humbugg-prod-groups" \
+            --arg invitations_table "humbugg-prod-invitations" \
             --arg groupmembers_table "humbugg-prod-groupmembers" \
             --arg draws_table "humbugg-prod-draws" \
             --arg audit_events_table "humbugg-prod-audit-events" \
@@ -386,6 +387,7 @@ jobs:
               COGNITO_CLIENT_ID: $cognito_client_id,
               HUMBUGG_PROFILES_TABLE: $profiles_table,
               HUMBUGG_GROUPS_TABLE: $groups_table,
+              HUMBUGG_INVITATIONS_TABLE: $invitations_table,
               HUMBUGG_GROUPMEMBERS_TABLE: $groupmembers_table,
               HUMBUGG_DRAWS_TABLE: $draws_table,
               HUMBUGG_AUDIT_EVENTS_TABLE: $audit_events_table,
