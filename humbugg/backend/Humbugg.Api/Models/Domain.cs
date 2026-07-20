@@ -218,6 +218,7 @@ public class ApiException(int statusCode, string code, string message) : Excepti
     public string Code { get; } = code;
     public static ApiException BadRequest(string message) => new(400, "bad_request", message);
     public static ApiException Forbidden(string message) => new(403, "forbidden", message);
+    public static ApiException PaymentRequired(string message) => new(402, "plus_required", message);
     public static ApiException NotFound(string message) => new(404, "not_found", message);
     public static ApiException Conflict(string message) => new(409, "conflict", message);
 }
