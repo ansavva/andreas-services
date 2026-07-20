@@ -25,7 +25,15 @@ public sealed record Address(
     string? PostalCode = null,
     string? Country = null);
 
-public sealed record Profile(string UserId, string DisplayName, string CreatedAt, string UpdatedAt, string? AvatarUrl = null);
+public sealed record Profile(
+    string UserId,
+    string DisplayName,
+    string CreatedAt,
+    string UpdatedAt,
+    string? AvatarUrl = null,
+    // Governs whether Humbugg sends this account non-essential product email (reminders,
+    // group-activity notifications, product news). Essential mail always sends. Default on.
+    bool NonEssentialEmailsEnabled = true);
 
 public sealed record Membership(
     string MemberId,
@@ -123,7 +131,7 @@ public sealed record ExportedMembership(
     string JoinedAt,
     string UpdatedAt);
 
-public sealed record SaveProfileRequest(string? DisplayName);
+public sealed record SaveProfileRequest(string? DisplayName, bool? NonEssentialEmailsEnabled = null);
 // Avatar upload payload: a data URL ("data:image/png;base64,...") or bare base64. Sent as JSON so
 // the image flows through the same API Gateway/Lambda path as every other request; the raw decoded
 // size is capped well under the 6 MB Lambda payload limit (see AvatarImage.MaxBytes).
@@ -146,7 +154,13 @@ public sealed record ParticipationRequest(bool? IsParticipating);
 public sealed record ExclusionsRequest(IReadOnlyList<string[]>? Exclusions);
 public sealed record RevealRequest(string? Reason);
 
-internal sealed record ProfileRecord(string UserId, string DisplayName, string CreatedAt, string UpdatedAt, string? AvatarKey = null);
+internal sealed record ProfileRecord(
+    string UserId,
+    string DisplayName,
+    string CreatedAt,
+    string UpdatedAt,
+    string? AvatarKey = null,
+    bool NonEssentialEmailsEnabled = true);
 internal sealed record GroupRecord(
     string GroupId,
     string OwnerUserId,

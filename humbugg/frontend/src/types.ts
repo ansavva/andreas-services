@@ -12,6 +12,11 @@ export interface Profile {
   updated_at: string;
   /** Absolute URL of the uploaded profile photo, or null/undefined when the initials fallback applies. */
   avatar_url?: string | null;
+  /**
+   * Whether Humbugg may send this account non-essential product email (reminders, group-activity
+   * notifications, product news). Essential mail (security/account and join-critical) always sends.
+   */
+  non_essential_emails_enabled: boolean;
 }
 
 export interface Membership {

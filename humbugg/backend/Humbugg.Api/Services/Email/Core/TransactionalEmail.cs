@@ -28,7 +28,8 @@ public sealed record TransactionalEmail
         string toAddress,
         string subject,
         string htmlBody,
-        string textBody)
+        string textBody,
+        string? recipientUserId = null)
     {
         MessageId = messageId;
         Category = category;
@@ -36,6 +37,7 @@ public sealed record TransactionalEmail
         Subject = subject;
         HtmlBody = htmlBody;
         TextBody = textBody;
+        RecipientUserId = recipientUserId;
     }
 
     /// <summary>Gets Humbugg's deterministic idempotency key for the message.</summary>
@@ -46,6 +48,13 @@ public sealed record TransactionalEmail
 
     /// <summary>Gets the message's sole recipient.</summary>
     public string ToAddress { get; }
+
+    /// <summary>
+    /// Gets the Humbugg account (Cognito user id) that owns this recipient, when known. Non-essential
+    /// mail is gated on this account's opt-out preference; null means the preference cannot be scoped
+    /// (for example an invitation to someone without an account) and non-essential gating fails open.
+    /// </summary>
+    public string? RecipientUserId { get; }
 
     /// <summary>Gets the rendered subject.</summary>
     public string Subject { get; }
@@ -64,6 +73,7 @@ public sealed record EmailSendResult(
     string MessageId,
     EmailCategory Category,
     bool AlreadyHandled,
+    bool Suppressed,
     string? AcceptedMessageId);
 
 /// <summary>

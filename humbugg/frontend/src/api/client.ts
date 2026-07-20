@@ -38,7 +38,11 @@ const json = (method: string, data?: unknown): RequestInit => ({
 
 export const api = {
   getMe: (token: string) => request<Profile>('/me', token),
-  saveMe: (token: string, display_name: string) => request<Profile>('/me', token, json('PUT', { display_name })),
+  saveMe: (token: string, display_name: string, non_essential_emails_enabled?: boolean) =>
+    request<Profile>('/me', token, json('PUT',
+      non_essential_emails_enabled === undefined
+        ? { display_name }
+        : { display_name, non_essential_emails_enabled })),
   // The image is a data URL ("data:image/...;base64,...") sent as JSON so it rides the same API path as
   // every other call; the backend validates, safely re-encodes, and stores it, returning the new URL.
   uploadAvatar: (token: string, image: string) => request<Profile>('/me/avatar', token, json('PUT', { image })),

@@ -13,13 +13,16 @@ public sealed record InvitationEmail(
     Uri InvitationUrl);
 
 /// <summary>Contains the application data needed to render an exchange reminder.</summary>
+/// <remarks><see cref="RecipientUserId"/> is the recipient's Humbugg account id, used to honor their
+/// non-essential email opt-out. Reminders are non-essential.</remarks>
 public sealed record ReminderEmail(
     string EventId,
     string ToAddress,
     string RecipientName,
     string ExchangeName,
     string Reminder,
-    Uri ExchangeUrl);
+    Uri ExchangeUrl,
+    string? RecipientUserId = null);
 
 /// <summary>Contains the application data needed to announce a completed draw.</summary>
 public sealed record DrawCompletedEmail(
@@ -38,6 +41,8 @@ public sealed record AssignmentAvailableEmail(
     Uri AssignmentUrl);
 
 /// <summary>Contains the application data needed to render a general exchange update.</summary>
+/// <remarks><see cref="RecipientUserId"/> is the recipient's Humbugg account id, used to honor their
+/// non-essential email opt-out. Group-activity updates are non-essential.</remarks>
 public sealed record AccountExchangeEventEmail(
     string EventId,
     string ToAddress,
@@ -45,7 +50,8 @@ public sealed record AccountExchangeEventEmail(
     string ExchangeName,
     string EventSummary,
     string ActionLabel,
-    Uri ExchangeUrl);
+    Uri ExchangeUrl,
+    string? RecipientUserId = null);
 
 /// <summary>
 /// Renders Humbugg-owned product copy into transport-neutral transactional messages.
@@ -108,7 +114,8 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
             $"Reminder for {exchange}: {Text(input.Reminder)}",
             "Open the exchange",
             input.ExchangeUrl,
-            "You are receiving this reminder because you participate in this exchange.");
+            "You are receiving this reminder because you participate in this exchange.",
+            input.RecipientUserId);
     }
 
     /// <inheritdoc />
@@ -159,7 +166,8 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
             Text(input.EventSummary),
             Text(input.ActionLabel),
             input.ExchangeUrl,
-            "This is an account-related update for an exchange you organize or participate in.");
+            "This is an account-related update for an exchange you organize or participate in.",
+            input.RecipientUserId);
     }
 
     /// <summary>
@@ -174,7 +182,8 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
         string intro,
         string actionLabel,
         Uri actionUrl,
-        string reason)
+        string reason,
+        string? recipientUserId = null)
     {
         ValidateAddress(toAddress);
         ArgumentNullException.ThrowIfNull(actionUrl);
@@ -214,7 +223,8 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
             toAddress.Trim(),
             subject,
             html,
-            text);
+            text,
+            string.IsNullOrWhiteSpace(recipientUserId) ? null : recipientUserId.Trim());
     }
 
     /// <summary>

@@ -28,6 +28,7 @@ export default function SettingsPage() {
         </div>
         <StatusMessage message={error} />
         <ProfileSection profile={profile} email={auth.email} onSaved={setProfile} />
+        {profile && <NotificationsSection profile={profile} onSaved={setProfile} />}
         <AccountSection email={auth.email} />
         {profile && <DangerZone profile={profile} />}
       </div>
@@ -174,6 +175,62 @@ function ProfileSection({
         {nameStatus && <StatusMessage message={nameStatus.message} tone={nameStatus.tone} />}
         <Button type="submit" disabled={savingName}>{savingName ? 'Saving…' : 'Save changes'}</Button>
       </form>
+    </Card>
+  );
+}
+
+function NotificationsSection({
+  profile,
+  onSaved,
+}: {
+  profile: Profile;
+  onSaved(profile: Profile): void;
+}) {
+  const auth = useAuth();
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<{ message: string; tone: 'error' | 'success' } | null>(null);
+  const enabled = profile.non_essential_emails_enabled;
+
+  async function toggle(next: boolean) {
+    setSaving(true);
+    setStatus(null);
+    try {
+      // Send the current display name alongside the preference so PUT /api/me validates and the change
+      // takes effect immediately; onSaved refreshes the shared profile so a reload reflects it.
+      const saved = await api.saveMe(await auth.accessToken(), profile.display_name, next);
+      onSaved(saved);
+      setStatus({
+        message: next ? 'Non-essential emails turned on.' : 'Non-essential emails turned off.',
+        tone: 'success',
+      });
+    } catch (err) {
+      setStatus({ message: err instanceof Error ? err.message : 'Unable to update your email preference.', tone: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <h2 className="font-heading text-2xl font-semibold">Email notifications</h2>
+      <label className="mt-5 flex items-start gap-3">
+        <input
+          type="checkbox"
+          className="mt-1 h-4 w-4"
+          checked={enabled}
+          disabled={saving}
+          onChange={(event) => void toggle(event.target.checked)}
+          aria-label="Send me non-essential emails"
+        />
+        <span className="flex flex-col gap-1">
+          <span className="font-medium text-ink">Send me non-essential emails</span>
+          <span className="text-xs text-muted">
+            Reminders, group-activity notifications, and product news. Turn this off to stop them. Essential
+            emails — sign-in and account security, invitations, and “your assignment is ready” — always send.
+          </span>
+        </span>
+      </label>
+      {status && <div className="mt-3"><StatusMessage message={status.message} tone={status.tone} /></div>}
     </Card>
   );
 }
