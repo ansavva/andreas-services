@@ -3,7 +3,7 @@
 # Shared developer / CI toolchain bootstrap for the andreas-services monorepo.
 #
 # Installs the cross-cutting tools every service needs (Terraform, tflint, AWS
-# CLI, Node.js, jq, zip) with Homebrew on BOTH macOS and Linux. Service-specific
+# CLI, Node.js, jq, zip, Stripe CLI) with Homebrew on BOTH macOS and Linux. Service-specific
 # runtimes live in per-service scripts, e.g. humbugg/scripts/dev-setup.sh (.NET).
 #
 # Homebrew details:
@@ -136,6 +136,7 @@ brew_ensure aws  awscli
 brew_ensure node node
 brew_ensure jq   jq
 brew_ensure zip  zip
+brew_ensure stripe stripe/stripe-cli/stripe
 
 # Node version floor (the OS may already ship a newer/older node than brew's).
 if have node; then

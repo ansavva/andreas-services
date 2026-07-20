@@ -9,7 +9,7 @@ Two layers — a shared base plus thin per-service scripts:
 
 | Script | Scope | Installs |
 |---|---|---|
-| `scripts/dev-setup.sh` | Shared base (all services) | Terraform, tflint (+ pinned AWS ruleset, best-effort), AWS CLI, Node.js, jq, zip (+ Docker check) |
+| `scripts/dev-setup.sh` | Shared base (all services) | Terraform, tflint (+ pinned AWS ruleset, best-effort), AWS CLI, Node.js, jq, zip, Stripe CLI (+ Docker check) |
 | `scripts/github-packages-auth.sh` | Shared base (all frontends) | Ensures a `read:packages` token is available as `NODE_AUTH_TOKEN` so `npm ci` can install the private `@ansavva/design-system` from GitHub Packages |
 | `humbugg/scripts/dev-setup.sh` | Humbugg service | .NET SDK 10 (ASP.NET Core backend, pinned by `humbugg/backend/global.json`) |
 
@@ -28,6 +28,8 @@ Notes:
 - **Terraform** and **tflint** are not in homebrew-core; the scripts install them
   from taps (`hashicorp/tap/terraform`, `terraform-linters/tap/tflint`) on every
   platform.
+- **Stripe CLI** is installed from Stripe's official Homebrew tap with
+  `brew install stripe/stripe-cli/stripe`.
 - **.NET SDK**: Homebrew's `dotnet` formula currently ships exactly `10.0.302`,
   matching `humbugg/backend/global.json`, so the Humbugg script installs it via
   `brew install dotnet`.

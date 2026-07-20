@@ -14,7 +14,7 @@ Bootstrap the toolchain with the idempotent setup scripts (Homebrew on both macO
 and Linux; safe to re-run — already-installed tools are skipped). From the repo root:
 
 ```bash
-./scripts/dev-setup.sh              # shared tools: Terraform, tflint, AWS CLI, Node.js, jq, zip
+./scripts/dev-setup.sh              # shared tools: Terraform, AWS CLI, Node.js, Stripe CLI, etc.
 ./humbugg/scripts/dev-setup.sh      # + .NET SDK 10 for the Humbugg backend
 
 # See what's missing without installing anything:

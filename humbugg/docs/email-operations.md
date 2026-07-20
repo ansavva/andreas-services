@@ -75,9 +75,9 @@ Cognito and do not pass through the Mailer API or its send queue.
 
 The SES authentication configuration set copies delivery, bounce, and complaint
 events into Mailer's feedback processing. Humbugg stores that normalized
-feedback under `auth_<SES message ID>`. The `humbugg-development` pool remains
-on `COGNITO_DEFAULT`; local signup and recovery codes go to the real address
-entered and do not appear in Mailpit.
+feedback under `auth_<SES message ID>`. Per-machine development Cognito pools
+use AWS's managed sender; their signup and recovery codes go to the address
+entered during testing and do not appear in Mailpit.
 
 After a production Cognito change, verify signup, resend-confirmation, and
 forgot-password email. Do not complete this check with a real user address

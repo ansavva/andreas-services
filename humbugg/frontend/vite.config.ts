@@ -11,6 +11,8 @@ const isVitest = !!process.env.VITEST;
 
 export default defineConfig(({ command }) => ({
   plugins: isVitest ? [] : [tailwindcss(), reactRouter()],
+  // Runtime .env.local values must not alter tests that assert production-safe defaults.
+  envDir: isVitest ? false : undefined,
   resolve: { tsconfigPaths: true },
   ssr: {
     noExternal: command === 'build'

@@ -101,9 +101,8 @@ builder.Services.AddSingleton<IAmazonDynamoDB>(_ =>
     return new AmazonDynamoDBClient(config);
 });
 // Avatar object storage. When an application bucket is configured the backend writes to S3 and
-// CloudFront serves the objects read-only. Locally that bucket is provided by LocalStack via
-// S3_ENDPOINT_URL, so the exact same S3 code path runs in development. With no bucket configured
-// (unit tests) an in-process store keeps the upload flow working without any AWS dependency.
+// CloudFront serves production objects read-only. With no bucket configured (unit tests), an
+// in-process store keeps the upload flow working without any AWS dependency.
 if (!string.IsNullOrWhiteSpace(settings.AppBucket))
 {
     builder.Services.AddSingleton<Amazon.S3.IAmazonS3>(_ =>
@@ -114,8 +113,8 @@ if (!string.IsNullOrWhiteSpace(settings.AppBucket))
         };
         if (!string.IsNullOrWhiteSpace(settings.S3EndpointUrl))
         {
-            // Point at LocalStack (or any S3-compatible endpoint) for local dev. Path-style addressing
-            // is required — virtual-host-style bucket hostnames don't resolve against localhost.
+            // Optional S3-compatible endpoint support. Path-style addressing is required because
+            // virtual-host-style bucket hostnames generally do not resolve for custom endpoints.
             s3Config.ServiceURL = settings.S3EndpointUrl;
             s3Config.ForcePathStyle = true;
             s3Config.UseHttp = settings.S3EndpointUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase);
@@ -124,8 +123,8 @@ if (!string.IsNullOrWhiteSpace(settings.AppBucket))
         return new Amazon.S3.AmazonS3Client(s3Config);
     });
     builder.Services.AddScoped<IAvatarStore, S3AvatarStore>();
-    // Local S3 (LocalStack) starts empty; ensure the bucket exists on startup. Never runs against real
-    // AWS — only registered when an endpoint override is present. Production buckets are made by Terraform.
+    // Custom S3-compatible endpoints may start empty; ensure the configured bucket exists. This never
+    // runs against AWS because AWS-backed development and production buckets are created by Terraform.
     if (!string.IsNullOrWhiteSpace(settings.S3EndpointUrl))
         builder.Services.AddHostedService<S3Bootstrap>();
 }
