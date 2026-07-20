@@ -308,6 +308,24 @@ resource "aws_dynamodb_table" "reminders" {
   tags = var.tags
 }
 
+resource "aws_dynamodb_table" "templates" {
+  name         = "${var.project}-${var.environment}-templates"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "user_id"
+  range_key    = "template_id"
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+  attribute {
+    name = "template_id"
+    type = "S"
+  }
+  server_side_encryption { enabled = true }
+  point_in_time_recovery { enabled = true }
+  tags = var.tags
+}
+
 # General-purpose application object bucket. Today it holds user profile photos under the avatars/
 # prefix — written only by the backend Lambda (least-privilege policy in the compute module) and read
 # only by CloudFront via Origin Access Control on the /avatars/* path — and is the single place for any

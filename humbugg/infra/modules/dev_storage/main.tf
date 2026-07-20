@@ -199,6 +199,23 @@ resource "aws_dynamodb_table" "reminders" {
   tags = var.tags
 }
 
+resource "aws_dynamodb_table" "templates" {
+  name         = "${var.resource_prefix}-templates"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "user_id"
+  range_key    = "template_id"
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+  attribute {
+    name = "template_id"
+    type = "S"
+  }
+  server_side_encryption { enabled = true }
+  tags = var.tags
+}
+
 resource "aws_s3_bucket" "app" {
   bucket        = var.app_bucket_name
   force_destroy = true

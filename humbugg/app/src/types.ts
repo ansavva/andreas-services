@@ -56,6 +56,7 @@ export interface Address {
 export type ExclusionPair = [string, string];
 export interface ExchangeCustomization { greeting: string; instructions: string; primary_color: string; accent_color: string; image_data_url?: string | null; }
 export interface InvitationPreview { group_id: string; exchange_name: string; customization: ExchangeCustomization; }
+export interface ExchangeTemplate { template_id: string; name: string; exchange_name: string; description: string; event_date_offset_days: number; signup_deadline_offset_days: number; wishlist_prompt: string; exclusions_policy: string; reminders_enabled: boolean; customization: ExchangeCustomization; source_group_id?: string | null; }
 
 // Self-service GDPR data export (right of access / portability). Mirrors the backend `DataExport`
 // DTO. Contains only the caller's own data — never another member's PII or any draw assignment.

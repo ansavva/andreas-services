@@ -18,6 +18,7 @@ internal sealed class DynamoDbBootstrap(IAmazonDynamoDB db, HumbuggSettings sett
         await EnsureInvitationsAsync(cancellationToken);
         await EnsureAsync(settings.RemindersTable, "group_id", cancellationToken, "record_key");
         await EnsureBillingAsync(cancellationToken);
+        await EnsureAsync(settings.TemplatesTable, "user_id", cancellationToken, "template_id");
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
