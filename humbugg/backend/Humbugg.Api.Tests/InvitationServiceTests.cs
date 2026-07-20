@@ -66,6 +66,23 @@ public sealed class InvitationServiceTests
     }
 
     [Fact]
+    public async Task AcceptanceAfterDrawCreatesPendingParticipantWithoutChangingDraw()
+    {
+        const string token = "valid-token";
+        var invitations = new FakeInvitations(token);
+        var subject = CreateSubject(invitations, new FakeMembers(), drawn: true);
+
+        await subject.AcceptAsync(
+            "group",
+            "invitation",
+            new AcceptInvitationRequest(token),
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(invitations.CreatedMembership);
+        Assert.False(invitations.CreatedMembership.IsParticipating);
+    }
+
+    [Fact]
     public async Task CoOrganizerCanManageInvitations()
     {
         var invitations = new FakeInvitations("token");
@@ -88,11 +105,14 @@ public sealed class InvitationServiceTests
         Assert.Equal(403, error.StatusCode);
     }
 
-    private static InvitationService CreateSubject(FakeInvitations invitations, FakeMembers members) =>
+    private static InvitationService CreateSubject(
+        FakeInvitations invitations,
+        FakeMembers members,
+        bool drawn = false) =>
         new(
             new FakeUser(),
             new FakeProfiles(),
-            new FakeGroups(),
+            new FakeGroups(drawn),
             members,
             invitations,
             new PlanCatalog(new()),
@@ -119,14 +139,14 @@ public sealed class InvitationServiceTests
         public Task DeleteAsync(string userId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
-    private sealed class FakeGroups : IGroupRepository
+    private sealed class FakeGroups(bool drawn = false) : IGroupRepository
     {
-        private static readonly GroupRecord Group = new(
+        private readonly GroupRecord group = new(
             "group", "owner", "Exchange", "", null, null, null, "USD",
-            PlanCode.Plus, "plus:entitlement", GroupStatus.Open, "hash", [], "now", "now");
+            PlanCode.Plus, "plus:entitlement", drawn ? GroupStatus.Drawn : GroupStatus.Open, "hash", [], "now", "now");
 
         public Task<GroupRecord?> GetAsync(string groupId, CancellationToken cancellationToken = default) =>
-            Task.FromResult<GroupRecord?>(Group);
+            Task.FromResult<GroupRecord?>(group);
         public Task<GroupRecord> CreateAsync(GroupRecord group, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, AttributeValue> fields, GroupStatus? expectedStatus = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task DeleteAsync(string groupId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
