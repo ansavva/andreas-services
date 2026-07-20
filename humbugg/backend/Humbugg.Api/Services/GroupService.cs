@@ -145,7 +145,8 @@ internal sealed class GroupService(
                 Encoding.UTF8.GetBytes(Hash(inviteToken)), Encoding.UTF8.GetBytes(group.InviteHash)))
             throw ApiException.Forbidden("This invitation is invalid or has expired.");
         var currentMembers = await memberships.GetByGroupAsync(groupId, cancellationToken);
-        plans.EnsureParticipantCapacity(group.Plan, currentMembers.Count(item => item.IsParticipating));
+        plans.EnsureParticipantCapacity(
+            group.Plan, group.EntitlementId, currentMembers.Count(item => item.IsParticipating));
         MembershipRecord? joined = null;
         try { joined = await memberships.CreateAsync(groupId, user.UserId, profile.DisplayName, false, cancellationToken); }
         catch (ConditionalCheckFailedException) { }
@@ -217,7 +218,8 @@ internal sealed class GroupService(
         if (request.IsParticipating.Value && !member.IsParticipating)
         {
             var currentMembers = await memberships.GetByGroupAsync(groupId, cancellationToken);
-            plans.EnsureParticipantCapacity(group.Plan, currentMembers.Count(item => item.IsParticipating));
+            plans.EnsureParticipantCapacity(
+                group.Plan, group.EntitlementId, currentMembers.Count(item => item.IsParticipating));
         }
         var updated = await memberships.UpdateParticipationAsync(memberId, request.IsParticipating.Value, cancellationToken);
         await audit.RecordAsync(AuditAction.ParticipationChanged, groupId, AuditTarget.Member(memberId),

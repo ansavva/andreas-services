@@ -36,23 +36,65 @@ public sealed class PlanCatalogTests
         Assert.Equal((9_999, 12_000L, "prod_work", "price_work"), PlanValues(plans.Get(PlanCode.Work)));
     }
 
-    [Theory]
-    [InlineData(PlanCode.Free, 5)]
-    [InlineData(PlanCode.Plus, 49)]
-    [InlineData(PlanCode.Work, 9_999)]
-    public void EveryPlanAllowsTheParticipantBeforeItsBoundary(PlanCode plan, int currentParticipants)
+    [Fact]
+    public void FreeAllowsSixTotalIncludingOrganizer()
     {
-        new PlanCatalog(new()).EnsureParticipantCapacity(plan, currentParticipants);
+        new PlanCatalog(new()).EnsureParticipantCapacity(PlanCode.Free, null, 5);
+    }
+
+    [Fact]
+    public void ParticipantSevenRequiresActivePlusEntitlement()
+    {
+        var plans = new PlanCatalog(new());
+        var free = Assert.Throws<ApiException>(() =>
+            plans.EnsureParticipantCapacity(PlanCode.Free, null, 6));
+        var unverifiedPlus = Assert.Throws<ApiException>(() =>
+            plans.EnsureParticipantCapacity(PlanCode.Plus, null, 6));
+
+        Assert.Equal((402, "plus_required"), (free.StatusCode, free.Code));
+        Assert.Equal(402, unverifiedPlus.StatusCode);
+        plans.EnsureParticipantCapacity(PlanCode.Plus, "plus:group-1", 6);
+    }
+
+    [Fact]
+    public void PlusAllowsFiftyAndRejectsFiftyOneWithWorkExplanation()
+    {
+        var plans = new PlanCatalog(new());
+        plans.EnsureParticipantCapacity(PlanCode.Plus, "plus:group-1", 49);
+
+        var error = Assert.Throws<ApiException>(() =>
+            plans.EnsureParticipantCapacity(PlanCode.Plus, "plus:group-1", 50));
+
+        Assert.Equal(409, error.StatusCode);
+        Assert.Contains("Work", error.Message);
+        Assert.Contains("51", error.Message);
+    }
+
+    [Fact]
+    public void WorkUsesItsConfiguredBoundary()
+    {
+        var plans = new PlanCatalog(new());
+        plans.EnsureParticipantCapacity(PlanCode.Work, null, 9_999);
+        Assert.Equal(409, Assert.Throws<ApiException>(() =>
+            plans.EnsureParticipantCapacity(PlanCode.Work, null, 10_000)).StatusCode);
     }
 
     [Theory]
-    [InlineData(PlanCode.Free, 6)]
-    [InlineData(PlanCode.Plus, 50)]
-    [InlineData(PlanCode.Work, 10_000)]
-    public void EveryPlanRejectsTheParticipantAtItsBoundary(PlanCode plan, int currentParticipants)
+    [InlineData(PlanCapability.ManagedInvitations)]
+    [InlineData(PlanCapability.AutomaticReminders)]
+    [InlineData(PlanCapability.CoOrganizers)]
+    [InlineData(PlanCapability.ExchangeCustomization)]
+    [InlineData(PlanCapability.ExchangeTemplates)]
+    [InlineData(PlanCapability.LateParticipants)]
+    public void EveryPlusCapabilityRequiresDurableEntitlement(PlanCapability capability)
     {
-        var error = Assert.Throws<ApiException>(() => new PlanCatalog(new()).EnsureParticipantCapacity(plan, currentParticipants));
-        Assert.Equal(409, error.StatusCode);
+        var plans = new PlanCatalog(new());
+        Assert.Equal(402, Assert.Throws<ApiException>(() =>
+            plans.EnsureCapability(PlanCode.Free, null, capability)).StatusCode);
+        Assert.Equal(402, Assert.Throws<ApiException>(() =>
+            plans.EnsureCapability(PlanCode.Plus, null, capability)).StatusCode);
+        plans.EnsureCapability(PlanCode.Plus, "plus:group-1", capability);
+        plans.EnsureCapability(PlanCode.Work, null, capability);
     }
 
     [Fact]

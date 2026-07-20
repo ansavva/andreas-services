@@ -6,7 +6,19 @@ public interface IPlanCatalog
 {
     IReadOnlyList<PlanDefinition> All { get; }
     PlanDefinition Get(PlanCode code);
-    void EnsureParticipantCapacity(PlanCode code, int activeParticipantCount);
+    bool HasCapability(PlanCode code, string? entitlementId, PlanCapability capability);
+    void EnsureCapability(PlanCode code, string? entitlementId, PlanCapability capability);
+    void EnsureParticipantCapacity(PlanCode code, string? entitlementId, int activeParticipantCount);
+}
+
+public enum PlanCapability
+{
+    ManagedInvitations,
+    AutomaticReminders,
+    CoOrganizers,
+    ExchangeCustomization,
+    ExchangeTemplates,
+    LateParticipants,
 }
 
 public sealed record PlanCatalogOptions(
@@ -44,11 +56,51 @@ public sealed class PlanCatalog : IPlanCatalog
         ? plan
         : throw new InvalidOperationException($"Unsupported Humbugg plan '{code}'.");
 
-    public void EnsureParticipantCapacity(PlanCode code, int activeParticipantCount)
+    public bool HasCapability(PlanCode code, string? entitlementId, PlanCapability capability)
     {
-        var plan = Get(code);
-        if (activeParticipantCount >= plan.ParticipantLimit)
-            throw ApiException.Conflict($"The {plan.Name} plan supports up to {plan.ParticipantLimit:N0} participants.");
+        _ = capability;
+        return code == PlanCode.Work ||
+            code == PlanCode.Plus &&
+            entitlementId?.StartsWith("plus:", StringComparison.Ordinal) == true;
+    }
+
+    public void EnsureCapability(PlanCode code, string? entitlementId, PlanCapability capability)
+    {
+        if (!HasCapability(code, entitlementId, capability))
+            throw ApiException.PaymentRequired(
+                $"Plus is required to use {CapabilityName(capability)} for this exchange.");
+    }
+
+    public void EnsureParticipantCapacity(
+        PlanCode code,
+        string? entitlementId,
+        int activeParticipantCount)
+    {
+        if (activeParticipantCount < 0)
+            throw new ArgumentOutOfRangeException(nameof(activeParticipantCount));
+
+        if (code == PlanCode.Work)
+        {
+            var work = Get(PlanCode.Work);
+            if (activeParticipantCount >= work.ParticipantLimit)
+                throw ApiException.Conflict(
+                    $"The Work plan supports up to {work.ParticipantLimit:N0} participants.");
+            return;
+        }
+
+        var free = Get(PlanCode.Free);
+        if (activeParticipantCount < free.ParticipantLimit) return;
+
+        if (!HasCapability(code, entitlementId, PlanCapability.ManagedInvitations))
+            throw ApiException.PaymentRequired(
+                $"Plus is required for participant {activeParticipantCount + 1:N0}. " +
+                $"The Free plan includes the organizer and up to {free.ParticipantLimit - 1:N0} other participants.");
+
+        var plus = Get(PlanCode.Plus);
+        if (activeParticipantCount >= plus.ParticipantLimit)
+            throw ApiException.Conflict(
+                $"Plus supports up to {plus.ParticipantLimit:N0} total participants, including the organizer. " +
+                "Upgrade to Work to add participant 51 or run a larger exchange.");
     }
 
     public static PlanCatalog FromEnvironment() => new(new PlanCatalogOptions(
@@ -87,4 +139,15 @@ public sealed class PlanCatalog : IPlanCatalog
     }
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string CapabilityName(PlanCapability capability) => capability switch
+    {
+        PlanCapability.ManagedInvitations => "managed email invitations",
+        PlanCapability.AutomaticReminders => "automatic reminders",
+        PlanCapability.CoOrganizers => "co-organizers",
+        PlanCapability.ExchangeCustomization => "exchange customization",
+        PlanCapability.ExchangeTemplates => "exchange templates",
+        PlanCapability.LateParticipants => "late-participant reassignment",
+        _ => throw new ArgumentOutOfRangeException(nameof(capability)),
+    };
 }

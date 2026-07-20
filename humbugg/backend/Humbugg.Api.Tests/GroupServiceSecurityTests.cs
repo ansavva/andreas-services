@@ -72,7 +72,8 @@ public sealed class GroupServiceSecurityTests
         var error = await Assert.ThrowsAsync<ApiException>(() => fixture.Subject.UpdateParticipationAsync(
             "group", "inactive", new ParticipationRequest(true), TestContext.Current.CancellationToken));
 
-        Assert.Equal(409, error.StatusCode);
+        Assert.Equal(402, error.StatusCode);
+        Assert.Equal("plus_required", error.Code);
         Assert.Contains("Free plan", error.Message);
     }
 
