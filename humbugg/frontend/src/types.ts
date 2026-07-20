@@ -35,6 +35,40 @@ export interface Address {
 
 export type ExclusionPair = [string, string];
 
+// Self-service GDPR data export (right of access / portability). Mirrors the backend `DataExport`
+// DTO. Contains only the caller's own data — never another member's PII or any draw assignment.
+export interface DataExport {
+  metadata: {
+    generated_at: string;
+    format_version: string;
+    subject_user_id: string;
+    notes: string[];
+  };
+  profile: {
+    user_id: string;
+    display_name?: string | null;
+    email?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+    avatar?: string | null;
+    non_essential_emails_enabled?: boolean | null;
+    consent?: { policy_version: string; agreed_at: string } | null;
+  };
+  memberships: Array<{
+    group_id: string;
+    group_name: string;
+    group_status: GroupStatus;
+    member_id: string;
+    role: 'organizer' | 'participant';
+    is_participating: boolean;
+    wishlist?: string | null;
+    avoidances?: string | null;
+    address?: Address | null;
+    joined_at: string;
+    updated_at: string;
+  }>;
+}
+
 export interface GroupSummary {
   group_id: string;
   name: string;

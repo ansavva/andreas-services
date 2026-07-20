@@ -1,4 +1,5 @@
 import type {
+  DataExport,
   GroupDetail,
   GroupSummary,
   Membership,
@@ -43,6 +44,7 @@ export const api = {
   uploadAvatar: (token: string, image: string) => request<Profile>('/me/avatar', token, json('PUT', { image })),
   removeAvatar: (token: string) => request<Profile>('/me/avatar', token, json('DELETE')),
   deleteAccount: (token: string) => request<void>('/me', token, json('DELETE')),
+  exportMyData: (token: string) => request<DataExport>('/me/export', token),
   listGroups: (token: string) => request<GroupSummary[]>('/groups', token),
   createGroup: (token: string, data: Record<string, unknown>) => request<GroupDetail>('/groups', token, json('POST', data)),
   getGroup: (token: string, id: string) => request<GroupDetail>(`/groups/${id}`, token),
