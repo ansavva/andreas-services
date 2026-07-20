@@ -3,6 +3,7 @@ import type {
   GroupDetail,
   GroupSummary,
   Membership,
+  PolicyConsent,
   Profile,
   RecipientAssignment,
   RevealAssignment,
@@ -38,11 +39,19 @@ const json = (method: string, data?: unknown): RequestInit => ({
 
 export const api = {
   getMe: (token: string) => request<Profile>('/me', token),
-  saveMe: (token: string, display_name: string, non_essential_emails_enabled?: boolean) =>
-    request<Profile>('/me', token, json('PUT',
-      non_essential_emails_enabled === undefined
-        ? { display_name }
-        : { display_name, non_essential_emails_enabled })),
+  // `consent` is sent only on first profile creation (captured at the signup checkbox); the backend
+  // records it once, immutably, and ignores it on later saves.
+  saveMe: (
+    token: string,
+    display_name: string,
+    non_essential_emails_enabled?: boolean,
+    consent?: PolicyConsent,
+  ) => {
+    const body: Record<string, unknown> = { display_name };
+    if (non_essential_emails_enabled !== undefined) body.non_essential_emails_enabled = non_essential_emails_enabled;
+    if (consent !== undefined) body.consent = consent;
+    return request<Profile>('/me', token, json('PUT', body));
+  },
   // The image is a data URL ("data:image/...;base64,...") sent as JSON so it rides the same API path as
   // every other call; the backend validates, safely re-encodes, and stores it, returning the new URL.
   uploadAvatar: (token: string, image: string) => request<Profile>('/me/avatar', token, json('PUT', { image })),

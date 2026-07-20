@@ -93,8 +93,10 @@ public sealed class EmailPreferenceTests
     {
         var world = new ProfileWorld();
 
-        // Establish a profile; the default is enabled.
-        var created = await world.Service.SaveAsync(new SaveProfileRequest("Alex"), TestContext.Current.CancellationToken);
+        // Establish a profile; the default is enabled. Creating a profile requires consent.
+        var created = await world.Service.SaveAsync(
+            new SaveProfileRequest("Alex", Consent: new ConsentInput("2026.1", "2026-07-19T10:00:00Z")),
+            TestContext.Current.CancellationToken);
         Assert.True(created.NonEssentialEmailsEnabled);
 
         // Opt out.
@@ -171,12 +173,14 @@ public sealed class EmailPreferenceTests
         public Dictionary<string, ProfileRecord> Items { get; } = new(StringComparer.Ordinal);
         public Task<ProfileRecord?> GetAsync(string userId, CancellationToken cancellationToken = default) =>
             Task.FromResult(Items.TryGetValue(userId, out var record) ? record : null);
-        public Task<ProfileRecord> UpsertAsync(string userId, string displayName, bool? nonEssentialEmailsEnabled = null, CancellationToken cancellationToken = default)
+        public Task<ProfileRecord> UpsertAsync(string userId, string displayName, bool? nonEssentialEmailsEnabled = null, Consent? consent = null, CancellationToken cancellationToken = default)
         {
             var existing = Items.TryGetValue(userId, out var current) ? current : null;
             var record = new ProfileRecord(
                 userId, displayName, existing?.CreatedAt ?? "now", "now", existing?.AvatarKey,
-                nonEssentialEmailsEnabled ?? existing?.NonEssentialEmailsEnabled ?? true);
+                nonEssentialEmailsEnabled ?? existing?.NonEssentialEmailsEnabled ?? true,
+                existing?.ConsentVersion ?? consent?.Version,
+                existing?.ConsentAcceptedAt ?? consent?.AcceptedAt);
             Items[userId] = record;
             return Task.FromResult(record);
         }

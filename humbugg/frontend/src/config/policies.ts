@@ -1,4 +1,4 @@
-import type { PlanCode } from '../types';
+import type { PlanCode, PolicyConsent } from '../types';
 
 /**
  * Single source of truth for Humbugg's published policies.
@@ -23,6 +23,15 @@ export const SUPPORT_EMAIL = 'support@humbugg.com';
 // Launch market. Humbugg launches US-only, priced in US dollars.
 export const SERVICE_COUNTRY = 'United States';
 export const SERVICE_CURRENCY = 'USD';
+
+/**
+ * Builds the consent record captured when a user actively agrees to the Terms of Service and Privacy
+ * Policy at signup. `version` references POLICY_VERSION so the recorded consent stays in sync with the
+ * published policies; `accepted_at` is a UTC ISO-8601 timestamp of the moment of agreement.
+ */
+export function recordPolicyConsent(now: Date = new Date()): PolicyConsent {
+  return { version: POLICY_VERSION, accepted_at: now.toISOString() };
+}
 
 /** Human-readable effective date, e.g. "July 1, 2026". */
 export function policyEffectiveDateLabel(): string {
