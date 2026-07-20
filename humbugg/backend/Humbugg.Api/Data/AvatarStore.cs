@@ -32,7 +32,7 @@ internal sealed class S3AvatarStore(IAmazonS3 s3, HumbuggSettings settings) : IA
         using var stream = new MemoryStream(image.Bytes, writable: false);
         await s3.PutObjectAsync(new PutObjectRequest
         {
-            BucketName = settings.AvatarsBucket,
+            BucketName = settings.AppBucket,
             Key = key,
             InputStream = stream,
             ContentType = image.ContentType,
@@ -48,7 +48,7 @@ internal sealed class S3AvatarStore(IAmazonS3 s3, HumbuggSettings settings) : IA
         if (string.IsNullOrWhiteSpace(key)) return;
         await s3.DeleteObjectAsync(new DeleteObjectRequest
         {
-            BucketName = settings.AvatarsBucket,
+            BucketName = settings.AppBucket,
             Key = key,
         }, cancellationToken);
     }

@@ -321,7 +321,7 @@ jobs:
             --arg analytics_events_table "humbugg-analytics-events" \
             --arg analytics_enabled "${{ vars.HUMBUGG_ANALYTICS_ENABLED || 'true' }}" \
             --arg email_messages_table "humbugg-email-messages" \
-            --arg avatars_bucket "humbugg-avatars-production" \
+            --arg app_bucket "humbugg-app-production" \
             --arg app_base_url "https://humbugg.com" \
             --arg mailer_base_url "${HUMBUGG_MAILER_BASE_URL}" \
             --arg free_participant_limit "${{ vars.HUMBUGG_FREE_PARTICIPANT_LIMIT || '6' }}" \
@@ -350,7 +350,7 @@ jobs:
               HUMBUGG_ANALYTICS_EVENTS_TABLE: $analytics_events_table,
               HUMBUGG_ANALYTICS_ENABLED: $analytics_enabled,
               HUMBUGG_EMAIL_MESSAGES_TABLE: $email_messages_table,
-              HUMBUGG_AVATARS_BUCKET: $avatars_bucket,
+              HUMBUGG_APP_BUCKET: $app_bucket,
               HUMBUGG_EMAIL_PROVIDER: "mailer",
               HUMBUGG_MAILER_BASE_URL: $mailer_base_url,
               HUMBUGG_MAILER_AUTH_MODE: "sigv4",

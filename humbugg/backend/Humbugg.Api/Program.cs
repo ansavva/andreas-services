@@ -100,16 +100,34 @@ builder.Services.AddSingleton<IAmazonDynamoDB>(_ =>
     }
     return new AmazonDynamoDBClient(config);
 });
-// Avatar object storage. In production an S3 bucket is configured and CloudFront serves the objects
-// read-only; locally (no bucket) an in-process store keeps the upload flow working without AWS.
-if (!string.IsNullOrWhiteSpace(settings.AvatarsBucket))
+// Avatar object storage. When an application bucket is configured the backend writes to S3 and
+// CloudFront serves the objects read-only. Locally that bucket is provided by LocalStack via
+// S3_ENDPOINT_URL, so the exact same S3 code path runs in development. With no bucket configured
+// (unit tests) an in-process store keeps the upload flow working without any AWS dependency.
+if (!string.IsNullOrWhiteSpace(settings.AppBucket))
 {
     builder.Services.AddSingleton<Amazon.S3.IAmazonS3>(_ =>
-        new Amazon.S3.AmazonS3Client(new Amazon.S3.AmazonS3Config
+    {
+        var s3Config = new Amazon.S3.AmazonS3Config
         {
             RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(settings.AwsRegion)
-        }));
+        };
+        if (!string.IsNullOrWhiteSpace(settings.S3EndpointUrl))
+        {
+            // Point at LocalStack (or any S3-compatible endpoint) for local dev. Path-style addressing
+            // is required — virtual-host-style bucket hostnames don't resolve against localhost.
+            s3Config.ServiceURL = settings.S3EndpointUrl;
+            s3Config.ForcePathStyle = true;
+            s3Config.UseHttp = settings.S3EndpointUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase);
+            s3Config.AuthenticationRegion = settings.AwsRegion;
+        }
+        return new Amazon.S3.AmazonS3Client(s3Config);
+    });
     builder.Services.AddScoped<IAvatarStore, S3AvatarStore>();
+    // Local S3 (LocalStack) starts empty; ensure the bucket exists on startup. Never runs against real
+    // AWS — only registered when an endpoint override is present. Production buckets are made by Terraform.
+    if (!string.IsNullOrWhiteSpace(settings.S3EndpointUrl))
+        builder.Services.AddHostedService<S3Bootstrap>();
 }
 else
 {
@@ -205,8 +223,9 @@ public sealed record HumbuggSettings(
     string MailerBaseUrl = "http://host.docker.internal:8026",
     string MailerAuthMode = "none",
     string MailerServiceId = "humbugg",
-    string AvatarsBucket = "",
-    string AvatarBaseUrl = "http://localhost:5173")
+    string AppBucket = "",
+    string AvatarBaseUrl = "http://localhost:5173",
+    string? S3EndpointUrl = null)
 {
     public static HumbuggSettings FromEnvironment()
     {
@@ -231,7 +250,8 @@ public sealed record HumbuggSettings(
                 "http://host.docker.internal:8026").TrimEnd('/'),
             Environment.GetEnvironmentVariable("HUMBUGG_MAILER_AUTH_MODE") ?? "none",
             Environment.GetEnvironmentVariable("HUMBUGG_MAILER_SERVICE_ID") ?? "humbugg",
-            Environment.GetEnvironmentVariable("HUMBUGG_AVATARS_BUCKET") ?? "",
-            (Environment.GetEnvironmentVariable("HUMBUGG_AVATAR_BASE_URL")?.TrimEnd('/')) ?? appBaseUrl);
+            Environment.GetEnvironmentVariable("HUMBUGG_APP_BUCKET") ?? "",
+            (Environment.GetEnvironmentVariable("HUMBUGG_AVATAR_BASE_URL")?.TrimEnd('/')) ?? appBaseUrl,
+            Environment.GetEnvironmentVariable("S3_ENDPOINT_URL"));
     }
 }

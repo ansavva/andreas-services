@@ -13,3 +13,8 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "domain_name" {
+  description = "Canonical application domain that app-bucket objects (e.g. avatars) are served from (CORS allow-list)"
+  type        = string
+}

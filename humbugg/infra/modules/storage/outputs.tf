@@ -29,3 +29,18 @@ output "email_messages_table_arn" {
   description = "DynamoDB table ARN used for transactional email idempotency"
   value       = aws_dynamodb_table.email_messages.arn
 }
+
+output "app_bucket_id" {
+  description = "Application object S3 bucket name (holds avatars under the avatars/ prefix)"
+  value       = aws_s3_bucket.app.id
+}
+
+output "app_bucket_arn" {
+  description = "Application object S3 bucket ARN"
+  value       = aws_s3_bucket.app.arn
+}
+
+output "app_bucket_regional_domain_name" {
+  description = "Application object S3 bucket regional domain name (CloudFront origin)"
+  value       = aws_s3_bucket.app.bucket_regional_domain_name
+}

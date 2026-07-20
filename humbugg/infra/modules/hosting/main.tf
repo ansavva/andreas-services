@@ -285,8 +285,10 @@ resource "aws_s3_bucket_policy" "avatars" {
         Principal = {
           Service = "cloudfront.amazonaws.com"
         }
-        Action   = "s3:GetObject"
-        Resource = "${var.avatars_bucket_arn}/*"
+        Action = "s3:GetObject"
+        # The bucket is the shared application bucket; CloudFront may read only the avatars/ prefix,
+        # never any other application object that may live there.
+        Resource = "${var.avatars_bucket_arn}/avatars/*"
         Condition = {
           StringEquals = {
             "AWS:SourceArn" = aws_cloudfront_distribution.app.arn
