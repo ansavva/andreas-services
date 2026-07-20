@@ -8,6 +8,11 @@ output "email_status_lambda_function_name" {
   value       = aws_lambda_function.email_status.function_name
 }
 
+output "reminders_lambda_function_name" {
+  description = "Automatic reminder consumer Lambda function name"
+  value       = aws_lambda_function.reminders.function_name
+}
+
 output "ecr_repository_url" {
   description = "ECR repository URL"
   value       = aws_ecr_repository.api.repository_url

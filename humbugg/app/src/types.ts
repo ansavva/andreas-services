@@ -141,3 +141,26 @@ export interface ManagedInvitation {
   accepted_at?: string | null;
   last_sent_at?: string | null;
 }
+
+export type ReminderState = 'active' | 'paused' | 'stopped';
+export type ReminderRule = 'unaccepted_invitation' | 'incomplete_readiness';
+export interface ReminderSettings {
+  state: ReminderState;
+  remind_unaccepted_invitations: boolean;
+  remind_incomplete_readiness: boolean;
+  interval_days: number;
+  quiet_start_utc_hour: number;
+  quiet_end_utc_hour: number;
+}
+export interface ReminderHistoryItem {
+  reminder_id: string;
+  rule: ReminderRule;
+  invitation_id: string;
+  status: 'sent' | 'suppressed';
+  created_at: string;
+}
+export interface ReminderOverview {
+  settings: ReminderSettings;
+  next_scheduled_at?: string | null;
+  recent_history: ReminderHistoryItem[];
+}

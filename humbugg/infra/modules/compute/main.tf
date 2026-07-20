@@ -261,6 +261,44 @@ resource "aws_lambda_function" "email_status" {
   }
 }
 
+resource "aws_lambda_function" "reminders" {
+  function_name = "${var.project}-${var.environment}-reminders"
+  role          = aws_iam_role.api.arn
+  package_type  = "Image"
+  image_uri     = "${aws_ecr_repository.api.repository_url}:latest"
+  timeout       = 60
+  memory_size   = 512
+
+  tags = var.tags
+
+  lifecycle {
+    ignore_changes = [
+      image_uri,
+      environment,
+    ]
+  }
+}
+
+resource "aws_cloudwatch_event_rule" "reminders" {
+  name                = "${var.project}-${var.environment}-reminders"
+  description         = "Runs Humbugg automatic reminder evaluation every fifteen minutes"
+  schedule_expression = "rate(15 minutes)"
+  tags                = var.tags
+}
+
+resource "aws_cloudwatch_event_target" "reminders" {
+  rule = aws_cloudwatch_event_rule.reminders.name
+  arn  = aws_lambda_function.reminders.arn
+}
+
+resource "aws_lambda_permission" "reminders_eventbridge" {
+  statement_id  = "AllowEventBridgeReminderSchedule"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.reminders.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.reminders.arn
+}
+
 resource "aws_lambda_event_source_mapping" "email_status" {
   event_source_arn                   = var.mailer_status_queue_arn
   function_name                      = aws_lambda_function.email_status.arn
@@ -314,6 +352,13 @@ resource "aws_cloudwatch_log_group" "marketing" {
 
 resource "aws_cloudwatch_log_group" "email_status" {
   name              = "/aws/lambda/${aws_lambda_function.email_status.function_name}"
+  retention_in_days = 14
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_log_group" "reminders" {
+  name              = "/aws/lambda/${aws_lambda_function.reminders.function_name}"
   retention_in_days = 14
 
   tags = var.tags

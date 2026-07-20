@@ -1,4 +1,5 @@
 using Humbugg.Api.Consumers.EmailStatus;
+using Humbugg.Api.Consumers.Reminders;
 
 namespace Humbugg.Api.Consumers;
 
@@ -13,7 +14,9 @@ internal static class ConsumerHost
         new Dictionary<string, Func<Task>>(StringComparer.OrdinalIgnoreCase)
         {
             [AwsLambdaEmailStatusConsumer.ConsumerName] =
-                AwsLambdaEmailStatusConsumer.RunAsync
+                AwsLambdaEmailStatusConsumer.RunAsync,
+            [AwsLambdaReminderConsumer.ConsumerName] =
+                AwsLambdaReminderConsumer.RunAsync
         };
 
     /// <summary>

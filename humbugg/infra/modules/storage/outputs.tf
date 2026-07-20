@@ -24,6 +24,7 @@ output "dynamodb_table_arns" {
     analytics_events = aws_dynamodb_table.analytics_events.arn
     billing          = aws_dynamodb_table.billing.arn
     invitations      = aws_dynamodb_table.invitations.arn
+    reminders        = aws_dynamodb_table.reminders.arn
   }
 }
 

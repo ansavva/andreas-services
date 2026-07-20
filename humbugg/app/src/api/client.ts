@@ -8,6 +8,9 @@ import type {
   PlusPurchaseStatus,
   Profile,
   RecipientAssignment,
+  ReminderOverview,
+  ReminderRule,
+  ReminderSettings,
   RevealAssignment,
 } from '../types';
 
@@ -85,6 +88,11 @@ export const api = {
   revokeInvitation: (token: string, id: string, invitationId: string) => request<void>(`/groups/${id}/invitations/${invitationId}/revoke`, token, json('POST')),
   acceptInvitation: (token: string, id: string, invitationId: string, invitationToken: string, confirmAddressMismatch = false) =>
     request<{ group_id: string; accepted: boolean }>(`/groups/${id}/invitations/${invitationId}/accept`, token, json('POST', { token: invitationToken, confirm_address_mismatch: confirmAddressMismatch })),
+  getReminders: (token: string, id: string) => request<ReminderOverview>(`/groups/${id}/reminders`, token),
+  updateReminders: (token: string, id: string, settings: ReminderSettings) =>
+    request<ReminderOverview>(`/groups/${id}/reminders`, token, json('PUT', settings)),
+  sendReminder: (token: string, id: string, invitationId: string, rule: ReminderRule) =>
+    request(`/groups/${id}/reminders/send`, token, json('POST', { invitation_id: invitationId, rule })),
   joinGroup: (token: string, id: string, invite_token: string) => request<GroupDetail>(`/groups/${id}/join`, token, json('POST', { invite_token })),
   getMembership: (token: string, id: string) => request<Membership>(`/groups/${id}/members/me`, token),
   updateMembership: (token: string, id: string, data: Record<string, unknown>) => request<Membership>(`/groups/${id}/members/me`, token, json('PATCH', data)),
