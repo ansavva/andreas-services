@@ -25,6 +25,7 @@ public enum AuditAction
     DrawCreated,
     DrawReset,
     ReminderSent,
+    ReminderConfigurationChanged,
     RoleChanged,
     PaymentEntitlementChanged,
     AssignmentRevealed,
