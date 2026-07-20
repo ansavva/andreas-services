@@ -60,6 +60,7 @@ internal sealed class ExchangeTemplateService(
             UpdatedAt = DateTimeOffset.UtcNow.ToString("O")
         };
         if (value.SignupDeadlineDaysBeforeEvent is < 0 or > 365) throw ApiException.BadRequest("Deadline offset must be between 0 and 365 days.");
+        ValidateReminders(value.ReminderPreferences);
         await templates.PutAsync(user.UserId, value, ct);
         return value;
     }
@@ -96,10 +97,18 @@ internal sealed class ExchangeTemplateService(
         return await groupService.GetAsync(group.GroupId, ct);
     }
 
-    public Task DeleteAsync(string id, CancellationToken ct) => templates.DeleteAsync(user.UserId, id, ct);
+    public async Task DeleteAsync(string id, CancellationToken ct) { _ = await Get(id, ct); await templates.DeleteAsync(user.UserId, id, ct); }
     private async Task<ExchangeTemplate> Get(string id, CancellationToken ct) => await templates.GetAsync(user.UserId, id, ct) ?? throw ApiException.NotFound("Template not found.");
     private async Task<GroupRecord> Own(string? id, CancellationToken ct) { var g = string.IsNullOrWhiteSpace(id) ? null : await groups.GetAsync(id, ct); if (g is null) throw ApiException.NotFound("Exchange not found."); if (g.OwnerUserId != user.UserId) throw ApiException.Forbidden("Only the organizer can use templates."); return g; }
     private static int DeadlineOffset(string? eventDate, string? deadline) => DateOnly.TryParse(eventDate, out var e) && DateOnly.TryParse(deadline, out var d) ? Math.Max(0, e.DayNumber - d.DayNumber) : 0;
+    private static void ValidateReminders(ReminderSettings value)
+    {
+        if (value.IntervalDays is < 1 or > 14) throw ApiException.BadRequest("Reminder interval must be between 1 and 14 days.");
+        if (value.QuietStartUtcHour is < 0 or > 23 || value.QuietEndUtcHour is < 1 or > 24 || value.QuietStartUtcHour >= value.QuietEndUtcHour)
+            throw ApiException.BadRequest("Quiet hours must define a valid UTC sending window.");
+        if (value.State == ReminderState.Active && !value.RemindUnacceptedInvitations && !value.RemindIncompleteReadiness)
+            throw ApiException.BadRequest("Enable at least one reminder rule before starting reminders.");
+    }
 }
 
 internal static class TemplateDates
