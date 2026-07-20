@@ -79,6 +79,7 @@ export const api = {
   listGroups: (token: string) => request<GroupSummary[]>('/groups', token),
   listTemplates: (token: string) => request<ExchangeTemplate[]>('/templates', token),
   saveTemplate: (token: string, name: string, source_group_id: string) => request<ExchangeTemplate>('/templates', token, json('POST', { name, source_group_id })),
+  updateTemplate: (token: string, id: string, data: Record<string, unknown>) => request<ExchangeTemplate>(`/templates/${id}`, token, json('PUT', data)),
   duplicateTemplate: (token: string, id: string) => request<ExchangeTemplate>(`/templates/${id}/duplicate`, token, json('POST')),
   deleteTemplate: (token: string, id: string) => request<void>(`/templates/${id}`, token, json('DELETE')),
   applyTemplate: (token: string, id: string, target_group_id: string, event_date: string, prior_member_ids: string[]) => request<GroupDetail>(`/templates/${id}/apply`, token, json('POST', { target_group_id, event_date, prior_member_ids })),
