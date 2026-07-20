@@ -7,9 +7,22 @@ Each subdirectory is a **fully self-contained deployable unit** — it has its o
 
 ## Environment access
 
-The AWS CLI is available and authenticated in this environment (`aws ...`), so
-prefer it for read-only investigation of live infrastructure (CloudFront, S3,
-Lambda, DynamoDB, SSM, etc.) when diagnosing issues. Note: outbound HTTP to
+**AWS CLI — always use the `personal` profile.** There is no `default` profile, so
+a bare `aws ...` command fails with `NoCredentials` (or a misleading "run `aws login`"
+hint). Every AWS call must specify the profile:
+
+```bash
+export AWS_PROFILE=personal      # once per shell, then use `aws ...` normally
+aws --profile personal ...       # or per-command
+```
+
+`personal` is AWS account `704202188703` — this is the account that hosts all
+`andreas.services` and `humbugg.com` infrastructure. The other configured profile
+(`insolvia`, account `521762924626`) is unrelated to this repo; do not use it here.
+
+With the profile set, prefer the CLI for read-only investigation of live
+infrastructure (CloudFront, S3, Lambda, DynamoDB, CloudWatch Logs, SSM, etc.) when
+diagnosing issues. Note: outbound HTTP to
 `*.andreas.services` is blocked by the sandbox network policy (responses look
 like `403 host_not_allowed` / "Host not in allowlist"), so use AWS APIs rather
 than `curl` against the live sites; final browser verification is on the user.
