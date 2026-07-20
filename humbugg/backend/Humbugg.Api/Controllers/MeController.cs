@@ -18,6 +18,17 @@ public sealed class MeController(
     public Task<Profile> Put([FromBody] SaveProfileRequest request, CancellationToken cancellationToken) =>
         profiles.SaveAsync(request, cancellationToken);
 
+    // Avatar upload accepts a base64/data-URL image in JSON so it rides the same API Gateway/Lambda
+    // path as every other call. The service validates content type, size, and dimensions and re-encodes
+    // to a safe, metadata-free image before storing it.
+    [HttpPut("avatar")]
+    public Task<Profile> UploadAvatar([FromBody] UploadAvatarRequest request, CancellationToken cancellationToken) =>
+        profiles.UploadAvatarAsync(request, cancellationToken);
+
+    [HttpDelete("avatar")]
+    public Task<Profile> RemoveAvatar(CancellationToken cancellationToken) =>
+        profiles.RemoveAvatarAsync(cancellationToken);
+
     // Self-service data export — the GDPR right of access / portability (Art. 15 & 20), the read-only
     // counterpart to DELETE below. Returns only the caller's own personal data as portable JSON, runs
     // on the caller's own identity with no admin gate, and is safe to call repeatedly. A Content-

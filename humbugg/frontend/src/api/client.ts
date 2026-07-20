@@ -39,6 +39,10 @@ const json = (method: string, data?: unknown): RequestInit => ({
 export const api = {
   getMe: (token: string) => request<Profile>('/me', token),
   saveMe: (token: string, display_name: string) => request<Profile>('/me', token, json('PUT', { display_name })),
+  // The image is a data URL ("data:image/...;base64,...") sent as JSON so it rides the same API path as
+  // every other call; the backend validates, safely re-encodes, and stores it, returning the new URL.
+  uploadAvatar: (token: string, image: string) => request<Profile>('/me/avatar', token, json('PUT', { image })),
+  removeAvatar: (token: string) => request<Profile>('/me/avatar', token, json('DELETE')),
   deleteAccount: (token: string) => request<void>('/me', token, json('DELETE')),
   exportMyData: (token: string) => request<DataExport>('/me/export', token),
   listGroups: (token: string) => request<GroupSummary[]>('/groups', token),

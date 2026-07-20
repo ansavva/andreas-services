@@ -15,7 +15,9 @@
     <PackageReference Include="Amazon.Lambda.Serialization.SystemTextJson" Version="3.0.0" />
     <PackageReference Include="Amazon.Lambda.SQSEvents" Version="2.2.0" />
     <PackageReference Include="AWSSDK.DynamoDBv2" Version="4.0.101.2" />
+    <PackageReference Include="AWSSDK.S3" Version="4.0.6.6" />
     <PackageReference Include="Microsoft.Bcl.Cryptography" Version="10.0.10" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.10" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
   </ItemGroup>
 </Project>

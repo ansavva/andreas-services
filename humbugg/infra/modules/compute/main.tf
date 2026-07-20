@@ -128,6 +128,26 @@ resource "aws_iam_role_policy" "lambda_dynamodb" {
   })
 }
 
+# Least-privilege avatar storage access: the backend Lambda may only write and delete objects under
+# the avatars/ prefix. It has no ListBucket, no bucket-wide access, and no read (CloudFront serves the
+# objects), so a compromised function cannot enumerate or exfiltrate the bucket.
+resource "aws_iam_role_policy" "lambda_avatars" {
+  name = "${var.project}-lambda-avatars-policy"
+  role = aws_iam_role.lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "s3:PutObject",
+        "s3:DeleteObject",
+      ]
+      Resource = "${var.avatars_bucket_arn}/avatars/*"
+    }]
+  })
+}
+
 resource "aws_iam_role_policy" "lambda_email_messages" {
   name = "${var.project}-lambda-email-messages-policy"
   role = aws_iam_role.lambda.id

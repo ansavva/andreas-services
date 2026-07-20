@@ -220,6 +220,7 @@ public sealed class AccountDeletionTests
         public Task<ProfileRecord?> GetAsync(string userId, CancellationToken cancellationToken = default) =>
             Task.FromResult(Items.TryGetValue(userId, out var record) ? record : null);
         public Task<ProfileRecord> UpsertAsync(string userId, string displayName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProfileRecord> SetAvatarKeyAsync(string userId, string? avatarKey, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task DeleteAsync(string userId, CancellationToken cancellationToken = default) { Items.Remove(userId); return Task.CompletedTask; }
     }
 

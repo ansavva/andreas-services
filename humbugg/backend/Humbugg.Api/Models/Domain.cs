@@ -25,7 +25,7 @@ public sealed record Address(
     string? PostalCode = null,
     string? Country = null);
 
-public sealed record Profile(string UserId, string DisplayName, string CreatedAt, string UpdatedAt);
+public sealed record Profile(string UserId, string DisplayName, string CreatedAt, string UpdatedAt, string? AvatarUrl = null);
 
 public sealed record Membership(
     string MemberId,
@@ -124,6 +124,10 @@ public sealed record ExportedMembership(
     string UpdatedAt);
 
 public sealed record SaveProfileRequest(string? DisplayName);
+// Avatar upload payload: a data URL ("data:image/png;base64,...") or bare base64. Sent as JSON so
+// the image flows through the same API Gateway/Lambda path as every other request; the raw decoded
+// size is capped well under the 6 MB Lambda payload limit (see AvatarImage.MaxBytes).
+public sealed record UploadAvatarRequest(string? Image);
 public sealed record CreateGroupRequest(
     string? Name,
     string? Description,
@@ -142,7 +146,7 @@ public sealed record ParticipationRequest(bool? IsParticipating);
 public sealed record ExclusionsRequest(IReadOnlyList<string[]>? Exclusions);
 public sealed record RevealRequest(string? Reason);
 
-internal sealed record ProfileRecord(string UserId, string DisplayName, string CreatedAt, string UpdatedAt);
+internal sealed record ProfileRecord(string UserId, string DisplayName, string CreatedAt, string UpdatedAt, string? AvatarKey = null);
 internal sealed record GroupRecord(
     string GroupId,
     string OwnerUserId,

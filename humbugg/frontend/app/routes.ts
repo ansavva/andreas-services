@@ -12,6 +12,7 @@ export default [
   route('billing', 'routes/billing.tsx'),
   route('refunds', 'routes/refunds.tsx'),
   route('app', 'routes/app._index.tsx'),
+  route('app/settings', 'routes/app.settings.tsx'),
   route('app/groups/:groupId', 'routes/app.groups.$groupId.tsx'),
   route('robots.txt', 'routes/robots[.]txt.ts'),
   route('sitemap.xml', 'routes/sitemap[.]xml.ts'),

@@ -8,6 +8,18 @@ services:
     volumes:
       - dynamodb-local:/data
 
+  # S3-compatible endpoint for local development so avatar uploads exercise the real S3 code path
+  # (see humbugg/backend/Humbugg.Api/Data/AvatarStore.cs) instead of an in-process store.
+  localstack:
+    image: localstack/localstack:3
+    environment:
+      SERVICES: s3
+      DEBUG: "0"
+    ports:
+      - "4566:4566"
+    volumes:
+      - localstack:/var/lib/localstack
+
   backend:
     build:
       context: .
@@ -22,6 +34,10 @@ services:
       AWS_SECRET_ACCESS_KEY: local
       AWS_DEFAULT_REGION: us-east-1
       DYNAMODB_ENDPOINT_URL: http://dynamodb:8000
+      S3_ENDPOINT_URL: http://localstack:4566
+      HUMBUGG_APP_BUCKET: humbugg-app-local
+      # Path-style LocalStack URL so the avatar URL derived from the stored key resolves in dev.
+      HUMBUGG_AVATAR_BASE_URL: http://localhost:4566/humbugg-app-local
       HUMBUGG_PROFILES_TABLE: humbugg-profiles
       HUMBUGG_GROUPS_TABLE: humbugg-groups
       HUMBUGG_GROUPMEMBERS_TABLE: humbugg-groupmembers
@@ -54,8 +70,10 @@ services:
       - api-obj:/src/Humbugg.Api/obj
     depends_on:
       - dynamodb
+      - localstack
 
 volumes:
   dynamodb-local:
+  localstack:
   api-bin:
   api-obj:

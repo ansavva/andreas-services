@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import type { HTMLAttributes, ReactNode } from 'react';
 
 import { useAuth } from '../context/AuthContext';
+import { AvatarMenu } from './AvatarMenu';
 import { LEGAL_LINKS, SERVICE_COUNTRY, SERVICE_CURRENCY } from '../config/policies';
 
 export function Brand() {
@@ -23,10 +24,7 @@ export function Shell({ children, compact = false }: { children: ReactNode; comp
           <Brand />
           <nav className="flex items-center gap-2" aria-label="Primary navigation">
             {auth.authenticated ? (
-              <>
-                <Button className="font-body text-sm font-medium leading-none" intent="ghost" onClick={() => navigate('/app')}>My groups</Button>
-                <Button className="font-body text-sm font-medium leading-none" intent="ghost" onClick={() => void auth.logout().then(() => navigate('/'))}>Sign out</Button>
-              </>
+              <AvatarMenu />
             ) : (
               <>
                 <Link className="nav-link hidden sm:inline-flex" to="/login">Sign in</Link>

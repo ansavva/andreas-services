@@ -1,13 +1,20 @@
 import { Button } from '@ansavva/design-system';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 
 import { Shell } from '../components/Layout';
 import { canonicalUrl } from '../config/site';
 
 export default function LandingPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const accountDeleted = searchParams.get('account_deleted') === '1';
   return (
     <Shell compact>
+      {accountDeleted && (
+        <div role="status" className="border-b border-line bg-surface-alt px-5 py-4 text-center text-sm font-medium text-ink lg:px-8">
+          Your account was deleted. We're sorry to see you go — you're welcome back anytime.
+        </div>
+      )}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
