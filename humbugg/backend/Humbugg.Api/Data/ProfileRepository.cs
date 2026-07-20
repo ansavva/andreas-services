@@ -33,7 +33,7 @@ internal sealed class ProfileRepository(IAmazonDynamoDB db, HumbuggSettings sett
             [":name"] = DynamoValues.S(displayName),
             [":now"] = DynamoValues.S(now),
         };
-        // Only overwrite the opt-out flag when the caller supplied one; otherwise seed it to enabled on
+        // Only overwrite the opt-in flag when the caller supplied one; otherwise seed it to disabled on
         // first write and leave any existing preference untouched, so a display-name save never resets it.
         string emailPreferenceAssignment;
         if (nonEssentialEmailsEnabled is bool preference)
@@ -43,7 +43,7 @@ internal sealed class ProfileRepository(IAmazonDynamoDB db, HumbuggSettings sett
         }
         else
         {
-            values[":neDefault"] = DynamoValues.B(true);
+            values[":neDefault"] = DynamoValues.B(false);
             emailPreferenceAssignment = "non_essential_emails_enabled = if_not_exists(non_essential_emails_enabled, :neDefault)";
         }
 
@@ -111,7 +111,7 @@ internal sealed class ProfileRepository(IAmazonDynamoDB db, HumbuggSettings sett
     private static ProfileRecord Read(IReadOnlyDictionary<string, AttributeValue> item) => new(
         item.String("user_id"), item.String("display_name"), item.String("created_at"), item.String("updated_at"),
         item.TryGetValue("avatar_key", out var avatar) ? avatar.S : null,
-        item.BoolOrDefault("non_essential_emails_enabled", true),
+        item.BoolOrDefault("non_essential_emails_enabled", false),
         item.TryGetValue("consent_version", out var consentVersion) ? consentVersion.S : null,
         item.TryGetValue("consent_accepted_at", out var consentAcceptedAt) ? consentAcceptedAt.S : null);
 }

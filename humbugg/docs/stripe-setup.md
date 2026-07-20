@@ -123,9 +123,7 @@ No live key, real card, or payment method is ever required.
 3. To exercise billing locally, install the [Stripe CLI](https://stripe.com/docs/stripe-cli):
    ```bash
    stripe login                       # test-mode account
-   stripe listen \
-     --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,checkout.session.expired,charge.succeeded,charge.refunded \
-     --forward-to localhost:5001/api/billing/stripe/webhook
+   ./humbugg/scripts/dev-up-stripe.sh
    ```
    `stripe listen` prints a `whsec_...` webhook signing secret. Put the test-mode
    values into your env file:

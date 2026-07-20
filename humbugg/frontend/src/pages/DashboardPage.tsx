@@ -1,13 +1,15 @@
 import { Button, Input, Textarea } from '@ansavva/design-system';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 
 import { api } from '../api/client';
+import { Avatar } from '../components/Avatar';
 import { Card, Shell, StatusMessage } from '../components/Layout';
 import { recordPolicyConsent } from '../config/policies';
 import { useAuth } from '../context/AuthContext';
 import { useProfile } from '../context/ProfileContext';
 import type { GroupSummary, PolicyConsent, Profile } from '../types';
+import { readFileAsDataUrl, validateAvatarFile } from '../utils/avatar';
 import { todayInputValue, validateGroupForm } from '../utils/validation';
 
 // Reads the consent captured at the signup checkbox (stashed until the profile row is created). Falls
@@ -42,7 +44,14 @@ export default function DashboardPage() {
     finally { setLoading(false); }
   }
 
-  useEffect(() => { void loadGroups(); }, []);
+  useEffect(() => {
+    if (!profileLoaded) return;
+    if (!profile) {
+      setLoading(false);
+      return;
+    }
+    void loadGroups();
+  }, [profileLoaded, profile?.user_id]);
 
   const needsProfile = profileLoaded && !profile;
 
@@ -76,9 +85,74 @@ export default function DashboardPage() {
 }
 
 function ProfileSetup({ onSaved }: { onSaved(profile: Profile): void }) {
-  const auth = useAuth(); const [name, setName] = useState(''); const [error, setError] = useState<string | null>(null); const [busy, setBusy] = useState(false);
-  async function submit(event: FormEvent) { event.preventDefault(); const displayName = name.trim(); if (!displayName) { setError('Enter the name your group should see.'); return; } setBusy(true); setError(null); try { onSaved(await api.saveMe(await auth.accessToken(), displayName, undefined, consentForProfileCreation())); sessionStorage.removeItem('humbugg:consent'); } catch (err) { setError(err instanceof Error ? err.message : 'Unable to save your profile.'); } finally { setBusy(false); } }
-  return <Card className="mx-auto mt-12 max-w-xl p-8"><p className="eyebrow">One last detail</p><h1 className="mt-2 font-heading text-3xl font-semibold">What should your group call you?</h1><p className="mt-3 text-muted">This is the name other participants will see.</p><form className="mt-7 space-y-5" onSubmit={submit}><label className="field-label">Display name<Input required minLength={1} maxLength={100} value={name} onChange={(e) => setName(e.target.value)} placeholder="Alex" autoFocus /></label><StatusMessage message={error} /><Button type="submit" className="w-full" size="lg" disabled={busy}>{busy ? 'Saving…' : 'Continue'}</Button></form></Card>;
+  const auth = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [name, setName] = useState('');
+  const [emailNotifications, setEmailNotifications] = useState(false);
+  const [avatarDataUrl, setAvatarDataUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function chooseAvatar(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const validationError = validateAvatarFile(file);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    try {
+      setAvatarDataUrl(await readFileAsDataUrl(file));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to read that photo.');
+    }
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const displayName = name.trim();
+    if (!displayName) { setError('Enter the name your group should see.'); return; }
+    setBusy(true); setError(null);
+    try {
+      const token = await auth.accessToken();
+      let saved = await api.saveMe(token, displayName, emailNotifications, consentForProfileCreation());
+      if (avatarDataUrl) saved = await api.uploadAvatar(token, avatarDataUrl);
+      onSaved(saved);
+      sessionStorage.removeItem('humbugg:consent');
+    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to save your profile.'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Card className="mx-auto mt-12 max-w-xl p-8">
+      <p className="eyebrow">One last detail</p>
+      <h1 className="mt-2 font-heading text-3xl font-semibold">What should your group call you?</h1>
+      <p className="mt-3 text-muted">This is the name other participants will see.</p>
+      <form className="mt-7 space-y-5" onSubmit={submit}>
+        <label className="field-label">Display name<Input required minLength={1} maxLength={100} value={name} onChange={(e) => setName(e.target.value)} placeholder="Alex" autoFocus /></label>
+        <div>
+          <p className="field-label">Profile picture <span className="font-normal text-muted">(optional)</span></p>
+          <div className="mt-2 flex items-center gap-4">
+            <Avatar src={avatarDataUrl} name={name} email={auth.email} size={64} className="border border-line" />
+            <div className="flex flex-wrap gap-2">
+              <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(event) => void chooseAvatar(event)} data-testid="onboarding-avatar-input" />
+              <Button type="button" intent="secondary" size="sm" disabled={busy} onClick={() => fileInputRef.current?.click()}>{avatarDataUrl ? 'Change photo' : 'Upload photo'}</Button>
+              {avatarDataUrl && <Button type="button" intent="ghost" size="sm" disabled={busy} onClick={() => setAvatarDataUrl(null)}>Remove</Button>}
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-muted">PNG, JPEG, or WebP up to 3 MB. You can also add one later.</p>
+        </div>
+        <label className="flex items-start gap-3 text-sm text-muted">
+          <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0" checked={emailNotifications} onChange={(event) => setEmailNotifications(event.target.checked)} />
+          <span><span className="font-semibold text-ink">Email notifications</span><br />Send me optional reminders, group activity, and product updates. Essential account and exchange emails always send.</span>
+        </label>
+        <StatusMessage message={error} />
+        <Button type="submit" className="w-full" size="lg" disabled={busy}>{busy ? 'Saving…' : 'Continue'}</Button>
+      </form>
+    </Card>
+  );
 }
 
 function CreateGroup({ onCreated }: { onCreated(id: string): void }) {

@@ -78,7 +78,7 @@ internal sealed class ProfileService(
             : null);
 
     private string? AvatarUrl(string? avatarKey) =>
-        string.IsNullOrEmpty(avatarKey) ? null : $"{settings.AvatarBaseUrl}/{avatarKey}";
+        string.IsNullOrEmpty(avatarKey) ? null : avatars.ReadUrl(avatarKey, settings.AvatarBaseUrl);
 }
 
 internal static class Validation

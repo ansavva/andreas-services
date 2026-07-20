@@ -6,8 +6,8 @@ namespace Humbugg.Api.Data;
 
 /// <summary>
 /// Local-development bootstrap for the application object bucket. Production buckets are provisioned by
-/// Terraform; this service is only registered when the app runs against a local S3 endpoint (LocalStack,
-/// via <c>S3_ENDPOINT_URL</c>), where the bucket starts empty. It ensures the bucket exists and — local
+/// Terraform; this service is only registered when the app runs against a custom S3-compatible endpoint
+/// via <c>S3_ENDPOINT_URL</c>, where the bucket may start empty. It ensures the bucket exists and — local
 /// only — grants anonymous read on the <c>avatars/</c> prefix so uploaded photos render in the SPA during
 /// development. It never runs against real AWS.
 /// </summary>

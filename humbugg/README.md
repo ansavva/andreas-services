@@ -10,23 +10,68 @@ to each participant.
 
 ## Local development
 
-Local application data always uses DynamoDB Local. Authentication uses the
-separate `humbugg-development` Cognito pool.
+Local application data and authentication use isolated AWS resources managed by
+Terraform. Each OS user on each machine receives a persistent random UUID, so a
+developer can safely use multiple machines without sharing tables, buckets,
+Cognito users, or Terraform state.
 
-0. Install the toolchain once with the idempotent setup scripts (from the repo
-   root), and expose a `read:packages` token so npm can fetch the private
+### Development script reference
+
+Run every command from the repository root. All scripts are idempotent where
+applicable and accept `--help` for their complete usage.
+
+| Script | Purpose | Common options |
+|---|---|---|
+| `./scripts/dev-setup.sh` | Installs shared Homebrew tooling, including Terraform, AWS CLI, Node.js, Stripe CLI, jq, and zip | `--check` reports without installing |
+| `./humbugg/scripts/dev-setup.sh` | Canonical setup: runs shared tool setup, installs .NET 10, then provisions per-machine AWS resources | `--profile`, `--region`, `--yes`; `--check` is read-only across every layer |
+| `./humbugg/scripts/dev-aws-setup.sh` | Lower-level AWS setup used by the canonical setup; remains directly runnable | `--profile`, `--region`, `--yes`, `--check` |
+| `./humbugg/scripts/dev-up.sh` | Starts the backend, frontend, and Stripe webhook listener as one supervised session | `--profile`, `--region`, `--forward-to` |
+| `./humbugg/scripts/dev-up-backend.sh` | Starts only the Dockerized .NET API with short-lived AWS credentials | `--profile`, `--region`, plus Docker Compose options |
+| `./humbugg/scripts/dev-up-frontend.sh` | Starts only the React development server using `frontend/.env.local` | accepts React Router/Vite development options |
+| `./humbugg/scripts/dev-up-stripe.sh` | Starts only the Stripe CLI listener with Humbugg's event allowlist | `--forward-to`, plus Stripe listener options |
+| `./humbugg/scripts/dev-logs-backend.sh` | Follows the local backend's Docker logs | accepts Docker Compose log options such as `--tail 200` |
+| `./humbugg/scripts/dev-aws-reset.sh` | Clears this machine's DynamoDB, S3, and optionally Cognito user data while retaining its infrastructure | `--profile`, `--region`, `--dry-run`, `--skip-cognito`, `--yes` |
+| `./humbugg/scripts/dev-aws-destroy.sh` | Destroys this machine's AWS development resources while retaining its machine UUID | `--profile`, `--region`, `--yes` |
+
+`dev-aws-common.sh` is an internal helper sourced by the commands above and
+should not be run directly. AWS scripts default to `$AWS_PROFILE` (or
+`default`) and `$AWS_REGION`/`$AWS_DEFAULT_REGION` (or `us-east-1`). Passing an
+explicit profile is recommended.
+
+0. Run the canonical idempotent setup from the repo root. It invokes shared
+   tool setup, installs .NET, provisions this machine's AWS resources, and
+   generates the ignored environment files. Then expose a `read:packages` token so npm can fetch the private
    `@ansavva/design-system` package:
 
    ```bash
-   ./scripts/dev-setup.sh && ./humbugg/scripts/dev-setup.sh
+   ./humbugg/scripts/dev-setup.sh --profile personal
    export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
    eval "$(./scripts/github-packages-auth.sh --export)"   # sets NODE_AUTH_TOKEN
+   npm --prefix humbugg/frontend install --legacy-peer-deps
+   stripe login
    ```
 
    See [`../scripts/README.md`](../scripts/README.md) for details.
 
-1. Apply `infra/envs/dev` once, either with the manual **Humbugg · Auth · Dev**
-   workflow or Terraform using an authenticated AWS profile.
+   For billing tests, configure `HUMBUGG_STRIPE_MODE=test`, the test publishable
+   key, and the test secret key in the ignored `humbugg/backend/.env` as
+   described in [`docs/stripe-setup.md`](docs/stripe-setup.md). The combined
+   launcher refreshes the local webhook signing secret, but it does not create
+   or persist Stripe API keys.
+
+1. The canonical setup creates the UUID at
+   `~/.config/andreas-services/humbugg/machine-id`, applies Terraform using the
+   selected authenticated AWS profile, and writes generated resource names to
+   the ignored backend and frontend env files. You can validate the entire
+   completed setup later with:
+
+   ```bash
+   ./humbugg/scripts/dev-setup.sh --profile personal --check
+   ```
+
+   `--check` runs the complete dependency chain without installing tools,
+   applying Terraform, writing environment files, or restarting containers.
+
 2. Start the shared local Mailer and Mailpit:
 
    ```bash
@@ -34,29 +79,81 @@ separate `humbugg-development` Cognito pool.
    docker compose up --build
    ```
 
-3. Copy `frontend/.env.local.example` to `frontend/.env.local` and fill in the
-   two Terraform outputs from the development environment.
-4. Export those same Cognito values for Docker Compose, then start the .NET API:
+3. Start the backend, frontend, and Stripe webhook listener together:
 
    ```bash
-   cd humbugg/backend
-   docker compose up --build
+   ./humbugg/scripts/dev-up.sh --profile personal
    ```
 
-5. In another terminal, start the web application:
+   The launcher refreshes the Stripe CLI's local `whsec_...` signing secret and
+   AWS credentials before starting the API. It force-recreates the backend so
+   an existing container cannot retain expired credentials. Press Ctrl+C once
+   to stop all three processes.
 
-   ```bash
-   cd humbugg/frontend
-   npm install
-   npm run dev
-   ```
+### Starting components separately
+
+Start the .NET API first. The launcher exports short-lived credentials from the
+selected AWS profile directly into the backend process; credentials are never
+written to a file:
+
+```bash
+./humbugg/scripts/dev-up-backend.sh --profile personal
+```
+
+Restart the launcher when the AWS login session expires so it can inject a
+fresh set of short-lived credentials. Re-running `dev-aws-setup.sh` also
+recreates an already-running backend with refreshed credentials.
+
+Follow the backend logs from another terminal with:
+
+```bash
+./humbugg/scripts/dev-logs-backend.sh
+```
+
+Then start the web application in another terminal:
+
+```bash
+./humbugg/scripts/dev-up-frontend.sh
+```
+
+For local Stripe webhook testing, start the Stripe CLI listener in another
+terminal:
+
+```bash
+./humbugg/scripts/dev-up-stripe.sh
+```
+
+Copy the `whsec_...` signing secret displayed by Stripe into
+`HUMBUGG_STRIPE_WEBHOOK_SECRET` in `backend/.env`, then restart the backend.
 
 The frontend runs at `http://localhost:5173`, the API at
-`http://localhost:5001`, DynamoDB Local at `http://localhost:8001`, and the
-Mailpit inbox at `http://localhost:8025`. Product messages are captured only by
-Mailpit and are never delivered externally. Development Cognito remains on
-`COGNITO_DEFAULT`, so signup and recovery codes still go to the real address
-entered and do not pass through Mailpit.
+`http://localhost:5001`, and the Mailpit inbox at `http://localhost:8025`.
+Product messages are captured only by Mailpit. AWS Cognito sends signup and
+recovery codes to the address entered during testing. The development S3
+bucket remains private; the API returns one-hour presigned avatar read URLs.
+
+To preview a reset without changing anything, then reset all development data
+before a clean test run, use:
+
+```bash
+./humbugg/scripts/dev-aws-reset.sh --profile personal --dry-run
+./humbugg/scripts/dev-aws-reset.sh --profile personal
+```
+
+The reset script verifies the machine UUID and resource-name prefix, deletes and
+recreates only this machine's DynamoDB tables through Terraform, empties its S3
+bucket, and deletes its Cognito users while retaining the pool and client. Pass
+`--dry-run` or `--skip-cognito` when needed. The destructive run requires typing
+`RESET` unless `--yes` is supplied.
+
+Remove the AWS resources when this development environment is no longer needed:
+
+```bash
+./humbugg/scripts/dev-aws-destroy.sh --profile personal
+```
+
+The machine UUID is intentionally retained so reprovisioning uses the same
+identity and Terraform state path.
 
 The frontend uses React Router server rendering. Marketing HTML, page metadata,
 `robots.txt`, and `sitemap.xml` are rendered by the frontend server; browser

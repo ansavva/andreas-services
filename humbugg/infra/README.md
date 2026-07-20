@@ -5,18 +5,18 @@ Terraform owns Humbugg infrastructure.
 - `envs/prod` owns the production Cognito pool, DynamoDB tables, Lambda/ECR,
   API Gateway, S3, CloudFront, the service-specific `humbugg.com` certificate,
   and Route53 aliases in the existing `humbugg.com` and `andreas.services` zones.
-- `envs/dev` owns only the development Cognito pool used with the local API and
-  DynamoDB Local.
-- State is stored at `humbugg/prod/terraform.tfstate` and
-  `humbugg/dev/terraform.tfstate` in the shared Terraform state bucket.
+- `envs/dev` creates one isolated Cognito pool, S3 bucket, and set of DynamoDB
+  tables per generated machine UUID.
+- Production state is stored at `humbugg/prod/terraform.tfstate`. Development
+  state is isolated at `humbugg/dev/<account-id>/<machine-uuid>/terraform.tfstate`.
 
 The API exposes public `GET /health` and protects `/api/*` with a Cognito JWT
 authorizer. CloudFront serves all browser routes from the SPA and proxies
 `/api/*` and `/health` to API Gateway.
 
-Apply infrastructure through the GitHub workflows. Use local Terraform only
-for read-only plans or when deliberately bootstrapping the development auth
-environment with an authenticated AWS profile.
+Apply production infrastructure through GitHub workflows. Provision local
+development infrastructure only through `scripts/dev-aws-setup.sh`, which
+selects the correct per-machine state key and Terraform variables.
 
 The CloudFront distribution serves only `https://humbugg.com` as canonical.
 Viewer requests for `www.humbugg.com` or `humbugg.andreas.services` receive a
@@ -109,5 +109,5 @@ AWS names Cognito's custom-SES mode `DEVELOPER`; it is unrelated to Humbugg's
 development environment. The production Cognito pool uses that mode to send
 signup and recovery messages from the Humbugg SES identity. Those messages
 bypass the Mailer API, while the SES authentication configuration set sends
-their delivery feedback through Mailer. The development Cognito pool retains
-AWS's managed `COGNITO_DEFAULT` sender.
+their delivery feedback through Mailer. Per-machine development Cognito pools
+retain AWS's managed `COGNITO_DEFAULT` sender.

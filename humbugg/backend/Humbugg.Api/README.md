@@ -20,7 +20,7 @@ docker compose up --build
 ```
 
 The containerized local API is available at `http://localhost:5001` and creates
-the required tables in DynamoDB Local. Product email goes to Mailer at
+the per-machine tables provisioned in AWS DynamoDB. Product email goes to Mailer at
 `http://host.docker.internal:8026` and appears only in Mailpit at
 `http://localhost:8025`; Mailpit has no outbound relay. The local stack never
 connects to production tables.

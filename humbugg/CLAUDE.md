@@ -51,35 +51,93 @@ CloudFront permanently redirects non-apex requests to `https://humbugg.com`.
 
 ## Local Development
 
+Local development uses real, per-machine AWS resources rather than LocalStack
+or shared developer resources. `dev-aws-setup.sh` persists a random UUID at
+`~/.config/andreas-services/humbugg/machine-id`; that UUID scopes Terraform
+state, DynamoDB tables, the private S3 bucket, and the Cognito pool. A developer
+may therefore use multiple machines without collisions.
+
 ```bash
-# One-time toolchain setup (from the repo root): installs .NET SDK 10, Node,
-# Terraform, tflint, etc. via Homebrew. Idempotent — safe to re-run.
-./scripts/dev-setup.sh && ./humbugg/scripts/dev-setup.sh
+# One-time toolchain and authentication setup (from the repo root).
+# The shared setup includes the Stripe CLI from stripe/stripe-cli/stripe.
+./humbugg/scripts/dev-setup.sh --profile personal
+stripe login
 
-# Backend
-cd humbugg/backend
-dotnet restore Humbugg.slnx
-docker compose up --build                                  # http://localhost:5001
+# Authenticate npm for the private design system package.
+export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
+eval "$(./scripts/github-packages-auth.sh --export)"
+npm --prefix humbugg/frontend install --legacy-peer-deps
 
-# Frontend (separate terminal)
-cd humbugg/frontend
-# The frontend depends on the private @ansavva/design-system package, so npm
-# needs a read:packages token exposed as NODE_AUTH_TOKEN (run from repo root):
-#   export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
-#   eval "$(./scripts/github-packages-auth.sh --export)"
-npm install --legacy-peer-deps
-npm run dev         # http://localhost:5173
+# Read-only validation of shared tools, .NET, AWS resources, and env files.
+./humbugg/scripts/dev-setup.sh --profile personal --check
+
+# Start backend, frontend, and Stripe webhook forwarding together.
+./humbugg/scripts/dev-up.sh --profile personal
 ```
+
+The combined launcher retrieves the current Stripe CLI `whsec_...` signing
+secret before the backend starts, stores it only in the ignored `backend/.env`,
+and supervises all three processes. It does not generate Stripe API keys;
+`HUMBUGG_STRIPE_MODE=test`, the test publishable key, and the test secret key
+must already be configured according to `docs/stripe-setup.md`. Ctrl+C stops
+the complete session. Mailer and Mailpit remain a separate shared dependency
+and should be started with `cd mailer && docker compose up --build`.
+
+### Development scripts
+
+All commands run from the repository root:
+
+| Script | Agent/developer usage |
+|---|---|
+| `scripts/dev-setup.sh` | Idempotently install shared tooling; use `--check` for a read-only prerequisite audit |
+| `humbugg/scripts/dev-setup.sh` | Canonical dependency chain: shared setup → .NET 10 → per-machine AWS setup; accepts `--profile`, `--region`, `--yes`, `--check` |
+| `humbugg/scripts/dev-aws-setup.sh` | Lower-level AWS provision/check command called by canonical setup; accepts `--profile`, `--region`, `--yes`, `--check` |
+| `humbugg/scripts/dev-up.sh` | Preferred full local startup; accepts `--profile`, `--region`, `--forward-to` |
+| `humbugg/scripts/dev-up-backend.sh` | Backend-only startup; exports temporary AWS credentials into Docker Compose without writing them to disk |
+| `humbugg/scripts/dev-up-frontend.sh` | Frontend-only startup; validates `.env.local` and installed dependencies first |
+| `humbugg/scripts/dev-up-stripe.sh` | Stripe-only listener for the billing webhook's exact event allowlist; copy its `whsec_...` value into `backend/.env` and restart the backend when running components separately |
+| `humbugg/scripts/dev-logs-backend.sh` | Follow the backend container logs; accepts Docker Compose log options such as `--tail 200` |
+| `humbugg/scripts/dev-aws-reset.sh` | Destructive data reset scoped to this machine; run with `--dry-run` first; `--skip-cognito` preserves users |
+| `humbugg/scripts/dev-aws-destroy.sh` | Destroy this machine's AWS resources; the persistent UUID is deliberately retained |
+
+`humbugg/scripts/dev-aws-common.sh` is a sourced implementation helper, not a
+user command. AWS commands default to `$AWS_PROFILE`/`default` and
+`$AWS_REGION`/`$AWS_DEFAULT_REGION`/`us-east-1`; use an explicit profile during
+interactive development.
+
+To start components separately:
+
+```bash
+./humbugg/scripts/dev-up-backend.sh --profile personal  # http://localhost:5001
+./humbugg/scripts/dev-up-frontend.sh                    # http://localhost:5173
+./humbugg/scripts/dev-up-stripe.sh                      # forwards billing webhooks
+./humbugg/scripts/dev-logs-backend.sh                   # follows backend logs
+```
+
+To reset or remove only the current machine's environment:
+
+```bash
+./humbugg/scripts/dev-aws-reset.sh --profile personal --dry-run
+./humbugg/scripts/dev-aws-reset.sh --profile personal
+./humbugg/scripts/dev-aws-destroy.sh --profile personal
+```
+
+The reset script verifies the Terraform machine UUID and exact AWS resource
+prefix before deleting data. It recreates the DynamoDB tables through Terraform,
+empties S3, and deletes Cognito users unless `--skip-cognito` is supplied. It
+retains the pool and app client. The destroy script removes all per-machine AWS
+resources but retains the UUID and state identity for safe reprovisioning.
 
 See [`scripts/README.md`](../scripts/README.md) for the setup scripts and GitHub Packages auth.
 
-The frontend expects these Vite env vars (create `frontend/.env.local`):
+`dev-aws-setup.sh` generates these frontend values in the ignored
+`frontend/.env.local` file; do not create shared or committed values manually:
 
 ```
-VITE_API_URL=http://localhost:5001
-VITE_COGNITO_USER_POOL_ID=us-east-1_xxx
-VITE_COGNITO_CLIENT_ID=xxx
+VITE_COGNITO_USER_POOL_ID=<generated by scripts/dev-aws-setup.sh>
+VITE_COGNITO_CLIENT_ID=<generated by scripts/dev-aws-setup.sh>
 VITE_AWS_REGION=us-east-1
+VITE_APP_BASE_URL=http://localhost:5173
 ```
 
 ## Environment Variables (Prod)
@@ -96,7 +154,7 @@ All secrets/values live in the `humbugg-production` GitHub Actions environment. 
 | `/humbugg/prod/s3-bucket` | Frontend S3 bucket |
 | `/humbugg/prod/cf-dist-id` | CloudFront distribution ID |
 | `/humbugg/prod/email-from-address` | Verified transactional sender (`no-reply@humbugg.com`) |
-| _(env var, not SSM)_ `HUMBUGG_APP_BUCKET` | Shared application object bucket (`humbugg-app-production`, in the `storage` module); set literally in `update-lambda`. Profile photos live under the `avatars/` prefix — private, written by the Lambda under `avatars/*` (least-privilege IAM) and served read-only at `/avatars/*` through the app CloudFront distribution via OAC. Locally this bucket is provided by LocalStack (`S3_ENDPOINT_URL`). Avatar URLs derive from `APP_BASE_URL` unless `HUMBUGG_AVATAR_BASE_URL` overrides it. |
+| _(env var, not SSM)_ `HUMBUGG_APP_BUCKET` | Shared application object bucket (`humbugg-app-production`, in the `storage` module); set literally in `update-lambda`. Profile photos live under the `avatars/` prefix — private, written by the Lambda under `avatars/*` (least-privilege IAM) and served read-only at `/avatars/*` through the app CloudFront distribution via OAC. Local development uses the per-machine AWS bucket created by `scripts/dev-aws-setup.sh`. Avatar URLs derive from `APP_BASE_URL` unless `HUMBUGG_AVATAR_BASE_URL` overrides it. |
 | `/humbugg/prod/support-forward-to` | SecureString: private inbox for `support@humbugg.com` forwarding (human secret; see `docs/support-forwarding.md`) |
 | `/humbugg/prod/stripe/publishable-key` | Stripe **test-mode** publishable key (`String`; Terraform `billing` module) |
 | `/humbugg/prod/stripe/secret-key` | Stripe **test-mode** secret key (`SecureString`; Terraform `billing` module) |
@@ -163,7 +221,7 @@ reference, and the image bytes live in the dedicated `humbugg-avatars-production
 (`SixLabors.ImageSharp`) before storage; when no photo is set, the frontend renders an initials avatar.
 
 Production tables are accessed through the AWS SDK for .NET directly from the
-Lambda (no ORM, no VPC). Local app runs use DynamoDB Local on `localhost:8001`
+Lambda (no ORM, no VPC). Local app runs use per-machine AWS DynamoDB tables
 and the unsigned shared Mailer API with Mailpit for product email. Mailpit never
 relays externally. Unit tests retain the in-memory capture adapter and ledger.
 Production signs Mailer API requests with the backend Lambda role, and a

@@ -19,7 +19,7 @@ export function Shell({ children, compact = false }: { children: ReactNode; comp
   const navigate = useNavigate();
   return (
     <div className="min-h-screen bg-bg text-ink">
-      <header className="border-b border-line/80 bg-bg/95 backdrop-blur">
+      <header className="relative z-40 border-b border-line/80 bg-bg/95 backdrop-blur">
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 lg:px-8">
           <Brand />
           <nav className="flex items-center gap-2" aria-label="Primary navigation">

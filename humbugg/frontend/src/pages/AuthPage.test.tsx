@@ -38,6 +38,8 @@ import AuthPage from './AuthPage';
 function fillCredentials() {
   fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'alex@example.com' } });
   fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'Password1' } });
+  const confirmation = screen.queryByLabelText(/confirm password/i, { selector: 'input' });
+  if (confirmation) fireEvent.change(confirmation, { target: { value: 'Password1' } });
 }
 
 describe('AuthPage signup consent', () => {
@@ -76,5 +78,84 @@ describe('AuthPage signup consent', () => {
     expect(stashed.version).toBeTruthy();
     expect(new Date(stashed.accepted_at).toISOString()).toBe(stashed.accepted_at); // valid UTC ISO-8601
     await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith('/confirm'));
+  });
+
+  it('requires matching password confirmation before registering', async () => {
+    render(<AuthPage mode="signup" />);
+    fillCredentials();
+    fireEvent.change(screen.getByLabelText(/confirm password/i, { selector: 'input' }), { target: { value: 'Different1' } });
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Passwords must match.'));
+    expect(mocks.register).not.toHaveBeenCalled();
+  });
+
+  it('lets the user reveal and hide both password entries', () => {
+    render(<AuthPage mode="signup" />);
+    const password = screen.getByLabelText(/^password/i) as HTMLInputElement;
+    const confirmation = screen.getByLabelText(/confirm password/i, { selector: 'input' }) as HTMLInputElement;
+
+    expect(password).toHaveAttribute('type', 'password');
+    expect(confirmation).toHaveAttribute('type', 'password');
+    fireEvent.click(screen.getByRole('button', { name: /show password/i }));
+    fireEvent.click(screen.getByRole('button', { name: /show confirm password/i }));
+    expect(password).toHaveAttribute('type', 'text');
+    expect(confirmation).toHaveAttribute('type', 'text');
+    fireEvent.click(screen.getByRole('button', { name: /hide password/i }));
+    fireEvent.click(screen.getByRole('button', { name: /hide confirm password/i }));
+    expect(password).toHaveAttribute('type', 'password');
+    expect(confirmation).toHaveAttribute('type', 'password');
+  });
+});
+
+describe('AuthPage password visibility', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionStorage.clear();
+  });
+
+  afterEach(() => cleanup());
+
+  it('lets the user reveal their login password', () => {
+    render(<AuthPage mode="login" />);
+    const password = screen.getByLabelText(/^password/i) as HTMLInputElement;
+
+    fireEvent.click(screen.getByRole('button', { name: /show password/i }));
+    expect(password).toHaveAttribute('type', 'text');
+  });
+});
+
+describe('AuthPage login routing', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.login.mockResolvedValue(undefined);
+    sessionStorage.clear();
+  });
+
+  afterEach(() => cleanup());
+
+  it('sends a newly registered account to profile setup instead of a stale protected destination', async () => {
+    sessionStorage.setItem('humbugg:consent', JSON.stringify({ version: 'test', accepted_at: new Date().toISOString() }));
+    sessionStorage.setItem('humbugg:returnTo', '/app/settings');
+    render(<AuthPage mode="login" />);
+    fillCredentials();
+
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => expect(mocks.login).toHaveBeenCalledWith('alex@example.com', 'Password1'));
+    expect(mocks.navigate).toHaveBeenCalledWith('/app');
+    expect(sessionStorage.getItem('humbugg:returnTo')).toBeNull();
+  });
+
+  it('uses and clears a protected destination for an existing account', async () => {
+    sessionStorage.setItem('humbugg:returnTo', '/app/settings');
+    render(<AuthPage mode="login" />);
+    fillCredentials();
+
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith('/app/settings'));
+    expect(sessionStorage.getItem('humbugg:returnTo')).toBeNull();
   });
 });

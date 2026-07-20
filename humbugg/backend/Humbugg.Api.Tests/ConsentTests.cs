@@ -106,7 +106,7 @@ public sealed class ConsentTests
             // Mirror the repository's if_not_exists semantics: consent is written once and never overwritten.
             var record = new ProfileRecord(
                 userId, displayName, existing?.CreatedAt ?? "now", "now", existing?.AvatarKey,
-                nonEssentialEmailsEnabled ?? existing?.NonEssentialEmailsEnabled ?? true,
+                nonEssentialEmailsEnabled ?? existing?.NonEssentialEmailsEnabled ?? false,
                 existing?.ConsentVersion ?? consent?.Version,
                 existing?.ConsentAcceptedAt ?? consent?.AcceptedAt);
             Items[userId] = record;

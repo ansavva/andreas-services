@@ -15,6 +15,7 @@ internal interface IAvatarStore
 {
     Task<string> SaveAsync(string userId, NormalizedAvatarBytes image, CancellationToken cancellationToken = default);
     Task DeleteAsync(string key, CancellationToken cancellationToken = default);
+    string ReadUrl(string key, string fallbackBaseUrl);
 }
 
 internal readonly record struct NormalizedAvatarBytes(byte[] Bytes, string ContentType, string Extension);
@@ -26,6 +27,10 @@ internal readonly record struct NormalizedAvatarBytes(byte[] Bytes, string Conte
 /// </summary>
 internal sealed class S3AvatarStore(IAmazonS3 s3, HumbuggSettings settings) : IAvatarStore
 {
+    private readonly bool usePresignedReads = string.Equals(
+        Environment.GetEnvironmentVariable("HUMBUGG_AVATAR_PRESIGNED_READS"), "true",
+        StringComparison.OrdinalIgnoreCase);
+
     public async Task<string> SaveAsync(string userId, NormalizedAvatarBytes image, CancellationToken cancellationToken = default)
     {
         var key = $"avatars/{userId}/{Guid.NewGuid():N}.{image.Extension}";
@@ -52,6 +57,16 @@ internal sealed class S3AvatarStore(IAmazonS3 s3, HumbuggSettings settings) : IA
             Key = key,
         }, cancellationToken);
     }
+
+    public string ReadUrl(string key, string fallbackBaseUrl) => usePresignedReads
+        ? s3.GetPreSignedURL(new GetPreSignedUrlRequest
+        {
+            BucketName = settings.AppBucket,
+            Key = key,
+            Verb = HttpVerb.GET,
+            Expires = DateTime.UtcNow.AddHours(1),
+        })
+        : $"{fallbackBaseUrl.TrimEnd('/')}/{key}";
 }
 
 /// <summary>
@@ -75,4 +90,6 @@ internal sealed class InMemoryAvatarStore : IAvatarStore
         if (!string.IsNullOrWhiteSpace(key)) Objects.TryRemove(key, out _);
         return Task.CompletedTask;
     }
+
+    public string ReadUrl(string key, string fallbackBaseUrl) => $"{fallbackBaseUrl.TrimEnd('/')}/{key}";
 }
