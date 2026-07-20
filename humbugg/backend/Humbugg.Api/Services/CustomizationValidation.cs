@@ -34,14 +34,19 @@ internal static partial class CustomizationValidation
     {
         if (string.IsNullOrWhiteSpace(payload)) return null;
         var bytes = AvatarImage.DecodePayload(payload);
-        using var image = SixLabors.ImageSharp.Image.Load(bytes);
-        if (image.Width > 6000 || image.Height > 6000) throw ApiException.BadRequest("The image is too large.");
-        image.Metadata.ExifProfile = null; image.Metadata.IptcProfile = null; image.Metadata.XmpProfile = null;
-        image.Mutate(x => x.Resize(new ResizeOptions { Size = new(1200, 600), Mode = ResizeMode.Crop }));
-        using var output = new MemoryStream();
-        image.Save(output, new JpegEncoder { Quality = 72 });
-        if (output.Length > 240_000) throw ApiException.BadRequest("The processed image is too large.");
-        return $"data:image/jpeg;base64,{Convert.ToBase64String(output.ToArray())}";
+        Image image;
+        try { image = SixLabors.ImageSharp.Image.Load(bytes); }
+        catch (UnknownImageFormatException) { throw ApiException.BadRequest("That file is not a readable image."); }
+        using (image)
+        {
+            if (image.Width > 6000 || image.Height > 6000) throw ApiException.BadRequest("The image is too large.");
+            image.Metadata.ExifProfile = null; image.Metadata.IptcProfile = null; image.Metadata.XmpProfile = null;
+            image.Mutate(x => x.Resize(new ResizeOptions { Size = new(1200, 600), Mode = ResizeMode.Crop }));
+            using var output = new MemoryStream();
+            image.Save(output, new JpegEncoder { Quality = 72 });
+            if (output.Length > 240_000) throw ApiException.BadRequest("The processed image is too large.");
+            return $"data:image/jpeg;base64,{Convert.ToBase64String(output.ToArray())}";
+        }
     }
 
     [GeneratedRegex(@"<[^>]*>|https?://|www\.", RegexOptions.IgnoreCase)]

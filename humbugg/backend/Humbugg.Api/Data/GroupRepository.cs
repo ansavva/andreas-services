@@ -178,7 +178,8 @@ internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settin
         ["created_at"] = DynamoValues.S(group.CreatedAt),
         ["updated_at"] = DynamoValues.S(group.UpdatedAt),
         ["spending_limit_cents"] = group.SpendingLimitCents is null ? new AttributeValue { NULL = true } : DynamoValues.N(group.SpendingLimitCents.Value)
-        ,["customization"] = CustomizationValue(group.Customization)
+        ,
+        ["customization"] = CustomizationValue(group.Customization)
     };
 
     private static GroupRecord Read(IReadOnlyDictionary<string, AttributeValue> item) => new(
@@ -189,14 +190,17 @@ internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settin
         item.String("created_at"), item.String("updated_at"), ReadCustomization(item));
     private static AttributeValue CustomizationValue(ExchangeCustomization? value) => value is null
         ? new AttributeValue { NULL = true }
-        : new AttributeValue { M = new()
+        : new AttributeValue
         {
-            ["greeting"] = DynamoValues.S(value.Greeting),
-            ["instructions"] = DynamoValues.S(value.Instructions),
-            ["primary_color"] = DynamoValues.S(value.PrimaryColor),
-            ["accent_color"] = DynamoValues.S(value.AccentColor),
-            ["image"] = DynamoValues.S(value.ImageDataUrl ?? "")
-        }};
+            M = new()
+            {
+                ["greeting"] = DynamoValues.S(value.Greeting),
+                ["instructions"] = DynamoValues.S(value.Instructions),
+                ["primary_color"] = DynamoValues.S(value.PrimaryColor),
+                ["accent_color"] = DynamoValues.S(value.AccentColor),
+                ["image"] = DynamoValues.S(value.ImageDataUrl ?? "")
+            }
+        };
     private static ExchangeCustomization? ReadCustomization(IReadOnlyDictionary<string, AttributeValue> item)
     {
         if (!item.TryGetValue("customization", out var value) || value.NULL == true || value.M is null) return null;

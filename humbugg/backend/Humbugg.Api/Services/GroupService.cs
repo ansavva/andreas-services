@@ -120,14 +120,17 @@ internal sealed class GroupService(
         var customization = CustomizationValidation.Validate(request);
         await groups.UpdateAsync(groupId, new Dictionary<string, AttributeValue>
         {
-            ["customization"] = new() { M = new()
+            ["customization"] = new()
             {
-                ["greeting"] = DynamoValues.S(customization.Greeting),
-                ["instructions"] = DynamoValues.S(customization.Instructions),
-                ["primary_color"] = DynamoValues.S(customization.PrimaryColor),
-                ["accent_color"] = DynamoValues.S(customization.AccentColor),
-                ["image"] = DynamoValues.S(customization.ImageDataUrl ?? "")
-            }}
+                M = new()
+                {
+                    ["greeting"] = DynamoValues.S(customization.Greeting),
+                    ["instructions"] = DynamoValues.S(customization.Instructions),
+                    ["primary_color"] = DynamoValues.S(customization.PrimaryColor),
+                    ["accent_color"] = DynamoValues.S(customization.AccentColor),
+                    ["image"] = DynamoValues.S(customization.ImageDataUrl ?? "")
+                }
+            }
         }, cancellationToken: cancellationToken);
         return await GetAsync(groupId, cancellationToken);
     }
