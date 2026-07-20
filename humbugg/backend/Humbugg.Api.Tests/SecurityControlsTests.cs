@@ -111,7 +111,7 @@ public sealed class SecurityControlsTests
         {
             var members = new List<MembershipRecord> { Member("other", organizer: false) };
             if (member is not null) members.Add(member);
-            Groups = new FakeGroups(Group(drawn), drawn);
+            Groups = new FakeGroups(Group(drawn, member?.IsOrganizer == true ? "user" : "owner"), drawn);
             Subject = new GroupService(
                 new FakeUser(), new FakeProfiles(), Groups, new FakeMembers(members), new FakeWishes(),
                 new MatchingService(), new PlanCatalog(new()), Audit, new FakeProductAnalytics(),
@@ -126,8 +126,8 @@ public sealed class SecurityControlsTests
             memberId, "group", memberId == "actor" ? "user" : $"user-{memberId}", memberId,
             organizer, true, "wish", "avoid", new Address("address"), "now", "now");
 
-        private static GroupRecord Group(bool drawn) => new(
-            "group", "owner", "Exchange", "", null, null, null, "USD", PlanCode.Free, null,
+        private static GroupRecord Group(bool drawn, string ownerUserId) => new(
+            "group", ownerUserId, "Exchange", "", null, null, null, "USD", PlanCode.Free, null,
             drawn ? GroupStatus.Drawn : GroupStatus.Open, "hash", [], "now", "now");
     }
 

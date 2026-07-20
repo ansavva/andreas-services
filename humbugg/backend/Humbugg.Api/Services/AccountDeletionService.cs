@@ -60,7 +60,7 @@ internal sealed class AccountDeletionService(
                 await memberships.DeleteAsync(membership.MemberId, cancellationToken);
                 continue;
             }
-            if (membership.IsOrganizer)
+            if (group.OwnerUserId == userId)
                 await DeleteOrganizedGroupAsync(group, userId, cancellationToken);
             else
                 await RemoveParticipantAsync(group, membership, pseudonym, userId, cancellationToken);
