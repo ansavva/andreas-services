@@ -5,7 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { api, ApiError } from '../api/client';
 import { Card, Shell, StatusMessage } from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-import type { ExclusionPair, GroupDetail, Membership, RecipientAssignment, RevealAssignment } from '../types';
+import type { ExclusionPair, GroupDetail, Membership, PlusPurchaseStatus, RecipientAssignment, RevealAssignment } from '../types';
 import { validateAddressForm } from '../utils/validation';
 
 export default function GroupPage() {
@@ -13,6 +13,8 @@ export default function GroupPage() {
   const [group, setGroup] = useState<GroupDetail | null>(null); const [me, setMe] = useState<Membership | null>(null); const [assignment, setAssignment] = useState<RecipientAssignment | null>(null);
   const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [success, setSuccess] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState(() => typeof window === 'undefined' ? '' : sessionStorage.getItem(`humbugg:invite:${groupId}`) ?? ''); const [reveal, setReveal] = useState<RevealAssignment[] | null>(null);
+  const [purchase, setPurchase] = useState<PlusPurchaseStatus | null>(null);
+  const checkoutReturn = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('checkout');
 
   async function load() {
     setLoading(true); setError(null);
@@ -23,6 +25,24 @@ export default function GroupPage() {
     finally { setLoading(false); }
   }
   useEffect(() => { void load(); }, [groupId]);
+  useEffect(() => {
+    if (checkoutReturn !== 'success') return;
+    let stopped = false; let timer: number | undefined; let attempts = 0;
+    async function poll() {
+      try {
+        const status = await api.getPlusPurchaseStatus(await auth.accessToken(), groupId);
+        if (stopped) return;
+        setPurchase(status);
+        attempts += 1;
+        if (status.status === 'pending' && attempts < 10)
+          timer = window.setTimeout(() => void poll(), 2000);
+      } catch (err) {
+        if (!stopped) setError(err instanceof Error ? err.message : 'Unable to confirm the Plus purchase.');
+      }
+    }
+    void poll();
+    return () => { stopped = true; if (timer !== undefined) window.clearTimeout(timer); };
+  }, [auth, checkoutReturn, groupId]);
   async function action(work: (token: string) => Promise<unknown>, message?: string) { setBusy(true); setError(null); setSuccess(null); try { await work(await auth.accessToken()); if (message) setSuccess(message); await load(); return true; } catch (err) { setError(err instanceof Error ? err.message : 'The action could not be completed.'); return false; } finally { setBusy(false); } }
 
   if (loading) return <Shell><div className="loading-panel">Opening your exchange…</div></Shell>;
@@ -33,6 +53,7 @@ export default function GroupPage() {
       <div className="flex flex-col gap-7">
         <section className="group-heading"><div><div className="flex items-center gap-3"><span className={`status-pill ${group.status === 'drawn' ? 'status-drawn' : ''}`}>{group.status === 'drawn' ? 'Draw complete' : 'Open for joining'}</span>{group.is_organizer && <span className="text-sm text-muted">You’re organizing</span>}</div><h1 className="mt-4 font-heading text-4xl font-semibold sm:text-5xl">{group.name}</h1><p className="mt-3 max-w-2xl leading-7 text-muted">{group.description || 'A little holiday magic is taking shape.'}</p></div><div className="group-meta"><span>{group.event_date ? new Date(`${group.event_date}T12:00:00`).toLocaleDateString() : 'Date TBD'}</span><span>{group.spending_limit != null ? `$${group.spending_limit.toFixed(2)} USD` : 'No set limit'}</span><span className="capitalize">{group.plan} plan</span><span>{group.members.filter((member) => member.is_participating).length}{group.plan === 'work' ? '' : ` / ${group.participant_limit}`} participating</span></div></section>
         <StatusMessage message={error} /><StatusMessage message={success} tone="success" />
+        {checkoutReturn && <CheckoutRecovery state={checkoutReturn} purchase={purchase} />}
 
         {assignment && <AssignmentCard assignment={assignment} />}
 
@@ -45,6 +66,16 @@ export default function GroupPage() {
       </div>
     </Shell>
   );
+}
+
+function CheckoutRecovery({ state, purchase }: { state: string; purchase: PlusPurchaseStatus | null }) {
+  if (state === 'canceled')
+    return <Card><p className="font-semibold">Checkout canceled</p><p className="mt-1 text-sm text-muted">Nothing was charged and this exchange is still on its current plan.</p></Card>;
+  if (purchase?.status === 'paid' && purchase.entitlement_id)
+    return <Card><p className="font-semibold text-success">Plus is ready</p><p className="mt-1 text-sm text-muted">Your one-time Plus purchase now applies to this exchange.</p>{purchase.receipt_url && <a className="mt-3 inline-block text-accent hover:underline" href={purchase.receipt_url} target="_blank" rel="noreferrer">View Stripe receipt</a>}</Card>;
+  if (purchase?.status && ['failed', 'expired', 'refunded'].includes(purchase.status))
+    return <Card><p className="font-semibold">Purchase not active</p><p className="mt-1 text-sm text-muted">Stripe reported this payment as {purchase.status}. Your exchange has not been upgraded.</p></Card>;
+  return <Card><p className="font-semibold">Finalizing your Plus purchase…</p><p className="mt-1 text-sm text-muted">Stripe returned successfully. Humbugg is securely confirming the payment before enabling Plus.</p></Card>;
 }
 
 function AssignmentCard({ assignment }: { assignment: RecipientAssignment }) {

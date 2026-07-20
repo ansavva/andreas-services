@@ -24,18 +24,28 @@ public enum StripeMode
 /// </summary>
 public sealed record StripeSettings
 {
-    private StripeSettings(StripeMode mode, string? publishableKey, string? secretKey, string? webhookSecret)
+    private StripeSettings(
+        StripeMode mode,
+        string? publishableKey,
+        string? secretKey,
+        string? webhookSecret,
+        string environment,
+        string returnBaseUrl)
     {
         Mode = mode;
         PublishableKey = publishableKey;
         SecretKey = secretKey;
         WebhookSecret = webhookSecret;
+        Environment = environment;
+        ReturnBaseUrl = returnBaseUrl.TrimEnd('/');
     }
 
     public StripeMode Mode { get; }
     public string? PublishableKey { get; }
     public string? SecretKey { get; }
     public string? WebhookSecret { get; }
+    public string Environment { get; }
+    public string ReturnBaseUrl { get; }
 
     /// <summary>True once test-mode credentials are configured and validated.</summary>
     public bool IsEnabled => Mode == StripeMode.Test;
@@ -45,22 +55,32 @@ public sealed record StripeSettings
     /// Throws <see cref="InvalidOperationException"/> if live mode is requested,
     /// if any live credential is supplied, or if a required test-mode value is missing.
     /// </summary>
-    public static StripeSettings Create(string? mode, string? publishableKey, string? secretKey, string? webhookSecret)
+    public static StripeSettings Create(
+        string? mode,
+        string? publishableKey,
+        string? secretKey,
+        string? webhookSecret,
+        string environment = "local",
+        string returnBaseUrl = "http://localhost:5173")
     {
         var settings = new StripeSettings(
             ParseMode(mode),
             Clean(publishableKey),
             Clean(secretKey),
-            Clean(webhookSecret));
+            Clean(webhookSecret),
+            string.IsNullOrWhiteSpace(environment) ? "local" : environment.Trim(),
+            string.IsNullOrWhiteSpace(returnBaseUrl) ? "http://localhost:5173" : returnBaseUrl.Trim());
         settings.Validate();
         return settings;
     }
 
     public static StripeSettings FromEnvironment() => Create(
-        Environment.GetEnvironmentVariable("HUMBUGG_STRIPE_MODE"),
-        Environment.GetEnvironmentVariable("HUMBUGG_STRIPE_PUBLISHABLE_KEY"),
-        Environment.GetEnvironmentVariable("HUMBUGG_STRIPE_SECRET_KEY"),
-        Environment.GetEnvironmentVariable("HUMBUGG_STRIPE_WEBHOOK_SECRET"));
+        System.Environment.GetEnvironmentVariable("HUMBUGG_STRIPE_MODE"),
+        System.Environment.GetEnvironmentVariable("HUMBUGG_STRIPE_PUBLISHABLE_KEY"),
+        System.Environment.GetEnvironmentVariable("HUMBUGG_STRIPE_SECRET_KEY"),
+        System.Environment.GetEnvironmentVariable("HUMBUGG_STRIPE_WEBHOOK_SECRET"),
+        System.Environment.GetEnvironmentVariable("HUMBUGG_ENVIRONMENT") ?? "local",
+        System.Environment.GetEnvironmentVariable("APP_BASE_URL") ?? "http://localhost:5173");
 
     private static StripeMode ParseMode(string? raw) => raw?.Trim().ToLowerInvariant() switch
     {

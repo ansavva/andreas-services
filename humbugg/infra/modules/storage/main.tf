@@ -177,6 +177,36 @@ resource "aws_dynamodb_table" "email_messages" {
   tags = var.tags
 }
 
+# One-table billing ledger. Payment rows are keyed by a server-generated purchase id;
+# Stripe event marker rows share the table and make webhook processing idempotent.
+resource "aws_dynamodb_table" "billing" {
+  name         = "${var.project}-billing"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "record_id"
+
+  attribute {
+    name = "record_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "group_id"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "group_id-index"
+    hash_key        = "group_id"
+    projection_type = "ALL"
+  }
+
+  server_side_encryption { enabled = true }
+  point_in_time_recovery { enabled = true }
+  deletion_protection_enabled = true
+
+  tags = var.tags
+}
+
 # General-purpose application object bucket. Today it holds user profile photos under the avatars/
 # prefix — written only by the backend Lambda (least-privilege policy in the compute module) and read
 # only by CloudFront via Origin Access Control on the /avatars/* path — and is the single place for any

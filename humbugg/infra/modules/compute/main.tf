@@ -119,6 +119,7 @@ resource "aws_iam_role_policy" "lambda_dynamodb" {
         "dynamodb:Scan",
         "dynamodb:BatchWriteItem",
         "dynamodb:BatchGetItem",
+        "dynamodb:TransactWriteItems",
       ]
       Resource = concat(
         values(var.dynamodb_table_arns),
@@ -359,6 +360,15 @@ resource "aws_apigatewayv2_route" "backend" {
   target             = "integrations/${aws_apigatewayv2_integration.backend.id}"
   authorization_type = "JWT"
   authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+# Stripe signs the raw request body and cannot present a Cognito JWT. This exact,
+# method-specific route bypasses only the gateway authorizer; ASP.NET still verifies
+# Stripe-Signature before any billing state is read or written.
+resource "aws_apigatewayv2_route" "stripe_webhook" {
+  api_id    = aws_apigatewayv2_api.backend.id
+  route_key = "POST /api/billing/stripe/webhook"
+  target    = "integrations/${aws_apigatewayv2_integration.backend.id}"
 }
 
 resource "aws_apigatewayv2_route" "health" {

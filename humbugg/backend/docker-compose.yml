@@ -39,6 +39,7 @@ services:
       # Path-style LocalStack URL so the avatar URL derived from the stored key resolves in dev.
       HUMBUGG_AVATAR_BASE_URL: http://localhost:4566/humbugg-app-local
       HUMBUGG_PROFILES_TABLE: humbugg-profiles
+      HUMBUGG_BILLING_TABLE: humbugg-billing
       HUMBUGG_GROUPS_TABLE: humbugg-groups
       HUMBUGG_GROUPMEMBERS_TABLE: humbugg-groupmembers
       HUMBUGG_DRAWS_TABLE: humbugg-draws
@@ -57,6 +58,11 @@ services:
       HUMBUGG_PLUS_PRICE_ID: ${HUMBUGG_PLUS_PRICE_ID:-}
       HUMBUGG_WORK_PRODUCT_ID: ${HUMBUGG_WORK_PRODUCT_ID:-}
       HUMBUGG_WORK_PRICE_ID: ${HUMBUGG_WORK_PRICE_ID:-}
+      HUMBUGG_ENVIRONMENT: local
+      HUMBUGG_STRIPE_MODE: ${HUMBUGG_STRIPE_MODE:-disabled}
+      HUMBUGG_STRIPE_PUBLISHABLE_KEY: ${HUMBUGG_STRIPE_PUBLISHABLE_KEY:-}
+      HUMBUGG_STRIPE_SECRET_KEY: ${HUMBUGG_STRIPE_SECRET_KEY:-}
+      HUMBUGG_STRIPE_WEBHOOK_SECRET: ${HUMBUGG_STRIPE_WEBHOOK_SECRET:-}
       COGNITO_REGION: ${COGNITO_REGION:-us-east-1}
       COGNITO_USER_POOL_ID: ${COGNITO_USER_POOL_ID:-us-east-1_example}
       COGNITO_CLIENT_ID: ${COGNITO_CLIENT_ID:-humbugg-web}

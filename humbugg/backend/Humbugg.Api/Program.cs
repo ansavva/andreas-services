@@ -180,6 +180,7 @@ builder.Services.AddScoped<IMembershipRepository, MembershipRepository>();
 builder.Services.AddScoped<IAuditRepository, AuditRepository>();
 builder.Services.AddScoped<IAuditActorAnonymizer, AuditActorAnonymizer>();
 builder.Services.AddScoped<IAnalyticsSink, DynamoDbAnalyticsSink>();
+builder.Services.AddScoped<IBillingRepository, BillingRepository>();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddScoped<IRequestCorrelation, HttpRequestCorrelation>();
 builder.Services.AddScoped<IAuditTrail, AuditTrail>();
@@ -188,6 +189,8 @@ builder.Services.AddScoped<IProfileService, ProfileService>();
 builder.Services.AddScoped<IGroupService, GroupService>();
 builder.Services.AddScoped<IAccountDeletionService, AccountDeletionService>();
 builder.Services.AddScoped<IDataExportService, DataExportService>();
+builder.Services.AddScoped<IBillingService, BillingService>();
+builder.Services.AddSingleton<IStripeGateway, StripeGateway>();
 builder.Services.AddSingleton<IMatchingService, MatchingService>();
 if (!string.IsNullOrWhiteSpace(settings.DynamoDbEndpointUrl))
     builder.Services.AddHostedService<DynamoDbBootstrap>();
@@ -228,7 +231,8 @@ public sealed record HumbuggSettings(
     string MailerServiceId = "humbugg",
     string AppBucket = "",
     string AvatarBaseUrl = "http://localhost:5173",
-    string? S3EndpointUrl = null)
+    string? S3EndpointUrl = null,
+    string BillingRecordsTable = "humbugg-billing")
 {
     public static HumbuggSettings FromEnvironment()
     {
@@ -255,6 +259,7 @@ public sealed record HumbuggSettings(
             Environment.GetEnvironmentVariable("HUMBUGG_MAILER_SERVICE_ID") ?? "humbugg",
             Environment.GetEnvironmentVariable("HUMBUGG_APP_BUCKET") ?? "",
             (Environment.GetEnvironmentVariable("HUMBUGG_AVATAR_BASE_URL")?.TrimEnd('/')) ?? appBaseUrl,
-            Environment.GetEnvironmentVariable("S3_ENDPOINT_URL"));
+            Environment.GetEnvironmentVariable("S3_ENDPOINT_URL"),
+            Environment.GetEnvironmentVariable("HUMBUGG_BILLING_TABLE") ?? "humbugg-billing");
     }
 }

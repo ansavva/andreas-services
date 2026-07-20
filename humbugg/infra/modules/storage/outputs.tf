@@ -22,6 +22,7 @@ output "dynamodb_table_arns" {
     draws            = aws_dynamodb_table.draws.arn
     audit_events     = aws_dynamodb_table.audit_events.arn
     analytics_events = aws_dynamodb_table.analytics_events.arn
+    billing          = aws_dynamodb_table.billing.arn
   }
 }
 

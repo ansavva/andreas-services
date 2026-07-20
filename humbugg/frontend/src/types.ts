@@ -1,5 +1,6 @@
 export type GroupStatus = 'open' | 'drawn';
 export type PlanCode = 'free' | 'plus' | 'work';
+export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'expired' | 'refunded';
 
 export interface ApiErrorPayload {
   error: { code: string; message: string };
@@ -106,6 +107,16 @@ export interface GroupDetail extends GroupSummary {
   exclusions: ExclusionPair[];
   members: Membership[];
   invite_url?: string;
+}
+
+export interface PlusPurchaseStatus {
+  group_id: string;
+  status?: PaymentStatus | null;
+  checkout_session_id?: string | null;
+  checkout_url?: string | null;
+  receipt_url?: string | null;
+  entitlement_id?: string | null;
+  updated_at?: string | null;
 }
 
 export interface RecipientAssignment {

@@ -10,8 +10,9 @@ ownership, and the gate that keeps live mode disabled.
 > **issue #159**. The backend refuses any live-mode key or `HUMBUGG_STRIPE_MODE=live`
 > at startup, and the Terraform billing module only ever stores test-mode values.
 
-Scope of this issue (**#123**): configuration surface + secure wiring only. The
-Checkout session and webhook handling are separate work (issues **#139** / **#149**).
+Issue **#123** established the configuration surface and secure wiring. Issue
+**#139** adds Checkout Session creation, signature-verified webhook processing,
+the idempotent payment ledger, and per-exchange Plus entitlement writes.
 
 ---
 
@@ -38,6 +39,39 @@ plan defaults (`HUMBUGG_PLUS_PRICE_CENTS=1200`, `HUMBUGG_WORK_PRICE_CENTS=9900`)
 
 > TODO (owner action): create these in **Test mode** and copy the four IDs. All
 > four are **test-mode** IDs (`prod_...` / `price_...`, from a test account).
+
+For Plus, the repository provides an idempotent provisioning command. After
+authenticating the Stripe CLI against the Humbugg test account, run:
+
+```bash
+./humbugg/scripts/configure-stripe-plus-test.sh
+```
+
+It reuses a tagged Plus product and active `$12 USD` one-time price when they
+already exist, creates only missing resources, verifies the resulting price,
+and prints the two GitHub environment variable assignments. It never accepts
+or stores a secret key.
+
+### Register the production test webhook
+
+In the Stripe Dashboard while **Viewing test data**, create an endpoint for:
+
+```text
+https://humbugg.com/api/billing/stripe/webhook
+```
+
+Subscribe only to:
+
+- `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `checkout.session.async_payment_failed`
+- `checkout.session.expired`
+- `charge.succeeded`
+- `charge.refunded`
+
+Copy that endpoint's `whsec_...` value into the GitHub environment secret
+`HUMBUGG_STRIPE_WEBHOOK_SECRET`. This is separate from the temporary signing
+secret printed by `stripe listen` for localhost.
 
 Product and price IDs are **configuration, not code** — the backend
 `PlanCatalog` reads them from environment variables (see the mapping below), and
@@ -89,7 +123,9 @@ No live key, real card, or payment method is ever required.
 3. To exercise billing locally, install the [Stripe CLI](https://stripe.com/docs/stripe-cli):
    ```bash
    stripe login                       # test-mode account
-   stripe listen --forward-to localhost:5001/api/stripe/webhook
+   stripe listen \
+     --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,checkout.session.expired,charge.succeeded,charge.refunded \
+     --forward-to localhost:5001/api/billing/stripe/webhook
    ```
    `stripe listen` prints a `whsec_...` webhook signing secret. Put the test-mode
    values into your env file:
@@ -103,6 +139,11 @@ No live key, real card, or payment method is ever required.
    and `stripe trigger` fixtures for events. The backend's `StripeSettings`
    validation rejects any `sk_live_` / `pk_live_` / `rk_live_` credential, so a
    live key cannot be used by accident.
+
+The local Checkout return URLs use `http://localhost:5173/app/groups/<group-id>`;
+Stripe permits HTTP only for localhost testing. The group page polls the signed-in
+billing status after a successful return, so a webhook that arrives slightly later
+shows a safe “finalizing” state instead of implying that Plus was already granted.
 
 ## 5. Rotation procedure
 
