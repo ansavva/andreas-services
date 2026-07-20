@@ -4,6 +4,7 @@ import type {
   GroupSummary,
   Membership,
   PolicyConsent,
+  PlusPurchaseStatus,
   Profile,
   RecipientAssignment,
   RevealAssignment,
@@ -61,6 +62,8 @@ export const api = {
   listGroups: (token: string) => request<GroupSummary[]>('/groups', token),
   createGroup: (token: string, data: Record<string, unknown>) => request<GroupDetail>('/groups', token, json('POST', data)),
   getGroup: (token: string, id: string) => request<GroupDetail>(`/groups/${id}`, token),
+  getPlusPurchaseStatus: (token: string, id: string) =>
+    request<PlusPurchaseStatus>(`/groups/${id}/billing/plus`, token),
   updateGroup: (token: string, id: string, data: Record<string, unknown>) => request<GroupDetail>(`/groups/${id}`, token, json('PATCH', data)),
   deleteGroup: (token: string, id: string) => request<void>(`/groups/${id}`, token, json('DELETE')),
   rotateInvite: (token: string, id: string) => request<{ invite_url: string }>(`/groups/${id}/invite`, token, json('POST')),

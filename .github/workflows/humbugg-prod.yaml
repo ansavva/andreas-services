@@ -319,6 +319,7 @@ jobs:
             --arg draws_table "humbugg-draws" \
             --arg audit_events_table "humbugg-audit-events" \
             --arg analytics_events_table "humbugg-analytics-events" \
+            --arg billing_table "humbugg-billing" \
             --arg analytics_enabled "${{ vars.HUMBUGG_ANALYTICS_ENABLED || 'true' }}" \
             --arg email_messages_table "humbugg-email-messages" \
             --arg app_bucket "humbugg-app-production" \
@@ -348,6 +349,7 @@ jobs:
               HUMBUGG_DRAWS_TABLE: $draws_table,
               HUMBUGG_AUDIT_EVENTS_TABLE: $audit_events_table,
               HUMBUGG_ANALYTICS_EVENTS_TABLE: $analytics_events_table,
+              HUMBUGG_BILLING_TABLE: $billing_table,
               HUMBUGG_ANALYTICS_ENABLED: $analytics_enabled,
               HUMBUGG_EMAIL_MESSAGES_TABLE: $email_messages_table,
               HUMBUGG_APP_BUCKET: $app_bucket,
@@ -368,7 +370,8 @@ jobs:
               HUMBUGG_STRIPE_MODE: $stripe_mode,
               HUMBUGG_STRIPE_PUBLISHABLE_KEY: $stripe_publishable_key,
               HUMBUGG_STRIPE_SECRET_KEY: $stripe_secret_key,
-              HUMBUGG_STRIPE_WEBHOOK_SECRET: $stripe_webhook_secret
+              HUMBUGG_STRIPE_WEBHOOK_SECRET: $stripe_webhook_secret,
+              HUMBUGG_ENVIRONMENT: "production"
             }}' > /tmp/env-humbugg-backend.json
 
           jq -n \

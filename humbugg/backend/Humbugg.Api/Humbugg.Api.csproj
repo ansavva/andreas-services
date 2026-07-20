@@ -19,5 +19,6 @@
     <PackageReference Include="Microsoft.Bcl.Cryptography" Version="10.0.10" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.10" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+    <PackageReference Include="Stripe.net" Version="50.3.0" />
   </ItemGroup>
 </Project>
