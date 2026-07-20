@@ -13,6 +13,8 @@ public interface IGroupService
     Task<GroupDetail> CreateAsync(CreateGroupRequest request, CancellationToken cancellationToken = default);
     Task<GroupDetail> GetAsync(string groupId, CancellationToken cancellationToken = default);
     Task<GroupDetail> UpdateAsync(string groupId, UpdateGroupRequest request, CancellationToken cancellationToken = default);
+    Task<GroupDetail> UpdateCustomizationAsync(string groupId, UpdateCustomizationRequest request, CancellationToken cancellationToken = default);
+    Task<InvitationPreview> GetInvitationAsync(string groupId, string? inviteToken, CancellationToken cancellationToken = default);
     Task DeleteAsync(string groupId, CancellationToken cancellationToken = default);
     Task<InviteResponse> RotateInviteAsync(string groupId, CancellationToken cancellationToken = default);
     Task<GroupDetail> JoinAsync(string groupId, JoinGroupRequest request, CancellationToken cancellationToken = default);
@@ -110,6 +112,36 @@ internal sealed class GroupService(
                 new Dictionary<string, string> { ["fields"] = string.Join(",", fields.Keys.Order(StringComparer.Ordinal)) }, cancellationToken: cancellationToken);
         }
         return await GetAsync(groupId, cancellationToken);
+    }
+
+    public async Task<GroupDetail> UpdateCustomizationAsync(string groupId, UpdateCustomizationRequest request, CancellationToken cancellationToken = default)
+    {
+        var (group, membership) = await RequireMembershipAsync(groupId, cancellationToken);
+        RequireOrganizer(membership);
+        plans.EnsureCapability(group.Plan, group.EntitlementId, PlanCapability.ExchangeCustomization);
+        var customization = CustomizationValidation.Validate(request);
+        await groups.UpdateAsync(groupId, new Dictionary<string, AttributeValue>
+        {
+            ["customization"] = new() { M = new()
+            {
+                ["greeting"] = DynamoValues.S(customization.Greeting),
+                ["instructions"] = DynamoValues.S(customization.Instructions),
+                ["primary_color"] = DynamoValues.S(customization.PrimaryColor),
+                ["accent_color"] = DynamoValues.S(customization.AccentColor),
+                ["image"] = DynamoValues.S(customization.ImageDataUrl ?? "")
+            }}
+        }, cancellationToken: cancellationToken);
+        return await GetAsync(groupId, cancellationToken);
+    }
+
+    public async Task<InvitationPreview> GetInvitationAsync(string groupId, string? inviteToken, CancellationToken cancellationToken = default)
+    {
+        var group = await RequireGroupAsync(groupId, cancellationToken);
+        var token = Validation.InviteToken(inviteToken);
+        if (token is null || !CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(Hash(token)), Encoding.UTF8.GetBytes(group.InviteHash)))
+            throw ApiException.Forbidden("This invitation is invalid or has expired.");
+        return new(group.GroupId, group.Name, group.Customization ?? new ExchangeCustomization());
     }
 
     public async Task DeleteAsync(string groupId, CancellationToken cancellationToken = default)
@@ -371,7 +403,7 @@ internal sealed class GroupService(
     private GroupDetail Detail(GroupRecord group, MembershipRecord member, IReadOnlyList<MembershipRecord> all) => new(
         group.GroupId, group.Name, group.Status, group.EventDate, Amount(group.SpendingLimitCents), group.Currency,
         group.Plan, plans.Get(group.Plan).ParticipantLimit, member.IsOrganizer, member.UserId == group.OwnerUserId, group.CreatedAt, group.UpdatedAt, group.Description, group.SignupDeadline,
-        member.IsOrganizer ? group.Exclusions : [], all.Select(item => Public(item, group)).ToList());
+        member.IsOrganizer ? group.Exclusions : [], all.Select(item => Public(item, group)).ToList(), Customization: group.Customization);
     private GroupSummary Summary(GroupRecord group, MembershipRecord member) => new(
         group.GroupId, group.Name, group.Status, group.EventDate, Amount(group.SpendingLimitCents), group.Currency,
         group.Plan, plans.Get(group.Plan).ParticipantLimit, member.IsOrganizer, member.UserId == group.OwnerUserId, group.CreatedAt, group.UpdatedAt);

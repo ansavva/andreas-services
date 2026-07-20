@@ -178,6 +178,7 @@ internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settin
         ["created_at"] = DynamoValues.S(group.CreatedAt),
         ["updated_at"] = DynamoValues.S(group.UpdatedAt),
         ["spending_limit_cents"] = group.SpendingLimitCents is null ? new AttributeValue { NULL = true } : DynamoValues.N(group.SpendingLimitCents.Value)
+        ,["customization"] = CustomizationValue(group.Customization)
     };
 
     private static GroupRecord Read(IReadOnlyDictionary<string, AttributeValue> item) => new(
@@ -185,7 +186,24 @@ internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settin
         EmptyToNull(item.String("event_date")), EmptyToNull(item.String("signup_deadline")), item.Long("spending_limit_cents"),
         item.String("currency", "USD"), ReadPlan(item.String("plan")), EmptyToNull(item.String("entitlement_id")),
         ReadStatus(item.String("status")), item.String("invite_hash"), item.Exclusions(),
-        item.String("created_at"), item.String("updated_at"));
+        item.String("created_at"), item.String("updated_at"), ReadCustomization(item));
+    private static AttributeValue CustomizationValue(ExchangeCustomization? value) => value is null
+        ? new AttributeValue { NULL = true }
+        : new AttributeValue { M = new()
+        {
+            ["greeting"] = DynamoValues.S(value.Greeting),
+            ["instructions"] = DynamoValues.S(value.Instructions),
+            ["primary_color"] = DynamoValues.S(value.PrimaryColor),
+            ["accent_color"] = DynamoValues.S(value.AccentColor),
+            ["image"] = DynamoValues.S(value.ImageDataUrl ?? "")
+        }};
+    private static ExchangeCustomization? ReadCustomization(IReadOnlyDictionary<string, AttributeValue> item)
+    {
+        if (!item.TryGetValue("customization", out var value) || value.NULL == true || value.M is null) return null;
+        return new(value.M.String("greeting"), value.M.String("instructions"),
+            value.M.String("primary_color", "#7C2D12"), value.M.String("accent_color", "#F59E0B"),
+            EmptyToNull(value.M.String("image")));
+    }
     internal static PlanCode ReadPlan(string value) => string.IsNullOrWhiteSpace(value)
         ? PlanCode.Free
         : Enum.TryParse<PlanCode>(value, true, out var plan)
