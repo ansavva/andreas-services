@@ -257,6 +257,22 @@ function DangerZone({ profile }: { profile: Profile }) {
 
   const matches = confirmName.trim() === profile.display_name.trim();
 
+  function closeDialog() {
+    if (busy) return;
+    setOpen(false);
+    setConfirmName('');
+    setError(null);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') closeDialog();
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, busy]);
+
   async function deleteAccount() {
     if (!matches) return;
     setBusy(true);
@@ -285,34 +301,40 @@ function DangerZone({ profile }: { profile: Profile }) {
         <Link className="text-accent hover:underline" to="/privacy">Privacy policy</Link> for how deletion and
         retention work.
       </p>
-      {!open ? (
-        <Button intent="danger" size="sm" className="mt-4" onClick={() => setOpen(true)}>Delete my account…</Button>
-      ) : (
-        <div className="mt-4 space-y-3">
-          <label className="field-label">
-            Type your display name <span className="font-semibold text-ink">{profile.display_name}</span> to confirm
-            <Input
-              value={confirmName}
-              onChange={(event) => setConfirmName(event.target.value)}
-              placeholder={profile.display_name}
-              autoFocus
-              aria-label="Confirm your display name"
-            />
-          </label>
-          <StatusMessage message={error} />
-          <div className="flex gap-2">
-            <Button intent="danger" size="sm" disabled={busy || !matches} onClick={() => void deleteAccount()}>
-              {busy ? 'Deleting…' : 'Permanently delete'}
-            </Button>
-            <Button
-              intent="secondary"
-              size="sm"
-              disabled={busy}
-              onClick={() => { setOpen(false); setConfirmName(''); setError(null); }}
-            >
-              Cancel
-            </Button>
-          </div>
+      <Button intent="danger" size="sm" className="mt-4" onClick={() => setOpen(true)}>Delete my account…</Button>
+      {open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-4"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) closeDialog(); }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-account-title"
+            className="w-full max-w-lg rounded-2xl border border-danger/30 bg-card p-6 shadow-xl"
+          >
+            <p className="eyebrow">Confirm account deletion</p>
+            <h2 id="delete-account-title" className="mt-1 font-heading text-2xl font-semibold">Delete your account permanently?</h2>
+            <p className="mt-3 text-sm text-muted">This cannot be undone. Type your display name exactly as shown to confirm.</p>
+            <label className="field-label mt-5">
+              Display name: <span className="font-semibold text-ink">{profile.display_name}</span>
+              <Input
+                value={confirmName}
+                onChange={(event) => setConfirmName(event.target.value)}
+                placeholder={profile.display_name}
+                autoComplete="off"
+                autoFocus
+                aria-label="Confirm your display name"
+              />
+            </label>
+            <div className="mt-3"><StatusMessage message={error} /></div>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button intent="secondary" size="sm" disabled={busy} onClick={closeDialog}>Cancel</Button>
+              <Button intent="danger" size="sm" disabled={busy || !matches} onClick={() => void deleteAccount()}>
+                {busy ? 'Deleting…' : 'Permanently delete'}
+              </Button>
+            </div>
+          </section>
         </div>
       )}
     </Card>

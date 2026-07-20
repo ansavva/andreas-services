@@ -20,6 +20,8 @@ trap cleanup EXIT
 curl \
   --fail \
   --location \
+  --connect-timeout 10 \
+  --max-time 60 \
   --retry 3 \
   --silent \
   --show-error \

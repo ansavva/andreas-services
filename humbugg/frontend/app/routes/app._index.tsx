@@ -8,5 +8,5 @@ export const meta: MetaFunction = () => [
 ];
 
 export default function DashboardRoute() {
-  return <ProtectedRoute><DashboardPage /></ProtectedRoute>;
+  return <ProtectedRoute allowMissingProfile><DashboardPage /></ProtectedRoute>;
 }

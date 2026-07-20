@@ -119,7 +119,7 @@ public sealed class ProfileServiceAvatarTests
             var existing = Items.TryGetValue(userId, out var current) ? current : null;
             var record = new ProfileRecord(
                 userId, displayName, existing?.CreatedAt ?? "now", "now", existing?.AvatarKey,
-                nonEssentialEmailsEnabled ?? existing?.NonEssentialEmailsEnabled ?? true,
+                nonEssentialEmailsEnabled ?? existing?.NonEssentialEmailsEnabled ?? false,
                 existing?.ConsentVersion ?? consent?.Version,
                 existing?.ConsentAcceptedAt ?? consent?.AcceptedAt);
             Items[userId] = record;

@@ -25,4 +25,6 @@ docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required."
 export_temporary_aws_credentials
 export AWS_DEFAULT_REGION="$AWS_REGION_VALUE"
 
-exec docker compose -f "$HUMBUGG_DIR/backend/docker-compose.yml" up --build "${compose_args[@]}"
+# Always recreate the container: AWS credentials are injected environment values and must replace
+# any expired values held by an existing container even when its image/configuration is unchanged.
+exec docker compose -f "$HUMBUGG_DIR/backend/docker-compose.yml" up --build --force-recreate "${compose_args[@]}"

@@ -93,11 +93,11 @@ public sealed class EmailPreferenceTests
     {
         var world = new ProfileWorld();
 
-        // Establish a profile; the default is enabled. Creating a profile requires consent.
+        // Establish a profile; optional email defaults off until the user explicitly opts in.
         var created = await world.Service.SaveAsync(
             new SaveProfileRequest("Alex", Consent: new ConsentInput("2026.1", "2026-07-19T10:00:00Z")),
             TestContext.Current.CancellationToken);
-        Assert.True(created.NonEssentialEmailsEnabled);
+        Assert.False(created.NonEssentialEmailsEnabled);
 
         // Opt out.
         var optedOut = await world.Service.SaveAsync(
@@ -178,7 +178,7 @@ public sealed class EmailPreferenceTests
             var existing = Items.TryGetValue(userId, out var current) ? current : null;
             var record = new ProfileRecord(
                 userId, displayName, existing?.CreatedAt ?? "now", "now", existing?.AvatarKey,
-                nonEssentialEmailsEnabled ?? existing?.NonEssentialEmailsEnabled ?? true,
+                nonEssentialEmailsEnabled ?? existing?.NonEssentialEmailsEnabled ?? false,
                 existing?.ConsentVersion ?? consent?.Version,
                 existing?.ConsentAcceptedAt ?? consent?.AcceptedAt);
             Items[userId] = record;

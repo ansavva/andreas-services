@@ -60,7 +60,7 @@ may therefore use multiple machines without collisions.
 ```bash
 # One-time toolchain and authentication setup (from the repo root).
 # The shared setup includes the Stripe CLI from stripe/stripe-cli/stripe.
-./scripts/dev-setup.sh && ./humbugg/scripts/dev-setup.sh
+./humbugg/scripts/dev-setup.sh --profile personal
 stripe login
 
 # Authenticate npm for the private design system package.
@@ -68,9 +68,8 @@ export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
 eval "$(./scripts/github-packages-auth.sh --export)"
 npm --prefix humbugg/frontend install --legacy-peer-deps
 
-# Provision this machine's AWS resources and generate backend/.env plus
-# frontend/.env.local. Use --yes only when non-interactive apply is intended.
-./humbugg/scripts/dev-aws-setup.sh --profile personal
+# Read-only validation of shared tools, .NET, AWS resources, and env files.
+./humbugg/scripts/dev-setup.sh --profile personal --check
 
 # Start backend, frontend, and Stripe webhook forwarding together.
 ./humbugg/scripts/dev-up.sh --profile personal
@@ -91,12 +90,13 @@ All commands run from the repository root:
 | Script | Agent/developer usage |
 |---|---|
 | `scripts/dev-setup.sh` | Idempotently install shared tooling; use `--check` for a read-only prerequisite audit |
-| `humbugg/scripts/dev-setup.sh` | Idempotently install/check the .NET 10 SDK |
-| `humbugg/scripts/dev-aws-setup.sh` | Apply per-machine Terraform and regenerate ignored env files; accepts `--profile`, `--region`, `--yes` |
+| `humbugg/scripts/dev-setup.sh` | Canonical dependency chain: shared setup → .NET 10 → per-machine AWS setup; accepts `--profile`, `--region`, `--yes`, `--check` |
+| `humbugg/scripts/dev-aws-setup.sh` | Lower-level AWS provision/check command called by canonical setup; accepts `--profile`, `--region`, `--yes`, `--check` |
 | `humbugg/scripts/dev-up.sh` | Preferred full local startup; accepts `--profile`, `--region`, `--forward-to` |
 | `humbugg/scripts/dev-up-backend.sh` | Backend-only startup; exports temporary AWS credentials into Docker Compose without writing them to disk |
 | `humbugg/scripts/dev-up-frontend.sh` | Frontend-only startup; validates `.env.local` and installed dependencies first |
 | `humbugg/scripts/dev-up-stripe.sh` | Stripe-only listener for the billing webhook's exact event allowlist; copy its `whsec_...` value into `backend/.env` and restart the backend when running components separately |
+| `humbugg/scripts/dev-logs-backend.sh` | Follow the backend container logs; accepts Docker Compose log options such as `--tail 200` |
 | `humbugg/scripts/dev-aws-reset.sh` | Destructive data reset scoped to this machine; run with `--dry-run` first; `--skip-cognito` preserves users |
 | `humbugg/scripts/dev-aws-destroy.sh` | Destroy this machine's AWS resources; the persistent UUID is deliberately retained |
 
@@ -111,6 +111,7 @@ To start components separately:
 ./humbugg/scripts/dev-up-backend.sh --profile personal  # http://localhost:5001
 ./humbugg/scripts/dev-up-frontend.sh                    # http://localhost:5173
 ./humbugg/scripts/dev-up-stripe.sh                      # forwards billing webhooks
+./humbugg/scripts/dev-logs-backend.sh                   # follows backend logs
 ```
 
 To reset or remove only the current machine's environment:

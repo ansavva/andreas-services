@@ -14,6 +14,9 @@ export default function AuthPage({ mode }: { mode: Mode }) {
   const navigate = useNavigate();
   const [email, setEmail] = useState(() => typeof window === 'undefined' ? '' : sessionStorage.getItem('humbugg:email') ?? '');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [code, setCode] = useState('');
   const [stage, setStage] = useState<'request' | 'confirm'>('request');
   const [busy, setBusy] = useState(false);
@@ -28,9 +31,13 @@ export default function AuthPage({ mode }: { mode: Mode }) {
     try {
       if (mode === 'login') {
         await auth.login(email.trim(), password);
-        navigate(sessionStorage.getItem('humbugg:returnTo') ?? '/app');
+        const returnTo = sessionStorage.getItem('humbugg:returnTo');
+        const needsProfileSetup = sessionStorage.getItem('humbugg:consent') !== null;
+        sessionStorage.removeItem('humbugg:returnTo');
+        navigate(needsProfileSetup ? '/app' : returnTo ?? '/app');
       } else if (mode === 'signup') {
         const passwordError = validatePassword(password); if (passwordError) { setMessage(passwordError); return; }
+        if (password !== confirmPassword) { setMessage('Passwords must match.'); return; }
         if (!consented) { setMessage('Please agree to the Terms of Service and Privacy Policy to create your account.'); return; }
         // Capture the consent (policy version + UTC timestamp) at the moment of agreement, stash it so it
         // survives the confirm → sign-in → profile-setup flow, and record it when the profile is created.
@@ -60,7 +67,30 @@ export default function AuthPage({ mode }: { mode: Mode }) {
           <form className="mt-7 space-y-5" onSubmit={submit}>
             <label className="field-label">Email address<Input type="email" autoComplete="email" required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} /></label>
             {needsCode && <label className="field-label">Confirmation code<Input inputMode="numeric" autoComplete="one-time-code" required minLength={6} maxLength={6} pattern="[0-9]{6}" title="Enter the six-digit code from your email." value={code} onChange={(e) => setCode(e.target.value)} /></label>}
-            {needsPassword && <label className="field-label">{mode === 'forgot' ? 'New password' : 'Password'}<Input type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={8} maxLength={256} pattern={mode === 'login' ? undefined : '(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{8,}'} title={mode === 'login' ? undefined : 'Use at least 8 characters with uppercase, lowercase, and a number.'} required value={password} onChange={(e) => setPassword(e.target.value)} />{mode !== 'login' && <span className="font-normal text-muted">At least 8 characters with uppercase, lowercase, and a number.</span>}</label>}
+            {needsPassword && (
+              <PasswordField
+                id="password"
+                label={mode === 'forgot' ? 'New password' : 'Password'}
+                value={password}
+                onChange={setPassword}
+                visible={showPassword}
+                onToggleVisibility={() => setShowPassword((visible) => !visible)}
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                enforcePolicy={mode !== 'login'}
+              />
+            )}
+            {mode === 'signup' && (
+              <PasswordField
+                id="confirm-password"
+                label="Confirm password"
+                value={confirmPassword}
+                onChange={setConfirmPassword}
+                visible={showConfirmPassword}
+                onToggleVisibility={() => setShowConfirmPassword((visible) => !visible)}
+                autoComplete="new-password"
+                enforcePolicy
+              />
+            )}
             {mode === 'signup' && (
               <label className="flex items-start gap-3 text-sm text-muted">
                 <input
@@ -87,5 +117,55 @@ export default function AuthPage({ mode }: { mode: Mode }) {
         </Card>
       </div>
     </Shell>
+  );
+}
+
+function PasswordField({
+  id,
+  label,
+  value,
+  onChange,
+  visible,
+  onToggleVisibility,
+  autoComplete,
+  enforcePolicy,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange(value: string): void;
+  visible: boolean;
+  onToggleVisibility(): void;
+  autoComplete: 'current-password' | 'new-password';
+  enforcePolicy: boolean;
+}) {
+  return (
+    <div className="field-label">
+      <label htmlFor={id}>{label}</label>
+      <div className="relative">
+        <Input
+          id={id}
+          className="pr-20"
+          type={visible ? 'text' : 'password'}
+          autoComplete={autoComplete}
+          minLength={8}
+          maxLength={256}
+          pattern={enforcePolicy ? '(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{8,}' : undefined}
+          title={enforcePolicy ? 'Use at least 8 characters with uppercase, lowercase, and a number.' : undefined}
+          required
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <button
+          type="button"
+          className="absolute inset-y-0 right-3 text-sm font-semibold text-accent hover:underline"
+          aria-label={`${visible ? 'Hide' : 'Show'} ${label.toLowerCase()}`}
+          onClick={onToggleVisibility}
+        >
+          {visible ? 'Hide' : 'Show'}
+        </button>
+      </div>
+      {enforcePolicy && <span className="font-normal text-muted">At least 8 characters with uppercase, lowercase, and a number.</span>}
+    </div>
   );
 }

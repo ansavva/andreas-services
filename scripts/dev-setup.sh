@@ -25,6 +25,9 @@
 #
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 CHECK_ONLY=0
 [[ "${1:-}" == "--check" ]] && CHECK_ONLY=1
 
@@ -112,8 +115,18 @@ brew_ensure() {
 # tflint's AWS ruleset plugin (CI parity). GitHub-release download; best-effort.
 install_tflint_aws_plugin_best_effort() {
   [[ "$CHECK_ONLY" -eq 1 ]] && return 0
-  local script=".github/scripts/install-tflint-aws-plugin.sh"
+  if [[ "$PLATFORM" != "linux" ]]; then
+    log "skipping tflint AWS ruleset plugin (pinned archive is Linux/CI only)."
+    return 0
+  fi
+  local script="$REPO_ROOT/.github/scripts/install-tflint-aws-plugin.sh"
   [[ -f "$script" ]] || return 0
+  local plugin="$HOME/.tflint.d/plugins/github.com/terraform-linters/tflint-ruleset-aws/0.47.0/tflint-ruleset-aws"
+  if [[ -x "$plugin" ]]; then
+    skip "tflint AWS ruleset plugin" "$plugin"
+    return 0
+  fi
+  log "installing pinned tflint AWS ruleset plugin (best-effort) ..."
   if bash "$script" >/dev/null 2>&1; then
     ok "tflint AWS ruleset plugin installed (full CI parity)"
   else
@@ -153,7 +166,7 @@ if have docker; then skip docker "$(command -v docker)"; else
   fi
 fi
 
-log "shared toolchain ready. For service runtimes run the per-service script, e.g.:"
-log "    ./humbugg/scripts/dev-setup.sh   # .NET SDK for the Humbugg backend"
+log "shared toolchain ready. For complete service setup run its orchestrator, e.g.:"
+log "    ./humbugg/scripts/dev-setup.sh --profile personal   # .NET + per-machine AWS"
 [[ "$PLATFORM" == "linux" && "$CHECK_ONLY" -ne 1 ]] && log "Tools are on PATH via /etc/profile.d/homebrew.sh (new shells) or: eval \"\$($LINUXBREW_PREFIX/bin/brew shellenv)\""
 ok "done."

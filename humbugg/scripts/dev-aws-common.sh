@@ -75,12 +75,24 @@ set_terraform_vars() {
 
 export_temporary_aws_credentials() {
   local credentials
+  # Make the selected profile resolve its current session before exporting credentials. This lets
+  # SSO/credential-process profiles refresh their cached role credentials instead of copying a stale
+  # set into the long-running backend container.
+  aws_dev sts get-caller-identity >/dev/null ||
+    die "AWS profile '$AWS_PROFILE_VALUE' does not currently have a valid session. Sign in to AWS and try again."
   credentials="$(aws configure export-credentials --profile "$AWS_PROFILE_VALUE" --format process)" ||
     die "AWS CLI could not export temporary credentials for profile '$AWS_PROFILE_VALUE'."
   export AWS_ACCESS_KEY_ID="$(jq -r '.AccessKeyId' <<<"$credentials")"
   export AWS_SECRET_ACCESS_KEY="$(jq -r '.SecretAccessKey' <<<"$credentials")"
   export AWS_SESSION_TOKEN="$(jq -r '.SessionToken // empty' <<<"$credentials")"
   export AWS_CREDENTIAL_EXPIRATION="$(jq -r '.Expiration // empty' <<<"$credentials")"
+  aws --no-cli-pager --region "$AWS_REGION_VALUE" sts get-caller-identity >/dev/null ||
+    die "AWS CLI exported invalid or expired credentials for profile '$AWS_PROFILE_VALUE'. Sign in to AWS and try again."
+  if [[ -n "$AWS_CREDENTIAL_EXPIRATION" ]]; then
+    log "AWS credentials refreshed; they expire at $AWS_CREDENTIAL_EXPIRATION."
+  else
+    log "AWS credentials refreshed."
+  fi
 }
 
 terraform_init() {

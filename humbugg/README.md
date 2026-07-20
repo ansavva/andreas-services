@@ -23,12 +23,13 @@ applicable and accept `--help` for their complete usage.
 | Script | Purpose | Common options |
 |---|---|---|
 | `./scripts/dev-setup.sh` | Installs shared Homebrew tooling, including Terraform, AWS CLI, Node.js, Stripe CLI, jq, and zip | `--check` reports without installing |
-| `./humbugg/scripts/dev-setup.sh` | Installs the .NET 10 SDK required by the backend | `--check` reports without installing |
-| `./humbugg/scripts/dev-aws-setup.sh` | Creates or reapplies this machine's isolated Cognito, DynamoDB, and S3 resources and writes ignored local environment files | `--profile`, `--region`, `--yes` |
+| `./humbugg/scripts/dev-setup.sh` | Canonical setup: runs shared tool setup, installs .NET 10, then provisions per-machine AWS resources | `--profile`, `--region`, `--yes`; `--check` is read-only across every layer |
+| `./humbugg/scripts/dev-aws-setup.sh` | Lower-level AWS setup used by the canonical setup; remains directly runnable | `--profile`, `--region`, `--yes`, `--check` |
 | `./humbugg/scripts/dev-up.sh` | Starts the backend, frontend, and Stripe webhook listener as one supervised session | `--profile`, `--region`, `--forward-to` |
 | `./humbugg/scripts/dev-up-backend.sh` | Starts only the Dockerized .NET API with short-lived AWS credentials | `--profile`, `--region`, plus Docker Compose options |
 | `./humbugg/scripts/dev-up-frontend.sh` | Starts only the React development server using `frontend/.env.local` | accepts React Router/Vite development options |
 | `./humbugg/scripts/dev-up-stripe.sh` | Starts only the Stripe CLI listener with Humbugg's event allowlist | `--forward-to`, plus Stripe listener options |
+| `./humbugg/scripts/dev-logs-backend.sh` | Follows the local backend's Docker logs | accepts Docker Compose log options such as `--tail 200` |
 | `./humbugg/scripts/dev-aws-reset.sh` | Clears this machine's DynamoDB, S3, and optionally Cognito user data while retaining its infrastructure | `--profile`, `--region`, `--dry-run`, `--skip-cognito`, `--yes` |
 | `./humbugg/scripts/dev-aws-destroy.sh` | Destroys this machine's AWS development resources while retaining its machine UUID | `--profile`, `--region`, `--yes` |
 
@@ -37,12 +38,13 @@ should not be run directly. AWS scripts default to `$AWS_PROFILE` (or
 `default`) and `$AWS_REGION`/`$AWS_DEFAULT_REGION` (or `us-east-1`). Passing an
 explicit profile is recommended.
 
-0. Install the toolchain once with the idempotent setup scripts (from the repo
-   root), and expose a `read:packages` token so npm can fetch the private
+0. Run the canonical idempotent setup from the repo root. It invokes shared
+   tool setup, installs .NET, provisions this machine's AWS resources, and
+   generates the ignored environment files. Then expose a `read:packages` token so npm can fetch the private
    `@ansavva/design-system` package:
 
    ```bash
-   ./scripts/dev-setup.sh && ./humbugg/scripts/dev-setup.sh
+   ./humbugg/scripts/dev-setup.sh --profile personal
    export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
    eval "$(./scripts/github-packages-auth.sh --export)"   # sets NODE_AUTH_TOKEN
    npm --prefix humbugg/frontend install --legacy-peer-deps
@@ -57,14 +59,18 @@ explicit profile is recommended.
    launcher refreshes the local webhook signing secret, but it does not create
    or persist Stripe API keys.
 
-1. Provision this machine's development resources with an authenticated AWS
-   profile. The script creates the UUID at
-   `~/.config/andreas-services/humbugg/machine-id`, applies Terraform, and writes
-   the generated resource names to the ignored backend and frontend env files:
+1. The canonical setup creates the UUID at
+   `~/.config/andreas-services/humbugg/machine-id`, applies Terraform using the
+   selected authenticated AWS profile, and writes generated resource names to
+   the ignored backend and frontend env files. You can validate the entire
+   completed setup later with:
 
    ```bash
-   ./humbugg/scripts/dev-aws-setup.sh --profile personal
+   ./humbugg/scripts/dev-setup.sh --profile personal --check
    ```
+
+   `--check` runs the complete dependency chain without installing tools,
+   applying Terraform, writing environment files, or restarting containers.
 
 2. Start the shared local Mailer and Mailpit:
 
@@ -79,8 +85,9 @@ explicit profile is recommended.
    ./humbugg/scripts/dev-up.sh --profile personal
    ```
 
-   The launcher refreshes the Stripe CLI's local `whsec_...` signing secret in
-   the ignored backend environment before starting the API. Press Ctrl+C once
+   The launcher refreshes the Stripe CLI's local `whsec_...` signing secret and
+   AWS credentials before starting the API. It force-recreates the backend so
+   an existing container cannot retain expired credentials. Press Ctrl+C once
    to stop all three processes.
 
 ### Starting components separately
@@ -94,7 +101,14 @@ written to a file:
 ```
 
 Restart the launcher when the AWS login session expires so it can inject a
-fresh set of short-lived credentials.
+fresh set of short-lived credentials. Re-running `dev-aws-setup.sh` also
+recreates an already-running backend with refreshed credentials.
+
+Follow the backend logs from another terminal with:
+
+```bash
+./humbugg/scripts/dev-logs-backend.sh
+```
 
 Then start the web application in another terminal:
 

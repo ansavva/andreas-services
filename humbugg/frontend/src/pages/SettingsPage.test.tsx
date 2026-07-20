@@ -110,6 +110,7 @@ describe('SettingsPage', () => {
     render(<SettingsPage />);
     fireEvent.click(screen.getByRole('button', { name: /delete my account/i }));
 
+    expect(screen.getByRole('dialog', { name: /delete your account permanently/i })).toBeInTheDocument();
     const confirmButton = screen.getByRole('button', { name: /permanently delete/i });
     expect(confirmButton).toBeDisabled();
 
@@ -119,6 +120,24 @@ describe('SettingsPage', () => {
 
     fireEvent.change(confirmField, { target: { value: 'Alex Rivera' } });
     expect(confirmButton).toBeEnabled();
+  });
+
+  it('closes the delete confirmation popup without deleting', () => {
+    render(<SettingsPage />);
+    fireEvent.click(screen.getByRole('button', { name: /delete my account/i }));
+    fireEvent.change(screen.getByLabelText('Confirm your display name'), { target: { value: 'Alex Rivera' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mocks.api.deleteAccount).not.toHaveBeenCalled();
+  });
+
+  it('closes the delete confirmation popup with Escape', () => {
+    render(<SettingsPage />);
+    fireEvent.click(screen.getByRole('button', { name: /delete my account/i }));
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('deletes the account, signs out, and returns to the marketing home on confirm', async () => {
