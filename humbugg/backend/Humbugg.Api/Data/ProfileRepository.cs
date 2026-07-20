@@ -8,6 +8,7 @@ internal interface IProfileRepository
 {
     Task<ProfileRecord?> GetAsync(string userId, CancellationToken cancellationToken = default);
     Task<ProfileRecord> UpsertAsync(string userId, string displayName, CancellationToken cancellationToken = default);
+    Task<ProfileRecord> SetAvatarKeyAsync(string userId, string? avatarKey, CancellationToken cancellationToken = default);
     Task DeleteAsync(string userId, CancellationToken cancellationToken = default);
 }
 
@@ -38,11 +39,45 @@ internal sealed class ProfileRepository(IAmazonDynamoDB db, HumbuggSettings sett
         return Read(response.Attributes);
     }
 
+    // Sets or clears the avatar reference on an existing profile. Requires the profile to exist (the
+    // display name is set first), so a conditional check guards against creating a nameless row here.
+    public async Task<ProfileRecord> SetAvatarKeyAsync(string userId, string? avatarKey, CancellationToken cancellationToken = default)
+    {
+        var now = DateTimeOffset.UtcNow.ToString("O");
+        var request = new UpdateItemRequest
+        {
+            TableName = settings.ProfilesTable,
+            Key = new() { ["user_id"] = DynamoValues.S(userId) },
+            ConditionExpression = "attribute_exists(user_id)",
+            ExpressionAttributeValues = new() { [":now"] = DynamoValues.S(now) },
+            ReturnValues = ReturnValue.ALL_NEW,
+        };
+        if (string.IsNullOrEmpty(avatarKey))
+        {
+            request.UpdateExpression = "SET updated_at = :now REMOVE avatar_key";
+        }
+        else
+        {
+            request.UpdateExpression = "SET avatar_key = :key, updated_at = :now";
+            request.ExpressionAttributeValues[":key"] = DynamoValues.S(avatarKey);
+        }
+        try
+        {
+            var response = await db.UpdateItemAsync(request, cancellationToken);
+            return Read(response.Attributes);
+        }
+        catch (ConditionalCheckFailedException)
+        {
+            throw ApiException.NotFound("Complete your profile before adding a photo.");
+        }
+    }
+
     // Unconditional delete so account deletion is idempotent: removing an already-absent
     // profile succeeds and is a no-op, making a retried deletion safe.
     public Task DeleteAsync(string userId, CancellationToken cancellationToken = default) => db.DeleteItemAsync(
         settings.ProfilesTable, new Dictionary<string, AttributeValue> { ["user_id"] = DynamoValues.S(userId) }, cancellationToken);
 
     private static ProfileRecord Read(IReadOnlyDictionary<string, AttributeValue> item) => new(
-        item.String("user_id"), item.String("display_name"), item.String("created_at"), item.String("updated_at"));
+        item.String("user_id"), item.String("display_name"), item.String("created_at"), item.String("updated_at"),
+        item.TryGetValue("avatar_key", out var avatar) ? avatar.S : null);
 }

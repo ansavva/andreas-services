@@ -67,6 +67,7 @@ module "storage" {
 
   project     = local.project
   environment = local.environment
+  domain_name = local.domain_name
 
   tags = local.common_tags
 }
@@ -89,6 +90,7 @@ module "compute" {
 
   dynamodb_table_arns      = module.storage.dynamodb_table_arns
   email_messages_table_arn = module.storage.email_messages_table_arn
+  avatars_bucket_arn       = module.storage.app_bucket_arn
   mailer_status_queue_arn  = data.aws_ssm_parameter.mailer_status_queue_arn.value
   cognito_user_pool_id     = module.auth.user_pool_id
   cognito_client_id        = module.auth.user_pool_client_id
@@ -116,6 +118,10 @@ module "hosting" {
   frontend_bucket_id                   = module.storage.bucket_id
   frontend_bucket_arn                  = module.storage.bucket_arn
   frontend_bucket_regional_domain_name = module.storage.bucket_regional_domain_name
+
+  avatars_bucket_id                   = module.storage.app_bucket_id
+  avatars_bucket_arn                  = module.storage.app_bucket_arn
+  avatars_bucket_regional_domain_name = module.storage.app_bucket_regional_domain_name
 
   api_endpoint        = module.compute.api_endpoint
   frontend_api_domain = module.compute.frontend_api_domain

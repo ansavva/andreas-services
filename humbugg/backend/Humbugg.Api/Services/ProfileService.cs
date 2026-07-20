@@ -7,9 +7,15 @@ public interface IProfileService
 {
     Task<Profile> GetAsync(CancellationToken cancellationToken = default);
     Task<Profile> SaveAsync(SaveProfileRequest request, CancellationToken cancellationToken = default);
+    Task<Profile> UploadAvatarAsync(UploadAvatarRequest request, CancellationToken cancellationToken = default);
+    Task<Profile> RemoveAvatarAsync(CancellationToken cancellationToken = default);
 }
 
-internal sealed class ProfileService(ICurrentUser user, IProfileRepository profiles) : IProfileService
+internal sealed class ProfileService(
+    ICurrentUser user,
+    IProfileRepository profiles,
+    IAvatarStore avatars,
+    HumbuggSettings settings) : IProfileService
 {
     public async Task<Profile> GetAsync(CancellationToken cancellationToken = default)
     {
@@ -24,7 +30,45 @@ internal sealed class ProfileService(ICurrentUser user, IProfileRepository profi
         return ToModel(await profiles.UpsertAsync(user.UserId, displayName, cancellationToken));
     }
 
-    private static Profile ToModel(ProfileRecord record) => new(record.UserId, record.DisplayName, record.CreatedAt, record.UpdatedAt);
+    public async Task<Profile> UploadAvatarAsync(UploadAvatarRequest request, CancellationToken cancellationToken = default)
+    {
+        // Validation + safe re-encoding happen before any storage or DB write. A profile must already
+        // exist (SetAvatarKeyAsync enforces this) so avatars can't create nameless rows.
+        var normalized = AvatarImage.Normalize(request.Image);
+        var existing = await profiles.GetAsync(user.UserId, cancellationToken)
+            ?? throw ApiException.NotFound("Complete your profile before adding a photo.");
+
+        var key = await avatars.SaveAsync(user.UserId,
+            new NormalizedAvatarBytes(normalized.Bytes, normalized.ContentType, normalized.Extension), cancellationToken);
+        var updated = await profiles.SetAvatarKeyAsync(user.UserId, key, cancellationToken);
+
+        // Best-effort cleanup of the previous object so replacing a photo doesn't leak orphans. The
+        // new key is already persisted, so a cleanup failure never blocks the user.
+        await TryDeleteAsync(existing.AvatarKey, key, cancellationToken);
+        return ToModel(updated);
+    }
+
+    public async Task<Profile> RemoveAvatarAsync(CancellationToken cancellationToken = default)
+    {
+        var existing = await profiles.GetAsync(user.UserId, cancellationToken)
+            ?? throw ApiException.NotFound("Complete your profile to continue.");
+        var updated = await profiles.SetAvatarKeyAsync(user.UserId, null, cancellationToken);
+        await TryDeleteAsync(existing.AvatarKey, null, cancellationToken);
+        return ToModel(updated);
+    }
+
+    private async Task TryDeleteAsync(string? oldKey, string? newKey, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(oldKey) || oldKey == newKey) return;
+        try { await avatars.DeleteAsync(oldKey, cancellationToken); }
+        catch { /* orphaned object cleanup is best-effort; the profile is already consistent. */ }
+    }
+
+    private Profile ToModel(ProfileRecord record) => new(
+        record.UserId, record.DisplayName, record.CreatedAt, record.UpdatedAt, AvatarUrl(record.AvatarKey));
+
+    private string? AvatarUrl(string? avatarKey) =>
+        string.IsNullOrEmpty(avatarKey) ? null : $"{settings.AvatarBaseUrl}/{avatarKey}";
 }
 
 internal static class Validation

@@ -43,6 +43,11 @@ output "s3_frontend_bucket" {
   value       = module.storage.bucket_id
 }
 
+output "app_bucket" {
+  description = "Application object S3 bucket name (holds avatars under the avatars/ prefix)"
+  value       = module.storage.app_bucket_id
+}
+
 output "cloudfront_distribution_id" {
   description = "CloudFront distribution ID"
   value       = module.hosting.cloudfront_distribution_id

@@ -12,6 +12,7 @@ import {
 
 import faviconUrl from './assets/favicon.png?url';
 import { AuthProvider } from '../src/context/AuthContext';
+import { ProfileProvider } from '../src/context/ProfileContext';
 import stylesheet from '../src/styles.css?url';
 
 export function loader() {
@@ -58,7 +59,9 @@ export default function App() {
   const { auth } = useLoaderData<typeof loader>();
   return (
     <AuthProvider config={auth}>
-      <Outlet />
+      <ProfileProvider>
+        <Outlet />
+      </ProfileProvider>
     </AuthProvider>
   );
 }

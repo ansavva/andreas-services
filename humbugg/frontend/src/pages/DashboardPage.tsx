@@ -2,36 +2,35 @@ import { Button, Input, Textarea } from '@ansavva/design-system';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 
-import { api, ApiError } from '../api/client';
+import { api } from '../api/client';
 import { Card, Shell, StatusMessage } from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
+import { useProfile } from '../context/ProfileContext';
 import type { GroupSummary, Profile } from '../types';
 import { todayInputValue, validateGroupForm } from '../utils/validation';
 
 export default function DashboardPage() {
   const auth = useAuth();
   const navigate = useNavigate();
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [needsProfile, setNeedsProfile] = useState(false);
+  const { profile, loaded: profileLoaded, setProfile } = useProfile();
   const [groups, setGroups] = useState<GroupSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function load() {
+  async function loadGroups() {
     setLoading(true); setError(null);
     try {
-      const token = await auth.accessToken();
-      try { setProfile(await api.getMe(token)); setNeedsProfile(false); }
-      catch (err) { if (err instanceof ApiError && err.status === 404) setNeedsProfile(true); else throw err; }
-      setGroups(await api.listGroups(token));
-    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to load your account.'); }
+      setGroups(await api.listGroups(await auth.accessToken()));
+    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to load your groups.'); }
     finally { setLoading(false); }
   }
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void loadGroups(); }, []);
 
-  if (loading) return <Shell><div className="loading-panel">Preparing your exchanges…</div></Shell>;
-  if (needsProfile) return <Shell><ProfileSetup onSaved={(saved) => { setProfile(saved); setNeedsProfile(false); void load(); }} /></Shell>;
+  const needsProfile = profileLoaded && !profile;
+
+  if (loading || !profileLoaded) return <Shell><div className="loading-panel">Preparing your exchanges…</div></Shell>;
+  if (needsProfile) return <Shell><ProfileSetup onSaved={setProfile} /></Shell>;
 
   return (
     <Shell>
@@ -51,57 +50,11 @@ export default function DashboardPage() {
           </Card>
           <CreateGroup onCreated={(id) => navigate(`/app/groups/${id}`)} />
         </div>
-        <AccountDangerZone />
+        <p className="text-sm text-muted">
+          Manage your photo, display name, and account in <Link className="text-accent hover:underline" to="/app/settings">Settings</Link>.
+        </p>
       </div>
     </Shell>
-  );
-}
-
-function AccountDangerZone() {
-  const auth = useAuth();
-  const [confirmText, setConfirmText] = useState('');
-  const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function deleteAccount() {
-    setBusy(true); setError(null);
-    try {
-      await api.deleteAccount(await auth.accessToken());
-      // Deletion is idempotent server-side; end the session so the erased account can't keep acting.
-      await auth.logout();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to delete your account.');
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Card className="border-danger/30">
-      <p className="eyebrow">Danger zone</p>
-      <h2 className="mt-1 font-heading text-2xl font-semibold">Delete your account</h2>
-      <p className="mt-2 max-w-2xl text-sm text-muted">
-        Deleting your account erases your profile, wishlist, and mailing address. Groups you organize are deleted for
-        everyone; where a draw has already happened, your entry is anonymized so other participants keep their results.
-        Audit and any legally required financial records are retained in anonymized form. This cannot be undone.
-      </p>
-      {!open ? (
-        <Button intent="danger" size="sm" className="mt-4" onClick={() => setOpen(true)}>Delete my account…</Button>
-      ) : (
-        <div className="mt-4 space-y-3">
-          <label className="field-label">Type DELETE to confirm
-            <Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="DELETE" autoFocus />
-          </label>
-          <StatusMessage message={error} />
-          <div className="flex gap-2">
-            <Button intent="danger" size="sm" disabled={busy || confirmText !== 'DELETE'} onClick={() => void deleteAccount()}>
-              {busy ? 'Deleting…' : 'Permanently delete'}
-            </Button>
-            <Button intent="secondary" size="sm" disabled={busy} onClick={() => { setOpen(false); setConfirmText(''); setError(null); }}>Cancel</Button>
-          </div>
-        </div>
-      )}
-    </Card>
   );
 }
 
