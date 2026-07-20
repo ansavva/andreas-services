@@ -6,6 +6,7 @@ import type {
   Wish,
   CreateWishInput,
   UpdateWishInput,
+  ManagedInvitation,
   PolicyConsent,
   PlusPurchaseStatus,
   Profile,
@@ -90,6 +91,12 @@ export const api = {
     request<void>(`/groups/${id}/members/me/wishes/${wishId}`, token, json('DELETE')),
   reorderWishes: (token: string, id: string, wish_ids: string[]) =>
     request<Wish[]>(`/groups/${id}/members/me/wishes/order`, token, json('PUT', { wish_ids })),
+  listInvitations: (token: string, id: string) => request<ManagedInvitation[]>(`/groups/${id}/invitations`, token),
+  createInvitations: (token: string, id: string, emails: string[]) => request<{ invitations: ManagedInvitation[] }>(`/groups/${id}/invitations`, token, json('POST', { emails })),
+  resendInvitation: (token: string, id: string, invitationId: string) => request<ManagedInvitation>(`/groups/${id}/invitations/${invitationId}/resend`, token, json('POST')),
+  revokeInvitation: (token: string, id: string, invitationId: string) => request<void>(`/groups/${id}/invitations/${invitationId}/revoke`, token, json('POST')),
+  acceptInvitation: (token: string, id: string, invitationId: string, invitationToken: string, confirmAddressMismatch = false) =>
+    request<{ group_id: string; accepted: boolean }>(`/groups/${id}/invitations/${invitationId}/accept`, token, json('POST', { token: invitationToken, confirm_address_mismatch: confirmAddressMismatch })),
   joinGroup: (token: string, id: string, invite_token: string) => request<GroupDetail>(`/groups/${id}/join`, token, json('POST', { invite_token })),
   getMembership: (token: string, id: string) => request<Membership>(`/groups/${id}/members/me`, token),
   updateMembership: (token: string, id: string, data: Record<string, unknown>) => request<Membership>(`/groups/${id}/members/me`, token, json('PATCH', data)),
