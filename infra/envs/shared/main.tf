@@ -53,6 +53,55 @@ resource "aws_route53_record" "cert_validation" {
   zone_id         = data.aws_route53_zone.main.zone_id
 }
 
+# ─── Google Workspace mail (andreas.services is the Workspace primary domain) ─
+#
+# Inbound mail for andreas.services is handled by Google Workspace. The
+# verification TXT was originally created by hand during Workspace signup;
+# allow_overwrite adopts it into the managed apex TXT record set (Route53
+# permits only one TXT record set per name, so SPF and verification strings
+# must live together). Never drop the google-site-verification string —
+# Google re-checks it periodically.
+
+locals {
+  # Public values adopted verbatim from the live zone (created during Workspace
+  # signup / the Gmail activation wizard). Safe to commit — both are public DNS.
+  google_site_verification = "google-site-verification=wjiO8oxINCfOTRGVieMAxuWE1xqfKhgmGo3vM8L1wnE"
+  google_dkim_txt_value    = "v=DKIM1;k=rsa;p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCrt4acTNGEoZXzcxMp/ixGSsNUqHaS85sFqHYMdoFnMJFdQEHGVmD1LYzUkHX2y8VW0ZWx4P0Hfu0E9TqzaPkL2Zz+BsVXpXpxHACKAhhPq9B9u9U+QHG9LHl9j41vWHjRYo4nmI+/2iHRs5DwPH2ROvguVzWgrIDjec6UW542tQIDAQAB"
+}
+
+resource "aws_route53_record" "apex_mx" {
+  zone_id         = data.aws_route53_zone.main.zone_id
+  name            = var.domain_name
+  type            = "MX"
+  ttl             = 300
+  allow_overwrite = true
+  records         = ["1 smtp.google.com"]
+}
+
+resource "aws_route53_record" "apex_txt" {
+  zone_id         = data.aws_route53_zone.main.zone_id
+  name            = var.domain_name
+  type            = "TXT"
+  ttl             = 300
+  allow_overwrite = true
+  records = [
+    "v=spf1 include:_spf.google.com ~all",
+    local.google_site_verification,
+  ]
+}
+
+# 2048-bit DKIM keys exceed Route53's 255-char TXT string limit; the value is
+# split into embedded quoted chunks (the provider's multi-string convention).
+resource "aws_route53_record" "google_dkim" {
+  count           = local.google_dkim_txt_value != "" ? 1 : 0
+  zone_id         = data.aws_route53_zone.main.zone_id
+  name            = "google._domainkey.${var.domain_name}"
+  type            = "TXT"
+  ttl             = 300
+  allow_overwrite = true
+  records         = [join("\"\"", [for i in range(0, ceil(length(local.google_dkim_txt_value) / 255)) : substr(local.google_dkim_txt_value, i * 255, 255)])]
+}
+
 # ─── GitHub Actions OIDC ──────────────────────────────────────────────────────
 
 resource "aws_iam_openid_connect_provider" "github_actions" {
