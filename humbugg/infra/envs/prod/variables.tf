@@ -29,17 +29,6 @@ variable "stripe_webhook_secret" {
   sensitive   = true
 }
 
-variable "support_forward_to" {
-  description = <<-EOT
-    Private destination inbox for forwarded support@humbugg.com mail. This is a
-    human-provided secret: leave empty in committed config and inject via
-    TF_VAR_support_forward_to in CI (sourced from the SUPPORT_FORWARD_TO GitHub
-    environment secret). Never commit the real address.
-  EOT
-  type        = string
-  default     = ""
-  sensitive   = true
-}
 
 variable "api_throttling_rate_limit" {
   description = "Steady-state requests/second for the backend API (API Gateway stage default throttling)."

@@ -153,9 +153,8 @@ All secrets/values live in the `humbugg-production` GitHub Actions environment. 
 | `/humbugg/prod/cognito-client-id` | Cognito app-client ID |
 | `/humbugg/prod/s3-bucket` | Frontend S3 bucket |
 | `/humbugg/prod/cf-dist-id` | CloudFront distribution ID |
-| `/humbugg/prod/email-from-address` | Verified transactional sender (`no-reply@humbugg.com`) |
+| `/humbugg/prod/email-from-address` | Verified transactional sender (`no-reply@humbugg.com`). Outbound app mail is SES via the shared Mailer; **inbound** mail (e.g. `support@humbugg.com`) is Google Workspace — see `docs/support-email.md` |
 | _(env var, not SSM)_ `HUMBUGG_APP_BUCKET` | Shared application object bucket (`humbugg-app-production`, in the `storage` module); set literally in `update-lambda`. Profile photos live under the `avatars/` prefix — private, written by the Lambda under `avatars/*` (least-privilege IAM) and served read-only at `/avatars/*` through the app CloudFront distribution via OAC. Local development uses the per-machine AWS bucket created by `scripts/dev-aws-setup.sh`. Avatar URLs derive from `APP_BASE_URL` unless `HUMBUGG_AVATAR_BASE_URL` overrides it. |
-| `/humbugg/prod/support-forward-to` | SecureString: private inbox for `support@humbugg.com` forwarding (human secret; see `docs/support-forwarding.md`) |
 | `/humbugg/prod/stripe/publishable-key` | Stripe **test-mode** publishable key (`String`; Terraform `billing` module) |
 | `/humbugg/prod/stripe/secret-key` | Stripe **test-mode** secret key (`SecureString`; Terraform `billing` module) |
 | `/humbugg/prod/stripe/webhook-secret` | Stripe webhook signing secret (`SecureString`; Terraform `billing` module) |
