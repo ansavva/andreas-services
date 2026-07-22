@@ -6,8 +6,3 @@ aws_region = "us-east-1"
 #   TF_VAR_stripe_secret_key       <- secrets.HUMBUGG_STRIPE_SECRET_KEY   (sk_test_...)
 #   TF_VAR_stripe_webhook_secret   <- secrets.HUMBUGG_STRIPE_WEBHOOK_SECRET (whsec_...)
 # See humbugg/docs/stripe-setup.md. Live-mode credentials are blocked (issue #159).
-
-# Private support-forwarding destination. DO NOT commit the real value here.
-# Injected in CI via TF_VAR_support_forward_to from the SUPPORT_FORWARD_TO
-# GitHub environment secret. Placeholder shown for local plans only.
-# support_forward_to = "TODO-private-inbox@example.com"

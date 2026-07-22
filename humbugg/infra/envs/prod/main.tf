@@ -135,6 +135,23 @@ module "email" {
   aws_region      = var.aws_region
   domain_name     = local.domain_name
   route53_zone_id = data.aws_route53_zone.humbugg.zone_id
+
+  # DKIM public key generated in Google Admin (Apps → Gmail → Authenticate
+  # email). Empty until generated; the record is created once set.
+  google_dkim_txt_value = ""
+
+  # The manually created google-site-verification string lives at the apex;
+  # the single managed apex TXT record set must carry it alongside SPF.
+  # Public value — safe to commit. Never remove it: Google re-checks it.
+  apex_txt_additional_records = ["google-site-verification=Ty65XWNQL5fqun83W2_nuKQGbXwmS5IRTHDpU9up1gQ"]
+}
+
+# The apex MX moved from the retired SES-inbound stack to the email module,
+# where its value flipped to Google Workspace. The moved block turns what
+# would be a same-name delete+create race into an in-place update.
+moved {
+  from = module.support_forwarding.aws_route53_record.inbound_mx
+  to   = module.email.aws_route53_record.apex_mx
 }
 
 module "billing" {
@@ -150,25 +167,3 @@ module "billing" {
   tags = local.common_tags
 }
 
-module "support_forwarding" {
-  source = "../../modules/support_forwarding"
-
-  project     = local.project
-  environment = local.environment
-  aws_region  = var.aws_region
-
-  domain_name       = local.domain_name
-  route53_zone_id   = data.aws_route53_zone.humbugg.zone_id
-  support_recipient = "support@${local.domain_name}"
-
-  from_address     = module.email.from_address
-  ses_identity_arn = module.email.identity_arn
-
-  # Human-provided secret; injected via TF_VAR_support_forward_to in CI. Empty
-  # here so nothing sensitive is committed.
-  support_forward_to = var.support_forward_to
-
-  lambda_source_dir = "${path.module}/../../../support-forwarding/src"
-
-  tags = local.common_tags
-}
