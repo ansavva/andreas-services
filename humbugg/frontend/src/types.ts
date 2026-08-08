@@ -119,6 +119,12 @@ export interface PlusPurchaseStatus {
   updated_at?: string | null;
 }
 
+export interface PlusCheckout {
+  checkout_url: string;
+  session_id: string;
+  status: PaymentStatus;
+}
+
 export interface RecipientAssignment {
   member_id: string;
   display_name: string;

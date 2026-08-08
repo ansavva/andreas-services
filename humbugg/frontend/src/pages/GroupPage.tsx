@@ -14,12 +14,15 @@ export default function GroupPage() {
   const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [success, setSuccess] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState(() => typeof window === 'undefined' ? '' : sessionStorage.getItem(`humbugg:invite:${groupId}`) ?? ''); const [reveal, setReveal] = useState<RevealAssignment[] | null>(null);
   const [purchase, setPurchase] = useState<PlusPurchaseStatus | null>(null);
+  const [upgradePrompt, setUpgradePrompt] = useState<string | null>(null);
   const checkoutReturn = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('checkout');
+  const intentKey = `humbugg:plus-intent:${groupId}`;
 
   async function load() {
     setLoading(true); setError(null);
     try {
       const token = await auth.accessToken(); const [detail, membership] = await Promise.all([api.getGroup(token, groupId), api.getMembership(token, groupId)]); setGroup(detail); setMe(membership);
+      if (detail.is_organizer) setPurchase(await api.getPlusPurchaseStatus(token, groupId));
       if (detail.status === 'drawn' && membership.is_participating) { try { setAssignment(await api.getAssignment(token, groupId)); } catch (err) { if (!(err instanceof ApiError && err.status === 404)) throw err; } } else setAssignment(null);
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to load the group.'); }
     finally { setLoading(false); }
@@ -43,7 +46,14 @@ export default function GroupPage() {
     void poll();
     return () => { stopped = true; if (timer !== undefined) window.clearTimeout(timer); };
   }, [auth, checkoutReturn, groupId]);
-  async function action(work: (token: string) => Promise<unknown>, message?: string) { setBusy(true); setError(null); setSuccess(null); try { await work(await auth.accessToken()); if (message) setSuccess(message); await load(); return true; } catch (err) { setError(err instanceof Error ? err.message : 'The action could not be completed.'); return false; } finally { setBusy(false); } }
+  async function action(work: (token: string) => Promise<unknown>, message?: string) { setBusy(true); setError(null); setSuccess(null); try { await work(await auth.accessToken()); if (message) setSuccess(message); await load(); return true; } catch (err) { if (err instanceof ApiError && err.code === 'plus_required') { setUpgradePrompt(err.message); sessionStorage.setItem(intentKey, message ?? 'Return to the exchange and retry the Plus action.'); } else setError(err instanceof Error ? err.message : 'The action could not be completed.'); return false; } finally { setBusy(false); } }
+  async function startPlusCheckout() {
+    setBusy(true); setError(null);
+    try {
+      const checkout = await api.createPlusCheckout(await auth.accessToken(), groupId);
+      window.location.assign(checkout.checkout_url);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to start Checkout.'); setBusy(false); }
+  }
 
   if (loading) return <Shell><div className="loading-panel">Opening your exchange…</div></Shell>;
   if (!group || !me) return <Shell><div className="mx-auto max-w-xl"><StatusMessage message={error ?? 'Group not found.'} /><Link className="text-accent" to="/app">Return to your groups</Link></div></Shell>;
@@ -53,9 +63,12 @@ export default function GroupPage() {
       <div className="flex flex-col gap-7">
         <section className="group-heading"><div><div className="flex items-center gap-3"><span className={`status-pill ${group.status === 'drawn' ? 'status-drawn' : ''}`}>{group.status === 'drawn' ? 'Draw complete' : 'Open for joining'}</span>{group.is_organizer && <span className="text-sm text-muted">You’re organizing</span>}</div><h1 className="mt-4 font-heading text-4xl font-semibold sm:text-5xl">{group.name}</h1><p className="mt-3 max-w-2xl leading-7 text-muted">{group.description || 'A little holiday magic is taking shape.'}</p></div><div className="group-meta"><span>{group.event_date ? new Date(`${group.event_date}T12:00:00`).toLocaleDateString() : 'Date TBD'}</span><span>{group.spending_limit != null ? `$${group.spending_limit.toFixed(2)} USD` : 'No set limit'}</span><span className="capitalize">{group.plan} plan</span><span>{group.members.filter((member) => member.is_participating).length}{group.plan === 'work' ? '' : ` / ${group.participant_limit}`} participating</span></div></section>
         <StatusMessage message={error} /><StatusMessage message={success} tone="success" />
-        {checkoutReturn && <CheckoutRecovery state={checkoutReturn} purchase={purchase} />}
+        {checkoutReturn && <CheckoutRecovery state={checkoutReturn} purchase={purchase} intendedAction={typeof window === 'undefined' ? null : sessionStorage.getItem(intentKey)} onUpgrade={() => void startPlusCheckout()} />}
+        {upgradePrompt && <UpgradeOffer reason={upgradePrompt} busy={busy} onUpgrade={() => void startPlusCheckout()} onDismiss={() => setUpgradePrompt(null)} />}
 
         {assignment && <AssignmentCard assignment={assignment} />}
+
+        {group.is_organizer && <PlusBillingCard group={group} purchase={purchase} busy={busy} onUpgrade={() => void startPlusCheckout()} />}
 
         <div className="grid gap-7 lg:grid-cols-[1.1fr_.9fr]">
           <Card><p className="eyebrow">Participants</p><h2 className="mt-1 font-heading text-2xl font-semibold">The exchange circle</h2><div className="mt-6 space-y-3">{group.members.map((member) => <div key={member.member_id} className="member-row"><span className="avatar-chip">{member.display_name[0]?.toUpperCase()}</span><div><p className="font-medium">{member.display_name}</p><p className="text-xs text-muted">{member.is_organizer ? 'Organizer' : member.is_participating ? 'Participating' : 'Not participating'}</p></div>{group.is_organizer && group.status === 'open' && !member.is_organizer && <label className="ml-auto flex cursor-pointer items-center gap-2 text-sm text-muted"><Checkbox.Root checked={member.is_participating} onCheckedChange={(checked) => void action((token) => api.setParticipation(token, groupId, member.member_id, checked === true))}><Checkbox.Indicator /></Checkbox.Root>Include</label>}</div>)}</div></Card>
@@ -68,14 +81,23 @@ export default function GroupPage() {
   );
 }
 
-function CheckoutRecovery({ state, purchase }: { state: string; purchase: PlusPurchaseStatus | null }) {
+export function CheckoutRecovery({ state, purchase, intendedAction, onUpgrade }: { state: string; purchase: PlusPurchaseStatus | null; intendedAction: string | null; onUpgrade(): void }) {
   if (state === 'canceled')
-    return <Card><p className="font-semibold">Checkout canceled</p><p className="mt-1 text-sm text-muted">Nothing was charged and this exchange is still on its current plan.</p></Card>;
+    return <Card><p className="font-semibold">Checkout canceled</p><p className="mt-1 text-sm text-muted">Nothing was charged and this exchange is still on its current plan.</p><Button className="mt-4" onClick={onUpgrade}>Return to secure Checkout</Button></Card>;
   if (purchase?.status === 'paid' && purchase.entitlement_id)
-    return <Card><p className="font-semibold text-success">Plus is ready</p><p className="mt-1 text-sm text-muted">Your one-time Plus purchase now applies to this exchange.</p>{purchase.receipt_url && <a className="mt-3 inline-block text-accent hover:underline" href={purchase.receipt_url} target="_blank" rel="noreferrer">View Stripe receipt</a>}</Card>;
+    return <Card><p className="font-semibold text-success">Plus is ready</p><p className="mt-1 text-sm text-muted">Your one-time Plus purchase now applies only to this exchange. It does not renew.</p>{intendedAction && <p className="mt-3 text-sm">You can now continue: {intendedAction}</p>}{purchase.receipt_url && <a className="mt-3 inline-block text-accent hover:underline" href={purchase.receipt_url} target="_blank" rel="noreferrer">View Stripe receipt</a>}</Card>;
   if (purchase?.status && ['failed', 'expired', 'refunded'].includes(purchase.status))
-    return <Card><p className="font-semibold">Purchase not active</p><p className="mt-1 text-sm text-muted">Stripe reported this payment as {purchase.status}. Your exchange has not been upgraded.</p></Card>;
+    return <Card><p className="font-semibold">Purchase not active</p><p className="mt-1 text-sm text-muted">Stripe reported this payment as {purchase.status}. Your exchange has not been upgraded.</p>{purchase.status !== 'refunded' && <Button className="mt-4" onClick={onUpgrade}>Try Checkout again</Button>}</Card>;
   return <Card><p className="font-semibold">Finalizing your Plus purchase…</p><p className="mt-1 text-sm text-muted">Stripe returned successfully. Humbugg is securely confirming the payment before enabling Plus.</p></Card>;
+}
+
+export function UpgradeOffer({ reason, busy, onUpgrade, onDismiss }: { reason: string; busy: boolean; onUpgrade(): void; onDismiss(): void }) {
+  return <Card className="border-primary/30" role="region" aria-labelledby="plus-upgrade-title"><p className="eyebrow">One-time exchange upgrade</p><h2 id="plus-upgrade-title" className="mt-1 font-heading text-2xl font-semibold">Unlock Plus for $12</h2><p className="mt-2 text-sm text-muted">{reason}</p><p className="mt-3 text-sm">This is one payment for this exchange only—no subscription and no renewal.</p><ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-muted"><li>Up to 50 total participants, including you</li><li>Managed email invitations and automatic reminders</li><li>Co-organizers, customization, reusable templates, and late-participant tools</li></ul><div className="mt-5 flex flex-wrap gap-3"><Button disabled={busy} onClick={onUpgrade}>{busy ? 'Opening…' : 'Continue to secure Checkout'}</Button><Button intent="secondary" disabled={busy} onClick={onDismiss}>Not now</Button></div></Card>;
+}
+
+function PlusBillingCard({ group, purchase, busy, onUpgrade }: { group: GroupDetail; purchase: PlusPurchaseStatus | null; busy: boolean; onUpgrade(): void }) {
+  const atFreeLimit = group.plan === 'free' && group.members.filter((member) => member.is_participating).length >= 6;
+  return <Card><p className="eyebrow">Exchange billing</p><h2 className="mt-1 font-heading text-2xl font-semibold">{group.plan === 'plus' ? 'Plus for this exchange' : 'Free plan'}</h2>{group.plan === 'plus' ? <><p className="mt-2 text-sm text-muted">Plus was purchased once for this exchange. It does not renew or apply to other exchanges.</p>{purchase?.status && <p className="mt-3 text-sm capitalize">Payment status: {purchase.status}</p>}{purchase?.receipt_url && <a className="mt-3 inline-block text-accent hover:underline" href={purchase.receipt_url} target="_blank" rel="noreferrer">View Stripe receipt</a>}</> : <><p className="mt-2 text-sm text-muted">Free includes six total participants. Plus is a one-time $12 purchase for this exchange and raises the limit to 50.</p>{atFreeLimit && <p className="mt-3 font-medium">This exchange is at the Free participant limit.</p>}<Button className="mt-4" disabled={busy} onClick={onUpgrade}>See Plus and upgrade</Button></>}</Card>;
 }
 
 function AssignmentCard({ assignment }: { assignment: RecipientAssignment }) {
