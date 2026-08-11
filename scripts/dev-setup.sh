@@ -112,6 +112,29 @@ brew_ensure() {
   brew_run install "$formula"
 }
 
+# Agent skills for the tools this repo builds on: the Expo/EAS set and the
+# @ansavva/design-system consumer set. They are machine-local tooling, not
+# source — .agents/, .claude/skills/ and skills-lock.json are all gitignored, so
+# a fresh clone has no skills until this runs. The `skills` CLI writes the real
+# SKILL.md files under .agents/skills/ and symlinks them into .claude/skills/,
+# which is where Claude Code looks; do not delete the symlinks.
+ensure_skills() {
+  if [[ -f "$REPO_ROOT/skills-lock.json" ]]; then
+    skip "agent skills" "$REPO_ROOT/skills-lock.json"
+    return 0
+  fi
+  if [[ "$CHECK_ONLY" -eq 1 ]]; then
+    warn "agent skills are MISSING (would: npx skills@latest add expo/skills, ansavva/design-system)"
+    return 0
+  fi
+  if ! have npx; then warn "npx not found; skipping agent skills"; return 0; fi
+  log "installing agent skills ..."
+  ( cd "$REPO_ROOT" \
+    && npx --yes skills@latest add expo/skills --skill '*' \
+    && npx --yes skills@latest add ansavva/design-system ) \
+    || warn "agent skill install failed; re-run scripts/dev-setup.sh to retry"
+}
+
 # tflint's AWS ruleset plugin (CI parity). GitHub-release download; best-effort.
 install_tflint_aws_plugin_best_effort() {
   [[ "$CHECK_ONLY" -eq 1 ]] && return 0
@@ -156,6 +179,8 @@ if have node; then
   major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
   [[ "$major" -ge "$NODE_MAJOR_MIN" ]] || warn "node $(node --version) is below required v${NODE_MAJOR_MIN}"
 fi
+
+ensure_skills
 
 # Docker is a daemon/GUI concern — check only, never auto-install.
 if have docker; then skip docker "$(command -v docker)"; else
