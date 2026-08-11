@@ -60,7 +60,7 @@ may therefore use multiple machines without collisions.
 ```bash
 # One-time toolchain and authentication setup (from the repo root).
 # The shared setup includes the Stripe CLI from stripe/stripe-cli/stripe.
-./humbugg/scripts/dev-setup.sh --profile personal
+./humbugg/scripts/dev-setup.sh
 stripe login
 
 # Authenticate npm for the private design system package.
@@ -69,10 +69,10 @@ eval "$(./scripts/github-packages-auth.sh --export)"
 npm --prefix humbugg/frontend install --legacy-peer-deps
 
 # Read-only validation of shared tools, .NET, AWS resources, and env files.
-./humbugg/scripts/dev-setup.sh --profile personal --check
+./humbugg/scripts/dev-setup.sh --check
 
 # Start backend, frontend, and Stripe webhook forwarding together.
-./humbugg/scripts/dev-up.sh --profile personal
+./humbugg/scripts/dev-up.sh
 ```
 
 The combined launcher retrieves the current Stripe CLI `whsec_...` signing
@@ -102,13 +102,13 @@ All commands run from the repository root:
 
 `humbugg/scripts/dev-aws-common.sh` is a sourced implementation helper, not a
 user command. AWS commands default to `$AWS_PROFILE`/`default` and
-`$AWS_REGION`/`$AWS_DEFAULT_REGION`/`us-east-1`; use an explicit profile during
-interactive development.
+`$AWS_REGION`/`$AWS_DEFAULT_REGION`/`us-east-1`; the `default` profile is the
+right one for this repo, so `--profile` is only needed to override it.
 
 To start components separately:
 
 ```bash
-./humbugg/scripts/dev-up-backend.sh --profile personal  # http://localhost:5001
+./humbugg/scripts/dev-up-backend.sh                     # http://localhost:5001
 ./humbugg/scripts/dev-up-frontend.sh                    # http://localhost:5173
 ./humbugg/scripts/dev-up-stripe.sh                      # forwards billing webhooks
 ./humbugg/scripts/dev-logs-backend.sh                   # follows backend logs
@@ -117,9 +117,9 @@ To start components separately:
 To reset or remove only the current machine's environment:
 
 ```bash
-./humbugg/scripts/dev-aws-reset.sh --profile personal --dry-run
-./humbugg/scripts/dev-aws-reset.sh --profile personal
-./humbugg/scripts/dev-aws-destroy.sh --profile personal
+./humbugg/scripts/dev-aws-reset.sh --dry-run
+./humbugg/scripts/dev-aws-reset.sh
+./humbugg/scripts/dev-aws-destroy.sh
 ```
 
 The reset script verifies the Terraform machine UUID and exact AWS resource

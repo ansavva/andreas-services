@@ -15,9 +15,9 @@
 # PATH, the script does nothing.
 #
 # Usage:
-#   ./humbugg/scripts/dev-setup.sh --profile personal
-#   ./humbugg/scripts/dev-setup.sh --profile personal --yes
-#   ./humbugg/scripts/dev-setup.sh --profile personal --check
+#   ./humbugg/scripts/dev-setup.sh
+#   ./humbugg/scripts/dev-setup.sh --yes
+#   ./humbugg/scripts/dev-setup.sh --check
 #
 set -euo pipefail
 

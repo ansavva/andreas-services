@@ -167,6 +167,6 @@ if have docker; then skip docker "$(command -v docker)"; else
 fi
 
 log "shared toolchain ready. For complete service setup run its orchestrator, e.g.:"
-log "    ./humbugg/scripts/dev-setup.sh --profile personal   # .NET + per-machine AWS"
+log "    ./humbugg/scripts/dev-setup.sh   # .NET + per-machine AWS"
 [[ "$PLATFORM" == "linux" && "$CHECK_ONLY" -ne 1 ]] && log "Tools are on PATH via /etc/profile.d/homebrew.sh (new shells) or: eval \"\$($LINUXBREW_PREFIX/bin/brew shellenv)\""
 ok "done."
