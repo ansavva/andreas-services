@@ -14,10 +14,10 @@ Bootstrap the toolchain with the idempotent setup scripts (Homebrew on both macO
 and Linux; safe to re-run — already-installed tools are skipped). From the repo root:
 
 ```bash
-./humbugg/scripts/dev-setup.sh --profile personal  # shared tools + .NET + per-machine Humbugg AWS
+./humbugg/scripts/dev-setup.sh  # shared tools + .NET + per-machine Humbugg AWS
 
 # See what's missing without installing anything:
-./humbugg/scripts/dev-setup.sh --profile personal --check
+./humbugg/scripts/dev-setup.sh --check
 ```
 
 The `humbugg/` and `website/` frontends depend on the private

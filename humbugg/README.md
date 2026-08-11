@@ -35,8 +35,9 @@ applicable and accept `--help` for their complete usage.
 
 `dev-aws-common.sh` is an internal helper sourced by the commands above and
 should not be run directly. AWS scripts default to `$AWS_PROFILE` (or
-`default`) and `$AWS_REGION`/`$AWS_DEFAULT_REGION` (or `us-east-1`). Passing an
-explicit profile is recommended.
+`default`) and `$AWS_REGION`/`$AWS_DEFAULT_REGION` (or `us-east-1`). The
+`default` profile is the correct one for this repo, so `--profile` is only
+needed to override it.
 
 0. Run the canonical idempotent setup from the repo root. It invokes shared
    tool setup, installs .NET, provisions this machine's AWS resources, and
@@ -44,7 +45,7 @@ explicit profile is recommended.
    `@ansavva/design-system` package:
 
    ```bash
-   ./humbugg/scripts/dev-setup.sh --profile personal
+   ./humbugg/scripts/dev-setup.sh
    export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
    eval "$(./scripts/github-packages-auth.sh --export)"   # sets NODE_AUTH_TOKEN
    npm --prefix humbugg/frontend install --legacy-peer-deps
@@ -66,7 +67,7 @@ explicit profile is recommended.
    completed setup later with:
 
    ```bash
-   ./humbugg/scripts/dev-setup.sh --profile personal --check
+   ./humbugg/scripts/dev-setup.sh --check
    ```
 
    `--check` runs the complete dependency chain without installing tools,
@@ -82,7 +83,7 @@ explicit profile is recommended.
 3. Start the backend, frontend, and Stripe webhook listener together:
 
    ```bash
-   ./humbugg/scripts/dev-up.sh --profile personal
+   ./humbugg/scripts/dev-up.sh
    ```
 
    The launcher refreshes the Stripe CLI's local `whsec_...` signing secret and
@@ -97,7 +98,7 @@ selected AWS profile directly into the backend process; credentials are never
 written to a file:
 
 ```bash
-./humbugg/scripts/dev-up-backend.sh --profile personal
+./humbugg/scripts/dev-up-backend.sh
 ```
 
 Restart the launcher when the AWS login session expires so it can inject a
@@ -136,8 +137,8 @@ To preview a reset without changing anything, then reset all development data
 before a clean test run, use:
 
 ```bash
-./humbugg/scripts/dev-aws-reset.sh --profile personal --dry-run
-./humbugg/scripts/dev-aws-reset.sh --profile personal
+./humbugg/scripts/dev-aws-reset.sh --dry-run
+./humbugg/scripts/dev-aws-reset.sh
 ```
 
 The reset script verifies the machine UUID and resource-name prefix, deletes and
@@ -149,7 +150,7 @@ bucket, and deletes its Cognito users while retaining the pool and client. Pass
 Remove the AWS resources when this development environment is no longer needed:
 
 ```bash
-./humbugg/scripts/dev-aws-destroy.sh --profile personal
+./humbugg/scripts/dev-aws-destroy.sh
 ```
 
 The machine UUID is intentionally retained so reprovisioning uses the same

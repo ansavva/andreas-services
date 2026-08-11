@@ -42,10 +42,10 @@ Notes:
 
 ```bash
 # From the repo root — complete Humbugg setup in dependency order:
-./humbugg/scripts/dev-setup.sh --profile personal
+./humbugg/scripts/dev-setup.sh
 
 # Check every layer without installing or provisioning anything:
-./humbugg/scripts/dev-setup.sh --profile personal --check
+./humbugg/scripts/dev-setup.sh --check
 
 # The shared service-neutral layer remains directly runnable:
 ./scripts/dev-setup.sh

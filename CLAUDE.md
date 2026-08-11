@@ -7,20 +7,18 @@ Each subdirectory is a **fully self-contained deployable unit** — it has its o
 
 ## Environment access
 
-**AWS CLI — always use the `personal` profile.** There is no `default` profile, so
-a bare `aws ...` command fails with `NoCredentials` (or a misleading "run `aws login`"
-hint). Every AWS call must specify the profile:
+**AWS CLI — use the `default` profile.** A bare `aws ...` command is correct; no
+`--profile` flag is needed:
 
 ```bash
-export AWS_PROFILE=personal      # once per shell, then use `aws ...` normally
-aws --profile personal ...       # or per-command
+aws sts get-caller-identity
 ```
 
-`personal` is AWS account `704202188703` — this is the account that hosts all
-`andreas.services` and `humbugg.com` infrastructure. The other configured profile
-(`insolvia`, account `521762924626`) is unrelated to this repo; do not use it here.
+`default` is AWS account `704202188703` (`user/ansavva`) — the account that hosts
+all `andreas.services` and `humbugg.com` infrastructure. If a command fails with
+`NoCredentials` or an expired-session error, re-authenticate with `aws login`.
 
-With the profile set, prefer the CLI for read-only investigation of live
+Prefer the CLI for read-only investigation of live
 infrastructure (CloudFront, S3, Lambda, DynamoDB, CloudWatch Logs, SSM, etc.) when
 diagnosing issues. Note: outbound HTTP to
 `*.andreas.services` is blocked by the sandbox network policy (responses look
