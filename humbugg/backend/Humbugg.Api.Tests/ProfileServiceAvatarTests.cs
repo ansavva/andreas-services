@@ -101,7 +101,7 @@ public sealed class ProfileServiceAvatarTests
         public World()
         {
             var settings = new HumbuggSettings("us-east-1", "us-east-1", "pool", "client",
-                "http://localhost:5173", BaseUrl, null, "profiles", "groups", "members", "draws", "audit", "analytics",
+                ["http://localhost:5173"], BaseUrl, null, "profiles", "groups", "members", "draws", "audit", "analytics",
                 AvatarBaseUrl: BaseUrl);
             Service = new ProfileService(User, Profiles, Store, settings);
         }

@@ -88,7 +88,7 @@ public sealed class GroupServiceSecurityTests
             Groups = new FakeGroups(Group(exclusions ?? [["actor", "other"]]));
             Members = new FakeMembers(member is null ? [] : [member]);
             Subject = new GroupService(new FakeUser(), new FakeProfiles(), Groups, Members, new MatchingService(), new PlanCatalog(new()), new FakeAuditTrail(), new FakeProductAnalytics(), new HumbuggSettings(
-                "us-east-1", "us-east-1", "pool", "client", "http://localhost:5173", "http://localhost:5173", null,
+                "us-east-1", "us-east-1", "pool", "client", ["http://localhost:5173"], "http://localhost:5173", null,
                 "profiles", "groups", "members", "draws", "audit", "analytics"));
         }
 

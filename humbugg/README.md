@@ -176,11 +176,18 @@ Email monitoring and recovery are documented in
 
 Terraform reads the existing public `humbugg.com` and `andreas.services`
 Route53 hosted zones. It owns a us-east-1 ACM certificate for `humbugg.com`,
-`www.humbugg.com`, and `humbugg.andreas.services`, plus their validation and
-alias records. The CloudFront viewer-request function returns a `308` redirect
-for non-apex hosts before any route reaches an origin.
+`www.humbugg.com`, `app.humbugg.com`, `api.humbugg.com`, and
+`humbugg.andreas.services`, plus their validation and alias records. That one
+region serves both consumers: it is where CloudFront requires its certificate
+and where this deployment's regional API Gateway lives. The CloudFront
+viewer-request function returns a `308` redirect for non-apex hosts before any
+route reaches an origin.
 
-The backend `APP_BASE_URL` and `CORS_ORIGIN`, frontend build URL, Cognito
+The backend also answers directly at `api.humbugg.com` through an API Gateway
+custom domain, alongside — not instead of — the `humbugg.com/api/*` CloudFront
+path that the SPA uses today.
+
+The backend `APP_BASE_URL` and `CORS_ORIGINS`, frontend build URL, Cognito
 callback/logout URLs, metadata, robots file, sitemap, invite links, deployment
 smoke tests, and public documentation all use `https://humbugg.com`.
 

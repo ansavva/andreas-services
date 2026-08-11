@@ -87,7 +87,7 @@ public sealed class ConsentTests
         public ProfileWorld()
         {
             var settings = new HumbuggSettings("us-east-1", "us-east-1", "pool", "client",
-                "http://localhost:5173", "https://humbugg.com", null, "profiles", "groups", "members", "draws",
+                ["http://localhost:5173"], "https://humbugg.com", null, "profiles", "groups", "members", "draws",
                 "audit", "analytics", AvatarBaseUrl: "https://humbugg.com");
             Service = new ProfileService(new FakeUser(), Profiles, new InMemoryAvatarStore(), settings);
         }

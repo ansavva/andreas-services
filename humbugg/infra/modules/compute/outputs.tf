@@ -32,3 +32,13 @@ output "api_endpoint" {
   description = "API Gateway invoke URL"
   value       = aws_apigatewayv2_stage.backend.invoke_url
 }
+
+output "api_id" {
+  description = "Backend HTTP API ID, for mapping a custom domain onto it"
+  value       = aws_apigatewayv2_api.backend.id
+}
+
+output "api_stage_name" {
+  description = "Backend HTTP API stage name, for the custom-domain API mapping"
+  value       = aws_apigatewayv2_stage.backend.name
+}

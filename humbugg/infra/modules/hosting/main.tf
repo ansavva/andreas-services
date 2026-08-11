@@ -1,48 +1,5 @@
-terraform {
-  required_providers {
-    aws = {
-      source                = "hashicorp/aws"
-      configuration_aliases = [aws.us_east_1]
-    }
-  }
-}
-
-resource "aws_acm_certificate" "app" {
-  provider                  = aws.us_east_1
-  domain_name               = var.domain_name
-  subject_alternative_names = ["www.${var.domain_name}", var.legacy_domain_name]
-  validation_method         = "DNS"
-
-  lifecycle {
-    create_before_destroy = true
-  }
-
-  tags = var.tags
-}
-
-resource "aws_route53_record" "certificate_validation" {
-  for_each = {
-    for option in aws_acm_certificate.app.domain_validation_options : option.domain_name => {
-      name   = option.resource_record_name
-      record = option.resource_record_value
-      type   = option.resource_record_type
-    }
-  }
-
-  allow_overwrite = true
-  zone_id         = each.key == var.legacy_domain_name ? var.legacy_route53_zone_id : var.route53_zone_id
-  name            = each.value.name
-  type            = each.value.type
-  ttl             = 300
-  records         = [each.value.record]
-}
-
-resource "aws_acm_certificate_validation" "app" {
-  provider                = aws.us_east_1
-  certificate_arn         = aws_acm_certificate.app.arn
-  validation_record_fqdns = [for record in aws_route53_record.certificate_validation : record.fqdn]
-}
-
+# The viewer certificate is supplied by modules/certificates, which owns the single
+# us-east-1 certificate shared with the API Gateway custom domain.
 data "aws_cloudfront_cache_policy" "disabled" {
   name = "Managed-CachingDisabled"
 }
@@ -241,7 +198,7 @@ resource "aws_cloudfront_distribution" "app" {
   }
 
   viewer_certificate {
-    acm_certificate_arn      = aws_acm_certificate_validation.app.certificate_arn
+    acm_certificate_arn      = var.certificate_arn
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
   }

@@ -207,7 +207,7 @@ public sealed class AccountDeletionTests
         {
             Deletion = new AccountDeletionService(User, Profiles, Groups, Members, Audit, Anonymizer);
             GroupService = new GroupService(User, Profiles, Groups, Members, new MatchingService(), new PlanCatalog(new()), Audit, new NoopAnalytics(),
-                new HumbuggSettings("us-east-1", "us-east-1", "pool", "client", "http://localhost:5173", "http://localhost:5173", null,
+                new HumbuggSettings("us-east-1", "us-east-1", "pool", "client", ["http://localhost:5173"], "http://localhost:5173", null,
                     "profiles", "groups", "members", "draws", "audit", "analytics"));
         }
     }

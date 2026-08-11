@@ -3,6 +3,7 @@ locals {
   environment        = "production"
   domain_name        = "humbugg.com"
   legacy_domain_name = "humbugg.andreas.services"
+  api_domain_name    = "api.${local.domain_name}"
   app_base_url       = "https://${local.domain_name}"
 
   common_tags = {
@@ -101,16 +102,85 @@ module "compute" {
   tags = local.common_tags
 }
 
-module "hosting" {
-  source = "../../modules/hosting"
+# The certificate moved out of `hosting` so the API Gateway custom domain can share it.
+# The moved blocks below keep the existing certificate, its validation records, and the
+# validation resource attached to their state addresses — a plan that shows any of them
+# being destroyed and recreated means one of those addresses is wrong.
+moved {
+  from = module.hosting.aws_acm_certificate.app
+  to   = module.certificates.aws_acm_certificate.main
+}
+
+moved {
+  from = module.hosting.aws_route53_record.certificate_validation
+  to   = module.certificates.aws_route53_record.certificate_validation
+}
+
+moved {
+  from = module.hosting.aws_acm_certificate_validation.app
+  to   = module.certificates.aws_acm_certificate_validation.main
+}
+
+module "certificates" {
+  source = "../../modules/certificates"
 
   providers = {
     aws.us_east_1 = aws.us_east_1
   }
 
+  domain_name        = local.domain_name
+  legacy_domain_name = local.legacy_domain_name
+
+  # www and the legacy hostname are served today; app. and api. are added ahead of the
+  # surfaces that will use them, because adding a SAN later replaces the certificate.
+  subject_alternative_names = [
+    "www.${local.domain_name}",
+    "app.${local.domain_name}",
+    local.api_domain_name,
+    local.legacy_domain_name,
+  ]
+
+  route53_zone_id        = data.aws_route53_zone.humbugg.zone_id
+  legacy_route53_zone_id = data.aws_route53_zone.main.zone_id
+
+  tags = local.common_tags
+}
+
+# api.humbugg.com answers alongside the existing humbugg.com/api/* CloudFront path.
+# Nothing is cut over here: no caller is repointed and the CloudFront behavior is untouched.
+module "api_domain" {
+  source = "../../modules/api_domain"
+
+  domain_name     = local.api_domain_name
+  certificate_arn = module.certificates.certificate_arn
+
+  api_id     = module.compute.api_id
+  stage_name = module.compute.api_stage_name
+
+  route53_zone_id = data.aws_route53_zone.humbugg.zone_id
+
+  tags = local.common_tags
+}
+
+# Terraform owns this parameter because Terraform knows the value; the deploy workflow's
+# put-parameter step exists for outputs the app jobs consume, and can read this one.
+resource "aws_ssm_parameter" "api_domain" {
+  name        = "/humbugg/prod/api-domain"
+  description = "Public base URL of the backend API on its own domain"
+  type        = "String"
+  value       = module.api_domain.api_base_url
+
+  tags = local.common_tags
+}
+
+module "hosting" {
+  source = "../../modules/hosting"
+
   project            = local.project
   domain_name        = local.domain_name
   legacy_domain_name = local.legacy_domain_name
+
+  certificate_arn = module.certificates.certificate_arn
 
   route53_zone_id        = data.aws_route53_zone.humbugg.zone_id
   legacy_route53_zone_id = data.aws_route53_zone.main.zone_id
