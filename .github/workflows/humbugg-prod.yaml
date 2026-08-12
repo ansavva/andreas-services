@@ -569,6 +569,9 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      # npm ci pulls @ansavva/* from GitHub Packages. Declaring any permissions
+      # block drops the default packages: read, so it has to be listed here.
+      packages: read
 
     steps:
       - name: Configure AWS credentials
