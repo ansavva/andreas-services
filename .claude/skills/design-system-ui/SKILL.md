@@ -5,7 +5,7 @@ description: >-
   check the catalogue before writing a component, import from the package root so the
   bundler picks the platform leaf, and express brand through the theming seams rather
   than hard-coded colours. Use before adding or changing any screen, form, dialog or
-  styled component in humbugg/web, humbugg/app or website/.
+  styled component in humbugg/marketing, humbugg/app or website/.
 ---
 
 # UI in this repo comes from the design system
@@ -49,7 +49,7 @@ compiles cleanly, so nothing tells you until the other platform renders wrong.
 
 | Directory | Bundler | Leaf | Styling |
 |---|---|---|---|
-| `humbugg/web` (marketing, `www.humbugg.com`) | Vite | `.web.tsx` | Tailwind v4 + `theme.css` |
+| `humbugg/marketing` (marketing, `www.humbugg.com`) | Vite | `.web.tsx` | Tailwind v4 + `theme.css` |
 | `website/frontend` (`www.andreas.services`) | Vite | `.web.tsx` | Tailwind v4 + `theme.css` |
 | `humbugg/app` (product, `app.humbugg.com`) | Metro | `.native.tsx` | **No Tailwind** — RN `StyleSheet` |
 

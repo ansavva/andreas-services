@@ -70,7 +70,7 @@ jobs:
           dotnet test Humbugg.slnx --configuration Release --no-restore
 
   # ---------------------------------------------------------------------------
-  # Tier 1 – verify Docker build + frontend build (no push, no deploy)
+  # Tier 1 – verify Docker build + marketing site build (no push, no deploy)
   # ---------------------------------------------------------------------------
   build-backend:
     name: Build Backend Docker Image
@@ -104,8 +104,8 @@ jobs:
           docker logs humbugg-backend-smoke
           exit 1
 
-  build-frontend:
-    name: Build SSR Frontend
+  build-marketing:
+    name: Build Marketing Site
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -121,24 +121,24 @@ jobs:
           registry-url: 'https://npm.pkg.github.com'
           scope: '@ansavva'
           cache: npm
-          cache-dependency-path: humbugg/frontend/package-lock.json
+          cache-dependency-path: humbugg/marketing/package-lock.json
 
       - name: Install dependencies
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: cd humbugg/frontend && npm ci
+        run: cd humbugg/marketing && npm ci
 
       - name: Typecheck, test, and build
         run: |
-          cd humbugg/frontend
+          cd humbugg/marketing
           npm run typecheck
           npm test
           npm run build
 
       - name: Build SSR Lambda image
-        run: cd humbugg/frontend && docker build -t humbugg-frontend:ci-verify .
+        run: cd humbugg/marketing && docker build -t humbugg-marketing:ci-verify .
 
       - name: Smoke test SSR Lambda handler import
         run: |
-          docker run --rm --entrypoint node humbugg-frontend:ci-verify \
+          docker run --rm --entrypoint node humbugg-marketing:ci-verify \
             -e "import('./server/index.mjs').then(({ handler }) => { if (typeof handler !== 'function') process.exit(1); console.log('SSR handler ready'); })"

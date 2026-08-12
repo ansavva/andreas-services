@@ -11,6 +11,12 @@
       "port": 5173
     },
     {
+      "name": "humbugg-marketing",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "humbugg/marketing", "run", "dev"],
+      "port": 5173
+    },
+    {
       "name": "website-prod",
       "runtimeExecutable": "/bin/sh",
       "runtimeArgs": [
