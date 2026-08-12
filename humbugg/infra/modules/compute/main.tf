@@ -1,5 +1,5 @@
-resource "aws_ecr_repository" "backend" {
-  name                 = "${var.project}-backend-${var.environment}"
+resource "aws_ecr_repository" "api" {
+  name                 = "${var.project}-${var.environment}-api"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
@@ -9,8 +9,8 @@ resource "aws_ecr_repository" "backend" {
   tags = var.tags
 }
 
-resource "aws_ecr_lifecycle_policy" "backend" {
-  repository = aws_ecr_repository.backend.name
+resource "aws_ecr_lifecycle_policy" "api" {
+  repository = aws_ecr_repository.api.name
 
   policy = jsonencode({
     rules = [{
@@ -28,8 +28,8 @@ resource "aws_ecr_lifecycle_policy" "backend" {
   })
 }
 
-resource "aws_ecr_repository" "frontend" {
-  name                 = "${var.project}-frontend-${var.environment}"
+resource "aws_ecr_repository" "marketing" {
+  name                 = "${var.project}-${var.environment}-marketing"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
@@ -39,8 +39,8 @@ resource "aws_ecr_repository" "frontend" {
   tags = var.tags
 }
 
-resource "aws_ecr_lifecycle_policy" "frontend" {
-  repository = aws_ecr_repository.frontend.name
+resource "aws_ecr_lifecycle_policy" "marketing" {
+  repository = aws_ecr_repository.marketing.name
 
   policy = jsonencode({
     rules = [{
@@ -58,8 +58,8 @@ resource "aws_ecr_lifecycle_policy" "frontend" {
   })
 }
 
-resource "aws_iam_role" "lambda" {
-  name = "${var.project}-lambda-role-${var.environment}"
+resource "aws_iam_role" "api" {
+  name = "${var.project}-${var.environment}-api-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -75,13 +75,13 @@ resource "aws_iam_role" "lambda" {
   tags = var.tags
 }
 
-resource "aws_iam_role_policy_attachment" "lambda_basic" {
-  role       = aws_iam_role.lambda.name
+resource "aws_iam_role_policy_attachment" "api_basic" {
+  role       = aws_iam_role.api.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-resource "aws_iam_role" "frontend" {
-  name = "${var.project}-frontend-lambda-role-${var.environment}"
+resource "aws_iam_role" "marketing" {
+  name = "${var.project}-${var.environment}-marketing-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -97,14 +97,14 @@ resource "aws_iam_role" "frontend" {
   tags = var.tags
 }
 
-resource "aws_iam_role_policy_attachment" "frontend_basic" {
-  role       = aws_iam_role.frontend.name
+resource "aws_iam_role_policy_attachment" "marketing_basic" {
+  role       = aws_iam_role.marketing.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-resource "aws_iam_role_policy" "lambda_dynamodb" {
-  name = "${var.project}-lambda-dynamodb-policy"
-  role = aws_iam_role.lambda.id
+resource "aws_iam_role_policy" "api_dynamodb" {
+  name = "${var.project}-${var.environment}-api-dynamodb"
+  role = aws_iam_role.api.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -129,12 +129,12 @@ resource "aws_iam_role_policy" "lambda_dynamodb" {
   })
 }
 
-# Least-privilege avatar storage access: the backend Lambda may only write and delete objects under
+# Least-privilege file storage access: the API Lambda may only write and delete objects under
 # the avatars/ prefix. It has no ListBucket, no bucket-wide access, and no read (CloudFront serves the
 # objects), so a compromised function cannot enumerate or exfiltrate the bucket.
-resource "aws_iam_role_policy" "lambda_avatars" {
-  name = "${var.project}-lambda-avatars-policy"
-  role = aws_iam_role.lambda.id
+resource "aws_iam_role_policy" "api_app_files" {
+  name = "${var.project}-${var.environment}-api-app-files"
+  role = aws_iam_role.api.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -149,9 +149,9 @@ resource "aws_iam_role_policy" "lambda_avatars" {
   })
 }
 
-resource "aws_iam_role_policy" "lambda_email_messages" {
-  name = "${var.project}-lambda-email-messages-policy"
-  role = aws_iam_role.lambda.id
+resource "aws_iam_role_policy" "api_email_messages" {
+  name = "${var.project}-${var.environment}-api-email-messages"
+  role = aws_iam_role.api.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -164,7 +164,7 @@ resource "aws_iam_role_policy" "lambda_email_messages" {
 }
 
 resource "aws_iam_role" "email_status" {
-  name = "${var.project}-email-status-role-${var.environment}"
+  name = "${var.project}-${var.environment}-email-status-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -186,7 +186,7 @@ resource "aws_iam_role_policy_attachment" "email_status_basic" {
 }
 
 resource "aws_iam_role_policy" "email_status_queue" {
-  name = "${var.project}-email-status-queue-${var.environment}"
+  name = "${var.project}-${var.environment}-email-status-queue"
   role = aws_iam_role.email_status.id
 
   policy = jsonencode({
@@ -205,7 +205,7 @@ resource "aws_iam_role_policy" "email_status_queue" {
 }
 
 resource "aws_iam_role_policy" "email_status_table" {
-  name = "${var.project}-email-status-table-${var.environment}"
+  name = "${var.project}-${var.environment}-email-status"
   role = aws_iam_role.email_status.id
 
   policy = jsonencode({
@@ -218,11 +218,11 @@ resource "aws_iam_role_policy" "email_status_table" {
   })
 }
 
-resource "aws_lambda_function" "backend" {
-  function_name = "${var.project}-backend-${var.environment}"
-  role          = aws_iam_role.lambda.arn
+resource "aws_lambda_function" "api" {
+  function_name = "${var.project}-${var.environment}-api"
+  role          = aws_iam_role.api.arn
   package_type  = "Image"
-  image_uri     = "${aws_ecr_repository.backend.repository_url}:latest"
+  image_uri     = "${aws_ecr_repository.api.repository_url}:latest"
   timeout       = 30
   memory_size   = 512
 
@@ -237,10 +237,10 @@ resource "aws_lambda_function" "backend" {
 }
 
 resource "aws_lambda_function" "email_status" {
-  function_name = "${var.project}-email-status-${var.environment}"
+  function_name = "${var.project}-${var.environment}-email-status"
   role          = aws_iam_role.email_status.arn
   package_type  = "Image"
-  image_uri     = "${aws_ecr_repository.backend.repository_url}:latest"
+  image_uri     = "${aws_ecr_repository.api.repository_url}:latest"
   timeout       = 30
   memory_size   = 256
 
@@ -274,11 +274,11 @@ resource "aws_lambda_event_source_mapping" "email_status" {
   ]
 }
 
-resource "aws_lambda_function" "frontend" {
-  function_name = "${var.project}-frontend-${var.environment}"
-  role          = aws_iam_role.frontend.arn
+resource "aws_lambda_function" "marketing" {
+  function_name = "${var.project}-${var.environment}-marketing"
+  role          = aws_iam_role.marketing.arn
   package_type  = "Image"
-  image_uri     = "${aws_ecr_repository.frontend.repository_url}:latest"
+  image_uri     = "${aws_ecr_repository.marketing.repository_url}:latest"
   timeout       = 30
   memory_size   = 512
 
@@ -298,15 +298,15 @@ resource "aws_lambda_function" "frontend" {
   }
 }
 
-resource "aws_cloudwatch_log_group" "lambda" {
-  name              = "/aws/lambda/${aws_lambda_function.backend.function_name}"
+resource "aws_cloudwatch_log_group" "api" {
+  name              = "/aws/lambda/${aws_lambda_function.api.function_name}"
   retention_in_days = 14
 
   tags = var.tags
 }
 
-resource "aws_cloudwatch_log_group" "frontend" {
-  name              = "/aws/lambda/${aws_lambda_function.frontend.function_name}"
+resource "aws_cloudwatch_log_group" "marketing" {
+  name              = "/aws/lambda/${aws_lambda_function.marketing.function_name}"
   retention_in_days = 14
 
   tags = var.tags
@@ -320,7 +320,7 @@ resource "aws_cloudwatch_log_group" "email_status" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "email_status_errors" {
-  alarm_name          = "${var.project}-email-status-errors-${var.environment}"
+  alarm_name          = "${var.project}-${var.environment}-email-status-errors"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 1
   metric_name         = "Errors"
@@ -337,27 +337,27 @@ resource "aws_cloudwatch_metric_alarm" "email_status_errors" {
   tags = var.tags
 }
 
-resource "aws_apigatewayv2_api" "backend" {
-  name          = "${var.project}-backend-${var.environment}"
+resource "aws_apigatewayv2_api" "api" {
+  name          = "${var.project}-${var.environment}-api"
   protocol_type = "HTTP"
   description   = "${var.project} Backend API"
 
   tags = var.tags
 }
 
-resource "aws_apigatewayv2_integration" "backend" {
-  api_id           = aws_apigatewayv2_api.backend.id
+resource "aws_apigatewayv2_integration" "api" {
+  api_id           = aws_apigatewayv2_api.api.id
   integration_type = "AWS_PROXY"
-  integration_uri  = aws_lambda_function.backend.invoke_arn
+  integration_uri  = aws_lambda_function.api.invoke_arn
 
   payload_format_version = "2.0"
 }
 
-resource "aws_apigatewayv2_route" "backend" {
-  api_id    = aws_apigatewayv2_api.backend.id
+resource "aws_apigatewayv2_route" "api" {
+  api_id    = aws_apigatewayv2_api.api.id
   route_key = "ANY /api/{proxy+}"
 
-  target             = "integrations/${aws_apigatewayv2_integration.backend.id}"
+  target             = "integrations/${aws_apigatewayv2_integration.api.id}"
   authorization_type = "JWT"
   authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
@@ -370,11 +370,11 @@ resource "aws_apigatewayv2_route" "backend" {
 # middleware answers it — the API deliberately has no cors_configuration of its own,
 # because a response carrying two Access-Control-Allow-Origin headers is rejected by the
 # browser. One source of CORS headers, and it is the application.
-resource "aws_apigatewayv2_route" "backend_preflight" {
-  api_id    = aws_apigatewayv2_api.backend.id
+resource "aws_apigatewayv2_route" "api_preflight" {
+  api_id    = aws_apigatewayv2_api.api.id
   route_key = "OPTIONS /api/{proxy+}"
 
-  target             = "integrations/${aws_apigatewayv2_integration.backend.id}"
+  target             = "integrations/${aws_apigatewayv2_integration.api.id}"
   authorization_type = "NONE"
 }
 
@@ -382,22 +382,22 @@ resource "aws_apigatewayv2_route" "backend_preflight" {
 # method-specific route bypasses only the gateway authorizer; ASP.NET still verifies
 # Stripe-Signature before any billing state is read or written.
 resource "aws_apigatewayv2_route" "stripe_webhook" {
-  api_id    = aws_apigatewayv2_api.backend.id
+  api_id    = aws_apigatewayv2_api.api.id
   route_key = "POST /api/billing/stripe/webhook"
-  target    = "integrations/${aws_apigatewayv2_integration.backend.id}"
+  target    = "integrations/${aws_apigatewayv2_integration.api.id}"
 }
 
 resource "aws_apigatewayv2_route" "health" {
-  api_id    = aws_apigatewayv2_api.backend.id
+  api_id    = aws_apigatewayv2_api.api.id
   route_key = "GET /health"
-  target    = "integrations/${aws_apigatewayv2_integration.backend.id}"
+  target    = "integrations/${aws_apigatewayv2_integration.api.id}"
 }
 
 resource "aws_apigatewayv2_authorizer" "cognito" {
-  api_id           = aws_apigatewayv2_api.backend.id
+  api_id           = aws_apigatewayv2_api.api.id
   authorizer_type  = "JWT"
   identity_sources = ["$request.header.Authorization"]
-  name             = "${var.project}-cognito-${var.environment}"
+  name             = "${var.project}-${var.environment}-cognito"
 
   jwt_configuration {
     audience = [var.cognito_client_id]
@@ -405,12 +405,12 @@ resource "aws_apigatewayv2_authorizer" "cognito" {
   }
 }
 
-resource "aws_apigatewayv2_stage" "backend" {
-  api_id      = aws_apigatewayv2_api.backend.id
+resource "aws_apigatewayv2_stage" "api" {
+  api_id      = aws_apigatewayv2_api.api.id
   name        = "$default"
   auto_deploy = true
 
-  # Global rate limit for the entire backend API, enforced by API Gateway before
+  # Global rate limit for the entire API, enforced by API Gateway before
   # the Lambda is invoked (throttled requests cost no invocation). This applies
   # to every route via the stage default — there are no per-route overrides. It
   # is an aggregate throughput guard, not per-caller; per-IP edge protection is
@@ -426,46 +426,46 @@ resource "aws_apigatewayv2_stage" "backend" {
 resource "aws_lambda_permission" "api_gateway" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.backend.function_name
+  function_name = aws_lambda_function.api.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.backend.execution_arn}/*/*"
+  source_arn    = "${aws_apigatewayv2_api.api.execution_arn}/*/*"
 }
 
-resource "aws_apigatewayv2_api" "frontend" {
-  name          = "${var.project}-frontend-${var.environment}"
+resource "aws_apigatewayv2_api" "marketing" {
+  name          = "${var.project}-${var.environment}-marketing"
   protocol_type = "HTTP"
-  description   = "${var.project} SSR frontend"
+  description   = "${var.project} marketing SSR"
 
   tags = var.tags
 }
 
-resource "aws_apigatewayv2_integration" "frontend" {
-  api_id                 = aws_apigatewayv2_api.frontend.id
+resource "aws_apigatewayv2_integration" "marketing" {
+  api_id                 = aws_apigatewayv2_api.marketing.id
   integration_type       = "AWS_PROXY"
-  integration_uri        = aws_lambda_function.frontend.invoke_arn
+  integration_uri        = aws_lambda_function.marketing.invoke_arn
   integration_method     = "POST"
   payload_format_version = "2.0"
   timeout_milliseconds   = 30000
 }
 
-resource "aws_apigatewayv2_route" "frontend" {
-  api_id    = aws_apigatewayv2_api.frontend.id
+resource "aws_apigatewayv2_route" "marketing" {
+  api_id    = aws_apigatewayv2_api.marketing.id
   route_key = "$default"
-  target    = "integrations/${aws_apigatewayv2_integration.frontend.id}"
+  target    = "integrations/${aws_apigatewayv2_integration.marketing.id}"
 }
 
-resource "aws_apigatewayv2_stage" "frontend" {
-  api_id      = aws_apigatewayv2_api.frontend.id
+resource "aws_apigatewayv2_stage" "marketing" {
+  api_id      = aws_apigatewayv2_api.marketing.id
   name        = "$default"
   auto_deploy = true
 
   tags = var.tags
 }
 
-resource "aws_lambda_permission" "frontend_api_gateway" {
+resource "aws_lambda_permission" "marketing_api_gateway" {
   statement_id  = "AllowAPIGatewayInvokeFrontend"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.frontend.function_name
+  function_name = aws_lambda_function.marketing.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.frontend.execution_arn}/*/*"
+  source_arn    = "${aws_apigatewayv2_api.marketing.execution_arn}/*/*"
 }

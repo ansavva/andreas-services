@@ -18,14 +18,14 @@ output "email_status_lambda_function_name" {
   value       = module.compute.email_status_lambda_function_name
 }
 
-output "frontend_ecr_repository_url" {
-  description = "SSR frontend ECR repository URL"
-  value       = module.compute.frontend_ecr_repository_url
+output "marketing_ecr_repository_url" {
+  description = "Marketing SSR ECR repository URL"
+  value       = module.compute.marketing_ecr_repository_url
 }
 
-output "frontend_lambda_function_name" {
-  description = "SSR frontend Lambda function name"
-  value       = module.compute.frontend_lambda_function_name
+output "marketing_lambda_function_name" {
+  description = "Marketing SSR Lambda function name"
+  value       = module.compute.marketing_lambda_function_name
 }
 
 output "cognito_user_pool_id" {
@@ -38,14 +38,14 @@ output "cognito_client_id" {
   value       = module.auth.user_pool_client_id
 }
 
-output "s3_frontend_bucket" {
-  description = "Frontend S3 bucket name"
-  value       = module.storage.bucket_id
+output "marketing_bucket" {
+  description = "Marketing hashed-asset S3 bucket name"
+  value       = module.storage.marketing_bucket_id
 }
 
-output "app_bucket" {
+output "app_files_bucket" {
   description = "Application object S3 bucket name (holds avatars under the avatars/ prefix)"
-  value       = module.storage.app_bucket_id
+  value       = module.storage.app_files_bucket_id
 }
 
 output "api_domain" {
@@ -54,8 +54,18 @@ output "api_domain" {
 }
 
 output "cloudfront_distribution_id" {
-  description = "CloudFront distribution ID"
-  value       = module.hosting.cloudfront_distribution_id
+  description = "Marketing (www) CloudFront distribution ID"
+  value       = module.hosting_marketing.cloudfront_distribution_id
+}
+
+output "app_bucket" {
+  description = "Expo web export S3 bucket name"
+  value       = module.storage.app_bucket_id
+}
+
+output "app_cloudfront_distribution_id" {
+  description = "Product app (app.) CloudFront distribution ID"
+  value       = module.hosting_app.cloudfront_distribution_id
 }
 
 output "email_from_address" {

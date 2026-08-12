@@ -70,7 +70,7 @@ emit_result() {
       log "Wire it into your shell / CI as NODE_AUTH_TOKEN, e.g.:"
       log "    eval \"\$($0 --export)\"     # current shell"
       log "    export NODE_AUTH_TOKEN=<token>   # or set it as a CI/env secret"
-      log "Then 'npm ci' in humbugg/frontend and website/frontend will resolve the package."
+      log "Then 'npm ci' in humbugg/marketing, humbugg/app and website/frontend will resolve the package."
       ;;
   esac
 }

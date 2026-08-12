@@ -1,3 +1,13 @@
+# The MARKETING distribution — www.humbugg.com, plus the apex and the legacy hostname
+# which both permanently redirect to it. The authenticated product moved to its own
+# distribution in modules/hosting_app (app.humbugg.com), and the API moved to its own
+# custom domain in modules/api_domain (api.humbugg.com), so the /api/*, /health and
+# /avatars/* behaviours that used to live here are gone.
+#
+# The resource is still addressed `aws_cloudfront_distribution.app` rather than
+# `.marketing`: renaming it would destroy and recreate the distribution serving
+# humbugg.com for no behavioural gain.
+#
 # The viewer certificate is supplied by modules/certificates, which owns the single
 # us-east-1 certificate shared with the API Gateway custom domain.
 data "aws_cloudfront_cache_policy" "disabled" {
@@ -9,7 +19,7 @@ data "aws_cloudfront_cache_policy" "optimized" {
 }
 
 resource "aws_cloudfront_origin_request_policy" "ssr" {
-  name    = "${var.project}-ssr-origin-request"
+  name    = "${var.project}-${var.environment}-ssr"
   comment = "Forward viewer data to the SSR origin except headers reserved for origin routing"
 
   headers_config {
@@ -28,24 +38,16 @@ resource "aws_cloudfront_origin_request_policy" "ssr" {
   }
 }
 
-resource "aws_cloudfront_origin_access_control" "frontend" {
-  name                              = "${var.project}-frontend-oac"
-  description                       = "OAC for ${var.project} frontend S3 bucket"
-  origin_access_control_origin_type = "s3"
-  signing_behavior                  = "always"
-  signing_protocol                  = "sigv4"
-}
-
-resource "aws_cloudfront_origin_access_control" "avatars" {
-  name                              = "${var.project}-avatars-oac"
-  description                       = "OAC for ${var.project} avatars S3 bucket"
+resource "aws_cloudfront_origin_access_control" "marketing" {
+  name                              = "${var.project}-${var.environment}-marketing-oac"
+  description                       = "OAC for ${var.project} marketing asset bucket"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
 }
 
 resource "aws_cloudfront_function" "canonical_redirect" {
-  name    = "${var.project}-canonical-redirect"
+  name    = "${var.project}-${var.environment}-canonical-redirect"
   runtime = "cloudfront-js-2.0"
   comment = "Redirect non-canonical Humbugg hostnames to ${var.domain_name}"
   publish = true
@@ -60,32 +62,14 @@ resource "aws_cloudfront_distribution" "app" {
   aliases         = [var.domain_name, "www.${var.domain_name}", var.legacy_domain_name]
 
   origin {
-    domain_name              = var.frontend_bucket_regional_domain_name
-    origin_id                = "S3-frontend"
-    origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
+    domain_name              = var.marketing_bucket_regional_domain_name
+    origin_id                = "S3-marketing"
+    origin_access_control_id = aws_cloudfront_origin_access_control.marketing.id
   }
 
   origin {
-    domain_name = var.frontend_api_domain
-    origin_id   = "SSR-frontend"
-
-    custom_origin_config {
-      http_port              = 80
-      https_port             = 443
-      origin_protocol_policy = "https-only"
-      origin_ssl_protocols   = ["TLSv1.2"]
-    }
-  }
-
-  origin {
-    domain_name              = var.avatars_bucket_regional_domain_name
-    origin_id                = "S3-avatars"
-    origin_access_control_id = aws_cloudfront_origin_access_control.avatars.id
-  }
-
-  origin {
-    domain_name = trimsuffix(replace(var.api_endpoint, "https://", ""), "/")
-    origin_id   = "APIGateway-backend"
+    domain_name = var.marketing_api_domain
+    origin_id   = "SSR-marketing"
 
     custom_origin_config {
       http_port              = 80
@@ -98,7 +82,7 @@ resource "aws_cloudfront_distribution" "app" {
   default_cache_behavior {
     allowed_methods          = ["GET", "HEAD", "OPTIONS"]
     cached_methods           = ["GET", "HEAD"]
-    target_origin_id         = "SSR-frontend"
+    target_origin_id         = "SSR-marketing"
     viewer_protocol_policy   = "redirect-to-https"
     compress                 = true
     cache_policy_id          = data.aws_cloudfront_cache_policy.disabled.id
@@ -114,76 +98,10 @@ resource "aws_cloudfront_distribution" "app" {
     path_pattern           = "/assets/*"
     allowed_methods        = ["GET", "HEAD"]
     cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "S3-frontend"
+    target_origin_id       = "S3-marketing"
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
     cache_policy_id        = data.aws_cloudfront_cache_policy.optimized.id
-
-    function_association {
-      event_type   = "viewer-request"
-      function_arn = aws_cloudfront_function.canonical_redirect.arn
-    }
-  }
-
-  ordered_cache_behavior {
-    path_pattern           = "/avatars/*"
-    allowed_methods        = ["GET", "HEAD"]
-    cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "S3-avatars"
-    viewer_protocol_policy = "redirect-to-https"
-    compress               = true
-    cache_policy_id        = data.aws_cloudfront_cache_policy.optimized.id
-
-    function_association {
-      event_type   = "viewer-request"
-      function_arn = aws_cloudfront_function.canonical_redirect.arn
-    }
-  }
-
-  ordered_cache_behavior {
-    path_pattern     = "/api/*"
-    allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
-    cached_methods   = ["GET", "HEAD"]
-    target_origin_id = "APIGateway-backend"
-
-    forwarded_values {
-      query_string = true
-      headers      = ["Authorization", "Accept", "Content-Type", "Origin"]
-      cookies {
-        forward = "all"
-      }
-    }
-
-    viewer_protocol_policy = "redirect-to-https"
-    min_ttl                = 0
-    default_ttl            = 0
-    max_ttl                = 0
-    compress               = true
-
-    function_association {
-      event_type   = "viewer-request"
-      function_arn = aws_cloudfront_function.canonical_redirect.arn
-    }
-  }
-
-  ordered_cache_behavior {
-    path_pattern     = "/health"
-    allowed_methods  = ["GET", "HEAD", "OPTIONS"]
-    cached_methods   = ["GET", "HEAD"]
-    target_origin_id = "APIGateway-backend"
-
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
-      }
-    }
-
-    viewer_protocol_policy = "redirect-to-https"
-    min_ttl                = 0
-    default_ttl            = 0
-    max_ttl                = 0
-    compress               = true
 
     function_association {
       event_type   = "viewer-request"
@@ -206,8 +124,8 @@ resource "aws_cloudfront_distribution" "app" {
   tags = var.tags
 }
 
-resource "aws_s3_bucket_policy" "frontend" {
-  bucket = var.frontend_bucket_id
+resource "aws_s3_bucket_policy" "marketing" {
+  bucket = var.marketing_bucket_id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -219,33 +137,7 @@ resource "aws_s3_bucket_policy" "frontend" {
           Service = "cloudfront.amazonaws.com"
         }
         Action   = "s3:GetObject"
-        Resource = "${var.frontend_bucket_arn}/*"
-        Condition = {
-          StringEquals = {
-            "AWS:SourceArn" = aws_cloudfront_distribution.app.arn
-          }
-        }
-      }
-    ]
-  })
-}
-
-resource "aws_s3_bucket_policy" "avatars" {
-  bucket = var.avatars_bucket_id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "AllowCloudFrontServicePrincipalReadOnly"
-        Effect = "Allow"
-        Principal = {
-          Service = "cloudfront.amazonaws.com"
-        }
-        Action = "s3:GetObject"
-        # The bucket is the shared application bucket; CloudFront may read only the avatars/ prefix,
-        # never any other application object that may live there.
-        Resource = "${var.avatars_bucket_arn}/avatars/*"
+        Resource = "${var.marketing_bucket_arn}/*"
         Condition = {
           StringEquals = {
             "AWS:SourceArn" = aws_cloudfront_distribution.app.arn

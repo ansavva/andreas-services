@@ -52,7 +52,7 @@ if [[ "$CHECK_ONLY" -eq 1 ]]; then
     aws_dev dynamodb describe-table --table-name "$table" >/dev/null ||
       die "Development DynamoDB table '$table' is unavailable."
   done < <(jq -r '.outputs.table_names.value[]' <<<"$state_json")
-  [[ -f "$HUMBUGG_DIR/backend/.env" && -f "$HUMBUGG_DIR/frontend/.env.local" ]] ||
+  [[ -f "$HUMBUGG_DIR/backend/.env" && -f "$HUMBUGG_DIR/web/.env.local" && -f "$HUMBUGG_DIR/app/.env.local" ]] ||
     die "Local environment files are missing. Run setup without --check."
   ok "Per-machine AWS resources and local environment files are ready."
   exit 0
@@ -116,12 +116,26 @@ upsert_env "$backend_env" HUMBUGG_BILLING_TABLE "$(jq -r '.table_names.value.bil
 remove_env "$backend_env" COGNITO_ENDPOINT_URL
 remove_env "$backend_env" COGNITO_ISSUER_URL
 
-frontend_env="$HUMBUGG_DIR/frontend/.env.local"
-upsert_env "$frontend_env" VITE_COGNITO_USER_POOL_ID "$pool_id"
-upsert_env "$frontend_env" VITE_COGNITO_CLIENT_ID "$client_id"
-upsert_env "$frontend_env" VITE_AWS_REGION "$AWS_REGION_VALUE"
-upsert_env "$frontend_env" VITE_APP_BASE_URL "http://localhost:5173"
-remove_env "$frontend_env" VITE_COGNITO_ENDPOINT_URL
+# Two frontends now, with different prefixes because they run under different
+# bundlers: Vite exposes VITE_*, Metro inlines EXPO_PUBLIC_*.
+#
+# The marketing site no longer authenticates anyone, so it gets no Cognito
+# values — only its own origin and where to send someone who wants to sign in.
+web_env="$HUMBUGG_DIR/web/.env.local"
+upsert_env "$web_env" VITE_APP_BASE_URL "http://localhost:5173"
+upsert_env "$web_env" VITE_APP_ORIGIN "http://localhost:8081"
+remove_env "$web_env" VITE_COGNITO_USER_POOL_ID
+remove_env "$web_env" VITE_COGNITO_CLIENT_ID
+remove_env "$web_env" VITE_AWS_REGION
+remove_env "$web_env" VITE_COGNITO_ENDPOINT_URL
+
+# The product app holds the auth flow, and reaches the backend cross-origin at
+# its dev port rather than through a same-origin proxy.
+app_env="$HUMBUGG_DIR/app/.env.local"
+upsert_env "$app_env" EXPO_PUBLIC_COGNITO_USER_POOL_ID "$pool_id"
+upsert_env "$app_env" EXPO_PUBLIC_COGNITO_CLIENT_ID "$client_id"
+upsert_env "$app_env" EXPO_PUBLIC_AWS_REGION "$AWS_REGION_VALUE"
+upsert_env "$app_env" EXPO_PUBLIC_API_BASE_URL "http://127.0.0.1:5001/api"
 
 ok "AWS development resources are ready and local env files were updated."
 
@@ -137,4 +151,4 @@ if command -v docker >/dev/null 2>&1 &&
   ok "The running backend now has refreshed AWS credentials."
 fi
 
-printf '\nStart all Humbugg development services with:\n  ./humbugg/scripts/dev-up.sh --profile %s\n\nOr start them individually with:\n  ./humbugg/scripts/dev-up-backend.sh --profile %s\n  ./humbugg/scripts/dev-up-frontend.sh\n  ./humbugg/scripts/dev-up-stripe.sh\n\nFollow backend logs with:\n  ./humbugg/scripts/dev-logs-backend.sh\n' "$AWS_PROFILE_VALUE" "$AWS_PROFILE_VALUE"
+printf '\nStart all Humbugg development services with:\n  ./humbugg/scripts/dev-up.sh --profile %s\n\nOr start them individually with:\n  ./humbugg/scripts/dev-up-backend.sh --profile %s\n  ./humbugg/scripts/dev-up-marketing.sh\n  ./humbugg/scripts/dev-up-app.sh\n  ./humbugg/scripts/dev-up-stripe.sh\n\nFollow backend logs with:\n  ./humbugg/scripts/dev-logs-backend.sh\n' "$AWS_PROFILE_VALUE" "$AWS_PROFILE_VALUE"

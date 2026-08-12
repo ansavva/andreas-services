@@ -28,43 +28,23 @@ variable "legacy_route53_zone_id" {
   type        = string
 }
 
-variable "frontend_bucket_id" {
+variable "marketing_bucket_id" {
   description = "Frontend S3 bucket ID"
   type        = string
 }
 
-variable "frontend_bucket_arn" {
+variable "marketing_bucket_arn" {
   description = "Frontend S3 bucket ARN"
   type        = string
 }
 
-variable "frontend_bucket_regional_domain_name" {
+variable "marketing_bucket_regional_domain_name" {
   description = "Frontend S3 bucket regional domain name"
   type        = string
 }
 
-variable "avatars_bucket_id" {
-  description = "Avatars S3 bucket ID"
-  type        = string
-}
-
-variable "avatars_bucket_arn" {
-  description = "Avatars S3 bucket ARN"
-  type        = string
-}
-
-variable "avatars_bucket_regional_domain_name" {
-  description = "Avatars S3 bucket regional domain name"
-  type        = string
-}
-
-variable "api_endpoint" {
-  description = "API Gateway endpoint URL"
-  type        = string
-}
-
-variable "frontend_api_domain" {
-  description = "SSR frontend HTTP API host without a scheme"
+variable "marketing_api_domain" {
+  description = "Marketing SSR HTTP API host without a scheme"
   type        = string
 }
 
@@ -72,4 +52,9 @@ variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)
   default     = {}
+}
+
+variable "environment" {
+  description = "Deployment environment; the second segment of every resource name"
+  type        = string
 }

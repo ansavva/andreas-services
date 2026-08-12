@@ -1,6 +1,6 @@
 output "lambda_function_name" {
   description = "Lambda function name"
-  value       = aws_lambda_function.backend.function_name
+  value       = aws_lambda_function.api.function_name
 }
 
 output "email_status_lambda_function_name" {
@@ -10,35 +10,35 @@ output "email_status_lambda_function_name" {
 
 output "ecr_repository_url" {
   description = "ECR repository URL"
-  value       = aws_ecr_repository.backend.repository_url
+  value       = aws_ecr_repository.api.repository_url
 }
 
-output "frontend_ecr_repository_url" {
-  description = "SSR frontend ECR repository URL"
-  value       = aws_ecr_repository.frontend.repository_url
+output "marketing_ecr_repository_url" {
+  description = "Marketing SSR ECR repository URL"
+  value       = aws_ecr_repository.marketing.repository_url
 }
 
-output "frontend_lambda_function_name" {
-  description = "SSR frontend Lambda function name"
-  value       = aws_lambda_function.frontend.function_name
+output "marketing_lambda_function_name" {
+  description = "Marketing SSR Lambda function name"
+  value       = aws_lambda_function.marketing.function_name
 }
 
-output "frontend_api_domain" {
-  description = "SSR frontend HTTP API host without a scheme"
-  value       = replace(aws_apigatewayv2_api.frontend.api_endpoint, "https://", "")
+output "marketing_api_domain" {
+  description = "Marketing SSR HTTP API host without a scheme"
+  value       = replace(aws_apigatewayv2_api.marketing.api_endpoint, "https://", "")
 }
 
 output "api_endpoint" {
   description = "API Gateway invoke URL"
-  value       = aws_apigatewayv2_stage.backend.invoke_url
+  value       = aws_apigatewayv2_stage.api.invoke_url
 }
 
 output "api_id" {
   description = "Backend HTTP API ID, for mapping a custom domain onto it"
-  value       = aws_apigatewayv2_api.backend.id
+  value       = aws_apigatewayv2_api.api.id
 }
 
 output "api_stage_name" {
   description = "Backend HTTP API stage name, for the custom-domain API mapping"
-  value       = aws_apigatewayv2_stage.backend.name
+  value       = aws_apigatewayv2_stage.api.name
 }

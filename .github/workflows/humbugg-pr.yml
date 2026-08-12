@@ -8,7 +8,6 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: humbugg-backend-production
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -40,7 +39,7 @@ jobs:
           terraform -chdir=humbugg/infra/envs/prod validate
 
       - name: Test canonical redirect
-        run: node --test humbugg/infra/modules/hosting/canonical_redirect.test.mjs
+        run: node --test humbugg/infra/modules/hosting_marketing/canonical_redirect.test.mjs
 
       - name: Install tflint AWS plugin
         run: bash .github/scripts/install-tflint-aws-plugin.sh
@@ -135,6 +134,14 @@ jobs:
           npm test
           npm run build
 
+      # The design system ships one component as a .web/.native pair behind a
+      # single extensionless export, and the bundler picks the leaf. Resolving
+      # the wrong one compiles, bundles, typechecks and unit-tests cleanly — it
+      # only shows up as a screen that renders wrong, so this is the only check
+      # that can catch it.
+      - name: Assert the web build took the web leaf
+        run: node humbugg/scripts/assert-design-system-leaves.mjs web humbugg/marketing/build
+
       - name: Build SSR Lambda image
         run: cd humbugg/marketing && docker build -t humbugg-marketing:ci-verify .
 
@@ -176,8 +183,21 @@ jobs:
       # A real export, not just a typecheck: Metro resolution failures against
       # the design system's platform leaves only surface when the bundle is
       # actually built, and they would otherwise reach production.
+      #
+      # --source-maps is required by the leaf assertion below, which reads the
+      # `sources` list. Grepping the bundle for react-native-web is NOT a
+      # substitute: it is present in any Expo web build because the app's own
+      # primitives use it, so it passes whichever leaf was resolved.
       - name: Export for web
         env:
           EXPO_PUBLIC_API_BASE_URL: https://api.humbugg.com
           EXPO_PUBLIC_AWS_REGION: us-east-1
-        run: cd humbugg/app && npx expo export -p web
+        run: cd humbugg/app && npx expo export -p web --source-maps
+
+      # Metro is the bundler that gets this wrong unaided: for platform 'web' its
+      # candidate extensions are .web.tsx then .tsx, and .native is not
+      # considered at all. humbugg/app/metro.config.js corrects it; this proves
+      # the correction still works. Without it the app renders entirely unstyled,
+      # because Tailwind class strings mean nothing in a project with no Tailwind.
+      - name: Assert the app build took the native leaf
+        run: node humbugg/scripts/assert-design-system-leaves.mjs native humbugg/app/dist

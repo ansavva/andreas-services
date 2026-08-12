@@ -58,8 +58,26 @@ keeps its native leaf there — that is deliberate, not a bug, and it is why the
 pipeline on that side. Reaching for a Tailwind class string in `humbugg/app` means you are in the
 wrong mental model.
 
-If `react-native-web` turns up in a **web** bundle, something reached a `.native` leaf. Check for an
-explicit `.native` import or a resolver whose extension order puts `.native` first.
+**Neither bundler picks the right leaf on its own. Both are configured to, and the configuration is
+load-bearing:**
+
+- **Vite** (`humbugg/marketing`, `website/frontend`) — the default `resolve.extensions` stop at `.tsx`, so
+  the package's extensionless `export * from './button'` resolves to *nothing*. The `.web`-suffixed
+  forms are listed first in `resolve.extensions` **and** in `optimizeDeps.rollupOptions.resolve`
+  (the dependency optimizer resolves separately). Symptom if broken: unresolved component.
+- **Metro** (`humbugg/app`) — for `platform: 'web'` the candidates are `.web.tsx` then `.tsx`;
+  **`.native` is not considered at all.** An unconfigured web export silently takes the *web* leaves.
+  `humbugg/app/metro.config.js` corrects it for intra-package relative imports. Symptom if broken:
+  everything renders completely unstyled, because a Tailwind class string means nothing here. It
+  compiles, bundles and passes every test.
+
+`tsconfig.json`'s `moduleSuffixes` mirrors the order in both, for `tsc`.
+
+Because that failure is silent, CI asserts the resolved leaf in both directions —
+`humbugg/scripts/assert-design-system-leaves.mjs`, run by `humbugg-pr.yml`. Run it yourself after
+changing anything about resolution. **Do not "verify" the native side by grepping the bundle for
+`react-native-web`**: it is present in any Expo web build because the app's own primitives use it, so
+it passes whichever leaf resolved. The source-map audit is the only trustworthy signal.
 
 ## 4. Never hard-code a colour, font or radius a semantic role covers
 

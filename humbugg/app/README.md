@@ -4,7 +4,7 @@ The authenticated half of Humbugg: sign-in, the dashboard, a group, settings, an
 the invitation landing page. Built with **Expo + Expo Router** and exported as a
 static single-page web bundle.
 
-The marketing half lives in `humbugg/web` and the API in `humbugg/backend`.
+The marketing half lives in `humbugg/marketing` and the API in `humbugg/backend`.
 
 ## Why Expo, for a thing that ships as a website
 
@@ -19,7 +19,7 @@ export, and the consumer's bundler picks the leaf:
 
 | Consumer | Bundler | Leaf |
 | --- | --- | --- |
-| `humbugg/web`, `website/` | Vite | `.web.tsx` — Tailwind over `theme.css` |
+| `humbugg/marketing`, `website/` | Vite | `.web.tsx` — Tailwind over `theme.css` |
 | this app, on a device | Metro | `.native.tsx` — RN primitives |
 | this app, in a browser | Metro | `.native.tsx`, rendered by `react-native-web` |
 

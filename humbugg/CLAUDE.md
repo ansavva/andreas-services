@@ -2,7 +2,15 @@
 
 ## What this service does
 
-Humbugg is a gift-exchange platform served at `humbugg.com`:
+Humbugg is a gift-exchange platform, served from three hostnames:
+
+| Surface | URL | What it is |
+|---|---|---|
+| Marketing | `www.humbugg.com` | React Router v7 SSR. The apex and `humbugg.andreas.services` both 308 to it. |
+| Product app | `app.humbugg.com` | Expo + Expo Router, deployed as a static web export. The same codebase builds iOS/Android later. |
+| API | `api.humbugg.com` | ASP.NET Core Lambda behind an API Gateway custom domain. |
+
+What it does:
 
 1. Organizers create a group, invite members, and each member fills in a wish list / "do-not-give" list.
 2. A matching engine assigns each member a recipient (Secret Santa-style) while respecting exclusions.
@@ -12,8 +20,9 @@ Humbugg is a gift-exchange platform served at `humbugg.com`:
 
 | Layer | Choice |
 |---|---|
-| Backend | ASP.NET Core 10 (C# 14) packaged as a Docker container Lambda behind API Gateway HTTP API |
-| Frontend | Vite + React + Tailwind SPA on S3 + CloudFront |
+| Backend | ASP.NET Core 10 (C# 14) packaged as a Docker container Lambda behind API Gateway HTTP API, on its own domain |
+| Marketing (`web/`) | React Router v7 SSR on a Docker Lambda + CloudFront; hashed assets on S3. Vite, Tailwind v4, the design system's **web** leaves |
+| Product app (`app/`) | Expo + Expo Router; `expo export -p web` → S3 + CloudFront. Metro, **no Tailwind**, the design system's **native** leaves rendered through react-native-web |
 | Auth | AWS Cognito (User Pool + secretless App Client); branded SPA screens use SRP through Amplify Auth and the API validates access tokens |
 | Data | DynamoDB — profiles, groups, groupmembers, private draws, reveal audit events, and email delivery IDs |
 | Infra | Terraform in `humbugg/infra/` (`modules/` + `envs/prod`) |
@@ -27,12 +36,14 @@ humbugg/
 │   ├── Humbugg.slnx
 │   ├── Humbugg.Api/             # controllers → services → DynamoDB repositories
 │   └── Humbugg.Api.Tests/       # matching and domain tests
-├── frontend/                   # Vite + React SPA
-│   ├── index.html
-│   ├── vite.config.ts
-│   ├── tsconfig.json
-│   ├── tailwind.config.js
-│   └── src/
+├── web/                        # Marketing site — React Router v7 SSR (www.humbugg.com)
+│   ├── app/                     # routes, including the legacy → app redirects
+│   ├── src/                     # pages, Layout, config
+│   └── vite.config.ts
+├── app/                        # Product app — Expo + Expo Router (app.humbugg.com)
+│   ├── app/                     # file-based routes
+│   ├── src/                     # api client, contexts, theme
+│   └── app.json
 ├── infra/                      # Terraform
 │   ├── modules/                # auth, compute, hosting, storage
 │   └── envs/prod/              # Lambda + API Gateway + Cognito, S3 + CloudFront + Route53 alias
@@ -45,9 +56,14 @@ Terraform references (but doesn't own) two shared resources via `data` sources:
 
 - **Route53 hosted zones** (`humbugg.com` and `andreas.services`) — Terraform data sources
 
-The frontend stack provisions the service-specific us-east-1 ACM certificate
-and points apex, `www`, and the legacy hostname at one CloudFront distribution.
-CloudFront permanently redirects non-apex requests to `https://humbugg.com`.
+`modules/certificates` provisions one us-east-1 ACM certificate covering the
+apex, `www`, `app` and `api`. It is shared by both CloudFront distributions and
+the API Gateway custom domain — us-east-1 does double duty here, being both
+CloudFront's required region and this deployment's own region.
+
+Two distributions: `modules/hosting_marketing` serves marketing (aliases apex, `www`,
+legacy; a CloudFront function 308s everything that is not `www` to it) and
+`modules/hosting_app` serves the product app plus `/avatars/*`.
 
 ## Local Development
 
@@ -66,7 +82,8 @@ stripe login
 # Authenticate npm for the private design system package.
 export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
 eval "$(./scripts/github-packages-auth.sh --export)"
-npm --prefix humbugg/frontend install --legacy-peer-deps
+npm --prefix humbugg/marketing install
+npm --prefix humbugg/app install
 
 # Read-only validation of shared tools, .NET, AWS resources, and env files.
 ./humbugg/scripts/dev-setup.sh --check
@@ -94,11 +111,13 @@ All commands run from the repository root:
 | `humbugg/scripts/dev-aws-setup.sh` | Lower-level AWS provision/check command called by canonical setup; accepts `--profile`, `--region`, `--yes`, `--check` |
 | `humbugg/scripts/dev-up.sh` | Preferred full local startup; accepts `--profile`, `--region`, `--forward-to` |
 | `humbugg/scripts/dev-up-backend.sh` | Backend-only startup; exports temporary AWS credentials into Docker Compose without writing them to disk |
-| `humbugg/scripts/dev-up-frontend.sh` | Frontend-only startup; validates `.env.local` and installed dependencies first |
+| `humbugg/scripts/dev-up-marketing.sh` | Marketing-site-only startup; validates `web/.env.local` and installed dependencies first |
+| `humbugg/scripts/dev-up-app.sh` | Product-app-only startup; defaults to `--web`, pass `--ios`/`--android` for a simulator |
 | `humbugg/scripts/dev-up-stripe.sh` | Stripe-only listener for the billing webhook's exact event allowlist; copy its `whsec_...` value into `backend/.env` and restart the backend when running components separately |
 | `humbugg/scripts/dev-logs-backend.sh` | Follow the backend container logs; accepts Docker Compose log options such as `--tail 200` |
 | `humbugg/scripts/dev-aws-reset.sh` | Destructive data reset scoped to this machine; run with `--dry-run` first; `--skip-cognito` preserves users |
 | `humbugg/scripts/dev-aws-destroy.sh` | Destroy this machine's AWS resources; the persistent UUID is deliberately retained |
+| `humbugg/scripts/prod-aws-teardown.sh` | **One-time migration.** Destroys every pre-convention prod resource so the deploy workflow rebuilds them under `[project]-[env]-[component]`. Run `--dry-run` first. Delete this script once prod is rebuilt |
 
 `humbugg/scripts/dev-aws-common.sh` is a sourced implementation helper, not a
 user command. AWS commands default to `$AWS_PROFILE`/`default` and
@@ -109,7 +128,8 @@ To start components separately:
 
 ```bash
 ./humbugg/scripts/dev-up-backend.sh                     # http://localhost:5001
-./humbugg/scripts/dev-up-frontend.sh                    # http://localhost:5173
+./humbugg/scripts/dev-up-marketing.sh                         # http://localhost:5173
+./humbugg/scripts/dev-up-app.sh                         # http://localhost:8081
 ./humbugg/scripts/dev-up-stripe.sh                      # forwards billing webhooks
 ./humbugg/scripts/dev-logs-backend.sh                   # follows backend logs
 ```
@@ -130,15 +150,30 @@ resources but retains the UUID and state identity for safe reprovisioning.
 
 See [`scripts/README.md`](../scripts/README.md) for the setup scripts and GitHub Packages auth.
 
-`dev-aws-setup.sh` generates these frontend values in the ignored
-`frontend/.env.local` file; do not create shared or committed values manually:
+`dev-aws-setup.sh` generates two ignored env files — the prefixes differ because
+the bundlers do (Vite exposes `VITE_*`, Metro inlines `EXPO_PUBLIC_*`). Do not
+create shared or committed values manually.
+
+`web/.env.local` — no Cognito values, because the marketing site no longer
+authenticates anyone:
 
 ```
-VITE_COGNITO_USER_POOL_ID=<generated by scripts/dev-aws-setup.sh>
-VITE_COGNITO_CLIENT_ID=<generated by scripts/dev-aws-setup.sh>
-VITE_AWS_REGION=us-east-1
 VITE_APP_BASE_URL=http://localhost:5173
+VITE_APP_ORIGIN=http://localhost:8081
 ```
+
+`app/.env.local`:
+
+```
+EXPO_PUBLIC_COGNITO_USER_POOL_ID=<generated by scripts/dev-aws-setup.sh>
+EXPO_PUBLIC_COGNITO_CLIENT_ID=<generated by scripts/dev-aws-setup.sh>
+EXPO_PUBLIC_AWS_REGION=us-east-1
+EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:5001/api
+```
+
+The app calls the backend **cross-origin** in development as well as production,
+so the backend's `CORS_ORIGINS` must list `http://localhost:8081` alongside
+`http://localhost:5173`.
 
 ## Environment Variables (Prod)
 
@@ -187,8 +222,9 @@ key) pending merchant-identity review (issue #159). Backend Stripe env vars:
 ```
 detect-changes ─► deploy-infra (if humbugg/infra/** changed)
                        │
-                       ├─► deploy-backend  (if humbugg/backend/** changed OR infra ran)
-                       └─► deploy-frontend (if humbugg/frontend/** changed OR infra ran)
+                       ├─► update-lambda           (backend + marketing SSR env vars, pin to :sha)
+                       ├─► deploy-frontend-assets  (if humbugg/marketing/** changed OR infra ran)
+                       └─► deploy-app              (if humbugg/app/** changed OR infra ran)
 ```
 
 App jobs use `needs: [detect-changes, deploy-infra]` and an `if:` that runs when the app changed OR when `deploy-infra` produced new SSM values. If `deploy-infra` is skipped (app-only change) the app jobs still run because `!cancelled() && needs.deploy-infra.result != 'failure'` is true for skipped upstream jobs.
