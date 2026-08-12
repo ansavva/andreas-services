@@ -133,3 +133,77 @@ Then, from humbugg/infra/envs/prod on the cutover branch:
 
 Then let the deploy workflow run, or apply directly.
 NEXT
+
+# ── Orphans ──────────────────────────────────────────────────────────────────
+# Resources that survived the rename but left Terraform state. The important one
+# is the CloudFront distribution: it still holds the aliases humbugg.com,
+# www.humbugg.com and humbugg.andreas.services, and CloudFront refuses to let a
+# second distribution claim an alias already in use — so an apply fails with
+# CNAMEAlreadyExists until this is gone.
+#
+# Run with --orphans after the main teardown. Deleting a distribution takes
+# 10-20 minutes: it must be disabled, fully propagate to "Deployed", and only
+# then can it be deleted.
+if [[ "${1:-}" == "--orphans" || "${2:-}" == "--orphans" ]]; then
+  say "cleaning up orphaned resources"
+
+  dist=$(aws cloudfront list-distributions \
+    --query "DistributionList.Items[?contains(Comment,'humbugg')].Id | [0]" --output text 2>/dev/null)
+  if [[ -n "${dist:-}" && "$dist" != "None" ]]; then
+    etag=$(aws cloudfront get-distribution-config --id "$dist" --query ETag --output text)
+    enabled=$(aws cloudfront get-distribution-config --id "$dist" --query 'DistributionConfig.Enabled' --output text)
+    if [[ "$enabled" == "True" ]]; then
+      say "disabling distribution $dist (this is the slow part)"
+      if [[ $DRY -eq 0 ]]; then
+        aws cloudfront get-distribution-config --id "$dist" --query DistributionConfig > /tmp/cf.json
+        jq '.Enabled = false' /tmp/cf.json > /tmp/cf-off.json
+        aws cloudfront update-distribution --id "$dist" --distribution-config file:///tmp/cf-off.json --if-match "$etag" >/dev/null
+        say "waiting for $dist to finish deploying ..."
+        aws cloudfront wait distribution-deployed --id "$dist"
+      else
+        printf '\033[1;33m[would]\033[0m disable + wait for %s\n' "$dist"
+      fi
+    fi
+    etag=$(aws cloudfront get-distribution-config --id "$dist" --query ETag --output text 2>/dev/null)
+    run "aws cloudfront delete-distribution --id '$dist' --if-match '$etag'"
+    did "cloudfront $dist"
+  else
+    skip "cloudfront distribution (absent)"
+  fi
+
+  # Alias records pointing at the distribution. Terraform creates these without
+  # allow_overwrite, so a leftover record set fails the apply.
+  zone=$(aws route53 list-hosted-zones-by-name --dns-name humbugg.com \
+    --query "HostedZones[?Name=='humbugg.com.'].Id | [0]" --output text 2>/dev/null | sed 's|/hostedzone/||')
+  if [[ -n "${zone:-}" && "$zone" != "None" ]]; then
+    for rec in humbugg.com www.humbugg.com; do
+      for type in A AAAA; do
+        set=$(aws route53 list-resource-record-sets --hosted-zone-id "$zone" \
+          --query "ResourceRecordSets[?Name=='${rec}.' && Type=='${type}']" --output json 2>/dev/null)
+        [[ $(jq 'length' <<<"$set") -eq 0 ]] && { skip "route53 $type $rec (absent)"; continue; }
+        if [[ $DRY -eq 0 ]]; then
+          jq -n --argjson r "$(jq '.[0]' <<<"$set")" \
+            '{Changes:[{Action:"DELETE",ResourceRecordSet:$r}]}' > /tmp/r53.json
+          aws route53 change-resource-record-sets --hosted-zone-id "$zone" \
+            --change-batch file:///tmp/r53.json >/dev/null 2>&1
+        else
+          printf '\033[1;33m[would]\033[0m delete route53 %s %s\n' "$type" "$rec"
+        fi
+        did "route53 $type $rec"
+      done
+    done
+  fi
+
+  # The certificate is replaced anyway: its SAN list gains app. and api., which
+  # ACM cannot do in place. Deleting only works once nothing references it.
+  cert=$(aws acm list-certificates --region us-east-1 \
+    --query "CertificateSummaryList[?DomainName=='humbugg.com'].CertificateArn | [0]" --output text 2>/dev/null)
+  if [[ -n "${cert:-}" && "$cert" != "None" ]]; then
+    run "aws acm delete-certificate --region us-east-1 --certificate-arn '$cert'"
+    did "acm $cert"
+  else
+    skip "acm certificate (absent)"
+  fi
+
+  say "orphan cleanup done"
+fi
