@@ -1,9 +1,3 @@
-variable "pr_number" {
-  description = "PR number (empty string for non-PR environments)"
-  type        = string
-  default     = ""
-}
-
 variable "table_suffix" {
   description = "Suffix for all DynamoDB table names (empty for prod, '-pr-N' for previews)"
   type        = string

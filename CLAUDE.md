@@ -47,8 +47,7 @@ The root `infra/` directory owns **cross-cutting AWS resources** shared by all s
 
 State is in S3: `s3://andreas-services-terraform-state/`
 - Shared: `root/terraform.tfstate`
-- Per-service: `<service>/<env>/terraform.tfstate` (e.g. `humbugg/prod/`, `scout/prod/`, `scout/pr-preview/`)
-- Per-PR ephemeral: `scout/pr/<N>/terraform.tfstate` (key injected at `terraform init` via `-backend-config`)
+- Per-service: `<service>/<env>/terraform.tfstate` (e.g. `humbugg/prod/`, `scout/prod/`)
 
 Services reference shared resources via Terraform data sources — never duplicate them:
 ```hcl
@@ -121,7 +120,7 @@ data "aws_route53_zone" "main" {
 ### AWS resource naming
 
 Every AWS resource is named `[project]-[env]-[component]-[identifier]` — lowercase
-kebab, environment always **second** (`prod` / `dev` / `pr-<number>`), component
+kebab, environment always **second** (`prod` / `dev`), component
 named for what it **serves** rather than which tier it sits in. S3 buckets take a
 region suffix because their names are globally unique
 (`humbugg-prod-marketing-us-east-1`).
@@ -150,7 +149,7 @@ infra/
 │       ├── variables.tf
 │       └── outputs.tf
 └── envs/             # One subdirectory per deployed environment
-    └── <env>/        # e.g. prod, pr-preview, pr
+    └── <env>/        # e.g. prod, dev
         ├── main.tf
         ├── variables.tf
         ├── providers.tf
@@ -165,7 +164,7 @@ infra/
 
 ### Deployment (CI/CD)
 - **Standard**: GitHub Actions. Filenames follow `<service>-<env>.yaml` (combined deploy) and `<service>-pr.yml` (combined PR workflow) — e.g. `humbugg-prod.yaml`, `scout-pr.yml` — so the service and the trigger environment (PR vs Prod) are visible at a glance. Auxiliary workflows append a scope suffix after the env segment (e.g. `scout-pr-teardown.yaml`, `shared-prod-infra-plan.yaml`).
-- **One combined PR workflow per service**: each service has a single `<service>-pr.yml` that runs on every PR. It validates first (lint + unit tests + build); when the service has an ephemeral preview deploy (scout), preview-infra and preview-deploy are separate jobs chained via `needs:` so a failing validate blocks any AWS writes. Scout's PR workflow also reapplies the shared PR-preview infra on every PR so fresh AWS accounts don't need a manual bootstrap.
+- **One combined PR workflow per service**: each service has a single `<service>-pr.yml` that runs on every PR. It validates only — lint, unit tests, Terraform validate, and a build to prove the image compiles. **PR workflows never write to AWS.** There are no ephemeral preview environments; they were removed because the maintenance and teardown cost outweighed their value for a solo repo.
 - **One combined prod deploy per service**: each service has a single `<service>-prod.yaml` with four jobs chained via `needs:`: `detect-changes → build-and-push → deploy-infra → update-lambda + deploy-frontend`. Image build runs **before** Terraform applies because Lambda resources reference `${ecr_repo}:latest` with `lifecycle { ignore_changes = [image_uri, environment] }`, so the image must already exist before Terraform creates the Lambda. Putting build-and-push first eliminates the chicken-and-egg trap on fresh AWS accounts. `update-lambda` then sets env vars and pins the function code to `:${{ github.sha }}` for traceability. This eliminates races between separate infra and app workflows that shared SSM params.
 - **Path filtering**: `dorny/paths-filter@v3` — only deploy when the service's files change
 - **Separate jobs**: `update-lambda` and `deploy-frontend` run independently after `deploy-infra`
@@ -177,7 +176,6 @@ infra/
 - **CloudFront**: always invalidate `/*` after S3 sync
 - **Concurrency groups** (prevent racing deploys to the same environment):
   - `<service>-prod` (`cancel-in-progress: false`) on every prod deploy workflow
-  - `scout-preview-pr-<N>` (`cancel-in-progress: true`) on the per-PR preview workflow (covers both the shared preview infra ensure-step and the per-PR deploy) and on the teardown
   - `shared-infra` (`cancel-in-progress: false`) on the shared Terraform apply
 - **Chaining on shared infra**: each service's combined prod deploy workflow declares a `workflow_run` trigger on `Shared infra · Terraform apply · Prod` with a job-level guard (`if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'`) so a cert or zone change reapplies every downstream service's infra only when the shared apply succeeds. `workflow_run` doesn't inherit path filters; this is intentional — a shared cert/zone change should reapply everything downstream.
 - **Manual triggers**: every combined workflow accepts `workflow_dispatch` inputs `run_infra` (default `true`) and `run_app` (default `true`) for targeted reruns.
@@ -199,7 +197,7 @@ boto3.client('s3', aws_access_key_id='AKIA...', aws_secret_access_key='...')
 1. Create `<service>/` directory — self-contained with own backend, frontend, infra
 2. Reference shared Terraform outputs (Route53 zone, ACM cert, VPC) — do not recreate them
 3. Add GitHub Actions workflows at `.github/workflows/<service>-<env>.yaml` following the storybook pattern:
-   - `<service>-pr.yml` — PR checks (lint, test, Docker build verification); if the service has ephemeral preview deploys, chain them as a job with `needs: <validate-job>` so validation must pass first
+   - `<service>-pr.yml` — PR checks only (lint, test, Terraform validate, Docker build verification). No AWS writes.
    - `<service>-prod.yaml` — single combined deploy (detect-changes → deploy-infra → deploy-backend + deploy-frontend), with `concurrency: { group: <service>-prod, cancel-in-progress: false }`, `workflow_dispatch` inputs `run_infra` and `run_app`, and a `workflow_run` trigger on `Shared infra · Terraform apply · Prod`.
    Use path filtering, OIDC auth, and SSM params for cross-job values.
 4. Use Vite for the frontend (not CRA)

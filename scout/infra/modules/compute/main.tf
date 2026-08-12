@@ -1,10 +1,9 @@
 locals {
-  name_suffix     = var.pr_number != "" ? "-pr-${var.pr_number}" : ""
-  events_api_name = "scout-events-api${local.name_suffix}"
-  processor_name  = "scout-source-run-processor${local.name_suffix}"
-  scheduler_name  = "scout-scheduler${local.name_suffix}"
-  sweep_name      = "scout-sweep${local.name_suffix}"
-  renderer_name   = "scout-source-renderer${local.name_suffix}"
+  events_api_name = "scout-events-api"
+  processor_name  = "scout-source-run-processor"
+  scheduler_name  = "scout-scheduler"
+  sweep_name      = "scout-sweep"
+  renderer_name   = "scout-source-renderer"
 
   # The source-run processor, scheduler and sweep share the events-api image and
   # only override the container command, so the image is built once.
@@ -79,7 +78,7 @@ resource "aws_ecr_lifecycle_policy" "renderer" {
 }
 
 resource "aws_iam_role" "lambda" {
-  name = "scout-lambda-role${local.name_suffix}"
+  name = "scout-lambda-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -96,7 +95,7 @@ resource "aws_iam_role" "lambda" {
 }
 
 resource "aws_iam_role_policy" "lambda" {
-  name = "scout-lambda-policy${local.name_suffix}"
+  name = "scout-lambda-policy"
   role = aws_iam_role.lambda.id
 
   policy = jsonencode({

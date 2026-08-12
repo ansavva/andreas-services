@@ -1,7 +1,6 @@
 locals {
-  name_suffix   = var.pr_number != "" ? "-pr-${var.pr_number}" : ""
-  api_name      = "website-api${local.name_suffix}"
-  frontend_name = "website-frontend${local.name_suffix}"
+  api_name      = "website-api"
+  frontend_name = "website-frontend"
 
   api_image      = var.create_ecr ? "${aws_ecr_repository.api[0].repository_url}:latest" : var.api_image_uri
   frontend_image = var.create_ecr ? "${aws_ecr_repository.frontend[0].repository_url}:latest" : var.frontend_image_uri
@@ -72,13 +71,13 @@ data "aws_iam_policy_document" "lambda_assume" {
 }
 
 resource "aws_iam_role" "api" {
-  name               = "website-api-role${local.name_suffix}"
+  name               = "website-api-role"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
   tags               = var.tags
 }
 
 resource "aws_iam_role_policy" "api" {
-  name = "website-api-policy${local.name_suffix}"
+  name = "website-api-policy"
   role = aws_iam_role.api.id
   policy = jsonencode({
     Version = "2012-10-17"
@@ -98,13 +97,13 @@ resource "aws_iam_role_policy" "api" {
 }
 
 resource "aws_iam_role" "frontend" {
-  name               = "website-frontend-role${local.name_suffix}"
+  name               = "website-frontend-role"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
   tags               = var.tags
 }
 
 resource "aws_iam_role_policy" "frontend" {
-  name = "website-frontend-policy${local.name_suffix}"
+  name = "website-frontend-policy"
   role = aws_iam_role.frontend.id
   policy = jsonencode({
     Version = "2012-10-17"
