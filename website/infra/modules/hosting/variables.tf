@@ -1,3 +1,13 @@
+variable "project" {
+  description = "Project name; the first segment of every resource name"
+  type        = string
+}
+
+variable "environment" {
+  description = "Deployment environment; the second segment of every resource name"
+  type        = string
+}
+
 variable "www_domain" {
   description = "Canonical host (e.g. www.andreas.services)"
   type        = string
@@ -13,7 +23,7 @@ variable "assets_bucket_name" {
   type        = string
 }
 
-variable "frontend_api_domain" {
+variable "www_api_domain" {
   description = "SSR HTTP API host used as the CloudFront default origin (no scheme)"
   type        = string
 }

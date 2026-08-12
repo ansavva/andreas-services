@@ -62,7 +62,7 @@ poetry run pytest        # moto-backed unit tests
 ```
 
 The dev server writes to DynamoDB Local at `localhost:8001` and creates the
-`website-intake` table on startup if it does not exist. Unit tests use moto
+`website-prod-intake` table on startup if it does not exist. Unit tests use moto
 instead of DynamoDB Local.
 `website_core.repositories.dynamodb` owns boto3/local table bootstrap; the store
 module owns website persistence operations.
@@ -116,7 +116,7 @@ with `permissions: packages: read` (no PAT needed in CI).
 The deploy workflow sets each Lambda's runtime env via
 `update-function-configuration` (Terraform only sets minimal values on first
 create). Frontend env: `WEBSITE_API_URL`, `COGNITO_USER_POOL_ID`,
-`COGNITO_CLIENT_ID`, `SESSION_SECRET`. Backend env: `WEBSITE_TABLE_SUFFIX`,
+`COGNITO_CLIENT_ID`, `SESSION_SECRET`. Backend env: `WEBSITE_INTAKE_TABLE`,
 `WEBSITE_ALLOWED_ORIGIN`, `KIT_API_KEY`, `KIT_FORM_ID`.
 
 ## Admin user

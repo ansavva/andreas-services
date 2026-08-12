@@ -1,3 +1,7 @@
+locals {
+  prefix = "${var.project}-${var.environment}"
+}
+
 data "aws_acm_certificate" "wildcard" {
   provider    = aws.us_east_1
   domain      = "*.andreas.services"
@@ -21,7 +25,7 @@ data "aws_cloudfront_cache_policy" "optimized" {
 # its SigV4 signature and the Function URL returns 403 Forbidden. The SSR app
 # doesn't need the viewer Authorization header (admin auth uses a cookie).
 resource "aws_cloudfront_origin_request_policy" "ssr" {
-  name    = "website-ssr-origin-request"
+  name    = "${local.prefix}-ssr-origin-request"
   comment = "All viewer data except Host + Authorization (OAC-signed Lambda origin)"
 
   headers_config {
@@ -58,20 +62,8 @@ resource "aws_s3_bucket_public_access_block" "assets" {
 # Origin Access Control (S3 assets only; the SSR origin is a public HTTP API)
 # ---------------------------------------------------------------------------
 resource "aws_cloudfront_origin_access_control" "s3" {
-  name                              = "website-assets-oac"
+  name                              = "${local.prefix}-assets-oac"
   origin_access_control_origin_type = "s3"
-  signing_behavior                  = "always"
-  signing_protocol                  = "sigv4"
-}
-
-# Unreferenced, retained for one deploy only. Deleting this in the same apply
-# that repoints the distribution off it races CloudFront's "OriginAccessControl
-# still in use" (409) check. Kept here so this apply is a clean origin repoint
-# with no OAC delete; removed in a follow-up once the distribution no longer
-# references it. (TODO: delete in a follow-up PR.)
-resource "aws_cloudfront_origin_access_control" "lambda" {
-  name                              = "website-ssr-oac"
-  origin_access_control_origin_type = "lambda"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
 }
@@ -80,7 +72,7 @@ resource "aws_cloudfront_origin_access_control" "lambda" {
 # Apex -> www 301 redirect (viewer-request)
 # ---------------------------------------------------------------------------
 resource "aws_cloudfront_function" "apex_redirect" {
-  name    = "website-apex-to-www"
+  name    = "${local.prefix}-apex-to-www"
   runtime = "cloudfront-js-2.0"
   comment = "301 redirect andreas.services -> www.andreas.services"
   publish = true
@@ -112,7 +104,7 @@ resource "aws_cloudfront_distribution" "main" {
 
   # SSR HTTP API (default origin)
   origin {
-    domain_name = var.frontend_api_domain
+    domain_name = var.www_api_domain
     origin_id   = "ssr-lambda"
 
     custom_origin_config {

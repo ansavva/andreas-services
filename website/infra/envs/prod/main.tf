@@ -1,6 +1,6 @@
 locals {
   project     = "website"
-  environment = "production"
+  environment = "prod"
 
   www_domain  = "www.andreas.services"
   apex_domain = "andreas.services"
@@ -9,7 +9,8 @@ locals {
   common_tags = {
     Project     = local.project
     Environment = local.environment
-    ManagedBy   = "Terraform"
+    Owner       = "ansavva"
+    ManagedBy   = "terraform"
   }
 }
 
@@ -18,39 +19,31 @@ data "aws_route53_zone" "main" {
   private_zone = false
 }
 
+data "aws_region" "current" {}
+
 module "data" {
-  source       = "../../modules/data"
-  table_suffix = ""
-  tags         = local.common_tags
+  source      = "../../modules/data"
+  project     = local.project
+  environment = local.environment
+  tags        = local.common_tags
 }
 
+# The pool backs the admin dashboard only — no public sign-up — so "admin" is
+# the component it serves.
 module "auth" {
   source = "../../modules/auth"
-  name   = "website"
+  name   = "${local.project}-${local.environment}-admin"
   tags   = local.common_tags
 }
 
-import {
-  to = module.compute.aws_ecr_repository.api[0]
-  id = "website-api"
-}
-
-import {
-  to = module.compute.aws_ecr_repository.frontend[0]
-  id = "website-frontend"
-}
-
-import {
-  to = module.hosting.aws_route53_record.apex
-  id = "Z06041001M39MUDQD1G76_andreas.services_A"
-}
-
 module "compute" {
-  source           = "../../modules/compute"
-  table_suffix     = ""
-  create_ecr       = true
-  intake_table_arn = module.data.intake_table_arn
-  tags             = local.common_tags
+  source            = "../../modules/compute"
+  project           = local.project
+  environment       = local.environment
+  create_ecr        = true
+  intake_table_arn  = module.data.intake_table_arn
+  intake_table_name = module.data.intake_table_name
+  tags              = local.common_tags
 }
 
 module "api_domain" {
@@ -68,6 +61,8 @@ module "api_domain" {
 module "api_gateway" {
   source = "../../modules/api_gateway"
 
+  project                   = local.project
+  environment               = local.environment
   lambda_invoke_arn         = module.compute.api_invoke_arn
   lambda_function_name      = module.compute.api_function_name
   custom_domain_name        = module.api_domain.domain_name
@@ -86,10 +81,16 @@ module "hosting" {
     aws.us_east_1 = aws.us_east_1
   }
 
-  www_domain          = local.www_domain
-  apex_domain         = local.apex_domain
-  assets_bucket_name  = "andreas-services-website-assets-${local.environment}"
-  frontend_api_domain = module.compute.frontend_api_domain
-  route53_zone_id     = data.aws_route53_zone.main.zone_id
-  tags                = local.common_tags
+  project     = local.project
+  environment = local.environment
+  www_domain  = local.www_domain
+  apex_domain = local.apex_domain
+
+  # S3 names are globally unique, so this one carries the region suffix the
+  # convention reserves for buckets.
+  assets_bucket_name = "${local.project}-${local.environment}-assets-${data.aws_region.current.name}"
+
+  www_api_domain  = module.compute.www_api_domain
+  route53_zone_id = data.aws_route53_zone.main.zone_id
+  tags            = local.common_tags
 }

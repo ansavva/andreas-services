@@ -1,19 +1,20 @@
 locals {
-  api_name      = "website-api"
-  frontend_name = "website-frontend"
+  prefix   = "${var.project}-${var.environment}"
+  api_name = "${local.prefix}-api"
+  www_name = "${local.prefix}-www"
 
-  api_image      = var.create_ecr ? "${aws_ecr_repository.api[0].repository_url}:latest" : var.api_image_uri
-  frontend_image = var.create_ecr ? "${aws_ecr_repository.frontend[0].repository_url}:latest" : var.frontend_image_uri
+  api_image = var.create_ecr ? "${aws_ecr_repository.api[0].repository_url}:latest" : var.api_image_uri
+  www_image = var.create_ecr ? "${aws_ecr_repository.www[0].repository_url}:latest" : var.www_image_uri
 }
 
 data "aws_region" "current" {}
 
 # ---------------------------------------------------------------------------
-# ECR — one repo per image (Python API, SSR frontend)
+# ECR — one repo per image (Python API, SSR www)
 # ---------------------------------------------------------------------------
 resource "aws_ecr_repository" "api" {
   count                = var.create_ecr ? 1 : 0
-  name                 = "website-api"
+  name                 = local.api_name
   image_tag_mutability = "MUTABLE"
   image_scanning_configuration {
     scan_on_push = true
@@ -21,9 +22,9 @@ resource "aws_ecr_repository" "api" {
   tags = var.tags
 }
 
-resource "aws_ecr_repository" "frontend" {
+resource "aws_ecr_repository" "www" {
   count                = var.create_ecr ? 1 : 0
-  name                 = "website-frontend"
+  name                 = local.www_name
   image_tag_mutability = "MUTABLE"
   image_scanning_configuration {
     scan_on_push = true
@@ -44,9 +45,9 @@ resource "aws_ecr_lifecycle_policy" "api" {
   })
 }
 
-resource "aws_ecr_lifecycle_policy" "frontend" {
+resource "aws_ecr_lifecycle_policy" "www" {
   count      = var.create_ecr ? 1 : 0
-  repository = aws_ecr_repository.frontend[0].name
+  repository = aws_ecr_repository.www[0].name
   policy = jsonencode({
     rules = [{
       rulePriority = 1
@@ -58,7 +59,7 @@ resource "aws_ecr_lifecycle_policy" "frontend" {
 }
 
 # ---------------------------------------------------------------------------
-# IAM — backend role (DynamoDB + logs); frontend role (logs only)
+# IAM — backend role (DynamoDB + logs); www role (logs only)
 # ---------------------------------------------------------------------------
 data "aws_iam_policy_document" "lambda_assume" {
   statement {
@@ -71,13 +72,13 @@ data "aws_iam_policy_document" "lambda_assume" {
 }
 
 resource "aws_iam_role" "api" {
-  name               = "website-api-role"
+  name               = "${local.api_name}-role"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
   tags               = var.tags
 }
 
 resource "aws_iam_role_policy" "api" {
-  name = "website-api-policy"
+  name = "${local.api_name}-dynamodb"
   role = aws_iam_role.api.id
   policy = jsonencode({
     Version = "2012-10-17"
@@ -96,15 +97,15 @@ resource "aws_iam_role_policy" "api" {
   })
 }
 
-resource "aws_iam_role" "frontend" {
-  name               = "website-frontend-role"
+resource "aws_iam_role" "www" {
+  name               = "${local.www_name}-role"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
   tags               = var.tags
 }
 
-resource "aws_iam_role_policy" "frontend" {
-  name = "website-frontend-policy"
-  role = aws_iam_role.frontend.id
+resource "aws_iam_role_policy" "www" {
+  name = "${local.www_name}-logs"
+  role = aws_iam_role.www.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -128,7 +129,7 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      WEBSITE_TABLE_SUFFIX = var.table_suffix
+      WEBSITE_INTAKE_TABLE = var.intake_table_name
     }
   }
 
@@ -139,11 +140,11 @@ resource "aws_lambda_function" "api" {
   }
 }
 
-resource "aws_lambda_function" "frontend" {
-  function_name = local.frontend_name
-  role          = aws_iam_role.frontend.arn
+resource "aws_lambda_function" "www" {
+  function_name = local.www_name
+  role          = aws_iam_role.www.arn
   package_type  = "Image"
-  image_uri     = local.frontend_image
+  image_uri     = local.www_image
   timeout       = 30
   memory_size   = 512
 
@@ -164,40 +165,40 @@ resource "aws_lambda_function" "frontend" {
 # the same event shape the @react-router/architect handler consumes. CloudFront
 # uses this API's endpoint as the SSR origin (like the other services front
 # their Lambdas with API Gateway), which avoids the OAC-to-Function-URL path.
-resource "aws_apigatewayv2_api" "frontend" {
-  name          = local.frontend_name
+resource "aws_apigatewayv2_api" "www" {
+  name          = local.www_name
   protocol_type = "HTTP"
   tags          = var.tags
 }
 
-resource "aws_apigatewayv2_integration" "frontend" {
-  api_id                 = aws_apigatewayv2_api.frontend.id
+resource "aws_apigatewayv2_integration" "www" {
+  api_id                 = aws_apigatewayv2_api.www.id
   integration_type       = "AWS_PROXY"
-  integration_uri        = aws_lambda_function.frontend.invoke_arn
+  integration_uri        = aws_lambda_function.www.invoke_arn
   integration_method     = "POST"
   payload_format_version = "2.0"
   timeout_milliseconds   = 30000
 }
 
-resource "aws_apigatewayv2_route" "frontend_default" {
-  api_id    = aws_apigatewayv2_api.frontend.id
+resource "aws_apigatewayv2_route" "www_default" {
+  api_id    = aws_apigatewayv2_api.www.id
   route_key = "$default"
-  target    = "integrations/${aws_apigatewayv2_integration.frontend.id}"
+  target    = "integrations/${aws_apigatewayv2_integration.www.id}"
 }
 
-resource "aws_apigatewayv2_stage" "frontend" {
-  api_id      = aws_apigatewayv2_api.frontend.id
+resource "aws_apigatewayv2_stage" "www" {
+  api_id      = aws_apigatewayv2_api.www.id
   name        = "$default"
   auto_deploy = true
   tags        = var.tags
 }
 
-resource "aws_lambda_permission" "frontend_apigw" {
+resource "aws_lambda_permission" "www_apigw" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.frontend.function_name
+  function_name = aws_lambda_function.www.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.frontend.execution_arn}/*/*"
+  source_arn    = "${aws_apigatewayv2_api.www.execution_arn}/*/*"
 }
 
 resource "aws_cloudwatch_log_group" "api" {
@@ -206,8 +207,8 @@ resource "aws_cloudwatch_log_group" "api" {
   tags              = var.tags
 }
 
-resource "aws_cloudwatch_log_group" "frontend" {
-  name              = "/aws/lambda/${local.frontend_name}"
+resource "aws_cloudwatch_log_group" "www" {
+  name              = "/aws/lambda/${local.www_name}"
   retention_in_days = 14
   tags              = var.tags
 }

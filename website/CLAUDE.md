@@ -28,11 +28,11 @@ server-side** for SEO/OG and fast first paint.
 ```
 Browser ──▶ CloudFront (www + apex)
               ├─ /assets/*  ─▶ S3
-              └─ /*         ─▶ SSR frontend Lambda (Function URL, OAC-signed)
+              └─ /*         ─▶ SSR www Lambda (HTTP API origin)
                                     │ server-side fetch
                                     ▼
                               website-api.andreas.services (API Gateway)
-                                    └─▶ Python API Lambda ─▶ DynamoDB (website-intake)
+                                    └─▶ Python API Lambda ─▶ DynamoDB (website-prod-intake)
                                           /api/admin/*  behind Cognito authorizer
 ```
 

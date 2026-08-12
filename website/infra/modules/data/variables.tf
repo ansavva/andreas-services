@@ -1,7 +1,11 @@
-variable "table_suffix" {
-  description = "Per-environment suffix for table names (e.g. \"\" for prod)"
+variable "project" {
+  description = "Project name; the first segment of every resource name"
   type        = string
-  default     = ""
+}
+
+variable "environment" {
+  description = "Deployment environment; the second segment of every resource name"
+  type        = string
 }
 
 variable "tags" {
