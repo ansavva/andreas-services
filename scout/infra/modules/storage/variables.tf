@@ -4,7 +4,7 @@ variable "bucket_name" {
 }
 
 variable "force_destroy" {
-  description = "Allow the bucket to be destroyed even if it still contains objects. Enable for ephemeral per-PR buckets so teardown does not fail with BucketNotEmpty."
+  description = "Allow the bucket to be destroyed even if it still contains objects."
   type        = bool
   default     = false
 }

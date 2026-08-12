@@ -1,12 +1,7 @@
 name: Scout · PR
 
-# Combined PR workflow for scout. Validates first (lint, unit tests, frontend
-# build); then ensures the shared PR-preview infrastructure exists (idempotent
-# CFN deploy); finally spins up the per-PR preview stack.
-#
-# DAG:
-#   lint-unit-build ─► deploy-preview-infra ─► deploy-preview
-#
+# Combined PR workflow for scout. Validates only — lint, unit tests, frontend
+# build and Terraform validate. It never writes to AWS.
 
 on:
   pull_request:
@@ -18,11 +13,10 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  STACK_NAME: scout-pr-${{ github.event.pull_request.number }}
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Validate: lint + unit tests + frontend build. Gates the preview deploy.
+  # Validate: lint + unit tests + type-check.
   # ---------------------------------------------------------------------------
   lint-unit-build:
     name: Lint, Unit Tests & Build
@@ -54,9 +48,9 @@ jobs:
           cd scout/backend
           poetry run pytest tests/ -v
 
-      # Dockerfile build verification is handled by the deploy-preview job
-      # below — same Dockerfile, same failure mode, ~1 min later. No need
-      # to build a throwaway :ci-verify image here.
+      # TODO: no Dockerfile build verification runs on scout PRs. It used to be
+      # covered by the deploy-preview job, which #220 removed with the preview
+      # environments. Every other service's PR workflow builds its image.
 
       - name: Set up Node.js 24
         uses: actions/setup-node@v6
@@ -72,8 +66,8 @@ jobs:
         run: cd scout/frontend && npm run lint
 
       - name: Type-check frontend
-        # Catches TS errors without invoking the bundler. The actual bundler
-        # build runs in deploy-preview with PR-specific VITE_* env vars.
+        # Catches TS errors without invoking the bundler. No bundler build runs
+        # on PRs since #220 removed deploy-preview (see the TODO above).
         run: cd scout/frontend && npx tsc --noEmit
 
   # ---------------------------------------------------------------------------
@@ -110,5 +104,3 @@ jobs:
       - name: tflint
         run: tflint --recursive --chdir=scout/infra --config "$(pwd)/.tflint.hcl"
 
-  # ---------------------------------------------------------------------------
-  # Ensure the shared PR-preview infrastructure exists. This is an idempotent

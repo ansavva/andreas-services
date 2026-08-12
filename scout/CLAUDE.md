@@ -205,7 +205,7 @@ content-only — no WebFetch/WebSearch; our fetcher gathers the pages.)
 
 ## Environment Variables
 
-Secrets live in the `scout-production` / `scout-pr` GitHub Actions environments.
+Secrets live in the `scout-production` GitHub Actions environment.
 Notable additions for the redesign:
 
 | Variable | Where | Purpose |
@@ -230,10 +230,9 @@ Chromium). `update-lambda` sets env vars and pins all five Lambdas to `:${sha}` 
 `scout-sweep` use the `scout-events-api` image; `scout-source-renderer` uses the
 `scout-renderer` image.
 
-PR previews (`.github/workflows/scout-pr.yml`): validate first
-(`lint-unit-build`: backend pytest + frontend lint/tsc/build), then
-under `infra/envs/pr`, tables/functions suffixed `-pr-<N>`). Teardown destroys
-the per-PR env on PR close.
+PR checks (`.github/workflows/scout-pr.yml`) validate only — backend pytest,
+frontend lint/tsc/build, `terraform fmt`/`validate` and tflint. The workflow
+never writes to AWS; there are no per-PR preview environments.
 
 ## Local development
 

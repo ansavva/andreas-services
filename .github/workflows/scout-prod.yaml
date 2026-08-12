@@ -14,9 +14,7 @@ name: Scout · Deploy · Prod
 #                          ├─► update-lambda  (env vars + pin Lambdas to :sha)
 #                          └─► deploy-frontend
 #
-# PR previews live in a different environment (scout-pr). Their workflows
-# (scout-pr.yml and scout-pr-teardown.yaml) stay separate. The shared
-# preview infra is deployed as part of scout-pr.yml itself.
+# scout-pr.yml validates pull requests and never writes to AWS.
 
 on:
   push:
