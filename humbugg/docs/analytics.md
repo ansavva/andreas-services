@@ -118,7 +118,7 @@ exist for engineers with production IAM access:
    | stats count_distinct(group_id) by event_type
    ```
 
-2. **DynamoDB → S3 → Athena (durable).** The `humbugg-analytics-events` table has point-in-time
+2. **DynamoDB → S3 → Athena (durable).** The `humbugg-<env>-analytics-events` table has point-in-time
    recovery enabled; export a consistent snapshot to S3 (`aws dynamodb export-table-to-point-in-time`)
    and run the metric formulas above in Athena. This is the path for funnel ratios that join events
    by `group_id`.

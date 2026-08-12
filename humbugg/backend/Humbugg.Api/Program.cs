@@ -228,14 +228,14 @@ public sealed record HumbuggSettings(
     string AuditEventsTable,
     string AnalyticsEventsTable,
     string EmailProvider = "capture",
-    string EmailMessagesTable = "humbugg-email-messages",
+    string EmailMessagesTable = "",
     string MailerBaseUrl = "http://host.docker.internal:8026",
     string MailerAuthMode = "none",
     string MailerServiceId = "humbugg",
     string AppBucket = "",
     string AvatarBaseUrl = "http://localhost:5173",
     string? S3EndpointUrl = null,
-    string BillingRecordsTable = "humbugg-billing")
+    string BillingRecordsTable = "")
 {
     public static HumbuggSettings FromEnvironment()
     {
@@ -248,14 +248,14 @@ public sealed record HumbuggSettings(
             ParseCorsOrigins(Environment.GetEnvironmentVariable("CORS_ORIGINS")),
             appBaseUrl,
             Environment.GetEnvironmentVariable("DYNAMODB_ENDPOINT_URL"),
-            Environment.GetEnvironmentVariable("HUMBUGG_PROFILES_TABLE") ?? "humbugg-profiles",
-            Environment.GetEnvironmentVariable("HUMBUGG_GROUPS_TABLE") ?? "humbugg-groups",
-            Environment.GetEnvironmentVariable("HUMBUGG_GROUPMEMBERS_TABLE") ?? "humbugg-groupmembers",
-            Environment.GetEnvironmentVariable("HUMBUGG_DRAWS_TABLE") ?? "humbugg-draws",
-            Environment.GetEnvironmentVariable("HUMBUGG_AUDIT_EVENTS_TABLE") ?? "humbugg-audit-events",
-            Environment.GetEnvironmentVariable("HUMBUGG_ANALYTICS_EVENTS_TABLE") ?? "humbugg-analytics-events",
+            Table("HUMBUGG_PROFILES_TABLE"),
+            Table("HUMBUGG_GROUPS_TABLE"),
+            Table("HUMBUGG_GROUPMEMBERS_TABLE"),
+            Table("HUMBUGG_DRAWS_TABLE"),
+            Table("HUMBUGG_AUDIT_EVENTS_TABLE"),
+            Table("HUMBUGG_ANALYTICS_EVENTS_TABLE"),
             Environment.GetEnvironmentVariable("HUMBUGG_EMAIL_PROVIDER") ?? "capture",
-            Environment.GetEnvironmentVariable("HUMBUGG_EMAIL_MESSAGES_TABLE") ?? "humbugg-email-messages",
+            Table("HUMBUGG_EMAIL_MESSAGES_TABLE"),
             (Environment.GetEnvironmentVariable("HUMBUGG_MAILER_BASE_URL") ??
                 "http://host.docker.internal:8026").TrimEnd('/'),
             Environment.GetEnvironmentVariable("HUMBUGG_MAILER_AUTH_MODE") ?? "none",
@@ -263,8 +263,17 @@ public sealed record HumbuggSettings(
             Environment.GetEnvironmentVariable("HUMBUGG_APP_BUCKET") ?? "",
             (Environment.GetEnvironmentVariable("HUMBUGG_AVATAR_BASE_URL")?.TrimEnd('/')) ?? appBaseUrl,
             Environment.GetEnvironmentVariable("S3_ENDPOINT_URL"),
-            Environment.GetEnvironmentVariable("HUMBUGG_BILLING_TABLE") ?? "humbugg-billing");
+            Table("HUMBUGG_BILLING_TABLE"));
     }
+
+    // Table names carry the environment (humbugg-prod-profiles, and a per-machine
+    // humbugg-dev-<id>-profiles locally), so no literal can be right in more than one
+    // place. The deploy workflow sets these for the API Lambda and dev-aws-setup.sh
+    // writes them into backend/.env; anything else is misconfigured. Empty beats a
+    // guess — the email-status consumer shares this record but only reads the email
+    // messages table, so a missing name has to stay inert rather than throw.
+    private static string Table(string variable) =>
+        Environment.GetEnvironmentVariable(variable) ?? "";
 
     // Local development runs two distinct browser origins against one backend: the Vite
     // marketing dev server on :5173 and the Expo web dev server on :8081.

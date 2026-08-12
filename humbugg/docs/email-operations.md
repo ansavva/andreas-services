@@ -9,7 +9,7 @@ recovery.
 ## Essential vs non-essential email (opt-out)
 
 Each account has a `non_essential_emails_enabled` preference (default **on**),
-stored on the `humbugg-profiles` row, editable from **Settings → Email
+stored on the `humbugg-<env>-profiles` row, editable from **Settings → Email
 notifications**, and exposed on `GET`/`PUT /api/me`. It governs whether Humbugg
 sends that account **non-essential** product email.
 
@@ -52,15 +52,15 @@ delivery only, so nothing that matters is lost — it is just not emailed.
 
 ## Humbugg status consumer
 
-`humbugg-email-status-production` consumes only
+`humbugg-prod-email-status` consumes only
 `mailer-production-humbugg-status` and updates only
-`humbugg-email-messages`. The handler accepts version 1 status events for the
+`humbugg-<env>-email-messages`. The handler accepts version 1 status events for the
 `humbugg` service, ignores duplicate or stale events, and returns failed SQS
 records for retry. Records contain identifiers, category, normalized status,
 provider message ID, timestamps, and a 90-day TTL. They never contain an email
 address, subject, body, filename, or provider diagnostic.
 
-Investigate the `humbugg-email-status-errors-production` alarm together with
+Investigate the `humbugg-prod-email-status-errors` alarm together with
 the Mailer status-queue age and DLQ alarms. After fixing the handler or its
 permissions, redrive the Mailer Humbugg status DLQ to its source queue. The
 handler's ordering and event-ID conditions make redrive safe.
@@ -87,7 +87,7 @@ unless its owner has agreed to receive the messages.
 
 The production workflow sends to the SES success, bounce, and complaint mailbox
 simulators through the authentication configuration set. It waits for
-`delivery`, `bounce`, and `complaint` records in `humbugg-email-messages`.
+`delivery`, `bounce`, and `complaint` records in `humbugg-<env>-email-messages`.
 Simulator mail does not go to a real recipient.
 
 Product sends can be stopped without disabling authentication mail by setting:

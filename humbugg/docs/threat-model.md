@@ -26,12 +26,12 @@ this document specifies the invariant/limit that the feature must ship with.
 
 | Asset | Sensitivity | Where it lives |
 |---|---|---|
-| Invite secret (32 random bytes, base64url) | High — grants group join | Returned once to organizer; only its SHA-256 hash is stored (`humbugg-groups.invite_hash`) |
-| Assignment (giver → recipient map) | High — spoils the exchange | `humbugg-draws`, server-side only |
-| Wishlist / avoidances / mailing address | High — personal data | `humbugg-groupmembers`, private to the member |
-| Emergency-reveal audit events | High — accountability record | `humbugg-audit-events`, append-only |
+| Invite secret (32 random bytes, base64url) | High — grants group join | Returned once to organizer; only its SHA-256 hash is stored (`humbugg-<env>-groups.invite_hash`) |
+| Assignment (giver → recipient map) | High — spoils the exchange | `humbugg-<env>-draws`, server-side only |
+| Wishlist / avoidances / mailing address | High — personal data | `humbugg-<env>-groupmembers`, private to the member |
+| Emergency-reveal audit events | High — accountability record | `humbugg-<env>-audit-events`, append-only |
 | Cognito identity / access token | High — authentication | Cognito; access token validated per request |
-| Plan / entitlement | Medium — controls quota | `humbugg-groups.plan` / `entitlement_id` |
+| Plan / entitlement | Medium — controls quota | `humbugg-<env>-groups.plan` / `entitlement_id` |
 | Organization / Work membership **[FUTURE]** | High — cross-tenant boundary | not yet modelled |
 
 Trust boundaries: the **browser** (untrusted), **API Gateway HTTP API** + Cognito JWT authorizer
@@ -168,7 +168,7 @@ are specified in §4.
 - **Risk:** a participant learns the full giver→recipient mapping, or another member's assignment,
   spoiling the exchange or leaking who-buys-for-whom.
 - **Mitigation [NOW]:**
-  - The mapping lives in `humbugg-draws`, separate from group data, and is never returned wholesale.
+  - The mapping lives in `humbugg-<env>-draws`, separate from group data, and is never returned wholesale.
   - `GetAssignmentAsync` returns only the caller's own recipient.
   - Ordinary members receive other members through `Public` (id, display name, organizer/participating
     flags) — never wishlist, avoidances, or address; exclusions are returned only to organizers
@@ -291,7 +291,7 @@ Reviewed every place a secret could reach a URL:
 - **Authorization:** organizer-only (`RequireOrganizer`); the group must be `Drawn`.
 - **Reason required:** `Validation.Required(request.Reason, "reason", 500)` — a reveal cannot happen
   without a non-empty reason (≤ 500 chars).
-- **Audit write:** a record is written to `humbugg-audit-events` with `group_id`, a time-ordered
+- **Audit write:** a record is written to `humbugg-<env>-audit-events` with `group_id`, a time-ordered
   `event_id` (`{timestamp}#{guid}`), `event_type = "assignment_reveal"`, `actor_user_id`, the `reason`,
   and `created_at`. The write is `await`ed before the mapping is returned.
 - **Disclosure:** only after the audit write does the method return the full giver→recipient mapping,
@@ -340,7 +340,7 @@ assignment contents, addresses, or the invite secret.
 - **Suspected invite leak:** organizer rotates the invite (`POST /api/groups/{id}/invite`), which
   invalidates the old secret immediately. If a group is compromised, reset the draw and/or delete the
   group. No plaintext secret is recoverable from storage (only the hash is stored).
-- **Suspected assignment leak / misuse of reveal:** query `humbugg-audit-events` by `group_id` for
+- **Suspected assignment leak / misuse of reveal:** query `humbugg-<env>-audit-events` by `group_id` for
   `assignment_reveal` events to see actor, time, and reason. Escalate to disabling the organizer's
   account in Cognito if abuse is confirmed.
 - **Credential stuffing / floods:** the API Gateway stage throttle returns `429`; add per-IP WAF rules
@@ -348,7 +348,7 @@ assignment contents, addresses, or the invite secret.
   (a Terraform apply — no image rebuild).
 - **Webhook abuse [FUTURE]:** on signature-verification failures, alert and block the source IP at the
   edge; entitlements never change on an unverified event.
-- **Audit integrity:** treat `humbugg-audit-events` as evidence — restrict IAM to append + read, deny
+- **Audit integrity:** treat `humbugg-<env>-audit-events` as evidence — restrict IAM to append + read, deny
   delete/update in the table's resource policy, and consider point-in-time recovery.
 - **Config tuning:** the rate limit is a Terraform variable. Emergency tightening (lower
   `api_throttling_rate_limit` / `api_throttling_burst_limit` in `humbugg/infra`) is applied via the

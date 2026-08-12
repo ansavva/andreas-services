@@ -151,7 +151,7 @@ public sealed class MailerIntegrationTests
         using var db = new RecordingDynamoDb();
         var handler = new EmailStatusHandler(
             db,
-            "humbugg-email-messages",
+            "humbugg-prod-email-messages",
             NullLogger<EmailStatusHandler>.Instance);
         var occurredAt = DateTimeOffset.Parse("2026-07-17T12:00:00Z");
 
@@ -170,7 +170,7 @@ public sealed class MailerIntegrationTests
             TestContext.Current.CancellationToken);
 
         var request = Assert.IsType<UpdateItemRequest>(db.Request);
-        Assert.Equal("humbugg-email-messages", request.TableName);
+        Assert.Equal("humbugg-prod-email-messages", request.TableName);
         Assert.Equal("hmb_invitation_test", request.Key["message_id"].S);
         Assert.Equal("delivery", request.ExpressionAttributeValues[":status"].S);
         Assert.Equal("30", request.ExpressionAttributeValues[":rank"].N);
@@ -188,7 +188,7 @@ public sealed class MailerIntegrationTests
         using var db = new RecordingDynamoDb();
         var handler = new EmailStatusHandler(
             db,
-            "humbugg-email-messages",
+            "humbugg-prod-email-messages",
             NullLogger<EmailStatusHandler>.Instance);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => handler.ApplyAsync(

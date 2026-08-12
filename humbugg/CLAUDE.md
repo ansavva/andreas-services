@@ -189,7 +189,7 @@ All secrets/values live in the `humbugg-production` GitHub Actions environment. 
 | `/humbugg/prod/s3-bucket` | Frontend S3 bucket |
 | `/humbugg/prod/cf-dist-id` | CloudFront distribution ID |
 | `/humbugg/prod/email-from-address` | Verified transactional sender (`no-reply@humbugg.com`). Outbound app mail is SES via the shared Mailer; **inbound** mail (e.g. `support@humbugg.com`) is Google Workspace — see `docs/support-email.md` |
-| _(env var, not SSM)_ `HUMBUGG_APP_BUCKET` | Shared application object bucket (`humbugg-app-production`, in the `storage` module); set literally in `update-lambda`. Profile photos live under the `avatars/` prefix — private, written by the Lambda under `avatars/*` (least-privilege IAM) and served read-only at `/avatars/*` through the app CloudFront distribution via OAC. Local development uses the per-machine AWS bucket created by `scripts/dev-aws-setup.sh`. Avatar URLs derive from `APP_BASE_URL` unless `HUMBUGG_AVATAR_BASE_URL` overrides it. |
+| _(env var, not SSM)_ `HUMBUGG_APP_BUCKET` | Shared application object bucket (`humbugg-prod-app-files-us-east-1`, in the `storage` module); set literally in `update-lambda`. Profile photos live under the `avatars/` prefix — private, written by the Lambda under `avatars/*` (least-privilege IAM) and served read-only at `/avatars/*` through the app CloudFront distribution via OAC. Local development uses the per-machine AWS bucket created by `scripts/dev-aws-setup.sh`. Avatar URLs derive from `APP_BASE_URL` unless `HUMBUGG_AVATAR_BASE_URL` overrides it. |
 | `/humbugg/prod/stripe/publishable-key` | Stripe **test-mode** publishable key (`String`; Terraform `billing` module) |
 | `/humbugg/prod/stripe/secret-key` | Stripe **test-mode** secret key (`SecureString`; Terraform `billing` module) |
 | `/humbugg/prod/stripe/webhook-secret` | Stripe webhook signing secret (`SecureString`; Terraform `billing` module) |
@@ -242,17 +242,17 @@ Group `humbugg-prod` with `cancel-in-progress: false` — queued pushes wait for
 
 ## DynamoDB Tables
 
-- `humbugg-profiles` — per-user profile and wish-list data
-- `humbugg-groups` — group metadata (owner, name, member list)
-- `humbugg-groupmembers` — group ↔ member relationship + assignment results
-- `humbugg-draws` — private giver → recipient maps, separate from ordinary group responses
-- `humbugg-audit-events` — standard append-only audit trail for sensitive exchange actions (creation/deletion, participant/exclusion/role/entitlement/reminder changes, draws, resets, reveals, self-service data clears, membership anonymization, and account deletion); see `infra/README.md`. Account deletion never erases audit records — it anonymizes only the `actor_user_id` via the narrow `IAuditActorAnonymizer` seam. Retention/deletion policy is documented in `docs/data-retention-deletion.md`.
-- `humbugg-analytics-events` — privacy-safe product-analytics funnel events (plan + aggregate counts only; no wishlist/address/email/token/assignment). Deduped by `idempotency_key`; disable via `HUMBUGG_ANALYTICS_ENABLED=false`; see `docs/analytics.md`
-- `humbugg-email-messages` — stable transactional message IDs and delivery state
+- `humbugg-<env>-profiles` — per-user profile and wish-list data
+- `humbugg-<env>-groups` — group metadata (owner, name, member list)
+- `humbugg-<env>-groupmembers` — group ↔ member relationship + assignment results
+- `humbugg-<env>-draws` — private giver → recipient maps, separate from ordinary group responses
+- `humbugg-<env>-audit-events` — standard append-only audit trail for sensitive exchange actions (creation/deletion, participant/exclusion/role/entitlement/reminder changes, draws, resets, reveals, self-service data clears, membership anonymization, and account deletion); see `infra/README.md`. Account deletion never erases audit records — it anonymizes only the `actor_user_id` via the narrow `IAuditActorAnonymizer` seam. Retention/deletion policy is documented in `docs/data-retention-deletion.md`.
+- `humbugg-<env>-analytics-events` — privacy-safe product-analytics funnel events (plan + aggregate counts only; no wishlist/address/email/token/assignment). Deduped by `idempotency_key`; disable via `HUMBUGG_ANALYTICS_ENABLED=false`; see `docs/analytics.md`
+- `humbugg-<env>-email-messages` — stable transactional message IDs and delivery state
 
-Profile photos are **not** in DynamoDB: the `humbugg-profiles` row stores only an `avatar_key`
-reference, and the image bytes live in the dedicated `humbugg-avatars-production` S3 bucket (Terraform
-`avatars` module). Uploads are validated and safely re-encoded to a square, metadata-free JPEG
+Profile photos are **not** in DynamoDB: the `humbugg-<env>-profiles` row stores only an `avatar_key`
+reference, and the image bytes live in the shared `humbugg-prod-app-files-us-east-1` S3 bucket under `avatars/` (Terraform
+`storage` module). Uploads are validated and safely re-encoded to a square, metadata-free JPEG
 (`SixLabors.ImageSharp`) before storage; when no photo is set, the frontend renders an initials avatar.
 
 Production tables are accessed through the AWS SDK for .NET directly from the

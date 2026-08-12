@@ -17,7 +17,7 @@ internal interface IAnalyticsSink
 }
 
 /// <summary>
-/// Persists analytics events to the <c>humbugg-analytics-events</c> DynamoDB table, keyed by the
+/// Persists analytics events to the <c>humbugg-<env>-analytics-events</c> DynamoDB table, keyed by the
 /// event's idempotency key. The write uses an <c>attribute_not_exists</c> condition, so a repeated
 /// idempotency key is rejected by DynamoDB and swallowed here: retries, double-clicks, and
 /// at-least-once redelivery all collapse to a single counted event.
