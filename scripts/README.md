@@ -9,8 +9,8 @@ Two layers — a shared base plus thin per-service scripts:
 
 | Script | Scope | Installs |
 |---|---|---|
-| `scripts/dev-setup.sh` | Shared base (all services) | Terraform, tflint (+ pinned AWS ruleset, best-effort), AWS CLI, Node.js, jq, zip, Stripe CLI (+ Docker check) |
-| `scripts/github-packages-auth.sh` | Shared base (all frontends) | Ensures a `read:packages` token is available as `NODE_AUTH_TOKEN` so `npm ci` can install the private `@ansavva/design-system` from GitHub Packages |
+| `scripts/dev-setup.sh` | Shared base (all services) | Terraform, tflint (+ pinned AWS ruleset, best-effort), AWS CLI, Node.js, jq, zip, Stripe CLI (+ Docker check), agent skills |
+| `scripts/github-packages-auth.sh` | Shared base (all frontends) | Ensures a `read:packages` token is available as `NODE_AUTH_TOKEN` so `npm ci` can install `@ansavva/design-system` from GitHub Packages |
 | `humbugg/scripts/dev-setup.sh` | Humbugg orchestrator | Calls shared setup, installs .NET SDK 10, then calls per-machine AWS setup |
 
 ## Targets (both use Homebrew)
@@ -57,10 +57,36 @@ On Linux, if `brew`/its tools aren't on your `PATH` in a fresh non-login shell:
 eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 ```
 
+## Agent skills
+
+`scripts/dev-setup.sh` installs two skill sets with the `skills` CLI — Expo/EAS
+(`expo/skills`) and the `@ansavva/design-system` consumer set
+(`ansavva/design-system`):
+
+```bash
+npx --yes skills@latest add expo/skills --skill '*'
+npx --yes skills@latest add ansavva/design-system
+```
+
+These are **machine-local tooling, not source**. `.agents/`, `.claude/skills/`
+and `skills-lock.json` are all gitignored, so a fresh clone has no skills until
+setup runs, and re-running setup is a no-op once `skills-lock.json` exists.
+
+The real `SKILL.md` files live under `.agents/skills/`; the entries in
+`.claude/skills/` are **symlinks** into them, which is how Claude Code discovers
+them. They are not duplicates — deleting the symlinks makes every skill
+invisible while orphaning the real files.
+
+The one exception is `.claude/skills/design-system-ui/`, which this repo authors
+and commits: it is our own rule that UI comes from the design system, and it
+points at the four installed consumer skills for the package's own mechanics.
+
 ## GitHub Packages auth (`@ansavva/design-system`)
 
-The `humbugg/` and `website/` frontends depend on the private
-`@ansavva/design-system` package published to `npm.pkg.github.com`. Their
+The `humbugg/` and `website/` frontends depend on the `@ansavva/design-system`
+package, published from the separate
+[ansavva/design-system](https://github.com/ansavva/design-system) repo to
+`npm.pkg.github.com`. Their
 `.npmrc` reads the token from `${NODE_AUTH_TOKEN}`, and installing the package
 requires a token with the **`read:packages`** scope (classic PAT) / **Packages:
 Read-only** permission (fine-grained PAT). The default `GH_TOKEN` in CI/sandboxes

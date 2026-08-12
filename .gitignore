@@ -229,8 +229,6 @@ package-lock.json
 
 # The generic Python "lib/" rule above unintentionally matches real TS source
 # directories (not Python venv dirs), so re-include them explicitly.
-!design-system/src/lib/
-!design-system/src/lib/**
 !website/frontend/app/lib/
 !website/frontend/app/lib/**
 storybook/infra/outputs.txt
@@ -245,3 +243,13 @@ storybook/infra/outputs.txt
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Agent skills — machine-local tooling installed by scripts/dev-setup.sh, never
+# committed. The real SKILL.md files live in .agents/skills/; the entries under
+# .claude/skills/ are symlinks into them, which is how Claude Code discovers
+# them. Both are generated, so both are ignored — except the one skill this
+# repo authors itself.
+.agents/
+skills-lock.json
+.claude/skills/*
+!.claude/skills/design-system-ui/

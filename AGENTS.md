@@ -55,6 +55,11 @@ data "aws_route53_zone" "main" {
 ## Patterns Every Service Follows
 
 ### Frontend
+- **Design system**: all UI comes from **`@ansavva/design-system`**, published from the separate
+  [ansavva/design-system](https://github.com/ansavva/design-system) repo. There is no local component
+  library in this monorepo and there must not become one. **Read the `design-system-ui` skill before
+  adding or changing any screen, form, dialog or styled component** — it covers the catalogue, the
+  platform-leaf import rule, and the theming seams that carry each service's brand.
 - **Build tool**: Vite (not Create React App)
 - **Framework**: React 18
 - **Styling**: Tailwind CSS (v3 or v4)

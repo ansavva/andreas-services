@@ -20,9 +20,16 @@ and Linux; safe to re-run — already-installed tools are skipped). From the rep
 ./humbugg/scripts/dev-setup.sh --check
 ```
 
-The `humbugg/` and `website/` frontends depend on the private
-`@ansavva/design-system` package on GitHub Packages, so `npm ci` needs a token
-with the `read:packages` scope exposed as `NODE_AUTH_TOKEN`:
+`scripts/dev-setup.sh` also installs the agent skills for Expo/EAS and
+`@ansavva/design-system`. They are machine-local tooling — `.agents/`,
+`.claude/skills/` and `skills-lock.json` are gitignored — so a fresh clone has no
+skills until setup runs.
+
+The `humbugg/` and `website/` frontends depend on the
+`@ansavva/design-system` package, published from the separate
+[ansavva/design-system](https://github.com/ansavva/design-system) repo to GitHub
+Packages. Every read needs a token with the `read:packages` scope exposed as
+`NODE_AUTH_TOKEN`, including for public packages — there is no anonymous install:
 
 ```bash
 export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
