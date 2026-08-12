@@ -61,7 +61,7 @@ apex, `www`, `app` and `api`. It is shared by both CloudFront distributions and
 the API Gateway custom domain — us-east-1 does double duty here, being both
 CloudFront's required region and this deployment's own region.
 
-Two distributions: `modules/hosting` serves marketing (aliases apex, `www`,
+Two distributions: `modules/hosting_marketing` serves marketing (aliases apex, `www`,
 legacy; a CloudFront function 308s everything that is not `www` to it) and
 `modules/hosting_app` serves the product app plus `/avatars/*`.
 

@@ -8,7 +8,6 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: humbugg-backend-production
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -40,7 +39,7 @@ jobs:
           terraform -chdir=humbugg/infra/envs/prod validate
 
       - name: Test canonical redirect
-        run: node --test humbugg/infra/modules/hosting/canonical_redirect.test.mjs
+        run: node --test humbugg/infra/modules/hosting_marketing/canonical_redirect.test.mjs
 
       - name: Install tflint AWS plugin
         run: bash .github/scripts/install-tflint-aws-plugin.sh
