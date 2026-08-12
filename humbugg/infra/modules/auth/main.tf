@@ -97,7 +97,7 @@ resource "aws_cognito_user_pool" "main" {
 }
 
 resource "aws_cognito_user_pool_client" "main" {
-  name         = "${var.project}-web"
+  name         = "${var.project}-${var.environment}-app"
   user_pool_id = aws_cognito_user_pool.main.id
 
   generate_secret = false

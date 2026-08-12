@@ -18,32 +18,32 @@ variable "certificate_arn" {
   type        = string
 }
 
-variable "app_web_bucket_id" {
+variable "app_bucket_id" {
   description = "Expo web export S3 bucket ID"
   type        = string
 }
 
-variable "app_web_bucket_arn" {
+variable "app_bucket_arn" {
   description = "Expo web export S3 bucket ARN"
   type        = string
 }
 
-variable "app_web_bucket_regional_domain_name" {
+variable "app_bucket_regional_domain_name" {
   description = "Expo web export S3 bucket regional domain name"
   type        = string
 }
 
-variable "avatars_bucket_id" {
+variable "app_files_bucket_id" {
   description = "Shared application S3 bucket ID; only its avatars/ prefix is served"
   type        = string
 }
 
-variable "avatars_bucket_arn" {
+variable "app_files_bucket_arn" {
   description = "Shared application S3 bucket ARN"
   type        = string
 }
 
-variable "avatars_bucket_regional_domain_name" {
+variable "app_files_bucket_regional_domain_name" {
   description = "Shared application S3 bucket regional domain name"
   type        = string
 }
@@ -52,4 +52,9 @@ variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)
   default     = {}
+}
+
+variable "environment" {
+  description = "Deployment environment; the second segment of every resource name"
+  type        = string
 }

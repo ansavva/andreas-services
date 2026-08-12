@@ -19,7 +19,7 @@ data "aws_cloudfront_cache_policy" "optimized" {
 }
 
 resource "aws_cloudfront_origin_request_policy" "ssr" {
-  name    = "${var.project}-ssr-origin-request"
+  name    = "${var.project}-${var.environment}-ssr"
   comment = "Forward viewer data to the SSR origin except headers reserved for origin routing"
 
   headers_config {
@@ -38,16 +38,16 @@ resource "aws_cloudfront_origin_request_policy" "ssr" {
   }
 }
 
-resource "aws_cloudfront_origin_access_control" "frontend" {
-  name                              = "${var.project}-frontend-oac"
-  description                       = "OAC for ${var.project} frontend S3 bucket"
+resource "aws_cloudfront_origin_access_control" "marketing" {
+  name                              = "${var.project}-${var.environment}-marketing-oac"
+  description                       = "OAC for ${var.project} marketing asset bucket"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
 }
 
 resource "aws_cloudfront_function" "canonical_redirect" {
-  name    = "${var.project}-canonical-redirect"
+  name    = "${var.project}-${var.environment}-canonical-redirect"
   runtime = "cloudfront-js-2.0"
   comment = "Redirect non-canonical Humbugg hostnames to ${var.domain_name}"
   publish = true
@@ -62,14 +62,14 @@ resource "aws_cloudfront_distribution" "app" {
   aliases         = [var.domain_name, "www.${var.domain_name}", var.legacy_domain_name]
 
   origin {
-    domain_name              = var.frontend_bucket_regional_domain_name
-    origin_id                = "S3-frontend"
-    origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
+    domain_name              = var.marketing_bucket_regional_domain_name
+    origin_id                = "S3-marketing"
+    origin_access_control_id = aws_cloudfront_origin_access_control.marketing.id
   }
 
   origin {
-    domain_name = var.frontend_api_domain
-    origin_id   = "SSR-frontend"
+    domain_name = var.marketing_api_domain
+    origin_id   = "SSR-marketing"
 
     custom_origin_config {
       http_port              = 80
@@ -82,7 +82,7 @@ resource "aws_cloudfront_distribution" "app" {
   default_cache_behavior {
     allowed_methods          = ["GET", "HEAD", "OPTIONS"]
     cached_methods           = ["GET", "HEAD"]
-    target_origin_id         = "SSR-frontend"
+    target_origin_id         = "SSR-marketing"
     viewer_protocol_policy   = "redirect-to-https"
     compress                 = true
     cache_policy_id          = data.aws_cloudfront_cache_policy.disabled.id
@@ -98,7 +98,7 @@ resource "aws_cloudfront_distribution" "app" {
     path_pattern           = "/assets/*"
     allowed_methods        = ["GET", "HEAD"]
     cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "S3-frontend"
+    target_origin_id       = "S3-marketing"
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
     cache_policy_id        = data.aws_cloudfront_cache_policy.optimized.id
@@ -124,8 +124,8 @@ resource "aws_cloudfront_distribution" "app" {
   tags = var.tags
 }
 
-resource "aws_s3_bucket_policy" "frontend" {
-  bucket = var.frontend_bucket_id
+resource "aws_s3_bucket_policy" "marketing" {
+  bucket = var.marketing_bucket_id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -137,7 +137,7 @@ resource "aws_s3_bucket_policy" "frontend" {
           Service = "cloudfront.amazonaws.com"
         }
         Action   = "s3:GetObject"
-        Resource = "${var.frontend_bucket_arn}/*"
+        Resource = "${var.marketing_bucket_arn}/*"
         Condition = {
           StringEquals = {
             "AWS:SourceArn" = aws_cloudfront_distribution.app.arn

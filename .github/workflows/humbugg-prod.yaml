@@ -47,11 +47,11 @@ concurrency:
 
 env:
   AWS_REGION: us-east-1
-  BACKEND_ECR_REPO: humbugg-backend-production
-  FRONTEND_ECR_REPO: humbugg-frontend-production
-  BACKEND_LAMBDA_NAME: humbugg-backend-production
-  EMAIL_STATUS_LAMBDA_NAME: humbugg-email-status-production
-  FRONTEND_LAMBDA_NAME: humbugg-frontend-production
+  API_ECR_REPO: humbugg-prod-api
+  MARKETING_ECR_REPO: humbugg-prod-marketing
+  API_LAMBDA_NAME: humbugg-prod-api
+  EMAIL_STATUS_LAMBDA_NAME: humbugg-prod-email-status
+  MARKETING_LAMBDA_NAME: humbugg-prod-marketing
 
 jobs:
   detect-changes:
@@ -143,7 +143,7 @@ jobs:
 
       - name: Ensure ECR repositories exist
         run: |
-          for REPO in "${BACKEND_ECR_REPO}" "${FRONTEND_ECR_REPO}"; do
+          for REPO in "${API_ECR_REPO}" "${MARKETING_ECR_REPO}"; do
             aws ecr describe-repositories --repository-names "${REPO}" \
               --region "${{ env.AWS_REGION }}" >/dev/null 2>&1 || \
             aws ecr create-repository \
@@ -155,7 +155,7 @@ jobs:
 
       - name: Build & push backend
         run: |
-          IMAGE="${ECR_REGISTRY}/${BACKEND_ECR_REPO}"
+          IMAGE="${ECR_REGISTRY}/${API_ECR_REPO}"
           cd humbugg/backend
           DOCKER_BUILDKIT=0 docker build \
             -t "${IMAGE}:${{ github.sha }}" \
@@ -176,7 +176,7 @@ jobs:
 
       - name: Build & push SSR marketing site
         run: |
-          IMAGE="${ECR_REGISTRY}/${FRONTEND_ECR_REPO}"
+          IMAGE="${ECR_REGISTRY}/${MARKETING_ECR_REPO}"
           cd humbugg/web
           docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
           docker push "${IMAGE}:${{ github.sha }}"
@@ -266,13 +266,13 @@ jobs:
           put api-url              "$(tf api_endpoint)"
           put lambda-name          "$(tf lambda_function_name)"
           put ecr-url              "$(tf ecr_repository_url)"
-          put frontend-lambda-name "$(tf frontend_lambda_function_name)"
-          put frontend-ecr-url     "$(tf frontend_ecr_repository_url)"
+          put marketing-lambda-name "$(tf marketing_lambda_function_name)"
+          put marketing-ecr-url    "$(tf marketing_ecr_repository_url)"
           put cognito-user-pool-id "$(tf cognito_user_pool_id)"
           put cognito-client-id    "$(tf cognito_client_id)"
-          put s3-bucket            "$(tf s3_frontend_bucket)"
+          put s3-bucket            "$(tf marketing_bucket)"
           put cf-dist-id           "$(tf cloudfront_distribution_id)"
-          put app-s3-bucket        "$(tf app_web_bucket)"
+          put app-s3-bucket        "$(tf app_bucket)"
           put app-cf-dist-id       "$(tf app_cloudfront_distribution_id)"
           put email-from-address   "$(tf email_from_address)"
 
@@ -312,13 +312,13 @@ jobs:
         run: |
           get() { aws ssm get-parameter --name "/humbugg/prod/${1}" \
             --query Parameter.Value --output text; }
-          echo "BACKEND_ECR_URL=$(get ecr-url)"                     >> "$GITHUB_ENV"
-          echo "FRONTEND_ECR_URL=$(get frontend-ecr-url)"           >> "$GITHUB_ENV"
+          echo "API_ECR_URL=$(get ecr-url)"                     >> "$GITHUB_ENV"
+          echo "MARKETING_ECR_URL=$(get marketing-ecr-url)"           >> "$GITHUB_ENV"
           echo "COGNITO_USER_POOL_ID=$(get cognito-user-pool-id)"   >> "$GITHUB_ENV"
           echo "COGNITO_CLIENT_ID=$(get cognito-client-id)"         >> "$GITHUB_ENV"
           echo "HUMBUGG_MAILER_BASE_URL=$(aws ssm get-parameter --name /mailer/prod/humbugg/api-url --query Parameter.Value --output text)" >> "$GITHUB_ENV"
           # EMAIL_STATUS_LAMBDA_NAME is not read from SSM: the name is deterministic
-          # (humbugg-email-status-production) and already set as a job-level env default,
+          # (humbugg-prod-email-status) and already set as a job-level env default,
           # matching BACKEND/FRONTEND. Reading a missing SSM param here silently produced an
           # empty --function-name and broke the deploy.
 
@@ -330,16 +330,16 @@ jobs:
             --arg cognito_region "${{ env.AWS_REGION }}" \
             --arg cognito_pool_id "${COGNITO_USER_POOL_ID}" \
             --arg cognito_client_id "${COGNITO_CLIENT_ID}" \
-            --arg profiles_table "humbugg-profiles" \
-            --arg groups_table "humbugg-groups" \
-            --arg groupmembers_table "humbugg-groupmembers" \
-            --arg draws_table "humbugg-draws" \
-            --arg audit_events_table "humbugg-audit-events" \
-            --arg analytics_events_table "humbugg-analytics-events" \
-            --arg billing_table "humbugg-billing" \
+            --arg profiles_table "humbugg-prod-profiles" \
+            --arg groups_table "humbugg-prod-groups" \
+            --arg groupmembers_table "humbugg-prod-groupmembers" \
+            --arg draws_table "humbugg-prod-draws" \
+            --arg audit_events_table "humbugg-prod-audit-events" \
+            --arg analytics_events_table "humbugg-prod-analytics-events" \
+            --arg billing_table "humbugg-prod-billing" \
             --arg analytics_enabled "${{ vars.HUMBUGG_ANALYTICS_ENABLED || 'true' }}" \
-            --arg email_messages_table "humbugg-email-messages" \
-            --arg app_bucket "humbugg-app-production" \
+            --arg email_messages_table "humbugg-prod-email-messages" \
+            --arg app_bucket "humbugg-prod-app-files-us-east-1" \
             --arg app_base_url "https://app.humbugg.com" \
             --arg mailer_base_url "${HUMBUGG_MAILER_BASE_URL}" \
             --arg free_participant_limit "${{ vars.HUMBUGG_FREE_PARTICIPANT_LIMIT || '6' }}" \
@@ -392,7 +392,7 @@ jobs:
             }}' > /tmp/env-humbugg-backend.json
 
           jq -n \
-            --arg email_messages_table "humbugg-email-messages" \
+            --arg email_messages_table "humbugg-prod-email-messages" \
             '{Variables: {
               HUMBUGG_CONSUMER: "email-status",
               HUMBUGG_EMAIL_MESSAGES_TABLE: $email_messages_table
@@ -408,12 +408,12 @@ jobs:
             }}' > /tmp/env-humbugg-frontend.json
 
           aws lambda update-function-configuration \
-            --function-name "${BACKEND_LAMBDA_NAME}" \
+            --function-name "${API_LAMBDA_NAME}" \
             --region "${{ env.AWS_REGION }}" \
             --environment file:///tmp/env-humbugg-backend.json
 
           aws lambda wait function-updated \
-            --function-name "${BACKEND_LAMBDA_NAME}" \
+            --function-name "${API_LAMBDA_NAME}" \
             --region "${{ env.AWS_REGION }}"
 
           aws lambda update-function-configuration \
@@ -426,28 +426,28 @@ jobs:
             --region "${{ env.AWS_REGION }}"
 
           aws lambda update-function-configuration \
-            --function-name "${FRONTEND_LAMBDA_NAME}" \
+            --function-name "${MARKETING_LAMBDA_NAME}" \
             --region "${{ env.AWS_REGION }}" \
             --environment file:///tmp/env-humbugg-frontend.json
 
           aws lambda wait function-updated \
-            --function-name "${FRONTEND_LAMBDA_NAME}" \
+            --function-name "${MARKETING_LAMBDA_NAME}" \
             --region "${{ env.AWS_REGION }}"
 
           aws lambda update-function-code \
-            --function-name "${BACKEND_LAMBDA_NAME}" \
-            --image-uri "${BACKEND_ECR_URL}:${{ github.sha }}" \
+            --function-name "${API_LAMBDA_NAME}" \
+            --image-uri "${API_ECR_URL}:${{ github.sha }}" \
             --region "${{ env.AWS_REGION }}" \
             --output table \
             --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
 
           aws lambda wait function-updated \
-            --function-name "${BACKEND_LAMBDA_NAME}" \
+            --function-name "${API_LAMBDA_NAME}" \
             --region "${{ env.AWS_REGION }}"
 
           aws lambda update-function-code \
             --function-name "${EMAIL_STATUS_LAMBDA_NAME}" \
-            --image-uri "${BACKEND_ECR_URL}:${{ github.sha }}" \
+            --image-uri "${API_ECR_URL}:${{ github.sha }}" \
             --region "${{ env.AWS_REGION }}" \
             --output table \
             --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
@@ -457,14 +457,14 @@ jobs:
             --region "${{ env.AWS_REGION }}"
 
           aws lambda update-function-code \
-            --function-name "${FRONTEND_LAMBDA_NAME}" \
-            --image-uri "${FRONTEND_ECR_URL}:${{ github.sha }}" \
+            --function-name "${MARKETING_LAMBDA_NAME}" \
+            --image-uri "${MARKETING_ECR_URL}:${{ github.sha }}" \
             --region "${{ env.AWS_REGION }}" \
             --output table \
             --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
 
           aws lambda wait function-updated \
-            --function-name "${FRONTEND_LAMBDA_NAME}" \
+            --function-name "${MARKETING_LAMBDA_NAME}" \
             --region "${{ env.AWS_REGION }}"
 
   # ---------------------------------------------------------------------------

@@ -16,16 +16,16 @@ data "aws_cloudfront_cache_policy" "disabled" {
   name = "Managed-CachingDisabled"
 }
 
-resource "aws_cloudfront_origin_access_control" "app_web" {
-  name                              = "${var.project}-appweb-oac"
+resource "aws_cloudfront_origin_access_control" "app" {
+  name                              = "${var.project}-${var.environment}-app-oac"
   description                       = "OAC for ${var.project} Expo web export bucket"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
 }
 
-resource "aws_cloudfront_origin_access_control" "avatars" {
-  name                              = "${var.project}-avatars-oac"
+resource "aws_cloudfront_origin_access_control" "app_files" {
+  name                              = "${var.project}-${var.environment}-app-files-oac"
   description                       = "OAC for ${var.project} avatars S3 bucket"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
@@ -41,15 +41,15 @@ resource "aws_cloudfront_distribution" "app" {
   default_root_object = "index.html"
 
   origin {
-    domain_name              = var.app_web_bucket_regional_domain_name
-    origin_id                = "S3-appweb"
-    origin_access_control_id = aws_cloudfront_origin_access_control.app_web.id
+    domain_name              = var.app_bucket_regional_domain_name
+    origin_id                = "S3-app"
+    origin_access_control_id = aws_cloudfront_origin_access_control.app.id
   }
 
   origin {
-    domain_name              = var.avatars_bucket_regional_domain_name
-    origin_id                = "S3-avatars"
-    origin_access_control_id = aws_cloudfront_origin_access_control.avatars.id
+    domain_name              = var.app_files_bucket_regional_domain_name
+    origin_id                = "S3-app-files"
+    origin_access_control_id = aws_cloudfront_origin_access_control.app_files.id
   }
 
   # index.html must never be cached: a stale one pins returning visitors to a
@@ -58,7 +58,7 @@ resource "aws_cloudfront_distribution" "app" {
   default_cache_behavior {
     allowed_methods        = ["GET", "HEAD", "OPTIONS"]
     cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "S3-appweb"
+    target_origin_id       = "S3-app"
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
     cache_policy_id        = data.aws_cloudfront_cache_policy.disabled.id
@@ -68,7 +68,7 @@ resource "aws_cloudfront_distribution" "app" {
     path_pattern           = "/_expo/*"
     allowed_methods        = ["GET", "HEAD"]
     cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "S3-appweb"
+    target_origin_id       = "S3-app"
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
     cache_policy_id        = data.aws_cloudfront_cache_policy.optimized.id
@@ -78,7 +78,7 @@ resource "aws_cloudfront_distribution" "app" {
     path_pattern           = "/assets/*"
     allowed_methods        = ["GET", "HEAD"]
     cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "S3-appweb"
+    target_origin_id       = "S3-app"
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
     cache_policy_id        = data.aws_cloudfront_cache_policy.optimized.id
@@ -92,7 +92,7 @@ resource "aws_cloudfront_distribution" "app" {
     path_pattern           = "/avatars/*"
     allowed_methods        = ["GET", "HEAD"]
     cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "S3-avatars"
+    target_origin_id       = "S3-app-files"
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
     cache_policy_id        = data.aws_cloudfront_cache_policy.optimized.id
@@ -133,8 +133,8 @@ resource "aws_cloudfront_distribution" "app" {
   tags = var.tags
 }
 
-resource "aws_s3_bucket_policy" "app_web" {
-  bucket = var.app_web_bucket_id
+resource "aws_s3_bucket_policy" "app" {
+  bucket = var.app_bucket_id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -146,7 +146,7 @@ resource "aws_s3_bucket_policy" "app_web" {
           Service = "cloudfront.amazonaws.com"
         }
         Action   = "s3:GetObject"
-        Resource = "${var.app_web_bucket_arn}/*"
+        Resource = "${var.app_bucket_arn}/*"
         Condition = {
           StringEquals = {
             "AWS:SourceArn" = aws_cloudfront_distribution.app.arn
@@ -157,8 +157,8 @@ resource "aws_s3_bucket_policy" "app_web" {
   })
 }
 
-resource "aws_s3_bucket_policy" "avatars" {
-  bucket = var.avatars_bucket_id
+resource "aws_s3_bucket_policy" "app_files" {
+  bucket = var.app_files_bucket_id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -172,7 +172,7 @@ resource "aws_s3_bucket_policy" "avatars" {
         Action = "s3:GetObject"
         # The bucket is the shared application bucket; CloudFront may read only the avatars/ prefix,
         # never any other application object that may live there.
-        Resource = "${var.avatars_bucket_arn}/avatars/*"
+        Resource = "${var.app_files_bucket_arn}/avatars/*"
         Condition = {
           StringEquals = {
             "AWS:SourceArn" = aws_cloudfront_distribution.app.arn

@@ -1,16 +1,16 @@
-output "bucket_id" {
+output "marketing_bucket_id" {
   description = "Frontend S3 bucket ID"
-  value       = aws_s3_bucket.frontend.id
+  value       = aws_s3_bucket.marketing.id
 }
 
-output "bucket_arn" {
+output "marketing_bucket_arn" {
   description = "Frontend S3 bucket ARN"
-  value       = aws_s3_bucket.frontend.arn
+  value       = aws_s3_bucket.marketing.arn
 }
 
-output "bucket_regional_domain_name" {
+output "marketing_bucket_regional_domain_name" {
   description = "Frontend S3 bucket regional domain name"
-  value       = aws_s3_bucket.frontend.bucket_regional_domain_name
+  value       = aws_s3_bucket.marketing.bucket_regional_domain_name
 }
 
 output "dynamodb_table_arns" {
@@ -31,32 +31,32 @@ output "email_messages_table_arn" {
   value       = aws_dynamodb_table.email_messages.arn
 }
 
-output "app_bucket_id" {
+output "app_files_bucket_id" {
   description = "Application object S3 bucket name (holds avatars under the avatars/ prefix)"
+  value       = aws_s3_bucket.app_files.id
+}
+
+output "app_files_bucket_arn" {
+  description = "Application object S3 bucket ARN"
+  value       = aws_s3_bucket.app_files.arn
+}
+
+output "app_files_bucket_regional_domain_name" {
+  description = "Application object S3 bucket regional domain name (CloudFront origin)"
+  value       = aws_s3_bucket.app_files.bucket_regional_domain_name
+}
+
+output "app_bucket_id" {
+  description = "Expo web export S3 bucket ID"
   value       = aws_s3_bucket.app.id
 }
 
 output "app_bucket_arn" {
-  description = "Application object S3 bucket ARN"
+  description = "Expo web export S3 bucket ARN"
   value       = aws_s3_bucket.app.arn
 }
 
 output "app_bucket_regional_domain_name" {
-  description = "Application object S3 bucket regional domain name (CloudFront origin)"
-  value       = aws_s3_bucket.app.bucket_regional_domain_name
-}
-
-output "app_web_bucket_id" {
-  description = "Expo web export S3 bucket ID"
-  value       = aws_s3_bucket.app_web.id
-}
-
-output "app_web_bucket_arn" {
-  description = "Expo web export S3 bucket ARN"
-  value       = aws_s3_bucket.app_web.arn
-}
-
-output "app_web_bucket_regional_domain_name" {
   description = "Expo web export S3 bucket regional domain name"
-  value       = aws_s3_bucket.app_web.bucket_regional_domain_name
+  value       = aws_s3_bucket.app.bucket_regional_domain_name
 }

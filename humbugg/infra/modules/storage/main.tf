@@ -1,11 +1,11 @@
-resource "aws_s3_bucket" "frontend" {
-  bucket = "${var.project}-web-${var.environment}"
+resource "aws_s3_bucket" "marketing" {
+  bucket = "${var.project}-${var.environment}-marketing-${var.aws_region}"
 
   tags = var.tags
 }
 
-resource "aws_s3_bucket_public_access_block" "frontend" {
-  bucket = aws_s3_bucket.frontend.id
+resource "aws_s3_bucket_public_access_block" "marketing" {
+  bucket = aws_s3_bucket.marketing.id
 
   block_public_acls       = true
   block_public_policy     = true
@@ -13,16 +13,16 @@ resource "aws_s3_bucket_public_access_block" "frontend" {
   restrict_public_buckets = true
 }
 
-resource "aws_s3_bucket_versioning" "frontend" {
-  bucket = aws_s3_bucket.frontend.id
+resource "aws_s3_bucket_versioning" "marketing" {
+  bucket = aws_s3_bucket.marketing.id
 
   versioning_configuration {
     status = "Enabled"
   }
 }
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "frontend" {
-  bucket = aws_s3_bucket.frontend.id
+resource "aws_s3_bucket_server_side_encryption_configuration" "marketing" {
+  bucket = aws_s3_bucket.marketing.id
 
   rule {
     apply_server_side_encryption_by_default {
@@ -35,14 +35,14 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "frontend" {
 # because the two are built by different toolchains on different schedules: this
 # one holds a self-contained single-page export, that one holds only the hashed
 # assets its SSR Lambda references.
-resource "aws_s3_bucket" "app_web" {
-  bucket = "${var.project}-appweb-${var.environment}"
+resource "aws_s3_bucket" "app" {
+  bucket = "${var.project}-${var.environment}-app-${var.aws_region}"
 
   tags = var.tags
 }
 
-resource "aws_s3_bucket_public_access_block" "app_web" {
-  bucket = aws_s3_bucket.app_web.id
+resource "aws_s3_bucket_public_access_block" "app" {
+  bucket = aws_s3_bucket.app.id
 
   block_public_acls       = true
   block_public_policy     = true
@@ -50,16 +50,16 @@ resource "aws_s3_bucket_public_access_block" "app_web" {
   restrict_public_buckets = true
 }
 
-resource "aws_s3_bucket_versioning" "app_web" {
-  bucket = aws_s3_bucket.app_web.id
+resource "aws_s3_bucket_versioning" "app" {
+  bucket = aws_s3_bucket.app.id
 
   versioning_configuration {
     status = "Enabled"
   }
 }
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "app_web" {
-  bucket = aws_s3_bucket.app_web.id
+resource "aws_s3_bucket_server_side_encryption_configuration" "app" {
+  bucket = aws_s3_bucket.app.id
 
   rule {
     apply_server_side_encryption_by_default {
@@ -69,7 +69,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "app_web" {
 }
 
 resource "aws_dynamodb_table" "profiles" {
-  name         = "${var.project}-profiles"
+  name         = "${var.project}-${var.environment}-profiles"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "user_id"
 
@@ -83,7 +83,7 @@ resource "aws_dynamodb_table" "profiles" {
 }
 
 resource "aws_dynamodb_table" "groups" {
-  name         = "${var.project}-groups"
+  name         = "${var.project}-${var.environment}-groups"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "group_id"
 
@@ -97,7 +97,7 @@ resource "aws_dynamodb_table" "groups" {
 }
 
 resource "aws_dynamodb_table" "groupmembers" {
-  name         = "${var.project}-groupmembers"
+  name         = "${var.project}-${var.environment}-groupmembers"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "member_id"
 
@@ -133,7 +133,7 @@ resource "aws_dynamodb_table" "groupmembers" {
 }
 
 resource "aws_dynamodb_table" "draws" {
-  name         = "${var.project}-draws"
+  name         = "${var.project}-${var.environment}-draws"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "group_id"
 
@@ -147,7 +147,7 @@ resource "aws_dynamodb_table" "draws" {
 }
 
 resource "aws_dynamodb_table" "audit_events" {
-  name         = "${var.project}-audit-events"
+  name         = "${var.project}-${var.environment}-audit-events"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "group_id"
   range_key    = "event_id"
@@ -174,7 +174,7 @@ resource "aws_dynamodb_table" "audit_events" {
 }
 
 resource "aws_dynamodb_table" "analytics_events" {
-  name         = "${var.project}-analytics-events"
+  name         = "${var.project}-${var.environment}-analytics-events"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "idempotency_key"
 
@@ -195,7 +195,7 @@ resource "aws_dynamodb_table" "analytics_events" {
 }
 
 resource "aws_dynamodb_table" "email_messages" {
-  name         = "${var.project}-email-messages"
+  name         = "${var.project}-${var.environment}-email-messages"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "message_id"
 
@@ -217,7 +217,7 @@ resource "aws_dynamodb_table" "email_messages" {
 # One-table billing ledger. Payment rows are keyed by a server-generated purchase id;
 # Stripe event marker rows share the table and make webhook processing idempotent.
 resource "aws_dynamodb_table" "billing" {
-  name         = "${var.project}-billing"
+  name         = "${var.project}-${var.environment}-billing"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "record_id"
 
@@ -250,14 +250,14 @@ resource "aws_dynamodb_table" "billing" {
 # future application objects. Fully private (no public ACLs or policy) so objects are never world-
 # readable or world-writable at the S3 layer. Kept separate from the -web- frontend bucket, which the
 # deploy syncs with --delete (that would otherwise wipe uploads).
-resource "aws_s3_bucket" "app" {
-  bucket = "${var.project}-app-${var.environment}"
+resource "aws_s3_bucket" "app_files" {
+  bucket = "${var.project}-${var.environment}-app-files-${var.aws_region}"
 
   tags = var.tags
 }
 
-resource "aws_s3_bucket_public_access_block" "app" {
-  bucket = aws_s3_bucket.app.id
+resource "aws_s3_bucket_public_access_block" "app_files" {
+  bucket = aws_s3_bucket.app_files.id
 
   block_public_acls       = true
   block_public_policy     = true
@@ -267,24 +267,24 @@ resource "aws_s3_bucket_public_access_block" "app" {
 
 # Enforce bucket-owner ownership and disable ACLs entirely, so access is governed only by the bucket
 # policy (CloudFront OAC) and IAM — never by object ACLs.
-resource "aws_s3_bucket_ownership_controls" "app" {
-  bucket = aws_s3_bucket.app.id
+resource "aws_s3_bucket_ownership_controls" "app_files" {
+  bucket = aws_s3_bucket.app_files.id
 
   rule {
     object_ownership = "BucketOwnerEnforced"
   }
 }
 
-resource "aws_s3_bucket_versioning" "app" {
-  bucket = aws_s3_bucket.app.id
+resource "aws_s3_bucket_versioning" "app_files" {
+  bucket = aws_s3_bucket.app_files.id
 
   versioning_configuration {
     status = "Enabled"
   }
 }
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "app" {
-  bucket = aws_s3_bucket.app.id
+resource "aws_s3_bucket_server_side_encryption_configuration" "app_files" {
+  bucket = aws_s3_bucket.app_files.id
 
   rule {
     apply_server_side_encryption_by_default {
@@ -295,8 +295,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "app" {
 
 # Replacing an avatar writes a new key and clears the old one, so noncurrent versions accumulate.
 # Expire them after 30 days to keep the bucket small while retaining a short recovery window.
-resource "aws_s3_bucket_lifecycle_configuration" "app" {
-  bucket = aws_s3_bucket.app.id
+resource "aws_s3_bucket_lifecycle_configuration" "app_files" {
+  bucket = aws_s3_bucket.app_files.id
 
   rule {
     id     = "expire-noncurrent-avatars"
@@ -318,8 +318,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "app" {
 
 # CORS so a browser can display an avatar image cross-origin if ever served from a different host than
 # the page. Read-only methods only; write access is never granted to browsers.
-resource "aws_s3_bucket_cors_configuration" "app" {
-  bucket = aws_s3_bucket.app.id
+resource "aws_s3_bucket_cors_configuration" "app_files" {
+  bucket = aws_s3_bucket.app_files.id
 
   cors_rule {
     allowed_methods = ["GET", "HEAD"]
