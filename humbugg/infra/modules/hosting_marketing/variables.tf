@@ -8,11 +8,6 @@ variable "domain_name" {
   type        = string
 }
 
-variable "legacy_domain_name" {
-  description = "Previous application domain retained as a permanent redirect"
-  type        = string
-}
-
 variable "certificate_arn" {
   description = "ARN of the validated us-east-1 certificate used as the CloudFront viewer certificate"
   type        = string
@@ -20,11 +15,6 @@ variable "certificate_arn" {
 
 variable "route53_zone_id" {
   description = "Route53 hosted zone ID"
-  type        = string
-}
-
-variable "legacy_route53_zone_id" {
-  description = "Route53 hosted zone ID for the previous application domain"
   type        = string
 }
 

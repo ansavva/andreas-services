@@ -6,7 +6,7 @@ Humbugg is a gift-exchange platform, served from three hostnames:
 
 | Surface | URL | What it is |
 |---|---|---|
-| Marketing | `www.humbugg.com` | React Router v7 SSR. The apex and `humbugg.andreas.services` both 308 to it. |
+| Marketing | `www.humbugg.com` | React Router v7 SSR. The apex 308s to it. |
 | Product app | `app.humbugg.com` | Expo + Expo Router, deployed as a static web export. The same codebase builds iOS/Android later. |
 | API | `api.humbugg.com` | ASP.NET Core Lambda behind an API Gateway custom domain. |
 
@@ -54,15 +54,15 @@ humbugg/
 
 Terraform references (but doesn't own) two shared resources via `data` sources:
 
-- **Route53 hosted zones** (`humbugg.com` and `andreas.services`) — Terraform data sources
+- **Route53 hosted zone** (`humbugg.com`) — a Terraform data source
 
 `modules/certificates` provisions one us-east-1 ACM certificate covering the
 apex, `www`, `app` and `api`. It is shared by both CloudFront distributions and
 the API Gateway custom domain — us-east-1 does double duty here, being both
 CloudFront's required region and this deployment's own region.
 
-Two distributions: `modules/hosting_marketing` serves marketing (aliases apex, `www`,
-legacy; a CloudFront function 308s everything that is not `www` to it) and
+Two distributions: `modules/hosting_marketing` serves marketing (aliases apex and
+`www`; a CloudFront function 308s everything that is not `www` to it) and
 `modules/hosting_app` serves the product app plus `/avatars/*`.
 
 ## Local Development

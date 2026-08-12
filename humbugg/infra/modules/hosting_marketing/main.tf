@@ -1,5 +1,5 @@
-# The MARKETING distribution — www.humbugg.com, plus the apex and the legacy hostname
-# which both permanently redirect to it. The authenticated product moved to its own
+# The MARKETING distribution — www.humbugg.com, plus the apex which permanently
+# redirects to it. The authenticated product moved to its own
 # distribution in modules/hosting_app (app.humbugg.com), and the API moved to its own
 # custom domain in modules/api_domain (api.humbugg.com), so the /api/*, /health and
 # /avatars/* behaviours that used to live here are gone.
@@ -59,7 +59,7 @@ resource "aws_cloudfront_distribution" "app" {
   is_ipv6_enabled = true
   comment         = "${var.project} application distribution"
   price_class     = "PriceClass_100"
-  aliases         = [var.domain_name, "www.${var.domain_name}", var.legacy_domain_name]
+  aliases         = [var.domain_name, "www.${var.domain_name}"]
 
   origin {
     domain_name              = var.marketing_bucket_regional_domain_name
@@ -146,32 +146,6 @@ resource "aws_s3_bucket_policy" "marketing" {
       }
     ]
   })
-}
-
-# Keep the existing Terraform address attached to the legacy A record so the
-# domain migration does not delete and recreate it before the redirect is live.
-resource "aws_route53_record" "app" {
-  zone_id = var.legacy_route53_zone_id
-  name    = var.legacy_domain_name
-  type    = "A"
-
-  alias {
-    name                   = aws_cloudfront_distribution.app.domain_name
-    zone_id                = aws_cloudfront_distribution.app.hosted_zone_id
-    evaluate_target_health = false
-  }
-}
-
-resource "aws_route53_record" "legacy_ipv6" {
-  zone_id = var.legacy_route53_zone_id
-  name    = var.legacy_domain_name
-  type    = "AAAA"
-
-  alias {
-    name                   = aws_cloudfront_distribution.app.domain_name
-    zone_id                = aws_cloudfront_distribution.app.hosted_zone_id
-    evaluate_target_health = false
-  }
 }
 
 resource "aws_route53_record" "canonical" {

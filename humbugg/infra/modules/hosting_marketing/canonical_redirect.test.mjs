@@ -29,8 +29,8 @@ test('the apex redirects to www', () => {
   assert.equal(response.headers.location.value, 'https://www.humbugg.com/privacy');
 });
 
-test('legacy requests permanently redirect with the exact path and query', () => {
-  const response = handler(event('humbugg.andreas.services', '/join/group-id', 'invite=abc%2F123&source=old'));
+test('a redirect carries the exact path and query across', () => {
+  const response = handler(event('humbugg.com', '/join/group-id', 'invite=abc%2F123&source=old'));
   assert.equal(response.statusCode, 308);
   assert.equal(response.headers.location.value, 'https://www.humbugg.com/join/group-id?invite=abc%2F123&source=old');
 });
@@ -40,7 +40,7 @@ test('legacy requests permanently redirect with the exact path and query', () =>
 // function therefore cannot see it — the guarantee we can assert is that the
 // path survives untouched, which is what keeps the fragment attached to the
 // right URL.
-test('a legacy invite path is preserved exactly so the fragment still lands on it', () => {
+test('an invite path is preserved exactly so the fragment still lands on it', () => {
   const response = handler(event('humbugg.com', '/join/group-id'));
   assert.equal(response.headers.location.value, 'https://www.humbugg.com/join/group-id');
 });
