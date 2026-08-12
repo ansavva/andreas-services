@@ -122,7 +122,7 @@ jobs:
 
       - name: Ensure ECR repositories exist
         run: |
-          for REPO in website-api website-frontend; do
+          for REPO in website-prod-api website-prod-www; do
             aws ecr describe-repositories --repository-names "$REPO" \
               --region "${{ env.AWS_REGION }}" >/dev/null 2>&1 || \
             aws ecr create-repository \
@@ -132,9 +132,9 @@ jobs:
               --tags Key=Project,Value=website
           done
 
-      - name: Build & push backend (website-api)
+      - name: Build & push backend (website-prod-api)
         run: |
-          IMAGE="${ECR_REGISTRY}/website-api"
+          IMAGE="${ECR_REGISTRY}/website-prod-api"
           cd website/backend
           docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
           docker push "${IMAGE}:${{ github.sha }}"
@@ -151,9 +151,9 @@ jobs:
           VITE_CAL_LINK: ${{ vars.VITE_CAL_LINK }}
         run: cd website/frontend && npm run build
 
-      - name: Build & push frontend (website-frontend SSR image)
+      - name: Build & push frontend (website-prod-www SSR image)
         run: |
-          IMAGE="${ECR_REGISTRY}/website-frontend"
+          IMAGE="${ECR_REGISTRY}/website-prod-www"
           cd website/frontend
           docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
           docker push "${IMAGE}:${{ github.sha }}"
@@ -202,6 +202,28 @@ jobs:
       - name: Terraform init
         run: terraform -chdir=website/infra/envs/prod init -input=false
 
+      # build-and-push creates the ECR repositories itself when they are
+      # missing, so Terraform would otherwise fail the apply trying to create
+      # repositories that already exist. Adopt them instead. A no-op once they
+      # are in state, which is every run after the first.
+      - name: Adopt bootstrap-created ECR repositories
+        run: |
+          set -euo pipefail
+          adopt() {
+            local addr="$1" repo="$2"
+            if terraform -chdir=website/infra/envs/prod state show "$addr" >/dev/null 2>&1; then
+              echo "already in state: $addr"; return
+            fi
+            if ! aws ecr describe-repositories --repository-names "$repo" \
+                 --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
+              echo "not in AWS, Terraform will create it: $repo"; return
+            fi
+            echo "importing $repo -> $addr"
+            terraform -chdir=website/infra/envs/prod import -input=false "$addr" "$repo"
+          }
+          adopt 'module.compute.aws_ecr_repository.api[0]' website-prod-api
+          adopt 'module.compute.aws_ecr_repository.www[0]' website-prod-www
+
       - name: Terraform apply
         run: terraform -chdir=website/infra/envs/prod apply -auto-approve -input=false
 
@@ -212,6 +234,7 @@ jobs:
           put() { aws ssm put-parameter --overwrite --type String --name "$1" --value "$2"; }
           put /website/prod/cf-dist-id             "$(tf cloudfront_distribution_id)"
           put /website/prod/assets-bucket          "$(tf assets_bucket_name)"
+          put /website/prod/intake-table           "$(tf intake_table_name)"
           put /website/prod/api-url                "$(tf api_domain)"
           put /website/prod/cognito-user-pool-id   "$(tf cognito_user_pool_id)"
           put /website/prod/cognito-client-id      "$(tf cognito_user_pool_client_id)"
@@ -265,11 +288,13 @@ jobs:
           API_URL=$(get api-url)
           POOL_ID=$(get cognito-user-pool-id)
           CLIENT_ID=$(get cognito-client-id)
+          INTAKE_TABLE=$(get intake-table)
 
           jq -n --arg origin "https://www.andreas.services" \
+                --arg table "${INTAKE_TABLE}" \
                 --arg kit "${KIT_API_KEY}" --arg form "${KIT_FORM_ID}" \
             '{Variables: {
-              WEBSITE_TABLE_SUFFIX:   "",
+              WEBSITE_INTAKE_TABLE:   $table,
               WEBSITE_ALLOWED_ORIGIN: $origin,
               KIT_API_KEY:            $kit,
               KIT_FORM_ID:            $form
@@ -290,8 +315,8 @@ jobs:
               --function-name "$1" --region "${{ env.AWS_REGION }}" --environment "file://$2"
             aws lambda wait function-updated --function-name "$1" --region "${{ env.AWS_REGION }}"
           }
-          set_env website-api      /tmp/env-api.json
-          set_env website-frontend /tmp/env-frontend.json
+          set_env website-prod-api      /tmp/env-api.json
+          set_env website-prod-www      /tmp/env-frontend.json
 
       - name: Update Lambda function code
         run: |
@@ -302,8 +327,8 @@ jobs:
               --output table --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
             aws lambda wait function-updated --function-name "$1" --region "${{ env.AWS_REGION }}"
           }
-          update_code website-api      "${ECR_REGISTRY}/website-api:${{ github.sha }}"
-          update_code website-frontend "${ECR_REGISTRY}/website-frontend:${{ github.sha }}"
+          update_code website-prod-api      "${ECR_REGISTRY}/website-prod-api:${{ github.sha }}"
+          update_code website-prod-www      "${ECR_REGISTRY}/website-prod-www:${{ github.sha }}"
 
   # ---------------------------------------------------------------------------
   # Bootstrap the single Cognito admin user. Idempotent + self-skipping.

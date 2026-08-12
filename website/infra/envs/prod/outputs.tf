@@ -13,17 +13,17 @@ output "api_function_name" {
   value       = module.compute.api_function_name
 }
 
-output "frontend_function_name" {
-  description = "SSR frontend Lambda function name"
-  value       = module.compute.frontend_function_name
+output "www_function_name" {
+  description = "SSR www Lambda function name"
+  value       = module.compute.www_function_name
 }
 
 output "api_ecr_repository_url" {
   value = module.compute.api_ecr_repository_url
 }
 
-output "frontend_ecr_repository_url" {
-  value = module.compute.frontend_ecr_repository_url
+output "www_ecr_repository_url" {
+  value = module.compute.www_ecr_repository_url
 }
 
 output "api_domain" {
@@ -37,4 +37,9 @@ output "cognito_user_pool_id" {
 
 output "cognito_user_pool_client_id" {
   value = module.auth.user_pool_client_id
+}
+
+output "intake_table_name" {
+  description = "Intake DynamoDB table name, passed to the API Lambda"
+  value       = module.data.intake_table_name
 }

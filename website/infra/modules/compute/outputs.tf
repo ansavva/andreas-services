@@ -8,14 +8,14 @@ output "api_function_name" {
   value       = aws_lambda_function.api.function_name
 }
 
-output "frontend_function_name" {
-  description = "SSR frontend Lambda function name"
-  value       = aws_lambda_function.frontend.function_name
+output "www_function_name" {
+  description = "SSR www Lambda function name"
+  value       = aws_lambda_function.www.function_name
 }
 
-output "frontend_api_domain" {
-  description = "SSR frontend HTTP API host (for the CloudFront origin), no scheme/path"
-  value       = replace(aws_apigatewayv2_api.frontend.api_endpoint, "https://", "")
+output "www_api_domain" {
+  description = "SSR www HTTP API host (for the CloudFront origin), no scheme/path"
+  value       = replace(aws_apigatewayv2_api.www.api_endpoint, "https://", "")
 }
 
 output "api_ecr_repository_url" {
@@ -23,7 +23,7 @@ output "api_ecr_repository_url" {
   value       = var.create_ecr ? aws_ecr_repository.api[0].repository_url : ""
 }
 
-output "frontend_ecr_repository_url" {
-  description = "ECR repo URL for the frontend image"
-  value       = var.create_ecr ? aws_ecr_repository.frontend[0].repository_url : ""
+output "www_ecr_repository_url" {
+  description = "ECR repo URL for the www image"
+  value       = var.create_ecr ? aws_ecr_repository.www[0].repository_url : ""
 }

@@ -7,14 +7,13 @@ Kept pure (no AWS, no I/O) so it can be imported anywhere, including under tests
 import os
 
 
-def table_suffix():
-    """Per-environment table suffix (e.g. "" for prod, "-pr-42" for previews)."""
-    return os.environ.get("WEBSITE_TABLE_SUFFIX", "")
-
-
 def intake_table():
-    """DynamoDB table name holding intake ("scoped quote") submissions."""
-    return f"website-intake{table_suffix()}"
+    """DynamoDB table name holding intake ("scoped quote") submissions.
+
+    Terraform passes the real name in; the default matches what it builds for
+    prod so local dev against DynamoDB Local needs no extra configuration.
+    """
+    return os.environ.get("WEBSITE_INTAKE_TABLE", "website-prod-intake")
 
 
 def dynamodb_endpoint_url():

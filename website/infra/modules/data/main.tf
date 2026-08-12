@@ -1,5 +1,5 @@
 locals {
-  intake_table = "website-intake${var.table_suffix}"
+  intake_table = "${var.project}-${var.environment}-intake"
 }
 
 # Intake ("scoped quote") submissions. Every row shares one partition (PK =

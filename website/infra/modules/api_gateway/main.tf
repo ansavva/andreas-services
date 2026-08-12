@@ -1,8 +1,12 @@
+locals {
+  prefix = "${var.project}-${var.environment}"
+}
+
 # REST API for the website backend. Two proxy resources front the single Python
 # Lambda, which routes internally: /api/{proxy+} is public (intake, subscribe);
 # /api/admin/{proxy+} is behind the Cognito authorizer (submissions dashboard).
 resource "aws_api_gateway_rest_api" "main" {
-  name = "website-api"
+  name = "${local.prefix}-api"
 
   endpoint_configuration {
     types = ["REGIONAL"]
@@ -59,7 +63,7 @@ resource "aws_api_gateway_resource" "admin_proxy" {
 
 resource "aws_api_gateway_authorizer" "cognito" {
   count           = var.enable_cognito_authorizer ? 1 : 0
-  name            = "website-admin-cognito"
+  name            = "${local.prefix}-admin"
   rest_api_id     = aws_api_gateway_rest_api.main.id
   type            = "COGNITO_USER_POOLS"
   provider_arns   = [var.cognito_user_pool_arn]
