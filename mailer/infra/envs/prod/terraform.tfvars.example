@@ -1,2 +1,2 @@
 aws_region        = "us-east-1"
-humbugg_role_name = "humbugg-lambda-role-production"
+humbugg_role_name = "humbugg-prod-api-role"
