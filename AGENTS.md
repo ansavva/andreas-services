@@ -102,6 +102,22 @@ data "aws_route53_zone" "main" {
 - S3 + CloudFront for all static frontends
 - Lambda for all backends (containerised Docker images in ECR — Flask, ASP.NET Core, and pure Lambda functions alike)
 
+### AWS resource naming
+
+Every AWS resource is named `[project]-[env]-[component]-[identifier]` — lowercase
+kebab, environment always **second** (`prod` / `dev` / `pr-<number>`), component
+named for what it **serves** rather than which tier it sits in. S3 buckets take a
+region suffix because their names are globally unique
+(`humbugg-prod-marketing-us-east-1`).
+
+**Read the `aws-naming` skill before creating or renaming any AWS resource.** It
+covers the per-resource-type patterns, the four required tags
+(`Project`/`Environment`/`Owner`/`ManagedBy`), and — most importantly — which
+resources cannot be renamed without destroying data.
+
+Names describe identity; **tags** carry everything else. Don't add a fifth
+segment for something a tag should hold.
+
 ### Infrastructure directory naming
 
 All per-service and shared infrastructure directories must be named `infra/` — never `terraform/` or any other name.
