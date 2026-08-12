@@ -1,12 +1,10 @@
 """Unit tests for the source service layer (sources.py)."""
 
-import os
 import unittest
 
 import boto3
 from moto import mock_dynamodb
 
-os.environ.setdefault("SCOUT_TABLE_SUFFIX", "")
 
 from scout_core.services import labels  # noqa: E402
 from scout_core.services import sources  # noqa: E402

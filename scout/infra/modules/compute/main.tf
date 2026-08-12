@@ -164,8 +164,9 @@ resource "aws_lambda_function" "events_api" {
 
   environment {
     variables = {
-      SCOUT_TABLE_SUFFIX = var.table_suffix
-      SCOUT_PROCESSOR_FN = local.processor_name
+      SCOUT_CORE_TABLE     = var.core_table_name
+      SCOUT_SETTINGS_TABLE = var.settings_table_name
+      SCOUT_PROCESSOR_FN   = local.processor_name
     }
   }
 
@@ -198,7 +199,8 @@ resource "aws_lambda_function" "source_run_processor" {
 
   environment {
     variables = merge(var.processor_env_vars, {
-      SCOUT_TABLE_SUFFIX     = var.table_suffix
+      SCOUT_CORE_TABLE       = var.core_table_name
+      SCOUT_SETTINGS_TABLE   = var.settings_table_name
       SCOUT_ARTIFACTS_BUCKET = var.artifacts_bucket
       SCOUT_IMAGES_BUCKET    = var.images_bucket
       SCOUT_RENDERER_FN      = local.renderer_name
@@ -234,8 +236,9 @@ resource "aws_lambda_function" "scheduler" {
 
   environment {
     variables = {
-      SCOUT_TABLE_SUFFIX = var.table_suffix
-      SCOUT_PROCESSOR_FN = local.processor_name
+      SCOUT_CORE_TABLE     = var.core_table_name
+      SCOUT_SETTINGS_TABLE = var.settings_table_name
+      SCOUT_PROCESSOR_FN   = local.processor_name
     }
   }
 
@@ -268,7 +271,8 @@ resource "aws_lambda_function" "sweep" {
 
   environment {
     variables = {
-      SCOUT_TABLE_SUFFIX = var.table_suffix
+      SCOUT_CORE_TABLE     = var.core_table_name
+      SCOUT_SETTINGS_TABLE = var.settings_table_name
     }
   }
 

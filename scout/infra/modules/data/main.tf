@@ -1,6 +1,6 @@
 locals {
-  core_table     = "scout-core${var.table_suffix}"
-  settings_table = "scout-settings${var.table_suffix}"
+  core_table     = "scout-core"
+  settings_table = "scout-settings"
 }
 
 # Single core table holding the connected entity graph: sources, source-runs,

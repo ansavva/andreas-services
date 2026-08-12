@@ -11,7 +11,6 @@ import unittest
 import boto3
 from moto import mock_dynamodb
 
-os.environ.setdefault("SCOUT_TABLE_SUFFIX", "")
 
 from scout_core.repositories import store  # noqa: E402  (import after env is set)
 from scout_core.repositories import dynamodb as dynamodb_adapter  # noqa: E402

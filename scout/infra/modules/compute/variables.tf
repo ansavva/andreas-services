@@ -1,7 +1,11 @@
-variable "table_suffix" {
-  description = "Suffix for all DynamoDB table names (empty for prod, '-pr-N' for previews)"
+variable "core_table_name" {
+  description = "Name of the scout-core DynamoDB table"
   type        = string
-  default     = ""
+}
+
+variable "settings_table_name" {
+  description = "Name of the scout-settings DynamoDB table"
+  type        = string
 }
 
 variable "events_api_image_uri" {

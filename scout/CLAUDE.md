@@ -215,7 +215,7 @@ Notable additions for the redesign:
 | `SCOUT_ARTIFACTS_BUCKET` / `SCOUT_IMAGES_BUCKET` | Lambda env | S3 buckets (`scout-artifacts-<env>` / `scout-images-<env>`) |
 | `SCOUT_PROCESSOR_FN` | events-api / scheduler env | processor function name for invocations |
 | `SCOUT_RENDERER_FN` | processor env | renderer function name (sync-invoked for every page fetch) |
-| `SCOUT_TABLE_SUFFIX` | Lambda env | `""` in prod, `-pr-<N>` in previews |
+| `SCOUT_CORE_TABLE` / `SCOUT_SETTINGS_TABLE` | Lambda env | DynamoDB table names, passed in by Terraform |
 | `VITE_API_URL` / `VITE_COGNITO_*` | GitHub vars | frontend build |
 
 ## Deployment

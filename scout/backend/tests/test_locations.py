@@ -1,12 +1,10 @@
 """Unit tests for the location service layer (locations.py)."""
 
-import os
 import unittest
 
 import boto3
 from moto import mock_dynamodb
 
-os.environ.setdefault("SCOUT_TABLE_SUFFIX", "")
 
 from scout_core.services import labels  # noqa: E402
 from scout_core.services import locations  # noqa: E402

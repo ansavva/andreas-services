@@ -48,9 +48,14 @@ jobs:
           cd scout/backend
           poetry run pytest tests/ -v
 
-      # TODO: no Dockerfile build verification runs on scout PRs. It used to be
-      # covered by the deploy-preview job, which #220 removed with the preview
-      # environments. Every other service's PR workflow builds its image.
+      # Both images ship to Lambda, so both are worth proving compile here.
+      # The renderer has its own Dockerfile and its own dependency set — a
+      # Chromium base image that breaks independently of the events API.
+      - name: Build events-api image (verify only)
+        run: cd scout/backend && docker build -t scout-events-api:ci-verify .
+
+      - name: Build renderer image (verify only)
+        run: cd scout/backend/renderer && docker build -t scout-renderer:ci-verify .
 
       - name: Set up Node.js 24
         uses: actions/setup-node@v6
@@ -66,9 +71,15 @@ jobs:
         run: cd scout/frontend && npm run lint
 
       - name: Type-check frontend
-        # Catches TS errors without invoking the bundler. No bundler build runs
-        # on PRs since #220 removed deploy-preview (see the TODO above).
+        # Fast fail on TS errors before paying for the bundler below.
         run: cd scout/frontend && npx tsc --noEmit
+
+      - name: Build frontend
+        # VITE_BASE matches the prod build: the SPA is served from /app/, and a
+        # base mismatch produces asset URLs that 404 rather than a build error.
+        env:
+          VITE_BASE: /app/
+        run: cd scout/frontend && npm run build
 
   # ---------------------------------------------------------------------------
   # Validate Terraform configuration for all scout environments.

@@ -18,8 +18,6 @@ data "aws_route53_zone" "main" {
 module "data" {
   source = "../../modules/data"
 
-  table_suffix = ""
-
   tags = local.common_tags
 }
 
@@ -74,9 +72,11 @@ import {
 module "compute" {
   source = "../../modules/compute"
 
-  table_suffix       = ""
   create_ecr         = true
   create_eventbridge = true
+
+  core_table_name     = module.data.core_table_name
+  settings_table_name = module.data.settings_table_name
 
   artifacts_bucket = module.artifacts_storage.bucket_id
   images_bucket    = module.images_storage.bucket_id

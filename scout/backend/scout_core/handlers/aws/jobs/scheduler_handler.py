@@ -20,8 +20,7 @@ from scout_core.services import sources
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-_SUFFIX = os.environ.get("SCOUT_TABLE_SUFFIX", "")
-_PROCESSOR_FN = os.environ.get("SCOUT_PROCESSOR_FN", f"scout-source-run-processor{_SUFFIX}")
+_PROCESSOR_FN = os.environ.get("SCOUT_PROCESSOR_FN", "scout-source-run-processor")
 
 _lambda_client = None
 
