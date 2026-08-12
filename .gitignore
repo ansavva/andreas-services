@@ -253,3 +253,4 @@ storybook/infra/outputs.txt
 skills-lock.json
 .claude/skills/*
 !.claude/skills/design-system-ui/
+!.claude/skills/aws-naming/
