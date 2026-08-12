@@ -247,7 +247,7 @@ resource "aws_lambda_function" "email_status" {
   environment {
     variables = {
       HUMBUGG_CONSUMER             = "email-status"
-      HUMBUGG_EMAIL_MESSAGES_TABLE = "${var.project}-email-messages"
+      HUMBUGG_EMAIL_MESSAGES_TABLE = "${var.project}-${var.environment}-email-messages"
     }
   }
 

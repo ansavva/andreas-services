@@ -569,6 +569,9 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      # npm ci pulls @ansavva/* from GitHub Packages. Declaring any permissions
+      # block drops the default packages: read, so it has to be listed here.
+      packages: read
 
     steps:
       - name: Configure AWS credentials
@@ -700,7 +703,7 @@ jobs:
             expected="${check##*:}"
             for attempt in {1..60}; do
               actual=$(aws dynamodb get-item \
-                --table-name humbugg-email-messages \
+                --table-name humbugg-prod-email-messages \
                 --key "{\"message_id\":{\"S\":\"${message_id}\"}}" \
                 --query 'Item.status.S' \
                 --output text)
