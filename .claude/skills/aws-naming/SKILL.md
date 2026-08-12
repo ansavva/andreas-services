@@ -130,6 +130,88 @@ address* is free, and a `moved` block makes it a state move rather than a
 resource.** Use `moved` blocks for the former; they cost nothing. Only a change
 to the `name`/`bucket`/`function_name` argument triggers a replacement.
 
+## Executing a rename without breaking things
+
+Every failure below happened while renaming humbugg. None was caught by
+`terraform validate` — the configuration was valid each time, and wrong.
+
+### Renaming A→B and B→C in one pass crosses the wires
+
+humbugg needed `app` (avatars) to become `app_files` so that `app_web` (the SPA)
+could become `app`. Do those as text substitutions in the wrong order and the
+second rename lands on what the first just created. It happened twice in one
+change, and both times the result was valid HCL: the `app_files_*` outputs
+resolved to the SPA bucket, so avatars would have been served from the wrong
+bucket and the SPA's policy applied to the other one.
+
+Rename the *vacating* resource first, and afterwards **read the resulting
+values, not the diff you intended**:
+
+```bash
+grep -n "value" modules/storage/outputs.tf   # does each output point where its NAME says?
+```
+
+A rename that swaps two identifiers is the one case worth checking by hand every
+time.
+
+### A `moved` block's `from` is the address in state *today*
+
+```hcl
+moved {
+  from = module.hosting.aws_cloudfront_distribution.app          # today's state
+  to   = module.hosting_marketing.aws_cloudfront_distribution.app # the new config
+}
+```
+
+Rewrite `from` to the new path — easy to do with a careless global
+search-and-replace over the file — and the block becomes a silent no-op.
+Terraform then destroys and recreates instead of moving. For a CloudFront
+distribution that is a ~15 minute outage in exchange for nothing.
+
+`terraform plan` is the only check that catches this. **Every `moved` block must
+appear in the plan as a move.** If a resource you wrote a `moved` block for shows
+up under "will be destroyed", the `from` address is wrong.
+
+### The module you are moving *to* is not in state yet
+
+This one orphaned a live certificate and a live CloudFront distribution.
+
+Clearing state before a rebuild, the instinct is to preserve the modules holding
+resources you did not tear down:
+
+```bash
+# WRONG — module.certificates has never been applied, so it is not in state.
+terraform state list | grep -vE 'module\.(certificates|email|billing)' | ...
+```
+
+The certificate was still at `module.hosting.aws_acm_certificate.app` and only
+moves to `module.certificates` when the `moved` block is **applied**. Preserving
+the destination address preserved nothing and removed the real entry — leaving
+the certificate, the distribution and the Route53 aliases alive in AWS and
+untracked. The next apply then fails with `CNAMEAlreadyExists`, because a
+CloudFront alias cannot be claimed by a second distribution.
+
+**Preserve addresses you have read out of `terraform state list`, never
+addresses you have read out of the configuration.**
+
+### Two mechanical traps in state surgery
+
+`xargs` performs its own quote processing, so `for_each` addresses lose their
+brackets' quotes and Terraform rejects `canonical[A]` with "Index value
+required". Non-indexed resources succeed, which makes it look like a partial
+failure rather than a systematic one:
+
+```bash
+terraform state list | grep -vE '...' | while IFS= read -r addr; do
+  terraform state rm "$addr"
+done
+```
+
+And a plan run without the `TF_VAR_*` values CI supplies will propose destroying
+anything guarded by `count = var.x != "" ? 1 : 0`. In this repo that is the three
+Stripe SSM parameters. They are not really changing — but applying locally
+without those variables really does delete them.
+
 ## Adding a service
 
 Pick the project name to match the directory, define `local.common_tags` with
