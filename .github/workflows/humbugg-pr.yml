@@ -142,3 +142,42 @@ jobs:
         run: |
           docker run --rm --entrypoint node humbugg-marketing:ci-verify \
             -e "import('./server/index.mjs').then(({ handler }) => { if (typeof handler !== 'function') process.exit(1); console.log('SSR handler ready'); })"
+
+  build-app:
+    name: Build Product App
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@ansavva'
+          cache: npm
+          cache-dependency-path: humbugg/app/package-lock.json
+
+      - name: Install dependencies
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cd humbugg/app && npm ci
+
+      - name: Typecheck and test
+        run: |
+          cd humbugg/app
+          npx tsc --noEmit
+          npm test
+
+      # A real export, not just a typecheck: Metro resolution failures against
+      # the design system's platform leaves only surface when the bundle is
+      # actually built, and they would otherwise reach production.
+      - name: Export for web
+        env:
+          EXPO_PUBLIC_API_BASE_URL: https://api.humbugg.com
+          EXPO_PUBLIC_AWS_REGION: us-east-1
+        run: cd humbugg/app && npx expo export -p web

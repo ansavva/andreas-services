@@ -1,0 +1,23 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    // `@ansavva/design-system` publishes each component as a `.web.tsx` /
+    // `.native.tsx` pair behind one extensionless re-export, and the CONSUMER's
+    // resolver picks the leaf. Metro does that from its `platform`, but tsc has
+    // no notion of a platform — without this it resolves `./button` to nothing
+    // and every component import fails with TS2307. `.native` first, then bare,
+    // is the order Metro uses and the order the package's own
+    // `tsconfig.native.json` sets.
+    "moduleSuffixes": [".native", ""],
+    // Expo's base config narrows `types`, so Jest's globals have to be asked for
+    // by name or every `describe` in a test file is an unresolved identifier.
+    "types": ["jest", "react-dom"],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@/assets/*": ["./assets/*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],
+  "exclude": ["node_modules", "dist", ".expo"]
+}

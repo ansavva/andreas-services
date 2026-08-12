@@ -1,0 +1,21 @@
+# Expo / Metro
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native projects (managed workflow — `expo prebuild` output is not committed)
+/ios
+/android
+
+# Dependencies
+node_modules/
+
+# Build-time env. `.env.example` is the committed template; the real values are
+# per-machine (written by humbugg/scripts/dev-aws-setup.sh) or CI vars.
+.env
+.env.local
+.env*.local
+
+# macOS
+.DS_Store
