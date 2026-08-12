@@ -703,7 +703,7 @@ jobs:
             expected="${check##*:}"
             for attempt in {1..60}; do
               actual=$(aws dynamodb get-item \
-                --table-name humbugg-email-messages \
+                --table-name humbugg-prod-email-messages \
                 --key "{\"message_id\":{\"S\":\"${message_id}\"}}" \
                 --query 'Item.status.S' \
                 --output text)
