@@ -1,9 +1,3 @@
-variable "pr_number" {
-  description = "PR number for naming (empty for prod)"
-  type        = string
-  default     = ""
-}
-
 variable "lambda_invoke_arn" {
   description = "Lambda invoke ARN for API Gateway integration"
   type        = string

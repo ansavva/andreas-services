@@ -21,8 +21,9 @@ description: >-
 `humbugg-prod-api` · `mailer-prod-ingress` · `scout-prod-events-api`
 
 - **project** — the service directory name: `humbugg`, `mailer`, `scout`, `website`.
-- **env** — `prod`, `dev`, or `pr-<number>` for ephemeral previews. Always the
-  **second** segment, never the last, never omitted.
+- **env** — `prod` or `dev`. Always the **second** segment, never the last,
+  never omitted. There are no ephemeral preview environments; PR workflows
+  validate and never write to AWS.
 - **component** — what the resource *serves*, not which tier it belongs to.
   `api`, `marketing`, `app`, `email-status`. Not `backend`, not `frontend`.
 - **identifier** — only when a component needs more than one instance
@@ -89,7 +90,7 @@ none of those. **Every resource that supports tagging gets all four:**
 | Tag | Value |
 | --- | --- |
 | `Project` | `humbugg` / `mailer` / `scout` / `website` |
-| `Environment` | `prod` / `dev` / `pr-<number>` |
+| `Environment` | `prod` / `dev` |
 | `Owner` | the team or person accountable |
 | `ManagedBy` | `terraform` |
 

@@ -55,12 +55,6 @@ variable "allowed_origin" {
   default     = "https://www.andreas.services"
 }
 
-variable "pr_number" {
-  description = "PR number for ephemeral previews; \"\" for prod"
-  type        = string
-  default     = ""
-}
-
 variable "tags" {
   description = "Tags applied to all resources"
   type        = map(string)

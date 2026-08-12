@@ -4,7 +4,7 @@ resource "aws_s3_bucket" "main" {
   # Ephemeral per-PR buckets must be destroyable even when they still contain
   # objects (the processor writes artifacts/images during the preview's life);
   # otherwise teardown's `terraform destroy` fails with BucketNotEmpty (409).
-  # Defaults to false so persistent buckets (prod, shared pr-preview) are safe.
+  # Defaults to false so persistent buckets are safe.
   force_destroy = var.force_destroy
 
   tags = var.tags

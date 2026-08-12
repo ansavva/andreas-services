@@ -81,7 +81,7 @@ the approved ones at `scout.andreas.services/app`.
 scout/
 ├── infra/                       # Terraform (CloudFormation is NOT used)
 │   ├── modules/                 # auth, api_domain, api_gateway, compute, hosting, storage, data
-│   └── envs/                    # prod, pr (per-PR ephemeral), pr-preview (shared)
+│   └── envs/                    # prod
 ├── backend/
 │   ├── Dockerfile  pyproject.toml  poetry.lock
 │   ├── scout_core/              # the importable package
@@ -232,7 +232,6 @@ Chromium). `update-lambda` sets env vars and pins all five Lambdas to `:${sha}` 
 
 PR previews (`.github/workflows/scout-pr.yml`): validate first
 (`lint-unit-build`: backend pytest + frontend lint/tsc/build), then
-`deploy-preview-infra` (shared stack) → `deploy-preview` (per-PR ephemeral env
 under `infra/envs/pr`, tables/functions suffixed `-pr-<N>`). Teardown destroys
 the per-PR env on PR close.
 

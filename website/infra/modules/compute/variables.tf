@@ -4,12 +4,6 @@ variable "table_suffix" {
   default     = ""
 }
 
-variable "pr_number" {
-  description = "PR number for ephemeral previews; \"\" for prod"
-  type        = string
-  default     = ""
-}
-
 variable "create_ecr" {
   description = "Whether this env owns the ECR repositories"
   type        = bool
