@@ -229,6 +229,30 @@ jobs:
       - name: Terraform init
         run: terraform -chdir=humbugg/infra/envs/prod init -input=false
 
+      # build-and-push runs first so the image exists before Terraform creates the
+      # Lambda, and it creates the ECR repositories itself if they are missing.
+      # On a fresh state file that leaves Terraform trying to create repositories
+      # that already exist, which fails the apply with RepositoryAlreadyExists.
+      # Adopt them instead. A no-op once they are in state, which is every run
+      # after the first.
+      - name: Adopt bootstrap-created ECR repositories
+        run: |
+          set -euo pipefail
+          adopt() {
+            local addr="$1" repo="$2"
+            if terraform -chdir=humbugg/infra/envs/prod state show "$addr" >/dev/null 2>&1; then
+              echo "already in state: $addr"; return
+            fi
+            if ! aws ecr describe-repositories --repository-names "$repo" \
+                 --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
+              echo "not in AWS, Terraform will create it: $repo"; return
+            fi
+            echo "importing $repo -> $addr"
+            terraform -chdir=humbugg/infra/envs/prod import -input=false "$addr" "$repo"
+          }
+          adopt module.compute.aws_ecr_repository.api "${API_ECR_REPO}"
+          adopt module.compute.aws_ecr_repository.marketing "${MARKETING_ECR_REPO}"
+
       - name: Terraform apply
         env:
           # Stripe test-mode credentials from the humbugg-production environment.
