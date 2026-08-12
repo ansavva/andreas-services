@@ -1,9 +1,8 @@
 locals {
-  project            = "humbugg"
-  environment        = "prod"
-  domain_name        = "humbugg.com"
-  legacy_domain_name = "humbugg.andreas.services"
-  api_domain_name    = "api.${local.domain_name}"
+  project         = "humbugg"
+  environment     = "prod"
+  domain_name     = "humbugg.com"
+  api_domain_name = "api.${local.domain_name}"
 
   # What the backend derives invite URLs and avatar URLs from, and what Cognito
   # redirects to — so it is the product app, not the marketing site. The
@@ -21,11 +20,6 @@ locals {
 
 data "aws_route53_zone" "humbugg" {
   name         = "humbugg.com"
-  private_zone = false
-}
-
-data "aws_route53_zone" "main" {
-  name         = "andreas.services"
   private_zone = false
 }
 
@@ -124,20 +118,17 @@ module "certificates" {
     aws.us_east_1 = aws.us_east_1
   }
 
-  domain_name        = local.domain_name
-  legacy_domain_name = local.legacy_domain_name
+  domain_name = local.domain_name
 
-  # www and the legacy hostname are served today; app. and api. are added ahead of the
-  # surfaces that will use them, because adding a SAN later replaces the certificate.
+  # Every name Humbugg serves. Adding one later replaces the certificate, so the full
+  # set is declared up front rather than grown surface by surface.
   subject_alternative_names = [
     "www.${local.domain_name}",
     "app.${local.domain_name}",
     local.api_domain_name,
-    local.legacy_domain_name,
   ]
 
-  route53_zone_id        = data.aws_route53_zone.humbugg.zone_id
-  legacy_route53_zone_id = data.aws_route53_zone.main.zone_id
+  route53_zone_id = data.aws_route53_zone.humbugg.zone_id
 
   tags = local.common_tags
 }
@@ -178,16 +169,6 @@ moved {
 }
 
 moved {
-  from = module.hosting.aws_route53_record.app
-  to   = module.hosting_marketing.aws_route53_record.app
-}
-
-moved {
-  from = module.hosting.aws_route53_record.legacy_ipv6
-  to   = module.hosting_marketing.aws_route53_record.legacy_ipv6
-}
-
-moved {
   from = module.hosting.aws_route53_record.canonical
   to   = module.hosting_marketing.aws_route53_record.canonical
 }
@@ -200,15 +181,13 @@ moved {
 module "hosting_marketing" {
   source = "../../modules/hosting_marketing"
 
-  environment        = local.environment
-  project            = local.project
-  domain_name        = local.domain_name
-  legacy_domain_name = local.legacy_domain_name
+  environment = local.environment
+  project     = local.project
+  domain_name = local.domain_name
 
   certificate_arn = module.certificates.certificate_arn
 
-  route53_zone_id        = data.aws_route53_zone.humbugg.zone_id
-  legacy_route53_zone_id = data.aws_route53_zone.main.zone_id
+  route53_zone_id = data.aws_route53_zone.humbugg.zone_id
 
   marketing_bucket_id                   = module.storage.marketing_bucket_id
   marketing_bucket_arn                  = module.storage.marketing_bucket_arn

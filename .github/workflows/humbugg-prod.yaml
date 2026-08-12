@@ -732,15 +732,12 @@ jobs:
           curl --fail --retry 5 --retry-delay 5 https://www.humbugg.com/robots.txt >/dev/null
           curl --fail --retry 5 --retry-delay 5 https://www.humbugg.com/sitemap.xml >/dev/null
 
-          # The apex and the legacy hostname both fold into www, preserving path
-          # and query. Invite links carry their secret in the fragment, which the
-          # browser re-applies to the redirect target, so the path must survive.
+          # The apex folds into www, preserving path and query. Invite links carry
+          # their secret in the fragment, which the browser re-applies to the
+          # redirect target, so the path must survive.
           apex=$(curl --silent --output /dev/null --write-out '%{http_code} %{redirect_url}' \
             'https://humbugg.com/join/example?source=apex')
           test "$apex" = "308 https://www.humbugg.com/join/example?source=apex"
-          legacy=$(curl --silent --output /dev/null --write-out '%{http_code} %{redirect_url}' \
-            'https://humbugg.andreas.services/join/example?source=legacy')
-          test "$legacy" = "308 https://www.humbugg.com/join/example?source=legacy"
 
           # Already-sent invite links land on www, which forwards them to the app.
           forwarded=$(curl --silent --output /dev/null --write-out '%{http_code} %{redirect_url}' \

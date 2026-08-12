@@ -1,9 +1,8 @@
 # Humbugg
 
-Humbugg is a public Secret Santa application at `https://humbugg.com`.
-`https://www.humbugg.com` and the previous
-`https://humbugg.andreas.services` hostname permanently redirect to the apex
-while preserving paths and query strings. Organizers create an exchange and share a
+Humbugg is a public Secret Santa application at `https://www.humbugg.com`.
+The apex `https://humbugg.com` permanently redirects to it while preserving
+paths and query strings. Organizers create an exchange and share a
 private invitation link. Participants manage their own wish list, avoidances,
 and optional mailing address. A constrained draw reveals exactly one recipient
 to each participant.
@@ -178,14 +177,13 @@ Email monitoring and recovery are documented in
 
 ## Production domain
 
-Terraform reads the existing public `humbugg.com` and `andreas.services`
-Route53 hosted zones. It owns a us-east-1 ACM certificate for `humbugg.com`,
-`www.humbugg.com`, `app.humbugg.com`, `api.humbugg.com`, and
-`humbugg.andreas.services`, plus their validation and alias records. That one
-region serves both consumers: it is where CloudFront requires its certificate
-and where this deployment's regional API Gateway lives. The CloudFront
-viewer-request function returns a `308` redirect for non-apex hosts before any
-route reaches an origin.
+Terraform reads the existing public `humbugg.com` Route53 hosted zone. It owns a
+us-east-1 ACM certificate for `humbugg.com`, `www.humbugg.com`,
+`app.humbugg.com` and `api.humbugg.com`, plus their validation and alias
+records. That one region serves both consumers: it is where CloudFront requires
+its certificate and where this deployment's regional API Gateway lives. The
+CloudFront viewer-request function returns a `308` redirect for any host that is
+not `www.humbugg.com` before the request reaches an origin.
 
 The backend also answers directly at `api.humbugg.com` through an API Gateway
 custom domain, alongside — not instead of — the `humbugg.com/api/*` CloudFront

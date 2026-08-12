@@ -28,10 +28,8 @@ resource "aws_acm_certificate" "main" {
   tags = var.tags
 }
 
-# The certificate spans two hosted zones: everything under humbugg.com validates in the
-# humbugg.com zone, while the legacy humbugg.andreas.services name validates in the
-# andreas.services zone. ACM emits one validation option per name; the zone is chosen per
-# record rather than per certificate.
+# Every name on the certificate lives under humbugg.com, so all validation records go to
+# that one zone. ACM emits one validation option per name.
 resource "aws_route53_record" "certificate_validation" {
   for_each = {
     for option in aws_acm_certificate.main.domain_validation_options : option.domain_name => {
@@ -42,7 +40,7 @@ resource "aws_route53_record" "certificate_validation" {
   }
 
   allow_overwrite = true
-  zone_id         = each.key == var.legacy_domain_name ? var.legacy_route53_zone_id : var.route53_zone_id
+  zone_id         = var.route53_zone_id
   name            = each.value.name
   type            = each.value.type
   ttl             = 300
