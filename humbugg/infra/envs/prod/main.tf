@@ -4,7 +4,12 @@ locals {
   domain_name        = "humbugg.com"
   legacy_domain_name = "humbugg.andreas.services"
   api_domain_name    = "api.${local.domain_name}"
-  app_base_url       = "https://${local.domain_name}"
+
+  # What the backend derives invite URLs and avatar URLs from, and what Cognito
+  # redirects to — so it is the product app, not the marketing site. The
+  # marketing origin has no Terraform consumer; it is a build-time value the
+  # deploy workflow passes to Vite.
+  app_base_url = "https://app.${local.domain_name}"
 
   common_tags = {
     Project     = local.project
@@ -189,14 +194,43 @@ module "hosting" {
   frontend_bucket_arn                  = module.storage.bucket_arn
   frontend_bucket_regional_domain_name = module.storage.bucket_regional_domain_name
 
+  frontend_api_domain = module.compute.frontend_api_domain
+
+  tags = local.common_tags
+}
+
+module "hosting_app" {
+  source = "../../modules/hosting_app"
+
+  project     = local.project
+  domain_name = local.domain_name
+
+  certificate_arn = module.certificates.certificate_arn
+  route53_zone_id = data.aws_route53_zone.humbugg.zone_id
+
+  app_web_bucket_id                   = module.storage.app_web_bucket_id
+  app_web_bucket_arn                  = module.storage.app_web_bucket_arn
+  app_web_bucket_regional_domain_name = module.storage.app_web_bucket_regional_domain_name
+
   avatars_bucket_id                   = module.storage.app_bucket_id
   avatars_bucket_arn                  = module.storage.app_bucket_arn
   avatars_bucket_regional_domain_name = module.storage.app_bucket_regional_domain_name
 
-  api_endpoint        = module.compute.api_endpoint
-  frontend_api_domain = module.compute.frontend_api_domain
-
   tags = local.common_tags
+}
+
+# The avatars OAC and its bucket policy served /avatars/* from the marketing
+# distribution when one distribution served everything. They belong to the
+# product app now. Without these moves Terraform would delete the bucket policy
+# and recreate it, leaving avatars 403ing for the length of the apply.
+moved {
+  from = module.hosting.aws_cloudfront_origin_access_control.avatars
+  to   = module.hosting_app.aws_cloudfront_origin_access_control.avatars
+}
+
+moved {
+  from = module.hosting.aws_s3_bucket_policy.avatars
+  to   = module.hosting_app.aws_s3_bucket_policy.avatars
 }
 
 module "email" {

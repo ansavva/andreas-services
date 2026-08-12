@@ -43,26 +43,6 @@ variable "frontend_bucket_regional_domain_name" {
   type        = string
 }
 
-variable "avatars_bucket_id" {
-  description = "Avatars S3 bucket ID"
-  type        = string
-}
-
-variable "avatars_bucket_arn" {
-  description = "Avatars S3 bucket ARN"
-  type        = string
-}
-
-variable "avatars_bucket_regional_domain_name" {
-  description = "Avatars S3 bucket regional domain name"
-  type        = string
-}
-
-variable "api_endpoint" {
-  description = "API Gateway endpoint URL"
-  type        = string
-}
-
 variable "frontend_api_domain" {
   description = "SSR frontend HTTP API host without a scheme"
   type        = string

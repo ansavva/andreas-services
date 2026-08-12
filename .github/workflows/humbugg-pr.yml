@@ -135,6 +135,17 @@ jobs:
           npm test
           npm run build
 
+      # The design system ships one component as a .web/.native pair behind a
+      # single extensionless export, and the bundler picks the leaf. If the web
+      # build ever resolves a .native leaf it silently drags react-native-web
+      # into a browser bundle, which nothing else here would catch.
+      - name: Assert the web build took the web leaf
+        run: |
+          if grep -rq "react-native-web" humbugg/web/build; then
+            echo "react-native-web reached the marketing bundle — a .native leaf was resolved."
+            exit 1
+          fi
+
       - name: Build SSR Lambda image
         run: cd humbugg/marketing && docker build -t humbugg-marketing:ci-verify .
 
@@ -181,3 +192,13 @@ jobs:
           EXPO_PUBLIC_API_BASE_URL: https://api.humbugg.com
           EXPO_PUBLIC_AWS_REGION: us-east-1
         run: cd humbugg/app && npx expo export -p web
+
+      # The mirror of the marketing assertion. This app is React Native running in
+      # a browser, so it MUST carry react-native-web; its absence would mean the
+      # export resolved web leaves and the native build would diverge.
+      - name: Assert the app build took the native leaf
+        run: |
+          if ! grep -rq "react-native-web" humbugg/app/dist; then
+            echo "react-native-web is missing from the app export — a .web leaf was resolved."
+            exit 1
+          fi

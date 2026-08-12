@@ -31,6 +31,43 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "frontend" {
   }
 }
 
+# The Expo web export for app.humbugg.com. Separate from the `frontend` bucket
+# because the two are built by different toolchains on different schedules: this
+# one holds a self-contained single-page export, that one holds only the hashed
+# assets its SSR Lambda references.
+resource "aws_s3_bucket" "app_web" {
+  bucket = "${var.project}-appweb-${var.environment}"
+
+  tags = var.tags
+}
+
+resource "aws_s3_bucket_public_access_block" "app_web" {
+  bucket = aws_s3_bucket.app_web.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "app_web" {
+  bucket = aws_s3_bucket.app_web.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "app_web" {
+  bucket = aws_s3_bucket.app_web.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
 resource "aws_dynamodb_table" "profiles" {
   name         = "${var.project}-profiles"
   billing_mode = "PAY_PER_REQUEST"

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Start the backend, frontend, and Stripe webhook listener as one local development session.
+# Start the backend, both frontends, and the Stripe webhook listener as one
+# local development session: marketing site on :5173, product app on :8081.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -87,7 +88,8 @@ start_service() {
 
 start_service backend "$SCRIPT_DIR/dev-up-backend.sh" \
   --profile "$AWS_PROFILE_VALUE" --region "$AWS_REGION_VALUE"
-start_service frontend "$SCRIPT_DIR/dev-up-frontend.sh"
+start_service web "$SCRIPT_DIR/dev-up-web.sh"
+start_service app "$SCRIPT_DIR/dev-up-app.sh"
 start_service stripe "$SCRIPT_DIR/dev-up-stripe.sh" --forward-to "$FORWARD_TO" --skip-update
 
 ok "Humbugg local development is starting. Press Ctrl+C to stop everything."

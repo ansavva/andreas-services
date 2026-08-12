@@ -6,13 +6,19 @@ name: Humbugg · Deploy · Prod
 # runs before deploy-infra to eliminate the chicken-and-egg of an empty ECR
 # repo on first deploy):
 #
-#   detect-changes ─► build-and-push (backend + SSR frontend images and assets)
+#   detect-changes ─► build-and-push (backend + SSR marketing images and assets)
 #                          │
 #                          ▼
 #                     deploy-infra (terraform apply)
 #                          │
-#                          ├─► update-lambda  (env vars + pin both Lambdas to :sha)
-#                          └─► deploy-frontend-assets
+#                          ├─► update-lambda           (env vars + pin both Lambdas to :sha)
+#                          ├─► deploy-frontend-assets  (marketing hashed assets → S3)
+#                          └─► deploy-app              (Expo web export → S3, built here)
+#
+# Three surfaces come out of this: www.humbugg.com (marketing SSR),
+# app.humbugg.com (Expo static export) and api.humbugg.com (backend Lambda).
+# The Expo export is built in deploy-app rather than build-and-push because Metro
+# inlines EXPO_PUBLIC_* at build time and those values come from the apply.
 
 on:
   push:
@@ -27,7 +33,7 @@ on:
         type: boolean
         default: true
       run_app:
-        description: 'Run update-lambda and deploy-frontend'
+        description: 'Run update-lambda, deploy-frontend-assets and deploy-app'
         type: boolean
         default: true
   workflow_run:
@@ -55,7 +61,8 @@ jobs:
     outputs:
       infra: ${{ steps.filter.outputs.infra }}
       backend: ${{ steps.filter.outputs.backend }}
-      frontend: ${{ steps.filter.outputs.frontend }}
+      web: ${{ steps.filter.outputs.web }}
+      app: ${{ steps.filter.outputs.app }}
       shared_infra: ${{ steps.filter.outputs.shared_infra }}
     steps:
       - uses: actions/checkout@v7
@@ -71,8 +78,11 @@ jobs:
             backend:
               - 'humbugg/backend/**'
               - '.github/workflows/humbugg-prod.yaml'
-            frontend:
-              - 'humbugg/frontend/**'
+            web:
+              - 'humbugg/web/**'
+              - '.github/workflows/humbugg-prod.yaml'
+            app:
+              - 'humbugg/app/**'
               - '.github/workflows/humbugg-prod.yaml'
             shared_infra:
               - 'infra/**'
@@ -91,7 +101,8 @@ jobs:
          && needs.detect-changes.outputs.shared_infra != 'true'
          && (needs.detect-changes.outputs.infra == 'true'
              || needs.detect-changes.outputs.backend == 'true'
-             || needs.detect-changes.outputs.frontend == 'true'))
+             || needs.detect-changes.outputs.web == 'true'
+             || needs.detect-changes.outputs.app == 'true'))
         || (github.event_name == 'workflow_dispatch'
             && (inputs.run_infra || inputs.run_app))
         || github.event_name == 'workflow_run'
@@ -112,7 +123,9 @@ jobs:
           registry-url: 'https://npm.pkg.github.com'
           scope: '@ansavva'
           cache: npm
-          cache-dependency-path: humbugg/frontend/package-lock.json
+          cache-dependency-path: |
+            humbugg/web/package-lock.json
+            humbugg/app/package-lock.json
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
@@ -150,20 +163,21 @@ jobs:
           docker push "${IMAGE}:${{ github.sha }}"
           docker push "${IMAGE}:latest"
 
-      - name: Install frontend dependencies
+      - name: Install marketing site dependencies
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: cd humbugg/frontend && npm ci
+        run: cd humbugg/web && npm ci
 
-      - name: Build frontend SSR and client assets
+      - name: Build marketing SSR and client assets
         env:
-          VITE_APP_BASE_URL: https://humbugg.com
-        run: cd humbugg/frontend && npm run build
+          VITE_APP_BASE_URL: https://www.humbugg.com
+          VITE_APP_ORIGIN: https://app.humbugg.com
+        run: cd humbugg/web && npm run build
 
-      - name: Build & push SSR frontend
+      - name: Build & push SSR marketing site
         run: |
           IMAGE="${ECR_REGISTRY}/${FRONTEND_ECR_REPO}"
-          cd humbugg/frontend
+          cd humbugg/web
           docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
           docker push "${IMAGE}:${{ github.sha }}"
           docker push "${IMAGE}:latest"
@@ -172,8 +186,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: humbugg-frontend-client
-          path: humbugg/frontend/build/client
+          path: humbugg/web/build/client
           retention-days: 1
+
 
   # ---------------------------------------------------------------------------
   # Apply Terraform and publish the resolved IDs into SSM for the app jobs.
@@ -257,6 +272,8 @@ jobs:
           put cognito-client-id    "$(tf cognito_client_id)"
           put s3-bucket            "$(tf s3_frontend_bucket)"
           put cf-dist-id           "$(tf cloudfront_distribution_id)"
+          put app-s3-bucket        "$(tf app_web_bucket)"
+          put app-cf-dist-id       "$(tf app_cloudfront_distribution_id)"
           put email-from-address   "$(tf email_from_address)"
 
   # ---------------------------------------------------------------------------
@@ -309,7 +326,7 @@ jobs:
         run: |
           set -euo pipefail
           jq -n \
-            --arg cors_origins "https://humbugg.com" \
+            --arg cors_origins "https://www.humbugg.com,https://app.humbugg.com" \
             --arg cognito_region "${{ env.AWS_REGION }}" \
             --arg cognito_pool_id "${COGNITO_USER_POOL_ID}" \
             --arg cognito_client_id "${COGNITO_CLIENT_ID}" \
@@ -323,7 +340,7 @@ jobs:
             --arg analytics_enabled "${{ vars.HUMBUGG_ANALYTICS_ENABLED || 'true' }}" \
             --arg email_messages_table "humbugg-email-messages" \
             --arg app_bucket "humbugg-app-production" \
-            --arg app_base_url "https://humbugg.com" \
+            --arg app_base_url "https://app.humbugg.com" \
             --arg mailer_base_url "${HUMBUGG_MAILER_BASE_URL}" \
             --arg free_participant_limit "${{ vars.HUMBUGG_FREE_PARTICIPANT_LIMIT || '6' }}" \
             --arg plus_participant_limit "${{ vars.HUMBUGG_PLUS_PARTICIPANT_LIMIT || '50' }}" \
@@ -381,17 +398,13 @@ jobs:
               HUMBUGG_EMAIL_MESSAGES_TABLE: $email_messages_table
             }}' > /tmp/env-humbugg-email-status.json
 
+          # The marketing SSR Lambda no longer authenticates anyone — sign-in moved
+          # to the product app — so the Cognito variables it used to receive are
+          # gone. Its canonical origin is baked in at build time via
+          # VITE_APP_BASE_URL; nothing in the server bundle reads process.env.
           jq -n \
-            --arg cognito_region "${{ env.AWS_REGION }}" \
-            --arg cognito_pool_id "${COGNITO_USER_POOL_ID}" \
-            --arg cognito_client_id "${COGNITO_CLIENT_ID}" \
-            --arg app_base_url "https://humbugg.com" \
             '{Variables: {
-              NODE_ENV: "production",
-              APP_BASE_URL: $app_base_url,
-              COGNITO_REGION: $cognito_region,
-              COGNITO_USER_POOL_ID: $cognito_pool_id,
-              COGNITO_CLIENT_ID: $cognito_client_id
+              NODE_ENV: "production"
             }}' > /tmp/env-humbugg-frontend.json
 
           aws lambda update-function-configuration \
@@ -466,7 +479,7 @@ jobs:
       && needs.deploy-infra.result != 'failure'
       && ((github.event_name == 'workflow_dispatch' && inputs.run_app)
           || (github.event_name == 'push'
-              && (needs.detect-changes.outputs.frontend == 'true'
+              && (needs.detect-changes.outputs.web == 'true'
                   || needs.deploy-infra.result == 'success'))
           || (github.event_name == 'workflow_run'
               && needs.deploy-infra.result == 'success'))
@@ -508,6 +521,100 @@ jobs:
         run: |
           aws cloudfront create-invalidation \
             --distribution-id "${CF_DIST_ID}" \
+            --paths "/*"
+
+  # ---------------------------------------------------------------------------
+  # Publish the product app's static export to its own bucket + distribution.
+  # Peer of deploy-frontend-assets: neither depends on the other.
+  # ---------------------------------------------------------------------------
+  deploy-app:
+    name: Deploy Product App
+    needs: [detect-changes, build-and-push, deploy-infra]
+    if: |
+      !cancelled()
+      && needs.build-and-push.result == 'success'
+      && needs.deploy-infra.result != 'failure'
+      && ((github.event_name == 'workflow_dispatch' && inputs.run_app)
+          || (github.event_name == 'push'
+              && (needs.detect-changes.outputs.app == 'true'
+                  || needs.deploy-infra.result == 'success'))
+          || (github.event_name == 'workflow_run'
+              && needs.deploy-infra.result == 'success'))
+    runs-on: ubuntu-latest
+    environment: humbugg-production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@ansavva'
+          cache: npm
+          cache-dependency-path: humbugg/app/package-lock.json
+
+      - name: Read infrastructure values from SSM
+        run: |
+          get() { aws ssm get-parameter --name "/humbugg/prod/${1}" \
+            --query Parameter.Value --output text; }
+
+          echo "APP_S3_BUCKET=$(get app-s3-bucket)"     >> "$GITHUB_ENV"
+          echo "APP_CF_DIST_ID=$(get app-cf-dist-id)"   >> "$GITHUB_ENV"
+          echo "EXPO_PUBLIC_COGNITO_USER_POOL_ID=$(get cognito-user-pool-id)" >> "$GITHUB_ENV"
+          echo "EXPO_PUBLIC_COGNITO_CLIENT_ID=$(get cognito-client-id)"       >> "$GITHUB_ENV"
+
+      - name: Install product app dependencies
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cd humbugg/app && npm ci
+
+      # Metro inlines EXPO_PUBLIC_* at build time, so the export must be built
+      # AFTER deploy-infra with the values that apply produced. The build-first
+      # ordering elsewhere in this workflow exists only because Terraform cannot
+      # create a Lambda without an image already in ECR; a static export has no
+      # such constraint, and building it early would bake in stale Cognito IDs.
+      - name: Export product app for web
+        env:
+          EXPO_PUBLIC_API_BASE_URL: https://api.humbugg.com
+          EXPO_PUBLIC_AWS_REGION: ${{ env.AWS_REGION }}
+        run: cd humbugg/app && npx expo export -p web
+
+      # Two passes, because the export mixes lifetimes in one tree. The hashed
+      # bundles are immutable; index.html must never be cached or a returning
+      # visitor is pinned to a bundle that no longer exists. --delete goes on the
+      # first pass only, so the second cannot remove what the first just wrote.
+      - name: Sync hashed assets (long cache)
+        run: |
+          aws s3 sync humbugg/app/dist/ "s3://${APP_S3_BUCKET}/" \
+            --region "${{ env.AWS_REGION }}" \
+            --delete \
+            --exclude "*.html" \
+            --cache-control "public,max-age=31536000,immutable"
+
+      - name: Sync HTML (no cache)
+        run: |
+          aws s3 sync humbugg/app/dist/ "s3://${APP_S3_BUCKET}/" \
+            --region "${{ env.AWS_REGION }}" \
+            --exclude "*" \
+            --include "*.html" \
+            --cache-control "no-cache,no-store,must-revalidate" \
+            --content-type "text/html"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${APP_CF_DIST_ID}" \
             --paths "/*"
 
   email-feedback-smoke-test:
@@ -577,24 +684,62 @@ jobs:
 
   smoke-test:
     name: Production Smoke Test
-    needs: [update-lambda, deploy-frontend-assets, email-feedback-smoke-test]
-    if: ${{ !cancelled() && needs.update-lambda.result == 'success' && needs.deploy-frontend-assets.result == 'success' && needs.email-feedback-smoke-test.result == 'success' }}
+    needs: [update-lambda, deploy-frontend-assets, deploy-app, email-feedback-smoke-test]
+    if: ${{ !cancelled() && needs.update-lambda.result == 'success' && needs.deploy-frontend-assets.result == 'success' && needs.deploy-app.result == 'success' && needs.email-feedback-smoke-test.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Verify public and protected routes
+      - name: Verify the three surfaces
         run: |
           set -euo pipefail
-          marketing=$(curl --fail --silent --show-error --retry 5 --retry-delay 5 https://humbugg.com/)
+
+          # --- Marketing: www is canonical now ---
+          marketing=$(curl --fail --silent --show-error --retry 5 --retry-delay 5 https://www.humbugg.com/)
           grep -q "More wonder" <<< "$marketing"
           grep -q '<meta name="description"' <<< "$marketing"
-          curl --fail --retry 5 --retry-delay 5 https://humbugg.com/robots.txt >/dev/null
-          curl --fail --retry 5 --retry-delay 5 https://humbugg.com/sitemap.xml >/dev/null
-          curl --fail --retry 5 --retry-delay 5 https://humbugg.com/health >/dev/null
-          status=$(curl --silent --output /dev/null --write-out '%{http_code}' https://humbugg.com/api/groups)
-          test "$status" = "401"
+          curl --fail --retry 5 --retry-delay 5 https://www.humbugg.com/robots.txt >/dev/null
+          curl --fail --retry 5 --retry-delay 5 https://www.humbugg.com/sitemap.xml >/dev/null
+
+          # The apex and the legacy hostname both fold into www, preserving path
+          # and query. Invite links carry their secret in the fragment, which the
+          # browser re-applies to the redirect target, so the path must survive.
+          apex=$(curl --silent --output /dev/null --write-out '%{http_code} %{redirect_url}' \
+            'https://humbugg.com/join/example?source=apex')
+          test "$apex" = "308 https://www.humbugg.com/join/example?source=apex"
           legacy=$(curl --silent --output /dev/null --write-out '%{http_code} %{redirect_url}' \
             'https://humbugg.andreas.services/join/example?source=legacy')
-          test "$legacy" = "308 https://humbugg.com/join/example?source=legacy"
-          www=$(curl --silent --output /dev/null --write-out '%{http_code} %{redirect_url}' \
-            'https://www.humbugg.com/signup?source=www')
-          test "$www" = "308 https://humbugg.com/signup?source=www"
+          test "$legacy" = "308 https://www.humbugg.com/join/example?source=legacy"
+
+          # Already-sent invite links land on www, which forwards them to the app.
+          forwarded=$(curl --silent --output /dev/null --write-out '%{http_code} %{redirect_url}' \
+            'https://www.humbugg.com/join/example')
+          test "$forwarded" = "301 https://app.humbugg.com/join/example"
+
+          # --- Product app: the SPA fallback must answer a deep link, not just / ---
+          curl --fail --retry 5 --retry-delay 5 https://app.humbugg.com/ >/dev/null
+          deep=$(curl --silent --output /dev/null --write-out '%{http_code}' https://app.humbugg.com/groups/example)
+          test "$deep" = "200"
+
+          # --- API on its own domain ---
+          curl --fail --retry 5 --retry-delay 5 https://api.humbugg.com/health >/dev/null
+          status=$(curl --silent --output /dev/null --write-out '%{http_code}' https://api.humbugg.com/api/groups)
+          test "$status" = "401"
+
+          # The single most valuable assertion here. Cross-origin, every non-simple
+          # request is preceded by an OPTIONS preflight, and the API's authorizer
+          # would 401 it before the Lambda ever saw it without an explicit
+          # unauthenticated OPTIONS route. Same-origin traffic never exercised this,
+          # so nothing else in the pipeline would catch a regression.
+          preflight=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            -X OPTIONS \
+            -H 'Origin: https://app.humbugg.com' \
+            -H 'Access-Control-Request-Method: GET' \
+            -H 'Access-Control-Request-Headers: authorization,content-type' \
+            https://api.humbugg.com/api/groups)
+          test "$preflight" -lt 300
+          allow=$(curl --silent --output /dev/null --write-out '%header{access-control-allow-origin}' \
+            -X OPTIONS \
+            -H 'Origin: https://app.humbugg.com' \
+            -H 'Access-Control-Request-Method: GET' \
+            -H 'Access-Control-Request-Headers: authorization,content-type' \
+            https://api.humbugg.com/api/groups)
+          test "$allow" = "https://app.humbugg.com"

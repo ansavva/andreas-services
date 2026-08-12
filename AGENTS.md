@@ -21,7 +21,7 @@ CLI mutations, to avoid IaC drift.
 | Directory | Purpose | Stack |
 |-----------|---------|-------|
 | `storybook/` | AI portrait studio | Flask + React/Vite/HeroUI + Lambda (Docker) + DynamoDB |
-| `humbugg/` | Gift-exchange platform | ASP.NET Core 10 (C# 14) + React/Vite + Lambda (Docker) + DynamoDB |
+| `humbugg/` | Gift-exchange platform | ASP.NET Core 10 (C# 14) + React/Vite (marketing, `www`) + Expo/Expo Router (product app, `app`) + Lambda (Docker) + DynamoDB |
 | `scout/` | Events from Gmail | Python Lambdas + React/Vite/TS + DynamoDB |
 | `infra/` | Shared infrastructure | Terraform |
 
@@ -60,9 +60,14 @@ data "aws_route53_zone" "main" {
   library in this monorepo and there must not become one. **Read the `design-system-ui` skill before
   adding or changing any screen, form, dialog or styled component** — it covers the catalogue, the
   platform-leaf import rule, and the theming seams that carry each service's brand.
-- **Build tool**: Vite (not Create React App)
+- **Build tool**: Vite (not Create React App) for web surfaces. **Expo + Metro** for
+  React Native surfaces — `humbugg/app` is the first, built so the same codebase can
+  ship to the app stores later. The bundler is what selects the design system's
+  platform leaf, so this choice is not cosmetic.
 - **Framework**: React 18
-- **Styling**: Tailwind CSS (v3 or v4)
+- **Styling**: Tailwind CSS (v3 or v4) on Vite surfaces. Expo surfaces have **no
+  Tailwind pipeline** — they use React Native `StyleSheet` and the design system's
+  `ThemeProvider`.
 - **Language**: TypeScript preferred (Storybook uses strict mode)
 - **Folder structure**:
   ```

@@ -2,12 +2,12 @@ function handler(event) {
   var request = event.request;
   var host = request.headers.host && request.headers.host.value.toLowerCase();
 
-  if (host === 'humbugg.com') {
+  if (host === 'www.humbugg.com') {
     return request;
   }
 
   var query = request.rawQueryString();
-  var location = 'https://humbugg.com' + request.uri;
+  var location = 'https://www.humbugg.com' + request.uri;
   if (query !== undefined) {
     location += '?' + query;
   }

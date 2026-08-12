@@ -45,3 +45,18 @@ output "app_bucket_regional_domain_name" {
   description = "Application object S3 bucket regional domain name (CloudFront origin)"
   value       = aws_s3_bucket.app.bucket_regional_domain_name
 }
+
+output "app_web_bucket_id" {
+  description = "Expo web export S3 bucket ID"
+  value       = aws_s3_bucket.app_web.id
+}
+
+output "app_web_bucket_arn" {
+  description = "Expo web export S3 bucket ARN"
+  value       = aws_s3_bucket.app_web.arn
+}
+
+output "app_web_bucket_regional_domain_name" {
+  description = "Expo web export S3 bucket regional domain name"
+  value       = aws_s3_bucket.app_web.bucket_regional_domain_name
+}

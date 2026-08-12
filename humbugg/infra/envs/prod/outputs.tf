@@ -54,8 +54,18 @@ output "api_domain" {
 }
 
 output "cloudfront_distribution_id" {
-  description = "CloudFront distribution ID"
+  description = "Marketing (www) CloudFront distribution ID"
   value       = module.hosting.cloudfront_distribution_id
+}
+
+output "app_web_bucket" {
+  description = "Expo web export S3 bucket name"
+  value       = module.storage.app_web_bucket_id
+}
+
+output "app_cloudfront_distribution_id" {
+  description = "Product app (app.) CloudFront distribution ID"
+  value       = module.hosting_app.cloudfront_distribution_id
 }
 
 output "email_from_address" {
