@@ -6,7 +6,6 @@ import unittest
 import boto3
 from moto import mock_dynamodb, mock_s3
 
-os.environ.setdefault("SCOUT_TABLE_SUFFIX", "")
 os.environ["SCOUT_ARTIFACTS_BUCKET"] = "scout-artifacts-test"
 
 from scout_core.repositories import artifacts  # noqa: E402

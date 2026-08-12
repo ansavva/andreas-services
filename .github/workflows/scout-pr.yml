@@ -1,12 +1,7 @@
 name: Scout · PR
 
-# Combined PR workflow for scout. Validates first (lint, unit tests, frontend
-# build); then ensures the shared PR-preview infrastructure exists (idempotent
-# CFN deploy); finally spins up the per-PR preview stack.
-#
-# DAG:
-#   lint-unit-build ─► deploy-preview-infra ─► deploy-preview
-#
+# Combined PR workflow for scout. Validates only — lint, unit tests, frontend
+# build and Terraform validate. It never writes to AWS.
 
 on:
   pull_request:
@@ -18,11 +13,10 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  STACK_NAME: scout-pr-${{ github.event.pull_request.number }}
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Validate: lint + unit tests + frontend build. Gates the preview deploy.
+  # Validate: lint + unit tests + type-check.
   # ---------------------------------------------------------------------------
   lint-unit-build:
     name: Lint, Unit Tests & Build
@@ -54,9 +48,14 @@ jobs:
           cd scout/backend
           poetry run pytest tests/ -v
 
-      # Dockerfile build verification is handled by the deploy-preview job
-      # below — same Dockerfile, same failure mode, ~1 min later. No need
-      # to build a throwaway :ci-verify image here.
+      # Both images ship to Lambda, so both are worth proving compile here.
+      # The renderer has its own Dockerfile and its own dependency set — a
+      # Chromium base image that breaks independently of the events API.
+      - name: Build events-api image (verify only)
+        run: cd scout/backend && docker build -t scout-events-api:ci-verify .
+
+      - name: Build renderer image (verify only)
+        run: cd scout/backend/renderer && docker build -t scout-renderer:ci-verify .
 
       - name: Set up Node.js 24
         uses: actions/setup-node@v6
@@ -72,9 +71,15 @@ jobs:
         run: cd scout/frontend && npm run lint
 
       - name: Type-check frontend
-        # Catches TS errors without invoking the bundler. The actual bundler
-        # build runs in deploy-preview with PR-specific VITE_* env vars.
+        # Fast fail on TS errors before paying for the bundler below.
         run: cd scout/frontend && npx tsc --noEmit
+
+      - name: Build frontend
+        # VITE_BASE matches the prod build: the SPA is served from /app/, and a
+        # base mismatch produces asset URLs that 404 rather than a build error.
+        env:
+          VITE_BASE: /app/
+        run: cd scout/frontend && npm run build
 
   # ---------------------------------------------------------------------------
   # Validate Terraform configuration for all scout environments.
@@ -110,5 +115,3 @@ jobs:
       - name: tflint
         run: tflint --recursive --chdir=scout/infra --config "$(pwd)/.tflint.hcl"
 
-  # ---------------------------------------------------------------------------
-  # Ensure the shared PR-preview infrastructure exists. This is an idempotent

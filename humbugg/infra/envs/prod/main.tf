@@ -31,21 +31,6 @@ data "aws_ssm_parameter" "mailer_auth_configuration_set" {
   name = "/mailer/prod/humbugg/auth-configuration-set"
 }
 
-moved {
-  from = aws_dynamodb_table.profiles
-  to   = module.storage.aws_dynamodb_table.profiles
-}
-
-moved {
-  from = aws_dynamodb_table.groups
-  to   = module.storage.aws_dynamodb_table.groups
-}
-
-moved {
-  from = aws_dynamodb_table.groupmembers
-  to   = module.storage.aws_dynamodb_table.groupmembers
-}
-
 module "auth" {
   source = "../../modules/auth"
 
@@ -90,25 +75,6 @@ module "compute" {
   api_throttling_burst_limit = var.api_throttling_burst_limit
 
   tags = local.common_tags
-}
-
-# The certificate moved out of `hosting` so the API Gateway custom domain can share it.
-# The moved blocks below keep the existing certificate, its validation records, and the
-# validation resource attached to their state addresses — a plan that shows any of them
-# being destroyed and recreated means one of those addresses is wrong.
-moved {
-  from = module.hosting.aws_acm_certificate.app
-  to   = module.certificates.aws_acm_certificate.main
-}
-
-moved {
-  from = module.hosting.aws_route53_record.certificate_validation
-  to   = module.certificates.aws_route53_record.certificate_validation
-}
-
-moved {
-  from = module.hosting.aws_acm_certificate_validation.app
-  to   = module.certificates.aws_acm_certificate_validation.main
 }
 
 module "certificates" {
@@ -158,24 +124,6 @@ resource "aws_ssm_parameter" "api_domain" {
   value       = module.api_domain.api_base_url
 
   tags = local.common_tags
-}
-
-# modules/hosting became modules/hosting_marketing. The distribution and its
-# Route53 aliases carry no name attribute, so this is a state move and not a
-# replacement — read the plan and confirm it says "moved", not "destroy".
-moved {
-  from = module.hosting.aws_cloudfront_distribution.app
-  to   = module.hosting_marketing.aws_cloudfront_distribution.app
-}
-
-moved {
-  from = module.hosting.aws_route53_record.canonical
-  to   = module.hosting_marketing.aws_route53_record.canonical
-}
-
-moved {
-  from = module.hosting.aws_route53_record.www
-  to   = module.hosting_marketing.aws_route53_record.www
 }
 
 module "hosting_marketing" {
@@ -234,14 +182,6 @@ module "email" {
   # the single managed apex TXT record set must carry it alongside SPF.
   # Public value — safe to commit. Never remove it: Google re-checks it.
   apex_txt_additional_records = ["google-site-verification=Ty65XWNQL5fqun83W2_nuKQGbXwmS5IRTHDpU9up1gQ"]
-}
-
-# The apex MX moved from the retired SES-inbound stack to the email module,
-# where its value flipped to Google Workspace. The moved block turns what
-# would be a same-name delete+create race into an in-place update.
-moved {
-  from = module.support_forwarding.aws_route53_record.inbound_mx
-  to   = module.email.aws_route53_record.apex_mx
 }
 
 module "billing" {

@@ -6,10 +6,8 @@ and MIME/markdown extraction can be exercised in isolation.
 """
 
 import base64
-import os
 import unittest
 
-os.environ.setdefault("SCOUT_TABLE_SUFFIX", "")
 
 from scout_core.clients.external import gmail  # noqa: E402
 from scout_core.utils import taxonomy  # noqa: E402

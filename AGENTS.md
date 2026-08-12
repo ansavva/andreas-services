@@ -114,13 +114,30 @@ named for what it **serves** rather than which tier it sits in. S3 buckets take 
 region suffix because their names are globally unique
 (`humbugg-prod-marketing-us-east-1`).
 
-**Read the `aws-naming` skill before creating or renaming any AWS resource.** It
-covers the per-resource-type patterns, the four required tags
-(`Project`/`Environment`/`Owner`/`ManagedBy`), and — most importantly — which
-resources cannot be renamed without destroying data.
+Most resources are just `[project]-[env]-[component]`. These need more:
 
-Names describe identity; **tags** carry everything else. Don't add a fifth
-segment for something a tag should hold.
+| Resource | Pattern | Example |
+| --- | --- | --- |
+| **S3 bucket** | `[project]-[env]-[component]-[region]` | `humbugg-prod-marketing-us-east-1` |
+| **IAM role** | `[project]-[env]-[component]-role` | `humbugg-prod-api-role` |
+| **IAM policy** | `[project]-[env]-[component]-[grant]` | `humbugg-prod-api-dynamodb` |
+| **SQS DLQ** | `[project]-[env]-[component]-dlq` | `mailer-prod-feedback-dlq` |
+| **CloudFront OAC** | `[project]-[env]-[component]-oac` | `humbugg-prod-app-files-oac` |
+| **Log group** | `/aws/lambda/[function-name]` | derived — never hand-written |
+| **SSM parameter** | `/[project]/[env]/[name]` | `/humbugg/prod/api-domain` |
+
+Names describe identity; **tags** carry everything else. Every resource that
+supports tagging gets all four of `Project`, `Environment`, `Owner`, `ManagedBy`,
+set once in `local.common_tags` and passed into every module. Don't add a fifth
+name segment for something a tag should hold.
+
+**Renaming is a destroy-and-recreate for most resources.** Lambda, ECR, IAM,
+API Gateway, CloudFront functions/OACs, log groups, alarms and SSM parameters
+are free. A Cognito pool loses every account and password, a DynamoDB table
+every row, an S3 bucket every object, an SQS queue its in-flight messages, and
+an SES identity its verification. Renaming a Terraform *address* is free and
+costs nothing when done with a `moved` block — only a change to the
+`name`/`bucket`/`function_name` argument replaces the AWS resource.
 
 ### Infrastructure directory naming
 
@@ -152,7 +169,7 @@ infra/
 - `lifecycle { ignore_changes = [image_uri, environment] }` on Lambda resources — the deploy workflow owns both: `update-function-code` for the image and `update-function-configuration` for env vars. Terraform sets initial values on first creation only.
 
 ### Deployment (CI/CD)
-- **Standard**: GitHub Actions. Filenames follow `<service>-<env>.yaml` (combined deploy) and `<service>-pr.yml` (combined PR workflow) — e.g. `humbugg-prod.yaml`, `scout-pr.yml` — so the service and the trigger environment (PR vs Prod) are visible at a glance. Auxiliary workflows append a scope suffix after the env segment (e.g. `scout-pr-teardown.yaml`, `shared-prod-infra-plan.yaml`).
+- **Standard**: GitHub Actions. Filenames follow `<service>-<env>.yaml` (combined deploy) and `<service>-pr.yml` (combined PR workflow) — e.g. `humbugg-prod.yaml`, `scout-pr.yml` — so the service and the trigger environment (PR vs Prod) are visible at a glance. Auxiliary workflows append a scope suffix after the env segment (e.g. `shared-prod-infra-plan.yaml`).
 - **One combined PR workflow per service**: each service has a single `<service>-pr.yml` that runs on every PR. It validates only — lint, unit tests, Terraform validate, and a build to prove the image compiles. **PR workflows never write to AWS.** There are no ephemeral preview environments; they were removed because the maintenance and teardown cost outweighed their value for a solo repo.
 - **One combined prod deploy per service**: each service has a single `<service>-prod.yaml` with four jobs chained via `needs:`: `detect-changes → build-and-push → deploy-infra → update-lambda + deploy-frontend`. Image build runs **before** Terraform applies because Lambda resources reference `${ecr_repo}:latest` with `lifecycle { ignore_changes = [image_uri, environment] }`, so the image must already exist before Terraform creates the Lambda. Putting build-and-push first eliminates the chicken-and-egg trap on fresh AWS accounts. `update-lambda` then sets env vars and pins the function code to `:${{ github.sha }}` for traceability. This eliminates races between separate infra and app workflows that shared SSM params.
 - **Path filtering**: `dorny/paths-filter@v3` — only deploy when the service's files change

@@ -1,5 +1,5 @@
 variable "name" {
-  description = "Name for the Cognito user pool (e.g. \"scout\" for prod, \"scout-pr-<N>\" for previews)"
+  description = "Name for the Cognito user pool"
   type        = string
 }
 

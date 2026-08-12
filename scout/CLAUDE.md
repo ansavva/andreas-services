@@ -205,7 +205,7 @@ content-only — no WebFetch/WebSearch; our fetcher gathers the pages.)
 
 ## Environment Variables
 
-Secrets live in the `scout-production` / `scout-pr` GitHub Actions environments.
+Secrets live in the `scout-production` GitHub Actions environment.
 Notable additions for the redesign:
 
 | Variable | Where | Purpose |
@@ -215,7 +215,7 @@ Notable additions for the redesign:
 | `SCOUT_ARTIFACTS_BUCKET` / `SCOUT_IMAGES_BUCKET` | Lambda env | S3 buckets (`scout-artifacts-<env>` / `scout-images-<env>`) |
 | `SCOUT_PROCESSOR_FN` | events-api / scheduler env | processor function name for invocations |
 | `SCOUT_RENDERER_FN` | processor env | renderer function name (sync-invoked for every page fetch) |
-| `SCOUT_TABLE_SUFFIX` | Lambda env | `""` in prod, `-pr-<N>` in previews |
+| `SCOUT_CORE_TABLE` / `SCOUT_SETTINGS_TABLE` | Lambda env | DynamoDB table names, passed in by Terraform |
 | `VITE_API_URL` / `VITE_COGNITO_*` | GitHub vars | frontend build |
 
 ## Deployment
@@ -230,10 +230,9 @@ Chromium). `update-lambda` sets env vars and pins all five Lambdas to `:${sha}` 
 `scout-sweep` use the `scout-events-api` image; `scout-source-renderer` uses the
 `scout-renderer` image.
 
-PR previews (`.github/workflows/scout-pr.yml`): validate first
-(`lint-unit-build`: backend pytest + frontend lint/tsc/build), then
-under `infra/envs/pr`, tables/functions suffixed `-pr-<N>`). Teardown destroys
-the per-PR env on PR close.
+PR checks (`.github/workflows/scout-pr.yml`) validate only — backend pytest,
+frontend lint/tsc/build, `terraform fmt`/`validate` and tflint. The workflow
+never writes to AWS; there are no per-PR preview environments.
 
 ## Local development
 

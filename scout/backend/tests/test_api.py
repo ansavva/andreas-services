@@ -8,7 +8,6 @@ import base64
 import boto3
 from moto import mock_dynamodb, mock_s3
 
-os.environ.setdefault("SCOUT_TABLE_SUFFIX", "")
 os.environ.setdefault("SCOUT_ARTIFACTS_BUCKET", "scout-artifacts-test")
 
 from scout_core.services import events  # noqa: E402

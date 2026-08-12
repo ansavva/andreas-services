@@ -14,9 +14,7 @@ name: Scout · Deploy · Prod
 #                          ├─► update-lambda  (env vars + pin Lambdas to :sha)
 #                          └─► deploy-frontend
 #
-# PR previews live in a different environment (scout-pr). Their workflows
-# (scout-pr.yml and scout-pr-teardown.yaml) stay separate. The shared
-# preview infra is deployed as part of scout-pr.yml itself.
+# scout-pr.yml validates pull requests and never writes to AWS.
 
 on:
   push:
@@ -295,14 +293,15 @@ jobs:
           API_URL=$(aws ssm get-parameter --name /scout/prod/api-url \
             --query 'Parameter.Value' --output text)
           jq -n --arg api_url "${API_URL}" \
-            '{Variables: {SCOUT_TABLE_SUFFIX: "", SCOUT_PROCESSOR_FN: "scout-source-run-processor", SCOUT_PUBLIC_API_URL: $api_url}}' \
+            '{Variables: {SCOUT_CORE_TABLE: "scout-core", SCOUT_SETTINGS_TABLE: "scout-settings", SCOUT_PROCESSOR_FN: "scout-source-run-processor", SCOUT_PUBLIC_API_URL: $api_url}}' \
             > /tmp/env-events-api.json
 
           jq -n --arg anthropic "${ANTHROPIC_API_KEY}" \
             --arg client_id "${GMAIL_CLIENT_ID}" --arg client_secret "${GMAIL_CLIENT_SECRET}" \
             --arg refresh_token "${GMAIL_REFRESH_TOKEN}" \
             '{Variables: {
-              SCOUT_TABLE_SUFFIX:     "",
+              SCOUT_CORE_TABLE:       "scout-core",
+              SCOUT_SETTINGS_TABLE:   "scout-settings",
               SCOUT_ARTIFACTS_BUCKET: "scout-artifacts-production",
               SCOUT_IMAGES_BUCKET:    "scout-images-production",
               SCOUT_RENDERER_FN:      "scout-source-renderer",
@@ -312,10 +311,10 @@ jobs:
               GMAIL_REFRESH_TOKEN:    $refresh_token
             }}' > /tmp/env-processor.json
 
-          jq -n '{Variables: {SCOUT_TABLE_SUFFIX: "", SCOUT_PROCESSOR_FN: "scout-source-run-processor"}}' \
+          jq -n '{Variables: {SCOUT_CORE_TABLE: "scout-core", SCOUT_SETTINGS_TABLE: "scout-settings", SCOUT_PROCESSOR_FN: "scout-source-run-processor"}}' \
             > /tmp/env-scheduler.json
 
-          jq -n '{Variables: {SCOUT_TABLE_SUFFIX: ""}}' > /tmp/env-sweep.json
+          jq -n '{Variables: {SCOUT_CORE_TABLE: "scout-core", SCOUT_SETTINGS_TABLE: "scout-settings"}}' > /tmp/env-sweep.json
 
           set_env() {
             aws lambda update-function-configuration \

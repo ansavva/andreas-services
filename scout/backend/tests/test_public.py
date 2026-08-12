@@ -1,12 +1,10 @@
 """Unit tests for the public read/query layer (public.py)."""
 
-import os
 import unittest
 
 import boto3
 from moto import mock_dynamodb
 
-os.environ.setdefault("SCOUT_TABLE_SUFFIX", "")
 
 from scout_core.services import events  # noqa: E402
 from scout_core.services import labels  # noqa: E402

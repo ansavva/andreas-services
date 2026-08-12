@@ -20,8 +20,7 @@ bp = Blueprint("sources", __name__, url_prefix="/api/admin/sources")
 # response cap even after JSON-string escaping.
 _ARTIFACT_CHUNK = 512 * 1024
 
-_SUFFIX = os.environ.get("SCOUT_TABLE_SUFFIX", "")
-_PROCESSOR_FN = os.environ.get("SCOUT_PROCESSOR_FN", f"scout-source-run-processor{_SUFFIX}")
+_PROCESSOR_FN = os.environ.get("SCOUT_PROCESSOR_FN", "scout-source-run-processor")
 
 _lambda_client = None
 

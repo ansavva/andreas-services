@@ -1,12 +1,10 @@
 """Unit tests for event/sub-event image management (images.py)."""
 
-import os
 import unittest
 
 import boto3
 from moto import mock_dynamodb
 
-os.environ.setdefault("SCOUT_TABLE_SUFFIX", "")
 
 from scout_core.services import images  # noqa: E402
 from scout_core.repositories import store  # noqa: E402

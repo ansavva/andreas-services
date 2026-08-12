@@ -117,7 +117,6 @@ All commands run from the repository root:
 | `humbugg/scripts/dev-logs-backend.sh` | Follow the backend container logs; accepts Docker Compose log options such as `--tail 200` |
 | `humbugg/scripts/dev-aws-reset.sh` | Destructive data reset scoped to this machine; run with `--dry-run` first; `--skip-cognito` preserves users |
 | `humbugg/scripts/dev-aws-destroy.sh` | Destroy this machine's AWS resources; the persistent UUID is deliberately retained |
-| `humbugg/scripts/prod-aws-teardown.sh` | **One-time migration.** Destroys every pre-convention prod resource so the deploy workflow rebuilds them under `[project]-[env]-[component]`. Run `--dry-run` first. Delete this script once prod is rebuilt |
 
 `humbugg/scripts/dev-aws-common.sh` is a sourced implementation helper, not a
 user command. AWS commands default to `$AWS_PROFILE`/`default` and

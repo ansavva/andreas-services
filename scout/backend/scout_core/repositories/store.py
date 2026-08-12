@@ -19,9 +19,8 @@ from boto3.dynamodb.conditions import Attr, Key
 
 from scout_core.repositories import dynamodb
 
-_SUFFIX = os.environ.get("SCOUT_TABLE_SUFFIX", "")
-CORE_TABLE = f"scout-core{_SUFFIX}"
-SETTINGS_TABLE = f"scout-settings{_SUFFIX}"
+CORE_TABLE = os.environ.get("SCOUT_CORE_TABLE", "scout-core")
+SETTINGS_TABLE = os.environ.get("SCOUT_SETTINGS_TABLE", "scout-settings")
 
 # ---------------------------------------------------------------------------
 # Entity types (the `entity_type` attribute stamped on every item)
