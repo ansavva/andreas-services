@@ -7,5 +7,5 @@ variable "aws_region" {
 variable "humbugg_role_name" {
   description = "Existing Humbugg backend Lambda execution role"
   type        = string
-  default     = "humbugg-lambda-role-production"
+  default     = "humbugg-prod-api-role"
 }
