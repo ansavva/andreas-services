@@ -14,7 +14,9 @@ server-side** for SEO/OG and fast first paint.
   Renders every page server-side, then calls the backend API for dynamic data.
   Deployed as a Docker **Lambda** (`@react-router/architect` handler) behind
   **CloudFront**; hashed client assets are served from **S3** at `/assets/*`.
-  Consumes the shared **`@ansavva/design-system`** (Base UI + Tailwind v4).
+  Consumes the shared **`@ansavva/design-system`** (React DOM + Tailwind v4)
+  from the external [ansavva/design-system](https://github.com/ansavva/design-system)
+  repo — see the design-system gotcha below.
 - **`backend/`** — Python API Lambda, **Flask + Mangum like storybook/humbugg**
   (`/api/` Blueprint routing in `routes/` → `services`, with persistence in
   `repositories/` and external APIs in `clients/`).
@@ -36,11 +38,42 @@ Browser ──▶ CloudFront (www + apex)
 
 ## Conventions & gotchas
 
+- **`@ansavva/design-system` publishes TypeScript source, not a build.** Its
+  `exports` point straight at `src/*.ts`; there is no `dist`. Three consequences,
+  all wired up already — do not undo them:
+  1. `vite.config.ts` sets `optimizeDeps.include: ['@ansavva/design-system']` so
+     Vite transforms the package. Without it the build dies on a type annotation
+     or JSX *inside* `node_modules`.
+  2. Every component is a `.web.tsx` / `.native.tsx` pair behind one
+     extensionless re-export (`export * from './button'`), and the **consumer's**
+     bundler picks the leaf. Vite's default `resolve.extensions` stop at `.tsx`,
+     so those re-exports resolve to nothing unless the `.web.*` forms come first.
+     `vite.config.ts` sets that order on `resolve.extensions` **and** repeats it
+     under `optimizeDeps.rollupOptions.resolve.extensions` (the dependency
+     optimizer resolves separately); `tsconfig.json` mirrors it as
+     `moduleSuffixes: ['.web', '']` for `tsc`.
+  3. `app/styles/app.css` `@source`s the **package root**, not `dist`, so
+     Tailwind scans the source for the utility classes the components emit.
+     Point it anywhere else and every component renders unstyled.
+  Import only from the package root — never a `.web`/`.native` path, which
+  compiles cleanly and breaks the other platform silently. Base UI and
+  `@floating-ui` are gone as of 0.14.0; the only runtime deps are `clsx` and
+  `tailwind-merge`.
+- **Pin the exact version.** `0.x` caret ranges do not pick up minors, so
+  `^0.14.1` would never see 0.15. Read the package's `CHANGELOG.md` before
+  bumping.
 - **Design system is a devDependency**, bundled into the SSR server build via
-  `vite.config.ts` `ssr.noExternal` (the whole Base UI subtree). So the runtime
-  frontend Lambda image installs only public packages — no GitHub Packages token
-  needed at runtime. Local dev/CI installs need `read:packages`:
-  `.npmrc` uses `${NODE_AUTH_TOKEN}`; CI uses `secrets.GITHUB_TOKEN`.
+  `vite.config.ts` `ssr.noExternal` (the package plus `clsx` and
+  `tailwind-merge`). So the runtime frontend Lambda image installs only public
+  packages — no GitHub Packages token needed at runtime. Local dev/CI installs
+  need `read:packages`: `.npmrc` uses `${NODE_AUTH_TOKEN}`; CI uses
+  `secrets.GITHUB_TOKEN`.
+- **Brand lives in `app/styles/app.css`, never at a call site.** The `@theme`
+  block maps the forest/fern/ivory/linen/brass/clay palette onto the design
+  system's semantic roles (`--color-primary`, `--color-accent`, `--color-ink`,
+  …), and the `[data-theme='dark']` block does the same for dark mode. Both are
+  declared *after* the `theme.css` import, which is what makes them win — no
+  `!important` is needed or present. Never hard-code a hex in a component.
 - **React 19** (RR7 peer). RR **v8** is intentionally NOT used — it requires
   Node 22; this repo/toolchain is Node 20 (also the Lambda base image).
 - **No SES.** Intake submissions are stored in DynamoDB only and reviewed in the

@@ -1,9 +1,11 @@
 @import "tailwindcss";
 @import "@ansavva/design-system/theme.css";
 
-/* Let Tailwind scan the compiled design-system output for the utility classes
-   its components rely on, so they aren't tree-shaken out of our build. */
-@source "../../node_modules/@ansavva/design-system/dist";
+/* Let Tailwind scan the design-system source for the utility classes its
+   components rely on, so they aren't tree-shaken out of our build. The package
+   publishes TypeScript source with no build step, so this points at the package
+   root — there is no `dist`. */
+@source "../../node_modules/@ansavva/design-system";
 
 @theme {
   --font-heading: 'Spectral', ui-serif, Georgia, serif;

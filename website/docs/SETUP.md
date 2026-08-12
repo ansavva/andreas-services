@@ -9,6 +9,13 @@
 - Terraform ≥ 1.5, AWS CLI authenticated.
 - A GitHub token with **`read:packages`** to install `@ansavva/design-system`
   from GitHub Packages: `gh auth refresh -h github.com -s read:packages`.
+  The package is published from the external
+  [ansavva/design-system](https://github.com/ansavva/design-system) repo and
+  ships **TypeScript source with no build step** — `frontend/vite.config.ts`
+  transforms it (`optimizeDeps.include`) and resolves its `.web.tsx` leaves
+  (`resolve.extensions`), and `frontend/app/styles/app.css` `@source`s the
+  package root so Tailwind sees the component classes. Pin the exact version:
+  `0.x` caret ranges do not pick up minors.
 
 ## Local development
 

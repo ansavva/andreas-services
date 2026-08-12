@@ -12,6 +12,10 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    // @ansavva/design-system re-exports an extensionless "./button" and lets the
+    // consumer resolve the leaf. Mirror the bundler's web-first order here, or
+    // tsc reports every component as a missing module.
+    "moduleSuffixes": [".web", ""],
     "jsx": "react-jsx",
     "rootDirs": [".", "./.react-router/types"],
     "baseUrl": ".",
