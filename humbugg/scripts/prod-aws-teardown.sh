@@ -116,22 +116,39 @@ for p in api-url lambda-name ecr-url frontend-lambda-name frontend-ecr-url \
   fi
 done
 
-say "done. Terraform state still references these — run the state cleanup next."
+say "done."
 cat <<'NEXT'
 
-Then, from humbugg/infra/envs/prod on the cutover branch:
+NEXT: clear Terraform state, then let the deploy workflow apply.
 
+  cd humbugg/infra/envs/prod
   terraform init
-  terraform state list | grep -vE 'module\.(certificates|email|billing)' \
-    | xargs -n1 terraform state rm
+  terraform state list | grep -vE 'module\.(email|billing)' \
+    | while IFS= read -r addr; do terraform state rm "$addr"; done
 
-  # keep certificates/email/billing: the ACM cert, SES identity and Route53 DNS
-  # records were NOT torn down above, and removing them from state would orphan
-  # them and then fail to recreate on a name that already exists.
+  Two traps in that command, both learned the hard way:
 
-  terraform plan   # read it: creates only, no destroys
+  * Use the read loop, NOT `xargs`. Addresses from for_each carry index
+    brackets like canonical["A"]; xargs strips the quotes and Terraform
+    rejects `canonical[A]` with "Index value required".
 
-Then let the deploy workflow run, or apply directly.
+  * Preserve module.email and module.billing ONLY. An earlier version of this
+    also preserved module.certificates — which does not exist in state. The
+    certificate lives at module.hosting.aws_acm_certificate.app until the moved
+    block is applied, so preserving the wrong address removed the real one and
+    orphaned the certificate, the CloudFront distribution and the Route53
+    aliases. That is what --orphans exists to clean up.
+
+  Then:
+  terraform plan
+
+  Expect creates only. If it proposes destroying the three
+  module.billing.aws_ssm_parameter.* entries, that is not a real change: each is
+  count = var.stripe_* != "" ? 1 : 0, and the count collapses to 0 when the
+  TF_VAR_stripe_* values are absent. CI supplies them from the humbugg-production
+  environment. Do NOT apply locally without them or you will delete the Stripe
+  credentials from SSM.
+
 NEXT
 
 # ── Orphans ──────────────────────────────────────────────────────────────────
