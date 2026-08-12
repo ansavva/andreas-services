@@ -33,6 +33,6 @@ for key in VITE_APP_ORIGIN; do
 done
 
 [[ -d "$HUMBUGG_DIR/web/node_modules" ]] ||
-  die "Marketing site dependencies are not installed. Run npm install in humbugg/web first."
+  die "Marketing site dependencies are not installed. Run npm install in humbugg/marketing first."
 
 exec npm --prefix "$HUMBUGG_DIR/web" run dev -- "${dev_args[@]}"

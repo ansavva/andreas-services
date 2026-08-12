@@ -7,7 +7,7 @@
 // every type check and unit test — it only shows up as a screen that renders
 // wrong, which is exactly the class of failure CI otherwise cannot see.
 //
-//   humbugg/web  (Vite)   must take .web.tsx   — Tailwind classes over theme.css
+//   humbugg/marketing  (Vite)   must take .web.tsx   — Tailwind classes over theme.css
 //   humbugg/app  (Metro)  must take .native.tsx — RN primitives over the tokens,
 //                                                 rendered by react-native-web
 //
@@ -18,7 +18,7 @@
 //
 // Usage:
 //   node humbugg/scripts/assert-design-system-leaves.mjs native humbugg/app/dist
-//   node humbugg/scripts/assert-design-system-leaves.mjs web   humbugg/web/build
+//   node humbugg/scripts/assert-design-system-leaves.mjs web   humbugg/marketing/build
 //
 // The native mode reads source maps, which is the only trustworthy signal.
 // Grepping the bundle for "react-native-web" is NOT equivalent and must not be

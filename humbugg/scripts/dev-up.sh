@@ -88,7 +88,7 @@ start_service() {
 
 start_service backend "$SCRIPT_DIR/dev-up-backend.sh" \
   --profile "$AWS_PROFILE_VALUE" --region "$AWS_REGION_VALUE"
-start_service web "$SCRIPT_DIR/dev-up-web.sh"
+start_service web "$SCRIPT_DIR/dev-up-marketing.sh"
 start_service app "$SCRIPT_DIR/dev-up-app.sh"
 start_service stripe "$SCRIPT_DIR/dev-up-stripe.sh" --forward-to "$FORWARD_TO" --skip-update
 

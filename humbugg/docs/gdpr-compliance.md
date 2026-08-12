@@ -8,7 +8,7 @@ closes it.
 > **Status:** Humbugg is pre-launch with **no real production users** yet. This is the moment to fix
 > the posture cheaply. Several remediation items below are documentation/records tasks rather than
 > code. Nothing here is legal advice — the policy copy and this analysis should be reviewed by
-> counsel before public launch (see `humbugg/web/src/config/policies` maintainer note).
+> counsel before public launch (see `humbugg/marketing/src/config/policies` maintainer note).
 
 - **Controller:** the Humbugg operating entity (registered business name TBD — placeholder
   `Humbugg` in `frontend/src/config/policies`; confirm before launch).

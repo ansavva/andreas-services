@@ -27,7 +27,7 @@ applicable and accept `--help` for their complete usage.
 | `./humbugg/scripts/dev-aws-setup.sh` | Lower-level AWS setup used by the canonical setup; remains directly runnable | `--profile`, `--region`, `--yes`, `--check` |
 | `./humbugg/scripts/dev-up.sh` | Starts the backend, frontend, and Stripe webhook listener as one supervised session | `--profile`, `--region`, `--forward-to` |
 | `./humbugg/scripts/dev-up-backend.sh` | Starts only the Dockerized .NET API with short-lived AWS credentials | `--profile`, `--region`, plus Docker Compose options |
-| `./humbugg/scripts/dev-up-web.sh` | Starts only the marketing site using `web/.env.local` | accepts React Router/Vite development options |
+| `./humbugg/scripts/dev-up-marketing.sh` | Starts only the marketing site using `web/.env.local` | accepts React Router/Vite development options |
 | `./humbugg/scripts/dev-up-app.sh` | Starts only the product app using `app/.env.local` | defaults to `--web`; pass `--ios`/`--android` for a simulator |
 | `./humbugg/scripts/dev-up-stripe.sh` | Starts only the Stripe CLI listener with Humbugg's event allowlist | `--forward-to`, plus Stripe listener options |
 | `./humbugg/scripts/dev-logs-backend.sh` | Follows the local backend's Docker logs | accepts Docker Compose log options such as `--tail 200` |
@@ -49,7 +49,7 @@ needed to override it.
    ./humbugg/scripts/dev-setup.sh
    export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
    eval "$(./scripts/github-packages-auth.sh --export)"   # sets NODE_AUTH_TOKEN
-   npm --prefix humbugg/web install
+   npm --prefix humbugg/marketing install
    npm --prefix humbugg/app install
    stripe login
    ```
@@ -116,7 +116,7 @@ Follow the backend logs from another terminal with:
 Then start the web application in another terminal:
 
 ```bash
-./humbugg/scripts/dev-up-web.sh
+./humbugg/scripts/dev-up-marketing.sh
 ./humbugg/scripts/dev-up-app.sh
 ```
 
@@ -167,7 +167,7 @@ assets are emitted separately for CloudFront and S3.
 
 ```bash
 cd humbugg/backend && dotnet test Humbugg.slnx
-cd humbugg/web && npm ci && npm run typecheck && npm test && npm run build
+cd humbugg/marketing && npm ci && npm run typecheck && npm test && npm run build
 cd humbugg/app && npm ci && npx tsc --noEmit && npm test && npx expo export -p web
 terraform fmt -check -recursive humbugg/infra
 ```

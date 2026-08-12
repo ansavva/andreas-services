@@ -79,7 +79,7 @@ jobs:
               - 'humbugg/backend/**'
               - '.github/workflows/humbugg-prod.yaml'
             web:
-              - 'humbugg/web/**'
+              - 'humbugg/marketing/**'
               - '.github/workflows/humbugg-prod.yaml'
             app:
               - 'humbugg/app/**'
@@ -124,7 +124,7 @@ jobs:
           scope: '@ansavva'
           cache: npm
           cache-dependency-path: |
-            humbugg/web/package-lock.json
+            humbugg/marketing/package-lock.json
             humbugg/app/package-lock.json
 
       - name: Configure AWS credentials
@@ -166,18 +166,18 @@ jobs:
       - name: Install marketing site dependencies
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: cd humbugg/web && npm ci
+        run: cd humbugg/marketing && npm ci
 
       - name: Build marketing SSR and client assets
         env:
           VITE_APP_BASE_URL: https://www.humbugg.com
           VITE_APP_ORIGIN: https://app.humbugg.com
-        run: cd humbugg/web && npm run build
+        run: cd humbugg/marketing && npm run build
 
       - name: Build & push SSR marketing site
         run: |
           IMAGE="${ECR_REGISTRY}/${MARKETING_ECR_REPO}"
-          cd humbugg/web
+          cd humbugg/marketing
           docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
           docker push "${IMAGE}:${{ github.sha }}"
           docker push "${IMAGE}:latest"
@@ -186,7 +186,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: humbugg-frontend-client
-          path: humbugg/web/build/client
+          path: humbugg/marketing/build/client
           retention-days: 1
 
 

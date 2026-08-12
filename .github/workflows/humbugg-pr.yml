@@ -141,7 +141,7 @@ jobs:
       # only shows up as a screen that renders wrong, so this is the only check
       # that can catch it.
       - name: Assert the web build took the web leaf
-        run: node humbugg/scripts/assert-design-system-leaves.mjs web humbugg/web/build
+        run: node humbugg/scripts/assert-design-system-leaves.mjs web humbugg/marketing/build
 
       - name: Build SSR Lambda image
         run: cd humbugg/marketing && docker build -t humbugg-marketing:ci-verify .

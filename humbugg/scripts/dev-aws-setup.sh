@@ -151,4 +151,4 @@ if command -v docker >/dev/null 2>&1 &&
   ok "The running backend now has refreshed AWS credentials."
 fi
 
-printf '\nStart all Humbugg development services with:\n  ./humbugg/scripts/dev-up.sh --profile %s\n\nOr start them individually with:\n  ./humbugg/scripts/dev-up-backend.sh --profile %s\n  ./humbugg/scripts/dev-up-web.sh\n  ./humbugg/scripts/dev-up-app.sh\n  ./humbugg/scripts/dev-up-stripe.sh\n\nFollow backend logs with:\n  ./humbugg/scripts/dev-logs-backend.sh\n' "$AWS_PROFILE_VALUE" "$AWS_PROFILE_VALUE"
+printf '\nStart all Humbugg development services with:\n  ./humbugg/scripts/dev-up.sh --profile %s\n\nOr start them individually with:\n  ./humbugg/scripts/dev-up-backend.sh --profile %s\n  ./humbugg/scripts/dev-up-marketing.sh\n  ./humbugg/scripts/dev-up-app.sh\n  ./humbugg/scripts/dev-up-stripe.sh\n\nFollow backend logs with:\n  ./humbugg/scripts/dev-logs-backend.sh\n' "$AWS_PROFILE_VALUE" "$AWS_PROFILE_VALUE"

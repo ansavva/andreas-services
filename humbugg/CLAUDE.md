@@ -82,7 +82,7 @@ stripe login
 # Authenticate npm for the private design system package.
 export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
 eval "$(./scripts/github-packages-auth.sh --export)"
-npm --prefix humbugg/web install
+npm --prefix humbugg/marketing install
 npm --prefix humbugg/app install
 
 # Read-only validation of shared tools, .NET, AWS resources, and env files.
@@ -111,12 +111,13 @@ All commands run from the repository root:
 | `humbugg/scripts/dev-aws-setup.sh` | Lower-level AWS provision/check command called by canonical setup; accepts `--profile`, `--region`, `--yes`, `--check` |
 | `humbugg/scripts/dev-up.sh` | Preferred full local startup; accepts `--profile`, `--region`, `--forward-to` |
 | `humbugg/scripts/dev-up-backend.sh` | Backend-only startup; exports temporary AWS credentials into Docker Compose without writing them to disk |
-| `humbugg/scripts/dev-up-web.sh` | Marketing-site-only startup; validates `web/.env.local` and installed dependencies first |
+| `humbugg/scripts/dev-up-marketing.sh` | Marketing-site-only startup; validates `web/.env.local` and installed dependencies first |
 | `humbugg/scripts/dev-up-app.sh` | Product-app-only startup; defaults to `--web`, pass `--ios`/`--android` for a simulator |
 | `humbugg/scripts/dev-up-stripe.sh` | Stripe-only listener for the billing webhook's exact event allowlist; copy its `whsec_...` value into `backend/.env` and restart the backend when running components separately |
 | `humbugg/scripts/dev-logs-backend.sh` | Follow the backend container logs; accepts Docker Compose log options such as `--tail 200` |
 | `humbugg/scripts/dev-aws-reset.sh` | Destructive data reset scoped to this machine; run with `--dry-run` first; `--skip-cognito` preserves users |
 | `humbugg/scripts/dev-aws-destroy.sh` | Destroy this machine's AWS resources; the persistent UUID is deliberately retained |
+| `humbugg/scripts/prod-aws-teardown.sh` | **One-time migration.** Destroys every pre-convention prod resource so the deploy workflow rebuilds them under `[project]-[env]-[component]`. Run `--dry-run` first. Delete this script once prod is rebuilt |
 
 `humbugg/scripts/dev-aws-common.sh` is a sourced implementation helper, not a
 user command. AWS commands default to `$AWS_PROFILE`/`default` and
@@ -127,7 +128,7 @@ To start components separately:
 
 ```bash
 ./humbugg/scripts/dev-up-backend.sh                     # http://localhost:5001
-./humbugg/scripts/dev-up-web.sh                         # http://localhost:5173
+./humbugg/scripts/dev-up-marketing.sh                         # http://localhost:5173
 ./humbugg/scripts/dev-up-app.sh                         # http://localhost:8081
 ./humbugg/scripts/dev-up-stripe.sh                      # forwards billing webhooks
 ./humbugg/scripts/dev-logs-backend.sh                   # follows backend logs
@@ -222,7 +223,7 @@ key) pending merchant-identity review (issue #159). Backend Stripe env vars:
 detect-changes ─► deploy-infra (if humbugg/infra/** changed)
                        │
                        ├─► update-lambda           (backend + marketing SSR env vars, pin to :sha)
-                       ├─► deploy-frontend-assets  (if humbugg/web/** changed OR infra ran)
+                       ├─► deploy-frontend-assets  (if humbugg/marketing/** changed OR infra ran)
                        └─► deploy-app              (if humbugg/app/** changed OR infra ran)
 ```
 

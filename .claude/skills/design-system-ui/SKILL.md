@@ -61,7 +61,7 @@ wrong mental model.
 **Neither bundler picks the right leaf on its own. Both are configured to, and the configuration is
 load-bearing:**
 
-- **Vite** (`humbugg/web`, `website/frontend`) — the default `resolve.extensions` stop at `.tsx`, so
+- **Vite** (`humbugg/marketing`, `website/frontend`) — the default `resolve.extensions` stop at `.tsx`, so
   the package's extensionless `export * from './button'` resolves to *nothing*. The `.web`-suffixed
   forms are listed first in `resolve.extensions` **and** in `optimizeDeps.rollupOptions.resolve`
   (the dependency optimizer resolves separately). Symptom if broken: unresolved component.
