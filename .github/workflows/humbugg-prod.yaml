@@ -309,7 +309,7 @@ jobs:
         run: |
           set -euo pipefail
           jq -n \
-            --arg cors_origin "https://humbugg.com" \
+            --arg cors_origins "https://humbugg.com" \
             --arg cognito_region "${{ env.AWS_REGION }}" \
             --arg cognito_pool_id "${COGNITO_USER_POOL_ID}" \
             --arg cognito_client_id "${COGNITO_CLIENT_ID}" \
@@ -339,7 +339,7 @@ jobs:
             --arg stripe_secret_key "${{ secrets.HUMBUGG_STRIPE_SECRET_KEY }}" \
             --arg stripe_webhook_secret "${{ secrets.HUMBUGG_STRIPE_WEBHOOK_SECRET }}" \
             '{Variables: {
-              CORS_ORIGIN: $cors_origin,
+              CORS_ORIGINS: $cors_origins,
               COGNITO_REGION: $cognito_region,
               COGNITO_USER_POOL_ID: $cognito_pool_id,
               COGNITO_CLIENT_ID: $cognito_client_id,

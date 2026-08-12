@@ -362,6 +362,22 @@ resource "aws_apigatewayv2_route" "backend" {
   authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
+# CORS preflight. A browser sends OPTIONS without an Authorization header, so the JWT
+# authorizer on the ANY route above would 401 the preflight before the Lambda ever ran and
+# every non-simple cross-origin request would fail. This route mirrors the authenticated
+# route's path exactly so it wins route selection (same path, more specific method), and
+# carries authorization_type = NONE so the preflight reaches ASP.NET. ASP.NET's CORS
+# middleware answers it — the API deliberately has no cors_configuration of its own,
+# because a response carrying two Access-Control-Allow-Origin headers is rejected by the
+# browser. One source of CORS headers, and it is the application.
+resource "aws_apigatewayv2_route" "backend_preflight" {
+  api_id    = aws_apigatewayv2_api.backend.id
+  route_key = "OPTIONS /api/{proxy+}"
+
+  target             = "integrations/${aws_apigatewayv2_integration.backend.id}"
+  authorization_type = "NONE"
+}
+
 # Stripe signs the raw request body and cannot present a Cognito JWT. This exact,
 # method-specific route bypasses only the gateway authorizer; ASP.NET still verifies
 # Stripe-Signature before any billing state is read or written.

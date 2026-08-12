@@ -116,7 +116,7 @@ public sealed class SecurityControlsTests
                 new FakeUser(), new FakeProfiles(), Groups, new FakeMembers(members),
                 new MatchingService(), new PlanCatalog(new()), Audit, new FakeProductAnalytics(),
                 new HumbuggSettings(
-                    "us-east-1", "us-east-1", "pool", "client", "https://humbugg.example", "https://humbugg.example", null,
+                    "us-east-1", "us-east-1", "pool", "client", ["https://humbugg.example"], "https://humbugg.example", null,
                     "profiles", "groups", "members", "draws", "audit", "analytics"));
         }
 

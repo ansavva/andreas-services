@@ -48,6 +48,11 @@ output "app_bucket" {
   value       = module.storage.app_bucket_id
 }
 
+output "api_domain" {
+  description = "Public base URL of the backend API on its own domain"
+  value       = module.api_domain.api_base_url
+}
+
 output "cloudfront_distribution_id" {
   description = "CloudFront distribution ID"
   value       = module.hosting.cloudfront_distribution_id

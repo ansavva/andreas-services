@@ -13,6 +13,11 @@ variable "legacy_domain_name" {
   type        = string
 }
 
+variable "certificate_arn" {
+  description = "ARN of the validated us-east-1 certificate used as the CloudFront viewer certificate"
+  type        = string
+}
+
 variable "route53_zone_id" {
   description = "Route53 hosted zone ID"
   type        = string

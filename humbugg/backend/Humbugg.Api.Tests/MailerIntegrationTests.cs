@@ -211,7 +211,7 @@ public sealed class MailerIntegrationTests
         CognitoRegion: "us-east-1",
         CognitoUserPoolId: "pool",
         CognitoClientId: "client",
-        CorsOrigin: "http://localhost",
+        CorsOrigins: ["http://localhost"],
         AppBaseUrl: "http://localhost",
         DynamoDbEndpointUrl: null,
         ProfilesTable: "profiles",

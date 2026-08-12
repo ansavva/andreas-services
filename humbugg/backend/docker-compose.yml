@@ -13,7 +13,7 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
       APP_BASE_URL: http://localhost:5173
-      CORS_ORIGIN: http://localhost:5173
+      CORS_ORIGINS: http://localhost:5173,http://localhost:8081
       HUMBUGG_EMAIL_PROVIDER: mailer
       HUMBUGG_MAILER_BASE_URL: http://host.docker.internal:8026
       HUMBUGG_MAILER_AUTH_MODE: none

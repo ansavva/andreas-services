@@ -49,8 +49,12 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
     });
 });
 builder.Services.AddHttpContextAccessor();
+// The API answers on its own domain (api.humbugg.com), so every browser request is
+// cross-origin and CORS is load-bearing rather than decorative. ASP.NET is the single
+// source of the Access-Control-* headers — API Gateway deliberately emits none of its
+// own, because a browser rejects a response carrying two Allow-Origin headers.
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
-    policy.WithOrigins(settings.CorsOrigin).AllowAnyHeader().AllowAnyMethod()));
+    policy.WithOrigins(settings.CorsOrigins).AllowAnyHeader().AllowAnyMethod()));
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
 {
@@ -214,7 +218,7 @@ public sealed record HumbuggSettings(
     string CognitoRegion,
     string CognitoUserPoolId,
     string CognitoClientId,
-    string CorsOrigin,
+    string[] CorsOrigins,
     string AppBaseUrl,
     string? DynamoDbEndpointUrl,
     string ProfilesTable,
@@ -241,7 +245,7 @@ public sealed record HumbuggSettings(
             Environment.GetEnvironmentVariable("COGNITO_REGION") ?? "us-east-1",
             Environment.GetEnvironmentVariable("COGNITO_USER_POOL_ID") ?? "us-east-1_example",
             Environment.GetEnvironmentVariable("COGNITO_CLIENT_ID") ?? "humbugg-web",
-            Environment.GetEnvironmentVariable("CORS_ORIGIN") ?? "http://localhost:5173",
+            ParseCorsOrigins(Environment.GetEnvironmentVariable("CORS_ORIGINS")),
             appBaseUrl,
             Environment.GetEnvironmentVariable("DYNAMODB_ENDPOINT_URL"),
             Environment.GetEnvironmentVariable("HUMBUGG_PROFILES_TABLE") ?? "humbugg-profiles",
@@ -260,5 +264,20 @@ public sealed record HumbuggSettings(
             (Environment.GetEnvironmentVariable("HUMBUGG_AVATAR_BASE_URL")?.TrimEnd('/')) ?? appBaseUrl,
             Environment.GetEnvironmentVariable("S3_ENDPOINT_URL"),
             Environment.GetEnvironmentVariable("HUMBUGG_BILLING_TABLE") ?? "humbugg-billing");
+    }
+
+    // Local development runs two distinct browser origins against one backend: the Vite
+    // marketing dev server on :5173 and the Expo web dev server on :8081.
+    private static readonly string[] DefaultCorsOrigins =
+        ["http://localhost:5173", "http://localhost:8081"];
+
+    // CORS_ORIGINS is a comma-separated list because the surfaces that call this API live on
+    // separate hosts (www., app., and both dev servers) and Lambda env vars are flat strings.
+    private static string[] ParseCorsOrigins(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return DefaultCorsOrigins;
+        var origins = value.Split(
+            ',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return origins.Length > 0 ? origins : DefaultCorsOrigins;
     }
 }
