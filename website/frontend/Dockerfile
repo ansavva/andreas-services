@@ -1,6 +1,7 @@
 # React Router (framework mode) SSR handler on AWS Lambda.
 # The private @ansavva/design-system is bundled into the server build at build
-# time (see vite.config.ts ssr.noExternal), so this runtime install only needs
+# time (see vite.config.ts ssr.noExternal — the package ships TS source, so it
+# must be transformed and bundled), so this runtime install only needs
 # public packages — no GitHub Packages token required in the image.
 FROM public.ecr.aws/lambda/nodejs:20
 
