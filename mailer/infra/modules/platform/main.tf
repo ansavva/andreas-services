@@ -14,8 +14,8 @@ data "aws_acm_certificate" "wildcard" {
 
 locals {
   name                       = "${var.project}-${var.environment}"
-  humbugg_product_config_set = "${var.project}-humbugg-product-${var.environment}"
-  humbugg_auth_config_set    = "${var.project}-humbugg-auth-${var.environment}"
+  humbugg_product_config_set = "${local.name}-humbugg-product"
+  humbugg_auth_config_set    = "${local.name}-humbugg-auth"
   humbugg_service = {
     sender_name             = "Humbugg"
     sender_address          = var.humbugg_sender_address
@@ -36,6 +36,8 @@ locals {
 # ─── Container repository ────────────────────────────────────────────────────
 
 resource "aws_ecr_repository" "mailer" {
+  # No component segment: one image runs all three functions, so there is no
+  # second repository for a component name to distinguish it from.
   name                 = local.name
   image_tag_mutability = "MUTABLE"
 
@@ -65,7 +67,9 @@ resource "aws_ecr_lifecycle_policy" "mailer" {
 # ─── Private content storage ─────────────────────────────────────────────────
 
 resource "aws_s3_bucket" "content" {
-  bucket_prefix = "mailer-content-${data.aws_caller_identity.current.account_id}-"
+  # S3 names are globally unique, so this one carries the region suffix the
+  # convention reserves for buckets.
+  bucket        = "${local.name}-content-${data.aws_region.current.name}"
   force_destroy = false
   tags          = var.tags
 }
@@ -345,7 +349,7 @@ resource "aws_sesv2_configuration_set" "humbugg_auth" {
 
 resource "aws_sesv2_configuration_set_event_destination" "humbugg_product" {
   configuration_set_name = aws_sesv2_configuration_set.humbugg_product.configuration_set_name
-  event_destination_name = "mailer-feedback"
+  event_destination_name = "${local.name}-feedback"
   event_destination {
     enabled = true
     matching_event_types = [
@@ -358,7 +362,7 @@ resource "aws_sesv2_configuration_set_event_destination" "humbugg_product" {
 
 resource "aws_sesv2_configuration_set_event_destination" "humbugg_auth" {
   configuration_set_name = aws_sesv2_configuration_set.humbugg_auth.configuration_set_name
-  event_destination_name = "mailer-feedback"
+  event_destination_name = "${local.name}-feedback"
   event_destination {
     enabled = true
     matching_event_types = [

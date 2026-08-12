@@ -52,9 +52,9 @@ delivery only, so nothing that matters is lost — it is just not emailed.
 
 ## Humbugg status consumer
 
-`humbugg-email-status-production` consumes only
-`mailer-production-humbugg-status` and updates only
-`humbugg-email-messages`. The handler accepts version 1 status events for the
+`humbugg-prod-email-status` consumes only
+`mailer-prod-humbugg-status` and updates only
+`humbugg-prod-email-messages`. The handler accepts version 1 status events for the
 `humbugg` service, ignores duplicate or stale events, and returns failed SQS
 records for retry. Records contain identifiers, category, normalized status,
 provider message ID, timestamps, and a 90-day TTL. They never contain an email

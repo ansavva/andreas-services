@@ -1,12 +1,13 @@
 locals {
   project     = "mailer"
-  environment = "production"
+  environment = "prod"
   domain_name = "mailer-api.andreas.services"
 
   common_tags = {
     Project     = local.project
     Environment = local.environment
-    ManagedBy   = "Terraform"
+    Owner       = "ansavva"
+    ManagedBy   = "terraform"
   }
 }
 
