@@ -588,7 +588,16 @@ jobs:
         env:
           EXPO_PUBLIC_API_BASE_URL: https://api.humbugg.com
           EXPO_PUBLIC_AWS_REGION: ${{ env.AWS_REGION }}
-        run: cd humbugg/app && npx expo export -p web
+        run: cd humbugg/app && npx expo export -p web --source-maps
+
+      - name: Assert the app build took the native leaf
+        run: node humbugg/scripts/assert-design-system-leaves.mjs native humbugg/app/dist
+
+      # The maps exist only so the assertion above can read them. Publishing them
+      # would put the app's readable source on a public origin, so they go before
+      # anything is synced.
+      - name: Strip source maps before publishing
+        run: find humbugg/app/dist -name '*.map' -delete
 
       # Two passes, because the export mixes lifetimes in one tree. The hashed
       # bundles are immutable; index.html must never be cached or a returning
