@@ -12,10 +12,18 @@ data "aws_region" "current" {}
 # ---------------------------------------------------------------------------
 # ECR — one repo per image (Python API, SSR www)
 # ---------------------------------------------------------------------------
+# A repository name is immutable, so renaming one is a destroy and recreate, and
+# DeleteRepository refuses a repository that still holds images. These hold
+# nothing but CI build output that the next push rebuilds from git, so there is
+# nothing for the guard to protect. Note this only helps the rename AFTER the one
+# that introduces it: Terraform applies the destroy half of a replacement against
+# prior state, so the flag has to already be recorded there. See "Renaming is a
+# destroy-and-recreate" in CLAUDE.md.
 resource "aws_ecr_repository" "api" {
   count                = var.create_ecr ? 1 : 0
   name                 = local.api_name
   image_tag_mutability = "MUTABLE"
+  force_delete         = true
   image_scanning_configuration {
     scan_on_push = true
   }
@@ -26,6 +34,7 @@ resource "aws_ecr_repository" "www" {
   count                = var.create_ecr ? 1 : 0
   name                 = local.www_name
   image_tag_mutability = "MUTABLE"
+  force_delete         = true
   image_scanning_configuration {
     scan_on_push = true
   }
