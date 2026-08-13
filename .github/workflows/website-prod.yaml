@@ -2,7 +2,10 @@ name: Website · Deploy · Prod
 
 # Combined prod deploy for the website service (SSR frontend + Python API).
 #
-#   detect-changes ─► build-and-push (both images, when infra/backend/frontend change)
+#   detect-changes ─► bootstrap-ecr (Terraform creates the two repositories)
+#                          │
+#                          ▼
+#                     build-and-push (both images, when infra/backend/frontend change)
 #                          │            (also uploads build/client for the asset sync)
 #                          ▼
 #                     deploy-infra (terraform apply → SSM outputs)
@@ -73,15 +76,73 @@ jobs:
               - '.github/workflows/website-prod.yaml'
 
   # ---------------------------------------------------------------------------
+  # Create the two image repositories before anything builds. Terraform owns
+  # them, exactly as it does for mailer: the images must exist in ECR before
+  # deploy-infra can create Lambdas that reference ${repo}:latest, and the
+  # repositories must exist before build-and-push can push into them.
+  #
+  # This job used to be an `aws ecr create-repository` step inside
+  # build-and-push, with an import step in deploy-infra to hand the result back
+  # to Terraform. That is what broke #227: the import was guarded on the
+  # Terraform ADDRESS being in state rather than on the repository NAME it held,
+  # so mid-rename the guard saw website-api at the address, declared it already
+  # adopted, skipped the import — and the apply then died trying to create a
+  # website-prod-api the CLI step had already made. Letting Terraform create
+  # them removes the collision instead of teaching a workaround to detect it.
+  # ---------------------------------------------------------------------------
+  bootstrap-ecr:
+    name: Bootstrap ECR
+    needs: detect-changes
+    if: |
+      !cancelled()
+      && (
+        (github.event_name == 'push'
+         && (needs.detect-changes.outputs.infra == 'true'
+             || needs.detect-changes.outputs.backend == 'true'
+             || needs.detect-changes.outputs.frontend == 'true'))
+        || (github.event_name == 'workflow_dispatch' && (inputs.run_infra || inputs.run_app))
+        || github.event_name == 'workflow_run'
+      )
+    runs-on: ubuntu-latest
+    environment: website-production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+
+      - name: Create the Terraform-owned image repositories first
+        run: |
+          terraform -chdir=website/infra/envs/prod init -input=false
+          terraform -chdir=website/infra/envs/prod apply \
+            -auto-approve -input=false \
+            -target=module.compute.aws_ecr_repository.api \
+            -target=module.compute.aws_ecr_repository.www \
+            -target=module.compute.aws_ecr_lifecycle_policy.api \
+            -target=module.compute.aws_ecr_lifecycle_policy.www
+
+  # ---------------------------------------------------------------------------
   # Build both Docker images and push to ECR. Also builds the frontend client
   # bundle and uploads it so the asset sync uses the exact same hashes the
   # server bundle references.
   # ---------------------------------------------------------------------------
   build-and-push:
     name: Build & Push Images
-    needs: detect-changes
+    needs: [detect-changes, bootstrap-ecr]
     if: |
       !cancelled()
+      && needs.bootstrap-ecr.result == 'success'
       && (
         (github.event_name == 'push'
          && (needs.detect-changes.outputs.infra == 'true'
@@ -119,18 +180,6 @@ jobs:
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           echo "ECR_REGISTRY=${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> "$GITHUB_ENV"
-
-      - name: Ensure ECR repositories exist
-        run: |
-          for REPO in website-prod-api website-prod-www; do
-            aws ecr describe-repositories --repository-names "$REPO" \
-              --region "${{ env.AWS_REGION }}" >/dev/null 2>&1 || \
-            aws ecr create-repository \
-              --repository-name "$REPO" \
-              --region "${{ env.AWS_REGION }}" \
-              --image-scanning-configuration scanOnPush=true \
-              --tags Key=Project,Value=website
-          done
 
       - name: Build & push backend (website-prod-api)
         run: |
@@ -171,9 +220,13 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-infra:
     name: Terraform Apply
-    needs: [detect-changes, build-and-push]
+    needs: [detect-changes, bootstrap-ecr, build-and-push]
+    # A failed bootstrap skips build-and-push rather than failing it, so gating
+    # only on build-and-push not being 'failure' would let a full apply run with
+    # no repositories and no images behind it.
     if: |
       !cancelled()
+      && needs.bootstrap-ecr.result == 'success'
       && needs.build-and-push.result != 'failure'
       && (
         (github.event_name == 'push' && needs.detect-changes.outputs.infra == 'true')
@@ -201,28 +254,6 @@ jobs:
 
       - name: Terraform init
         run: terraform -chdir=website/infra/envs/prod init -input=false
-
-      # build-and-push creates the ECR repositories itself when they are
-      # missing, so Terraform would otherwise fail the apply trying to create
-      # repositories that already exist. Adopt them instead. A no-op once they
-      # are in state, which is every run after the first.
-      - name: Adopt bootstrap-created ECR repositories
-        run: |
-          set -euo pipefail
-          adopt() {
-            local addr="$1" repo="$2"
-            if terraform -chdir=website/infra/envs/prod state show "$addr" >/dev/null 2>&1; then
-              echo "already in state: $addr"; return
-            fi
-            if ! aws ecr describe-repositories --repository-names "$repo" \
-                 --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
-              echo "not in AWS, Terraform will create it: $repo"; return
-            fi
-            echo "importing $repo -> $addr"
-            terraform -chdir=website/infra/envs/prod import -input=false "$addr" "$repo"
-          }
-          adopt 'module.compute.aws_ecr_repository.api[0]' website-prod-api
-          adopt 'module.compute.aws_ecr_repository.www[0]' website-prod-www
 
       - name: Terraform apply
         run: terraform -chdir=website/infra/envs/prod apply -auto-approve -input=false

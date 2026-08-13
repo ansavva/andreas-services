@@ -47,7 +47,15 @@ resource "aws_cloudfront_origin_request_policy" "ssr" {
 # ---------------------------------------------------------------------------
 resource "aws_s3_bucket" "assets" {
   bucket = var.assets_bucket_name
-  tags   = var.tags
+
+  # Every object in here is a hashed client asset that deploy-frontend-assets
+  # re-syncs on each deploy, so a rename has nothing to preserve and should not
+  # stop on BucketNotEmpty. As with the ECR repositories, this only takes effect
+  # for a rename after the one that records it — the destroy half of a
+  # replacement reads prior state, not this configuration.
+  force_destroy = true
+
+  tags = var.tags
 }
 
 resource "aws_s3_bucket_public_access_block" "assets" {
@@ -90,6 +98,21 @@ resource "aws_cloudfront_function" "apex_redirect" {
       return request;
     }
   EOT
+
+  # A function name is immutable, so a rename replaces it — and CloudFront
+  # refuses to delete a function while a distribution still references it. With
+  # the default destroy-then-create order Terraform deletes the old function
+  # before it has updated the distribution off it, which is exactly how the
+  # #227 apply failed: "Cannot delete function website-apex-to-www, it is in use
+  # by 1 distributions". Creating first reverses that: new function, then the
+  # distribution update that detaches the old one, then the delete.
+  #
+  # Unlike force_destroy this needs no prior state — it changes Terraform's
+  # ordering, not an argument the provider reads from the old object — so it
+  # takes effect on the very apply that renames the function.
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # ---------------------------------------------------------------------------
