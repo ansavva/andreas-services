@@ -131,13 +131,39 @@ supports tagging gets all four of `Project`, `Environment`, `Owner`, `ManagedBy`
 set once in `local.common_tags` and passed into every module. Don't add a fifth
 name segment for something a tag should hold.
 
-**Renaming is a destroy-and-recreate for most resources.** Lambda, ECR, IAM,
-API Gateway, CloudFront functions/OACs, log groups, alarms and SSM parameters
-are free. A Cognito pool loses every account and password, a DynamoDB table
-every row, an S3 bucket every object, an SQS queue its in-flight messages, and
-an SES identity its verification. Renaming a Terraform *address* is free and
-costs nothing when done with a `moved` block — only a change to the
-`name`/`bucket`/`function_name` argument replaces the AWS resource.
+**Renaming is a destroy-and-recreate for most resources.** Lambda, IAM, API
+Gateway, log groups, alarms and SSM parameters lose nothing. A Cognito pool
+loses every account and password, a DynamoDB table every row, an S3 bucket
+every object, an SQS queue its in-flight messages, and an SES identity its
+verification. Renaming a Terraform *address* is free and costs nothing when
+done with a `moved` block — only a change to the `name`/`bucket`/`function_name`
+argument replaces the AWS resource.
+
+**"Loses nothing" is not the same as "succeeds".** ECR repositories and
+CloudFront functions carry no data worth keeping and still fail the destroy:
+`DeleteRepository` refuses a repository holding images, and CloudFront refuses
+to delete a function, OAC or policy a distribution still references. Both broke
+a prod deploy in August 2026 (#226, #227).
+
+The fix depends on which kind of failure it is, and the difference matters:
+
+- **`force_delete` / `force_destroy` do not work on the rename that adds them.**
+  Terraform applies the destroy half of a replacement against *prior state*, not
+  the new configuration — the destroy node gets the old object with `Config`
+  null — so the provider reads the flag recorded in state and never sees the
+  `true` you just wrote next to the new name. Set the flag, apply, *then*
+  rename. Measured, not assumed: renaming a bucket and setting
+  `force_destroy = true` in one apply fails `BucketNotEmpty`; doing it in two
+  applies succeeds.
+- **`create_before_destroy` does work immediately**, because it changes
+  Terraform's ordering rather than an argument read off the old object. It is
+  the fix for anything a live resource still references — CloudFront functions,
+  OACs and origin request policies attached to a distribution.
+
+So: give every ECR repository `force_delete = true` and every regenerable
+bucket `force_destroy = true` *when you create it*, and give CloudFront config
+objects `create_before_destroy`. Retrofitting them during a rename is too late,
+and the recovery is out-of-band state surgery.
 
 ### Infrastructure directory naming
 
