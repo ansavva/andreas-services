@@ -41,6 +41,12 @@ resource "aws_ecr_repository" "mailer" {
   name                 = local.name
   image_tag_mutability = "MUTABLE"
 
+  # A repository rename is a destroy and recreate, and DeleteRepository refuses
+  # a repository that still holds images. Everything in here is CI build output
+  # rebuilt from git by the next push, so there is nothing to preserve and no
+  # reason to make a rename need a human with the console open.
+  force_delete = true
+
   image_scanning_configuration {
     scan_on_push = true
   }
