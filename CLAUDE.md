@@ -18,6 +18,40 @@ aws sts get-caller-identity
 all `andreas.services` and `humbugg.com` infrastructure. If a command fails with
 `NoCredentials` or an expired-session error, re-authenticate with `aws login`.
 
+**Running Terraform locally? Export the credentials first.**
+
+```bash
+eval "$(aws configure export-credentials --format env)"
+```
+
+`aws login` writes its session to a cache only the AWS CLI reads. Terraform's
+S3 **backend** resolves it; the AWS **provider** does not. So Terraform
+half-works, and which half you get depends on the subcommand:
+
+| Subcommand | Needs | Without the export |
+| --- | --- | --- |
+| `init`, `state list`, `state show`, `state rm`, `state mv` | backend | works |
+| `import`, `plan`, `apply`, `destroy` | provider | fails |
+
+The failure reads as an environment problem and is not:
+
+```
+Error: No valid credential sources found
+failed to refresh cached credentials, no EC2 IMDS role found,
+operation error ec2imds: GetMetadata, ... dial tcp 169.254.169.254:80: connect: host is down
+```
+
+**Do not read that as an expired session and run `aws login` again.** `aws sts
+get-caller-identity` succeeding proves nothing about it — the CLI is the half
+that works. This cost a half-finished state migration in August 2026: a
+`state rm` succeeded, the `terraform import` on the very next line failed, and
+the error was misread as session expiry three times before the split was found.
+
+Sessions are also short (under ~15 minutes), so export at the point of use
+rather than once at the start of a long session. In CI none of this applies:
+`aws-actions/configure-aws-credentials` puts real credentials in the
+environment, which is why the pipeline never sees this.
+
 Prefer the CLI for read-only investigation of live
 infrastructure (CloudFront, S3, Lambda, DynamoDB, CloudWatch Logs, SSM, etc.) when
 diagnosing issues. Note: outbound HTTP to
