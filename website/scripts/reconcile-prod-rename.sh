@@ -52,6 +52,16 @@ if [[ ! -d "${CHDIR}" ]]; then
   exit 1
 fi
 
+# Fail here rather than three commands in. `terraform state rm` can succeed off
+# the backend while the very next `terraform import` dies calling ECR, which is
+# exactly how the first run of this script stranded api[0]: removed from state,
+# never re-imported, and the deploy then tried to create a repository that
+# already existed.
+if ! aws sts get-caller-identity >/dev/null 2>&1; then
+  echo "AWS credentials are not valid. Run 'aws login', then run this again." >&2
+  exit 1
+fi
+
 if (( ! DRY_RUN )); then
   read -r -p 'This edits live prod Terraform state. Type "reconcile" to continue: ' reply
   [[ "${reply}" == "reconcile" ]] || { echo "Aborted."; exit 1; }
@@ -59,8 +69,18 @@ fi
 
 terraform -chdir="${CHDIR}" init -input=false >/dev/null
 
+# One authoritative read of the state. Under `set -e` an unreachable backend
+# aborts here, loudly. That matters more than it looks: the per-address
+# `state show 2>/dev/null` this replaced could not tell "the address is absent"
+# from "I could not reach S3", and the resume branch below acts on exactly that
+# difference — it would have read a credentials failure as "already removed,
+# import it" and imported over a healthy state.
+STATE_LIST="$(terraform -chdir="${CHDIR}" state list)"
+
+state_has() { grep -qxF "$1" <<<"${STATE_LIST}"; }
+
 state_holds() { # address -> prints the name/bucket recorded at that address
-  terraform -chdir="${CHDIR}" state show "$1" 2>/dev/null |
+  terraform -chdir="${CHDIR}" state show "$1" |
     awk '$1=="name"||$1=="bucket"{print $3; exit}' | tr -d '"'
 }
 
@@ -69,20 +89,44 @@ state_holds() { # address -> prints the name/bucket recorded at that address
 #    Terraform could, so the create half collides with a repository that already
 #    exists. Forget the old repository at this address and adopt the new one;
 #    the plan then has no ECR work left to do.
-if [[ "$(state_holds 'module.compute.aws_ecr_repository.api[0]')" == "website-api" ]]; then
-  run terraform -chdir="${CHDIR}" state rm 'module.compute.aws_ecr_repository.api[0]'
-  run terraform -chdir="${CHDIR}" import -input=false \
-    'module.compute.aws_ecr_repository.api[0]' website-prod-api
-else
-  echo "skip: api[0] no longer holds website-api"
-fi
+#    Branch on what the address holds NOW rather than assuming a clean start.
+#    The empty case is not hypothetical: it is where a run that died between the
+#    state rm and the import leaves things, and treating it as "nothing to do"
+#    is what let the first attempt report success on a re-run while the deploy
+#    stayed broken.
+api_addr='module.compute.aws_ecr_repository.api[0]'
+api_holds=""
+state_has "${api_addr}" && api_holds="$(state_holds "${api_addr}")"
+case "${api_holds}" in
+  website-prod-api)
+    echo "skip: api[0] already holds website-prod-api"
+    ;;
+  website-api)
+    run terraform -chdir="${CHDIR}" state rm 'module.compute.aws_ecr_repository.api[0]'
+    run terraform -chdir="${CHDIR}" import -input=false \
+      'module.compute.aws_ecr_repository.api[0]' website-prod-api
+    ;;
+  "")
+    if aws ecr describe-repositories --repository-names website-prod-api >/dev/null 2>&1; then
+      echo "api[0] is empty and website-prod-api exists — resuming the import"
+      run terraform -chdir="${CHDIR}" import -input=false \
+        'module.compute.aws_ecr_repository.api[0]' website-prod-api
+    else
+      echo "skip: website-prod-api does not exist, Terraform will create it"
+    fi
+    ;;
+  *)
+    echo "api[0] holds an unexpected repository (${api_holds}); stopping." >&2
+    exit 1
+    ;;
+esac
 
 # 2. aws_ecr_repository.frontend[0] is an address the configuration no longer
 #    has — #227 renamed it to .www, which already applied. Terraform wants to
 #    destroy website-frontend and cannot: 13 images, force_delete false in
 #    state, and no configuration left to carry a new value. Forgetting it is the
 #    only move that converges.
-if [[ -n "$(state_holds 'module.compute.aws_ecr_repository.frontend[0]')" ]]; then
+if state_has 'module.compute.aws_ecr_repository.frontend[0]'; then
   run terraform -chdir="${CHDIR}" state rm 'module.compute.aws_ecr_repository.frontend[0]'
 else
   echo "skip: frontend[0] already out of state"
