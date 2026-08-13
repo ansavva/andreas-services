@@ -62,6 +62,28 @@ if ! aws sts get-caller-identity >/dev/null 2>&1; then
   exit 1
 fi
 
+# That check passing is NOT enough, which is the whole reason this block exists.
+# `aws login` writes its session to a CLI-only cache. Terraform's S3 backend
+# resolves it — which is why `state list` and `state rm` worked — but the AWS
+# PROVIDER does not, so `terraform import` dies here and nowhere else:
+#
+#   Error: No valid credential sources found
+#   failed to refresh cached credentials, no EC2 IMDS role found
+#
+# That is what stranded api[0]: the state rm landed, the import did not.
+# Exporting the CLI's resolved session into the environment puts it somewhere
+# both halves of Terraform look. Sessions are also short — under 15 minutes —
+# so export at the point of use rather than trusting an inherited shell.
+if [[ -z "${AWS_ACCESS_KEY_ID:-}" ]]; then
+  if ! creds="$(aws configure export-credentials --format env 2>/dev/null)"; then
+    echo "Could not export credentials for Terraform's AWS provider." >&2
+    echo "Run: eval \"\$(aws configure export-credentials --format env)\"" >&2
+    exit 1
+  fi
+  eval "${creds}"
+  export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+fi
+
 if (( ! DRY_RUN )); then
   read -r -p 'This edits live prod Terraform state. Type "reconcile" to continue: ' reply
   [[ "${reply}" == "reconcile" ]] || { echo "Aborted."; exit 1; }
