@@ -1,5 +1,9 @@
 # Developer / CI toolchain scripts
 
+`scripts/deploy.sh` triggers production deploys — see
+[Triggering a deploy](#triggering-a-deploy) at the end. Everything else here is
+setup.
+
 Idempotent bootstrap scripts that install the tools needed to build and test
 this monorepo. Safe to re-run: every tool is checked before install, so an
 already-installed dependency is never reinstalled. **Homebrew is the installer
@@ -111,8 +115,45 @@ The script never writes a token into a committed file — the repo `.npmrc` uses
 token with the scope in the first place (a GitHub UI / `gh` action); the script
 does everything after that.
 
+## Triggering a deploy
+
+`scripts/deploy.sh` dispatches a prod workflow and watches it to completion. The
+services are `humbugg`, `mailer`, `scout`, `storybook`, `website`, and `shared`
+for the shared-infra apply.
+
+```bash
+./scripts/deploy.sh website              # full deploy, watch until it finishes
+./scripts/deploy.sh humbugg --app-only   # skip Terraform, ship code only
+./scripts/deploy.sh mailer --infra-only  # Terraform only
+./scripts/deploy.sh --status             # last run per service, triggers nothing
+./scripts/deploy.sh website --dry-run    # print the gh command, run nothing
+```
+
+Push to `main` already deploys, with path filtering. This is for what push
+cannot express:
+
+- **Re-running after an out-of-band fix.** A deploy that failed on Terraform
+  state does not re-run itself once the state is repaired.
+- **A service whose files did not change.** The path filter skips it, which is
+  usually right and occasionally not — a service can need an apply because
+  something it reads through a `data` source moved.
+- **Cross-service ordering.** Services read each other's values from SSM through
+  data sources, so a change in one is only picked up by the other's *next*
+  apply. After mailer republishes its parameters, humbugg has to run to see
+  them. It exits non-zero on failure so the ordering can be a `&&` chain:
+
+  ```bash
+  ./scripts/deploy.sh mailer && ./scripts/deploy.sh humbugg
+  ```
+
+`--ref` deploys a branch and asks for confirmation first: the push trigger is
+gated to `main`, but `workflow_dispatch` will apply any ref against production.
+
 ## Adding a new service
 
 Give each service its own `<service>/scripts/dev-setup.sh` for stack-specific
 runtimes (following `humbugg/scripts/dev-setup.sh`), and keep cross-cutting
 tools in the shared `scripts/dev-setup.sh`.
+
+Add it to `workflow_for()` in `scripts/deploy.sh` too — the service list there is
+the one place the script cannot derive.
