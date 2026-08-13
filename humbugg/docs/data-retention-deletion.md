@@ -8,10 +8,10 @@ plan (Free, Plus, Work) is retained and deleted identically.
 
 ## What "no automatic expiry" means
 
-- The `humbugg-profiles`, `humbugg-groups`, `humbugg-groupmembers`, `humbugg-draws`, and
-  `humbugg-audit-events` DynamoDB tables have **no TTL**. Nothing stamps an `expires_at` on exchange
+- The `humbugg-prod-profiles`, `humbugg-prod-groups`, `humbugg-prod-groupmembers`, `humbugg-prod-draws`, and
+  `humbugg-prod-audit-events` DynamoDB tables have **no TTL**. Nothing stamps an `expires_at` on exchange
   or profile records. (See `infra/modules/storage/main.tf` and `infra/README.md`.)
-- The only TTL in the service is on `humbugg-email-messages` (transactional delivery state, 90 days).
+- The only TTL in the service is on `humbugg-prod-email-messages` (transactional delivery state, 90 days).
   That is an operational record, not exchange or profile content, and is intentionally left in place.
 
 ## User-controlled deletion
@@ -47,13 +47,13 @@ deletion request. The operation is **idempotent** and safe to retry.
 
 | Data | Treatment on account deletion |
 |---|---|
-| **Profile** (`humbugg-profiles`) | **Deleted.** Display name and all profile fields are removed. |
+| **Profile** (`humbugg-prod-profiles`) | **Deleted.** Display name and all profile fields are removed. |
 | **Product-profile content** (wishlist, avoidances, mailing address) | **Deleted / anonymized** together with the membership rows below. |
 | **Groups the user organizes** | **Deleted in full** — memberships, draw, and group record. Other members lose the group; this is the defined trade-off for organizer deletion (Humbugg does not auto-transfer ownership). |
 | **Memberships in groups the user only participates in — open group** | **Deleted.** The row is removed and any exclusion pair referencing it is cleaned up. |
 | **Memberships in groups the user only participates in — completed draw** | **Anonymized, not deleted.** The row is kept (its `member_id` is referenced by the completed draw) but `user_id` is repointed to an irreversible pseudonym and the display name, wishlist, avoidances, and address are erased. This preserves the integrity of a draw other people already rely on while removing the personal data behind it. |
-| **Completed draws** (`humbugg-draws`) | **Left intact** where the group survives (giver→recipient mapping stays valid against the anonymized membership row); **deleted** with the group when the deleting user was the organizer. |
-| **Audit trail** (`humbugg-audit-events`) | **Never deleted.** The append-only trail (what happened, to what, when, correlation id, redacted metadata) is preserved. Only the **actor reference** is anonymized: `actor_user_id` is rewritten from the Cognito subject to the same irreversible pseudonym across every record the user authored. This is the single, deliberately narrow mutation allowed on audit records (`IAuditActorAnonymizer`); the append-only write path (`IAuditRepository`) is untouched. |
+| **Completed draws** (`humbugg-prod-draws`) | **Left intact** where the group survives (giver→recipient mapping stays valid against the anonymized membership row); **deleted** with the group when the deleting user was the organizer. |
+| **Audit trail** (`humbugg-prod-audit-events`) | **Never deleted.** The append-only trail (what happened, to what, when, correlation id, redacted metadata) is preserved. Only the **actor reference** is anonymized: `actor_user_id` is rewritten from the Cognito subject to the same irreversible pseudonym across every record the user authored. This is the single, deliberately narrow mutation allowed on audit records (`IAuditActorAnonymizer`); the append-only write path (`IAuditRepository`) is untouched. |
 | **Organizations / Work membership** | The user's link to any organization is severed by the membership handling above and by actor anonymization in the audit trail. Deletion does not require, and cannot be blocked by, an organization administrator. |
 | **Billing / financial records** | **Retained, separated from product-profile data.** Required financial records (invoices, payment/entitlement history) are kept under their own legal retention obligation and are **not** part of the product-profile store this flow erases. Deletion anonymizes the person's link to them (via audit actor anonymization); it never erases the financial record itself. Humbugg does not currently persist a first-party billing ledger in DynamoDB — see the Maintainer TODOs in the PR for confirming the retention rule and the store of record for financial data. |
 

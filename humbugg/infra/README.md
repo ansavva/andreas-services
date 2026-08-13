@@ -26,7 +26,7 @@ after deployment.
 
 ## Audit trail
 
-`humbugg-audit-events` is the standard, append-only audit log for security- and
+`humbugg-prod-audit-events` is the standard, append-only audit log for security- and
 privacy-relevant exchange actions on **every** plan (Free, Plus, and Work — auditing is
 never gated on a plan). The application records an event for group creation/deletion and
 updates, participant joins/leaves/removals and participation changes, exclusion changes,
@@ -59,14 +59,14 @@ account; there is no product or API surface that returns audit records. Access i
 the same account IAM/SSO controls as every other production DynamoDB table.
 
 **Retention.** Retention is intentionally indefinite: the table has **no TTL**, so records are
-never expired automatically (unlike `humbugg-email-messages`, which expires after 90 days).
+never expired automatically (unlike `humbugg-prod-email-messages`, which expires after 90 days).
 Point-in-time recovery retains a 35-day continuous backup window for restore. A maintainer who
 later adopts a fixed retention policy should add a `ttl` block on an `expires_at` attribute and
 have the application stamp it — see the Maintainer TODOs in the PR.
 
 ## Product analytics
 
-`humbugg-analytics-events` stores the **privacy-safe product-analytics funnel** — a stream separate
+`humbugg-prod-analytics-events` stores the **privacy-safe product-analytics funnel** — a stream separate
 from the security audit trail. Events record only `plan`, a `group_id` surrogate key, an
 `idempotency_key`, `occurred_at`, and an allow-listed map of aggregate dimensions (counts, plan
 codes, day spans). Wishlist text, addresses, email addresses, invite tokens, and assignments are
@@ -102,7 +102,7 @@ The backend Lambda has no direct SES, S3, SQS-send, or SMTP permissions. The
 shared Mailer platform grants it `execute-api:Invoke` only for Humbugg's message
 and attachment-registration routes. A separate least-privilege status Lambda
 consumes Humbugg's Mailer status queue and updates
-`humbugg-email-messages`. The table records normalized state and expires records
+`humbugg-prod-email-messages`. The table records normalized state and expires records
 after 90 days.
 
 AWS names Cognito's custom-SES mode `DEVELOPER`; it is unrelated to Humbugg's
