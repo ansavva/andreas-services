@@ -16,7 +16,7 @@ andreas-services/
 ├── terraform/                           # ROOT LEVEL
 │   ├── main.tf                         # Route53 zone + ACM cert
 │   ├── outputs.tf                      # Shared outputs
-│   └── backend.tf                      # State: root/terraform.tfstate
+│   └── backend.tf                      # State: shared/terraform.tfstate
 │
 ├── storybook/
 │   └── terraform/                       # SERVICE LEVEL
@@ -44,7 +44,7 @@ andreas-services/
 - Route53 Hosted Zone for `andreas.services`
 - ACM Wildcard Certificate for `*.andreas.services`
 
-**State**: `s3://andreas-services-terraform-state/root/terraform.tfstate`
+**State**: `s3://andreas-services-terraform-state/shared/terraform.tfstate`
 
 **Why?**
 - Single SSL certificate for all subdomains (storybook, humbugg, etc.)
@@ -85,7 +85,7 @@ terraform apply
 **State**: Separate file per service per environment
 ```
 s3://andreas-services-terraform-state/
-├── root/terraform.tfstate
+├── shared/terraform.tfstate
 ├── storybook/dev/terraform.tfstate
 ├── storybook/prod/terraform.tfstate
 ├── humbugg/dev/terraform.tfstate
@@ -184,7 +184,7 @@ All state files are stored in S3:
 
 | State File | Contains | Managed By |
 |------------|----------|------------|
-| `root/terraform.tfstate` | Route53 zone, ACM cert | Root terraform |
+| `shared/terraform.tfstate` | Route53 zone, ACM cert | Root terraform |
 | `storybook/dev/terraform.tfstate` | Storybook dev resources | Storybook dev |
 | `storybook/prod/terraform.tfstate` | Storybook prod resources | Storybook prod |
 | `humbugg/prod/terraform.tfstate` | Humbugg prod resources | Humbugg prod |

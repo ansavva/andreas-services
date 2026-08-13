@@ -80,7 +80,7 @@ The root `infra/` directory owns **cross-cutting AWS resources** shared by all s
 > **Note:** The VPC, NAT Gateway, and DocumentDB cluster have been removed. All services use DynamoDB (IAM-controlled, no VPC required), which eliminates the ~$230/month NAT Gateway cost.
 
 State is in S3: `s3://andreas-services-terraform-state/`
-- Shared: `root/terraform.tfstate`
+- Shared: `shared/terraform.tfstate`
 - Per-service: `<service>/<env>/terraform.tfstate` (e.g. `humbugg/prod/`, `scout/prod/`)
 
 Services reference shared resources via Terraform data sources — never duplicate them:

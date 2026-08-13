@@ -51,7 +51,7 @@ Benefits:
 infra/                        # ROOT LEVEL (this directory)
 ├── main.tf                  # Route53 zone + ACM cert
 ├── outputs.tf               # Exports zone_id, cert_arn
-└── backend.tf               # S3 state: root/terraform.tfstate
+└── backend.tf               # S3 state: shared/terraform.tfstate
 
 storybook/infra/             # SERVICE LEVEL
 └── modules/hosting/
@@ -165,12 +165,12 @@ After `terraform apply`, these outputs are available (run from `envs/shared`):
 ## State Management
 
 - **Backend**: S3 bucket `andreas-services-terraform-state`
-- **State Key**: `root/terraform.tfstate`
+- **State Key**: `shared/terraform.tfstate`
 - **Separate from services**: Each service has its own state file
 
 ```
 s3://andreas-services-terraform-state/
-├── root/terraform.tfstate              # Shared infrastructure (this)
+├── shared/terraform.tfstate            # Shared infrastructure (this)
 ├── storybook/dev/terraform.tfstate     # Storybook dev
 ├── storybook/prod/terraform.tfstate    # Storybook prod
 └── humbugg/prod/terraform.tfstate      # Humbugg prod (future)
