@@ -248,14 +248,14 @@ public sealed record HumbuggSettings(
             ParseCorsOrigins(Environment.GetEnvironmentVariable("CORS_ORIGINS")),
             appBaseUrl,
             Environment.GetEnvironmentVariable("DYNAMODB_ENDPOINT_URL"),
-            Environment.GetEnvironmentVariable("HUMBUGG_PROFILES_TABLE") ?? "humbugg-profiles",
-            Environment.GetEnvironmentVariable("HUMBUGG_GROUPS_TABLE") ?? "humbugg-groups",
-            Environment.GetEnvironmentVariable("HUMBUGG_GROUPMEMBERS_TABLE") ?? "humbugg-groupmembers",
-            Environment.GetEnvironmentVariable("HUMBUGG_DRAWS_TABLE") ?? "humbugg-draws",
-            Environment.GetEnvironmentVariable("HUMBUGG_AUDIT_EVENTS_TABLE") ?? "humbugg-audit-events",
-            Environment.GetEnvironmentVariable("HUMBUGG_ANALYTICS_EVENTS_TABLE") ?? "humbugg-analytics-events",
+            RequiredTable("HUMBUGG_PROFILES_TABLE"),
+            RequiredTable("HUMBUGG_GROUPS_TABLE"),
+            RequiredTable("HUMBUGG_GROUPMEMBERS_TABLE"),
+            RequiredTable("HUMBUGG_DRAWS_TABLE"),
+            RequiredTable("HUMBUGG_AUDIT_EVENTS_TABLE"),
+            RequiredTable("HUMBUGG_ANALYTICS_EVENTS_TABLE"),
             Environment.GetEnvironmentVariable("HUMBUGG_EMAIL_PROVIDER") ?? "capture",
-            Environment.GetEnvironmentVariable("HUMBUGG_EMAIL_MESSAGES_TABLE") ?? "humbugg-email-messages",
+            RequiredTable("HUMBUGG_EMAIL_MESSAGES_TABLE"),
             (Environment.GetEnvironmentVariable("HUMBUGG_MAILER_BASE_URL") ??
                 "http://host.docker.internal:8026").TrimEnd('/'),
             Environment.GetEnvironmentVariable("HUMBUGG_MAILER_AUTH_MODE") ?? "none",
@@ -263,8 +263,27 @@ public sealed record HumbuggSettings(
             Environment.GetEnvironmentVariable("HUMBUGG_APP_BUCKET") ?? "",
             (Environment.GetEnvironmentVariable("HUMBUGG_AVATAR_BASE_URL")?.TrimEnd('/')) ?? appBaseUrl,
             Environment.GetEnvironmentVariable("S3_ENDPOINT_URL"),
-            Environment.GetEnvironmentVariable("HUMBUGG_BILLING_TABLE") ?? "humbugg-billing");
+            RequiredTable("HUMBUGG_BILLING_TABLE"));
     }
+
+    // Table names are per-environment and carry no safe default: prod, each
+    // developer's isolated dev stack, and any future environment all name them
+    // differently. Substituting a guess for a missing variable points the
+    // service at a table that does not exist and turns a misconfigured deploy
+    // into a runtime failure far from its cause. Two of the names this used to
+    // fall back to (humbugg-audit-events, humbugg-billing) were pre-rename
+    // tables that have since been deleted outright.
+    //
+    // The deploy workflow sets all eight; dev-aws-setup.sh writes all eight
+    // into humbugg/backend/.env from Terraform outputs. A missing one means the
+    // environment is genuinely misconfigured, so fail at startup and say which.
+    private static string RequiredTable(string variable) =>
+        Environment.GetEnvironmentVariable(variable) is { } value && !string.IsNullOrWhiteSpace(value)
+            ? value.Trim()
+            : throw new InvalidOperationException(
+                $"{variable} is not set. DynamoDB table names are per-environment and have no default. " +
+                "In CI the deploy workflow sets it; locally run humbugg/scripts/dev-aws-setup.sh, " +
+                "which writes the table names from Terraform outputs into humbugg/backend/.env.");
 
     // Local development runs two distinct browser origins against one backend: the Vite
     // marketing dev server on :5173 and the Expo web dev server on :8081.
