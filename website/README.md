@@ -26,7 +26,7 @@ website/
 ├── frontend/     # React Router SSR app + Dockerfile (Lambda handler)
 ├── backend/      # Python API Lambda (website_core) + Dockerfile
 ├── infra/        # Terraform modules + envs/prod
-├── scripts/      # create-admin-user.sh, reconcile-prod-rename.sh (one-time)
+├── scripts/      # create-admin-user.sh
 └── docs/SETUP.md # first-time setup + deploy notes
 ```
 
