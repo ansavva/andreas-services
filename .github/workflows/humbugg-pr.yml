@@ -87,11 +87,24 @@ jobs:
 
       - name: Smoke test backend runtime and health
         run: |
+          # The DynamoDB table names are required at startup — HumbuggSettings
+          # refuses to guess them, because a guessed name silently targets a
+          # table that does not exist. Nothing here touches DynamoDB (the smoke
+          # test only calls /health), so these are placeholders that just have
+          # to be present.
           docker run --rm -d \
             --name humbugg-backend-smoke \
             -p 5088:8080 \
             --entrypoint dotnet \
             -e ASPNETCORE_URLS=http://+:8080 \
+            -e HUMBUGG_PROFILES_TABLE=ci-smoke-profiles \
+            -e HUMBUGG_GROUPS_TABLE=ci-smoke-groups \
+            -e HUMBUGG_GROUPMEMBERS_TABLE=ci-smoke-groupmembers \
+            -e HUMBUGG_DRAWS_TABLE=ci-smoke-draws \
+            -e HUMBUGG_AUDIT_EVENTS_TABLE=ci-smoke-audit-events \
+            -e HUMBUGG_ANALYTICS_EVENTS_TABLE=ci-smoke-analytics-events \
+            -e HUMBUGG_EMAIL_MESSAGES_TABLE=ci-smoke-email-messages \
+            -e HUMBUGG_BILLING_TABLE=ci-smoke-billing \
             humbugg-backend:ci-verify Humbugg.Api.dll
           trap 'docker rm -f humbugg-backend-smoke >/dev/null 2>&1 || true' EXIT
           for attempt in {1..20}; do
