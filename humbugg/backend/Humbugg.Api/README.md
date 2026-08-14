@@ -56,7 +56,7 @@ accessible HTML and a complete plain-text alternative with no marketing copy.
 Callers provide a durable event ID. The template combines that event ID with
 the category and recipient to produce a stable application message ID. Before
 submission, the service conditionally reserves that ID in
-`humbugg-email-messages`; repeated or concurrent delivery attempts are skipped,
+`humbugg-prod-email-messages`; repeated or concurrent delivery attempts are skipped,
 while an admission failure can be retried with the same ID. Mailer owns durable
 queueing, SES delivery, suppression, and feedback. A dedicated status Lambda
 records normalized outcomes in the same table with 90-day expiry. The ledger

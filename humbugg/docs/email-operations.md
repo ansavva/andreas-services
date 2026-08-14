@@ -9,7 +9,7 @@ recovery.
 ## Essential vs non-essential email (opt-out)
 
 Each account has a `non_essential_emails_enabled` preference (default **on**),
-stored on the `humbugg-profiles` row, editable from **Settings → Email
+stored on the `humbugg-prod-profiles` row, editable from **Settings → Email
 notifications**, and exposed on `GET`/`PUT /api/me`. It governs whether Humbugg
 sends that account **non-essential** product email.
 
@@ -60,7 +60,7 @@ records for retry. Records contain identifiers, category, normalized status,
 provider message ID, timestamps, and a 90-day TTL. They never contain an email
 address, subject, body, filename, or provider diagnostic.
 
-Investigate the `humbugg-email-status-errors-production` alarm together with
+Investigate the `humbugg-prod-email-status-errors` alarm together with
 the Mailer status-queue age and DLQ alarms. After fixing the handler or its
 permissions, redrive the Mailer Humbugg status DLQ to its source queue. The
 handler's ordering and event-ID conditions make redrive safe.
@@ -68,7 +68,7 @@ handler's ordering and event-ID conditions make redrive safe.
 ## Cognito
 
 AWS calls its custom-SES mode `DEVELOPER`; the name does not refer to Humbugg's
-development environment. The `humbugg-production` Cognito pool uses that mode
+development environment. The `humbugg-prod` Cognito pool uses that mode
 so Cognito sends signup and recovery messages from `no-reply@humbugg.com`
 through this AWS account's SES identity. These messages still originate in
 Cognito and do not pass through the Mailer API or its send queue.
@@ -87,7 +87,7 @@ unless its owner has agreed to receive the messages.
 
 The production workflow sends to the SES success, bounce, and complaint mailbox
 simulators through the authentication configuration set. It waits for
-`delivery`, `bounce`, and `complaint` records in `humbugg-email-messages`.
+`delivery`, `bounce`, and `complaint` records in `humbugg-prod-email-messages`.
 Simulator mail does not go to a real recipient.
 
 Product sends can be stopped without disabling authentication mail by setting:
