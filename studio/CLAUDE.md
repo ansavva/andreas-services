@@ -89,6 +89,21 @@ the pipeline adds a field, a parser becomes a liar.
 
 ## Conventions & gotchas
 
+- **The API takes the ID token, never the access token.** A REST
+  `COGNITO_USER_POOLS` authorizer only reads the incoming token as an *access*
+  token when the method declares `authorization_scopes`. This one declares none
+  — and cannot usefully, since the pool has no resource server and Amplify's SRP
+  flow mints only `aws.cognito.signin.user.admin` — so it validates an
+  *identity* token. Send `session.tokens.idToken` (`apis/client.ts`). The
+  failure mode is the confusing one: sign-in succeeds, the app renders, and
+  every `/api` call 401s.
+- **An authorizer rejection carries no CORS headers unless you add them.** It is
+  generated before the integration runs, so Flask's `CORS(...)` never sees it
+  and the MOCK preflight only covers the OPTIONS. `modules/api_gateway` sets
+  `aws_api_gateway_gateway_response` for `UNAUTHORIZED` and `ACCESS_DENIED`;
+  without them a 401 surfaces in the SPA as an opaque CORS failure with no
+  status to act on. Both are in the deployment trigger — a gateway response
+  needs a redeploy to take effect.
 - **Presigned URLs die with the Lambda's credentials, not with `ExpiresIn`.** A
   URL signed by temporary credentials stops working when those rotate, whatever
   expiry was requested. `STUDIO_PRESIGN_TTL_SECONDS` defaults to 900 and the

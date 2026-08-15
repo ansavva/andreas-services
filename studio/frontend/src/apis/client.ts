@@ -17,6 +17,13 @@ export class ApiError extends Error {
 /**
  * Authenticated GET against the studio API.
  *
+ * **The ID token, not the access token.** A REST API `COGNITO_USER_POOLS`
+ * authorizer with no `authorization_scopes` on the method authorizes against an
+ * *identity* token; hand it a Cognito access token — which carries `client_id`
+ * and `token_use: "access"` rather than the `aud`/`token_use: "id"` the
+ * authorizer checks — and every call 401s while sign-in itself looks perfectly
+ * healthy. Same choice `website` and `scout` make against the same authorizer.
+ *
  * The token is fetched per request rather than cached: Amplify already caches
  * and refreshes it internally, and reading it fresh means a long-idle tab picks
  * up a rotated token instead of sending a stale one.
@@ -30,7 +37,7 @@ export async function apiGet<T>(path: string, params?: Record<string, string | u
   const headers: Record<string, string> = { Accept: "application/json" };
   if (isAuthConfigured) {
     const session = await fetchAuthSession();
-    const token = session.tokens?.accessToken?.toString();
+    const token = session.tokens?.idToken?.toString();
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 

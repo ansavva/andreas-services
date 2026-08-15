@@ -36,7 +36,8 @@ interface AuthContextValue {
   beginReset(email: string): Promise<void>;
   finishReset(email: string, code: string, password: string): Promise<void>;
   logout(): Promise<void>;
-  accessToken(): Promise<string>;
+  /** The token the API accepts — see the note in `apis/client.ts`. */
+  idToken(): Promise<string>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -111,9 +112,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setNewPasswordRequired(false);
       },
 
-      async accessToken() {
+      async idToken() {
         const session = await fetchAuthSession();
-        const token = session.tokens?.accessToken?.toString();
+        const token = session.tokens?.idToken?.toString();
         if (!token) throw new Error("Not signed in");
         return token;
       },
