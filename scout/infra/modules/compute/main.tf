@@ -20,15 +20,8 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 resource "aws_ecr_repository" "events_api" {
-  count = var.create_ecr ? 1 : 0
-  # NOT yet renamed to the convention, deliberately. Replacing an ECR repository
-  # destroys the images it holds, and the Lambdas below reference
-  # "<repo>:latest" — so a repo rename in this apply would create empty repos
-  # and every Lambda creation would fail with no such image. The rename lands in
-  # CI instead, where build-and-push populates the new repos before apply runs.
-  # force_delete is already in state (see the earlier flags-only apply), so that
-  # rename is unblocked whenever it happens.
-  name                 = "scout-events-api"
+  count                = var.create_ecr ? 1 : 0
+  name                 = "${local.name_prefix}-events-api"
   image_tag_mutability = "MUTABLE"
 
   # DeleteRepository refuses a repository that still holds images, which fails
@@ -62,9 +55,8 @@ resource "aws_ecr_lifecycle_policy" "events_api" {
 }
 
 resource "aws_ecr_repository" "renderer" {
-  count = var.create_ecr ? 1 : 0
-  # Deferred for the same reason as the events-api repository above.
-  name                 = "scout-renderer"
+  count                = var.create_ecr ? 1 : 0
+  name                 = "${local.name_prefix}-renderer"
   image_tag_mutability = "MUTABLE"
 
   force_delete = true

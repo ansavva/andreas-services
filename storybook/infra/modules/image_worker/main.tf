@@ -6,9 +6,10 @@ locals {
 }
 
 resource "aws_ecr_repository" "worker" {
-  # Deferred for the same reason as the backend repository (see compute).
-  name                 = "storybook-image-normalization-production"
+  name                 = local.name
   image_tag_mutability = "MUTABLE"
+
+  force_delete = true
 
   image_scanning_configuration {
     scan_on_push = true
