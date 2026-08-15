@@ -313,7 +313,13 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     }
   }
 
-  # SSM — infra workflows write outputs; code workflows read them
+  # SSM — infra workflows write outputs; code workflows read them.
+  #
+  # This is the ONLY resource-scoped statement in this policy; every other one
+  # is `resources = ["*"]`. So a new service that writes an SSM parameter needs
+  # a line added below, and forgetting it fails nowhere until the very end of
+  # that service's first `terraform apply` — after the CloudFront distribution
+  # has already spent three minutes creating. Studio hit exactly that (#240).
   statement {
     effect = "Allow"
     actions = [
@@ -331,6 +337,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
       "arn:aws:ssm:*:*:parameter/humbugg/*",
       "arn:aws:ssm:*:*:parameter/mailer/*",
       "arn:aws:ssm:*:*:parameter/website/*",
+      "arn:aws:ssm:*:*:parameter/studio/*",
     ]
   }
 

@@ -278,10 +278,17 @@ boto3.client('s3', aws_access_key_id='AKIA...', aws_secret_access_key='...')
    - `<service>-pr.yml` — PR checks only (lint, test, Terraform validate, Docker build verification). No AWS writes.
    - `<service>-prod.yaml` — single combined deploy (detect-changes → deploy-infra → deploy-backend + deploy-frontend), with `concurrency: { group: <service>-prod, cancel-in-progress: false }`, `workflow_dispatch` inputs `run_infra` and `run_app`, and a `workflow_run` trigger on `Shared infra · Terraform apply · Prod`.
    Use path filtering, OIDC auth, and SSM params for cross-job values.
-4. Use Vite for the frontend (not CRA)
-5. Add TypeScript
-6. Add a `CLAUDE.md` inside the service directory with service-specific context
-7. Document subdomain in the service README (e.g., `events.andreas.services`)
+4. **Add `arn:aws:ssm:*:*:parameter/<service>/*` to the SSM statement in
+   `infra/envs/shared/main.tf`.** It is the only resource-scoped statement in the
+   CI role's policy, and it is applied by a *different* workflow, so forgetting it
+   is invisible until the end of the new service's first `terraform apply` — which
+   by then has already created the CloudFront distribution. Add it in the same PR
+   as the service, and expect the shared apply to run before the service deploy
+   can succeed.
+5. Use Vite for the frontend (not CRA)
+6. Add TypeScript
+7. Add a `CLAUDE.md` inside the service directory with service-specific context
+8. Document subdomain in the service README (e.g., `events.andreas.services`)
 
 ## Branch Conventions
 
