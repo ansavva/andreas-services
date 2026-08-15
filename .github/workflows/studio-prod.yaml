@@ -1,0 +1,377 @@
+name: Studio · Deploy · Prod
+
+# Combined prod deploy for studio.
+#
+# DAG (the image is a prerequisite of Terraform's Lambda creation, so the ECR
+# bootstrap and the image build both run before the full apply — that is what
+# keeps a first deploy into an empty account from deadlocking on
+# "Lambda needs an image / the image needs a repository"):
+#
+#   detect-changes ─► bootstrap-ecr ─► build-and-push ─► deploy-infra
+#                                                            │
+#                                                            ├─► update-lambda
+#                                                            └─► deploy-frontend
+#
+# Two surfaces come out of this: studio.andreas.services (the Vite SPA on
+# S3 + CloudFront) and studio-api.andreas.services (the Flask Lambda).
+#
+# studio-pr.yml validates pull requests and never writes to AWS.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'studio/**'
+      - '.github/workflows/studio-prod.yaml'
+  workflow_dispatch:
+    inputs:
+      run_infra:
+        description: 'Run the deploy-infra job'
+        type: boolean
+        default: true
+      run_app:
+        description: 'Run update-lambda and deploy-frontend'
+        type: boolean
+        default: true
+  workflow_run:
+    workflows: ["Shared infra · Terraform apply · Prod"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: studio-prod
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  API_ECR_REPO: studio-prod-api
+  API_LAMBDA_NAME: studio-prod-api
+
+jobs:
+  detect-changes:
+    name: Detect Changes
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      infra: ${{ steps.filter.outputs.infra }}
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name == 'push'
+      - uses: dorny/paths-filter@v4
+        if: github.event_name == 'push'
+        id: filter
+        with:
+          filters: |
+            infra:
+              - 'studio/infra/**'
+              - '.github/workflows/studio-prod.yaml'
+            backend:
+              - 'studio/backend/**'
+              - '.github/workflows/studio-prod.yaml'
+            frontend:
+              - 'studio/frontend/**'
+              - '.github/workflows/studio-prod.yaml'
+
+  # ---------------------------------------------------------------------------
+  # Create only the ECR repository, so the image has somewhere to land before
+  # the full apply tries to create a Lambda that references it.
+  # ---------------------------------------------------------------------------
+  bootstrap-ecr:
+    name: Bootstrap ECR
+    needs: detect-changes
+    if: |
+      !cancelled()
+      && (
+        (github.event_name == 'push'
+         && (needs.detect-changes.outputs.infra == 'true'
+             || needs.detect-changes.outputs.backend == 'true'
+             || needs.detect-changes.outputs.frontend == 'true'))
+        || (github.event_name == 'workflow_dispatch' && (inputs.run_infra || inputs.run_app))
+        || github.event_name == 'workflow_run'
+      )
+    runs-on: ubuntu-latest
+    environment: studio-production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+
+      - name: Create the Terraform-owned image repository first
+        run: |
+          terraform -chdir=studio/infra/envs/prod init -input=false
+          terraform -chdir=studio/infra/envs/prod apply \
+            -auto-approve -input=false \
+            -target=module.compute.aws_ecr_repository.api \
+            -target=module.compute.aws_ecr_lifecycle_policy.api
+
+  # ---------------------------------------------------------------------------
+  # Build and push the API image.
+  # ---------------------------------------------------------------------------
+  build-and-push:
+    name: Build & Push Image
+    needs: [detect-changes, bootstrap-ecr]
+    if: |
+      !cancelled()
+      && needs.bootstrap-ecr.result == 'success'
+    runs-on: ubuntu-latest
+    environment: studio-production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set ECR registry
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "ECR_REGISTRY=${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> "$GITHUB_ENV"
+
+      - name: Build & push backend (studio-prod-api)
+        run: |
+          set -euo pipefail
+          IMAGE="${ECR_REGISTRY}/${{ env.API_ECR_REPO }}"
+          docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" studio/backend
+          docker push "${IMAGE}:${{ github.sha }}"
+          docker push "${IMAGE}:latest"
+
+  # ---------------------------------------------------------------------------
+  # Terraform apply.
+  # ---------------------------------------------------------------------------
+  deploy-infra:
+    name: Terraform Apply
+    needs: [detect-changes, bootstrap-ecr, build-and-push]
+    # A failed bootstrap skips build-and-push rather than failing it, so gating
+    # only on build-and-push not being 'failure' would let a full apply run with
+    # no repository and no image behind it.
+    if: |
+      !cancelled()
+      && needs.bootstrap-ecr.result == 'success'
+      && needs.build-and-push.result != 'failure'
+      && (
+        (github.event_name == 'push' && needs.detect-changes.outputs.infra == 'true')
+        || (github.event_name == 'workflow_dispatch' && inputs.run_infra)
+        || github.event_name == 'workflow_run'
+      )
+    runs-on: ubuntu-latest
+    environment: studio-production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform init
+        run: terraform -chdir=studio/infra/envs/prod init -input=false
+
+      - name: Terraform apply
+        run: terraform -chdir=studio/infra/envs/prod apply -auto-approve -input=false
+
+      - name: Write outputs to SSM
+        run: |
+          set -euo pipefail
+          tf() { terraform -chdir=studio/infra/envs/prod output -raw "$1"; }
+          put() { aws ssm put-parameter --overwrite --type String --name "$1" --value "$2"; }
+          put /studio/prod/app-bucket            "$(tf app_bucket_name)"
+          put /studio/prod/cf-dist-id            "$(tf cloudfront_distribution_id)"
+          put /studio/prod/media-bucket          "$(tf media_bucket_name)"
+          put /studio/prod/cognito-user-pool-id  "$(tf cognito_user_pool_id)"
+          put /studio/prod/cognito-client-id     "$(tf cognito_user_pool_client_id)"
+
+  # ---------------------------------------------------------------------------
+  # Set the Lambda's env vars and pin its code to :sha.
+  # ---------------------------------------------------------------------------
+  update-lambda:
+    name: Update Lambda Function
+    needs: [detect-changes, build-and-push, deploy-infra]
+    # Deploy the freshly-built image whenever the build succeeded and infra did
+    # not fail. deploy-infra legitimately *skips* on app-only changes (it is
+    # gated on infra paths), so gating on its success would strand every
+    # backend-only image in ECR, never repointing the Lambda.
+    if: |
+      !cancelled()
+      && needs.build-and-push.result == 'success'
+      && needs.deploy-infra.result != 'failure'
+      && (
+        (github.event_name == 'workflow_dispatch' && inputs.run_app)
+        || github.event_name == 'push'
+        || github.event_name == 'workflow_run'
+      )
+    runs-on: ubuntu-latest
+    environment: studio-production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set ECR registry
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "ECR_REGISTRY=${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> "$GITHUB_ENV"
+
+      - name: Update Lambda env vars
+        run: |
+          set -euo pipefail
+          get() { aws ssm get-parameter --name "/studio/prod/${1}" --query Parameter.Value --output text; }
+          MEDIA_BUCKET=$(get media-bucket)
+
+          jq -n --arg bucket "${MEDIA_BUCKET}" \
+                --arg prefix "media/" \
+                --arg origin "https://studio.andreas.services" \
+            '{Variables: {
+              STUDIO_MEDIA_BUCKET:      $bucket,
+              STUDIO_MEDIA_ROOT_PREFIX: $prefix,
+              STUDIO_ALLOWED_ORIGIN:    $origin
+            }}' > /tmp/env-api.json
+
+          aws lambda update-function-configuration \
+            --function-name "${{ env.API_LAMBDA_NAME }}" \
+            --region "${{ env.AWS_REGION }}" --environment file:///tmp/env-api.json
+          aws lambda wait function-updated \
+            --function-name "${{ env.API_LAMBDA_NAME }}" --region "${{ env.AWS_REGION }}"
+
+      - name: Update Lambda function code
+        run: |
+          set -euo pipefail
+          aws lambda update-function-code \
+            --function-name "${{ env.API_LAMBDA_NAME }}" \
+            --image-uri "${ECR_REGISTRY}/${{ env.API_ECR_REPO }}:${{ github.sha }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --output table --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
+          aws lambda wait function-updated \
+            --function-name "${{ env.API_LAMBDA_NAME }}" --region "${{ env.AWS_REGION }}"
+
+      - name: Smoke-check the API
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' https://studio-api.andreas.services/api/health || true)
+            [ "$code" = "200" ] && { echo "health: 200"; exit 0; }
+            echo "health: ${code} (attempt ${attempt})"; sleep 10
+          done
+          echo "API did not return 200 from /api/health"; exit 1
+
+  # ---------------------------------------------------------------------------
+  # Build the SPA and sync it to S3.
+  #
+  # Built here rather than in build-and-push because Vite inlines every VITE_*
+  # value at build time, and the Cognito ids those need come out of the apply.
+  # ---------------------------------------------------------------------------
+  deploy-frontend:
+    name: Deploy Frontend
+    needs: [detect-changes, deploy-infra]
+    if: |
+      !cancelled()
+      && needs.deploy-infra.result != 'failure'
+      && ((github.event_name == 'workflow_dispatch' && inputs.run_app)
+          || (github.event_name == 'push'
+              && (needs.detect-changes.outputs.frontend == 'true'
+                  || needs.deploy-infra.result == 'success'))
+          || (github.event_name == 'workflow_run'
+              && needs.deploy-infra.result == 'success'))
+    runs-on: ubuntu-latest
+    environment: studio-production
+    permissions:
+      id-token: write
+      contents: read
+      packages: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@ansavva'
+          cache: npm
+          cache-dependency-path: studio/frontend/package-lock.json
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Read infrastructure values from SSM
+        run: |
+          set -euo pipefail
+          get() { aws ssm get-parameter --name "/studio/prod/${1}" \
+            --query Parameter.Value --output text; }
+
+          echo "S3_BUCKET=$(get app-bucket)"   >> "$GITHUB_ENV"
+          echo "CF_DIST_ID=$(get cf-dist-id)"  >> "$GITHUB_ENV"
+          echo "VITE_API_URL=https://studio-api.andreas.services"        >> "$GITHUB_ENV"
+          echo "VITE_AWS_REGION=${{ env.AWS_REGION }}"                   >> "$GITHUB_ENV"
+          echo "VITE_COGNITO_USER_POOL_ID=$(get cognito-user-pool-id)"   >> "$GITHUB_ENV"
+          echo "VITE_COGNITO_CLIENT_ID=$(get cognito-client-id)"         >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: cd studio/frontend && npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build frontend
+        run: cd studio/frontend && npm run build
+
+      - name: Sync hashed assets (long cache)
+        run: |
+          aws s3 sync studio/frontend/dist/ "s3://${S3_BUCKET}/" \
+            --region "${{ env.AWS_REGION }}" \
+            --delete \
+            --cache-control "public,max-age=31536000,immutable" \
+            --exclude "*.html"
+
+      - name: Sync HTML (no cache)
+        run: |
+          aws s3 sync studio/frontend/dist/ "s3://${S3_BUCKET}/" \
+            --region "${{ env.AWS_REGION }}" \
+            --cache-control "no-cache,no-store,must-revalidate" \
+            --exclude "*" --include "*.html"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${CF_DIST_ID}" --paths '/*' \
+            --output table --query 'Invalidation.{Id:Id,Status:Status}'

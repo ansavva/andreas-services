@@ -68,6 +68,7 @@ CLI mutations, to avoid IaC drift.
 | `storybook/` | AI portrait studio | Flask + React/Vite/HeroUI + Lambda (Docker) + DynamoDB |
 | `humbugg/` | Gift-exchange platform | ASP.NET Core 10 (C# 14) + React/Vite (marketing, `www`) + Expo/Expo Router (product app, `app`) + Lambda (Docker) + DynamoDB |
 | `scout/` | Events from Gmail | Python Lambdas + React/Vite/TS + DynamoDB |
+| `studio/` | Media browser over the x-harness S3 library | Flask + React/Vite/TS + Lambda (Docker) + Cognito (no database) |
 | `infra/` | Shared infrastructure | Terraform |
 
 ## Shared Infrastructure (`infra/`)

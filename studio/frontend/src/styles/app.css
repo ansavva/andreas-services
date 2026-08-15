@@ -1,0 +1,125 @@
+@import "tailwindcss";
+@import "@ansavva/design-system/theme.css";
+
+/* Let Tailwind scan the design-system source for the utility classes its
+   components rely on, so they aren't tree-shaken out of our build. The package
+   publishes TypeScript source with no build step, so this points at the package
+   root — there is no `dist`. */
+@source "../../node_modules/@ansavva/design-system";
+
+/*
+ * STUDIO IS DARK-ONLY, AND THAT IS WHY THE PALETTE IS DECLARED TWICE.
+ *
+ * `index.html` pins `data-theme="dark"` on <html> and nothing ever toggles it,
+ * so the `[data-theme='dark']` block below is what actually paints. The same
+ * values are repeated in `@theme` so that a component reading the role directly
+ * — before or outside that selector — can never pick up the design system's
+ * light defaults and flash white over a photograph. Both blocks come after the
+ * theme.css import, which is what makes them win; no `!important` is needed.
+ *
+ * The palette itself is deliberately near-monochrome. This app's entire job is
+ * showing images and video, so the chrome carries almost no chroma and the
+ * media is the only saturated thing on screen. The one accent is a cool blue
+ * used for focus, selection and the active view toggle.
+ */
+
+@theme {
+  --font-heading: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --color-bg: #08090a;
+  --color-card: #111315;
+  --color-surface-alt: #1a1d20;
+  --color-ink: #f2f3f5;
+  --color-brand: #f2f3f5;
+  --color-muted: rgb(242 243 245 / 0.62);
+  --color-line: rgb(242 243 245 / 0.12);
+
+  --color-primary: #5b9dff;
+  --color-primary-text: #08090a;
+  --color-accent: #5b9dff;
+  --color-success: #39b17e;
+  --color-warning: #d2a857;
+  --color-danger: #e27f79;
+
+  --color-primary-hover: color-mix(in srgb, var(--color-primary) 88%, white 12%);
+  --color-primary-active: color-mix(in srgb, var(--color-primary) 84%, black 16%);
+  --color-accent-hover: color-mix(in srgb, var(--color-accent) 88%, white 12%);
+  --color-danger-hover: color-mix(in srgb, var(--color-danger) 88%, white 12%);
+}
+
+[data-theme='dark'] {
+  --color-bg: #08090a;
+  --color-card: #111315;
+  --color-surface-alt: #1a1d20;
+  --color-ink: #f2f3f5;
+  --color-brand: #f2f3f5;
+  --color-muted: rgb(242 243 245 / 0.62);
+  --color-line: rgb(242 243 245 / 0.12);
+
+  --color-primary: #5b9dff;
+  --color-primary-text: #08090a;
+  --color-accent: #5b9dff;
+  --color-success: #39b17e;
+  --color-warning: #d2a857;
+  --color-danger: #e27f79;
+
+  --color-primary-hover: color-mix(in srgb, var(--color-primary) 88%, white 12%);
+  --color-primary-active: color-mix(in srgb, var(--color-primary) 84%, black 16%);
+  --color-accent-hover: color-mix(in srgb, var(--color-accent) 88%, white 12%);
+  --color-danger-hover: color-mix(in srgb, var(--color-danger) 88%, white 12%);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+  /* The viewer paints black behind fullscreen media; asking the browser for dark
+     form controls and scrollbars keeps the chrome from going pale around it. */
+  color-scheme: dark;
+}
+
+/* The reel is a scroll-snap column of full-viewport panes. `overscroll-contain`
+   stops a flick at either end from bouncing the page behind it, which on iOS
+   otherwise pulls the whole app down mid-scroll. */
+.reel-scroller {
+  scroll-snap-type: y mandatory;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.reel-pane {
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+}
+
+/* Hide scrollbars in immersive surfaces without losing scrollability. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* A checkerboard so transparent PNGs (mr-p/reference) read as transparent
+   rather than as black-on-black. */
+.alpha-checker {
+  background-image:
+    linear-gradient(45deg, rgb(255 255 255 / 0.04) 25%, transparent 25%),
+    linear-gradient(-45deg, rgb(255 255 255 / 0.04) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgb(255 255 255 / 0.04) 75%),
+    linear-gradient(-45deg, transparent 75%, rgb(255 255 255 / 0.04) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reel-scroller {
+    scroll-behavior: auto;
+  }
+}

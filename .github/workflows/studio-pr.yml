@@ -1,0 +1,146 @@
+name: Studio · PR
+
+# Validation-only PR checks for the studio service (no AWS writes):
+# backend unit tests + a Docker build of the Lambda image, frontend
+# lint/typecheck/build, and Terraform fmt/validate.
+
+on:
+  pull_request:
+    paths:
+      - 'studio/**'
+      - '.github/workflows/studio-pr.yml'
+
+concurrency:
+  group: studio-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'studio/backend/**'
+              - '.github/workflows/studio-pr.yml'
+            frontend:
+              - 'studio/frontend/**'
+              - '.github/workflows/studio-pr.yml'
+            infra:
+              - 'studio/infra/**'
+              - '.github/workflows/studio-pr.yml'
+
+  backend:
+    name: Backend — tests + image
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Poetry
+        run: pipx install poetry==2.2.1
+
+      - name: Install dependencies
+        run: cd studio/backend && poetry install --no-root --no-interaction
+
+      - name: Lint
+        run: pipx run ruff check studio/backend
+
+      - name: Run tests
+        run: cd studio/backend && poetry run pytest -q
+
+      - name: Docker build (packaging check)
+        run: cd studio/backend && docker build -t studio-api:ci .
+
+  frontend:
+    name: Frontend — lint/typecheck/build
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@ansavva'
+          cache: npm
+          cache-dependency-path: studio/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: cd studio/frontend && npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lint
+        run: cd studio/frontend && npm run lint
+
+      - name: Typecheck
+        run: cd studio/frontend && npx tsc --noEmit
+
+      - name: Build
+        run: cd studio/frontend && npm run build
+
+      # The design system ships every component as a .web/.native pair behind
+      # one extensionless export, and picking the wrong leaf COMPILES CLEANLY —
+      # it only shows up as an unstyled page at runtime. Auditing the source map
+      # is the only trustworthy signal, so the build is not considered passing
+      # until the bundle is proven to hold web leaves and no native ones.
+      - name: Assert the web design-system leaves resolved
+        run: |
+          cd studio/frontend
+          npx vite build --sourcemap >/dev/null
+          node --input-type=module -e '
+            import { readFileSync, readdirSync } from "node:fs";
+            const dir = "dist/assets";
+            const maps = readdirSync(dir).filter((f) => f.endsWith(".js.map"));
+            const sources = maps.flatMap((f) => JSON.parse(readFileSync(`${dir}/${f}`, "utf8")).sources);
+            const ds = sources.filter((s) => s.includes("design-system"));
+            const web = ds.filter((s) => s.includes(".web."));
+            const native = ds.filter((s) => s.includes(".native."));
+            console.log(`design-system sources: ${ds.length} (web ${web.length}, native ${native.length})`);
+            if (native.length) { console.error("Native leaves leaked into the web bundle:", native); process.exit(1); }
+            if (!web.length) { console.error("No .web leaves resolved — check resolve.extensions ordering."); process.exit(1); }
+          '
+
+  infra:
+    name: Infra — fmt + validate
+    needs: detect-changes
+    if: needs.detect-changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform fmt
+        run: terraform fmt -recursive -check studio/infra
+
+      # No AWS credentials here by design, so the backend is skipped and this
+      # checks configuration validity only — never state, never a plan.
+      - name: Terraform validate
+        run: |
+          terraform -chdir=studio/infra/envs/prod init -backend=false -input=false
+          terraform -chdir=studio/infra/envs/prod validate
