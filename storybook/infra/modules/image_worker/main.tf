@@ -2,11 +2,12 @@
 # Image normalization worker Lambda + ECR + SQS trigger
 
 locals {
-  name = "${var.project}-image-normalization-${var.environment}"
+  name = "${var.project}-${var.environment}-image-normalization"
 }
 
 resource "aws_ecr_repository" "worker" {
-  name                 = local.name
+  # Deferred for the same reason as the backend repository (see compute).
+  name                 = "storybook-image-normalization-production"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {

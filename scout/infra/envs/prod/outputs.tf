@@ -9,12 +9,12 @@ output "s3_bucket" {
 }
 
 output "core_table_name" {
-  description = "scout-core DynamoDB table name"
+  description = "scout-prod-core DynamoDB table name"
   value       = module.data.core_table_name
 }
 
 output "settings_table_name" {
-  description = "scout-settings DynamoDB table name"
+  description = "scout-prod-settings DynamoDB table name"
   value       = module.data.settings_table_name
 }
 

@@ -19,8 +19,25 @@ from boto3.dynamodb.conditions import Attr, Key
 
 from scout_core.repositories import dynamodb
 
-CORE_TABLE = os.environ.get("SCOUT_CORE_TABLE", "scout-core")
-SETTINGS_TABLE = os.environ.get("SCOUT_SETTINGS_TABLE", "scout-settings")
+def _required_env(name: str) -> str:
+    """Resolve a resource name from the environment, or fail loudly.
+
+    Deliberately no default. A plausible-looking fallback (the pre-rename table
+    name, say) turns a missing env var into silent reads and writes against the
+    wrong resource; an exception at import time surfaces the misconfiguration
+    while it is still cheap to fix.
+    """
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(
+            f"{name} is not set. Terraform sets it on the Lambda; "
+            "local runs and tests must set it explicitly."
+        )
+    return value
+
+
+CORE_TABLE = _required_env("SCOUT_CORE_TABLE")
+SETTINGS_TABLE = _required_env("SCOUT_SETTINGS_TABLE")
 
 # ---------------------------------------------------------------------------
 # Entity types (the `entity_type` attribute stamped on every item)

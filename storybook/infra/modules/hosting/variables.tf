@@ -1,3 +1,8 @@
+variable "environment" {
+  description = "Deployment environment, second segment of every resource name (prod/dev)"
+  type        = string
+}
+
 # modules/hosting/variables.tf
 
 variable "project" {

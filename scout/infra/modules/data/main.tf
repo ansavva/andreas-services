@@ -1,6 +1,8 @@
 locals {
-  core_table     = "scout-core"
-  settings_table = "scout-settings"
+  name_prefix = "${var.project}-${var.environment}"
+
+  core_table     = "${local.name_prefix}-core"
+  settings_table = "${local.name_prefix}-settings"
 }
 
 # Single core table holding the connected entity graph: sources, source-runs,

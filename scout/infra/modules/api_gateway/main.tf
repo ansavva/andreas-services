@@ -1,5 +1,5 @@
 resource "aws_api_gateway_rest_api" "main" {
-  name = "scout-api"
+  name = "${var.project}-${var.environment}-api"
 
   endpoint_configuration {
     types = ["REGIONAL"]
@@ -176,7 +176,7 @@ resource "aws_api_gateway_resource" "admin" {
 
 resource "aws_api_gateway_authorizer" "cognito" {
   count           = var.enable_cognito_authorizer ? 1 : 0
-  name            = "scout-admin-cognito"
+  name            = "${var.project}-${var.environment}-admin-cognito"
   rest_api_id     = aws_api_gateway_rest_api.main.id
   type            = "COGNITO_USER_POOLS"
   provider_arns   = [var.cognito_user_pool_arn]

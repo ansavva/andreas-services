@@ -218,13 +218,13 @@ terraform destroy
 All resources use consistent naming:
 ```hcl
 # Dev resources
-storybook-development (Cognito pool)
-storybook-backend-files-development (S3 bucket)
+storybook-dev (Cognito pool)
+storybook-dev-files-us-east-1 (S3 bucket)
 
 # Prod resources
-storybook-production (Cognito pool)
-storybook-backend-files-production (S3 bucket)
-storybook-backend-production (Lambda function)
+storybook-prod (Cognito pool)
+storybook-prod-files-us-east-1 (S3 bucket)
+storybook-prod-api (Lambda function)
 ```
 
 Tags are automatically applied:

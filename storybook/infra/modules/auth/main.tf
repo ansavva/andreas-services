@@ -73,7 +73,7 @@ resource "aws_cognito_user_pool" "main" {
 }
 
 resource "aws_cognito_user_pool_client" "main" {
-  name         = "${var.project}-client-${var.environment}"
+  name         = "${var.project}-${var.environment}-client"
   user_pool_id = aws_cognito_user_pool.main.id
 
   allowed_oauth_flows_user_pool_client = true

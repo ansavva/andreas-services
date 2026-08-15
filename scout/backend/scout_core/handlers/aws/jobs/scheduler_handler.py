@@ -20,7 +20,12 @@ from scout_core.services import sources
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-_PROCESSOR_FN = os.environ.get("SCOUT_PROCESSOR_FN", "scout-source-run-processor")
+_PROCESSOR_FN = os.environ.get("SCOUT_PROCESSOR_FN")
+if not _PROCESSOR_FN:
+    raise RuntimeError(
+        "SCOUT_PROCESSOR_FN is not set. Terraform sets it on the Lambda; "
+        "local runs and tests must set it explicitly."
+    )
 
 _lambda_client = None
 

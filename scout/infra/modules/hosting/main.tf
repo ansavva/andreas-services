@@ -15,15 +15,22 @@ data "aws_acm_certificate" "wildcard" {
 }
 
 resource "aws_cloudfront_origin_access_control" "frontend" {
-  name                              = "${var.domain_name}-oac"
+  name                              = "${var.project}-${var.environment}-web-oac"
   description                       = "OAC for scout frontend S3 bucket"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
+
+  # CloudFront refuses to delete an OAC a live distribution still references.
+  # Unlike force_destroy this takes effect on the renaming apply itself,
+  # because it changes ordering rather than an argument read off prior state.
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_cloudfront_function" "spa_fallback" {
-  name    = "scout-spa-fallback"
+  name    = "${var.project}-${var.environment}-spa-fallback"
   runtime = "cloudfront-js-1.0"
   comment = "SPA fallback routing for scout"
   publish = true
@@ -54,6 +61,12 @@ resource "aws_cloudfront_function" "spa_fallback" {
       return request;
     }
   EOT
+
+  # CloudFront refuses to delete a function a live distribution references, so
+  # the replacement must be created and wired up before the old one goes.
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_cloudfront_distribution" "app" {

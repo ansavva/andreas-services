@@ -20,7 +20,12 @@ bp = Blueprint("sources", __name__, url_prefix="/api/admin/sources")
 # response cap even after JSON-string escaping.
 _ARTIFACT_CHUNK = 512 * 1024
 
-_PROCESSOR_FN = os.environ.get("SCOUT_PROCESSOR_FN", "scout-source-run-processor")
+_PROCESSOR_FN = os.environ.get("SCOUT_PROCESSOR_FN")
+if not _PROCESSOR_FN:
+    raise RuntimeError(
+        "SCOUT_PROCESSOR_FN is not set. Terraform sets it on the Lambda; "
+        "local runs and tests must set it explicitly."
+    )
 
 _lambda_client = None
 

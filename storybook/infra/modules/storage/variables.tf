@@ -1,3 +1,8 @@
+variable "region" {
+  description = "AWS region, suffixed onto S3 bucket names (their namespace is global)"
+  type        = string
+}
+
 # modules/storage/variables.tf
 
 variable "project" {

@@ -1,9 +1,11 @@
 locals {
-  events_api_name = "scout-events-api"
-  processor_name  = "scout-source-run-processor"
-  scheduler_name  = "scout-scheduler"
-  sweep_name      = "scout-sweep"
-  renderer_name   = "scout-source-renderer"
+  name_prefix = "${var.project}-${var.environment}"
+
+  events_api_name = "${local.name_prefix}-events-api"
+  processor_name  = "${local.name_prefix}-source-run-processor"
+  scheduler_name  = "${local.name_prefix}-scheduler"
+  sweep_name      = "${local.name_prefix}-sweep"
+  renderer_name   = "${local.name_prefix}-source-renderer"
 
   # The source-run processor, scheduler and sweep share the events-api image and
   # only override the container command, so the image is built once.
@@ -18,9 +20,21 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 resource "aws_ecr_repository" "events_api" {
-  count                = var.create_ecr ? 1 : 0
+  count = var.create_ecr ? 1 : 0
+  # NOT yet renamed to the convention, deliberately. Replacing an ECR repository
+  # destroys the images it holds, and the Lambdas below reference
+  # "<repo>:latest" — so a repo rename in this apply would create empty repos
+  # and every Lambda creation would fail with no such image. The rename lands in
+  # CI instead, where build-and-push populates the new repos before apply runs.
+  # force_delete is already in state (see the earlier flags-only apply), so that
+  # rename is unblocked whenever it happens.
   name                 = "scout-events-api"
   image_tag_mutability = "MUTABLE"
+
+  # DeleteRepository refuses a repository that still holds images, which fails
+  # the destroy half of a rename. The flag is read from prior state, so it has
+  # to land in its own apply before the name changes (see CLAUDE.md).
+  force_delete = true
 
   image_scanning_configuration {
     scan_on_push = true
@@ -48,9 +62,12 @@ resource "aws_ecr_lifecycle_policy" "events_api" {
 }
 
 resource "aws_ecr_repository" "renderer" {
-  count                = var.create_ecr ? 1 : 0
+  count = var.create_ecr ? 1 : 0
+  # Deferred for the same reason as the events-api repository above.
   name                 = "scout-renderer"
   image_tag_mutability = "MUTABLE"
+
+  force_delete = true
 
   image_scanning_configuration {
     scan_on_push = true
@@ -78,7 +95,7 @@ resource "aws_ecr_lifecycle_policy" "renderer" {
 }
 
 resource "aws_iam_role" "lambda" {
-  name = "scout-lambda-role"
+  name = "${local.name_prefix}-lambda-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -95,7 +112,7 @@ resource "aws_iam_role" "lambda" {
 }
 
 resource "aws_iam_role_policy" "lambda" {
-  name = "scout-lambda-policy"
+  name = "${local.name_prefix}-lambda-policy"
   role = aws_iam_role.lambda.id
 
   policy = jsonencode({
@@ -123,16 +140,16 @@ resource "aws_iam_role_policy" "lambda" {
           "dynamodb:BatchGetItem",
         ]
         Resource = [
-          "arn:aws:dynamodb:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/scout-*",
-          "arn:aws:dynamodb:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/scout-*/index/*",
+          "arn:aws:dynamodb:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/${local.name_prefix}-*",
+          "arn:aws:dynamodb:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/${local.name_prefix}-*/index/*",
         ]
       },
       {
         Effect = "Allow"
         Action = ["lambda:InvokeFunction"]
         Resource = [
-          "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:scout-source-run-processor*",
-          "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:scout-source-renderer*",
+          "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${local.processor_name}",
+          "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${local.renderer_name}",
         ]
       },
       {
@@ -144,10 +161,10 @@ resource "aws_iam_role_policy" "lambda" {
           "s3:ListBucket",
         ]
         Resource = [
-          "arn:aws:s3:::scout-artifacts-*",
-          "arn:aws:s3:::scout-artifacts-*/*",
-          "arn:aws:s3:::scout-images-*",
-          "arn:aws:s3:::scout-images-*/*",
+          "arn:aws:s3:::${var.artifacts_bucket}",
+          "arn:aws:s3:::${var.artifacts_bucket}/*",
+          "arn:aws:s3:::${var.images_bucket}",
+          "arn:aws:s3:::${var.images_bucket}/*",
         ]
       },
     ]
@@ -320,7 +337,7 @@ resource "aws_cloudwatch_log_group" "source_renderer" {
 # Scheduler tick — dispatches sources whose next_run_at is due.
 resource "aws_cloudwatch_event_rule" "scheduler" {
   count               = var.create_eventbridge ? 1 : 0
-  name                = "scout-scheduler-tick"
+  name                = "${local.name_prefix}-scheduler-tick"
   description         = "Dispatch due source runs"
   schedule_expression = "rate(15 minutes)"
 
@@ -346,7 +363,7 @@ resource "aws_lambda_permission" "scheduler" {
 # Sweep tick — reconciles orphaned runs and refreshes past flags.
 resource "aws_cloudwatch_event_rule" "sweep" {
   count               = var.create_eventbridge ? 1 : 0
-  name                = "scout-sweep-tick"
+  name                = "${local.name_prefix}-sweep-tick"
   description         = "Reconcile orphaned runs and materialize past status"
   schedule_expression = "rate(1 hour)"
 
