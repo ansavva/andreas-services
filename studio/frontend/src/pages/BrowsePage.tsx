@@ -6,6 +6,7 @@ import { Alert, Breadcrumbs, Button, Spinner, Text } from "@ansavva/design-syste
 import { FileRow } from "../components/browse/FileRow";
 import { FolderCard } from "../components/browse/FolderCard";
 import { MediaTile } from "../components/browse/MediaTile";
+import { CopyKeyButton } from "../components/common/CopyKeyButton";
 import { CodeViewer } from "../components/text/CodeViewer";
 import { Lightbox } from "../components/viewer/Lightbox";
 import { ReelView } from "../components/viewer/ReelView";
@@ -116,9 +117,15 @@ export function BrowsePage() {
           </Breadcrumbs.Root>
         </div>
 
-        <Button size="sm" onClick={() => setReelOpen(true)}>
-          Play reel
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          {/* Clicking a folder navigates into it rather than opening an
+              overlay, so this is that folder's "opened" copy affordance. */}
+          <CopyKeyButton value={data?.prefix ?? prefix} noun="prefix" />
+
+          <Button size="sm" onClick={() => setReelOpen(true)}>
+            Play reel
+          </Button>
+        </div>
       </div>
 
       {loading && (
@@ -145,7 +152,12 @@ export function BrowsePage() {
           <Text variant="title">Folders</Text>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {data.folders.map((folder) => (
-              <FolderCard key={folder.prefix} name={folder.name} onOpen={() => goTo(folder.prefix)} />
+              <FolderCard
+                key={folder.prefix}
+                name={folder.name}
+                prefix={folder.prefix}
+                onOpen={() => goTo(folder.prefix)}
+              />
             ))}
           </div>
         </section>

@@ -115,6 +115,17 @@ the pipeline adds a field, a parser becomes a liar.
 - **Text is served through `/api/text`, not fetched from the presigned URL.** A
   cross-origin `fetch` to S3 would need a CORS configuration on a bucket studio
   does not own and must not modify.
+- **Every card, row and tile is itself a `<button>`, so a second control cannot
+  go inside one.** A button nested in a button is invalid HTML that browsers
+  resolve by dropping one of them, and which one they drop is not something to
+  rely on. `CopyKeyButton` is therefore always a *sibling* of the opening
+  button, positioned over it (`MediaTile`) or beside it (`FileRow`,
+  `FolderCard`) — which is why those three carry their frame on a wrapper
+  `<div>` rather than on the button. Anything else that lands in a listing —
+  a delete, a "reveal in run" — has to be built the same way. Its feedback is
+  inline for the same reason the viewer's is: `ViewerChrome` is often inside a
+  fullscreen element, and a toast portalled to `<body>` is not painted while
+  one is.
 - **`services/keys.py` is the only thing between a query string and
   `GetObject`.** Every prefix and key is normalised and confined to
   `media/`. Test changes to it directly — `posixpath.normpath` strips a trailing

@@ -3,6 +3,7 @@ import { Text } from "@ansavva/design-system";
 import { getAsset } from "../../apis/studio";
 import { formatBytes, formatDate } from "../../utils/format";
 import type { FileEntry } from "../../types";
+import { CopyKeyButton } from "../common/CopyKeyButton";
 
 interface Props {
   file: FileEntry;
@@ -51,6 +52,11 @@ export function ViewerChrome({
         </div>
 
         <div className="pointer-events-auto flex shrink-0 items-center gap-1">
+          {/* Inline feedback rather than a toast, deliberately: this bar is
+              often inside a fullscreen element, and anything portalled to
+              <body> is not painted while one is. */}
+          <CopyKeyButton value={file.key} tone="chrome" />
+
           <ChromeButton label="Download" onClick={() => void download()}>
             <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />
           </ChromeButton>
