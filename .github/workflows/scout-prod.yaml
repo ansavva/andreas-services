@@ -293,28 +293,28 @@ jobs:
           API_URL=$(aws ssm get-parameter --name /scout/prod/api-url \
             --query 'Parameter.Value' --output text)
           jq -n --arg api_url "${API_URL}" \
-            '{Variables: {SCOUT_CORE_TABLE: "scout-core", SCOUT_SETTINGS_TABLE: "scout-settings", SCOUT_PROCESSOR_FN: "scout-source-run-processor", SCOUT_PUBLIC_API_URL: $api_url}}' \
+            '{Variables: {SCOUT_CORE_TABLE: "scout-prod-core", SCOUT_SETTINGS_TABLE: "scout-prod-settings", SCOUT_PROCESSOR_FN: "scout-prod-source-run-processor", SCOUT_PUBLIC_API_URL: $api_url}}' \
             > /tmp/env-events-api.json
 
           jq -n --arg anthropic "${ANTHROPIC_API_KEY}" \
             --arg client_id "${GMAIL_CLIENT_ID}" --arg client_secret "${GMAIL_CLIENT_SECRET}" \
             --arg refresh_token "${GMAIL_REFRESH_TOKEN}" \
             '{Variables: {
-              SCOUT_CORE_TABLE:       "scout-core",
-              SCOUT_SETTINGS_TABLE:   "scout-settings",
-              SCOUT_ARTIFACTS_BUCKET: "scout-artifacts-production",
-              SCOUT_IMAGES_BUCKET:    "scout-images-production",
-              SCOUT_RENDERER_FN:      "scout-source-renderer",
+              SCOUT_CORE_TABLE:       "scout-prod-core",
+              SCOUT_SETTINGS_TABLE:   "scout-prod-settings",
+              SCOUT_ARTIFACTS_BUCKET: "scout-prod-artifacts-us-east-1",
+              SCOUT_IMAGES_BUCKET:    "scout-prod-images-us-east-1",
+              SCOUT_RENDERER_FN:      "scout-prod-source-renderer",
               ANTHROPIC_API_KEY:      $anthropic,
               GMAIL_CLIENT_ID:        $client_id,
               GMAIL_CLIENT_SECRET:    $client_secret,
               GMAIL_REFRESH_TOKEN:    $refresh_token
             }}' > /tmp/env-processor.json
 
-          jq -n '{Variables: {SCOUT_CORE_TABLE: "scout-core", SCOUT_SETTINGS_TABLE: "scout-settings", SCOUT_PROCESSOR_FN: "scout-source-run-processor"}}' \
+          jq -n '{Variables: {SCOUT_CORE_TABLE: "scout-prod-core", SCOUT_SETTINGS_TABLE: "scout-prod-settings", SCOUT_PROCESSOR_FN: "scout-prod-source-run-processor"}}' \
             > /tmp/env-scheduler.json
 
-          jq -n '{Variables: {SCOUT_CORE_TABLE: "scout-core", SCOUT_SETTINGS_TABLE: "scout-settings"}}' > /tmp/env-sweep.json
+          jq -n '{Variables: {SCOUT_CORE_TABLE: "scout-prod-core", SCOUT_SETTINGS_TABLE: "scout-prod-settings"}}' > /tmp/env-sweep.json
 
           set_env() {
             aws lambda update-function-configuration \
@@ -323,10 +323,10 @@ jobs:
             aws lambda wait function-updated \
               --function-name "$1" --region "${{ env.AWS_REGION }}"
           }
-          set_env scout-events-api           /tmp/env-events-api.json
-          set_env scout-source-run-processor /tmp/env-processor.json
-          set_env scout-scheduler            /tmp/env-scheduler.json
-          set_env scout-sweep                /tmp/env-sweep.json
+          set_env scout-prod-events-api           /tmp/env-events-api.json
+          set_env scout-prod-source-run-processor /tmp/env-processor.json
+          set_env scout-prod-scheduler            /tmp/env-scheduler.json
+          set_env scout-prod-sweep                /tmp/env-sweep.json
 
       - name: Update Lambda function code
         run: |
@@ -341,11 +341,11 @@ jobs:
           }
           # events-api + the run-pipeline Lambdas (processor/scheduler/sweep)
           # all share the one events-api image.
-          for FN in scout-events-api scout-source-run-processor scout-scheduler scout-sweep; do
+          for FN in scout-prod-events-api scout-prod-source-run-processor scout-prod-scheduler scout-prod-sweep; do
             update_code "${FN}" "${ECR_REGISTRY}/scout-events-api:${{ github.sha }}"
           done
           # The renderer ships from its own image.
-          update_code scout-source-renderer "${ECR_REGISTRY}/scout-renderer:${{ github.sha }}"
+          update_code scout-prod-source-renderer "${ECR_REGISTRY}/scout-renderer:${{ github.sha }}"
 
   # ---------------------------------------------------------------------------
   # Build Vite SPA and sync to S3 + CloudFront.

@@ -1,3 +1,13 @@
+variable "project" {
+  description = "Project name, first segment of every resource name"
+  type        = string
+}
+
+variable "environment" {
+  description = "Deployment environment, second segment of every resource name (prod/dev)"
+  type        = string
+}
+
 variable "lambda_invoke_arn" {
   description = "Lambda invoke ARN for API Gateway integration"
   type        = string

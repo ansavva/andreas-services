@@ -22,16 +22,20 @@ data "aws_acm_certificate" "wildcard" {
 
 # CloudFront Origin Access Control
 resource "aws_cloudfront_origin_access_control" "frontend" {
-  name                              = "${var.project}-frontend-oac"
+  name                              = "${var.project}-${var.environment}-web-oac"
   description                       = "OAC for ${var.project} frontend S3 bucket"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # CloudFront Function to redirect root to /app
 resource "aws_cloudfront_function" "redirect_root" {
-  name    = "${var.project}-redirect-root"
+  name    = "${var.project}-${var.environment}-redirect-root"
   runtime = "cloudfront-js-1.0"
   comment = "Redirect root path to /app"
   publish = true
@@ -54,6 +58,10 @@ resource "aws_cloudfront_function" "redirect_root" {
       return request;
     }
   EOT
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # CloudFront Distribution

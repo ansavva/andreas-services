@@ -2,7 +2,7 @@
 # SQS queue + DLQ for image normalization jobs
 
 locals {
-  queue_name     = "${var.project}-image-normalization-${var.environment}"
+  queue_name     = "${var.project}-${var.environment}-image-normalization"
   dlq_name       = "${local.queue_name}-dlq"
   max_receive    = 5
   visibility_sec = 900

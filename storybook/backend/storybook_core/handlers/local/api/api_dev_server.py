@@ -4,6 +4,13 @@ os.environ.setdefault("AWS_ACCESS_KEY_ID", "local")
 os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "local")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 os.environ.setdefault("DYNAMODB_ENDPOINT_URL", "http://localhost:8001")
+
+# These table names are LOCAL ONLY. They are created by ensure_local_tables_exist()
+# against DynamoDB Local on the endpoint above, with the throwaway credentials set
+# here, and never resolve against AWS. They deliberately do NOT carry the
+# `storybook-prod-` prefix the deployed tables use: a local default that looks like
+# a production resource is one unset DYNAMODB_ENDPOINT_URL away from reading and
+# writing real production data.
 os.environ.setdefault("STORYBOOK_USER_PROFILES_TABLE", "storybook-user-profiles")
 os.environ.setdefault("STORYBOOK_CHILD_PROFILES_TABLE", "storybook-child-profiles")
 os.environ.setdefault("STORYBOOK_STORY_PROJECTS_TABLE", "storybook-story-projects")

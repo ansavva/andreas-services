@@ -110,10 +110,9 @@ event-driven Lambdas.
 
 ## Data model (DynamoDB)
 
-Two tables (`scout-<name>`, suffixed `-pr-<N>` for previews, all
-`PAY_PER_REQUEST` + SSE), defined by the `data` Terraform module:
+Two tables (`scout-prod-<name>`, all `PAY_PER_REQUEST` + SSE), defined by the `data` Terraform module:
 
-- **`scout-core`** — single table for the whole entity graph (sources, runs,
+- **`scout-prod-core`** — single table for the whole entity graph (sources, runs,
   events, sub-events, locations, the three label taxonomies, M2M junctions),
   generic `PK`/`SK` + five GSIs:
   - **GSI1** — admin status queues (`LBL#…`, `LOC#ALL`, `SRC#LISTED/ARCHIVED`,
@@ -124,7 +123,7 @@ Two tables (`scout-<name>`, suffixed `-pr-<N>` for previews, all
   - **GSI4** — source health/schedule (`SRCHEALTH` by `next_run_at`) and the
     event review queue (`REVIEW#<status>`).
   - **GSI5** — deleted-filter view + cascade restore (`DELETED#<type>`).
-- **`scout-settings`** — singleton (`setting_id="system"`): timezones, grace
+- **`scout-prod-settings`** — singleton (`setting_id="system"`): timezones, grace
   period, health thresholds, link-follow cap, default triage/agent models + budget.
 
 Soft-delete is uniform: every row carries `deleted_at`; hot indexes (GSI1/GSI3)
@@ -136,26 +135,26 @@ resolved once at write) is indexed instead; the sweep refreshes the boolean.
 
 ## Lambda Functions
 
-The first four share IAM role `scout-lambda-role` (DynamoDB on `scout-*` incl.
-GSIs, S3 on `scout-artifacts-*`/`scout-images-*`, invoke
-`scout-source-run-processor*` and `scout-source-renderer*`) and ship from **one**
-`scout-events-api` image with different container commands
+The first four share IAM role `scout-prod-lambda-role` (DynamoDB on `scout-prod-*` incl.
+GSIs, S3 on `scout-prod-artifacts-*`/`scout-prod-images-*`, invoke
+`scout-prod-source-run-processor*` and `scout-prod-source-renderer*`) and ship from **one**
+`scout-events-api` image (ECR repo, not yet renamed) with different container commands
 (`image_config.command`). The renderer ships from its **own** image
 (`scout-renderer`) because Chromium is too heavy for the shared image:
 
 | Function | Entrypoint | Trigger | Notes |
 |----------|-----------|---------|-------|
-| `scout-events-api` | `scout_core.handlers.aws.api.api_handler.handler` | API Gateway | Flask + Mangum, 128 MB / 30 s |
-| `scout-source-run-processor` | `scout_core.handlers.aws.jobs.processor_handler.lambda_handler` | async invoke | 512 MB / 300 s; needs `ANTHROPIC_API_KEY`, `SCOUT_ARTIFACTS_BUCKET`, `SCOUT_IMAGES_BUCKET`, `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` (Gmail ingestion + `mode=discover`), `SCOUT_RENDERER_FN` (page rendering) |
-| `scout-scheduler` | `scout_core.handlers.aws.jobs.scheduler_handler.lambda_handler` | EventBridge `rate(15 minutes)` | Gmail discovery pass + dispatches due sources |
-| `scout-sweep` | `scout_core.handlers.aws.jobs.sweep_handler.lambda_handler` | EventBridge `rate(1 hour)` | orphan recovery + past flags |
-| `scout-source-renderer` | `handler.lambda_handler` (own image) | sync invoke (by processor) | 3008 MB / 90 s; patchright (undetected Playwright) + headful Chrome via Xvfb; renders every fetched page (runs JS / passes bot challenges), returns HTML |
+| `scout-prod-events-api` | `scout_core.handlers.aws.api.api_handler.handler` | API Gateway | Flask + Mangum, 128 MB / 30 s |
+| `scout-prod-source-run-processor` | `scout_core.handlers.aws.jobs.processor_handler.lambda_handler` | async invoke | 512 MB / 300 s; needs `ANTHROPIC_API_KEY`, `SCOUT_ARTIFACTS_BUCKET`, `SCOUT_IMAGES_BUCKET`, `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` (Gmail ingestion + `mode=discover`), `SCOUT_RENDERER_FN` (page rendering) |
+| `scout-prod-scheduler` | `scout_core.handlers.aws.jobs.scheduler_handler.lambda_handler` | EventBridge `rate(15 minutes)` | Gmail discovery pass + dispatches due sources |
+| `scout-prod-sweep` | `scout_core.handlers.aws.jobs.sweep_handler.lambda_handler` | EventBridge `rate(1 hour)` | orphan recovery + past flags |
+| `scout-prod-source-renderer` | `handler.lambda_handler` (own image) | sync invoke (by processor) | 3008 MB / 90 s; patchright (undetected Playwright) + headful Chrome via Xvfb; renders every fetched page (runs JS / passes bot challenges), returns HTML |
 
 EventBridge rules are created only in prod (`create_eventbridge=true`).
 
 The processor injects `renderer_client.fetch_rendered` as the `fetch_fn` for
 **all** page retrieval — webpage roots, followed links, and the links followed
-out of email digests — which synchronously invokes `scout-source-renderer`;
+out of email digests — which synchronously invokes `scout-prod-source-renderer`;
 everything downstream (clean → triage → enrich) is unchanged. Only iCal feeds
 (parsed directly) and email bodies (pulled from Gmail) are not page fetches.
 
@@ -226,8 +225,8 @@ Image build runs first because the Lambdas reference `:latest` with
 `lifecycle { ignore_changes = [image_uri, environment] }`. Two images are built:
 the shared `scout-events-api` image and the `scout-renderer` image (Playwright +
 Chromium). `update-lambda` sets env vars and pins all five Lambdas to `:${sha}` —
-`scout-events-api`, `scout-source-run-processor`, `scout-scheduler`,
-`scout-sweep` use the `scout-events-api` image; `scout-source-renderer` uses the
+`scout-prod-events-api`, `scout-prod-source-run-processor`, `scout-prod-scheduler`,
+`scout-prod-sweep` use the `scout-events-api` image; `scout-prod-source-renderer` uses the
 `scout-renderer` image.
 
 PR checks (`.github/workflows/scout-pr.yml`) validate only — backend pytest,

@@ -12,7 +12,7 @@ output "user_pool_client_id" {
 
 output "user_pool_domain" {
   description = "Cognito User Pool domain"
-  value       = "${aws_cognito_user_pool_domain.main.domain}.auth.${var.tags["Region"]}.amazoncognito.com"
+  value       = "${aws_cognito_user_pool_domain.main.domain}.auth.${var.region}.amazoncognito.com"
 }
 
 output "user_pool_arn" {

@@ -3,7 +3,11 @@
 
 # ECR Repository
 resource "aws_ecr_repository" "backend" {
-  name                 = "${var.project}-backend-${var.environment}"
+  # NOT renamed to the convention yet, deliberately: replacing an ECR
+  # repository destroys the images it holds, and the Lambda below points at
+  # "<repo>:latest", so the rename would leave nothing to create it from.
+  # It lands in CI, where build-and-push populates the new repo first.
+  name                 = "storybook-backend-production"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
@@ -34,7 +38,7 @@ resource "aws_ecr_lifecycle_policy" "backend" {
 
 # IAM role for Lambda
 resource "aws_iam_role" "lambda" {
-  name = "${var.project}-lambda-role-${var.environment}"
+  name = "${var.project}-${var.environment}-api-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -51,7 +55,7 @@ resource "aws_iam_role" "lambda" {
 }
 
 resource "aws_iam_role_policy" "lambda" {
-  name = "${var.project}-lambda-policy"
+  name = "${var.project}-${var.environment}-api-dynamodb"
   role = aws_iam_role.lambda.id
 
   policy = jsonencode({
@@ -108,7 +112,7 @@ resource "aws_iam_role_policy" "lambda" {
 
 # Lambda Function
 resource "aws_lambda_function" "backend" {
-  function_name = "${var.project}-backend-${var.environment}"
+  function_name = "${var.project}-${var.environment}-api"
   role          = aws_iam_role.lambda.arn
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.backend.repository_url}:latest"
@@ -135,7 +139,7 @@ resource "aws_cloudwatch_log_group" "lambda" {
 
 # API Gateway v2 (HTTP API)
 resource "aws_apigatewayv2_api" "backend" {
-  name          = "${var.project}-backend-${var.environment}"
+  name          = "${var.project}-${var.environment}-api"
   protocol_type = "HTTP"
   description   = "${var.project} Backend API"
 
@@ -175,7 +179,7 @@ resource "aws_apigatewayv2_stage" "backend" {
 }
 
 resource "aws_cloudwatch_log_group" "api_gateway" {
-  name              = "/aws/apigateway/${var.project}-backend-${var.environment}"
+  name              = "/aws/apigateway/${var.project}-${var.environment}-api"
   retention_in_days = 14
 
   tags = var.tags

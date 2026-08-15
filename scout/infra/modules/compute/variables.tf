@@ -1,10 +1,20 @@
+variable "project" {
+  description = "Project name, first segment of every resource name"
+  type        = string
+}
+
+variable "environment" {
+  description = "Deployment environment, second segment of every resource name (prod/dev)"
+  type        = string
+}
+
 variable "core_table_name" {
-  description = "Name of the scout-core DynamoDB table"
+  description = "Name of the scout-prod-core DynamoDB table"
   type        = string
 }
 
 variable "settings_table_name" {
-  description = "Name of the scout-settings DynamoDB table"
+  description = "Name of the scout-prod-settings DynamoDB table"
   type        = string
 }
 

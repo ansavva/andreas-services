@@ -1,3 +1,8 @@
+variable "region" {
+  description = "AWS region, used to build the Cognito hosted-UI domain"
+  type        = string
+}
+
 # modules/auth/variables.tf
 
 variable "project" {

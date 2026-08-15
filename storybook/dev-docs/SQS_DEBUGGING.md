@@ -11,7 +11,7 @@ Use these commands to inspect the production image normalization queues.
 
 ```bash
 aws sqs get-queue-url \
-  --queue-name storybook-image-normalization-production \
+  --queue-name storybook-prod-image-normalization \
   --region us-east-1
 ```
 
@@ -19,7 +19,7 @@ aws sqs get-queue-url \
 
 ```bash
 aws sqs get-queue-attributes \
-  --queue-url https://sqs.us-east-1.amazonaws.com/704202188703/storybook-image-normalization-production \
+  --queue-url https://sqs.us-east-1.amazonaws.com/704202188703/storybook-prod-image-normalization \
   --attribute-names All \
   --region us-east-1
 ```
@@ -28,7 +28,7 @@ aws sqs get-queue-attributes \
 
 ```bash
 aws sqs receive-message \
-  --queue-url https://sqs.us-east-1.amazonaws.com/704202188703/storybook-image-normalization-production \
+  --queue-url https://sqs.us-east-1.amazonaws.com/704202188703/storybook-prod-image-normalization \
   --max-number-of-messages 1 \
   --wait-time-seconds 5 \
   --region us-east-1
@@ -38,7 +38,7 @@ aws sqs receive-message \
 
 ```bash
 aws sqs get-queue-attributes \
-  --queue-url https://sqs.us-east-1.amazonaws.com/704202188703/storybook-image-normalization-production-dlq \
+  --queue-url https://sqs.us-east-1.amazonaws.com/704202188703/storybook-prod-image-normalization-dlq \
   --attribute-names All \
   --region us-east-1
 ```

@@ -105,7 +105,7 @@ API-key secrets (`OPENAI_API_KEY`, `STABILITY_API_KEY`, `REPLICATE_API_TOKEN`) a
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `.github/workflows/storybook-pr.yml` | PR touching `storybook/**` | Verify backend Docker build, lint + build frontend. No push, no AWS writes. |
-| `.github/workflows/storybook-prod.yaml` | Push to `main` touching `storybook/**`, or `workflow_dispatch`, or `workflow_run` after shared infra applies | Single combined deploy. `detect-changes` → `deploy-infra` (terraform apply, writes `/storybook/prod/*` SSM from `storybook/infra/envs/prod`) → `deploy-backend` (updates api + image-worker Lambdas) + `deploy-frontend` (S3 + CloudFront) in parallel. Gated by `storybook-production` environment. |
+| `.github/workflows/storybook-prod.yaml` | Push to `main` touching `storybook/**`, or `workflow_dispatch`, or `workflow_run` after shared infra applies | Single combined deploy. `detect-changes` → `deploy-infra` (terraform apply, writes `/storybook/prod/*` SSM from `storybook/infra/envs/prod`) → `deploy-backend` (updates api + image-worker Lambdas) + `deploy-frontend` (S3 + CloudFront) in parallel. Gated by `storybook-prod` environment. |
 
 ### Combined deploy workflow (`storybook-prod.yaml`)
 
@@ -135,11 +135,11 @@ Group `storybook-prod` with `cancel-in-progress: false` — queued pushes wait f
 
 The backend reads table names from env vars (`STORYBOOK_*_TABLE`) wired up by the deploy workflow:
 
-- `storybook-user-profiles`, `storybook-child-profiles`
-- `storybook-story-projects`, `storybook-story-pages`, `storybook-story-states`
-- `storybook-chat-messages`
-- `storybook-character-assets`, `storybook-images`
-- `storybook-model-projects`, `storybook-generation-history`, `storybook-training-runs`
+- `storybook-prod-user-profiles`, `storybook-prod-child-profiles`
+- `storybook-prod-story-projects`, `storybook-prod-story-pages`, `storybook-prod-story-states`
+- `storybook-prod-chat-messages`
+- `storybook-prod-character-assets`, `storybook-prod-images`
+- `storybook-prod-model-projects`, `storybook-prod-generation-history`, `storybook-prod-training-runs`
 
 All accessed via boto3 directly from the Lambdas.
 Local app runs use DynamoDB Local via `DYNAMODB_ENDPOINT_URL=http://localhost:8001`;

@@ -3,7 +3,7 @@
 
 # Backend files bucket (both dev and prod)
 resource "aws_s3_bucket" "backend_files" {
-  bucket = "${var.project}-backend-files-${var.environment}"
+  bucket = "${var.project}-${var.environment}-files-${var.region}"
 
   tags = var.tags
 }
@@ -50,7 +50,7 @@ resource "aws_s3_bucket_cors_configuration" "backend_files" {
 # Frontend bucket (optional - prod only)
 resource "aws_s3_bucket" "frontend" {
   count  = var.create_frontend_bucket ? 1 : 0
-  bucket = "${var.project}-web-${var.environment}"
+  bucket = "${var.project}-${var.environment}-web-${var.region}"
 
   tags = var.tags
 }

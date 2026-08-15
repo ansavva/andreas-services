@@ -3,14 +3,16 @@
 
 locals {
   project     = "storybook"
-  environment = "production"
+  environment = "prod"
   domain_name = "storybook.andreas.services"
+
+  name_prefix = "${local.project}-${local.environment}"
 
   common_tags = {
     Project     = local.project
     Environment = local.environment
+    Owner       = "ansavva"
     ManagedBy   = "Terraform"
-    Region      = var.aws_region
   }
 
   # All DynamoDB table ARNs, passed into the compute module for IAM policy
@@ -38,7 +40,7 @@ data "aws_route53_zone" "main" {
 # ─── DynamoDB Tables ──────────────────────────────────────────────────────────
 
 resource "aws_dynamodb_table" "user_profiles" {
-  name         = "storybook-user-profiles"
+  name         = "${local.name_prefix}-user-profiles"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "user_id"
   attribute {
@@ -50,7 +52,7 @@ resource "aws_dynamodb_table" "user_profiles" {
 }
 
 resource "aws_dynamodb_table" "child_profiles" {
-  name         = "storybook-child-profiles"
+  name         = "${local.name_prefix}-child-profiles"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "profile_id"
   attribute {
@@ -71,7 +73,7 @@ resource "aws_dynamodb_table" "child_profiles" {
 }
 
 resource "aws_dynamodb_table" "story_projects" {
-  name         = "storybook-story-projects"
+  name         = "${local.name_prefix}-story-projects"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "project_id"
   attribute {
@@ -97,7 +99,7 @@ resource "aws_dynamodb_table" "story_projects" {
 }
 
 resource "aws_dynamodb_table" "story_pages" {
-  name         = "storybook-story-pages"
+  name         = "${local.name_prefix}-story-pages"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "page_id"
   attribute {
@@ -123,7 +125,7 @@ resource "aws_dynamodb_table" "story_pages" {
 }
 
 resource "aws_dynamodb_table" "chat_messages" {
-  name         = "storybook-chat-messages"
+  name         = "${local.name_prefix}-chat-messages"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "message_id"
   attribute {
@@ -149,7 +151,7 @@ resource "aws_dynamodb_table" "chat_messages" {
 }
 
 resource "aws_dynamodb_table" "character_assets" {
-  name         = "storybook-character-assets"
+  name         = "${local.name_prefix}-character-assets"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "asset_id"
   attribute {
@@ -175,7 +177,7 @@ resource "aws_dynamodb_table" "character_assets" {
 }
 
 resource "aws_dynamodb_table" "story_states" {
-  name         = "storybook-story-states"
+  name         = "${local.name_prefix}-story-states"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "state_id"
   attribute {
@@ -201,7 +203,7 @@ resource "aws_dynamodb_table" "story_states" {
 }
 
 resource "aws_dynamodb_table" "images" {
-  name         = "storybook-images"
+  name         = "${local.name_prefix}-images"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "image_id"
   attribute {
@@ -227,7 +229,7 @@ resource "aws_dynamodb_table" "images" {
 }
 
 resource "aws_dynamodb_table" "model_projects" {
-  name         = "storybook-model-projects"
+  name         = "${local.name_prefix}-model-projects"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "project_id"
   attribute {
@@ -253,7 +255,7 @@ resource "aws_dynamodb_table" "model_projects" {
 }
 
 resource "aws_dynamodb_table" "generation_history" {
-  name         = "storybook-generation-history"
+  name         = "${local.name_prefix}-generation-history"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "generation_id"
   attribute {
@@ -279,7 +281,7 @@ resource "aws_dynamodb_table" "generation_history" {
 }
 
 resource "aws_dynamodb_table" "training_runs" {
-  name         = "storybook-training-runs"
+  name         = "${local.name_prefix}-training-runs"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "training_run_id"
   attribute {
@@ -309,6 +311,8 @@ resource "aws_dynamodb_table" "training_runs" {
 module "auth" {
   source = "../../modules/auth"
 
+  region = var.aws_region
+
   project     = local.project
   environment = local.environment
 
@@ -329,6 +333,8 @@ module "auth" {
 
 module "storage" {
   source = "../../modules/storage"
+
+  region = var.aws_region
 
   project     = local.project
   environment = local.environment
@@ -391,6 +397,8 @@ module "compute" {
 
 module "hosting" {
   source = "../../modules/hosting"
+
+  environment = local.environment
 
   providers = {
     aws.us_east_1 = aws.us_east_1

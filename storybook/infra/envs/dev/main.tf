@@ -3,19 +3,21 @@
 
 locals {
   project     = "storybook"
-  environment = "development"
+  environment = "dev"
 
   common_tags = {
     Project     = local.project
     Environment = local.environment
+    Owner       = "ansavva"
     ManagedBy   = "Terraform"
-    Region      = var.aws_region
   }
 }
 
 # Auth module - Cognito for local dev
 module "auth" {
   source = "../../modules/auth"
+
+  region = var.aws_region
 
   project     = local.project
   environment = local.environment
@@ -34,6 +36,8 @@ module "auth" {
 # Storage bucket for dev uploads
 module "storage" {
   source = "../../modules/storage"
+
+  region = var.aws_region
 
   project     = local.project
   environment = local.environment

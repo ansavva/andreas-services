@@ -1,11 +1,15 @@
 locals {
   project     = "scout"
-  environment = "production"
+  environment = "prod"
+  region      = "us-east-1"
   domain_name = "scout.andreas.services"
+
+  name_prefix = "${local.project}-${local.environment}"
 
   common_tags = {
     Project     = local.project
     Environment = local.environment
+    Owner       = "ansavva"
     ManagedBy   = "Terraform"
   }
 }
@@ -18,13 +22,21 @@ data "aws_route53_zone" "main" {
 module "data" {
   source = "../../modules/data"
 
+  project     = local.project
+  environment = local.environment
+
   tags = local.common_tags
 }
 
 module "storage" {
   source = "../../modules/storage"
 
-  bucket_name = "${local.project}-web-${local.environment}"
+  bucket_name = "${local.name_prefix}-web-${local.region}"
+
+  # Set ahead of the rename: Terraform applies the destroy half of a
+  # replacement against prior state, so this flag must already be recorded in
+  # state before the bucket name changes (see CLAUDE.md).
+  force_destroy = true
 
   tags = local.common_tags
 }
@@ -34,7 +46,8 @@ module "storage" {
 module "artifacts_storage" {
   source = "../../modules/storage"
 
-  bucket_name = "${local.project}-artifacts-${local.environment}"
+  bucket_name   = "${local.name_prefix}-artifacts-${local.region}"
+  force_destroy = true
 
   tags = local.common_tags
 }
@@ -44,33 +57,17 @@ module "artifacts_storage" {
 module "images_storage" {
   source = "../../modules/storage"
 
-  bucket_name = "${local.project}-images-${local.environment}"
+  bucket_name   = "${local.name_prefix}-images-${local.region}"
+  force_destroy = true
 
   tags = local.common_tags
 }
 
-import {
-  to = module.compute.aws_ecr_repository.events_api[0]
-  id = "scout-events-api"
-}
-
-import {
-  to = module.compute.aws_ecr_repository.renderer[0]
-  id = "scout-renderer"
-}
-
-import {
-  to = module.hosting.aws_cloudfront_function.spa_fallback
-  id = "scout-spa-fallback"
-}
-
-import {
-  to = module.compute.aws_cloudwatch_log_group.events_api
-  id = "/aws/lambda/scout-events-api"
-}
-
 module "compute" {
   source = "../../modules/compute"
+
+  project     = local.project
+  environment = local.environment
 
   create_ecr         = true
   create_eventbridge = true
@@ -104,7 +101,7 @@ module "api_domain" {
 module "auth" {
   source = "../../modules/auth"
 
-  name = "scout"
+  name = local.name_prefix
   callback_urls = [
     "https://${local.domain_name}/app",
     "http://localhost:5173/app",
@@ -119,6 +116,9 @@ module "auth" {
 
 module "api_gateway" {
   source = "../../modules/api_gateway"
+
+  project     = local.project
+  environment = local.environment
 
   lambda_invoke_arn         = module.compute.events_api_invoke_arn
   lambda_function_name      = module.compute.events_api_function_name
@@ -135,6 +135,9 @@ module "api_gateway" {
 
 module "hosting" {
   source = "../../modules/hosting"
+
+  project     = local.project
+  environment = local.environment
 
   providers = {
     aws.us_east_1 = aws.us_east_1
