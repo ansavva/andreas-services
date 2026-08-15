@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { Alert, Breadcrumbs, Button, Spinner, Text } from "@ansavva/design-system";
@@ -6,11 +6,14 @@ import { Alert, Breadcrumbs, Button, Spinner, Text } from "@ansavva/design-syste
 import { FileRow } from "../components/browse/FileRow";
 import { FolderCard } from "../components/browse/FolderCard";
 import { MediaTile } from "../components/browse/MediaTile";
+import { CopyKeyButton } from "../components/common/CopyKeyButton";
 import { CodeViewer } from "../components/text/CodeViewer";
 import { Lightbox } from "../components/viewer/Lightbox";
 import { ReelView } from "../components/viewer/ReelView";
 import { useAuth } from "../context/AuthContext";
+import { copyLabel, useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useReel } from "../hooks/useReel";
+import { useSelection } from "../hooks/useSelection";
 import { useTree } from "../hooks/useTree";
 import type { FileEntry } from "../types";
 
@@ -64,6 +67,30 @@ export function BrowsePage() {
     [media],
   );
 
+  const selection = useSelection(media, prefix);
+  const keysCopy = useCopyToClipboard();
+
+  const copySelectedKeys = useCallback(() => {
+    // One key per line, in grid order rather than the order they were picked:
+    // this is going into a shell loop or a `--keys` argument, and the order you
+    // happened to click in is not information.
+    void keysCopy.copy(selection.selectedItems.map((item) => item.key).join("\n"));
+  }, [keysCopy, selection.selectedItems]);
+
+  // Escape drops the selection, but only when it is the frontmost thing —
+  // the lightbox, the reel and the code viewer each bind Escape to their own
+  // close, and clearing a selection out from under one of them would be a
+  // keystroke doing two things at once.
+  const overlayOpen = lightboxIndex !== null || textFile !== null || reelOpen;
+  useEffect(() => {
+    if (overlayOpen || selection.count === 0) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") selection.clear();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [overlayOpen, selection]);
+
   const isEmpty =
     !loading && !error && data && data.folders.length === 0 && data.files.length === 0;
 
@@ -116,9 +143,15 @@ export function BrowsePage() {
           </Breadcrumbs.Root>
         </div>
 
-        <Button size="sm" onClick={() => setReelOpen(true)}>
-          Play reel
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          {/* Clicking a folder navigates into it rather than opening an
+              overlay, so this is that folder's "opened" copy affordance. */}
+          <CopyKeyButton value={data?.prefix ?? prefix} noun="prefix" />
+
+          <Button size="sm" onClick={() => setReelOpen(true)}>
+            Play reel
+          </Button>
+        </div>
       </div>
 
       {loading && (
@@ -145,7 +178,12 @@ export function BrowsePage() {
           <Text variant="title">Folders</Text>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {data.folders.map((folder) => (
-              <FolderCard key={folder.prefix} name={folder.name} onOpen={() => goTo(folder.prefix)} />
+              <FolderCard
+                key={folder.prefix}
+                name={folder.name}
+                prefix={folder.prefix}
+                onOpen={() => goTo(folder.prefix)}
+              />
             ))}
           </div>
         </section>
@@ -153,12 +191,63 @@ export function BrowsePage() {
 
       {media.length > 0 && (
         <section className="flex flex-col gap-2">
-          <Text variant="title">
-            Media <span className="font-body text-sm text-muted">({media.length})</span>
-          </Text>
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <Text variant="title">
+              Media <span className="font-body text-sm text-muted">({media.length})</span>
+            </Text>
+
+            {/* Nothing here is ever disabled: until something is picked there
+                is only "Select all", and the actions appear with the count
+                they act on written into them. */}
+            <div className="flex flex-wrap items-center gap-2">
+              {selection.count > 0 && (
+                <Text variant="caption" tone="muted" className="tabular-nums">
+                  {selection.count} of {media.length} selected
+                </Text>
+              )}
+
+              <Button
+                intent="ghost"
+                size="sm"
+                onClick={selection.allSelected ? selection.clear : selection.selectAll}
+              >
+                {selection.allSelected ? "Select none" : "Select all"}
+              </Button>
+
+              {selection.count > 0 && (
+                <>
+                  {!selection.allSelected && (
+                    <Button intent="ghost" size="sm" onClick={selection.clear}>
+                      Clear
+                    </Button>
+                  )}
+                  <Button size="sm" onClick={copySelectedKeys}>
+                    {copyLabel(
+                      keysCopy.status,
+                      `Copy ${selection.count} ${selection.count === 1 ? "key" : "keys"}`,
+                    )}
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {selection.count === 0 && (
+            <Text variant="caption" tone="muted">
+              Pick tiles to copy their keys — shift-click to take a range.
+            </Text>
+          )}
+
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             {media.map((file, index) => (
-              <MediaTile key={file.key} file={file} onOpen={() => setLightboxIndex(index)} />
+              <MediaTile
+                key={file.key}
+                file={file}
+                selected={selection.selected.has(file.key)}
+                selectionActive={selection.count > 0}
+                onOpen={() => setLightboxIndex(index)}
+                onToggleSelect={(extend) => selection.toggleAt(index, extend)}
+              />
             ))}
           </div>
         </section>

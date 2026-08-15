@@ -3,8 +3,10 @@ import { useEffect, useState } from "react";
 import { Alert, Badge, Spinner, Text } from "@ansavva/design-system";
 
 import { getText } from "../../apis/studio";
+import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { formatTextContent } from "../../utils/format";
 import type { FileEntry, TextResponse } from "../../types";
+import { CopyKeyButton } from "../common/CopyKeyButton";
 import { MarkdownView } from "./MarkdownView";
 
 interface Props {
@@ -25,7 +27,7 @@ export function CodeViewer({ file, onClose }: Props) {
   const [data, setData] = useState<TextResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [raw, setRaw] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const contentCopy = useCopyToClipboard();
 
   useEffect(() => {
     let cancelled = false;
@@ -59,13 +61,6 @@ export function CodeViewer({ file, onClose }: Props) {
     };
   }, [onClose]);
 
-  async function copy() {
-    if (!data) return;
-    await navigator.clipboard.writeText(data.content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }
-
   const isMarkdown = data?.language === "markdown";
 
   return (
@@ -98,7 +93,14 @@ export function CodeViewer({ file, onClose }: Props) {
               {raw ? "Rendered" : "Raw"}
             </HeaderButton>
           )}
-          {data && <HeaderButton onClick={() => void copy()}>{copied ? "Copied" : "Copy"}</HeaderButton>}
+          {/* Two different things are copyable here and the labels say which:
+              the file's contents, and the key that names the file. */}
+          <CopyKeyButton value={file.key} />
+          {data && (
+            <HeaderButton onClick={() => void contentCopy.copy(data.content)}>
+              {copyLabel(contentCopy.status, "Copy text")}
+            </HeaderButton>
+          )}
           <HeaderButton onClick={onClose} aria-label="Close (Esc)">
             Close
           </HeaderButton>
