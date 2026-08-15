@@ -190,6 +190,12 @@ jobs:
       # The old repository is deliberately left in AWS; deleting it is a separate,
       # deliberate step, not something a deploy should do behind your back.
       - name: Adopt bootstrap-created ECR repositories
+        # `terraform import` evaluates the whole configuration, so it needs every
+        # required variable -- the same ones the apply below is given. Without
+        # this the step fails after `state rm` but before `import`, leaving the
+        # repository tracked by nothing.
+        env:
+          TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           set -euo pipefail
           TF_DIR=scout/infra/envs/prod
