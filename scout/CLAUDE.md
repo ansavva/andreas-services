@@ -138,9 +138,9 @@ resolved once at write) is indexed instead; the sweep refreshes the boolean.
 The first four share IAM role `scout-prod-lambda-role` (DynamoDB on `scout-prod-*` incl.
 GSIs, S3 on `scout-prod-artifacts-*`/`scout-prod-images-*`, invoke
 `scout-prod-source-run-processor*` and `scout-prod-source-renderer*`) and ship from **one**
-`scout-events-api` image (ECR repo, not yet renamed) with different container commands
+`scout-prod-events-api` image with different container commands
 (`image_config.command`). The renderer ships from its **own** image
-(`scout-renderer`) because Chromium is too heavy for the shared image:
+(`scout-prod-renderer`) because Chromium is too heavy for the shared image:
 
 | Function | Entrypoint | Trigger | Notes |
 |----------|-----------|---------|-------|
@@ -211,11 +211,11 @@ Notable additions for the redesign:
 |----------|-------|---------|
 | `ANTHROPIC_API_KEY` | secret → processor env | Anthropic Messages API key |
 | `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN` | secret → processor env | Gmail API (OAuth refresh token) for "Events"-label ingestion |
-| `SCOUT_ARTIFACTS_BUCKET` / `SCOUT_IMAGES_BUCKET` | Lambda env | S3 buckets (`scout-artifacts-<env>` / `scout-images-<env>`) |
+| `SCOUT_ARTIFACTS_BUCKET` / `SCOUT_IMAGES_BUCKET` | Lambda env | S3 buckets (`scout-prod-artifacts-us-east-1` / `scout-prod-images-us-east-1`) |
 | `SCOUT_PROCESSOR_FN` | events-api / scheduler env | processor function name for invocations |
 | `SCOUT_RENDERER_FN` | processor env | renderer function name (sync-invoked for every page fetch) |
 | `SCOUT_CORE_TABLE` / `SCOUT_SETTINGS_TABLE` | Lambda env | DynamoDB table names, passed in by Terraform |
-| `VITE_API_URL` / `VITE_COGNITO_*` | GitHub vars | frontend build |
+| `VITE_API_URL` / `VITE_COGNITO_*` | from SSM at deploy time | frontend build |
 
 ## Deployment
 
@@ -223,11 +223,11 @@ Push to `main` runs `.github/workflows/scout-prod.yaml`:
 `detect-changes → build-and-push → deploy-infra → update-lambda + deploy-frontend`.
 Image build runs first because the Lambdas reference `:latest` with
 `lifecycle { ignore_changes = [image_uri, environment] }`. Two images are built:
-the shared `scout-events-api` image and the `scout-renderer` image (Playwright +
+the shared `scout-prod-events-api` image and the `scout-prod-renderer` image (Playwright +
 Chromium). `update-lambda` sets env vars and pins all five Lambdas to `:${sha}` —
 `scout-prod-events-api`, `scout-prod-source-run-processor`, `scout-prod-scheduler`,
-`scout-prod-sweep` use the `scout-events-api` image; `scout-prod-source-renderer` uses the
-`scout-renderer` image.
+`scout-prod-sweep` use the `scout-prod-events-api` image; `scout-prod-source-renderer` uses the
+`scout-prod-renderer` image.
 
 PR checks (`.github/workflows/scout-pr.yml`) validate only — backend pytest,
 frontend lint/tsc/build, `terraform fmt`/`validate` and tflint. The workflow

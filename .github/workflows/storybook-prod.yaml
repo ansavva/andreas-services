@@ -42,8 +42,8 @@ concurrency:
 env:
   AWS_REGION: us-east-1
   TF_DIR: storybook/infra/envs/prod
-  ECR_API_REPO: storybook-backend-production
-  ECR_WORKER_REPO: storybook-image-normalization-production
+  ECR_API_REPO: storybook-prod-api
+  ECR_WORKER_REPO: storybook-prod-image-normalization
   STORYBOOK_USER_PROFILES_TABLE:    storybook-prod-user-profiles
   STORYBOOK_CHILD_PROFILES_TABLE:   storybook-prod-child-profiles
   STORYBOOK_STORY_PROJECTS_TABLE:   storybook-prod-story-projects
@@ -203,6 +203,43 @@ jobs:
             'module.image_worker.aws_security_group.worker[0]'; do
             terraform state rm "$addr" || true
           done
+
+      # ECR repositories are created by build-and-push above so that :latest
+      # exists before Terraform creates a Lambda that references it. That means
+      # Terraform would try to create a repository AWS already has. Adopt it.
+      #
+      # This also covers a *rename*: when state holds a repository under the old
+      # name, plain adoption is not enough -- Terraform would plan a replace and
+      # fail with RepositoryAlreadyExistsException against the repo build-and-push
+      # just made. So drop the stale object and import the new one in its place.
+      # The old repository is deliberately left in AWS; deleting it is a separate,
+      # deliberate step, not something a deploy should do behind your back.
+      - name: Adopt bootstrap-created ECR repositories
+        run: |
+          set -euo pipefail
+          TF_DIR=storybook/infra/envs/prod
+          adopt() {
+            local addr="$1" repo="$2" policy_addr="$3"
+            if terraform -chdir="$TF_DIR" state show "$addr" >/dev/null 2>&1; then
+              local current
+              current=$(terraform -chdir="$TF_DIR" state show "$addr" \
+                        | awk -F'"' '/^ *name *=/{print $2; exit}')
+              if [ "$current" = "$repo" ]; then
+                echo "already correct: $addr -> $repo"; return
+              fi
+              echo "rename: $addr holds '$current', config wants '$repo' -- re-adopting"
+              terraform -chdir="$TF_DIR" state rm "$addr"
+              # the lifecycle policy is keyed by repository name, so it goes too
+              terraform -chdir="$TF_DIR" state rm "$policy_addr" 2>/dev/null || true
+            fi
+            if ! aws ecr describe-repositories --repository-names "$repo" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
+              echo "not in AWS, Terraform will create it: $repo"; return
+            fi
+            echo "importing $repo -> $addr"
+            terraform -chdir="$TF_DIR" import -input=false "$addr" "$repo"
+          }
+          adopt module.compute.aws_ecr_repository.backend "${ECR_API_REPO}" module.compute.aws_ecr_lifecycle_policy.backend
+          adopt module.image_worker.aws_ecr_repository.worker "${ECR_WORKER_REPO}" module.image_worker.aws_ecr_lifecycle_policy.worker
 
       - name: Terraform Apply
         working-directory: ${{ env.TF_DIR }}

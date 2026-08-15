@@ -3,12 +3,12 @@
 
 # ECR Repository
 resource "aws_ecr_repository" "backend" {
-  # NOT renamed to the convention yet, deliberately: replacing an ECR
-  # repository destroys the images it holds, and the Lambda below points at
-  # "<repo>:latest", so the rename would leave nothing to create it from.
-  # It lands in CI, where build-and-push populates the new repo first.
-  name                 = "storybook-backend-production"
+  name                 = "${var.project}-${var.environment}-api"
   image_tag_mutability = "MUTABLE"
+
+  # DeleteRepository refuses a repository that still holds images; without this
+  # any future rename of this repo fails its destroy half.
+  force_delete = true
 
   image_scanning_configuration {
     scan_on_push = true
