@@ -78,8 +78,8 @@ prewarm() {
 SKILLS="$STUDIO_DIR/.claude/skills"
 
 prewarm studio        "$SKILLS/studio-core/scripts/studio.py"
-prewarm runs          "$SKILLS/s3/scripts/runs.py"
-prewarm s3-convert    "$SKILLS/s3/scripts/s3_convert.py"
+prewarm runs          "$SKILLS/studio-s3/scripts/runs.py"
+prewarm s3-convert    "$SKILLS/studio-s3/scripts/s3_convert.py"
 prewarm build-prompt  "$SKILLS/studio-prompt/scripts/build_prompt.py"
 prewarm character     "$SKILLS/studio-character/scripts/character.py"
 prewarm curate        "$SKILLS/studio-character/scripts/curate.py"

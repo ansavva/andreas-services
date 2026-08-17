@@ -27,7 +27,7 @@ character is an S3 record managed by this one skill, used by the video pipeline
 ## Where a character lives (S3)
 
 Each character is a record under `characters/<name>/` in the
-**`xharness-prod-media-us-east-1`** bucket (the generic **`s3`** skill is the
+**`xharness-prod-media-us-east-1`** bucket (the generic **`studio-s3`** skill is the
 storage layer; auth is your `aws login`).
 
 ```
@@ -42,7 +42,7 @@ characters/<name>/archive/       retired material
 ```
 
 A character record holds **no production history**. Runs, chains, scenes and
-movies live under `projects/<project>/` (see the **`s3`** skill), because one
+movies live under `projects/<project>/` (see the **`studio-s3`** skill), because one
 piece of work can involve several characters and a project can outlive any of
 them. A run records which characters it used, so the association survives the
 split: `runs.py find --character <name>`.
@@ -187,9 +187,9 @@ silently stops being checked against. For a **worked example**, read a live one
 ## The management tool
 
 [`scripts/character.py`](scripts/character.py) is the CRUD + load layer. It reuses
-the **`s3`** skill's `s3_common.py` (the AWS-login-bridged boto3 client, the
+the **`studio-s3`** skill's `s3_common.py` (the AWS-login-bridged boto3 client, the
 key builders, natural sort) — one storage layer, one auth path, no bytes
-in the agent context. Requires an `aws login` (see the `s3` skill).
+in the agent context. Requires an `aws login` (see the `studio-s3` skill).
 
 ```bash
 CH=.claude/skills/studio-character/scripts/character.py

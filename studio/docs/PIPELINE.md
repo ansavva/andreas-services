@@ -338,7 +338,7 @@ part of the pipeline now.
 | `studio-kling`     | `kwaivgi/kling-v3-omni-video` — Kling 3.0 / O3 Omni (~$0.168/s, `reference_images` for consistency, native multi-shot to 6 cuts). Start frame and reference images can be combined |
 | `studio-prompt`    | Author prompts as structured JSON for either engine (`--engine seedance\|kling-replicate`); validates rules and routes technical fields + the negative prompt where each engine takes them |
 | `studio-character` | Manage on-model characters (create/update/list/curate/load) whose bible + described reference library live in S3 (`characters/<name>/`); characters are data, not skills |
-| `s3`               | Read/write the `xharness-prod-media-us-east-1` S3 bucket (list, upload, download, presign) — the asset store holding **characters** and **projects**, plus the shared **run store** (`runs.py`), **scene store** (`scenes.py`) and **movie store** (`movies.py`), the project registry (`projects.py`), the layout module (`paths.py`) and the record rewriter (`rewrite.py`). Storage only; model invocation lives in `studio-core` |
+| `studio-s3`               | Read/write the `xharness-prod-media-us-east-1` S3 bucket (list, upload, download, presign) — the asset store holding **characters** and **projects**, plus the shared **run store** (`runs.py`), **scene store** (`scenes.py`) and **movie store** (`movies.py`), the project registry (`projects.py`), the layout module (`paths.py`) and the record rewriter (`rewrite.py`). Storage only; model invocation lives in `studio-core` |
 
 ---
 ## How skills call tools
@@ -362,8 +362,8 @@ uv run .claude/skills/kindle/scripts/kindle.py /path/to/book.pdf
 uv run .claude/skills/nytimes-briefing/scripts/nytimes.py briefing
 uv run .claude/skills/nytimes-search/scripts/search.py "climate change"
 uv run .claude/skills/transcribe/scripts/transcribe.py "https://youtu.be/VIDEO_ID" --format srt
-uv run .claude/skills/s3/scripts/projects.py list          # ASK before generating
-uv run .claude/skills/s3/scripts/s3_presign.py --folder characters/<name>/reference --json
+uv run .claude/skills/studio-s3/scripts/projects.py list          # ASK before generating
+uv run .claude/skills/studio-s3/scripts/s3_presign.py --folder characters/<name>/reference --json
 uv run .claude/skills/studio-character/scripts/character.py refs <name> --describe
 uv run .claude/skills/studio-core/scripts/studio.py models
 uv run .claude/skills/studio-core/scripts/studio.py models show gpt-image-2
@@ -373,15 +373,15 @@ uv run .claude/skills/studio-core/scripts/studio.py run --project <project> \
 uv run .claude/skills/studio-core/scripts/studio.py run --project <project> \
   --model kling --input-file input.json --character <name> \
   --start-run <project>/latest#1 --slug <slug> --poll
-uv run .claude/skills/s3/scripts/runs.py list <project>
-uv run .claude/skills/s3/scripts/runs.py find --character <name>   # across projects
-uv run .claude/skills/s3/scripts/frames.py grid <project>/latest --count 4   # look at a clip
-uv run .claude/skills/s3/scripts/frames.py last <project>/latest --add-input # chaining handoff
-uv run .claude/skills/s3/scripts/scenes.py new <project> --slug <slug> \
+uv run .claude/skills/studio-s3/scripts/runs.py list <project>
+uv run .claude/skills/studio-s3/scripts/runs.py find --character <name>   # across projects
+uv run .claude/skills/studio-s3/scripts/frames.py grid <project>/latest --count 4   # look at a clip
+uv run .claude/skills/studio-s3/scripts/frames.py last <project>/latest --add-input # chaining handoff
+uv run .claude/skills/studio-s3/scripts/scenes.py new <project> --slug <slug> \
   --shot <project>/<run_id>#1 --shot <project>/latest#1
-uv run .claude/skills/s3/scripts/movies.py new <project> --slug <slug> \
+uv run .claude/skills/studio-s3/scripts/movies.py new <project> --slug <slug> \
   --scene <project>/<scene_id> --scene <project>/latest
-uv run .claude/skills/s3/scripts/rewrite.py check          # every recorded key resolves?
+uv run .claude/skills/studio-s3/scripts/rewrite.py check          # every recorded key resolves?
 ```
 
 For multi-file skills (like `photos`), only the entry script needs the

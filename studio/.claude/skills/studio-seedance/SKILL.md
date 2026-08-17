@@ -26,7 +26,7 @@ The family:
   supplies the character's bible and the reference images this engine requires.
   **FIRST load `studio-character`** — never generate a character from a text
   prompt alone (see "Reference images are MANDATORY" below).
-- **`s3`** — the `xharness-prod-media-us-east-1` asset store references and
+- **`studio-s3`** — the `xharness-prod-media-us-east-1` asset store references and
   outputs live in.
 
 ## The model: `bytedance/seedance-2.0`
@@ -71,7 +71,7 @@ broad-shouldered — carry the physique.
 
 `build_prompt.py` checks a draft against this model's wording list and suggests
 the preferred alternative where one is recorded; see
-[`s3/scripts/phrasebook.py`](../s3/scripts/phrasebook.py).
+[`studio-s3/scripts/phrasebook.py`](../studio-s3/scripts/phrasebook.py).
 
 ## Submit with FRESH presigned URLs minted in code (MANDATORY)
 
@@ -155,7 +155,7 @@ through the agent context.
 Inspect and chain runs with the shared store:
 
 ```bash
-RUNS=.claude/skills/s3/scripts/runs.py
+RUNS=.claude/skills/studio-s3/scripts/runs.py
 uv run $RUNS list <character>
 uv run $RUNS show <project>/latest
 uv run $RUNS outputs <project>/latest --presign
@@ -202,8 +202,8 @@ is needed for references.
 ```bash
 # References for a character — ordered presigned URLs (via studio-character)
 uv run .claude/skills/studio-character/scripts/character.py refs <character> --presign --json > refs.json
-# equivalently, straight from the s3 skill:
-uv run .claude/skills/s3/scripts/s3_presign.py --folder <character>/reference --json > refs.json
+# equivalently, straight from the studio-s3 skill:
+uv run .claude/skills/studio-s3/scripts/s3_presign.py --folder <character>/reference --json > refs.json
 # -> [{ "key": "characters/<character>/reference/face/<character>_1.webp", "url": "…" }, …]
 # Pass the .url values as reference_images; <character>_1 -> [Image1], <character>_2 -> [Image2], ...
 
@@ -217,7 +217,7 @@ URL** minted at submit time. For an ad-hoc local image, upload it to S3 first,
 then reference its key:
 
 ```bash
-uv run .claude/skills/s3/scripts/s3_upload.py --folder <character>/originals <img>
+uv run .claude/skills/studio-s3/scripts/s3_upload.py --folder <character>/originals <img>
 ```
 
 The two former escape hatches — `upload_to_replicate.py` (POSTed bytes to
@@ -235,7 +235,7 @@ re-minting fresh URLs.
 give better character consistency, and presigned S3 URLs carry full-resolution
 images at zero context cost (only the short URL enters the agent context, and
 through the runner, not even that). Presigned URLs default to a 1 h
-expiry (`--expires` to change) — plenty for a render job. See the **`s3`** skill
+expiry (`--expires` to change) — plenty for a render job. See the **`studio-s3`** skill
 for details and `aws login` setup.
 
 ## Available Replicate MCP tools (common)

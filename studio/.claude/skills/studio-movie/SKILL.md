@@ -24,8 +24,8 @@ is not already settled in this conversation, **ask**, offering the existing ones
 and the option of a new one:
 
 ```bash
-uv run .claude/skills/s3/scripts/projects.py list
-uv run .claude/skills/s3/scripts/projects.py new <project> --character <name>
+uv run .claude/skills/studio-s3/scripts/projects.py list
+uv run .claude/skills/studio-s3/scripts/projects.py new <project> --character <name>
 ```
 
 ## A movie, or a longer scene?
@@ -60,7 +60,7 @@ as a scene, then cut those scenes into a movie.
 ## Building one
 
 ```bash
-S3=.claude/skills/s3/scripts
+S3=.claude/skills/studio-s3/scripts
 
 uv run $S3/scenes.py list <project>          # what there is to cut
 

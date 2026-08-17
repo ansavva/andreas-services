@@ -28,7 +28,7 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..", "..", "s3", "scripts")))
+sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..", "..", "studio-s3", "scripts")))
 
 import model_schema as MS  # noqa: E402
 import refs as REFS  # noqa: E402
@@ -140,7 +140,7 @@ def gather(entry: dict, s3, args) -> dict:
         if bad:
             raise SubmitError(
                 f"{entry['key']} accepts only {sorted(exts)}; incompatible: {bad}\n"
-                f"       convert with: uv run .claude/skills/s3/scripts/s3_convert.py "
+                f"       convert with: uv run .claude/skills/studio-s3/scripts/s3_convert.py "
                 f"--for {entry['key']} …"
             )
         if cap and len(keys) > cap:

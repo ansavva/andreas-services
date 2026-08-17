@@ -159,7 +159,7 @@ Everything above is shared. These differ, and `--engine` switches them:
 
 `build_prompt.py` also checks a draft against the per-model **wording list** and
 flags the preferred alternative where one is recorded — see
-[`s3/scripts/phrasebook.py`](../s3/scripts/phrasebook.py). The list is data in
+[`studio-s3/scripts/phrasebook.py`](../studio-s3/scripts/phrasebook.py). The list is data in
 S3; when it cannot be read the validator says so rather than reporting the draft
 checked.
 

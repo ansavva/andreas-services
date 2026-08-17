@@ -32,13 +32,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # The s3 skill's shared helpers — one storage layer, one auth bridge, one module
 # that knows the bucket's shape.
 sys.path.insert(0, os.path.abspath(os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "..", "s3", "scripts")))
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "studio-s3", "scripts")))
 
 try:
     import paths as P  # noqa: E402
     import s3_common as s3c  # noqa: E402
 except ModuleNotFoundError:
-    sys.exit("cannot import the s3 skill's helpers — the `s3` skill must be present.")
+    sys.exit("cannot import the studio-s3 skill's helpers — the `studio-s3` skill must be present.")
 
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 

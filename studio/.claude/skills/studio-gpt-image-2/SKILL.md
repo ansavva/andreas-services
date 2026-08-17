@@ -67,6 +67,6 @@ letting the render fail. Two ways out:
 --extra '{"output_format":"png"}'
 
 # or convert an existing run output (the source is never modified)
-uv run .claude/skills/s3/scripts/s3_convert.py \
+uv run .claude/skills/studio-s3/scripts/s3_convert.py \
   --run <project>/latest#1 --for kling --add-input <name>
 ```

@@ -58,7 +58,7 @@ from character import (  # noqa: E402
     check_name, group_prefix, pool_folder, ref_root, sync_index,
 )
 
-_S3 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "s3", "scripts")
+_S3 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "studio-s3", "scripts")
 sys.path.insert(0, os.path.abspath(_S3))
 import paths as P  # noqa: E402
 import rewrite  # noqa: E402

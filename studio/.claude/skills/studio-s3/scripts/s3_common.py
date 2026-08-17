@@ -1,4 +1,4 @@
-# Shared helpers for the s3 skill: credential resolution + a boto3 S3 client,
+# Shared helpers for the studio-s3 skill: credential resolution + a boto3 S3 client,
 # plus bucket/prefix config and small utilities. Imported by s3_upload.py /
 # s3_download.py / s3_presign.py — not run directly.
 #

@@ -63,7 +63,7 @@ skill's own `SKILL.md`.
 
 | You want to | Use |
 |---|---|
-| Store, fetch, list or presign anything; record a run | `s3` |
+| Store, fetch, list or presign anything; record a run | `studio-s3` |
 | Make a still image | `studio-image`, then a model skill |
 | Make one shot end to end (still → motion) | `studio-shot` |
 | Continue past a model's duration ceiling | `studio-scene` |

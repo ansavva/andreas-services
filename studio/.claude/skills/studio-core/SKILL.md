@@ -31,7 +31,7 @@ the shared prose lives in one place rather than six:
 | [`studio-prompt`](../studio-prompt/SKILL.md) | Authoring video prompts as structured JSON |
 | [`studio-character`](../studio-character/SKILL.md) | Character identity: the bible and the two image pools |
 | [`studio-add-model`](../studio-add-model/SKILL.md) | Adding a model to the registry |
-| [`s3`](../s3/SKILL.md) | The asset store and the run store |
+| [`studio-s3`](../studio-s3/SKILL.md) | The asset store and the run store |
 
 ## The runner
 
@@ -101,8 +101,8 @@ error: openai/gpt-image-2 does not accept: ['input_fidelity']
 | `replicate_api.py` | Token, HTTP, download, poll. |
 | `refs.py` | Character reference selection / project input pool → S3 keys. |
 
-The run store itself stays in the `s3` skill
-([`s3/scripts/runs.py`](../s3/scripts/runs.py)) — that is storage, this is
+The run store itself stays in the `studio-s3` skill
+([`studio-s3/scripts/runs.py`](../studio-s3/scripts/runs.py)) — that is storage, this is
 invocation.
 
 ## `snapshot` — why there are two copies of the enums

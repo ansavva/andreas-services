@@ -36,7 +36,7 @@ CHARACTER_PY = os.path.abspath(
     os.path.join(HERE, "..", "..", "studio-character", "scripts", "character.py")
 )
 PROJECTS_PY = os.path.abspath(
-    os.path.join(HERE, "..", "..", "s3", "scripts", "projects.py")
+    os.path.join(HERE, "..", "..", "studio-s3", "scripts", "projects.py")
 )
 
 

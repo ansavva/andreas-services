@@ -162,7 +162,7 @@ VAGUE_ADJECTIVES = [
 
 PHRASEBOOK_PY = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "s3", "scripts", "phrasebook.py",
+    "studio-s3", "scripts", "phrasebook.py",
 )
 
 

@@ -6,7 +6,7 @@
 xharness-prod-media-us-east-1 S3 bucket.
 
 A character is DATA, not a skill: each one is an S3 record under
-`characters/<name>/` (see the `s3` skill), and this one tool manages them all:
+`characters/<name>/` (see the `studio-s3` skill), and this one tool manages them all:
 
     characters/<name>/profile.yaml   the bible (SOURCE OF TRUTH), including the
                                      DESCRIBED index of the reference library
@@ -38,7 +38,7 @@ keys for every character, so a prompt or a check reads `consistency.must` or
 `identity.signature_features` by path instead of pattern-matching prose. It
 describes WHO the character is — never how the record was assembled.
 
-Requires an AWS login (`aws login`; see the `s3` skill).
+Requires an AWS login (`aws login`; see the `studio-s3` skill).
 
 Subcommands:
   list                         Every character.
@@ -82,9 +82,9 @@ import tempfile
 
 import yaml
 
-# Reuse the s3 skill's shared helpers (one storage layer, one auth bridge).
+# Reuse the studio-s3 skill's shared helpers (one storage layer, one auth bridge).
 _S3_SCRIPTS = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "..", "s3", "scripts"
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "studio-s3", "scripts"
 )
 sys.path.insert(0, os.path.abspath(_S3_SCRIPTS))
 try:
@@ -92,7 +92,7 @@ try:
     import s3_common as s3c  # noqa: E402
 except ImportError:  # pragma: no cover
     print(
-        "error: cannot import the s3 skill's s3_common.py — the `s3` skill must be "
+        "error: cannot import the studio-s3 skill's s3_common.py — the `studio-s3` skill must be "
         f"present at {os.path.abspath(_S3_SCRIPTS)}.",
         file=sys.stderr,
     )

@@ -19,7 +19,7 @@ approval gate at each point where money moves.
 | `studio-prompt` | authoring a *video* prompt as structured JSON |
 | `studio-image` | rendering one still |
 | `studio-seedance` / `studio-kling` | rendering one video |
-| `s3` (`runs.py`, `s3_convert.py`) | the run store and format conversion |
+| `studio-s3` (`runs.py`, `s3_convert.py`) | the run store and format conversion |
 
 ## Why frame-first, always
 
@@ -127,7 +127,7 @@ fabricated, not preserved.
 ### 5. Normalise the format
 
 ```bash
-uv run .claude/skills/s3/scripts/s3_convert.py --run {owner}/latest#1 --for kling --add-input {owner}
+uv run .claude/skills/studio-s3/scripts/s3_convert.py --run {owner}/latest#1 --for kling --add-input {owner}
 ```
 
 Safe to run unconditionally: an already-accepted image is left untouched and its

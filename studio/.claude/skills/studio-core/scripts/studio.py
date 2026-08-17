@@ -37,7 +37,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..", "..", "s3", "scripts")))
+sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..", "..", "studio-s3", "scripts")))
 
 import model_schema as MS  # noqa: E402
 import projects as PROJ  # noqa: E402

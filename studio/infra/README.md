@@ -114,7 +114,7 @@ aws s3 cp ./<name>_1.webp s3://xharness-prod-media-us-east-1/characters/<name>/r
 aws s3 cp s3://xharness-prod-media-us-east-1/projects/<project>/runs/<run_id>/output/clip.mp4 ./clip.mp4
 ```
 
-Prefer the `s3` skill over raw CLI for anything that touches a record — moving
+Prefer the `studio-s3` skill over raw CLI for anything that touches a record — moving
 an object means rewriting the records that name it, and the skill knows that.
 
 ---

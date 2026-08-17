@@ -36,7 +36,7 @@ already be an S3 object, and it reaches Replicate only as a short-lived
 carry time-limited bucket access that must not outlive the request.
 `runs.py` refuses to record a URL-shaped binding, so this is enforced in code.
 
-To use a local file, upload it to S3 first (`s3` skill), then reference its key.
+To use a local file, upload it to S3 first (`studio-s3` skill), then reference its key.
 
 ## The models — peers, no default, one skill each
 
@@ -105,7 +105,7 @@ The full mechanism — `denied`, cross-field rules, the live schema pass — liv
 
 ## Runs — every submission is recorded
 
-Writes through the shared store, [`s3/scripts/runs.py`](../s3/scripts/runs.py):
+Writes through the shared store, [`studio-s3/scripts/runs.py`](../studio-s3/scripts/runs.py):
 
 ```
 projects/<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/
@@ -120,7 +120,7 @@ same shape holds for one video or ten images. The request is written *before*
 submitting, so a failed render is still history.
 
 ```bash
-RUNS=.claude/skills/s3/scripts/runs.py
+RUNS=.claude/skills/studio-s3/scripts/runs.py
 uv run $RUNS list <project>
 uv run $RUNS show <project>/latest
 uv run $RUNS outputs <project>/latest --presign
@@ -210,7 +210,7 @@ render fail. Convert first — the source run output is append-only history, so 
 is copied, never re-encoded in place:
 
 ```bash
-uv run .claude/skills/s3/scripts/s3_convert.py \
+uv run .claude/skills/studio-s3/scripts/s3_convert.py \
   --run <project>/latest#1 --for kling --add-input <name>
 # -> projects/<project>/input/<project>_in_<n>.png   (prints the new key)
 ```

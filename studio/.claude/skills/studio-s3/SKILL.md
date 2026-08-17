@@ -1,5 +1,5 @@
 ---
-name: s3
+name: studio-s3
 description: Read from and write to the xharness-prod-media-us-east-1 S3 bucket via the AWS CLI/boto3 — list a prefix, upload local files, download files to disk, and mint short-lived presigned HTTPS URLs (how images/videos reach Replicate). The canonical asset store for the studio-* workflow, holding CHARACTERS (identity records) and PROJECTS (runs, chains, scenes, movies, favorites, input). Use when a skill or task needs to store, fetch, list, or hand out large media assets, to record or address a run, or to cut runs into a scene and scenes into a movie.
 ---
 
@@ -102,7 +102,7 @@ replays by re-minting.
 ## Scripts
 
 All are `uv` scripts (PEP 723; dependency `boto3`) under
-`.claude/skills/s3/scripts/`. `s3_common.py` (auth/helpers) is a library, not run
+`.claude/skills/studio-s3/scripts/`. `s3_common.py` (auth/helpers) is a library, not run
 directly. Model invocation — the registry, the runner, live schema validation —
 lives in [`studio-core`](../studio-core/SKILL.md); this skill is storage.
 
@@ -125,7 +125,7 @@ lives in [`studio-core`](../studio-core/SKILL.md); this skill is storage.
 | `migrate_layout.py` | The one-off move from the pre-restructure `media/<owner>/…` tree. Kept for the record and for any bucket that still holds an old tree. |
 
 ```bash
-S3=.claude/skills/s3/scripts
+S3=.claude/skills/studio-s3/scripts
 
 # Projects — ASK which one before generating anything; offer to create one
 uv run $S3/projects.py list
