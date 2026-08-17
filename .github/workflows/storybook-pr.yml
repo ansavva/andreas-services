@@ -119,6 +119,11 @@ jobs:
       - name: Lint frontend
         run: cd storybook/frontend/storybook-ui && npm run lint
 
+      - name: Type-check frontend
+        # Fast fail on TS errors before paying for the bundler below. Covers
+        # vite.config.ts as well as src/ — see the script in package.json.
+        run: cd storybook/frontend/storybook-ui && npm run typecheck
+
       - name: Build frontend
         env:
           # Placeholder values — only used to satisfy VITE_ type declarations at build time

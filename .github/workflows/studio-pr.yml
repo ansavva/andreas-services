@@ -116,7 +116,7 @@ jobs:
         run: cd studio/frontend && npm run lint
 
       - name: Typecheck
-        run: cd studio/frontend && npx tsc --noEmit
+        run: cd studio/frontend && npm run typecheck
 
       - name: Build
         run: cd studio/frontend && npm run build
