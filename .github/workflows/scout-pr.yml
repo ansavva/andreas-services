@@ -71,8 +71,10 @@ jobs:
         run: cd scout/frontend && npm run lint
 
       - name: Type-check frontend
-        # Fast fail on TS errors before paying for the bundler below.
-        run: cd scout/frontend && npx tsc --noEmit
+        # Fast fail on TS errors before paying for the bundler below. Goes
+        # through the script so it covers vite.config.ts too — a bare
+        # `tsc --noEmit` only checks tsconfig.json's `include`, i.e. src/.
+        run: cd scout/frontend && npm run typecheck
 
       - name: Build frontend
         # VITE_BASE matches the prod build: the SPA is served from /app/, and a
