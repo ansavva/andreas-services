@@ -15,29 +15,56 @@ images and video themselves get the space.
 
 ## What it does
 
-- **Browse** the bucket's folders, with run folders shown as a name and a date
-  rather than one long timestamped token.
+- **Browse** the bucket's folders, newest first, with run folders shown as a name
+  and a date rather than one long timestamped token. The order is switchable —
+  newest, oldest, or by name either way — and travels in the URL.
 - **Grid** of every image and video in a folder. Videos paint their own first
   frame as a poster and show their duration.
-- **Fullscreen lightbox** — arrow keys, swipe, `f` for fullscreen, `space` to
-  play or pause, `Esc` to close.
-- **Reel** — a vertical, one-per-screen scroll through every image and video
-  beneath the current folder, recursively. Exactly one video plays at a time and
-  everything starts muted.
+- **Reel** — the one media viewer. A vertical, one-per-screen scroll; opening a
+  tile opens the reel on that tile, and *Play reel* walks everything beneath the
+  current folder recursively. Exactly one video plays at a time, starting muted.
+  Videos get a transport: play/pause, a seek bar, and skip either way.
+- **Share links.** The URL is the S3 path
+  (`/media/fred/runs/2026-08-14_…/output/clip.mp4`), so the address bar is always
+  a link to exactly what is on screen.
 - **Read-only file viewer** for the pipeline's `request.json`, `result.json`,
   `prompt.json`, the subject `profile.md` files and the reference captions. JSON
   is pretty-printed, markdown is rendered, nothing is editable.
+- **Tidy up.** Create a folder, rename a file or a folder, delete one file, a
+  whole folder, or a grid selection. Delete confirms twice in the button itself
+  — press once and it turns red and names what it is about to remove, press
+  again and it goes. There is no dialog.
 - **Download** any single file.
+
+### Keys
+
+| Key | Does |
+|---|---|
+| ↑ / ↓ | Previous / next item |
+| ← / → | Seek 5s back / forward in a video (previous / next for a still) |
+| `space` | Play / pause |
+| `m` | Mute / unmute |
+| `f` | Fullscreen |
+| `Esc` | Close |
 
 ## What it deliberately does not do
 
-It does not generate, edit, upload, rename or delete anything. The Lambda's IAM
-role holds `s3:ListBucket` and `s3:GetObject` and nothing else, so studio
-*cannot* write to the x-harness bucket even by accident.
+**It used to be a strict reader, and that changed.** The Lambda's IAM role now
+carries `s3:PutObject` and `s3:DeleteObject` alongside the read grants, scoped to
+the same `media/*` prefix, because deciding a run produced nothing worth keeping
+happens while you are looking at it. Everything else about that boundary is
+unchanged: every key is validated against the media root before it reaches S3,
+folder operations refuse a subtree larger than `STUDIO_MAX_FOLDER_OBJECTS`
+rather than doing half of one, and renames copy before they delete so a failure
+leaves a duplicate rather than a hole.
 
-It is also not a social app: no likes, no comments, no sharing, no cross-folder
-infinite feed. The reel is a way to flip through a folder quickly, and that is
-all it is.
+**There is still no upload**, and that is a constraint as much as a decision: a
+browser upload needs a CORS configuration on a bucket studio does not own and
+must not modify, and routing the bytes through the Lambda caps a file at 6 MB —
+useless for video. Generating media remains x-harness's job.
+
+It is also not a social app: no likes, no comments, no cross-folder infinite
+feed. The reel is a way to flip through a folder quickly, and that is all it is.
 
 ## Access
 

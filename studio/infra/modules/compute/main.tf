@@ -69,18 +69,38 @@ resource "aws_iam_role_policy" "logs" {
   })
 }
 
-# READ-ONLY, AND THAT IS THE POINT.
+# THIS ROLE CAN NOW WRITE, AND THAT IS A DELIBERATE REVERSAL.
 #
-# The media bucket belongs to the x-harness pipeline; this service is a viewer of
-# it and nothing more. There is deliberately no PutObject, DeleteObject or
-# AbortMultipartUpload here, so no bug, no compromised token and no future
-# feature added in haste can write to or destroy that data — the role simply
-# cannot. `ListBucket` is scoped by prefix so even listing cannot reach outside
-# the browsable root.
+# For most of studio's life this policy was `ListBucket` + `GetObject` and the
+# comment here said so emphatically: the media bucket belongs to the x-harness
+# pipeline, studio was a viewer of it, and no bug or compromised token could
+# destroy that data because the role simply could not. That was the right
+# default and it is worth stating plainly why it changed.
+#
+# It changed because tidying the library is a thing you do while looking at it.
+# A run that produced nothing worth keeping is recognised in the browser, and
+# routing "delete these four frames" back through the pipeline meant it never
+# happened. So the role gained `PutObject` and `DeleteObject`, scoped to the same
+# `media/*` the read grants use.
+#
+# What still holds the line:
+#
+#   * Scope is unchanged. Every grant, read and write alike, is confined to
+#     `${var.media_root_prefix}*`, and `ListBucket` is still prefix-conditioned,
+#     so nothing outside the browsable root is reachable in either direction.
+#   * `services/keys.py` validates every key and prefix before it reaches boto3;
+#     IAM is the second line, not the first.
+#   * There is no multipart grant. `PutObject` here writes zero-byte folder
+#     markers and nothing else — the API exposes no upload, and adding one is a
+#     separate decision that should be argued on its own.
+#   * `s3:DeleteObjectVersion` is deliberately absent. If the bucket is ever
+#     versioned, deletes become recoverable tombstones rather than erasures, and
+#     this role cannot reach past them.
 #
 # `GetObject` is what signs presigned URLs and what HeadObject checks against;
-# both read the same permission.
-data "aws_iam_policy_document" "media_read" {
+# both read the same permission. `CopyObject` — which is what a rename is —
+# needs `GetObject` on the source and `PutObject` on the destination.
+data "aws_iam_policy_document" "media_access" {
   statement {
     sid       = "ListBrowsableRoot"
     effect    = "Allow"
@@ -100,12 +120,21 @@ data "aws_iam_policy_document" "media_read" {
     actions   = ["s3:GetObject"]
     resources = ["arn:aws:s3:::${var.media_bucket_name}/${var.media_root_prefix}*"]
   }
+
+  statement {
+    sid       = "ManageMediaObjects"
+    effect    = "Allow"
+    actions   = ["s3:PutObject", "s3:DeleteObject"]
+    resources = ["arn:aws:s3:::${var.media_bucket_name}/${var.media_root_prefix}*"]
+  }
 }
 
-resource "aws_iam_role_policy" "media_read" {
-  name   = "${local.api_name}-media-read"
+# Renamed from `media_read`, which is no longer what it grants. An inline role
+# policy carries no data, so replacing it costs nothing.
+resource "aws_iam_role_policy" "media_access" {
+  name   = "${local.api_name}-media-access"
   role   = aws_iam_role.api.id
-  policy = data.aws_iam_policy_document.media_read.json
+  policy = data.aws_iam_policy_document.media_access.json
 }
 
 # ---------------------------------------------------------------------------
@@ -116,8 +145,13 @@ resource "aws_lambda_function" "api" {
   role          = aws_iam_role.api.arn
   package_type  = "Image"
   image_uri     = local.api_image
-  timeout       = 15
-  memory_size   = 512
+  # 15s was ample while every request was one listing. A folder rename is a
+  # CopyObject per key — server-side, so the bytes never move through here, but
+  # still one round trip each — and `STUDIO_MAX_FOLDER_OBJECTS` bounds that at
+  # 2000. The Lambda refuses anything larger rather than relying on this number,
+  # so the timeout is the backstop and the config value is the contract.
+  timeout     = 60
+  memory_size = 512
 
   environment {
     variables = {

@@ -6,8 +6,15 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 from studio_core import config
-from studio_core.errors import ConfigError, NotFoundError, UpstreamError, ValidationError
+from studio_core.errors import (
+    ConfigError,
+    ConflictError,
+    NotFoundError,
+    UpstreamError,
+    ValidationError,
+)
 from studio_core.routes.browse import bp as browse_bp
+from studio_core.routes.manage import bp as manage_bp
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +42,19 @@ def create_app() -> Flask:
     app = Flask(__name__)
     app.wsgi_app = ApiPathMiddleware(app.wsgi_app)
 
+    # The write verbs are listed here *and* on the MOCK preflight and the two
+    # gateway responses in `modules/api_gateway`. All four have to agree: the
+    # browser's preflight is answered by API Gateway, not by Flask, so a method
+    # missing there is a CORS failure the Flask config cannot rescue.
     CORS(
         app,
         resources={r"/api/*": {"origins": config.allowed_origin()}},
         allow_headers=["Content-Type", "Authorization"],
-        methods=["GET", "OPTIONS"],
+        methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     )
 
     app.register_blueprint(browse_bp)
+    app.register_blueprint(manage_bp)
 
     @app.before_request
     def handle_preflight():
@@ -56,6 +68,14 @@ def create_app() -> Flask:
     @app.errorhandler(NotFoundError)
     def handle_not_found_error(error):
         return jsonify({"error": f"No such object: {error}"}), 404
+
+    # A sibling of ValidationError rather than a subclass, so this handler is
+    # the one Flask picks — the message is already user-facing ("'x' already
+    # exists here") and the status is what tells the UI to keep the rename field
+    # open instead of closing it.
+    @app.errorhandler(ConflictError)
+    def handle_conflict_error(error):
+        return jsonify({"error": str(error)}), 409
 
     @app.errorhandler(UpstreamError)
     def handle_upstream_error(error):

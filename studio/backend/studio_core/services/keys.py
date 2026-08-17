@@ -87,6 +87,65 @@ def clean_key(raw: str | None) -> str:
     return key
 
 
+def clean_name(raw: str | None) -> str:
+    """Validate one path segment supplied as a new name.
+
+    A name is not a key: it is exactly one segment, so a slash in it is not a
+    traversal to normalise away but a different request entirely — "rename" is
+    not "move", and letting one become the other by punctuation is how a rename
+    ends up writing outside the folder the caller was looking at. Everything
+    suspect is refused rather than stripped, because a silently altered name is
+    a rename the user did not ask for.
+    """
+    if raw is None or not raw.strip():
+        raise ValidationError("name is required")
+
+    name = raw.strip()
+    if "/" in name or "\\" in name:
+        raise ValidationError("name may not contain slashes")
+    if name in (".", ".."):
+        raise ValidationError("name may not be '.' or '..'")
+    # S3 keys are UTF-8 byte strings and will happily hold a newline or a NUL.
+    # Such a key can be written and then never referenced from a URL again.
+    if any(ord(char) < 0x20 or ord(char) == 0x7F for char in name):
+        raise ValidationError("name may not contain control characters")
+    if len(name.encode("utf-8")) > 255:
+        raise ValidationError("name is too long")
+    return name
+
+
+def parent_prefix(key: str) -> str:
+    """The folder one key or prefix sits in, always ending in a slash."""
+    trimmed = key.rstrip("/")
+    head = posixpath.dirname(trimmed)
+    return f"{head}/" if head else ""
+
+
+def with_name(key: str, name: str) -> str:
+    """The same key with its last segment replaced — a rename in place."""
+    return f"{parent_prefix(key)}{name}"
+
+
+def renamed_prefix(prefix: str, name: str) -> str:
+    """The same folder prefix with its last segment replaced."""
+    return f"{parent_prefix(prefix)}{name}/"
+
+
+def assert_inside_root(prefix: str) -> None:
+    """Refuse an operation aimed at the media root itself.
+
+    `clean_prefix('')` returns the root, so every "which folder" argument has a
+    valid value even when the caller sent nothing. That is right for browsing
+    and catastrophic for deleting, which is why the destructive paths ask this
+    question separately instead of trusting the normaliser.
+    """
+    root = config.media_root_prefix()
+    if prefix == root:
+        raise ValidationError(f"'{root}' is the library root and cannot be changed")
+    if not prefix.startswith(root):
+        raise ValidationError(f"prefix must sit inside '{root}'")
+
+
 def extension(key: str) -> str:
     return posixpath.splitext(key)[1].lower()
 

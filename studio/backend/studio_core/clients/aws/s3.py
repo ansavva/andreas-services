@@ -1,9 +1,25 @@
-"""Thin boto3 wrapper over the media bucket. Read operations only.
+"""Thin boto3 wrapper over the media bucket.
 
-Nothing in this module can write: there is no `put_object`, no `delete_object`
-and no multipart call, which mirrors the IAM policy Terraform attaches to the
-Lambda role. The bucket belongs to the x-harness pipeline and this service is
-strictly a reader of it.
+**This module can write, and that is a recent and deliberate change.** Studio was
+built as a reader of a bucket the x-harness pipeline owns, and for most of its
+life the Lambda role carried `ListBucket` and `GetObject` and nothing else. It
+now also carries `PutObject` and `DeleteObject` on `media/*`, because studio is
+where the library actually gets tidied — a run that produced nothing worth
+keeping is noticed in the browser, not in the pipeline.
+
+Three things keep that from being a licence to do anything:
+
+* Every key still goes through `services.keys`, so nothing outside `media/` is
+  reachable whatever the caller sends.
+* There is no multipart upload and no `put_object` with a caller-supplied body.
+  The only `PutObject` here writes a zero-byte folder marker, and the only other
+  write is `CopyObject` within the same bucket — which is what a rename is.
+* Deletes are explicit and bounded (`config.max_bulk_keys`,
+  `config.max_folder_objects`); nothing in this service deletes by wildcard.
+
+Data that matters is still the pipeline's to produce. Adding an upload path here
+would be the change that makes studio a writer in the real sense, and it should
+be argued for on its own rather than arriving as a side effect of this one.
 """
 
 import logging
@@ -62,27 +78,121 @@ def list_folder(prefix: str) -> tuple[list[str], list[dict]]:
     return folders, objects
 
 
-def walk(prefix: str, continuation_token: str | None, page_size: int):
-    """One undelimited page of every object beneath a prefix.
+def walk_all(prefix: str, limit: int) -> tuple[list[dict], bool]:
+    """Every object beneath a prefix, up to `limit`.
 
-    Undelimited so subfolders come back flattened — this is what reel mode walks.
-    Returns the raw page plus the token for the next one.
+    Returns the objects and whether the listing was cut short. Used wherever a
+    whole subtree has to be known before anything can be decided about it —
+    sorting the reel by date, and counting a folder before renaming or deleting
+    it — none of which can be answered from one page.
     """
-    kwargs = {
-        "Bucket": config.media_bucket(),
-        "Prefix": prefix,
-        "MaxKeys": page_size,
-    }
-    if continuation_token:
-        kwargs["ContinuationToken"] = continuation_token
+    objects: list[dict] = []
+    truncated = False
+    paginator = client().get_paginator("list_objects_v2")
 
     try:
-        response = client().list_objects_v2(**kwargs)
+        for page in paginator.paginate(Bucket=config.media_bucket(), Prefix=prefix):
+            for obj in page.get("Contents", []):
+                if len(objects) >= limit:
+                    return objects, True
+                objects.append(obj)
     except ClientError as exc:
-        logger.warning("ListObjectsV2 walk failed for %s: %s", prefix, exc)
+        logger.warning("ListObjectsV2 walk_all failed for %s: %s", prefix, exc)
         raise UpstreamError("Could not list the media bucket") from exc
 
-    return response.get("Contents", []), response.get("NextContinuationToken")
+    return objects, truncated
+
+
+def exists(key: str) -> bool:
+    """Whether one object is there. The pre-check every rename and create makes."""
+    try:
+        client().head_object(Bucket=config.media_bucket(), Key=key)
+        return True
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code")
+        if code in ("404", "NoSuchKey", "NotFound"):
+            return False
+        logger.warning("HeadObject failed for %s: %s", key, exc)
+        raise UpstreamError("Could not read the object") from exc
+
+
+def prefix_exists(prefix: str) -> bool:
+    """Whether anything at all lives under a prefix.
+
+    A folder is not a thing in S3, so "does this folder exist" can only be asked
+    as "is there a key that starts with it". One key is enough to answer it.
+    """
+    try:
+        response = client().list_objects_v2(
+            Bucket=config.media_bucket(), Prefix=prefix, MaxKeys=1
+        )
+    except ClientError as exc:
+        logger.warning("ListObjectsV2 failed for %s: %s", prefix, exc)
+        raise UpstreamError("Could not list the media bucket") from exc
+
+    return response.get("KeyCount", 0) > 0
+
+
+def copy(source_key: str, dest_key: str) -> None:
+    """Server-side copy within the media bucket. The first half of a rename.
+
+    Server-side, so a 200 MB video never travels through the Lambda — which is
+    what makes renaming a run folder of finished output affordable at all.
+    """
+    try:
+        client().copy_object(
+            Bucket=config.media_bucket(),
+            Key=dest_key,
+            CopySource={"Bucket": config.media_bucket(), "Key": source_key},
+        )
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") in ("404", "NoSuchKey", "NoSuchKeyError"):
+            raise NotFoundError(source_key) from exc
+        logger.warning("CopyObject %s -> %s failed: %s", source_key, dest_key, exc)
+        raise UpstreamError("Could not copy the object") from exc
+
+
+def delete(keys: list[str]) -> None:
+    """Delete objects, in batches of the 1000 `DeleteObjects` accepts.
+
+    S3 reports per-key failures in the response body rather than by raising, so
+    the errors it returns are read and turned into one — a delete that silently
+    left half its keys behind is exactly the outcome a UI cannot recover from.
+    """
+    if not keys:
+        return
+
+    for start in range(0, len(keys), 1000):
+        batch = keys[start : start + 1000]
+        try:
+            response = client().delete_objects(
+                Bucket=config.media_bucket(),
+                Delete={"Objects": [{"Key": key} for key in batch], "Quiet": True},
+            )
+        except ClientError as exc:
+            logger.warning("DeleteObjects failed (%d keys): %s", len(batch), exc)
+            raise UpstreamError("Could not delete the objects") from exc
+
+        failures = response.get("Errors", [])
+        if failures:
+            logger.warning("DeleteObjects reported %d failures: %s", len(failures), failures[:5])
+            raise UpstreamError(
+                f"Could not delete {len(failures)} of {len(batch)} objects"
+            )
+
+
+def put_folder_marker(prefix: str) -> None:
+    """Write the zero-byte object that makes an empty folder visible.
+
+    The console's own convention, and the only way a new folder can exist before
+    anything is in it — S3 has no directories to create. `services.browse`
+    filters these back out of every listing, so the marker is never a file.
+    """
+    try:
+        client().put_object(Bucket=config.media_bucket(), Key=prefix, Body=b"")
+    except ClientError as exc:
+        logger.warning("PutObject failed for %s: %s", prefix, exc)
+        raise UpstreamError("Could not create the folder") from exc
 
 
 def presign(key: str, *, disposition: str = "inline", filename: str | None = None) -> str:

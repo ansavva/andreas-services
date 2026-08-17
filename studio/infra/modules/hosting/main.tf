@@ -71,17 +71,33 @@ resource "aws_cloudfront_function" "spa_fallback" {
   runtime = "cloudfront-js-1.0"
   comment = "SPA fallback routing for studio"
   publish = true
-  code    = <<-EOT
+  # Routes by WHERE the build puts things, not by whether the path looks like a
+  # file — which is the distinction studio's share links turn on.
+  #
+  # A studio URL is the object's S3 key: `/media/fred/runs/…/output/clip.mp4`.
+  # The obvious rule ("has an extension, so serve it") sends that straight to the
+  # origin, which does not have it; the distribution's 403/404 fallbacks then
+  # rescue it into index.html, so the link *works* — after a round trip to S3 and
+  # an error page, on every share link anyone opens. Worse, it is accidental:
+  # remove those custom_error_response blocks and every shared clip 404s.
+  #
+  # Vite emits exactly two things — hashed files under /assets/ and index.html —
+  # so passing those through and rewriting everything else is both complete and
+  # unambiguous. `public/` is empty; anything added there needs a line here.
+  #
+  # ES5.1 runtime: `indexOf(x) === 0`, not `startsWith`.
+  code = <<-EOT
     function handler(event) {
       var request = event.request;
       var uri = request.uri;
 
-      // Real files (they carry an extension like .js/.css/.png) are served as-is.
-      if (uri.match(/\.[a-zA-Z0-9]+$/)) {
+      // The build's own output, served as-is.
+      if (uri.indexOf('/assets/') === 0 || uri === '/index.html') {
         return request;
       }
 
-      // Everything else is a client-side route.
+      // Everything else is a client-side route — including one that ends in
+      // `.mp4`, because that is what an object's share link looks like.
       request.uri = '/index.html';
       return request;
     }

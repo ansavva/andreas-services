@@ -1,0 +1,201 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { buttonClass } from "@ansavva/design-system";
+
+type Tone = "row" | "chrome" | "bar";
+type Phase = "idle" | "armed" | "busy";
+
+interface Props {
+  /** What is about to be destroyed, e.g. "3 files". Used in the labels. */
+  noun: string;
+  /** Runs on the second press. Rejecting leaves the button disarmed. */
+  onConfirm: () => Promise<unknown>;
+  /** Which surface this sits on. See `toneStyles`. */
+  tone?: Tone;
+  disabled?: boolean;
+  className?: string;
+}
+
+/**
+ * Delete, confirmed twice, in one button and without a dialog.
+ *
+ * **The confirmation is the button changing under your finger**, not a modal:
+ * press once and it turns red and says what it is about to destroy, press again
+ * and it does it. That is a deliberate choice over the usual dialog, for two
+ * reasons.
+ *
+ * The first is that a portalled dialog is not painted while a `<video>` is in
+ * native fullscreen, which is exactly where deleting a clip is most natural —
+ * the same constraint that keeps `CopyKeyButton`'s feedback inline.
+ *
+ * The second is that a modal trains the wrong reflex. A dialog that always
+ * appears in the same place gets a second click aimed at it before it renders;
+ * a button that *changes what it says where your finger already is* cannot be
+ * dismissed without reading it. The arming is not a formality — it expires.
+ *
+ * Three things disarm it: the timeout, moving focus away, and Escape. So a
+ * half-pressed delete left on screen is never still live when you come back to
+ * it, and it never swallows an Escape meant for the overlay around it — the key
+ * is only intercepted while this particular button is armed and focused.
+ */
+const ARMED_MS = 4000;
+
+export function ConfirmDeleteButton({
+  noun,
+  onConfirm,
+  tone = "row",
+  disabled = false,
+  className = "",
+}: Props) {
+  const [phase, setPhase] = useState<Phase>("idle");
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Set on unmount so a resolving promise cannot call setState afterwards —
+  // deleting from the reel closes the pane the button lives in.
+  const gone = useRef(false);
+
+  useEffect(() => {
+    gone.current = false;
+    return () => {
+      gone.current = true;
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, []);
+
+  const disarm = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    setPhase((current) => (current === "armed" ? "idle" : current));
+  }, []);
+
+  const press = useCallback(() => {
+    if (phase === "busy") return;
+
+    if (phase === "idle") {
+      setPhase("armed");
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => {
+        if (!gone.current) setPhase("idle");
+      }, ARMED_MS);
+      return;
+    }
+
+    if (timer.current) clearTimeout(timer.current);
+    setPhase("busy");
+    void onConfirm()
+      .catch(() => {
+        /* the caller surfaces the message; this only owns the button */
+      })
+      .finally(() => {
+        if (!gone.current) setPhase("idle");
+      });
+  }, [onConfirm, phase]);
+
+  const label =
+    phase === "busy" ? `Deleting ${noun}…` : phase === "armed" ? `Confirm — delete ${noun}` : `Delete ${noun}`;
+
+  const showsText = tone === "bar";
+
+  return (
+    <button
+      type="button"
+      onClick={press}
+      onBlur={disarm}
+      onKeyDown={(event) => {
+        // Only while armed, so the reel's own Escape handler is untouched the
+        // rest of the time.
+        if (event.key === "Escape" && phase === "armed") {
+          event.stopPropagation();
+          disarm();
+        }
+      }}
+      disabled={disabled || phase === "busy"}
+      aria-label={label}
+      title={label}
+      // The package has no `danger` intent — `button.props.ts` records that the
+      // token set has no `danger-text` to pair with a danger fill — so the armed
+      // state is the package's own class recipe with the fill swapped, the same
+      // move `humbugg/app` makes for its three destructive actions. Hand-rolling
+      // the button instead would be the first component of a second design
+      // system.
+      //
+      // The swap is an inline style, not a `bg-danger` class, and that is not
+      // fussiness: two Tailwind utilities setting the same property are resolved
+      // by their order in the generated stylesheet, not by the order they appear
+      // in this attribute, so layering one over `buttonClass`'s own fill is a
+      // coin toss. An inline style always wins. It reads the semantic role
+      // rather than a literal, which is the rule that actually matters.
+      style={
+        phase === "armed" && showsText
+          ? { backgroundColor: "var(--color-danger)", color: "var(--color-bg)" }
+          : undefined
+      }
+      className={`${
+        showsText
+          ? buttonClass({ intent: "secondary", size: "sm" })
+          : `shrink-0 rounded-md transition-colors ${
+              phase === "armed" ? armedStyles[tone] : toneStyles[tone]
+            }`
+      } disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2
+         focus-visible:outline-primary ${className}`}
+    >
+      {/* The armed state has to reach a screen reader as a statement, not as a
+          colour change on an icon. */}
+      <span className="sr-only" aria-live="assertive">
+        {phase === "armed" ? `Press again to delete ${noun}` : ""}
+      </span>
+
+      {showsText ? (
+        <span aria-hidden="true">
+          {phase === "busy" ? "Deleting…" : phase === "armed" ? `Confirm — delete ${noun}` : `Delete ${noun}`}
+        </span>
+      ) : (
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="size-5 fill-none stroke-current stroke-[1.5]"
+        >
+          {phase === "armed" ? (
+            // A question mark while armed: the icon itself has to say that this
+            // press is not the same as the last one.
+            <>
+              <path d="M9.5 9a2.5 2.5 0 1 1 3 2.45V13" />
+              <path d="M12 16.5v.01" />
+              <circle cx="12" cy="12" r="9" />
+            </>
+          ) : (
+            <>
+              <path d="M4 7h16" />
+              <path d="M10 11v6m4-6v6" />
+              <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
+              <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+            </>
+          )}
+        </svg>
+      )}
+    </button>
+  );
+}
+
+/**
+ * Matches `CopyKeyButton`'s tones — these two sit next to each other, and a
+ * delete that read as a different *kind* of control would be a second thing to
+ * learn rather than the sibling it is.
+ *
+ * The armed variants are complete replacements rather than additions for the
+ * same reason the bar's fill is inline: `text-muted` and `text-danger` are the
+ * same property, and which of two conflicting utilities wins is decided by the
+ * stylesheet, not by this file.
+ */
+const toneStyles: Record<Tone, string> = {
+  row: "p-2 text-muted hover:bg-surface-alt hover:text-danger",
+  chrome: "p-2 text-white/80 hover:bg-white/15 hover:text-white",
+  bar: "",
+};
+
+const armedStyles: Record<Tone, string> = {
+  row: "p-2 bg-danger/15 text-danger",
+  chrome: "p-2 bg-danger/80 text-white",
+  bar: "",
+};
