@@ -252,18 +252,24 @@ storybook/infra/outputs.txt
 # Agent skills — machine-local tooling installed by scripts/dev-setup.sh, never
 # committed. The real SKILL.md files live in .agents/skills/; the entries under
 # .claude/skills/ are symlinks into them, which is how Claude Code discovers
-# them. Both are generated, so both are ignored — except the one skill this
-# repo authors itself.
+# them. Both are generated, so both are ignored — except the skills this repo
+# authors itself, allowlisted one by one below.
 .agents/
 skills-lock.json
 .claude/skills/*
 !.claude/skills/design-system-ui/
 !.claude/skills/aws-naming/
+!.claude/skills/studio/
 
 # studio's skills are the exception to the rule above: they are authored here,
 # not installed by a script, and they live at studio/.claude/skills/ rather than
 # the repo root — which the anchored pattern above does not reach. Nothing to
 # ignore, noted so the asymmetry doesn't read as an oversight.
+#
+# The `studio` entry allowlisted above is NOT one of them. It is a root-level
+# router: directory-scoped skills register only after a file under studio/ has
+# been read, so on the first action of a session none of studio's sixteen are
+# callable. The router is registered from the start and points at them.
 
 # studio — local working directories for the generation pipeline. Source media
 # staged for a run, working copies pulled down for editing, and rendered output.
