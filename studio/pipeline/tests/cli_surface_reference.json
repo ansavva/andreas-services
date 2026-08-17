@@ -3476,7 +3476,7 @@
         "flags": [
           "--project"
         ],
-        "help": "REQUIRED. The project this run belongs to. `projects.py list` shows what exists.",
+        "help": "REQUIRED. The project this run belongs to. `studio projects list` shows what exists.",
         "hidden": false,
         "multiple": false,
         "nargs": 1,

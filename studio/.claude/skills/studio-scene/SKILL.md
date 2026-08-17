@@ -12,8 +12,8 @@ model's duration ceiling**, or through beats that must flow rather than cut.
 The family:
 - **`studio-shot`** — one brief → one clip. Start there.
 - **`studio-scene`** (this) — many clips → one continuous piece.
-- **`studio-s3`** — [`frames.py`](../../../pipeline/studio_pipeline/store/frames.py) extracts the handoff frame and
-  the verification grid; [`scenes.py`](../../../pipeline/studio_pipeline/store/scenes.py) is the scene store.
+- **`studio-s3`** — [`frames.py`](../../../pipeline/src/studio_pipeline/domain/frames.py) extracts the handoff frame and
+  the verification grid; [`scenes.py`](../../../pipeline/src/studio_pipeline/domain/scenes.py) is the scene store.
 - **`studio-kling`** / **`studio-seedance`** — render each shot.
 
 ## Why chain at all

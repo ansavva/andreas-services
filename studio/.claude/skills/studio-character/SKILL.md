@@ -20,7 +20,7 @@ character is an S3 record managed by this one skill, used by the video pipeline
 > reference set in `reference_images`; on **Kling via Replicate** the same field
 > exists (up to 7 images), so the set carries over — note Kling takes only
 > `.jpg/.jpeg/.png`, so a `.webp` set needs converting. Driving from a start
-> frame instead, paste a compressed identity block (`character.py textblock
+> frame instead, paste a compressed identity block (`studio character textblock
 > <name>`). Either way identity comes from the images + bible, motion/framing
 > from the prompt.
 
@@ -45,7 +45,7 @@ A character record holds **no production history**. Runs, chains, scenes and
 movies live under `projects/<project>/` (see the **`studio-s3`** skill), because one
 piece of work can involve several characters and a project can outlive any of
 them. A run records which characters it used, so the association survives the
-split: `runs.py find --character <name>`.
+split: `studio runs find --character <name>`.
 
 ### The four pools, and what each is for
 
@@ -62,7 +62,7 @@ Renaming a source photo throws away whatever its filename recorded.
 
 The project's `input/` pool is a **separate thing entirely** — working material
 for a piece of work, not anything about a character. Frames pulled off a clip
-for chaining go there (`frames.py last --add-input`), never into `reference/`:
+for chaining go there (`studio frames last --add-input`), never into `reference/`:
 an extracted frame is model output, and promoting it into identity feeds
 generated pixels back in as identity and compounds drift.
 
@@ -114,7 +114,7 @@ studio character sync-refs <name> --apply                      # reconcile index
 
 ### Curating the pools
 
-`curate.py` does the operations that go wrong by hand — every command is a DRY
+`studio curate` does the operations that go wrong by hand — every command is a DRY
 RUN unless you pass `--apply`, and nothing is ever deleted outright:
 
 ```bash
@@ -130,7 +130,7 @@ studio curate move     <name> face/<name>_3.jpg --from reference --to archive
 chains all store S3 keys, so moving an object invalidates every document that
 cited it — `regroup` and `move` rewrite those documents in the same operation.
 This is not hypothetical: curating without that step is what left 69 records
-pointing at reference images that no longer existed. `rewrite.py check` reports
+pointing at reference images that no longer existed. `studio rewrite check` reports
 any that remain.
 
 `set-refs` is gone. It physically rebuilt `reference/` because the folder *was*
@@ -140,7 +140,7 @@ not a file move.
 ## The bible is structured YAML — one schema, every character
 
 `profile.yaml` is canonical in S3 (edit it via this skill). The schema is
-[`characters/templates/profile.yaml`](../../../pipeline/studio_pipeline/characters/templates/profile.yaml) and **every character carries
+[`characters/templates/profile.yaml`](../../../pipeline/src/studio_pipeline/domain/templates/profile.yaml) and **every character carries
 the same top-level keys**, so a prompt or a check reads a path
 (`consistency.must`, `identity.signature_features`) instead of pattern-matching
 headings out of prose:
@@ -177,14 +177,14 @@ render against, and each `drift_modes` entry pairs the **failure** with the
 **fix** — what to actually write in the prompt — so naming a drift and correcting
 it are never separated.
 
-`character.py` **refuses to upload** a bible that does not parse or has lost a
+`studio character` **refuses to upload** a bible that does not parse or has lost a
 top-level key: a character with no `consistency` block is a character that
 silently stops being checked against. For a **worked example**, read a live one
 (`studio character show <name>`) before writing a new one.
 
 ## The management tool
 
-[`characters/character.py`](../../../pipeline/studio_pipeline/characters/character.py) is the CRUD + load layer. It reuses
+[`domain/characters.py`](../../../pipeline/src/studio_pipeline/domain/characters.py) is the CRUD + load layer. It reuses
 the **`studio-s3`** skill's `s3_common.py` (the AWS-login-bridged boto3 client, the
 key builders, natural sort) — one storage layer, one auth path, no bytes
 in the agent context. Requires an `aws login` (see the `studio-s3` skill).
@@ -242,7 +242,7 @@ position N in the resolved selection, which is what a model actually receives.
    Pass the `.url` values as `reference_images` (Seedance accepts up to 9) and
    cite them as `[Image1]…[ImageN]` — **slot N is position N in this list**.
    `reference_images` **cannot** be combined with a first-frame `image` on
-   Seedance. Normally the runner does all of this: `studio.py run --project <p>
+   Seedance. Normally the runner does all of this: `studio run --project <p>
    --character <name> --pick-tag face`.
 3. **Author the prompt.** Translate the bible into concrete visual/audio
    direction — ideally with **`studio-prompt`** (structured JSON): the character's
@@ -281,7 +281,7 @@ better than prose can, and a long identity paragraph fights it — see
 
 ## Adding a new character
 
-1. Write the bible from [`characters/templates/profile.yaml`](../../../pipeline/studio_pipeline/characters/templates/profile.yaml) (read
+1. Write the bible from [`characters/templates/profile.yaml`](../../../pipeline/src/studio_pipeline/domain/templates/profile.yaml) (read
    an existing character's live bible, `studio character show <name>`, as a reference).
    Fill **every** key — `create` refuses a bible missing any of them.
 2. `studio character create <name> --from-profile <your-bible.yaml>`.

@@ -6,7 +6,7 @@ description: The shared machinery every studio-* engine runs on — the model RE
 # studio-core — the runner every model shares
 
 **Models are data, not code.** One entry per model in
-[`engine/models.json`](../../../pipeline/studio_pipeline/engine/models.json), one runner over all of them. Adding
+[`engine/models.json`](../../../pipeline/src/studio_pipeline/engine/models.json), one runner over all of them. Adding
 a model is a reviewed data change plus a generated doc — never an edit to five
 scripts, which is what it used to be.
 
@@ -94,14 +94,14 @@ error: openai/gpt-image-2 does not accept: ['input_fidelity']
 |---|---|
 | `models.json` | **The registry.** Single source of truth for every studio-* tool. |
 | `registry.py` | Load / look up / list; `save_snapshot` for refreshes. |
-| `studio.py` | The CLI above. |
+| `cli.py` | The CLI above. |
 | `submit.py` | The one submit lifecycle, image and video alike. |
-| `model_schema.py` | Live schema fetch; validates fields, enums, ranges, `denied`. |
-| `replicate_api.py` | Token, HTTP, download, poll. |
+| `schema.py` | Live schema fetch; validates fields, enums, ranges, `denied`. |
+| `replicate.py` | Token, HTTP, download, poll. |
 | `refs.py` | Character reference selection / project input pool → S3 keys. |
 
 The run store itself stays in the `studio-s3` skill
-([`store/runs.py`](../../../pipeline/studio_pipeline/store/runs.py)) — that is storage, this is
+([`store/runs.py`](../../../pipeline/src/studio_pipeline/domain/runs.py)) — that is storage, this is
 invocation.
 
 ## `snapshot` — why there are two copies of the enums
@@ -110,7 +110,7 @@ Each entry carries a `snapshot` of its schema's enums and ranges. It exists so
 **`studio-prompt` can validate a prompt offline**, without a network call. It is
 advisory only: everything that submits re-validates against the live schema, so
 a stale snapshot can cost a retry but can never let a bad payload bill. Refresh
-with `studio.py models refresh`.
+with `studio models refresh`.
 
 ## Schema vs docs
 

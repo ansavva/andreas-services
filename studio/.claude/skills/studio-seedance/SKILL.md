@@ -69,9 +69,9 @@ keeps output on-brief and avoids failed/billed renders.
 Name the wardrobe explicitly and let build words — strong, muscular,
 broad-shouldered — carry the physique.
 
-`build_prompt.py` checks a draft against this model's wording list and suggests
+`studio prompt` checks a draft against this model's wording list and suggests
 the preferred alternative where one is recorded; see
-[`store/phrasebook.py`](../../../pipeline/studio_pipeline/store/phrasebook.py).
+[`store/phrasebook.py`](../../../pipeline/src/studio_pipeline/domain/phrasebook.py).
 
 ## Submit with FRESH presigned URLs minted in code (MANDATORY)
 
@@ -87,7 +87,7 @@ no URL passes through the agent context:
 
 ```bash
 # input.json = the built `input` object WITHOUT image/reference fields
-#   (studio-prompt: build_prompt.py prompt.json --emit input  → the .input object)
+#   (studio-prompt: studio prompt prompt.json --emit input  → the .input object)
 set -a; . ./.env; set +a
 studio run \
   --model seedance --project <project> --input-file input.json \
@@ -161,7 +161,7 @@ studio runs outputs <project>/latest --presign
 ```
 
 There is no longer a per-character `output/` folder; pre-existing videos were
-imported into synthetic runs via `runs.py adopt`.
+imported into synthetic runs via `studio runs adopt`.
 
 Minimal example input:
 
@@ -186,7 +186,7 @@ for a character, STOP and load **`studio-character`** first.
 - Each character keeps a **fixed, numbered reference set in S3** (at
   `characters/<character>/reference/`), a chosen subset per generation so identity
   stays locked without re-picking. **`studio-character`** hands you ordered
-  presigned URLs for it (`character.py refs <name> --presign`); under the hood
+  presigned URLs for it (`studio character refs <name> --presign`); under the hood
   that is `s3_presign.py --folder <character>/reference` (below).
 - `reference_images` **cannot** be combined with `image` / `last_frame_image`.
 

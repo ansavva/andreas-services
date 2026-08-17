@@ -9,8 +9,8 @@ description: Render still images with OpenAI's GPT Image 2 (openai/gpt-image-2) 
 two GPT Image entries. No OpenAI key needed; it bills through Replicate.
 
 > Invocation, the approval gate, run recording and validation are shared —
-> see [`studio-core`](../studio-core/SKILL.md): `studio.py run --model gpt-image-2 …`,
-> and `studio.py models show gpt-image-2` for the live schema. This page covers
+> see [`studio-core`](../studio-core/SKILL.md): `studio run --model gpt-image-2 …`,
+> and `studio models show gpt-image-2` for the live schema. This page covers
 > only what is specific to this model. [`gpt-image-1.5`](../studio-gpt-image-1-5/SKILL.md) is the sibling that does transparent backgrounds.
 
 ## What is specific to this model

@@ -6,9 +6,9 @@ description: Add a new Replicate model to the studio-* harness — fetch its liv
 # studio-add-model — onboarding a Replicate model
 
 Models are **data**. Adding one is an entry in
-[`engine/models.json`](../../../pipeline/studio_pipeline/engine/models.json) plus a
+[`engine/models.json`](../../../pipeline/src/studio_pipeline/engine/models.json) plus a
 skill doc — no submitter to write, no five files to edit. Once registered, a
-model is immediately invokable by `studio.py run --model <key>`, importable by
+model is immediately invokable by `studio run --model <key>`, importable by
 the backfill, and convertible for by `s3_convert --for <key>`.
 
 ## The command

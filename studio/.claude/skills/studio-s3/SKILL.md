@@ -89,7 +89,7 @@ either can always be rebuilt.
 `request.json` records `project` (where it lives) and `characters[]` (whose
 likeness went into it, inferred from the bindings, not just declared). That list
 is what makes "every run using this character" answerable now that the folder no
-longer says: `runs.py find --character <name>`.
+longer says: `studio runs find --character <name>`.
 
 ### THE RULE — S3 is the only origin
 
@@ -115,7 +115,7 @@ skill is storage.
 | `runs.py` | The shared **run store** every studio-* engine records into: request/prompt/result, output archiving, runref resolution for chaining, `find --character` across projects, and `favorite`. Library + CLI. |
 | `scenes.py` | The **scene store**: an ordered list of run outputs stitched into one continuous video under `projects/<p>/scenes/<scene_id>/`, as `shots/`. |
 | `movies.py` | The **movie store**: scenes cut into one piece under `projects/<p>/movies/<movie_id>/`. Same shape one tier up. |
-| `video.py` | The shared ffmpeg layer — probe, stitch, frame grab, contact grid. A scene and a movie join their inputs by identical rules because they call the same function. ffmpeg ships in the wheel; no system install. |
+| `ffmpeg.py` | The shared ffmpeg layer — probe, stitch, frame grab, contact grid. A scene and a movie join their inputs by identical rules because they call the same function. ffmpeg ships in the wheel; no system install. |
 | `frames.py` | Stills out of a run's video: `last` (the chaining handoff — a clip's final frame, straight into the project's input pool), `grid` (a contact sheet, so a clip can be *looked at* before more money is spent on top of it), and `chain` (the frames a scene has produced, which are **its** reference set for later shots — not a character's). |
 | `rewrite.py` | **When an object moves, the records that name it must follow.** `apply_moves()` is what `curate.py` and the migrator call; `check` walks every record and confirms what it names still exists. Run it after any manual S3 surgery. |
 | `phrasebook.py` | Per-model **wording lists** — a phrase, and the phrase to use instead. Models read the same idea differently. Kept as data in S3 (`phrasebook/wording.yaml`), like characters. |
@@ -194,7 +194,7 @@ to pick the Nth output (1-based); the default is every output. This is what the
 engine skills' `--ref-run` / `--start-run` / `--image-run` flags accept.
 
 A **sceneref** is the same shape one tier up — `<project>/<scene_id>`,
-`<project>/latest`, or a unique fragment — and is what `movies.py --scene`
+`<project>/latest`, or a unique fragment — and is what `studio movies new --scene`
 takes. A scene has exactly one output, so it needs no `#N`.
 
 ## Handing assets to Replicate
@@ -212,8 +212,8 @@ for references.
   revision is retained (mirrors Drive's update-in-place-with-history).
 - `list_keys` skips zero-byte folder markers and natural-sorts (`<name>_2`
   before `<name>_10`).
-- Moving an object means rewriting the records that name it. Use `curate.py`
+- Moving an object means rewriting the records that name it. Use `studio curate`
   (which does) rather than `aws s3 mv` (which does not), and run
-  `rewrite.py check` if you ever move something by hand.
+  `studio rewrite check` if you ever move something by hand.
 - Provisioning, teardown, and the presigned-URL cheatsheet live in
   [`infra/README.md`](../../../infra/README.md).

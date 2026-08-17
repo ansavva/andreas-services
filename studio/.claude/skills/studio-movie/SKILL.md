@@ -47,7 +47,7 @@ as a scene, then cut those scenes into a movie.
 ## Ordering scenes
 
 - **Cut on motion settling, not mid-gesture.** A scene that ends with the
-  subject still moving hands the next scene a jolt. `frames.py grid` on each
+  subject still moving hands the next scene a jolt. `studio frames grid` on each
   scene's output is the cheapest way to see how it ends.
 - **Keep the grade and the audio bed consistent across scenes**, or accept that
   the cut will announce itself. The stitcher normalises geometry, never colour.
@@ -106,7 +106,7 @@ without a scan.
 
 ## Stitching
 
-Handled by the shared `video.py`, the same layer `scenes.py` uses, so a movie
+Handled by the shared `ffmpeg.py`, the same layer `scenes.py` uses, so a movie
 and a scene join by identical rules:
 
 - when every scene already agrees on codec, dimensions, frame rate and audio

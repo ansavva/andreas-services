@@ -23,7 +23,7 @@ The family:
   `shots` timeline into the model's `multi_prompt` array and emits a ready
   Replicate `input`.
 - **`studio-character`** — `reference_images` here behaves like Seedance's, so a
-  character's existing S3 reference set carries over. `character.py textblock`
+  character's existing S3 reference set carries over. `studio character textblock`
   gives a pasteable identity anchor when driving from a start frame instead.
 - **`studio-seedance`** — the other model family, with its own schema.
 
@@ -73,7 +73,7 @@ A 9s standard clip is ~$1.52. Iterate at `standard`, finish at `pro`.
 | Images | `.jpg/.jpeg/.png` only — **`.webp` is rejected**, so convert S3 references |
 | Prompt | 2500 chars |
 
-`build_prompt.py --engine kling-replicate` enforces these as hard errors at
+`studio prompt --engine kling-replicate` enforces these as hard errors at
 author time rather than after a spent generation.
 
 ## Workflow

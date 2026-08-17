@@ -36,11 +36,11 @@ IMAGE-TO-VIDEO
   model fight the image and drift.
 
 Usage:
-  build_prompt.py prompt.json
-  build_prompt.py prompt.json --engine kling-replicate
-  build_prompt.py - < prompt.json
-  build_prompt.py --json '{"subject": "...", "action": "..."}'
-  build_prompt.py prompt.json --duration 8 --aspect-ratio 9:16 --emit input
+  studio prompt prompt.json
+  studio prompt prompt.json --engine kling-replicate
+  studio prompt - < prompt.json
+  studio prompt --json '{"subject": "...", "action": "..."}'
+  studio prompt prompt.json --duration 8 --aspect-ratio 9:16 --emit input
 
 Author the object like:
   {
@@ -94,7 +94,7 @@ def _engines_from_registry() -> dict[str, dict]:
     The enums and ranges used to be hardcoded here, a third copy of facts the
     live schema already publishes — and one that could drift silently from what
     the model accepts. They now come from each entry's `snapshot`, refreshed by
-    `studio.py models refresh`.
+    `studio models refresh`.
 
     The snapshot is used rather than a live fetch on purpose: authoring a prompt
     must keep working offline. It is advisory only — whatever finally submits

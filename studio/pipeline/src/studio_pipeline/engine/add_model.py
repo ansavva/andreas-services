@@ -193,8 +193,6 @@ from S3, and validates against the live schema like every other model.
 ## Invoke
 
 ```bash
-STUDIO=.claude/skills/studio-core/scripts/studio.py
-
 studio models show {key}          # entry + LIVE input schema
 studio run --model {key} \\
   --prompt "..." --character <name> --slug <slug> --dry-run
@@ -252,7 +250,7 @@ def add_model(model, json_, key, write):
     if REG.by_model_id(model):
         existing = REG.by_model_id(model)
         die(f"{model} is already registered as {existing['key']!r}.\n"
-            f"       edit models.json directly, then: studio.py models refresh {existing['key']}")
+            f"       edit models.json directly, then: studio models refresh {existing['key']}")
 
     token = RA.load_token()
     try:

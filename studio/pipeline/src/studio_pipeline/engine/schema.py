@@ -14,7 +14,7 @@ live and checked before anything is recorded or billed:
     check(payload, bindings, "openai/gpt-image-2", props, schemas)
 
 `check` raises SchemaError; callers turn that into their own `die()`. Used by
-`submit.py` for every model in the registry, and by `studio.py models show`, so
+`submit.py` for every model in the registry, and by `studio models show`, so
 a payload gets the same scrutiny whichever model it is aimed at.
 """
 
@@ -119,7 +119,7 @@ def check_denied(payload: dict, entry: dict, model: str) -> None:
 def snapshot(props: dict, schemas: dict) -> dict:
     """Distil a schema into the enum/range facts offline tools need.
 
-    Written into the registry by `studio.py models refresh`. Advisory only —
+    Written into the registry by `studio models refresh`. Advisory only —
     anything that submits re-validates against the live schema.
     """
     out: dict = {}

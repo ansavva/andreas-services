@@ -180,7 +180,7 @@ def cmd_list(json_):
     elif names:
         print("\n".join(names))
     else:
-        print("(no characters yet — create one with `character.py create <name>`)", file=sys.stderr)
+        print("(no characters yet — create one with `studio character create <name>`)", file=sys.stderr)
 
 
 @main.command("show")
@@ -292,7 +292,7 @@ def cmd_textblock(name):
         "material.\nCompress it into ONE paragraph of ~50-70 words covering only what a "
         "text-only engine\ncannot infer: build proportion, hair, face landmarks, skin, and "
         "signature accessories.\nThen save it back into the bible under `text_identity_block:` "
-        f"(`character.py edit {name}`)\nso it is written once and reused.\n"
+        f"(`studio character edit {name}`)\nso it is written once and reused.\n"
         "\nNOTE: with a start frame supplied, keep the pasted block SHORT — the frame carries\n"
         "appearance better than prose, and a long block fights it (see studio-kling).",
         file=sys.stderr,
@@ -314,7 +314,7 @@ def cmd_create(name, from_profile):
     print(f"created character {name!r}: {uri}", file=sys.stderr)
     if src == TEMPLATE:
         print("  (blank template — fill it in, then `set-profile` the result.)", file=sys.stderr)
-    print(f"  next: add references with `character.py add-refs {name} <img>...`", file=sys.stderr)
+    print(f"  next: add references with `studio character add-refs {name} <img>...`", file=sys.stderr)
 
 
 @main.command("set-profile")
@@ -569,7 +569,7 @@ def resolve_selection(s3, name: str, pick: list[str] | None = None,
                 (e for f, e in by_file.items()
                  if os.path.splitext(os.path.basename(f))[0] == want), None)
             if not hit:
-                die(f"{name} has no reference {want!r}. See `character.py refs {name} --describe`.")
+                die(f"{name} has no reference {want!r}. See `studio character refs {name} --describe`.")
             chosen.append(hit["file"])
     elif tags:
         want = set(tags)
@@ -683,7 +683,7 @@ def cmd_add_refs(files, name, replace, start, to):
         print(f"  {len(report['undescribed'])} reference image(s) have no description yet. "
               f"An undescribed image cannot be picked by tag and is invisible to whoever "
               f"chooses the set:\n"
-              f"    character.py set-ref-desc {name} <file> "
+              f"    studio character set-ref-desc {name} <file> "
               f"--description '…' --tags face,neutral", file=sys.stderr)
 
 
@@ -854,7 +854,7 @@ def cmd_refs(name, describe, dest, expires, json_, keys, pick, pick_tag, presign
         _data, entries = read_index(s3, name)
         if not entries:
             die(f"{name} has no reference index. Build one with "
-                f"`character.py sync-refs {name} --apply`.")
+                f"`studio character sync-refs {name} --apply`.")
         if json_:
             print(json.dumps(entries, indent=2))
         else:

@@ -19,7 +19,7 @@ approval gate at each point where money moves.
 | `studio-prompt` | authoring a *video* prompt as structured JSON |
 | `studio-image` | rendering one still |
 | `studio-seedance` / `studio-kling` | rendering one video |
-| `studio-s3` (`runs.py`, `s3_convert.py`) | the run store and format conversion |
+| `studio-s3` (`runs.py`, `convert.py`) | the run store and format conversion |
 
 ## Why frame-first, always
 
@@ -93,7 +93,7 @@ user may have said "image". A single static description is `still` only.
 
 ### 2. Load identity before writing anything
 
-`character.py show {name}` — render from the bible, never from memory. Note the
+`studio character show {name}` — render from the bible, never from memory. Note the
 `consistency` block; it is what step 1's output gets judged against.
 
 Choose the identity source deliberately:

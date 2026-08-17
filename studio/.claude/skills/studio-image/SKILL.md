@@ -104,7 +104,7 @@ The full mechanism — `denied`, cross-field rules, the live schema pass — liv
 
 ## Runs — every submission is recorded
 
-Writes through the shared store, [`store/runs.py`](../../../pipeline/studio_pipeline/store/runs.py):
+Writes through the shared store, [`store/runs.py`](../../../pipeline/src/studio_pipeline/domain/runs.py):
 
 ```
 projects/<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/
@@ -177,7 +177,7 @@ prompt inside the payload double-escapes it into one unreadable line:
 ```
 
 `--dry-run --json` emits the raw payload plus its `bindings` instead, for
-machines. The renderer is shared (`store/runs.py: render_payload()`), so
+machines. The renderer is shared (`domain/runs.py: render_payload()`), so
 image and video submissions review identically.
 
 **Image prompts are prose, not structured JSON.** `studio-prompt`'s schema is
@@ -239,7 +239,7 @@ says what each one shows, and the cap is enforced against the selection.
 
 ## Character work
 
-Load the bible first (`studio-character`: `character.py show <name>`) and render
+Load the bible first (`studio-character`: `studio character show <name>`) and render
 from the reference set — never from memory. Verify the result against the
 bible's `consistency` block before animating it; a drifted frame propagates
 into every video made from it.
@@ -248,4 +248,4 @@ Note that a generated frame promoted into a character's `reference/` is model
 output re-entering as identity input, which compounds drift. A frame pulled off
 a run belongs in the **project's** input pool; promoting one into a character is
 a deliberate curation decision, and it should be described in the bible when it
-happens (`character.py set-ref-desc`).
+happens (`studio character set-ref-desc`).

@@ -28,7 +28,7 @@ timeline, or a template they can tweak. For a quick one-off, plain prose is fine
 > **`studio-character`** first. On Seedance that means passing `reference_images`
 > and citing them as `[Image1]`, `[Image2]`, …; on Kling via Replicate it is the
 > same `reference_images` idea (up to 7), or a start frame plus
-> `character.py textblock <name>` for a pasteable identity anchor.
+> `studio character textblock <name>` for a pasteable identity anchor.
 
 ## The one rule that shapes everything: text is TEXT
 
@@ -40,7 +40,7 @@ the whole schema:
 1. **Subject + action lead.** The first ~20–30 words carry the most weight. Put
    `subject` and `action` first. (Some third-party guides push a *camera-first*
    order — ByteDance's own guidance and most others disagree, and so do we.
-   `build_prompt.py` always emits subject/action first.)
+   `studio prompt` always emits subject/action first.)
 2. **Technical fields are NOT prompt text.** `aspect_ratio`, `duration`,
    `resolution`, `seed`, `generate_audio` are real settings — Replicate input
    params on Seedance and Replicate-hosted Kling, the Kling API's own `settings`
@@ -157,9 +157,9 @@ Everything above is shared. These differ, and `--engine` switches them:
 | Image formats | wide | **jpg/jpeg/png only** |
 | Technical fields → | Replicate `input` | Replicate `input` |
 
-`build_prompt.py` also checks a draft against the per-model **wording list** and
+`studio prompt` also checks a draft against the per-model **wording list** and
 flags the preferred alternative where one is recorded — see
-[`store/phrasebook.py`](../../../pipeline/studio_pipeline/store/phrasebook.py). The list is data in
+[`store/phrasebook.py`](../../../pipeline/src/studio_pipeline/domain/phrasebook.py). The list is data in
 S3; when it cannot be read the validator says so rather than reporting the draft
 checked.
 

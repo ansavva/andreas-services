@@ -10,8 +10,8 @@ description: Render still images with OpenAI's GPT Image 1.5 (openai/gpt-image-1
 capabilities its successor dropped, and those are the reason to choose it.
 
 > Invocation, the approval gate, run recording and validation are shared —
-> see [`studio-core`](../studio-core/SKILL.md): `studio.py run --model gpt-image-1.5 …`,
-> and `studio.py models show gpt-image-1.5` for the live schema. This page covers
+> see [`studio-core`](../studio-core/SKILL.md): `studio run --model gpt-image-1.5 …`,
+> and `studio models show gpt-image-1.5` for the live schema. This page covers
 > only what is specific to this model. [`gpt-image-2`](../studio-gpt-image-2/SKILL.md) is the newer sibling.
 
 ## Why you would pick this over `gpt-image-2`
