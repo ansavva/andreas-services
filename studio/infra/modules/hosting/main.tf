@@ -74,7 +74,7 @@ resource "aws_cloudfront_function" "spa_fallback" {
   # Routes by WHERE the build puts things, not by whether the path looks like a
   # file — which is the distinction studio's share links turn on.
   #
-  # A studio URL is the object's S3 key: `/projects/fred/runs/…/output/clip.mp4`.
+  # A studio URL is the object's S3 key: `/projects/<project>/runs/…/output/clip.mp4`.
   # The obvious rule ("has an extension, so serve it") sends that straight to the
   # origin, which does not have it; the distribution's 403/404 fallbacks then
   # rescue it into index.html, so the link *works* — after a round trip to S3 and

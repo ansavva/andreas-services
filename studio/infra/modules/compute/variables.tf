@@ -22,19 +22,20 @@ variable "api_image_uri" {
 
 variable "media_bucket_name" {
   description = <<-EOT
-    Name of the x-harness media bucket the API reads. Referenced by name only —
-    this module never declares the bucket as a resource or a data source, so the
-    bucket can never be modified or destroyed by this service's state.
+    Name of the media bucket the API reads and writes. Pass `modules/media`'s
+    output rather than a literal: this module still declares no bucket resource
+    of its own — it only writes the IAM policy — and taking the name from the
+    module is what orders the two correctly.
   EOT
   type        = string
 }
 
 variable "media_root_prefix" {
   description = <<-EOT
-    The prefix inside the bucket the API may read. Empty means the whole bucket,
-    which is what prod uses now that x-harness writes `characters/`, `projects/`
-    and `phrasebook/` at the top level instead of wrapping them in `media/`. Any
-    other value must end in a slash.
+    The prefix inside the bucket the API may reach. Empty means the whole bucket,
+    which is what prod uses now that the pipeline writes `characters/`,
+    `projects/` and `phrasebook/` at the top level instead of wrapping them in
+    `media/`. Any other value must end in a slash.
   EOT
   type        = string
 

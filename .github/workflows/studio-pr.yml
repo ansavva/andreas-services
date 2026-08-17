@@ -4,10 +4,18 @@ name: Studio · PR
 # backend unit tests + a Docker build of the Lambda image, frontend
 # lint/typecheck/build, and Terraform fmt/validate.
 
+#
+# `studio/.claude/skills/` and `studio/docs/` are excluded: those are the local
+# generation pipeline and its documentation, which run inside Claude on a
+# developer's machine and are not part of either deployable surface. Nothing
+# here can validate them, so a skill edit should not spin up a runner.
+
 on:
   pull_request:
     paths:
       - 'studio/**'
+      - '!studio/.claude/**'
+      - '!studio/docs/**'
       - '.github/workflows/studio-pr.yml'
 
 concurrency:

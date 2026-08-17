@@ -35,7 +35,7 @@ def test_tree_with_no_prefix_opens_on_the_bucket_root(media_bucket):
 
 
 def test_tree(media_bucket):
-    resp = _client().get("/api/tree?prefix=characters/fred/seed/")
+    resp = _client().get("/api/tree?prefix=characters/subject-a/seed/")
     assert resp.status_code == 200
     assert len(resp.get_json()["files"]) == 2
 
@@ -47,23 +47,23 @@ def test_tree_rejects_escape(media_bucket):
 
 
 def test_reel(media_bucket):
-    resp = _client().get("/api/reel?prefix=characters/fred/")
+    resp = _client().get("/api/reel?prefix=characters/subject-a/")
     assert resp.status_code == 200
     assert all(item["kind"] in ("image", "video") for item in resp.get_json()["items"])
 
 
 def test_asset_missing_key_is_404(media_bucket):
-    resp = _client().get("/api/asset?key=characters/fred/seed/nope.webp")
+    resp = _client().get("/api/asset?key=characters/subject-a/seed/nope.webp")
     assert resp.status_code == 404
 
 
 def test_asset_rejects_bad_disposition(media_bucket):
-    resp = _client().get("/api/asset?key=characters/fred/profile.yaml&disposition=evil")
+    resp = _client().get("/api/asset?key=characters/subject-a/profile.yaml&disposition=evil")
     assert resp.status_code == 400
 
 
 def test_text_rejects_binary(media_bucket):
-    resp = _client().get("/api/text?key=characters/fred/seed/fred_1.webp")
+    resp = _client().get("/api/text?key=characters/subject-a/seed/subject-a_1.webp")
     assert resp.status_code == 400
 
 
@@ -73,9 +73,9 @@ def test_unknown_route_is_404():
 
 
 def test_tree_accepts_a_sort(media_bucket):
-    resp = _client().get("/api/tree?prefix=characters/fred/seed/&sort=name_desc")
+    resp = _client().get("/api/tree?prefix=characters/subject-a/seed/&sort=name_desc")
     assert resp.status_code == 200
-    assert [f["name"] for f in resp.get_json()["files"]] == ["fred_2.webp", "fred_1.webp"]
+    assert [f["name"] for f in resp.get_json()["files"]] == ["subject-a_2.webp", "subject-a_1.webp"]
 
 
 def test_tree_rejects_an_unknown_sort(media_bucket):
@@ -86,17 +86,17 @@ def test_tree_rejects_an_unknown_sort(media_bucket):
 # Writes
 # ---------------------------------------------------------------------------
 
-RUN = "projects/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/"
+RUN = "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/"
 
 
 def test_create_folder(media_bucket):
-    resp = _client().post("/api/folder", json={"prefix": "characters/fred/", "name": "keepers"})
+    resp = _client().post("/api/folder", json={"prefix": "characters/subject-a/", "name": "keepers"})
     assert resp.status_code == 201
-    assert resp.get_json()["prefix"] == "characters/fred/keepers/"
+    assert resp.get_json()["prefix"] == "characters/subject-a/keepers/"
 
 
 def test_create_folder_conflict_is_409(media_bucket):
-    resp = _client().post("/api/folder", json={"prefix": "characters/fred/", "name": "seed"})
+    resp = _client().post("/api/folder", json={"prefix": "characters/subject-a/", "name": "seed"})
     assert resp.status_code == 409
     assert "error" in resp.get_json()
 
@@ -126,18 +126,18 @@ def test_rename_folder(media_bucket):
 def test_move_objects(media_bucket):
     resp = _client().post(
         "/api/objects/move",
-        json={"keys": [f"{RUN}output/wave-porch.jpeg"], "destination": "characters/fred/"},
+        json={"keys": [f"{RUN}output/wave-porch.jpeg"], "destination": "characters/subject-a/"},
     )
     assert resp.status_code == 200
-    assert resp.get_json()["keys"] == ["characters/fred/wave-porch.jpeg"]
+    assert resp.get_json()["keys"] == ["characters/subject-a/wave-porch.jpeg"]
 
 
 def test_move_objects_conflict_is_409(media_bucket):
     resp = _client().post(
         "/api/objects/move",
         json={
-            "keys": ["characters/fred/reference/fred_1.webp"],
-            "destination": "characters/fred/seed/",
+            "keys": ["characters/subject-a/reference/subject-a_1.webp"],
+            "destination": "characters/subject-a/seed/",
         },
     )
     assert resp.status_code == 409
@@ -158,13 +158,13 @@ def test_move_folder_into_itself_is_400(media_bucket):
 
 def test_update_text(media_bucket):
     resp = _client().patch(
-        "/api/text", json={"key": "characters/fred/profile.yaml", "content": "name: Freddy\n"}
+        "/api/text", json={"key": "characters/subject-a/profile.yaml", "content": "name: Subject Alt\n"}
     )
     assert resp.status_code == 200
-    assert resp.get_json()["bytes"] == len(b"name: Freddy\n")
+    assert resp.get_json()["bytes"] == len(b"name: Subject Alt\n")
 
-    reread = _client().get("/api/text?key=characters/fred/profile.yaml")
-    assert reread.get_json()["content"] == "name: Freddy\n"
+    reread = _client().get("/api/text?key=characters/subject-a/profile.yaml")
+    assert reread.get_json()["content"] == "name: Subject Alt\n"
 
 
 def test_update_text_on_a_binary_key_is_400(media_bucket):
@@ -176,7 +176,7 @@ def test_update_text_on_a_binary_key_is_400(media_bucket):
 
 def test_update_text_on_a_missing_key_is_404(media_bucket):
     resp = _client().patch(
-        "/api/text", json={"key": "characters/fred/nowhere.md", "content": "# new"}
+        "/api/text", json={"key": "characters/subject-a/nowhere.md", "content": "# new"}
     )
     assert resp.status_code == 404
 
@@ -228,11 +228,11 @@ def test_add_favorites(media_bucket):
     resp = _client().post("/api/favorites", json={"keys": [f"{RUN}output/wave-porch.jpeg"]})
 
     assert resp.status_code == 201
-    assert resp.get_json()["keys"] == ["projects/fred/favorites/wave-porch.jpeg"]
+    assert resp.get_json()["keys"] == ["projects/subject-a/favorites/wave-porch.jpeg"]
 
 
 def test_add_favorites_outside_a_project_is_400(media_bucket):
-    resp = _client().post("/api/favorites", json={"keys": ["characters/fred/seed/fred_1.webp"]})
+    resp = _client().post("/api/favorites", json={"keys": ["characters/subject-a/seed/subject-a_1.webp"]})
     assert resp.status_code == 400
 
 

@@ -182,8 +182,8 @@ def move_folder(raw_prefix: str | None, raw_destination: str | None) -> dict:
     """Move a folder, and everything beneath it, under a different parent.
 
     Two refusals carry the weight here. A folder cannot be moved into itself or
-    into anything beneath itself — `characters/fred/` into
-    `characters/fred/seed/` — which would otherwise be a copy loop whose source
+    into anything beneath itself — `characters/<name>/` into
+    `characters/<name>/seed/` — which would otherwise be a copy loop whose source
     grows as fast as it is read. And the destination cannot already hold a
     folder of this name, because merging two trees is not a thing this can do
     safely: the per-key conflicts would be found halfway through the copy.
@@ -225,8 +225,8 @@ def favorite_objects(raw_keys: list | None) -> dict:
     endpoint can bring in a file from outside.
 
     Which folder is not asked for and cannot be supplied. `keys.favorites_prefix`
-    derives it from the key, so favouriting from a run under `projects/mr-p/`
-    lands in `projects/mr-p/favorites/` and favouriting from `characters/` is
+    derives it from the key, so favouriting from a run under `projects/<project>/`
+    lands in `projects/<project>/favorites/` and favouriting from `characters/` is
     refused rather than guessed at. That is what makes this different from
     `move_objects`, which takes a destination and would happily put a file
     anywhere: this one has exactly one legal answer per key, so it takes no

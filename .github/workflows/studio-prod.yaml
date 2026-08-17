@@ -17,11 +17,19 @@ name: Studio · Deploy · Prod
 #
 # studio-pr.yml validates pull requests and never writes to AWS.
 
+# `studio/.claude/skills/` and `studio/docs/` are excluded from the trigger: they
+# are the local generation pipeline and its docs, which run inside Claude on a
+# developer's machine and deploy nowhere. The `detect-changes` filters below
+# would already skip every job for a skills-only change, but excluding them here
+# means the workflow does not start at all.
+
 on:
   push:
     branches: [main]
     paths:
       - 'studio/**'
+      - '!studio/.claude/**'
+      - '!studio/docs/**'
       - '.github/workflows/studio-prod.yaml'
   workflow_dispatch:
     inputs:
@@ -256,7 +264,7 @@ jobs:
           MEDIA_BUCKET=$(get media-bucket)
 
           # An EMPTY root prefix is the correct value, not a missing one: the
-          # x-harness pipeline dropped its `media/` wrapper and now writes
+          # pipeline dropped its `media/` wrapper and now writes
           # `characters/`, `projects/` and `phrasebook/` at the top level, so
           # the browsable root is the bucket itself. This is the value that
           # reaches the Lambda — Terraform's `environment` block only applies on

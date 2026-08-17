@@ -4,7 +4,7 @@ The bucket's directory structure is the product here, so nothing in this module
 flattens or reinterprets it. Run metadata (`request.json`, `result.json`,
 `prompt.json`) is deliberately *not* parsed — those files are served as text and
 the frontend shows them read-only, which keeps this service honest when the
-x-harness pipeline changes their shape.
+pipeline changes their shape.
 """
 
 import logging
@@ -69,7 +69,7 @@ def favorites_index(prefix: str) -> dict[str, int]:
     Name *and* size, because that pair is what stands in for "is this the same
     file". Studio has nothing that records where a favourite was copied from —
     it is a flat shelf of objects, deliberately, and adding provenance metadata
-    would be studio inventing a format inside a bucket x-harness owns. So a
+    would be studio inventing a format inside a tree the pipeline owns. So a
     favourite matches its source when the name and the byte count both match,
     which is wrong only for two genuinely different clips that share a name and
     are the same length to the byte.
@@ -147,7 +147,7 @@ def _sort_folders(folders: list[dict], sort: str) -> None:
     A delimited listing returns common prefixes and nothing else: a folder has no
     LastModified, because a folder is not an object. Rather than HEAD every one
     of them to invent a date, the date orders fall back to the name, which is
-    the right answer for the folders that matter — x-harness names every run
+    the right answer for the folders that matter — the pipeline names every run
     `<date>_<time>_<slug>`, so descending by name *is* newest-first. For a folder
     named something else it is alphabetical, which is no worse than the arbitrary
     order the alternative would produce.

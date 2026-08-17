@@ -142,7 +142,7 @@ body {
   display: none;
 }
 
-/* A checkerboard so transparent PNGs (mr-p/reference) read as transparent
+/* A checkerboard so transparent PNGs (characters/<name>/reference) read as transparent
    rather than as black-on-black. */
 .alpha-checker {
   background-image:

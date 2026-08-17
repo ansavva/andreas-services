@@ -1,4 +1,13 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(uv run*)",
+      "Bash(aws sts get-caller-identity*)",
+      "Bash(aws configure export-credentials*)",
+      "Bash(aws s3 ls*)",
+      "Bash(which ffmpeg)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {

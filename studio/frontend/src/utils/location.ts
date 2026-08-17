@@ -1,8 +1,8 @@
 /**
  * The URL *is* the S3 path.
  *
- * `studio.andreas.services/projects/fred/runs/2026-08-14_.../output/clip.mp4`
- * opens that clip; `studio.andreas.services/projects/fred/runs/` opens that
+ * `studio.andreas.services/projects/<project>/runs/2026-08-14_.../output/clip.mp4`
+ * opens that clip; `studio.andreas.services/projects/<project>/runs/` opens that
  * folder. The trailing slash is the whole distinction, and it is the same one S3
  * makes — which is why it is carried rather than normalised away.
  *
@@ -17,7 +17,7 @@
  *   location (`/assets/…`) rather than by extension. Change one and the other
  *   stops being true.
  * * **The root is the bucket, so the path and the key are now the same string.**
- *   x-harness dropped the `media/` wrapper this used to prepend, so `/` is the
+ *   the pipeline dropped the `media/` wrapper this used to prepend, so `/` is the
  *   root and every other path is a key verbatim. That makes the mapping an
  *   identity — but it is kept as a mapping rather than inlined, because the
  *   backend's `media_root_prefix` can be pointed at a subtree again, and this is

@@ -51,7 +51,7 @@ export function BrowsePage() {
   /**
    * The URL is the state.
    *
-   * `/projects/fred/runs/` is a folder and `/projects/fred/runs/x/output/clip.mp4`
+   * `/projects/<project>/runs/` is a folder and `/projects/<project>/runs/x/output/clip.mp4`
    * is that clip, open. Nothing here mirrors the location into component state:
    * doing so is what makes browser back and a pasted link disagree, and both
    * have to work for a share link to mean anything.
@@ -82,7 +82,7 @@ export function BrowsePage() {
   const { data, loading, error, reload } = useTree(prefix, sort);
 
   // "Play reel" walks recursively from wherever you are, so a folder of only
-  // subfolders — `projects/mr-p/` — still opens onto real media. Fetched lazily:
+  // subfolders — `projects/<project>/` — still opens onto real media. Fetched lazily:
   // the pages cost nothing until the reel is actually opened that way.
   const reel = useReel(reelPrefix ?? prefix, sort, reelPrefix !== null);
 
@@ -359,7 +359,7 @@ export function BrowsePage() {
         <div className="min-w-0">
           <Text variant="display">Studio</Text>
           <Text variant="caption" tone="muted">
-            x-harness media library
+            media library
           </Text>
         </div>
 

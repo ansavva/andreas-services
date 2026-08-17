@@ -24,15 +24,33 @@ data "aws_route53_zone" "main" {
 
 data "aws_region" "current" {}
 
-# NOTE ON THE MEDIA BUCKET.
+# THE MEDIA BUCKET.
 #
-# `var.media_bucket_name` names a bucket the x-harness pipeline owns. It is
-# referenced as a string and NOTHING MORE — there is deliberately no
-# `aws_s3_bucket` resource and no `aws_s3_bucket` data source for it anywhere in
-# this state. A data source would be harmless today but would put the bucket one
-# careless refactor away from being managed here, and this state must never be
-# able to alter or destroy that data. The only thing studio holds against it is
-# the read-only IAM policy in `modules/compute`.
+# Studio owns this bucket. It used to be the other way round: the bucket was
+# provisioned from a separate `xharness` repo, and this file carried a long note
+# forbidding any resource or data source for it, so that studio's state could
+# never touch data it did not own. That note is gone because the premise is —
+# the generation pipeline that fills the bucket now lives in `.claude/skills/`
+# alongside the app that reads it, and the bucket was imported into this state
+# in August 2026.
+#
+# Two things follow. The bucket carries `prevent_destroy`, which means
+# `terraform destroy` on this whole environment now fails by design (see
+# `modules/media/main.tf`). And `module.compute` takes its bucket name from
+# `module.media` rather than a bare string, so the IAM policy that grants access
+# has a real dependency edge on the bucket it grants access to.
+#
+# The name itself is grandfathered and does not follow the naming convention —
+# see `modules/media/variables.tf` for why, and what it would take to fix.
+
+module "media" {
+  source = "../../modules/media"
+
+  bucket_name = var.media_bucket_name
+  key_prefix  = var.media_root_prefix
+
+  tags = local.common_tags
+}
 
 module "auth" {
   source = "../../modules/auth"
@@ -49,7 +67,9 @@ module "compute" {
   project     = local.project
   environment = local.environment
 
-  media_bucket_name = var.media_bucket_name
+  # From the module, not from the variable directly: this is what orders the
+  # IAM policy after the bucket exists.
+  media_bucket_name = module.media.bucket_name
   media_root_prefix = var.media_root_prefix
   allowed_origin    = "https://${local.app_domain}"
 

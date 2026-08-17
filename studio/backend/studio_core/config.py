@@ -10,9 +10,15 @@ import os
 def media_bucket():
     """The S3 bucket the browser reads.
 
-    Owned by the x-harness pipeline, not by this service — Terraform passes the
-    name in but never manages the bucket itself. The default matches prod so
+    Declared by studio's own Terraform (`infra/modules/media`) and passed in as
+    an environment variable by the deploy workflow. The default matches prod so
     local dev needs no extra configuration.
+
+    The name is grandfathered from before studio absorbed the generation
+    pipeline and does not follow the repo's naming convention. Renaming it is a
+    copy of the whole bucket plus a simultaneous change here, in the skills'
+    `s3_common.py`, in Terraform, in the deploy workflow and in the tests — a
+    deliberate separate pass. See `infra/README.md`.
     """
     return os.environ.get("STUDIO_MEDIA_BUCKET", "xharness-prod-media-us-east-1")
 
@@ -23,7 +29,7 @@ def media_root_prefix():
     Every key and prefix the API accepts is validated against this, so it is the
     one place the browsable surface is defined.
 
-    **Empty means the whole bucket, and that is what prod runs.** x-harness used
+    **Empty means the whole bucket, and that is what prod runs.** The pipeline used
     to wrap everything in `media/`; it now writes `characters/`, `projects/` and
     `phrasebook/` at the top level, so there is no longer a wrapper to confine
     browsing to. The knob stays because the confinement it drives is real — set
@@ -41,15 +47,15 @@ def media_root_prefix():
 def projects_prefix():
     """Where the per-subject project trees live, relative to the media root.
 
-    **The only place in this service that names a folder x-harness owns**, and it
+    **The only place in this service that names a folder the pipeline owns**, and it
     is here rather than inline because favourites are a *project* idea:
-    `projects/mr-p/favorites/` holds the picks from `projects/mr-p/`, while
-    `characters/mr-p/` has no such thing — that tree holds who the subject is
+    `projects/<name>/favorites/` holds the picks from `projects/<name>/`, while
+    `characters/<name>/` has no such thing — that tree holds who the subject is
     rather than what was generated of them, and there is nothing there to pick
     between.
 
     Empty turns favourites off entirely rather than making every top-level folder
-    a project. If x-harness reshapes the bucket again, a missing button is a much
+    a project. If the pipeline reshapes the bucket again, a missing button is a much
     better failure than a copy landing somewhere invented — which is the same
     argument `media_root_prefix` makes and the reason both are knobs.
     """
