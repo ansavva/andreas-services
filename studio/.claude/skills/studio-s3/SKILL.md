@@ -96,38 +96,19 @@ longer says: `studio runs find --character <name>`.
 **Assets are never uploaded to Replicate.** Anything sent to a model must already
 be an S3 object and reaches Replicate only as a short-lived **presigned URL**
 minted at submit time. Signed URLs are never *stored* either: run records hold S3
-keys, and `runs.py` refuses a URL-shaped binding. Keys are stable, so any run
+keys, and the run store refuses a URL-shaped binding. Keys are stable, so any run
 replays by re-minting.
 
-## Modules
+## The commands
 
-The code is `studio_pipeline.store`, in the pipeline package at
-`studio/pipeline/`, and every command below is a subcommand of `studio` — run
-`studio --help` for the whole surface. `s3.py` (auth/helpers) and `paths.py` are
-libraries, not commands. Model invocation — the registry, the runner, live
-schema validation — lives in [`studio-core`](../studio-core/SKILL.md); this
-skill is storage.
+Every command below is a subcommand of `studio` — `studio --help` for the whole
+surface. Model invocation (the registry, the runner, live schema validation)
+lives in [`studio-core`](../studio-core/SKILL.md); this skill is storage.
 
-| Script | Purpose |
-|---|---|
-| `paths.py` (lib) | **The one module that knows the tree's shape.** Every key in the harness is built here; `s3_common.key()` stays the single place a global prefix is applied. Library, not a CLI. |
-| `projects.py` | Project CRUD (`list`/`new`/`init`/`show`) and the project **input pool** (`add-inputs`/`inputs`). `require_project()` is what turns a missing `--project` into an error that lists the real options. |
-| `runs.py` | The shared **run store** every studio-* engine records into: request/prompt/result, output archiving, runref resolution for chaining, `find --character` across projects, and `favorite`. Library + CLI. |
-| `scenes.py` | The **scene store**: an ordered list of run outputs stitched into one continuous video under `projects/<p>/scenes/<scene_id>/`, as `shots/`. |
-| `movies.py` | The **movie store**: scenes cut into one piece under `projects/<p>/movies/<movie_id>/`. Same shape one tier up. |
-| `ffmpeg.py` | The shared ffmpeg layer — probe, stitch, frame grab, contact grid. A scene and a movie join their inputs by identical rules because they call the same function. ffmpeg ships in the wheel; no system install. |
-| `frames.py` | Stills out of a run's video: `last` (the chaining handoff — a clip's final frame, straight into the project's input pool), `grid` (a contact sheet, so a clip can be *looked at* before more money is spent on top of it), and `chain` (the frames a scene has produced, which are **its** reference set for later shots — not a character's). |
-| `rewrite.py` | **When an object moves, the records that name it must follow.** `apply_moves()` is what `curate.py` and the migrator call; `check` walks every record and confirms what it names still exists. Run it after any manual S3 surgery. |
-| `phrasebook.py` | Per-model **wording lists** — a phrase, and the phrase to use instead. Models read the same idea differently. Kept as data in S3 (`phrasebook/wording.yaml`), like characters. |
-| `s3_upload.py` | Upload local file(s) under a key prefix. Prints `s3://` URIs; `--presign` also prints HTTPS URLs. |
-| `s3_download.py` | List a folder (`--list`), download everything (`--all`) or named files to a dir. |
-| `s3_presign.py` | Mint temporary HTTPS GET URLs — **how assets reach Replicate**. |
-| `s3_convert.py` | Re-encode an image so a target model accepts it (`--for <model key>`), writing the result into the project's input pool. The source is never modified. |
-| `backfill_replicate.py` | One-shot import of historical Replicate predictions into the run store (`--since DATE`, `--dry-run`, idempotent). |
-| `migrate_layout.py` | The one-off move from the pre-restructure `media/<owner>/…` tree. Kept for the record and for any bucket that still holds an old tree. |
+The code behind them is mapped in
+[docs/PIPELINE.md](../../../docs/PIPELINE.md#the-modules).
 
 ```bash
-
 # Projects — ASK which one before generating anything; offer to create one
 studio projects list
 studio projects new <project> --character <name> --description "…"

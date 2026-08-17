@@ -326,8 +326,8 @@ part of the pipeline now.
 | `studio-scene`     | **A piece longer than one generation.** Chains video runs — each starting from the previous clip's last frame — then stitches them into one cut. Owns the chain loop, the continuity rules that keep shots cutting together, the per-shot verification gate, and the `multi_prompt`-cuts-vs-timing trade. Use when a shot outruns the model's duration ceiling or must read as one continuous take |
 | `studio-movie`     | **The tier above a scene.** Cuts a project's finished scenes into one piece. Owns the cut order and the movie-vs-longer-scene decision: cut a movie where a hard cut belongs (a change of place, time or subject); extend a scene where it must read as one take |
 | `studio-shot`      | **Orchestrates a whole shot**: reads a brief, shows the multi-step plan as JSON for approval, then renders a still and animates it — frame-first, one approval gate per billing step. Use when a brief describes motion or spans more than one studio-* call |
-| `studio-core`      | **The shared machinery.** The model **registry** (`models.json`), the one submit lifecycle, live-schema validation, and `studio.py` — the runner that invokes *any* registered model. Models are DATA, not code |
-| `studio-add-model` | **Onboard a new Replicate model**: reads its live schema *and* its README, proposes a registry entry for review, then writes it and scaffolds the model's skill. The only way a model should be added |
+| `studio-core`      | **The shared machinery.** The model **registry** (`models.json`), the one submit lifecycle, live-schema validation, and `studio run` — the runner that invokes *any* registered model. Models are DATA, not code |
+| `studio-add-model` | **Onboard a new Replicate model**: reads its live schema *and* its README, proposes a registry entry for review, then writes it to the registry. Also owns writing the new model's skill page — nothing generates it. The only way a model should be added |
 | `studio-image`     | The **frame-first workflow** for stills — why to render a frame before a video, run chaining, the approval gate, choosing between the image models. Model-agnostic; each model has its own skill |
 | `studio-nano-banana-pro` | `google/nano-banana-pro` — strongest all-round image model, the usual default for character frames. Legible text, 4K, ≤14 refs, tunable safety filter. **Never set `allow_fallback_model`** — it reroutes to a different model than the one approved |
 | `studio-nano-banana-2` | `google/nano-banana-2` — fast/cheap sibling. The only model with the extreme `1:4`…`8:1` ratios; Google Search / Image Search grounding |
@@ -384,16 +384,80 @@ because Click has no variadic option.
 
 ---
 
+## The modules
+
+**This is the only place the pipeline's internals are named.** The skills under
+`.claude/skills/` describe the CLI surface and nothing below it — they may write
+`studio <command>`, never a module, a path or a function. That rule is enforced
+by `test_docs_match_cli.py`, and it exists because the module tables used to live
+in two skills, where five of the names rotted into references to files that no
+longer existed. A doc that names a module has to be maintained alongside the
+code; keeping those docs in one place, next to this paragraph, is what makes
+that possible.
+
+The package is `studio/pipeline/src/studio_pipeline/`, in five subpackages.
+
+**`adapters/` — the outside world.** Nothing here knows about characters, runs
+or projects.
+
+| Module | Purpose |
+|---|---|
+| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. One auth path for the whole package. |
+| `replicate.py` | Token, HTTP, download, poll. |
+| `ffmpeg.py` | Probe, stitch, frame grab, contact grid. A scene and a movie join their inputs by identical rules because they call the same function. ffmpeg ships in the wheel; no system install. |
+
+**`domain/` — the tree and the records in it.**
+
+| Module | Purpose |
+|---|---|
+| `paths.py` | **The one module that knows the tree's shape.** Every key is built here, which is what keeps a global prefix applied in exactly one place. Library, not a command. |
+| `projects.py` | Project CRUD and the project **input pool**. `require_project()` turns a missing `--project` into an error that lists the real options. |
+| `runs.py` | The shared **run store** every engine records into: request/prompt/result, output archiving, runref resolution for chaining, `find --character` across projects, favourites. It refuses a URL-shaped binding — this is where "S3 is the only origin" is enforced in code. |
+| `scenes.py` | The **scene store**: run outputs stitched into one continuous video under `projects/<p>/scenes/<scene_id>/`. |
+| `movies.py` | The **movie store**: scenes cut into one piece. The same shape one tier up. |
+| `frames.py` | Stills out of a run's video — the chaining handoff, the contact grid that lets a clip be looked at before more money is spent on it, and a scene's own accumulated frames. |
+| `characters.py` | The character record: bible CRUD, the described reference index, pool listing, the compressed identity block. |
+| `curate.py` | The pool operations that go wrong by hand — dedupe, renumber, regroup, move. Every one is a dry run without `--apply`. |
+| `rewrite.py` | **When an object moves, the records that name it must follow.** `apply_moves()` is what curation and the migrator call; `check` walks every record and confirms what it names still exists. |
+| `prompt.py` | Prompt assembly and validation — the structured object in, the serialized prompt plus engine params out. |
+| `phrasebook.py` | Per-model wording lists, kept as data in S3 like characters. |
+| `contact_sheet.py` | Labeled thumbnail grids over arbitrary keys. |
+
+**`engine/` — invoking a model.**
+
+| Module | Purpose |
+|---|---|
+| `models.json` | **The registry.** Data, not code: single source of truth for every model. |
+| `registry.py` | Load / look up / list; snapshot saving for refreshes. |
+| `runner.py` | `studio run` — builds the payload and invokes *any* registered model. |
+| `submit.py` | The one submit lifecycle, image and video alike. |
+| `schema.py` | Live schema fetch; validates fields, enums, ranges, `denied`. |
+| `refs.py` | Character reference selection and project input pool → S3 keys. |
+| `add_model.py` | Onboarding: fetch schema + README, infer an entry, append it to the registry. It writes no documentation — see `studio-add-model`. |
+
+**`objects/` — moving bytes.** `upload.py`, `download.py`, `presign.py`
+(how assets reach Replicate) and `convert.py` (re-encode so a target engine
+accepts it).
+
+**`maintenance/` — one-offs.** `backfill_replicate.py` imports historical
+predictions into the run store; `migrate_layout.py` is the move off the
+pre-restructure tree, kept for any bucket that still holds one.
+
+---
+
 ## How to add a new skill
 
-1. Write the code as a module under `studio/pipeline/studio_pipeline/`, in the
-   subpackage it belongs to (`store`, `engine`, `characters`, `prompt`). Give it
-   a `main()` that parses `sys.argv` — that is the contract `cli.py` dispatches
-   against, and what lets a command be called in-process by another.
+1. Write the code as a module under `studio/pipeline/src/studio_pipeline/`, in
+   the subpackage it belongs to — see [The modules](#the-modules) for what each
+   one holds. Expose it as a `click` command or group, so it can also be called
+   in-process by another module.
 2. Attach it in `cli.py` and put its name in a `_Grouped.SECTIONS` list — a
    command in neither never appears in `studio --help`.
 3. Create `studio/.claude/skills/<name>/SKILL.md` with YAML frontmatter — prose
-   only, invoking `studio <command>`. No code lives in a skill directory.
+   only, invoking `studio <command>`. No code lives in a skill directory, and
+   **a skill never names a module, a path or a function**: it describes the
+   command line, and this file describes the code behind it. The suite fails the
+   build otherwise.
 4. If it needs a new dependency, add it to `pipeline/pyproject.toml` and re-run
    `uv sync`. There is one dependency set for the whole pipeline.
 5. If it needs new Bash patterns, add them to the **monorepo root**
@@ -405,4 +469,5 @@ because Click has no variadic option.
 7. Document it in the table above, and in `studio/CLAUDE.md`.
 
 To add a new *model* rather than a new skill, use `studio-add-model` — models
-are data in `studio-core/scripts/models.json`, not code.
+are data in the registry, not code. That skill also writes the new model's page;
+`studio add-model` deliberately generates no documentation.

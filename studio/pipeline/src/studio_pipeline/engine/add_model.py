@@ -15,26 +15,34 @@ honours.** A human still has to read the caveats — inference cannot do that
 part — so the proposed entry is printed for review and nothing is written
 without `--write`.
 
-  studio add_model openai/gpt-image-2              # propose, write nothing
-  studio add_model openai/gpt-image-2 --write      # append + scaffold a skill
+  studio add-model openai/gpt-image-2              # propose, write nothing
+  studio add-model openai/gpt-image-2 --write      # append to the registry
+
+WHAT THIS DOES NOT DO
+---------------------
+It does not write the model's `SKILL.md`. It used to, from a format string held
+here, and that was the wrong shape: the generated page was boilerplate around a
+`TODO` comment asking a human for the only part worth reading — what the model
+is good at, and which values its schema offers but it ignores. Meanwhile the
+boilerplate rotted unread, and by August 2026 it was stamping a path that had
+not existed for months into every newly onboarded model's documentation.
+
+The irony was that this command already fetches the README those TODOs asked
+someone to go and read. So it now prints what it learned and stops. The
+`studio-add-model` skill writes the page, from this output and from the
+fourteen existing model skills as models. Prose is authored where prose is
+authored; no code in this package generates documentation.
 """
 
 import json
-import os
 import re
 import sys
 
 import click
 
-from studio_pipeline import STUDIO_DIR
 from studio_pipeline.adapters import replicate as RA
 from studio_pipeline.engine import registry as REG
 from studio_pipeline.engine import schema as MS
-
-# Where a scaffolded skill goes. This used to be computed relative to this
-# file, which put it inside the package once the code moved out of the skill
-# directories — it would have written a SKILL.md into `studio_pipeline/`.
-SKILLS = str(STUDIO_DIR / ".claude" / "skills")
 
 die = RA.die
 
@@ -174,76 +182,12 @@ def infer(model: str, props: dict, schemas: dict, text: str) -> tuple[dict, list
     return entry, notes
 
 
-SKILL_TEMPLATE = """---
-name: {skill}
-description: >-
-  Generate {medium} with {model} on Replicate as a recorded run. Use when a
-  request names this model, or when {when}. Part of the studio-* family: the
-  shared runner is `studio-core`, prompts come from `studio-prompt`, identity
-  from `studio-character`.
----
-
-# {skill}
-
-`{model}` — invoked through the shared runner, so it records a run, presigns
-from S3, and validates against the live schema like every other model.
-
-{note}
-
-## Invoke
-
-```bash
-studio models show {key}          # entry + LIVE input schema
-studio run --model {key} \\
-  --prompt "..." --character <name> --slug <slug> --dry-run
-```
-
-Drop `--dry-run` to submit. **Never submit without showing the full payload
-first** — see the approval rule in `CLAUDE.md`.
-
-## What is specific to this model
-
-| | |
-|---|---|
-| Images field | `{refs}`{cap} |
-| Accepts | {exts} |
-| Prompt cap | {prompt_cap} |
-
-<!-- TODO: fill in from `models show {key}` and the model's README:
-     - which inputs matter in practice, and good default values
-     - what it is better and worse at than its siblings
-     - any value its schema accepts but the model does not honour
-       (record those under `denied` in models.json so they are rejected locally)
--->
-
-## See also
-
-- [`studio-core`](../studio-core/SKILL.md) — the runner, the registry, the run store
-- [`studio-add-model`](../studio-add-model/SKILL.md) — how this skill was created
-"""
-
-
-def scaffold(entry: dict, key: str) -> str:
-    imgs = entry["images"]
-    cap = f" (≤{imgs['max_refs']})" if imgs.get("max_refs") else ""
-    body = SKILL_TEMPLATE.format(
-        skill=entry["skill"], model=entry["model"], key=key,
-        medium="still images" if entry["kind"] == "image" else "video",
-        when="a shot calls for it specifically",
-        note=entry["note"],
-        refs=imgs.get("refs") or "—", cap=cap,
-        exts=" ".join(imgs.get("accepts_ext") or []) or "—",
-        prompt_cap=entry.get("prompt", {}).get("max_chars") or "none documented",
-    )
-    return body
-
-
 @click.command(help=__doc__, epilog="\n\nArguments:\n  MODEL  Replicate model id, e.g. openai/gpt-image-2")
 @click.argument("model", required=True)
 @click.option("--json", "json_", is_flag=True)
 @click.option("--key", help="Registry key (default: the model name).")
-@click.option("--write", is_flag=True, help=("Append to models.json and scaffold the skill. Without this, "
-              "nothing is written."))
+@click.option("--write", is_flag=True, help=("Append the entry to models.json. Without this, nothing is "
+              "written. The skill page is written by `studio-add-model`, not here."))
 def add_model(model, json_, key, write):
     if "/" not in model:
         die("model must be `owner/name`, e.g. openai/gpt-image-2")
@@ -287,15 +231,7 @@ def add_model(model, json_, key, write):
         json.dump(data, f, indent=2, ensure_ascii=False)
         f.write("\n")
     print(f"\nwrote {key} to {REG.PATH}", file=sys.stderr)
-
-    skill_dir = os.path.join(SKILLS, entry["skill"])
-    os.makedirs(skill_dir, exist_ok=True)
-    path = os.path.join(skill_dir, "SKILL.md")
-    if os.path.exists(path):
-        print(f"{path} already exists; left alone.", file=sys.stderr)
-    else:
-        with open(path, "w") as f:
-            f.write(scaffold(entry, key))
-        print(f"scaffolded {path} — fill in its TODOs.", file=sys.stderr)
     print(f"\nnext: studio models show {key}", file=sys.stderr)
+    print(f"      then write {entry['skill']}'s SKILL.md — the `studio-add-model` "
+          "skill covers what belongs on the page.", file=sys.stderr)
     return 0

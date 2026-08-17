@@ -13,14 +13,27 @@ prose, in the tables, and in `die()` strings the CLI printed at the exact moment
 someone was stuck. An agent that followed them fell back to raw `aws s3` calls
 and rebuilt by hand what `studio character refs --describe` returns directly.
 
-Three properties, checked against the live Click tree rather than a snapshot,
-so they cannot drift apart:
+Four properties, checked against the live Click tree rather than a snapshot, so
+they cannot drift apart:
 
 1. every `studio …` line in the skills names a real command and subcommand
-2. no `<module>.py <subcommand>` survives in command position — a bare
-   `` `runs.py` `` naming a source file is fine and stays fine
-3. every relative link in a skill resolves, and every `.py` it names is a
-   module that exists
+2. no `<module>.py <subcommand>` survives in command position
+3. **a skill names no module at all** — it describes the CLI surface, and the
+   implementation is documented in `docs/PIPELINE.md`
+4. the CLI's own help and `die()` strings do not teach the old invocation
+
+Property 3 is the load-bearing one, and it started as the weaker "every module a
+skill names must exist". Two skills carried tables of every module in the
+package; five of those names had rotted into files that no longer existed,
+because a doc listing internals has to be maintained alongside the code and
+nothing made that happen. Moving the tables into `docs/PIPELINE.md` — one place,
+next to the code it describes — and forbidding the names here is what keeps the
+two halves from re-entangling.
+
+A note on the regex, because the first version of this file got it wrong: the
+character class must include **digits**. `[a-z_]+\\.py` silently fails to match
+`s3_upload.py`, and four dead `s3_*.py` names sat in a skill table passing a
+test written to catch exactly them.
 """
 
 from __future__ import annotations
@@ -53,16 +66,21 @@ FORMER_SCRIPTS = {
     "models": "models", "build_prompt": "prompt", "s3_convert": "convert",
 }
 
-# Named in the docs as history, deliberately: the escape hatches that were
-# removed when S3 became the only origin. They must not come back as modules.
-REMOVED_ON_PURPOSE = {"upload_to_replicate.py"}
+# Retired command names that never had a `.py` in the docs, so the pattern below
+# cannot see them. `s3_convert --for <key>` outlived the module it named by
+# months for exactly that reason.
+RETIRED_BARE = {"s3_convert": "convert", "build_prompt": "prompt",
+                "upload_to_replicate": None}
 
 # `studio` only counts as an invocation at the start of a line or just inside a
 # backtick. Otherwise "grey studio backdrop" in a reference description reads as
 # a call to a `backdrop` command.
 _STUDIO_CALL = re.compile(r"(?:^|`|\$ )studio ([a-z][\w-]*)(?:[ \t]+([^\s`'\"\\]+))?", re.M)
-_SCRIPT_CALL = re.compile(r"\b([a-z_]+)\.py ([a-z][\w-]*)")
-_MODULE_NAME = re.compile(r"`(?:[\w/]*/)?([a-z_]+\.py)")
+# Digits matter in both of these. `[a-z_]+` does not match `s3_upload.py`, which
+# is how four dead `s3_*.py` names sat in a skill table passing a test written
+# to catch precisely them.
+_SCRIPT_CALL = re.compile(r"\b([a-z0-9_]+)\.py[ \t]+(\S+)")
+_MODULE_NAME = re.compile(r"\b[a-z0-9_]+\.py\b")
 _LINK = re.compile(r"\]\((\.\.?/[^)#]*)\)")
 
 
@@ -106,15 +124,30 @@ def test_no_script_era_invocations(skill):
 
 
 @pytest.mark.parametrize("skill", SKILLS, ids=_skill_id)
-def test_named_modules_and_links_resolve(skill):
-    """A doc may name a source file, but only one that is really there."""
-    modules = {
-        name for name in _MODULE_NAME.findall(skill.read_text())
-        if name not in REMOVED_ON_PURPOSE
-    }
-    missing = sorted(m for m in modules if not any(SRC.rglob(m)))
-    assert not missing, f"{_skill_id(skill)} names modules that do not exist: {missing}"
+def test_skills_name_no_modules(skill):
+    """A skill describes the CLI surface. The code behind it is `docs/PIPELINE.md`.
 
+    Naming a module in a skill means the same fact is written down twice, in two
+    files that change for different reasons. That is not a style objection: the
+    two module tables these skills used to carry held five names for files that
+    had not existed for months, and nothing noticed, because prose about code
+    only stays true if it sits next to the code.
+    """
+    named = sorted(set(_MODULE_NAME.findall(skill.read_text())))
+    named += sorted(
+        f"{bare} (retired; use `studio {cmd}`)" if cmd else f"{bare} (removed)"
+        for bare, cmd in RETIRED_BARE.items()
+        if re.search(rf"`{re.escape(bare)}[ `]", skill.read_text())
+    )
+    assert not named, (
+        f"{_skill_id(skill)} names implementation: {named}\n"
+        "  Skills describe `studio <command>`. Document the code in "
+        "docs/PIPELINE.md#the-modules and link to it."
+    )
+
+
+@pytest.mark.parametrize("skill", SKILLS, ids=_skill_id)
+def test_skill_links_resolve(skill):
     broken = sorted(
         target for target in _LINK.findall(skill.read_text())
         if not (skill.parent / target).resolve().exists()

@@ -71,7 +71,7 @@ broad-shouldered — carry the physique.
 
 `studio prompt` checks a draft against this model's wording list and suggests
 the preferred alternative where one is recorded; see
-[`store/phrasebook.py`](../../../pipeline/src/studio_pipeline/domain/phrasebook.py).
+`studio phrasebook show seedance`.
 
 ## Submit with FRESH presigned URLs minted in code (MANDATORY)
 
@@ -187,7 +187,7 @@ for a character, STOP and load **`studio-character`** first.
   `characters/<character>/reference/`), a chosen subset per generation so identity
   stays locked without re-picking. **`studio-character`** hands you ordered
   presigned URLs for it (`studio character refs <name> --presign`); under the hood
-  that is `s3_presign.py --folder <character>/reference` (below).
+  that is `studio presign --folder <character>/reference` (below).
 - `reference_images` **cannot** be combined with `image` / `last_frame_image`.
 
 ### How image files reach Replicate (presigned S3 URLs)
@@ -219,13 +219,13 @@ then reference its key:
 studio upload --folder <character>/originals <img>
 ```
 
-The two former escape hatches — `upload_to_replicate.py` (POSTed bytes to
-Replicate's Files API) and `img2datauri.py` (inlined bytes as a base64 data URL)
-— have been **removed**: both sent assets to Replicate, and the data-URL path
-also burned ≈1 token per character of agent context.
+The two former escape hatches — one that POSTed bytes to Replicate's Files
+API, one that inlined them as a base64 data URL — have been **removed**: both
+sent assets to Replicate, and the data-URL path also burned ≈1 token per
+character of agent context.
 
 Signed URLs are also never *stored*: `request.json` records S3 keys, and
-`runs.py` refuses a URL-shaped binding. Keys are stable, so any run replays by
+the run store refuses a URL-shaped binding. Keys are stable, so any run replays by
 re-minting fresh URLs.
 
 ### Full-res references, zero context cost

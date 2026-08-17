@@ -90,7 +90,6 @@ is **refused** with the index printed — because which images a generation saw
 should not be decided by whatever a folder listing happened to return.
 
 ```bash
-
 studio character refs <name> --describe            # what every image shows, and its tags
 studio character refs <name> --pick-tag face --keys
 studio character refs <name> --pick face/<name>_4.jpg,body/<name>_8.png --presign
@@ -118,7 +117,6 @@ studio character sync-refs <name> --apply                      # reconcile index
 RUN unless you pass `--apply`, and nothing is ever deleted outright:
 
 ```bash
-
 studio curate groups   <name>                       # what reference/ holds, by group
 studio curate regroup  <name> face <name>_3.jpg     # move into a purpose subfolder
 studio curate dedupe   <name> --pool reference      # remove byte-identical copies
@@ -184,13 +182,12 @@ silently stops being checked against. For a **worked example**, read a live one
 
 ## The management tool
 
-[`domain/characters.py`](../../../pipeline/src/studio_pipeline/domain/characters.py) is the CRUD + load layer. It reuses
-the **`studio-s3`** skill's `s3_common.py` (the AWS-login-bridged boto3 client, the
-key builders, natural sort) — one storage layer, one auth path, no bytes
-in the agent context. Requires an `aws login` (see the `studio-s3` skill).
+`studio character` is the CRUD + load layer. It goes through the same storage
+layer as everything else in **`studio-s3`** — the AWS-login-bridged client, the
+key builders, natural sort — so there is one auth path and no bytes in the agent
+context. Requires an `aws login` (see the `studio-s3` skill).
 
 ```bash
-
 studio character list                                  # every character
 studio character show <name>                           # print a character's profile.yaml (from S3)
 studio character create <name> --from-profile /tmp/<name>.md   # new character record

@@ -54,7 +54,7 @@
         "flags": [
           "--write"
         ],
-        "help": "Append to models.json and scaffold the skill. Without this, nothing is written.",
+        "help": "Append the entry to models.json. Without this, nothing is written. The skill page is written by `studio-add-model`, not here.",
         "hidden": false,
         "multiple": false,
         "nargs": 0,

@@ -159,7 +159,7 @@ Everything above is shared. These differ, and `--engine` switches them:
 
 `studio prompt` also checks a draft against the per-model **wording list** and
 flags the preferred alternative where one is recorded — see
-[`store/phrasebook.py`](../../../pipeline/src/studio_pipeline/domain/phrasebook.py). The list is data in
+`studio phrasebook show <model>`. The list is data in
 S3; when it cannot be read the validator says so rather than reporting the draft
 checked.
 

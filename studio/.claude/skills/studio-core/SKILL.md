@@ -1,13 +1,13 @@
 ---
 name: studio-core
-description: The shared machinery every studio-* engine runs on — the model REGISTRY (models.json), the one submit lifecycle, live schema validation, and the studio.py runner that invokes any registered model. Use when invoking a model generically, inspecting what a model accepts, refreshing schema snapshots, or working on the studio-* plumbing itself. For guidance on a SPECIFIC model, use that model's own skill; to add a new one, use studio-add-model.
+description: The shared machinery every studio-* engine runs on — the model REGISTRY (models.json), the one submit lifecycle, live schema validation, and the shared runner that invokes any registered model. Use when invoking a model generically, inspecting what a model accepts, refreshing schema snapshots, or working on the studio-* plumbing itself. For guidance on a SPECIFIC model, use that model's own skill; to add a new one, use studio-add-model.
 ---
 
 # studio-core — the runner every model shares
 
 **Models are data, not code.** One entry per model in
 [`engine/models.json`](../../../pipeline/src/studio_pipeline/engine/models.json), one runner over all of them. Adding
-a model is a reviewed data change plus a generated doc — never an edit to five
+a model is a reviewed data change plus a written page — never an edit to five
 scripts, which is what it used to be.
 
 This skill is the plumbing. For how to *use* a given model, read its own skill:
@@ -36,7 +36,6 @@ the shared prose lives in one place rather than six:
 ## The runner
 
 ```bash
-
 studio models                    # every registered model
 studio models show gpt-image-2   # entry + LIVE input schema + caveats
 studio models refresh            # re-snapshot schema enums into models.json
@@ -88,21 +87,16 @@ error: openai/gpt-image-2 does not accept: ['input_fidelity']
   `input_fidelity` is accepted by: gpt-image-1.5
 ```
 
-## The files
+## Where this lives
 
-| File | Purpose |
-|---|---|
-| `models.json` | **The registry.** Single source of truth for every studio-* tool. |
-| `registry.py` | Load / look up / list; `save_snapshot` for refreshes. |
-| `cli.py` | The CLI above. |
-| `submit.py` | The one submit lifecycle, image and video alike. |
-| `schema.py` | Live schema fetch; validates fields, enums, ranges, `denied`. |
-| `replicate.py` | Token, HTTP, download, poll. |
-| `refs.py` | Character reference selection / project input pool → S3 keys. |
+The registry is data — one JSON document that every studio-* tool reads, and the
+only thing you edit to add a model. `studio models show <key>` prints an entry
+alongside the live schema; `studio-add-model` is how a new one gets written.
 
-The run store itself stays in the `studio-s3` skill
-([`store/runs.py`](../../../pipeline/src/studio_pipeline/domain/runs.py)) — that is storage, this is
-invocation.
+The code behind these commands is mapped in
+[docs/PIPELINE.md](../../../docs/PIPELINE.md#the-modules). The run store is
+storage rather than invocation, so it belongs to
+[`studio-s3`](../studio-s3/SKILL.md).
 
 ## `snapshot` — why there are two copies of the enums
 
@@ -128,7 +122,7 @@ actually honours.** `studio-add-model` reads both for exactly this reason.
 
 - **S3 is the only origin.** Nothing is ever uploaded to Replicate. Assets reach
   it only as presigned URLs minted at submit time, and signed URLs are never
-  stored — run records hold S3 keys, and `runs.py` refuses a URL-shaped binding.
+  stored — run records hold S3 keys, and the run store refuses a URL-shaped binding.
 - **The request is recorded before submitting**, so a failed render
   is still history.
 - **Never `Prefer: wait`.** A timed-out wait retries internally and can create

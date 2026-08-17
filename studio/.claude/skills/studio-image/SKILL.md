@@ -34,7 +34,7 @@ already be an S3 object, and it reaches Replicate only as a short-lived
 **presigned URL** minted at submit time. Consequently `request.json` stores S3
 **keys**, never signed URLs — they expire, they are ~2 KB of noise, and they
 carry time-limited bucket access that must not outlive the request.
-`runs.py` refuses to record a URL-shaped binding, so this is enforced in code.
+The run store refuses to record a URL-shaped binding, so this is enforced in code.
 
 To use a local file, upload it to S3 first (`studio-s3` skill), then reference its key.
 
@@ -70,7 +70,6 @@ To add a model, use [`studio-add-model`](../studio-add-model/SKILL.md).
 ## Generating
 
 ```bash
-
 studio run --model nano-banana-pro --project <project> \
   --prompt "..." --character <name> --slug <slug>
 ```
@@ -104,7 +103,7 @@ The full mechanism — `denied`, cross-field rules, the live schema pass — liv
 
 ## Runs — every submission is recorded
 
-Writes through the shared store, [`store/runs.py`](../../../pipeline/src/studio_pipeline/domain/runs.py):
+Writes through the shared run store:
 
 ```
 projects/<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/
@@ -177,7 +176,7 @@ prompt inside the payload double-escapes it into one unreadable line:
 ```
 
 `--dry-run --json` emits the raw payload plus its `bindings` instead, for
-machines. The renderer is shared (`domain/runs.py: render_payload()`), so
+machines. The payload renderer is shared by every engine, so
 image and video submissions review identically.
 
 **Image prompts are prose, not structured JSON.** `studio-prompt`'s schema is

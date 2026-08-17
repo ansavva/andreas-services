@@ -19,7 +19,7 @@ approval gate at each point where money moves.
 | `studio-prompt` | authoring a *video* prompt as structured JSON |
 | `studio-image` | rendering one still |
 | `studio-seedance` / `studio-kling` | rendering one video |
-| `studio-s3` (`runs.py`, `convert.py`) | the run store and format conversion |
+| `studio-s3` | the run store and format conversion |
 
 ## Why frame-first, always
 
@@ -63,7 +63,7 @@ after three billed calls.
       "n": 2,
       "skill": "s3",
       "produces": "a Kling-compatible copy, only if needed",
-      "command": "s3_convert.py --run {owner}/latest#1 --for kling --add-input {owner}",
+      "command": "studio convert --run {owner}/latest#1 --for kling --add-input {owner}",
       "gate": "none — no model call, nothing bills"
     },
     {

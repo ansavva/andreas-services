@@ -120,8 +120,20 @@ skill's own `SKILL.md`.
 
 - **`SKILL.md` files are documentation; the code is in `pipeline/`.** A skill
   directory holds prose and nothing else. Adding a command means adding a module
-  under `pipeline/studio_pipeline/` and an entry in `cli.py`, then describing it
-  in the relevant `SKILL.md`.
+  under `pipeline/src/studio_pipeline/` and an entry in `cli.py`, then
+  describing it in the relevant `SKILL.md`.
+- **A skill describes the CLI surface and never names a module, path or
+  function.** The internals are documented once, in
+  [docs/PIPELINE.md](docs/PIPELINE.md#the-modules), next to the code they
+  describe. Two skills used to carry module tables and five of those names
+  rotted into files that no longer existed — prose about code only stays true
+  when it lives beside the code. `pipeline/tests/test_docs_match_cli.py` fails
+  the build on a module name in a skill, on a `studio …` line that names no real
+  command, and on a broken link.
+- **No code in this repo generates prose.** `studio add-model` writes the
+  registry entry and stops; `studio-add-model` writes the model's page. The
+  generator it replaced emitted boilerplate around a `TODO` asking for the only
+  part worth reading, and quietly rotted for months.
 - **One constant knows where `studio/` is**: `studio_pipeline.STUDIO_DIR`. Use
   it rather than counting `".."` segments — that is what broke every time a file
   moved.

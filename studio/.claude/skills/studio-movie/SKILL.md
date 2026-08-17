@@ -60,7 +60,6 @@ as a scene, then cut those scenes into a movie.
 ## Building one
 
 ```bash
-
 studio scenes list <project>          # what there is to cut
 
 studio movies new <project> --slug <slug> \
@@ -106,7 +105,7 @@ without a scan.
 
 ## Stitching
 
-Handled by the shared `ffmpeg.py`, the same layer `scenes.py` uses, so a movie
+Handled by the shared ffmpeg layer, the same one the scene store uses, so a movie
 and a scene join by identical rules:
 
 - when every scene already agrees on codec, dimensions, frame rate and audio

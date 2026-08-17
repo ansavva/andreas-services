@@ -12,8 +12,8 @@ model's duration ceiling**, or through beats that must flow rather than cut.
 The family:
 - **`studio-shot`** — one brief → one clip. Start there.
 - **`studio-scene`** (this) — many clips → one continuous piece.
-- **`studio-s3`** — [`frames.py`](../../../pipeline/src/studio_pipeline/domain/frames.py) extracts the handoff frame and
-  the verification grid; [`scenes.py`](../../../pipeline/src/studio_pipeline/domain/scenes.py) is the scene store.
+- **`studio-s3`** — `studio frames` extracts the handoff frame and the
+  verification grid; `studio scenes` is the scene store.
 - **`studio-kling`** / **`studio-seedance`** — render each shot.
 
 ## Why chain at all
@@ -54,7 +54,6 @@ boundaries are where the cuts go — deliberately, where you chose them.
 Per shot, four steps. Only step 1 bills.
 
 ```bash
-
 # 0. ONCE, before shot 2: name what shot 1 started from
 studio frames chain <project>/<slug> --seed projects/<project>/input/<project>_in_<n>.png
 
@@ -157,7 +156,6 @@ covers it.
 `--chain` makes the list derived rather than remembered:
 
 ```bash
-
 # once, naming what shot 1 started from
 studio frames chain <project>/<slug> --seed projects/<project>/input/<project>_in_<n>.png
 
