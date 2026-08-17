@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { getTree } from "../apis/studio";
-import type { TreeResponse } from "../types";
+import type { SortOrder, TreeResponse } from "../types";
 
-export function useTree(prefix: string) {
+export function useTree(prefix: string, sort: SortOrder) {
   const [data, setData] = useState<TreeResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -13,7 +13,7 @@ export function useTree(prefix: string) {
     setLoading(true);
     setError(null);
 
-    getTree(prefix)
+    getTree(prefix, sort)
       .then((result) => {
         if (!cancelled) setData(result);
       })
@@ -27,9 +27,14 @@ export function useTree(prefix: string) {
     return () => {
       cancelled = true;
     };
-  }, [prefix]);
+  }, [prefix, sort]);
 
   useEffect(load, [load]);
 
+  // `reload` is what every write calls when it succeeds. The listing is the
+  // source of truth for what is in the bucket, and a rename or a delete is far
+  // cheaper to re-fetch than to replay into local state correctly — a renamed
+  // object also changes its position under the current sort, which patching in
+  // place would get wrong.
   return { data, loading, error, reload: load };
 }

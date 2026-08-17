@@ -1,6 +1,26 @@
-/** Shapes returned by the studio API. Mirrors `studio_core.services.browse`. */
+/** Shapes returned by the studio API. Mirrors `studio_core.services`. */
 
 export type MediaKind = "image" | "video" | "text" | "other";
+
+/**
+ * Mirrors `browse.SORTS`. `newest` is the default on both sides: this is a
+ * library of generated output, so what you came to look at is almost always
+ * what the pipeline produced most recently.
+ */
+export type SortOrder = "newest" | "oldest" | "name" | "name_desc";
+
+export const SORT_LABELS: Record<SortOrder, string> = {
+  newest: "Newest first",
+  oldest: "Oldest first",
+  name: "Name A–Z",
+  name_desc: "Name Z–A",
+};
+
+export const DEFAULT_SORT: SortOrder = "newest";
+
+export function isSortOrder(value: string | null): value is SortOrder {
+  return value !== null && value in SORT_LABELS;
+}
 
 export interface FileEntry {
   key: string;
@@ -26,6 +46,7 @@ export interface Crumb {
 
 export interface TreeResponse {
   prefix: string;
+  sort: SortOrder;
   breadcrumbs: Crumb[];
   folders: FolderEntry[];
   files: FileEntry[];
@@ -34,7 +55,12 @@ export interface TreeResponse {
 
 export interface ReelResponse {
   prefix: string;
+  sort: SortOrder;
   items: FileEntry[];
+  total: number;
+  /** True when the recursive walk hit its cap — there is more than this shows. */
+  truncated: boolean;
+  /** An offset into the sorted result, not an S3 continuation token. */
   next_cursor: string | null;
 }
 
@@ -54,4 +80,32 @@ export interface TextResponse {
   language: string;
   truncated: boolean;
   content: string;
+}
+
+export interface CreatedFolder {
+  prefix: string;
+  name: string;
+}
+
+export interface RenamedObject {
+  key: string;
+  name: string;
+  renamed: boolean;
+}
+
+export interface RenamedFolder {
+  prefix: string;
+  name: string;
+  objects: number;
+  renamed: boolean;
+}
+
+export interface DeletedObjects {
+  deleted: number;
+  keys: string[];
+}
+
+export interface DeletedFolder {
+  prefix: string;
+  deleted: number;
 }

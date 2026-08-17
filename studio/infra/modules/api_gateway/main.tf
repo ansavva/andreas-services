@@ -95,6 +95,14 @@ resource "aws_api_gateway_integration" "health_get" {
 # CORS preflight (MOCK) — must stay unauthenticated, because the browser sends
 # the OPTIONS with no Authorization header and the authorizer would 401 it
 # before the real request ever happens.
+#
+# The method list below is what the *browser* is told, and it is answered here
+# rather than by Flask — so a verb the app implements but this omits is a CORS
+# failure no amount of Flask configuration can rescue. It has to stay in step
+# with `CORS(methods=...)` in `app_factory.py` and with the two gateway
+# responses further down. All four were widened together when studio gained its
+# write routes; a preflight is also sent for any request carrying a JSON body,
+# which every one of those routes does.
 # ---------------------------------------------------------------------------
 resource "aws_api_gateway_method" "options" {
   rest_api_id   = aws_api_gateway_rest_api.main.id
@@ -130,7 +138,7 @@ resource "aws_api_gateway_integration_response" "options" {
   status_code = "200"
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PATCH,DELETE,OPTIONS'"
     "method.response.header.Access-Control-Allow-Origin"  = "'${var.allowed_origin}'"
   }
   depends_on = [aws_api_gateway_method_response.options]
@@ -154,7 +162,7 @@ resource "aws_api_gateway_gateway_response" "unauthorized" {
   response_parameters = {
     "gatewayresponse.header.Access-Control-Allow-Origin"  = "'${var.allowed_origin}'"
     "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
-    "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,POST,PATCH,DELETE,OPTIONS'"
   }
 }
 
@@ -166,7 +174,7 @@ resource "aws_api_gateway_gateway_response" "access_denied" {
   response_parameters = {
     "gatewayresponse.header.Access-Control-Allow-Origin"  = "'${var.allowed_origin}'"
     "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
-    "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,POST,PATCH,DELETE,OPTIONS'"
   }
 }
 

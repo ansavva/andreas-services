@@ -43,6 +43,36 @@ def max_text_bytes():
     return int(os.environ.get("STUDIO_MAX_TEXT_BYTES", str(1024 * 1024)))
 
 
+def max_bulk_keys():
+    """How many objects one delete request may name.
+
+    `DeleteObjects` takes 1000 keys per call, so this is one round trip. A
+    larger selection is refused rather than silently split: a partially applied
+    bulk delete is the worst possible outcome to report back to a UI.
+    """
+    return int(os.environ.get("STUDIO_MAX_BULK_KEYS", "1000"))
+
+
+def max_folder_objects():
+    """How many objects a folder rename or delete will touch before refusing.
+
+    A folder rename is a CopyObject per key and the Lambda has a wall clock, so
+    this is a guard against a request that would time out halfway through and
+    leave the tree in two places at once.
+    """
+    return int(os.environ.get("STUDIO_MAX_FOLDER_OBJECTS", "2000"))
+
+
+def max_walk_objects():
+    """How many objects the recursive reel walk will enumerate.
+
+    Sorting by date means the whole prefix has to be listed before any page can
+    be cut from it, so the walk is bounded and reports when it stopped early
+    rather than pretending the tail does not exist.
+    """
+    return int(os.environ.get("STUDIO_MAX_WALK_OBJECTS", "20000"))
+
+
 def allowed_origin():
     """Value for Access-Control-Allow-Origin. Defaults to the prod app origin."""
     return os.environ.get("STUDIO_ALLOWED_ORIGIN", "https://studio.andreas.services")

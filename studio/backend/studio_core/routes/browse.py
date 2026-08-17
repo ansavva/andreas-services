@@ -13,7 +13,9 @@ def health():
 @bp.get("/tree")
 def tree():
     """Immediate contents of one folder."""
-    return jsonify(browse.list_folder(request.args.get("prefix"))), 200
+    return jsonify(
+        browse.list_folder(request.args.get("prefix"), request.args.get("sort"))
+    ), 200
 
 
 @bp.get("/reel")
@@ -24,6 +26,7 @@ def reel():
             request.args.get("prefix"),
             request.args.get("cursor"),
             request.args.get("page_size"),
+            request.args.get("sort"),
         )
     ), 200
 

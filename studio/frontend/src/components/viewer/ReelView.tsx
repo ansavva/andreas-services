@@ -4,17 +4,25 @@ import { Spinner, Text } from "@ansavva/design-system";
 
 import { useFullscreen } from "../../hooks/useFullscreen";
 import { useKeyboardNav } from "../../hooks/useKeyboardNav";
+import { useReelPlayback } from "../../hooks/useReelPlayback";
 import type { FileEntry } from "../../types";
 import { MediaSurface } from "./MediaSurface";
+import { VideoScrubber } from "./VideoScrubber";
 import { ViewerChrome } from "./ViewerChrome";
 
 interface Props {
   items: FileEntry[];
   loading: boolean;
   exhausted: boolean;
+  /** True when the server's recursive walk hit its cap. */
+  truncated?: boolean;
   startIndex: number;
-  onLoadMore: () => void;
+  onLoadMore?: () => void;
   onClose: () => void;
+  /** Fires as the snapped item changes — this is what drives the URL. */
+  onCurrentChange?: (item: FileEntry) => void;
+  onRename?: (file: FileEntry, name: string) => Promise<unknown>;
+  onDelete?: (file: FileEntry) => Promise<unknown>;
 }
 
 /** Mount this many panes either side of the snapped one. */
@@ -25,29 +33,38 @@ const PREFETCH_MARGIN = 4;
 /**
  * A vertical scroll-snap column, one item per viewport.
  *
+ * **This is the only media viewer in studio.** There used to be a lightbox
+ * beside it — a horizontal filmstrip with its own keyboard map, its own swipe
+ * handling and its own idea of what "next" meant. Two viewers over the same
+ * files is two things to keep in step for no benefit, so the reel absorbed the
+ * job: opening a tile opens the reel at that tile.
+ *
  * The snapping itself is CSS (`.reel-scroller` / `.reel-pane` in app.css) —
  * doing it in JS fights the browser's own momentum and never feels right on
- * touch. All this component owns is which pane is current, which is what drives
- * playback: exactly one video plays at a time, and it is the one you are
- * looking at.
+ * touch. What this component owns is which pane is current; `useReelPlayback`
+ * owns everything that follows from that, including the sound.
  */
 export function ReelView({
   items,
   loading,
   exhausted,
+  truncated = false,
   startIndex,
   onLoadMore,
   onClose,
+  onCurrentChange,
+  onRename,
+  onDelete,
 }: Props) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const videoRefs = useRef(new Map<string, HTMLVideoElement>());
 
   const [current, setCurrent] = useState(startIndex);
-  const [muted, setMuted] = useState(true);
   const hasJumped = useRef(false);
 
   const { isFullscreen, supported, toggle } = useFullscreen(containerRef);
+  const currentItem = items[current];
+  const playback = useReelPlayback(currentItem?.key);
 
   // Open on the item that was clicked rather than at the top. Runs once, and
   // only after the pane exists — `startIndex` may be past the first page.
@@ -58,6 +75,7 @@ export function ReelView({
     if (!scroller || !pane) return;
 
     scroller.scrollTo({ top: pane.offsetTop, behavior: "auto" });
+    setCurrent(startIndex);
     hasJumped.current = true;
   }, [items.length, startIndex]);
 
@@ -86,26 +104,15 @@ export function ReelView({
     return () => observer.disconnect();
   }, [items.length]);
 
-  // Exactly one video plays: the current one. Everything else is paused and
-  // rewound, so scrolling back to a clip restarts it instead of resuming
-  // halfway through.
+  // The URL follows the reel. Reported from an effect rather than from the
+  // observer callback so it fires once per settled item, not once per
+  // intersection threshold crossed on the way past it.
   useEffect(() => {
-    for (const [key, video] of videoRefs.current) {
-      const isCurrent = items[current]?.key === key;
-      if (isCurrent) {
-        video.muted = muted;
-        void video.play().catch(() => {
-          /* autoplay refused — the user can tap the pane */
-        });
-      } else {
-        video.pause();
-        video.currentTime = 0;
-      }
-    }
-  }, [current, items, muted]);
+    if (currentItem) onCurrentChange?.(currentItem);
+  }, [currentItem, onCurrentChange]);
 
   useEffect(() => {
-    if (!exhausted && current >= items.length - PREFETCH_MARGIN) onLoadMore();
+    if (!exhausted && current >= items.length - PREFETCH_MARGIN) onLoadMore?.();
   }, [current, exhausted, items.length, onLoadMore]);
 
   const step = useCallback(
@@ -118,14 +125,25 @@ export function ReelView({
     [current],
   );
 
-  const toggleMuted = useCallback(() => setMuted((value) => !value), []);
+  const isVideo = currentItem?.kind === "video";
 
+  /**
+   * The reel is vertical, so the axes mean different things.
+   *
+   * Up/Down move between clips, which is the direction the column actually
+   * scrolls. Left/Right move through *time* when a video is on screen — the
+   * mapping every video player already has — and fall back to moving between
+   * items for a still, where there is no time to move through.
+   */
   useKeyboardNav({
     onPrev: () => step(-1),
     onNext: () => step(1),
+    onSeekBack: isVideo ? () => playback.seekBy(-5) : () => step(-1),
+    onSeekForward: isVideo ? () => playback.seekBy(5) : () => step(1),
     onClose,
     onToggleFullscreen: () => void toggle(),
-    onTogglePlay: toggleMuted,
+    onTogglePlay: isVideo ? playback.togglePaused : undefined,
+    onToggleMuted: isVideo ? playback.toggleMuted : undefined,
   });
 
   useEffect(() => {
@@ -135,8 +153,6 @@ export function ReelView({
       document.body.style.overflow = previous;
     };
   }, []);
-
-  const currentItem = items[current];
 
   if (items.length === 0) {
     return (
@@ -166,11 +182,13 @@ export function ReelView({
       {currentItem && (
         <ViewerChrome
           file={currentItem}
-          position={`${current + 1}${exhausted ? ` of ${items.length}` : ""}`}
+          position={`${current + 1}${exhausted ? ` of ${items.length}${truncated ? "+" : ""}` : ""}`}
           isFullscreen={isFullscreen}
           fullscreenSupported={supported}
           onToggleFullscreen={() => void toggle()}
           onClose={onClose}
+          onRename={onRename && ((name) => onRename(currentItem, name))}
+          onDelete={onDelete && (() => onDelete(currentItem))}
         />
       )}
 
@@ -186,13 +204,9 @@ export function ReelView({
               {near ? (
                 <MediaSurface
                   file={item}
-                  variant="reel"
                   active={index === current}
-                  muted={muted}
-                  onVideoRef={(element) => {
-                    if (element) videoRefs.current.set(item.key, element);
-                    else videoRefs.current.delete(item.key);
-                  }}
+                  muted={playback.muted}
+                  onVideoRef={playback.register(item.key)}
                 />
               ) : (
                 // Outside the window the pane keeps its height (so scroll
@@ -205,24 +219,46 @@ export function ReelView({
         })}
       </div>
 
-      {currentItem?.kind === "video" && (
-        <button
-          type="button"
-          onClick={toggleMuted}
-          aria-label={muted ? "Unmute" : "Mute"}
-          className="absolute bottom-6 right-4 z-10 rounded-full bg-black/55 p-3 text-white/85
-                     transition-colors hover:bg-black/75 hover:text-white
-                     focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true" className="size-5 fill-none stroke-current stroke-[1.5]">
-            <path d="M11 5 6 9H3v6h3l5 4Z" />
-            {muted ? <path d="m16 9 5 6m0-6-5 6" /> : <path d="M15.5 8.5a5 5 0 0 1 0 7M18 6a9 9 0 0 1 0 12" />}
-          </svg>
-        </button>
+      {isVideo && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center
+                        gap-2 bg-gradient-to-t from-black/80 to-transparent px-3 pb-4 pt-12">
+          {playback.blocked && (
+            <Text variant="caption" className="text-white/90">
+              Your browser blocked sound. Press play, then unmute.
+            </Text>
+          )}
+
+          <div className="flex w-full max-w-2xl items-center gap-2">
+            <VideoScrubber playback={playback} />
+
+            <button
+              type="button"
+              onClick={playback.toggleMuted}
+              aria-label={playback.muted ? "Unmute (m)" : "Mute (m)"}
+              title={playback.muted ? "Unmute (m)" : "Mute (m)"}
+              className="pointer-events-auto shrink-0 rounded-full bg-black/55 p-3 text-white/85
+                         transition-colors hover:bg-black/75 hover:text-white
+                         focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                className="size-5 fill-none stroke-current stroke-[1.5]"
+              >
+                <path d="M11 5 6 9H3v6h3l5 4Z" />
+                {playback.muted ? (
+                  <path d="m16 9 5 6m0-6-5 6" />
+                ) : (
+                  <path d="M15.5 8.5a5 5 0 0 1 0 7M18 6a9 9 0 0 1 0 12" />
+                )}
+              </svg>
+            </button>
+          </div>
+        </div>
       )}
 
       {loading && (
-        <div className="absolute bottom-6 left-1/2 z-10 -translate-x-1/2">
+        <div className="absolute bottom-24 left-1/2 z-10 -translate-x-1/2">
           <Spinner size="sm" label="Loading more" />
         </div>
       )}

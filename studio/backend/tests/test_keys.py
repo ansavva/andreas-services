@@ -91,3 +91,47 @@ def test_breadcrumbs():
 
 def test_breadcrumbs_at_root():
     assert keys.breadcrumbs("media/") == [{"name": "media", "prefix": "media/"}]
+
+
+# ---------------------------------------------------------------------------
+# Names — one path segment, supplied by a user, on its way to a write.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["a/b", "a\\b", "..", ".", "", "   ", "with\nnewline", "with\x00nul", "x" * 256],
+)
+def test_clean_name_rejects(name):
+    with pytest.raises(ValidationError):
+        keys.clean_name(name)
+
+
+@pytest.mark.parametrize(
+    "name", ["keeper.jpeg", "wave porch 1x1", "IMG_1966_Original.JPG", "café.webp", "a.b.c"]
+)
+def test_clean_name_accepts(name):
+    assert keys.clean_name(name) == name
+
+
+def test_clean_name_trims_but_does_not_otherwise_alter():
+    assert keys.clean_name("  keeper.jpeg  ") == "keeper.jpeg"
+
+
+def test_parent_prefix():
+    assert keys.parent_prefix("media/fred/a.jpg") == "media/fred/"
+    assert keys.parent_prefix("media/fred/runs/") == "media/fred/"
+    assert keys.parent_prefix("media/") == ""
+
+
+def test_with_name_and_renamed_prefix():
+    assert keys.with_name("media/fred/a.jpg", "b.jpg") == "media/fred/b.jpg"
+    assert keys.renamed_prefix("media/fred/runs/", "walks") == "media/fred/walks/"
+
+
+def test_assert_inside_root():
+    keys.assert_inside_root("media/fred/")
+    with pytest.raises(ValidationError):
+        keys.assert_inside_root("media/")
+    with pytest.raises(ValidationError):
+        keys.assert_inside_root("elsewhere/")

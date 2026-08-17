@@ -20,12 +20,24 @@ REEL_KINDS = frozenset({"image", "video"})
 DEFAULT_REEL_PAGE_SIZE = 200
 MAX_REEL_PAGE_SIZE = 1000
 
-# How many undelimited pages one `/api/reel` request will walk before returning
-# what it has. A run folder is mostly JSON, so a page of 1000 keys can yield very
-# few playable items; without this the caller sees an empty page and a token and
-# has to spin. With it, a request does a bounded amount of work and still makes
-# progress.
-MAX_REEL_PAGES_PER_REQUEST = 10
+# The four orders every listing endpoint accepts. `newest` is the default
+# because this is a library of generated output: what you came to look at is
+# almost always what the pipeline produced most recently, and the old behaviour
+# — name ascending — buried it under whatever happened to sort first.
+SORTS = frozenset({"newest", "oldest", "name", "name_desc"})
+DEFAULT_SORT = "newest"
+
+# The epoch, for objects a listing gave no LastModified for. Sorting newest-first
+# puts them last, which is where an object we know nothing about belongs.
+_UNDATED = ""
+
+
+def clean_sort(raw: str | None) -> str:
+    if raw in (None, ""):
+        return DEFAULT_SORT
+    if raw not in SORTS:
+        raise ValidationError(f"sort must be one of {', '.join(sorted(SORTS))}")
+    return raw
 
 
 def _file_entry(obj: dict, *, presigned: bool = True) -> dict:
@@ -45,9 +57,55 @@ def _file_entry(obj: dict, *, presigned: bool = True) -> dict:
     return entry
 
 
-def list_folder(raw_prefix: str | None) -> dict:
+def _sort_files(files: list[dict], sort: str) -> None:
+    """Order file entries in place.
+
+    Ties break on the full key, always *ascending* — including under `newest`,
+    which is why this is two passes rather than one `reverse=True` over a
+    composite key. S3's LastModified has one-second resolution and a run writes
+    its whole output inside one second, so ties are the common case here, not
+    the edge: the composite-key form would hand back `frame_9, frame_8, frame_7`
+    for every such run. Python's sort is stable and `reverse=True` does not
+    reverse equal elements, so sorting by key first and then by date preserves
+    it.
+
+    The tie-break is the key rather than the name because the reel walks
+    recursively. Breaking on the basename would interleave `originals/`,
+    `reference/` and `runs/` output whenever their timestamps matched, which is
+    to say almost always; breaking on the key keeps a subject's folders whole
+    and reproduces the ordering the reel had before it could be sorted at all.
+    In a single folder's listing the two are the same thing.
+    """
+    files.sort(key=lambda entry: entry["key"])
+    if sort in ("newest", "oldest"):
+        files.sort(
+            key=lambda entry: entry["last_modified"] or _UNDATED,
+            reverse=sort == "newest",
+        )
+    elif sort == "name":
+        files.sort(key=lambda entry: entry["name"].lower())
+    elif sort == "name_desc":
+        files.sort(key=lambda entry: entry["name"].lower(), reverse=True)
+
+
+def _sort_folders(folders: list[dict], sort: str) -> None:
+    """Order folder entries in place — by name, and by name for dates too.
+
+    A delimited listing returns common prefixes and nothing else: a folder has no
+    LastModified, because a folder is not an object. Rather than HEAD every one
+    of them to invent a date, the date orders fall back to the name, which is
+    the right answer for the folders that matter — x-harness names every run
+    `<date>_<time>_<slug>`, so descending by name *is* newest-first. For a folder
+    named something else it is alphabetical, which is no worse than the arbitrary
+    order the alternative would produce.
+    """
+    folders.sort(key=lambda entry: entry["name"].lower(), reverse=sort in ("newest", "name_desc"))
+
+
+def list_folder(raw_prefix: str | None, raw_sort: str | None = None) -> dict:
     """Immediate contents of one folder, ready to render."""
     prefix = keys.clean_prefix(raw_prefix)
+    sort = clean_sort(raw_sort)
     folder_prefixes, objects = s3.list_folder(prefix)
 
     files = [
@@ -57,15 +115,16 @@ def list_folder(raw_prefix: str | None) -> dict:
         # listing; so do console-created folder markers. Neither is a file.
         if obj["Key"] != prefix and not keys.is_folder_marker(obj["Key"], obj.get("Size", 0))
     ]
-    files.sort(key=lambda entry: entry["name"].lower())
+    _sort_files(files, sort)
 
     folders = [
-        {"prefix": folder, "name": keys.basename(folder)}
-        for folder in sorted(folder_prefixes)
+        {"prefix": folder, "name": keys.basename(folder)} for folder in folder_prefixes
     ]
+    _sort_folders(folders, sort)
 
     return {
         "prefix": prefix,
+        "sort": sort,
         "breadcrumbs": keys.breadcrumbs(prefix),
         "folders": folders,
         "files": files,
@@ -77,35 +136,70 @@ def list_folder(raw_prefix: str | None) -> dict:
     }
 
 
-def reel_items(raw_prefix: str | None, cursor: str | None, page_size: int | None) -> dict:
+def reel_items(
+    raw_prefix: str | None,
+    cursor: str | None,
+    page_size: int | None,
+    raw_sort: str | None = None,
+) -> dict:
     """Every image and video beneath a prefix, recursively, one page at a time.
 
-    Ordered by key, which is what makes the reel stable and predictable: a
-    subject's `input/`, `originals/`, `reference/` and then `runs/` in timestamp
-    order, because the run folders are named with a sortable timestamp.
+    **The whole subtree is listed on every request, and the cursor is an offset
+    into the sorted result rather than S3's continuation token.** That is a
+    change forced by sorting: a continuation token walks keys in lexicographic
+    order and nothing else, so paging that way can only ever produce key order.
+    To hand back the newest item first you have to know what the newest item is,
+    and that means seeing all of them.
+
+    It costs less than it sounds. `ListObjectsV2` returns LastModified and Size
+    inline, so ordering by date needs no extra call, and the listing is capped by
+    `config.max_walk_objects`. Presigning happens *after* the slice, so a request
+    signs one page's worth of URLs instead of the whole library's — which is
+    strictly cheaper than the previous behaviour.
     """
     prefix = keys.clean_prefix(raw_prefix)
     limit = _reel_page_size(page_size)
+    sort = clean_sort(raw_sort)
+    offset = _reel_offset(cursor)
 
-    items: list[dict] = []
-    token = cursor or None
-    pages = 0
+    objects, truncated = s3.walk_all(prefix, config.max_walk_objects())
 
-    while pages < MAX_REEL_PAGES_PER_REQUEST:
-        objects, token = s3.walk(prefix, token, limit)
-        pages += 1
+    entries = [
+        _file_entry(obj, presigned=False)
+        for obj in objects
+        if not keys.is_folder_marker(obj["Key"], obj.get("Size", 0))
+        and keys.kind(obj["Key"]) in REEL_KINDS
+    ]
+    _sort_files(entries, sort)
 
-        for obj in objects:
-            if keys.is_folder_marker(obj["Key"], obj.get("Size", 0)):
-                continue
-            if keys.kind(obj["Key"]) not in REEL_KINDS:
-                continue
-            items.append(_file_entry(obj))
+    window = entries[offset : offset + limit]
+    for entry in window:
+        entry["url"] = s3.presign(entry["key"])
 
-        if token is None or len(items) >= limit:
-            break
+    next_offset = offset + len(window)
+    return {
+        "prefix": prefix,
+        "sort": sort,
+        "items": window,
+        "total": len(entries),
+        # True when the *bucket walk* was cut short, not the page — the caller
+        # is showing a library that has more in it than this endpoint will admit
+        # to, and should say so rather than imply the tail does not exist.
+        "truncated": truncated,
+        "next_cursor": str(next_offset) if next_offset < len(entries) else None,
+    }
 
-    return {"prefix": prefix, "items": items, "next_cursor": token}
+
+def _reel_offset(cursor: str | None) -> int:
+    if cursor in (None, ""):
+        return 0
+    try:
+        value = int(cursor)
+    except (TypeError, ValueError):
+        raise ValidationError("cursor is not valid") from None
+    if value < 0:
+        raise ValidationError("cursor is not valid")
+    return value
 
 
 def _reel_page_size(raw: int | str | None) -> int:

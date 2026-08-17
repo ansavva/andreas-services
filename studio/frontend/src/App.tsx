@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 
 import { Alert, Spinner } from "@ansavva/design-system";
 
@@ -36,13 +36,28 @@ function Gate() {
   return authenticated ? <BrowsePage /> : <LoginForm />;
 }
 
+/**
+ * One route, matching everything.
+ *
+ * The path *is* the S3 key — `/media/fred/runs/…/output/clip.mp4` — so there is
+ * nothing to enumerate here and no depth to declare: a bucket's shape is not
+ * known to the router. `BrowsePage` reads `location.pathname` through
+ * `utils/location` and decides what it points at; a path that resolves to
+ * nothing sensible falls back to the library root rather than 404ing, because a
+ * stale bookmark should land somewhere usable.
+ *
+ * Two things outside this file have to agree with it. CloudFront's
+ * viewer-request function must send these paths to `index.html` — including the
+ * ones ending in `.mp4`, which is why it routes by location rather than by
+ * extension (`infra/modules/hosting`). And sign-out sends the user to `/`, which
+ * is the root listing.
+ */
 export function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Gate />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Gate />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
