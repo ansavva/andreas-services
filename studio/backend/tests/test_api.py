@@ -19,12 +19,23 @@ def test_options_preflight():
 
 def test_stage_prefixed_path_still_routes(media_bucket):
     """A direct stage invoke arrives as /prod/api/... — the middleware strips it."""
-    resp = _client().get("/prod/api/tree?prefix=media/")
+    resp = _client().get("/prod/api/tree?prefix=characters/")
     assert resp.status_code == 200
 
 
+def test_tree_with_no_prefix_opens_on_the_bucket_root(media_bucket):
+    """What the app requests first, and what broke when `media/` went away."""
+    resp = _client().get("/api/tree")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["prefix"] == ""
+    # Newest-first is the default sort, and folders have no date to sort by, so
+    # the order here is the name descending.
+    assert [f["name"] for f in body["folders"]] == ["projects", "phrasebook", "characters"]
+
+
 def test_tree(media_bucket):
-    resp = _client().get("/api/tree?prefix=media/fred/originals/")
+    resp = _client().get("/api/tree?prefix=characters/fred/seed/")
     assert resp.status_code == 200
     assert len(resp.get_json()["files"]) == 2
 
@@ -36,23 +47,23 @@ def test_tree_rejects_escape(media_bucket):
 
 
 def test_reel(media_bucket):
-    resp = _client().get("/api/reel?prefix=media/fred/")
+    resp = _client().get("/api/reel?prefix=characters/fred/")
     assert resp.status_code == 200
     assert all(item["kind"] in ("image", "video") for item in resp.get_json()["items"])
 
 
 def test_asset_missing_key_is_404(media_bucket):
-    resp = _client().get("/api/asset?key=media/fred/originals/nope.webp")
+    resp = _client().get("/api/asset?key=characters/fred/seed/nope.webp")
     assert resp.status_code == 404
 
 
 def test_asset_rejects_bad_disposition(media_bucket):
-    resp = _client().get("/api/asset?key=media/fred/profile.md&disposition=evil")
+    resp = _client().get("/api/asset?key=characters/fred/profile.yaml&disposition=evil")
     assert resp.status_code == 400
 
 
 def test_text_rejects_binary(media_bucket):
-    resp = _client().get("/api/text?key=media/fred/originals/fred_1.webp")
+    resp = _client().get("/api/text?key=characters/fred/seed/fred_1.webp")
     assert resp.status_code == 400
 
 
@@ -62,30 +73,30 @@ def test_unknown_route_is_404():
 
 
 def test_tree_accepts_a_sort(media_bucket):
-    resp = _client().get("/api/tree?prefix=media/fred/originals/&sort=name_desc")
+    resp = _client().get("/api/tree?prefix=characters/fred/seed/&sort=name_desc")
     assert resp.status_code == 200
     assert [f["name"] for f in resp.get_json()["files"]] == ["fred_2.webp", "fred_1.webp"]
 
 
 def test_tree_rejects_an_unknown_sort(media_bucket):
-    assert _client().get("/api/tree?prefix=media/&sort=sideways").status_code == 400
+    assert _client().get("/api/tree?sort=sideways").status_code == 400
 
 
 # ---------------------------------------------------------------------------
 # Writes
 # ---------------------------------------------------------------------------
 
-RUN = "media/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/"
+RUN = "projects/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/"
 
 
 def test_create_folder(media_bucket):
-    resp = _client().post("/api/folder", json={"prefix": "media/fred/", "name": "keepers"})
+    resp = _client().post("/api/folder", json={"prefix": "characters/fred/", "name": "keepers"})
     assert resp.status_code == 201
-    assert resp.get_json()["prefix"] == "media/fred/keepers/"
+    assert resp.get_json()["prefix"] == "characters/fred/keepers/"
 
 
 def test_create_folder_conflict_is_409(media_bucket):
-    resp = _client().post("/api/folder", json={"prefix": "media/fred/", "name": "originals"})
+    resp = _client().post("/api/folder", json={"prefix": "characters/fred/", "name": "seed"})
     assert resp.status_code == 409
     assert "error" in resp.get_json()
 
@@ -131,7 +142,7 @@ def test_delete_folder(media_bucket):
 
 
 def test_delete_folder_refuses_the_root(media_bucket):
-    assert _client().delete("/api/folder", json={"prefix": "media/"}).status_code == 400
+    assert _client().delete("/api/folder", json={"prefix": ""}).status_code == 400
     # And with no prefix at all, which normalises *to* the root.
     assert _client().delete("/api/folder", json={}).status_code == 400
 

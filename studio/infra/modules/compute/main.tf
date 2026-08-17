@@ -81,21 +81,30 @@ resource "aws_iam_role_policy" "logs" {
 # A run that produced nothing worth keeping is recognised in the browser, and
 # routing "delete these four frames" back through the pipeline meant it never
 # happened. So the role gained `PutObject` and `DeleteObject`, scoped to the same
-# `media/*` the read grants use.
+# root the read grants use.
+#
+# READ THIS BEFORE RELYING ON THAT SCOPE. `media_root_prefix` is now empty —
+# x-harness dropped the `media/` wrapper it used to write under, so the
+# browsable root is the bucket itself and `${var.media_root_prefix}*` expands to
+# `*`. The prefix therefore confines nothing today, and it is a write-capable
+# role: what it can read, it can also overwrite and delete. That is a real
+# widening of the blast radius over the read-only era, and the only reason it is
+# acceptable is that the bucket's entire contents are exactly what studio is for.
+# Set the prefix to a real value and both halves narrow again, together.
 #
 # What still holds the line:
 #
-#   * Scope is unchanged. Every grant, read and write alike, is confined to
-#     `${var.media_root_prefix}*`, and `ListBucket` is still prefix-conditioned,
-#     so nothing outside the browsable root is reachable in either direction.
-#   * `services/keys.py` validates every key and prefix before it reaches boto3;
-#     IAM is the second line, not the first.
+#   * `services/keys.py` validates every key and prefix before it reaches boto3,
+#     and `assert_inside_root` refuses an operation aimed at the root itself, so
+#     "delete everything" is not expressible through the API. With the prefix
+#     empty this is the FIRST line of defence, not the second.
 #   * There is no multipart grant. `PutObject` here writes zero-byte folder
 #     markers and nothing else — the API exposes no upload, and adding one is a
 #     separate decision that should be argued on its own.
 #   * `s3:DeleteObjectVersion` is deliberately absent. If the bucket is ever
 #     versioned, deletes become recoverable tombstones rather than erasures, and
-#     this role cannot reach past them.
+#     this role cannot reach past them. Worth actually turning versioning on,
+#     now that the prefix is not doing any confining.
 #
 # `GetObject` is what signs presigned URLs and what HeadObject checks against;
 # both read the same permission. `CopyObject` — which is what a rename is —
@@ -110,7 +119,10 @@ data "aws_iam_policy_document" "media_access" {
     condition {
       test     = "StringLike"
       variable = "s3:prefix"
-      values   = ["${var.media_root_prefix}*", var.media_root_prefix, ""]
+      # A listing of the root arrives with `s3:prefix` absent or empty, so the
+      # bare root is listed alongside the wildcard. `distinct` because an empty
+      # root collapses two of the three into the same value.
+      values = distinct(["${var.media_root_prefix}*", var.media_root_prefix, ""])
     }
   }
 

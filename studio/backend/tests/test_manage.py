@@ -11,9 +11,9 @@ from studio_core import config
 from studio_core.errors import ConflictError, NotFoundError, ValidationError
 from studio_core.services import browse, manage
 
-RUN = "media/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/"
+RUN = "projects/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/"
 OUTPUT = f"{RUN}output/wave-porch.jpeg"
-VIDEO = "media/mr-p/runs/2026-08-14_21-47-05_standing-flex/output/standing-flex.mp4"
+VIDEO = "projects/mr-p/runs/2026-08-14_21-47-05_standing-flex/output/standing-flex.mp4"
 
 
 def _names(prefix):
@@ -30,22 +30,22 @@ def _folders(prefix):
 
 
 def test_create_folder(media_bucket):
-    result = manage.create_folder("media/fred/", "keepers")
+    result = manage.create_folder("characters/fred/", "keepers")
 
-    assert result["prefix"] == "media/fred/keepers/"
-    assert "keepers" in _folders("media/fred/")
+    assert result["prefix"] == "characters/fred/keepers/"
+    assert "keepers" in _folders("characters/fred/")
     # The marker object that makes the folder visible must not read as a file.
-    assert _names("media/fred/keepers/") == []
+    assert _names("characters/fred/keepers/") == []
 
 
 def test_create_folder_refuses_a_duplicate(media_bucket):
     with pytest.raises(ConflictError):
-        manage.create_folder("media/fred/", "originals")
+        manage.create_folder("characters/fred/", "seed")
 
 
 def test_create_folder_refuses_a_path(media_bucket):
     with pytest.raises(ValidationError):
-        manage.create_folder("media/fred/", "a/b")
+        manage.create_folder("characters/fred/", "a/b")
 
 
 # ---------------------------------------------------------------------------
@@ -70,9 +70,9 @@ def test_rename_object_cannot_leave_its_folder(media_bucket):
 
 def test_rename_object_refuses_an_occupied_name(media_bucket):
     with pytest.raises(ConflictError):
-        manage.rename_object("media/fred/originals/fred_1.webp", "fred_2.webp")
+        manage.rename_object("characters/fred/seed/fred_1.webp", "fred_2.webp")
     # Nothing moved, and in particular nothing was overwritten.
-    assert _names("media/fred/originals/") == ["fred_1.webp", "fred_2.webp"]
+    assert _names("characters/fred/seed/") == ["fred_1.webp", "fred_2.webp"]
 
 
 def test_rename_object_to_its_own_name_is_a_no_op(media_bucket):
@@ -83,7 +83,7 @@ def test_rename_object_to_its_own_name_is_a_no_op(media_bucket):
 
 def test_rename_missing_object_is_404(media_bucket):
     with pytest.raises(NotFoundError):
-        manage.rename_object("media/fred/originals/nope.webp", "yes.webp")
+        manage.rename_object("characters/fred/seed/nope.webp", "yes.webp")
 
 
 def test_rename_object_rejects_a_control_character(media_bucket):
@@ -95,23 +95,23 @@ def test_rename_folder_moves_the_whole_subtree(media_bucket):
     result = manage.rename_folder(RUN, "wave-porch-final")
 
     assert result["objects"] == 3
-    assert "wave-porch-final" in _folders("media/fred/runs/")
-    assert "2026-08-04_21-30-54_wave-porch-1x1" not in _folders("media/fred/runs/")
+    assert "wave-porch-final" in _folders("projects/fred/runs/")
+    assert "2026-08-04_21-30-54_wave-porch-1x1" not in _folders("projects/fred/runs/")
 
-    moved = "media/fred/runs/wave-porch-final/"
+    moved = "projects/fred/runs/wave-porch-final/"
     assert sorted(_names(moved)) == ["request.json", "result.json"]
     assert _names(f"{moved}output/") == ["wave-porch.jpeg"]
 
 
 def test_rename_folder_refuses_an_occupied_name(media_bucket):
-    manage.create_folder("media/fred/runs/", "taken")
+    manage.create_folder("projects/fred/runs/", "taken")
     with pytest.raises(ConflictError):
         manage.rename_folder(RUN, "taken")
 
 
 def test_rename_folder_refuses_the_library_root(media_bucket):
     with pytest.raises(ValidationError):
-        manage.rename_folder("media/", "everything")
+        manage.rename_folder("", "everything")
     with pytest.raises(ValidationError):
         manage.rename_folder(None, "everything")
 
@@ -121,7 +121,7 @@ def test_rename_folder_refuses_an_oversized_subtree(media_bucket, monkeypatch):
     with pytest.raises(ValidationError):
         manage.rename_folder(RUN, "too-big")
     # Refused before it started, so the original is intact.
-    assert "2026-08-04_21-30-54_wave-porch-1x1" in _folders("media/fred/runs/")
+    assert "2026-08-04_21-30-54_wave-porch-1x1" in _folders("projects/fred/runs/")
 
 
 # ---------------------------------------------------------------------------
@@ -137,9 +137,9 @@ def test_delete_one_object(media_bucket):
 
 def test_delete_many_objects(media_bucket):
     manage.delete_objects(
-        ["media/fred/originals/fred_1.webp", "media/fred/originals/fred_2.webp"]
+        ["characters/fred/seed/fred_1.webp", "characters/fred/seed/fred_2.webp"]
     )
-    assert _names("media/fred/originals/") == []
+    assert _names("characters/fred/seed/") == []
 
 
 def test_delete_rejects_an_empty_list(media_bucket):
@@ -166,20 +166,20 @@ def test_delete_folder_removes_everything_beneath_it(media_bucket):
     result = manage.delete_folder(RUN)
 
     assert result["deleted"] == 3
-    assert "2026-08-04_21-30-54_wave-porch-1x1" not in _folders("media/fred/runs/")
+    assert "2026-08-04_21-30-54_wave-porch-1x1" not in _folders("projects/fred/runs/")
 
 
 def test_delete_folder_refuses_the_library_root(media_bucket):
     with pytest.raises(ValidationError):
-        manage.delete_folder("media/")
+        manage.delete_folder("")
     with pytest.raises(ValidationError):
         manage.delete_folder(None)
-    assert _folders("media/") != []
+    assert _folders("") != []
 
 
 def test_delete_missing_folder_is_404(media_bucket):
     with pytest.raises(NotFoundError):
-        manage.delete_folder("media/fred/nowhere/")
+        manage.delete_folder("characters/fred/nowhere/")
 
 
 def test_delete_folder_refuses_an_oversized_subtree(media_bucket, monkeypatch):
@@ -189,7 +189,18 @@ def test_delete_folder_refuses_an_oversized_subtree(media_bucket, monkeypatch):
     assert _names(f"{RUN}output/") == ["wave-porch.jpeg"]
 
 
-def test_nothing_reaches_outside_the_media_root(media_bucket):
+def test_nothing_reaches_outside_a_configured_root(media_bucket, monkeypatch):
+    """Every write path refuses a key outside the browsable root.
+
+    **This is worth reading carefully, because prod does not run this way.** The
+    root prefix is empty there — x-harness dropped the `media/` wrapper, so the
+    whole bucket is the library — and with an empty root nothing is "outside" it,
+    which is why this test has to configure one to have anything to assert. The
+    confinement machinery is intact and this proves it; what is gone in prod is
+    something for it to exclude. What still holds unconditionally is that the
+    root itself cannot be renamed or deleted — see the two tests above.
+    """
+    monkeypatch.setattr("studio_core.config.media_root_prefix", lambda: "characters/")
     media_bucket.put_object(
         Bucket=config.media_bucket(), Key="secrets/keys.txt", Body=b"do not touch"
     )

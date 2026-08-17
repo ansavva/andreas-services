@@ -4,6 +4,13 @@ This is the one module standing between a query string and `GetObject`, so it is
 deliberately strict and deliberately boring. Everything the caller supplies must
 end up inside `config.media_root_prefix()`; anything that does not is a
 `ValidationError`, never a clamped-and-carried-on.
+
+In prod that root is empty — the whole bucket — so the prefix check passes
+everything and the traversal rules are what is left doing the work. They still
+matter: `..`, a leading `/` and a backslash are rejected before normalisation,
+so no input can walk out of the bucket or smuggle a key past the checks below.
+Point the root at a real prefix and the confinement comes back with it, which is
+why the check stays.
 """
 
 import posixpath
@@ -12,7 +19,7 @@ from studio_core import config
 from studio_core.errors import ValidationError
 
 # Extensions we are willing to render. Compared case-insensitively because the
-# bucket really does contain both `.jpg` and `.JPG` (mr-p/originals).
+# bucket really does contain both `.jpg` and `.JPG` (characters/mr-p/corpus).
 IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".bmp"})
 VIDEO_EXTENSIONS = frozenset({".mp4", ".webm", ".mov", ".m4v"})
 TEXT_EXTENSIONS = frozenset({".json", ".md", ".txt", ".yaml", ".yml", ".csv", ".log"})
@@ -51,8 +58,9 @@ def _normalise(value: str, label: str) -> str:
 def clean_prefix(raw: str | None) -> str:
     """Normalise a folder prefix and confine it to the media root.
 
-    An empty or missing prefix means the root itself. The return value always
-    ends in a slash so it can be handed straight to `ListObjectsV2`.
+    An empty or missing prefix means the root itself — which, when the root is
+    the bucket, is the empty string. Every other return value ends in a slash so
+    it can be handed straight to `ListObjectsV2`.
     """
     root = config.media_root_prefix()
     if raw is None or raw.strip() in ("", "/"):
@@ -170,8 +178,9 @@ def language(key: str) -> str:
 def is_folder_marker(key: str, size: int) -> bool:
     """True for the zero-byte objects the console creates to fake a folder.
 
-    The bucket has several (`media/`, `media/fred/originals/`). They are not
-    files and must never appear in a listing.
+    The bucket has none today — the pipeline writes real keys — but anyone who
+    opens the console and makes a folder creates one, and it is not a file and
+    must never appear in a listing.
     """
     return size == 0 and key.endswith("/")
 
@@ -181,7 +190,11 @@ def basename(key: str) -> str:
 
 
 def breadcrumbs(prefix: str) -> list[dict]:
-    """Ancestor trail for a prefix, root first, each entry navigable."""
+    """Ancestor trail for a prefix, root first, each entry navigable.
+
+    The root crumb is named after the root prefix, so it reads as `/` when the
+    browsable root is the whole bucket and as the prefix's own name otherwise.
+    """
     root = config.media_root_prefix()
     trail = [{"name": root.rstrip("/") or "/", "prefix": root}]
 

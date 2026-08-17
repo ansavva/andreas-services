@@ -15,9 +15,15 @@ variable "media_bucket_name" {
 }
 
 variable "media_root_prefix" {
-  description = "The single prefix inside the media bucket studio may browse"
+  description = <<-EOT
+    The prefix inside the media bucket studio may browse. Empty is the whole
+    bucket, and that is the default: x-harness used to wrap its output in
+    `media/` and now writes `characters/`, `projects/` and `phrasebook/` at the
+    top level. Set a slash-terminated value to narrow both the API and the
+    Lambda's IAM policy back down to one subtree.
+  EOT
   type        = string
-  default     = "media/"
+  default     = ""
 }
 
 variable "api_throttling_rate_limit" {

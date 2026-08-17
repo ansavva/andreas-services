@@ -11,7 +11,7 @@ served from two hostnames:
 | API | `studio-api.andreas.services` | Flask Lambda behind an API Gateway custom domain. |
 
 The x-harness pipeline writes every image and video it produces into
-`s3://xharness-prod-media-us-east-1/media/`. Studio makes that browsable:
+`s3://xharness-prod-media-us-east-1/`. Studio makes that browsable:
 folders keep their structure, images and video are the focus, and every item can
 be opened fullscreen or flipped through as a vertical reel.
 
@@ -29,7 +29,7 @@ behind the change is in **The media bucket is not ours** below.
 | Frontend | Vite + React 19 + Tailwind v4 + the design system's **web** leaves, static build to S3 + CloudFront |
 | Auth | AWS Cognito (admin-create-only user pool); SRP via Amplify Auth on the SPA, Cognito authorizer on every `/api` route |
 | Data | **None.** No DynamoDB, no cache. Listings come straight from S3 on each request. |
-| Routing | Path-based, and the path *is* the S3 key. `/media/fred/runs/…/clip.mp4` opens that clip. |
+| Routing | Path-based, and the path *is* the S3 key. `/projects/fred/runs/…/clip.mp4` opens that clip. |
 | Media | Presigned S3 GET URLs, direct from the browser to S3 |
 | Infra | Terraform in `studio/infra/` (`modules/` + `envs/prod`) |
 
@@ -62,9 +62,11 @@ Terraform **references it by name and nothing more** — there is deliberately n
 `studio/infra`. A data source would be harmless today but would put the bucket
 one careless refactor away from being managed by this state.
 
-The Lambda role's policy (`modules/compute`) now grants four actions, all
-confined to `media/*`: `s3:ListBucket` (prefix-conditioned), `s3:GetObject`,
-`s3:PutObject` and `s3:DeleteObject`.
+The Lambda role's policy (`modules/compute`) now grants four actions:
+`s3:ListBucket` (prefix-conditioned), `s3:GetObject`, `s3:PutObject` and
+`s3:DeleteObject`. All four are scoped to `media_root_prefix`, **which is now
+empty** — see *What the bucket looks like* below — so in practice they cover the
+whole bucket.
 
 **That is a reversal of what this file used to say, and it was deliberate.** The
 old rule was "do not add a write action; a feature that needs one belongs in
@@ -75,42 +77,71 @@ creating folders live here now.
 
 The parts of the old rule that still hold, and should keep holding:
 
-- **Scope did not widen.** Every grant, read and write alike, stops at
-  `media/*`, and `ListBucket` is still prefix-conditioned.
-- **`services/keys.py` is still the gate.** IAM is the second line of defence,
-  not the first, and `clean_name` refuses a slash rather than escaping it — a
-  rename must not be able to become a move.
+- **`services/keys.py` is the gate.** `clean_name` refuses a slash rather than
+  escaping it — a rename must not be able to become a move — and
+  `assert_inside_root` refuses an operation aimed at the root, so "delete the
+  library" is not expressible through the API. This used to be described as the
+  first of two lines of defence with IAM behind it; with the prefix empty it is
+  the only one, which is the reason to be conservative when changing it.
 - **No upload, and no multipart grant.** The only `PutObject` this service makes
   writes a zero-byte folder marker. A real upload would need CORS on a bucket we
   do not own *and* would blow the Lambda's 6 MB request limit on any video, so
   it is blocked by more than policy. Argue for it separately if it is ever
   wanted; do not let it arrive as a side effect of something else.
 - **`s3:DeleteObjectVersion` is deliberately absent**, so if the bucket is ever
-  versioned this role can only write tombstones, not erase history.
+  versioned this role can only write tombstones, not erase history. Worth
+  actually enabling versioning, now that the prefix confines nothing.
+
+The part that **did** change and should not be glossed over: scope. It used to
+be true that every grant stopped at `media/*`. With `media_root_prefix` empty
+that sentence is no longer true of either half — a write-capable role now reaches
+the whole bucket. Setting the prefix to a real value narrows reads and writes
+together, and is the lever to reach for if that ever needs to be true again.
 
 There is an older mirror of the same content at `xharness-assets`. Point
 `media_bucket_name` at it if you ever need to; nothing else changes.
 
 ## What the bucket looks like
 
+**There is no `media/` wrapper.** There was until August 2026, and studio's
+browsable root was hard-coded to it in five places — the Flask config default,
+the SPA's `ROOT_PREFIX`, the Terraform variable, the IAM prefix condition and
+the deploy workflow's `jq` block. When x-harness flattened the bucket, every
+listing came back empty and the app rendered an empty root with no error, since
+a prefix that matches nothing is not an error to S3. The browsable root is now
+the bucket itself (`media_root_prefix = ""`).
+
 ```
-media/
-├── <subject>/                 # fred, mr-p
-│   ├── profile.md
-│   ├── originals/             # source photos (.webp, .jpg, .jpeg, .JPG)
-│   ├── input/                 # prepped inputs (.png, .jpg)
-│   ├── reference/             # reference images + .txt captions
-│   └── runs/<ts>_<slug>/      # request.json, result.json, sometimes prompt.json
-│       └── output/            # the generated .jpeg / .webp / .mp4
-└── misc/runs/<ts>_<slug>/     # unattributed runs, mostly seedance/kling video
+characters/<subject>/           # who a subject is — fred, mr-p
+├── profile.yaml
+├── seed/                       # source photos (.webp, .jpg, .jpeg, .JPG, .heic)
+├── corpus/                     # the wider photo set
+├── reference/                  # reference images + .txt captions,
+│   └── <face|body|scene|wardrobe>/   #   sometimes split by category
+└── archive/                    # superseded output kept around
+projects/<subject>/             # what was generated of them
+├── runs/<ts>_<slug>/           # request.json, result.json, sometimes prompt.json
+│   └── output/                 # the generated .jpeg / .webp / .mp4
+├── scenes/<ts>_<slug>/         # scene.json + shots/ + output/, a stitched sequence
+├── chains/<name>.json          # a scene's shot-to-shot plan
+└── favorites/                  # picked output, copied flat
+projects/misc/runs/<ts>_<slug>/ # unattributed runs, mostly seedance/kling video
+phrasebook/wording.yaml         # shared prompt wording
 ```
 
-Three things about this shape drive the UI: run folders sort chronologically
-because their names start with a timestamp, a run's output lives one level down
-in `output/` so a run folder itself usually shows only JSON, and **a folder has
+Four things about this shape drive the UI: run and scene folders sort
+chronologically because their names start with a timestamp; a run's output lives
+one level down in `output/`, so a run folder itself usually shows only JSON; a
+subject is split across two top-level trees — `characters/fred/` and
+`projects/fred/` are the same fred, and reel mode is what puts them back
+together, since it walks recursively from wherever you are; and **a folder has
 no LastModified** — a delimited listing returns common prefixes, not objects. The
 date sorts therefore fall back to the folder's name, which for a run folder *is*
 its date. Do not "fix" that by HEADing every prefix to invent a timestamp.
+
+x-harness owns this layout and has reshaped it before. When it changes again,
+`media_root_prefix` is the only knob that matters — nothing else in studio names
+a folder, and nothing should start to.
 
 **The run JSON is deliberately not parsed.** x-harness owns its shape and
 changes it freely, so studio serves those files as text and the frontend shows
@@ -166,9 +197,12 @@ the pipeline adds a field, a parser becomes a liar.
   does exactly that — and an index-keyed selection would quietly come to mean
   different files.
 - **The URL is the S3 key, and CloudFront has to be in on it.** `utils/location`
-  maps `media/fred/runs/x/output/clip.mp4` ⟷ `/media/fred/runs/x/output/clip.mp4`,
-  segment-encoded so spaces and `#` in real filenames survive; a trailing slash
-  means a folder, exactly as it does in S3. The catch is that a share link
+  maps `projects/fred/runs/x/output/clip.mp4` ⟷
+  `/projects/fred/runs/x/output/clip.mp4`, segment-encoded so spaces and `#` in
+  real filenames survive; a trailing slash means a folder, exactly as it does in
+  S3. With the browsable root empty the two sides are now the same string, but
+  it stays a mapping: `ROOT_PREFIX` there has to agree with the backend's
+  `media_root_prefix`, and that is the seam where they meet. The catch is that a share link
   *ends in `.mp4`*, so the viewer-request function in `modules/hosting` routes by
   **location** (`/assets/…` and `/index.html` pass through, everything else
   rewrites) rather than by "does this look like a file". The old
@@ -209,8 +243,24 @@ the pipeline adds a field, a parser becomes a liar.
   second click that lands before anyone reads it.
 - **`services/keys.py` is the only thing between a query string and
   `GetObject`.** Every prefix and key is normalised and confined to
-  `media/`. Test changes to it directly — `posixpath.normpath` strips a trailing
-  slash, which is why the folder check happens on the raw value.
+  `config.media_root_prefix()`. That root is empty in prod, so the confinement
+  check passes everything and the traversal rules (`..`, a leading `/`, a
+  backslash — all rejected before normalisation) are what is actually holding
+  the line. Test changes to it directly — `posixpath.normpath` strips a trailing
+  slash, which is why the folder check happens on the raw value, and it is why
+  the tests set a non-empty root to keep the confinement branch covered.
+- **`.heic` is not in `IMAGE_EXTENSIONS`, and a couple of seed photos are
+  `.heic`.** They list as ordinary files rather than tiles. That is the current
+  behaviour, not a considered decision — but before adding the extension, note
+  that Chrome cannot decode HEIC, so a tile would render as a broken image
+  rather than a photo.
+- **The Lambda's env vars come from the deploy workflow, not from Terraform.**
+  `lifecycle { ignore_changes = [environment] }` means the `environment` block
+  in `modules/compute` only applies the first time the function is created;
+  after that the `jq` block in `studio-prod.yaml`'s `update-lambda` job is the
+  only thing that sets `STUDIO_MEDIA_ROOT_PREFIX`. Change one without the other
+  and the value you read in the code is not the value that is running. It is
+  also legitimately the empty string — do not "fix" it by dropping the line.
 - **Dark-only, and the palette is declared twice.** `src/styles/app.css` sets it
   in `@theme` *and* under `[data-theme='dark']`; `index.html` pins the attribute
   and nothing toggles it. The duplication stops a component that reads a role

@@ -6,8 +6,10 @@ aws_region = "us-east-1"
 
 # Point studio at a different bucket or a different browsable root. Whatever it
 # names, studio only ever reads it — the IAM policy grants no write action.
+# An empty root prefix browses the whole bucket, which is what prod does; any
+# other value must end in a slash.
 media_bucket_name = "xharness-prod-media-us-east-1"
-media_root_prefix = "media/"
+media_root_prefix = ""
 
 api_throttling_rate_limit  = 25
 api_throttling_burst_limit = 50

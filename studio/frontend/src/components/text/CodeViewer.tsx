@@ -16,7 +16,8 @@ interface Props {
 
 /**
  * Read-only viewer for the pipeline's `request.json`, `result.json`,
- * `prompt.json`, the subject `profile.md` files and the reference captions.
+ * `prompt.json` and `scene.json`, the subject `profile.yaml` files,
+ * `phrasebook/wording.yaml` and the reference captions.
  *
  * Nothing here interprets the contents. The x-harness pipeline owns their shape
  * and changes it freely, so the viewer shows what is in the file — pretty-printed

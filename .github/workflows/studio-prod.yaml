@@ -255,8 +255,14 @@ jobs:
           get() { aws ssm get-parameter --name "/studio/prod/${1}" --query Parameter.Value --output text; }
           MEDIA_BUCKET=$(get media-bucket)
 
+          # An EMPTY root prefix is the correct value, not a missing one: the
+          # x-harness pipeline dropped its `media/` wrapper and now writes
+          # `characters/`, `projects/` and `phrasebook/` at the top level, so
+          # the browsable root is the bucket itself. This is the value that
+          # reaches the Lambda — Terraform's `environment` block only applies on
+          # creation (`ignore_changes`), so setting it there is not enough.
           jq -n --arg bucket "${MEDIA_BUCKET}" \
-                --arg prefix "media/" \
+                --arg prefix "" \
                 --arg origin "https://studio.andreas.services" \
             '{Variables: {
               STUDIO_MEDIA_BUCKET:      $bucket,

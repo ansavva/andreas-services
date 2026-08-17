@@ -30,12 +30,17 @@ variable "media_bucket_name" {
 }
 
 variable "media_root_prefix" {
-  description = "The single prefix inside the bucket the API may read. Must end in a slash."
+  description = <<-EOT
+    The prefix inside the bucket the API may read. Empty means the whole bucket,
+    which is what prod uses now that x-harness writes `characters/`, `projects/`
+    and `phrasebook/` at the top level instead of wrapping them in `media/`. Any
+    other value must end in a slash.
+  EOT
   type        = string
 
   validation {
-    condition     = endswith(var.media_root_prefix, "/")
-    error_message = "media_root_prefix must end in a slash, or the IAM prefix conditions match too much."
+    condition     = var.media_root_prefix == "" || endswith(var.media_root_prefix, "/")
+    error_message = "media_root_prefix must be empty (the whole bucket) or end in a slash, or the IAM prefix conditions match too much."
   }
 }
 

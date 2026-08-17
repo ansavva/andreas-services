@@ -35,8 +35,8 @@ export function BrowsePage() {
   /**
    * The URL is the state.
    *
-   * `/media/fred/runs/` is a folder and `/media/fred/runs/x/output/clip.mp4` is
-   * that clip, open. Nothing here mirrors the location into component state:
+   * `/projects/fred/runs/` is a folder and `/projects/fred/runs/x/output/clip.mp4`
+   * is that clip, open. Nothing here mirrors the location into component state:
    * doing so is what makes browser back and a pasted link disagree, and both
    * have to work for a share link to mean anything.
    */
@@ -65,7 +65,7 @@ export function BrowsePage() {
   const { data, loading, error, reload } = useTree(prefix, sort);
 
   // "Play reel" walks recursively from wherever you are, so a folder of only
-  // subfolders — `media/mr-p/` — still opens onto real media. Fetched lazily:
+  // subfolders — `projects/mr-p/` — still opens onto real media. Fetched lazily:
   // the pages cost nothing until the reel is actually opened that way.
   const reel = useReel(reelPrefix ?? prefix, sort, reelPrefix !== null);
 
@@ -267,7 +267,7 @@ export function BrowsePage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [overlayOpen, selection]);
 
-  const crumbs = data?.breadcrumbs ?? [{ name: "media", prefix: ROOT_PREFIX }];
+  const crumbs = data?.breadcrumbs ?? [{ name: "/", prefix: ROOT_PREFIX }];
   const atRoot = prefix === ROOT_PREFIX;
   const isEmpty =
     !loading && !error && data && data.folders.length === 0 && data.files.length === 0;

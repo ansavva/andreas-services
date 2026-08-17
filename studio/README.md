@@ -8,10 +8,11 @@ A private media browser for the **x-harness** AI generation pipeline.
 | API | https://studio-api.andreas.services |
 
 x-harness writes every image and video it generates into
-`s3://xharness-prod-media-us-east-1/media/`, organised by subject and by run.
-Studio makes that library viewable: the folder structure is preserved so a
-subject's originals, references and runs stay where you expect them, while the
-images and video themselves get the space.
+`s3://xharness-prod-media-us-east-1/`, split between `characters/` (who a
+subject is — seeds, references, a profile) and `projects/` (what was generated
+of them — runs and scenes). Studio makes that library viewable: the folder
+structure is preserved so a subject's seeds, references and runs stay where you
+expect them, while the images and video themselves get the space.
 
 ## What it does
 
@@ -25,11 +26,12 @@ images and video themselves get the space.
   current folder recursively. Exactly one video plays at a time, starting muted.
   Videos get a transport: play/pause, a seek bar, and skip either way.
 - **Share links.** The URL is the S3 path
-  (`/media/fred/runs/2026-08-14_…/output/clip.mp4`), so the address bar is always
+  (`/projects/fred/runs/2026-08-14_…/output/clip.mp4`), so the address bar is always
   a link to exactly what is on screen.
 - **Read-only file viewer** for the pipeline's `request.json`, `result.json`,
-  `prompt.json`, the subject `profile.md` files and the reference captions. JSON
-  is pretty-printed, markdown is rendered, nothing is editable.
+  `prompt.json` and `scene.json`, the subject `profile.yaml` files and the
+  reference captions. JSON is pretty-printed, markdown is rendered, nothing is
+  editable.
 - **Tidy up.** Create a folder, rename a file or a folder, delete one file, a
   whole folder, or a grid selection. Delete confirms twice in the button itself
   — press once and it turns red and names what it is about to remove, press
@@ -50,13 +52,15 @@ images and video themselves get the space.
 ## What it deliberately does not do
 
 **It used to be a strict reader, and that changed.** The Lambda's IAM role now
-carries `s3:PutObject` and `s3:DeleteObject` alongside the read grants, scoped to
-the same `media/*` prefix, because deciding a run produced nothing worth keeping
-happens while you are looking at it. Everything else about that boundary is
-unchanged: every key is validated against the media root before it reaches S3,
-folder operations refuse a subtree larger than `STUDIO_MAX_FOLDER_OBJECTS`
-rather than doing half of one, and renames copy before they delete so a failure
-leaves a duplicate rather than a hole.
+carries `s3:PutObject` and `s3:DeleteObject` alongside the read grants, because
+deciding a run produced nothing worth keeping happens while you are looking at
+it. All four grants share one scope, and that scope is now the whole bucket —
+x-harness dropped the `media/` prefix they used to be confined to. Everything
+else about that boundary is unchanged: every key is validated before it reaches
+S3 and the library root itself cannot be renamed or deleted, folder operations
+refuse a subtree larger than `STUDIO_MAX_FOLDER_OBJECTS` rather than doing half
+of one, and renames copy before they delete so a failure leaves a duplicate
+rather than a hole.
 
 **There is still no upload**, and that is a constraint as much as a decision: a
 browser upload needs a CORS configuration on a bucket studio does not own and
