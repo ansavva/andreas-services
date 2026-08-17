@@ -31,7 +31,7 @@ export function formatDuration(seconds: number): string {
 }
 
 /**
- * The x-harness pipeline names run folders `<timestamp>_<slug>`, e.g.
+ * The pipeline names run folders `<timestamp>_<slug>`, e.g.
  * `2026-08-15_01-00-30_pullup-originals`. Splitting that back apart lets a run
  * read as a date and a name instead of one long token — and anything that does
  * not match the shape is left exactly as it is.

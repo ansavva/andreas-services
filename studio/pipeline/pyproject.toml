@@ -1,0 +1,60 @@
+[project]
+name = "studio-pipeline"
+version = "0.1.0"
+description = "The studio generation pipeline — the local half of studio, driven by the studio-* Claude skills"
+requires-python = ">=3.11"
+
+# One dependency set for the whole pipeline.
+#
+# These used to be declared per script with PEP 723 inline metadata, which is
+# the right shape for genuinely unrelated tools — but every script here wanted
+# boto3 and at most one other package, so the isolation bought nothing and cost
+# a resolve per script and no shared lockfile. Two scripts even declared the
+# same pair in different orders, resolving as two separate cached environments.
+dependencies = [
+    "boto3>=1.34",
+    "pyyaml>=6.0",
+    "pillow>=10.0",
+    "imageio-ffmpeg>=0.5",
+    "click>=8.4.2",
+]
+
+[project.scripts]
+studio = "studio_pipeline.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# src layout: the importable package is not at the project root, so the
+# interpreter's "current directory first" rule cannot shadow the installed
+# package with the working copy. Tests then exercise what actually ships —
+# including the package data below, whose absence from a wheel would otherwise
+# only show up at runtime.
+packages = ["src/studio_pipeline"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/studio_pipeline/engine/models.json" = "studio_pipeline/engine/models.json"
+"src/studio_pipeline/domain/templates/profile.yaml" = "studio_pipeline/domain/templates/profile.yaml"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+    "pytest>=8.0",
+    "moto[s3]>=4.2,<5",
+]
+
+
+
+[tool.ruff]
+# Inherit the monorepo's shared rules rather than replacing them; this only
+# adds what ruff cannot infer — that studio_pipeline is our own package, not a
+# third-party one, which is what its import grouping depends on.
+extend = "../../ruff.toml"
+
+[tool.ruff.lint.isort]
+known-first-party = ["studio_pipeline"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

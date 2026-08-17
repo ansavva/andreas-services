@@ -4,10 +4,19 @@ name: Studio · PR
 # backend unit tests + a Docker build of the Lambda image, frontend
 # lint/typecheck/build, and Terraform fmt/validate.
 
+#
+# `studio/.claude/skills/` and `studio/docs/` are excluded: they are prose, and
+# nothing here can validate them. `studio/pipeline/` is NOT excluded — it
+# deploys nowhere, but it is 7k lines of Python with a test suite, and "does not
+# ship" is not a reason to leave it unchecked. It is excluded from
+# studio-prod.yaml instead, which is where "deploys nowhere" actually applies.
+
 on:
   pull_request:
     paths:
       - 'studio/**'
+      - '!studio/.claude/**'
+      - '!studio/docs/**'
       - '.github/workflows/studio-pr.yml'
 
 concurrency:
@@ -22,6 +31,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
       infra: ${{ steps.filter.outputs.infra }}
+      pipeline: ${{ steps.filter.outputs.pipeline }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -36,6 +46,9 @@ jobs:
               - '.github/workflows/studio-pr.yml'
             infra:
               - 'studio/infra/**'
+              - '.github/workflows/studio-pr.yml'
+            pipeline:
+              - 'studio/pipeline/**'
               - '.github/workflows/studio-pr.yml'
 
   backend:
@@ -121,6 +134,30 @@ jobs:
             if (native.length) { console.error("Native leaves leaked into the web bundle:", native); process.exit(1); }
             if (!web.length) { console.error("No .web leaves resolved — check resolve.extensions ordering."); process.exit(1); }
           '
+
+  pipeline:
+    name: Pipeline — lint + tests
+    needs: detect-changes
+    if: needs.detect-changes.outputs.pipeline == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync the pipeline environment
+        run: uv sync --project studio/pipeline --all-groups --frozen
+
+      # F821 in particular: the pipeline is a set of CLIs, so a name that only
+      # resolves at call time is invisible to `--help` and to an import check.
+      - name: Lint
+        run: uv run --project studio/pipeline ruff check studio/pipeline
+
+      - name: Run tests
+        run: uv run --project studio/pipeline pytest studio/pipeline/tests -q
 
   infra:
     name: Infra — fmt + validate

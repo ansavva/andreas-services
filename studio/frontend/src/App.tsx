@@ -39,7 +39,7 @@ function Gate() {
 /**
  * One route, matching everything.
  *
- * The path *is* the S3 key — `/projects/fred/runs/…/output/clip.mp4` — so there is
+ * The path *is* the S3 key — `/projects/<project>/runs/…/output/clip.mp4` — so there is
  * nothing to enumerate here and no depth to declare: a bucket's shape is not
  * known to the router. `BrowsePage` reads `location.pathname` through
  * `utils/location` and decides what it points at; a path that resolves to

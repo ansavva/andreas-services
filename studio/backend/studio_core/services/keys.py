@@ -19,7 +19,7 @@ from studio_core import config
 from studio_core.errors import ValidationError
 
 # Extensions we are willing to render. Compared case-insensitively because the
-# bucket really does contain both `.jpg` and `.JPG` (characters/mr-p/corpus).
+# bucket really does contain both `.jpg` and `.JPG` (characters/<name>/corpus).
 IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".bmp"})
 VIDEO_EXTENSIONS = frozenset({".mp4", ".webm", ".mov", ".m4v"})
 TEXT_EXTENSIONS = frozenset({".json", ".md", ".txt", ".yaml", ".yml", ".csv", ".log"})
@@ -170,7 +170,7 @@ def moved_prefix(prefix: str, destination: str) -> str:
 def numbered_name(name: str, index: int) -> str:
     """`shot-01.mp4` at 2 → `shot-01 (2).mp4`.
 
-    The convention already in `projects/mr-p/favorites/`, which was filled by
+    The convention already in `projects/<project>/favorites/`, which was filled by
     hand from a Finder window and so holds a ` (3).mp4` and a ` copy.mp4`. Worth
     matching rather than inventing a third form: this is only reached when a
     favourite's name is already taken, which the flat favourites folder makes
@@ -220,8 +220,8 @@ def favorites_prefix(key: str) -> str | None:
     * **It is not media.** Favourites are picked *output*; a `result.json` copied
       flat into the folder beside the clips is noise, and the read endpoints use
       the same rule so the button and the API agree about what they accept.
-    * **It is not inside a project.** `characters/fred/seed/fred_1.webp` is a
-      source photograph of who Fred is. There is no favouriting it, because
+    * **It is not inside a project.** `characters/<name>/seed/<name>_1.webp` is a
+      source photograph of who <name> is. There is no favouriting it, because
       there is no favourites folder in that tree to hold it.
     * **It is already a favourite.** Copying `favorites/x.mp4` back into
       `favorites/` would only ever produce `x (2).mp4`.
@@ -243,8 +243,8 @@ def is_within(prefix: str, candidate: str) -> bool:
     """Whether `candidate` sits at or beneath `prefix`.
 
     Both are slash-terminated prefixes, which is what makes the plain
-    `startswith` safe: without the trailing slash `projects/fred-2/` would read
-    as living inside `projects/fred/`.
+    `startswith` safe: without the trailing slash `projects/<name>-2/` would read
+    as living inside `projects/<name>/`.
     """
     return candidate == prefix or candidate.startswith(prefix)
 

@@ -6,9 +6,10 @@ variable "aws_region" {
 
 variable "media_bucket_name" {
   description = <<-EOT
-    The x-harness media bucket studio reads. Owned by the x-harness pipeline and
-    referenced by name only — studio's Terraform never manages it, and the API's
-    IAM policy grants read actions exclusively.
+    The media bucket. Created by `modules/media` in this state, read by the API
+    and written by the generation skills. The name is grandfathered from before
+    studio absorbed the pipeline and does not follow the naming convention —
+    `modules/media/variables.tf` explains why it has not been changed yet.
   EOT
   type        = string
   default     = "xharness-prod-media-us-east-1"
@@ -16,11 +17,11 @@ variable "media_bucket_name" {
 
 variable "media_root_prefix" {
   description = <<-EOT
-    The prefix inside the media bucket studio may browse. Empty is the whole
-    bucket, and that is the default: x-harness used to wrap its output in
+    The prefix inside the media bucket everything lives under. Empty is the whole
+    bucket, and that is the default: the pipeline used to wrap its output in
     `media/` and now writes `characters/`, `projects/` and `phrasebook/` at the
-    top level. Set a slash-terminated value to narrow both the API and the
-    Lambda's IAM policy back down to one subtree.
+    top level. Set a slash-terminated value to narrow the API, the Lambda's IAM
+    policy and the bucket module together onto one subtree.
   EOT
   type        = string
   default     = ""

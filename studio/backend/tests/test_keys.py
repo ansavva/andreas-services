@@ -25,8 +25,8 @@ def confined_root(monkeypatch):
         ("", ""),
         ("/", ""),
         ("characters/", "characters/"),
-        ("characters/fred", "characters/fred/"),
-        ("projects/mr-p/runs/2026-08-15_01-00-30_pullup-originals", "projects/mr-p/runs/2026-08-15_01-00-30_pullup-originals/"),
+        ("characters/subject-a", "characters/subject-a/"),
+        ("projects/subject-b/runs/2026-08-15_01-00-30_pullup-originals", "projects/subject-b/runs/2026-08-15_01-00-30_pullup-originals/"),
         ("phrasebook/", "phrasebook/"),
     ],
 )
@@ -39,9 +39,9 @@ def test_clean_prefix_accepts(raw, expected):
     [
         "../secrets",
         "characters/../../etc",
-        "projects/fred/../../../other-bucket-prefix",
-        "/characters/fred",
-        "characters\\fred",
+        "projects/subject-a/../../../other-bucket-prefix",
+        "/characters/subject-a",
+        "characters\\subject-a",
     ],
 )
 def test_clean_prefix_rejects(raw):
@@ -57,16 +57,16 @@ def test_clean_prefix_confines_to_a_configured_root(confined_root, raw):
 
 def test_clean_prefix_root_itself_under_a_configured_root(confined_root):
     assert keys.clean_prefix(None) == "characters/"
-    assert keys.clean_prefix("characters/fred") == "characters/fred/"
+    assert keys.clean_prefix("characters/subject-a") == "characters/subject-a/"
 
 
 def test_clean_key_accepts():
-    assert keys.clean_key("characters/fred/seed/fred_1.webp") == "characters/fred/seed/fred_1.webp"
+    assert keys.clean_key("characters/subject-a/seed/subject-a_1.webp") == "characters/subject-a/seed/subject-a_1.webp"
 
 
 @pytest.mark.parametrize(
     "raw",
-    [None, "", "characters/fred/", "../etc/passwd", "characters/../etc/passwd", "/characters/x.png"],
+    [None, "", "characters/subject-a/", "../etc/passwd", "characters/../etc/passwd", "/characters/x.png"],
 )
 def test_clean_key_rejects(raw):
     with pytest.raises(ValidationError):
@@ -75,7 +75,7 @@ def test_clean_key_rejects(raw):
 
 def test_clean_key_confines_to_a_configured_root(confined_root):
     with pytest.raises(ValidationError):
-        keys.clean_key("projects/fred/runs/x/output/a.jpeg")
+        keys.clean_key("projects/subject-a/runs/x/output/a.jpeg")
 
 
 @pytest.mark.parametrize(
@@ -106,19 +106,19 @@ def test_language():
 
 
 def test_folder_marker_detection():
-    assert keys.is_folder_marker("characters/fred/seed/", 0)
-    assert not keys.is_folder_marker("characters/fred/seed/a.webp", 0)
-    assert not keys.is_folder_marker("characters/fred/seed/", 12)
+    assert keys.is_folder_marker("characters/subject-a/seed/", 0)
+    assert not keys.is_folder_marker("characters/subject-a/seed/a.webp", 0)
+    assert not keys.is_folder_marker("characters/subject-a/seed/", 12)
 
 
 def test_breadcrumbs():
-    trail = keys.breadcrumbs("projects/mr-p/runs/")
-    assert [entry["name"] for entry in trail] == ["/", "projects", "mr-p", "runs"]
+    trail = keys.breadcrumbs("projects/subject-b/runs/")
+    assert [entry["name"] for entry in trail] == ["/", "projects", "subject-b", "runs"]
     assert [entry["prefix"] for entry in trail] == [
         "",
         "projects/",
-        "projects/mr-p/",
-        "projects/mr-p/runs/",
+        "projects/subject-b/",
+        "projects/subject-b/runs/",
     ]
 
 
@@ -128,9 +128,9 @@ def test_breadcrumbs_at_root():
 
 def test_breadcrumbs_under_a_configured_root(confined_root):
     """The root crumb takes the root prefix's own name when there is one."""
-    trail = keys.breadcrumbs("characters/fred/")
-    assert [entry["name"] for entry in trail] == ["characters", "fred"]
-    assert [entry["prefix"] for entry in trail] == ["characters/", "characters/fred/"]
+    trail = keys.breadcrumbs("characters/subject-a/")
+    assert [entry["name"] for entry in trail] == ["characters", "subject-a"]
+    assert [entry["prefix"] for entry in trail] == ["characters/", "characters/subject-a/"]
 
 
 # ---------------------------------------------------------------------------
@@ -159,34 +159,34 @@ def test_clean_name_trims_but_does_not_otherwise_alter():
 
 
 def test_parent_prefix():
-    assert keys.parent_prefix("characters/fred/a.jpg") == "characters/fred/"
-    assert keys.parent_prefix("projects/fred/runs/") == "projects/fred/"
+    assert keys.parent_prefix("characters/subject-a/a.jpg") == "characters/subject-a/"
+    assert keys.parent_prefix("projects/subject-a/runs/") == "projects/subject-a/"
     # One segment up from the top level is the bucket root, which is the empty
     # string rather than a slash.
     assert keys.parent_prefix("characters/") == ""
 
 
 def test_with_name_and_renamed_prefix():
-    assert keys.with_name("characters/fred/a.jpg", "b.jpg") == "characters/fred/b.jpg"
-    assert keys.renamed_prefix("projects/fred/runs/", "walks") == "projects/fred/walks/"
+    assert keys.with_name("characters/subject-a/a.jpg", "b.jpg") == "characters/subject-a/b.jpg"
+    assert keys.renamed_prefix("projects/subject-a/runs/", "walks") == "projects/subject-a/walks/"
 
 
 def test_moved_prefix_keeps_the_name_and_changes_the_parent():
     """The mirror image of `renamed_prefix`, which does exactly the opposite."""
-    assert keys.moved_prefix("projects/fred/runs/", "characters/") == "characters/runs/"
+    assert keys.moved_prefix("projects/subject-a/runs/", "characters/") == "characters/runs/"
     # To the library root, which is the empty string.
-    assert keys.moved_prefix("projects/fred/runs/", "") == "runs/"
+    assert keys.moved_prefix("projects/subject-a/runs/", "") == "runs/"
 
 
 def test_is_within_needs_the_trailing_slash_to_be_right():
-    assert keys.is_within("characters/fred/", "characters/fred/seed/")
-    assert keys.is_within("characters/fred/", "characters/fred/")
+    assert keys.is_within("characters/subject-a/", "characters/subject-a/seed/")
+    assert keys.is_within("characters/subject-a/", "characters/subject-a/")
     # The case the slash exists for: a sibling whose name merely starts the same
     # way is not inside, and reading it as inside would refuse a legal move.
-    assert not keys.is_within("characters/fred/", "characters/fred-2/")
-    assert not keys.is_within("characters/fred/", "characters/")
+    assert not keys.is_within("characters/subject-a/", "characters/subject-a-2/")
+    assert not keys.is_within("characters/subject-a/", "characters/")
     # Everything is within the library root.
-    assert keys.is_within("", "characters/fred/")
+    assert keys.is_within("", "characters/subject-a/")
 
 
 def test_content_type_covers_every_text_extension():
@@ -196,7 +196,7 @@ def test_content_type_covers_every_text_extension():
     it with no content type would be written as `text/plain` — harmless, but
     worth knowing about deliberately rather than discovering in the bucket.
     """
-    assert keys.content_type("characters/fred/profile.yaml") == "application/yaml"
+    assert keys.content_type("characters/subject-a/profile.yaml") == "application/yaml"
     assert keys.content_type(f"{'a'}.json") == "application/json"
     assert keys.content_type("notes.md") == "text/markdown"
     # The two that fall through to the default on purpose.
@@ -211,14 +211,14 @@ def test_assert_inside_root_refuses_the_root_itself():
     still has to catch is an operation aimed at the root, which would be a
     rename or a delete of the entire library.
     """
-    keys.assert_inside_root("characters/fred/")
+    keys.assert_inside_root("characters/subject-a/")
     keys.assert_inside_root("projects/")
     with pytest.raises(ValidationError):
         keys.assert_inside_root("")
 
 
 def test_assert_inside_root_confines_to_a_configured_root(confined_root):
-    keys.assert_inside_root("characters/fred/")
+    keys.assert_inside_root("characters/subject-a/")
     with pytest.raises(ValidationError):
         keys.assert_inside_root("characters/")
     with pytest.raises(ValidationError):
@@ -239,25 +239,25 @@ def test_assert_inside_root_confines_to_a_configured_root(confined_root):
         # Inside a project: the favourites folder of that project, whatever depth
         # the file sits at.
         (
-            "projects/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/output/wave-porch.jpeg",
-            "projects/fred/favorites/",
+            "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/output/wave-porch.jpeg",
+            "projects/subject-a/favorites/",
         ),
         (
-            "projects/mr-p/scenes/2026-08-16_07-40-22_stadium/shots/shot-01.mp4",
-            "projects/mr-p/favorites/",
+            "projects/subject-b/scenes/2026-08-16_07-40-22_stadium/shots/shot-01.mp4",
+            "projects/subject-b/favorites/",
         ),
         # `misc` is a project like any other — unattributed runs still have
         # somewhere to be picked into.
         ("projects/misc/runs/2026-08-14_16-32-11_kling/output/kling.mp4", "projects/misc/favorites/"),
         # Outside `projects/`: a subject's own photographs are not generated
         # output and there is no folder in that tree to hold a pick.
-        ("characters/fred/seed/fred_1.webp", None),
+        ("characters/subject-a/seed/subject-a_1.webp", None),
         ("phrasebook/wording.yaml", None),
         # Not media: favourites are a shelf of picked output, not a second copy
         # of the JSON that happened to sit beside it.
-        ("projects/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/request.json", None),
+        ("projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/request.json", None),
         # Already a favourite — copying it back would only ever number itself.
-        ("projects/mr-p/favorites/shot-01.mp4", None),
+        ("projects/subject-b/favorites/shot-01.mp4", None),
         # Loose in `projects/`, so it belongs to no project.
         ("projects/loose.mp4", None),
     ],
@@ -270,29 +270,29 @@ def test_favorites_prefix_follows_the_browsable_root(confined_root, monkeypatch)
     """Point the root at a subtree and favourites move with it, like everything else."""
     monkeypatch.setattr(keys.config, "media_root_prefix", lambda: "library/")
     assert (
-        keys.favorites_prefix("library/projects/fred/runs/x/output/a.jpeg")
-        == "library/projects/fred/favorites/"
+        keys.favorites_prefix("library/projects/subject-a/runs/x/output/a.jpeg")
+        == "library/projects/subject-a/favorites/"
     )
     # The same key without the root is not inside the library at all.
-    assert keys.favorites_prefix("projects/fred/runs/x/output/a.jpeg") is None
+    assert keys.favorites_prefix("projects/subject-a/runs/x/output/a.jpeg") is None
 
 
 def test_favorites_can_be_turned_off_entirely(monkeypatch):
     monkeypatch.setattr(keys.config, "projects_prefix", lambda: "")
-    assert keys.favorites_prefix("projects/fred/runs/x/output/a.jpeg") is None
-    assert keys.is_favorite("projects/fred/favorites/a.jpeg") is False
+    assert keys.favorites_prefix("projects/subject-a/runs/x/output/a.jpeg") is None
+    assert keys.is_favorite("projects/subject-a/favorites/a.jpeg") is False
 
 
 @pytest.mark.parametrize(
     "key,expected",
     [
-        ("projects/mr-p/favorites/shot-01.mp4", True),
+        ("projects/subject-b/favorites/shot-01.mp4", True),
         # Nested inside the folder still counts — it is under the shelf.
-        ("projects/mr-p/favorites/keepers/shot-01.mp4", True),
-        ("projects/mr-p/runs/x/output/shot-01.mp4", False),
-        ("characters/mr-p/favorites/shot-01.mp4", False),
+        ("projects/subject-b/favorites/keepers/shot-01.mp4", True),
+        ("projects/subject-b/runs/x/output/shot-01.mp4", False),
+        ("characters/subject-b/favorites/shot-01.mp4", False),
         # A *file* called `favorites`, not the folder.
-        ("projects/mr-p/favorites", False),
+        ("projects/subject-b/favorites", False),
     ],
 )
 def test_is_favorite(key, expected):

@@ -1,0 +1,4208 @@
+{
+  "add-model": {
+    "arguments": {
+      "model": {
+        "choices": null,
+        "default": null,
+        "dest": "model",
+        "flag": false,
+        "help": "Replicate model id, e.g. openai/gpt-image-2",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": true,
+        "type": "str"
+      }
+    },
+    "commands": {},
+    "options": {
+      "json": {
+        "choices": null,
+        "default": false,
+        "dest": "json",
+        "flag": true,
+        "flags": [
+          "--json"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      },
+      "key": {
+        "choices": null,
+        "default": null,
+        "dest": "key",
+        "flag": false,
+        "flags": [
+          "--key"
+        ],
+        "help": "Registry key (default: the model name).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "write": {
+        "choices": null,
+        "default": false,
+        "dest": "write",
+        "flag": true,
+        "flags": [
+          "--write"
+        ],
+        "help": "Append to models.json and scaffold the skill. Without this, nothing is written.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      }
+    }
+  },
+  "backfill-replicate": {
+    "arguments": {},
+    "commands": {},
+    "options": {
+      "dry_run": {
+        "choices": null,
+        "default": false,
+        "dest": "dry_run",
+        "flag": true,
+        "flags": [
+          "--dry-run"
+        ],
+        "help": "Report what would be written; write nothing.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      },
+      "max_pages": {
+        "choices": null,
+        "default": 50,
+        "dest": "max_pages",
+        "flag": false,
+        "flags": [
+          "--max-pages"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "int"
+      },
+      "project": {
+        "choices": null,
+        "default": "misc",
+        "dest": "project",
+        "flag": false,
+        "flags": [
+          "--project"
+        ],
+        "help": "Project for imported runs (default: misc).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "since": {
+        "choices": null,
+        "default": null,
+        "dest": "since",
+        "flag": false,
+        "flags": [
+          "--since"
+        ],
+        "help": "ISO date, e.g. 2026-08-01 (inclusive).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": true,
+        "type": "str"
+      },
+      "until": {
+        "choices": null,
+        "default": null,
+        "dest": "until",
+        "flag": false,
+        "flags": [
+          "--until"
+        ],
+        "help": "ISO date, exclusive upper bound.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      }
+    }
+  },
+  "character": {
+    "arguments": {},
+    "commands": {
+      "add-refs": {
+        "arguments": {
+          "files": {
+            "choices": null,
+            "default": null,
+            "dest": "files",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": "+",
+            "required": true,
+            "type": "str"
+          },
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "replace": {
+            "choices": null,
+            "default": false,
+            "dest": "replace",
+            "flag": true,
+            "flags": [
+              "--replace"
+            ],
+            "help": "Number from 1 (overwrites in place).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "start": {
+            "choices": null,
+            "default": null,
+            "dest": "start",
+            "flag": false,
+            "flags": [
+              "--start"
+            ],
+            "help": "Start numbering at N (default: after current highest).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "to": {
+            "choices": null,
+            "default": null,
+            "dest": "to",
+            "flag": false,
+            "flags": [
+              "--to"
+            ],
+            "help": "Purpose subfolder inside reference/ (face, body, wardrobe, \u2026). Omit to add at the root of reference/.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "add-to": {
+        "arguments": {
+          "files": {
+            "choices": null,
+            "default": null,
+            "dest": "files",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": "+",
+            "required": true,
+            "type": "str"
+          },
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
+          "pool": {
+            "choices": [
+              "archive",
+              "corpus",
+              "seed"
+            ],
+            "default": null,
+            "dest": "pool",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {}
+      },
+      "create": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "from_profile": {
+            "choices": null,
+            "default": null,
+            "dest": "from_profile",
+            "flag": false,
+            "flags": [
+              "--from-profile"
+            ],
+            "help": "Local profile.yaml to seed with (default: blank template).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "default-set": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "set": {
+            "choices": null,
+            "default": null,
+            "dest": "set",
+            "flag": false,
+            "flags": [
+              "--set"
+            ],
+            "help": "Files from the index, in slot order. Repeat the flag per file.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "describe-refs": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "from_json": {
+            "choices": null,
+            "default": null,
+            "dest": "from_json",
+            "flag": false,
+            "flags": [
+              "--from-json"
+            ],
+            "help": "JSON object: {file: {description, tags}}.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        }
+      },
+      "edit": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "diff": {
+            "choices": null,
+            "default": false,
+            "dest": "diff",
+            "flag": true,
+            "flags": [
+              "--diff"
+            ],
+            "help": "Show local-vs-S3 differences and exit.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "discard": {
+            "choices": null,
+            "default": false,
+            "dest": "discard",
+            "flag": true,
+            "flags": [
+              "--discard"
+            ],
+            "help": "Throw away local edits and re-pull.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "force": {
+            "choices": null,
+            "default": false,
+            "dest": "force",
+            "flag": true,
+            "flags": [
+              "--force"
+            ],
+            "help": "Proceed despite unsaved edits or a changed remote.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "path": {
+            "choices": null,
+            "default": null,
+            "dest": "path",
+            "flag": false,
+            "flags": [
+              "--path"
+            ],
+            "help": "Working-copy path (default: /Users/andreassavva/repos/andreas-services/studio/local/characters/<name>.yaml).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "pull": {
+            "choices": null,
+            "default": false,
+            "dest": "pull",
+            "flag": true,
+            "flags": [
+              "--pull"
+            ],
+            "help": "Force the download direction.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "push": {
+            "choices": null,
+            "default": false,
+            "dest": "push",
+            "flag": true,
+            "flags": [
+              "--push"
+            ],
+            "help": "Force the upload direction.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
+      "list": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
+      "pool": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
+          "pool": {
+            "choices": [
+              "archive",
+              "corpus",
+              "seed"
+            ],
+            "default": null,
+            "dest": "pool",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "expires": {
+            "choices": null,
+            "default": 3600,
+            "dest": "expires",
+            "flag": false,
+            "flags": [
+              "--expires"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "presign": {
+            "choices": null,
+            "default": false,
+            "dest": "presign",
+            "flag": true,
+            "flags": [
+              "--presign"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
+      "refs": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "describe": {
+            "choices": null,
+            "default": false,
+            "dest": "describe",
+            "flag": true,
+            "flags": [
+              "--describe"
+            ],
+            "help": "Print the indexed description of every reference image.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "dest": {
+            "choices": null,
+            "default": null,
+            "dest": "dest",
+            "flag": false,
+            "flags": [
+              "--dest"
+            ],
+            "help": "Local dir for a download (default: a fresh temp dir).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "expires": {
+            "choices": null,
+            "default": 3600,
+            "dest": "expires",
+            "flag": false,
+            "flags": [
+              "--expires"
+            ],
+            "help": "Presign expiry seconds (default 3600).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "JSON output.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "keys": {
+            "choices": null,
+            "default": false,
+            "dest": "keys",
+            "flag": true,
+            "flags": [
+              "--keys"
+            ],
+            "help": "Print S3 keys instead of downloading.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "pick": {
+            "choices": null,
+            "default": null,
+            "dest": "pick",
+            "flag": false,
+            "flags": [
+              "--pick"
+            ],
+            "help": "Comma-separated files (or bare stems) from the index.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "pick_tag": {
+            "choices": null,
+            "default": null,
+            "dest": "pick_tag",
+            "flag": false,
+            "flags": [
+              "--pick-tag"
+            ],
+            "help": "Comma-separated tags; an image must carry ALL of them.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "presign": {
+            "choices": null,
+            "default": false,
+            "dest": "presign",
+            "flag": true,
+            "flags": [
+              "--presign"
+            ],
+            "help": "Print ordered presigned HTTPS URLs.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "slots": {
+            "choices": null,
+            "default": null,
+            "dest": "slots",
+            "flag": false,
+            "flags": [
+              "--slots"
+            ],
+            "help": "Comma-separated 1-based positions WITHIN the resolved selection.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "set-profile": {
+        "arguments": {
+          "file": {
+            "choices": null,
+            "default": null,
+            "dest": "file",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {}
+      },
+      "set-ref-desc": {
+        "arguments": {
+          "file": {
+            "choices": null,
+            "default": null,
+            "dest": "file",
+            "flag": false,
+            "help": "Path inside reference/ (e.g. face/<name>_face_3.png), or its stem.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "description": {
+            "choices": null,
+            "default": null,
+            "dest": "description",
+            "flag": false,
+            "flags": [
+              "--description"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "tags": {
+            "choices": null,
+            "default": null,
+            "dest": "tags",
+            "flag": false,
+            "flags": [
+              "--tags"
+            ],
+            "help": "Comma-separated, replacing the existing tags.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "show": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {}
+      },
+      "sync-refs": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "Write the index back (default: dry run).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
+      "textblock": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {}
+      }
+    },
+    "options": {}
+  },
+  "contact-sheet": {
+    "arguments": {},
+    "commands": {},
+    "options": {
+      "cell": {
+        "choices": null,
+        "default": 300,
+        "dest": "cell",
+        "flag": false,
+        "flags": [
+          "--cell"
+        ],
+        "help": "Thumbnail cell size in px (default: 300).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "int"
+      },
+      "character": {
+        "choices": null,
+        "default": null,
+        "dest": "character",
+        "flag": false,
+        "flags": [
+          "--character"
+        ],
+        "help": "Character name; pull characters/<name>/<pool>/ from S3.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "cols": {
+        "choices": null,
+        "default": 5,
+        "dest": "cols",
+        "flag": false,
+        "flags": [
+          "--cols"
+        ],
+        "help": "Grid columns (default: 5).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "int"
+      },
+      "folder": {
+        "choices": [
+          "archive",
+          "corpus",
+          "reference",
+          "seed"
+        ],
+        "default": "reference",
+        "dest": "folder",
+        "flag": false,
+        "flags": [
+          "--folder"
+        ],
+        "help": "Which character pool to sheet (default: reference).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "out": {
+        "choices": null,
+        "default": null,
+        "dest": "out",
+        "flag": false,
+        "flags": [
+          "--out"
+        ],
+        "help": "Output PNG path.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": true,
+        "type": "str"
+      },
+      "src": {
+        "choices": null,
+        "default": null,
+        "dest": "src",
+        "flag": false,
+        "flags": [
+          "--src"
+        ],
+        "help": "Local directory of images (instead of --character).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      }
+    }
+  },
+  "convert": {
+    "arguments": {},
+    "commands": {},
+    "options": {
+      "add_input": {
+        "choices": null,
+        "default": null,
+        "dest": "add_input",
+        "flag": false,
+        "flags": [
+          "--add-input"
+        ],
+        "help": "Write into PROJECT's input pool as <project>_in_<n> (the usual destination).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "dest_key": {
+        "choices": null,
+        "default": null,
+        "dest": "dest_key",
+        "flag": false,
+        "flags": [
+          "--dest-key"
+        ],
+        "help": "Explicit destination S3 key instead.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "for": {
+        "choices": [
+          "gpt-image-1.5",
+          "gpt-image-2",
+          "kling",
+          "nano-banana-2",
+          "nano-banana-pro",
+          "seedance"
+        ],
+        "default": null,
+        "dest": "engine",
+        "flag": false,
+        "flags": [
+          "--for"
+        ],
+        "help": "Convert only if this engine would reject the current format.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "key": {
+        "choices": null,
+        "default": null,
+        "dest": "key",
+        "flag": false,
+        "flags": [
+          "--key"
+        ],
+        "help": "Source S3 key (full).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "project": {
+        "choices": null,
+        "default": null,
+        "dest": "project",
+        "flag": false,
+        "flags": [
+          "--project"
+        ],
+        "help": "Default project for a bare runref.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "quality": {
+        "choices": null,
+        "default": 95,
+        "dest": "quality",
+        "flag": false,
+        "flags": [
+          "--quality"
+        ],
+        "help": "JPEG/WebP quality (default 95).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "int"
+      },
+      "run": {
+        "choices": null,
+        "default": null,
+        "dest": "run",
+        "flag": false,
+        "flags": [
+          "--run"
+        ],
+        "help": "Source runref, e.g. <name>/latest#1.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "to": {
+        "choices": [
+          "jpeg",
+          "jpg",
+          "png",
+          "webp"
+        ],
+        "default": null,
+        "dest": "to",
+        "flag": false,
+        "flags": [
+          "--to"
+        ],
+        "help": "Target format.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      }
+    }
+  },
+  "curate": {
+    "arguments": {},
+    "commands": {
+      "dedupe": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "Actually make the changes.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "group": {
+            "choices": null,
+            "default": null,
+            "dest": "group",
+            "flag": false,
+            "flags": [
+              "--group"
+            ],
+            "help": "A reference subfolder (default: the root of the pool).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "pool": {
+            "choices": [
+              "archive",
+              "corpus",
+              "reference",
+              "seed"
+            ],
+            "default": "reference",
+            "dest": "pool",
+            "flag": false,
+            "flags": [
+              "--pool"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "groups": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {}
+      },
+      "move": {
+        "arguments": {
+          "file": {
+            "choices": null,
+            "default": null,
+            "dest": "file",
+            "flag": false,
+            "help": "Path inside the source pool, e.g. face/<name>_face_3.png",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "from": {
+            "choices": [
+              "archive",
+              "corpus",
+              "reference",
+              "seed"
+            ],
+            "default": "reference",
+            "dest": "src_pool",
+            "flag": false,
+            "flags": [
+              "--from"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "to": {
+            "choices": [
+              "archive",
+              "corpus",
+              "reference",
+              "seed"
+            ],
+            "default": "archive",
+            "dest": "dst_pool",
+            "flag": false,
+            "flags": [
+              "--to"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "regroup": {
+        "arguments": {
+          "files": {
+            "choices": null,
+            "default": null,
+            "dest": "files",
+            "flag": false,
+            "help": "Paths inside reference/.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": "+",
+            "required": true,
+            "type": "str"
+          },
+          "group": {
+            "choices": null,
+            "default": null,
+            "dest": "group",
+            "flag": false,
+            "help": "face, body, wardrobe, scene, \u2026",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
+      "renumber": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "group": {
+            "choices": null,
+            "default": null,
+            "dest": "group",
+            "flag": false,
+            "flags": [
+              "--group"
+            ],
+            "help": "A reference subfolder (default: the root of reference/).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      }
+    },
+    "options": {}
+  },
+  "download": {
+    "arguments": {
+      "names": {
+        "choices": null,
+        "default": null,
+        "dest": "names",
+        "flag": false,
+        "help": "Specific basenames to download (default: see --list/--all).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": "*",
+        "required": false,
+        "type": "str"
+      }
+    },
+    "commands": {},
+    "options": {
+      "all": {
+        "choices": null,
+        "default": false,
+        "dest": "all",
+        "flag": true,
+        "flags": [
+          "--all"
+        ],
+        "help": "Download every object under the folder.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      },
+      "dest": {
+        "choices": null,
+        "default": ".",
+        "dest": "dest",
+        "flag": false,
+        "flags": [
+          "--dest"
+        ],
+        "help": "Local directory to download into (default: cwd).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "folder": {
+        "choices": null,
+        "default": null,
+        "dest": "folder",
+        "flag": false,
+        "flags": [
+          "--folder"
+        ],
+        "help": "Key prefix (e.g. characters/<name>/reference).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": true,
+        "type": "str"
+      },
+      "json": {
+        "choices": null,
+        "default": false,
+        "dest": "json",
+        "flag": true,
+        "flags": [
+          "--json"
+        ],
+        "help": "Emit JSON instead of text.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      },
+      "list": {
+        "choices": null,
+        "default": false,
+        "dest": "list",
+        "flag": true,
+        "flags": [
+          "--list"
+        ],
+        "help": "List basenames under the folder; download nothing.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      }
+    }
+  },
+  "frames": {
+    "arguments": {},
+    "commands": {
+      "at": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "runref: <project>/<run_id>, <project>/latest, a slug fragment, #N",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "add_input": {
+            "choices": null,
+            "default": false,
+            "dest": "add_input",
+            "flag": true,
+            "flags": [
+              "--add-input"
+            ],
+            "help": "upload into the PROJECT's input pool (never a character's reference/)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "chain": {
+            "choices": null,
+            "default": null,
+            "dest": "chain",
+            "flag": false,
+            "flags": [
+              "--chain"
+            ],
+            "help": "also record this frame in a scene chain, so the next shot's reference_images can be derived rather than recalled",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "dest": {
+            "choices": null,
+            "default": null,
+            "dest": "dest",
+            "flag": false,
+            "flags": [
+              "--dest"
+            ],
+            "help": "directory to write the image into",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "project, when the runref does not carry one",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "time": {
+            "choices": null,
+            "default": null,
+            "dest": "time",
+            "flag": false,
+            "flags": [
+              "--time"
+            ],
+            "help": "seconds",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "float"
+          }
+        }
+      },
+      "chain": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "<project>/<slug>",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "add_key": {
+            "choices": null,
+            "default": null,
+            "dest": "add_keys",
+            "flag": false,
+            "flags": [
+              "--add-key"
+            ],
+            "help": "record an existing S3 key as the next frame in the chain. Repeatable, order preserved. For frames produced outside `last --add-input`, or to reconstruct a chain after the fact.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "args": {
+            "choices": null,
+            "default": false,
+            "dest": "args",
+            "flag": true,
+            "flags": [
+              "--args"
+            ],
+            "help": "print as `--key K --key K \u2026`, ready to paste into a run",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "max": {
+            "choices": null,
+            "default": null,
+            "dest": "max_n",
+            "flag": false,
+            "flags": [
+              "--max"
+            ],
+            "help": "cap the list (Kling takes 7); keeps the seed and the newest",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "seed": {
+            "choices": null,
+            "default": null,
+            "dest": "seed",
+            "flag": false,
+            "flags": [
+              "--seed"
+            ],
+            "help": "S3 key of the image shot 1 started from",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "grid": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "runref: <project>/<run_id>, <project>/latest, a slug fragment, #N",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "count": {
+            "choices": null,
+            "default": 4,
+            "dest": "count",
+            "flag": false,
+            "flags": [
+              "--count"
+            ],
+            "help": "frames to sample (default 4)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "dest": {
+            "choices": null,
+            "default": null,
+            "dest": "dest",
+            "flag": false,
+            "flags": [
+              "--dest"
+            ],
+            "help": "directory to write the image into",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "project, when the runref does not carry one",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "last": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "runref: <project>/<run_id>, <project>/latest, a slug fragment, #N",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "add_input": {
+            "choices": null,
+            "default": false,
+            "dest": "add_input",
+            "flag": true,
+            "flags": [
+              "--add-input"
+            ],
+            "help": "upload into the PROJECT's input pool (never a character's reference/)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "chain": {
+            "choices": null,
+            "default": null,
+            "dest": "chain",
+            "flag": false,
+            "flags": [
+              "--chain"
+            ],
+            "help": "also record this frame in a scene chain, so the next shot's reference_images can be derived rather than recalled",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "dest": {
+            "choices": null,
+            "default": null,
+            "dest": "dest",
+            "flag": false,
+            "flags": [
+              "--dest"
+            ],
+            "help": "directory to write the image into",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "project, when the runref does not carry one",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      }
+    },
+    "options": {}
+  },
+  "migrate-layout": {
+    "arguments": {},
+    "commands": {
+      "copy": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "actually do it (default is a dry run)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "journal": {
+            "choices": null,
+            "default": null,
+            "dest": "journal",
+            "flag": false,
+            "flags": [
+              "--journal"
+            ],
+            "help": "journal file name (default: the newest)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "delete": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "actually do it (default is a dry run)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "journal": {
+            "choices": null,
+            "default": null,
+            "dest": "journal",
+            "flag": false,
+            "flags": [
+              "--journal"
+            ],
+            "help": "journal file name (default: the newest)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "plan": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "actually do it (default is a dry run)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "journal": {
+            "choices": null,
+            "default": null,
+            "dest": "journal",
+            "flag": false,
+            "flags": [
+              "--journal"
+            ],
+            "help": "journal file name (default: the newest)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "rewrite": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "actually do it (default is a dry run)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "journal": {
+            "choices": null,
+            "default": null,
+            "dest": "journal",
+            "flag": false,
+            "flags": [
+              "--journal"
+            ],
+            "help": "journal file name (default: the newest)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "selftest": {
+        "arguments": {},
+        "commands": {},
+        "options": {}
+      },
+      "verify": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "actually do it (default is a dry run)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "journal": {
+            "choices": null,
+            "default": null,
+            "dest": "journal",
+            "flag": false,
+            "flags": [
+              "--journal"
+            ],
+            "help": "journal file name (default: the newest)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      }
+    },
+    "options": {}
+  },
+  "models": {
+    "arguments": {},
+    "commands": {
+      "refresh": {
+        "arguments": {
+          "model": {
+            "choices": null,
+            "default": null,
+            "dest": "model",
+            "flag": false,
+            "help": "Default: every model.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
+      "show": {
+        "arguments": {
+          "model": {
+            "choices": null,
+            "default": null,
+            "dest": "model",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      }
+    },
+    "options": {
+      "json": {
+        "choices": null,
+        "default": false,
+        "dest": "json",
+        "flag": true,
+        "flags": [
+          "--json"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      }
+    }
+  },
+  "movies": {
+    "arguments": {},
+    "commands": {
+      "list": {
+        "arguments": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {}
+      },
+      "new": {
+        "arguments": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "dest": {
+            "choices": null,
+            "default": null,
+            "dest": "dest",
+            "flag": false,
+            "flags": [
+              "--dest"
+            ],
+            "help": "also keep the finished file locally",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "scene": {
+            "choices": null,
+            "default": null,
+            "dest": "scene",
+            "flag": false,
+            "flags": [
+              "--scene"
+            ],
+            "help": "a scene, in cut order. Repeatable. Accepts <project>/<scene_id>, <scene_id>, latest, or a unique fragment.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
+          "slug": {
+            "choices": null,
+            "default": null,
+            "dest": "slug",
+            "flag": false,
+            "flags": [
+              "--slug"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        }
+      },
+      "outputs": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "expires": {
+            "choices": null,
+            "default": 3600,
+            "dest": "expires",
+            "flag": false,
+            "flags": [
+              "--expires"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "presign": {
+            "choices": null,
+            "default": false,
+            "dest": "presign",
+            "flag": true,
+            "flags": [
+              "--presign"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "show": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      }
+    },
+    "options": {}
+  },
+  "phrasebook": {
+    "arguments": {},
+    "commands": {
+      "add": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "avoid": {
+            "choices": null,
+            "default": null,
+            "dest": "avoid",
+            "flag": false,
+            "flags": [
+              "--avoid"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
+          "model": {
+            "choices": null,
+            "default": null,
+            "dest": "model",
+            "flag": false,
+            "flags": [
+              "--model"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
+          "note": {
+            "choices": null,
+            "default": "",
+            "dest": "note",
+            "flag": false,
+            "flags": [
+              "--note"
+            ],
+            "help": "optional free text \u2014 where this came from",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "replicate": {
+            "choices": null,
+            "default": null,
+            "dest": "replicate",
+            "flag": false,
+            "flags": [
+              "--replicate"
+            ],
+            "help": "owner/name, when first creating the section",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "use": {
+            "choices": null,
+            "default": null,
+            "dest": "use",
+            "flag": false,
+            "flags": [
+              "--use"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        }
+      },
+      "check": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "model": {
+            "choices": null,
+            "default": null,
+            "dest": "model",
+            "flag": false,
+            "flags": [
+              "--model"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
+          "text": {
+            "choices": null,
+            "default": null,
+            "dest": "text",
+            "flag": false,
+            "flags": [
+              "--text"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        }
+      },
+      "models": {
+        "arguments": {},
+        "commands": {},
+        "options": {}
+      },
+      "show": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "model": {
+            "choices": null,
+            "default": null,
+            "dest": "model",
+            "flag": false,
+            "flags": [
+              "--model"
+            ],
+            "help": "limit to one model key",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "terms": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "model": {
+            "choices": null,
+            "default": null,
+            "dest": "model",
+            "flag": false,
+            "flags": [
+              "--model"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        }
+      }
+    },
+    "options": {}
+  },
+  "presign": {
+    "arguments": {
+      "names": {
+        "choices": null,
+        "default": null,
+        "dest": "names",
+        "flag": false,
+        "help": "With --folder: specific basenames (default: all in the folder).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": "*",
+        "required": false,
+        "type": "str"
+      }
+    },
+    "commands": {},
+    "options": {
+      "expires": {
+        "choices": null,
+        "default": 3600,
+        "dest": "expires",
+        "flag": false,
+        "flags": [
+          "--expires"
+        ],
+        "help": "Expiry in seconds (default 3600).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "int"
+      },
+      "folder": {
+        "choices": null,
+        "default": null,
+        "dest": "folder",
+        "flag": false,
+        "flags": [
+          "--folder"
+        ],
+        "help": "Key prefix (e.g. characters/<name>/reference).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "json": {
+        "choices": null,
+        "default": false,
+        "dest": "json",
+        "flag": true,
+        "flags": [
+          "--json"
+        ],
+        "help": "Emit JSON [{key,url}] instead of one URL per line.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      },
+      "key": {
+        "choices": null,
+        "default": null,
+        "dest": "key",
+        "flag": false,
+        "flags": [
+          "--key"
+        ],
+        "help": "An exact key (e.g. projects/<p>/runs/<id>/output/clip.mp4).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      }
+    }
+  },
+  "projects": {
+    "arguments": {},
+    "commands": {
+      "add-inputs": {
+        "arguments": {
+          "files": {
+            "choices": null,
+            "default": null,
+            "dest": "files",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": "+",
+            "required": true,
+            "type": "str"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
+      "init": {
+        "arguments": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "description": {
+            "choices": null,
+            "default": "",
+            "dest": "description",
+            "flag": false,
+            "flags": [
+              "--description"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "inputs": {
+        "arguments": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "expires": {
+            "choices": null,
+            "default": 3600,
+            "dest": "expires",
+            "flag": false,
+            "flags": [
+              "--expires"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "presign": {
+            "choices": null,
+            "default": false,
+            "dest": "presign",
+            "flag": true,
+            "flags": [
+              "--presign"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
+      "list": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
+      "new": {
+        "arguments": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "character": {
+            "choices": null,
+            "default": null,
+            "dest": "characters",
+            "flag": false,
+            "flags": [
+              "--character"
+            ],
+            "help": "A character this project involves. Repeatable.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "description": {
+            "choices": null,
+            "default": "",
+            "dest": "description",
+            "flag": false,
+            "flags": [
+              "--description"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "show": {
+        "arguments": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      }
+    },
+    "options": {}
+  },
+  "prompt": {
+    "arguments": {
+      "source": {
+        "choices": null,
+        "default": null,
+        "dest": "source",
+        "flag": false,
+        "help": "Path to a JSON object file, or '-' for stdin.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      }
+    },
+    "commands": {},
+    "options": {
+      "action": {
+        "choices": null,
+        "default": null,
+        "dest": "action",
+        "flag": false,
+        "flags": [
+          "--action"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "aspect_ratio": {
+        "choices": null,
+        "default": null,
+        "dest": "aspect_ratio",
+        "flag": false,
+        "flags": [
+          "--aspect-ratio"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "audio": {
+        "choices": null,
+        "default": null,
+        "dest": "audio",
+        "flag": false,
+        "flags": [
+          "--audio"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "camera_movement": {
+        "choices": null,
+        "default": null,
+        "dest": "camera_movement",
+        "flag": false,
+        "flags": [
+          "--camera-movement"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "camera_shot": {
+        "choices": null,
+        "default": null,
+        "dest": "camera_shot",
+        "flag": false,
+        "flags": [
+          "--camera-shot"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "compact": {
+        "choices": null,
+        "default": false,
+        "dest": "compact",
+        "flag": true,
+        "flags": [
+          "--compact"
+        ],
+        "help": "Single-line prompt JSON (no indent).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      },
+      "duration": {
+        "choices": null,
+        "default": null,
+        "dest": "duration",
+        "flag": false,
+        "flags": [
+          "--duration"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "int"
+      },
+      "emit": {
+        "choices": [
+          "both",
+          "input",
+          "prompt"
+        ],
+        "default": "both",
+        "dest": "emit",
+        "flag": false,
+        "flags": [
+          "--emit"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "engine": {
+        "choices": [
+          "kling",
+          "kling-replicate",
+          "seedance"
+        ],
+        "default": "seedance",
+        "dest": "engine",
+        "flag": false,
+        "flags": [
+          "--engine"
+        ],
+        "help": "Target engine (default: seedance). Changes negative-prompt handling, beat budget, enums, and which content rules apply.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "json": {
+        "choices": null,
+        "default": null,
+        "dest": "json",
+        "flag": false,
+        "flags": [
+          "--json"
+        ],
+        "help": "Inline JSON object (overrides source).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "lens_mm": {
+        "choices": null,
+        "default": null,
+        "dest": "lens_mm",
+        "flag": false,
+        "flags": [
+          "--lens-mm"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "int"
+      },
+      "lighting": {
+        "choices": null,
+        "default": null,
+        "dest": "lighting",
+        "flag": false,
+        "flags": [
+          "--lighting"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "negative": {
+        "choices": null,
+        "default": null,
+        "dest": "negative",
+        "flag": false,
+        "flags": [
+          "--negative"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "no_audio": {
+        "choices": null,
+        "default": false,
+        "dest": "no_audio",
+        "flag": true,
+        "flags": [
+          "--no-audio"
+        ],
+        "help": "Set generate_audio=false.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      },
+      "resolution": {
+        "choices": null,
+        "default": null,
+        "dest": "resolution",
+        "flag": false,
+        "flags": [
+          "--resolution"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "scene": {
+        "choices": null,
+        "default": null,
+        "dest": "scene",
+        "flag": false,
+        "flags": [
+          "--scene"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "seed": {
+        "choices": null,
+        "default": null,
+        "dest": "seed",
+        "flag": false,
+        "flags": [
+          "--seed"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "int"
+      },
+      "start_image": {
+        "choices": null,
+        "default": false,
+        "dest": "start_image",
+        "flag": true,
+        "flags": [
+          "--start-image"
+        ],
+        "help": "Declare that a start frame is supplied; enables the anti-redundancy checks.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      },
+      "strict": {
+        "choices": null,
+        "default": false,
+        "dest": "strict",
+        "flag": true,
+        "flags": [
+          "--strict"
+        ],
+        "help": "Exit non-zero if any warnings.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      },
+      "style": {
+        "choices": null,
+        "default": null,
+        "dest": "style",
+        "flag": false,
+        "flags": [
+          "--style"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "subject": {
+        "choices": null,
+        "default": null,
+        "dest": "subject",
+        "flag": false,
+        "flags": [
+          "--subject"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      }
+    }
+  },
+  "rewrite": {
+    "arguments": {},
+    "commands": {
+      "check": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      }
+    },
+    "options": {}
+  },
+  "run": {
+    "arguments": {},
+    "commands": {},
+    "options": {
+      "aspect_ratio": {
+        "choices": null,
+        "default": null,
+        "dest": "aspect_ratio",
+        "flag": false,
+        "flags": [
+          "--aspect-ratio"
+        ],
+        "help": "Model-dependent; validated against the live schema.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "character": {
+        "choices": null,
+        "default": null,
+        "dest": "character",
+        "flag": false,
+        "flags": [
+          "--character"
+        ],
+        "help": "A character supplying identity. Repeatable \u2014 one piece of work can involve several.",
+        "hidden": false,
+        "multiple": true,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "dest": {
+        "choices": null,
+        "default": null,
+        "dest": "dest",
+        "flag": false,
+        "flags": [
+          "--dest"
+        ],
+        "help": "Also keep a local copy in this directory.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "dry_run": {
+        "choices": null,
+        "default": false,
+        "dest": "dry_run",
+        "flag": true,
+        "flags": [
+          "--dry-run"
+        ],
+        "help": "Show the payload for approval; submit nothing, bill nothing.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      },
+      "end_key": {
+        "choices": null,
+        "default": null,
+        "dest": "end_key",
+        "flag": false,
+        "flags": [
+          "--end-key"
+        ],
+        "help": "Explicit S3 key as the last frame (video).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "end_run": {
+        "choices": null,
+        "default": null,
+        "dest": "end_run",
+        "flag": false,
+        "flags": [
+          "--end-run"
+        ],
+        "help": "An earlier run's output as the last frame (video).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "expires": {
+        "choices": null,
+        "default": 3600,
+        "dest": "expires",
+        "flag": false,
+        "flags": [
+          "--expires"
+        ],
+        "help": "Presign expiry (default 3600).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "int"
+      },
+      "extra": {
+        "choices": null,
+        "default": null,
+        "dest": "extra",
+        "flag": false,
+        "flags": [
+          "--extra"
+        ],
+        "help": "JSON object of model-specific inputs.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "image_run": {
+        "choices": null,
+        "default": null,
+        "dest": "image_run",
+        "flag": false,
+        "flags": [
+          "--image-run"
+        ],
+        "help": "An earlier run's output as the image being edited.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "input": {
+        "choices": null,
+        "default": null,
+        "dest": "input",
+        "flag": false,
+        "flags": [
+          "--input"
+        ],
+        "help": "Image number from the PROJECT's input pool. Repeatable.",
+        "hidden": false,
+        "multiple": true,
+        "nargs": 1,
+        "required": false,
+        "type": "int"
+      },
+      "input_file": {
+        "choices": null,
+        "default": null,
+        "dest": "input_file",
+        "flag": false,
+        "flags": [
+          "--input-file"
+        ],
+        "help": "JSON: the Replicate `input` object WITHOUT image fields.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "interval": {
+        "choices": null,
+        "default": null,
+        "dest": "interval",
+        "flag": false,
+        "flags": [
+          "--interval"
+        ],
+        "help": "Poll interval seconds.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "int"
+      },
+      "json": {
+        "choices": null,
+        "default": false,
+        "dest": "json",
+        "flag": true,
+        "flags": [
+          "--json"
+        ],
+        "help": "With --dry-run, emit raw JSON instead of the readable review.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      },
+      "key": {
+        "choices": null,
+        "default": null,
+        "dest": "key",
+        "flag": false,
+        "flags": [
+          "--key"
+        ],
+        "help": "Explicit S3 key. Repeatable.",
+        "hidden": false,
+        "multiple": true,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "model": {
+        "choices": null,
+        "default": null,
+        "dest": "model",
+        "flag": false,
+        "flags": [
+          "--model"
+        ],
+        "help": "REQUIRED registry key. See `models` \u2014 the engines are peers.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": true,
+        "type": "str"
+      },
+      "no_refs": {
+        "choices": null,
+        "default": false,
+        "dest": "no_refs",
+        "flag": true,
+        "flags": [
+          "--no-refs"
+        ],
+        "help": "Deliberately generate with no image inputs.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      },
+      "pick": {
+        "choices": null,
+        "default": null,
+        "dest": "pick",
+        "flag": false,
+        "flags": [
+          "--pick"
+        ],
+        "help": "Comma-separated reference files (or stems) from the character's index.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "pick_tag": {
+        "choices": null,
+        "default": null,
+        "dest": "pick_tag",
+        "flag": false,
+        "flags": [
+          "--pick-tag"
+        ],
+        "help": "Comma-separated tags; an image must carry ALL of them.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "poll": {
+        "choices": null,
+        "default": false,
+        "dest": "poll",
+        "flag": true,
+        "flags": [
+          "--poll"
+        ],
+        "help": "Video only: wait and archive. Images always wait.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      },
+      "project": {
+        "choices": null,
+        "default": null,
+        "dest": "project",
+        "flag": false,
+        "flags": [
+          "--project"
+        ],
+        "help": "REQUIRED. The project this run belongs to. `projects.py list` shows what exists.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "prompt": {
+        "choices": null,
+        "default": null,
+        "dest": "prompt",
+        "flag": false,
+        "flags": [
+          "--prompt"
+        ],
+        "help": "The prompt.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "prompt_file": {
+        "choices": null,
+        "default": null,
+        "dest": "prompt_file",
+        "flag": false,
+        "flags": [
+          "--prompt-file"
+        ],
+        "help": "Read the prompt from a file instead.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "prompt_json": {
+        "choices": null,
+        "default": null,
+        "dest": "prompt_json",
+        "flag": false,
+        "flags": [
+          "--prompt-json"
+        ],
+        "help": "studio-prompt source, stored as prompt.json.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "ref_run": {
+        "choices": null,
+        "default": null,
+        "dest": "ref_run",
+        "flag": false,
+        "flags": [
+          "--ref-run"
+        ],
+        "help": "An earlier run's output as reference material. Repeatable.",
+        "hidden": false,
+        "multiple": true,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "slots": {
+        "choices": null,
+        "default": null,
+        "dest": "slots",
+        "flag": false,
+        "flags": [
+          "--slots"
+        ],
+        "help": "Comma-separated positions WITHIN the resolved selection.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "slug": {
+        "choices": null,
+        "default": null,
+        "dest": "slug",
+        "flag": false,
+        "flags": [
+          "--slug"
+        ],
+        "help": "Short slug for the run id and filename.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "start_key": {
+        "choices": null,
+        "default": null,
+        "dest": "start_key",
+        "flag": false,
+        "flags": [
+          "--start-key"
+        ],
+        "help": "Explicit S3 key as the first frame (video).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "start_run": {
+        "choices": null,
+        "default": null,
+        "dest": "start_run",
+        "flag": false,
+        "flags": [
+          "--start-run"
+        ],
+        "help": "An earlier run's output as the first frame (video).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "timeout": {
+        "choices": null,
+        "default": null,
+        "dest": "timeout",
+        "flag": false,
+        "flags": [
+          "--timeout"
+        ],
+        "help": "Give up after N seconds.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "int"
+      }
+    }
+  },
+  "runs": {
+    "arguments": {},
+    "commands": {
+      "adopt": {
+        "arguments": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "key": {
+            "choices": null,
+            "default": null,
+            "dest": "key",
+            "flag": false,
+            "flags": [
+              "--key"
+            ],
+            "help": "Full S3 key of the existing object.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        }
+      },
+      "favorite": {
+        "arguments": {
+          "runref": {
+            "choices": null,
+            "default": null,
+            "dest": "runref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "Default project for a bare run id.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "favorites": {
+        "arguments": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {}
+      },
+      "find": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "character": {
+            "choices": null,
+            "default": null,
+            "dest": "character",
+            "flag": false,
+            "flags": [
+              "--character"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "Limit to these projects. Repeatable.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "list": {
+        "arguments": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "character": {
+            "choices": null,
+            "default": null,
+            "dest": "character",
+            "flag": false,
+            "flags": [
+              "--character"
+            ],
+            "help": "Only runs that recorded this character.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
+      "outputs": {
+        "arguments": {
+          "runref": {
+            "choices": null,
+            "default": null,
+            "dest": "runref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "expires": {
+            "choices": null,
+            "default": 3600,
+            "dest": "expires",
+            "flag": false,
+            "flags": [
+              "--expires"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "presign": {
+            "choices": null,
+            "default": false,
+            "dest": "presign",
+            "flag": true,
+            "flags": [
+              "--presign"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "Default project for a bare run id.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "show": {
+        "arguments": {
+          "runref": {
+            "choices": null,
+            "default": null,
+            "dest": "runref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "Default project for a bare run id.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      }
+    },
+    "options": {}
+  },
+  "scenes": {
+    "arguments": {},
+    "commands": {
+      "list": {
+        "arguments": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {}
+      },
+      "new": {
+        "arguments": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "dest": {
+            "choices": null,
+            "default": null,
+            "dest": "dest",
+            "flag": false,
+            "flags": [
+              "--dest"
+            ],
+            "help": "also keep the stitched file locally",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "part": {
+            "choices": null,
+            "default": null,
+            "dest": "shot",
+            "flag": false,
+            "flags": [
+              "--part"
+            ],
+            "help": "",
+            "hidden": true,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "shot": {
+            "choices": null,
+            "default": null,
+            "dest": "shot",
+            "flag": false,
+            "flags": [
+              "--shot"
+            ],
+            "help": "a run output, in cut order. Repeatable. Accepts <project>/<run_id>, <run_id>, a unique slug fragment, or #N.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "slug": {
+            "choices": null,
+            "default": null,
+            "dest": "slug",
+            "flag": false,
+            "flags": [
+              "--slug"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        }
+      },
+      "outputs": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "expires": {
+            "choices": null,
+            "default": 3600,
+            "dest": "expires",
+            "flag": false,
+            "flags": [
+              "--expires"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "presign": {
+            "choices": null,
+            "default": false,
+            "dest": "presign",
+            "flag": true,
+            "flags": [
+              "--presign"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "show": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      }
+    },
+    "options": {}
+  },
+  "upload": {
+    "arguments": {
+      "files": {
+        "choices": null,
+        "default": null,
+        "dest": "files",
+        "flag": false,
+        "help": "Local file(s) to upload.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": "+",
+        "required": true,
+        "type": "str"
+      }
+    },
+    "commands": {},
+    "options": {
+      "expires": {
+        "choices": null,
+        "default": 3600,
+        "dest": "expires",
+        "flag": false,
+        "flags": [
+          "--expires"
+        ],
+        "help": "Presign expiry in seconds (default 3600).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "int"
+      },
+      "folder": {
+        "choices": null,
+        "default": null,
+        "dest": "folder",
+        "flag": false,
+        "flags": [
+          "--folder"
+        ],
+        "help": "Destination key prefix (e.g. characters/<name>/seed).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": true,
+        "type": "str"
+      },
+      "json": {
+        "choices": null,
+        "default": false,
+        "dest": "json",
+        "flag": true,
+        "flags": [
+          "--json"
+        ],
+        "help": "Emit a JSON list instead of text.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      },
+      "presign": {
+        "choices": null,
+        "default": false,
+        "dest": "presign",
+        "flag": true,
+        "flags": [
+          "--presign"
+        ],
+        "help": "Also emit a temporary HTTPS URL per file.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      }
+    }
+  }
+}

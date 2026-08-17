@@ -72,10 +72,16 @@ resource "aws_iam_role_policy" "logs" {
 # THIS ROLE CAN NOW WRITE, AND THAT IS A DELIBERATE REVERSAL.
 #
 # For most of studio's life this policy was `ListBucket` + `GetObject` and the
-# comment here said so emphatically: the media bucket belongs to the x-harness
-# pipeline, studio was a viewer of it, and no bug or compromised token could
-# destroy that data because the role simply could not. That was the right
-# default and it is worth stating plainly why it changed.
+# comment here said so emphatically: the media bucket belonged to a separate
+# generation pipeline, studio was a viewer of it, and no bug or compromised
+# token could destroy that data because the role simply could not. That was the
+# right default and it is worth stating plainly why it changed.
+#
+# (The ownership half of that argument has since gone too — the pipeline lives
+# in `studio/.claude/skills/` and the bucket is declared in `modules/media`. But
+# note what did NOT change: that pipeline runs locally under a human's own AWS
+# login. This role is still the only thing reachable from the internet, so it is
+# still the one worth scoping.)
 #
 # It changed because tidying the library is a thing you do while looking at it.
 # A run that produced nothing worth keeping is recognised in the browser, and
@@ -84,7 +90,7 @@ resource "aws_iam_role_policy" "logs" {
 # root the read grants use.
 #
 # READ THIS BEFORE RELYING ON THAT SCOPE. `media_root_prefix` is now empty —
-# x-harness dropped the `media/` wrapper it used to write under, so the
+# the pipeline dropped the `media/` wrapper it used to write under, so the
 # browsable root is the bucket itself and `${var.media_root_prefix}*` expands to
 # `*`. The prefix therefore confines nothing today, and it is a write-capable
 # role: what it can read, it can also overwrite and delete. That is a real
@@ -105,10 +111,11 @@ resource "aws_iam_role_policy" "logs" {
 #     Every one of those is either something already in the bucket or nothing at
 #     all. The API exposes no upload, and adding one is a separate decision that
 #     should be argued on its own.
-#   * `s3:DeleteObjectVersion` is deliberately absent. If the bucket is ever
-#     versioned, deletes become recoverable tombstones rather than erasures, and
-#     this role cannot reach past them. Worth actually turning versioning on,
-#     now that the prefix is not doing any confining.
+#   * `s3:DeleteObjectVersion` is deliberately absent, and the bucket IS
+#     versioned (`modules/media`). So a delete through this role writes a
+#     tombstone it cannot then reach past: every erasure it can perform is
+#     recoverable. That is the single strongest thing holding the line here, and
+#     it is why the versioning flag in `modules/media` is not hygiene.
 #
 # `GetObject` is what signs presigned URLs and what HeadObject checks against;
 # both read the same permission. `CopyObject` — which is what a rename, a move

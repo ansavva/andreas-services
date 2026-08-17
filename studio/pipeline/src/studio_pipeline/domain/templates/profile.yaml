@@ -1,0 +1,91 @@
+# Character profile — the SOURCE OF TRUTH for one character.
+# Lives in S3 at media/<name>/profile.yaml. Same shape for every character.
+#
+# Rules this schema enforces by its shape:
+#   * It describes WHO the character is — never how this record was assembled.
+#     No "source photographs", no "built from N refs", no era-of-the-archive notes.
+#   * Identity is style-agnostic. Rendering is a per-render choice (`rendering:`).
+#   * Prose goes in the value, not in headings. Lists are lists, so prompts and
+#     checks can iterate them.
+
+schema_version: 1
+
+name: <name>                    # the S3 folder / slug, lowercase [a-z0-9_-]
+display_name: <Name>            # how the character is written in prose
+
+# Is this an invented character, or a real person's likeness? Not provenance —
+# a consent question that governs whether generated media can be published at
+# all, and the one thing about a bible worth stating before anything renders.
+fictional: true
+
+# --- the card: short phrases, one line each -----------------------------------
+identity:
+  apparent_age: <e.g. late 30s to mid 40s>
+  build: <body type in one line>
+  height_read: <how tall they read against people and furniture>
+  signature_features:           # 2-4 cues; the recognition core
+    - <cue>
+  home_turf: <recurring setting / world>
+  register: <demeanour in a few words>
+  speech: <language + accent in a few words>
+
+# --- appearance: one value per feature, concrete and observable ---------------
+face:
+  structure: <overall shape, proportion, dominant planes>
+  skin: <tone, texture, weathering, folds>
+  eyes: <set, colour, lids, resting gaze>
+  eyebrows: <shape, weight, how they sit>
+  nose: <the shape, and what must not drift>
+  mouth_and_jaw: <lips, resting expression, jawline, chin>
+  facial_hair: <default state; what it is never>
+  hair: <colour, length, how it is worn, finish>
+  ears: <size, set, lobes>
+
+body:
+  silhouette: <proportion — usually the single most reliable on-model cue>
+  arms: <>
+  chest_and_shoulders: <>
+  neck: <>
+  lower_body_and_hands: <>
+  body_hair: <state it explicitly if it matters — generators default to smooth>
+  posture: <how they sit, stand, gesture>
+
+wardrobe:
+  always_dressed: true          # every character; prompts name a garment
+  tops:                         # ordered by how often the character wears it
+    - item: <garment>
+      detail: <colour, cut, any embroidery or graphic>
+  lower_body: <>
+  footwear: <>
+  accessories:                  # the repeated ones — these carry recognition
+    - <accessory, and which wrist / how worn>
+  palette: <the colours the character and their world live in>
+
+voice:
+  language: <language spoken lines are written in>
+  accent: <>
+  accent_cues:                  # what to name in the audio/voice direction
+    - <>
+  manner: <how they behave on camera>
+  delivery: <sentence length, pacing, volume>
+
+rendering:
+  default_style: Realistic      # a preset name from studio-prompt `## Style presets`
+  optional_styles: []           # other presets this character may opt into
+  framing: <shot sizes that suit them>
+  backgrounds: <default environments>
+
+consistency:
+  must:                         # hard cues — verify every render against these
+    - <>
+  never:                        # what must be absent, or must not drift
+    - <>
+  drift_modes:                  # how models get this character wrong
+    - failure: <what the model does>
+      fix: <what to state in the prompt instead>
+
+# ~50-70 words, written once. Pasted into engines with no reference system, or
+# alongside a start frame. Covers only what a text-only engine cannot infer.
+# Folded (`>-`), so it reaches a prompt as ONE paragraph with no hard newlines.
+text_identity_block: >-
+  <>

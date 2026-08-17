@@ -27,7 +27,7 @@ interface Props {
  * `profile.yaml` is a thing you sit and read, and reading it through a letterbox
  * with the folder listing showing around the edges is worse than the file
  * deserves. So it fills the viewport, the way opening a clip does, and the URL
- * already pointed at it — `/characters/fred/profile.yaml` was a share link
+ * already pointed at it — `/characters/<name>/profile.yaml` was a share link
  * before this and still is.
  *
  * Two decisions inside the editor are worth knowing:
@@ -41,7 +41,7 @@ interface Props {
  *   that would delete the rest. The backend refuses an oversized body too, but
  *   this is the half that stops it from ever being attempted.
  *
- * Nothing here interprets the contents. The x-harness pipeline owns their shape
+ * Nothing here interprets the contents. The pipeline owns their shape
  * and changes it freely, so the viewer shows what is in the file — pretty-printed
  * for JSON, rendered for markdown, raw otherwise — and never claims to know what
  * a field means. That is unchanged by making it writable: you are editing text,

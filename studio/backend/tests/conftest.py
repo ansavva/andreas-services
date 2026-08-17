@@ -24,27 +24,27 @@ from studio_core.clients.aws import s3  # noqa: E402
 # output and metadata, a scene with its shots, a video run under misc, and one
 # zero-byte folder marker.
 FIXTURE_OBJECTS = {
-    "characters/fred/profile.yaml": b"name: Fred\n",
+    "characters/subject-a/profile.yaml": b"name: Subject A\n",
     # The pipeline writes real keys, but a folder made in the console is a
     # zero-byte object and a listing must never show it as a file.
-    "characters/fred/seed/": b"",
-    "characters/fred/seed/fred_1.webp": b"webp-bytes",
-    "characters/fred/seed/fred_2.webp": b"webp-bytes",
-    "characters/fred/reference/fred_1.txt": b"a caption",
-    "characters/fred/reference/fred_1.webp": b"webp-bytes",
-    # Uppercase extension: characters/mr-p/corpus really does contain .JPG files.
-    "characters/mr-p/corpus/IMG_1966_Original.JPG": b"jpg-bytes",
-    "characters/mr-p/reference/face/mr-p_face_1.jpeg": b"jpeg-bytes",
+    "characters/subject-a/seed/": b"",
+    "characters/subject-a/seed/subject-a_1.webp": b"webp-bytes",
+    "characters/subject-a/seed/subject-a_2.webp": b"webp-bytes",
+    "characters/subject-a/reference/subject-a_1.txt": b"a caption",
+    "characters/subject-a/reference/subject-a_1.webp": b"webp-bytes",
+    # Uppercase extension: characters/subject-b/corpus really does contain .JPG files.
+    "characters/subject-b/corpus/IMG_1966_Original.JPG": b"jpg-bytes",
+    "characters/subject-b/reference/face/subject-b_face_1.jpeg": b"jpeg-bytes",
     "phrasebook/wording.yaml": b"greeting: hello\n",
-    "projects/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/request.json": b'{"model": "x"}',
-    "projects/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/result.json": b'{"status": "succeeded"}',
-    "projects/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/output/wave-porch.jpeg": b"jpeg-bytes",
+    "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/request.json": b'{"model": "x"}',
+    "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/result.json": b'{"status": "succeeded"}',
+    "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/output/wave-porch.jpeg": b"jpeg-bytes",
     "projects/misc/runs/2026-08-14_16-32-11_kling-yqp1jqf5/output/kling.mp4": b"mp4-bytes",
     "projects/misc/runs/2026-08-14_16-32-11_kling-yqp1jqf5/request.json": b'{"kind": "video"}',
-    "projects/mr-p/runs/2026-08-14_21-47-05_standing-flex/output/standing-flex.mp4": b"mp4-bytes",
-    "projects/mr-p/scenes/2026-08-16_07-40-22_stadium-encounter/scene.json": b'{"shots": 1}',
-    "projects/mr-p/scenes/2026-08-16_07-40-22_stadium-encounter/shots/shot-01.mp4": b"mp4-bytes",
-    "projects/mr-p/scenes/2026-08-16_07-40-22_stadium-encounter/output/stadium.mp4": b"mp4-bytes",
+    "projects/subject-b/runs/2026-08-14_21-47-05_standing-flex/output/standing-flex.mp4": b"mp4-bytes",
+    "projects/subject-b/scenes/2026-08-16_07-40-22_stadium-encounter/scene.json": b'{"shots": 1}',
+    "projects/subject-b/scenes/2026-08-16_07-40-22_stadium-encounter/shots/shot-01.mp4": b"mp4-bytes",
+    "projects/subject-b/scenes/2026-08-16_07-40-22_stadium-encounter/output/stadium.mp4": b"mp4-bytes",
 }
 
 

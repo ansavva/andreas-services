@@ -28,7 +28,7 @@ interface Props {
  *
  * A typed prefix was the obvious alternative and is worse: the whole point of a
  * move is that you are looking at a library whose folder names are timestamps,
- * and nobody types `projects/mr-p/scenes/2026-08-16_07-40-22_stadium-encounter/`
+ * and nobody types `projects/<project>/scenes/2026-08-16_07-40-22_stadium-encounter/`
  * correctly. So this walks the same `/api/tree` the page behind it does, showing
  * folders only — the files in a destination are not a thing you are choosing
  * between.

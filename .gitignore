@@ -259,3 +259,19 @@ skills-lock.json
 .claude/skills/*
 !.claude/skills/design-system-ui/
 !.claude/skills/aws-naming/
+
+# studio's skills are the exception to the rule above: they are authored here,
+# not installed by a script, and they live at studio/.claude/skills/ rather than
+# the repo root — which the anchored pattern above does not reach. Nothing to
+# ignore, noted so the asymmetry doesn't read as an oversight.
+
+# studio — local working directories for the generation pipeline. Source media
+# staged for a run, working copies pulled down for editing, and rendered output.
+# The canonical copy of everything here is in the media bucket.
+studio/input/
+studio/local/
+studio/output/
+
+# The pipeline package's virtualenv. `uv.lock` IS committed — it is an
+# application, not a library, so a reproducible resolve is the point.
+studio/pipeline/.venv/

@@ -39,6 +39,11 @@ output "cognito_user_pool_client_id" {
 }
 
 output "media_bucket_name" {
-  description = "The x-harness bucket studio reads (referenced, never managed here)"
-  value       = var.media_bucket_name
+  description = "The media bucket the pipeline writes and the API reads"
+  value       = module.media.bucket_name
+}
+
+output "media_uri" {
+  description = "s3:// URI for the root of the media tree"
+  value       = module.media.media_uri
 }

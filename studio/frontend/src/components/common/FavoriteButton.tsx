@@ -27,8 +27,8 @@ interface Props {
  * catch by opening the folder.
  *
  * Where a favourite *goes* is never asked. The server derives the folder from
- * the key, so pressing this in a run under `projects/mr-p/` puts a copy in
- * `projects/mr-p/favorites/` and there is no argument here that could aim it
+ * the key, so pressing this in a run under `projects/<project>/` puts a copy in
+ * `projects/<project>/favorites/` and there is no argument here that could aim it
  * anywhere else. Files that cannot be favourited — anything under `characters/`,
  * and any non-media file — never render this button, because the API tells the
  * listing so (`favorites_prefix`).

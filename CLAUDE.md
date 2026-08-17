@@ -68,8 +68,24 @@ CLI mutations, to avoid IaC drift.
 | `storybook/` | AI portrait studio | Flask + React/Vite/HeroUI + Lambda (Docker) + DynamoDB |
 | `humbugg/` | Gift-exchange platform | ASP.NET Core 10 (C# 14) + React/Vite (marketing, `www`) + Expo/Expo Router (product app, `app`) + Lambda (Docker) + DynamoDB |
 | `scout/` | Events from Gmail | Python Lambdas + React/Vite/TS + DynamoDB |
-| `studio/` | Media browser over the x-harness S3 library | Flask + React/Vite/TS + Lambda (Docker) + Cognito (no database) |
+| `studio/` | AI media generation pipeline **and** a browser over its output | Claude Code skills (local, `uv`) + Flask + React/Vite/TS + Lambda (Docker) + Cognito + S3 (no database) |
 | `infra/` | Shared infrastructure | Terraform |
+
+**`studio/` breaks two of this repo's rules, both deliberately.** It runs
+**local against prod** — one media bucket, one Cognito pool, no dev
+environment — because it is a view onto a single library of generated media
+and an empty second copy would exercise none of the behaviour that matters. A
+delete run locally is a delete in production; bucket versioning without
+`s3:DeleteObjectVersion` is what makes that recoverable. See
+`studio/CLAUDE.md`. And:
+
+**`studio/` is the one service that is not purely a deployable unit.** Half of it
+— `studio/.claude/skills/`, fifteen skills that generate the media — runs
+locally inside Claude on a developer's machine and never deploys; the CI path
+filters exclude it. The other half is an ordinary Flask + Vite service. Both
+share the media S3 bucket, which `studio/infra/modules/media` owns. It is also
+the one bucket whose name predates the naming convention below and is
+deliberately grandfathered — see `studio/infra/README.md`.
 
 ## Shared Infrastructure (`infra/`)
 

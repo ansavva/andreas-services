@@ -9,7 +9,7 @@ from studio_core.services import browse, manage
 
 def test_root_lists_the_top_level(media_bucket):
     result = browse.list_folder(None)
-    # The browsable root is the bucket itself — x-harness no longer wraps
+    # The browsable root is the bucket itself — the pipeline no longer wraps
     # anything in `media/`.
     assert result["prefix"] == ""
     # Newest-first is the default, and a folder has no LastModified to sort by —
@@ -20,26 +20,26 @@ def test_root_lists_the_top_level(media_bucket):
 
 
 def test_subject_folder_lists_its_profile_and_subfolders(media_bucket):
-    result = browse.list_folder("characters/fred/")
+    result = browse.list_folder("characters/subject-a/")
     assert [f["name"] for f in result["files"]] == ["profile.yaml"]
     assert [f["name"] for f in result["folders"]] == ["seed", "reference"]
 
 
 def test_folder_markers_never_appear_as_files(media_bucket):
-    # `characters/fred/seed/` is a zero-byte object as well as a folder, so it
+    # `characters/subject-a/seed/` is a zero-byte object as well as a folder, so it
     # comes back in its own listing. It is not a file.
-    result = browse.list_folder("characters/fred/seed/")
-    assert [f["name"] for f in result["files"]] == ["fred_1.webp", "fred_2.webp"]
+    result = browse.list_folder("characters/subject-a/seed/")
+    assert [f["name"] for f in result["files"]] == ["subject-a_1.webp", "subject-a_2.webp"]
 
 
 def test_listing_presigns_every_file(media_bucket):
-    result = browse.list_folder("characters/fred/seed/")
+    result = browse.list_folder("characters/subject-a/seed/")
     assert all(f["kind"] == "image" for f in result["files"])
     assert all("X-Amz-Signature" in f["url"] for f in result["files"])
 
 
 def test_run_folder_mixes_media_and_metadata(media_bucket):
-    result = browse.list_folder("projects/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/")
+    result = browse.list_folder("projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/")
     kinds = {f["name"]: f["kind"] for f in result["files"]}
     assert kinds == {"request.json": "text", "result.json": "text"}
     assert [f["name"] for f in result["folders"]] == ["output"]
@@ -48,20 +48,20 @@ def test_run_folder_mixes_media_and_metadata(media_bucket):
 
 
 def test_breadcrumbs_and_counts(media_bucket):
-    result = browse.list_folder("projects/mr-p/")
-    assert [b["name"] for b in result["breadcrumbs"]] == ["/", "projects", "mr-p"]
+    result = browse.list_folder("projects/subject-b/")
+    assert [b["name"] for b in result["breadcrumbs"]] == ["/", "projects", "subject-b"]
     assert result["counts"]["folders"] == 2
     assert result["counts"]["media"] == 0
 
 
 def test_reel_walks_recursively(media_bucket):
-    result = browse.reel_items("characters/fred/", None, None)
+    result = browse.reel_items("characters/subject-a/", None, None)
     names = [item["name"] for item in result["items"]]
     # One reference image and two seeds — the .txt caption, the profile YAML and
     # the folder marker are all excluded. Every fixture object is written inside
     # the same second, so the date sort ties throughout and the key tie-break
     # decides: reference/, then seed/.
-    assert names == ["fred_1.webp", "fred_1.webp", "fred_2.webp"]
+    assert names == ["subject-a_1.webp", "subject-a_1.webp", "subject-a_2.webp"]
     assert result["next_cursor"] is None
     assert result["total"] == 3
     assert result["truncated"] is False
@@ -77,7 +77,7 @@ def test_reel_from_root_spans_characters_and_projects(media_bucket):
 
 
 def test_asset_url_inline_and_attachment(media_bucket):
-    key = "projects/mr-p/runs/2026-08-14_21-47-05_standing-flex/output/standing-flex.mp4"
+    key = "projects/subject-b/runs/2026-08-14_21-47-05_standing-flex/output/standing-flex.mp4"
 
     inline = browse.asset_url(key, "inline")
     assert inline["kind"] == "video"
@@ -90,7 +90,7 @@ def test_asset_url_inline_and_attachment(media_bucket):
 
 
 def test_text_object(media_bucket):
-    result = browse.text_object("projects/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/request.json")
+    result = browse.text_object("projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/request.json")
     assert result["language"] == "json"
     assert result["content"] == '{"model": "x"}'
     assert result["truncated"] is False
@@ -105,7 +105,7 @@ def test_text_object_reads_yaml(media_bucket):
 
 def test_text_object_truncates(media_bucket, monkeypatch):
     monkeypatch.setattr("studio_core.config.max_text_bytes", lambda: 4)
-    result = browse.text_object("characters/fred/profile.yaml")
+    result = browse.text_object("characters/subject-a/profile.yaml")
     assert result["truncated"] is True
     assert len(result["content"]) == 4
 
@@ -122,11 +122,11 @@ def test_text_object_truncates(media_bucket, monkeypatch):
 
 
 def test_sort_by_name_and_name_desc(media_bucket):
-    ascending = browse.list_folder("characters/fred/seed/", "name")
-    descending = browse.list_folder("characters/fred/seed/", "name_desc")
+    ascending = browse.list_folder("characters/subject-a/seed/", "name")
+    descending = browse.list_folder("characters/subject-a/seed/", "name_desc")
 
-    assert [f["name"] for f in ascending["files"]] == ["fred_1.webp", "fred_2.webp"]
-    assert [f["name"] for f in descending["files"]] == ["fred_2.webp", "fred_1.webp"]
+    assert [f["name"] for f in ascending["files"]] == ["subject-a_1.webp", "subject-a_2.webp"]
+    assert [f["name"] for f in descending["files"]] == ["subject-a_2.webp", "subject-a_1.webp"]
     assert [f["name"] for f in ascending["folders"]] == []
 
 
@@ -155,17 +155,17 @@ def test_newest_first_puts_a_later_write_first(media_bucket):
     time.sleep(1.05)
     media_bucket.put_object(
         Bucket=config.media_bucket(),
-        Key="characters/fred/seed/fred_0_written_last.webp",
+        Key="characters/subject-a/seed/subject-a_0_written_last.webp",
         Body=b"webp-bytes",
     )
 
-    newest = [f["name"] for f in browse.list_folder("characters/fred/seed/", "newest")["files"]]
-    oldest = [f["name"] for f in browse.list_folder("characters/fred/seed/", "oldest")["files"]]
+    newest = [f["name"] for f in browse.list_folder("characters/subject-a/seed/", "newest")["files"]]
+    oldest = [f["name"] for f in browse.list_folder("characters/subject-a/seed/", "oldest")["files"]]
 
     # Name-ascending would have put it first anyway, so the assertion that
     # carries weight is the *oldest* one: it sorts last there despite its name.
-    assert newest[0] == "fred_0_written_last.webp"
-    assert oldest[-1] == "fred_0_written_last.webp"
+    assert newest[0] == "subject-a_0_written_last.webp"
+    assert oldest[-1] == "subject-a_0_written_last.webp"
 
 
 def test_reel_ties_break_on_the_key_not_the_basename(media_bucket):
@@ -173,13 +173,13 @@ def test_reel_ties_break_on_the_key_not_the_basename(media_bucket):
 
     `IMG_1966_Original.JPG` is the case that tells the two apart: uppercase sorts
     before lowercase, so by basename it would come first, while by key it sits
-    under `characters/mr-p/` and belongs after everything of fred's.
+    under `characters/subject-b/` and belongs after everything of subject-a's.
     """
     items = browse.reel_items("characters/", None, None)["items"]
 
     assert [i["key"] for i in items] == sorted(i["key"] for i in items)
     names = [i["name"] for i in items]
-    assert names.index("IMG_1966_Original.JPG") > names.index("fred_1.webp")
+    assert names.index("IMG_1966_Original.JPG") > names.index("subject-a_1.webp")
 
 
 def test_reel_cursor_is_an_offset(media_bucket):
@@ -223,17 +223,17 @@ def _entry(prefix, name):
 
 
 def test_a_listing_says_where_each_file_would_be_favorited(media_bucket):
-    entry = _entry("projects/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/output/", "wave-porch.jpeg")
-    assert entry["favorites_prefix"] == "projects/fred/favorites/"
+    entry = _entry("projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/output/", "wave-porch.jpeg")
+    assert entry["favorites_prefix"] == "projects/subject-a/favorites/"
     assert entry["favorited"] is False
 
     # The run's own metadata is not favouritable, and neither is a subject's
     # source photograph — both get a null rather than a prefix, which is what
     # the UI reads to decide whether a star belongs on the item at all.
-    assert _entry("projects/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/", "request.json")[
+    assert _entry("projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/", "request.json")[
         "favorites_prefix"
     ] is None
-    assert _entry("characters/fred/seed/", "fred_1.webp")["favorites_prefix"] is None
+    assert _entry("characters/subject-a/seed/", "subject-a_1.webp")["favorites_prefix"] is None
 
 
 def test_a_favorited_file_says_so_in_the_listing_it_was_favorited_from(media_bucket):
@@ -243,7 +243,7 @@ def test_a_favorited_file_says_so_in_the_listing_it_was_favorited_from(media_buc
     favourites folder and matching on name and size — see
     `browse.favorites_index`.
     """
-    output = "projects/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/output/"
+    output = "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/output/"
     manage.favorite_objects([f"{output}wave-porch.jpeg"])
 
     assert _entry(output, "wave-porch.jpeg")["favorited"] is True
@@ -251,9 +251,9 @@ def test_a_favorited_file_says_so_in_the_listing_it_was_favorited_from(media_buc
 
 def test_a_file_inside_the_favorites_folder_is_one(media_bucket):
     manage.favorite_objects(
-        ["projects/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/output/wave-porch.jpeg"]
+        ["projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/output/wave-porch.jpeg"]
     )
-    entry = _entry("projects/fred/favorites/", "wave-porch.jpeg")
+    entry = _entry("projects/subject-a/favorites/", "wave-porch.jpeg")
 
     assert entry["favorited"] is True
     # And it cannot be favourited again — there is nowhere further for it to go.
@@ -262,11 +262,11 @@ def test_a_file_inside_the_favorites_folder_is_one(media_bucket):
 
 def test_the_reel_marks_favorites_too(media_bucket):
     manage.favorite_objects(
-        ["projects/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/output/wave-porch.jpeg"]
+        ["projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/output/wave-porch.jpeg"]
     )
-    items = browse.reel_items("projects/fred/", None, None)["items"]
+    items = browse.reel_items("projects/subject-a/", None, None)["items"]
 
     by_key = {item["key"]: item for item in items}
-    source = by_key["projects/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/output/wave-porch.jpeg"]
+    source = by_key["projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/output/wave-porch.jpeg"]
     assert source["favorited"] is True
-    assert by_key["projects/fred/favorites/wave-porch.jpeg"]["favorited"] is True
+    assert by_key["projects/subject-a/favorites/wave-porch.jpeg"]["favorited"] is True

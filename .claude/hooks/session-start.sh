@@ -17,6 +17,16 @@ if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
   } >> "$CLAUDE_ENV_FILE"
 fi
 
+# studio's generation skills run LOCALLY, inside Claude, on this machine — they
+# are the one part of this repo that never deploys. They need `uv` on PATH, so
+# this runs before the cloud-only early exit below rather than after it.
+# dev-setup.sh is idempotent and cheap once uv is installed and the caches are
+# warm. Non-fatal: a failed setup should degrade the studio skills, not block
+# the session.
+if [ -f "$REPO/studio/scripts/dev-setup.sh" ]; then
+  bash "$REPO/studio/scripts/dev-setup.sh" >&2 || true
+fi
+
 # Cloud-only steps below. Local dev environments already have these set up.
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0

@@ -1,7 +1,7 @@
 """Thin boto3 wrapper over the media bucket.
 
 **This module can write, and that is a recent and deliberate change.** Studio was
-built as a reader of a bucket the x-harness pipeline owns, and for most of its
+built as a reader of a bucket a separate pipeline owned, and for most of its
 life the Lambda role carried `ListBucket` and `GetObject` and nothing else. It
 now also carries `PutObject` and `DeleteObject`, because studio is
 where the library actually gets tidied — a run that produced nothing worth
@@ -12,7 +12,7 @@ Three things keep that from being a licence to do anything:
 * Every key still goes through `services.keys`, so nothing outside the
   browsable root is reachable whatever the caller sends, and the root itself
   cannot be renamed or deleted. Note that the root is the whole bucket now
-  that x-harness has dropped its `media/` wrapper, so that first clause is
+  that the pipeline has dropped its `media/` wrapper, so that first clause is
   carrying less weight than it used to — see `modules/compute`.
 * There is no multipart upload and no path that creates a key from nothing. The
   three writes here are a zero-byte folder marker, a `CopyObject` within the same

@@ -1,13 +1,24 @@
 # Studio
 
-A private media browser for the **x-harness** AI generation pipeline.
+An AI media generation pipeline, and a private browser over what it produces.
 
 | Surface | URL |
 |---|---|
 | App | https://studio.andreas.services |
 | API | https://studio-api.andreas.services |
 
-x-harness writes every image and video it generates into
+Studio is two things sharing one S3 bucket:
+
+- **The pipeline** — a set of Claude Code skills that generate images and video
+  through Replicate. It runs on your own machine, inside Claude, and never
+  deploys anywhere. See [`docs/PIPELINE.md`](docs/PIPELINE.md).
+- **The app** — the web browser over the results, at the two URLs above. See
+  [`docs/WEB_APP.md`](docs/WEB_APP.md).
+
+The rest of this file is about the app; the pipeline's own doc covers the other
+half.
+
+The pipeline writes every image and video it generates into
 `s3://xharness-prod-media-us-east-1/`, split between `characters/` (who a
 subject is — seeds, references, a profile) and `projects/` (what was generated
 of them — runs and scenes). Studio makes that library viewable: the folder
@@ -28,7 +39,7 @@ expect them, while the images and video themselves get the space.
   way — while sound sits in the top bar with the other controls, because the
   bottom edge of a phone screen is where the browser puts its own toolbar.
 - **Share links.** The URL is the S3 path
-  (`/projects/fred/runs/2026-08-14_…/output/clip.mp4`), so the address bar is always
+  (`/projects/<project>/runs/2026-08-14_…/output/clip.mp4`), so the address bar is always
   a link to exactly what is on screen.
 - **A page per text file** — the pipeline's `request.json`, `result.json`,
   `prompt.json` and `scene.json`, the subject `profile.yaml` files and the
@@ -38,7 +49,7 @@ expect them, while the images and video themselves get the space.
   first. A file too large to be shown in full cannot be edited, because saving a
   truncated copy would delete the rest of it.
 - **Favourite** a photo or a clip and it is copied onto that project's shelf —
-  `projects/mr-p/favorites/`, flat, alongside the picks that are already there.
+  `projects/<project>/favorites/`, flat, alongside the picks that are already there.
   You never say where: the star knows, because the file's own path does. From a
   grid selection it takes the whole selection at once, and a selection spanning
   two subjects splits itself between their projects. A gold star means the file
@@ -75,17 +86,21 @@ expect them, while the images and video themselves get the space.
 carries `s3:PutObject` and `s3:DeleteObject` alongside the read grants, because
 deciding a run produced nothing worth keeping happens while you are looking at
 it. All four grants share one scope, and that scope is now the whole bucket —
-x-harness dropped the `media/` prefix they used to be confined to. Everything
+the pipeline dropped the `media/` prefix they used to be confined to. Everything
 else about that boundary is unchanged: every key is validated before it reaches
 S3 and the library root itself cannot be renamed or deleted, folder operations
 refuse a subtree larger than `STUDIO_MAX_FOLDER_OBJECTS` rather than doing half
 of one, and renames and moves copy before they delete so a failure leaves a
-duplicate rather than a hole.
+duplicate rather than a hole. The bucket is versioned and the role cannot delete
+a version, so what it does remove is recoverable.
 
-**There is still no upload**, and that is a constraint as much as a decision: a
-browser upload needs a CORS configuration on a bucket studio does not own and
-must not modify, and routing the bytes through the Lambda caps a file at 6 MB —
-useless for video. Generating media remains x-harness's job.
+**There is still no upload.** Routing the bytes through the Lambda caps a file
+at 6 MB, which is useless for video, and a direct browser upload would need a
+CORS rule on the bucket. Generating media is the pipeline's job, and the
+pipeline runs on a laptop under a human's own AWS login rather than through this
+API — which is the boundary that actually matters, and the reason this one is
+worth keeping even though studio now owns the bucket and could set that CORS
+rule if it wanted to.
 
 Two writes look like uploads and are not. Saving a text file refuses any key that
 does not already exist, so it can overwrite a `profile.yaml` but cannot bring a
@@ -114,8 +129,19 @@ STUDIO_EMAIL=you@example.com ./studio/scripts/create-user.sh
 
 ```bash
 aws login
-./studio/scripts/dev-up.sh        # backend :8000, frontend :5173
 ```
 
-See [`CLAUDE.md`](./CLAUDE.md) for the architecture, the API surface, and the
-gotchas worth knowing before changing anything.
+```bash
+./studio/scripts/dev-up.sh        # the app — backend :8000, frontend :5173
+```
+
+```bash
+./studio/scripts/dev-setup.sh     # the pipeline — installs uv, warms caches
+```
+
+| Doc | What is in it |
+|---|---|
+| [`CLAUDE.md`](./CLAUDE.md) | The index over both halves, and the hard rules |
+| [`docs/WEB_APP.md`](docs/WEB_APP.md) | App architecture, the API surface, the gotchas |
+| [`docs/PIPELINE.md`](docs/PIPELINE.md) | The skills, the S3 trees, run/scene/movie |
+| [`infra/README.md`](infra/README.md) | The bucket and the Terraform |
