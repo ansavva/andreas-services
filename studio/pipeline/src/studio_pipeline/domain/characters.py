@@ -343,6 +343,7 @@ def cmd_create(name, dry_run, from_profile, model, project, shoot):
         project=project, model=model, dry_run=dry_run,
         group="all", slot=(), identity="auto", identity_max=SHOOT.IDENTITY_MAX,
         pick=None, pick_tag=None, seed_pick=None, aspect_ratio=None, extra=None,
+        review_sheet=None,
         dest=None, expires=3600,
     )
     try:

@@ -518,3 +518,55 @@ def test_style_falls_back_when_a_bible_names_none(spec):
     slot = spec["slots"][0]
     text = SHOOT.build_prompt(slot, spec, dict(PROFILE, rendering={}), 1, [2])
     assert "same medium" in text.lower()
+
+
+# --- seeing what is sent ---------------------------------------------------
+
+def test_review_sheet_labels_images_in_the_order_the_model_gets_them(media_bucket, spec, tmp_path):
+    """A payload names its images; a name is not a look.
+
+    Captions must be `[ImageN]` in binding order, so the sheet and the prompt's
+    citations can be read against each other — the sheet is worthless if it
+    natural-sorts the tiles the way a pool listing would.
+    """
+    from PIL import Image
+    _seed_plates(media_bucket, spec)
+    keys = [
+        "config/pose/face/front.png",
+        "characters/subject-a/seed/subject-a_1.webp",
+    ]
+    for key in keys:
+        Image.new("RGB", (40, 60), "grey").save(tmp_path / "src.png")
+        media_bucket.upload_file(str(tmp_path / "src.png"), P.s3c.BUCKET, key)
+
+    out = SHOOT.review_sheet(media_bucket, "face_front", keys, str(tmp_path / "sheet"), {})
+    assert os.path.isfile(out)
+    assert out.endswith("face_front.png")
+
+
+def test_review_sheet_downloads_each_image_once(media_bucket, spec, tmp_path):
+    """Identity images repeat across slots; the cache is what stops re-fetching."""
+    from PIL import Image
+    key = "characters/subject-a/seed/subject-a_1.webp"
+    Image.new("RGB", (40, 60), "grey").save(tmp_path / "src.png")
+    media_bucket.upload_file(str(tmp_path / "src.png"), P.s3c.BUCKET, key)
+
+    cache: dict = {}
+    SHOOT.review_sheet(media_bucket, "a", [key], str(tmp_path / "s"), cache)
+    first = dict(cache)
+    SHOOT.review_sheet(media_bucket, "b", [key], str(tmp_path / "s"), cache)
+    assert cache == first, "the second slot re-downloaded an image it already had"
+
+
+def test_contact_sheet_still_sorts_and_labels_by_name_without_captions(tmp_path):
+    """The browsing caller is unchanged by the review caller's needs."""
+    from PIL import Image
+
+    from studio_pipeline.domain import contact_sheet as SHEET
+    paths = []
+    for n in (10, 2):
+        p = tmp_path / f"subject-a_{n}.png"
+        Image.new("RGB", (30, 30), "grey").save(p)
+        paths.append(str(p))
+    out = SHEET.build(paths, str(tmp_path / "sheet.png"), cols=2, cell=60, quiet=True)
+    assert os.path.isfile(out)

@@ -342,6 +342,39 @@ def identity_keys(s3, name: str, source: str, pick: str | None, tags: str | None
 
 
 # --------------------------------------------------------------------------
+# seeing what is actually being sent
+# --------------------------------------------------------------------------
+
+def review_sheet(s3, slot_id: str, keys: list[str], out_dir: str, cache: dict) -> str:
+    """A labelled contact sheet of the images one payload binds, in slot order.
+
+    The payload review names its images (`<presigned: characters/…>`) but a name
+    is not a look. Approving a generation you cannot see is approving a
+    description of it — and the mistakes that matter here are visual: a pose
+    plate that is the wrong way round, an identity image that is mostly a poster,
+    a panel whose speech balloon the model will happily reproduce.
+
+    Tiles are captioned `[ImageN]` in the order the model receives them, so the
+    sheet and the prompt's citations read against each other.
+    """
+    from studio_pipeline.domain import contact_sheet as SHEET
+
+    os.makedirs(out_dir, exist_ok=True)
+    paths, captions = [], []
+    for i, key in enumerate(keys, start=1):
+        local = cache.get(key)
+        if local is None:
+            local = os.path.join(out_dir, f"src-{len(cache)}-{os.path.basename(key)}")
+            s3.download_file(s3c.BUCKET, key, local)
+            cache[key] = local
+        paths.append(local)
+        captions.append(f"[Image{i}] {os.path.basename(key)}")
+    out = os.path.join(out_dir, f"{slot_id}.png")
+    return SHEET.build(paths, out, cols=min(len(paths), 5), cell=320,
+                       captions=captions, quiet=True)
+
+
+# --------------------------------------------------------------------------
 # one slot
 # --------------------------------------------------------------------------
 
@@ -477,10 +510,16 @@ def run_shoot(name: str, opts) -> int:
         prepared.append((slot, entry, args, payload, bindings))
 
     # GATE 1 — every payload, in full, before anything bills.
+    sheet_cache: dict[str, str] = {}
     for slot, entry, args, payload, bindings in prepared:
         run = f"{opts.project}/{R.new_run_id(args.slug)}"
         print(f"\n===== slot {slot['id']}  ->  run output (NOT yet a reference) =====")
         print(SUB.render(entry, run, payload, bindings, False))
+        if opts.review_sheet:
+            field = (entry.get("images") or {}).get("refs")
+            sheet = review_sheet(s3, slot["id"], bindings.get(field) or [],
+                                 opts.review_sheet, sheet_cache)
+            print(f"===== IMAGES — what {slot['id']} actually sends =====\n{sheet}")
 
     if opts.dry_run:
         print(f"\n(dry run — {len(prepared)} slot(s) rendered, nothing submitted, "
@@ -549,6 +588,9 @@ SHOOT_OPTIONS = [
                       "than one slot sends."),
     click.option("--pick-tag", help="Identity from references carrying ALL these tags."),
     click.option("--project", help="REQUIRED. The project these runs belong to."),
+    click.option("--review-sheet", "review_sheet", metavar="DIR",
+                 help="Write a labelled contact sheet per slot showing the images that "
+                      "payload sends, captioned [ImageN] in the order the model gets them."),
     click.option("--slot", multiple=True,
                  help="Shoot only this slot id. Repeatable — see the spec for the ids."),
 ]
