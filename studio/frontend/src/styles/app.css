@@ -84,6 +84,42 @@ body {
   color-scheme: dark;
 }
 
+/*
+ * THE REEL IS NOT `inset-0`, AND ON A PHONE THAT IS THE WHOLE POINT.
+ *
+ * `index.html` asks for `viewport-fit=cover`, so a `position: fixed` box pinned
+ * to all four sides is laid out against the *large* viewport — the one with the
+ * browser's toolbars hidden. Mobile Safari then draws its bottom toolbar over
+ * the result, and whatever sits on the bottom edge of the reel is underneath it
+ * and cannot be pressed. In portrait that swallowed the sound button whole; in
+ * landscape the toolbar collapses and it came back, which is exactly how the bug
+ * was reported — "there is no way to mute unless I turn the phone sideways".
+ *
+ * `100dvh` is the *dynamic* viewport: it shrinks and grows as those toolbars do,
+ * so the reel ends where the usable screen ends. `100vh` stays as the fallback
+ * for anything that predates it — it is the old, wrong-on-mobile behaviour,
+ * which is no worse than what was here before.
+ *
+ * Sound moved to `ViewerChrome` as well, because the bottom edge is a bad home
+ * for a control you press mid-clip however carefully it is measured. The
+ * scrubber that stayed carries `env(safe-area-inset-bottom)` padding for the
+ * home indicator.
+ */
+.reel-shell {
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* Fullscreen has no browser chrome to avoid, and the element is sized by the
+   compositor rather than by the viewport. Written as its own rule because one
+   unrecognised selector would drop the whole list. */
+.reel-shell:fullscreen {
+  height: 100%;
+}
+.reel-shell:-webkit-full-screen {
+  height: 100%;
+}
+
 /* The reel is a scroll-snap column of full-viewport panes. `overscroll-contain`
    stops a flick at either end from bouncing the page behind it, which on iOS
    otherwise pulls the whole app down mid-scroll. */

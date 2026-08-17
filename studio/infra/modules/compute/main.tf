@@ -98,17 +98,24 @@ resource "aws_iam_role_policy" "logs" {
 #     and `assert_inside_root` refuses an operation aimed at the root itself, so
 #     "delete everything" is not expressible through the API. With the prefix
 #     empty this is the FIRST line of defence, not the second.
-#   * There is no multipart grant. `PutObject` here writes zero-byte folder
-#     markers and nothing else — the API exposes no upload, and adding one is a
-#     separate decision that should be argued on its own.
+#   * There is no multipart grant, and no path that creates an object out of
+#     bytes the caller supplied. `PutObject` here writes zero-byte folder
+#     markers, overwrites text files that already exist, and lands the
+#     destination half of a `CopyObject` — a rename, a move, or a favourite.
+#     Every one of those is either something already in the bucket or nothing at
+#     all. The API exposes no upload, and adding one is a separate decision that
+#     should be argued on its own.
 #   * `s3:DeleteObjectVersion` is deliberately absent. If the bucket is ever
 #     versioned, deletes become recoverable tombstones rather than erasures, and
 #     this role cannot reach past them. Worth actually turning versioning on,
 #     now that the prefix is not doing any confining.
 #
 # `GetObject` is what signs presigned URLs and what HeadObject checks against;
-# both read the same permission. `CopyObject` — which is what a rename is —
-# needs `GetObject` on the source and `PutObject` on the destination.
+# both read the same permission. `CopyObject` — which is what a rename, a move
+# and a favourite all are — needs `GetObject` on the source and `PutObject` on
+# the destination. Favourites need no grant of their own for that reason: the
+# source and the destination are both inside the same root everything else here
+# is scoped to.
 data "aws_iam_policy_document" "media_access" {
   statement {
     sid       = "ListBrowsableRoot"

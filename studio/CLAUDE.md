@@ -16,17 +16,22 @@ folders keep their structure, images and video are the focus, and every item can
 be opened fullscreen or flipped through as a vertical reel.
 
 **Studio reads the library and tidies it — it does not produce it.** It browses,
-and it can rename, move, delete, create folders, and edit the text files in
-place. It cannot upload, and it cannot generate: making media is x-harness's
-job. That is a narrower boundary than the one this file used to describe ("a
-reader and only a reader"), and the reasoning behind the change is in **The
-media bucket is not ours** below.
+and it can rename, move, delete, create folders, favourite, and edit the text
+files in place. It cannot upload, and it cannot generate: making media is
+x-harness's job. That is a narrower boundary than the one this file used to
+describe ("a reader and only a reader"), and the reasoning behind the change is
+in **The media bucket is not ours** below.
 
 The line between "edit a text file" and "upload" is worth stating, because it is
 thinner than it sounds and is held in exactly one place: `manage.update_text`
-refuses a key that does not already exist. So there is no request this API
-accepts that brings a new object into the bucket — every write either moves,
-overwrites or removes something the pipeline already put there.
+refuses a key that does not already exist.
+
+**Favouriting is the one write that adds an object, and the distinction that
+keeps it honest is where the bytes come from.** A favourite is a server-side
+`CopyObject` of something already in the bucket, so nothing arrives from
+outside; what studio still cannot do is put bytes in that were not there
+already. Every write it accepts either copies, moves, overwrites or removes
+something the pipeline produced.
 
 ## Stack
 
@@ -90,14 +95,20 @@ The parts of the old rule that still hold, and should keep holding:
   library" is not expressible through the API. This used to be described as the
   first of two lines of defence with IAM behind it; with the prefix empty it is
   the only one, which is the reason to be conservative when changing it.
-- **No upload, and no multipart grant.** The two `PutObject` calls this service
+- **No upload, and no multipart grant.** The `PutObject` calls this service
   makes write a zero-byte folder marker and overwrite an *existing* text file
   (`manage.update_text`, capped at `max_text_bytes` and refused outright for a
-  key that is not already there, so it cannot create). A real upload would need
-  CORS on a bucket we
+  key that is not already there, so it cannot create); `CopyObject` supplies the
+  rest. A real upload would need CORS on a bucket we
   do not own *and* would blow the Lambda's 6 MB request limit on any video, so
   it is blocked by more than policy. Argue for it separately if it is ever
   wanted; do not let it arrive as a side effect of something else.
+- **A favourite is a copy that keeps its source, and it is the only one.** Every
+  other `CopyObject` here is the first half of a rename or a move and is
+  followed by a delete. `manage.favorite_objects` is not, which means it is also
+  the only write that *adds* an object rather than relocating one — see the
+  correction at the top of this file. The bytes still come from inside the
+  bucket, so "studio cannot upload" is untouched by it.
 - **`s3:DeleteObjectVersion` is deliberately absent**, so if the bucket is ever
   versioned this role can only write tombstones, not erase history. Worth
   actually enabling versioning, now that the prefix confines nothing.
@@ -134,7 +145,7 @@ projects/<subject>/             # what was generated of them
 │   └── output/                 # the generated .jpeg / .webp / .mp4
 ├── scenes/<ts>_<slug>/         # scene.json + shots/ + output/, a stitched sequence
 ├── chains/<name>.json          # a scene's shot-to-shot plan
-└── favorites/                  # picked output, copied flat
+└── favorites/                  # picked output, copied flat — studio writes here
 projects/misc/runs/<ts>_<slug>/ # unattributed runs, mostly seedance/kling video
 phrasebook/wording.yaml         # shared prompt wording
 ```
@@ -150,8 +161,22 @@ date sorts therefore fall back to the folder's name, which for a run folder *is*
 its date. Do not "fix" that by HEADing every prefix to invent a timestamp.
 
 x-harness owns this layout and has reshaped it before. When it changes again,
-`media_root_prefix` is the only knob that matters — nothing else in studio names
-a folder, and nothing should start to.
+`media_root_prefix` is the first knob that matters. It is no longer the only
+one: **favourites made studio name two folders**, and they are the only two.
+
+```
+STUDIO_PROJECTS_PREFIX    projects   # what a "project" is, relative to the root
+STUDIO_FAVORITES_FOLDER   favorites  # the shelf inside one
+```
+
+Both live in `config.py` beside `media_root_prefix`, both default to what the
+bucket actually holds, and neither is set by Terraform or the deploy workflow —
+the defaults are the intended values, so there is nothing here to drift out of
+step the way `STUDIO_MEDIA_ROOT_PREFIX` can. **Setting either to the empty
+string turns favouriting off entirely**, which is the deliberate failure mode:
+if the pipeline reshapes the bucket again, a missing star is a much better
+outcome than copies landing in a folder that no longer means anything. Nothing
+else in studio names a folder, and nothing else should start to.
 
 **The run JSON is deliberately not parsed.** x-harness owns its shape and
 changes it freely, so studio serves those files as text and the frontend shows
@@ -242,6 +267,19 @@ that breaks every time the pipeline ships.
   extension-matching version sent every share link to S3, where the 403/404
   fallbacks rescued it into `index.html` — it worked, by accident, one wasted
   origin round trip at a time.
+- **The reel is sized in `dvh`, not `inset-0`, and sound lives in the top bar
+  because of it.** `index.html` asks for `viewport-fit=cover`, so a `fixed`
+  element pinned to all four sides is laid out against the *large* viewport —
+  the one with the browser's toolbars hidden — and mobile Safari then draws its
+  bottom toolbar over the result. Anything on the bottom edge of the reel was
+  underneath it and unpressable. That swallowed the mute button in portrait and
+  gave it back in landscape, where the toolbar collapses, which is how the bug
+  was reported: "there is no way to mute unless I turn the phone sideways". The
+  fix is `.reel-shell` (`height: 100dvh`, which tracks those toolbars) plus
+  `env(safe-area-inset-*)` padding on both bars — but the transport bar is still
+  the one edge of the screen a browser puts its own chrome on, so **sound moved
+  to `ViewerChrome`** and only the scrubber stayed. Keep controls you press
+  *while a clip is playing* out of the bottom bar.
 - **Unmuting has to happen inside the click, not in an effect afterwards.**
   `useReelPlayback.toggleMuted` sets `video.muted` on the element synchronously
   and lets React state follow; the state does not cause the change. A passive
@@ -262,12 +300,25 @@ that breaks every time the pipeline ships.
   so `browse.reel_items` walks (bounded by `STUDIO_MAX_WALK_OBJECTS`), sorts, and
   presigns *only* the window it returns — which is strictly less signing than the
   old key-order paging did.
+- **The star is state, not a receipt.** `FavoriteButton` renders lit from the
+  listing's own `favorited`, so it reports the folder rather than the press —
+  which means it is right after a reload and right about a file favourited from
+  another device. It is keyed by `file.key` in `ViewerChrome` because that bar
+  stays mounted while the reel scrolls underneath it, and without the key the
+  last clip's "added" state would be painted onto the next one. Files that
+  cannot be favourited never render it at all: `favorites_prefix` is null and
+  the button does not exist, which is how `characters/` gets no star without the
+  frontend knowing anything about the bucket's shape.
 - **Every write re-fetches the listing rather than patching state.** A rename
   changes an item's position under `newest` and certainly under `name`; replaying
   that into a sorted array correctly is more code than one request, and it is
-  code that would be wrong exactly where nobody tests. The one exception is the
-  recursive reel, which drops the item locally (`useReel.dropItem`) because
-  re-walking would shift every already-loaded page under the scroll position.
+  code that would be wrong exactly where nobody tests. Two exceptions, for
+  opposite reasons: the recursive reel drops a deleted item locally
+  (`useReel.dropItem`) because re-walking would shift every already-loaded page
+  under the scroll position, and **favouriting does not re-fetch at all** —
+  the copy lands in a folder you are by definition not in (an item inside
+  `favorites/` cannot be favourited), so the listing on screen is unchanged and
+  a refresh would be a request whose only visible effect is a flicker.
 - **Destructive confirmation is in the button, never in a dialog.**
   `ConfirmDeleteButton` arms on the first press, names what it will destroy, and
   disarms on a timeout, on blur, or on Escape. A portalled dialog is not painted
@@ -341,6 +392,7 @@ Every route is behind the Cognito authorizer except `GET /api/health`.
 | `PATCH /api/folder` | `{prefix, name}` → renames a folder and its subtree |
 | `POST /api/objects/move` | `{keys: [...], destination}` → moves 1..N objects, names kept. 409 if taken |
 | `POST /api/folder/move` | `{prefix, destination}` → moves a folder and its subtree |
+| `POST /api/favorites` | `{keys: [...]}` → copies 1..N media files into their own project's `favorites/`. No destination |
 | `PATCH /api/text` | `{key, content}` → overwrites an existing text file |
 | `DELETE /api/objects` | `{keys: [...]}` → deletes 1..N objects |
 | `DELETE /api/folder` | `{prefix}` → deletes a folder and its subtree |
@@ -352,6 +404,32 @@ a move by punctuation, and a destination is always read as a prefix, so a move
 cannot become a rename by typing a filename into it — `move(x.jpeg → a/b.jpeg)`
 puts the file *inside* `a/b.jpeg/`. That asymmetry is deliberate and the tests
 pin it.
+
+**`POST /api/favorites` takes no destination, and that is the whole design.**
+Move takes one and will put a file anywhere; favourite derives it from the key
+(`keys.favorites_prefix`) so there is exactly one legal answer per file and no
+argument that could aim it elsewhere. That is what lets one request favourite a
+selection spanning two subjects — each file goes to its own project — and it is
+why favouriting from `characters/` is a 400 rather than a copy into a guessed
+folder. Three more consequences worth knowing:
+
+- **The folder is flat, so names collide, and that is ordinary rather than an
+  edge case** — every scene calls its first shot `shot-01.mp4`. Same name and
+  same size is read as "already favourited" and **skipped**; same name and a
+  different size is **numbered** (`shot-01 (2).mp4`, the convention the folder
+  already holds from being filled by hand). Nothing is ever overwritten.
+- **Only images and video**, the same two kinds the reel shows. A `result.json`
+  copied flat onto the shelf beside the clips is noise, and the listing endpoints
+  apply the same rule so the star and the API cannot disagree about what is
+  acceptable.
+- **`favorited` on a listing is read from S3, not remembered.** Studio holds no
+  state, so `browse._mark_favorited` lists the favourites folder once per listing
+  (once per project on a reel page) and matches on name and size. That costs one
+  extra `ListObjectsV2` and buys a star that survives a reload — without it the
+  UI could only report presses from this session, and would go hollow over a file
+  that is very much still favourited. There is no un-favourite route: deleting
+  the copy from inside the favourites folder is unambiguous, and `DELETE
+  /api/objects` already does it.
 
 **`PATCH /api/text` is a PATCH because PUT is not in the CORS method list.** The
 verb list lives in four places that have to agree (see below), PATCH is already

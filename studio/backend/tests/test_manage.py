@@ -461,9 +461,154 @@ def test_nothing_reaches_outside_a_configured_root(media_bucket, monkeypatch):
         lambda: manage.move_folder("secrets/", "characters/"),
         lambda: manage.move_folder("characters/fred/", "secrets/"),
         lambda: manage.update_text("secrets/keys.txt", "emptied"),
+        # Favouriting names no destination, so the only thing to confine is its
+        # source — and a source outside the root never reaches the copy.
+        lambda: manage.favorite_objects(["secrets/keys.txt"]),
     ):
         with pytest.raises(ValidationError):
             call()
 
     body = media_bucket.get_object(Bucket=config.media_bucket(), Key="secrets/keys.txt")
     assert body["Body"].read() == b"do not touch"
+
+
+# ---------------------------------------------------------------------------
+# Favorite
+#
+# The only write here that copies without deleting, and the only one whose
+# destination is derived rather than supplied. Both properties are asserted
+# directly: the source must survive, and no argument may aim the copy elsewhere.
+# ---------------------------------------------------------------------------
+
+FRED_FAVORITES = "projects/fred/favorites/"
+MR_P_FAVORITES = "projects/mr-p/favorites/"
+SCENE = "projects/mr-p/scenes/2026-08-16_07-40-22_stadium-encounter/"
+SHOT = f"{SCENE}shots/shot-01.mp4"
+
+
+def test_favorite_copies_into_its_own_projects_favorites(media_bucket):
+    result = manage.favorite_objects([OUTPUT])
+
+    assert result == {
+        "favorited": 1,
+        "skipped": 0,
+        "keys": [f"{FRED_FAVORITES}wave-porch.jpeg"],
+    }
+    assert _names(FRED_FAVORITES) == ["wave-porch.jpeg"]
+    # A favourite is a copy. The original stays exactly where the pipeline put it
+    # — this is the one write in the module that leaves its source alone.
+    assert _names(f"{RUN}output/") == ["wave-porch.jpeg"]
+
+
+def test_favorite_takes_many_at_once_and_splits_them_by_project(media_bucket):
+    """One request, three files, two projects — and nobody named a destination.
+
+    This is what makes favouriting different from moving: the reel walks across
+    subjects, so a selection can span projects, and each file has exactly one
+    folder it belongs in. A move would need one request per destination.
+    """
+    result = manage.favorite_objects([OUTPUT, VIDEO, SHOT])
+
+    assert result["favorited"] == 3
+    assert _names(FRED_FAVORITES) == ["wave-porch.jpeg"]
+    assert sorted(_names(MR_P_FAVORITES)) == ["shot-01.mp4", "standing-flex.mp4"]
+
+
+def test_favoriting_twice_is_a_no_op(media_bucket):
+    manage.favorite_objects([OUTPUT])
+    result = manage.favorite_objects([OUTPUT])
+
+    assert result["favorited"] == 0
+    assert result["skipped"] == 1
+    # Not `wave-porch (2).jpeg`: same name and same size is the same file.
+    assert _names(FRED_FAVORITES) == ["wave-porch.jpeg"]
+
+
+def test_favorite_numbers_a_name_a_different_file_already_holds(media_bucket):
+    """Every scene calls its first shot `shot-01.mp4`, so this is the normal case."""
+    manage.favorite_objects([SHOT])
+    other = "projects/mr-p/scenes/2026-08-16_09-12-00_stadium-exit/shots/shot-01.mp4"
+    media_bucket.put_object(Bucket=config.media_bucket(), Key=other, Body=b"a-different-mp4")
+
+    result = manage.favorite_objects([other])
+
+    assert result["keys"] == [f"{MR_P_FAVORITES}shot-01 (2).mp4"]
+    assert sorted(_names(MR_P_FAVORITES)) == ["shot-01 (2).mp4", "shot-01.mp4"]
+
+
+def test_favorite_numbers_two_sources_of_one_name_in_a_single_request(media_bucket):
+    """The in-memory index has to be updated as the batch is planned.
+
+    Otherwise both files see the same empty folder, both claim `shot-01.mp4`,
+    and the second copy silently overwrites the first — the one outcome nothing
+    in this module is allowed to produce.
+    """
+    other = "projects/mr-p/scenes/2026-08-16_09-12-00_stadium-exit/shots/shot-01.mp4"
+    media_bucket.put_object(Bucket=config.media_bucket(), Key=other, Body=b"a-different-mp4")
+
+    result = manage.favorite_objects([SHOT, other])
+
+    assert result["favorited"] == 2
+    assert sorted(_names(MR_P_FAVORITES)) == ["shot-01 (2).mp4", "shot-01.mp4"]
+
+
+def test_favorite_refuses_a_character_photo(media_bucket):
+    """`characters/` holds who a subject is. There is nothing to pick between."""
+    with pytest.raises(ValidationError):
+        manage.favorite_objects(["characters/fred/seed/fred_1.webp"])
+    assert "favorites" not in _folders("characters/fred/")
+
+
+def test_favorite_refuses_run_metadata(media_bucket):
+    with pytest.raises(ValidationError):
+        manage.favorite_objects([f"{RUN}request.json"])
+    assert "favorites" not in _folders("projects/fred/")
+
+
+def test_favorite_refuses_something_that_is_already_a_favorite(media_bucket):
+    manage.favorite_objects([OUTPUT])
+    with pytest.raises(ValidationError):
+        manage.favorite_objects([f"{FRED_FAVORITES}wave-porch.jpeg"])
+    assert _names(FRED_FAVORITES) == ["wave-porch.jpeg"]
+
+
+def test_favorite_refuses_a_key_directly_under_projects(media_bucket):
+    """`projects/fred/project.json` belongs to no run and is not media either."""
+    media_bucket.put_object(
+        Bucket=config.media_bucket(), Key="projects/loose.mp4", Body=b"mp4-bytes"
+    )
+    with pytest.raises(ValidationError):
+        manage.favorite_objects(["projects/loose.mp4"])
+
+
+def test_favorite_of_a_missing_key_is_404(media_bucket):
+    with pytest.raises(NotFoundError):
+        manage.favorite_objects([f"{RUN}output/never-existed.jpeg"])
+
+
+def test_favorite_copies_nothing_when_one_key_in_the_batch_is_refused(media_bucket):
+    """The whole batch is planned before anything is copied.
+
+    Same bargain `move_objects` makes: a selection half-favourited, with nothing
+    to say where the boundary fell, is worse than a request that did nothing.
+    """
+    with pytest.raises(ValidationError):
+        manage.favorite_objects([OUTPUT, "characters/fred/seed/fred_1.webp"])
+    assert "favorites" not in _folders("projects/fred/")
+
+
+def test_favorite_refuses_more_than_the_bulk_cap(media_bucket, monkeypatch):
+    monkeypatch.setattr("studio_core.config.max_bulk_keys", lambda: 1)
+    with pytest.raises(ValidationError):
+        manage.favorite_objects([OUTPUT, VIDEO])
+
+
+def test_favorite_is_off_when_no_projects_prefix_is_configured(media_bucket, monkeypatch):
+    """The knob that survives x-harness reshaping the bucket again.
+
+    With nowhere identified as a project there is no derivable destination, so
+    every key is refused rather than copied somewhere invented.
+    """
+    monkeypatch.setattr("studio_core.config.projects_prefix", lambda: "")
+    with pytest.raises(ValidationError):
+        manage.favorite_objects([OUTPUT])
