@@ -37,6 +37,10 @@ packages = ["src/studio_pipeline"]
 [tool.hatch.build.targets.wheel.force-include]
 "src/studio_pipeline/engine/models.json" = "studio_pipeline/engine/models.json"
 "src/studio_pipeline/domain/templates/profile.yaml" = "studio_pipeline/domain/templates/profile.yaml"
+# The shot spec is read at runtime by `character shoot`, so a wheel without it
+# fails only when someone runs the command. The pose plates it names are NOT
+# package data — they live in studio/config/ and reach the bucket via dev-setup.
+"src/studio_pipeline/domain/templates/reference_shots.yaml" = "studio_pipeline/domain/templates/reference_shots.yaml"
 
 [dependency-groups]
 dev = [

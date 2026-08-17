@@ -283,11 +283,52 @@ better than prose can, and a long identity paragraph fights it — see
    Fill **every** key — `create` refuses a bible missing any of them.
 2. `studio character create <name> --from-profile <your-bible.yaml>`.
 3. `studio character add-to <name> seed <source photos…>` — the founding images.
-4. `studio character add-refs <name> --to face <generated angles…>` (and `--to body`,
-   `--to wardrobe`), then **describe them**: `describe-refs --from-json` for a
-   batch, `set-ref-desc` for one.
-5. `studio character default-set <name> --set …` — the handful sent when nobody picks.
-   Keep it under the smallest cap in play (Kling 7).
+4. **`studio character shoot <name> --project <project>`** — the standard face and
+   body set, described and indexed in one pass. See below.
+5. `studio character add-refs <name> --to wardrobe <stills…>` for anything the
+   standard set does not cover, then **describe them**: `describe-refs
+   --from-json` for a batch, `set-ref-desc` for one.
+
+## The standard set (`shoot`)
+
+A reference library is chosen from **by tag**, so an angle nobody shot is an angle
+nobody can pick. `shoot` renders the same nine every character should have — four
+`face` (front, both three-quarters, profile) and five `body` (front, both
+three-quarters, profile, back), each full figure head to feet.
+
+Each is one recorded run built from three things: a **pose plate** (a generic,
+anonymous, untextured figure that says only how to stand), the character's **seed
+photographs** (who it is), and a prompt filled from the character's own bible —
+its usual top, and every cue in `consistency.must`.
+
+```bash
+studio character shoot <name> --project <project> --dry-run   # nine payloads, no spend
+studio character shoot <name> --project <project>             # approve, then submit
+studio character shoot <name> --project <project> --group face
+studio character shoot <name> --project <project> --slot body_back   # re-shoot one
+```
+
+- **Nothing bills without approval.** Every payload is shown in full, and the
+  batch then needs one explicit confirmation. `--dry-run` stops after the render.
+- **`--project` is required**, as it is for any generating command.
+- **Identity comes from `seed/`** when it has any, because driving a shoot off
+  already-generated references feeds model output back in as identity and
+  compounds drift. `--identity refs` / `--pick` / `--pick-tag` override that.
+- **`--model` overrides the engine** for every slot; the spec's defaults are
+  chosen so any registered image model accepts them. A dry run preflights the
+  override, so a model that would refuse it costs nothing to find out.
+- Each result is **copied** into `reference/<group>/` — the run keeps its own
+  output — then described and tagged automatically. A full shoot also points
+  `default_set` at the standard selection; a partial one leaves it alone.
+- The pose plates live in the repo under `studio/config/` and are copied to the
+  bucket by `studio/scripts/dev-setup.sh`. If a shoot says one is missing, re-run
+  that script.
+
+Then `studio character default-set <name> --set …` if you want a different
+handful sent when nobody picks. Keep it under the smallest cap in play (Kling 7).
+
+`studio character create <name> --from-profile <bible> --shoot --project <p>`
+does steps 2 and 4 in one go, through the same approval gate.
 
 No new skill directory — ever. The character is now usable by the whole pipeline.
 Names are lowercase `[a-z0-9_-]`. There is no reserved-name list: characters live

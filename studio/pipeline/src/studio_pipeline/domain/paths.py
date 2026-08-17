@@ -29,6 +29,14 @@ They were the same folder once; they are not the same thing:
 
     phrasebook/wording.yaml
 
+    config/pose/{body,face}/*.png   shared pose + face-angle plates
+
+`config/` is neither tree. It holds material that belongs to no character and no
+project — the pose and head-angle plates a reference shoot passes to a model as a
+framing guide. Its source of truth is the REPO (`studio/config/`), and
+`dev-setup.sh` copies it out; S3 holds a copy because a model may only be handed
+a presigned URL of an S3 object, never bytes from disk.
+
 A project's material may involve several characters, so a character name is
 never part of a production key — the run records which characters it used
 (`request.json: characters[]`), and `character_of()` reads one back out of a
@@ -58,6 +66,12 @@ from studio_pipeline.adapters import s3 as s3c
 
 CHARACTERS = "characters"
 PROJECTS = "projects"
+
+# Neither a character nor a project: shared, generic material kept in the repo
+# and copied out to S3. `POSE_GROUPS` mirrors the character reference groups it
+# guides, so a `body` slot asks for a `body` plate.
+CONFIG = "config"
+POSE_GROUPS = ("body", "face")
 
 # The four character pools. `reference` is the only one with structure inside
 # it (purpose subfolders + the profile index); the rest keep arbitrary
@@ -235,6 +249,31 @@ def phrasebook_key() -> str:
     return s3c.key("phrasebook/wording.yaml")
 
 
+# ── config ──────────────────────────────────────────────────────────────────
+
+def config_root() -> str:
+    return CONFIG + "/"
+
+
+def config_prefix(*parts: str) -> str:
+    return _join(CONFIG, *parts)
+
+
+def config_key(*parts: str) -> str:
+    return s3c.key(config_prefix(*parts))
+
+
+def pose_prefix(group: str) -> str:
+    if group not in POSE_GROUPS:
+        raise PathError(f"unknown pose group {group!r}; expected one of {list(POSE_GROUPS)}")
+    return config_prefix("pose", group)
+
+
+def pose_key(group: str, basename: str) -> str:
+    """A plate's full key. `basename` carries its own extension."""
+    return s3c.key(_join(pose_prefix(group), basename))
+
+
 # ── listing ─────────────────────────────────────────────────────────────────
 
 def _strip_prefix(key: str) -> str:
@@ -295,8 +334,14 @@ LEGACY_PREFIX = "media/"
 
 # Generated character imagery lived in the input pool to stay under the engine
 # reference caps. It is reference material, and belongs with the character.
+#
+# A generic anatomy sheet used to be listed here too, which sent it to
+# `reference/` — where it was indexed as identity and tagged `body`, so
+# `--pick-tag body` could hand a model a stranger's sculpt as one of the
+# character's own reference slots. Generic pose material is CONFIG: it lives in
+# the repo and is copied to `config/pose/`, never into a character.
 _TURNAROUND_RE = re.compile(r"^[a-z0-9_-]+_in_\d+\.[A-Za-z0-9]+$")
-_SHEET_NAMES = {"body_positions.jpg"}
+_SHEET_NAMES: set[str] = set()
 
 # Owners that were never characters — production history with no identity.
 NON_CHARACTER_OWNERS = {"misc"}

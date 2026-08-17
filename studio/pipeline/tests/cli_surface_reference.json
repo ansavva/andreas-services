@@ -286,6 +286,21 @@
         },
         "commands": {},
         "options": {
+          "dry_run": {
+            "choices": null,
+            "default": false,
+            "dest": "dry_run",
+            "flag": true,
+            "flags": [
+              "--dry-run"
+            ],
+            "help": "With --shoot: render the payloads, submit nothing.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
           "from_profile": {
             "choices": null,
             "default": null,
@@ -300,6 +315,66 @@
             "nargs": 1,
             "required": false,
             "type": "str"
+          },
+          "model": {
+            "choices": null,
+            "default": null,
+            "dest": "model",
+            "flag": false,
+            "flags": [
+              "--model"
+            ],
+            "help": "With --shoot: override the shot spec's model.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "With --shoot: REQUIRED. The project the shoot's runs belong to.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "shoot": {
+            "choices": null,
+            "default": false,
+            "dest": "shoot",
+            "flag": true,
+            "flags": [
+              "--shoot"
+            ],
+            "help": "Go straight into the standard reference shoot (asks before it bills).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "yes": {
+            "choices": null,
+            "default": false,
+            "dest": "yes",
+            "flag": true,
+            "flags": [
+              "--yes"
+            ],
+            "help": "With --shoot: skip the confirmation.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
           }
         }
       },
@@ -823,6 +898,243 @@
             "nargs": 1,
             "required": false,
             "type": "str"
+          }
+        }
+      },
+      "shoot": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "aspect_ratio": {
+            "choices": null,
+            "default": null,
+            "dest": "aspect_ratio",
+            "flag": false,
+            "flags": [
+              "--aspect-ratio"
+            ],
+            "help": "Override the spec's aspect ratio for every slot.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "dest": {
+            "choices": null,
+            "default": null,
+            "dest": "dest",
+            "flag": false,
+            "flags": [
+              "--dest"
+            ],
+            "help": "Also keep a local copy of each plate in this directory.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "dry_run": {
+            "choices": null,
+            "default": false,
+            "dest": "dry_run",
+            "flag": true,
+            "flags": [
+              "--dry-run"
+            ],
+            "help": "Render every payload for approval; submit nothing, bill nothing.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "expires": {
+            "choices": null,
+            "default": 3600,
+            "dest": "expires",
+            "flag": false,
+            "flags": [
+              "--expires"
+            ],
+            "help": "Presign expiry (default 3600).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "extra": {
+            "choices": null,
+            "default": null,
+            "dest": "extra",
+            "flag": false,
+            "flags": [
+              "--extra"
+            ],
+            "help": "JSON object merged into every slot's model inputs.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "group": {
+            "choices": [
+              "all",
+              "body",
+              "face"
+            ],
+            "default": "all",
+            "dest": "group",
+            "flag": false,
+            "flags": [
+              "--group"
+            ],
+            "help": "Shoot only this group of slots (default: all).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "identity": {
+            "choices": [
+              "auto",
+              "refs",
+              "seed"
+            ],
+            "default": "auto",
+            "dest": "identity",
+            "flag": false,
+            "flags": [
+              "--identity"
+            ],
+            "help": "Where identity comes from: seed photos, the reference index, or auto (seed when it has any).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "identity_max": {
+            "choices": null,
+            "default": 4,
+            "dest": "identity_max",
+            "flag": false,
+            "flags": [
+              "--identity-max"
+            ],
+            "help": "How many identity images to send per slot (default 4).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "model": {
+            "choices": null,
+            "default": null,
+            "dest": "model",
+            "flag": false,
+            "flags": [
+              "--model"
+            ],
+            "help": "Override the spec's model for every slot. See `models`.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "pick": {
+            "choices": null,
+            "default": null,
+            "dest": "pick",
+            "flag": false,
+            "flags": [
+              "--pick"
+            ],
+            "help": "Identity from these reference files instead of seed/.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "pick_tag": {
+            "choices": null,
+            "default": null,
+            "dest": "pick_tag",
+            "flag": false,
+            "flags": [
+              "--pick-tag"
+            ],
+            "help": "Identity from references carrying ALL these tags.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "REQUIRED. The project these runs belong to.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "slot": {
+            "choices": null,
+            "default": null,
+            "dest": "slot",
+            "flag": false,
+            "flags": [
+              "--slot"
+            ],
+            "help": "Shoot only this slot id. Repeatable \u2014 see the spec for the ids.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "yes": {
+            "choices": null,
+            "default": false,
+            "dest": "yes",
+            "flag": true,
+            "flags": [
+              "--yes"
+            ],
+            "help": "Skip the confirmation (non-interactive use).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
           }
         }
       },

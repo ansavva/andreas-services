@@ -116,11 +116,12 @@ studio/pipeline/
         │   ├── runs.py  scenes.py  movies.py  frames.py  projects.py
         │   ├── characters.py  curate.py  contact_sheet.py
         │   ├── phrasebook.py  rewrite.py  prompt.py
-        │   └── templates/profile.yaml
+        │   └── templates/profile.yaml  reference_shots.yaml
         │
         ├── engine/                MODEL INVOCATION
         │   ├── models.json        the REGISTRY — models are data, not code
         │   ├── runner.py          `studio run` / `studio models`
+        │   ├── shoot.py           `studio character shoot` — the standard set
         │   ├── registry.py  schema.py  submit.py  refs.py  add_model.py
         │
         ├── objects/               raw object access
@@ -210,10 +211,24 @@ projects/<project>/
     input/          the project working pool (<project>_in_<n>.<ext>)
 
 phrasebook/wording.yaml
+
+config/pose/body/*.png       pose plates — how to stand, for a reference shoot
+config/pose/face/*.png       head-angle plates
 ```
 
 There is **no `media/` prefix** — the tree is at the bucket root. (There was one,
 inherited from mirroring Google Drive 1:1; it bought nothing.)
+
+**`config/` is the one tree whose source of truth is the repo.** It lives at
+`studio/config/`, and `dev-setup.sh` syncs it out (`--size-only`, never
+`--delete`). The bucket holds a copy because a model may only be handed a
+presigned URL of an S3 object — a plate that was never synced cannot be used, so
+`shoot` checks for them and says to re-run the script. Editing a plate in the
+bucket rather than the repo is how they diverge.
+
+It also has to be listed in `KEY_ROOTS` (`domain/runs.py`): a binding outside the
+known roots is refused when the request is recorded, which is what stops a typo
+or a URL from reaching a stored record.
 
 **Ask which project before generating anything.** `--project` is required and
 never inferred: where output lands is the one thing rerunning a command cannot
@@ -437,6 +452,7 @@ or projects.
 | `submit.py` | The one submit lifecycle, image and video alike. |
 | `schema.py` | Live schema fetch; validates fields, enums, ranges, `denied`. |
 | `refs.py` | Character reference selection and project input pool → S3 keys. |
+| `shoot.py` | `studio character shoot` — the STANDARD reference set, one run per slot in `domain/templates/reference_shots.yaml`. Reads the character's bible for the prompt, binds a pose plate from `config/`, then files, describes and indexes each result. Lives here rather than in `domain/` because it invokes models; it drives the same lifecycle as `runner.py` rather than repeating it. |
 | `add_model.py` | Onboarding: fetch schema + README, infer an entry, append it to the registry. It writes no documentation — see `studio-media-add-model`. |
 
 **`objects/` — moving bytes.** `upload.py`, `download.py`, `presign.py`

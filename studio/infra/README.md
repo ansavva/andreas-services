@@ -83,7 +83,14 @@ s3://xharness-prod-media-us-east-1/
       project.json
       runs/  chains/  scenes/  movies/  favorites/  input/
   phrasebook/wording.yaml
+  config/pose/                shared POSE PLATES — generic, no identity
 ```
+
+`config/` is the only prefix whose source of truth is the repo rather than the
+bucket: it is `studio/config/` in source control, and `dev-setup.sh` syncs it out
+so a model can be handed a presigned URL of it. Nothing in Terraform creates or
+owns it, and because `media_root_prefix` is `""` it is browsable in the app like
+any other top-level folder.
 
 A project's material may involve several characters, so a character name is
 never part of a production key; each run records which characters it used. See

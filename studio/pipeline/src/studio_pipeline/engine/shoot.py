@@ -1,0 +1,568 @@
+"""`studio character shoot` — render a character's STANDARD reference set.
+
+One command over the shot spec (`domain/templates/reference_shots.yaml`). Each
+slot in that spec becomes one recorded run: the slot's prompt, filled from the
+character's own bible, plus two kinds of image — a generic POSE PLATE from
+`config/pose/` saying how to stand, and the character's own SEED photos (or a
+named reference selection) saying who it is.
+
+Why it lives in `engine/` and not `domain/`: this is model invocation. It runs
+the same nine-step submit lifecycle `runner.py` drives, and reuses it rather than
+repeating it — `gather` → `preflight` → `render` → `execute`, once per slot. The
+dependency arrow `cli → domain → adapters` stays intact, and importing
+`domain.characters` from here is what `refs.py` already does.
+
+    studio character shoot <name> --project <p> --dry-run     # nine payloads, no spend
+    studio character shoot <name> --project <p> --group face
+    studio character shoot <name> --project <p> --slot body_back --model nano-banana-pro
+
+NOTHING SUBMITS WITHOUT APPROVAL. Every payload is rendered as the two-document
+PROMPT / INPUT review first, and the batch then needs one explicit confirmation
+(`--yes` for a non-interactive run). `--dry-run` stops after the render.
+
+WHAT THE PLATE IS FOR, AND WHY CITATIONS ARE COMPUTED
+-----------------------------------------------------
+A prompt says "[ImageN] is a pose guide — take only the stance from it". If N is
+not where the plate actually landed, that instruction is aimed at the character's
+own face, and nothing errors: the render is just quietly wrong.
+
+The position is therefore never assumed. `gather()` assembles the list — it
+de-dupes, filters by what the model accepts, and orders by category — so the
+resolved list is the only authority on where the plate is. This module reads the
+position out of it and fills the spec's `{pose_slot}` / `{identity_slots}` with
+real numbers. That the plate currently comes out first (this module passes it as
+the first explicit key) is an outcome, not something a prompt may rely on.
+
+AFTER A SUCCESSFUL SLOT
+-----------------------
+The run owns its output, so the artifact is COPIED — not moved — into
+`characters/<name>/reference/<group>/`, leaving the run's history intact and no
+record naming a key that moved. The index is then synced and the slot's recorded
+description and tags applied, because an undescribed reference is invisible to
+whoever chooses a set.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import string
+import sys
+from types import SimpleNamespace
+
+import click
+import yaml
+
+from studio_pipeline.adapters import replicate as RA
+from studio_pipeline.adapters import s3 as s3c
+from studio_pipeline.domain import characters as CHARACTER
+from studio_pipeline.domain import paths as P
+from studio_pipeline.domain import projects as PROJ
+from studio_pipeline.domain import runs as R
+from studio_pipeline.engine import refs as REFS
+from studio_pipeline.engine import registry as REG
+from studio_pipeline.engine import schema as MS
+from studio_pipeline.engine import submit as SUB
+
+die = RA.die
+
+SPEC_FILE = "reference_shots.yaml"
+SPEC_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(CHARACTER.__file__)), "templates", SPEC_FILE
+)
+
+# One plate plus a handful of identity images is what a slot needs. Seed pools
+# run to twenty-odd photographs, and sending all of them would breach the
+# smaller engine caps and buy nothing — more angles of the same face do not
+# sharpen it.
+IDENTITY_MAX = 4
+
+
+class ShootError(Exception):
+    """Anything that should stop the shoot before it bills."""
+
+
+# --------------------------------------------------------------------------
+# the spec
+# --------------------------------------------------------------------------
+
+def load_spec(path: str = SPEC_PATH) -> dict:
+    """Read the shot spec, or fail saying which file is wrong."""
+    try:
+        with open(path) as fh:
+            spec = yaml.safe_load(fh)
+    except FileNotFoundError:
+        raise ShootError(f"the shot spec is missing from the package: {path}")
+    except yaml.YAMLError as exc:
+        raise ShootError(f"{path} is not valid YAML:\n  {exc}")
+    if not isinstance(spec, dict) or not spec.get("slots"):
+        raise ShootError(f"{path} must be a mapping with a non-empty `slots:` list.")
+
+    ids = [s.get("id") for s in spec["slots"]]
+    if len(set(ids)) != len(ids):
+        raise ShootError(f"{path} has duplicate slot id(s).")
+    for slot in spec["slots"]:
+        missing = [k for k in ("id", "group", "pose_image", "prompt", "description", "tags")
+                   if not slot.get(k)]
+        if missing:
+            raise ShootError(f"{path}: slot {slot.get('id')!r} is missing {missing}.")
+        if slot["group"] not in P.POSE_GROUPS:
+            raise ShootError(
+                f"{path}: slot {slot['id']!r} has group {slot['group']!r}; "
+                f"expected one of {list(P.POSE_GROUPS)}."
+            )
+    unknown = [f for f in spec.get("default_set") or [] if f not in ids]
+    if unknown:
+        raise ShootError(f"{path}: default_set names slot(s) that do not exist: {unknown}")
+    return spec
+
+
+def select_slots(spec: dict, group: str | None, only: tuple[str, ...]) -> list[dict]:
+    slots = spec["slots"]
+    if only:
+        by_id = {s["id"]: s for s in slots}
+        unknown = [s for s in only if s not in by_id]
+        if unknown:
+            raise ShootError(
+                f"no such slot(s): {', '.join(unknown)}\n"
+                f"       the spec defines: {', '.join(by_id)}"
+            )
+        return [by_id[s] for s in only]
+    if group and group != "all":
+        slots = [s for s in slots if s["group"] == group]
+        if not slots:
+            raise ShootError(f"the spec has no slot in group {group!r}.")
+    return slots
+
+
+# --------------------------------------------------------------------------
+# the prompt
+# --------------------------------------------------------------------------
+
+def _first_top(profile: dict) -> str:
+    """The garment a face plate should wear: the most frequent top, plainly.
+
+    The bible's first `tops[]` entry is the character's usual one, and its
+    `detail` often names embroidery or a graphic — which a model renders
+    differently every time and would make the group inconsistent. So the item is
+    used and the detail is not.
+    """
+    tops = ((profile.get("wardrobe") or {}).get("tops")) or []
+    item = (tops[0].get("item") if tops and isinstance(tops[0], dict) else None) or "plain T-shirt"
+    return (f"Wearing a plain {item.strip().rstrip('.').lower()}, unbranded, "
+            f"with no logo, text or embroidery")
+
+
+def _must_text(profile: dict, intro: str) -> str:
+    musts = ((profile.get("consistency") or {}).get("must")) or []
+    if not musts:
+        return ""
+    return intro.strip() + " " + "; ".join(m.strip().rstrip(".") for m in musts) + "."
+
+
+def _slots_phrase(positions: list[int]) -> str:
+    """[Image2] / [Image2] and [Image3] / [Image2], [Image3] and [Image4]."""
+    names = [f"[Image{n}]" for n in positions]
+    if len(names) == 1:
+        return names[0]
+    return ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def build_prompt(slot: dict, spec: dict, profile: dict,
+                 pose_position: int, identity_positions: list[int]) -> str:
+    """Fill one slot's prompt template. Raises if the spec names a value we lack."""
+    defaults = spec.get("defaults") or {}
+    intro = defaults.get(f"must_intro_{slot['group']}") or defaults.get("must_intro_face") or ""
+    values = {
+        **{k: v for k, v in defaults.items() if isinstance(v, str)},
+        "top": _first_top(profile),
+        "must": _must_text(profile, intro),
+        "identity_block": (profile.get("text_identity_block") or "").strip(),
+        "pose_slot": f"[Image{pose_position}]",
+        "identity_slots": _slots_phrase(identity_positions),
+    }
+    try:
+        text = string.Formatter().vformat(slot["prompt"], (), values)
+    except KeyError as exc:
+        raise ShootError(
+            f"slot {slot['id']!r} uses {{{exc.args[0]}}}, which nothing provides.\n"
+            f"       available: {', '.join(sorted(values))}"
+        )
+    return " ".join(text.split())
+
+
+# --------------------------------------------------------------------------
+# the images
+# --------------------------------------------------------------------------
+
+def plate_key(slot: dict) -> str:
+    """The slot's pose plate, as a full key, checked for shape.
+
+    The spec stores a bucket-relative key (`config/pose/body/front.png`) so the
+    prose in source control names the object in S3 that `dev-setup.sh` copies out.
+    """
+    rel = slot["pose_image"]
+    if not rel.startswith(P.CONFIG + "/"):
+        raise ShootError(
+            f"slot {slot['id']!r}: pose_image {rel!r} must be a key under "
+            f"{P.CONFIG}/ — plates are config, not character material."
+        )
+    return s3c.key(rel)
+
+
+def check_plates(s3, slots: list[dict]) -> None:
+    """Every plate must already be in the bucket. Fail once, listing all of them."""
+    missing = []
+    for slot in slots:
+        key = plate_key(slot)
+        try:
+            s3.head_object(Bucket=s3c.BUCKET, Key=key)
+        except Exception:  # noqa: BLE001 — any failure here means "cannot use it"
+            missing.append(key)
+    if missing:
+        raise ShootError(
+            "pose plate(s) missing from the bucket:\n"
+            + "".join(f"       {k}\n" for k in missing)
+            + "       These live in the repo under studio/config/ and are copied out by\n"
+            "       studio/scripts/dev-setup.sh — run it, then try again."
+        )
+
+
+def identity_keys(s3, name: str, source: str, pick: str | None, tags: str | None,
+                  limit: int = IDENTITY_MAX) -> tuple[list[str], str]:
+    """The images that say WHO this is, and where they came from.
+
+    Seed photographs are preferred: they are the founding source material, and
+    driving a shoot off already-generated references feeds model output back in
+    as identity, which compounds drift with every pass.
+    """
+    if pick or tags:
+        keys = REFS.character_ref_keys(
+            name, None, [x.strip() for x in pick.split(",")] if pick else None,
+            [t.strip() for t in tags.split(",")] if tags else None)
+        return keys[:limit], "reference"
+
+    if source in ("auto", "seed"):
+        seed = REFS.character_pool_keys(name, "seed")
+        seed = [k for k in seed if os.path.splitext(k)[1].lower() in R.IMG_EXTS]
+        if seed:
+            return seed[:limit], "seed"
+        if source == "seed":
+            raise ShootError(
+                f"{name} has no images in seed/, and --identity seed was asked for.\n"
+                f"       Add the founding photos: studio character add-to {name} seed <files…>"
+            )
+
+    keys = REFS.character_ref_keys(name, None, None, None)
+    if not keys:
+        raise ShootError(
+            f"{name} has nothing to carry identity — seed/ is empty and reference/ has "
+            f"no selection.\n"
+            f"       Add source photos first: studio character add-to {name} seed <files…>"
+        )
+    return keys[:limit], "reference"
+
+
+# --------------------------------------------------------------------------
+# one slot
+# --------------------------------------------------------------------------
+
+def slot_args(slot: dict, spec: dict, entry: dict, name: str, opts) -> SimpleNamespace:
+    """The namespace `runner`/`submit` expect, for one slot.
+
+    Every image is passed as an explicit `--key`, in the order the model should
+    see them: the plate first, identity after. `--character` is deliberately NOT
+    set — this module has already chosen the keys, and letting `gather()` resolve
+    a second set from the bible's `default_set` would silently add images nobody
+    picked. `record_characters` keeps the run associated with the character all
+    the same.
+    """
+    defaults = spec.get("defaults") or {}
+    model = opts.model or slot.get("model") or defaults.get("model")
+    if model != entry["key"]:
+        raise ShootError(f"internal: slot resolved model {model!r} but entry is {entry['key']!r}")
+
+    extra: dict = {}
+    extra.update(defaults.get("extra") or {})
+    extra.update((spec.get("per_model") or {}).get(model) or {})
+    extra.update(slot.get("extra") or {})
+    if opts.extra:
+        try:
+            override = json.loads(opts.extra)
+        except json.JSONDecodeError as exc:
+            raise ShootError(f"--extra is not valid JSON: {exc}")
+        if not isinstance(override, dict):
+            raise ShootError("--extra must be a JSON object.")
+        extra.update(override)
+
+    d = SUB.defaults(entry["kind"])
+    return SimpleNamespace(
+        model=model,
+        project=opts.project,
+        slug=f"ref-{slot['id'].replace('_', '-')}",
+        prompt=None,                      # filled once the citation slots are known
+        prompt_file=None, prompt_json=None, input_file=None,
+        extra=json.dumps(extra) if extra else None,
+        aspect_ratio=opts.aspect_ratio or slot.get("aspect_ratio") or defaults.get("aspect_ratio"),
+        key=[], character=(), record_characters=(name,),
+        pick=None, pick_tag=None, slots=None,
+        image_run=None, ref_run=(), input_=(), input=(),
+        start_run=None, start_key=None, end_run=None, end_key=None,
+        no_refs=False, dry_run=opts.dry_run, json_=False, json=False,
+        poll=True, dest=opts.dest, expires=opts.expires,
+        interval=d["interval"], timeout=d["timeout"],
+    )
+
+
+def prepare(slot: dict, spec: dict, profile: dict, name: str, s3, opts):
+    """Everything up to (not including) the submit: bindings, prompt, payload."""
+    from studio_pipeline.engine import runner as RUN  # local: runner imports this module's peers
+
+    model = opts.model or slot.get("model") or (spec.get("defaults") or {}).get("model")
+    try:
+        entry = REG.get(model)
+    except REG.RegistryError as exc:
+        raise ShootError(str(exc))
+    if entry["kind"] != "image":
+        raise ShootError(
+            f"a reference plate is a still, but {entry['key']} is a {entry['kind']} model."
+        )
+
+    args = slot_args(slot, spec, entry, name, opts)
+    args.key = [plate_key(slot), *opts.identity]
+
+    # Resolve bindings BEFORE the prompt: the citation numbers are positions in
+    # the resolved list, and only `gather` knows what that list is.
+    try:
+        bindings = SUB.gather(entry, s3, args)
+    except (SUB.SubmitError, REFS.RefError, R.RunError) as exc:
+        raise ShootError(str(exc))
+    field = (entry.get("images") or {}).get("refs")
+    ordered = bindings.get(field) or []
+    if not ordered:
+        raise ShootError(f"slot {slot['id']!r} resolved no image inputs.")
+    pose_pos = ordered.index(plate_key(slot)) + 1
+    identity_pos = [i + 1 for i, k in enumerate(ordered) if k != plate_key(slot)]
+
+    args.prompt = build_prompt(slot, spec, profile, pose_pos, identity_pos)
+    payload = RUN.build_payload(entry, args)
+    try:
+        SUB.check_payload_rules(entry, payload)
+    except SUB.SubmitError as exc:
+        raise ShootError(str(exc))
+    return entry, args, payload, bindings
+
+
+# --------------------------------------------------------------------------
+# filing the result
+# --------------------------------------------------------------------------
+
+def file_output(s3, name: str, slot: dict, out_key: str) -> str:
+    """Copy a run's artifact into the character's reference library.
+
+    A copy, not a move: the run owns its output, and moving it would invalidate
+    the record that names it. Numbering continues within the group, which is the
+    same rule `add-refs --to <group>` follows.
+    """
+    group = slot["group"]
+    n = CHARACTER.pool_max_index(s3, name, "reference", group) + 1
+    ext = os.path.splitext(out_key)[1].lower() or ".png"
+    rel = f"{CHARACTER.pool_folder(name, 'reference')}/{group}/{CHARACTER.group_prefix(name, group)}{n}{ext}"
+    dest = s3c.key(rel)
+    s3.copy_object(Bucket=s3c.BUCKET, CopySource={"Bucket": s3c.BUCKET, "Key": out_key},
+                   Key=dest)
+    return f"{group}/{os.path.basename(dest)}"
+
+
+def describe(s3, name: str, produced: dict[str, dict]) -> None:
+    """Index every image this shoot filed, in ONE profile write.
+
+    `produced` maps the index-relative file to the slot that made it. Written as
+    one pass so a failure cannot leave half the shoot undescribed — an
+    undescribed reference cannot be picked by tag and is invisible to whoever
+    chooses a set.
+    """
+    CHARACTER.sync_index(s3, name, apply=True)
+    data, entries = CHARACTER.read_index(s3, name)
+    etag = CHARACTER.remote_etag(s3, name)
+    by_file = {e.get("file"): e for e in entries}
+    for file, slot in produced.items():
+        hit = by_file.get(file)
+        if hit is None:                       # sync_index should have added it
+            hit = {"file": file}
+            entries.append(hit)
+        hit["description"] = " ".join((slot["description"] or "").split())
+        hit["tags"] = list(slot["tags"])
+    data["references"] = entries
+    CHARACTER.write_profile(s3, name, data, etag)
+
+
+def set_default_set(s3, name: str, spec: dict, by_slot: dict[str, str]) -> list[str] | None:
+    """Point `default_set` at the standard selection, when the shoot produced it.
+
+    Only rewritten when every id the spec names was filed by THIS shoot. A
+    partial shoot (`--group face`, one `--slot`) leaves the existing choice
+    alone: silently dropping a body plate from the default set because this pass
+    only covered faces would be a worse outcome than doing nothing.
+    """
+    want = spec.get("default_set") or []
+    if not want or any(sid not in by_slot for sid in want):
+        return None
+    data, entries = CHARACTER.read_index(s3, name)
+    etag = CHARACTER.remote_etag(s3, name)
+    known = {e.get("file") for e in entries}
+    chosen = [by_slot[sid] for sid in want if by_slot[sid] in known]
+    if len(chosen) != len(want):
+        return None
+    data["default_set"] = chosen
+    CHARACTER.write_profile(s3, name, data, etag)
+    return chosen
+
+
+# --------------------------------------------------------------------------
+# the command
+# --------------------------------------------------------------------------
+
+def run_shoot(name: str, opts) -> int:
+    """The whole shoot. Shared with `character create --shoot`."""
+    CHARACTER.check_name(name)
+    s3 = s3c.client()
+    opts.project = PROJ.require_project(s3, opts.project)
+
+    spec = load_spec()
+    slots = select_slots(spec, opts.group, tuple(opts.slot or ()))
+    profile = CHARACTER.load_profile(s3, name)
+    # Deliberately NOT the full write-time schema check. `create`/`set-profile`
+    # enforce that on the way in; refusing to render because `voice:` is absent
+    # would be a reading command policing a writing rule. What a shoot actually
+    # needs is the two keys its prompts draw on, and a thin bible costs prompt
+    # quality rather than correctness — so it warns.
+    thin = [k for k in ("wardrobe", "consistency") if not profile.get(k)]
+    if thin:
+        print(f"warning: {name}'s bible has no {', '.join(thin)} — the prompts will carry "
+              f"less to hold the render on-model.", file=sys.stderr)
+    check_plates(s3, slots)
+
+    ident, source = identity_keys(s3, name, opts.identity, opts.pick, opts.pick_tag,
+                                  opts.identity_max)
+    opts.identity = ident
+    print(f"identity from {source}/ — {len(ident)} image(s):", file=sys.stderr)
+    for k in ident:
+        print(f"  {k}", file=sys.stderr)
+
+    token = RA.load_token()
+    prepared = []
+    for slot in slots:
+        entry, args, payload, bindings = prepare(slot, spec, profile, name, s3, opts)
+        try:
+            SUB.preflight(entry, payload, bindings, token)
+        except MS.SchemaError as exc:
+            raise ShootError(f"slot {slot['id']!r} would be refused by {entry['key']}:\n{exc}")
+        prepared.append((slot, entry, args, payload, bindings))
+
+    # Every payload, in full, before anything bills.
+    for slot, entry, args, payload, bindings in prepared:
+        run = f"{opts.project}/{R.new_run_id(args.slug)}"
+        print(f"\n===== slot {slot['id']}  ->  reference/{slot['group']}/ =====")
+        print(SUB.render(entry, run, payload, bindings, False))
+
+    if opts.dry_run:
+        print(f"\n(dry run — {len(prepared)} slot(s) rendered, nothing submitted, "
+              f"nothing billed)", file=sys.stderr)
+        return 0
+
+    if not opts.yes and not click.confirm(
+            f"\nsubmit {len(prepared)} generation(s) for {name}?", default=False):
+        print("nothing submitted.", file=sys.stderr)
+        return 1
+
+    produced: dict[str, dict] = {}
+    by_slot: dict[str, str] = {}
+    for slot, entry, args, payload, bindings in prepared:
+        print(f"\n----- {slot['id']} -----", file=sys.stderr)
+        try:
+            code = SUB.execute(entry, payload, bindings, s3, token, args)
+        except (SUB.SubmitError, RA.ReplicateError) as exc:
+            raise ShootError(f"slot {slot['id']!r} failed: {exc}\n"
+                             f"       {len(produced)} slot(s) already filed; re-run the rest "
+                             f"with --slot.")
+        if code != 0:
+            raise ShootError(f"slot {slot['id']!r} exited {code}.")
+        # `execute` names the run it created on stderr but does not return it, so
+        # the newest run in the project is ours. Verified against the slug rather
+        # than trusted: filing another run's artifact as this character's
+        # reference is the one mistake here that would be hard to notice.
+        _project, run_id = R.resolve_run(s3, f"{opts.project}/latest", opts.project)
+        if not run_id.endswith(R.slugify(args.slug)):
+            raise ShootError(
+                f"slot {slot['id']!r}: the newest run in {opts.project} is {run_id!r}, which is "
+                f"not this slot's ({args.slug}). Refusing to file an artifact that may not be "
+                f"ours — check `studio runs list {opts.project}`."
+            )
+        keys = R.resolve_output_keys(s3, f"{opts.project}/{run_id}", opts.project)
+        file = file_output(s3, name, slot, keys[0])
+        produced[file] = slot
+        by_slot[slot["id"]] = file
+        print(f"  filed as reference/{file}", file=sys.stderr)
+
+    describe(s3, name, produced)
+    chosen = set_default_set(s3, name, spec, by_slot)
+    print(json.dumps({
+        "character": name, "project": opts.project,
+        "filed": {sid: f"reference/{f}" for sid, f in by_slot.items()},
+        "default_set": chosen or "unchanged (partial shoot)",
+    }, indent=2))
+    if chosen is None:
+        print("note: default_set left as it was — this shoot did not cover every slot the "
+              "spec names.\n"
+              f"      set it deliberately: studio character default-set {name} --set …",
+              file=sys.stderr)
+    return 0
+
+
+SHOOT_OPTIONS = [
+    click.option("--aspect-ratio", help="Override the spec's aspect ratio for every slot."),
+    click.option("--dest", help="Also keep a local copy of each plate in this directory."),
+    click.option("--dry-run", is_flag=True,
+                 help="Render every payload for approval; submit nothing, bill nothing."),
+    click.option("--expires", type=int, default=3600, help="Presign expiry (default 3600)."),
+    click.option("--extra", help="JSON object merged into every slot's model inputs."),
+    click.option("--group", type=click.Choice(["all", *P.POSE_GROUPS]), default="all",
+                 help="Shoot only this group of slots (default: all)."),
+    click.option("--identity", type=click.Choice(["auto", "seed", "refs"]), default="auto",
+                 help=("Where identity comes from: seed photos, the reference index, or "
+                       "auto (seed when it has any).")),
+    click.option("--identity-max", type=int, default=IDENTITY_MAX,
+                 help=f"How many identity images to send per slot (default {IDENTITY_MAX})."),
+    click.option("--model", help="Override the spec's model for every slot. See `models`."),
+    click.option("--pick", help="Identity from these reference files instead of seed/."),
+    click.option("--pick-tag", help="Identity from references carrying ALL these tags."),
+    click.option("--project", help="REQUIRED. The project these runs belong to."),
+    click.option("--slot", multiple=True,
+                 help="Shoot only this slot id. Repeatable — see the spec for the ids."),
+    click.option("--yes", is_flag=True, help="Skip the confirmation (non-interactive use)."),
+]
+
+
+def with_shoot_options(fn):
+    for option in reversed(SHOOT_OPTIONS):
+        fn = option(fn)
+    return fn
+
+
+@click.command("shoot", epilog="\n\nArguments:\n  NAME  The character to shoot.")
+@click.argument("name", required=True)
+@with_shoot_options
+def cmd_shoot(name, **options):
+    """Render the standard face and body reference set for a character.
+
+    One run per slot in the shot spec: a generic pose plate from config/ says how
+    to stand, the character's seed photos say who it is, and the prompt comes
+    from the spec filled with the character's own bible. Every payload is shown
+    for approval before anything is submitted.
+    """
+    opts = SimpleNamespace(**options)
+    try:
+        return run_shoot(name, opts)
+    except ShootError as exc:
+        die(str(exc))

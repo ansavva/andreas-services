@@ -1,0 +1,230 @@
+# The reference shoot — the STANDARD set of face and body plates every
+# character's `reference/` library should hold, as data.
+#
+# One slot = one recorded run = one image in `reference/<group>/`. `studio
+# character shoot` reads this file, fills each prompt from the character's own
+# bible, binds the slot's pose plate from `config/pose/`, and writes the result
+# back into the index with the description and tags recorded here — so no image
+# ever lands undescribed.
+#
+# RULES THIS FILE OBEYS
+#
+#   * NO CHARACTER SPECIFICS. Placeholders only. `{identity_block}`, `{top}`,
+#     `{minimal}` and `{must}` are filled from the bible at build time. A
+#     character's name, wardrobe or backdrop must never appear here (hard rule 1).
+#   * `pose_image` is an S3 KEY under `config/`, whose source of truth is the
+#     repo (`studio/config/`) and which `dev-setup.sh` copies out. A model is
+#     only ever handed a presigned URL of an S3 object.
+#   * `{pose_slot}` and `{identity_slots}` are filled with the REAL `[ImageN]`
+#     positions at build time. Never write `[Image1]` literally: the binding
+#     order puts the plate last, so a hard-coded number points at the wrong
+#     image.
+#   * Defaults must be PORTABLE across every registered image model, because
+#     `--model` overrides them and an unknown field fails preflight. Model-only
+#     knobs go under `per_model`.
+#
+# The prompts are deliberately blunt about the plate being a guide and nothing
+# else: an unqualified reference image invites a model to blend it, which would
+# put a grey mannequin's proportions into a character's body.
+
+defaults:
+  model: gpt-image-2
+  # 2:3 is the only portrait ratio every image model in the registry accepts
+  # (gpt-image-2, gpt-image-1.5, nano-banana-pro, nano-banana-2), and it is the
+  # proportion the existing studio sets already use.
+  aspect_ratio: "2:3"
+  # png is valid on all four despite the enums differing (png|jpeg|webp on the
+  # GPT models, jpg|png on the Nano Banana models), and it keeps the output
+  # Kling-legal — which is the whole reason these images exist.
+  extra:
+    output_format: png
+  # Shared wording, referenced by the slot prompts below.
+  backdrop_face: >-
+    Flat mid-grey seamless studio backdrop, no floor line, no props, no text.
+  backdrop_body: >-
+    White seamless studio backdrop with a soft contact shadow at the feet, no
+    floor line, no props, no text.
+  light: >-
+    Soft frontal key with gentle falloff, even and near-shadowless on the
+    subject, no hard shadow edges, no colour cast.
+  guide: >-
+    is a POSE GUIDE ONLY. Match its stance, the direction the body and head
+    face, and its framing. Take nothing else from it — not its build,
+    proportions, skin, head, face or hair, and do not blend it into the person.
+  photo: >-
+    Photographic, sharp, neutral colour, no stylisation, no filter, no vignette.
+  # Body plates deliberately strip wardrobe back so the silhouette reads. This
+  # is the one place a plate overrides the bible's wardrobe, which is why the
+  # body `must_intro` below says so out loud.
+  # No trailing full stop: the slot prompts punctuate after it, as they do for
+  # `{top}`.
+  minimal: >-
+    Wearing plain, close-fitting, unbranded dark shorts and nothing else, so the
+    build, proportions and posture read clearly
+  must_intro_face: >-
+    Preserve these identity cues exactly:
+  must_intro_body: >-
+    Preserve these identity cues exactly — but the wardrobe named above governs
+    this plate, so ignore any clothing rule among them:
+
+# Applied ONLY when that model is the resolved one, so an override never carries
+# another model's vocabulary into the payload.
+per_model:
+  gpt-image-2:
+    quality: high
+    moderation: auto
+  gpt-image-1.5:
+    quality: high
+    input_fidelity: high
+  nano-banana-pro: {}
+  nano-banana-2: {}
+
+# ── the slots ───────────────────────────────────────────────────────────────
+#
+# face: head and shoulders, one consistent plain top, neutral mouth. Four
+# angles, and the two three-quarters face OPPOSITE ways — a set with both turned
+# the same way looks like coverage and is not.
+#
+# body: full figure, head to feet, minimal clothing so the silhouette reads.
+# Five angles around the subject. Every body prompt says "head to feet" because
+# a mid-thigh crop is the failure that actually happens.
+
+slots:
+  - id: face_front
+    group: face
+    pose_image: config/pose/face/front.png
+    description: >-
+      Head and shoulders, front on, squared to camera, looking straight down the
+      lens, neutral expression, grey studio backdrop.
+    tags: [face, front, neutral, studio]
+    prompt: >-
+      {identity_slots} show the person. {pose_slot} {guide}
+      A head-and-shoulders studio portrait of the person, front on, shoulders
+      squared to camera, looking straight down the lens. Neutral expression,
+      mouth closed, eyes open and level. {top}. {backdrop_face} {light} {photo}
+      {must}
+
+  - id: face_three_quarter_left
+    group: face
+    pose_image: config/pose/face/three-quarter-left.png
+    description: >-
+      Head and shoulders, three-quarter turned to his left, eyes to camera,
+      grey studio backdrop.
+    tags: [face, three-quarter, left, neutral, studio]
+    prompt: >-
+      {identity_slots} show the person. {pose_slot} {guide}
+      A head-and-shoulders studio portrait of the person, head and shoulders
+      turned about 45 degrees to THEIR LEFT so the viewer sees the left side of
+      the face, eyes returning to the lens. Neutral expression, mouth closed.
+      {top}. {backdrop_face} {light} {photo} {must}
+
+  - id: face_three_quarter_right
+    group: face
+    pose_image: config/pose/face/three-quarter-right.png
+    description: >-
+      Head and shoulders, three-quarter turned to his right, eyes to camera,
+      grey studio backdrop.
+    tags: [face, three-quarter, right, neutral, studio]
+    prompt: >-
+      {identity_slots} show the person. {pose_slot} {guide}
+      A head-and-shoulders studio portrait of the person, head and shoulders
+      turned about 45 degrees to THEIR RIGHT so the viewer sees the right side
+      of the face, eyes returning to the lens. Neutral expression, mouth closed.
+      {top}. {backdrop_face} {light} {photo} {must}
+
+  # Profiles face frame RIGHT, here and in the body group. One direction, so a
+  # profile plate and a profile prompt can never disagree about which way the
+  # nose points.
+  - id: face_profile
+    group: face
+    pose_image: config/pose/face/profile.png
+    description: >-
+      Head and shoulders in full profile facing frame right, grey studio backdrop.
+    tags: [face, profile, neutral, studio]
+    prompt: >-
+      {identity_slots} show the person. {pose_slot} {guide}
+      A head-and-shoulders studio portrait of the person in FULL PROFILE, head
+      turned 90 degrees to face frame right, gaze level and straight ahead, not
+      at the lens. Neutral expression, mouth closed. The nose, brow and jaw line
+      read clearly against the backdrop. {top}. {backdrop_face} {light} {photo}
+      {must}
+
+  - id: body_front
+    group: body
+    pose_image: config/pose/body/front.png
+    description: >-
+      Full body head to feet, front on, arms relaxed at the sides, white
+      seamless backdrop.
+    tags: [body, front, full-body, studio]
+    prompt: >-
+      {identity_slots} show the person. {pose_slot} {guide}
+      A full-length studio photograph of the person, THE WHOLE FIGURE FROM HEAD
+      TO FEET IN FRAME including both feet, standing front on, shoulders squared
+      to camera, weight even on both legs, arms relaxed at the sides and clear
+      of the body, hands open. Neutral expression, looking at the lens.
+      {minimal}. {backdrop_body} {light} {photo} {must}
+
+  - id: body_three_quarter_left
+    group: body
+    pose_image: config/pose/body/three-quarter-left.png
+    description: >-
+      Full body head to feet, turned three-quarters to his left, white seamless
+      backdrop.
+    tags: [body, three-quarter, left, full-body, studio]
+    prompt: >-
+      {identity_slots} show the person. {pose_slot} {guide}
+      A full-length studio photograph of the person, THE WHOLE FIGURE FROM HEAD
+      TO FEET IN FRAME including both feet, the body turned about 45 degrees to
+      THEIR LEFT, head following the body, arms relaxed at the sides. Neutral
+      expression. {minimal}. {backdrop_body} {light} {photo} {must}
+
+  - id: body_three_quarter_right
+    group: body
+    pose_image: config/pose/body/three-quarter-right.png
+    description: >-
+      Full body head to feet, turned three-quarters to his right, white seamless
+      backdrop.
+    tags: [body, three-quarter, right, full-body, studio]
+    prompt: >-
+      {identity_slots} show the person. {pose_slot} {guide}
+      A full-length studio photograph of the person, THE WHOLE FIGURE FROM HEAD
+      TO FEET IN FRAME including both feet, the body turned about 45 degrees to
+      THEIR RIGHT, head following the body, arms relaxed at the sides. Neutral
+      expression. {minimal}. {backdrop_body} {light} {photo} {must}
+
+  - id: body_profile
+    group: body
+    pose_image: config/pose/body/profile.png
+    description: >-
+      Full body head to feet in side profile facing frame right, white seamless
+      backdrop.
+    tags: [body, profile, side, full-body, studio]
+    prompt: >-
+      {identity_slots} show the person. {pose_slot} {guide}
+      A full-length studio photograph of the person, THE WHOLE FIGURE FROM HEAD
+      TO FEET IN FRAME including both feet, in SIDE PROFILE facing frame right,
+      body and head both turned 90 degrees, arms relaxed at the sides. The
+      posture and the line of the back read clearly. {minimal}. {backdrop_body}
+      {light} {photo} {must}
+
+  - id: body_back
+    group: body
+    pose_image: config/pose/body/back.png
+    description: >-
+      Full body head to feet, straight from behind, white seamless backdrop.
+    tags: [body, back, full-body, studio]
+    prompt: >-
+      {identity_slots} show the person. {pose_slot} {guide}
+      A full-length studio photograph of the person seen STRAIGHT FROM BEHIND,
+      THE WHOLE FIGURE FROM HEAD TO FEET IN FRAME including both feet, standing
+      squarely, arms relaxed at the sides, the back of the head to the lens.
+      {minimal}. {backdrop_body} {light} {photo} {must}
+
+# What `--character <name>` sends when nobody picks. Face-led, one clean body
+# read, and kept well under the smallest cap in play (Kling takes 7).
+default_set:
+  - face_front
+  - face_three_quarter_left
+  - face_three_quarter_right
+  - body_front
+  - body_back

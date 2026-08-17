@@ -136,8 +136,8 @@ def gather(entry: dict, s3, args) -> dict:
         if bad:
             raise SubmitError(
                 f"{entry['key']} accepts only {sorted(exts)}; incompatible: {bad}\n"
-                f"       convert with: studio s3_convert "
-                f"--for {entry['key']} …"
+                f"       convert with: studio convert "
+                f"--for {entry['key']} --key <key> --add-input <project>"
             )
         if cap and len(keys) > cap:
             raise SubmitError(
@@ -237,10 +237,16 @@ def execute(entry: dict, payload: dict, bindings: dict, s3, token: str, args) ->
     run = f"{project}/{run_id}"
 
     prompt_source = json.load(open(args.prompt_json)) if getattr(args, "prompt_json", None) else None
+    # `--character` doubles as "resolve refs from" and "this run is of", which is
+    # the same thing for `studio run`. A reference shoot resolves its own keys
+    # (seed photos, a pose plate) and so passes no `--character`, but the run is
+    # still OF that character — and `runs find --character` is how that
+    # association is read back. Hence the explicit override.
+    characters = list(getattr(args, "record_characters", None) or args.character or [])
     try:
         R.record_request(s3, project, run_id, kind=kind, engine=entry["skill"],
                          model=entry["model"], input=payload, bindings=bindings,
-                         characters=args.character or [], prompt_source=prompt_source)
+                         characters=characters, prompt_source=prompt_source)
     except R.RunError as e:
         raise SubmitError(f"refusing to record an invalid request: {e}")
     print(f"run {run}", file=sys.stderr)

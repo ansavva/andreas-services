@@ -301,8 +301,14 @@ def cmd_textblock(name):
 
 @main.command("create")
 @click.argument("name", required=True)
+@click.option("--dry-run", is_flag=True, help="With --shoot: render the payloads, submit nothing.")
 @click.option("--from-profile", help="Local profile.yaml to seed with (default: blank template).")
-def cmd_create(name, from_profile):
+@click.option("--model", help="With --shoot: override the shot spec's model.")
+@click.option("--project", help="With --shoot: REQUIRED. The project the shoot's runs belong to.")
+@click.option("--shoot", is_flag=True,
+              help="Go straight into the standard reference shoot (asks before it bills).")
+@click.option("--yes", is_flag=True, help="With --shoot: skip the confirmation.")
+def cmd_create(name, dry_run, from_profile, model, project, shoot, yes):
     s3 = s3c.client()
     check_name(name)
     src = from_profile or TEMPLATE
@@ -310,11 +316,37 @@ def cmd_create(name, from_profile):
         die(f"profile source not found: {src}")
     if src != TEMPLATE:  # the template is deliberately unfilled; anything else must be real
         check_profile(parse_profile(read_text(src), src), src, name)
+    if shoot and src == TEMPLATE:
+        die("--shoot needs a real bible: the blank template has no wardrobe or consistency "
+            "block to build a prompt from. Pass --from-profile.")
     uri = put_file(s3, src, profile_key(name), PROFILE_CT)
     print(f"created character {name!r}: {uri}", file=sys.stderr)
     if src == TEMPLATE:
         print("  (blank template — fill it in, then `set-profile` the result.)", file=sys.stderr)
-    print(f"  next: add references with `studio character add-refs {name} <img>...`", file=sys.stderr)
+
+    if not shoot:
+        print(f"  next: seed photos with `studio character add-to {name} seed <img>...`, then\n"
+              f"        the standard set with `studio character shoot {name} --project <p>`",
+              file=sys.stderr)
+        return 0
+
+    # Deferred deliberately. The shoot invokes models and lives in `engine/`,
+    # which imports this module — so importing it at module scope would point the
+    # dependency arrow both ways. The character store stays ignorant of the
+    # engine; only this one call knows about it.
+    from types import SimpleNamespace
+
+    from studio_pipeline.engine import shoot as SHOOT
+    opts = SimpleNamespace(
+        project=project, model=model, dry_run=dry_run, yes=yes,
+        group="all", slot=(), identity="auto", identity_max=SHOOT.IDENTITY_MAX,
+        pick=None, pick_tag=None, aspect_ratio=None, extra=None,
+        dest=None, expires=3600,
+    )
+    try:
+        return SHOOT.run_shoot(name, opts)
+    except SHOOT.ShootError as exc:
+        die(str(exc))
 
 
 @main.command("set-profile")

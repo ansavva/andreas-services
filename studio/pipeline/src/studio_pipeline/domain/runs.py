@@ -72,7 +72,8 @@ SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp"}
 # What a binding is allowed to point at. Anything else is a typo or a URL, and
 # either way it must not reach a stored record.
-KEY_ROOTS = (s3c.key(P.CHARACTERS + "/"), s3c.key(P.PROJECTS + "/"), s3c.key("phrasebook/"))
+KEY_ROOTS = (s3c.key(P.CHARACTERS + "/"), s3c.key(P.PROJECTS + "/"), s3c.key("phrasebook/"),
+             s3c.key(P.config_root()))
 VID_EXTS = {".mp4", ".mov", ".webm", ".m4v"}
 
 
