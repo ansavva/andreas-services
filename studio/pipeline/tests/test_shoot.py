@@ -272,9 +272,32 @@ def test_identity_seed_explicitly_refuses_to_substitute(media_bucket):
         SHOOT.identity_keys(media_bucket, "subject-b", "seed", None, None)
 
 
-def test_identity_is_capped(media_bucket):
-    keys, _ = SHOOT.identity_keys(media_bucket, "subject-a", "refs", None, None, limit=1)
-    assert len(keys) == 1
+def test_an_oversized_identity_pool_is_refused_not_truncated(media_bucket):
+    """Sorted order is not quality order, and `[:limit]` hides that.
+
+    One character's seed pool opens with a poster, a launch graphic, a collage
+    and a wide shot of him across a room — the four worst images in it for
+    carrying a face, and exactly the four a silent truncation would have sent.
+    `reference/` already refuses an over-cap selection for this reason; seed now
+    does too.
+    """
+    with pytest.raises(SHOOT.ShootError) as exc:
+        SHOOT.identity_keys(media_bucket, "subject-a", "refs", None, None, limit=1)
+    assert "holds" in str(exc.value)          # says how many it found
+    assert "subject-a_1.webp" in str(exc.value)  # and lists them to choose from
+
+
+def test_seed_pick_names_the_identity_images(media_bucket):
+    keys, source = SHOOT.identity_keys(media_bucket, "subject-a", "seed", None, None,
+                                       limit=4, seed_pick="subject-a_1.webp")
+    assert source == "seed"
+    assert keys == ["characters/subject-a/seed/subject-a_1.webp"]
+
+
+def test_seed_pick_rejects_a_file_that_is_not_there(media_bucket):
+    with pytest.raises(SHOOT.ShootError, match="not in"):
+        SHOOT.identity_keys(media_bucket, "subject-a", "seed", None, None,
+                            seed_pick="nope.webp")
 
 
 def test_citations_match_where_the_plate_actually_lands(media_bucket, spec):

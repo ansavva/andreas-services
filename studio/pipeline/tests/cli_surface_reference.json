@@ -1121,6 +1121,21 @@
             "required": false,
             "type": "str"
           },
+          "seed_pick": {
+            "choices": null,
+            "default": null,
+            "dest": "seed_pick",
+            "flag": false,
+            "flags": [
+              "--seed-pick"
+            ],
+            "help": "Comma-separated seed files to carry identity, when seed/ holds more than one slot sends.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
           "slot": {
             "choices": null,
             "default": null,

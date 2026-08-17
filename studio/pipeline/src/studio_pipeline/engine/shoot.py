@@ -253,29 +253,78 @@ def check_plates(s3, slots: list[dict]) -> None:
         )
 
 
+def _too_many(name: str, pool: str, keys: list[str], limit: int, how: str) -> ShootError:
+    """Refuse an oversized pool rather than taking the first few.
+
+    `reference/` already refuses an over-cap selection rather than truncating,
+    "because which images a generation saw should not be decided by whatever the
+    folder listing happened to return". A seed pool deserves the same: sorted
+    order is not quality order. One character's seed pool opens with a poster, a
+    launch graphic, a collage and a wide shot of him across a room — the four
+    worst images in it for carrying a face, and exactly the four a silent
+    `[:limit]` would have sent.
+    """
+    listing = "".join(f"       {os.path.basename(k)}\n" for k in keys[:20])
+    more = f"       … and {len(keys) - 20} more\n" if len(keys) > 20 else ""
+    return ShootError(
+        f"{name}'s {pool}/ holds {len(keys)} images and a slot sends {limit}.\n"
+        f"       Name the ones that carry identity best — a clear, unobstructed "
+        f"view of the face and build:\n{listing}{more}"
+        f"       {how}"
+    )
+
+
 def identity_keys(s3, name: str, source: str, pick: str | None, tags: str | None,
-                  limit: int = IDENTITY_MAX) -> tuple[list[str], str]:
+                  limit: int = IDENTITY_MAX,
+                  seed_pick: str | None = None) -> tuple[list[str], str]:
     """The images that say WHO this is, and where they came from.
 
-    Seed photographs are preferred: they are the founding source material, and
-    driving a shoot off already-generated references feeds model output back in
-    as identity, which compounds drift with every pass.
+    Seed material is preferred: it is the founding source, and driving a shoot
+    off already-generated references feeds model output back in as identity,
+    which compounds drift with every pass.
+
+    Nothing here silently truncates. If a pool holds more than one slot sends,
+    the caller is asked which — see `_too_many`.
     """
     if pick or tags:
         keys = REFS.character_ref_keys(
             name, None, [x.strip() for x in pick.split(",")] if pick else None,
             [t.strip() for t in tags.split(",")] if tags else None)
-        return keys[:limit], "reference"
+        if len(keys) > limit:
+            raise _too_many(name, "reference", keys, limit,
+                            "Narrow --pick / --pick-tag, or raise --identity-max.")
+        return keys, "reference"
 
     if source in ("auto", "seed"):
         seed = REFS.character_pool_keys(name, "seed")
         seed = [k for k in seed if os.path.splitext(k)[1].lower() in R.IMG_EXTS]
+        if seed_pick:
+            want = [x.strip() for x in seed_pick.split(",")]
+            by_base = {os.path.basename(k): k for k in seed}
+            by_stem = {os.path.splitext(b)[0]: k for b, k in by_base.items()}
+            missing = [w for w in want if w not in by_base and w not in by_stem]
+            if missing:
+                raise ShootError(
+                    f"not in {name}'s seed/: {', '.join(missing)}\n"
+                    f"       see: studio character pool {name} seed")
+            chosen = [by_base.get(w) or by_stem[w] for w in want]
+            if len(chosen) > limit:
+                raise _too_many(name, "seed", chosen, limit,
+                                "Pick fewer, or raise --identity-max.")
+            return chosen, "seed"
         if seed:
-            return seed[:limit], "seed"
+            if len(seed) > limit:
+                raise _too_many(
+                    name, "seed", seed, limit,
+                    f"--seed-pick <file>,<file>       # name them\n"
+                    f"       --identity refs --pick …        # use the reference index instead\n"
+                    f"       studio contact-sheet --character {name} --folder seed --out "
+                    f"/tmp/{name}-seed.png   # look first")
+            return seed, "seed"
         if source == "seed":
             raise ShootError(
                 f"{name} has no images in seed/, and --identity seed was asked for.\n"
-                f"       Add the founding photos: studio character add-to {name} seed <files…>"
+                f"       Add the founding material: studio character add-to {name} seed <files…>"
             )
 
     keys = REFS.character_ref_keys(name, None, None, None)
@@ -283,9 +332,13 @@ def identity_keys(s3, name: str, source: str, pick: str | None, tags: str | None
         raise ShootError(
             f"{name} has nothing to carry identity — seed/ is empty and reference/ has "
             f"no selection.\n"
-            f"       Add source photos first: studio character add-to {name} seed <files…>"
+            f"       Add source material first: studio character add-to {name} seed <files…>"
         )
-    return keys[:limit], "reference"
+    if len(keys) > limit:
+        raise _too_many(name, "reference", keys, limit,
+                        f"Narrow it with --pick / --pick-tag, or set a default_set:\n"
+                        f"       studio character refs {name} --describe")
+    return keys, "reference"
 
 
 # --------------------------------------------------------------------------
@@ -407,7 +460,7 @@ def run_shoot(name: str, opts) -> int:
     check_plates(s3, slots)
 
     ident, source = identity_keys(s3, name, opts.identity, opts.pick, opts.pick_tag,
-                                  opts.identity_max)
+                                  opts.identity_max, getattr(opts, "seed_pick", None))
     opts.identity = ident
     print(f"identity from {source}/ — {len(ident)} image(s):", file=sys.stderr)
     for k in ident:
@@ -491,6 +544,9 @@ SHOOT_OPTIONS = [
                  help=f"How many identity images to send per slot (default {IDENTITY_MAX})."),
     click.option("--model", help="Override the spec's model for every slot. See `models`."),
     click.option("--pick", help="Identity from these reference files instead of seed/."),
+    click.option("--seed-pick", "seed_pick",
+                 help="Comma-separated seed files to carry identity, when seed/ holds more "
+                      "than one slot sends."),
     click.option("--pick-tag", help="Identity from references carrying ALL these tags."),
     click.option("--project", help="REQUIRED. The project these runs belong to."),
     click.option("--slot", multiple=True,
