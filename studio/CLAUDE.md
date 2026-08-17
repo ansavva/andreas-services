@@ -94,17 +94,35 @@ mode.
 
 ## Which skill
 
-Sixteen skills, in **two families**. Pick the family first — the wrong one wastes
-a session.
+**Load one before doing anything else in `studio/`.** Sixteen skills in **two
+families**; route by what the task *changes*, not by what it mentions.
 
-| Family | You are | Describes |
+| If the task changes… | Load | Examples |
 |---|---|---|
-| **`studio-media-*`** (15) | using studio to make media | the CLI surface — `studio <command>` |
-| **`studio-code-*`** (1) | changing studio's own code | the code behind it |
+| **media, or an S3 record** — an image, a clip, a character, a project, a run | a **`studio-media-*`** skill | "make a shot of…", "add a reference", "what characters do we have", "cut these scenes together" |
+| **studio's own code** — anything under `pipeline/`, `backend/`, `frontend/`, `infra/` | **`studio-code-pipeline`** | "add a subcommand", "fix this import", "why does this test fail", "move this module" |
 
-`studio-code-pipeline` is the way into the pipeline package: the module map, the
-layout, the conventions that bite. Everything below is `studio-media-*`; start
-here, then read that skill's own `SKILL.md`.
+The families differ in what they are allowed to say, which is why the split
+exists: a `studio-media-*` skill describes the **CLI surface** and never names a
+module; `studio-code-*` names modules because the code is its subject. Enforced
+by `pipeline/scripts/lint_skills.py`.
+
+**Load the skill with the Skill tool. Do not skim its `SKILL.md`.** These pages
+put the S3 layout and the concepts up top and the runnable commands further
+down, so reading the first screen and starting work reliably produces the wrong
+approach — most often falling back to raw `aws s3` calls to rebuild by hand what
+a `studio` subcommand already returns. If you have read half a page and are
+reaching for the AWS CLI, that is the signal you skipped the skill.
+
+`studio --help` lists the whole command surface and is the fastest correction
+when you are unsure a command exists.
+
+> The app half (`backend/`, `frontend/`) has no skill of its own yet —
+> `studio-code-pipeline` covers the pipeline, and
+> [docs/WEB_APP.md](docs/WEB_APP.md) covers the deployed service. Add
+> `studio-code-app` when it earns one.
+
+### The `studio-media-*` skills
 
 | You want to | Use |
 |---|---|
