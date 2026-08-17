@@ -193,7 +193,9 @@ def render_payload(run: str, model: str, endpoint: str, payload: dict,
         inp[field] = ([f"<presigned: {k}>" for k in val] if isinstance(val, list)
                       else f"<presigned: {val}>")
 
-    dump = lambda o: json.dumps(o, indent=2, ensure_ascii=False)
+    def dump(o):
+        return json.dumps(o, indent=2, ensure_ascii=False)
+
     return "\n".join([
         "===== 1/2  PROMPT — serialized into the `prompt` string at submit time =====",
         dump(prompt_doc),

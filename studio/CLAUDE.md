@@ -59,6 +59,39 @@ URL. This is enforced in code: `runs.py` refuses a URL-shaped binding.
 
 ---
 
+## LOCAL RUNS AGAINST PROD. THIS IS DELIBERATE.
+
+Studio has **one environment**, and both halves of local development point at
+it. `studio <command>` reads and writes the live media bucket. `dev-up.sh`
+serves the app from localhost against that same bucket, signing in to the
+**live** Cognito pool. There is no dev bucket, no dev pool, no seed data.
+
+That is a real departure from every other service in this monorepo, and it is
+on purpose: studio is a view onto one library of generated media. A second,
+empty bucket would exercise none of the behaviour that matters — the listing,
+the sorting, the reel, the tidy-up all only mean anything against real
+material — and keeping two copies of ~700 MB in sync would be its own failure
+mode.
+
+**What follows from it, and what you must hold in your head:**
+
+- **A `delete` you run locally is a delete in production.** So is a rename, a
+  move, and a `curate` pass. There is no undo prompt beyond the one the command
+  itself gives you.
+- What makes that survivable is not care, it is the bucket: versioning is on,
+  and neither the API role nor your own commands are granted
+  `s3:DeleteObjectVersion`. Every delete is a tombstone, so it is recoverable.
+  Do not "tidy up" that grant.
+- `scripts/dev-setup.sh` writes `frontend/.env.local` and pins the bucket in
+  `.env`, reading both from SSM — the values the deploy workflow wrote from
+  Terraform's outputs, so local cannot drift from what is deployed. Re-run it
+  rather than editing either file.
+- The one thing that is genuinely local is the **API**: `dev-up.sh` runs Flask
+  on `:8000` and the SPA points at it, so backend changes are tested locally
+  against real data before they reach the Lambda.
+
+---
+
 ## Which skill
 
 Fifteen skills, discovered as `studio:<name>`. Start here, then read that

@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import json
 import os
-from types import SimpleNamespace
 
 import click
 
@@ -150,14 +149,10 @@ def main():
 
 @main.command("check")
 @click.option("--json", "json_", is_flag=True)
-def _cmd_check(json_):
-    return _run(SimpleNamespace(cmd="check", json=json_))
-
-
-def _run(args):
-
+def do_check(json_):
+    """Report records that name an object which is no longer there."""
     report = check(s3c.client())
-    if args.json:
+    if json_:
         print(json.dumps(report, indent=2))
     else:
         print(f"documents        {report['documents']}")
@@ -167,4 +162,5 @@ def _run(args):
             print(f"  {d['record']}\n    -> {d['missing']}")
         if len(report["dangling"]) > 20:
             print(f"  … and {len(report['dangling']) - 20} more")
-    return 1 if report["dangling"] else 0
+    if report["dangling"]:
+        raise SystemExit(1)

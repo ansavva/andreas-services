@@ -37,7 +37,6 @@ from __future__ import annotations
 import datetime as dt
 import io
 import json
-from types import SimpleNamespace
 
 import click
 import yaml
@@ -79,9 +78,72 @@ def terms(s3, model_key: str) -> list[dict]:
             for e in (section.get("entries") or []) if e.get("avoid")]
 
 
+def _open():
+    """The document and its model sections, loaded once.
+
+    Every command needs all three, and they were shared by living in one
+    `_run`. A helper keeps that sharing without the dispatch.
+    """
+    s3 = client()
+    doc = load(s3)
+    return s3, doc, doc.setdefault("models", {})
+
+
 @click.group(help=__doc__)
 def main():
     pass
+
+
+@main.command("models")
+def do_models():
+    """List the models covered."""
+    _s3, _doc, models = _open()
+    for k, v in models.items():
+        print(f"{k:20} {v.get('replicate','?'):40} "
+              f"entries={len(v.get('entries') or [])}")
+
+
+@main.command("terms")
+@click.option("--model", required=True)
+def do_terms(model):
+    """The avoid/use pairs for one model, as JSON."""
+    s3, _doc, _models = _open()
+    print(json.dumps(terms(s3, model)))
+
+
+@main.command("show")
+@click.option("--model", help="limit to one model key")
+def do_show(model):
+    """Print the phrasebook."""
+    _s3, _doc, models = _open()
+    if model and model not in models:
+        die(f"no phrasebook section for {model!r}")
+    out = {model: models[model]} if model else models
+    print(yaml.safe_dump(out, sort_keys=False, allow_unicode=True))
+
+
+@main.command("check")
+@click.option("--model", required=True)
+@click.option("--text", required=True)
+def do_check(model, text):
+    """Scan text against this model's wording list. Exits 1 on a hit."""
+    _s3, _doc, models = _open()
+    section = models.get(model)
+    if not section:
+        print(f"no wording list for {model}")
+        return
+    low = text.lower()
+    # An entry may carry an empty `avoid` — a placeholder section. Skipping
+    # it matters: "" is a substring of everything.
+    hits = [e for e in (section.get("entries") or [])
+            if e.get("avoid") and e["avoid"].lower() in low]
+    if not hits:
+        print(f"no substitutions apply ({len(section.get('entries') or [])} entries)")
+        return
+    for e in hits:
+        print(f"AVOID  {e['avoid']!r}\n  USE  {e['use']!r}"
+              + (f"\n  note {e['note']}" if e.get("note") else ""))
+    raise SystemExit(1)
 
 
 @main.command("add")
@@ -90,78 +152,16 @@ def main():
 @click.option("--note", default='', help="optional free text — where this came from")
 @click.option("--replicate", help="owner/name, when first creating the section")
 @click.option("--use", required=True)
-def _cmd_add(avoid, model, note, replicate, use):
-    return _run(SimpleNamespace(cmd="add", avoid=avoid, model=model, note=note, replicate=replicate, use=use))
-
-@main.command("check")
-@click.option("--model", required=True)
-@click.option("--text", required=True)
-def _cmd_check(model, text):
-    return _run(SimpleNamespace(cmd="check", model=model, text=text))
-
-@main.command("models")
-def _cmd_models():
-    return _run(SimpleNamespace(cmd="models"))
-
-@main.command("show")
-@click.option("--model", help="limit to one model key")
-def _cmd_show(model):
-    return _run(SimpleNamespace(cmd="show", model=model))
-
-@main.command("terms")
-@click.option("--model", required=True)
-def _cmd_terms(model):
-    return _run(SimpleNamespace(cmd="terms", model=model))
-
-
-def _run(args):
-    s3 = client()
-    doc = load(s3)
-    models = doc.setdefault("models", {})
-
-    if args.cmd == "models":
-        for k, v in models.items():
-            print(f"{k:20} {v.get('replicate','?'):40} "
-                  f"entries={len(v.get('entries') or [])}")
-        return 0
-
-    if args.cmd == "terms":
-        print(json.dumps(terms(s3, args.model)))
-        return 0
-
-    if args.cmd == "show":
-        out = {args.model: models[args.model]} if args.model else models
-        if args.model and args.model not in models:
-            die(f"no phrasebook section for {args.model!r}")
-        print(yaml.safe_dump(out, sort_keys=False, allow_unicode=True))
-        return 0
-
-    if args.cmd == "check":
-        section = models.get(args.model)
-        if not section:
-            print(f"no wording list for {args.model}")
-            return 0
-        low = args.text.lower()
-        # An entry may carry an empty `avoid` — a placeholder section. Skipping
-        # it matters: "" is a substring of everything.
-        hits = [e for e in (section.get("entries") or [])
-                if e.get("avoid") and e["avoid"].lower() in low]
-        if not hits:
-            print(f"no substitutions apply ({len(section.get('entries') or [])} entries)")
-            return 0
-        for e in hits:
-            print(f"AVOID  {e['avoid']!r}\n  USE  {e['use']!r}"
-                  + (f"\n  note {e['note']}" if e.get("note") else ""))
-        return 1
-
-    section = models.setdefault(args.model, {"replicate": None, "entries": []})
-    if args.replicate:
-        section["replicate"] = args.replicate
+def do_add(avoid, model, note, replicate, use):
+    """Record a substitution."""
+    s3, doc, models = _open()
+    section = models.setdefault(model, {"replicate": None, "entries": []})
+    if replicate:
+        section["replicate"] = replicate
     section.setdefault("entries", []).append({
-        "avoid": args.avoid,
-        "use": args.use,
-        "note": args.note,
+        "avoid": avoid,
+        "use": use,
+        "note": note,
         "added": dt.datetime.now(dt.UTC).strftime("%Y-%m-%d"),
     })
     print(f"recorded -> s3://{BUCKET}/{save(s3, doc)}")
-    return 0

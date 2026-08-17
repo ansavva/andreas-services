@@ -55,7 +55,6 @@ import datetime as dt
 import json
 import os
 import tempfile
-from types import SimpleNamespace
 
 import click
 
@@ -196,67 +195,59 @@ def main():
     pass
 
 
-@main.command("list")
-@click.argument("project", required=True)
-def _cmd_list(project):
-    return _run(SimpleNamespace(cmd="list", project=project))
-
 @main.command("new")
 @click.argument("project", required=True)
 @click.option("--dest", help="also keep the stitched file locally")
 @click.option("--part", hidden=True, multiple=True)
-@click.option("--shot", multiple=True, help=("a run output, in cut order. Repeatable. Accepts "
-              "<project>/<run_id>, <run_id>, a unique slug fragment, or #N."))
+@click.option("--shot", multiple=True,
+              help=("a run output, in cut order. Repeatable. Accepts "
+                    "<project>/<run_id>, <run_id>, a unique slug fragment, or #N."))
 @click.option("--slug", required=True)
-def _cmd_new(project, dest, part, shot, slug):
-    return _run(SimpleNamespace(cmd="new", project=project, dest=dest, shot=part, slug=slug))
+def do_new(project, dest, part, shot, slug):
+    """Assemble runs into one continuous cut."""
+    # `--part` is the old spelling of `--shot`, kept working and hidden. In
+    # argparse both wrote the same dest; Click gives two separate values, so
+    # the merge has to happen here or the alias is silently ignored.
+    shots = list(shot) + list(part)
+    if not shots:
+        die("a scene needs at least one --shot <runref>")
+    m = create(client(), project, slug, shots, dest)
+    print(json.dumps({k: m[k] for k in ("scene", "output", "stitch")}, indent=2))
+
+
+@main.command("list")
+@click.argument("project", required=True)
+def do_list(project):
+    """Every scene in a project."""
+    ids = list_scenes(client(), project)
+    if not ids:
+        print(f"project {project} has no scenes")
+    for i in ids:
+        print(i)
+
+
+@main.command("show")
+@click.argument("ref", required=True)
+@click.option("--project")
+def do_show(ref, project):
+    """One scene's record."""
+    s3 = client()
+    owner, sid = resolve_scene(s3, ref, project)
+    print(json.dumps(R.read_json(s3, scene_key(owner, sid, "scene.json")), indent=2))
+
 
 @main.command("outputs")
 @click.argument("ref", required=True)
 @click.option("--expires", type=int, default=3600)
 @click.option("--presign", is_flag=True)
 @click.option("--project")
-def _cmd_outputs(ref, expires, presign, project):
-    return _run(SimpleNamespace(cmd="outputs", ref=ref, expires=expires, presign=presign, project=project))
-
-@main.command("show")
-@click.argument("ref", required=True)
-@click.option("--project")
-def _cmd_show(ref, project):
-    return _run(SimpleNamespace(cmd="show", ref=ref, project=project))
-
-
-def _run(args):
+def do_outputs(ref, expires, presign, project):
+    """The stitched file(s), as keys or as temporary URLs."""
     s3 = client()
-
-    if args.cmd == "new":
-        if not args.shot:
-            die("a scene needs at least one --shot <runref>")
-        m = create(s3, args.project, args.slug, args.shot, args.dest)
-        print(json.dumps({k: m[k] for k in ("scene", "output", "stitch")}, indent=2))
-        return 0
-
-    if args.cmd == "list":
-        ids = list_scenes(s3, args.project)
-        if not ids:
-            print(f"project {args.project} has no scenes")
-        for i in ids:
-            print(i)
-        return 0
-
-    project, sid = resolve_scene(s3, args.ref, args.project)
-
-    if args.cmd == "show":
-        print(json.dumps(R.read_json(s3, scene_key(project, sid, "scene.json")), indent=2))
-        return 0
-
-    if args.cmd == "outputs":
-        keys = list_keys(s3, P.scene_prefix(project, sid) + "/output/")
-        if args.presign:
-            for k, u in zip(keys, R.presign(s3, keys, args.expires)):
-                print(f"{k}\n  {u}")
-        else:
-            print("\n".join(keys))
-        return 0
-
-    return 1
+    owner, sid = resolve_scene(s3, ref, project)
+    keys = list_keys(s3, P.scene_prefix(owner, sid) + "/output/")
+    if presign:
+        for k, u in zip(keys, R.presign(s3, keys, expires)):
+            print(f"{k}\n  {u}")
+    else:
+        print("\n".join(keys))

@@ -51,7 +51,6 @@ from __future__ import annotations
 
 import os
 import tempfile
-from types import SimpleNamespace
 
 import click
 
@@ -138,9 +137,48 @@ def add_to_input_pool(project: str, path: str) -> str:
     return added[0]["key"]
 
 
+def _fetch(ref, project, dest):
+    """Pull the run's video down and decide where frames will be written."""
+    tmp = tempfile.mkdtemp(prefix="frames-")
+    owner, run_id, src = fetch_video(client(), ref, project, tmp)
+    dest_dir = dest or tmp
+    os.makedirs(dest_dir, exist_ok=True)
+    return owner, run_id, src, dest_dir
+
+
+def _emit(project, run_id, out, add_input, chain):
+    """Print the frame, and optionally put it in the pool and the chain."""
+    print(out)
+    if not add_input:
+        if chain:
+            die("--chain needs --add-input: a chain records S3 keys, and the frame "
+                "has to be in the bucket before it has one")
+        return
+    key = add_to_input_pool(project, out)
+    print(key)
+    if chain:
+        doc = chain_add(client(), project, chain, key, f"{project}/{run_id}")
+        print(f"chain {doc['chain']}: {len(doc['frames'])} frame(s)")
+
+
 @click.group(help=__doc__)
 def main():
     pass
+
+
+@main.command("last", epilog="\n\nArguments:\n  REF  runref: <project>/<run_id>, <project>/latest, a slug fragment, #N")
+@click.argument("ref", required=True)
+@click.option("--add-input", is_flag=True, help=("upload into the PROJECT's input pool (never a character's "
+              "reference/)"))
+@click.option("--chain", help=("also record this frame in a scene chain, so the next shot's "
+              "reference_images can be derived rather than recalled"))
+@click.option("--dest", help="directory to write the image into")
+@click.option("--project", help="project, when the runref does not carry one")
+def do_last(ref, add_input, chain, dest, project):
+    """The final frame — the chaining handoff."""
+    project, run_id, src, dest_dir = _fetch(ref, project, dest)
+    out = grab(src, None, os.path.join(dest_dir, f"{run_id}_last.png"), from_end=0.2)
+    _emit(project, run_id, out, add_input, chain)
 
 
 @main.command("at", epilog="\n\nArguments:\n  REF  runref: <project>/<run_id>, <project>/latest, a slug fragment, #N")
@@ -152,8 +190,26 @@ def main():
 @click.option("--dest", help="directory to write the image into")
 @click.option("--project", help="project, when the runref does not carry one")
 @click.option("--time", type=float, required=True, help="seconds")
-def _cmd_at(ref, add_input, chain, dest, project, time):
-    return _run(SimpleNamespace(cmd="at", ref=ref, add_input=add_input, chain=chain, dest=dest, project=project, time=time))
+def do_at(ref, add_input, chain, dest, project, time):
+    """One frame at a given time."""
+    project, run_id, src, dest_dir = _fetch(ref, project, dest)
+    out = grab(src, time, os.path.join(dest_dir, f"{run_id}_t{time:g}.png"))
+    _emit(project, run_id, out, add_input, chain)
+
+
+@main.command("grid", epilog="\n\nArguments:\n  REF  runref: <project>/<run_id>, <project>/latest, a slug fragment, #N")
+@click.argument("ref", required=True)
+@click.option("--count", type=int, default=4, help="frames to sample (default 4)")
+@click.option("--dest", help="directory to write the image into")
+@click.option("--project", help="project, when the runref does not carry one")
+def do_grid(ref, count, dest, project):
+    """A contact sheet, for looking at the clip."""
+    project, run_id, src, dest_dir = _fetch(ref, project, dest)
+    out = os.path.join(dest_dir, f"{run_id}_grid.jpg")
+    times = contact_grid(src, count, out)
+    print(out)
+    print("sampled at: " + ", ".join(f"{t:.1f}s" for t in times))
+
 
 @main.command("chain", epilog="\n\nArguments:\n  REF  <project>/<slug>")
 @click.argument("ref", required=True)
@@ -163,79 +219,25 @@ def _cmd_at(ref, add_input, chain, dest, project, time):
 @click.option("--args", is_flag=True, help="print as `--key K --key K …`, ready to paste into a run")
 @click.option("--max", "max_", type=int, help="cap the list (Kling takes 7); keeps the seed and the newest")
 @click.option("--seed", help="S3 key of the image shot 1 started from")
-def _cmd_chain(ref, add_key, args, max_, seed):
-    return _run(SimpleNamespace(cmd="chain", ref=ref, add_keys=add_key, args=args, max_n=max_, seed=seed))
-
-@main.command("grid", epilog="\n\nArguments:\n  REF  runref: <project>/<run_id>, <project>/latest, a slug fragment, #N")
-@click.argument("ref", required=True)
-@click.option("--count", type=int, default=4, help="frames to sample (default 4)")
-@click.option("--dest", help="directory to write the image into")
-@click.option("--project", help="project, when the runref does not carry one")
-def _cmd_grid(ref, count, dest, project):
-    return _run(SimpleNamespace(cmd="grid", ref=ref, count=count, dest=dest, project=project))
-
-@main.command("last", epilog="\n\nArguments:\n  REF  runref: <project>/<run_id>, <project>/latest, a slug fragment, #N")
-@click.argument("ref", required=True)
-@click.option("--add-input", is_flag=True, help=("upload into the PROJECT's input pool (never a character's "
-              "reference/)"))
-@click.option("--chain", help=("also record this frame in a scene chain, so the next shot's "
-              "reference_images can be derived rather than recalled"))
-@click.option("--dest", help="directory to write the image into")
-@click.option("--project", help="project, when the runref does not carry one")
-def _cmd_last(ref, add_input, chain, dest, project):
-    return _run(SimpleNamespace(cmd="last", ref=ref, add_input=add_input, chain=chain, dest=dest, project=project))
-
-
-def _run(args):
+def do_chain(ref, add_key, args, max_, seed):
+    """The frames recorded for a scene chain, in order."""
     s3 = client()
-
-    if args.cmd == "chain":
-        if "/" not in args.ref:
-            die("chain ref must be <project>/<slug>")
-        project, slug = args.ref.split("/", 1)
-        doc = load_chain(s3, project, slug)
-        if args.seed:
-            doc["seed"] = args.seed
-            R.write_json(s3, chain_key(project, slug), doc)
-        for k in (args.add_keys or []):
-            doc = chain_add(s3, project, slug, k, None)
-        keys = chain_keys(doc, args.max_n)
-        if not keys:
-            die(f"chain {project}/{slug} is empty — record frames with "
-                f"`last <runref> --add-input --chain {slug}`, and set the first "
-                f"shot's source with --seed")
-        if args.args:
-            print(" ".join(f"--key {k}" for k in keys))
-        else:
-            for k in keys:
-                print(k)
-        return 0
-
-    tmp = tempfile.mkdtemp(prefix="frames-")
-    project, run_id, src = fetch_video(s3, args.ref, args.project, tmp)
-    dest_dir = args.dest or tmp
-    os.makedirs(dest_dir, exist_ok=True)
-
-    if args.cmd == "grid":
-        out = os.path.join(dest_dir, f"{run_id}_grid.jpg")
-        times = contact_grid(src, args.count, out)
-        print(out)
-        print("sampled at: " + ", ".join(f"{t:.1f}s" for t in times))
-        return 0
-
-    if args.cmd == "last":
-        out = grab(src, None, os.path.join(dest_dir, f"{run_id}_last.png"), from_end=0.2)
+    if "/" not in ref:
+        die("chain ref must be <project>/<slug>")
+    project, slug = ref.split("/", 1)
+    doc = load_chain(s3, project, slug)
+    if seed:
+        doc["seed"] = seed
+        R.write_json(s3, chain_key(project, slug), doc)
+    for k in add_key:
+        doc = chain_add(s3, project, slug, k, None)
+    keys = chain_keys(doc, max_)
+    if not keys:
+        die(f"chain {project}/{slug} is empty — record frames with "
+            f"`last <runref> --add-input --chain {slug}`, and set the first "
+            f"shot's source with --seed")
+    if args:
+        print(" ".join(f"--key {k}" for k in keys))
     else:
-        out = grab(src, args.time, os.path.join(dest_dir, f"{run_id}_t{args.time:g}.png"))
-    print(out)
-
-    if args.add_input:
-        key = add_to_input_pool(project, out)
-        print(key)
-        if args.chain:
-            doc = chain_add(s3, project, args.chain, key, f"{project}/{run_id}")
-            print(f"chain {doc['chain']}: {len(doc['frames'])} frame(s)")
-    elif getattr(args, "chain", None):
-        die("--chain needs --add-input: a chain records S3 keys, and the frame "
-            "has to be in the bucket before it has one")
-    return 0
+        for k in keys:
+            print(k)

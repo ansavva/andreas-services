@@ -26,8 +26,6 @@ import os
 import sys
 import tempfile
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-
 from studio_pipeline.adapters import replicate as RA
 from studio_pipeline.domain import runs as R
 from studio_pipeline.engine import refs as REFS

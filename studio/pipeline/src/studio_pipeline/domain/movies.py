@@ -48,7 +48,6 @@ import json
 import os
 import sys
 import tempfile
-from types import SimpleNamespace
 
 import click
 
@@ -209,68 +208,55 @@ def main():
     pass
 
 
-@main.command("list")
-@click.argument("project", required=True)
-def _cmd_list(project):
-    return _run(SimpleNamespace(cmd="list", project=project))
-
 @main.command("new")
 @click.argument("project", required=True)
 @click.option("--dest", help="also keep the finished file locally")
-@click.option("--scene", multiple=True, required=True, help=("a scene, in cut order. Repeatable. Accepts "
-              "<project>/<scene_id>, <scene_id>, latest, or a unique "
-              "fragment."))
+@click.option("--scene", multiple=True, required=True,
+              help=("a scene, in cut order. Repeatable. Accepts "
+                    "<project>/<scene_id>, <scene_id>, latest, or a unique fragment."))
 @click.option("--slug", required=True)
-def _cmd_new(project, dest, scene, slug):
-    return _run(SimpleNamespace(cmd="new", project=project, dest=dest, scene=scene, slug=slug))
+def do_new(project, dest, scene, slug):
+    """Cut a project's scenes into one movie."""
+    if len(scene) < 2:
+        print("note: a one-scene movie is just that scene — cutting it copies the "
+              "file for no gain.", file=sys.stderr)
+    m = create(client(), project, slug, scene, dest)
+    print(json.dumps({k: m[k] for k in ("movie", "output", "stitch")}, indent=2))
+
+
+@main.command("list")
+@click.argument("project", required=True)
+def do_list(project):
+    """Every movie in a project."""
+    ids = list_movies(client(), project)
+    if not ids:
+        print(f"project {project} has no movies")
+    for i in ids:
+        print(i)
+
+
+@main.command("show")
+@click.argument("ref", required=True)
+@click.option("--project")
+def do_show(ref, project):
+    """One movie's record."""
+    s3 = client()
+    owner, mid = resolve_movie(s3, ref, project)
+    print(json.dumps(R.read_json(s3, movie_key(owner, mid, "movie.json")), indent=2))
+
 
 @main.command("outputs")
 @click.argument("ref", required=True)
 @click.option("--expires", type=int, default=3600)
 @click.option("--presign", is_flag=True)
 @click.option("--project")
-def _cmd_outputs(ref, expires, presign, project):
-    return _run(SimpleNamespace(cmd="outputs", ref=ref, expires=expires, presign=presign, project=project))
-
-@main.command("show")
-@click.argument("ref", required=True)
-@click.option("--project")
-def _cmd_show(ref, project):
-    return _run(SimpleNamespace(cmd="show", ref=ref, project=project))
-
-
-def _run(args):
+def do_outputs(ref, expires, presign, project):
+    """The finished file(s), as keys or as temporary URLs."""
     s3 = client()
-
-    if args.cmd == "new":
-        if len(args.scene) < 2:
-            print("note: a one-scene movie is just that scene — cutting it copies the "
-                  "file for no gain.", file=sys.stderr)
-        m = create(s3, args.project, args.slug, args.scene, args.dest)
-        print(json.dumps({k: m[k] for k in ("movie", "output", "stitch")}, indent=2))
-        return 0
-
-    if args.cmd == "list":
-        ids = list_movies(s3, args.project)
-        if not ids:
-            print(f"project {args.project} has no movies")
-        for i in ids:
-            print(i)
-        return 0
-
-    project, mid = resolve_movie(s3, args.ref, args.project)
-
-    if args.cmd == "show":
-        print(json.dumps(R.read_json(s3, movie_key(project, mid, "movie.json")), indent=2))
-        return 0
-
-    if args.cmd == "outputs":
-        keys = list_keys(s3, movie_prefix(project, mid) + "/output/")
-        if args.presign:
-            for k, u in zip(keys, R.presign(s3, keys, args.expires)):
-                print(f"{k}\n  {u}")
-        else:
-            print("\n".join(keys))
-        return 0
-
-    return 1
+    owner, mid = resolve_movie(s3, ref, project)
+    keys = list_keys(s3, movie_prefix(owner, mid) + "/output/")
+    if presign:
+        for k, u in zip(keys, R.presign(s3, keys, expires)):
+            print(f"{k}\n  {u}")
+    else:
+        print("\n".join(keys))

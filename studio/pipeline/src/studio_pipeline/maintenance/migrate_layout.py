@@ -43,12 +43,12 @@ did. Nothing about the migration is ever written into the bucket.
 from __future__ import annotations
 
 import collections
+import contextlib
 import datetime as dt
 import io
 import json
 import os
 import sys
-from types import SimpleNamespace
 
 import click
 
@@ -597,95 +597,97 @@ def selftest() -> int:
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
 
+@contextlib.contextmanager
+def _session(journal_name, phase, apply=None):
+    """The setup and teardown every phase shares.
+
+    Each phase loads the journal, rebuilds the plan, does its work and saves
+    the journal back. That sharing is why this was one function with a
+    six-way branch; a context manager keeps it without the branch.
+    """
+    s3 = s3c.client()
+    jpath = journal_path(journal_name)
+    journal = load_journal(jpath)
+    plan = build_plan(s3)
+    if phase != "plan":
+        if plan["unmapped"]:
+            die(f"{len(plan['unmapped'])} unmapped key(s) — run `plan` and fix the map first")
+        print(f"[{'APPLY' if apply else 'dry run'}] {phase}: "
+              f"{len(plan['moves'])} object(s) in scope\n")
+    try:
+        yield s3, plan, journal
+    finally:
+        save_journal(jpath, journal)
+        print(f"journal: {jpath}")
+
+
 @click.group(help=__doc__)
 def main():
     pass
 
 
-@main.command("copy")
-@click.option("--apply", is_flag=True, help="actually do it (default is a dry run)")
-@click.option("--journal", help="journal file name (default: the newest)")
-def _cmd_copy(apply, journal):
-    return _run(SimpleNamespace(cmd="copy", apply=apply, journal=journal))
+@main.command("selftest")
+def do_selftest():
+    """Check the key mapping against known inputs, without touching S3."""
+    raise SystemExit(selftest())
 
-@main.command("delete")
-@click.option("--apply", is_flag=True, help="actually do it (default is a dry run)")
-@click.option("--journal", help="journal file name (default: the newest)")
-def _cmd_delete(apply, journal):
-    return _run(SimpleNamespace(cmd="delete", apply=apply, journal=journal))
 
 @main.command("plan")
 @click.option("--apply", is_flag=True, help="actually do it (default is a dry run)")
 @click.option("--journal", help="journal file name (default: the newest)")
-def _cmd_plan(apply, journal):
-    return _run(SimpleNamespace(cmd="plan", apply=apply, journal=journal))
-
-@main.command("rewrite")
-@click.option("--apply", is_flag=True, help="actually do it (default is a dry run)")
-@click.option("--journal", help="journal file name (default: the newest)")
-def _cmd_rewrite(apply, journal):
-    return _run(SimpleNamespace(cmd="rewrite", apply=apply, journal=journal))
-
-@main.command("selftest")
-def _cmd_selftest():
-    return _run(SimpleNamespace(cmd="selftest"))
-
-@main.command("verify")
-@click.option("--apply", is_flag=True, help="actually do it (default is a dry run)")
-@click.option("--journal", help="journal file name (default: the newest)")
-def _cmd_verify(apply, journal):
-    return _run(SimpleNamespace(cmd="verify", apply=apply, journal=journal))
-
-
-def _run(args):
-    if args.cmd == "selftest":
-        return selftest()
-
-    s3 = s3c.client()
-    jpath = journal_path(args.journal)
-    journal = load_journal(jpath)
-
-    plan = build_plan(s3)
-    if args.cmd == "plan":
+def do_plan(apply, journal):
+    """Show what would move, and record the mapping."""
+    with _session(journal, "plan", apply) as (_s3, plan, jrn):
         report(plan)
-        journal["plan"] = {"moves": len(plan["moves"]), "markers": len(plan["markers"]),
-                           "unmapped": plan["unmapped"],
-                           "map": [[r, o, n] for r, o, n in plan["moves"]]}
-        save_journal(jpath, journal)
-        print(f"\njournal: {jpath}")
-        return 1 if plan["unmapped"] else 0
-
+        jrn["plan"] = {"moves": len(plan["moves"]), "markers": len(plan["markers"]),
+                       "unmapped": plan["unmapped"],
+                       "map": [[r, o, n] for r, o, n in plan["moves"]]}
     if plan["unmapped"]:
-        die(f"{len(plan['unmapped'])} unmapped key(s) — run `plan` and fix the map first")
+        raise SystemExit(1)
 
-    mode = "APPLY" if args.apply else "dry run"
-    print(f"[{mode}] {args.cmd}: {len(plan['moves'])} object(s) in scope\n")
 
-    if args.cmd == "copy":
-        res = phase_copy(s3, plan, args.apply)
+@main.command("copy")
+@click.option("--apply", is_flag=True, help="actually do it (default is a dry run)")
+@click.option("--journal", help="journal file name (default: the newest)")
+def do_copy(apply, journal):
+    """Copy every mapped object to its new key."""
+    with _session(journal, "copy", apply) as (s3, plan, jrn):
+        res = phase_copy(s3, plan, apply)
         print(f"copied   {len(res['copied'])}")
         print(f"skipped  {len(res['skipped'])}  (already at the destination)")
         if res["failed"]:
             print(f"FAILED   {len(res['failed'])}")
             for k, why in res["failed"]:
                 print(f"  {k}: {why}")
-        if args.apply:
-            journal["copy"] = {"copied": len(res["copied"]), "skipped": len(res["skipped"]),
-                               "failed": res["failed"]}
-        rc = 1 if res["failed"] else 0
+        if apply:
+            jrn["copy"] = {"copied": len(res["copied"]), "skipped": len(res["skipped"]),
+                           "failed": res["failed"]}
+    if res["failed"]:
+        raise SystemExit(1)
 
-    elif args.cmd == "rewrite":
-        res = phase_rewrite(s3, plan, args.apply)
+
+@main.command("rewrite")
+@click.option("--apply", is_flag=True, help="actually do it (default is a dry run)")
+@click.option("--journal", help="journal file name (default: the newest)")
+def do_rewrite(apply, journal):
+    """Rewrite the records that name a moved object."""
+    with _session(journal, "rewrite", apply) as (s3, plan, jrn):
+        res = phase_rewrite(s3, plan, apply)
         print(f"rewritten {len(res['rewritten'])}")
         print(f"unchanged {len(res['unchanged'])}")
         for k in res["rewritten"][:5]:
             print(f"  e.g. {k}")
-        if args.apply:
-            journal["rewrite"] = {"rewritten": len(res["rewritten"]),
-                                  "unchanged": len(res["unchanged"])}
-        rc = 0
+        if apply:
+            jrn["rewrite"] = {"rewritten": len(res["rewritten"]),
+                              "unchanged": len(res["unchanged"])}
 
-    elif args.cmd == "verify":
+
+@main.command("verify")
+@click.option("--apply", is_flag=True, help="actually do it (default is a dry run)")
+@click.option("--journal", help="journal file name (default: the newest)")
+def do_verify(apply, journal):
+    """Check every destination exists and no record was left dangling."""
+    with _session(journal, "verify", apply) as (s3, plan, jrn):
         res = phase_verify(s3, plan)
         print(f"destinations missing   {len(res['missing_dest'])}")
         print(f"size mismatches        {len(res['size_mismatch'])}   (documents excluded — rewritten)")
@@ -698,27 +700,27 @@ def _run(args):
                 print(f"  {label}: {k}")
         if res["pre_existing"]:
             print("\n  already broken before the migration — reference images that "
-                  "curate.py\n  renumbered or removed after the runs that cited them:")
+                  "`studio curate`\n  renumbered or removed after the runs that cited them:")
             for k in res["pre_existing"][:8]:
                 print(f"    {k}")
             if len(res["pre_existing"]) > 8:
                 print(f"    … and {len(res['pre_existing']) - 8} more")
         print("\nVERIFY: " + ("PASS" if res["ok"] else "FAIL"))
-        journal["verify"] = {"ok": res["ok"], "refs_checked": res["refs_checked"],
-                             "dangling": res["dangling"][:50],
-                             "pre_existing": res["pre_existing"],
-                             "stale": res["stale"][:50]}
-        rc = 0 if res["ok"] else 1
+        jrn["verify"] = {"ok": res["ok"], "refs_checked": res["refs_checked"],
+                         "dangling": res["dangling"][:50],
+                         "pre_existing": res["pre_existing"],
+                         "stale": res["stale"][:50]}
+    if not res["ok"]:
+        raise SystemExit(1)
 
-    elif args.cmd == "delete":
-        res = phase_delete(s3, plan, args.apply, journal)
-        print(f"{'deleted' if args.apply else 'would delete'}  {len(res['deleted'])} object(s)")
-        if args.apply:
-            journal["delete"] = {"deleted": len(res["deleted"])}
-        rc = 0
-    else:
-        rc = 1
 
-    save_journal(jpath, journal)
-    print(f"journal: {jpath}")
-    return rc
+@main.command("delete")
+@click.option("--apply", is_flag=True, help="actually do it (default is a dry run)")
+@click.option("--journal", help="journal file name (default: the newest)")
+def do_delete(apply, journal):
+    """Remove the originals, once everything else has passed."""
+    with _session(journal, "delete", apply) as (s3, plan, jrn):
+        res = phase_delete(s3, plan, apply, jrn)
+        print(f"{'deleted' if apply else 'would delete'}  {len(res['deleted'])} object(s)")
+        if apply:
+            jrn["delete"] = {"deleted": len(res["deleted"])}

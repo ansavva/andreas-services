@@ -90,3 +90,31 @@ def test_usage_error_exits_two(media_bucket):
     result = CliRunner().invoke(cli.main, ["contact-sheet", "--out", "/tmp/x.png"])
     assert result.exit_code == 2, result.output
     assert "exactly one of --character or --src" in result.output
+
+
+# --------------------------------------------------------------------------
+# Exit codes
+# --------------------------------------------------------------------------
+# Click's standalone mode DISCARDS a command's return value — it only honours
+# it when invoked with standalone_mode=False. The argparse->Click port kept
+# `return 1` from the old dispatch functions, so every non-zero exit silently
+# became 0. `--strict` that never fails is worse than no `--strict` at all.
+EXIT_CODES = [
+    # (argv, expected exit)
+    (["prompt", "--engine", "kling", "--subject", "a runner",
+      "--action", "moves fast down the track", "--strict"], 1),
+    (["prompt", "--engine", "kling", "--subject", "a runner",
+      "--action", "moves fast down the track"], 0),
+    (["phrasebook", "check", "--model", "kling", "--text", "bare chest"], 1),
+    (["phrasebook", "check", "--model", "kling", "--text", "nothing matches"], 0),
+]
+
+
+@pytest.mark.parametrize("argv,expected", EXIT_CODES,
+                         ids=lambda v: " ".join(v) if isinstance(v, list) else str(v))
+def test_exit_code_is_honoured(media_bucket, argv, expected):
+    result = CliRunner().invoke(cli.main, argv)
+    assert result.exit_code == expected, (
+        f"`studio {' '.join(argv)}` exited {result.exit_code}, expected {expected}\n"
+        f"{result.output}"
+    )

@@ -634,7 +634,7 @@ def prompt(source, action, aspect_ratio, audio, camera_movement, camera_shot, co
     if errors:
         for e in errors:
             _err(e)
-        return 2
+        raise SystemExit(2)
 
     prompt_obj, timeline = build_prompt_object(obj, engine)
 
@@ -649,7 +649,7 @@ def prompt(source, action, aspect_ratio, audio, camera_movement, camera_shot, co
     soft = spec.get("prompt_recommended")
     if hard and len(prompt_str) > hard:
         _err(f"prompt is {len(prompt_str)} chars; {spec['label']} caps it at {hard}.")
-        return 2
+        raise SystemExit(2)
     if soft and len(prompt_str) > soft:
         warnings.append(
             f"prompt is {len(prompt_str)} chars; {spec['label']} recommends <= {soft}. "
@@ -681,5 +681,4 @@ def prompt(source, action, aspect_ratio, audio, camera_movement, camera_shot, co
     for w in warnings:
         print(f"warning: {w}", file=sys.stderr)
     if strict and warnings:
-        return 1
-    return 0
+        raise SystemExit(1)

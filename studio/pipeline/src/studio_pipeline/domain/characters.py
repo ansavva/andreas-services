@@ -74,7 +74,6 @@ import os
 import re
 import sys
 import tempfile
-from types import SimpleNamespace
 
 import click
 import yaml
@@ -166,9 +165,17 @@ def put_file(s3, local: str, key: str, content_type: str | None = None) -> str:
 
 # --- subcommands ----------------------------------------------------------
 
-def cmd_list(args, s3) -> None:
+@click.group(help=__doc__)
+def main():
+    pass
+
+
+@main.command("list")
+@click.option("--json", "json_", is_flag=True)
+def cmd_list(json_):
+    s3 = s3c.client()
     names = P.list_characters(s3)
-    if args.json:
+    if json_:
         print(json.dumps(names, indent=2))
     elif names:
         print("\n".join(names))
@@ -176,13 +183,16 @@ def cmd_list(args, s3) -> None:
         print("(no characters yet — create one with `character.py create <name>`)", file=sys.stderr)
 
 
-def cmd_show(args, s3) -> None:
-    check_name(args.name)
-    key = profile_key(args.name)
+@main.command("show")
+@click.argument("name", required=True)
+def cmd_show(name):
+    s3 = s3c.client()
+    check_name(name)
+    key = profile_key(name)
     try:
         body = s3.get_object(Bucket=s3c.BUCKET, Key=key)["Body"].read()
     except s3.exceptions.NoSuchKey:
-        die(f"no {PROFILE_FILE} for character {args.name!r} (looked at s3://{s3c.BUCKET}/{key}).")
+        die(f"no {PROFILE_FILE} for character {name!r} (looked at s3://{s3c.BUCKET}/{key}).")
     sys.stdout.write(body.decode("utf-8"))
 
 
@@ -252,7 +262,10 @@ def load_profile(s3, name: str) -> dict:
     return parse_profile(text, f"s3://{s3c.BUCKET}/{key}")
 
 
-def cmd_textblock(args, s3) -> None:
+@main.command("textblock")
+@click.argument("name", required=True)
+def cmd_textblock(name):
+    s3 = s3c.client()
     """Emit a pasteable text identity block for engines with no reference system.
 
     Seedance and Kling-on-Replicate both carry identity through `reference_images`;
@@ -262,50 +275,58 @@ def cmd_textblock(args, s3) -> None:
     identity-bearing keys as raw material to compress — the script can't write
     prose.
     """
-    check_name(args.name)
-    data = load_profile(s3, args.name)
+    check_name(name)
+    data = load_profile(s3, name)
 
     authored = (data.get("text_identity_block") or "").strip()
     if authored and not authored.startswith("<"):  # "<>" is the unfilled template
         print(authored)
-        print(f"\n(authored block from {args.name}'s bible)", file=sys.stderr)
+        print(f"\n(authored block from {name}'s bible)", file=sys.stderr)
         return
 
     raw = {k: data[k] for k in TEXTBLOCK_KEYS if data.get(k)}
     sys.stdout.write(yaml.safe_dump(raw, sort_keys=False, allow_unicode=True, width=88))
 
     print(
-        f"\nNo authored `text_identity_block` in {args.name}'s bible — the above is raw "
+        f"\nNo authored `text_identity_block` in {name}'s bible — the above is raw "
         "material.\nCompress it into ONE paragraph of ~50-70 words covering only what a "
         "text-only engine\ncannot infer: build proportion, hair, face landmarks, skin, and "
         "signature accessories.\nThen save it back into the bible under `text_identity_block:` "
-        f"(`character.py edit {args.name}`)\nso it is written once and reused.\n"
+        f"(`character.py edit {name}`)\nso it is written once and reused.\n"
         "\nNOTE: with a start frame supplied, keep the pasted block SHORT — the frame carries\n"
         "appearance better than prose, and a long block fights it (see studio-kling).",
         file=sys.stderr,
     )
 
 
-def cmd_create(args, s3) -> None:
-    check_name(args.name)
-    src = args.from_profile or TEMPLATE
+@main.command("create")
+@click.argument("name", required=True)
+@click.option("--from-profile", help="Local profile.yaml to seed with (default: blank template).")
+def cmd_create(name, from_profile):
+    s3 = s3c.client()
+    check_name(name)
+    src = from_profile or TEMPLATE
     if not os.path.isfile(src):
         die(f"profile source not found: {src}")
     if src != TEMPLATE:  # the template is deliberately unfilled; anything else must be real
-        check_profile(parse_profile(read_text(src), src), src, args.name)
-    uri = put_file(s3, src, profile_key(args.name), PROFILE_CT)
-    print(f"created character {args.name!r}: {uri}", file=sys.stderr)
+        check_profile(parse_profile(read_text(src), src), src, name)
+    uri = put_file(s3, src, profile_key(name), PROFILE_CT)
+    print(f"created character {name!r}: {uri}", file=sys.stderr)
     if src == TEMPLATE:
         print("  (blank template — fill it in, then `set-profile` the result.)", file=sys.stderr)
-    print(f"  next: add references with `character.py add-refs {args.name} <img>...`", file=sys.stderr)
+    print(f"  next: add references with `character.py add-refs {name} <img>...`", file=sys.stderr)
 
 
-def cmd_set_profile(args, s3) -> None:
-    check_name(args.name)
-    if not os.path.isfile(args.file):
-        die(f"profile file not found: {args.file}")
-    check_profile(parse_profile(read_text(args.file), args.file), args.file, args.name)
-    uri = put_file(s3, args.file, profile_key(args.name), PROFILE_CT)
+@main.command("set-profile")
+@click.argument("file", required=True)
+@click.argument("name", required=True)
+def cmd_set_profile(file, name):
+    s3 = s3c.client()
+    check_name(name)
+    if not os.path.isfile(file):
+        die(f"profile file not found: {file}")
+    check_profile(parse_profile(read_text(file), file), file, name)
+    uri = put_file(s3, file, profile_key(name), PROFILE_CT)
     print(f"updated {uri}", file=sys.stderr)
 
 
@@ -366,9 +387,9 @@ def unified(before: str, after: str, name: str) -> str:
     )
 
 
-def do_pull(s3, args, local: str, base: str, etagf: str) -> None:
-    text, etag = fetch_profile(s3, args.name)
-    if os.path.exists(local) and not args.force:
+def do_pull(s3, name: str, force: bool, local: str, base: str, etagf: str) -> None:
+    text, etag = fetch_profile(s3, name)
+    if os.path.exists(local) and not force:
         current = read_text(local)
         prior = read_text(base) if os.path.exists(base) else None
         if current != (prior if prior is not None else text):
@@ -381,19 +402,19 @@ def do_pull(s3, args, local: str, base: str, etagf: str) -> None:
     write_text(etagf, etag)
     print(local)  # stdout: pipeable, e.g. `code "$(... edit <name>)"`
     print(
-        f"pulled s3://{s3c.BUCKET}/{profile_key(args.name)}\n"
-        f"  edit the file above, then re-run `edit {args.name}` to upload it.",
+        f"pulled s3://{s3c.BUCKET}/{profile_key(name)}\n"
+        f"  edit the file above, then re-run `edit {name}` to upload it.",
         file=sys.stderr,
     )
 
 
-def do_push(s3, args, local: str, base: str, etagf: str) -> None:
+def do_push(s3, name: str, force: bool, local: str, base: str, etagf: str) -> None:
     if not os.path.isfile(local):
-        die(f"no local copy at {local} — run `edit {args.name}` first to pull it.")
+        die(f"no local copy at {local} — run `edit {name}` first to pull it.")
     text = read_text(local)
     prior = read_text(base) if os.path.exists(base) else None
 
-    if prior is None and not args.force:
+    if prior is None and not force:
         die(
             f"no pull record for {local} (missing {os.path.basename(base)}), so edits made\n"
             "  elsewhere cannot be detected. Re-run with --force to upload anyway."
@@ -403,40 +424,50 @@ def do_push(s3, args, local: str, base: str, etagf: str) -> None:
         return
 
     recorded = read_text(etagf).strip() if os.path.exists(etagf) else None
-    current = remote_etag(s3, args.name)
-    if recorded and current and recorded != current and not args.force:
+    current = remote_etag(s3, name)
+    if recorded and current and recorded != current and not force:
         die(
-            f"s3 {PROFILE_FILE} for {args.name!r} changed since you pulled it — uploading would\n"
+            f"s3 {PROFILE_FILE} for {name!r} changed since you pulled it — uploading would\n"
             "  discard that change. Re-run with --force to overwrite, or --discard to\n"
             "  throw away your local edits and re-pull."
         )
 
     # A bible that no longer parses, or has lost a schema key, is worse than no
     # upload at all — every downstream reader breaks on it. Check before the PUT.
-    check_profile(parse_profile(text, local), local, args.name)
+    check_profile(parse_profile(text, local), local, name)
 
     if prior is not None:
-        sys.stderr.write(unified(prior, text, args.name))
-    uri = put_file(s3, local, f"{args.name}/{PROFILE_FILE}", PROFILE_CT)
+        sys.stderr.write(unified(prior, text, name))
+    uri = put_file(s3, local, f"{name}/{PROFILE_FILE}", PROFILE_CT)
     write_text(base, text)
-    write_text(etagf, remote_etag(s3, args.name) or "")
+    write_text(etagf, remote_etag(s3, name) or "")
     print(f"uploaded {uri}", file=sys.stderr)
 
 
-def cmd_edit(args, s3) -> None:
-    check_name(args.name)
-    local, base, etagf = local_paths(args.name, args.path)
+@main.command("edit")
+@click.argument("name", required=True)
+@click.option("--diff", is_flag=True, help="Show local-vs-S3 differences and exit.")
+@click.option("--discard", is_flag=True, help="Throw away local edits and re-pull.")
+@click.option("--force", is_flag=True, help="Proceed despite unsaved edits or a changed remote.")
+@click.option("--path", help=("Working-copy path (default: "
+              "/Users/andreassavva/repos/andreas-services/studio/local/characters/<name>.yaml)."))
+@click.option("--pull", is_flag=True, help="Force the download direction.")
+@click.option("--push", is_flag=True, help="Force the upload direction.")
+def cmd_edit(name, diff, discard, force, path, pull, push):
+    s3 = s3c.client()
+    check_name(name)
+    local, base, etagf = local_paths(name, path)
 
-    if args.discard:
-        args.force = True
-        do_pull(s3, args, local, base, etagf)
+    if discard:
+        force = True
+        do_pull(s3, name, force, local, base, etagf)
         return
 
-    if args.diff:
+    if diff:
         if not os.path.isfile(local):
-            die(f"no local copy at {local} — run `edit {args.name}` first to pull it.")
-        remote, _ = fetch_profile(s3, args.name)
-        diff = unified(remote, read_text(local), args.name)
+            die(f"no local copy at {local} — run `edit {name}` first to pull it.")
+        remote, _ = fetch_profile(s3, name)
+        diff = unified(remote, read_text(local), name)
         sys.stdout.write(diff if diff else "")
         if not diff:
             print(f"{local} matches s3.", file=sys.stderr)
@@ -444,12 +475,12 @@ def cmd_edit(args, s3) -> None:
 
     # Direction: explicit flags win; otherwise pull when there is no working copy
     # yet, push once there is one. That makes the flow "run, edit, run again".
-    if args.pull:
-        do_pull(s3, args, local, base, etagf)
-    elif args.push or os.path.isfile(local):
-        do_push(s3, args, local, base, etagf)
+    if pull:
+        do_pull(s3, name, force, local, base, etagf)
+    elif push or os.path.isfile(local):
+        do_push(s3, name, force, local, base, etagf)
     else:
-        do_pull(s3, args, local, base, etagf)
+        do_pull(s3, name, force, local, base, etagf)
 
 
 # --- the reference index --------------------------------------------------
@@ -618,99 +649,126 @@ def sync_index(s3, name: str, *, rename_map: dict[str, str] | None = None,
 
 # --- pools -----------------------------------------------------------------
 
-def cmd_add_refs(args, s3) -> None:
+@main.command("add-refs")
+@click.argument("files", nargs=-1, required=True)
+@click.argument("name", required=True)
+@click.option("--replace", is_flag=True, help="Number from 1 (overwrites in place).")
+@click.option("--start", type=int, help="Start numbering at N (default: after current highest).")
+@click.option("--to", help=("Purpose subfolder inside reference/ (face, body, wardrobe, …). "
+              "Omit to add at the root of reference/."))
+def cmd_add_refs(files, name, replace, start, to):
+    s3 = s3c.client()
     """Add reference image(s), optionally into a purpose subfolder."""
-    check_name(args.name)
-    missing = [f for f in args.files if not os.path.isfile(f)]
+    check_name(name)
+    missing = [f for f in files if not os.path.isfile(f)]
     if missing:
         die(f"file(s) not found: {', '.join(missing)}")
-    group = args.to
-    prefix = group_prefix(args.name, group)
-    start = 1 if args.replace else (args.start if args.start is not None
-                                    else pool_max_index(s3, args.name, "reference", group) + 1)
+    group = to
+    prefix = group_prefix(name, group)
+    start = 1 if replace else (start if start is not None
+                                    else pool_max_index(s3, name, "reference", group) + 1)
 
-    folder = pool_folder(args.name, "reference") + (f"/{group}" if group else "")
-    for i, f in enumerate(args.files):
+    folder = pool_folder(name, "reference") + (f"/{group}" if group else "")
+    for i, f in enumerate(files):
         n = start + i
         ext = os.path.splitext(f)[1].lower() or ".webp"
         put_file(s3, f, s3c.key(f"{folder}/{prefix}{n}{ext}"),
                  "image/webp" if ext == ".webp" else None)
-    last = start + len(args.files) - 1
-    print(f"added {len(args.files)} image(s) to {folder}/ as {prefix}{start}..{prefix}{last}",
+    last = start + len(files) - 1
+    print(f"added {len(files)} image(s) to {folder}/ as {prefix}{start}..{prefix}{last}",
           file=sys.stderr)
 
-    report = sync_index(s3, args.name)
+    report = sync_index(s3, name)
     if report["undescribed"]:
         print(f"  {len(report['undescribed'])} reference image(s) have no description yet. "
               f"An undescribed image cannot be picked by tag and is invisible to whoever "
               f"chooses the set:\n"
-              f"    character.py set-ref-desc {args.name} <file> "
+              f"    character.py set-ref-desc {name} <file> "
               f"--description '…' --tags face,neutral", file=sys.stderr)
 
 
-def cmd_add_to_pool(args, s3) -> None:
+@main.command("add-to")
+@click.argument("files", nargs=-1, required=True)
+@click.argument("name", required=True)
+@click.argument("pool", required=True, type=click.Choice(["archive", "corpus", "seed"]))
+def cmd_add_to_pool(files, name, pool):
+    s3 = s3c.client()
     """Add file(s) to corpus/, seed/ or archive/ — basenames kept as they are.
 
     Only reference/ is numbered, because only reference/ is cited by slot.
     Renaming a source photo throws away whatever its filename recorded.
     """
-    check_name(args.name)
-    missing = [f for f in args.files if not os.path.isfile(f)]
+    check_name(name)
+    missing = [f for f in files if not os.path.isfile(f)]
     if missing:
         die(f"file(s) not found: {', '.join(missing)}")
-    folder = pool_folder(args.name, args.pool)
-    for f in args.files:
+    folder = pool_folder(name, pool)
+    for f in files:
         put_file(s3, f, s3c.key(f"{folder}/{os.path.basename(f)}"))
-    print(f"added {len(args.files)} file(s) to {folder}/", file=sys.stderr)
+    print(f"added {len(files)} file(s) to {folder}/", file=sys.stderr)
 
 
-def cmd_sync_refs(args, s3) -> None:
-    check_name(args.name)
-    report = sync_index(s3, args.name, apply=args.apply)
-    if not args.apply:
+@main.command("sync-refs")
+@click.argument("name", required=True)
+@click.option("--apply", is_flag=True, help="Write the index back (default: dry run).")
+def cmd_sync_refs(name, apply):
+    s3 = s3c.client()
+    check_name(name)
+    report = sync_index(s3, name, apply=apply)
+    if not apply:
         print("(dry run — pass --apply to write the index back)", file=sys.stderr)
     print(json.dumps(report, indent=2))
 
 
-def cmd_set_ref_desc(args, s3) -> None:
-    check_name(args.name)
-    data, entries = read_index(s3, args.name)
-    etag = remote_etag(s3, args.name)
-    hit = next((e for e in entries if e.get("file") == args.file), None)
+@main.command("set-ref-desc", epilog="\n\nArguments:\n  FILE  Path inside reference/ (e.g. face/<name>_face_3.png), or its stem.")
+@click.argument("file", required=True)
+@click.argument("name", required=True)
+@click.option("--description")
+@click.option("--tags", help="Comma-separated, replacing the existing tags.")
+def cmd_set_ref_desc(file, name, description, tags):
+    s3 = s3c.client()
+    check_name(name)
+    data, entries = read_index(s3, name)
+    etag = remote_etag(s3, name)
+    hit = next((e for e in entries if e.get("file") == file), None)
     if not hit:
         stems = {os.path.splitext(os.path.basename(e.get("file", "")))[0]: e for e in entries}
-        hit = stems.get(args.file)
+        hit = stems.get(file)
     if not hit:
-        die(f"{args.name} has no reference {args.file!r} in its index. "
-            f"Run `sync-refs {args.name} --apply` if it was just added.")
-    if args.description is not None:
-        hit["description"] = args.description
-    if args.tags is not None:
-        hit["tags"] = [t.strip() for t in args.tags.split(",") if t.strip()]
+        die(f"{name} has no reference {file!r} in its index. "
+            f"Run `sync-refs {name} --apply` if it was just added.")
+    if description is not None:
+        hit["description"] = description
+    if tags is not None:
+        hit["tags"] = [t.strip() for t in tags.split(",") if t.strip()]
     data["references"] = entries
-    write_profile(s3, args.name, data, etag)
+    write_profile(s3, name, data, etag)
     print(json.dumps(hit, indent=2))
 
 
-def cmd_describe_refs(args, s3) -> None:
+@main.command("describe-refs")
+@click.argument("name", required=True)
+@click.option("--from-json", required=True, help="JSON object: {file: {description, tags}}.")
+def cmd_describe_refs(name, from_json):
+    s3 = s3c.client()
     """Describe many reference images in ONE profile write.
 
     Describing a 40-image library one call at a time is 40 profile round-trips
     and 40 chances to stop halfway with the index half-written. This applies a
     whole pass atomically: {file: {description, tags}}.
     """
-    check_name(args.name)
-    with open(args.from_json) as fh:
+    check_name(name)
+    with open(from_json) as fh:
         batch = json.load(fh)
     if not isinstance(batch, dict):
         die("--from-json must contain an object of {file: {description, tags}}")
 
-    data, entries = read_index(s3, args.name)
-    etag = remote_etag(s3, args.name)
+    data, entries = read_index(s3, name)
+    etag = remote_etag(s3, name)
     by_file = {e.get("file"): e for e in entries}
     unknown = [f for f in batch if f not in by_file]
     if unknown:
-        die(f"not in {args.name}'s reference index: {', '.join(unknown[:8])}"
+        die(f"not in {name}'s reference index: {', '.join(unknown[:8])}"
             + (f" (+{len(unknown) - 8} more)" if len(unknown) > 8 else ""))
 
     for f, spec in batch.items():
@@ -719,184 +777,33 @@ def cmd_describe_refs(args, s3) -> None:
         if "tags" in spec:
             by_file[f]["tags"] = list(spec["tags"])
     data["references"] = entries
-    write_profile(s3, args.name, data, etag)
+    write_profile(s3, name, data, etag)
     left = [e["file"] for e in entries if not (e.get("description") or "").strip()]
     print(f"described {len(batch)} image(s); {len(left)} still undescribed", file=sys.stderr)
     if left:
         print("\n".join(left))
 
 
-def cmd_default_set(args, s3) -> None:
-    """Name the images sent when --character is given with no selector."""
-    check_name(args.name)
-    data, entries = read_index(s3, args.name)
-    etag = remote_etag(s3, args.name)
-    if args.set is None:
-        print(json.dumps(data.get("default_set") or [], indent=2))
-        return
-    known = {e.get("file") for e in entries}
-    unknown = [f for f in args.set if f not in known]
-    if unknown:
-        die(f"not in {args.name}'s reference index: {', '.join(unknown)}")
-    data["default_set"] = list(args.set)
-    write_profile(s3, args.name, data, etag)
-    print(json.dumps(data["default_set"], indent=2))
-
-
-def cmd_pool(args, s3) -> None:
-    """List a non-reference pool. These are material, not identity."""
-    check_name(args.name)
-    keys = s3c.list_keys(s3, pool_folder(args.name, args.pool))
-    if not keys:
-        print(f"({args.name} has nothing in {args.pool}/)", file=sys.stderr)
-        return
-    if args.presign:
-        urls = [s3.generate_presigned_url("get_object",
-                                          Params={"Bucket": s3c.BUCKET, "Key": k},
-                                          ExpiresIn=args.expires) for k in keys]
-        print(json.dumps(urls, indent=2) if args.json else "\n".join(urls))
-    elif args.json:
-        print(json.dumps(keys, indent=2))
-    else:
-        print("\n".join(keys))
-    if args.pool == "archive":
-        print("note: archive/ is retired material — do not feed it to a model unless "
-              "the user asked for these specifically.", file=sys.stderr)
-
-
-def cmd_refs(args, s3) -> None:
-    """The reference set: describe it, or resolve a selection of it."""
-    check_name(args.name)
-
-    if args.describe:
-        _data, entries = read_index(s3, args.name)
-        if not entries:
-            die(f"{args.name} has no reference index. Build one with "
-                f"`character.py sync-refs {args.name} --apply`.")
-        if args.json:
-            print(json.dumps(entries, indent=2))
-        else:
-            for e in entries:
-                tags = ",".join(e.get("tags") or []) or "-"
-                flag = " [MISSING]" if e.get("missing") else ""
-                print(f"{e.get('file'):<40} {tags:<24} "
-                      f"{e.get('description') or '(no description)'}{flag}")
-        return
-
-    pick = [x.strip() for x in args.pick.split(",")] if args.pick else None
-    tags = [t.strip() for t in args.pick_tag.split(",")] if args.pick_tag else None
-    slots = [int(x) for x in args.slots.split(",")] if args.slots else None
-    keys = resolve_selection(s3, args.name, pick, tags, slots)
-    if not keys:
-        die(f"no reference images resolved for {args.name}")
-
-    if args.presign:
-        results = [{"key": k,
-                    "url": s3.generate_presigned_url(
-                        "get_object", Params={"Bucket": s3c.BUCKET, "Key": k},
-                        ExpiresIn=args.expires)} for k in keys]
-        if args.json:
-            print(json.dumps(results, indent=2))
-        else:
-            for r in results:
-                print(r["url"])
-        print(f"presigned {len(keys)} reference image(s) for {args.name} ({args.expires}s). "
-              "Slot N is position N in THIS list; cite as [Image1]…", file=sys.stderr)
-        return
-
-    if args.keys:
-        print(json.dumps(keys, indent=2) if args.json else "\n".join(keys))
-        return
-
-    dest = args.dest or tempfile.mkdtemp(prefix=f"{args.name}-refs-")
-    os.makedirs(dest, exist_ok=True)
-    out: dict[str, str] = {}
-    for k in keys:
-        base = os.path.basename(k)
-        local = os.path.join(dest, base)
-        s3.download_file(s3c.BUCKET, k, local)
-        out[base] = os.path.abspath(local)
-    print(json.dumps(out, indent=2))
-    print(f"downloaded {len(out)} reference image(s) to {dest}. For Replicate prefer "
-          "`refs <name> --presign` (full-res, zero context cost).", file=sys.stderr)
-
-
-# Subcommand -> handler. argparse carried this on the parser itself via
-# `set_defaults(func=...)`; Click has no equivalent, so it is explicit.
-HANDLERS = {
-    "list": cmd_list,
-    "show": cmd_show,
-    "textblock": cmd_textblock,
-    "create": cmd_create,
-    "set-profile": cmd_set_profile,
-    "edit": cmd_edit,
-    "add-refs": cmd_add_refs,
-    "refs": cmd_refs,
-    "sync-refs": cmd_sync_refs,
-    "set-ref-desc": cmd_set_ref_desc,
-    "describe-refs": cmd_describe_refs,
-    "default-set": cmd_default_set,
-    "add-to": cmd_add_to_pool,
-    "pool": cmd_pool,
-}
-
-
-@click.group(help=__doc__)
-def main():
-    pass
-
-
-@main.command("add-refs")
-@click.argument("files", nargs=-1, required=True)
-@click.argument("name", required=True)
-@click.option("--replace", is_flag=True, help="Number from 1 (overwrites in place).")
-@click.option("--start", type=int, help="Start numbering at N (default: after current highest).")
-@click.option("--to", help=("Purpose subfolder inside reference/ (face, body, wardrobe, …). "
-              "Omit to add at the root of reference/."))
-def _cmd_add_refs(files, name, replace, start, to):
-    return _run(SimpleNamespace(cmd="add-refs", files=files, name=name, replace=replace, start=start, to=to))
-
-@main.command("add-to")
-@click.argument("files", nargs=-1, required=True)
-@click.argument("name", required=True)
-@click.argument("pool", required=True, type=click.Choice(["archive", "corpus", "seed"]))
-def _cmd_add_to(files, name, pool):
-    return _run(SimpleNamespace(cmd="add-to", files=files, name=name, pool=pool))
-
-@main.command("create")
-@click.argument("name", required=True)
-@click.option("--from-profile", help="Local profile.yaml to seed with (default: blank template).")
-def _cmd_create(name, from_profile):
-    return _run(SimpleNamespace(cmd="create", name=name, from_profile=from_profile))
-
 @main.command("default-set")
 @click.argument("name", required=True)
 @click.option("--set", "set_", multiple=True, help="Files from the index, in slot order. Repeat the flag per file.")
-def _cmd_default_set(name, set_):
-    return _run(SimpleNamespace(cmd="default-set", name=name, set=set_))
+def cmd_default_set(name, set_):
+    s3 = s3c.client()
+    """Name the images sent when --character is given with no selector."""
+    check_name(name)
+    data, entries = read_index(s3, name)
+    etag = remote_etag(s3, name)
+    if set_ is None:
+        print(json.dumps(data.get("default_set") or [], indent=2))
+        return
+    known = {e.get("file") for e in entries}
+    unknown = [f for f in set_ if f not in known]
+    if unknown:
+        die(f"not in {name}'s reference index: {', '.join(unknown)}")
+    data["default_set"] = list(set_)
+    write_profile(s3, name, data, etag)
+    print(json.dumps(data["default_set"], indent=2))
 
-@main.command("describe-refs")
-@click.argument("name", required=True)
-@click.option("--from-json", required=True, help="JSON object: {file: {description, tags}}.")
-def _cmd_describe_refs(name, from_json):
-    return _run(SimpleNamespace(cmd="describe-refs", name=name, from_json=from_json))
-
-@main.command("edit")
-@click.argument("name", required=True)
-@click.option("--diff", is_flag=True, help="Show local-vs-S3 differences and exit.")
-@click.option("--discard", is_flag=True, help="Throw away local edits and re-pull.")
-@click.option("--force", is_flag=True, help="Proceed despite unsaved edits or a changed remote.")
-@click.option("--path", help=("Working-copy path (default: "
-              "/Users/andreassavva/repos/andreas-services/studio/local/characters/<name>.yaml)."))
-@click.option("--pull", is_flag=True, help="Force the download direction.")
-@click.option("--push", is_flag=True, help="Force the upload direction.")
-def _cmd_edit(name, diff, discard, force, path, pull, push):
-    return _run(SimpleNamespace(cmd="edit", name=name, diff=diff, discard=discard, force=force, path=path, pull=pull, push=push))
-
-@main.command("list")
-@click.option("--json", "json_", is_flag=True)
-def _cmd_list(json_):
-    return _run(SimpleNamespace(cmd="list", json=json_))
 
 @main.command("pool")
 @click.argument("name", required=True)
@@ -904,8 +811,27 @@ def _cmd_list(json_):
 @click.option("--expires", type=int, default=3600)
 @click.option("--json", "json_", is_flag=True)
 @click.option("--presign", is_flag=True)
-def _cmd_pool(name, pool, expires, json_, presign):
-    return _run(SimpleNamespace(cmd="pool", name=name, pool=pool, expires=expires, json=json_, presign=presign))
+def cmd_pool(name, pool, expires, json_, presign):
+    s3 = s3c.client()
+    """List a non-reference pool. These are material, not identity."""
+    check_name(name)
+    keys = s3c.list_keys(s3, pool_folder(name, pool))
+    if not keys:
+        print(f"({name} has nothing in {pool}/)", file=sys.stderr)
+        return
+    if presign:
+        urls = [s3.generate_presigned_url("get_object",
+                                          Params={"Bucket": s3c.BUCKET, "Key": k},
+                                          ExpiresIn=expires) for k in keys]
+        print(json.dumps(urls, indent=2) if json_ else "\n".join(urls))
+    elif json_:
+        print(json.dumps(keys, indent=2))
+    else:
+        print("\n".join(keys))
+    if pool == "archive":
+        print("note: archive/ is retired material — do not feed it to a model unless "
+              "the user asked for these specifically.", file=sys.stderr)
+
 
 @main.command("refs")
 @click.argument("name", required=True)
@@ -919,41 +845,63 @@ def _cmd_pool(name, pool, expires, json_, presign):
 @click.option("--presign", is_flag=True, help="Print ordered presigned HTTPS URLs.")
 @click.option("--slots", help=("Comma-separated 1-based positions WITHIN the resolved "
               "selection."))
-def _cmd_refs(name, describe, dest, expires, json_, keys, pick, pick_tag, presign, slots):
-    return _run(SimpleNamespace(cmd="refs", name=name, describe=describe, dest=dest, expires=expires, json=json_, keys=keys, pick=pick, pick_tag=pick_tag, presign=presign, slots=slots))
-
-@main.command("set-profile")
-@click.argument("file", required=True)
-@click.argument("name", required=True)
-def _cmd_set_profile(file, name):
-    return _run(SimpleNamespace(cmd="set-profile", file=file, name=name))
-
-@main.command("set-ref-desc", epilog="\n\nArguments:\n  FILE  Path inside reference/ (e.g. face/<name>_face_3.png), or its stem.")
-@click.argument("file", required=True)
-@click.argument("name", required=True)
-@click.option("--description")
-@click.option("--tags", help="Comma-separated, replacing the existing tags.")
-def _cmd_set_ref_desc(file, name, description, tags):
-    return _run(SimpleNamespace(cmd="set-ref-desc", file=file, name=name, description=description, tags=tags))
-
-@main.command("show")
-@click.argument("name", required=True)
-def _cmd_show(name):
-    return _run(SimpleNamespace(cmd="show", name=name))
-
-@main.command("sync-refs")
-@click.argument("name", required=True)
-@click.option("--apply", is_flag=True, help="Write the index back (default: dry run).")
-def _cmd_sync_refs(name, apply):
-    return _run(SimpleNamespace(cmd="sync-refs", name=name, apply=apply))
-
-@main.command("textblock")
-@click.argument("name", required=True)
-def _cmd_textblock(name):
-    return _run(SimpleNamespace(cmd="textblock", name=name))
-
-
-def _run(args):
+def cmd_refs(name, describe, dest, expires, json_, keys, pick, pick_tag, presign, slots):
     s3 = s3c.client()
-    HANDLERS[args.cmd](args, s3)
-    return 0
+    """The reference set: describe it, or resolve a selection of it."""
+    check_name(name)
+
+    if describe:
+        _data, entries = read_index(s3, name)
+        if not entries:
+            die(f"{name} has no reference index. Build one with "
+                f"`character.py sync-refs {name} --apply`.")
+        if json_:
+            print(json.dumps(entries, indent=2))
+        else:
+            for e in entries:
+                tags = ",".join(e.get("tags") or []) or "-"
+                flag = " [MISSING]" if e.get("missing") else ""
+                print(f"{e.get('file'):<40} {tags:<24} "
+                      f"{e.get('description') or '(no description)'}{flag}")
+        return
+
+    pick = [x.strip() for x in pick.split(",")] if pick else None
+    tags = [t.strip() for t in pick_tag.split(",")] if pick_tag else None
+    slots = [int(x) for x in slots.split(",")] if slots else None
+    keys = resolve_selection(s3, name, pick, tags, slots)
+    if not keys:
+        die(f"no reference images resolved for {name}")
+
+    if presign:
+        results = [{"key": k,
+                    "url": s3.generate_presigned_url(
+                        "get_object", Params={"Bucket": s3c.BUCKET, "Key": k},
+                        ExpiresIn=expires)} for k in keys]
+        if json_:
+            print(json.dumps(results, indent=2))
+        else:
+            for r in results:
+                print(r["url"])
+        print(f"presigned {len(keys)} reference image(s) for {name} ({expires}s). "
+              "Slot N is position N in THIS list; cite as [Image1]…", file=sys.stderr)
+        return
+
+    if keys:
+        print(json.dumps(keys, indent=2) if json_ else "\n".join(keys))
+        return
+
+    dest = dest or tempfile.mkdtemp(prefix=f"{name}-refs-")
+    os.makedirs(dest, exist_ok=True)
+    out: dict[str, str] = {}
+    for k in keys:
+        base = os.path.basename(k)
+        local = os.path.join(dest, base)
+        s3.download_file(s3c.BUCKET, k, local)
+        out[base] = os.path.abspath(local)
+    print(json.dumps(out, indent=2))
+    print(f"downloaded {len(out)} reference image(s) to {dest}. For Replicate prefer "
+          "`refs <name> --presign` (full-res, zero context cost).", file=sys.stderr)
+
+
+
+

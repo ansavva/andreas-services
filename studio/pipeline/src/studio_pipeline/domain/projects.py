@@ -49,7 +49,6 @@ import mimetypes
 import os
 import re
 import sys
-from types import SimpleNamespace
 
 import click
 
@@ -144,131 +143,119 @@ def main():
     pass
 
 
-@main.command("add-inputs")
-@click.argument("files", nargs=-1, required=True)
-@click.argument("project", required=True)
+@main.command("list")
 @click.option("--json", "json_", is_flag=True)
-def _cmd_add_inputs(files, project, json_):
-    return _run(SimpleNamespace(cmd="add-inputs", files=files, project=project, json=json_))
+def do_list(json_):
+    """Every project."""
+    s3 = s3c.client()
+    names = P.list_projects(s3)
+    if json_:
+        print(json.dumps([read_project(s3, n) or {"name": n} for n in names], indent=2))
+    elif names:
+        for n in names:
+            doc = read_project(s3, n) or {}
+            chars = ", ".join(doc.get("characters") or []) or "—"
+            print(f"{n:<20} characters: {chars}")
+    else:
+        print("(no projects yet — create one with `studio projects new <project>`)",
+              file=sys.stderr)
+
+
+@main.command("new")
+@click.argument("project", required=True)
+@click.option("--character", "characters", multiple=True,
+              help="A character this project involves. Repeatable.")
+@click.option("--description", default='')
+def do_new(project, characters, description):
+    """Create a project record."""
+    s3 = s3c.client()
+    project = P.check_slug(project, "project name")
+    if read_project(s3, project):
+        die(f"project {project!r} already exists")
+    for c in characters:
+        if c not in P.list_characters(s3):
+            die(f"no character {c!r} (see `studio character list`)")
+    print(write_project(s3, {"name": project, "created": _now(),
+                             "description": description,
+                             "characters": sorted(characters)}))
+
 
 @main.command("init")
 @click.argument("project", required=True)
 @click.option("--description", default='')
-def _cmd_init(project, description):
-    return _run(SimpleNamespace(cmd="init", project=project, description=description))
+def do_init(project, description):
+    """Write a project.json for a tree that predates the record."""
+    s3 = s3c.client()
+    project = P.check_slug(project, "project name")
+    if read_project(s3, project):
+        die(f"project {project!r} already has a project.json")
+    if project not in P.list_projects(s3):
+        die(f"nothing under {P.project_prefix(project)}/ — use `new` to create a project")
+    # The characters are read back out of the runs rather than asked for: the
+    # history already knows, and asking invites a wrong answer.
+    from studio_pipeline.domain import runs as R
+    chars: set[str] = set()
+    for run_id in R.list_runs(s3, project):
+        chars.update(R.run_characters(s3, project, run_id))
+    print(write_project(s3, {"name": project, "created": _now(),
+                             "description": description, "characters": sorted(chars)}))
+
+
+@main.command("show")
+@click.argument("project", required=True)
+@click.option("--json", "json_", is_flag=True)
+def do_show(project, json_):
+    """A project's record, and what it holds."""
+    s3 = s3c.client()
+    project = P.check_slug(project, "project name")
+    doc = read_project(s3, project) or {
+        "name": project,
+        "note": "no project.json — created before the record existed"}
+    counts = {kind: len(P.list_ids(s3, P.project_dir_prefix(project, kind)))
+              for kind in ("runs", "scenes", "movies")}
+    counts["favorites"] = len(s3c.list_keys(s3, P.favorites_prefix(project)))
+    counts["input"] = len(input_keys(s3, project))
+    counts["chains"] = len(s3c.list_keys(s3, P.chains_prefix(project)))
+    # `--json` changes nothing here: the record is JSON either way. The flag
+    # exists so a caller can pass it uniformly across every command.
+    print(json.dumps({**doc, "holds": counts}, indent=2))
+
+
+@main.command("add-inputs")
+@click.argument("files", nargs=-1, required=True)
+@click.argument("project", required=True)
+@click.option("--json", "json_", is_flag=True)
+def do_add_inputs(files, project, json_):
+    """Add local file(s) to a project's input pool."""
+    s3 = s3c.client()
+    project = P.check_slug(project, "project name")
+    added = add_inputs(s3, project, files)
+    if json_:
+        print(json.dumps(added, indent=2))
+    else:
+        for a in added:
+            print(a["key"])
+
 
 @main.command("inputs")
 @click.argument("project", required=True)
 @click.option("--expires", type=int, default=3600)
 @click.option("--json", "json_", is_flag=True)
 @click.option("--presign", is_flag=True)
-def _cmd_inputs(project, expires, json_, presign):
-    return _run(SimpleNamespace(cmd="inputs", project=project, expires=expires, json=json_, presign=presign))
-
-@main.command("list")
-@click.option("--json", "json_", is_flag=True)
-def _cmd_list(json_):
-    return _run(SimpleNamespace(cmd="list", json=json_))
-
-@main.command("new")
-@click.argument("project", required=True)
-@click.option("--character", multiple=True, help="A character this project involves. Repeatable.")
-@click.option("--description", default='')
-def _cmd_new(project, character, description):
-    return _run(SimpleNamespace(cmd="new", project=project, characters=character, description=description))
-
-@main.command("show")
-@click.argument("project", required=True)
-@click.option("--json", "json_", is_flag=True)
-def _cmd_show(project, json_):
-    return _run(SimpleNamespace(cmd="show", project=project, json=json_))
-
-
-def _run(args):
+def do_inputs(project, expires, json_, presign):
+    """The project's input pool, as keys or as temporary URLs."""
     s3 = s3c.client()
-
-    if args.cmd == "list":
-        names = P.list_projects(s3)
-        if args.json:
-            print(json.dumps([read_project(s3, n) or {"name": n} for n in names], indent=2))
-        elif names:
-            for n in names:
-                doc = read_project(s3, n) or {}
-                chars = ", ".join(doc.get("characters") or []) or "—"
-                print(f"{n:<20} characters: {chars}")
-        else:
-            print("(no projects yet — create one with `projects.py new <project>`)",
-                  file=sys.stderr)
-        return 0
-
-    project = P.check_slug(args.project, "project name")
-
-    if args.cmd == "new":
-        if read_project(s3, project):
-            die(f"project {project!r} already exists")
-        for c in (args.characters or []):
-            if c not in P.list_characters(s3):
-                die(f"no character {c!r} (see `character.py list`)")
-        doc = {"name": project, "created": _now(),
-               "description": args.description,
-               "characters": sorted(args.characters or [])}
-        print(write_project(s3, doc))
-        return 0
-
-    if args.cmd == "init":
-        if read_project(s3, project):
-            die(f"project {project!r} already has a project.json")
-        if project not in P.list_projects(s3):
-            die(f"nothing under {P.project_prefix(project)}/ — use `new` to create a project")
-        # The characters are read back out of the runs rather than asked for:
-        # the history already knows, and asking invites a wrong answer.
-        from studio_pipeline.domain import runs as R
-        chars: set[str] = set()
-        for run_id in R.list_runs(s3, project):
-            chars.update(R.run_characters(s3, project, run_id))
-        doc = {"name": project, "created": _now(),
-               "description": args.description, "characters": sorted(chars)}
-        print(write_project(s3, doc))
-        return 0
-
-    if args.cmd == "show":
-        doc = read_project(s3, project) or {"name": project,
-                                            "note": "no project.json — created before the record existed"}
-        counts = {kind: len(P.list_ids(s3, P.project_dir_prefix(project, kind)))
-                  for kind in ("runs", "scenes", "movies")}
-        counts["favorites"] = len(s3c.list_keys(s3, P.favorites_prefix(project)))
-        counts["input"] = len(input_keys(s3, project))
-        counts["chains"] = len(s3c.list_keys(s3, P.chains_prefix(project)))
-        doc = {**doc, "holds": counts}
-        if args.json:
-            print(json.dumps(doc, indent=2))
-        else:
-            print(json.dumps(doc, indent=2))
-        return 0
-
-    if args.cmd == "add-inputs":
-        added = add_inputs(s3, project, args.files)
-        if args.json:
-            print(json.dumps(added, indent=2))
-        else:
-            for a in added:
-                print(a["key"])
-        return 0
-
-    if args.cmd == "inputs":
-        keys = input_keys(s3, project)
-        if not keys:
-            print(f"(project {project} has no input pool yet)", file=sys.stderr)
-            return 0
-        if args.presign:
-            urls = [s3.generate_presigned_url("get_object",
-                                              Params={"Bucket": s3c.BUCKET, "Key": k},
-                                              ExpiresIn=args.expires) for k in keys]
-            print(json.dumps(urls, indent=2) if args.json else "\n".join(urls))
-        elif args.json:
-            print(json.dumps(keys, indent=2))
-        else:
-            print("\n".join(keys))
-        return 0
-
-    return 1
+    project = P.check_slug(project, "project name")
+    keys = input_keys(s3, project)
+    if not keys:
+        print(f"(project {project} has no input pool yet)", file=sys.stderr)
+        return
+    if presign:
+        urls = [s3.generate_presigned_url("get_object",
+                                          Params={"Bucket": s3c.BUCKET, "Key": k},
+                                          ExpiresIn=expires) for k in keys]
+        print(json.dumps(urls, indent=2) if json_ else "\n".join(urls))
+    elif json_:
+        print(json.dumps(keys, indent=2))
+    else:
+        print("\n".join(keys))
