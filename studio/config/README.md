@@ -8,7 +8,15 @@ reference shoot renders a character's standard set.
 config/pose/body/{front,three-quarter-left,three-quarter-right,profile,
                   back,back-three-quarter}.png
 config/pose/face/{front,three-quarter-left,three-quarter-right,profile}.png
+config/pose/source/body-sheet.jpg     what the body plates were cut from
+config/pose/prompts/*.md              prompts to regenerate either set
 ```
+
+`source/` holds the multi-figure sheet the body plates came from, kept so the
+split stays reproducible. It lived inside a character's pools for a while —
+first `reference/`, where it was indexed as that character's identity, then
+`corpus/`. Both were wrong for the same reason: it is not a picture of anybody,
+so it belongs to no character.
 
 ## This directory is the source of truth; S3 holds a copy
 
@@ -50,8 +58,8 @@ could match.
 
 ## Provenance, and how to replace the body plates
 
-The **body** plates were cut from a third-party 3D anatomy study sheet that was
-already in the media bucket, using
+The **body** plates were cut from `pose/source/body-sheet.jpg`, a third-party 3D
+anatomy study that was already in the media bucket, using
 `pipeline/scripts/split_pose_sheet.py` (measured cuts, so the split is
 reproducible). They are generic, unbranded and used privately, but they are not
 originally ours — if you want a set with no third-party lineage, regenerate them
