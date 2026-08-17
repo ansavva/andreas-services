@@ -68,6 +68,17 @@ def save(s3, doc: dict) -> str:
     return KEY
 
 
+def terms(s3, model_key: str) -> list[dict]:
+    """The avoid/use pairs for one model.
+
+    One fetch, so a caller can check many fields locally and keep per-field
+    attribution instead of making a round trip each time.
+    """
+    section = (load(s3).get("models") or {}).get(model_key) or {}
+    return [{"avoid": e["avoid"], "use": e["use"]}
+            for e in (section.get("entries") or []) if e.get("avoid")]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Per-model wording lists.")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -104,11 +115,7 @@ def main() -> int:
         return 0
 
     if args.cmd == "terms":
-        # One fetch, so a caller can check many fields locally and keep
-        # per-field attribution instead of making a round trip each time.
-        section = models.get(args.model) or {}
-        print(json.dumps([{"avoid": e["avoid"], "use": e["use"]}
-                          for e in (section.get("entries") or []) if e.get("avoid")]))
+        print(json.dumps(terms(s3, args.model)))
         return 0
 
     if args.cmd == "show":

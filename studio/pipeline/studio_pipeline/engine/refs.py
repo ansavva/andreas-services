@@ -27,23 +27,42 @@ dropping images. Which images a generation saw is not something to leave to
 whatever the folder listing happened to return.
 """
 
+import contextlib
+import io
 import os
 
-from studio_pipeline._invoke import InvokeError, call_json
 from studio_pipeline.characters import character as CHARACTER
 from studio_pipeline.store import projects as PROJECTS
+from studio_pipeline.store import s3 as s3c
 
 
 class RefError(Exception):
     """A character's or project's images could not be resolved."""
 
 
-def _run(module, args: list[str], what: str, who: str) -> list:
-    """Ask another part of the pipeline for a list of keys, as JSON."""
+@contextlib.contextmanager
+def _reason(what: str):
+    """Turn a `die()` in the layer below into a RefError that says why.
+
+    The store reports failure by printing to stderr and exiting, so a bare
+    `SystemExit` carries only the status code — `str(SystemExit(1))` is "1".
+    The message is the entire value, so it is captured and re-raised. The old
+    subprocess version got this for free from `capture_output`; doing it by
+    hand is the cost of the call being in-process.
+    """
+    err = io.StringIO()
     try:
-        return call_json(module.main, args)
-    except InvokeError as exc:
-        raise RefError(f"could not read {who}'s {what}:\n{exc}")
+        with contextlib.redirect_stderr(err):
+            yield
+    except SystemExit as exc:
+        detail = err.getvalue().strip() or f"exited {exc.code}"
+        raise RefError(f"could not read {what}:\n{detail}") from exc
+    finally:
+        # Anything not part of a failure still belongs on the real stderr.
+        rest = err.getvalue()
+        if rest and not rest.strip().startswith("error:"):
+            import sys
+            sys.stderr.write(rest)
 
 
 def _numbered(keys: list[str]) -> dict[int, str]:
@@ -67,23 +86,17 @@ def character_ref_keys(character: str, slots: list[int] | None = None,
     subfolders inside `reference/`, filename numbers are only unique within a
     group, so the resolved selection is what defines the order a model sees.
     """
-    args = ["refs", character, "--keys", "--json"]
-    if pick:
-        args += ["--pick", ",".join(pick)]
-    if tags:
-        args += ["--pick-tag", ",".join(tags)]
-    if slots:
-        args += ["--slots", ",".join(str(s) for s in slots)]
-    keys = _run(CHARACTER, args, "reference set", character)
+    with _reason(f"{character}'s reference set"):
+        keys = CHARACTER.resolve_selection(s3c.client(), character, pick, tags, slots)
 
     if cap is not None and len(keys) > cap:
         raise RefError(
             f"{character}'s selection is {len(keys)} image(s) but {cap_name} takes {cap}.\n"
             f"  reference/ is a library, not a set to send whole. Narrow it:\n"
-            f"    character.py refs {character} --describe        # what each image shows\n"
+            f"    studio character refs {character} --describe        # what each image shows\n"
             f"    --pick-tag face            # everything tagged face\n"
             f"    --pick <file>,<file>       # exactly these\n"
-            f"    character.py default-set {character} --set …    # make a choice the default"
+            f"    studio character default-set {character} --set …    # make a choice the default"
         )
     return keys
 
@@ -94,12 +107,14 @@ def character_pool_keys(character: str, pool: str) -> list[str]:
     `archive/` is retired material: resolve it only when the user asked for
     those images specifically.
     """
-    return _run(CHARACTER, ["pool", character, pool, "--json"], f"{pool} pool", character)
+    with _reason(f"{character}'s {pool} pool"):
+        return s3c.list_keys(s3c.client(), CHARACTER.pool_folder(character, pool))
 
 
 def project_input_keys(project: str, numbers: list[int]) -> list[str]:
     """Resolve input-pool numbers to S3 keys, in the order asked for."""
-    keys = _run(PROJECTS, ["inputs", project, "--json"], "input pool", f"project {project}")
+    with _reason(f"project {project}'s input pool"):
+        keys = PROJECTS.input_keys(s3c.client(), project)
     by_n = _numbered(keys)
     missing = [n for n in numbers if n not in by_n]
     if missing:

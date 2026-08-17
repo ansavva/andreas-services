@@ -59,7 +59,6 @@ from studio_pipeline.store import runs as R  # noqa: E402
 from studio_pipeline.store.s3 import BUCKET, client, die  # noqa: E402
 from studio_pipeline.store.video import VIDEO_EXT, contact_grid, grab  # noqa: E402  — shared ffmpeg layer
 
-from studio_pipeline._invoke import InvokeError, call_json
 from studio_pipeline.store import projects as PROJECTS
 
 
@@ -127,11 +126,11 @@ def add_to_input_pool(project: str, path: str) -> str:
     changed, and only failed AFTER the upload had already happened.
     """
     try:
-        added = call_json(PROJECTS.main, ["add-inputs", project, path, "--json"])
-    except InvokeError as exc:
-        die(f"could not add to project {project}'s input pool:\n{exc}")
+        added = PROJECTS.add_inputs(client(), project, [path])
+    except SystemExit as exc:
+        die(f"could not add to project {project}'s input pool: {exc}")
     if not added:
-        die(f"projects.py added nothing for {path}")
+        die(f"the project store added nothing for {path}")
     return added[0]["key"]
 
 

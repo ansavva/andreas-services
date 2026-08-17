@@ -111,8 +111,11 @@ def infer(model: str, props: dict, schemas: dict, text: str) -> tuple[dict, list
         notes.append(f"start={start} — a single-image field, so read as a first frame, "
                      f"not a reference set.")
 
-    # Caps and accepted formats are stated in prose inside field descriptions.
-    desc = " ".join(str(v.get("description") or "") for v in props.values())
+    # Caps and accepted formats are stated in prose, inside the REFERENCE
+    # field's own description — not anywhere in the schema. Both regexes below
+    # read `props[refs]` only. (A joined string of every field's description
+    # used to be built here and never used; a cap named in some other field's
+    # prose is not this field's cap, so the narrow read is the right one.)
     cap = None
     if refs:
         m = re.search(r"(?:up to|max(?:imum)?)\s+(\d+)", str(props[refs].get("description") or ""), re.I)

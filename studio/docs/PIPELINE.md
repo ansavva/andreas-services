@@ -340,6 +340,10 @@ studio --help              # the whole surface, grouped
 studio runs --help         # a command's own options
 ```
 
+```bash
+cd studio/pipeline && uv run pytest tests/ -q
+```
+
 `scripts/dev-setup.sh` installs the package and puts `studio` on PATH; the
 repo's `SessionStart` hook runs it, so a fresh session has the command already.
 To run it without that: `uv run --project studio/pipeline studio …`.
@@ -375,7 +379,10 @@ interpreter. Those calls are now ordinary function calls.
 5. If it needs new Bash patterns, add them to the **monorepo root**
    `.claude/settings.json`. Claude Code does not read a nested `settings.json`,
    so studio's permissions live at the root even though its skills do not.
-6. Document it in the table above, and in `studio/CLAUDE.md`.
+6. Add a test. `pipeline/tests/` is moto-backed and needs no AWS; the suite is
+   deliberately weighted towards wiring rather than features, because a
+   restructure is what actually breaks this code.
+7. Document it in the table above, and in `studio/CLAUDE.md`.
 
 To add a new *model* rather than a new skill, use `studio-add-model` — models
 are data in `studio-core/scripts/models.json`, not code.

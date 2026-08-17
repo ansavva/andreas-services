@@ -82,9 +82,9 @@ import sys
 # `technical`: "api"    -> a Replicate `input` object
 #              "replicate_kling" -> a Replicate `input` for kwaivgi/kling-v3-omni-video
 # `max_cuts`:  hard ceiling on shots (None -> use the 3-beats-per-8s density rule)
-from studio_pipeline._invoke import InvokeError, call_json
 from studio_pipeline.engine import registry as REG
-from studio_pipeline.store import phrasebook as PHRASEBOOK  # noqa: E402
+from studio_pipeline.store import phrasebook as PHRASEBOOK
+from studio_pipeline.store import s3 as s3c  # noqa: E402
 
 
 def _engines_from_registry() -> dict[str, dict]:
@@ -167,12 +167,11 @@ def phrasebook_terms(model_key: str) -> tuple[list[dict], str | None]:
     which is honest, instead of being told the draft was checked, which would not be.
     """
     try:
-        return call_json(PHRASEBOOK.main, ["terms", "--model", model_key]), None
-    except InvokeError as exc:
-        detail = str(exc).strip().splitlines()
-        return [], (detail[-1] if detail else "the phrasebook could not be read")
+        return PHRASEBOOK.terms(s3c.client(), model_key), None
+    except SystemExit as exc:  # the store reports failure by exiting
+        return [], str(exc) or "the phrasebook could not be read"
     except Exception as exc:  # a bug here must not block authoring
-        return [], f"could not run the phrasebook ({exc.__class__.__name__})"
+        return [], f"could not read the phrasebook ({exc.__class__.__name__})"
 
 # Fields a supplied start frame already fixes — re-describing them fights the image.
 START_IMAGE_REDUNDANT = ("scene", "lighting")
