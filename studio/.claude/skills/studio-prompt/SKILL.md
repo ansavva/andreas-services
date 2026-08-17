@@ -159,7 +159,7 @@ Everything above is shared. These differ, and `--engine` switches them:
 
 `build_prompt.py` also checks a draft against the per-model **wording list** and
 flags the preferred alternative where one is recorded — see
-[`studio-s3/scripts/phrasebook.py`](../studio-s3/scripts/phrasebook.py). The list is data in
+[`store/phrasebook.py`](../../../pipeline/studio_pipeline/store/phrasebook.py). The list is data in
 S3; when it cannot be read the validator says so rather than reporting the draft
 checked.
 
@@ -233,16 +233,16 @@ engine-specific rules, splits `technical` off, and emits the result.
 
 ```bash
 # Seedance (default) — technical becomes a Replicate `input` object
-uv run .claude/skills/studio-prompt/scripts/build_prompt.py prompt.json
+studio prompt prompt.json
 
 # Kling 3.0 Omni on Replicate — shots compile to multi_prompt, negative folds into the prompt
-uv run .claude/skills/studio-prompt/scripts/build_prompt.py prompt.json --engine kling-replicate
+studio prompt prompt.json --engine kling-replicate
 
 # image-to-video checks without editing the file
-uv run .claude/skills/studio-prompt/scripts/build_prompt.py prompt.json --engine kling --start-image
+studio prompt prompt.json --engine kling --start-image
 
 # override technical fields inline
-uv run .claude/skills/studio-prompt/scripts/build_prompt.py prompt.json \
+studio prompt prompt.json \
   --aspect-ratio 9:16 --duration 8 --resolution 1080p
 ```
 

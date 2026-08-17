@@ -2,6 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(uv run*)",
+      "Bash(studio *)",
       "Bash(aws sts get-caller-identity*)",
       "Bash(aws configure export-credentials*)",
       "Bash(aws s3 ls*)",

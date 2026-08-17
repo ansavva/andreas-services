@@ -127,7 +127,7 @@ fabricated, not preserved.
 ### 5. Normalise the format
 
 ```bash
-uv run .claude/skills/studio-s3/scripts/s3_convert.py --run {owner}/latest#1 --for kling --add-input {owner}
+studio convert --run {owner}/latest#1 --for kling --add-input {owner}
 ```
 
 Safe to run unconditionally: an already-accepted image is left untouched and its
@@ -146,7 +146,7 @@ frame already fixes background, lighting, and wardrobe, so:
 ### 7. Animate from the frame
 
 ```bash
-uv run .claude/skills/studio-core/scripts/studio.py run --model kling --project <project> \
+studio run --model kling --project <project> \
   --input-file input.json --project {project} --prompt-json prompt.json \
   --start-run {name}/latest#1 --slug {slug} --poll
 ```

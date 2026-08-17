@@ -90,12 +90,11 @@ is **refused** with the index printed — because which images a generation saw
 should not be decided by whatever a folder listing happened to return.
 
 ```bash
-CH=.claude/skills/studio-character/scripts/character.py
 
-uv run $CH refs <name> --describe            # what every image shows, and its tags
-uv run $CH refs <name> --pick-tag face --keys
-uv run $CH refs <name> --pick face/<name>_4.jpg,body/<name>_8.png --presign
-uv run $CH default-set <name> --set face/<name>_4.jpg body/<name>_8.png
+studio character refs <name> --describe            # what every image shows, and its tags
+studio character refs <name> --pick-tag face --keys
+studio character refs <name> --pick face/<name>_4.jpg,body/<name>_8.png --presign
+studio character default-set <name> --set face/<name>_4.jpg body/<name>_8.png
 ```
 
 The same selectors exist on the runner: `--pick`, `--pick-tag`, and `--slots`
@@ -106,11 +105,11 @@ sent, which is what `[ImageN]` refers to).
 and is invisible to whoever chooses the set — so it may as well not be there.
 
 ```bash
-uv run $CH add-refs <name> --to face /tmp/new/*.png   # numbered within face/
-uv run $CH set-ref-desc <name> face/<name>_5.png \
+studio character add-refs <name> --to face /tmp/new/*.png   # numbered within face/
+studio character set-ref-desc <name> face/<name>_5.png \
   --description "Three-quarter right, looking off camera." --tags face,three-quarter
-uv run $CH describe-refs <name> --from-json batch.json   # a whole pass, atomically
-uv run $CH sync-refs <name> --apply                      # reconcile index vs folder
+studio character describe-refs <name> --from-json batch.json   # a whole pass, atomically
+studio character sync-refs <name> --apply                      # reconcile index vs folder
 ```
 
 ### Curating the pools
@@ -119,13 +118,12 @@ uv run $CH sync-refs <name> --apply                      # reconcile index vs fo
 RUN unless you pass `--apply`, and nothing is ever deleted outright:
 
 ```bash
-CUR=.claude/skills/studio-character/scripts/curate.py
 
-uv run $CUR groups   <name>                       # what reference/ holds, by group
-uv run $CUR regroup  <name> face <name>_3.jpg     # move into a purpose subfolder
-uv run $CUR dedupe   <name> --pool reference      # remove byte-identical copies
-uv run $CUR renumber <name> --group face          # close holes -> contiguous 1..N
-uv run $CUR move     <name> face/<name>_3.jpg --from reference --to archive
+studio curate groups   <name>                       # what reference/ holds, by group
+studio curate regroup  <name> face <name>_3.jpg     # move into a purpose subfolder
+studio curate dedupe   <name> --pool reference      # remove byte-identical copies
+studio curate renumber <name> --group face          # close holes -> contiguous 1..N
+studio curate move     <name> face/<name>_3.jpg --from reference --to archive
 ```
 
 **Moving an image moves its records too.** Run records, scene manifests and
@@ -142,7 +140,7 @@ not a file move.
 ## The bible is structured YAML — one schema, every character
 
 `profile.yaml` is canonical in S3 (edit it via this skill). The schema is
-[`templates/profile.yaml`](templates/profile.yaml) and **every character carries
+[`characters/templates/profile.yaml`](../../../pipeline/studio_pipeline/characters/templates/profile.yaml) and **every character carries
 the same top-level keys**, so a prompt or a check reads a path
 (`consistency.must`, `identity.signature_features`) instead of pattern-matching
 headings out of prose:
@@ -182,29 +180,28 @@ it are never separated.
 `character.py` **refuses to upload** a bible that does not parse or has lost a
 top-level key: a character with no `consistency` block is a character that
 silently stops being checked against. For a **worked example**, read a live one
-(`uv run $CH show <name>`) before writing a new one.
+(`studio character show <name>`) before writing a new one.
 
 ## The management tool
 
-[`scripts/character.py`](scripts/character.py) is the CRUD + load layer. It reuses
+[`characters/character.py`](../../../pipeline/studio_pipeline/characters/character.py) is the CRUD + load layer. It reuses
 the **`studio-s3`** skill's `s3_common.py` (the AWS-login-bridged boto3 client, the
 key builders, natural sort) — one storage layer, one auth path, no bytes
 in the agent context. Requires an `aws login` (see the `studio-s3` skill).
 
 ```bash
-CH=.claude/skills/studio-character/scripts/character.py
 
-uv run $CH list                                  # every character
-uv run $CH show <name>                           # print a character's profile.yaml (from S3)
-uv run $CH create <name> --from-profile /tmp/<name>.md   # new character record
-uv run $CH set-profile <name> /tmp/<name>.md     # replace the bible
-uv run $CH edit <name>                           # pull the bible to edit locally; re-run to upload
-uv run $CH add-refs <name> --to face /tmp/*.png  # add refs into a purpose group
-uv run $CH refs <name> --describe                # what every image shows
-uv run $CH refs <name> --presign --json          # generation-time: ordered signed URLs
-uv run $CH refs <name> --pick-tag body --keys    # a named selection, as keys
-uv run $CH pool <name> corpus                    # material, not identity
-uv run $CH add-to <name> seed photo.jpg          # founding source photos
+studio character list                                  # every character
+studio character show <name>                           # print a character's profile.yaml (from S3)
+studio character create <name> --from-profile /tmp/<name>.md   # new character record
+studio character set-profile <name> /tmp/<name>.md     # replace the bible
+studio character edit <name>                           # pull the bible to edit locally; re-run to upload
+studio character add-refs <name> --to face /tmp/*.png  # add refs into a purpose group
+studio character refs <name> --describe                # what every image shows
+studio character refs <name> --presign --json          # generation-time: ordered signed URLs
+studio character refs <name> --pick-tag body --keys    # a named selection, as keys
+studio character pool <name> corpus                    # material, not identity
+studio character add-to <name> seed photo.jpg          # founding source photos
 ```
 
 ### Editing a bible by hand (`edit`)
@@ -215,9 +212,9 @@ path; once that working copy exists, the next run **pushes** it back — so the
 loop is *run, edit, run again*. It prints a diff before uploading.
 
 ```bash
-uv run $CH edit <name>            # 1st run: download   2nd run: upload
-uv run $CH edit <name> --diff     # what have I changed vs S3?
-uv run $CH edit <name> --discard  # bin my local edits, re-pull
+studio character edit <name>            # 1st run: download   2nd run: upload
+studio character edit <name> --diff     # what have I changed vs S3?
+studio character edit <name> --discard  # bin my local edits, re-pull
 ```
 
 It keeps two hidden sidecars next to the working copy — `.<name>.base.md` (the
@@ -233,13 +230,13 @@ position N in the resolved selection, which is what a model actually receives.
 
 ## Generating a character video (the full flow)
 
-1. **Load the bible.** `uv run $CH show <name>` — read it (esp. `consistency`
+1. **Load the bible.** `studio character show <name>` — read it (esp. `consistency`
    and `identity.signature_features`). Don't generate from memory.
 2. **Choose the reference subset.** Read what is available, then pick — the
    library is bigger than any cap:
    ```bash
-   uv run $CH refs <name> --describe
-   uv run $CH refs <name> --pick-tag face --presign --json > refs.json
+   studio character refs <name> --describe
+   studio character refs <name> --pick-tag face --presign --json > refs.json
    # -> [{ "key": "characters/<name>/reference/face/<name>_4.jpg", "url": "https://..." }, ...]
    ```
    Pass the `.url` values as `reference_images` (Seedance accepts up to 9) and
@@ -269,13 +266,13 @@ without a reference set — the character has to survive as prose. Compress the
 bible into a pasteable block:
 
 ```bash
-uv run $CH textblock <name>
+studio character textblock <name>
 ```
 
 If the bible has an authored `text_identity_block` it is printed verbatim;
 otherwise the identity-bearing keys (`identity`, `face`, `body`, `wardrobe`,
 `consistency`) are printed as raw material to compress into ~50-70 words. Write
-the result back into `text_identity_block:` (`$CH edit <name>`) so it is authored
+the result back into `text_identity_block:` (`studio character edit <name>`) so it is authored
 once and reused.
 
 **With a start frame, keep the pasted block short.** The frame carries appearance
@@ -284,15 +281,15 @@ better than prose can, and a long identity paragraph fights it — see
 
 ## Adding a new character
 
-1. Write the bible from [`templates/profile.yaml`](templates/profile.yaml) (read
-   an existing character's live bible, `uv run $CH show <name>`, as a reference).
+1. Write the bible from [`characters/templates/profile.yaml`](../../../pipeline/studio_pipeline/characters/templates/profile.yaml) (read
+   an existing character's live bible, `studio character show <name>`, as a reference).
    Fill **every** key — `create` refuses a bible missing any of them.
-2. `uv run $CH create <name> --from-profile <your-bible.yaml>`.
-3. `uv run $CH add-to <name> seed <source photos…>` — the founding images.
-4. `uv run $CH add-refs <name> --to face <generated angles…>` (and `--to body`,
+2. `studio character create <name> --from-profile <your-bible.yaml>`.
+3. `studio character add-to <name> seed <source photos…>` — the founding images.
+4. `studio character add-refs <name> --to face <generated angles…>` (and `--to body`,
    `--to wardrobe`), then **describe them**: `describe-refs --from-json` for a
    batch, `set-ref-desc` for one.
-5. `uv run $CH default-set <name> --set …` — the handful sent when nobody picks.
+5. `studio character default-set <name> --set …` — the handful sent when nobody picks.
    Keep it under the smallest cap in play (Kling 7).
 
 No new skill directory — ever. The character is now usable by the whole pipeline.
@@ -309,7 +306,7 @@ A character record is medium-agnostic on purpose:
   unless a style is requested, and give any signature stylized look as an optional
   §5 preset rather than baking it into identity.
 - **Wardrobe wording belongs to the ENGINE, not to identity.** Each engine has a
-  per-model wording list (`s3/scripts/phrasebook.py`) giving preferred phrasing;
+  per-model wording list (`studio phrasebook`) giving preferred phrasing;
   it is data, and it changes. Keep it in the engine skill, never in a bible.
 - **A bible built from photographs of a real person is a real person's likeness.**
   Generated video of an identifiable person is a consent question before it is a

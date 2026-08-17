@@ -10,7 +10,7 @@ Studio is one service with two halves that share one S3 bucket.
 
 | Half | Where | Runs | Doc |
 |---|---|---|---|
-| **The pipeline** — makes the media | `.claude/skills/` | Locally, inside Claude, under your own AWS login. **Never deploys.** | [docs/PIPELINE.md](docs/PIPELINE.md) |
+| **The pipeline** — makes the media | `pipeline/` (code) + `.claude/skills/` (docs) | Locally, inside Claude, under your own AWS login. **Never deploys.** | [docs/PIPELINE.md](docs/PIPELINE.md) |
 | **The app** — browses the media | `backend/`, `frontend/` | `studio.andreas.services` + `studio-api.andreas.services`, deployed by CI | [docs/WEB_APP.md](docs/WEB_APP.md) |
 | The bucket both use | `infra/modules/media` | `s3://xharness-prod-media-us-east-1/` | [infra/README.md](infra/README.md) |
 
@@ -18,8 +18,11 @@ That split is unusual for this monorepo, where a service directory is normally a
 deployable unit and nothing else. It is deliberate: the tools that produce the
 library and the app that reads it were separate repos until August 2026, and
 keeping them apart meant the rules below were invisible to anyone working on the
-app. **A change under `.claude/skills/` or `docs/` deploys nothing** — the CI
-path filters exclude both.
+app. **A change under `pipeline/`, `.claude/skills/` or `docs/` deploys
+nothing** — the CI path filters exclude all three.
+
+The pipeline is one package exposing one command. `studio --help` lists every
+subcommand; `scripts/dev-setup.sh` installs it and puts it on PATH.
 
 The bucket name is grandfathered from that era and does not follow the repo's
 naming convention. It is not an oversight; see
@@ -82,16 +85,19 @@ skill's own `SKILL.md`.
 
 ## Conventions that bite
 
-- **Skill scripts resolve paths relative to `studio/`, not the repo root.** A
-  script four levels deep in `.claude/skills/<skill>/scripts/` walks up to
-  `studio/` to find `.env`. That is why the skills live here and not in the
-  monorepo's root `.claude/`.
+- **`SKILL.md` files are documentation; the code is in `pipeline/`.** A skill
+  directory holds prose and nothing else. Adding a command means adding a module
+  under `pipeline/studio_pipeline/` and an entry in `cli.py`, then describing it
+  in the relevant `SKILL.md`.
+- **One constant knows where `studio/` is**: `studio_pipeline.STUDIO_DIR`. Use
+  it rather than counting `".."` segments — that is what broke every time a file
+  moved.
 - **Claude Code does not read a nested `settings.json`.** New Bash permissions
   for these skills go in the **monorepo root** `.claude/settings.json`, even
   though the skills do not.
-- **Every script is `uv run --script` with PEP 723 inline metadata.** No shared
-  venv, no `requirements.txt`. Run `scripts/dev-setup.sh` once (the session hook
-  does it for you).
+- **One package, one dependency set** (`pipeline/pyproject.toml`, locked in
+  `uv.lock`). Run `scripts/dev-setup.sh` once — the session hook does it for
+  you — and `studio` is on PATH.
 - **`terraform destroy` on `studio/prod` fails by design.** The media bucket
   carries `prevent_destroy`; see [infra/README.md](infra/README.md).
 - **Moving an object means rewriting the records that name it.** Skipping that

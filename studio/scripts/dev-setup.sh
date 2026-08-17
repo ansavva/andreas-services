@@ -6,11 +6,10 @@
 # that run inside Claude on your machine. The deployed half (backend/, frontend/)
 # is built by CI and needs nothing from here.
 #
-# The only hard requirement is `uv`: every skill script declares its own Python
-# version and dependencies with PEP 723 inline metadata, so `uv run` builds and
-# caches an isolated env per script — there is no shared venv or requirements.txt
-# to install. This installs uv (if missing) and warms the dependency caches so
-# the first real run is fast.
+# The only hard requirement is `uv`. The pipeline itself is one package
+# (studio/pipeline) with one dependency set, exposing one command: `studio`.
+# This installs uv if missing, syncs that package, and puts its console script
+# on PATH for the session.
 #
 # Safe to run repeatedly: every step checks before it acts (idempotent) and runs
 # non-interactively. The repo's SessionStart hook calls it on every session.
@@ -59,30 +58,37 @@ if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 2. Pre-warm dependency caches for the entry-point scripts (best-effort).
-#    `--help` exits 0 without doing any work, but forces uv to resolve and cache
-#    each script's declared dependencies. Only entry points are listed — the
-#    library modules they import share the same resolved env.
+# 2. Install the pipeline and put its `studio` command on PATH.
+#
+#    The pipeline used to be a set of standalone scripts, each declaring its own
+#    dependencies inline and invoked by its path. It is now one package with one
+#    dependency set, exposing one command — so setup is a sync rather than a
+#    per-script cache warm, and the skills can say `studio runs list` instead of
+#    naming a file.
 # ---------------------------------------------------------------------------
-prewarm() {
-  local name="$1" script="$2"
-  if [ -f "$script" ]; then
-    log "warming '$name' dependency cache..."
-    uv run --script "$script" --help >/dev/null 2>&1 \
-      || warn "could not pre-warm '$name' (will resolve on first use)"
+PIPELINE="$STUDIO_DIR/pipeline"
+
+if [ -f "$PIPELINE/pyproject.toml" ]; then
+  log "syncing the pipeline environment..."
+  if uv sync --project "$PIPELINE" --quiet; then
+    log "pipeline ready: $(uv run --project "$PIPELINE" studio --help 2>/dev/null | head -1)"
   else
-    warn "skipping '$name' — $script not found"
+    warn "could not sync the pipeline environment — 'studio' will be unavailable."
   fi
-}
 
-SKILLS="$STUDIO_DIR/.claude/skills"
-
-prewarm studio        "$SKILLS/studio-core/scripts/studio.py"
-prewarm runs          "$SKILLS/studio-s3/scripts/runs.py"
-prewarm s3-convert    "$SKILLS/studio-s3/scripts/s3_convert.py"
-prewarm build-prompt  "$SKILLS/studio-prompt/scripts/build_prompt.py"
-prewarm character     "$SKILLS/studio-character/scripts/character.py"
-prewarm curate        "$SKILLS/studio-character/scripts/curate.py"
+  # Expose the console script for the rest of the session, the same way uv is
+  # exposed above. Without this a caller has to spell out
+  # `uv run --project studio/pipeline studio ...` every time.
+  VENV_BIN="$PIPELINE/.venv/bin"
+  if [ -d "$VENV_BIN" ] && [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+    if ! grep -qs "$VENV_BIN" "$CLAUDE_ENV_FILE" 2>/dev/null; then
+      echo "export PATH=\"$VENV_BIN:\$PATH\"" >> "$CLAUDE_ENV_FILE"
+      log "added the pipeline's bin dir to CLAUDE_ENV_FILE"
+    fi
+  fi
+else
+  warn "no pipeline package at $PIPELINE — skipping."
+fi
 
 # ---------------------------------------------------------------------------
 # 3. Report optional external tools (never fatal — platform dependent).

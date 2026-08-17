@@ -5,8 +5,8 @@ name: Studio · PR
 # lint/typecheck/build, and Terraform fmt/validate.
 
 #
-# `studio/.claude/skills/` and `studio/docs/` are excluded: those are the local
-# generation pipeline and its documentation, which run inside Claude on a
+# `studio/pipeline/`, `studio/.claude/skills/` and `studio/docs/` are excluded: those are the local
+# generation pipeline, its skills and its documentation, which run inside Claude on a
 # developer's machine and are not part of either deployable surface. Nothing
 # here can validate them, so a skill edit should not spin up a runner.
 
@@ -16,6 +16,7 @@ on:
       - 'studio/**'
       - '!studio/.claude/**'
       - '!studio/docs/**'
+      - '!studio/pipeline/**'
       - '.github/workflows/studio-pr.yml'
 
 concurrency:

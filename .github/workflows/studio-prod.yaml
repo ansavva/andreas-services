@@ -17,8 +17,8 @@ name: Studio · Deploy · Prod
 #
 # studio-pr.yml validates pull requests and never writes to AWS.
 
-# `studio/.claude/skills/` and `studio/docs/` are excluded from the trigger: they
-# are the local generation pipeline and its docs, which run inside Claude on a
+# `studio/pipeline/`, `studio/.claude/skills/` and `studio/docs/` are excluded from the trigger: they
+# are the local generation pipeline, its skills and its docs, which run inside Claude on a
 # developer's machine and deploy nowhere. The `detect-changes` filters below
 # would already skip every job for a skills-only change, but excluding them here
 # means the workflow does not start at all.
@@ -30,6 +30,7 @@ on:
       - 'studio/**'
       - '!studio/.claude/**'
       - '!studio/docs/**'
+      - '!studio/pipeline/**'
       - '.github/workflows/studio-prod.yaml'
   workflow_dispatch:
     inputs:

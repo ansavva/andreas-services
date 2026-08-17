@@ -6,7 +6,7 @@ description: The shared machinery every studio-* engine runs on — the model RE
 # studio-core — the runner every model shares
 
 **Models are data, not code.** One entry per model in
-[`scripts/models.json`](scripts/models.json), one runner over all of them. Adding
+[`engine/models.json`](../../../pipeline/studio_pipeline/engine/models.json), one runner over all of them. Adding
 a model is a reviewed data change plus a generated doc — never an edit to five
 scripts, which is what it used to be.
 
@@ -36,13 +36,12 @@ the shared prose lives in one place rather than six:
 ## The runner
 
 ```bash
-STUDIO=.claude/skills/studio-core/scripts/studio.py
 
-uv run $STUDIO models                    # every registered model
-uv run $STUDIO models show gpt-image-2   # entry + LIVE input schema + caveats
-uv run $STUDIO models refresh            # re-snapshot schema enums into models.json
+studio models                    # every registered model
+studio models show gpt-image-2   # entry + LIVE input schema + caveats
+studio models refresh            # re-snapshot schema enums into models.json
 
-uv run $STUDIO run --model <key> --project <project> --prompt "..." --character <name> \
+studio run --model <key> --project <project> --prompt "..." --character <name> \
   --slug <slug> --dry-run
 ```
 
@@ -102,7 +101,7 @@ error: openai/gpt-image-2 does not accept: ['input_fidelity']
 | `refs.py` | Character reference selection / project input pool → S3 keys. |
 
 The run store itself stays in the `studio-s3` skill
-([`studio-s3/scripts/runs.py`](../studio-s3/scripts/runs.py)) — that is storage, this is
+([`store/runs.py`](../../../pipeline/studio_pipeline/store/runs.py)) — that is storage, this is
 invocation.
 
 ## `snapshot` — why there are two copies of the enums

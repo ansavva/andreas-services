@@ -12,8 +12,8 @@ model's duration ceiling**, or through beats that must flow rather than cut.
 The family:
 - **`studio-shot`** — one brief → one clip. Start there.
 - **`studio-scene`** (this) — many clips → one continuous piece.
-- **`studio-s3`** — [`frames.py`](../studio-s3/scripts/frames.py) extracts the handoff frame and
-  the verification grid; [`scenes.py`](../studio-s3/scripts/scenes.py) is the scene store.
+- **`studio-s3`** — [`frames.py`](../../../pipeline/studio_pipeline/store/frames.py) extracts the handoff frame and
+  the verification grid; [`scenes.py`](../../../pipeline/studio_pipeline/store/scenes.py) is the scene store.
 - **`studio-kling`** / **`studio-seedance`** — render each shot.
 
 ## Why chain at all
@@ -54,27 +54,25 @@ boundaries are where the cuts go — deliberately, where you chose them.
 Per shot, four steps. Only step 1 bills.
 
 ```bash
-S3=.claude/skills/studio-s3/scripts
-STUDIO=.claude/skills/studio-core/scripts/studio.py
 
 # 0. ONCE, before shot 2: name what shot 1 started from
-uv run $S3/frames.py chain <project>/<slug> --seed projects/<project>/input/<project>_in_<n>.png
+studio frames chain <project>/<slug> --seed projects/<project>/input/<project>_in_<n>.png
 
 # 1. render this shot from the previous frame, with the SCENE'S OWN frames as
 #    references  (APPROVAL GATE — bills)
-uv run $STUDIO run --model kling --project <project> --input-file input.json --prompt-json shot.json \
+studio run --model kling --project <project> --input-file input.json --prompt-json shot.json \
   --project <project> --start-key projects/<project>/input/<project>_in_<n>.png \
-  $(uv run $S3/frames.py chain <project>/<slug> --args --max 7) \
+  $(studio frames chain <project>/<slug> --args --max 7) \
   --slug <slug>-shot2 --poll
 
 # 2. LOOK AT IT — a contact sheet can be read, a video cannot
-uv run $S3/frames.py grid <project>/latest --count 4 --dest /tmp/check
+studio frames grid <project>/latest --count 4 --dest /tmp/check
 
 # 3. take the handoff frame into the input pool AND into the chain
-uv run $S3/frames.py last <project>/latest --add-input --chain <slug>
+studio frames last <project>/latest --add-input --chain <slug>
 
 # 4. …repeat for the next shot, then assemble
-uv run $S3/scenes.py new <name> --slug <slug> \
+studio scenes new <name> --slug <slug> \
   --shot <project>/<run_id>#1 --shot <project>/<run_id>#1 --shot <project>/latest#1
 ```
 
@@ -159,17 +157,16 @@ covers it.
 `--chain` makes the list derived rather than remembered:
 
 ```bash
-S3=.claude/skills/studio-s3/scripts
 
 # once, naming what shot 1 started from
-uv run $S3/frames.py chain <project>/<slug> --seed projects/<project>/input/<project>_in_<n>.png
+studio frames chain <project>/<slug> --seed projects/<project>/input/<project>_in_<n>.png
 
 # each shot: the handoff frame is recorded as it is produced
-uv run $S3/frames.py last <project>/latest --add-input --chain <slug>
+studio frames last <project>/latest --add-input --chain <slug>
 
 # next shot: paste the references straight in
-uv run $STUDIO run --model kling --project <project> … \
-  $(uv run $S3/frames.py chain <project>/<slug> --args --max 7)
+studio run --model kling --project <project> … \
+  $(studio frames chain <project>/<slug> --args --max 7)
 ```
 
 **Mind the cap** — Kling takes 7 (4 alongside a reference video), so `--character`
@@ -196,7 +193,7 @@ It is the wrong tool for *"and then…"*.
 ## Assembly
 
 ```bash
-uv run $S3/scenes.py new <project> --slug <slug> --shot <runref> --shot <runref> …
+studio scenes new <project> --slug <slug> --shot <runref> --shot <runref> …
 ```
 
 `--shot` order is cut order. The scene lands at

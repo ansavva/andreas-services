@@ -71,7 +71,7 @@ broad-shouldered — carry the physique.
 
 `build_prompt.py` checks a draft against this model's wording list and suggests
 the preferred alternative where one is recorded; see
-[`studio-s3/scripts/phrasebook.py`](../studio-s3/scripts/phrasebook.py).
+[`store/phrasebook.py`](../../../pipeline/studio_pipeline/store/phrasebook.py).
 
 ## Submit with FRESH presigned URLs minted in code (MANDATORY)
 
@@ -89,7 +89,7 @@ no URL passes through the agent context:
 # input.json = the built `input` object WITHOUT image/reference fields
 #   (studio-prompt: build_prompt.py prompt.json --emit input  → the .input object)
 set -a; . ./.env; set +a
-uv run .claude/skills/studio-core/scripts/studio.py run \
+studio run \
   --model seedance --project <project> --input-file input.json \
   --character <character> --slots 1,2,3,6 --slug <slug> --poll
 ```
@@ -105,7 +105,7 @@ back to the MCP `create_models_predictions` tool for a job with no images at all
 ### Chaining — animate a frame from a studio-image run
 
 ```bash
-uv run .claude/skills/studio-core/scripts/studio.py run \
+studio run \
   --model seedance --project <project> --input-file input.json --project <project> \
   --start-run <project>/latest#1 --slug <slug> --poll
 ```
@@ -155,10 +155,9 @@ through the agent context.
 Inspect and chain runs with the shared store:
 
 ```bash
-RUNS=.claude/skills/studio-s3/scripts/runs.py
-uv run $RUNS list <character>
-uv run $RUNS show <project>/latest
-uv run $RUNS outputs <project>/latest --presign
+studio runs list <character>
+studio runs show <project>/latest
+studio runs outputs <project>/latest --presign
 ```
 
 There is no longer a per-character `output/` folder; pre-existing videos were
@@ -201,9 +200,9 @@ is needed for references.
 
 ```bash
 # References for a character — ordered presigned URLs (via studio-character)
-uv run .claude/skills/studio-character/scripts/character.py refs <character> --presign --json > refs.json
+studio character refs <character> --presign --json > refs.json
 # equivalently, straight from the studio-s3 skill:
-uv run .claude/skills/studio-s3/scripts/s3_presign.py --folder <character>/reference --json > refs.json
+studio presign --folder <character>/reference --json > refs.json
 # -> [{ "key": "characters/<character>/reference/face/<character>_1.webp", "url": "…" }, …]
 # Pass the .url values as reference_images; <character>_1 -> [Image1], <character>_2 -> [Image2], ...
 
@@ -217,7 +216,7 @@ URL** minted at submit time. For an ad-hoc local image, upload it to S3 first,
 then reference its key:
 
 ```bash
-uv run .claude/skills/studio-s3/scripts/s3_upload.py --folder <character>/originals <img>
+studio upload --folder <character>/originals <img>
 ```
 
 The two former escape hatches — `upload_to_replicate.py` (POSTed bytes to

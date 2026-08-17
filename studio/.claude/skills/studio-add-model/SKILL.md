@@ -6,7 +6,7 @@ description: Add a new Replicate model to the studio-* harness — fetch its liv
 # studio-add-model — onboarding a Replicate model
 
 Models are **data**. Adding one is an entry in
-[`studio-core/scripts/models.json`](../studio-core/scripts/models.json) plus a
+[`engine/models.json`](../../../pipeline/studio_pipeline/engine/models.json) plus a
 skill doc — no submitter to write, no five files to edit. Once registered, a
 model is immediately invokable by `studio.py run --model <key>`, importable by
 the backfill, and convertible for by `s3_convert --for <key>`.
@@ -14,10 +14,9 @@ the backfill, and convertible for by `s3_convert --for <key>`.
 ## The command
 
 ```bash
-ADD=.claude/skills/studio-add-model/scripts/add_model.py
 
-uv run $ADD openai/gpt-image-2            # propose only — writes NOTHING
-uv run $ADD openai/gpt-image-2 --write    # append to the registry + scaffold the skill
+studio add-model openai/gpt-image-2            # propose only — writes NOTHING
+studio add-model openai/gpt-image-2 --write    # append to the registry + scaffold the skill
 ```
 
 It prints two documents, matching the house review format:
@@ -53,7 +52,7 @@ README for limiting sentences and flags any that name a live schema value as a
 
 ## The procedure
 
-1. **Propose.** `uv run $ADD <owner>/<name>` — nothing is written.
+1. **Propose.** `studio add-model <owner>/<name>` — nothing is written.
 2. **Check what was guessed.** Especially:
    - `images.refs` — must be the *array* field. A scalar `image` is a first
      frame, not a reference set (this is how Seedance names it).
@@ -72,8 +71,8 @@ README for limiting sentences and flags any that name a live schema value as a
    from its siblings, which inputs matter in practice.
 6. **Verify** before spending anything real:
    ```bash
-   uv run .claude/skills/studio-core/scripts/studio.py models show <key>
-   uv run .claude/skills/studio-core/scripts/studio.py run --model <key> \
+   studio models show <key>
+   studio run --model <key> \
      --project <project> --prompt "test" --no-refs --dry-run
    ```
 
@@ -82,7 +81,7 @@ README for limiting sentences and flags any that name a live schema value as a
 Schemas change under you. Re-snapshot after any model update:
 
 ```bash
-uv run .claude/skills/studio-core/scripts/studio.py models refresh [<key>]
+studio models refresh [<key>]
 ```
 
 Only `snapshot` is rewritten — the curated fields (`denied`, caps, notes)

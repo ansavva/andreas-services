@@ -99,16 +99,18 @@ minted at submit time. Signed URLs are never *stored* either: run records hold S
 keys, and `runs.py` refuses a URL-shaped binding. Keys are stable, so any run
 replays by re-minting.
 
-## Scripts
+## Modules
 
-All are `uv` scripts (PEP 723; dependency `boto3`) under
-`.claude/skills/studio-s3/scripts/`. `s3_common.py` (auth/helpers) is a library, not run
-directly. Model invocation — the registry, the runner, live schema validation —
-lives in [`studio-core`](../studio-core/SKILL.md); this skill is storage.
+The code is `studio_pipeline.store`, in the pipeline package at
+`studio/pipeline/`, and every command below is a subcommand of `studio` — run
+`studio --help` for the whole surface. `s3.py` (auth/helpers) and `paths.py` are
+libraries, not commands. Model invocation — the registry, the runner, live
+schema validation — lives in [`studio-core`](../studio-core/SKILL.md); this
+skill is storage.
 
 | Script | Purpose |
 |---|---|
-| `paths.py` | **The one module that knows the tree's shape.** Every key in the harness is built here; `s3_common.key()` stays the single place a global prefix is applied. Library, not a CLI. |
+| `paths.py` (lib) | **The one module that knows the tree's shape.** Every key in the harness is built here; `s3_common.key()` stays the single place a global prefix is applied. Library, not a CLI. |
 | `projects.py` | Project CRUD (`list`/`new`/`init`/`show`) and the project **input pool** (`add-inputs`/`inputs`). `require_project()` is what turns a missing `--project` into an error that lists the real options. |
 | `runs.py` | The shared **run store** every studio-* engine records into: request/prompt/result, output archiving, runref resolution for chaining, `find --character` across projects, and `favorite`. Library + CLI. |
 | `scenes.py` | The **scene store**: an ordered list of run outputs stitched into one continuous video under `projects/<p>/scenes/<scene_id>/`, as `shots/`. |
@@ -125,58 +127,57 @@ lives in [`studio-core`](../studio-core/SKILL.md); this skill is storage.
 | `migrate_layout.py` | The one-off move from the pre-restructure `media/<owner>/…` tree. Kept for the record and for any bucket that still holds an old tree. |
 
 ```bash
-S3=.claude/skills/studio-s3/scripts
 
 # Projects — ASK which one before generating anything; offer to create one
-uv run $S3/projects.py list
-uv run $S3/projects.py new <project> --character <name> --description "…"
-uv run $S3/projects.py show <project>
+studio projects list
+studio projects new <project> --character <name> --description "…"
+studio projects show <project>
 
 # List / download / upload / presign, by key prefix
-uv run $S3/s3_download.py --folder characters/<name>/reference --list
-uv run $S3/s3_download.py --folder characters/<name>/reference --all --dest /tmp/refs --json
-uv run $S3/s3_upload.py --folder characters/<name>/seed photo.jpg
-uv run $S3/s3_presign.py --folder characters/<name>/reference/face --json
+studio download --folder characters/<name>/reference --list
+studio download --folder characters/<name>/reference --all --dest /tmp/refs --json
+studio upload --folder characters/<name>/seed photo.jpg
+studio presign --folder characters/<name>/reference/face --json
 
 # Formats differ between engines: GPT Image writes .webp, Kling takes only
 # .jpg/.jpeg/.png. Convert a still before handing it over as a start frame.
 # Safe to run unconditionally — an already-accepted image is left untouched.
-uv run $S3/s3_convert.py --run <project>/latest#1 --for kling --add-input <project>
+studio convert --run <project>/latest#1 --for kling --add-input <project>
 
 # Runs: history, chaining, and keepers
-uv run $S3/runs.py list <project> [--character <name>]
-uv run $S3/runs.py show <project>/latest
-uv run $S3/runs.py outputs <project>/latest --presign    # feed into the next render
-uv run $S3/runs.py find --character <name>               # across every project
-uv run $S3/runs.py favorite <project>/latest#1
+studio runs list <project> [--character <name>]
+studio runs show <project>/latest
+studio runs outputs <project>/latest --presign    # feed into the next render
+studio runs find --character <name>               # across every project
+studio runs favorite <project>/latest#1
 
 # Frames: verify a clip, and take the handoff frame for chaining
-uv run $S3/frames.py grid <project>/latest --count 4 --dest /tmp/check
-uv run $S3/frames.py last <project>/latest --add-input   # -> projects/<p>/input/
-uv run $S3/frames.py at   <project>/latest --time 6.5
+studio frames grid <project>/latest --count 4 --dest /tmp/check
+studio frames last <project>/latest --add-input   # -> projects/<p>/input/
+studio frames at   <project>/latest --time 6.5
 
 # Chains: a scene's own frames, which are its reference set for later shots
-uv run $S3/frames.py chain <project>/<slug> --seed projects/<p>/input/<p>_in_<n>.png
-uv run $S3/frames.py last  <project>/latest --add-input --chain <slug>
-uv run $S3/frames.py chain <project>/<slug> --args --max 7    # -> --key … --key …
+studio frames chain <project>/<slug> --seed projects/<p>/input/<p>_in_<n>.png
+studio frames last  <project>/latest --add-input --chain <slug>
+studio frames chain <project>/<slug> --args --max 7    # -> --key … --key …
 
 # Phrasebook: per-model wording lists (data lives in S3)
-uv run $S3/phrasebook.py check --model <model key> --text "<draft prompt>"
-uv run $S3/phrasebook.py show --model <model key>
+studio phrasebook check --model <model key> --text "<draft prompt>"
+studio phrasebook show --model <model key>
 
 # Scenes: cut a sequence of runs into one continuous take
-uv run $S3/scenes.py new <project> --slug <slug> \
+studio scenes new <project> --slug <slug> \
   --shot <project>/<run_id>#1 --shot <project>/<run_id>#1 --shot <project>/latest#1
-uv run $S3/scenes.py list <project>
-uv run $S3/scenes.py show <project>/latest
+studio scenes list <project>
+studio scenes show <project>/latest
 
 # Movies: cut scenes into one piece
-uv run $S3/movies.py new <project> --slug <slug> \
+studio movies new <project> --slug <slug> \
   --scene <project>/<scene_id> --scene <project>/latest
-uv run $S3/movies.py show <project>/latest
+studio movies show <project>/latest
 
 # Integrity: does every recorded key still resolve?
-uv run $S3/rewrite.py check
+studio rewrite check
 ```
 
 `--shot` and `--scene` are repeatable and **order is the cut order**. Each takes

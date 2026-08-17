@@ -24,8 +24,8 @@ is not already settled in this conversation, **ask**, offering the existing ones
 and the option of a new one:
 
 ```bash
-uv run .claude/skills/studio-s3/scripts/projects.py list
-uv run .claude/skills/studio-s3/scripts/projects.py new <project> --character <name>
+studio projects list
+studio projects new <project> --character <name>
 ```
 
 ## A movie, or a longer scene?
@@ -60,17 +60,16 @@ as a scene, then cut those scenes into a movie.
 ## Building one
 
 ```bash
-S3=.claude/skills/studio-s3/scripts
 
-uv run $S3/scenes.py list <project>          # what there is to cut
+studio scenes list <project>          # what there is to cut
 
-uv run $S3/movies.py new <project> --slug <slug> \
+studio movies new <project> --slug <slug> \
   --scene <project>/<scene_id> \
   --scene <project>/<scene_id> \
   --scene <project>/latest
 
-uv run $S3/movies.py show <project>/latest
-uv run $S3/movies.py outputs <project>/latest --presign
+studio movies show <project>/latest
+studio movies outputs <project>/latest --presign
 ```
 
 `--scene` is repeatable and **order is the cut order**. It takes a **sceneref**:
@@ -122,8 +121,8 @@ ffmpeg comes from the `imageio-ffmpeg` wheel — no system install.
 ## Checking one
 
 ```bash
-uv run $S3/movies.py show <project>/latest        # durations, stitch method, cast
-uv run $S3/movies.py outputs <project>/latest --presign
+studio movies show <project>/latest        # durations, stitch method, cast
+studio movies outputs <project>/latest --presign
 ```
 
 `stitch.method` is the thing to read: a movie you expected to stream-copy that

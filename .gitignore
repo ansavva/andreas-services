@@ -271,3 +271,7 @@ skills-lock.json
 studio/input/
 studio/local/
 studio/output/
+
+# The pipeline package's virtualenv. `uv.lock` IS committed — it is an
+# application, not a library, so a reproducible resolve is the point.
+studio/pipeline/.venv/

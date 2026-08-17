@@ -92,60 +92,51 @@ minted at submit time — and signed URLs are never stored. Full detail under
 
 ## Layout
 
+The pipeline is **one package** with **one command**. The `SKILL.md` files are
+its agent-facing documentation and hold no code.
+
 ```
-studio/                            — one service, two halves
-├── .claude/skills/                — THE PIPELINE (local only, never deploys)
-│   ├── s3/                        — the storage layer: the canonical asset store
-│   │   ├── SKILL.md
-│   │   └── scripts/
-│   │       ├── s3_common.py       — credentials bridge, BUCKET/PREFIX/REGION
-│   │       ├── paths.py           — the one module that knows the tree's shape
-│   │       ├── runs.py            — the run store; refuses a URL-shaped binding
-│   │       ├── scenes.py movies.py frames.py projects.py
-│   │       ├── s3_upload.py s3_download.py s3_presign.py s3_convert.py
-│   │       ├── rewrite.py phrasebook.py video.py
-│   │       └── migrate_layout.py backfill_replicate.py   — one-shot, spent
-│   ├── studio-core/               — the machinery every engine runs on
-│   │   ├── SKILL.md
-│   │   └── scripts/
-│   │       ├── models.json        — the model REGISTRY
-│   │       ├── studio.py          — the runner; the only entry point here
-│   │       ├── submit.py registry.py model_schema.py replicate_api.py refs.py
-│   ├── studio-add-model/          — register a new Replicate model
-│   ├── studio-character/          — character records (profile + reference library)
-│   │   ├── scripts/character.py curate.py contact_sheet.py
-│   │   └── templates/profile.yaml
-│   ├── studio-prompt/             — author + validate the prompt JSON
-│   │   └── scripts/build_prompt.py
-│   ├── studio-image/              — the frame-first workflow  ─┐
-│   ├── studio-shot/               — one shot, end to end       │ workflow
-│   ├── studio-scene/              — chained shots, one take    │ skills
-│   ├── studio-movie/              — scenes cut into a piece   ─┘ (docs only)
-│   ├── studio-seedance/  studio-kling/                  — video engines  ─┐
-│   ├── studio-nano-banana-pro/  studio-nano-banana-2/   — image engines   │ per-model
-│   └── studio-gpt-image-2/  studio-gpt-image-1-5/       — image engines  ─┘ (docs only)
+studio/
+├── pipeline/                      — THE CODE (local only, never deploys)
+│   ├── pyproject.toml             one dependency set, one console script
+│   ├── uv.lock                    committed: this is an app, not a library
+│   └── studio_pipeline/
+│       ├── cli.py                 `studio` — dispatch over everything below
+│       ├── __init__.py            STUDIO_DIR, ENV_FILE, env_value()
+│       ├── _invoke.py             in-process calls between the parts
+│       ├── store/                 the S3 asset store
+│       │   ├── s3.py              credentials bridge, BUCKET/PREFIX/REGION
+│       │   ├── paths.py           the one module that knows the tree's shape
+│       │   ├── runs.py            the run store; refuses a URL-shaped binding
+│       │   ├── scenes.py movies.py frames.py projects.py
+│       │   ├── upload.py download.py presign.py convert.py
+│       │   └── rewrite.py phrasebook.py video.py
+│       ├── engine/                the model layer
+│       │   ├── models.json        the REGISTRY — models are data, not code
+│       │   ├── runner.py          `studio run` / `studio models`
+│       │   ├── submit.py registry.py model_schema.py replicate_api.py refs.py
+│       │   └── add_model.py
+│       ├── characters/            character.py curate.py contact_sheet.py
+│       └── prompt/build.py        structured prompt authoring
+│
+├── .claude/skills/                — THE DOCS (one SKILL.md each, no code)
+│   ├── studio-s3/  studio-core/  studio-character/  studio-prompt/
+│   ├── studio-image/  studio-shot/  studio-scene/  studio-movie/
+│   ├── studio-seedance/  studio-kling/  studio-add-model/
+│   └── studio-nano-banana-pro/ …-2/  studio-gpt-image-2/ …-1-5/
 │
 ├── backend/  frontend/            — THE APP (see WEB_APP.md)
-├── infra/
-│   ├── modules/media/             — the S3 bucket both halves use
-│   ├── modules/                   — auth, compute, api_gateway, api_domain, hosting
-│   ├── envs/prod/
-│   └── README.md                  — the bucket, its layout, presign recipes
-├── scripts/
-│   ├── dev-setup.sh               — idempotent prerequisite installer (this half)
-│   ├── dev-up.sh                  — run both app surfaces locally (the other half)
-│   └── create-user.sh
-├── docs/
-│   ├── PIPELINE.md                — ← this file
-│   └── WEB_APP.md
+├── infra/                         — Terraform, incl. modules/media (the bucket)
+├── scripts/dev-setup.sh           — installs the pipeline, puts `studio` on PATH
 ├── .env                           — REPLICATE_API_TOKEN (git-ignored)
 ├── input/  local/  output/        — local working dirs (git-ignored)
 └── CLAUDE.md                      — the index over both halves
 ```
 
-The skills resolve paths relative to `studio/`, not to the repo root: a script
-at `.claude/skills/<skill>/scripts/x.py` walks four levels up to find `.env`.
-That is why they live here and not in the monorepo's root `.claude/`.
+**One constant knows where `studio/` is**: `studio_pipeline.STUDIO_DIR`. Every
+module that needs the repo root — `.env`, `local/characters/` — derives it from
+there. It used to be recomputed per file as a count of `".."` segments, which
+was correct only for that file's depth and silently wrong the moment one moved.
 
 ---
 
@@ -156,9 +147,8 @@ studio/scripts/dev-setup.sh
 ```
 
 This installs the only hard prerequisite — `uv` — via `brew install uv` if it's
-missing, and warms the dependency caches for the entry-point scripts. It's
-idempotent, so it's safe to run any time. `uv` then handles Python versions and
-dependencies automatically per script.
+missing, syncs the pipeline package, and puts its `studio` command on PATH for
+the session. Idempotent, so it's safe to run any time.
 
 It runs automatically at the start of every Claude Code session, from the repo's
 `SessionStart` hook (`.claude/hooks/session-start.sh` at the monorepo root),
@@ -166,12 +156,12 @@ so a fresh session comes up ready to use. That hook is shared with the rest of
 the monorepo — studio's setup is one guarded, non-fatal step inside it.
 
 External tools:
-- **AWS CLI** (`aws`) — `brew install awscli` — **required**. It is how every
-  script reaches the bucket: `s3_common.py` bridges `aws configure
+- **AWS CLI** (`aws`) — `brew install awscli` — **required**. It is how the
+  pipeline reaches the bucket: `store/s3.py` bridges `aws configure
   export-credentials` into boto3, because boto3's own chain does not understand
   an `aws login` session. Sign in with `aws login` each session.
-- **ffmpeg** — `brew install ffmpeg` — optional. The scene and movie scripts
-  vendor `imageio-ffmpeg`; this is for checking a render by hand.
+- **ffmpeg** — `brew install ffmpeg` — optional. The scene and movie code
+  vendors `imageio-ffmpeg`; this is for checking a render by hand.
 
 API keys:
 - **REPLICATE_API_TOKEN** — https://replicate.com/account/api-tokens —
@@ -341,67 +331,51 @@ part of the pipeline now.
 | `studio-s3`               | Read/write the `xharness-prod-media-us-east-1` S3 bucket (list, upload, download, presign) — the asset store holding **characters** and **projects**, plus the shared **run store** (`runs.py`), **scene store** (`scenes.py`) and **movie store** (`movies.py`), the project registry (`projects.py`), the layout module (`paths.py`) and the record rewriter (`rewrite.py`). Storage only; model invocation lives in `studio-core` |
 
 ---
-## How skills call tools
+## How the code is invoked
 
-Each entry script declares its own dependencies inline using PEP 723:
-
-```python
-# /// script
-# requires-python = ">=3.13"
-# dependencies = ["qrcode[pil]==8.0"]
-# ///
-```
-
-Skills invoke them via `uv run`, which builds a cached isolated env on first
-use and reuses it on subsequent runs:
+Everything is a subcommand of one console script:
 
 ```bash
-uv run .claude/skills/qr/scripts/generate.py "https://example.com" -o /tmp/qr.png
-uv run .claude/skills/photos/scripts/scan.py scan-takeout /path/to/takeout
-uv run .claude/skills/kindle/scripts/kindle.py /path/to/book.pdf
-uv run .claude/skills/nytimes-briefing/scripts/nytimes.py briefing
-uv run .claude/skills/nytimes-search/scripts/search.py "climate change"
-uv run .claude/skills/transcribe/scripts/transcribe.py "https://youtu.be/VIDEO_ID" --format srt
-uv run .claude/skills/studio-s3/scripts/projects.py list          # ASK before generating
-uv run .claude/skills/studio-s3/scripts/s3_presign.py --folder characters/<name>/reference --json
-uv run .claude/skills/studio-character/scripts/character.py refs <name> --describe
-uv run .claude/skills/studio-core/scripts/studio.py models
-uv run .claude/skills/studio-core/scripts/studio.py models show gpt-image-2
-uv run .claude/skills/studio-add-model/scripts/add_model.py <owner>/<name>
-uv run .claude/skills/studio-core/scripts/studio.py run --project <project> \
-  --model nano-banana-pro --prompt "..." --character <name> --pick-tag face --slug <slug>
-uv run .claude/skills/studio-core/scripts/studio.py run --project <project> \
-  --model kling --input-file input.json --character <name> \
-  --start-run <project>/latest#1 --slug <slug> --poll
-uv run .claude/skills/studio-s3/scripts/runs.py list <project>
-uv run .claude/skills/studio-s3/scripts/runs.py find --character <name>   # across projects
-uv run .claude/skills/studio-s3/scripts/frames.py grid <project>/latest --count 4   # look at a clip
-uv run .claude/skills/studio-s3/scripts/frames.py last <project>/latest --add-input # chaining handoff
-uv run .claude/skills/studio-s3/scripts/scenes.py new <project> --slug <slug> \
-  --shot <project>/<run_id>#1 --shot <project>/latest#1
-uv run .claude/skills/studio-s3/scripts/movies.py new <project> --slug <slug> \
-  --scene <project>/<scene_id> --scene <project>/latest
-uv run .claude/skills/studio-s3/scripts/rewrite.py check          # every recorded key resolves?
+studio --help              # the whole surface, grouped
+studio runs --help         # a command's own options
 ```
 
-For multi-file skills (like `photos`), only the entry script needs the
-inline metadata — its declared deps are available to all sibling modules
-imported during the run.
+`scripts/dev-setup.sh` installs the package and puts `studio` on PATH; the
+repo's `SessionStart` hook runs it, so a fresh session has the command already.
+To run it without that: `uv run --project studio/pipeline studio …`.
+
+Note two commands that read alike and are not:
+
+```
+studio run      submit a generation   (creates a run)
+studio runs     query the run store   (reads the runs)
+```
+
+This replaced nineteen standalone scripts, each with its own argparse parser,
+its own PEP 723 dependency block and its own `uv run <path>` invocation. The
+per-script dependency isolation was buying nothing — the union across all of
+them was four packages, and every script wanted `boto3` plus at most one other —
+while costing a resolve per script, no shared lockfile, and cross-module calls
+that had to shell out through `uv run` because no two scripts shared an
+interpreter. Those calls are now ordinary function calls.
 
 ---
 
 ## How to add a new skill
 
-1. Create `studio/.claude/skills/<name>/SKILL.md` with YAML frontmatter and instructions
-2. Create the entry script at `studio/.claude/skills/<name>/scripts/<script>.py` with a `# /// script` block declaring its deps
-3. If the skill needs new Bash patterns, add them to the **monorepo root**
+1. Write the code as a module under `studio/pipeline/studio_pipeline/`, in the
+   subpackage it belongs to (`store`, `engine`, `characters`, `prompt`). Give it
+   a `main()` that parses `sys.argv` — that is the contract `cli.py` dispatches
+   against, and what lets a command be called in-process by another.
+2. Add a row to `COMMANDS` and a name to `GROUPS` in `cli.py`.
+3. Create `studio/.claude/skills/<name>/SKILL.md` with YAML frontmatter — prose
+   only, invoking `studio <command>`. No code lives in a skill directory.
+4. If it needs a new dependency, add it to `pipeline/pyproject.toml` and re-run
+   `uv sync`. There is one dependency set for the whole pipeline.
+5. If it needs new Bash patterns, add them to the **monorepo root**
    `.claude/settings.json`. Claude Code does not read a nested `settings.json`,
    so studio's permissions live at the root even though its skills do not.
-4. If it is an entry point worth warming, add a `prewarm` line to
-   `studio/scripts/dev-setup.sh`
-5. Document the new skill in the table above, and in `studio/CLAUDE.md`
-
-No central `requirements.txt` or venv to update.
+6. Document it in the table above, and in `studio/CLAUDE.md`.
 
 To add a new *model* rather than a new skill, use `studio-add-model` — models
 are data in `studio-core/scripts/models.json`, not code.

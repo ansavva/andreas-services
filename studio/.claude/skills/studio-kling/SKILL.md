@@ -82,14 +82,14 @@ author time rather than after a spent generation.
 set -a; . ./.env; set +a          # REPLICATE_API_TOKEN
 
 # 1) author + validate; emits a ready Replicate input
-uv run .claude/skills/studio-prompt/scripts/build_prompt.py shot.json \
+studio prompt shot.json \
   --engine kling-replicate
 
 # 2) submit as a recorded run — the shared submitter serves both video engines.
 #    It records the run, mints presigned URLs at submit time, polls WITHOUT
 #    Prefer:wait (a timed-out wait retries internally and bills duplicates),
 #    and archives the finished video into the run.
-uv run .claude/skills/studio-core/scripts/studio.py run \
+studio run \
   --model kling --project <project> --input-file input.json \
   --character <name> --slug <slug> --poll
 ```
@@ -114,7 +114,7 @@ the video. `--poll` archives it automatically — download-then-upload, so bytes
 never pass through the agent context. Replicate output URLs are not permanent.
 
 **S3 is the only origin: assets are never uploaded to Replicate**, only presigned
-from the bucket at submit time. Inspect runs with `s3/scripts/runs.py`
+from the bucket at submit time. Inspect runs with `studio runs`
 (`list` / `show` / `outputs --presign`).
 
 ## Image-to-video: don't describe what the frame already shows
@@ -157,14 +157,14 @@ Full workflow — the loop, the continuity rules, the per-part verification gate
 and assembly — lives in **[`studio-scene`](../studio-scene/SKILL.md)**. In short:
 
 1. Render part 1.
-2. Export its **last frame** with `s3/scripts/frames.py last <runref> --add-input`;
+2. Export its **last frame** with ``studio frames last` <runref> --add-input`;
    use the resulting input-pool key as part 2's `start_image`.
 3. Carry a **pose-continuity line** in part 2's `subject` — `"…, arms already
    raised in a bicep flex"` — so the pose doesn't reset on frame one.
 4. Hold the locked base identical.
 5. **Colour-match in assembly**; a hard cut amplifies small differences.
 
-Assemble with `s3/scripts/scenes.py new`. Parts chained this way inherit their
+Assemble with ``studio scenes new``. Parts chained this way inherit their
 geometry from each other, so the stitch is a stream copy with no re-encode.
 
 **Binding the frame: `--start-key`, not `--key`.** `--key` adds an explicit S3
@@ -255,7 +255,7 @@ frame, `mode: standard`, `generate_audio: true` throughout (15 s + 10 s + 10 s +
   `reference/` library. Those images were made in another context and pull the
   render toward it. Reach into `reference/` only when the scene introduces
   something no existing frame shows. See
-  [`studio-scene`](../studio-scene/SKILL.md); `s3/scripts/frames.py chain`
+  [`studio-scene`](../studio-scene/SKILL.md); ``studio frames chain``
   derives the list.
 - **Every shot came back 960×960 24 fps / AAC 44.1 kHz stereo**, so chained shots
   stitch as a stream copy with no re-encode.

@@ -51,8 +51,8 @@ habit. Each has its own skill with its schema, caveats and levers:
 | `gpt-image-1.5` | [`studio-gpt-image-1-5`](../studio-gpt-image-1-5/SKILL.md) | Transparent backgrounds, or fidelity dialled **down** |
 
 ```bash
-uv run $STUDIO models                    # the registry
-uv run $STUDIO models show <model>       # entry + LIVE schema + caveats
+studio models                    # the registry
+studio models show <model>       # entry + LIVE schema + caveats
 ```
 
 `openai/gpt-image-1` is deliberately **not** registered: it requires bringing
@@ -70,9 +70,8 @@ To add a model, use [`studio-add-model`](../studio-add-model/SKILL.md).
 ## Generating
 
 ```bash
-STUDIO=.claude/skills/studio-core/scripts/studio.py
 
-uv run $STUDIO run --model nano-banana-pro --project <project> \
+studio run --model nano-banana-pro --project <project> \
   --prompt "..." --character <name> --slug <slug>
 ```
 
@@ -94,7 +93,7 @@ same check, so an approved payload is a payload that submits. When a field is
 aimed at the wrong model, the error names the one that takes it:
 
 ```
-$ uv run $STUDIO run --model gpt-image-2 --project <project> --extra '{"input_fidelity":"high"}' …
+$ studio run --model gpt-image-2 --project <project> --extra '{"input_fidelity":"high"}' …
 error: openai/gpt-image-2 does not accept: ['input_fidelity']
   `input_fidelity` is accepted by: gpt-image-1.5
   valid inputs: ['aspect_ratio', 'background', 'input_images', …]
@@ -105,7 +104,7 @@ The full mechanism — `denied`, cross-field rules, the live schema pass — liv
 
 ## Runs — every submission is recorded
 
-Writes through the shared store, [`studio-s3/scripts/runs.py`](../studio-s3/scripts/runs.py):
+Writes through the shared store, [`store/runs.py`](../../../pipeline/studio_pipeline/store/runs.py):
 
 ```
 projects/<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/
@@ -120,10 +119,9 @@ same shape holds for one video or ten images. The request is written *before*
 submitting, so a failed render is still history.
 
 ```bash
-RUNS=.claude/skills/studio-s3/scripts/runs.py
-uv run $RUNS list <project>
-uv run $RUNS show <project>/latest
-uv run $RUNS outputs <project>/latest --presign
+studio runs list <project>
+studio runs show <project>/latest
+studio runs outputs <project>/latest --presign
 ```
 
 ## Chaining — feeding a run into the next one
@@ -140,11 +138,11 @@ slug fragment, or a bare run id when `--character` supplies the owner. Append
 
 ```bash
 # refine a frame using the previous frame plus part of the curated set
-uv run $STUDIO run --model nano-banana-pro --project <project> --prompt "..." \
+studio run --model nano-banana-pro --project <project> --prompt "..." \
   --character <name> --slots 1,2 --ref-run <project>/latest#1 --slug <slug>
 
 # then animate it — the payoff
-uv run .claude/skills/studio-core/scripts/studio.py run \
+studio run \
   --model kling --project <project> --input-file input.json --character <name> \
   --start-run <project>/latest#1 --slug <slug> --poll
 ```
@@ -179,7 +177,7 @@ prompt inside the payload double-escapes it into one unreadable line:
 ```
 
 `--dry-run --json` emits the raw payload plus its `bindings` instead, for
-machines. The renderer is shared (`s3/scripts/runs.py: render_payload()`), so
+machines. The renderer is shared (`store/runs.py: render_payload()`), so
 image and video submissions review identically.
 
 **Image prompts are prose, not structured JSON.** `studio-prompt`'s schema is
@@ -210,7 +208,7 @@ render fail. Convert first — the source run output is append-only history, so 
 is copied, never re-encoded in place:
 
 ```bash
-uv run .claude/skills/studio-s3/scripts/s3_convert.py \
+studio convert \
   --run <project>/latest#1 --for kling --add-input <name>
 # -> projects/<project>/input/<project>_in_<n>.png   (prints the new key)
 ```
@@ -228,7 +226,7 @@ base image goes first, references after. Name the roles in the prompt to match
 model to infer them.
 
 ```bash
-uv run $STUDIO run --model nano-banana-pro --project <project> --slug <slug> \
+studio run --model nano-banana-pro --project <project> --slug <slug> \
   --key projects/<project>/input/<project>_in_3.png \
   --character <name> --pick-tag face \
   --aspect-ratio match_input_image --prompt "Use the FIRST image as the base…"
