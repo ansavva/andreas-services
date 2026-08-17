@@ -142,3 +142,39 @@ def test_local_working_dirs_resolve_under_studio():
     assert characters.LOCAL_DIR.startswith(root)
     assert characters.LOCAL_DIR.endswith("local/characters")
     assert migrate_layout.JOURNAL_DIR.startswith(root)
+
+
+def test_every_callback_accepts_the_parameters_click_will_pass():
+    """A declared option must match its callback's signature, statically.
+
+    `--from` arrives as `from_` unless a name is given, and a callback expecting
+    `src_pool` then raises TypeError — but only when the command is invoked WITH
+    arguments. `test_every_subcommand_dispatches` invokes each leaf bare, so a
+    command with required arguments exits on usage before the callback is ever
+    called, and the mismatch survives. `studio curate move` was broken this way
+    from the argparse port until someone tried to move an image.
+    """
+    import inspect
+
+    import click
+
+    from studio_pipeline import cli
+
+    broken = []
+
+    def walk(command, path):
+        if isinstance(command, click.Group):
+            for name, sub in command.commands.items():
+                walk(sub, path + [name])
+            return
+        if command.callback is None:
+            return
+        signature = inspect.signature(command.callback)
+        if any(p.kind is p.VAR_KEYWORD for p in signature.parameters.values()):
+            return                      # **options — takes whatever it is given
+        unaccepted = {p.name for p in command.params} - set(signature.parameters)
+        if unaccepted:
+            broken.append(f"studio {' '.join(path)}: callback cannot accept {sorted(unaccepted)}")
+
+    walk(cli.main, [])
+    assert not broken, "\n".join(broken)

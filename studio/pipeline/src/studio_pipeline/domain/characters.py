@@ -470,7 +470,12 @@ def do_push(s3, name: str, force: bool, local: str, base: str, etagf: str) -> No
 
     if prior is not None:
         sys.stderr.write(unified(prior, text, name))
-    uri = put_file(s3, local, f"{name}/{PROFILE_FILE}", PROFILE_CT)
+    # `profile_key`, never a hand-built path. This line read
+    # f"{name}/{PROFILE_FILE}" — the pre-migration layout — so every push landed
+    # at `<name>/profile.yaml` in the bucket root instead of under `characters/`,
+    # reported success, and wrote the local sidecars as though it had worked. The
+    # bible was never updated and nothing said so.
+    uri = put_file(s3, local, profile_key(name), PROFILE_CT)
     write_text(base, text)
     write_text(etagf, remote_etag(s3, name) or "")
     print(f"uploaded {uri}", file=sys.stderr)
