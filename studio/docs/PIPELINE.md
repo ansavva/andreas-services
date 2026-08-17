@@ -82,6 +82,39 @@ submit time, since the signed URL itself is ~2 KB of noise and expires.
 The gate covers what is sent to the model. The surrounding steps — presigning,
 polling, downloads, uploads, recording the run — do not need approval.
 
+**Approval is of a payload, not of a plan.** A yes to "shall I render this?", an
+answer to a multiple-choice question, or a payload shown earlier in the
+conversation is not approval of the request about to be sent. Show it again and
+wait. There is deliberately no `--yes`-style flag on any generating command: an
+approval flag is precisely the door an agent walks through while believing some
+earlier exchange counted as consent. If one reappears, it is a bug.
+
+### 2b. NEVER put an image into a character without approval
+
+Runs are append-only history and descriptions can be rewritten, but
+`characters/<name>/reference/` is **who the character is** — every later render is
+verified against it, and every future generation may be driven by it. Adding,
+replacing, renumbering or archiving anything there, or in `default_set` or the
+bible's `references:` index, is a decision that belongs to the user and is
+**separate** from having agreed to spend money on a render.
+
+So a successful generation does not become identity by itself.
+`studio character shoot` leaves every result in its run and prints the promotion
+line; a person looks, and then:
+
+```bash
+studio runs outputs <project>/latest --presign            # look first
+studio character add-refs <name> --to <group> --from-run <runref>
+```
+
+`add-refs` copies inside the bucket, so the run keeps its own output and no
+record ends up naming a key that moved.
+
+Both this rule and the one above were broken in a single session — a shoot
+submitted on the strength of a menu answer, and its output then written into a
+character's face group that nobody had approved. Nothing was overwritten, but
+nothing about that was safe by design; it was safe by luck of the numbering.
+
 ### 3. S3 is the only origin
 
 **Assets are NEVER uploaded to Replicate.** Everything sent to a model must

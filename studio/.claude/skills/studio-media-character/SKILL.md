@@ -289,6 +289,36 @@ better than prose can, and a long identity paragraph fights it — see
    standard set does not cover, then **describe them**: `describe-refs
    --from-json` for a batch, `set-ref-desc` for one.
 
+## THE TWO HUMAN GATES
+
+**A character's `reference/` is the one thing here you cannot fix later.** Runs
+are append-only history, descriptions can be rewritten, a project can be renamed
+— but what sits in `reference/` is *who the character is*, and every later render
+is held against it. So two separate decisions belong to the person, and neither
+may be inferred:
+
+1. **Spending.** Show the complete payload as the two documents — `PROMPT` then
+   `INPUT` — and wait for a yes to **that payload**. Not to a plan, not to a
+   menu option, not to "shall I shoot?". A payload approved earlier in the
+   conversation is not an approval of the one about to be sent; re-show it.
+2. **Identity.** A generated image does **not** go into `characters/<name>/`
+   because it rendered successfully. Show it, and wait for a yes before it is
+   added, replaced, renumbered or archived. This includes `reference/`,
+   `default_set`, and anything in the bible's `references:` index.
+
+Both of these have been broken in practice, in the same session:
+
+- a shoot was submitted on the strength of a multiple-choice answer rather than
+  a shown payload, using a `--yes` flag that no longer exists;
+- its result was then written straight into a character's face group, which
+  nobody had agreed to.
+
+The tools now enforce what they can. `shoot` has no approval flag and asks
+interactively, and it **never files its own output** — results stay in their run
+until someone promotes them with `add-refs --from-run`. What the tools cannot
+enforce is an agent deciding a previous message counted as consent. It does not.
+When in doubt, render the payload into the conversation and stop.
+
 ## The standard set (`shoot`)
 
 A reference library is chosen from **by tag**, so an angle nobody shot is an angle
@@ -303,32 +333,42 @@ its usual top, and every cue in `consistency.must`.
 
 ```bash
 studio character shoot <name> --project <project> --dry-run   # nine payloads, no spend
-studio character shoot <name> --project <project>             # approve, then submit
+studio character shoot <name> --project <project>             # shows them, then asks
 studio character shoot <name> --project <project> --group face
 studio character shoot <name> --project <project> --slot body_back   # re-shoot one
 ```
 
-- **Nothing bills without approval.** Every payload is shown in full, and the
-  batch then needs one explicit confirmation. `--dry-run` stops after the render.
+- **Nothing bills without approval.** Every payload is shown in full and the
+  batch then needs an explicit yes. There is no flag that answers it.
+- **Nothing enters the character.** Results stay in their runs; the shoot prints
+  the `add-refs --from-run` line for each. Look before promoting:
+  `studio runs outputs <project>/latest --presign`.
 - **`--project` is required**, as it is for any generating command.
 - **Identity comes from `seed/`** when it has any, because driving a shoot off
   already-generated references feeds model output back in as identity and
   compounds drift. `--identity refs` / `--pick` / `--pick-tag` override that.
+- **The medium comes from the character**, not from the spec — a slot renders in
+  whatever `rendering.default_style` says, and is told to match the medium of
+  the reference images it is given. A character drawn in ink is not turned into a
+  photograph.
 - **`--model` overrides the engine** for every slot; the spec's defaults are
   chosen so any registered image model accepts them. A dry run preflights the
   override, so a model that would refuse it costs nothing to find out.
-- Each result is **copied** into `reference/<group>/` — the run keeps its own
-  output — then described and tagged automatically. A full shoot also points
-  `default_set` at the standard selection; a partial one leaves it alone.
 - The pose plates live in the repo under `studio/config/` and are copied to the
   bucket by `studio/scripts/dev-setup.sh`. If a shoot says one is missing, re-run
   that script.
 
-Then `studio character default-set <name> --set …` if you want a different
-handful sent when nobody picks. Keep it under the smallest cap in play (Kling 7).
+Promoting a keeper, once a person has seen it and said so:
+
+```bash
+studio runs outputs <project>/latest --presign          # look at it first
+studio character add-refs <name> --to face --from-run <project>/latest#1
+studio character set-ref-desc <name> face/<file> --description "…" --tags face,front
+studio character default-set <name> --set …             # under the Kling cap of 7
+```
 
 `studio character create <name> --from-profile <bible> --shoot --project <p>`
-does steps 2 and 4 in one go, through the same approval gate.
+creates and shoots in one command, through the same two gates.
 
 No new skill directory — ever. The character is now usable by the whole pipeline.
 Names are lowercase `[a-z0-9_-]`. There is no reserved-name list: characters live

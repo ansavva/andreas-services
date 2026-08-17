@@ -16,9 +16,9 @@
 #     repo (`studio/config/`) and which `dev-setup.sh` copies out. A model is
 #     only ever handed a presigned URL of an S3 object.
 #   * `{pose_slot}` and `{identity_slots}` are filled with the REAL `[ImageN]`
-#     positions at build time. Never write `[Image1]` literally: the binding
-#     order puts the plate last, so a hard-coded number points at the wrong
-#     image.
+#     positions at build time. Never write `[Image1]` literally — `gather()`
+#     decides the resolved order, and a hard-coded number aims the pose-guide
+#     instruction at whatever happens to be in that position.
 #   * Defaults must be PORTABLE across every registered image model, because
 #     `--model` overrides them and an unknown field fails preflight. Model-only
 #     knobs go under `per_model`.
@@ -51,8 +51,20 @@ defaults:
     is a POSE GUIDE ONLY. Match its stance, the direction the body and head
     face, and its framing. Take nothing else from it — not its build,
     proportions, skin, head, face or hair, and do not blend it into the person.
-  photo: >-
-    Photographic, sharp, neutral colour, no stylisation, no filter, no vignette.
+  # The MEDIUM is the character's, not this file's. It used to say "photographic,
+  # no stylisation", which is only right for a character whose source material is
+  # photographs — for one drawn in ink it would have converted him to a medium he
+  # has never existed in. So the reference images lead, and the bible's
+  # `rendering.default_style` names what they are.
+  style_intro: >-
+    Render in the SAME MEDIUM and visual style as the reference images of the
+    person — do not convert them into another medium. Their style is
+  style_fallback: >-
+    whatever medium the reference images are in
+  # Medium-agnostic: true of a photograph and of a drawing alike.
+  quality: >-
+    Clean and sharp, evenly lit, the whole subject in frame and in focus, no
+    filter, no vignette, no added grain, no border.
   # Body plates deliberately strip wardrobe back so the silhouette reads. This
   # is the one place a plate overrides the bible's wardrobe, which is why the
   # body `must_intro` below says so out loud.
@@ -101,7 +113,7 @@ slots:
       {identity_slots} show the person. {pose_slot} {guide}
       A head-and-shoulders studio portrait of the person, front on, shoulders
       squared to camera, looking straight down the lens. Neutral expression,
-      mouth closed, eyes open and level. {top}. {backdrop_face} {light} {photo}
+      mouth closed, eyes open and level. {top}. {backdrop_face} {light} {style} {quality}
       {must}
 
   - id: face_three_quarter_left
@@ -116,7 +128,7 @@ slots:
       A head-and-shoulders studio portrait of the person, head and shoulders
       turned about 45 degrees to THEIR LEFT so the viewer sees the left side of
       the face, eyes returning to the lens. Neutral expression, mouth closed.
-      {top}. {backdrop_face} {light} {photo} {must}
+      {top}. {backdrop_face} {light} {style} {quality} {must}
 
   - id: face_three_quarter_right
     group: face
@@ -130,7 +142,7 @@ slots:
       A head-and-shoulders studio portrait of the person, head and shoulders
       turned about 45 degrees to THEIR RIGHT so the viewer sees the right side
       of the face, eyes returning to the lens. Neutral expression, mouth closed.
-      {top}. {backdrop_face} {light} {photo} {must}
+      {top}. {backdrop_face} {light} {style} {quality} {must}
 
   # Profiles face frame RIGHT, here and in the body group. One direction, so a
   # profile plate and a profile prompt can never disagree about which way the
@@ -146,7 +158,7 @@ slots:
       A head-and-shoulders studio portrait of the person in FULL PROFILE, head
       turned 90 degrees to face frame right, gaze level and straight ahead, not
       at the lens. Neutral expression, mouth closed. The nose, brow and jaw line
-      read clearly against the backdrop. {top}. {backdrop_face} {light} {photo}
+      read clearly against the backdrop. {top}. {backdrop_face} {light} {style} {quality}
       {must}
 
   - id: body_front
@@ -158,11 +170,11 @@ slots:
     tags: [body, front, full-body, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
-      A full-length studio photograph of the person, THE WHOLE FIGURE FROM HEAD
+      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD
       TO FEET IN FRAME including both feet, standing front on, shoulders squared
       to camera, weight even on both legs, arms relaxed at the sides and clear
       of the body, hands open. Neutral expression, looking at the lens.
-      {minimal}. {backdrop_body} {light} {photo} {must}
+      {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
   - id: body_three_quarter_left
     group: body
@@ -173,10 +185,10 @@ slots:
     tags: [body, three-quarter, left, full-body, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
-      A full-length studio photograph of the person, THE WHOLE FIGURE FROM HEAD
+      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD
       TO FEET IN FRAME including both feet, the body turned about 45 degrees to
       THEIR LEFT, head following the body, arms relaxed at the sides. Neutral
-      expression. {minimal}. {backdrop_body} {light} {photo} {must}
+      expression. {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
   - id: body_three_quarter_right
     group: body
@@ -187,10 +199,10 @@ slots:
     tags: [body, three-quarter, right, full-body, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
-      A full-length studio photograph of the person, THE WHOLE FIGURE FROM HEAD
+      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD
       TO FEET IN FRAME including both feet, the body turned about 45 degrees to
       THEIR RIGHT, head following the body, arms relaxed at the sides. Neutral
-      expression. {minimal}. {backdrop_body} {light} {photo} {must}
+      expression. {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
   - id: body_profile
     group: body
@@ -201,11 +213,11 @@ slots:
     tags: [body, profile, side, full-body, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
-      A full-length studio photograph of the person, THE WHOLE FIGURE FROM HEAD
+      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD
       TO FEET IN FRAME including both feet, in SIDE PROFILE facing frame right,
       body and head both turned 90 degrees, arms relaxed at the sides. The
       posture and the line of the back read clearly. {minimal}. {backdrop_body}
-      {light} {photo} {must}
+      {light} {style} {quality} {must}
 
   - id: body_back
     group: body
@@ -215,10 +227,10 @@ slots:
     tags: [body, back, full-body, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
-      A full-length studio photograph of the person seen STRAIGHT FROM BEHIND,
+      A full-length studio plate of the person seen STRAIGHT FROM BEHIND,
       THE WHOLE FIGURE FROM HEAD TO FEET IN FRAME including both feet, standing
       squarely, arms relaxed at the sides, the back of the head to the lens.
-      {minimal}. {backdrop_body} {light} {photo} {must}
+      {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
 # What `--character <name>` sends when nobody picks. Face-led, one clean body
 # read, and kept well under the smallest cap in play (Kling takes 7).

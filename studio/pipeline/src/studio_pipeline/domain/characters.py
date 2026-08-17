@@ -81,6 +81,9 @@ import yaml
 from studio_pipeline import STUDIO_DIR
 from studio_pipeline.adapters import s3 as s3c
 from studio_pipeline.domain import paths as P
+# For `add-refs --from-run`: resolving a runref to its output keys. One-way —
+# the run store knows nothing about characters.
+from studio_pipeline.domain import runs as R
 
 PROFILE_FILE = "profile.yaml"
 PROFILE_CT = "application/yaml"
@@ -307,8 +310,7 @@ def cmd_textblock(name):
 @click.option("--project", help="With --shoot: REQUIRED. The project the shoot's runs belong to.")
 @click.option("--shoot", is_flag=True,
               help="Go straight into the standard reference shoot (asks before it bills).")
-@click.option("--yes", is_flag=True, help="With --shoot: skip the confirmation.")
-def cmd_create(name, dry_run, from_profile, model, project, shoot, yes):
+def cmd_create(name, dry_run, from_profile, model, project, shoot):
     s3 = s3c.client()
     check_name(name)
     src = from_profile or TEMPLATE
@@ -338,7 +340,7 @@ def cmd_create(name, dry_run, from_profile, model, project, shoot, yes):
 
     from studio_pipeline.engine import shoot as SHOOT
     opts = SimpleNamespace(
-        project=project, model=model, dry_run=dry_run, yes=yes,
+        project=project, model=model, dry_run=dry_run,
         group="all", slot=(), identity="auto", identity_max=SHOOT.IDENTITY_MAX,
         pick=None, pick_tag=None, aspect_ratio=None, extra=None,
         dest=None, expires=3600,
@@ -686,33 +688,67 @@ def sync_index(s3, name: str, *, rename_map: dict[str, str] | None = None,
 
 # --- pools -----------------------------------------------------------------
 
-@main.command("add-refs")
-@click.argument("files", nargs=-1, required=True)
+@main.command("add-refs", epilog=(
+    "\n\nArguments:\n  FILES  Local image files. Omit when using --from-run."))
+@click.argument("files", nargs=-1)
 @click.argument("name", required=True)
+@click.option("--from-run", "from_run", multiple=True,
+              help=("Promote a RUN's output into reference/ instead of a local file. "
+                    "Repeatable; takes a runref like <project>/latest#1."))
+@click.option("--project", help="Default project for a bare runref given to --from-run.")
 @click.option("--replace", is_flag=True, help="Number from 1 (overwrites in place).")
 @click.option("--start", type=int, help="Start numbering at N (default: after current highest).")
 @click.option("--to", help=("Purpose subfolder inside reference/ (face, body, wardrobe, …). "
               "Omit to add at the root of reference/."))
-def cmd_add_refs(files, name, replace, start, to):
+def cmd_add_refs(files, name, from_run, project, replace, start, to):
     s3 = s3c.client()
-    """Add reference image(s), optionally into a purpose subfolder."""
+    """Add reference image(s), optionally into a purpose subfolder.
+
+    THIS IS THE GATE ON A CHARACTER'S IDENTITY. Everything else about a
+    generation is reversible bookkeeping; what sits in `reference/` is who the
+    character IS, and it is what every later render is held against. So a
+    generated image never arrives here on its own — `studio character shoot`
+    leaves its results in their runs and prints the `--from-run` line to promote
+    the ones a person chose to keep.
+
+    `--from-run` copies inside the bucket rather than downloading: the run keeps
+    its own output, and no record ends up naming a key that moved.
+    """
     check_name(name)
+    if not files and not from_run:
+        die("nothing to add — pass local file(s), or --from-run <runref> to promote "
+            "a run's output.")
     missing = [f for f in files if not os.path.isfile(f)]
     if missing:
         die(f"file(s) not found: {', '.join(missing)}")
+
+    run_keys: list[str] = []
+    for ref in from_run:
+        try:
+            run_keys += R.resolve_output_keys(s3, ref, project, kinds=IMG_EXTS)
+        except R.RunError as exc:
+            die(str(exc))
+
     group = to
     prefix = group_prefix(name, group)
     start = 1 if replace else (start if start is not None
                                     else pool_max_index(s3, name, "reference", group) + 1)
 
     folder = pool_folder(name, "reference") + (f"/{group}" if group else "")
-    for i, f in enumerate(files):
-        n = start + i
+    n = start
+    for f in files:
         ext = os.path.splitext(f)[1].lower() or ".webp"
         put_file(s3, f, s3c.key(f"{folder}/{prefix}{n}{ext}"),
                  "image/webp" if ext == ".webp" else None)
-    last = start + len(files) - 1
-    print(f"added {len(files)} image(s) to {folder}/ as {prefix}{start}..{prefix}{last}",
+        n += 1
+    for key in run_keys:
+        ext = os.path.splitext(key)[1].lower() or ".png"
+        dest = s3c.key(f"{folder}/{prefix}{n}{ext}")
+        s3.copy_object(Bucket=s3c.BUCKET, CopySource={"Bucket": s3c.BUCKET, "Key": key},
+                       Key=dest)
+        print(f"  {key} -> {folder}/{prefix}{n}{ext}", file=sys.stderr)
+        n += 1
+    print(f"added {n - start} image(s) to {folder}/ as {prefix}{start}..{prefix}{n - 1}",
           file=sys.stderr)
 
     report = sync_index(s3, name)

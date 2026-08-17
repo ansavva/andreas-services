@@ -18,7 +18,7 @@ dependency arrow `cli → domain → adapters` stays intact, and importing
 
 NOTHING SUBMITS WITHOUT APPROVAL. Every payload is rendered as the two-document
 PROMPT / INPUT review first, and the batch then needs one explicit confirmation
-(`--yes` for a non-interactive run). `--dry-run` stops after the render.
+from a person. `--dry-run` stops after the render.
 
 WHAT THE PLATE IS FOR, AND WHY CITATIONS ARE COMPUTED
 -----------------------------------------------------
@@ -33,13 +33,23 @@ position out of it and fills the spec's `{pose_slot}` / `{identity_slots}` with
 real numbers. That the plate currently comes out first (this module passes it as
 the first explicit key) is an outcome, not something a prompt may rely on.
 
-AFTER A SUCCESSFUL SLOT
------------------------
-The run owns its output, so the artifact is COPIED — not moved — into
-`characters/<name>/reference/<group>/`, leaving the run's history intact and no
-record naming a key that moved. The index is then synced and the slot's recorded
-description and tags applied, because an undescribed reference is invisible to
-whoever chooses a set.
+TWO HUMAN GATES, AND WHY THEY ARE SEPARATE
+------------------------------------------
+1. **Spending.** Nothing is submitted until a person has seen the full payload
+   and said yes. There is no flag that answers this for them — an earlier
+   version had `--yes`, which is exactly the door an agent walks through while
+   believing it had approval from something else.
+2. **Identity.** A generated image does NOT enter `characters/<name>/reference/`
+   on its own. The shoot leaves every result in its run and stops. Promoting one
+   into a character's identity is a second, deliberate act:
+
+       studio character add-refs <name> --to <group> --from-run <runref>
+
+   These are different decisions. "Yes, spend a few dollars seeing what this
+   looks like" is not "yes, this image is now part of who this character is",
+   and a single confirmation covering both silently turns the first into the
+   second. The run keeps its output either way, so nothing is lost by looking
+   first.
 """
 
 from __future__ import annotations
@@ -153,6 +163,20 @@ def _first_top(profile: dict) -> str:
             f"with no logo, text or embroidery")
 
 
+def _style_text(profile: dict, defaults: dict) -> str:
+    """What MEDIUM to render in — the character's, never this code's.
+
+    The spec used to assert "photographic, no stylisation" for every slot, which
+    is right only for a character whose material is photographs. For one who
+    exists as pen-and-ink panels it would have converted him into a medium he has
+    never appeared in, and the reference images passed alongside would have been
+    fighting the prompt. So the images lead and the bible names what they are.
+    """
+    style = ((profile.get("rendering") or {}).get("default_style") or "").strip()
+    intro = (defaults.get("style_intro") or "").strip()
+    return f"{intro} {style.rstrip('.') or defaults.get('style_fallback', '')}.".strip()
+
+
 def _must_text(profile: dict, intro: str) -> str:
     musts = ((profile.get("consistency") or {}).get("must")) or []
     if not musts:
@@ -176,6 +200,7 @@ def build_prompt(slot: dict, spec: dict, profile: dict,
     values = {
         **{k: v for k, v in defaults.items() if isinstance(v, str)},
         "top": _first_top(profile),
+        "style": _style_text(profile, defaults),
         "must": _must_text(profile, intro),
         "identity_block": (profile.get("text_identity_block") or "").strip(),
         "pose_slot": f"[Image{pose_position}]",
@@ -357,68 +382,6 @@ def prepare(slot: dict, spec: dict, profile: dict, name: str, s3, opts):
 # filing the result
 # --------------------------------------------------------------------------
 
-def file_output(s3, name: str, slot: dict, out_key: str) -> str:
-    """Copy a run's artifact into the character's reference library.
-
-    A copy, not a move: the run owns its output, and moving it would invalidate
-    the record that names it. Numbering continues within the group, which is the
-    same rule `add-refs --to <group>` follows.
-    """
-    group = slot["group"]
-    n = CHARACTER.pool_max_index(s3, name, "reference", group) + 1
-    ext = os.path.splitext(out_key)[1].lower() or ".png"
-    rel = f"{CHARACTER.pool_folder(name, 'reference')}/{group}/{CHARACTER.group_prefix(name, group)}{n}{ext}"
-    dest = s3c.key(rel)
-    s3.copy_object(Bucket=s3c.BUCKET, CopySource={"Bucket": s3c.BUCKET, "Key": out_key},
-                   Key=dest)
-    return f"{group}/{os.path.basename(dest)}"
-
-
-def describe(s3, name: str, produced: dict[str, dict]) -> None:
-    """Index every image this shoot filed, in ONE profile write.
-
-    `produced` maps the index-relative file to the slot that made it. Written as
-    one pass so a failure cannot leave half the shoot undescribed — an
-    undescribed reference cannot be picked by tag and is invisible to whoever
-    chooses a set.
-    """
-    CHARACTER.sync_index(s3, name, apply=True)
-    data, entries = CHARACTER.read_index(s3, name)
-    etag = CHARACTER.remote_etag(s3, name)
-    by_file = {e.get("file"): e for e in entries}
-    for file, slot in produced.items():
-        hit = by_file.get(file)
-        if hit is None:                       # sync_index should have added it
-            hit = {"file": file}
-            entries.append(hit)
-        hit["description"] = " ".join((slot["description"] or "").split())
-        hit["tags"] = list(slot["tags"])
-    data["references"] = entries
-    CHARACTER.write_profile(s3, name, data, etag)
-
-
-def set_default_set(s3, name: str, spec: dict, by_slot: dict[str, str]) -> list[str] | None:
-    """Point `default_set` at the standard selection, when the shoot produced it.
-
-    Only rewritten when every id the spec names was filed by THIS shoot. A
-    partial shoot (`--group face`, one `--slot`) leaves the existing choice
-    alone: silently dropping a body plate from the default set because this pass
-    only covered faces would be a worse outcome than doing nothing.
-    """
-    want = spec.get("default_set") or []
-    if not want or any(sid not in by_slot for sid in want):
-        return None
-    data, entries = CHARACTER.read_index(s3, name)
-    etag = CHARACTER.remote_etag(s3, name)
-    known = {e.get("file") for e in entries}
-    chosen = [by_slot[sid] for sid in want if by_slot[sid] in known]
-    if len(chosen) != len(want):
-        return None
-    data["default_set"] = chosen
-    CHARACTER.write_profile(s3, name, data, etag)
-    return chosen
-
-
 # --------------------------------------------------------------------------
 # the command
 # --------------------------------------------------------------------------
@@ -460,10 +423,10 @@ def run_shoot(name: str, opts) -> int:
             raise ShootError(f"slot {slot['id']!r} would be refused by {entry['key']}:\n{exc}")
         prepared.append((slot, entry, args, payload, bindings))
 
-    # Every payload, in full, before anything bills.
+    # GATE 1 — every payload, in full, before anything bills.
     for slot, entry, args, payload, bindings in prepared:
         run = f"{opts.project}/{R.new_run_id(args.slug)}"
-        print(f"\n===== slot {slot['id']}  ->  reference/{slot['group']}/ =====")
+        print(f"\n===== slot {slot['id']}  ->  run output (NOT yet a reference) =====")
         print(SUB.render(entry, run, payload, bindings, False))
 
     if opts.dry_run:
@@ -471,52 +434,44 @@ def run_shoot(name: str, opts) -> int:
               f"nothing billed)", file=sys.stderr)
         return 0
 
-    if not opts.yes and not click.confirm(
-            f"\nsubmit {len(prepared)} generation(s) for {name}?", default=False):
+    # No `--yes`. A person reads the payloads above and answers this, or nothing
+    # is submitted: an approval flag is the door an agent walks through while
+    # believing some earlier exchange counted as consent.
+    if not click.confirm(f"\nsubmit {len(prepared)} generation(s) for {name}?", default=False):
         print("nothing submitted.", file=sys.stderr)
         return 1
 
-    produced: dict[str, dict] = {}
-    by_slot: dict[str, str] = {}
+    runrefs: dict[str, str] = {}
     for slot, entry, args, payload, bindings in prepared:
         print(f"\n----- {slot['id']} -----", file=sys.stderr)
         try:
             code = SUB.execute(entry, payload, bindings, s3, token, args)
         except (SUB.SubmitError, RA.ReplicateError) as exc:
             raise ShootError(f"slot {slot['id']!r} failed: {exc}\n"
-                             f"       {len(produced)} slot(s) already filed; re-run the rest "
+                             f"       {len(runrefs)} slot(s) completed; re-run the rest "
                              f"with --slot.")
         if code != 0:
             raise ShootError(f"slot {slot['id']!r} exited {code}.")
-        # `execute` names the run it created on stderr but does not return it, so
-        # the newest run in the project is ours. Verified against the slug rather
-        # than trusted: filing another run's artifact as this character's
-        # reference is the one mistake here that would be hard to notice.
         _project, run_id = R.resolve_run(s3, f"{opts.project}/latest", opts.project)
-        if not run_id.endswith(R.slugify(args.slug)):
-            raise ShootError(
-                f"slot {slot['id']!r}: the newest run in {opts.project} is {run_id!r}, which is "
-                f"not this slot's ({args.slug}). Refusing to file an artifact that may not be "
-                f"ours — check `studio runs list {opts.project}`."
-            )
-        keys = R.resolve_output_keys(s3, f"{opts.project}/{run_id}", opts.project)
-        file = file_output(s3, name, slot, keys[0])
-        produced[file] = slot
-        by_slot[slot["id"]] = file
-        print(f"  filed as reference/{file}", file=sys.stderr)
+        runrefs[slot["id"]] = f"{opts.project}/{run_id}#1"
 
-    describe(s3, name, produced)
-    chosen = set_default_set(s3, name, spec, by_slot)
+    # GATE 2 — the results stay in their runs. Putting a generated image into
+    # `characters/<name>/reference/` changes who that character IS, and that is a
+    # separate decision from having agreed to spend a few dollars looking. Nothing
+    # is lost by stopping here: the run owns its output permanently.
     print(json.dumps({
         "character": name, "project": opts.project,
-        "filed": {sid: f"reference/{f}" for sid, f in by_slot.items()},
-        "default_set": chosen or "unchanged (partial shoot)",
+        "rendered": runrefs,
+        "filed_into_reference": None,
     }, indent=2))
-    if chosen is None:
-        print("note: default_set left as it was — this shoot did not cover every slot the "
-              "spec names.\n"
-              f"      set it deliberately: studio character default-set {name} --set …",
+    print("\nNOT added to the character. Review each one, then promote the keepers:",
+          file=sys.stderr)
+    for slot_id, ref in runrefs.items():
+        group = next(s["group"] for s in slots if s["id"] == slot_id)
+        print(f"  studio character add-refs {name} --to {group} --from-run {ref}",
               file=sys.stderr)
+    print(f"  studio runs outputs {opts.project}/latest --presign   # to look first",
+          file=sys.stderr)
     return 0
 
 
@@ -540,7 +495,6 @@ SHOOT_OPTIONS = [
     click.option("--project", help="REQUIRED. The project these runs belong to."),
     click.option("--slot", multiple=True,
                  help="Shoot only this slot id. Repeatable — see the spec for the ids."),
-    click.option("--yes", is_flag=True, help="Skip the confirmation (non-interactive use)."),
 ]
 
 

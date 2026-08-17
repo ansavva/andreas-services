@@ -391,3 +391,107 @@ def test_the_pose_sheet_split_is_deterministic(tmp_path):
     first = find_figures(sheet)
     assert len(first) == 3
     assert find_figures(sheet) == first
+
+
+# --- the human gates -------------------------------------------------------
+#
+# Both of these were breached in practice before they were enforced: a shoot was
+# submitted on the strength of a menu answer rather than a shown payload, and its
+# result was written into a character's reference library without anyone
+# agreeing to that. The rules now live in the code, and here.
+
+def test_there_is_no_flag_that_approves_spending():
+    """`--yes` is gone, from `shoot` and from `create --shoot`.
+
+    An approval flag is the door an agent walks through while believing some
+    earlier exchange counted as consent. Approval has to come from the person
+    reading the payload, so nothing may answer the prompt on their behalf.
+    """
+    import click
+
+    from studio_pipeline import cli
+
+    character = cli.main.get_command(None, "character")
+    for name in ("shoot", "create"):
+        command = character.get_command(None, name)
+        flags = {flag for p in command.params for flag in getattr(p, "opts", [])}
+        assert "--yes" not in flags, f"studio character {name} can self-approve"
+        assert not any(isinstance(p, click.Option) and "approve" in p.name for p in command.params)
+
+
+def test_a_shoot_never_writes_into_the_character(media_bucket, spec, monkeypatch):
+    """Rendering is not the same decision as changing who a character IS.
+
+    The shoot leaves results in their runs. Whatever it does, the character's
+    reference folder and its index must look exactly as they did before.
+    """
+    _seed_plates(media_bucket, spec)
+    entry = REG.get(spec["defaults"]["model"])
+    props = {f: {} for f in ("prompt", "aspect_ratio", "output_format", "quality",
+                             "moderation", entry["images"]["refs"])}
+    monkeypatch.setattr("studio_pipeline.engine.schema.fetch", lambda *a, **k: (props, {}))
+
+    from studio_pipeline.domain import characters as CHARACTER
+    before_index = CHARACTER.load_profile(media_bucket, "subject-a")
+    before_files = CHARACTER.ref_files(media_bucket, "subject-a")
+
+    CliRunner().invoke(cli.main, [
+        "character", "shoot", "subject-a", "--project", "subject-a", "--dry-run"])
+
+    assert CHARACTER.ref_files(media_bucket, "subject-a") == before_files
+    assert CHARACTER.load_profile(media_bucket, "subject-a") == before_index
+    # And the module must not be able to: the filing helpers were removed
+    # outright rather than left behind a flag.
+    assert not hasattr(SHOOT, "file_output")
+    assert not hasattr(SHOOT, "set_default_set")
+
+
+def test_promoting_a_run_output_is_a_separate_command(media_bucket):
+    """`add-refs --from-run` is the second gate, and it copies rather than moves."""
+    from studio_pipeline.domain import characters as CHARACTER
+    from studio_pipeline.domain import paths as P
+
+    run_output = "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch/output/wave-porch.jpeg"
+    result = CliRunner().invoke(cli.main, [
+        "character", "add-refs", "subject-a", "--to", "face",
+        "--from-run", "subject-a/2026-08-04_21-30-54_wave-porch#1"])
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+
+    files = CHARACTER.ref_files(media_bucket, "subject-a")
+    assert any(f.startswith("face/subject-a_face_") for f in files), files
+    # the run keeps its own output
+    media_bucket.head_object(Bucket=P.s3c.BUCKET, Key=run_output)
+
+
+def test_add_refs_with_nothing_to_add_says_so(media_bucket):
+    result = CliRunner().invoke(cli.main, ["character", "add-refs", "subject-a", "--to", "face"])
+    assert result.exit_code != 0
+    assert "--from-run" in result.output
+
+
+# --- style comes from the character, not from this repo --------------------
+
+def test_style_is_taken_from_the_bible_not_hardcoded(spec):
+    """A character drawn in ink must not be rendered as a photograph.
+
+    The spec used to assert "photographic, no stylisation" for every slot, which
+    silently converted a pen-and-ink character into a medium he has never
+    existed in — and fought the reference images passed alongside.
+    """
+    slot = spec["slots"][0]
+    ink = dict(PROFILE, rendering={"default_style": "Vintage ink comic — pen-and-ink"})
+    photo = dict(PROFILE, rendering={"default_style": "Realistic"})
+    assert "pen-and-ink" in SHOOT.build_prompt(slot, spec, ink, 1, [2])
+    assert "Realistic" in SHOOT.build_prompt(slot, spec, photo, 1, [2])
+    assert "photographic" not in SHOOT.build_prompt(slot, spec, ink, 1, [2]).lower()
+
+
+def test_no_slot_prompt_hardcodes_a_medium(spec):
+    for slot in spec["slots"]:
+        assert "photograph" not in slot["prompt"].lower(), slot["id"]
+
+
+def test_style_falls_back_when_a_bible_names_none(spec):
+    slot = spec["slots"][0]
+    text = SHOOT.build_prompt(slot, spec, dict(PROFILE, rendering={}), 1, [2])
+    assert "same medium" in text.lower()

@@ -157,8 +157,8 @@
             "help": "",
             "hidden": false,
             "multiple": false,
-            "nargs": "+",
-            "required": true,
+            "nargs": "*",
+            "required": false,
             "type": "str"
           },
           "name": {
@@ -176,6 +176,36 @@
         },
         "commands": {},
         "options": {
+          "from_run": {
+            "choices": null,
+            "default": null,
+            "dest": "from_run",
+            "flag": false,
+            "flags": [
+              "--from-run"
+            ],
+            "help": "Promote a RUN's output into reference/ instead of a local file. Repeatable; takes a runref like <project>/latest#1.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "Default project for a bare runref given to --from-run.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
           "replace": {
             "choices": null,
             "default": false,
@@ -355,21 +385,6 @@
               "--shoot"
             ],
             "help": "Go straight into the standard reference shoot (asks before it bills).",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 0,
-            "required": false,
-            "type": "bool"
-          },
-          "yes": {
-            "choices": null,
-            "default": false,
-            "dest": "yes",
-            "flag": true,
-            "flags": [
-              "--yes"
-            ],
-            "help": "With --shoot: skip the confirmation.",
             "hidden": false,
             "multiple": false,
             "nargs": 0,
@@ -1120,21 +1135,6 @@
             "nargs": 1,
             "required": false,
             "type": "str"
-          },
-          "yes": {
-            "choices": null,
-            "default": false,
-            "dest": "yes",
-            "flag": true,
-            "flags": [
-              "--yes"
-            ],
-            "help": "Skip the confirmation (non-interactive use).",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 0,
-            "required": false,
-            "type": "bool"
           }
         }
       },
