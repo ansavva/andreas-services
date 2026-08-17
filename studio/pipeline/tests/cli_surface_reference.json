@@ -54,7 +54,7 @@
         "flags": [
           "--write"
         ],
-        "help": "Append to models.json and scaffold the skill. Without this, nothing is written.",
+        "help": "Append the entry to models.json. Without this, nothing is written. The skill page is written by `studio-media-add-model`, not here.",
         "hidden": false,
         "multiple": false,
         "nargs": 0,
@@ -3476,7 +3476,7 @@
         "flags": [
           "--project"
         ],
-        "help": "REQUIRED. The project this run belongs to. `projects.py list` shows what exists.",
+        "help": "REQUIRED. The project this run belongs to. `studio projects list` shows what exists.",
         "hidden": false,
         "multiple": false,
         "nargs": 1,
@@ -3521,7 +3521,7 @@
         "flags": [
           "--prompt-json"
         ],
-        "help": "studio-prompt source, stored as prompt.json.",
+        "help": "studio-media-prompt source, stored as prompt.json.",
         "hidden": false,
         "multiple": false,
         "nargs": 1,

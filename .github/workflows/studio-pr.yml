@@ -5,17 +5,22 @@ name: Studio · PR
 # lint/typecheck/build, and Terraform fmt/validate.
 
 #
-# `studio/.claude/skills/` and `studio/docs/` are excluded: they are prose, and
-# nothing here can validate them. `studio/pipeline/` is NOT excluded — it
-# deploys nowhere, but it is 7k lines of Python with a test suite, and "does not
-# ship" is not a reason to leave it unchecked. It is excluded from
-# studio-prod.yaml instead, which is where "deploys nowhere" actually applies.
+# `studio/docs/` is excluded: it is prose, and nothing here can validate it.
+# `studio/.claude/skills/` USED to be excluded for the same reason, and that was
+# wrong — the skills are the agent-facing description of the `studio` CLI, and
+# `tests/test_docs_match_cli.py` validates them against the live Click tree.
+# Excluding them meant the one change that test exists to catch — a skill drifting
+# from the CLI — was the one change that never ran it.
+#
+# `studio/pipeline/` is NOT excluded either: it deploys nowhere, but it is 7k
+# lines of Python with a test suite, and "does not ship" is not a reason to leave
+# it unchecked. It is excluded from studio-prod.yaml instead, which is where
+# "deploys nowhere" actually applies.
 
 on:
   pull_request:
     paths:
       - 'studio/**'
-      - '!studio/.claude/**'
       - '!studio/docs/**'
       - '.github/workflows/studio-pr.yml'
 
@@ -49,6 +54,9 @@ jobs:
               - '.github/workflows/studio-pr.yml'
             pipeline:
               - 'studio/pipeline/**'
+              # The skills describe this CLI, and the pipeline suite is what
+              # checks that they still describe it accurately.
+              - 'studio/.claude/skills/**'
               - '.github/workflows/studio-pr.yml'
 
   backend:
@@ -155,6 +163,12 @@ jobs:
       # resolves at call time is invisible to `--help` and to an import check.
       - name: Lint
         run: uv run --project studio/pipeline ruff check studio/pipeline
+
+      # The skills describe this CLI and nothing else checks that they still do.
+      # Kept out of the pytest suite deliberately: it is a linter, and 60-odd
+      # parametrised markdown cases drowned the wiring tests that suite is for.
+      - name: Lint skills against the CLI
+        run: uv run --project studio/pipeline python studio/pipeline/scripts/lint_skills.py
 
       - name: Run tests
         run: uv run --project studio/pipeline pytest studio/pipeline/tests -q

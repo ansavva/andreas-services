@@ -6,8 +6,9 @@ the rules that govern them. For the deployed browser over the output, see
 
 Nothing here deploys. These skills run inside Claude on your own machine, under
 your own AWS login, and reach the same bucket the app reads. Skills live in
-`studio/.claude/skills/`. Scripts use `uv` with PEP 723 inline metadata — each
-script declares its own dependencies, no shared venv.
+`studio/.claude/skills/`, in two families: **`studio-media-*`** for using the
+pipeline to make media, **`studio-code-*`** for working on the pipeline's own
+code. The code is one package with one dependency set — see [Layout](#layout).
 
 ---
 
@@ -23,15 +24,15 @@ and in anything written back to it.
 names, or pull request titles and bodies.
 
 Characters are **data, not code**: they live only in S3 under `characters/<name>/`
-(see `studio-character`). The repo describes the *machinery* that operates on any
+(see `studio-media-character`). The repo describes the *machinery* that operates on any
 character, so it never needs to know one by name.
 
 Use the placeholder `<name>` in every example and help string:
 
 ```bash
-uv run $STUDIO run --model nano-banana-pro --project <project> \
+studio run --model nano-banana-pro --project <project> \
   --prompt "..." --character <name>
-uv run $RUNS outputs <project>/latest --presign
+studio runs outputs <project>/latest --presign
 ```
 
 The same goes for **project** names: a project is usually named after the work,
@@ -54,7 +55,7 @@ was shown, not the next revision of it.
 `last_frame_image` / `seed` / `resolution`; Kling takes `start_image` /
 `end_image` / `mode` / `multi_prompt` and has no seed at all. Never assume a
 field carries over between them. Every model's inputs, caps and caveats live in
-the **registry** (`studio-core/scripts/models.json`), and the runner fetches the
+the **registry** (`engine/models.json`), and the runner fetches the
 target model's **live input schema** to reject unknown fields, bad enums and
 out-of-range numbers — plus documented constraints the schema does not enforce —
 before anything bills. Review the payload, then let the validator confirm the
@@ -230,7 +231,7 @@ A **generation cut** is a cut inside one submission (Kling `multi_prompt`). A
 **shot** is one run's output used as a scene component — it was called a "part",
 which named its position in a list rather than what it is. A **scene** is shots
 stitched into one continuous take. A **movie** is scenes cut together.
-(Separately, the `studio-shot` skill produces a whole still-then-clip chain,
+(Separately, the `studio-media-shot` skill produces a whole still-then-clip chain,
 usually one shot in this sense.)
 
 Every submission to Replicate, from any `studio-*` engine, is recorded as a
@@ -239,7 +240,7 @@ Every submission to Replicate, from any `studio-*` engine, is recorded as a
 ```
 projects/<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/
     request.json    what we sent — references as S3 KEYS, plus `characters[]`
-    prompt.json     the studio-prompt source, when one was used
+    prompt.json     the studio-media-prompt source, when one was used
     result.json     prediction id, status, media types, output keys
     output/         the artifact(s) — .mp4, .jpg, however many
 ```
@@ -323,21 +324,21 @@ part of the pipeline now.
 
 | Skill     | What it does                                              |
 |-----------|-----------------------------------------------------------|
-| `studio-scene`     | **A piece longer than one generation.** Chains video runs — each starting from the previous clip's last frame — then stitches them into one cut. Owns the chain loop, the continuity rules that keep shots cutting together, the per-shot verification gate, and the `multi_prompt`-cuts-vs-timing trade. Use when a shot outruns the model's duration ceiling or must read as one continuous take |
-| `studio-movie`     | **The tier above a scene.** Cuts a project's finished scenes into one piece. Owns the cut order and the movie-vs-longer-scene decision: cut a movie where a hard cut belongs (a change of place, time or subject); extend a scene where it must read as one take |
-| `studio-shot`      | **Orchestrates a whole shot**: reads a brief, shows the multi-step plan as JSON for approval, then renders a still and animates it — frame-first, one approval gate per billing step. Use when a brief describes motion or spans more than one studio-* call |
-| `studio-core`      | **The shared machinery.** The model **registry** (`models.json`), the one submit lifecycle, live-schema validation, and `studio.py` — the runner that invokes *any* registered model. Models are DATA, not code |
-| `studio-add-model` | **Onboard a new Replicate model**: reads its live schema *and* its README, proposes a registry entry for review, then writes it and scaffolds the model's skill. The only way a model should be added |
-| `studio-image`     | The **frame-first workflow** for stills — why to render a frame before a video, run chaining, the approval gate, choosing between the image models. Model-agnostic; each model has its own skill |
-| `studio-nano-banana-pro` | `google/nano-banana-pro` — strongest all-round image model, the usual default for character frames. Legible text, 4K, ≤14 refs, tunable safety filter. **Never set `allow_fallback_model`** — it reroutes to a different model than the one approved |
-| `studio-nano-banana-2` | `google/nano-banana-2` — fast/cheap sibling. The only model with the extreme `1:4`…`8:1` ratios; Google Search / Image Search grounding |
-| `studio-gpt-image-2` | `openai/gpt-image-2` — OpenAI's newest. Dense legible text, pixel-exact sizes, references held at high fidelity **automatically**. No transparent background |
-| `studio-gpt-image-1-5` | `openai/gpt-image-1.5` — the one that does **transparent backgrounds** and exposes `input_fidelity` (dial face preservation up *or down*). Aspect limited to `1:1`/`3:2`/`2:3` |
-| `studio-seedance`  | `bytedance/seedance-2.0` — native audio, first/last frame, reference images/videos/audio. A start frame and a reference set **cannot** be combined |
-| `studio-kling`     | `kwaivgi/kling-v3-omni-video` — Kling 3.0 / O3 Omni (~$0.168/s, `reference_images` for consistency, native multi-shot to 6 cuts). Start frame and reference images can be combined |
-| `studio-prompt`    | Author prompts as structured JSON for either engine (`--engine seedance\|kling-replicate`); validates rules and routes technical fields + the negative prompt where each engine takes them |
-| `studio-character` | Manage on-model characters (create/update/list/curate/load) whose bible + described reference library live in S3 (`characters/<name>/`); characters are data, not skills |
-| `studio-s3`               | Read/write the `xharness-prod-media-us-east-1` S3 bucket (list, upload, download, presign) — the asset store holding **characters** and **projects**, plus the shared **run store** (`runs.py`), **scene store** (`scenes.py`) and **movie store** (`movies.py`), the project registry (`projects.py`), the layout module (`paths.py`) and the record rewriter (`rewrite.py`). Storage only; model invocation lives in `studio-core` |
+| `studio-media-scene`     | **A piece longer than one generation.** Chains video runs — each starting from the previous clip's last frame — then stitches them into one cut. Owns the chain loop, the continuity rules that keep shots cutting together, the per-shot verification gate, and the `multi_prompt`-cuts-vs-timing trade. Use when a shot outruns the model's duration ceiling or must read as one continuous take |
+| `studio-media-movie`     | **The tier above a scene.** Cuts a project's finished scenes into one piece. Owns the cut order and the movie-vs-longer-scene decision: cut a movie where a hard cut belongs (a change of place, time or subject); extend a scene where it must read as one take |
+| `studio-media-shot`      | **Orchestrates a whole shot**: reads a brief, shows the multi-step plan as JSON for approval, then renders a still and animates it — frame-first, one approval gate per billing step. Use when a brief describes motion or spans more than one studio-* call |
+| `studio-media-core`      | **The shared machinery.** The model **registry** (`models.json`), the one submit lifecycle, live-schema validation, and `studio run` — the runner that invokes *any* registered model. Models are DATA, not code |
+| `studio-media-add-model` | **Onboard a new Replicate model**: reads its live schema *and* its README, proposes a registry entry for review, then writes it to the registry. Also owns writing the new model's skill page — nothing generates it. The only way a model should be added |
+| `studio-media-image`     | The **frame-first workflow** for stills — why to render a frame before a video, run chaining, the approval gate, choosing between the image models. Model-agnostic; each model has its own skill |
+| `studio-media-nano-banana-pro` | `google/nano-banana-pro` — strongest all-round image model, the usual default for character frames. Legible text, 4K, ≤14 refs, tunable safety filter. **Never set `allow_fallback_model`** — it reroutes to a different model than the one approved |
+| `studio-media-nano-banana-2` | `google/nano-banana-2` — fast/cheap sibling. The only model with the extreme `1:4`…`8:1` ratios; Google Search / Image Search grounding |
+| `studio-media-gpt-image-2` | `openai/gpt-image-2` — OpenAI's newest. Dense legible text, pixel-exact sizes, references held at high fidelity **automatically**. No transparent background |
+| `studio-media-gpt-image-1-5` | `openai/gpt-image-1.5` — the one that does **transparent backgrounds** and exposes `input_fidelity` (dial face preservation up *or down*). Aspect limited to `1:1`/`3:2`/`2:3` |
+| `studio-media-seedance`  | `bytedance/seedance-2.0` — native audio, first/last frame, reference images/videos/audio. A start frame and a reference set **cannot** be combined |
+| `studio-media-kling`     | `kwaivgi/kling-v3-omni-video` — Kling 3.0 / O3 Omni (~$0.168/s, `reference_images` for consistency, native multi-shot to 6 cuts). Start frame and reference images can be combined |
+| `studio-media-prompt`    | Author prompts as structured JSON for either engine (`--engine seedance\|kling-replicate`); validates rules and routes technical fields + the negative prompt where each engine takes them |
+| `studio-media-character` | Manage on-model characters (create/update/list/curate/load) whose bible + described reference library live in S3 (`characters/<name>/`); characters are data, not skills |
+| `studio-media-s3`               | Read/write the `xharness-prod-media-us-east-1` S3 bucket (list, upload, download, presign) — the asset store holding **characters** and **projects**, plus the shared **run store** (`runs.py`), **scene store** (`scenes.py`) and **movie store** (`movies.py`), the project registry (`projects.py`), the layout module (`paths.py`) and the record rewriter (`rewrite.py`). Storage only; model invocation lives in `studio-media-core` |
 
 ---
 ## How the code is invoked
@@ -384,16 +385,85 @@ because Click has no variadic option.
 
 ---
 
+## The modules
+
+**This is where the pipeline's internals are named.** A **`studio-media-*`**
+skill describes the CLI surface and nothing below it — `studio <command>`, never
+a module, a path or a function. A **`studio-code-*`** skill may name them, since
+the code is what it is about; `studio-code-pipeline` links here rather than
+restating any of it.
+
+`pipeline/scripts/lint_skills.py` enforces the split. The rule exists because
+these module tables used to live inside two media skills, where five of the
+names rotted into references to files that no longer existed. A doc that names a
+module has to be maintained alongside the code — keeping it here, next to this
+paragraph, is what makes that possible.
+
+The package is `studio/pipeline/src/studio_pipeline/`, in five subpackages.
+
+**`adapters/` — the outside world.** Nothing here knows about characters, runs
+or projects.
+
+| Module | Purpose |
+|---|---|
+| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. One auth path for the whole package. |
+| `replicate.py` | Token, HTTP, download, poll. |
+| `ffmpeg.py` | Probe, stitch, frame grab, contact grid. A scene and a movie join their inputs by identical rules because they call the same function. ffmpeg ships in the wheel; no system install. |
+
+**`domain/` — the tree and the records in it.**
+
+| Module | Purpose |
+|---|---|
+| `paths.py` | **The one module that knows the tree's shape.** Every key is built here, which is what keeps a global prefix applied in exactly one place. Library, not a command. |
+| `projects.py` | Project CRUD and the project **input pool**. `require_project()` turns a missing `--project` into an error that lists the real options. |
+| `runs.py` | The shared **run store** every engine records into: request/prompt/result, output archiving, runref resolution for chaining, `find --character` across projects, favourites. It refuses a URL-shaped binding — this is where "S3 is the only origin" is enforced in code. |
+| `scenes.py` | The **scene store**: run outputs stitched into one continuous video under `projects/<p>/scenes/<scene_id>/`. |
+| `movies.py` | The **movie store**: scenes cut into one piece. The same shape one tier up. |
+| `frames.py` | Stills out of a run's video — the chaining handoff, the contact grid that lets a clip be looked at before more money is spent on it, and a scene's own accumulated frames. |
+| `characters.py` | The character record: bible CRUD, the described reference index, pool listing, the compressed identity block. |
+| `curate.py` | The pool operations that go wrong by hand — dedupe, renumber, regroup, move. Every one is a dry run without `--apply`. |
+| `rewrite.py` | **When an object moves, the records that name it must follow.** `apply_moves()` is what curation and the migrator call; `check` walks every record and confirms what it names still exists. |
+| `prompt.py` | Prompt assembly and validation — the structured object in, the serialized prompt plus engine params out. |
+| `phrasebook.py` | Per-model wording lists, kept as data in S3 like characters. |
+| `contact_sheet.py` | Labeled thumbnail grids over arbitrary keys. |
+
+**`engine/` — invoking a model.**
+
+| Module | Purpose |
+|---|---|
+| `models.json` | **The registry.** Data, not code: single source of truth for every model. |
+| `registry.py` | Load / look up / list; snapshot saving for refreshes. |
+| `runner.py` | `studio run` — builds the payload and invokes *any* registered model. |
+| `submit.py` | The one submit lifecycle, image and video alike. |
+| `schema.py` | Live schema fetch; validates fields, enums, ranges, `denied`. |
+| `refs.py` | Character reference selection and project input pool → S3 keys. |
+| `add_model.py` | Onboarding: fetch schema + README, infer an entry, append it to the registry. It writes no documentation — see `studio-media-add-model`. |
+
+**`objects/` — moving bytes.** `upload.py`, `download.py`, `presign.py`
+(how assets reach Replicate) and `convert.py` (re-encode so a target engine
+accepts it).
+
+**`maintenance/` — one-offs.** `backfill_replicate.py` imports historical
+predictions into the run store; `migrate_layout.py` is the move off the
+pre-restructure tree, kept for any bucket that still holds one.
+
+---
+
 ## How to add a new skill
 
-1. Write the code as a module under `studio/pipeline/studio_pipeline/`, in the
-   subpackage it belongs to (`store`, `engine`, `characters`, `prompt`). Give it
-   a `main()` that parses `sys.argv` — that is the contract `cli.py` dispatches
-   against, and what lets a command be called in-process by another.
+1. Write the code as a module under `studio/pipeline/src/studio_pipeline/`, in
+   the subpackage it belongs to — see [The modules](#the-modules) for what each
+   one holds. Expose it as a `click` command or group, so it can also be called
+   in-process by another module.
 2. Attach it in `cli.py` and put its name in a `_Grouped.SECTIONS` list — a
    command in neither never appears in `studio --help`.
 3. Create `studio/.claude/skills/<name>/SKILL.md` with YAML frontmatter — prose
-   only, invoking `studio <command>`. No code lives in a skill directory.
+   only. Choose the family: **`studio-media-<name>`** if the skill is for using
+   the pipeline, **`studio-code-<name>`** if it is for changing it. A media skill
+   invokes `studio <command>` and never names a module, a path or a function; a
+   code skill may name them, and they have to exist. No code lives in a skill
+   directory either way. `pipeline/scripts/lint_skills.py` fails the build
+   otherwise — run it directly, or let pre-commit and the PR workflow run it.
 4. If it needs a new dependency, add it to `pipeline/pyproject.toml` and re-run
    `uv sync`. There is one dependency set for the whole pipeline.
 5. If it needs new Bash patterns, add them to the **monorepo root**
@@ -404,5 +474,6 @@ because Click has no variadic option.
    restructure is what actually breaks this code.
 7. Document it in the table above, and in `studio/CLAUDE.md`.
 
-To add a new *model* rather than a new skill, use `studio-add-model` — models
-are data in `studio-core/scripts/models.json`, not code.
+To add a new *model* rather than a new skill, use `studio-media-add-model` — models
+are data in the registry, not code. That skill also writes the new model's page;
+`studio add-model` deliberately generates no documentation.

@@ -94,22 +94,49 @@ mode.
 
 ## Which skill
 
-Fifteen skills, discovered as `studio:<name>`. Start here, then read that
-skill's own `SKILL.md`.
+**Load one before doing anything else in `studio/`.** Sixteen skills in **two
+families**; route by what the task *changes*, not by what it mentions.
+
+| If the task changes… | Load | Examples |
+|---|---|---|
+| **media, or an S3 record** — an image, a clip, a character, a project, a run | a **`studio-media-*`** skill | "make a shot of…", "add a reference", "what characters do we have", "cut these scenes together" |
+| **studio's own code** — anything under `pipeline/`, `backend/`, `frontend/`, `infra/` | **`studio-code-pipeline`** | "add a subcommand", "fix this import", "why does this test fail", "move this module" |
+
+The families differ in what they are allowed to say, which is why the split
+exists: a `studio-media-*` skill describes the **CLI surface** and never names a
+module; `studio-code-*` names modules because the code is its subject. Enforced
+by `pipeline/scripts/lint_skills.py`.
+
+**Load the skill with the Skill tool. Do not skim its `SKILL.md`.** These pages
+put the S3 layout and the concepts up top and the runnable commands further
+down, so reading the first screen and starting work reliably produces the wrong
+approach — most often falling back to raw `aws s3` calls to rebuild by hand what
+a `studio` subcommand already returns. If you have read half a page and are
+reaching for the AWS CLI, that is the signal you skipped the skill.
+
+`studio --help` lists the whole command surface and is the fastest correction
+when you are unsure a command exists.
+
+> The app half (`backend/`, `frontend/`) has no skill of its own yet —
+> `studio-code-pipeline` covers the pipeline, and
+> [docs/WEB_APP.md](docs/WEB_APP.md) covers the deployed service. Add
+> `studio-code-app` when it earns one.
+
+### The `studio-media-*` skills
 
 | You want to | Use |
 |---|---|
-| Store, fetch, list or presign anything; record a run | `studio-s3` |
-| Make a still image | `studio-image`, then a model skill |
-| Make one shot end to end (still → motion) | `studio-shot` |
-| Continue past a model's duration ceiling | `studio-scene` |
-| Cut finished scenes into one piece | `studio-movie` |
-| Work with a recurring character | `studio-character` |
-| Write a tight, repeatable video prompt | `studio-prompt` |
-| Invoke a model generically, or inspect its schema | `studio-core` |
-| Register a new Replicate model | `studio-add-model` |
-| Pick a video engine | `studio-seedance` · `studio-kling` |
-| Pick an image engine | `studio-nano-banana-pro` · `studio-nano-banana-2` · `studio-gpt-image-2` · `studio-gpt-image-1-5` |
+| Store, fetch, list or presign anything; record a run | `studio-media-s3` |
+| Make a still image | `studio-media-image`, then a model skill |
+| Make one shot end to end (still → motion) | `studio-media-shot` |
+| Continue past a model's duration ceiling | `studio-media-scene` |
+| Cut finished scenes into one piece | `studio-media-movie` |
+| Work with a recurring character | `studio-media-character` |
+| Write a tight, repeatable video prompt | `studio-media-prompt` |
+| Invoke a model generically, or inspect its schema | `studio-media-core` |
+| Register a new Replicate model | `studio-media-add-model` |
+| Pick a video engine | `studio-media-seedance` · `studio-media-kling` |
+| Pick an image engine | `studio-media-nano-banana-pro` · `studio-media-nano-banana-2` · `studio-media-gpt-image-2` · `studio-media-gpt-image-1-5` |
 
 **Ask which project before generating anything.** Work is addressed as
 `projects/<project>/`, and guessing puts runs somewhere nobody looks again.
@@ -120,8 +147,23 @@ skill's own `SKILL.md`.
 
 - **`SKILL.md` files are documentation; the code is in `pipeline/`.** A skill
   directory holds prose and nothing else. Adding a command means adding a module
-  under `pipeline/studio_pipeline/` and an entry in `cli.py`, then describing it
-  in the relevant `SKILL.md`.
+  under `pipeline/src/studio_pipeline/` and an entry in `cli.py`, then
+  describing it in the relevant `SKILL.md`.
+- **A `studio-media-*` skill describes the CLI surface and never names a module,
+  path or function; a `studio-code-*` skill may, because the code is its
+  subject.** Internals are documented once, in
+  [docs/PIPELINE.md](docs/PIPELINE.md#the-modules), next to the code they
+  describe. Two media skills used to carry module tables and five of those names
+  rotted into files that no longer existed — prose about code only stays true
+  when it lives beside the code. `pipeline/scripts/lint_skills.py` enforces this:
+  it fails on a module name in a media skill, on a module a code skill names that
+  does not exist, on a `studio …` line naming no real command, on a surviving
+  script-era invocation, and on a broken link. It is a **linter, not a test** —
+  pre-commit runs it locally, `studio-pr.yml` enforces it.
+- **No code in this repo generates prose.** `studio add-model` writes the
+  registry entry and stops; `studio-media-add-model` writes the model's page. The
+  generator it replaced emitted boilerplate around a `TODO` asking for the only
+  part worth reading, and quietly rotted for months.
 - **One constant knows where `studio/` is**: `studio_pipeline.STUDIO_DIR`. Use
   it rather than counting `".."` segments — that is what broke every time a file
   moved.

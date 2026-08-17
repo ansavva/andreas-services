@@ -52,7 +52,7 @@ def classify(model: str) -> tuple[str, str, str]:
     """(owning skill, medium, filename slug) for a Replicate model id.
 
     Read from the model registry rather than a local table, so a model added
-    with `studio-add-model` is importable by the backfill immediately.
+    with `studio-media-add-model` is importable by the backfill immediately.
     """
     entry = REG.by_model_id(model)
     if not entry:

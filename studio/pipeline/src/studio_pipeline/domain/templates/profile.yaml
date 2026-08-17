@@ -70,7 +70,7 @@ voice:
   delivery: <sentence length, pacing, volume>
 
 rendering:
-  default_style: Realistic      # a preset name from studio-prompt `## Style presets`
+  default_style: Realistic      # a preset name from studio-media-prompt `## Style presets`
   optional_styles: []           # other presets this character may opt into
   framing: <shot sizes that suit them>
   backgrounds: <default environments>

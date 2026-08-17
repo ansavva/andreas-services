@@ -5,7 +5,7 @@ under the PROJECT it belongs to:
 
     projects/<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/
         request.json    what we sent   (references stored as S3 KEYS)
-        prompt.json     the studio-prompt structured source, when one was used
+        prompt.json     the studio-media-prompt structured source, when one was used
         result.json     what came back (prediction id, status, output keys)
         output/         the artifact(s) — .mp4, .jpg, .png, however many
 
@@ -174,14 +174,14 @@ def render_payload(run: str, model: str, endpoint: str, payload: dict,
     """Render a submission for approval as TWO JSON documents.
 
     One combined document is unreviewable: `prompt` is itself a serialized JSON
-    object (studio-prompt authors it that way), so nesting it inside the payload
+    object (studio-media-prompt authors it that way), so nesting it inside the payload
     double-escapes it onto one enormous line. Splitting them keeps both as real,
     indented JSON — the prompt as the structured object it actually is, and the
     payload as the parameters the model receives. This mirrors how a run is
     stored: prompt.json beside request.json.
     """
     prompt = payload.get("prompt")
-    try:  # studio-prompt emits a serialized JSON object — show it unpacked
+    try:  # studio-media-prompt emits a serialized JSON object — show it unpacked
         prompt_doc = json.loads(prompt) if isinstance(prompt, str) else prompt
     except json.JSONDecodeError:
         prompt_doc = prompt  # plain prose prompt; show as-is

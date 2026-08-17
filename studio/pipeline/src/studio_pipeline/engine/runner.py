@@ -212,11 +212,11 @@ def build_payload(entry: dict, args) -> dict:
               "character's index."))
 @click.option("--pick-tag", help="Comma-separated tags; an image must carry ALL of them.")
 @click.option("--poll", is_flag=True, help="Video only: wait and archive. Images always wait.")
-@click.option("--project", help=("REQUIRED. The project this run belongs to. `projects.py list` "
+@click.option("--project", help=("REQUIRED. The project this run belongs to. `studio projects list` "
               "shows what exists."))
 @click.option("--prompt", help="The prompt.")
 @click.option("--prompt-file", help="Read the prompt from a file instead.")
-@click.option("--prompt-json", help="studio-prompt source, stored as prompt.json.")
+@click.option("--prompt-json", help="studio-media-prompt source, stored as prompt.json.")
 @click.option("--ref-run", multiple=True, help="An earlier run's output as reference material. Repeatable.")
 @click.option("--slots", help="Comma-separated positions WITHIN the resolved selection.")
 @click.option("--slug", help="Short slug for the run id and filename.")

@@ -6,7 +6,7 @@
         chains/         a scene's own frames, in order (frames.py)
         scenes/         runs cut into one continuous take (scenes.py)
         movies/         scenes cut into one piece (movies.py)
-        favorites/      keepers, copied out of runs (runs.py favorite)
+        favorites/      keepers, copied out of runs (runs.py, `favorite`)
         input/          the working pool — uploads and frames to drive from
 
 PROJECT vs CHARACTER
@@ -26,7 +26,7 @@ THE INPUT POOL
 `input/` is the project's working material — an upload to edit, a frame pulled
 off a clip to drive the next one. It is uncapped and never sent "in full"; it is
 picked from. That is the opposite of a character's `reference/`, which is
-identity and is chosen from a described index (see studio-character).
+identity and is chosen from a described index (see studio-media-character).
 
 Pool basenames are `<project>_in_<n>.<ext>`, numbered from the PROJECT — not
 from a character. The first projects happen to be named after characters, so
@@ -96,7 +96,7 @@ def require_project(s3, project: str | None) -> str:
         have = P.list_projects(s3)
         die("no project given. Every generating command needs --project.\n"
             f"       existing projects: {', '.join(have) or '(none yet)'}\n"
-            "       create one with: projects.py new <project>")
+            "       create one with: studio projects new <project>")
     P.check_slug(project, "project name")
     return project
 

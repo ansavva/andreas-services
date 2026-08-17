@@ -5,7 +5,7 @@ different names, numbering develops holes, and "replacing" an image quietly
 destroys the only copy. This does those operations safely, and keeps the bible's
 reference index in step so a written description survives them.
 
-Four pools, per `studio-character`:
+Four pools, per `studio-media-character`:
 
     reference/   generated character imagery, in purpose subfolders
                  (face/, body/, wardrobe/ …), numbered within each group and
@@ -22,8 +22,8 @@ WHAT IS NO LONGER HERE
 ----------------------
 `set-refs` rebuilt `reference/` from chosen numbers, because the folder WAS the
 set that got sent. It is not any more: the bible's `default_set:` names what is
-sent, so choosing is `character.py default-set`, and demoting an image is
-`curate.py move … --to archive`. Choosing no longer means moving objects.
+sent, so choosing is `studio character default-set`, and demoting an image is
+`studio curate move … --to archive`. Choosing no longer means moving objects.
 
 Nothing is deleted outright: an image leaving a pool is preserved into the
 destination first, and skipped only when a byte-identical copy is already there.
@@ -38,7 +38,7 @@ MOVING AN IMAGE MOVES ITS RECORDS TOO
 -------------------------------------
 Run records, scene manifests and chains all store S3 keys, so moving an object
 invalidates every document that cited it. `regroup` and `move` rewrite those
-documents in the same operation (see s3/scripts/rewrite.py). Curating without
+documents in the same operation (see rewrite.py). Curating without
 that step is what left 69 records pointing at keys that no longer existed.
 """
 from __future__ import annotations
@@ -263,7 +263,7 @@ def cmd_move(file, name, apply, src_pool, dst_pool):
               f"citing it")
     elif not dst:
         print("  NOTE: the source is only being removed, so any record citing it will "
-              "dangle — check with `runs.py find` first if that matters")
+              "dangle — check with `studio runs find` first if that matters")
 
     if apply:
         if dst:
@@ -359,8 +359,8 @@ def cmd_groups(name):
         print(f"\nreference/ holds more than any model takes at once "
               f"({', '.join(f'{e} {c}' for e, c in sorted(ENGINE_CAPS.items()))}).\n"
               f"That is expected — pick a subset:\n"
-              f"  character.py refs {name} --describe\n"
-              f"  character.py default-set {name} --set <file> <file> …", file=sys.stderr)
+              f"  studio character refs {name} --describe\n"
+              f"  studio character default-set {name} --set <file> <file> …", file=sys.stderr)
     _ = root
 
 

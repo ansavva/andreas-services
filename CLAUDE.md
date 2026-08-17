@@ -80,12 +80,26 @@ delete run locally is a delete in production; bucket versioning without
 `studio/CLAUDE.md`. And:
 
 **`studio/` is the one service that is not purely a deployable unit.** Half of it
-— `studio/.claude/skills/`, fifteen skills that generate the media — runs
-locally inside Claude on a developer's machine and never deploys; the CI path
-filters exclude it. The other half is an ordinary Flask + Vite service. Both
-share the media S3 bucket, which `studio/infra/modules/media` owns. It is also
-the one bucket whose name predates the naming convention below and is
-deliberately grandfathered — see `studio/infra/README.md`.
+— `studio/.claude/skills/`, sixteen skills — runs locally inside Claude on a
+developer's machine and never deploys; the CI path filters exclude it from the
+prod workflow. The other half is an ordinary Flask + Vite service. Both share the
+media S3 bucket, which `studio/infra/modules/media` owns. It is also the one
+bucket whose name predates the naming convention below and is deliberately
+grandfathered — see `studio/infra/README.md`.
+
+**Those skills come in two families, and picking one is the first step of any
+task in `studio/`** — route by what the task changes, not what it mentions:
+
+| Changing… | Load |
+|---|---|
+| media or an S3 record (an image, a clip, a character, a project, a run) | a **`studio-media-*`** skill |
+| studio's own code (`pipeline/`, `backend/`, `frontend/`, `infra/`) | **`studio-code-pipeline`** |
+
+Load it with the Skill tool rather than skimming its `SKILL.md` — these pages
+lead with concepts and put the runnable commands lower, so reading the first
+screen and starting work tends to end in hand-rolled `aws s3` calls that a
+`studio` subcommand already does. Full routing table in
+[studio/CLAUDE.md](studio/CLAUDE.md#which-skill).
 
 ## Shared Infrastructure (`infra/`)
 
