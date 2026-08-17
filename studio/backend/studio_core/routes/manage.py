@@ -76,6 +76,18 @@ def move_folder():
     return jsonify(manage.move_folder(payload.get("prefix"), payload.get("destination"))), 200
 
 
+@bp.post("/favorites")
+def add_favorites():
+    """Copy one or many objects into their own project's favorites folder.
+
+    A POST with no destination, which is the shape of the operation: the folder
+    is derived from each key rather than supplied, so this route cannot be talked
+    into putting a file somewhere else the way `POST /api/objects/move` can. 201
+    for the same reason `POST /api/folder` is — something new exists afterwards.
+    """
+    return jsonify(manage.favorite_objects(_body().get("keys"))), 201
+
+
 @bp.patch("/text")
 def update_text():
     """Overwrite a text file's contents. See the module docstring for the verb."""

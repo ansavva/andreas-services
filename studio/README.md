@@ -24,7 +24,9 @@ expect them, while the images and video themselves get the space.
 - **Reel** — the one media viewer. A vertical, one-per-screen scroll; opening a
   tile opens the reel on that tile, and *Play reel* walks everything beneath the
   current folder recursively. Exactly one video plays at a time, starting muted.
-  Videos get a transport: play/pause, a seek bar, and skip either way.
+  Videos get a transport along the bottom — play/pause, a seek bar, skip either
+  way — while sound sits in the top bar with the other controls, because the
+  bottom edge of a phone screen is where the browser puts its own toolbar.
 - **Share links.** The URL is the S3 path
   (`/projects/fred/runs/2026-08-14_…/output/clip.mp4`), so the address bar is always
   a link to exactly what is on screen.
@@ -35,6 +37,18 @@ expect them, while the images and video themselves get the space.
   bytes in a textarea, Save writes it back. Leaving with unsaved changes asks
   first. A file too large to be shown in full cannot be edited, because saving a
   truncated copy would delete the rest of it.
+- **Favourite** a photo or a clip and it is copied onto that project's shelf —
+  `projects/mr-p/favorites/`, flat, alongside the picks that are already there.
+  You never say where: the star knows, because the file's own path does. From a
+  grid selection it takes the whole selection at once, and a selection spanning
+  two subjects splits itself between their projects. A gold star means the file
+  really is on the shelf, not that you pressed something — it is read back from
+  the bucket, so it is still there tomorrow and on another device. Pressing it
+  twice does nothing the second time; two different clips that share a name get
+  the second one numbered (`shot-01 (2).mp4`) rather than overwritten. Files in
+  `characters/` have no star at all — that tree is who a subject *is*, not
+  output to pick between — and neither does the run metadata. To un-favourite,
+  delete the copy from inside the favourites folder.
 - **Tidy up.** Create a folder, rename a file or a folder, move files and folders
   anywhere in the library, delete one file, a whole folder, or a grid selection.
   Moving opens a picker you browse to a destination in — a folder cannot be moved
@@ -73,13 +87,19 @@ browser upload needs a CORS configuration on a bucket studio does not own and
 must not modify, and routing the bytes through the Lambda caps a file at 6 MB —
 useless for video. Generating media remains x-harness's job.
 
-Saving a text file is the one write that looks like an upload and is not: it
-refuses any key that does not already exist, so it can overwrite a `profile.yaml`
-but cannot bring a new object into the library. That check is the whole
-difference, and it is deliberately a single, testable line.
+Two writes look like uploads and are not. Saving a text file refuses any key that
+does not already exist, so it can overwrite a `profile.yaml` but cannot bring a
+new object into the library — that check is the whole difference, and it is
+deliberately a single, testable line. Favouriting *does* add an object, but it is
+a server-side copy of something already in the bucket, so the bytes never come
+from outside and never travel through the Lambda; a 200 MB clip is favourited as
+cheaply as a thumbnail.
 
-It is also not a social app: no likes, no comments, no cross-folder infinite
-feed. The reel is a way to flip through a folder quickly, and that is all it is.
+**A favourite is a pick, not a like.** It is a file in a folder you can open in
+the AWS console, and its whole purpose is to survive studio being switched off.
+Beyond that this is not a social app: no comments, no counts, no cross-folder
+infinite feed. The reel is a way to flip through a folder quickly, and that is
+all it is.
 
 ## Access
 

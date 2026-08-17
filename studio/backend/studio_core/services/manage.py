@@ -27,6 +27,12 @@ Renames and moves are copy-then-delete, in that order, and never the reverse. If
 the delete fails the library holds a duplicate, which is visible and fixable; if
 the order were reversed the failure would be data loss.
 
+`favorite_objects` is the exception that proves the ordering rule: it is a copy
+with **no** delete, because a favourite is a second copy of something that stays
+where it was. It is also the only write here that does not take a destination —
+the folder is derived from the key, so there is exactly one place a given file
+can be favourited to and no way to ask for another.
+
 `update_text` is the odd one out and is deliberately kept here rather than in
 `browse` beside the endpoint that reads the same files: it writes, and this
 module is the answer to "what can this service change".
@@ -37,9 +43,14 @@ import logging
 from studio_core import config
 from studio_core.clients.aws import s3
 from studio_core.errors import ConflictError, NotFoundError, ValidationError
-from studio_core.services import keys
+from studio_core.services import browse, keys
 
 logger = logging.getLogger(__name__)
+
+# How many `name (n).ext` variants one favourite name may spawn before the
+# request is refused. Generous — the flat folder makes a handful of collisions
+# ordinary — but finite, so a script cannot fill a folder with numbered copies.
+MAX_FAVORITE_VARIANTS = 100
 
 
 def create_folder(raw_prefix: str | None, raw_name: str | None) -> dict:
@@ -201,6 +212,109 @@ def move_folder(raw_prefix: str | None, raw_destination: str | None) -> dict:
 
     logger.info("Moved folder %s -> %s (%d objects)", prefix, destination, len(moved))
     return {"prefix": destination, "name": name, "objects": len(moved), "moved": True}
+
+
+def favorite_objects(raw_keys: list | None) -> dict:
+    """Copy one or many objects into their own project's favourites folder.
+
+    **The only write in this service that copies without deleting**, and that is
+    the whole point of it rather than an oversight: a favourite is a second copy
+    on a shelf, and the original stays where the pipeline put it. Every other
+    copy here is half of a rename. It is still not an upload — the bytes come
+    from an object already in the bucket, server-side, and nothing about this
+    endpoint can bring in a file from outside.
+
+    Which folder is not asked for and cannot be supplied. `keys.favorites_prefix`
+    derives it from the key, so favouriting from a run under `projects/mr-p/`
+    lands in `projects/mr-p/favorites/` and favouriting from `characters/` is
+    refused rather than guessed at. That is what makes this different from
+    `move_objects`, which takes a destination and would happily put a file
+    anywhere: this one has exactly one legal answer per key, so it takes no
+    destination at all and cannot be talked into a different one.
+
+    **The folder is flat, so names collide, and this is where that is handled.**
+    Every scene calls its first shot `shot-01.mp4`, so "already taken" is the
+    ordinary case rather than the edge:
+
+    * same name, same size → **skipped**, because it is already favourited and a
+      second press should be a no-op rather than a duplicate;
+    * same name, different file → **numbered** — `shot-01 (2).mp4`, the
+      convention the folder already holds;
+    * a hundred numbered variants → `ConflictError`, at which point the honest
+      answer is that a name is being used for too many different things.
+
+    Nothing is overwritten in any branch, which is the rule the rest of this
+    module holds to as well.
+    """
+    if not isinstance(raw_keys, list) or not raw_keys:
+        raise ValidationError("keys must be a non-empty list")
+
+    cap = config.max_bulk_keys()
+    if len(raw_keys) > cap:
+        raise ValidationError(f"cannot favorite more than {cap} objects in one request")
+
+    cleaned = [keys.clean_key(raw) for raw in raw_keys]
+
+    # Listed once per destination and then kept up to date in memory, so a bulk
+    # favourite of forty shots costs one listing rather than forty — and so two
+    # sources with the same basename in one request number each other correctly
+    # instead of both claiming the same free name.
+    taken: dict[str, dict[str, int]] = {}
+    copies: list[tuple[str, str]] = []
+    skipped = 0
+
+    for source in cleaned:
+        destination = keys.favorites_prefix(source)
+        if destination is None:
+            raise ValidationError(
+                f"'{keys.basename(source)}' cannot be favorited — "
+                "favorites belong to a project, and only images and video go in them"
+            )
+        if destination not in taken:
+            taken[destination] = browse.favorites_index(destination)
+
+        # HEAD before copying, so a key that is not there is a clean 404 naming
+        # it rather than a CopyObject failure halfway through the batch. The
+        # size it returns is what tells an already-favourited file from a
+        # name that happens to be taken.
+        size = s3.head(source).get("ContentLength", 0)
+        name = _free_favorite_name(keys.basename(source), size, taken[destination])
+        if name is None:
+            skipped += 1
+            continue
+
+        taken[destination][name] = size
+        copies.append((source, f"{destination}{name}"))
+
+    for source, target in copies:
+        s3.copy(source, target)
+
+    logger.info("Favorited %d objects (%d already there)", len(copies), skipped)
+    return {
+        "favorited": len(copies),
+        "skipped": skipped,
+        "keys": [target for _, target in copies],
+    }
+
+
+def _free_favorite_name(name: str, size: int, index: dict[str, int]) -> str | None:
+    """A name this favourite can take, or None when it is already there."""
+    if name not in index:
+        return name
+    if index[name] == size:
+        return None
+
+    for attempt in range(2, MAX_FAVORITE_VARIANTS + 1):
+        candidate = keys.numbered_name(name, attempt)
+        if candidate not in index:
+            return candidate
+        if index[candidate] == size:
+            return None
+
+    raise ConflictError(
+        f"'{name}' already names {MAX_FAVORITE_VARIANTS} different favorites — "
+        "rename some of them first"
+    )
 
 
 def update_text(raw_key: str | None, raw_content: str | None) -> dict:

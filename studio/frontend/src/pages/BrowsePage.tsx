@@ -4,6 +4,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Alert, Breadcrumbs, Button, Input, Spinner, Text } from "@ansavva/design-system";
 
 import {
+  addFavorites,
   createFolder,
   deleteFolder,
   deleteObjects,
@@ -19,6 +20,7 @@ import { MovePicker } from "../components/browse/MovePicker";
 import { SortControl } from "../components/browse/SortControl";
 import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
 import { CopyKeyButton } from "../components/common/CopyKeyButton";
+import { FavoriteButton } from "../components/common/FavoriteButton";
 import { TextPage } from "../components/text/TextPage";
 import { ReelView } from "../components/viewer/ReelView";
 import { useAuth } from "../context/AuthContext";
@@ -174,6 +176,19 @@ export function BrowsePage() {
 
   const selection = useSelection(media, prefix);
 
+  /**
+   * Which of the selection can actually be favourited.
+   *
+   * Everything in one grid comes from one folder, so this is all of it or none
+   * of it — but the API answers per file and this reads that answer rather than
+   * inferring it from the prefix, which is the same reason `favorites_prefix`
+   * arrives per file in the first place.
+   */
+  const favoritable = useMemo(
+    () => selection.selectedItems.filter((item) => item.favorites_prefix && !item.favorited),
+    [selection.selectedItems],
+  );
+
   /** "3 files", "1 key" — the count and its noun, agreeing about plurality. */
   const selectedNoun = useCallback(
     (one: string, many: string) => `${selection.count} ${selection.count === 1 ? one : many}`,
@@ -191,11 +206,11 @@ export function BrowsePage() {
    * in exactly the cases nobody tests.
    */
   const run = useCallback(
-    async <T,>(work: Promise<T>): Promise<T> => {
+    async <T,>(work: Promise<T>, { refresh = true } = {}): Promise<T> => {
       setActionError(null);
       try {
         const result = await work;
-        reload();
+        if (refresh) reload();
         return result;
       } catch (err) {
         setActionError((err as Error).message);
@@ -203,6 +218,22 @@ export function BrowsePage() {
       }
     },
     [reload],
+  );
+
+  /**
+   * Favouriting is the one write that does not re-fetch, because it does not
+   * change this folder.
+   *
+   * The copy lands in `projects/<subject>/favorites/`, which is somewhere you
+   * are not: an item can only be favourited from outside that folder, so the
+   * listing on screen is the same listing afterwards. Re-fetching would be a
+   * request whose only visible effect is the grid flickering — and in the reel
+   * it would re-walk the subtree under the scroll position, which is exactly
+   * what `useReel.dropItem` exists to avoid. The star reports itself instead.
+   */
+  const favorite = useCallback(
+    (keys: string[]) => run(addFavorites(keys), { refresh: false }),
+    [run],
   );
 
   const deleteSelected = useCallback(async () => {
@@ -274,6 +305,19 @@ export function BrowsePage() {
       navigate({ pathname: objectPath(result.key), search: location.search }, { replace: true });
     },
     [location.search, navigate, reel, reelPrefix, run],
+  );
+
+  /**
+   * Favouriting from inside the viewer, which — unlike renaming and deleting —
+   * behaves identically in both reels.
+   *
+   * Nothing leaves the list and nothing moves: the clip on screen is still the
+   * clip on screen, and a copy of it now exists on a shelf elsewhere. So there
+   * is no `dropItem`, no navigation, and no re-fetch on either path.
+   */
+  const favoriteOpenFile = useCallback(
+    (file: FileEntry) => favorite([file.key]),
+    [favorite],
   );
 
   const submitNewFolder = useCallback(async () => {
@@ -564,6 +608,20 @@ export function BrowsePage() {
                 noun={selectedNoun("key", "keys")}
               />
 
+              {/* Picking the keepers out of a run is the whole reason to select
+                  forty tiles at once, so the star belongs beside the bulk move
+                  and delete. Only the favouritable ones are sent — in this grid
+                  that is all or none, since a folder sits in one tree, but the
+                  filter is what makes that a fact rather than an assumption. */}
+              {favoritable.length > 0 && (
+                <FavoriteButton
+                  noun={`${favoritable.length} ${favoritable.length === 1 ? "file" : "files"}`}
+                  onFavorite={() =>
+                    favorite(favoritable.map((item) => item.key)).then(selection.clear)
+                  }
+                />
+              )}
+
               {/* Media has no per-tile menu the way a row does — sixty thumbnails
                   with a control each is the crowding this grid exists to avoid —
                   so this bar is where a bulk move is reached from. */}
@@ -613,6 +671,9 @@ export function BrowsePage() {
                 selectionActive={selection.count > 0}
                 onOpen={() => openFile(file)}
                 onToggleSelect={(extend) => selection.toggleAt(index, extend)}
+                onFavorite={
+                  file.favorites_prefix ? () => favorite([file.key]) : undefined
+                }
               />
             ))}
           </div>
@@ -660,6 +721,7 @@ export function BrowsePage() {
           onCurrentChange={onReelCurrentChange}
           onRename={renameOpenFile}
           onDelete={deleteOpenFile}
+          onFavorite={favoriteOpenFile}
         />
       ) : (
         openIndex >= 0 && (
@@ -672,6 +734,7 @@ export function BrowsePage() {
             onCurrentChange={onReelCurrentChange}
             onRename={renameOpenFile}
             onDelete={deleteOpenFile}
+            onFavorite={favoriteOpenFile}
           />
         )
       )}

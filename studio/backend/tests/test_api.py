@@ -222,3 +222,19 @@ def test_preflight_advertises_the_write_verbs():
     assert resp.status_code == 204
     allowed = resp.headers.get("Access-Control-Allow-Methods", "")
     assert {"PATCH", "DELETE", "POST"} <= {m.strip() for m in allowed.split(",")}
+
+
+def test_add_favorites(media_bucket):
+    resp = _client().post("/api/favorites", json={"keys": [f"{RUN}output/wave-porch.jpeg"]})
+
+    assert resp.status_code == 201
+    assert resp.get_json()["keys"] == ["projects/fred/favorites/wave-porch.jpeg"]
+
+
+def test_add_favorites_outside_a_project_is_400(media_bucket):
+    resp = _client().post("/api/favorites", json={"keys": ["characters/fred/seed/fred_1.webp"]})
+    assert resp.status_code == 400
+
+
+def test_add_favorites_without_a_body_is_400(media_bucket):
+    assert _client().post("/api/favorites").status_code == 400

@@ -23,6 +23,7 @@ interface Props {
   onCurrentChange?: (item: FileEntry) => void;
   onRename?: (file: FileEntry, name: string) => Promise<unknown>;
   onDelete?: (file: FileEntry) => Promise<unknown>;
+  onFavorite?: (file: FileEntry) => Promise<unknown>;
 }
 
 /** Mount this many panes either side of the snapped one. */
@@ -55,6 +56,7 @@ export function ReelView({
   onCurrentChange,
   onRename,
   onDelete,
+  onFavorite,
 }: Props) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -156,7 +158,10 @@ export function ReelView({
 
   if (items.length === 0) {
     return (
-      <div ref={containerRef} className="fixed inset-0 z-50 flex items-center justify-center bg-black">
+      <div
+        ref={containerRef}
+        className="reel-shell fixed inset-x-0 top-0 z-50 flex items-center justify-center bg-black"
+      >
         {loading ? (
           <Spinner size="lg" label="Loading media" />
         ) : (
@@ -178,7 +183,10 @@ export function ReelView({
   }
 
   return (
-    <div ref={containerRef} className="fixed inset-0 z-50 bg-black" aria-label="Reel">
+    // `reel-shell` rather than `inset-0`: on a phone the two are not the same
+    // box. See the note in app.css — this is what keeps the transport off the
+    // browser's own toolbar.
+    <div ref={containerRef} className="reel-shell fixed inset-x-0 top-0 z-50 bg-black" aria-label="Reel">
       {currentItem && (
         <ViewerChrome
           file={currentItem}
@@ -189,6 +197,17 @@ export function ReelView({
           onClose={onClose}
           onRename={onRename && ((name) => onRename(currentItem, name))}
           onDelete={onDelete && (() => onDelete(currentItem))}
+          // Only a video has sound to toggle, and passing the handler is what
+          // decides whether the button exists at all.
+          muted={isVideo ? playback.muted : undefined}
+          onToggleMuted={isVideo ? playback.toggleMuted : undefined}
+          // The API decides what can be favourited; a null prefix means this
+          // one cannot, and the star does not render.
+          onFavorite={
+            onFavorite && currentItem.favorites_prefix
+              ? () => onFavorite(currentItem)
+              : undefined
+          }
         />
       )}
 
@@ -219,40 +238,26 @@ export function ReelView({
         })}
       </div>
 
+      {/*
+        The transport, and only the transport. Sound used to sit on the end of
+        this row and moved to `ViewerChrome` — a phone's browser toolbar lives
+        exactly here, so this is the one edge of the screen a control can hide
+        behind. The scrubber stays because it is a drag rather than a tap and
+        wants the width; the safe-area padding is what lifts it clear of a home
+        indicator.
+      */}
       {isVideo && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center
-                        gap-2 bg-gradient-to-t from-black/80 to-transparent px-3 pb-4 pt-12">
+                        gap-2 bg-gradient-to-t from-black/80 to-transparent px-3 pt-12
+                        pb-[max(1rem,env(safe-area-inset-bottom))]">
           {playback.blocked && (
             <Text variant="caption" className="text-white/90">
-              Your browser blocked sound. Press play, then unmute.
+              Your browser blocked sound. Press play, then unmute above.
             </Text>
           )}
 
           <div className="flex w-full max-w-2xl items-center gap-2">
             <VideoScrubber playback={playback} />
-
-            <button
-              type="button"
-              onClick={playback.toggleMuted}
-              aria-label={playback.muted ? "Unmute (m)" : "Mute (m)"}
-              title={playback.muted ? "Unmute (m)" : "Mute (m)"}
-              className="pointer-events-auto shrink-0 rounded-full bg-black/55 p-3 text-white/85
-                         transition-colors hover:bg-black/75 hover:text-white
-                         focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-                className="size-5 fill-none stroke-current stroke-[1.5]"
-              >
-                <path d="M11 5 6 9H3v6h3l5 4Z" />
-                {playback.muted ? (
-                  <path d="m16 9 5 6m0-6-5 6" />
-                ) : (
-                  <path d="M15.5 8.5a5 5 0 0 1 0 7M18 6a9 9 0 0 1 0 12" />
-                )}
-              </svg>
-            </button>
           </div>
         </div>
       )}

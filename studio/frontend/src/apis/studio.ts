@@ -3,6 +3,7 @@ import type {
   CreatedFolder,
   DeletedFolder,
   DeletedObjects,
+  Favorited,
   MovedFolder,
   MovedObjects,
   ReelResponse,
@@ -79,6 +80,22 @@ export function moveObjects(keys: string[], destination: string) {
 /** Move a folder and everything beneath it under a different parent. */
 export function moveFolder(prefix: string, destination: string) {
   return apiSend<MovedFolder>("POST", "/api/folder/move", { prefix, destination });
+}
+
+/**
+ * Copy files into their own project's favourites folder.
+ *
+ * The one write with no destination argument, and it is missing deliberately:
+ * the server derives the folder from each key, so a favourite has exactly one
+ * place it can land and this call cannot be pointed anywhere else. That is what
+ * lets a selection spanning two subjects be favourited in one request — each
+ * file goes to its own project.
+ *
+ * Files already there come back as `skipped` rather than as an error, so
+ * pressing the star twice is a no-op instead of a duplicate.
+ */
+export function addFavorites(keys: string[]) {
+  return apiSend<Favorited>("POST", "/api/favorites", { keys });
 }
 
 /**

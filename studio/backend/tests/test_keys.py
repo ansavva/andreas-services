@@ -223,3 +223,91 @@ def test_assert_inside_root_confines_to_a_configured_root(confined_root):
         keys.assert_inside_root("characters/")
     with pytest.raises(ValidationError):
         keys.assert_inside_root("elsewhere/")
+
+
+# ---------------------------------------------------------------------------
+# Favorites
+#
+# Where a favourite goes is derived from the key alone, so this is the only
+# thing deciding it — there is no destination argument anywhere to correct it.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "key,expected",
+    [
+        # Inside a project: the favourites folder of that project, whatever depth
+        # the file sits at.
+        (
+            "projects/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/output/wave-porch.jpeg",
+            "projects/fred/favorites/",
+        ),
+        (
+            "projects/mr-p/scenes/2026-08-16_07-40-22_stadium/shots/shot-01.mp4",
+            "projects/mr-p/favorites/",
+        ),
+        # `misc` is a project like any other — unattributed runs still have
+        # somewhere to be picked into.
+        ("projects/misc/runs/2026-08-14_16-32-11_kling/output/kling.mp4", "projects/misc/favorites/"),
+        # Outside `projects/`: a subject's own photographs are not generated
+        # output and there is no folder in that tree to hold a pick.
+        ("characters/fred/seed/fred_1.webp", None),
+        ("phrasebook/wording.yaml", None),
+        # Not media: favourites are a shelf of picked output, not a second copy
+        # of the JSON that happened to sit beside it.
+        ("projects/fred/runs/2026-08-04_21-30-54_wave-porch-1x1/request.json", None),
+        # Already a favourite — copying it back would only ever number itself.
+        ("projects/mr-p/favorites/shot-01.mp4", None),
+        # Loose in `projects/`, so it belongs to no project.
+        ("projects/loose.mp4", None),
+    ],
+)
+def test_favorites_prefix(key, expected):
+    assert keys.favorites_prefix(key) == expected
+
+
+def test_favorites_prefix_follows_the_browsable_root(confined_root, monkeypatch):
+    """Point the root at a subtree and favourites move with it, like everything else."""
+    monkeypatch.setattr(keys.config, "media_root_prefix", lambda: "library/")
+    assert (
+        keys.favorites_prefix("library/projects/fred/runs/x/output/a.jpeg")
+        == "library/projects/fred/favorites/"
+    )
+    # The same key without the root is not inside the library at all.
+    assert keys.favorites_prefix("projects/fred/runs/x/output/a.jpeg") is None
+
+
+def test_favorites_can_be_turned_off_entirely(monkeypatch):
+    monkeypatch.setattr(keys.config, "projects_prefix", lambda: "")
+    assert keys.favorites_prefix("projects/fred/runs/x/output/a.jpeg") is None
+    assert keys.is_favorite("projects/fred/favorites/a.jpeg") is False
+
+
+@pytest.mark.parametrize(
+    "key,expected",
+    [
+        ("projects/mr-p/favorites/shot-01.mp4", True),
+        # Nested inside the folder still counts — it is under the shelf.
+        ("projects/mr-p/favorites/keepers/shot-01.mp4", True),
+        ("projects/mr-p/runs/x/output/shot-01.mp4", False),
+        ("characters/mr-p/favorites/shot-01.mp4", False),
+        # A *file* called `favorites`, not the folder.
+        ("projects/mr-p/favorites", False),
+    ],
+)
+def test_is_favorite(key, expected):
+    assert keys.is_favorite(key) is expected
+
+
+@pytest.mark.parametrize(
+    "name,index,expected",
+    [
+        ("shot-01.mp4", 2, "shot-01 (2).mp4"),
+        ("wave-porch.jpeg", 3, "wave-porch (3).jpeg"),
+        # Dots in the stem are not extensions. Only the last one is.
+        ("v6.white.bg.jpeg", 2, "v6.white.bg (2).jpeg"),
+        ("README", 2, "README (2)"),
+    ],
+)
+def test_numbered_name(name, index, expected):
+    assert keys.numbered_name(name, index) == expected
