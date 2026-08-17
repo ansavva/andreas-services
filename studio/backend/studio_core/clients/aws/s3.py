@@ -3,14 +3,17 @@
 **This module can write, and that is a recent and deliberate change.** Studio was
 built as a reader of a bucket the x-harness pipeline owns, and for most of its
 life the Lambda role carried `ListBucket` and `GetObject` and nothing else. It
-now also carries `PutObject` and `DeleteObject` on `media/*`, because studio is
+now also carries `PutObject` and `DeleteObject`, because studio is
 where the library actually gets tidied — a run that produced nothing worth
 keeping is noticed in the browser, not in the pipeline.
 
 Three things keep that from being a licence to do anything:
 
-* Every key still goes through `services.keys`, so nothing outside `media/` is
-  reachable whatever the caller sends.
+* Every key still goes through `services.keys`, so nothing outside the
+  browsable root is reachable whatever the caller sends, and the root itself
+  cannot be renamed or deleted. Note that the root is the whole bucket now
+  that x-harness has dropped its `media/` wrapper, so that first clause is
+  carrying less weight than it used to — see `modules/compute`.
 * There is no multipart upload and no `put_object` with a caller-supplied body.
   The only `PutObject` here writes a zero-byte folder marker, and the only other
   write is `CopyObject` within the same bucket — which is what a rename is.

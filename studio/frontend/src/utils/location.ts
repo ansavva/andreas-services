@@ -1,12 +1,12 @@
 /**
  * The URL *is* the S3 path.
  *
- * `studio.andreas.services/media/fred/runs/2026-08-14_.../output/clip.mp4` opens
- * that clip; `studio.andreas.services/media/fred/runs/` opens that folder. The
- * trailing slash is the whole distinction, and it is the same one S3 makes —
- * which is why it is carried rather than normalised away.
+ * `studio.andreas.services/projects/fred/runs/2026-08-14_.../output/clip.mp4`
+ * opens that clip; `studio.andreas.services/projects/fred/runs/` opens that
+ * folder. The trailing slash is the whole distinction, and it is the same one S3
+ * makes — which is why it is carried rather than normalised away.
  *
- * Two consequences worth knowing before changing anything here:
+ * Three consequences worth knowing before changing anything here:
  *
  * * **A share link is a key, so it must survive a round trip.** Every segment is
  *   encoded and decoded individually: encoding the whole path would eat the
@@ -16,9 +16,15 @@
  *   static asset, so `modules/hosting`'s viewer-request function routes by
  *   location (`/assets/…`) rather than by extension. Change one and the other
  *   stops being true.
+ * * **The root is the bucket, so the path and the key are now the same string.**
+ *   x-harness dropped the `media/` wrapper this used to prepend, so `/` is the
+ *   root and every other path is a key verbatim. That makes the mapping an
+ *   identity — but it is kept as a mapping rather than inlined, because the
+ *   backend's `media_root_prefix` can be pointed at a subtree again, and this is
+ *   the one place the frontend would have to agree with it.
  */
 
-export const ROOT_PREFIX = "media/";
+export const ROOT_PREFIX = "";
 
 export type Target =
   | { kind: "folder"; prefix: string }
@@ -71,9 +77,11 @@ export function objectPath(key: string): string {
 /**
  * Read a pathname back into what it points at.
  *
- * Anything that does not sit under `media/` resolves to the root rather than
- * erroring: the API validates keys properly and will say so, and a stale
- * bookmark should land somewhere usable instead of on a crash.
+ * Anything outside `ROOT_PREFIX` resolves to the root rather than erroring: the
+ * API validates keys properly and will say so, and a stale bookmark should land
+ * somewhere usable instead of on a crash. With the root empty nothing is outside
+ * it, so what that check catches today is `/` alone — but it is written against
+ * the constant so pointing the root at a subtree keeps working.
  */
 export function targetFromPath(pathname: string): Target {
   const raw = decodeKey(pathname.replace(/^\/+/, ""));
@@ -86,8 +94,9 @@ export function targetFromPath(pathname: string): Target {
     return { kind: "folder", prefix: raw };
   }
 
-  // `media` with no trailing slash is still the root folder, not an object
-  // called `media`.
+  // A root prefix typed without its trailing slash is still the root folder,
+  // not an object of that name. Unreachable while the root is empty, since
+  // `raw` is non-empty by here.
   if (`${raw}/` === ROOT_PREFIX) {
     return { kind: "folder", prefix: ROOT_PREFIX };
   }

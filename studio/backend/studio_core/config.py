@@ -18,12 +18,23 @@ def media_bucket():
 
 
 def media_root_prefix():
-    """The single prefix inside the bucket this service may read.
+    """The prefix inside the bucket this service may read.
 
     Every key and prefix the API accepts is validated against this, so it is the
-    one place the browsable surface is defined. Always ends in a slash.
+    one place the browsable surface is defined.
+
+    **Empty means the whole bucket, and that is what prod runs.** x-harness used
+    to wrap everything in `media/`; it now writes `characters/`, `projects/` and
+    `phrasebook/` at the top level, so there is no longer a wrapper to confine
+    browsing to. The knob stays because the confinement it drives is real — set
+    it to `some/prefix/` and both this API and the Lambda's IAM policy narrow to
+    it — but a value of `""` (or `"/"`, which as an S3 prefix would match
+    nothing) means the root. Anything else is returned slash-terminated so it
+    can be handed straight to `ListObjectsV2`.
     """
-    value = os.environ.get("STUDIO_MEDIA_ROOT_PREFIX", "media/")
+    value = os.environ.get("STUDIO_MEDIA_ROOT_PREFIX", "").strip()
+    if value in ("", "/"):
+        return ""
     return value if value.endswith("/") else value + "/"
 
 

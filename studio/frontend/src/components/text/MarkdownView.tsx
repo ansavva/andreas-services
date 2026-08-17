@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 
 /**
- * Just enough markdown for the subject `profile.md` files.
+ * Just enough markdown for whatever `.md` the pipeline writes. Subject profiles
+ * are YAML today, but markdown stays a viewable kind and this renders it.
  *
  * Deliberately not a markdown library. These files are headings, paragraphs,
  * lists and the occasional bold run, and pulling in a parser plus a sanitiser
