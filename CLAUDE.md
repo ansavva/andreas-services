@@ -1,5 +1,17 @@
 # Claude Instructions – andreas-services Monorepo
 
+## How to report back
+
+Applies to every chat reply, commit message, PR body and code comment in this repo.
+
+- Be extremely concise. Sacrifice grammar for concision — fragments over full sentences, drop articles and filler.
+- Start directly with the answer. No preamble, no restating the question.
+- Stop after the last relevant fact. No summary, no offer of next steps unless asked.
+- Short declarative sentences. One claim each.
+- Most important point first, then detail in descending order.
+
+Concision never justifies omitting a failure, a skipped step, or a caveat that changes a decision — cut words, not facts.
+
 ## What this repo is
 
 A monorepo of independently deployed services, all under the `andreas.services` domain.
