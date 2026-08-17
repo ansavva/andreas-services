@@ -94,22 +94,31 @@ mode.
 
 ## Which skill
 
-Fifteen skills, discovered as `studio:<name>`. Start here, then read that
-skill's own `SKILL.md`.
+Sixteen skills, in **two families**. Pick the family first — the wrong one wastes
+a session.
+
+| Family | You are | Describes |
+|---|---|---|
+| **`studio-media-*`** (15) | using studio to make media | the CLI surface — `studio <command>` |
+| **`studio-code-*`** (1) | changing studio's own code | the code behind it |
+
+`studio-code-pipeline` is the way into the pipeline package: the module map, the
+layout, the conventions that bite. Everything below is `studio-media-*`; start
+here, then read that skill's own `SKILL.md`.
 
 | You want to | Use |
 |---|---|
-| Store, fetch, list or presign anything; record a run | `studio-s3` |
-| Make a still image | `studio-image`, then a model skill |
-| Make one shot end to end (still → motion) | `studio-shot` |
-| Continue past a model's duration ceiling | `studio-scene` |
-| Cut finished scenes into one piece | `studio-movie` |
-| Work with a recurring character | `studio-character` |
-| Write a tight, repeatable video prompt | `studio-prompt` |
-| Invoke a model generically, or inspect its schema | `studio-core` |
-| Register a new Replicate model | `studio-add-model` |
-| Pick a video engine | `studio-seedance` · `studio-kling` |
-| Pick an image engine | `studio-nano-banana-pro` · `studio-nano-banana-2` · `studio-gpt-image-2` · `studio-gpt-image-1-5` |
+| Store, fetch, list or presign anything; record a run | `studio-media-s3` |
+| Make a still image | `studio-media-image`, then a model skill |
+| Make one shot end to end (still → motion) | `studio-media-shot` |
+| Continue past a model's duration ceiling | `studio-media-scene` |
+| Cut finished scenes into one piece | `studio-media-movie` |
+| Work with a recurring character | `studio-media-character` |
+| Write a tight, repeatable video prompt | `studio-media-prompt` |
+| Invoke a model generically, or inspect its schema | `studio-media-core` |
+| Register a new Replicate model | `studio-media-add-model` |
+| Pick a video engine | `studio-media-seedance` · `studio-media-kling` |
+| Pick an image engine | `studio-media-nano-banana-pro` · `studio-media-nano-banana-2` · `studio-media-gpt-image-2` · `studio-media-gpt-image-1-5` |
 
 **Ask which project before generating anything.** Work is addressed as
 `projects/<project>/`, and guessing puts runs somewhere nobody looks again.
@@ -122,16 +131,19 @@ skill's own `SKILL.md`.
   directory holds prose and nothing else. Adding a command means adding a module
   under `pipeline/src/studio_pipeline/` and an entry in `cli.py`, then
   describing it in the relevant `SKILL.md`.
-- **A skill describes the CLI surface and never names a module, path or
-  function.** The internals are documented once, in
+- **A `studio-media-*` skill describes the CLI surface and never names a module,
+  path or function; a `studio-code-*` skill may, because the code is its
+  subject.** Internals are documented once, in
   [docs/PIPELINE.md](docs/PIPELINE.md#the-modules), next to the code they
-  describe. Two skills used to carry module tables and five of those names
+  describe. Two media skills used to carry module tables and five of those names
   rotted into files that no longer existed — prose about code only stays true
-  when it lives beside the code. `pipeline/tests/test_docs_match_cli.py` fails
-  the build on a module name in a skill, on a `studio …` line that names no real
-  command, and on a broken link.
+  when it lives beside the code. `pipeline/scripts/lint_skills.py` enforces this:
+  it fails on a module name in a media skill, on a module a code skill names that
+  does not exist, on a `studio …` line naming no real command, on a surviving
+  script-era invocation, and on a broken link. It is a **linter, not a test** —
+  pre-commit runs it locally, `studio-pr.yml` enforces it.
 - **No code in this repo generates prose.** `studio add-model` writes the
-  registry entry and stops; `studio-add-model` writes the model's page. The
+  registry entry and stops; `studio-media-add-model` writes the model's page. The
   generator it replaced emitted boilerplate around a `TODO` asking for the only
   part worth reading, and quietly rotted for months.
 - **One constant knows where `studio/` is**: `studio_pipeline.STUDIO_DIR`. Use

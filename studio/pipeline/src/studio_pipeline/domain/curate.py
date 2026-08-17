@@ -5,7 +5,7 @@ different names, numbering develops holes, and "replacing" an image quietly
 destroys the only copy. This does those operations safely, and keeps the bible's
 reference index in step so a written description survives them.
 
-Four pools, per `studio-character`:
+Four pools, per `studio-media-character`:
 
     reference/   generated character imagery, in purpose subfolders
                  (face/, body/, wardrobe/ …), numbered within each group and

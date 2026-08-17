@@ -18,7 +18,7 @@ THE WORD "SHOT"
 A scene is made of **shots**, and a shot here is one run's output — the unit a
 scene is cut from. It was called a "part" before, which named its position in a
 list rather than what it is. Note the term is loaded elsewhere: a Kling
-`multi_prompt` cut is a shot *inside* one generation, and the `studio-shot`
+`multi_prompt` cut is a shot *inside* one generation, and the `studio-media-shot`
 skill produces a whole still-then-clip chain. The nesting is
 generation cut ⊂ shot ⊂ scene ⊂ movie.
 

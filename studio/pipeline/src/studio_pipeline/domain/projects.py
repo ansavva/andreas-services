@@ -26,7 +26,7 @@ THE INPUT POOL
 `input/` is the project's working material — an upload to edit, a frame pulled
 off a clip to drive the next one. It is uncapped and never sent "in full"; it is
 picked from. That is the opposite of a character's `reference/`, which is
-identity and is chosen from a described index (see studio-character).
+identity and is chosen from a described index (see studio-media-character).
 
 Pool basenames are `<project>_in_<n>.<ext>`, numbered from the PROJECT — not
 from a character. The first projects happen to be named after characters, so

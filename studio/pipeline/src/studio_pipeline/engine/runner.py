@@ -216,7 +216,7 @@ def build_payload(entry: dict, args) -> dict:
               "shows what exists."))
 @click.option("--prompt", help="The prompt.")
 @click.option("--prompt-file", help="Read the prompt from a file instead.")
-@click.option("--prompt-json", help="studio-prompt source, stored as prompt.json.")
+@click.option("--prompt-json", help="studio-media-prompt source, stored as prompt.json.")
 @click.option("--ref-run", multiple=True, help="An earlier run's output as reference material. Repeatable.")
 @click.option("--slots", help="Comma-separated positions WITHIN the resolved selection.")
 @click.option("--slug", help="Short slug for the run id and filename.")

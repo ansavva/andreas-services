@@ -30,7 +30,7 @@ lose lineage.
 A SCENE OR A LONGER SCENE?
 --------------------------
 Cut a movie when the piece has genuine breaks in it — a change of place, of
-time, of subject. Extend a scene (studio-scene) when it must read as one
+time, of subject. Extend a scene (studio-media-scene) when it must read as one
 continuous take. The stitcher does not care; the audience does. A movie's cut
 points are hard cuts, so put them where a hard cut belongs.
 

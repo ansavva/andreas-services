@@ -80,7 +80,8 @@ delete run locally is a delete in production; bucket versioning without
 `studio/CLAUDE.md`. And:
 
 **`studio/` is the one service that is not purely a deployable unit.** Half of it
-— `studio/.claude/skills/`, fifteen skills that generate the media — runs
+— `studio/.claude/skills/`, fifteen `studio-media-*` skills that generate the
+media, plus `studio-code-*` for working on the pipeline itself — runs
 locally inside Claude on a developer's machine and never deploys; the CI path
 filters exclude it. The other half is an ordinary Flask + Vite service. Both
 share the media S3 bucket, which `studio/infra/modules/media` owns. It is also

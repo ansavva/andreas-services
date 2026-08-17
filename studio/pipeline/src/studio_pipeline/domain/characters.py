@@ -2,7 +2,7 @@
 xharness-prod-media-us-east-1 S3 bucket.
 
 A character is DATA, not a skill: each one is an S3 record under
-`characters/<name>/` (see the `studio-s3` skill), and this one tool manages them all:
+`characters/<name>/` (see the `studio-media-s3` skill), and this one tool manages them all:
 
     characters/<name>/profile.yaml   the bible (SOURCE OF TRUTH), including the
                                      DESCRIBED index of the reference library
@@ -34,7 +34,7 @@ keys for every character, so a prompt or a check reads `consistency.must` or
 `identity.signature_features` by path instead of pattern-matching prose. It
 describes WHO the character is — never how the record was assembled.
 
-Requires an AWS login (`aws login`; see the `studio-s3` skill).
+Requires an AWS login (`aws login`; see the `studio-media-s3` skill).
 
 Subcommands:
   list                         Every character.
@@ -294,7 +294,7 @@ def cmd_textblock(name):
         "signature accessories.\nThen save it back into the bible under `text_identity_block:` "
         f"(`studio character edit {name}`)\nso it is written once and reused.\n"
         "\nNOTE: with a start frame supplied, keep the pasted block SHORT — the frame carries\n"
-        "appearance better than prose, and a long block fights it (see studio-kling).",
+        "appearance better than prose, and a long block fights it (see studio-media-kling).",
         file=sys.stderr,
     )
 

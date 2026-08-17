@@ -29,7 +29,7 @@ not existed for months into every newly onboarded model's documentation.
 
 The irony was that this command already fetches the README those TODOs asked
 someone to go and read. So it now prints what it learned and stops. The
-`studio-add-model` skill writes the page, from this output and from the
+`studio-media-add-model` skill writes the page, from this output and from the
 fourteen existing model skills as models. Prose is authored where prose is
 authored; no code in this package generates documentation.
 """
@@ -153,7 +153,9 @@ def infer(model: str, props: dict, schemas: dict, text: str) -> tuple[dict, list
     entry = {
         "model": model,
         "kind": kind,
-        "skill": f"studio-{key.replace('.', '-')}",
+        # `studio-media-*` is the family for using the pipeline; `studio-code-*`
+        # is for changing it. A model's page is always a media skill.
+        "skill": f"studio-media-{key.replace('.', '-')}",
         "backfill_slug": re.sub(r"[^a-z0-9]", "", key.lower()),
         "images": {
             "refs": refs, "max_refs": cap,
@@ -187,7 +189,7 @@ def infer(model: str, props: dict, schemas: dict, text: str) -> tuple[dict, list
 @click.option("--json", "json_", is_flag=True)
 @click.option("--key", help="Registry key (default: the model name).")
 @click.option("--write", is_flag=True, help=("Append the entry to models.json. Without this, nothing is "
-              "written. The skill page is written by `studio-add-model`, not here."))
+              "written. The skill page is written by `studio-media-add-model`, not here."))
 def add_model(model, json_, key, write):
     if "/" not in model:
         die("model must be `owner/name`, e.g. openai/gpt-image-2")
@@ -232,6 +234,6 @@ def add_model(model, json_, key, write):
         f.write("\n")
     print(f"\nwrote {key} to {REG.PATH}", file=sys.stderr)
     print(f"\nnext: studio models show {key}", file=sys.stderr)
-    print(f"      then write {entry['skill']}'s SKILL.md — the `studio-add-model` "
+    print(f"      then write {entry['skill']}'s SKILL.md — the `studio-media-add-model` "
           "skill covers what belongs on the page.", file=sys.stderr)
     return 0

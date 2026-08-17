@@ -164,6 +164,12 @@ jobs:
       - name: Lint
         run: uv run --project studio/pipeline ruff check studio/pipeline
 
+      # The skills describe this CLI and nothing else checks that they still do.
+      # Kept out of the pytest suite deliberately: it is a linter, and 60-odd
+      # parametrised markdown cases drowned the wiring tests that suite is for.
+      - name: Lint skills against the CLI
+        run: uv run --project studio/pipeline python studio/pipeline/scripts/lint_skills.py
+
       - name: Run tests
         run: uv run --project studio/pipeline pytest studio/pipeline/tests -q
 

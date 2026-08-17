@@ -30,3 +30,16 @@ repos:
     hooks:
       - id: ruff-check
         files: ^(scout|storybook|humbugg|studio)/.*\.py$
+
+  - repo: local
+    hooks:
+      # studio's skills describe the `studio` CLI, so they can go stale without
+      # anything failing. This checks them against the live Click tree. Local
+      # feedback only — studio-pr.yml runs the same script, and that is the
+      # enforcement point.
+      - id: studio-lint-skills
+        name: studio — skills match the CLI
+        entry: uv run --project studio/pipeline python studio/pipeline/scripts/lint_skills.py
+        language: system
+        pass_filenames: false
+        files: ^studio/(\.claude/skills/|pipeline/src/)
