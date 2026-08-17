@@ -101,6 +101,14 @@ screen and starting work tends to end in hand-rolled `aws s3` calls that a
 `studio` subcommand already does. Full routing table in
 [studio/CLAUDE.md](studio/CLAUDE.md#which-skill).
 
+Those sixteen skills live in `studio/.claude/skills/` and are directory-scoped:
+they register only once a file under `studio/` has been read, so a `Skill` call
+on the first action of a session returns `Unknown skill`. That is a timing
+artifact, not a missing skill. The root **`studio`** skill is the entry point —
+it is registered from the start and routes you through
+[studio/CLAUDE.md](studio/CLAUDE.md#which-skill), which is also the read that
+registers the rest.
+
 ## Shared Infrastructure (`infra/`)
 
 The root `infra/` directory owns **cross-cutting AWS resources** shared by all services. Never create these inside an individual service's infra:
