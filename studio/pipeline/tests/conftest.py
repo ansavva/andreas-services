@@ -23,7 +23,7 @@ os.environ["XHARNESS_S3_PREFIX"] = ""
 # Never let a test reach the real API, whatever is in studio/.env.
 os.environ["REPLICATE_API_TOKEN"] = "r8_test_token"
 
-from moto import mock_s3  # noqa: E402
+from moto import mock_s3
 
 BUCKET = "xharness-prod-media-us-east-1"
 

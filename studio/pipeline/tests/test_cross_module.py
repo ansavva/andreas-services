@@ -8,8 +8,8 @@ the same keys, in the same order, with the same refusals.
 
 import pytest
 
+from studio_pipeline.domain import phrasebook, projects
 from studio_pipeline.engine import refs
-from studio_pipeline.store import phrasebook, projects
 
 
 # --------------------------------------------------------------------------
@@ -105,7 +105,7 @@ def test_prompt_authoring_survives_an_unreachable_phrasebook(monkeypatch):
     A fetch failure degrades to a warning saying the list was not read, which
     is honest — rather than reporting a draft as checked when it was not.
     """
-    from studio_pipeline.prompt import build
+    from studio_pipeline.domain import prompt as build
 
     def boom(*_a, **_k):
         raise RuntimeError("no credentials")

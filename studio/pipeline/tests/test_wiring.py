@@ -124,20 +124,21 @@ def test_packaged_data_files_exist():
     Both were reached by relative path before the move, and a wheel that omits
     them fails only at runtime.
     """
-    from studio_pipeline.characters import character
-    from studio_pipeline.engine import registry
     import os
 
+    from studio_pipeline.domain import characters
+    from studio_pipeline.engine import registry
+
     assert os.path.isfile(registry.PATH), f"registry missing at {registry.PATH}"
-    assert os.path.isfile(character.TEMPLATE), f"template missing at {character.TEMPLATE}"
+    assert os.path.isfile(characters.TEMPLATE), f"template missing at {characters.TEMPLATE}"
 
 
 def test_local_working_dirs_resolve_under_studio():
     """`character edit` and the migrator write here; both are git-ignored."""
-    from studio_pipeline.characters import character
-    from studio_pipeline.store import migrate_layout
+    from studio_pipeline.domain import characters
+    from studio_pipeline.maintenance import migrate_layout
 
     root = str(studio_pipeline.STUDIO_DIR)
-    assert character.LOCAL_DIR.startswith(root)
-    assert character.LOCAL_DIR.endswith("local/characters")
+    assert characters.LOCAL_DIR.startswith(root)
+    assert characters.LOCAL_DIR.endswith("local/characters")
     assert migrate_layout.JOURNAL_DIR.startswith(root)

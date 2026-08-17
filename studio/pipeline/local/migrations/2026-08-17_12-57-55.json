@@ -1,0 +1,15 @@
+{
+  "plan": {
+    "moves": 0,
+    "markers": 0,
+    "unmapped": [],
+    "map": []
+  },
+  "verify": {
+    "ok": true,
+    "refs_checked": 0,
+    "dangling": [],
+    "pre_existing": [],
+    "stale": []
+  }
+}

@@ -96,47 +96,56 @@ The pipeline is **one package** with **one command**. The `SKILL.md` files are
 its agent-facing documentation and hold no code.
 
 ```
-studio/
-├── pipeline/                      — THE CODE (local only, never deploys)
-│   ├── pyproject.toml             one dependency set, one console script
-│   ├── uv.lock                    committed: this is an app, not a library
-│   └── studio_pipeline/
-│       ├── cli.py                 `studio` — dispatch over everything below
-│       ├── __init__.py            STUDIO_DIR, ENV_FILE, env_value()
-│       ├── _invoke.py             in-process calls between the parts
-│       ├── store/                 the S3 asset store
-│       │   ├── s3.py              credentials bridge, BUCKET/PREFIX/REGION
-│       │   ├── paths.py           the one module that knows the tree's shape
-│       │   ├── runs.py            the run store; refuses a URL-shaped binding
-│       │   ├── scenes.py movies.py frames.py projects.py
-│       │   ├── upload.py download.py presign.py convert.py
-│       │   └── rewrite.py phrasebook.py video.py
-│       ├── engine/                the model layer
-│       │   ├── models.json        the REGISTRY — models are data, not code
-│       │   ├── runner.py          `studio run` / `studio models`
-│       │   ├── submit.py registry.py model_schema.py replicate_api.py refs.py
-│       │   └── add_model.py
-│       ├── characters/            character.py curate.py contact_sheet.py
-│       └── prompt/build.py        structured prompt authoring
-│
-├── .claude/skills/                — THE DOCS (one SKILL.md each, no code)
-│   ├── studio-s3/  studio-core/  studio-character/  studio-prompt/
-│   ├── studio-image/  studio-shot/  studio-scene/  studio-movie/
-│   ├── studio-seedance/  studio-kling/  studio-add-model/
-│   └── studio-nano-banana-pro/ …-2/  studio-gpt-image-2/ …-1-5/
-│
-├── backend/  frontend/            — THE APP (see WEB_APP.md)
-├── infra/                         — Terraform, incl. modules/media (the bucket)
-├── scripts/dev-setup.sh           — installs the pipeline, puts `studio` on PATH
-├── .env                           — REPLICATE_API_TOKEN (git-ignored)
-├── input/  local/  output/        — local working dirs (git-ignored)
-└── CLAUDE.md                      — the index over both halves
+studio/pipeline/
+├── pyproject.toml  uv.lock        one dependency set, one console script
+├── tests/                         moto-backed; needs no AWS
+└── src/                           ← src layout, deliberately (see below)
+    └── studio_pipeline/
+        ├── cli.py                 `studio` — the root group, wiring only
+        ├── errors.py              domain failure -> `error: …` and exit 1
+        ├── __init__.py            STUDIO_DIR, ENV_FILE, env_value
+        │
+        ├── adapters/              THE OUTSIDE WORLD — everything with a side effect
+        │   ├── s3.py              credentials bridge, BUCKET/PREFIX/REGION
+        │   ├── replicate.py       the HTTP client
+        │   └── ffmpeg.py          probe / stitch / grab
+        │
+        ├── domain/                WHAT THINGS ARE — records and the tree's shape
+        │   ├── paths.py           the one module that knows the key layout
+        │   ├── runs.py  scenes.py  movies.py  frames.py  projects.py
+        │   ├── characters.py  curate.py  contact_sheet.py
+        │   ├── phrasebook.py  rewrite.py  prompt.py
+        │   └── templates/profile.yaml
+        │
+        ├── engine/                MODEL INVOCATION
+        │   ├── models.json        the REGISTRY — models are data, not code
+        │   ├── runner.py          `studio run` / `studio models`
+        │   ├── registry.py  schema.py  submit.py  refs.py  add_model.py
+        │
+        ├── objects/               raw object access
+        │   └── upload.py  download.py  presign.py  convert.py
+        │
+        └── maintenance/           one-shots, quarantined
+            └── backfill_replicate.py  migrate_layout.py
 ```
 
-**One constant knows where `studio/` is**: `studio_pipeline.STUDIO_DIR`. Every
-module that needs the repo root — `.env`, `local/characters/` — derives it from
-there. It used to be recomputed per file as a count of `".."` segments, which
-was correct only for that file's depth and silently wrong the moment one moved.
+**Why the directories are named after what things ARE.** They used to be one
+`store/` holding six unrelated kinds of thing — an S3 adapter, the key layout,
+the record stores, an ffmpeg wrapper, four thin CLI verbs and two one-shot
+migrations. "Store" described where bytes live, which was true of `s3.py` and
+meaningless for a module that shells out to ffmpeg. Dependencies now point one
+way: `cli` → `domain` → `adapters`.
+
+**Why `src/`.** Without it, Python puts the working directory first on the
+import path, so tests can pass against files that were never packaged. Both
+`models.json` and `profile.yaml` are package data reached at runtime; a wheel
+missing either fails only when someone runs the command. `src/` forces the
+tests to exercise the installed package.
+
+**One constant knows where `studio/` is**: `studio_pipeline.STUDIO_DIR`. It
+searches upward for the directory holding both `backend/` and `pipeline/`
+rather than counting `".."` segments — a count is right only for one file's
+depth, and moving the package to `src/` proved that by breaking it.
 
 ---
 
