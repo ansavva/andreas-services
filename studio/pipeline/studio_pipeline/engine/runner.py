@@ -1,4 +1,4 @@
-"""studio.py — invoke ANY registered Replicate model, image or video.
+"""`studio run` — invoke ANY registered Replicate model, image or video.
 
 One runner over the model registry (`models.json`). `--model` takes any
 registry key; the entry decides which image fields exist, what the caps are,
@@ -26,21 +26,20 @@ at submit time.
 without it having been shown first.
 """
 
-import argparse
 import json
-import os
 import sys
+from types import SimpleNamespace
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+import click
 
-from studio_pipeline.engine import model_schema as MS  # noqa: E402
-from studio_pipeline.store import projects as PROJ  # noqa: E402
-from studio_pipeline.engine import refs as REFS  # noqa: E402
-from studio_pipeline.engine import registry as REG  # noqa: E402
-from studio_pipeline.engine import replicate_api as RA  # noqa: E402
-from studio_pipeline.store import runs as R  # noqa: E402
-from studio_pipeline.store import s3 as s3c  # noqa: E402
-from studio_pipeline.engine import submit as SUB  # noqa: E402
+from studio_pipeline.engine import model_schema as MS
+from studio_pipeline.engine import refs as REFS
+from studio_pipeline.engine import registry as REG
+from studio_pipeline.engine import replicate_api as RA
+from studio_pipeline.engine import submit as SUB
+from studio_pipeline.store import projects as PROJ
+from studio_pipeline.store import runs as R
+from studio_pipeline.store import s3 as s3c
 
 die = RA.die
 
@@ -230,72 +229,80 @@ def cmd_run(args) -> int:
 
 # --------------------------------------------------------------------------
 
-def main() -> int:
-    ap = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = ap.add_subparsers(dest="cmd", required=True)
+# Subcommand -> handler. argparse carried this on the parser itself via
+# `set_defaults(func=...)`; Click has no equivalent, so it is explicit.
+HANDLERS = {
+    "models": cmd_models,
+    "show": cmd_models_show,
+    "refresh": cmd_models_refresh,
+    "run": cmd_run,
+}
 
-    p = sub.add_parser("models", help="List every registered model.")
-    msub = p.add_subparsers(dest="sub")
-    p.add_argument("--json", action="store_true")
-    p.set_defaults(func=cmd_models)
 
-    q = msub.add_parser("show", help="One model: registry entry + LIVE input schema.")
-    q.add_argument("model")
-    q.add_argument("--json", action="store_true")
-    q.set_defaults(func=cmd_models_show)
+@click.group(help=__doc__)
+def main():
+    pass
 
-    q = msub.add_parser("refresh", help="Re-snapshot schema enums into models.json.")
-    q.add_argument("model", nargs="?", help="Default: every model.")
-    q.add_argument("--json", action="store_true")
-    q.set_defaults(func=cmd_models_refresh)
 
-    p = sub.add_parser("run", help="Submit a prediction as a recorded run.")
-    p.add_argument("--model", required=True,
-                   help="REQUIRED registry key. See `models` — the engines are peers.")
-    p.add_argument("--prompt", help="The prompt.")
-    p.add_argument("--prompt-file", help="Read the prompt from a file instead.")
-    p.add_argument("--input-file",
-                   help="JSON: the Replicate `input` object WITHOUT image fields.")
-    p.add_argument("--prompt-json", help="studio-prompt source, stored as prompt.json.")
-    p.add_argument("--project", help="REQUIRED. The project this run belongs to. "
-                                     "`projects.py list` shows what exists.")
-    p.add_argument("--character", action="append",
-                   help="A character supplying identity. Repeatable — one piece of "
-                        "work can involve several.")
-    p.add_argument("--pick", help="Comma-separated reference files (or stems) from the "
-                                  "character's index.")
-    p.add_argument("--pick-tag", help="Comma-separated tags; an image must carry ALL of them.")
-    p.add_argument("--slots", help="Comma-separated positions WITHIN the resolved selection.")
-    p.add_argument("--ref-run", action="append",
-                   help="An earlier run's output as reference material. Repeatable.")
-    p.add_argument("--image-run", help="An earlier run's output as the image being edited.")
-    p.add_argument("--input", type=int, action="append", metavar="N",
-                   help="Image number from the PROJECT's input pool. Repeatable.")
-    p.add_argument("--key", action="append", help="Explicit S3 key. Repeatable.")
-    p.add_argument("--start-run", help="An earlier run's output as the first frame (video).")
-    p.add_argument("--start-key", help="Explicit S3 key as the first frame (video).")
-    p.add_argument("--end-run", help="An earlier run's output as the last frame (video).")
-    p.add_argument("--end-key", help="Explicit S3 key as the last frame (video).")
-    p.add_argument("--no-refs", action="store_true",
-                   help="Deliberately generate with no image inputs.")
-    p.add_argument("--aspect-ratio", help="Model-dependent; validated against the live schema.")
-    p.add_argument("--extra", help="JSON object of model-specific inputs.")
-    p.add_argument("--slug", default=None, help="Short slug for the run id and filename.")
-    p.add_argument("--dest", help="Also keep a local copy in this directory.")
-    p.add_argument("--expires", type=int, default=3600, help="Presign expiry (default 3600).")
-    p.add_argument("--poll", action="store_true",
-                   help="Video only: wait and archive. Images always wait.")
-    p.add_argument("--interval", type=int, default=None, help="Poll interval seconds.")
-    p.add_argument("--timeout", type=int, default=None, help="Give up after N seconds.")
-    p.add_argument("--dry-run", action="store_true",
-                   help="Show the payload for approval; submit nothing, bill nothing.")
-    p.add_argument("--json", action="store_true",
-                   help="With --dry-run, emit raw JSON instead of the readable review.")
-    p.set_defaults(func=cmd_run)
+@main.group("models", invoke_without_command=True)
+@click.option("--json", "json_", is_flag=True)
+@click.pass_context
+def _cmd_models(ctx, json_):
+    if ctx.invoked_subcommand is not None:
+        return None
+    return _run(SimpleNamespace(cmd="models", json=json_))
 
-    args = ap.parse_args()
-    return args.func(args) or 0
+@_cmd_models.command("refresh", epilog="\n\nArguments:\n  MODEL  Default: every model.")
+@click.argument("model", required=False)
+@click.option("--json", "json_", is_flag=True)
+def _cmd_models_refresh(model, json_):
+    return _run(SimpleNamespace(cmd="refresh", model=model, json=json_))
+
+@_cmd_models.command("show")
+@click.argument("model", required=True)
+@click.option("--json", "json_", is_flag=True)
+def _cmd_models_show(model, json_):
+    return _run(SimpleNamespace(cmd="show", model=model, json=json_))
+
+@main.command("run")
+@click.option("--aspect-ratio", help="Model-dependent; validated against the live schema.")
+@click.option("--character", multiple=True, help=("A character supplying identity. Repeatable — one piece of work "
+              "can involve several."))
+@click.option("--dest", help="Also keep a local copy in this directory.")
+@click.option("--dry-run", is_flag=True, help="Show the payload for approval; submit nothing, bill nothing.")
+@click.option("--end-key", help="Explicit S3 key as the last frame (video).")
+@click.option("--end-run", help="An earlier run's output as the last frame (video).")
+@click.option("--expires", type=int, default=3600, help="Presign expiry (default 3600).")
+@click.option("--extra", help="JSON object of model-specific inputs.")
+@click.option("--image-run", help="An earlier run's output as the image being edited.")
+@click.option("--input", "input_", type=int, multiple=True, help="Image number from the PROJECT's input pool. Repeatable.")
+@click.option("--input-file", help="JSON: the Replicate `input` object WITHOUT image fields.")
+@click.option("--interval", type=int, help="Poll interval seconds.")
+@click.option("--json", "json_", is_flag=True, help="With --dry-run, emit raw JSON instead of the readable review.")
+@click.option("--key", multiple=True, help="Explicit S3 key. Repeatable.")
+@click.option("--model", required=True, help="REQUIRED registry key. See `models` — the engines are peers.")
+@click.option("--no-refs", is_flag=True, help="Deliberately generate with no image inputs.")
+@click.option("--pick", help=("Comma-separated reference files (or stems) from the "
+              "character's index."))
+@click.option("--pick-tag", help="Comma-separated tags; an image must carry ALL of them.")
+@click.option("--poll", is_flag=True, help="Video only: wait and archive. Images always wait.")
+@click.option("--project", help=("REQUIRED. The project this run belongs to. `projects.py list` "
+              "shows what exists."))
+@click.option("--prompt", help="The prompt.")
+@click.option("--prompt-file", help="Read the prompt from a file instead.")
+@click.option("--prompt-json", help="studio-prompt source, stored as prompt.json.")
+@click.option("--ref-run", multiple=True, help="An earlier run's output as reference material. Repeatable.")
+@click.option("--slots", help="Comma-separated positions WITHIN the resolved selection.")
+@click.option("--slug", help="Short slug for the run id and filename.")
+@click.option("--start-key", help="Explicit S3 key as the first frame (video).")
+@click.option("--start-run", help="An earlier run's output as the first frame (video).")
+@click.option("--timeout", type=int, help="Give up after N seconds.")
+def _cmd_run(aspect_ratio, character, dest, dry_run, end_key, end_run, expires, extra, image_run, input_, input_file, interval, json_, key, model, no_refs, pick, pick_tag, poll, project, prompt, prompt_file, prompt_json, ref_run, slots, slug, start_key, start_run, timeout):
+    return _run(SimpleNamespace(cmd="run", aspect_ratio=aspect_ratio, character=character, dest=dest, dry_run=dry_run, end_key=end_key, end_run=end_run, expires=expires, extra=extra, image_run=image_run, input=input_, input_file=input_file, interval=interval, json=json_, key=key, model=model, no_refs=no_refs, pick=pick, pick_tag=pick_tag, poll=poll, project=project, prompt=prompt, prompt_file=prompt_file, prompt_json=prompt_json, ref_run=ref_run, slots=slots, slug=slug, start_key=start_key, start_run=start_run, timeout=timeout))
+
+
+def _run(args):
+    return HANDLERS[args.cmd](args) or 0
 
 
 if __name__ == "__main__":

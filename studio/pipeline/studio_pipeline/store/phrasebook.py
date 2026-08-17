@@ -1,4 +1,4 @@
-"""phrasebook.py — per-model wording lists: what to say instead of what.
+"""`studio phrasebook` — per-model wording lists: what to say instead of what.
 
 A **wording list** is a small set of substitutions for one model: a phrase, and
 the phrase to use in its place. Different models read the same idea differently,
@@ -34,7 +34,6 @@ CLI
 """
 from __future__ import annotations
 
-import argparse
 import datetime as dt
 import io
 import json
@@ -44,6 +43,9 @@ import yaml
 
 from studio_pipeline.store import paths as P  # noqa: E402
 from studio_pipeline.store.s3 import BUCKET, client, die  # noqa: E402
+from types import SimpleNamespace
+
+import click
 
 KEY = P.phrasebook_key()
 
@@ -79,31 +81,42 @@ def terms(s3, model_key: str) -> list[dict]:
             for e in (section.get("entries") or []) if e.get("avoid")]
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="Per-model wording lists.")
-    sub = ap.add_subparsers(dest="cmd", required=True)
-
-    p = sub.add_parser("show", help="print the phrasebook")
-    p.add_argument("--model", help="limit to one model key")
-
-    p = sub.add_parser("models", help="list the models covered")
-
-    p = sub.add_parser("terms", help="the avoid/use pairs for one model, as JSON")
-    p.add_argument("--model", required=True)
-
-    p = sub.add_parser("check", help="scan text against this model's wording list")
-    p.add_argument("--model", required=True)
-    p.add_argument("--text", required=True)
-
-    p = sub.add_parser("add", help="record a substitution")
-    p.add_argument("--model", required=True)
-    p.add_argument("--avoid", required=True)
-    p.add_argument("--use", required=True)
-    p.add_argument("--note", default="", help="optional free text — where this came from")
-    p.add_argument("--replicate", help="owner/name, when first creating the section")
+@click.group(help=__doc__)
+def main():
+    pass
 
 
-    args = ap.parse_args()
+@main.command("add")
+@click.option("--avoid", required=True)
+@click.option("--model", required=True)
+@click.option("--note", default='', help="optional free text — where this came from")
+@click.option("--replicate", help="owner/name, when first creating the section")
+@click.option("--use", required=True)
+def _cmd_add(avoid, model, note, replicate, use):
+    return _run(SimpleNamespace(cmd="add", avoid=avoid, model=model, note=note, replicate=replicate, use=use))
+
+@main.command("check")
+@click.option("--model", required=True)
+@click.option("--text", required=True)
+def _cmd_check(model, text):
+    return _run(SimpleNamespace(cmd="check", model=model, text=text))
+
+@main.command("models")
+def _cmd_models():
+    return _run(SimpleNamespace(cmd="models"))
+
+@main.command("show")
+@click.option("--model", help="limit to one model key")
+def _cmd_show(model):
+    return _run(SimpleNamespace(cmd="show", model=model))
+
+@main.command("terms")
+@click.option("--model", required=True)
+def _cmd_terms(model):
+    return _run(SimpleNamespace(cmd="terms", model=model))
+
+
+def _run(args):
     s3 = client()
     doc = load(s3)
     models = doc.setdefault("models", {})

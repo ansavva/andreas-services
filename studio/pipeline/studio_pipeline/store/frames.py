@@ -1,4 +1,4 @@
-"""frames.py — pull still frames out of a run's video. Two jobs, both load-bearing.
+"""`studio frames` — pull still frames out of a run's video. Two jobs, both load-bearing.
 
 **Chaining.** A video engine can only continue a shot from a start frame, so a
 sequence longer than one generation needs the previous clip's LAST FRAME as the
@@ -49,7 +49,6 @@ ffmpeg comes from the `imageio-ffmpeg` wheel, so there is no system install.
 """
 from __future__ import annotations
 
-import argparse
 import os
 import tempfile
 
@@ -60,6 +59,9 @@ from studio_pipeline.store.s3 import BUCKET, client, die  # noqa: E402
 from studio_pipeline.store.video import VIDEO_EXT, contact_grid, grab  # noqa: E402  — shared ffmpeg layer
 
 from studio_pipeline.store import projects as PROJECTS
+from types import SimpleNamespace
+
+import click
 
 
 def fetch_video(s3, ref: str, project: str | None, tmp: str) -> tuple[str, str, str]:
@@ -134,43 +136,55 @@ def add_to_input_pool(project: str, path: str) -> str:
     return added[0]["key"]
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="Still frames out of a run's video.")
-    sub = ap.add_subparsers(dest="cmd", required=True)
+@click.group(help=__doc__)
+def main():
+    pass
 
-    for name, help_ in (("last", "the final frame — the chaining handoff"),
-                        ("at", "one frame at a given time"),
-                        ("grid", "a contact sheet, for looking at the clip")):
-        p = sub.add_parser(name, help=help_)
-        p.add_argument("ref", help="runref: <project>/<run_id>, <project>/latest, "
-                                   "a slug fragment, #N")
-        p.add_argument("--project", help="project, when the runref does not carry one")
-        p.add_argument("--dest", help="directory to write the image into")
-        if name == "at":
-            p.add_argument("--time", type=float, required=True, help="seconds")
-        if name == "grid":
-            p.add_argument("--count", type=int, default=4, help="frames to sample (default 4)")
-        else:
-            p.add_argument("--add-input", action="store_true",
-                           help="upload into the PROJECT's input pool "
-                                "(never a character's reference/)")
-            p.add_argument("--chain", metavar="SLUG",
-                           help="also record this frame in a scene chain, so the next "
-                                "shot's reference_images can be derived rather than recalled")
 
-    p = sub.add_parser("chain", help="the frames a scene has produced so far")
-    p.add_argument("ref", help="<project>/<slug>")
-    p.add_argument("--seed", help="S3 key of the image shot 1 started from")
-    p.add_argument("--add-key", action="append", metavar="KEY", dest="add_keys",
-                   help="record an existing S3 key as the next frame in the chain. "
-                        "Repeatable, order preserved. For frames produced outside "
-                        "`last --add-input`, or to reconstruct a chain after the fact.")
-    p.add_argument("--args", action="store_true",
-                   help="print as `--key K --key K …`, ready to paste into a run")
-    p.add_argument("--max", type=int, dest="max_n",
-                   help="cap the list (Kling takes 7); keeps the seed and the newest")
+@main.command("at", epilog="\n\nArguments:\n  REF  runref: <project>/<run_id>, <project>/latest, a slug fragment, #N")
+@click.argument("ref", required=True)
+@click.option("--add-input", is_flag=True, help=("upload into the PROJECT's input pool (never a character's "
+              "reference/)"))
+@click.option("--chain", help=("also record this frame in a scene chain, so the next shot's "
+              "reference_images can be derived rather than recalled"))
+@click.option("--dest", help="directory to write the image into")
+@click.option("--project", help="project, when the runref does not carry one")
+@click.option("--time", type=float, required=True, help="seconds")
+def _cmd_at(ref, add_input, chain, dest, project, time):
+    return _run(SimpleNamespace(cmd="at", ref=ref, add_input=add_input, chain=chain, dest=dest, project=project, time=time))
 
-    args = ap.parse_args()
+@main.command("chain", epilog="\n\nArguments:\n  REF  <project>/<slug>")
+@click.argument("ref", required=True)
+@click.option("--add-key", multiple=True, help=("record an existing S3 key as the next frame in the chain. "
+              "Repeatable, order preserved. For frames produced outside `last "
+              "--add-input`, or to reconstruct a chain after the fact."))
+@click.option("--args", is_flag=True, help="print as `--key K --key K …`, ready to paste into a run")
+@click.option("--max", "max_", type=int, help="cap the list (Kling takes 7); keeps the seed and the newest")
+@click.option("--seed", help="S3 key of the image shot 1 started from")
+def _cmd_chain(ref, add_key, args, max_, seed):
+    return _run(SimpleNamespace(cmd="chain", ref=ref, add_keys=add_key, args=args, max_n=max_, seed=seed))
+
+@main.command("grid", epilog="\n\nArguments:\n  REF  runref: <project>/<run_id>, <project>/latest, a slug fragment, #N")
+@click.argument("ref", required=True)
+@click.option("--count", type=int, default=4, help="frames to sample (default 4)")
+@click.option("--dest", help="directory to write the image into")
+@click.option("--project", help="project, when the runref does not carry one")
+def _cmd_grid(ref, count, dest, project):
+    return _run(SimpleNamespace(cmd="grid", ref=ref, count=count, dest=dest, project=project))
+
+@main.command("last", epilog="\n\nArguments:\n  REF  runref: <project>/<run_id>, <project>/latest, a slug fragment, #N")
+@click.argument("ref", required=True)
+@click.option("--add-input", is_flag=True, help=("upload into the PROJECT's input pool (never a character's "
+              "reference/)"))
+@click.option("--chain", help=("also record this frame in a scene chain, so the next shot's "
+              "reference_images can be derived rather than recalled"))
+@click.option("--dest", help="directory to write the image into")
+@click.option("--project", help="project, when the runref does not carry one")
+def _cmd_last(ref, add_input, chain, dest, project):
+    return _run(SimpleNamespace(cmd="last", ref=ref, add_input=add_input, chain=chain, dest=dest, project=project))
+
+
+def _run(args):
     s3 = client()
 
     if args.cmd == "chain":

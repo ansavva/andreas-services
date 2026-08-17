@@ -75,6 +75,9 @@ import argparse
 import json
 import re
 import sys
+from types import SimpleNamespace
+
+import click
 
 # --- engine capabilities ----------------------------------------------------
 # `negative`:  "prompt" -> folded into the prompt text as `avoid`
@@ -589,47 +592,36 @@ def build_settings(obj: dict, prompt_str: str, engine: str) -> tuple[str, dict]:
     return "input", {"prompt": prompt_str, **picked}
 
 
-def main() -> int:
-    p = argparse.ArgumentParser(
-        description="Build + validate a studio-* JSON video prompt and split it into a "
-        "serialized prompt string plus the engine's own settings.",
-    )
-    p.add_argument("source", nargs="?", help="Path to a JSON object file, or '-' for stdin.")
-    p.add_argument("--json", help="Inline JSON object (overrides source).")
-    p.add_argument(
-        "--engine",
-        choices=sorted(ENGINES),
-        default="seedance",
-        help="Target engine (default: seedance). Changes negative-prompt handling, "
-        "beat budget, enums, and which content rules apply.",
-    )
-    # creative overrides
-    p.add_argument("--subject")
-    p.add_argument("--action")
-    p.add_argument("--scene")
-    p.add_argument("--style")
-    p.add_argument("--lighting")
-    p.add_argument("--audio")
-    p.add_argument("--negative")
-    p.add_argument("--camera-movement")
-    p.add_argument("--camera-shot")
-    p.add_argument("--lens-mm", type=int)
-    p.add_argument(
-        "--start-image",
-        action="store_true",
-        help="Declare that a start frame is supplied; enables the anti-redundancy checks.",
-    )
-    # technical overrides
-    p.add_argument("--aspect-ratio")
-    p.add_argument("--duration", type=int)
-    p.add_argument("--resolution")
-    p.add_argument("--seed", type=int)
-    p.add_argument("--no-audio", action="store_true", help="Set generate_audio=false.")
-    # output control
-    p.add_argument("--emit", choices=["both", "prompt", "input"], default="both")
-    p.add_argument("--compact", action="store_true", help="Single-line prompt JSON (no indent).")
-    p.add_argument("--strict", action="store_true", help="Exit non-zero if any warnings.")
-    args = p.parse_args()
+@click.command(help=__doc__, epilog="\n\nArguments:\n  SOURCE  Path to a JSON object file, or '-' for stdin.")
+@click.argument("source", required=False)
+@click.option("--action")
+@click.option("--aspect-ratio")
+@click.option("--audio")
+@click.option("--camera-movement")
+@click.option("--camera-shot")
+@click.option("--compact", is_flag=True, help="Single-line prompt JSON (no indent).")
+@click.option("--duration", type=int)
+@click.option("--emit", type=click.Choice(["both", "input", "prompt"]), default='both')
+@click.option("--engine", type=click.Choice(["kling", "kling-replicate", "seedance"]), default='seedance', help=("Target engine (default: seedance). Changes negative-prompt "
+              "handling, beat budget, enums, and which content rules apply."))
+@click.option("--json", "json_", help="Inline JSON object (overrides source).")
+@click.option("--lens-mm", type=int)
+@click.option("--lighting")
+@click.option("--negative")
+@click.option("--no-audio", is_flag=True, help="Set generate_audio=false.")
+@click.option("--resolution")
+@click.option("--scene")
+@click.option("--seed", type=int)
+@click.option("--start-image", is_flag=True, help=("Declare that a start frame is supplied; enables the "
+              "anti-redundancy checks."))
+@click.option("--strict", is_flag=True, help="Exit non-zero if any warnings.")
+@click.option("--style")
+@click.option("--subject")
+def main(source, action, aspect_ratio, audio, camera_movement, camera_shot, compact, duration, emit, engine, json_, lens_mm, lighting, negative, no_audio, resolution, scene, seed, start_image, strict, style, subject):
+    return _run(SimpleNamespace(source=source, action=action, aspect_ratio=aspect_ratio, audio=audio, camera_movement=camera_movement, camera_shot=camera_shot, compact=compact, duration=duration, emit=emit, engine=engine, json=json_, lens_mm=lens_mm, lighting=lighting, negative=negative, no_audio=no_audio, resolution=resolution, scene=scene, seed=seed, start_image=start_image, strict=strict, style=style, subject=subject))
+
+
+def _run(args):
 
     engine = args.engine
     spec = ENGINES[engine]

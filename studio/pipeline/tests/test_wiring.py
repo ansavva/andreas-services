@@ -21,6 +21,8 @@ import pytest
 import studio_pipeline
 from studio_pipeline import cli
 
+_COMMANDS = sorted(cli.main.commands)
+
 
 def test_studio_dir_points_at_the_service_root():
     """STUDIO_DIR is the constant every module derives its paths from."""
@@ -72,21 +74,48 @@ def test_no_undefined_names_anywhere():
     assert out.returncode == 0, f"undefined or redefined names:\n{out.stdout}"
 
 
-def test_cli_lists_every_command():
-    """Every entry in COMMANDS is reachable and grouped."""
-    grouped = {n for _, names in cli.GROUPS for n in names}
-    assert grouped == set(cli.COMMANDS), (
-        f"ungrouped: {set(cli.COMMANDS) - grouped}; "
-        f"grouped but undefined: {grouped - set(cli.COMMANDS)}"
+def test_every_command_is_in_a_help_section():
+    """The root help is grouped by hand, so a new command can miss a section.
+
+    An ungrouped command still runs but never appears in `studio --help`, which
+    is the same as not existing for anyone discovering the tool.
+    """
+    sectioned = {n for _, names in cli._Grouped.SECTIONS for n in names}
+    registered = set(cli.main.commands)
+    assert registered == sectioned, (
+        f"registered but not in any help section: {registered - sectioned}; "
+        f"in a section but not registered: {sectioned - registered}"
     )
 
 
-@pytest.mark.parametrize("command", sorted(cli.COMMANDS))
-def test_every_command_module_exposes_main(command):
-    """cli.py dispatches to `main()`; a module without one is a dead command."""
-    module_path, _prefix, _help = cli.COMMANDS[command]
-    module = importlib.import_module(module_path)
-    assert callable(getattr(module, "main", None)), f"{module_path} has no main()"
+@pytest.mark.parametrize("command", sorted(_COMMANDS))
+def test_every_command_is_invocable(command):
+    """Each attached command is a real Click command with a callback."""
+    import click
+
+    cmd = cli.main.get_command(None, command)
+    assert isinstance(cmd, click.Command), f"{command} is not a Click command"
+    assert cmd.callback is not None or isinstance(cmd, click.Group), (
+        f"{command} has no callback and is not a group"
+    )
+
+
+@pytest.mark.parametrize("command", sorted(_COMMANDS))
+def test_every_command_help_renders(command):
+    """`--help` must not raise — a bad epilog or help string only shows here."""
+    from click.testing import CliRunner
+
+    result = CliRunner().invoke(cli.main, [command, "--help"])
+    assert result.exit_code == 0, f"studio {command} --help failed:\n{result.output}"
+
+
+def test_root_help_renders():
+    from click.testing import CliRunner
+
+    result = CliRunner().invoke(cli.main, ["--help"])
+    assert result.exit_code == 0
+    for title, _ in cli._Grouped.SECTIONS:
+        assert title in result.output, f"section {title!r} missing from root help"
 
 
 def test_packaged_data_files_exist():

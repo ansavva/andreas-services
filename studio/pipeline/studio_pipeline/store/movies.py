@@ -1,4 +1,4 @@
-"""movies.py — the MOVIE store: several scenes cut into one piece.
+"""`studio movies` — the MOVIE store: several scenes cut into one piece.
 
 The hierarchy, each tier built from the one below it:
 
@@ -43,7 +43,6 @@ CLI
 """
 from __future__ import annotations
 
-import argparse
 import datetime as dt
 import json
 import os
@@ -56,6 +55,9 @@ from studio_pipeline.store import runs as R  # noqa: E402
 from studio_pipeline.store import scenes as SC  # noqa: E402  — for sceneref resolution, not for ffmpeg
 from studio_pipeline.store.s3 import BUCKET, client, die, list_keys  # noqa: E402
 from studio_pipeline.store.video import probe, stitch  # noqa: E402  — the same joiner scenes use
+from types import SimpleNamespace
+
+import click
 
 
 # ── layout ──────────────────────────────────────────────────────────────────
@@ -199,32 +201,42 @@ def create(s3, project: str, slug: str, refs: list[str],
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="The movie store: scenes cut into one piece.")
-    sub = ap.add_subparsers(dest="cmd", required=True)
+@click.group(help=__doc__)
+def main():
+    pass
 
-    p = sub.add_parser("new", help="cut scenes into a new movie")
-    p.add_argument("project")
-    p.add_argument("--slug", required=True)
-    p.add_argument("--scene", action="append", required=True, metavar="SCENEREF",
-                   help="a scene, in cut order. Repeatable. Accepts "
-                        "<project>/<scene_id>, <scene_id>, latest, or a unique fragment.")
-    p.add_argument("--dest", help="also keep the finished file locally")
 
-    p = sub.add_parser("list", help="movies in a project")
-    p.add_argument("project")
+@main.command("list")
+@click.argument("project", required=True)
+def _cmd_list(project):
+    return _run(SimpleNamespace(cmd="list", project=project))
 
-    p = sub.add_parser("show", help="a movie's manifest")
-    p.add_argument("ref")
-    p.add_argument("--project")
+@main.command("new")
+@click.argument("project", required=True)
+@click.option("--dest", help="also keep the finished file locally")
+@click.option("--scene", multiple=True, required=True, help=("a scene, in cut order. Repeatable. Accepts "
+              "<project>/<scene_id>, <scene_id>, latest, or a unique "
+              "fragment."))
+@click.option("--slug", required=True)
+def _cmd_new(project, dest, scene, slug):
+    return _run(SimpleNamespace(cmd="new", project=project, dest=dest, scene=scene, slug=slug))
 
-    p = sub.add_parser("outputs", help="a movie's output key(s)")
-    p.add_argument("ref")
-    p.add_argument("--project")
-    p.add_argument("--presign", action="store_true")
-    p.add_argument("--expires", type=int, default=3600)
+@main.command("outputs")
+@click.argument("ref", required=True)
+@click.option("--expires", type=int, default=3600)
+@click.option("--presign", is_flag=True)
+@click.option("--project")
+def _cmd_outputs(ref, expires, presign, project):
+    return _run(SimpleNamespace(cmd="outputs", ref=ref, expires=expires, presign=presign, project=project))
 
-    args = ap.parse_args()
+@main.command("show")
+@click.argument("ref", required=True)
+@click.option("--project")
+def _cmd_show(ref, project):
+    return _run(SimpleNamespace(cmd="show", ref=ref, project=project))
+
+
+def _run(args):
     s3 = client()
 
     if args.cmd == "new":

@@ -1,4 +1,4 @@
-"""curate.py — maintain a character's image pools: dedupe, renumber, move.
+"""`studio curate` — maintain a character's image pools: dedupe, renumber, move.
 
 Curating by hand goes wrong the same ways every time: duplicates creep in under
 different names, numbering develops holes, and "replacing" an image quietly
@@ -43,7 +43,6 @@ that step is what left 69 records pointing at keys that no longer existed.
 """
 from __future__ import annotations
 
-import argparse
 import hashlib
 import os
 import sys
@@ -52,9 +51,11 @@ from studio_pipeline.characters.character import (  # noqa: E402
     check_name, group_prefix, pool_folder, ref_root, sync_index,
 )
 
-from studio_pipeline.store import paths as P  # noqa: E402
 from studio_pipeline.store import rewrite # noqa: E402
 from studio_pipeline.store import s3 as s3c  # noqa: E402
+from types import SimpleNamespace
+
+import click
 
 IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp"}
 # The caps are prose-only in every model's schema (maxItems is null), so they are
@@ -324,45 +325,63 @@ def cmd_groups(args, s3) -> None:
     _ = root
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = ap.add_subparsers(dest="cmd", required=True)
+# Subcommand -> handler. argparse carried this on the parser itself via
+# `set_defaults(func=...)`; Click has no equivalent, so it is explicit.
+HANDLERS = {
+    "dedupe": cmd_dedupe,
+    "renumber": cmd_renumber,
+    "move": cmd_move,
+    "regroup": cmd_regroup,
+    "groups": cmd_groups,
+}
 
-    p = sub.add_parser("dedupe", help="Remove byte-identical duplicates.")
-    p.add_argument("name")
-    p.add_argument("--pool", choices=sorted(P.CHAR_POOLS), default="reference")
-    p.add_argument("--group", help="A reference subfolder (default: the root of the pool).")
-    p.add_argument("--apply", action="store_true", help="Actually make the changes.")
-    p.set_defaults(func=cmd_dedupe)
 
-    p = sub.add_parser("renumber", help="Renumber one reference group to a contiguous 1..N.")
-    p.add_argument("name")
-    p.add_argument("--group", help="A reference subfolder (default: the root of reference/).")
-    p.add_argument("--apply", action="store_true")
-    p.set_defaults(func=cmd_renumber)
+@click.group(help=__doc__)
+def main():
+    pass
 
-    p = sub.add_parser("move", help="Move one image between pools (preserved, never deleted outright).")
-    p.add_argument("name")
-    p.add_argument("file", help="Path inside the source pool, e.g. face/<name>_face_3.png")
-    p.add_argument("--from", dest="src_pool", choices=sorted(P.CHAR_POOLS), default="reference")
-    p.add_argument("--to", dest="dst_pool", choices=sorted(P.CHAR_POOLS), default="archive")
-    p.add_argument("--apply", action="store_true")
-    p.set_defaults(func=cmd_move)
 
-    p = sub.add_parser("regroup", help="Move reference image(s) into a purpose subfolder.")
-    p.add_argument("name")
-    p.add_argument("group", help="face, body, wardrobe, scene, …")
-    p.add_argument("files", nargs="+", help="Paths inside reference/.")
-    p.add_argument("--apply", action="store_true")
-    p.set_defaults(func=cmd_regroup)
+@main.command("dedupe")
+@click.argument("name", required=True)
+@click.option("--apply", is_flag=True, help="Actually make the changes.")
+@click.option("--group", help="A reference subfolder (default: the root of the pool).")
+@click.option("--pool", type=click.Choice(["archive", "corpus", "reference", "seed"]), default='reference')
+def _cmd_dedupe(name, apply, group, pool):
+    return _run(SimpleNamespace(cmd="dedupe", name=name, apply=apply, group=group, pool=pool))
 
-    p = sub.add_parser("groups", help="What reference/ holds, group by group.")
-    p.add_argument("name")
-    p.set_defaults(func=cmd_groups)
+@main.command("groups")
+@click.argument("name", required=True)
+def _cmd_groups(name):
+    return _run(SimpleNamespace(cmd="groups", name=name))
 
-    args = ap.parse_args()
+@main.command("move", epilog="\n\nArguments:\n  FILE  Path inside the source pool, e.g. face/<name>_face_3.png")
+@click.argument("file", required=True)
+@click.argument("name", required=True)
+@click.option("--apply", is_flag=True)
+@click.option("--from", "from_", type=click.Choice(["archive", "corpus", "reference", "seed"]), default='reference')
+@click.option("--to", type=click.Choice(["archive", "corpus", "reference", "seed"]), default='archive')
+def _cmd_move(file, name, apply, from_, to):
+    return _run(SimpleNamespace(cmd="move", file=file, name=name, apply=apply, src_pool=from_, dst_pool=to))
+
+@main.command("regroup", epilog="\n\nArguments:\n  FILES  Paths inside reference/.\n  GROUP  face, body, wardrobe, scene, …")
+@click.argument("files", nargs=-1, required=True)
+@click.argument("group", required=True)
+@click.argument("name", required=True)
+@click.option("--apply", is_flag=True)
+def _cmd_regroup(files, group, name, apply):
+    return _run(SimpleNamespace(cmd="regroup", files=files, group=group, name=name, apply=apply))
+
+@main.command("renumber")
+@click.argument("name", required=True)
+@click.option("--apply", is_flag=True)
+@click.option("--group", help="A reference subfolder (default: the root of reference/).")
+def _cmd_renumber(name, apply, group):
+    return _run(SimpleNamespace(cmd="renumber", name=name, apply=apply, group=group))
+
+
+def _run(args):
     check_name(args.name)
-    args.func(args, s3c.client())
+    HANDLERS[args.cmd](args, s3c.client())
     return 0
 
 

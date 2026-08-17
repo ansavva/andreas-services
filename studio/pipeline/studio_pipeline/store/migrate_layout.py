@@ -1,4 +1,4 @@
-"""migrate_layout.py — move the bucket from the old tree to the new one.
+"""`studio migrate-layout` — move the bucket from the old tree to the new one.
 
     OLD                                   NEW
     media/<owner>/profile.yaml            characters/<owner>/profile.yaml
@@ -42,7 +42,6 @@ did. Nothing about the migration is ever written into the bucket.
 """
 from __future__ import annotations
 
-import argparse
 import collections
 import datetime as dt
 import io
@@ -54,6 +53,9 @@ import sys
 from studio_pipeline import STUDIO_DIR  # noqa: E402
 from studio_pipeline.store import paths as P  # noqa: E402
 from studio_pipeline.store import s3 as s3c  # noqa: E402
+from types import SimpleNamespace
+
+import click
 
 JOURNAL_DIR = str(STUDIO_DIR / "local" / "migrations")
 
@@ -596,22 +598,47 @@ def selftest() -> int:
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="Migrate the bucket to the characters/projects layout.")
-    sub = ap.add_subparsers(dest="cmd", required=True)
-    for name, help_ in (("selftest", "prove the map is total and idempotent (no S3)"),
-                        ("plan", "what would move, grouped by rule"),
-                        ("copy", "server-side copy old -> new"),
-                        ("rewrite", "patch the S3 keys recorded inside documents"),
-                        ("verify", "destinations exist and every recorded key resolves"),
-                        ("delete", "remove the originals (needs a passing verify)")):
-        p = sub.add_parser(name, help=help_)
-        if name != "selftest":
-            p.add_argument("--apply", action="store_true",
-                           help="actually do it (default is a dry run)")
-            p.add_argument("--journal", help="journal file name (default: the newest)")
+@click.group(help=__doc__)
+def main():
+    pass
 
-    args = ap.parse_args()
+
+@main.command("copy")
+@click.option("--apply", is_flag=True, help="actually do it (default is a dry run)")
+@click.option("--journal", help="journal file name (default: the newest)")
+def _cmd_copy(apply, journal):
+    return _run(SimpleNamespace(cmd="copy", apply=apply, journal=journal))
+
+@main.command("delete")
+@click.option("--apply", is_flag=True, help="actually do it (default is a dry run)")
+@click.option("--journal", help="journal file name (default: the newest)")
+def _cmd_delete(apply, journal):
+    return _run(SimpleNamespace(cmd="delete", apply=apply, journal=journal))
+
+@main.command("plan")
+@click.option("--apply", is_flag=True, help="actually do it (default is a dry run)")
+@click.option("--journal", help="journal file name (default: the newest)")
+def _cmd_plan(apply, journal):
+    return _run(SimpleNamespace(cmd="plan", apply=apply, journal=journal))
+
+@main.command("rewrite")
+@click.option("--apply", is_flag=True, help="actually do it (default is a dry run)")
+@click.option("--journal", help="journal file name (default: the newest)")
+def _cmd_rewrite(apply, journal):
+    return _run(SimpleNamespace(cmd="rewrite", apply=apply, journal=journal))
+
+@main.command("selftest")
+def _cmd_selftest():
+    return _run(SimpleNamespace(cmd="selftest"))
+
+@main.command("verify")
+@click.option("--apply", is_flag=True, help="actually do it (default is a dry run)")
+@click.option("--journal", help="journal file name (default: the newest)")
+def _cmd_verify(apply, journal):
+    return _run(SimpleNamespace(cmd="verify", apply=apply, journal=journal))
+
+
+def _run(args):
     if args.cmd == "selftest":
         return selftest()
 

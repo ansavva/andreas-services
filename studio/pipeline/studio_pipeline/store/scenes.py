@@ -1,4 +1,4 @@
-"""scenes.py — the shared SCENE store: many runs assembled into one cut.
+"""`studio scenes` — the shared SCENE store: many runs assembled into one cut.
 
 A **run** is one submission to a model (see `runs.py`). A **scene** is an
 ordered sequence of run outputs stitched into a single continuous video, kept
@@ -51,7 +51,6 @@ CLI
 """
 from __future__ import annotations
 
-import argparse
 import datetime as dt
 import json
 import os
@@ -62,6 +61,9 @@ from studio_pipeline.store import paths as P  # noqa: E402  — the one module t
 from studio_pipeline.store import runs as R  # noqa: E402  — the run store; scenes are built from its records
 from studio_pipeline.store.s3 import BUCKET, client, die, list_keys  # noqa: E402
 from studio_pipeline.store.video import probe, stitch  # noqa: E402  — shared with movies.py and frames.py
+from types import SimpleNamespace
+
+import click
 
 
 # ── layout ──────────────────────────────────────────────────────────────────
@@ -184,35 +186,42 @@ def create(s3, project: str, slug: str, refs: list[str], dest_dir: str | None = 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="The scene store: runs assembled into one cut.")
-    sub = ap.add_subparsers(dest="cmd", required=True)
+@click.group(help=__doc__)
+def main():
+    pass
 
-    p = sub.add_parser("new", help="stitch run outputs into a new scene")
-    p.add_argument("project")
-    p.add_argument("--slug", required=True)
-    p.add_argument("--shot", action="append", metavar="RUNREF",
-                   help="a run output, in cut order. Repeatable. Accepts "
-                        "<project>/<run_id>, <run_id>, a unique slug fragment, or #N.")
-    # `--part` was this flag's name before a scene's components were called
-    # shots. Kept, hidden, so a command copied out of an older note still runs.
-    p.add_argument("--part", action="append", dest="shot", help=argparse.SUPPRESS)
-    p.add_argument("--dest", help="also keep the stitched file locally")
 
-    p = sub.add_parser("list", help="scenes in a project")
-    p.add_argument("project")
+@main.command("list")
+@click.argument("project", required=True)
+def _cmd_list(project):
+    return _run(SimpleNamespace(cmd="list", project=project))
 
-    p = sub.add_parser("show", help="a scene's manifest")
-    p.add_argument("ref")
-    p.add_argument("--project")
+@main.command("new")
+@click.argument("project", required=True)
+@click.option("--dest", help="also keep the stitched file locally")
+@click.option("--part", hidden=True, multiple=True)
+@click.option("--shot", multiple=True, help=("a run output, in cut order. Repeatable. Accepts "
+              "<project>/<run_id>, <run_id>, a unique slug fragment, or #N."))
+@click.option("--slug", required=True)
+def _cmd_new(project, dest, part, shot, slug):
+    return _run(SimpleNamespace(cmd="new", project=project, dest=dest, shot=part, slug=slug))
 
-    p = sub.add_parser("outputs", help="a scene's output key(s)")
-    p.add_argument("ref")
-    p.add_argument("--project")
-    p.add_argument("--presign", action="store_true")
-    p.add_argument("--expires", type=int, default=3600)
+@main.command("outputs")
+@click.argument("ref", required=True)
+@click.option("--expires", type=int, default=3600)
+@click.option("--presign", is_flag=True)
+@click.option("--project")
+def _cmd_outputs(ref, expires, presign, project):
+    return _run(SimpleNamespace(cmd="outputs", ref=ref, expires=expires, presign=presign, project=project))
 
-    args = ap.parse_args()
+@main.command("show")
+@click.argument("ref", required=True)
+@click.option("--project")
+def _cmd_show(ref, project):
+    return _run(SimpleNamespace(cmd="show", ref=ref, project=project))
+
+
+def _run(args):
     s3 = client()
 
     if args.cmd == "new":

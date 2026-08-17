@@ -1,4 +1,4 @@
-"""refs.py — resolve a character's or a project's images to S3 KEYS.
+"""Resolve a character's or a project's images to S3 KEYS.
 
 Lifted from the two identical copies in the image and video submitters. Three
 pools are addressed here, and the distinction between them is the point:

@@ -1,4 +1,4 @@
-"""runs.py — the shared run store for every studio-* engine, plus its CLI.
+"""`studio runs` — the shared run store for every studio-* engine, plus its CLI.
 
 A **run** is one submission to Replicate and everything about it, kept together
 under the PROJECT it belongs to:
@@ -53,7 +53,6 @@ CLI
 """
 from __future__ import annotations
 
-import argparse
 import datetime as dt
 import json
 import mimetypes
@@ -63,6 +62,9 @@ import sys
 
 from studio_pipeline.store import paths as P  # noqa: E402  — the one module that knows the bucket's shape
 from studio_pipeline.store import s3 as s3c  # noqa: E402
+from types import SimpleNamespace
+
+import click
 
 RUN_ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_[A-Za-z0-9._-]+$")
 SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -437,43 +439,59 @@ def adopt(s3, project: str, key: str) -> str:
 
 # --- CLI ------------------------------------------------------------------
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = ap.add_subparsers(dest="cmd", required=True)
+@click.group(help=__doc__)
+def main():
+    pass
 
-    p = sub.add_parser("list", help="List a project's runs, oldest first.")
-    p.add_argument("project")
-    p.add_argument("--character", help="Only runs that recorded this character.")
-    p.add_argument("--json", action="store_true")
 
-    p = sub.add_parser("find", help="Runs using a character, across every project.")
-    p.add_argument("--character", required=True)
-    p.add_argument("--project", action="append", help="Limit to these projects. Repeatable.")
-    p.add_argument("--json", action="store_true")
+@main.command("adopt")
+@click.argument("project", required=True)
+@click.option("--key", required=True, help="Full S3 key of the existing object.")
+def _cmd_adopt(project, key):
+    return _run(SimpleNamespace(cmd="adopt", project=project, key=key))
 
-    p = sub.add_parser("show", help="Print a run's full record.")
-    p.add_argument("runref")
-    p.add_argument("--project", help="Default project for a bare run id.")
+@main.command("favorite")
+@click.argument("runref", required=True)
+@click.option("--project", help="Default project for a bare run id.")
+def _cmd_favorite(runref, project):
+    return _run(SimpleNamespace(cmd="favorite", runref=runref, project=project))
 
-    p = sub.add_parser("outputs", help="Print a runref's output keys (or presigned URLs).")
-    p.add_argument("runref")
-    p.add_argument("--project", help="Default project for a bare run id.")
-    p.add_argument("--presign", action="store_true")
-    p.add_argument("--expires", type=int, default=3600)
-    p.add_argument("--json", action="store_true")
+@main.command("favorites")
+@click.argument("project", required=True)
+def _cmd_favorites(project):
+    return _run(SimpleNamespace(cmd="favorites", project=project))
 
-    p = sub.add_parser("favorite", help="Copy a run's output into the project's favorites/.")
-    p.add_argument("runref")
-    p.add_argument("--project", help="Default project for a bare run id.")
+@main.command("find")
+@click.option("--character", required=True)
+@click.option("--json", "json_", is_flag=True)
+@click.option("--project", multiple=True, help="Limit to these projects. Repeatable.")
+def _cmd_find(character, json_, project):
+    return _run(SimpleNamespace(cmd="find", character=character, json=json_, project=project))
 
-    p = sub.add_parser("favorites", help="List a project's favorites.")
-    p.add_argument("project")
+@main.command("list")
+@click.argument("project", required=True)
+@click.option("--character", help="Only runs that recorded this character.")
+@click.option("--json", "json_", is_flag=True)
+def _cmd_list(project, character, json_):
+    return _run(SimpleNamespace(cmd="list", project=project, character=character, json=json_))
 
-    p = sub.add_parser("adopt", help="Wrap a loose object in a synthetic run.")
-    p.add_argument("project")
-    p.add_argument("--key", required=True, help="Full S3 key of the existing object.")
+@main.command("outputs")
+@click.argument("runref", required=True)
+@click.option("--expires", type=int, default=3600)
+@click.option("--json", "json_", is_flag=True)
+@click.option("--presign", is_flag=True)
+@click.option("--project", help="Default project for a bare run id.")
+def _cmd_outputs(runref, expires, json_, presign, project):
+    return _run(SimpleNamespace(cmd="outputs", runref=runref, expires=expires, json=json_, presign=presign, project=project))
 
-    args = ap.parse_args()
+@main.command("show")
+@click.argument("runref", required=True)
+@click.option("--project", help="Default project for a bare run id.")
+def _cmd_show(runref, project):
+    return _run(SimpleNamespace(cmd="show", runref=runref, project=project))
+
+
+def _run(args):
     s3 = s3c.client()
 
     try:

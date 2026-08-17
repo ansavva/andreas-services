@@ -1,4 +1,4 @@
-"""character.py — manage on-model characters stored in the
+"""`studio character` — manage on-model characters stored in the
 xharness-prod-media-us-east-1 S3 bucket.
 
 A character is DATA, not a skill: each one is an S3 record under
@@ -68,7 +68,6 @@ Examples:
 """
 from __future__ import annotations
 
-import argparse
 import difflib
 import json
 import os
@@ -77,6 +76,9 @@ import sys
 import tempfile
 
 import yaml
+from types import SimpleNamespace
+
+import click
 
 from studio_pipeline import STUDIO_DIR
 from studio_pipeline.store import paths as P
@@ -820,116 +822,141 @@ def cmd_refs(args, s3) -> None:
           "`refs <name> --presign` (full-res, zero context cost).", file=sys.stderr)
 
 
-def main() -> int:
-    p = argparse.ArgumentParser(
-        description="Manage on-model characters stored in S3 (characters/<name>/).")
-    sub = p.add_subparsers(dest="cmd", required=True)
+# Subcommand -> handler. argparse carried this on the parser itself via
+# `set_defaults(func=...)`; Click has no equivalent, so it is explicit.
+HANDLERS = {
+    "list": cmd_list,
+    "show": cmd_show,
+    "textblock": cmd_textblock,
+    "create": cmd_create,
+    "set-profile": cmd_set_profile,
+    "edit": cmd_edit,
+    "add-refs": cmd_add_refs,
+    "refs": cmd_refs,
+    "sync-refs": cmd_sync_refs,
+    "set-ref-desc": cmd_set_ref_desc,
+    "describe-refs": cmd_describe_refs,
+    "default-set": cmd_default_set,
+    "add-to": cmd_add_to_pool,
+    "pool": cmd_pool,
+}
 
-    sp = sub.add_parser("list", help="List every character.")
-    sp.add_argument("--json", action="store_true")
-    sp.set_defaults(func=cmd_list)
 
-    sp = sub.add_parser("show", help="Print a character's profile.yaml.")
-    sp.add_argument("name")
-    sp.set_defaults(func=cmd_show)
+@click.group(help=__doc__)
+def main():
+    pass
 
-    sp = sub.add_parser(
-        "textblock",
-        help="Emit a pasteable text identity block, for when no reference set is used.",
-    )
-    sp.add_argument("name")
-    sp.set_defaults(func=cmd_textblock)
 
-    sp = sub.add_parser("create", help="Create a character record (uploads a profile.yaml).")
-    sp.add_argument("name")
-    sp.add_argument("--from-profile", help="Local profile.yaml to seed with (default: blank template).")
-    sp.set_defaults(func=cmd_create)
+@main.command("add-refs")
+@click.argument("files", nargs=-1, required=True)
+@click.argument("name", required=True)
+@click.option("--replace", is_flag=True, help="Number from 1 (overwrites in place).")
+@click.option("--start", type=int, help="Start numbering at N (default: after current highest).")
+@click.option("--to", help=("Purpose subfolder inside reference/ (face, body, wardrobe, …). "
+              "Omit to add at the root of reference/."))
+def _cmd_add_refs(files, name, replace, start, to):
+    return _run(SimpleNamespace(cmd="add-refs", files=files, name=name, replace=replace, start=start, to=to))
 
-    sp = sub.add_parser("set-profile", help="Replace a character's profile.yaml.")
-    sp.add_argument("name")
-    sp.add_argument("file")
-    sp.set_defaults(func=cmd_set_profile)
+@main.command("add-to")
+@click.argument("files", nargs=-1, required=True)
+@click.argument("name", required=True)
+@click.argument("pool", required=True, type=click.Choice(["archive", "corpus", "seed"]))
+def _cmd_add_to(files, name, pool):
+    return _run(SimpleNamespace(cmd="add-to", files=files, name=name, pool=pool))
 
-    sp = sub.add_parser(
-        "edit",
-        help="Round-trip profile.yaml for local editing (first run pulls, next run pushes).",
-    )
-    sp.add_argument("name")
-    sp.add_argument("--path", help=f"Working-copy path (default: {os.path.join(LOCAL_DIR, '<name>.yaml')}).")
-    sp.add_argument("--pull", action="store_true", help="Force the download direction.")
-    sp.add_argument("--push", action="store_true", help="Force the upload direction.")
-    sp.add_argument("--diff", action="store_true", help="Show local-vs-S3 differences and exit.")
-    sp.add_argument("--discard", action="store_true", help="Throw away local edits and re-pull.")
-    sp.add_argument("--force", action="store_true", help="Proceed despite unsaved edits or a changed remote.")
-    sp.set_defaults(func=cmd_edit)
+@main.command("create")
+@click.argument("name", required=True)
+@click.option("--from-profile", help="Local profile.yaml to seed with (default: blank template).")
+def _cmd_create(name, from_profile):
+    return _run(SimpleNamespace(cmd="create", name=name, from_profile=from_profile))
 
-    sp = sub.add_parser("add-refs", help="Add reference image(s), numbered within their group.")
-    sp.add_argument("name")
-    sp.add_argument("files", nargs="+")
-    sp.add_argument("--to", metavar="GROUP",
-                    help="Purpose subfolder inside reference/ (face, body, wardrobe, …). "
-                         "Omit to add at the root of reference/.")
-    sp.add_argument("--start", type=int, help="Start numbering at N (default: after current highest).")
-    sp.add_argument("--replace", action="store_true", help="Number from 1 (overwrites in place).")
-    sp.set_defaults(func=cmd_add_refs)
+@main.command("default-set")
+@click.argument("name", required=True)
+@click.option("--set", "set_", multiple=True, help="Files from the index, in slot order. Repeat the flag per file.")
+def _cmd_default_set(name, set_):
+    return _run(SimpleNamespace(cmd="default-set", name=name, set=set_))
 
-    sp = sub.add_parser("refs", help="The reference set: describe it, or resolve a selection.")
-    sp.add_argument("name")
-    sp.add_argument("--describe", action="store_true",
-                    help="Print the indexed description of every reference image.")
-    sp.add_argument("--pick", help="Comma-separated files (or bare stems) from the index.")
-    sp.add_argument("--pick-tag", help="Comma-separated tags; an image must carry ALL of them.")
-    sp.add_argument("--slots", help="Comma-separated 1-based positions WITHIN the resolved selection.")
-    sp.add_argument("--keys", action="store_true", help="Print S3 keys instead of downloading.")
-    sp.add_argument("--dest", help="Local dir for a download (default: a fresh temp dir).")
-    sp.add_argument("--presign", action="store_true", help="Print ordered presigned HTTPS URLs.")
-    sp.add_argument("--expires", type=int, default=3600, help="Presign expiry seconds (default 3600).")
-    sp.add_argument("--json", action="store_true", help="JSON output.")
-    sp.set_defaults(func=cmd_refs)
+@main.command("describe-refs")
+@click.argument("name", required=True)
+@click.option("--from-json", required=True, help="JSON object: {file: {description, tags}}.")
+def _cmd_describe_refs(name, from_json):
+    return _run(SimpleNamespace(cmd="describe-refs", name=name, from_json=from_json))
 
-    sp = sub.add_parser("sync-refs",
-                        help="Reconcile the bible's reference index against reference/.")
-    sp.add_argument("name")
-    sp.add_argument("--apply", action="store_true", help="Write the index back (default: dry run).")
-    sp.set_defaults(func=cmd_sync_refs)
+@main.command("edit")
+@click.argument("name", required=True)
+@click.option("--diff", is_flag=True, help="Show local-vs-S3 differences and exit.")
+@click.option("--discard", is_flag=True, help="Throw away local edits and re-pull.")
+@click.option("--force", is_flag=True, help="Proceed despite unsaved edits or a changed remote.")
+@click.option("--path", help=("Working-copy path (default: "
+              "/Users/andreassavva/repos/andreas-services/studio/local/characters/<name>.yaml)."))
+@click.option("--pull", is_flag=True, help="Force the download direction.")
+@click.option("--push", is_flag=True, help="Force the upload direction.")
+def _cmd_edit(name, diff, discard, force, path, pull, push):
+    return _run(SimpleNamespace(cmd="edit", name=name, diff=diff, discard=discard, force=force, path=path, pull=pull, push=push))
 
-    sp = sub.add_parser("set-ref-desc", help="Describe and tag one reference image.")
-    sp.add_argument("name")
-    sp.add_argument("file", help="Path inside reference/ (e.g. face/<name>_face_3.png), or its stem.")
-    sp.add_argument("--description")
-    sp.add_argument("--tags", help="Comma-separated, replacing the existing tags.")
-    sp.set_defaults(func=cmd_set_ref_desc)
+@main.command("list")
+@click.option("--json", "json_", is_flag=True)
+def _cmd_list(json_):
+    return _run(SimpleNamespace(cmd="list", json=json_))
 
-    sp = sub.add_parser("describe-refs",
-                        help="Describe many reference images in one profile write.")
-    sp.add_argument("name")
-    sp.add_argument("--from-json", required=True,
-                    help="JSON object: {file: {description, tags}}.")
-    sp.set_defaults(func=cmd_describe_refs)
+@main.command("pool")
+@click.argument("name", required=True)
+@click.argument("pool", required=True, type=click.Choice(["archive", "corpus", "seed"]))
+@click.option("--expires", type=int, default=3600)
+@click.option("--json", "json_", is_flag=True)
+@click.option("--presign", is_flag=True)
+def _cmd_pool(name, pool, expires, json_, presign):
+    return _run(SimpleNamespace(cmd="pool", name=name, pool=pool, expires=expires, json=json_, presign=presign))
 
-    sp = sub.add_parser("default-set",
-                        help="The images sent when --character is given with no selector.")
-    sp.add_argument("name")
-    sp.add_argument("--set", nargs="+", help="Files from the index, in slot order.")
-    sp.set_defaults(func=cmd_default_set)
+@main.command("refs")
+@click.argument("name", required=True)
+@click.option("--describe", is_flag=True, help="Print the indexed description of every reference image.")
+@click.option("--dest", help="Local dir for a download (default: a fresh temp dir).")
+@click.option("--expires", type=int, default=3600, help="Presign expiry seconds (default 3600).")
+@click.option("--json", "json_", is_flag=True, help="JSON output.")
+@click.option("--keys", is_flag=True, help="Print S3 keys instead of downloading.")
+@click.option("--pick", help="Comma-separated files (or bare stems) from the index.")
+@click.option("--pick-tag", help="Comma-separated tags; an image must carry ALL of them.")
+@click.option("--presign", is_flag=True, help="Print ordered presigned HTTPS URLs.")
+@click.option("--slots", help=("Comma-separated 1-based positions WITHIN the resolved "
+              "selection."))
+def _cmd_refs(name, describe, dest, expires, json_, keys, pick, pick_tag, presign, slots):
+    return _run(SimpleNamespace(cmd="refs", name=name, describe=describe, dest=dest, expires=expires, json=json_, keys=keys, pick=pick, pick_tag=pick_tag, presign=presign, slots=slots))
 
-    sp = sub.add_parser("add-to", help="Add file(s) to corpus/, seed/ or archive/.")
-    sp.add_argument("name")
-    sp.add_argument("pool", choices=[p for p in P.CHAR_POOLS if p != "reference"])
-    sp.add_argument("files", nargs="+")
-    sp.set_defaults(func=cmd_add_to_pool)
+@main.command("set-profile")
+@click.argument("file", required=True)
+@click.argument("name", required=True)
+def _cmd_set_profile(file, name):
+    return _run(SimpleNamespace(cmd="set-profile", file=file, name=name))
 
-    sp = sub.add_parser("pool", help="List corpus/, seed/ or archive/.")
-    sp.add_argument("name")
-    sp.add_argument("pool", choices=[p for p in P.CHAR_POOLS if p != "reference"])
-    sp.add_argument("--presign", action="store_true")
-    sp.add_argument("--expires", type=int, default=3600)
-    sp.add_argument("--json", action="store_true")
-    sp.set_defaults(func=cmd_pool)
+@main.command("set-ref-desc", epilog="\n\nArguments:\n  FILE  Path inside reference/ (e.g. face/<name>_face_3.png), or its stem.")
+@click.argument("file", required=True)
+@click.argument("name", required=True)
+@click.option("--description")
+@click.option("--tags", help="Comma-separated, replacing the existing tags.")
+def _cmd_set_ref_desc(file, name, description, tags):
+    return _run(SimpleNamespace(cmd="set-ref-desc", file=file, name=name, description=description, tags=tags))
 
-    args = p.parse_args()
+@main.command("show")
+@click.argument("name", required=True)
+def _cmd_show(name):
+    return _run(SimpleNamespace(cmd="show", name=name))
+
+@main.command("sync-refs")
+@click.argument("name", required=True)
+@click.option("--apply", is_flag=True, help="Write the index back (default: dry run).")
+def _cmd_sync_refs(name, apply):
+    return _run(SimpleNamespace(cmd="sync-refs", name=name, apply=apply))
+
+@main.command("textblock")
+@click.argument("name", required=True)
+def _cmd_textblock(name):
+    return _run(SimpleNamespace(cmd="textblock", name=name))
+
+
+def _run(args):
     s3 = s3c.client()
-    args.func(args, s3)
+    HANDLERS[args.cmd](args, s3)
     return 0
 
 

@@ -1,4 +1,4 @@
-"""add_model.py — onboard a Replicate model into the registry.
+"""`studio add-model` — onboard a Replicate model into the registry.
 
 Reads BOTH the live input schema AND the README, because each catches what the
 other misses. Real cases from this repo:
@@ -19,19 +19,24 @@ without `--write`.
   uv run add_model.py openai/gpt-image-2 --write      # append + scaffold a skill
 """
 
-import argparse
 import json
 import os
 import re
 import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-CORE = os.path.abspath(os.path.join(HERE, "..", "..", "studio-core", "scripts"))
-SKILLS = os.path.abspath(os.path.join(HERE, "..", ".."))
+from types import SimpleNamespace
 
-from studio_pipeline.engine import model_schema as MS  # noqa: E402
-from studio_pipeline.engine import registry as REG  # noqa: E402
-from studio_pipeline.engine import replicate_api as RA  # noqa: E402
+import click
+
+from studio_pipeline import STUDIO_DIR
+from studio_pipeline.engine import model_schema as MS
+from studio_pipeline.engine import registry as REG
+from studio_pipeline.engine import replicate_api as RA
+
+# Where a scaffolded skill goes. This used to be computed relative to this
+# file, which put it inside the package once the code moved out of the skill
+# directories — it would have written a SKILL.md into `studio_pipeline/`.
+SKILLS = str(STUDIO_DIR / ".claude" / "skills")
 
 die = RA.die
 
@@ -237,16 +242,17 @@ def scaffold(entry: dict, key: str) -> str:
     return body
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("model", help="Replicate model id, e.g. openai/gpt-image-2")
-    ap.add_argument("--key", help="Registry key (default: the model name).")
-    ap.add_argument("--write", action="store_true",
-                    help="Append to models.json and scaffold the skill. Without this, "
-                         "nothing is written.")
-    ap.add_argument("--json", action="store_true")
-    args = ap.parse_args()
+@click.command(help=__doc__, epilog="\n\nArguments:\n  MODEL  Replicate model id, e.g. openai/gpt-image-2")
+@click.argument("model", required=True)
+@click.option("--json", "json_", is_flag=True)
+@click.option("--key", help="Registry key (default: the model name).")
+@click.option("--write", is_flag=True, help=("Append to models.json and scaffold the skill. Without this, "
+              "nothing is written."))
+def main(model, json_, key, write):
+    return _run(SimpleNamespace(model=model, json=json_, key=key, write=write))
+
+
+def _run(args):
 
     if "/" not in args.model:
         die("model must be `owner/name`, e.g. openai/gpt-image-2")
@@ -300,7 +306,7 @@ def main() -> int:
         with open(path, "w") as f:
             f.write(scaffold(entry, key))
         print(f"scaffolded {path} — fill in its TODOs.", file=sys.stderr)
-    print(f"\nnext: uv run {os.path.join(CORE, 'studio.py')} models show {key}", file=sys.stderr)
+    print(f"\nnext: studio models show {key}", file=sys.stderr)
     return 0
 
 

@@ -99,9 +99,13 @@ skill's own `SKILL.md`.
   `uv.lock`). Run `scripts/dev-setup.sh` once — the session hook does it for
   you — and `studio` is on PATH.
 - **`--help` is not a test.** Every subcommand printed usage happily while
-  `engine/refs.py` referenced an undefined name, because usage never reaches the
-  function that used it. `pipeline/tests/` covers wiring for that reason, and
-  runs on PR even though the pipeline deploys nowhere.
+  `engine/refs.py` referenced an undefined name, and again while every
+  `character`/`curate`/`run` subcommand had no handler to dispatch to — usage
+  never reaches either. `pipeline/tests/` covers wiring and *execution* for
+  that reason, and runs on PR even though the pipeline deploys nowhere.
+- **The CLI surface is a contract.** `pipeline/tests/cli_surface_reference.json`
+  records every option, arity, default and help string. Changing the CLI means
+  regenerating it deliberately — never editing it to make a test pass.
 - **`terraform destroy` on `studio/prod` fails by design.** The media bucket
   carries `prevent_destroy`; see [infra/README.md](infra/README.md).
 - **Moving an object means rewriting the records that name it.** Skipping that

@@ -1,4 +1,4 @@
-"""projects.py — a PROJECT is the unit of production, and this manages them.
+"""`studio projects` — a PROJECT is the unit of production, and this manages them.
 
     projects/<project>/
         project.json    name, description, the characters involved
@@ -43,7 +43,6 @@ CLI
 """
 from __future__ import annotations
 
-import argparse
 import datetime as dt
 import json
 import mimetypes
@@ -54,6 +53,9 @@ import sys
 
 from studio_pipeline.store import paths as P  # noqa: E402
 from studio_pipeline.store import s3 as s3c  # noqa: E402
+from types import SimpleNamespace
+
+import click
 
 IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp"}
 PROJECT_FILE = "project.json"
@@ -138,41 +140,52 @@ def input_keys(s3, project: str) -> list[str]:
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = ap.add_subparsers(dest="cmd", required=True)
+@click.group(help=__doc__)
+def main():
+    pass
 
-    p = sub.add_parser("list", help="Every project, with the characters it names.")
-    p.add_argument("--json", action="store_true")
 
-    p = sub.add_parser("new", help="Create a project.")
-    p.add_argument("project")
-    p.add_argument("--character", action="append", dest="characters",
-                   help="A character this project involves. Repeatable.")
-    p.add_argument("--description", default="")
+@main.command("add-inputs")
+@click.argument("files", nargs=-1, required=True)
+@click.argument("project", required=True)
+@click.option("--json", "json_", is_flag=True)
+def _cmd_add_inputs(files, project, json_):
+    return _run(SimpleNamespace(cmd="add-inputs", files=files, project=project, json=json_))
 
-    p = sub.add_parser("init", help="Write project.json for a project that has "
-                                    "content but no record (e.g. one that predates it).")
-    p.add_argument("project")
-    p.add_argument("--description", default="")
+@main.command("init")
+@click.argument("project", required=True)
+@click.option("--description", default='')
+def _cmd_init(project, description):
+    return _run(SimpleNamespace(cmd="init", project=project, description=description))
 
-    p = sub.add_parser("show", help="A project's record and what it holds.")
-    p.add_argument("project")
-    p.add_argument("--json", action="store_true")
+@main.command("inputs")
+@click.argument("project", required=True)
+@click.option("--expires", type=int, default=3600)
+@click.option("--json", "json_", is_flag=True)
+@click.option("--presign", is_flag=True)
+def _cmd_inputs(project, expires, json_, presign):
+    return _run(SimpleNamespace(cmd="inputs", project=project, expires=expires, json=json_, presign=presign))
 
-    p = sub.add_parser("add-inputs", help="Upload file(s) into the project's input pool.")
-    p.add_argument("project")
-    p.add_argument("files", nargs="+")
-    p.add_argument("--json", action="store_true")
+@main.command("list")
+@click.option("--json", "json_", is_flag=True)
+def _cmd_list(json_):
+    return _run(SimpleNamespace(cmd="list", json=json_))
 
-    p = sub.add_parser("inputs", help="The project's input pool.")
-    p.add_argument("project")
-    p.add_argument("--json", action="store_true")
-    p.add_argument("--presign", action="store_true")
-    p.add_argument("--expires", type=int, default=3600)
+@main.command("new")
+@click.argument("project", required=True)
+@click.option("--character", multiple=True, help="A character this project involves. Repeatable.")
+@click.option("--description", default='')
+def _cmd_new(project, character, description):
+    return _run(SimpleNamespace(cmd="new", project=project, characters=character, description=description))
 
-    args = ap.parse_args()
+@main.command("show")
+@click.argument("project", required=True)
+@click.option("--json", "json_", is_flag=True)
+def _cmd_show(project, json_):
+    return _run(SimpleNamespace(cmd="show", project=project, json=json_))
+
+
+def _run(args):
     s3 = s3c.client()
 
     if args.cmd == "list":

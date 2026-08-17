@@ -19,7 +19,6 @@ not kept in source control.
 Images are laid out in natural-sorted order (<name>_1, <name>_2, … <name>_10) so tile
 position is stable across runs. --cols / --cell tune the grid.
 """
-import argparse
 import os
 import sys
 import tempfile
@@ -28,6 +27,9 @@ from studio_pipeline.store import paths as P
 from studio_pipeline.store import s3 as s3c
 
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
+from types import SimpleNamespace
+
+import click
 
 IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp"}
 
@@ -99,19 +101,21 @@ def build(paths: list[str], out: str, cols: int, cell: int) -> None:
     print(f"{out}  ({sheet.width}x{sheet.height}, {len(paths)} tiles)")
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--character", help="Character name; pull characters/<name>/<pool>/ from S3.")
-    ap.add_argument("--folder", default="reference", choices=sorted(P.CHAR_POOLS),
-                    help="Which character pool to sheet (default: reference).")
-    ap.add_argument("--src", help="Local directory of images (instead of --character).")
-    ap.add_argument("--out", required=True, help="Output PNG path.")
-    ap.add_argument("--cols", type=int, default=5, help="Grid columns (default: 5).")
-    ap.add_argument("--cell", type=int, default=300, help="Thumbnail cell size in px (default: 300).")
-    args = ap.parse_args()
+@click.command(help=__doc__)
+@click.option("--cell", type=int, default=300, help="Thumbnail cell size in px (default: 300).")
+@click.option("--character", help="Character name; pull characters/<name>/<pool>/ from S3.")
+@click.option("--cols", type=int, default=5, help="Grid columns (default: 5).")
+@click.option("--folder", type=click.Choice(["archive", "corpus", "reference", "seed"]), default='reference', help="Which character pool to sheet (default: reference).")
+@click.option("--out", required=True, help="Output PNG path.")
+@click.option("--src", help="Local directory of images (instead of --character).")
+def main(cell, character, cols, folder, out, src):
+    return _run(SimpleNamespace(cell=cell, character=character, cols=cols, folder=folder, out=out, src=src))
+
+
+def _run(args):
 
     if bool(args.character) == bool(args.src):
-        ap.error("provide exactly one of --character or --src")
+        raise click.UsageError("provide exactly one of --character or --src")
 
     if args.src:
         paths = _gather_from_dir(args.src)

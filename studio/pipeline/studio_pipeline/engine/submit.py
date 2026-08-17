@@ -1,4 +1,4 @@
-"""submit.py — ONE submission lifecycle, for every model in the registry.
+"""ONE submission lifecycle, for every model in the registry.
 
 The image and video submitters were ~816 lines doing the same nine steps with
 different field names. Those names are registry data now, so the steps live

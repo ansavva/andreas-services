@@ -1,4 +1,4 @@
-"""backfill_replicate.py — import historical Replicate predictions into the run store.
+"""`studio backfill-replicate` — import historical Replicate predictions into the run store.
 
 One-shot recovery tool for predictions made before the run store existed. It reads
 the Replicate predictions API and writes a run per prediction under
@@ -28,7 +28,6 @@ re-run.
 """
 from __future__ import annotations
 
-import argparse
 import datetime as dt
 import json
 import os
@@ -41,10 +40,15 @@ import urllib.request
 from studio_pipeline.store import runs as R  # noqa: E402
 from studio_pipeline.store import s3 as s3c  # noqa: E402
 
+from types import SimpleNamespace
+
+import click
+
 from studio_pipeline import env_value
+from studio_pipeline.engine import registry as REG
+
 UA = "xharness-studio/1.0"
 API = "https://api.replicate.com/v1/predictions"
-from studio_pipeline.engine import registry as REG  # noqa: E402
 
 
 def classify(model: str) -> tuple[str, str, str]:
@@ -110,15 +114,17 @@ def run_id_for(pred: dict, slug_hint: str) -> str:
     return f"{ts}_{R.slugify(slug_hint)}"
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--since", required=True, help="ISO date, e.g. 2026-08-01 (inclusive).")
-    ap.add_argument("--until", help="ISO date, exclusive upper bound.")
-    ap.add_argument("--project", default="misc",
-                    help="Project for imported runs (default: misc).")
-    ap.add_argument("--max-pages", type=int, default=50)
-    ap.add_argument("--dry-run", action="store_true", help="Report what would be written; write nothing.")
-    args = ap.parse_args()
+@click.command(help=__doc__)
+@click.option("--dry-run", is_flag=True, help="Report what would be written; write nothing.")
+@click.option("--max-pages", type=int, default=50)
+@click.option("--project", default='misc', help="Project for imported runs (default: misc).")
+@click.option("--since", required=True, help="ISO date, e.g. 2026-08-01 (inclusive).")
+@click.option("--until", help="ISO date, exclusive upper bound.")
+def main(dry_run, max_pages, project, since, until):
+    return _run(SimpleNamespace(dry_run=dry_run, max_pages=max_pages, project=project, since=since, until=until))
+
+
+def _run(args):
 
     token = load_token()
     s3 = s3c.client()

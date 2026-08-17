@@ -1,4 +1,4 @@
-"""video.py — the ffmpeg layer shared by scenes, movies and frame extraction.
+"""The ffmpeg layer shared by scenes, movies and frame extraction.
 
 `probe`/`stitch` lived in `scenes.py` and `duration`/`grab` lived in
 `frames.py`, each with its own copy of the duration regex. A **movie** stitches

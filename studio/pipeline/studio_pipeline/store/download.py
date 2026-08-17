@@ -9,22 +9,27 @@ xharness-prod-media-us-east-1 bucket.
 all to --dest; NAME... downloads specific basenames. --json emits machine output
 (a list for --list, a {name: local_path} map for downloads).
 """
-import argparse
 import json
 import os
 
 from studio_pipeline.store import s3 as s3c  # noqa: E402
+from types import SimpleNamespace
+
+import click
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--folder", required=True, help="Key prefix (e.g. characters/<name>/reference).")
-    ap.add_argument("names", nargs="*", help="Specific basenames to download (default: see --list/--all).")
-    ap.add_argument("--list", action="store_true", help="List basenames under the folder; download nothing.")
-    ap.add_argument("--all", action="store_true", help="Download every object under the folder.")
-    ap.add_argument("--dest", default=".", help="Local directory to download into (default: cwd).")
-    ap.add_argument("--json", action="store_true", help="Emit JSON instead of text.")
-    args = ap.parse_args()
+@click.command(help=__doc__, epilog="\n\nArguments:\n  NAMES  Specific basenames to download (default: see --list/--all).")
+@click.argument("names", nargs=-1)
+@click.option("--all", "all_", is_flag=True, help="Download every object under the folder.")
+@click.option("--dest", default='.', help="Local directory to download into (default: cwd).")
+@click.option("--folder", required=True, help="Key prefix (e.g. characters/<name>/reference).")
+@click.option("--json", "json_", is_flag=True, help="Emit JSON instead of text.")
+@click.option("--list", "list_", is_flag=True, help="List basenames under the folder; download nothing.")
+def main(names, all_, dest, folder, json_, list_):
+    return _run(SimpleNamespace(names=names, all=all_, dest=dest, folder=folder, json=json_, list=list_))
+
+
+def _run(args):
 
     s3 = s3c.client()
     folder = args.folder.strip("/")

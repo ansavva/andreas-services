@@ -1,4 +1,4 @@
-"""replicate_api.py — the shared Replicate HTTP client for every studio-* tool.
+"""The shared Replicate HTTP client for every studio-* engine.
 
 Lifted from three verbatim copies that had drifted apart in small ways. Holds
 the two workarounds that are easy to lose in a rewrite, both learned the hard

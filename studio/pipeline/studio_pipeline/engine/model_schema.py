@@ -1,4 +1,4 @@
-"""model_schema.py — the live Replicate input schema, shared by every studio-* engine.
+"""The live Replicate input schema, shared by every studio-* engine.
 
 Every model takes DIFFERENT inputs. Not just different field NAMES (one engine's
 `image` is another's `start_image`) but different *value* vocabularies for fields

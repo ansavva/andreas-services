@@ -363,6 +363,16 @@ while costing a resolve per script, no shared lockfile, and cross-module calls
 that had to shell out through `uv run` because no two scripts shared an
 interpreter. Those calls are now ordinary function calls.
 
+The parsing is **Click**, and the port was mechanical on purpose:
+`pipeline/tests/cli_surface_reference.json` records what argparse exposed —
+every command, option, flag spelling, arity, default, choice list,
+repeatability, type and help string, 255 params — and `test_cli_surface.py`
+asserts the Click tree still matches it. One thing genuinely could not be
+carried across: `click.argument` has no `help=`, so a positional's description
+is folded into its command's epilog instead. And one flag changed shape —
+`character default-set --set` was `--set a b c` and is now `--set a --set b`,
+because Click has no variadic option.
+
 ---
 
 ## How to add a new skill
@@ -371,7 +381,8 @@ interpreter. Those calls are now ordinary function calls.
    subpackage it belongs to (`store`, `engine`, `characters`, `prompt`). Give it
    a `main()` that parses `sys.argv` — that is the contract `cli.py` dispatches
    against, and what lets a command be called in-process by another.
-2. Add a row to `COMMANDS` and a name to `GROUPS` in `cli.py`.
+2. Attach it in `cli.py` and put its name in a `_Grouped.SECTIONS` list — a
+   command in neither never appears in `studio --help`.
 3. Create `studio/.claude/skills/<name>/SKILL.md` with YAML frontmatter — prose
    only, invoking `studio <command>`. No code lives in a skill directory.
 4. If it needs a new dependency, add it to `pipeline/pyproject.toml` and re-run

@@ -1,4 +1,4 @@
-"""paths.py — the ONE module that knows the bucket's shape.
+"""The ONE module that knows the bucket's shape.
 
 Before this file the layout lived as ~20 inline f-strings spread across eight
 scripts (`f"{owner}/{RUNS}/{run_id}"`, `f"{owner}/scenes/{scene_id}"`,

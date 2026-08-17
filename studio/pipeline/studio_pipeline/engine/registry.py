@@ -1,4 +1,4 @@
-"""registry.py — load and query the model registry (`models.json`).
+"""Load and query the model registry (`models.json`).
 
 The registry is the single source of truth for every studio-* tool: the image
 submitter, the video submitter, the prompt builder, the format converter and the

@@ -13,21 +13,26 @@ private; no credentials are exposed.
   # one exact key
   uv run .../s3_presign.py --key <name>/output/clip.mp4
 """
-import argparse
 import json
 import os
 
 from studio_pipeline.store import s3 as s3c  # noqa: E402
+from types import SimpleNamespace
+
+import click
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--folder", help="Key prefix (e.g. characters/<name>/reference).")
-    ap.add_argument("--key", help="An exact key (e.g. projects/<p>/runs/<id>/output/clip.mp4).")
-    ap.add_argument("names", nargs="*", help="With --folder: specific basenames (default: all in the folder).")
-    ap.add_argument("--expires", type=int, default=3600, help="Expiry in seconds (default 3600).")
-    ap.add_argument("--json", action="store_true", help="Emit JSON [{key,url}] instead of one URL per line.")
-    args = ap.parse_args()
+@click.command(help=__doc__, epilog="\n\nArguments:\n  NAMES  With --folder: specific basenames (default: all in the folder).")
+@click.argument("names", nargs=-1)
+@click.option("--expires", type=int, default=3600, help="Expiry in seconds (default 3600).")
+@click.option("--folder", help="Key prefix (e.g. characters/<name>/reference).")
+@click.option("--json", "json_", is_flag=True, help="Emit JSON [{key,url}] instead of one URL per line.")
+@click.option("--key", help="An exact key (e.g. projects/<p>/runs/<id>/output/clip.mp4).")
+def main(names, expires, folder, json_, key):
+    return _run(SimpleNamespace(names=names, expires=expires, folder=folder, json=json_, key=key))
+
+
+def _run(args):
 
     if not args.folder and not args.key:
         s3c.die("pass --folder <path> or --key <path>.")

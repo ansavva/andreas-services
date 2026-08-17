@@ -8,12 +8,14 @@ Each file goes to  s3://<bucket>/<folder>/<basename>  (same-named keys are
 overwritten; the bucket is versioned so prior revisions are retained). Prints the
 s3:// URI per file; --presign also prints a temporary HTTPS URL.
 """
-import argparse
 import json
 import mimetypes
 import os
 
 from studio_pipeline.store import s3 as s3c  # noqa: E402
+from types import SimpleNamespace
+
+import click
 
 # mimetypes doesn't know some media types on every platform; pin the ones we use.
 mimetypes.add_type("image/webp", ".webp")
@@ -24,14 +26,17 @@ def content_type(path: str) -> str:
     return mimetypes.guess_type(path)[0] or "application/octet-stream"
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--folder", required=True, help="Destination key prefix (e.g. characters/<name>/seed).")
-    ap.add_argument("files", nargs="+", help="Local file(s) to upload.")
-    ap.add_argument("--presign", action="store_true", help="Also emit a temporary HTTPS URL per file.")
-    ap.add_argument("--expires", type=int, default=3600, help="Presign expiry in seconds (default 3600).")
-    ap.add_argument("--json", action="store_true", help="Emit a JSON list instead of text.")
-    args = ap.parse_args()
+@click.command(help=__doc__, epilog="\n\nArguments:\n  FILES  Local file(s) to upload.")
+@click.argument("files", nargs=-1, required=True)
+@click.option("--expires", type=int, default=3600, help="Presign expiry in seconds (default 3600).")
+@click.option("--folder", required=True, help="Destination key prefix (e.g. characters/<name>/seed).")
+@click.option("--json", "json_", is_flag=True, help="Emit a JSON list instead of text.")
+@click.option("--presign", is_flag=True, help="Also emit a temporary HTTPS URL per file.")
+def main(files, expires, folder, json_, presign):
+    return _run(SimpleNamespace(files=files, expires=expires, folder=folder, json=json_, presign=presign))
+
+
+def _run(args):
 
     s3 = s3c.client()
     folder = args.folder.strip("/")

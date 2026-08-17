@@ -1,4 +1,4 @@
-"""s3_convert.py — re-encode an image in the media tree so an engine will accept it.
+"""`studio convert` — re-encode an image in the media tree so an engine will accept it.
 
 Engines disagree about image formats, and the mismatch bites at the seam between
 them: **GPT Image writes `.webp` by default, and Kling accepts only
@@ -26,7 +26,6 @@ and its existing key is printed, so the command is safe to run unconditionally.
 """
 from __future__ import annotations
 
-import argparse
 import io
 import os
 import sys
@@ -36,6 +35,9 @@ from studio_pipeline.store import runs as R  # noqa: E402
 from studio_pipeline.store import s3 as s3c  # noqa: E402
 
 from studio_pipeline.engine import registry as REG  # noqa: E402
+from types import SimpleNamespace
+
+import click
 
 # What each model accepts is registry data — `--for` takes any model key, so a
 # model added with `studio-add-model` is convertible for without touching this file.
@@ -62,24 +64,21 @@ def next_input_index(s3, project: str) -> int:
     return hi + 1
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    src = ap.add_mutually_exclusive_group(required=True)
-    src.add_argument("--key", help="Source S3 key (full).")
-    src.add_argument("--run", help="Source runref, e.g. <name>/latest#1.")
+@click.command(help=__doc__)
+@click.option("--add-input", help=("Write into PROJECT's input pool as <project>_in_<n> (the usual "
+              "destination)."))
+@click.option("--dest-key", help="Explicit destination S3 key instead.")
+@click.option("--for", "for_", type=click.Choice(["gpt-image-1.5", "gpt-image-2", "kling", "nano-banana-2", "nano-banana-pro", "seedance"]), help="Convert only if this engine would reject the current format.")
+@click.option("--key", help="Source S3 key (full).")
+@click.option("--project", help="Default project for a bare runref.")
+@click.option("--quality", type=int, default=95, help="JPEG/WebP quality (default 95).")
+@click.option("--run", help="Source runref, e.g. <name>/latest#1.")
+@click.option("--to", type=click.Choice(["jpeg", "jpg", "png", "webp"]), help="Target format.")
+def main(add_input, dest_key, for_, key, project, quality, run, to):
+    return _run(SimpleNamespace(add_input=add_input, dest_key=dest_key, engine=for_, key=key, project=project, quality=quality, run=run, to=to))
 
-    tgt = ap.add_mutually_exclusive_group(required=True)
-    tgt.add_argument("--to", choices=sorted(EXT_FOR), help="Target format.")
-    tgt.add_argument("--for", dest="engine", choices=REG.keys(),
-                     help="Convert only if this engine would reject the current format.")
 
-    ap.add_argument("--project", help="Default project for a bare runref.")
-    ap.add_argument("--add-input", metavar="PROJECT",
-                    help="Write into PROJECT's input pool as <project>_in_<n> "
-                         "(the usual destination).")
-    ap.add_argument("--dest-key", help="Explicit destination S3 key instead.")
-    ap.add_argument("--quality", type=int, default=95, help="JPEG/WebP quality (default 95).")
-    args = ap.parse_args()
+def _run(args):
 
     if not args.add_input and not args.dest_key:
         die("choose a destination: --add-input PROJECT (usual) or --dest-key KEY.")

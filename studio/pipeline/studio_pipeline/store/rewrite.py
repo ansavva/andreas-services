@@ -1,4 +1,4 @@
-"""rewrite.py — when an object moves, the records that NAME it must follow.
+"""`studio rewrite` — when an object moves, the records that NAME it must follow.
 
 Run records, scene and movie manifests and chain files all store S3 keys. That
 is deliberate (keys are stable; presigned URLs expire and leak access), but it
@@ -22,13 +22,15 @@ S3 surgery.
 """
 from __future__ import annotations
 
-import argparse
 import json
 import os
 
 
 from studio_pipeline.store import paths as P  # noqa: E402
 from studio_pipeline.store import s3 as s3c  # noqa: E402
+from types import SimpleNamespace
+
+import click
 
 # Documents whose CONTENT names S3 keys. Everything else is opaque bytes.
 DOC_NAMES = {"request.json", "result.json", "scene.json", "movie.json"}
@@ -142,13 +144,18 @@ def check(s3) -> dict:
             "distinct": len(resolved), "dangling": dangling}
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("check", help="Confirm every recorded S3 key still resolves.")
-    p.add_argument("--json", action="store_true")
-    args = ap.parse_args()
+@click.group(help=__doc__)
+def main():
+    pass
+
+
+@main.command("check")
+@click.option("--json", "json_", is_flag=True)
+def _cmd_check(json_):
+    return _run(SimpleNamespace(cmd="check", json=json_))
+
+
+def _run(args):
 
     report = check(s3c.client())
     if args.json:

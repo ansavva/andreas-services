@@ -16,6 +16,7 @@ dependencies = [
     "pyyaml>=6.0",
     "pillow>=10.0",
     "imageio-ffmpeg>=0.5",
+    "click>=8.4.2",
 ]
 
 [project.scripts]
