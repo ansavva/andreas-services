@@ -3,9 +3,12 @@ import type {
   CreatedFolder,
   DeletedFolder,
   DeletedObjects,
+  MovedFolder,
+  MovedObjects,
   ReelResponse,
   RenamedFolder,
   RenamedObject,
+  SavedText,
   SortOrder,
   TextResponse,
   TreeResponse,
@@ -33,7 +36,7 @@ export function getAsset(key: string, disposition: "inline" | "attachment" = "in
   return apiGet<AssetResponse>("/api/asset", { key, disposition });
 }
 
-/** A JSON/markdown/text object's contents, for the read-only viewer. */
+/** A JSON/markdown/text object's contents, for the text page. */
 export function getText(key: string) {
   return apiGet<TextResponse>("/api/text", { key });
 }
@@ -59,6 +62,35 @@ export function renameObject(key: string, name: string) {
 /** Rename a folder and everything beneath it. */
 export function renameFolder(prefix: string, name: string) {
   return apiSend<RenamedFolder>("PATCH", "/api/folder", { prefix, name });
+}
+
+/**
+ * Move objects into another folder, keeping their names.
+ *
+ * The other half of the pair `renameObject` starts: rename changes the name and
+ * keeps the folder, move changes the folder and keeps the name. `destination`
+ * is a prefix, never a key — a name in it would be read as a folder to create,
+ * not as a rename, which is what keeps the two operations from blurring.
+ */
+export function moveObjects(keys: string[], destination: string) {
+  return apiSend<MovedObjects>("POST", "/api/objects/move", { keys, destination });
+}
+
+/** Move a folder and everything beneath it under a different parent. */
+export function moveFolder(prefix: string, destination: string) {
+  return apiSend<MovedFolder>("POST", "/api/folder/move", { prefix, destination });
+}
+
+/**
+ * Overwrite a text file's contents.
+ *
+ * `PATCH` rather than `PUT` on purpose: the browser's preflight is answered by
+ * API Gateway rather than by Flask, so the allowed-method list lives in four
+ * places that have to agree, and PATCH is already in all four. See the header of
+ * `backend/studio_core/routes/manage.py`.
+ */
+export function saveText(key: string, content: string) {
+  return apiSend<SavedText>("PATCH", "/api/text", { key, content });
 }
 
 /** Delete one or many objects — the same call either way. */

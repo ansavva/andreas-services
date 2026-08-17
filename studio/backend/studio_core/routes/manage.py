@@ -1,10 +1,20 @@
-"""The write half of the API: create, rename and delete.
+"""The write half of the API: create, rename, move, delete and edit.
 
 Split from `routes/browse` rather than appended to it so that "what can this
 service change" is answerable by reading one file. Every route here is behind
 the same Cognito authorizer as the read routes — there is no second tier of
 permission, because the pool is admin-create-only and everyone in it is the
 owner of the library.
+
+**Every verb used here is already in the CORS method list, and that is not an
+accident.** The browser's preflight is answered by API Gateway's MOCK
+integration, not by Flask, so a verb this file introduces has to be added in
+four places at once (`app_factory`, the preflight, and both gateway responses in
+`modules/api_gateway`) or it fails as an opaque CORS error with no status. So
+saving a text file is `PATCH /api/text` rather than the `PUT` you might expect:
+PATCH is already allowed everywhere, PUT is allowed nowhere, and the difference
+between the two verbs here is worth less than a four-file agreement to keep in
+step. Add PUT properly if a future route genuinely wants it.
 """
 
 from flask import Blueprint, jsonify, request
@@ -44,6 +54,33 @@ def rename_folder():
     """Rename a folder and everything beneath it."""
     payload = _body()
     return jsonify(manage.rename_folder(payload.get("prefix"), payload.get("name"))), 200
+
+
+@bp.post("/objects/move")
+def move_objects():
+    """Move one or many objects into another folder.
+
+    A POST rather than a PATCH because the request names a set of objects and a
+    destination rather than patching one addressable resource — and because
+    `PATCH /api/object` already means "rename", which is the operation this one
+    exists to stay distinct from.
+    """
+    payload = _body()
+    return jsonify(manage.move_objects(payload.get("keys"), payload.get("destination"))), 200
+
+
+@bp.post("/folder/move")
+def move_folder():
+    """Move a folder and everything beneath it under a different parent."""
+    payload = _body()
+    return jsonify(manage.move_folder(payload.get("prefix"), payload.get("destination"))), 200
+
+
+@bp.patch("/text")
+def update_text():
+    """Overwrite a text file's contents. See the module docstring for the verb."""
+    payload = _body()
+    return jsonify(manage.update_text(payload.get("key"), payload.get("content"))), 200
 
 
 @bp.delete("/objects")

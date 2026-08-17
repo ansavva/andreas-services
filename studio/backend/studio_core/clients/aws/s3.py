@@ -14,15 +14,21 @@ Three things keep that from being a licence to do anything:
   cannot be renamed or deleted. Note that the root is the whole bucket now
   that x-harness has dropped its `media/` wrapper, so that first clause is
   carrying less weight than it used to — see `modules/compute`.
-* There is no multipart upload and no `put_object` with a caller-supplied body.
-  The only `PutObject` here writes a zero-byte folder marker, and the only other
-  write is `CopyObject` within the same bucket — which is what a rename is.
+* There is no multipart upload and no path that creates a key from nothing. The
+  three writes here are a zero-byte folder marker, a `CopyObject` within the same
+  bucket — which is what a rename and a move are — and `put_text`, which
+  overwrites a text file that already exists. None of them can bring a new object
+  into the library, so "studio cannot upload" is still true.
 * Deletes are explicit and bounded (`config.max_bulk_keys`,
   `config.max_folder_objects`); nothing in this service deletes by wildcard.
 
-Data that matters is still the pipeline's to produce. Adding an upload path here
-would be the change that makes studio a writer in the real sense, and it should
-be argued for on its own rather than arriving as a side effect of this one.
+`put_text` is the one that reads like an upload and is not. It exists because
+the `.md`, `.yaml` and `.json` files in this bucket are notes and prompts a
+person writes, and reading one in the browser and then going elsewhere to fix a
+typo in it is the kind of friction that means it never gets fixed. It is
+confined to `keys.TEXT_EXTENSIONS`, capped at `config.max_text_bytes`, and
+refuses a key that is not already there. Media is still the pipeline's to
+produce, and an upload path for it would be a different argument.
 """
 
 import logging
@@ -196,6 +202,25 @@ def put_folder_marker(prefix: str) -> None:
     except ClientError as exc:
         logger.warning("PutObject failed for %s: %s", prefix, exc)
         raise UpstreamError("Could not create the folder") from exc
+
+
+def put_text(key: str, body: bytes, content_type: str) -> None:
+    """Overwrite a text object with new contents.
+
+    The only write in this module that carries a caller-supplied body, and the
+    caller is `services.manage.update_text`, which has already established that
+    the key names an existing text file small enough to hold in memory. S3 has
+    no partial write and no conditional put, so this is a whole-object replace —
+    the previous contents are gone unless the bucket is versioned, which is one
+    more reason to turn versioning on.
+    """
+    try:
+        client().put_object(
+            Bucket=config.media_bucket(), Key=key, Body=body, ContentType=content_type
+        )
+    except ClientError as exc:
+        logger.warning("PutObject failed for %s: %s", key, exc)
+        raise UpstreamError("Could not save the file") from exc
 
 
 def presign(key: str, *, disposition: str = "inline", filename: str | None = None) -> str:

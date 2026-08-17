@@ -91,9 +91,25 @@ export function ConfirmDeleteButton({
   }, [onConfirm, phase]);
 
   const label =
-    phase === "busy" ? `Deleting ${noun}…` : phase === "armed" ? `Confirm — delete ${noun}` : `Delete ${noun}`;
+    phase === "busy"
+      ? `Deleting ${noun}…`
+      : phase === "armed"
+        ? `Confirm — delete ${noun}`
+        : `Delete ${noun}`;
 
-  const showsText = tone === "bar";
+  /**
+   * The `bar` tone is a trash can at rest and a sentence once armed.
+   *
+   * At rest it sits in a selection bar that already says "3 selected", so
+   * spelling out "Delete 3 files" beside that was a third of the bar spent
+   * restating its own count — and the trash can is the same one the rows use, so
+   * there is nothing new to learn. Armed is the opposite case and gets the full
+   * text: this is the press that destroys forty files at once, and an icon
+   * changing colour is not enough to carry that. Growing is deliberate too — the
+   * button expands leftward under a cursor already resting on the can, so the
+   * second click lands on the armed control rather than somewhere it used to be.
+   */
+  const showsText = tone === "bar" && phase !== "idle";
 
   return (
     <button
@@ -146,7 +162,7 @@ export function ConfirmDeleteButton({
 
       {showsText ? (
         <span aria-hidden="true">
-          {phase === "busy" ? "Deleting…" : phase === "armed" ? `Confirm — delete ${noun}` : `Delete ${noun}`}
+          {phase === "busy" ? "Deleting…" : `Confirm — delete ${noun}`}
         </span>
       ) : (
         <svg
@@ -191,11 +207,14 @@ export function ConfirmDeleteButton({
 const toneStyles: Record<Tone, string> = {
   row: "p-2 text-muted hover:bg-surface-alt hover:text-danger",
   chrome: "p-2 text-white/80 hover:bg-white/15 hover:text-white",
-  bar: "",
+  // Idle only — the armed and busy states of this tone render as text, not as an
+  // icon, so `armedStyles.bar` is never reached. It matches `row` because it is
+  // literally the same trash can on a different surface.
+  bar: "p-2 text-muted hover:bg-surface-alt hover:text-danger",
 };
 
 const armedStyles: Record<Tone, string> = {
   row: "p-2 bg-danger/15 text-danger",
   chrome: "p-2 bg-danger/80 text-white",
-  bar: "",
+  bar: "p-2 bg-danger/15 text-danger",
 };

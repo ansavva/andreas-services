@@ -171,6 +171,39 @@ def test_with_name_and_renamed_prefix():
     assert keys.renamed_prefix("projects/fred/runs/", "walks") == "projects/fred/walks/"
 
 
+def test_moved_prefix_keeps_the_name_and_changes_the_parent():
+    """The mirror image of `renamed_prefix`, which does exactly the opposite."""
+    assert keys.moved_prefix("projects/fred/runs/", "characters/") == "characters/runs/"
+    # To the library root, which is the empty string.
+    assert keys.moved_prefix("projects/fred/runs/", "") == "runs/"
+
+
+def test_is_within_needs_the_trailing_slash_to_be_right():
+    assert keys.is_within("characters/fred/", "characters/fred/seed/")
+    assert keys.is_within("characters/fred/", "characters/fred/")
+    # The case the slash exists for: a sibling whose name merely starts the same
+    # way is not inside, and reading it as inside would refuse a legal move.
+    assert not keys.is_within("characters/fred/", "characters/fred-2/")
+    assert not keys.is_within("characters/fred/", "characters/")
+    # Everything is within the library root.
+    assert keys.is_within("", "characters/fred/")
+
+
+def test_content_type_covers_every_text_extension():
+    """A text file studio will save must have something to save it as.
+
+    `TEXT_EXTENSIONS` is what the editor is allowed to open, so an extension in
+    it with no content type would be written as `text/plain` — harmless, but
+    worth knowing about deliberately rather than discovering in the bucket.
+    """
+    assert keys.content_type("characters/fred/profile.yaml") == "application/yaml"
+    assert keys.content_type(f"{'a'}.json") == "application/json"
+    assert keys.content_type("notes.md") == "text/markdown"
+    # The two that fall through to the default on purpose.
+    assert keys.content_type("run.log") == "text/plain"
+    assert keys.content_type("caption.txt") == "text/plain"
+
+
 def test_assert_inside_root_refuses_the_root_itself():
     """The destructive paths' last line of defence, and now the only one.
 

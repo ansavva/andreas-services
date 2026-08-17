@@ -123,6 +123,64 @@ def test_rename_folder(media_bucket):
     assert resp.get_json()["objects"] == 3
 
 
+def test_move_objects(media_bucket):
+    resp = _client().post(
+        "/api/objects/move",
+        json={"keys": [f"{RUN}output/wave-porch.jpeg"], "destination": "characters/fred/"},
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["keys"] == ["characters/fred/wave-porch.jpeg"]
+
+
+def test_move_objects_conflict_is_409(media_bucket):
+    resp = _client().post(
+        "/api/objects/move",
+        json={
+            "keys": ["characters/fred/reference/fred_1.webp"],
+            "destination": "characters/fred/seed/",
+        },
+    )
+    assert resp.status_code == 409
+
+
+def test_move_folder(media_bucket):
+    resp = _client().post(
+        "/api/folder/move", json={"prefix": RUN, "destination": "projects/misc/runs/"}
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["objects"] == 3
+
+
+def test_move_folder_into_itself_is_400(media_bucket):
+    resp = _client().post("/api/folder/move", json={"prefix": RUN, "destination": RUN})
+    assert resp.status_code == 400
+
+
+def test_update_text(media_bucket):
+    resp = _client().patch(
+        "/api/text", json={"key": "characters/fred/profile.yaml", "content": "name: Freddy\n"}
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["bytes"] == len(b"name: Freddy\n")
+
+    reread = _client().get("/api/text?key=characters/fred/profile.yaml")
+    assert reread.get_json()["content"] == "name: Freddy\n"
+
+
+def test_update_text_on_a_binary_key_is_400(media_bucket):
+    resp = _client().patch(
+        "/api/text", json={"key": f"{RUN}output/wave-porch.jpeg", "content": "nope"}
+    )
+    assert resp.status_code == 400
+
+
+def test_update_text_on_a_missing_key_is_404(media_bucket):
+    resp = _client().patch(
+        "/api/text", json={"key": "characters/fred/nowhere.md", "content": "# new"}
+    )
+    assert resp.status_code == 404
+
+
 def test_delete_objects_takes_a_body(media_bucket):
     resp = _client().delete(
         "/api/objects", json={"keys": [f"{RUN}output/wave-porch.jpeg"]}

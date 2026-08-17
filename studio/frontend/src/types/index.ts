@@ -100,6 +100,29 @@ export interface RenamedFolder {
   renamed: boolean;
 }
 
+export interface MovedObjects {
+  destination: string;
+  moved: number;
+  /** Objects already sitting in the destination — not an error, just nothing to do. */
+  skipped: number;
+  /** The objects' new keys. */
+  keys: string[];
+}
+
+export interface MovedFolder {
+  prefix: string;
+  name: string;
+  objects: number;
+  moved: boolean;
+}
+
+export interface SavedText {
+  key: string;
+  name: string;
+  language: string;
+  bytes: number;
+}
+
 export interface DeletedObjects {
   deleted: number;
   keys: string[];
