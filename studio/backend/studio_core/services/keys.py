@@ -24,13 +24,25 @@ IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif",
 VIDEO_EXTENSIONS = frozenset({".mp4", ".webm", ".mov", ".m4v"})
 TEXT_EXTENSIONS = frozenset({".json", ".md", ".txt", ".yaml", ".yml", ".csv", ".log"})
 
-# What the read-only viewer labels a text file as, for syntax highlighting.
+# What the text viewer labels a text file as, for syntax highlighting.
 TEXT_LANGUAGES = {
     ".json": "json",
     ".md": "markdown",
     ".yaml": "yaml",
     ".yml": "yaml",
     ".csv": "csv",
+}
+
+# What a saved text file is written back with. Only consulted for extensions in
+# `TEXT_EXTENSIONS`, since those are the only ones the editor will save — an
+# extension missing from this map keeps `text/plain`, which is what S3 would have
+# guessed anyway and is never wrong enough to matter for a file this small.
+TEXT_CONTENT_TYPES = {
+    ".json": "application/json",
+    ".md": "text/markdown",
+    ".yaml": "application/yaml",
+    ".yml": "application/yaml",
+    ".csv": "text/csv",
 }
 
 
@@ -139,6 +151,27 @@ def renamed_prefix(prefix: str, name: str) -> str:
     return f"{parent_prefix(prefix)}{name}/"
 
 
+def moved_prefix(prefix: str, destination: str) -> str:
+    """The same folder, carried under a different parent — a move.
+
+    The counterpart of `renamed_prefix`: that one keeps the parent and changes
+    the name, this one keeps the name and changes the parent. Between them they
+    are the only two ways a prefix is allowed to change, which is what keeps
+    "rename" and "move" separate operations rather than one string edit.
+    """
+    return f"{destination}{basename(prefix)}/"
+
+
+def is_within(prefix: str, candidate: str) -> bool:
+    """Whether `candidate` sits at or beneath `prefix`.
+
+    Both are slash-terminated prefixes, which is what makes the plain
+    `startswith` safe: without the trailing slash `projects/fred-2/` would read
+    as living inside `projects/fred/`.
+    """
+    return candidate == prefix or candidate.startswith(prefix)
+
+
 def assert_inside_root(prefix: str) -> None:
     """Refuse an operation aimed at the media root itself.
 
@@ -171,8 +204,13 @@ def kind(key: str) -> str:
 
 
 def language(key: str) -> str:
-    """Highlighting hint for the read-only text viewer."""
+    """Highlighting hint for the text viewer."""
     return TEXT_LANGUAGES.get(extension(key), "text")
+
+
+def content_type(key: str) -> str:
+    """What a text file is written back to S3 as."""
+    return TEXT_CONTENT_TYPES.get(extension(key), "text/plain")
 
 
 def is_folder_marker(key: str, size: int) -> bool:

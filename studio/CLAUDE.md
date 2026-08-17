@@ -16,10 +16,17 @@ folders keep their structure, images and video are the focus, and every item can
 be opened fullscreen or flipped through as a vertical reel.
 
 **Studio reads the library and tidies it — it does not produce it.** It browses,
-and it can rename, delete and create folders. It cannot upload, and it cannot
-generate: making media is x-harness's job. That is a narrower boundary than the
-one this file used to describe ("a reader and only a reader"), and the reasoning
-behind the change is in **The media bucket is not ours** below.
+and it can rename, move, delete, create folders, and edit the text files in
+place. It cannot upload, and it cannot generate: making media is x-harness's
+job. That is a narrower boundary than the one this file used to describe ("a
+reader and only a reader"), and the reasoning behind the change is in **The
+media bucket is not ours** below.
+
+The line between "edit a text file" and "upload" is worth stating, because it is
+thinner than it sounds and is held in exactly one place: `manage.update_text`
+refuses a key that does not already exist. So there is no request this API
+accepts that brings a new object into the bucket — every write either moves,
+overwrites or removes something the pipeline already put there.
 
 ## Stack
 
@@ -83,8 +90,11 @@ The parts of the old rule that still hold, and should keep holding:
   library" is not expressible through the API. This used to be described as the
   first of two lines of defence with IAM behind it; with the prefix empty it is
   the only one, which is the reason to be conservative when changing it.
-- **No upload, and no multipart grant.** The only `PutObject` this service makes
-  writes a zero-byte folder marker. A real upload would need CORS on a bucket we
+- **No upload, and no multipart grant.** The two `PutObject` calls this service
+  makes write a zero-byte folder marker and overwrite an *existing* text file
+  (`manage.update_text`, capped at `max_text_bytes` and refused outright for a
+  key that is not already there, so it cannot create). A real upload would need
+  CORS on a bucket we
   do not own *and* would blow the Lambda's 6 MB request limit on any video, so
   it is blocked by more than policy. Argue for it separately if it is ever
   wanted; do not let it arrive as a side effect of something else.
@@ -145,8 +155,14 @@ a folder, and nothing should start to.
 
 **The run JSON is deliberately not parsed.** x-harness owns its shape and
 changes it freely, so studio serves those files as text and the frontend shows
-them read-only. Do not start decoding `request.json` into typed UI — the moment
+them as text. Do not start decoding `request.json` into typed UI — the moment
 the pipeline adds a field, a parser becomes a liar.
+
+That holds even though those files are now **editable**. `TextPage` gives every
+text kind a whole page and a plain textarea over its literal bytes; what it
+never does is offer fields. Editing text is not the same promise as editing a
+document whose shape studio claims to understand, and the second one is the one
+that breaks every time the pipeline ships.
 
 ## Conventions & gotchas
 
@@ -180,19 +196,36 @@ the pipeline adds a field, a parser becomes a liar.
   go inside one.** A button nested in a button is invalid HTML that browsers
   resolve by dropping one of them, and which one they drop is not something to
   rely on — and the design system's `Checkbox.Root` is a `role="checkbox"`
-  button, so it counts. `CopyKeyButton` and the tile's checkbox are therefore
-  always *siblings* of the opening button, positioned over it (`MediaTile`) or
-  beside it (`FileRow`, `FolderCard`) — which is why those three carry their
-  frame on a wrapper `<div>` rather than on the button. Anything else that
-  lands in a listing has to be built the same way. Its feedback is inline for
-  the same reason the viewer's is: `ViewerChrome` is often inside a fullscreen
-  element, and a toast portalled to `<body>` is not painted while one is.
+  button, so it counts — and so is `Dropdown.Trigger`. `ItemActions` and the
+  tile's checkbox are therefore always *siblings* of the opening button,
+  positioned over it (`MediaTile`) or beside it (`FileRow`, `FolderCard`) —
+  which is why those three carry their frame on a wrapper `<div>` rather than on
+  the button. Anything else that lands in a listing has to be built the same
+  way. Its feedback is inline for the same reason the viewer's is:
+  `ViewerChrome` is often inside a fullscreen element, and a toast portalled to
+  `<body>` is not painted while one is.
+- **A row's actions live in one `⋯` menu; the viewer's stay inline.** That split
+  is not inconsistency, it is the fullscreen constraint again. `ItemActions` uses
+  `Dropdown`, which is absolutely positioned inside its own relative wrapper and
+  therefore fine on a row — but `MovePicker` uses `Dialog`, which **portals to
+  `<body>`**, so it is reachable only from the browse page and there is
+  deliberately no move button in `ViewerChrome`. If you ever want one there, it
+  has to be built inline the way `RenameForm` and `ConfirmDeleteButton` are, not
+  by reaching for the picker.
+- **Rename is opened by the row, not by the button.** `RenameForm` is the field;
+  `RenameButton` is a pencil that opens one in place and is now used only by
+  `ViewerChrome`. The rows drive `RenameForm` themselves and render it
+  `basis-full` on a wrapped line, because when it was a flex child of the control
+  strip it rendered about forty pixels wide. A parent that knows a rename is open
+  is what makes the field typeable — keep it that way.
 - **The media grid has a selection mode, and it changes what a press means.**
   Once anything is selected (`useSelection`), pressing a tile extends the
   selection instead of opening it — the photo-library bargain, and the only way
   to pick forty tiles on a touch screen without hunting forty checkboxes. Escape
-  clears, but only when no overlay is open, because the reel and the code viewer
-  each bind Escape to their own close. Selection is keyed by object key rather
+  clears, but only when no overlay is open, because the reel, the text page and
+  the move picker each bind Escape to their own close — and the picker is often
+  open *on* the selection, so clearing it there would be Escape cancelling a move
+  by emptying what was being moved. Selection is keyed by object key rather
   than by grid index: a listing can be re-fetched underneath one — every write
   does exactly that — and an index-keyed selection would quietly come to mean
   different files.
@@ -306,8 +339,24 @@ Every route is behind the Cognito authorizer except `GET /api/health`.
 | `POST /api/folder` | `{prefix, name}` → creates an empty folder. 409 if taken |
 | `PATCH /api/object` | `{key, name}` → renames one object in place. 409 if taken |
 | `PATCH /api/folder` | `{prefix, name}` → renames a folder and its subtree |
+| `POST /api/objects/move` | `{keys: [...], destination}` → moves 1..N objects, names kept. 409 if taken |
+| `POST /api/folder/move` | `{prefix, destination}` → moves a folder and its subtree |
+| `PATCH /api/text` | `{key, content}` → overwrites an existing text file |
 | `DELETE /api/objects` | `{keys: [...]}` → deletes 1..N objects |
 | `DELETE /api/folder` | `{prefix}` → deletes a folder and its subtree |
+
+**Rename and move are separate routes and must stay separate.** A rename takes a
+`name` and changes the last segment; a move takes a `destination` prefix and
+changes the folder. `keys.clean_name` refuses a slash, so a rename cannot become
+a move by punctuation, and a destination is always read as a prefix, so a move
+cannot become a rename by typing a filename into it — `move(x.jpeg → a/b.jpeg)`
+puts the file *inside* `a/b.jpeg/`. That asymmetry is deliberate and the tests
+pin it.
+
+**`PATCH /api/text` is a PATCH because PUT is not in the CORS method list.** The
+verb list lives in four places that have to agree (see below), PATCH is already
+in all four, and the semantic difference is worth less than the agreement. Add
+PUT properly if a route ever genuinely needs it.
 
 `sort` is one of `newest` (default), `oldest`, `name`, `name_desc`.
 

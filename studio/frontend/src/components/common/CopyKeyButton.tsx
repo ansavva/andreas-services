@@ -5,8 +5,15 @@ type Tone = "row" | "tile" | "chrome";
 interface Props {
   /** The S3 object key, or a folder's prefix. Copied verbatim. */
   value: string;
-  /** What `value` names, which is all that differs between the two labels. */
-  noun?: "key" | "prefix";
+  /**
+   * What `value` names — the only thing that differs between the labels.
+   *
+   * Usually `"key"` or `"prefix"`, but free text so a bulk copy can say what it
+   * is copying ("26 keys"). That is what lets the grid's selection bar use this
+   * button rather than growing a second copy control with its own glyph, its own
+   * flash timing and its own idea of what "copied" looks like.
+   */
+  noun?: string;
   /** Which surface this sits on. See `toneStyles`. */
   tone?: Tone;
   className?: string;

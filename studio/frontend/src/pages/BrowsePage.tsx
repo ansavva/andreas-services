@@ -7,24 +7,38 @@ import {
   createFolder,
   deleteFolder,
   deleteObjects,
+  moveFolder,
+  moveObjects,
   renameFolder,
   renameObject,
 } from "../apis/studio";
 import { FileRow } from "../components/browse/FileRow";
 import { FolderCard } from "../components/browse/FolderCard";
 import { MediaTile } from "../components/browse/MediaTile";
+import { MovePicker } from "../components/browse/MovePicker";
 import { SortControl } from "../components/browse/SortControl";
 import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
 import { CopyKeyButton } from "../components/common/CopyKeyButton";
-import { CodeViewer } from "../components/text/CodeViewer";
+import { TextPage } from "../components/text/TextPage";
 import { ReelView } from "../components/viewer/ReelView";
 import { useAuth } from "../context/AuthContext";
-import { copyLabel, useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useReel } from "../hooks/useReel";
 import { useSelection } from "../hooks/useSelection";
 import { useTree } from "../hooks/useTree";
 import { DEFAULT_SORT, isSortOrder, type FileEntry, type SortOrder } from "../types";
 import { ROOT_PREFIX, folderPath, objectPath, parentPrefix, targetFromPath } from "../utils/location";
+
+/**
+ * What the destination picker is open on.
+ *
+ * Two shapes because the API has two move endpoints, and it has two because a
+ * folder move carries a subtree and an object move does not — the counting and
+ * the refusals are genuinely different. Collapsing them here would only push the
+ * branch one layer down.
+ */
+type MoveTarget =
+  | { kind: "folder"; prefix: string; name: string }
+  | { kind: "objects"; keys: string[]; noun: string };
 
 export function BrowsePage() {
   const location = useLocation();
@@ -49,6 +63,7 @@ export function BrowsePage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [newFolder, setNewFolder] = useState<string | null>(null);
   const [reelPrefix, setReelPrefix] = useState<string | null>(null);
+  const [moveTarget, setMoveTarget] = useState<MoveTarget | null>(null);
 
   /**
    * Which folder the page *behind* the overlay is showing.
@@ -158,14 +173,12 @@ export function BrowsePage() {
   );
 
   const selection = useSelection(media, prefix);
-  const keysCopy = useCopyToClipboard();
 
-  const copySelectedKeys = useCallback(() => {
-    // One key per line, in grid order rather than the order they were picked:
-    // this is going into a shell loop or a `--keys` argument, and the order you
-    // happened to click in is not information.
-    void keysCopy.copy(selection.selectedItems.map((item) => item.key).join("\n"));
-  }, [keysCopy, selection.selectedItems]);
+  /** "3 files", "1 key" — the count and its noun, agreeing about plurality. */
+  const selectedNoun = useCallback(
+    (one: string, many: string) => `${selection.count} ${selection.count === 1 ? one : many}`,
+    [selection.count],
+  );
 
   /**
    * Every write funnels through here: run it, surface the message if it fails,
@@ -197,6 +210,28 @@ export function BrowsePage() {
     await run(deleteObjects(keys));
     selection.clear();
   }, [run, selection]);
+
+  /**
+   * The picker's submit, for whichever kind of thing it was opened on.
+   *
+   * It deliberately does *not* close the picker — `MovePicker` closes itself on
+   * a resolved promise and stays open with the message on a rejected one, which
+   * is the same bargain `RenameForm` makes: "that name is taken there" is fixed
+   * by picking a different folder, and closing to say so would throw away the
+   * navigating you just did.
+   */
+  const submitMove = useCallback(
+    async (destination: string) => {
+      if (!moveTarget) return;
+      if (moveTarget.kind === "folder") {
+        await run(moveFolder(moveTarget.prefix, destination));
+        return;
+      }
+      await run(moveObjects(moveTarget.keys, destination));
+      selection.clear();
+    },
+    [moveTarget, run, selection],
+  );
 
   /**
    * Writes from inside the viewer, which behave differently depending on which
@@ -254,10 +289,12 @@ export function BrowsePage() {
   }, [newFolder, prefix, run]);
 
   // Escape drops the selection, but only when it is the frontmost thing — the
-  // reel and the code viewer each bind Escape to their own close, and clearing a
-  // selection out from under one of them would be a keystroke doing two things
-  // at once.
-  const overlayOpen = openKey !== null || reelPrefix !== null;
+  // reel, the text page and the move picker each bind Escape to their own close,
+  // and clearing a selection out from under one of them would be a keystroke
+  // doing two things at once. The picker matters most here: it is often open
+  // *on* the selection, so dropping it would be Escape cancelling the move by
+  // emptying what was being moved.
+  const overlayOpen = openKey !== null || reelPrefix !== null || moveTarget !== null;
   useEffect(() => {
     if (overlayOpen || selection.count === 0) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -300,64 +337,97 @@ export function BrowsePage() {
         </div>
       </header>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          {/*
-            Up one folder, not browser-back.
-            They are different journeys and both are wanted: back retraces how
-            you got here, which after a shared link is nowhere, and after ten
-            minutes of browsing is ten minutes of browsing. This goes *up the
-            tree*, which is where "back" means to someone reading a folder they
-            were linked into. The browser's own back button still works, because
-            every navigation here is a real history entry.
-          */}
-          <Button
-            intent="ghost"
-            size="sm"
-            disabled={atRoot}
-            aria-label="Up one folder"
-            onClick={() => goToFolder(parentPrefix(prefix))}
+      {/*
+        Two rows, not one.
+
+        These are two different kinds of control and they used to share a line:
+        where you are (back, breadcrumbs, the prefix) and what you can do here
+        (sort, new folder, play). On any real path the breadcrumbs took the width
+        and the four buttons wrapped underneath them anyway — in whatever order
+        the flex run happened to break — so a folder deep in `projects/` opened
+        onto a bar that looked different from the one at the root. Splitting them
+        makes that layout the intended one rather than the one that fell out, and
+        gives each row a shape that does not change with the length of the path.
+      */}
+      <div className="flex min-w-0 items-center gap-2">
+        {/*
+          Up one folder, not browser-back.
+          They are different journeys and both are wanted: back retraces how you
+          got here, which after a shared link is nowhere, and after ten minutes of
+          browsing is ten minutes of browsing. This goes *up the tree*, which is
+          where "back" means to someone reading a folder they were linked into.
+          The browser's own back button still works, because every navigation here
+          is a real history entry.
+        */}
+        <Button
+          intent="ghost"
+          size="sm"
+          disabled={atRoot}
+          aria-label="Up one folder"
+          onClick={() => goToFolder(parentPrefix(prefix))}
+        >
+          <span aria-hidden="true">←</span> Back
+        </Button>
+
+        {/* Breadcrumbs.Root carries `w-full` of its own, so it needs a shrinking
+            flex parent or it claims the row and wraps what follows beneath it. */}
+        <div className="min-w-0 flex-1">
+          <Breadcrumbs.Root>
+            {crumbs.map((crumb, index, all) => (
+              <Breadcrumbs.Item
+                key={crumb.prefix}
+                current={index === all.length - 1}
+                href={folderPath(crumb.prefix)}
+                onClick={(event: React.MouseEvent) => {
+                  event.preventDefault();
+                  goToFolder(crumb.prefix);
+                }}
+              >
+                {crumb.name}
+              </Breadcrumbs.Item>
+            ))}
+          </Breadcrumbs.Root>
+        </div>
+
+        {/* Clicking a folder navigates into it rather than opening an overlay, so
+            this is that folder's "opened" copy affordance — and it belongs beside
+            the path it copies rather than in the action row below. */}
+        <CopyKeyButton value={data?.prefix ?? prefix} noun="prefix" />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 border-y border-line py-2">
+        <SortControl value={sort} onChange={setSort} />
+
+        <div className="flex-1" />
+
+        {/* An icon, like the copy control beside the path: "New folder" is a
+            noun-shaped action with an icon everyone already knows, and spelling
+            it out made it the widest thing in a row of three. The label lives on
+            `aria-label` and `title`, so it is still there for a screen reader and
+            for anyone who hovers. */}
+        <button
+          type="button"
+          onClick={() => setNewFolder("")}
+          aria-label="New folder"
+          title="New folder"
+          className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
+                     focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="size-5 fill-none stroke-current stroke-[1.5]"
           >
-            <span aria-hidden="true">←</span> Back
-          </Button>
+            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+            <path d="M12 10.5v5M9.5 13h5" />
+          </svg>
+        </button>
 
-          {/* Breadcrumbs.Root carries `w-full` of its own, so it needs a
-              shrinking flex parent or it claims the row and wraps what follows
-              beneath it. */}
-          <div className="min-w-0 flex-1">
-            <Breadcrumbs.Root>
-              {crumbs.map((crumb, index, all) => (
-                <Breadcrumbs.Item
-                  key={crumb.prefix}
-                  current={index === all.length - 1}
-                  href={folderPath(crumb.prefix)}
-                  onClick={(event: React.MouseEvent) => {
-                    event.preventDefault();
-                    goToFolder(crumb.prefix);
-                  }}
-                >
-                  {crumb.name}
-                </Breadcrumbs.Item>
-              ))}
-            </Breadcrumbs.Root>
-          </div>
-        </div>
-
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <SortControl value={sort} onChange={setSort} />
-
-          {/* Clicking a folder navigates into it rather than opening an
-              overlay, so this is that folder's "opened" copy affordance. */}
-          <CopyKeyButton value={data?.prefix ?? prefix} noun="prefix" />
-
-          <Button intent="ghost" size="sm" onClick={() => setNewFolder("")}>
-            New folder
-          </Button>
-
-          <Button size="sm" onClick={() => setReelPrefix(prefix)}>
-            Play reel
-          </Button>
-        </div>
+        <Button size="sm" onClick={() => setReelPrefix(prefix)}>
+          Play reel
+        </Button>
       </div>
 
       {newFolder !== null && (
@@ -424,6 +494,9 @@ export function BrowsePage() {
                 prefix={folder.prefix}
                 onOpen={() => goToFolder(folder.prefix)}
                 onRename={(name) => run(renameFolder(folder.prefix, name))}
+                onMove={() =>
+                  setMoveTarget({ kind: "folder", prefix: folder.prefix, name: folder.name })
+                }
                 onDelete={() => run(deleteFolder(folder.prefix))}
               />
             ))}
@@ -433,56 +506,102 @@ export function BrowsePage() {
 
       {media.length > 0 && (
         <section className="flex flex-col gap-2">
+          {/*
+            The heading keeps one control, and the selection gets its own bar.
+
+            These were one line, and with something selected it held a heading, a
+            count and five buttons whose labels each restated that count —
+            "Copy 3 keys", "Delete 3 files" — so the row was mostly the number 3,
+            written five times, wrapping wherever it ran out of width.
+
+            Three things changed. The selection actions moved to a strip that only
+            exists while there is a selection, so the heading line has a fixed
+            shape. The counts came out of the button labels, because the bar says
+            "3 selected" two inches to the left — and delete went all the way down
+            to the trash can the rows use, expanding back into a written
+            confirmation only once it is armed, which is the one press where
+            restating what is about to go is the point. And "Clear" is gone:
+            it did the same job as "Select none", which is what the toggle already
+            reads once everything is picked, and Escape clears from anywhere.
+          */}
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            {/* "Media" was the API's word for it — `kind` is image | video |
+                text | other — and it leaked into the page as a heading that
+                names a type union rather than a thing. What is in this grid is
+                photographs and clips, so that is what it says. It also stops the
+                two headings from lying about their difference: "Media" and
+                "Files" read as a distinction between media and files, when both
+                sections are files and the real split is what you look at versus
+                what you read. */}
             <Text variant="title">
-              Media <span className="font-body text-sm text-muted">({media.length})</span>
+              Photos &amp; video{" "}
+              <span className="font-body text-sm text-muted">({media.length})</span>
             </Text>
 
-            {/* Nothing here is ever disabled: until something is picked there
-                is only "Select all", and the actions appear with the count
-                they act on written into them. */}
-            <div className="flex flex-wrap items-center gap-2">
-              {selection.count > 0 && (
-                <Text variant="caption" tone="muted" className="tabular-nums">
-                  {selection.count} of {media.length} selected
-                </Text>
-              )}
-
-              <Button
-                intent="ghost"
-                size="sm"
-                onClick={selection.allSelected ? selection.clear : selection.selectAll}
-              >
-                {selection.allSelected ? "Select none" : "Select all"}
-              </Button>
-
-              {selection.count > 0 && (
-                <>
-                  {!selection.allSelected && (
-                    <Button intent="ghost" size="sm" onClick={selection.clear}>
-                      Clear
-                    </Button>
-                  )}
-                  <Button size="sm" onClick={copySelectedKeys}>
-                    {copyLabel(
-                      keysCopy.status,
-                      `Copy ${selection.count} ${selection.count === 1 ? "key" : "keys"}`,
-                    )}
-                  </Button>
-                  <ConfirmDeleteButton
-                    tone="bar"
-                    noun={`${selection.count} ${selection.count === 1 ? "file" : "files"}`}
-                    onConfirm={deleteSelected}
-                  />
-                </>
-              )}
-            </div>
+            <Button
+              intent="ghost"
+              size="sm"
+              onClick={selection.count > 0 ? selection.clear : selection.selectAll}
+            >
+              {selection.count > 0 ? "Select none" : "Select all"}
+            </Button>
           </div>
 
-          {selection.count === 0 && (
-            <Text variant="caption" tone="muted">
-              Pick tiles to copy or delete their keys — shift-click to take a range.
-            </Text>
+          {selection.count > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-card px-3 py-2">
+              <Text variant="caption" tone="muted" className="tabular-nums">
+                {selection.count} of {media.length} selected
+              </Text>
+
+              <div className="flex-1" />
+
+              {/* The same copy control the rows use, told what it is copying.
+                  One key per line, in grid order rather than the order they were
+                  picked: this is going into a shell loop or a `--keys` argument,
+                  and the order you happened to click in is not information. */}
+              <CopyKeyButton
+                value={selection.selectedItems.map((item) => item.key).join("\n")}
+                noun={selectedNoun("key", "keys")}
+              />
+
+              {/* Media has no per-tile menu the way a row does — sixty thumbnails
+                  with a control each is the crowding this grid exists to avoid —
+                  so this bar is where a bulk move is reached from. */}
+              <button
+                type="button"
+                onClick={() =>
+                  setMoveTarget({
+                    kind: "objects",
+                    keys: selection.selectedItems.map((item) => item.key),
+                    noun: selectedNoun("file", "files"),
+                  })
+                }
+                aria-label={`Move ${selectedNoun("file", "files")}`}
+                title={`Move ${selectedNoun("file", "files")}`}
+                className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
+                           focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                {/* A folder with something going into it — the destination is
+                    what a move is about, and the arrow says which way. */}
+                <svg
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="size-5 fill-none stroke-current stroke-[1.5]"
+                >
+                  <path d="M2 9V7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1" />
+                  <path d="M2 13h9" />
+                  <path d="m8 16 3-3-3-3" />
+                </svg>
+              </button>
+
+              <ConfirmDeleteButton
+                tone="bar"
+                noun={selectedNoun("file", "files")}
+                onConfirm={deleteSelected}
+              />
+            </div>
           )}
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
@@ -510,6 +629,9 @@ export function BrowsePage() {
                 file={file}
                 onOpen={() => openFile(file)}
                 onRename={(name) => run(renameObject(file.key, name))}
+                onMove={() =>
+                  setMoveTarget({ kind: "objects", keys: [file.key], noun: file.name })
+                }
                 onDelete={() => run(deleteObjects([file.key]))}
               />
             ))}
@@ -554,7 +676,23 @@ export function BrowsePage() {
         )
       )}
 
-      {openText && <CodeViewer file={openText} onClose={closeItem} />}
+      {/* A text file gets a page of its own, the way a clip does — same URL, same
+          "this is the thing you came for" treatment — and unlike a clip it can be
+          edited, because these are notes and prompts a person wrote. */}
+      {openText && <TextPage file={openText} onClose={closeItem} onSaved={reload} />}
+
+      {moveTarget && (
+        <MovePicker
+          noun={moveTarget.kind === "folder" ? moveTarget.name : moveTarget.noun}
+          startPrefix={prefix}
+          currentPrefix={prefix}
+          // A folder cannot land inside itself, and the picker greys out the
+          // branch rather than letting the request come back refused.
+          forbiddenPrefix={moveTarget.kind === "folder" ? moveTarget.prefix : undefined}
+          onMove={submitMove}
+          onClose={() => setMoveTarget(null)}
+        />
+      )}
 
       {/* A share link to a key this folder does not hold — deleted upstream, or
           mistyped. The listing loaded fine, so this is specific and worth

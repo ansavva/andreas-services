@@ -125,6 +125,249 @@ def test_rename_folder_refuses_an_oversized_subtree(media_bucket, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Move
+#
+# The pairing to keep in mind while reading these: a rename changes the last
+# segment and keeps the folder, a move changes the folder and keeps the last
+# segment. Neither is reachable from the other, and the first two tests here are
+# what hold that line.
+# ---------------------------------------------------------------------------
+
+
+def test_move_objects_keeps_their_names(media_bucket):
+    result = manage.move_objects([OUTPUT], "characters/fred/")
+
+    assert result["moved"] == 1
+    assert result["keys"] == ["characters/fred/wave-porch.jpeg"]
+    assert "wave-porch.jpeg" in _names("characters/fred/")
+    assert _names(f"{RUN}output/") == []
+
+
+def test_move_objects_cannot_rename_on_the_way(media_bucket):
+    """A destination is a folder, so there is nowhere to put a new name.
+
+    `characters/fred/renamed.jpeg` is read as a *prefix* — the file lands inside
+    a folder of that name rather than becoming a file of that name — which is
+    the behaviour that keeps move from being a second, sloppier rename.
+    """
+    manage.move_objects([OUTPUT], "characters/fred/renamed.jpeg")
+
+    assert _names("characters/fred/renamed.jpeg/") == ["wave-porch.jpeg"]
+
+
+def test_move_many_objects(media_bucket):
+    result = manage.move_objects(
+        ["characters/fred/seed/fred_1.webp", "characters/fred/seed/fred_2.webp"],
+        "characters/mr-p/corpus/",
+    )
+
+    assert result["moved"] == 2
+    assert _names("characters/fred/seed/") == []
+    assert sorted(_names("characters/mr-p/corpus/")) == [
+        "IMG_1966_Original.JPG",
+        "fred_1.webp",
+        "fred_2.webp",
+    ]
+
+
+def test_move_objects_skips_ones_already_there(media_bucket):
+    result = manage.move_objects(["characters/fred/profile.yaml"], "characters/fred/")
+
+    assert result == {
+        "destination": "characters/fred/",
+        "moved": 0,
+        "skipped": 1,
+        "keys": [],
+    }
+    assert "profile.yaml" in _names("characters/fred/")
+
+
+def test_move_objects_refuses_an_occupied_destination(media_bucket):
+    with pytest.raises(ConflictError):
+        manage.move_objects(
+            ["characters/fred/reference/fred_1.webp"], "characters/fred/seed/"
+        )
+    # Refused whole, so neither end moved.
+    assert "fred_1.webp" in _names("characters/fred/reference/")
+    assert sorted(_names("characters/fred/seed/")) == ["fred_1.webp", "fred_2.webp"]
+
+
+def test_move_objects_refuses_two_sources_of_the_same_name(media_bucket):
+    """Different folders, same basename — one would land on top of the other."""
+    with pytest.raises(ConflictError):
+        manage.move_objects(
+            [
+                "characters/fred/reference/fred_1.webp",
+                "characters/mr-p/reference/face/mr-p_face_1.jpeg",
+                "characters/fred/seed/fred_1.webp",
+            ],
+            "characters/mr-p/corpus/",
+        )
+    assert _names("characters/mr-p/corpus/") == ["IMG_1966_Original.JPG"]
+
+
+def test_move_objects_validates_every_key_before_moving_any(media_bucket):
+    with pytest.raises(ValidationError):
+        manage.move_objects([OUTPUT, "../outside.jpeg"], "characters/fred/")
+    assert _names(f"{RUN}output/") == ["wave-porch.jpeg"]
+
+
+def test_move_objects_refuses_more_than_the_cap(media_bucket, monkeypatch):
+    monkeypatch.setattr("studio_core.config.max_bulk_keys", lambda: 1)
+    with pytest.raises(ValidationError):
+        manage.move_objects([OUTPUT, VIDEO], "characters/fred/")
+
+
+def test_move_objects_rejects_an_empty_list(media_bucket):
+    with pytest.raises(ValidationError):
+        manage.move_objects([], "characters/fred/")
+    with pytest.raises(ValidationError):
+        manage.move_objects(None, "characters/fred/")
+
+
+def test_move_folder_carries_the_whole_subtree(media_bucket):
+    result = manage.move_folder(RUN, "projects/misc/runs/")
+
+    assert result["objects"] == 3
+    assert result["prefix"] == "projects/misc/runs/2026-08-04_21-30-54_wave-porch-1x1/"
+    assert "2026-08-04_21-30-54_wave-porch-1x1" not in _folders("projects/fred/runs/")
+
+    moved = "projects/misc/runs/2026-08-04_21-30-54_wave-porch-1x1/"
+    assert sorted(_names(moved)) == ["request.json", "result.json"]
+    assert _names(f"{moved}output/") == ["wave-porch.jpeg"]
+
+
+def test_move_folder_to_the_library_root(media_bucket):
+    result = manage.move_folder(RUN, "")
+
+    assert result["prefix"] == "2026-08-04_21-30-54_wave-porch-1x1/"
+    assert "2026-08-04_21-30-54_wave-porch-1x1" in _folders("")
+
+
+def test_move_folder_into_itself_is_refused(media_bucket):
+    """The copy loop this prevents would read its own output as it wrote it."""
+    with pytest.raises(ValidationError):
+        manage.move_folder(RUN, RUN)
+    with pytest.raises(ValidationError):
+        manage.move_folder("characters/fred/", "characters/fred/seed/")
+    assert sorted(_names("characters/fred/seed/")) == ["fred_1.webp", "fred_2.webp"]
+
+
+def test_move_folder_beside_a_similarly_named_sibling_is_allowed(media_bucket):
+    """`fred-2/` does not sit inside `fred/`, and the slash is what says so."""
+    manage.create_folder("characters/", "fred-2")
+    result = manage.move_folder("characters/fred/reference/", "characters/fred-2/")
+
+    assert result["moved"] is True
+    assert "reference" in _folders("characters/fred-2/")
+
+
+def test_move_folder_to_its_own_parent_is_a_no_op(media_bucket):
+    result = manage.move_folder(RUN, "projects/fred/runs/")
+
+    assert result["moved"] is False
+    assert result["objects"] == 0
+    assert "2026-08-04_21-30-54_wave-porch-1x1" in _folders("projects/fred/runs/")
+
+
+def test_move_folder_refuses_an_occupied_destination(media_bucket):
+    manage.create_folder("projects/misc/runs/", "2026-08-04_21-30-54_wave-porch-1x1")
+    with pytest.raises(ConflictError):
+        manage.move_folder(RUN, "projects/misc/runs/")
+    assert "2026-08-04_21-30-54_wave-porch-1x1" in _folders("projects/fred/runs/")
+
+
+def test_move_folder_refuses_the_library_root(media_bucket):
+    with pytest.raises(ValidationError):
+        manage.move_folder("", "projects/")
+    with pytest.raises(ValidationError):
+        manage.move_folder(None, "projects/")
+
+
+def test_move_folder_refuses_an_oversized_subtree(media_bucket, monkeypatch):
+    monkeypatch.setattr("studio_core.config.max_folder_objects", lambda: 1)
+    with pytest.raises(ValidationError):
+        manage.move_folder(RUN, "projects/misc/runs/")
+    assert "2026-08-04_21-30-54_wave-porch-1x1" in _folders("projects/fred/runs/")
+
+
+def test_move_missing_folder_is_404(media_bucket):
+    with pytest.raises(NotFoundError):
+        manage.move_folder("characters/fred/nowhere/", "characters/")
+
+
+# ---------------------------------------------------------------------------
+# Edit
+# ---------------------------------------------------------------------------
+
+PROFILE = "characters/fred/profile.yaml"
+
+
+def test_update_text_overwrites_the_file(media_bucket):
+    result = manage.update_text(PROFILE, "name: Fred\nage: 41\n")
+
+    assert result["language"] == "yaml"
+    assert result["bytes"] == len(b"name: Fred\nage: 41\n")
+    assert browse.text_object(PROFILE)["content"] == "name: Fred\nage: 41\n"
+
+
+def test_update_text_writes_a_content_type(media_bucket):
+    manage.update_text(PROFILE, "name: Fred\n")
+
+    head = media_bucket.head_object(Bucket=config.media_bucket(), Key=PROFILE)
+    assert head["ContentType"] == "application/yaml"
+
+
+def test_update_text_accepts_an_empty_file(media_bucket):
+    """Emptying a file is an edit, not a missing field — only `None` is missing."""
+    result = manage.update_text(PROFILE, "")
+
+    assert result["bytes"] == 0
+    assert browse.text_object(PROFILE)["content"] == ""
+
+
+def test_update_text_refuses_a_binary_key(media_bucket):
+    with pytest.raises(ValidationError):
+        manage.update_text(OUTPUT, "not a jpeg any more")
+
+
+def test_update_text_refuses_a_non_string_body(media_bucket):
+    for body in (None, 42, {"name": "Fred"}):
+        with pytest.raises(ValidationError):
+            manage.update_text(PROFILE, body)
+    assert browse.text_object(PROFILE)["content"] == "name: Fred\n"
+
+
+def test_update_text_refuses_a_body_over_the_cap(media_bucket, monkeypatch):
+    """The same cap the read endpoint truncates at.
+
+    That pairing is the point: a file the reader had to truncate must not be
+    savable, or the save would delete everything past the cut.
+    """
+    monkeypatch.setattr("studio_core.config.max_text_bytes", lambda: 8)
+    with pytest.raises(ValidationError):
+        manage.update_text(PROFILE, "far too long to fit")
+    # Read through boto3 rather than `browse.text_object`, which is capped by the
+    # same patched value and would hand back a truncated copy of an intact file.
+    stored = media_bucket.get_object(Bucket=config.media_bucket(), Key=PROFILE)
+    assert stored["Body"].read() == b"name: Fred\n"
+
+
+def test_update_text_counts_bytes_not_characters(media_bucket, monkeypatch):
+    """A cap measured in characters would let a UTF-8 file through at 3× it."""
+    monkeypatch.setattr("studio_core.config.max_text_bytes", lambda: 4)
+    with pytest.raises(ValidationError):
+        manage.update_text(PROFILE, "héllo")
+
+
+def test_update_text_cannot_create_a_file(media_bucket):
+    """Studio still has no upload, and this is the route that would be it."""
+    with pytest.raises(NotFoundError):
+        manage.update_text("characters/fred/notes.md", "# new")
+    assert "notes.md" not in _names("characters/fred/")
+
+
+# ---------------------------------------------------------------------------
 # Delete
 # ---------------------------------------------------------------------------
 
@@ -211,6 +454,13 @@ def test_nothing_reaches_outside_a_configured_root(media_bucket, monkeypatch):
         lambda: manage.rename_folder("secrets/", "gone"),
         lambda: manage.rename_object("secrets/keys.txt", "gone.txt"),
         lambda: manage.create_folder("secrets/", "new"),
+        # Both ends of a move are checked, so neither a source outside the root
+        # nor a destination outside it is reachable.
+        lambda: manage.move_objects(["secrets/keys.txt"], "characters/fred/"),
+        lambda: manage.move_objects(["characters/fred/profile.yaml"], "secrets/"),
+        lambda: manage.move_folder("secrets/", "characters/"),
+        lambda: manage.move_folder("characters/fred/", "secrets/"),
+        lambda: manage.update_text("secrets/keys.txt", "emptied"),
     ):
         with pytest.raises(ValidationError):
             call()
