@@ -60,8 +60,12 @@ fi
 # guarded — Poetry resolves from the lockfile and does nothing when satisfied.
 (cd studio/backend && poetry install --no-root --no-interaction)
 
-if [ ! -f studio/frontend/.env.local ]; then
-  echo "studio/frontend/.env.local is missing — generating it from prod SSM."
+# Both of these are dev-setup.sh's job, and it is idempotent, so the cheapest
+# correct thing is to delegate rather than reimplement either check. node_modules
+# matters as much as the env file: vite is a local binary, so without it this
+# script's own `npm run dev` fails the same way `tsc: not found` does.
+if [ ! -f studio/frontend/.env.local ] || [ ! -d studio/frontend/node_modules ]; then
+  echo "Frontend env or node_modules missing — running dev-setup.sh first."
   ./studio/scripts/dev-setup.sh
 fi
 
