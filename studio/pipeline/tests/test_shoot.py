@@ -184,6 +184,31 @@ def test_the_build_text_comes_from_the_bible_not_the_spec(spec):
         assert leak not in text, f"the spec hardcodes {leak!r}"
 
 
+def test_every_slot_states_the_age_and_says_it_beats_the_references(spec):
+    """Seed pools span years, and nothing decided which year to render.
+
+    One live identity set held the same person roughly a decade apart, with no
+    clause naming an age — so the model was free to average them. Unlike the
+    crop or the build, this cannot be left to the reference images, because the
+    references are precisely what disagree. `identity.apparent_age` has been in
+    the bible all along; the prompt now reads it and says it outranks them.
+    """
+    for slot in spec["slots"]:
+        assert "{age_intro} {age}" in slot["prompt"], slot["id"]
+    intro = (spec["defaults"] or {}).get("age_intro", "")
+    assert "do not all agree" in intro, "the intro must say the references conflict"
+    assert "take the AGE from here" in intro
+
+
+def test_the_age_text_comes_from_the_bible_not_the_spec(spec):
+    """Hard rule 1 again: an age is a character specific."""
+    assert SHOOT._age_text({"identity": {"apparent_age": "Mid-30s"}}) == "Mid-30s"
+    assert SHOOT._age_text({}) == ""
+    text = yaml.safe_dump(spec)
+    for leak in ("30s", "40s", "50s", "years old"):
+        assert leak not in text, f"the spec hardcodes {leak!r}"
+
+
 def test_no_prompt_describes_direction_from_the_subjects_own_side(spec):
     """"Their left" is unresolvable without also knowing what the viewer sees,
     and pairing the two is how the contradiction got in. Frame edges only."""

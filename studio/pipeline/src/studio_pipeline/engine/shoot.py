@@ -171,6 +171,18 @@ def _first_top(profile: dict) -> str:
             f"with no logo, text or embroidery")
 
 
+def _age_text(profile: dict) -> str:
+    """The age to render at — stated, because the references will not agree.
+
+    Seed photographs accumulate over years: the same person at 35 and at 55 in
+    the same identity set, with the model free to average them. Nothing in the
+    prompt named an age, so nothing decided it. The bible has always carried
+    `identity.apparent_age`; this reads it out, and the intro beside it says the
+    stated age beats what any reference happens to show.
+    """
+    return " ".join(str((profile.get("identity") or {}).get("apparent_age") or "").split())
+
+
 def _build_text(profile: dict) -> str:
     """The person's PROPORTIONS, for a body plate — from the bible, never here.
 
@@ -233,6 +245,7 @@ def build_prompt(slot: dict, spec: dict, profile: dict,
         "style": _style_text(profile, defaults),
         "must": _must_text(profile, intro),
         "build": _build_text(profile),
+        "age": _age_text(profile),
         "identity_block": (profile.get("text_identity_block") or "").strip(),
         "pose_slot": f"[Image{pose_position}]",
         "identity_slots": _slots_phrase(identity_positions),
