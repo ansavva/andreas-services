@@ -121,6 +121,14 @@ def load_spec(path: str = SPEC_PATH) -> dict:
                 f"{path}: slot {slot['id']!r} has group {slot['group']!r}; "
                 f"expected one of {list(P.POSE_GROUPS)}."
             )
+        # An image nobody cites is an image the model is free to blend, which is
+        # the whole reason citations are computed rather than hard-coded.
+        if slot.get("torso_image") and "{torso_slot}" not in slot["prompt"]:
+            raise ShootError(
+                f"{path}: slot {slot['id']!r} binds a torso_image but its prompt "
+                f"never cites {{torso_slot}}, so nothing tells the model what "
+                f"that image is for."
+            )
     unknown = [f for f in spec.get("default_set") or [] if f not in ids]
     if unknown:
         raise ShootError(f"{path}: default_set names slot(s) that do not exist: {unknown}")
@@ -193,7 +201,8 @@ def _slots_phrase(positions: list[int]) -> str:
 
 
 def build_prompt(slot: dict, spec: dict, profile: dict,
-                 pose_position: int, identity_positions: list[int]) -> str:
+                 pose_position: int, identity_positions: list[int],
+                 torso_position: int | None = None) -> str:
     """Fill one slot's prompt template. Raises if the spec names a value we lack."""
     defaults = spec.get("defaults") or {}
     intro = defaults.get(f"must_intro_{slot['group']}") or defaults.get("must_intro_face") or ""
@@ -206,6 +215,10 @@ def build_prompt(slot: dict, spec: dict, profile: dict,
         "pose_slot": f"[Image{pose_position}]",
         "identity_slots": _slots_phrase(identity_positions),
     }
+    # Absent rather than empty when the slot binds no torso plate, so a prompt
+    # that cites one it never declared fails loudly instead of rendering "".
+    if torso_position is not None:
+        values["torso_slot"] = f"[Image{torso_position}]"
     try:
         text = string.Formatter().vformat(slot["prompt"], (), values)
     except KeyError as exc:
@@ -226,10 +239,35 @@ def plate_key(slot: dict) -> str:
     The spec stores a bucket-relative key (`config/pose/body/front.png`) so the
     prose in source control names the object in S3 that `dev-setup.sh` copies out.
     """
-    rel = slot["pose_image"]
+    return _plate_key(slot, "pose_image")
+
+
+def torso_plate_key(slot: dict) -> str | None:
+    """The slot's SECOND guide, or None — see `plate_keys` for why it exists."""
+    return _plate_key(slot, "torso_image") if slot.get("torso_image") else None
+
+
+def plate_keys(slot: dict) -> list[str]:
+    """Every guide plate this slot binds, in citation order.
+
+    Most slots bind one. The back three-quarters bind two, because the face
+    plates are cut from a head sheet and END AT A NECK STUMP: they carry no
+    shoulder line at all, so `{guide}`'s "match the direction the body and head
+    face" has no body in it to match, and a symmetric stump reads as square.
+    Rendered that way, both back three-quarters came back with a correctly
+    turned head on a torso flat to the camera — the prompt said to angle the
+    shoulders and the reference image said not to, and the image won. The body
+    plate for the same orientation is a whole figure at 135 degrees, so binding
+    it as a second guide gives the torso a direction to copy.
+    """
+    return [k for k in (plate_key(slot), torso_plate_key(slot)) if k]
+
+
+def _plate_key(slot: dict, field: str) -> str:
+    rel = slot[field]
     if not rel.startswith(P.CONFIG + "/"):
         raise ShootError(
-            f"slot {slot['id']!r}: pose_image {rel!r} must be a key under "
+            f"slot {slot['id']!r}: {field} {rel!r} must be a key under "
             f"{P.CONFIG}/ — plates are config, not character material."
         )
     return s3c.key(rel)
@@ -239,11 +277,11 @@ def check_plates(s3, slots: list[dict]) -> None:
     """Every plate must already be in the bucket. Fail once, listing all of them."""
     missing = []
     for slot in slots:
-        key = plate_key(slot)
-        try:
-            s3.head_object(Bucket=s3c.BUCKET, Key=key)
-        except Exception:  # noqa: BLE001 — any failure here means "cannot use it"
-            missing.append(key)
+        for key in plate_keys(slot):
+            try:
+                s3.head_object(Bucket=s3c.BUCKET, Key=key)
+            except Exception:  # noqa: BLE001 — any failure here means "cannot use it"
+                missing.append(key)
     if missing:
         raise ShootError(
             "pose plate(s) missing from the bucket:\n"
@@ -440,7 +478,7 @@ def prepare(slot: dict, spec: dict, profile: dict, name: str, s3, opts):
         )
 
     args = slot_args(slot, spec, entry, name, opts)
-    args.key = [plate_key(slot), *opts.identity]
+    args.key = [*plate_keys(slot), *opts.identity]
 
     # Resolve bindings BEFORE the prompt: the citation numbers are positions in
     # the resolved list, and only `gather` knows what that list is.
@@ -452,10 +490,13 @@ def prepare(slot: dict, spec: dict, profile: dict, name: str, s3, opts):
     ordered = bindings.get(field) or []
     if not ordered:
         raise ShootError(f"slot {slot['id']!r} resolved no image inputs.")
+    plates = plate_keys(slot)
+    torso = torso_plate_key(slot)
     pose_pos = ordered.index(plate_key(slot)) + 1
-    identity_pos = [i + 1 for i, k in enumerate(ordered) if k != plate_key(slot)]
+    torso_pos = ordered.index(torso) + 1 if torso else None
+    identity_pos = [i + 1 for i, k in enumerate(ordered) if k not in plates]
 
-    args.prompt = build_prompt(slot, spec, profile, pose_pos, identity_pos)
+    args.prompt = build_prompt(slot, spec, profile, pose_pos, identity_pos, torso_pos)
     payload = RUN.build_payload(entry, args)
     try:
         SUB.check_payload_rules(entry, payload)

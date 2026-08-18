@@ -51,6 +51,17 @@ defaults:
     is a POSE GUIDE ONLY. Match its stance, the direction the body and head
     face, and its framing. Take nothing else from it — not its build,
     proportions, skin, head, face or hair, and do not blend it into the person.
+  # A SECOND guide, bound only where the first cannot carry the whole pose. The
+  # face plates end at a neck stump, so they say nothing about which way the
+  # shoulders point — and a symmetric stump reads as square to the camera. Both
+  # back three-quarters duly came back as a correctly turned head on a flat
+  # back, even with the prompt insisting the shoulders turn: the reference image
+  # outvoted the words. This one is a whole figure at the same angle.
+  guide_torso: >-
+    is a SECOND POSE GUIDE, for the TORSO ONLY. Copy the angle of its shoulders
+    and chest relative to the camera, and nothing else — not its framing, crop,
+    head, face, hair, build, proportions or clothing. Do not blend it into the
+    person and do not draw the whole figure it shows.
   # The MEDIUM is the character's, not this file's. It used to say "photographic,
   # no stylisation", which is only right for a character whose source material is
   # photographs — for one drawn in ink it would have converted him to a medium he
@@ -157,19 +168,22 @@ slots:
   - id: face_three_quarter_back_right
     group: face
     pose_image: config/pose/face/three-quarter-back-right.png
+    torso_image: config/pose/body/three-quarter-back-right.png
     description: >-
       Head and shoulders from behind at three-quarters, head and shoulders turned together, a sliver of the face at the right edge of the head, grey studio backdrop.
     tags: [face, three-quarter, back, right, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
+      {torso_slot} {guide_torso}
       A studio portrait of the person seen FROM BEHIND at three-quarters — the
       head AND THE SHOULDERS TOGETHER turned about 135 degrees away from the
-      lens, so the back of the head fills most of the frame and the torso is
-      clearly angled rather than square to the camera. Only a NARROW SLIVER of
-      the face breaks the silhouette on the side toward the RIGHT edge of the
-      frame — the brow, the cheekbone and the tip of the nose, and no more. NOT
-      A PROFILE: the eye, the mouth and the front of the chin must not be
-      visible, and the shoulders must not be square to the lens. Neutral
+      lens, so the back of the head fills most of the frame. THE SHOULDERS ARE
+      ANGLED, NOT SQUARE: one shoulder is clearly nearer the camera than the
+      other and the far side of the chest is turning out of view, exactly as in
+      {torso_slot}. Only a NARROW SLIVER of the face breaks the silhouette on
+      the side toward the RIGHT edge of the frame — the brow, the cheekbone and
+      the tip of the nose, and no more. NOT A PROFILE: the eye, the mouth and
+      the front of the chin must not be visible. Neutral
       expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame. {top}. {backdrop_face}
@@ -191,19 +205,22 @@ slots:
   - id: face_three_quarter_back_left
     group: face
     pose_image: config/pose/face/three-quarter-back-left.png
+    torso_image: config/pose/body/three-quarter-back-left.png
     description: >-
       Head and shoulders from behind at three-quarters, head and shoulders turned together, a sliver of the face at the left edge of the head, grey studio backdrop.
     tags: [face, three-quarter, back, left, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
+      {torso_slot} {guide_torso}
       A studio portrait of the person seen FROM BEHIND at three-quarters — the
       head AND THE SHOULDERS TOGETHER turned about 135 degrees away from the
-      lens, so the back of the head fills most of the frame and the torso is
-      clearly angled rather than square to the camera. Only a NARROW SLIVER of
-      the face breaks the silhouette on the side toward the LEFT edge of the
-      frame — the brow, the cheekbone and the tip of the nose, and no more. NOT
-      A PROFILE: the eye, the mouth and the front of the chin must not be
-      visible, and the shoulders must not be square to the lens. Neutral
+      lens, so the back of the head fills most of the frame. THE SHOULDERS ARE
+      ANGLED, NOT SQUARE: one shoulder is clearly nearer the camera than the
+      other and the far side of the chest is turning out of view, exactly as in
+      {torso_slot}. Only a NARROW SLIVER of the face breaks the silhouette on
+      the side toward the LEFT edge of the frame — the brow, the cheekbone and
+      the tip of the nose, and no more. NOT A PROFILE: the eye, the mouth and
+      the front of the chin must not be visible. Neutral
       expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame. {top}. {backdrop_face}
@@ -286,12 +303,13 @@ slots:
       A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
       FEET IN FRAME including both feet, seen FROM BEHIND at three-quarters —
       the head AND THE SHOULDERS TOGETHER turned about 135 degrees away from
-      the lens, so the back of the figure faces the camera and the torso is
-      clearly angled rather than square to it. Only a NARROW SLIVER of the face
+      the lens, so the back of the figure faces the camera. THE SHOULDERS ARE
+      ANGLED, NOT SQUARE: one shoulder is clearly nearer the camera than the
+      other and the far side of the chest is turning out of view. Only a NARROW SLIVER of the face
       breaks the silhouette on the side toward the RIGHT edge of the frame —
       the brow, the cheekbone and the tip of the nose, and no more. NOT A
       PROFILE: the eye, the mouth and the front of the chin must not be
-      visible, and the shoulders must not be square to the lens. Weight even on
+      visible. Weight even on
       both legs, arms relaxed at the sides and clear of the body.
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
@@ -319,12 +337,13 @@ slots:
       A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
       FEET IN FRAME including both feet, seen FROM BEHIND at three-quarters —
       the head AND THE SHOULDERS TOGETHER turned about 135 degrees away from
-      the lens, so the back of the figure faces the camera and the torso is
-      clearly angled rather than square to it. Only a NARROW SLIVER of the face
+      the lens, so the back of the figure faces the camera. THE SHOULDERS ARE
+      ANGLED, NOT SQUARE: one shoulder is clearly nearer the camera than the
+      other and the far side of the chest is turning out of view. Only a NARROW SLIVER of the face
       breaks the silhouette on the side toward the LEFT edge of the frame —
       the brow, the cheekbone and the tip of the nose, and no more. NOT A
       PROFILE: the eye, the mouth and the front of the chin must not be
-      visible, and the shoulders must not be square to the lens. Weight even on
+      visible. Weight even on
       both legs, arms relaxed at the sides and clear of the body.
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
 

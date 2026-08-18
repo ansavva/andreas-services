@@ -116,7 +116,32 @@ def test_back_three_quarter_slots_turn_the_shoulders_and_forbid_a_profile(spec):
         text = slot["prompt"]
         assert "SHOULDERS TOGETHER" in text, f"{slot['id']} does not turn the torso"
         assert "NOT A PROFILE" in text, f"{slot['id']} permits a profile"
-        assert "must not be square to the lens" in text, slot["id"]
+        assert "not square" in text.lower(), slot["id"]
+
+
+def test_face_back_three_quarters_bind_a_torso_guide(spec):
+    """Wording alone did not rotate the torso, because the image disagreed.
+
+    A face plate is cut from a head sheet and ends at a neck stump, so it shows
+    no shoulder line — and a symmetric stump reads as square to the camera.
+    Both back three-quarters came back with a correctly turned head on a flat
+    back even after the prompt was rewritten to insist the shoulders turn. The
+    fix is a second plate that actually depicts the angle, so these slots are
+    the one place two guides are bound. The other six face slots need no such
+    thing: their orientation is legible from the head alone.
+    """
+    face_backs = [s for s in spec["slots"]
+                  if s["group"] == "face" and "three_quarter_back" in s["id"]]
+    assert len(face_backs) == 2
+    for slot in face_backs:
+        torso = slot.get("torso_image")
+        assert torso, f"{slot['id']} binds no torso guide"
+        # Same orientation as the head plate, from the body set.
+        assert torso == slot["pose_image"].replace("/face/", "/body/"), slot["id"]
+        assert "{torso_slot}" in slot["prompt"], slot["id"]
+    others = [s for s in spec["slots"] if s not in face_backs]
+    assert not [s["id"] for s in others if s.get("torso_image")], \
+        "only the face back three-quarters should need a second guide"
 
 
 def test_no_prompt_describes_direction_from_the_subjects_own_side(spec):
@@ -168,7 +193,10 @@ PROFILE = {
 
 def test_prompts_fill_completely_and_carry_the_bible(spec):
     for slot in spec["slots"]:
-        text = SHOOT.build_prompt(slot, spec, PROFILE, 1, [2, 3])
+        # A slot binding a second guide gets a position for it; one that does
+        # not must render without ever being handed a `torso_slot` to fill.
+        torso = 2 if slot.get("torso_image") else None
+        text = SHOOT.build_prompt(slot, spec, PROFILE, 1, [3, 4], torso)
         assert not re.search(r"\{[a-z_]+\}", text), f"{slot['id']} has an unfilled placeholder"
         assert "A long straight nose" in text, slot["id"]
         # A face plate wears the bible's usual top; a body plate strips back to
