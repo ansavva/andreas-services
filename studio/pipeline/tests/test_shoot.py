@@ -95,6 +95,30 @@ def test_opposite_slots_carry_opposite_frame_directions(spec):
             assert "LEFT edge" not in by_id[right]["prompt"], right
 
 
+def test_back_three_quarter_slots_turn_the_shoulders_and_forbid_a_profile(spec):
+    """Both back three-quarters came back as a PROFILE HEAD ON A FLAT BACK.
+
+    "Turned about 135 degrees away" named no subject, so the model rotated the
+    head to 90 degrees and left the shoulders square to the lens — which is the
+    profile slot with a back body, not a three-quarter back. Two things fix it,
+    and both are asserted here because either alone was already true of the
+    wording that failed:
+
+      * the rotation clause says what turns — the head AND the shoulders;
+      * a prohibition rules out the profile reading. On this model the negative
+        clauses are what bind: "no waist, no hips and no legs" held on all
+        eight slots of a live shoot while the positive "CROPPED AT MID-CHEST"
+        drifted wider on nearly every one.
+    """
+    backs = [s for s in spec["slots"] if "three_quarter_back" in s["id"]]
+    assert len(backs) == 2 * len(P.POSE_GROUPS), "expected a back pair per group"
+    for slot in backs:
+        text = slot["prompt"]
+        assert "SHOULDERS TOGETHER" in text, f"{slot['id']} does not turn the torso"
+        assert "NOT A PROFILE" in text, f"{slot['id']} permits a profile"
+        assert "must not be square to the lens" in text, slot["id"]
+
+
 def test_no_prompt_describes_direction_from_the_subjects_own_side(spec):
     """"Their left" is unresolvable without also knowing what the viewer sees,
     and pairing the two is how the contradiction got in. Frame edges only."""

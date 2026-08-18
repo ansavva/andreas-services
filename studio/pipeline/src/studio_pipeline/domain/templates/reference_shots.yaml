@@ -158,11 +158,19 @@ slots:
     group: face
     pose_image: config/pose/face/three-quarter-back-right.png
     description: >-
-      Head and shoulders from behind at three-quarters, face just off the right edge of view, grey studio backdrop.
+      Head and shoulders from behind at three-quarters, head and shoulders turned together, a sliver of the face at the right edge of the head, grey studio backdrop.
     tags: [face, three-quarter, back, right, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
-      A studio portrait of the person, turned about 135 degrees away, seen mostly from behind, the face just off the RIGHT edge of view. Neutral expression, mouth
+      A studio portrait of the person seen FROM BEHIND at three-quarters — the
+      head AND THE SHOULDERS TOGETHER turned about 135 degrees away from the
+      lens, so the back of the head fills most of the frame and the torso is
+      clearly angled rather than square to the camera. Only a NARROW SLIVER of
+      the face breaks the silhouette on the side toward the RIGHT edge of the
+      frame — the brow, the cheekbone and the tip of the nose, and no more. NOT
+      A PROFILE: the eye, the mouth and the front of the chin must not be
+      visible, and the shoulders must not be square to the lens. Neutral
+      expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame. {top}. {backdrop_face}
       {light} {style} {quality} {must}
@@ -184,11 +192,19 @@ slots:
     group: face
     pose_image: config/pose/face/three-quarter-back-left.png
     description: >-
-      Head and shoulders from behind at three-quarters, face just off the left edge of view, grey studio backdrop.
+      Head and shoulders from behind at three-quarters, head and shoulders turned together, a sliver of the face at the left edge of the head, grey studio backdrop.
     tags: [face, three-quarter, back, left, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
-      A studio portrait of the person, turned about 135 degrees away, seen mostly from behind, the face just off the LEFT edge of view. Neutral expression, mouth
+      A studio portrait of the person seen FROM BEHIND at three-quarters — the
+      head AND THE SHOULDERS TOGETHER turned about 135 degrees away from the
+      lens, so the back of the head fills most of the frame and the torso is
+      clearly angled rather than square to the camera. Only a NARROW SLIVER of
+      the face breaks the silhouette on the side toward the LEFT edge of the
+      frame — the brow, the cheekbone and the tip of the nose, and no more. NOT
+      A PROFILE: the eye, the mouth and the front of the chin must not be
+      visible, and the shoulders must not be square to the lens. Neutral
+      expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame. {top}. {backdrop_face}
       {light} {style} {quality} {must}
@@ -263,12 +279,19 @@ slots:
     group: body
     pose_image: config/pose/body/three-quarter-back-right.png
     description: >-
-      Full body head to feet from behind at three-quarters, face just off the right edge of view, white seamless backdrop.
+      Full body head to feet from behind at three-quarters, body angled not square, a sliver of the face at the right edge of the head, white seamless backdrop.
     tags: [body, three-quarter, back, right, full-body, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
       A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
-      FEET IN FRAME including both feet, standing turned about 135 degrees away, seen mostly from behind, the face just off the RIGHT edge of view, weight even on
+      FEET IN FRAME including both feet, seen FROM BEHIND at three-quarters —
+      the head AND THE SHOULDERS TOGETHER turned about 135 degrees away from
+      the lens, so the back of the figure faces the camera and the torso is
+      clearly angled rather than square to it. Only a NARROW SLIVER of the face
+      breaks the silhouette on the side toward the RIGHT edge of the frame —
+      the brow, the cheekbone and the tip of the nose, and no more. NOT A
+      PROFILE: the eye, the mouth and the front of the chin must not be
+      visible, and the shoulders must not be square to the lens. Weight even on
       both legs, arms relaxed at the sides and clear of the body.
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
@@ -289,12 +312,19 @@ slots:
     group: body
     pose_image: config/pose/body/three-quarter-back-left.png
     description: >-
-      Full body head to feet from behind at three-quarters, face just off the left edge of view, white seamless backdrop.
+      Full body head to feet from behind at three-quarters, body angled not square, a sliver of the face at the left edge of the head, white seamless backdrop.
     tags: [body, three-quarter, back, left, full-body, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
       A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
-      FEET IN FRAME including both feet, standing turned about 135 degrees away, seen mostly from behind, the face just off the LEFT edge of view, weight even on
+      FEET IN FRAME including both feet, seen FROM BEHIND at three-quarters —
+      the head AND THE SHOULDERS TOGETHER turned about 135 degrees away from
+      the lens, so the back of the figure faces the camera and the torso is
+      clearly angled rather than square to it. Only a NARROW SLIVER of the face
+      breaks the silhouette on the side toward the LEFT edge of the frame —
+      the brow, the cheekbone and the tip of the nose, and no more. NOT A
+      PROFILE: the eye, the mouth and the front of the chin must not be
+      visible, and the shoulders must not be square to the lens. Weight even on
       both legs, arms relaxed at the sides and clear of the body.
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
 

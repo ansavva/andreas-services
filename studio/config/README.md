@@ -61,6 +61,13 @@ the two back three-quarters swapped relative to its front labels, and naming fro
 the subject's own left and right is what once produced a prompt instructing two
 opposite rotations in the same sentence.
 
+**A back three-quarter is not a profile.** Its plate shows the back of the head
+filling most of the frame with only a narrow sliver of face breaking the
+silhouette — brow, cheekbone, the tip of the nose. Naming it by the frame edge
+alone does not say that, and a prompt that gave only the edge produced a
+90-degree profile head on a torso square to the camera, twice. The slot prompts
+therefore also turn the shoulders with the head and forbid the profile outright.
+
 Where only one side exists in a source, its twin is a horizontal mirror — the
 same sculpt, which is a consistency no second render could match.
 
