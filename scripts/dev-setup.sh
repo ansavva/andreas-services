@@ -3,8 +3,8 @@
 # Shared developer / CI toolchain bootstrap for the andreas-services monorepo.
 #
 # Installs the cross-cutting tools every service needs (Terraform, tflint, AWS
-# CLI, GitHub CLI, Node.js, jq, zip, Stripe CLI) with Homebrew on BOTH macOS and
-# Linux. Service-specific
+# CLI, GitHub CLI + its gh-stack extension, Node.js, jq, zip, Stripe CLI) with
+# Homebrew on BOTH macOS and Linux. Service-specific
 # runtimes live in per-service scripts, e.g. humbugg/scripts/dev-setup.sh (.NET).
 #
 # Homebrew details:
@@ -136,6 +136,59 @@ brew_ensure() {
   brew_run install "$formula"
 }
 
+# gh-stack: GitHub's stacked-PR extension (github/gh-stack). The canonical
+# install resolves a release binary through api.github.com, which is the normal
+# path on a laptop and in CI. Some sandboxes (including Claude cloud sessions)
+# serve GitHub through a proxy that blocks the REST API while still allowing
+# anonymous git clones, so a source build is used as a fallback there. Both
+# paths end at `gh extension install`, so `gh stack` is the same command either
+# way. Non-fatal: without it, stacked PRs are still workable with plain git.
+# `gh extension install .` names the extension after the directory's basename
+# and requires the executable inside to match, so this path must end in
+# `gh-stack` — that is what makes the command `gh stack`.
+GH_STACK_SRC="$HOME/.local/share/gh-extensions-src/gh-stack"
+ensure_gh_stack() {
+  if ! have gh; then warn "gh not present; skipping gh-stack extension"; return 0; fi
+  if gh extension list 2>/dev/null | grep -q 'gh stack'; then
+    skip "gh-stack extension" "gh stack"
+    return 0
+  fi
+  if [[ "$CHECK_ONLY" -eq 1 ]]; then
+    warn "gh-stack extension is MISSING (would: gh extension install github/gh-stack)"
+    return 0
+  fi
+
+  log "installing gh-stack extension ..."
+  if gh extension install github/gh-stack >/dev/null 2>&1; then
+    ok "gh stack ready (release binary)"
+    return 0
+  fi
+
+  warn "gh-stack release download failed (GitHub API unreachable?); trying source build"
+  if ! have go; then
+    warn "go not present; gh-stack unavailable (stacked-PR commands will not work)"
+    return 0
+  fi
+  # The symlink gh creates points at this directory, so it has to outlive the
+  # build — keep it under $HOME rather than a temp dir.
+  if [[ -d "$GH_STACK_SRC/.git" ]]; then
+    git -C "$GH_STACK_SRC" fetch --depth 1 origin HEAD >/dev/null 2>&1 \
+      && git -C "$GH_STACK_SRC" reset --hard FETCH_HEAD >/dev/null 2>&1 || true
+  else
+    rm -rf "$GH_STACK_SRC"
+    mkdir -p "$(dirname "$GH_STACK_SRC")"
+    git clone --depth 1 https://github.com/github/gh-stack "$GH_STACK_SRC" >/dev/null 2>&1 || {
+      warn "could not clone github/gh-stack; gh-stack unavailable"; return 0; }
+  fi
+  ( cd "$GH_STACK_SRC" && go build -o ./gh-stack . ) >/dev/null 2>&1 || {
+    warn "gh-stack source build failed; gh-stack unavailable"; return 0; }
+  # gh only accepts "." for a local extension; an absolute path is parsed as
+  # OWNER/REPO and rejected. So install from inside the directory.
+  ( cd "$GH_STACK_SRC" && gh extension install . ) >/dev/null 2>&1 \
+    && ok "gh stack ready (built from source)" \
+    || warn "gh extension install failed; gh-stack unavailable"
+}
+
 # Agent skills for the tools this repo builds on: the Expo/EAS set and the
 # @ansavva/design-system consumer set. They are machine-local tooling, not
 # source — .agents/, .claude/skills/ and skills-lock.json are all gitignored, so
@@ -193,6 +246,8 @@ brew_ensure node node
 brew_ensure jq   jq
 brew_ensure zip  zip
 brew_ensure stripe stripe/stripe-cli/stripe
+
+ensure_gh_stack
 
 # Node version floor (the OS may already ship a newer/older node than brew's).
 if have node; then
