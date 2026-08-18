@@ -229,7 +229,7 @@ live and work involving none borrowing a fake character called `misc`.
 characters/<name>/
     profile.yaml    the bible — identity, plus the DESCRIBED reference index
     reference/      generated character imagery, in purpose subfolders
-        face/  body/  wardrobe/  scene/ …
+        face/  body/  wardrobe/  frame/ …
     corpus/         collected material about the character — uploads, keeper clips
     seed/           the founding real-world source photos
     archive/        retired material — NEVER used unless the user names it

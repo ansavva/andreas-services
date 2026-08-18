@@ -7,7 +7,7 @@ A character is DATA, not a skill: each one is an S3 record under
     characters/<name>/profile.yaml   the bible (SOURCE OF TRUTH), including the
                                      DESCRIBED index of the reference library
     characters/<name>/reference/     generated character imagery, in purpose
-                                     subfolders: face/ body/ wardrobe/ scene/ …
+                                     subfolders: face/ body/ wardrobe/ frame/ …
     characters/<name>/corpus/        collected material — uploads, keeper clips
     characters/<name>/seed/          the founding real-world source photos
     characters/<name>/archive/       retired material; never used unless named

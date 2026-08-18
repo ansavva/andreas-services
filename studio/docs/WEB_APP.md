@@ -157,7 +157,7 @@ characters/<subject>/           # who a subject is
 ├── seed/                       # source photos (.webp, .jpg, .jpeg, .JPG, .heic)
 ├── corpus/                     # the wider photo set
 ├── reference/                  # reference images + .txt captions,
-│   └── <face|body|scene|wardrobe>/   #   sometimes split by category
+│   └── <face|body|frame|wardrobe>/   #   sometimes split by category
 └── archive/                    # superseded output kept around
 projects/<subject>/             # what was generated of them
 ├── runs/<ts>_<slug>/           # request.json, result.json, sometimes prompt.json

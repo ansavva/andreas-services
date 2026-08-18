@@ -285,7 +285,7 @@ def cmd_move(file, name, apply, src_pool, dst_pool):
         print("DRY RUN — nothing changed")
 
 
-@main.command("regroup", epilog="\n\nArguments:\n  FILES  Paths inside reference/.\n  GROUP  face, body, wardrobe, scene, …")
+@main.command("regroup", epilog="\n\nArguments:\n  FILES  Paths inside reference/.\n  GROUP  face, body, wardrobe, frame, …")
 @click.argument("files", nargs=-1, required=True)
 @click.argument("group", required=True)
 @click.argument("name", required=True)

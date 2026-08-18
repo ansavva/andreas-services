@@ -34,7 +34,7 @@ storage layer; auth is your `aws login`).
 characters/<name>/profile.yaml   the bible — SOURCE OF TRUTH, one schema,
                                  including the DESCRIBED reference index
 characters/<name>/reference/     generated character imagery, in purpose
-                                 subfolders: face/ body/ wardrobe/ scene/ …
+                                 subfolders: face/ body/ wardrobe/ frame/ …
 characters/<name>/corpus/        collected material about the character —
                                  uploads, keeper clips. Material, not identity.
 characters/<name>/seed/          the founding real-world source photos
@@ -52,7 +52,7 @@ split: `studio runs find --character <name>`.
 | | `reference/` | `corpus/` | `seed/` | `archive/` |
 |---|---|---|---|---|
 | Answers | *Who is this person, shown how?* | *What else do we have of them?* | *What were they built from?* | *What did we retire?* |
-| Holds | generated imagery — face angles, body turnarounds, wardrobe, scene stills | uploads, keeper clips | the founding photographs | rejects, superseded takes |
+| Holds | generated imagery — face angles, body turnarounds, wardrobe, in-world frames | uploads, keeper clips | the founding photographs | rejects, superseded takes |
 | Sent to a model | a **chosen subset** | only by explicit key | rarely, by explicit key | **never**, unless the user names it |
 | Indexed | yes — every image described in the bible | no | no | no |
 | Numbered | `<name>_<group>_<n>.<ext>` within a group | basenames kept | basenames kept | basenames kept |

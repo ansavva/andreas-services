@@ -1675,7 +1675,7 @@
             "default": null,
             "dest": "group",
             "flag": false,
-            "help": "face, body, wardrobe, scene, …",
+            "help": "face, body, wardrobe, frame, …",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
