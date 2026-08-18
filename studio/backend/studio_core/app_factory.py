@@ -1,5 +1,6 @@
 """Flask application factory for the studio HTTP API."""
 
+import io
 import logging
 
 from flask import Flask, jsonify, request
@@ -17,6 +18,49 @@ from studio_core.routes.browse import bp as browse_bp
 from studio_core.routes.manage import bp as manage_bp
 
 logger = logging.getLogger(__name__)
+
+
+class BodyLengthMiddleware:
+    """Restore `CONTENT_LENGTH` from the body that actually arrived.
+
+    **Without this every route that reads a JSON body sees an empty one**, and
+    reports the field as missing: `POST /api/objects/move` with a perfectly good
+    `{keys, destination}` answers 400 `keys must be a non-empty list`.
+
+    The cause is a seam between two libraries, neither of which is wrong on its
+    own. API Gateway's proxy event carries the body as a string and does *not*
+    put `Content-Length` in `headers` — verified against the deployed API, whose
+    integration request forwards only `{"Content-Type": "application/json"}`.
+    Mangum passes those headers through verbatim and never synthesises the
+    length. `asgiref.wsgi.WsgiToAsgi` then writes the real body into
+    `wsgi.input` but sets `CONTENT_LENGTH` *only* from a `content-length`
+    header, so Werkzeug is told the body is zero bytes long and stops reading
+    before it starts. The bytes are present the whole way down; the number
+    saying how many of them to read is the only thing missing.
+
+    So the length is taken from `wsgi.input` itself rather than from a header,
+    which is the one source that cannot disagree with the body. Anything that
+    already declared a length keeps it — under `flask run`, gunicorn or Flask's
+    test client the header is present and this is a no-op, which is exactly why
+    the test suite passed while prod could not write. A non-seekable stream is
+    left alone: only the ASGI shim's `SpooledTemporaryFile` is being repaired
+    here, and a real chunked upload must not be buffered into memory to measure
+    it.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        if not environ.get("CONTENT_LENGTH"):
+            body = environ.get("wsgi.input")
+            if body is not None and getattr(body, "seekable", lambda: False)():
+                start = body.tell()
+                length = body.seek(0, io.SEEK_END) - start
+                body.seek(start)
+                if length:
+                    environ["CONTENT_LENGTH"] = str(length)
+        return self.app(environ, start_response)
 
 
 class ApiPathMiddleware:
@@ -40,7 +84,7 @@ class ApiPathMiddleware:
 
 def create_app() -> Flask:
     app = Flask(__name__)
-    app.wsgi_app = ApiPathMiddleware(app.wsgi_app)
+    app.wsgi_app = ApiPathMiddleware(BodyLengthMiddleware(app.wsgi_app))
 
     # The write verbs are listed here *and* on the MOCK preflight and the two
     # gateway responses in `modules/api_gateway`. All four have to agree: the
