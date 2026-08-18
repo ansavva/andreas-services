@@ -174,6 +174,26 @@ def test_every_slot_states_the_build_and_disowns_the_guides(spec):
     assert "NOT THE GUIDE" in intro, "the intro must disown the pose guide by name"
 
 
+def test_the_face_and_the_build_name_different_authorities(spec):
+    """A reference pool is mostly head-and-shoulders, so the two differ.
+
+    The face is the best-evidenced thing about a character — photographs of it,
+    from several angles — so the images lead. The build usually is not evidenced
+    at all, and telling a model to take proportions "from the reference images"
+    pointed it at pictures that do not contain the answer, so it invented one.
+    Both clauses now say which source wins, and they must not say the same
+    thing: a live face came back finer-boned than every photograph of it while
+    the prompt was giving images and prose equal weight.
+    """
+    face = (spec["defaults"] or {}).get("face_intro", "")
+    build = (spec["defaults"] or {}).get("build_intro", "")
+    assert "the images win" in face, "the face clause must give the images priority"
+    assert "WIDTH of the jaw and chin" in face, "face width is the drift this catches"
+    assert "THIS DESCRIPTION first" in build, "the build clause must give the text priority"
+    for slot in spec["slots"]:
+        assert "{face_intro}" in slot["prompt"], slot["id"]
+
+
 def test_a_plate_wears_the_bibles_stated_colour_when_it_has_one():
     """The schema files colour under `detail` — which the plate discards.
 

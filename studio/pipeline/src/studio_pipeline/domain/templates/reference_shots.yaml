@@ -108,12 +108,27 @@ defaults:
     older or younger. Take face shape, features, colouring and proportions from
     the references, but take the AGE from here, including how grey the hair and
     stubble are and how deep the lines read:
+  # THE FACE AND THE BUILD HAVE DIFFERENT AUTHORITIES, because a seed pool is
+  # mostly head-and-shoulders. The face is the best-evidenced thing about a
+  # character — photographs of it, from several angles — so the images lead and
+  # the written cues are a checklist against them. The build usually is NOT
+  # evidenced: a pool of portraits shows almost none of it. Telling a model to
+  # take proportions "from the reference images" therefore points it at pictures
+  # that do not contain the answer, and it invents one. So they are stated
+  # separately, and each says which source wins.
+  face_intro: >-
+    THE FACE COMES FROM THE REFERENCE IMAGES. They show this person's real face:
+    match its bone structure, the WIDTH of the jaw and chin, the set and spacing
+    of the eyes, the nose, the hairline and the shape of the skull to them. The
+    identity cues listed further down are a checklist to verify against those
+    images, not a replacement for looking at them — where a written cue and an
+    image disagree about the FACE, the images win.
   build_intro: >-
-    THE BUILD IS THE PERSON'S, NOT THE GUIDE FIGURE'S. Take the proportions,
-    muscle mass and limb thickness from the reference images of the person and
-    from this description, never from the pose guide, and do not reshape them
-    toward it in any direction — not thinner, not thicker, not taller, not
-    shorter:
+    THE BUILD IS THE PERSON'S, NOT THE GUIDE FIGURE'S — and unlike the face, the
+    reference images may barely show it, since a reference pool is mostly
+    head-and-shoulders. So take the build from THIS DESCRIPTION first, never
+    from the pose guide, and do not reshape it toward the guide in any
+    direction — not thinner, not thicker, not taller, not shorter:
   must_intro_body: >-
     Preserve these identity cues exactly — but the wardrobe named above governs
     this plate, so ignore any clothing rule among them:
@@ -165,6 +180,7 @@ slots:
       A studio portrait of the person, front on, squared to the camera, looking straight down the lens. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame.
+      {face_intro}
       {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
       {light} {style} {quality} {must}
@@ -180,6 +196,7 @@ slots:
       A studio portrait of the person, turned about 45 degrees so the nose points toward the RIGHT edge of the frame, eyes returning to the lens. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame.
+      {face_intro}
       {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
       {light} {style} {quality} {must}
@@ -195,6 +212,7 @@ slots:
       A studio portrait of the person, in FULL PROFILE, turned 90 degrees so the nose points directly at the RIGHT edge of the frame, gaze level and straight ahead. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame.
+      {face_intro}
       {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
       {light} {style} {quality} {must}
@@ -221,6 +239,7 @@ slots:
       expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame.
+      {face_intro}
       {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
       {light} {style} {quality} {must}
@@ -236,6 +255,7 @@ slots:
       A studio portrait of the person, directly away from the camera, the back of the head to the lens. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame.
+      {face_intro}
       {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
       {light} {style} {quality} {must}
@@ -262,6 +282,7 @@ slots:
       expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame.
+      {face_intro}
       {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
       {light} {style} {quality} {must}
@@ -277,6 +298,7 @@ slots:
       A studio portrait of the person, in FULL PROFILE, turned 90 degrees so the nose points directly at the LEFT edge of the frame, gaze level and straight ahead. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame.
+      {face_intro}
       {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
       {light} {style} {quality} {must}
@@ -292,6 +314,7 @@ slots:
       A studio portrait of the person, turned about 45 degrees so the nose points toward the LEFT edge of the frame, eyes returning to the lens. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame.
+      {face_intro}
       {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
       {light} {style} {quality} {must}
@@ -308,6 +331,7 @@ slots:
       A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
       FEET IN FRAME including both feet, standing front on, squared to the camera, weight even on
       both legs, arms relaxed at the sides and clear of the body.
+      {face_intro}
       {build_intro} {build}
       {age_intro} {age}.
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
@@ -323,6 +347,7 @@ slots:
       A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
       FEET IN FRAME including both feet, standing in FULL PROFILE, turned 90 degrees so the chest and the face point directly at the RIGHT edge of the frame, weight even on
       both legs, arms relaxed at the sides and clear of the body.
+      {face_intro}
       {build_intro} {build}
       {age_intro} {age}.
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
@@ -346,6 +371,7 @@ slots:
       PROFILE: the eye, the mouth and the front of the chin must not be
       visible. Weight even on
       both legs, arms relaxed at the sides and clear of the body.
+      {face_intro}
       {build_intro} {build}
       {age_intro} {age}.
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
@@ -361,6 +387,7 @@ slots:
       A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
       FEET IN FRAME including both feet, standing directly away from the camera, the back of the head and body to the lens, weight even on
       both legs, arms relaxed at the sides and clear of the body.
+      {face_intro}
       {build_intro} {build}
       {age_intro} {age}.
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
@@ -384,6 +411,7 @@ slots:
       PROFILE: the eye, the mouth and the front of the chin must not be
       visible. Weight even on
       both legs, arms relaxed at the sides and clear of the body.
+      {face_intro}
       {build_intro} {build}
       {age_intro} {age}.
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
@@ -399,6 +427,7 @@ slots:
       A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
       FEET IN FRAME including both feet, standing in FULL PROFILE, turned 90 degrees so the chest and the face point directly at the LEFT edge of the frame, weight even on
       both legs, arms relaxed at the sides and clear of the body.
+      {face_intro}
       {build_intro} {build}
       {age_intro} {age}.
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
