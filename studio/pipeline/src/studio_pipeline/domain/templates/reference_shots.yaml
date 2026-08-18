@@ -86,6 +86,18 @@ defaults:
     build, proportions and posture read clearly
   must_intro_face: >-
     Preserve these identity cues exactly:
+  # A body plate exists to record a BUILD, and the first one rendered lost it:
+  # the figure came back lean and narrow-shouldered, nothing like the bible's
+  # taper or arm mass. The pose plate caused it — an untextured mannequin with
+  # its own proportions, against which `{guide}`'s "not its build, proportions"
+  # was one buried clause. Same lesson as the crop and the profile: foreground
+  # it, and put something checkable in it. `{build}` is the bible's own
+  # `body.silhouette` and `body.arms`, which carry a ratio in head-widths.
+  build_intro: >-
+    THE BUILD IS THE PERSON'S, NOT THE GUIDE FIGURE'S. Take the proportions,
+    muscle mass and limb thickness from the reference images of the person and
+    from this description, never from the pose guide, and do not slim, lengthen
+    or average them toward it:
   must_intro_body: >-
     Preserve these identity cues exactly — but the wardrobe named above governs
     this plate, so ignore any clothing rule among them:
@@ -264,6 +276,7 @@ slots:
       A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
       FEET IN FRAME including both feet, standing front on, squared to the camera, weight even on
       both legs, arms relaxed at the sides and clear of the body.
+      {build_intro} {build}
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
   - id: body_three_quarter_right
@@ -277,6 +290,7 @@ slots:
       A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
       FEET IN FRAME including both feet, standing turned about 45 degrees so the chest and the face point toward the RIGHT edge of the frame, weight even on
       both legs, arms relaxed at the sides and clear of the body.
+      {build_intro} {build}
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
   - id: body_profile_right
@@ -290,6 +304,7 @@ slots:
       A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
       FEET IN FRAME including both feet, standing in FULL PROFILE, turned 90 degrees so the chest and the face point directly at the RIGHT edge of the frame, weight even on
       both legs, arms relaxed at the sides and clear of the body.
+      {build_intro} {build}
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
   - id: body_three_quarter_back_right
@@ -311,6 +326,7 @@ slots:
       PROFILE: the eye, the mouth and the front of the chin must not be
       visible. Weight even on
       both legs, arms relaxed at the sides and clear of the body.
+      {build_intro} {build}
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
   - id: body_back
@@ -324,6 +340,7 @@ slots:
       A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
       FEET IN FRAME including both feet, standing directly away from the camera, the back of the head and body to the lens, weight even on
       both legs, arms relaxed at the sides and clear of the body.
+      {build_intro} {build}
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
   - id: body_three_quarter_back_left
@@ -345,6 +362,7 @@ slots:
       PROFILE: the eye, the mouth and the front of the chin must not be
       visible. Weight even on
       both legs, arms relaxed at the sides and clear of the body.
+      {build_intro} {build}
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
   - id: body_profile_left
@@ -358,6 +376,7 @@ slots:
       A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
       FEET IN FRAME including both feet, standing in FULL PROFILE, turned 90 degrees so the chest and the face point directly at the LEFT edge of the frame, weight even on
       both legs, arms relaxed at the sides and clear of the body.
+      {build_intro} {build}
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
   - id: body_three_quarter_left
@@ -371,6 +390,7 @@ slots:
       A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
       FEET IN FRAME including both feet, standing turned about 45 degrees so the chest and the face point toward the LEFT edge of the frame, weight even on
       both legs, arms relaxed at the sides and clear of the body.
+      {build_intro} {build}
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
 # What `--character <name>` sends when nobody picks. Sixteen slots does not mean

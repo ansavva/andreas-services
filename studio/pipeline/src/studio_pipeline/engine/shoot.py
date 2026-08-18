@@ -171,6 +171,27 @@ def _first_top(profile: dict) -> str:
             f"with no logo, text or embroidery")
 
 
+def _build_text(profile: dict) -> str:
+    """The person's PROPORTIONS, for a body plate — from the bible, never here.
+
+    A body plate exists to record a build, and the first one rendered lost it:
+    the figure came back lean and narrow-shouldered, with none of the bible's
+    shoulder-to-waist taper or arm mass. The cause is the pose plate. It is an
+    untextured mannequin with its own proportions, and `{guide}`'s "take nothing
+    else from it — not its build, proportions" was the only thing arguing
+    otherwise, buried against a whole reference image.
+
+    So the same lesson as the crop and the profile: state it in the foreground,
+    with something checkable in it. The bible already carries exactly that under
+    `body.silhouette` — a ratio, in head-widths — and `body.arms`. This reads
+    them out; the wording stays generic because the specifics belong to the
+    character (hard rule 1).
+    """
+    body = profile.get("body") or {}
+    parts = [str(body.get(k) or "").strip() for k in ("silhouette", "arms")]
+    return " ".join(" ".join(p.split()) for p in parts if p)
+
+
 def _style_text(profile: dict, defaults: dict) -> str:
     """What MEDIUM to render in — the character's, never this code's.
 
@@ -211,6 +232,7 @@ def build_prompt(slot: dict, spec: dict, profile: dict,
         "top": _first_top(profile),
         "style": _style_text(profile, defaults),
         "must": _must_text(profile, intro),
+        "build": _build_text(profile),
         "identity_block": (profile.get("text_identity_block") or "").strip(),
         "pose_slot": f"[Image{pose_position}]",
         "identity_slots": _slots_phrase(identity_positions),

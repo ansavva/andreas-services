@@ -144,6 +144,39 @@ def test_face_back_three_quarters_bind_a_torso_guide(spec):
         "only the face back three-quarters should need a second guide"
 
 
+def test_every_body_slot_states_the_build_and_disowns_the_guides(spec):
+    """A body plate exists to record a build, and the first one lost it.
+
+    The figure came back lean and narrow-shouldered with none of the bible's
+    taper or arm mass, because the pose plate is a mannequin with proportions of
+    its own and `{guide}`'s "not its build, proportions" was one buried clause
+    against a whole reference image. `{build}` puts the bible's own silhouette
+    and arms in the foreground; the intro disowns the guide explicitly.
+
+    Face slots do not carry it: they crop at mid-chest, so there is no build in
+    frame to get wrong.
+    """
+    for slot in spec["slots"]:
+        if slot["group"] == "body":
+            assert "{build}" in slot["prompt"], slot["id"]
+            assert "{build_intro}" in slot["prompt"], slot["id"]
+        else:
+            assert "{build}" not in slot["prompt"], slot["id"]
+    intro = (spec["defaults"] or {}).get("build_intro", "")
+    assert "NOT THE GUIDE" in intro, "the intro must disown the pose guide by name"
+
+
+def test_the_build_text_comes_from_the_bible_not_the_spec(spec):
+    """Hard rule 1: proportions are character specifics, so the spec may only
+    name the placeholder. A bible with no `body:` block must still render."""
+    filled = SHOOT._build_text({"body": {"silhouette": "Sil.", "arms": "Arms."}})
+    assert filled == "Sil. Arms."
+    assert SHOOT._build_text({}) == ""
+    text = yaml.safe_dump(spec)
+    for leak in ("head-width", "V-taper", "biceps"):
+        assert leak not in text, f"the spec hardcodes {leak!r}"
+
+
 def test_no_prompt_describes_direction_from_the_subjects_own_side(spec):
     """"Their left" is unresolvable without also knowing what the viewer sees,
     and pairing the two is how the contradiction got in. Frame edges only."""
