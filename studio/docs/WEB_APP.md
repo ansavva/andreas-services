@@ -14,7 +14,7 @@ Studio's app half is a private media browser, served from two hostnames:
 | API | `studio-api.andreas.services` | Flask Lambda behind an API Gateway custom domain. |
 
 The generation pipeline writes every image and video it produces into
-`s3://xharness-prod-media-us-east-1/`. Studio makes that browsable:
+`s3://studio-prod-media-us-east-1/`. Studio makes that browsable:
 folders keep their structure, images and video are the focus, and every item can
 be opened fullscreen or flipped through as a vertical reel.
 
@@ -75,7 +75,7 @@ studio/
 
 ## What this service may do to the bucket
 
-`xharness-prod-media-us-east-1` is studio's own bucket, declared in
+`studio-prod-media-us-east-1` is studio's own bucket, declared in
 `infra/modules/media` and imported into `studio/prod` state in August 2026. It
 did not used to be: it was provisioned from a separate repo, and this section
 used to be titled *The media bucket is not ours* and forbade any resource or
@@ -135,10 +135,15 @@ that sentence is no longer true of either half — a write-capable role now reac
 the whole bucket. Setting the prefix to a real value narrows reads and writes
 together, and is the lever to reach for if that ever needs to be true again.
 
-There is **no second copy of this bucket anywhere.** An older mirror called
+There is **no second live copy of this bucket.** An older mirror called
 `xharness-assets` used to exist and this file used to offer it as a fallback;
 it has since been deleted, and the note is removed rather than left to be
 believed. Versioning and `prevent_destroy` are what stand in its place.
+
+`xharness-prod-media-us-east-1` is not a counter-example. It is the bucket this
+one was renamed out of, it holds everything as of the August 2026 cutover, and
+it is kept for the version history that the copy did not carry — but it is
+frozen. Nothing writes to it, so it is a floor under recovery, not a mirror.
 
 ## What the bucket looks like
 

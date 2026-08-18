@@ -19,7 +19,7 @@ The rest of this file is about the app; the pipeline's own doc covers the other
 half.
 
 The pipeline writes every image and video it generates into
-`s3://xharness-prod-media-us-east-1/`, split between `characters/` (who a
+`s3://studio-prod-media-us-east-1/`, split between `characters/` (who a
 subject is — seeds, references, a profile) and `projects/` (what was generated
 of them — runs and scenes). Studio makes that library viewable: the folder
 structure is preserved so a subject's seeds, references and runs stay where you

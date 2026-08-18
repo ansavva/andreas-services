@@ -497,7 +497,7 @@ def test_an_unknown_slot_lists_the_real_ones(spec):
 
 def _seed_plates(s3, spec):
     for slot in spec["slots"]:
-        s3.put_object(Bucket=os.environ["XHARNESS_S3_BUCKET"],
+        s3.put_object(Bucket=os.environ["STUDIO_S3_BUCKET"],
                       Key=slot["pose_image"], Body=b"png-bytes")
 
 

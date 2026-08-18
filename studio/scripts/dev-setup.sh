@@ -148,10 +148,18 @@ EOF
     cp "$STUDIO_DIR/.env.example" "$STUDIO_DIR/.env"
     warn "created studio/.env from the example — add your REPLICATE_API_TOKEN."
   fi
-  if [ -n "$MEDIA_BUCKET" ] && ! grep -q "^XHARNESS_S3_BUCKET=" "$STUDIO_DIR/.env"; then
-    printf '\n# The media bucket, read from SSM by dev-setup.sh.\nXHARNESS_S3_BUCKET=%s\n' \
+  # A .env written before the bucket rename pins XHARNESS_S3_BUCKET, which
+  # nothing reads any more. Say so rather than leaving a line that looks like
+  # configuration and is not — it names the archive bucket, so believing it
+  # means believing writes are going somewhere they are not.
+  if grep -q "^XHARNESS_S3_" "$STUDIO_DIR/.env"; then
+    warn "studio/.env still sets XHARNESS_S3_* — dead since the bucket rename."
+    warn "  The variables are STUDIO_S3_* now. Delete the old lines."
+  fi
+  if [ -n "$MEDIA_BUCKET" ] && ! grep -q "^STUDIO_S3_BUCKET=" "$STUDIO_DIR/.env"; then
+    printf '\n# The media bucket, read from SSM by dev-setup.sh.\nSTUDIO_S3_BUCKET=%s\n' \
       "$MEDIA_BUCKET" >> "$STUDIO_DIR/.env"
-    log "pinned XHARNESS_S3_BUCKET=$MEDIA_BUCKET in studio/.env"
+    log "pinned STUDIO_S3_BUCKET=$MEDIA_BUCKET in studio/.env"
   fi
   # -------------------------------------------------------------------------
   # 3b. Copy the shared config assets out to the bucket.

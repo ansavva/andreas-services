@@ -14,17 +14,24 @@ import re
 import subprocess
 import sys
 
-BUCKET = os.environ.get("XHARNESS_S3_BUCKET", "xharness-prod-media-us-east-1")
+# STUDIO_S3_*, not XHARNESS_S3_*. The bucket was renamed to
+# `studio-prod-media-us-east-1` and the variables were renamed with it, which is
+# load-bearing rather than tidiness: `dev-setup.sh` only writes the variable
+# when it is absent, so every developer with an older `.env` carried a pinned
+# `XHARNESS_S3_BUCKET=xharness-...` that would have quietly kept the pipeline
+# writing to the archive after the cutover. Renaming the variable makes that
+# stale line inert instead of silently wrong.
+BUCKET = os.environ.get("STUDIO_S3_BUCKET", "studio-prod-media-us-east-1")
 # The tree lives at the bucket ROOT. `media/` was a leftover from mirroring
 # Google Drive 1:1 and bought nothing — the bucket is the media store. This
 # stays as the single place a global prefix could be reintroduced (a shared
 # bucket, a staging copy) without any other module learning about it.
-PREFIX = os.environ.get("XHARNESS_S3_PREFIX", "")
+PREFIX = os.environ.get("STUDIO_S3_PREFIX", "")
 if PREFIX:
     PREFIX = PREFIX.strip("/") + "/"
 # LEGACY: the pre-restructure prefix. Used only by the migrator, to recognise
 # what has not been moved yet. It goes away once no bucket holds an old tree.
-MEDIA_PREFIX = os.environ.get("XHARNESS_S3_MEDIA_PREFIX", "media/").strip("/") + "/"
+MEDIA_PREFIX = os.environ.get("STUDIO_S3_MEDIA_PREFIX", "media/").strip("/") + "/"
 REGION = (
     os.environ.get("AWS_REGION")
     or os.environ.get("AWS_DEFAULT_REGION")

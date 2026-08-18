@@ -1,23 +1,23 @@
 ---
 name: studio-media-s3
-description: Read from and write to the xharness-prod-media-us-east-1 S3 bucket via the AWS CLI/boto3 — list a prefix, upload local files, download files to disk, and mint short-lived presigned HTTPS URLs (how images/videos reach Replicate). The canonical asset store for the studio-* workflow, holding CHARACTERS (identity records) and PROJECTS (runs, chains, scenes, movies, input). Use when a skill or task needs to store, fetch, list, or hand out large media assets, to record or address a run, or to cut runs into a scene and scenes into a movie.
+description: Read from and write to the studio-prod-media-us-east-1 S3 bucket via the AWS CLI/boto3 — list a prefix, upload local files, download files to disk, and mint short-lived presigned HTTPS URLs (how images/videos reach Replicate). The canonical asset store for the studio-* workflow, holding CHARACTERS (identity records) and PROJECTS (runs, chains, scenes, movies, input). Use when a skill or task needs to store, fetch, list, or hand out large media assets, to record or address a run, or to cut runs into a scene and scenes into a movie.
 ---
 
 # S3 skill
 
-The asset layer for xharness. Files move **disk ↔ S3 directly** (never
+The asset layer for studio. Files move **disk ↔ S3 directly** (never
 base64-inlined into the agent context), so it handles full-resolution images and
 multi-MB videos cheaply. It replaced the Google Drive layer for the
 `studio-*` workflow.
 
-Everything lives in one bucket, **`xharness-prod-media-us-east-1`**, at its
+Everything lives in one bucket, **`studio-prod-media-us-east-1`**, at its
 **root** — there is no wrapper prefix. (There was a `media/` one, inherited from
 mirroring Google Drive 1:1; it bought nothing and is gone.) Paths passed to
 these scripts are full keys, e.g. `characters/<name>/reference`. The bucket is
 provisioned by Terraform in [`infra/`](../../../infra/README.md).
 
-Bucket / prefix / region are overridable via env: `XHARNESS_S3_BUCKET`
-(default `xharness-prod-media-us-east-1`), `XHARNESS_S3_PREFIX` (default
+Bucket / prefix / region are overridable via env: `STUDIO_S3_BUCKET`
+(default `studio-prod-media-us-east-1`), `STUDIO_S3_PREFIX` (default
 empty — set it only to stage a copy of the tree elsewhere), `AWS_REGION`
 (default `us-east-1`).
 

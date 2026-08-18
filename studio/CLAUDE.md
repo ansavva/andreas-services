@@ -12,7 +12,7 @@ Studio is one service with two halves that share one S3 bucket.
 |---|---|---|---|
 | **The pipeline** — makes the media | `pipeline/` (code) + `.claude/skills/` (docs) | Locally, inside Claude, under your own AWS login. **Never deploys.** | [docs/PIPELINE.md](docs/PIPELINE.md) |
 | **The app** — browses the media | `backend/`, `frontend/` | `studio.andreas.services` + `studio-api.andreas.services`, deployed by CI | [docs/WEB_APP.md](docs/WEB_APP.md) |
-| The bucket both use | `infra/modules/media` | `s3://xharness-prod-media-us-east-1/` | [infra/README.md](infra/README.md) |
+| The bucket both use | `infra/modules/media` | `s3://studio-prod-media-us-east-1/` | [infra/README.md](infra/README.md) |
 
 That split is unusual for this monorepo, where a service directory is normally a
 deployable unit and nothing else. It is deliberate: the tools that produce the
@@ -24,9 +24,13 @@ nothing** — the CI path filters exclude all three.
 The pipeline is one package exposing one command. `studio --help` lists every
 subcommand; `scripts/dev-setup.sh` installs it and puts it on PATH.
 
-The bucket name is grandfathered from that era and does not follow the repo's
-naming convention. It is not an oversight; see
-[infra/modules/media/variables.tf](infra/modules/media/variables.tf).
+The bucket was named from that era and did not follow the repo's
+`[project]-[env]-[component]-[region]` convention. It was renamed in August
+2026 — a second bucket plus a verified copy, because S3 has no rename and the
+old one held the only copy of the media. The original,
+`xharness-prod-media-us-east-1`, is retained permanently as the archive: it
+holds the version history a copy of current objects does not carry. See
+[infra/README.md](infra/README.md).
 
 ---
 

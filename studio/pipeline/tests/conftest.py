@@ -19,14 +19,14 @@ os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 # Explicit rather than defaulted: the pipeline's bucket and prefix come from
 # XHARNESS_S3_* , and a stale value in a shell would silently move every
 # assertion in the suite onto a different tree.
-os.environ["XHARNESS_S3_BUCKET"] = "xharness-prod-media-us-east-1"
-os.environ["XHARNESS_S3_PREFIX"] = ""
+os.environ["STUDIO_S3_BUCKET"] = "studio-prod-media-us-east-1"
+os.environ["STUDIO_S3_PREFIX"] = ""
 # Never let a test reach the real API, whatever is in studio/.env.
 os.environ["REPLICATE_API_TOKEN"] = "r8_test_token"
 
 from moto import mock_s3
 
-BUCKET = "xharness-prod-media-us-east-1"
+BUCKET = "studio-prod-media-us-east-1"
 
 
 def _json(doc: dict) -> bytes:
