@@ -322,10 +322,12 @@ When in doubt, render the payload into the conversation and stop.
 ## The standard set (`shoot`)
 
 A reference library is chosen from **by tag**, so an angle nobody shot is an angle
-nobody can pick. `shoot` renders the same sixteen every character should have —
-eight `face` and the same eight `body`, a full turn in both: front, three-quarter
-and profile to each side, both three-quarter-backs, and back. Face slots are
-cropped at mid-chest; body slots are the whole figure, head to feet.
+nobody can pick. `shoot` renders the fourteen every character should have —
+eight `face` and six `body`. Face is a full turn: front, three-quarter and
+profile to each side, both three-quarter-backs, and back. Body is the same turn
+**without the two front three-quarters**, whose pose plate is refused as
+sensitive content by every model that has tried it. Face slots are cropped at
+mid-chest; body slots are the whole figure, head to feet.
 
 **Direction is always the edge of frame the face points toward**, never the
 subject's own left or right. `three_quarter_left` means the nose points at the

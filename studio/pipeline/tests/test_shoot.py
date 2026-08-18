@@ -88,7 +88,13 @@ def test_opposite_slots_carry_opposite_frame_directions(spec):
     for group in P.POSE_GROUPS:
         for pair in ("three_quarter", "profile", "three_quarter_back"):
             left, right = f"{group}_{pair}_left", f"{group}_{pair}_right"
-            assert left in by_id and right in by_id, f"{group} is missing {pair} pair"
+            # A pair may be absent — the body front three-quarters were dropped
+            # when their plate turned out to be unrenderable. What must never
+            # happen is HALF a pair, which is how a one-sided set looks like
+            # coverage.
+            if left not in by_id and right not in by_id:
+                continue
+            assert left in by_id and right in by_id, f"{group} has half of the {pair} pair"
             assert "LEFT edge" in by_id[left]["prompt"], left
             assert "RIGHT edge" not in by_id[left]["prompt"], left
             assert "RIGHT edge" in by_id[right]["prompt"], right
@@ -195,9 +201,19 @@ def test_every_face_slot_states_the_crop(spec):
             assert "no legs" in slot["prompt"], slot["id"]
 
 
-def test_the_set_covers_eight_orientations_in_both_groups(spec):
-    for group in P.POSE_GROUPS:
-        assert len([s for s in spec["slots"] if s["group"] == group]) == 8
+def test_the_set_covers_the_orientations_each_group_can_render(spec):
+    """Face covers all eight. Body covers six.
+
+    The body front three-quarters are gone, and deliberately: their pose plate
+    is a figure gpt-image-2 refuses (four refusals across two models, both as an
+    upscale subject and as a guide), so the slots could not be rendered at all.
+    A slot nobody can shoot is worse than an absent one — it reads as coverage
+    and fails at spend time, and one refusal aborts the whole batch around it.
+    """
+    counts = {g: len([s for s in spec["slots"] if s["group"] == g]) for g in P.POSE_GROUPS}
+    assert counts == {"face": 8, "body": 6}, counts
+    gone = {"body_three_quarter_left", "body_three_quarter_right"}
+    assert not gone & {s["id"] for s in spec["slots"]}
 
 
 def test_every_body_slot_demands_the_whole_figure(spec):

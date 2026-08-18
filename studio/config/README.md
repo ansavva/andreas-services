@@ -6,14 +6,15 @@ reference shoot renders a character's standard set.
 
 ```
 config/pose/face/*.png    eight orientations
-config/pose/body/*.png    the same eight
+config/pose/body/*.png    six of the same eight
 config/pose/source/       the sheets the plates came from
 config/pose/prompts/*.md  prompts to regenerate either set
 ```
 
 The eight, in turn order: `front`, `three-quarter-right`, `profile-right`,
 `three-quarter-back-right`, `back`, `three-quarter-back-left`, `profile-left`,
-`three-quarter-left`.
+`three-quarter-left`. **The body set has six of them** — the two front
+three-quarters are gone; see below.
 
 `source/` holds the sheets the plates were cut from, kept so the splits stay
 reproducible. It lived inside a character's pools for a while —
@@ -86,11 +87,18 @@ upscale and a background change only, which the model holds reliably where
 from a head plate both came back near-front-on regardless of the angle asked
 for, so that route was abandoned.
 
-`three-quarter-left` and `three-quarter-right` in the body group are the one
-exception: their source figure was refused by gpt-image-2 twice and gpt-image-1.5
-once as sensitive content, so they remain at their original 129×478 while the
-other six are 1024×1536. nano-banana-pro was unavailable at the time and is the
-one model that has not actually refused it.
+**`three-quarter-left` and `three-quarter-right` no longer exist in the body
+group, and should not be recreated.** Their source figure is refused as
+sensitive content: twice by gpt-image-2 and once by gpt-image-1.5 as the subject
+of an upscale, and again by gpt-image-2 as a mere pose guide, with the rest of
+the figure never drawn. Four refusals across two models is enough — the plates
+and their two slots were dropped rather than kept as work that fails at spend
+time. A slot nobody can render is worse than an absent one: it reads as
+coverage, and one refusal aborts the whole batch around it.
+
+That leaves the body turnaround without its front quarters. The remaining six
+still give front, both profiles, back and both back three-quarters, which is
+what a build reference is mostly for.
 
 These are generic, unbranded and used privately, but not originally ours — if you
 want a set with no third-party lineage, regenerate and keep the filenames:

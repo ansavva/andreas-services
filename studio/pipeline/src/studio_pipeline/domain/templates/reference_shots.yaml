@@ -279,20 +279,6 @@ slots:
       {build_intro} {build}
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
-  - id: body_three_quarter_right
-    group: body
-    pose_image: config/pose/body/three-quarter-right.png
-    description: >-
-      Full body head to feet, turned toward the right edge of frame, white seamless backdrop.
-    tags: [body, three-quarter, right, full-body, studio]
-    prompt: >-
-      {identity_slots} show the person. {pose_slot} {guide}
-      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
-      FEET IN FRAME including both feet, standing turned about 45 degrees so the chest and the face point toward the RIGHT edge of the frame, weight even on
-      both legs, arms relaxed at the sides and clear of the body.
-      {build_intro} {build}
-      {minimal}. {backdrop_body} {light} {style} {quality} {must}
-
   - id: body_profile_right
     group: body
     pose_image: config/pose/body/profile-right.png
@@ -379,22 +365,8 @@ slots:
       {build_intro} {build}
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
-  - id: body_three_quarter_left
-    group: body
-    pose_image: config/pose/body/three-quarter-left.png
-    description: >-
-      Full body head to feet, turned toward the left edge of frame, white seamless backdrop.
-    tags: [body, three-quarter, left, full-body, studio]
-    prompt: >-
-      {identity_slots} show the person. {pose_slot} {guide}
-      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
-      FEET IN FRAME including both feet, standing turned about 45 degrees so the chest and the face point toward the LEFT edge of the frame, weight even on
-      both legs, arms relaxed at the sides and clear of the body.
-      {build_intro} {build}
-      {minimal}. {backdrop_body} {light} {style} {quality} {must}
-
-# What `--character <name>` sends when nobody picks. Sixteen slots does not mean
-# sixteen images sent: this stays face-led and under the smallest cap in play
+# What `--character <name>` sends when nobody picks. Fourteen slots does not mean
+# fourteen images sent: this stays face-led and under the smallest cap in play
 # (Kling takes 7).
 default_set:
   - face_front
