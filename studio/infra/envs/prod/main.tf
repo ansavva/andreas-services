@@ -24,7 +24,7 @@ data "aws_route53_zone" "main" {
 
 data "aws_region" "current" {}
 
-# THE MEDIA BUCKET — and the archive it is being renamed out of.
+# THE MEDIA BUCKET.
 #
 # Studio owns this bucket. It used to be the other way round: the bucket was
 # provisioned from a separate `xharness` repo, and this file carried a long note
@@ -34,29 +34,22 @@ data "aws_region" "current" {}
 # alongside the app that reads it, and the bucket was imported into this state
 # in August 2026.
 #
-# It is now being renamed to `studio-prod-media-us-east-1`, which the original
-# name never matched. An S3 bucket cannot actually be renamed: changing the
-# `bucket` argument is a destroy-and-recreate, and a destroy-and-recreate of
-# THIS bucket is unacceptable. So the "rename" is a second bucket plus a copy,
-# in three separate applies, and this file is at step 1 of 3:
+# It was called `xharness-prod-media-us-east-1` until August 2026, which never
+# matched the `[project]-[env]-[component]-[region]` convention. S3 has no
+# rename, and changing the `bucket` argument is a destroy-and-recreate, so the
+# rename was done as a second bucket plus a verified copy — 938 objects,
+# 1,261,751,658 bytes, every key, size and checksum compared before anything was
+# re-pointed. The old bucket was then deleted deliberately, on an explicit
+# decision, taking its version history with it. `infra/README.md` records what
+# that cost.
 #
-#   1. DONE — renamed the module address. `module.media` became
-#      `module.media_archive` via a `moved` block: a state edit, no AWS resource
-#      created, changed or destroyed. Terraform forbids declaring `module.media`
-#      again while such a block names it as a source, which is why creating the
-#      new bucket could not be folded into it.
-#   2. DONE — created `module.media`, the new correctly-named bucket.
-#   3. THIS APPLY — the cutover. The copy is done and verified: 938 objects and
-#      1,261,751,658 bytes, every key present, every size equal, every ETag
-#      equal. `local.active_media` moves to `module.media`.
+# `prevent_destroy` means `terraform destroy` on this whole environment fails by
+# design (see `modules/media/main.tf`). There is no second copy of this bucket
+# anywhere now, so versioning and that flag are the whole of its protection.
 #
-# The archive is retained permanently at the end of it, and that is the point
-# rather than an oversight. It holds 1,613 noncurrent object versions and 718
-# keys that exist only behind a delete marker — deleted, still recoverable. A
-# copy of current objects carries none of that, so deleting the archive would
-# destroy exactly the recovery history the versioning on these buckets exists to
-# provide. Both buckets carry `prevent_destroy`, which means `terraform destroy`
-# on this whole environment fails by design (see `modules/media/main.tf`).
+# `module.compute` takes its bucket name from the module rather than a bare
+# string, so the IAM policy that grants access has a real dependency edge on the
+# bucket it grants access to.
 
 module "media" {
   source = "../../modules/media"
@@ -65,29 +58,6 @@ module "media" {
   key_prefix  = var.media_root_prefix
 
   tags = local.common_tags
-}
-
-module "media_archive" {
-  source = "../../modules/media"
-
-  bucket_name = var.media_archive_bucket_name
-  key_prefix  = var.media_root_prefix
-
-  tags = local.common_tags
-}
-
-# THE CUTOVER SEAM.
-#
-# Everything downstream — the API's IAM policy, the Lambda's env var, the SSM
-# parameter the skills and `dev-setup.sh` read — follows this local rather than
-# a module reference, so that moving the pipeline from one bucket to the other
-# is a one-line change in its own commit, and a one-line revert.
-#
-# It now points at the new bucket. Reverting the rename is this one line back to
-# `module.media_archive` plus a redeploy — the archive still holds every object,
-# so the revert needs no data movement.
-locals {
-  active_media = module.media
 }
 
 module "auth" {
@@ -107,7 +77,7 @@ module "compute" {
 
   # From the module, not from the variable directly: this is what orders the
   # IAM policy after the bucket exists.
-  media_bucket_name = local.active_media.bucket_name
+  media_bucket_name = module.media.bucket_name
   media_root_prefix = var.media_root_prefix
   allowed_origin    = "https://${local.app_domain}"
 

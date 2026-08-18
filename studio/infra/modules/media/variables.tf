@@ -2,17 +2,11 @@ variable "bucket_name" {
   description = <<-EOT
     Globally-unique S3 bucket name for the media library.
 
-    This module is instantiated TWICE in `envs/prod`: once for the live bucket
-    (`studio-prod-media-us-east-1`) and once for the archive it replaced
-    (`xharness-prod-media-us-east-1`, named before studio absorbed the
-    generation pipeline). Both get identical treatment — versioned, private,
-    encrypted, `prevent_destroy` — because the archive holds the version history
-    the live bucket's copy does not carry, and is not disposable.
-
-    Do not "fix" this by changing the name on an existing instance. A changed
-    bucket name is a destroy-and-recreate, which for either of these is data
-    loss; the second bucket exists precisely because that is not a survivable
-    operation.
+    Do not change this on an existing instance. A changed bucket name is a
+    destroy-and-recreate, and this bucket holds the only copy of the generated
+    media. The August 2026 rename was done as a second module instance plus a
+    verified copy, then a deliberate deletion of the old bucket — not by
+    editing this value.
   EOT
   type        = string
 }

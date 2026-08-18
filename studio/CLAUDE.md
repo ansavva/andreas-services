@@ -28,9 +28,8 @@ The bucket was named from that era and did not follow the repo's
 `[project]-[env]-[component]-[region]` convention. It was renamed in August
 2026 — a second bucket plus a verified copy, because S3 has no rename and the
 old one held the only copy of the media. The original,
-`xharness-prod-media-us-east-1`, is retained permanently as the archive: it
-holds the version history a copy of current objects does not carry. See
-[infra/README.md](infra/README.md).
+`xharness-prod-media-us-east-1`, was then deleted, which destroyed the version
+history the copy did not carry. See [infra/README.md](infra/README.md).
 
 ---
 

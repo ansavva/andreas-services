@@ -5,7 +5,7 @@ Terraform for both halves of studio. One environment, `prod`, with state in
 
 | Module | What it is |
 |---|---|
-| `media` | **The media bucket.** The asset store both halves share. Instantiated twice — the live bucket and the retained archive. |
+| `media` | **The media bucket.** The asset store both halves share. |
 | `auth` | Cognito user pool (admin-create-only) + secretless SPA client |
 | `compute` | ECR repo, the API Lambda, and its IAM — including the bucket policy |
 | `api_gateway` | REST API, Cognito authorizer, CORS gateway responses, stage |
@@ -20,12 +20,12 @@ Applied by `.github/workflows/studio-prod.yaml`, not by hand. Read
 ## The media bucket
 
 **`studio-prod-media-us-east-1`**, `us-east-1`. 938 current objects and 1.26 GB
-of generated media as of the August 2026 cutover.
+of generated media as of the August 2026 rename, and **there is no second copy
+of it anywhere.** Versioning and `prevent_destroy` are the whole of its
+protection.
 
-It was renamed from `xharness-prod-media-us-east-1`, which is retained as the
-archive — see [The rename](#the-rename). The archive is **not** a backup: it is
-frozen at the cutover and nothing writes to it, so this bucket's own versioning
-and `prevent_destroy` remain what protect current work.
+It was renamed from `xharness-prod-media-us-east-1` in August 2026 — see
+[The rename](#the-rename), which also records what the rename cost.
 
 Counting the version history it is 2,572 versions and 2.75 GB, across 1,677
 distinct keys — 718 of which exist only behind a delete marker. That gap between
@@ -59,52 +59,61 @@ studio absorbed the pipeline. It was renamed in August 2026.
 **S3 has no rename.** Changing the `bucket` argument is a destroy-and-recreate,
 and Terraform runs the destroy half against prior state, so `force_destroy`
 added in the same apply is not even read. For a bucket holding the only copy of
-1.27 GB of generated media, that operation does not get attempted. The rename is
-therefore **a second bucket and a copy**, in three applies:
+the generated media, that is not an operation to attempt. The rename was
+therefore a **second bucket and a copy**, in three applies:
 
-| Step | Apply does | Live bucket after |
-| --- | --- | --- |
-| 1 ✅ | `moved` block: `module.media` → `module.media_archive`. State edit only, zero AWS changes. | archive |
-| 2 ✅ | Create `module.media` — the new bucket, empty. | archive |
-| — ✅ | Copy the current objects across, server-side, and verify. | archive |
-| 3 ✅ | Flip `local.active_media`, and re-point the skills, backend, tests and docs. | **new** |
+| Step | Apply |
+| --- | --- |
+| 1 | `moved` block: `module.media` → `module.media_archive`. State edit only. |
+| 2 | Create `module.media` — the new bucket, empty. |
+| — | Copy the current objects across, server-side, and verify. |
+| 3 | Re-point the IAM policy, the skills, backend, tests and docs. |
 
-Steps 1 and 2 cannot be one apply: Terraform refuses to declare `module.media`
-while a `moved` block still names it as a source.
+The copy was verified before anything was re-pointed: 938 keys,
+1,261,751,658 bytes, every key present, every size equal, every ETag equal. Two
+traps had to be handled for that comparison to mean anything:
 
-`local.active_media` in `envs/prod/main.tf` is the seam. The API's IAM policy,
-the Lambda's env var and the `/studio/prod/media-bucket` SSM parameter all
-follow it, so step 3 was one line to move and is one line to revert — and the
-revert needs no data movement, because the archive still holds everything.
+- `aws s3 sync` **skips zero-byte keys ending in `/`**, so a folder marker did
+  not copy — and being zero-byte, the byte totals still matched exactly. The
+  object count caught it; a size check never would have.
+- `sync` **uses multipart copy above 8 MB**, and a multipart ETag is an
+  MD5-of-MD5s that cannot be compared with a single-part MD5. That left 29
+  objects reading "different" at identical sizes. They were re-copied
+  single-part so the checksums compare directly rather than being waved through.
 
-The copy was verified before the seam moved: 938 keys, 1,261,751,658 bytes,
-every key present, every size equal, every ETag equal. `aws s3 sync` skips
-zero-byte keys ending in `/`, so one folder marker was copied separately; and
-it uses multipart copy above 8 MB, which produces a `-N` ETag that cannot be
-compared with a single-part MD5, so those 29 objects were re-copied single-part
-to make the comparison exact rather than assumed.
+Two other things bit, both worth knowing before the next migration:
 
-The `XHARNESS_S3_*` environment variables became `STUDIO_S3_*` in the same
-commit. That is not tidiness: `dev-setup.sh` writes the variable only when it is
-absent, so an existing `.env` would have kept a pinned `XHARNESS_S3_BUCKET`
-pointing at the archive and quietly kept writing there. Renaming the variable
-makes a stale line inert instead of wrong.
+- A `moved` block **breaks any `-target`ed apply** whose target set excludes the
+  moved resources — "Moved resource instances excluded by targeting". The
+  `bootstrap-ecr` job did exactly that and took every studio deploy down with
+  it, naming ECR while the cause was an S3 module rename. That job now skips
+  itself once the repository exists.
+- `XHARNESS_S3_*` became `STUDIO_S3_*` in the same commit as the cutover, which
+  was load-bearing rather than tidiness. `dev-setup.sh` writes the variable only
+  when it is *absent*, so an existing `.env` would have kept a pinned
+  `XHARNESS_S3_BUCKET` naming the old bucket and quietly kept writing there.
+  Renaming the variable makes a stale line inert instead of wrong.
 
-### The archive is permanent
+### What the rename cost
 
-`xharness-prod-media-us-east-1` is **not** deleted at the end. It is not a
-staging artefact.
+The old bucket was deleted in August 2026, on an explicit decision, once the
+copy was verified. **Deleting it destroyed data that existed nowhere else:**
 
-Copying current objects moves 959 of 1,677 keys. The other 718 are deleted
-objects still recoverable behind a delete marker, and the 1,613 noncurrent
-versions are the prior revisions that make an overwrite recoverable. None of it
-survives a copy, and none of it is reproducible from anywhere else — it *is* the
-recovery history that versioning on this bucket exists to provide.
+- 1,662 noncurrent object versions (1.51 GB) — every prior revision of every
+  file that had ever been overwritten
+- 767 keys recoverable only behind a delete marker — files deleted by curate
+  runs and the app's tidy-up actions, restorable right up until the bucket went
 
-So the archive keeps `prevent_destroy`, keeps its versioning, and stays in
-state. Recovering something from before the cutover means reaching into it. If
-it is ever retired, that is a separate deliberate decision with its own
-argument, not a tidy-up at the end of this one.
+Copying current objects moves 938 of roughly 1,700 keys that had ever existed.
+The rest was history, and history is what a copy does not carry. That is the
+part worth remembering: it was not visible in any listing, the app looked
+completely intact without it, and it was still the entire "an overwrite or a
+delete is recoverable" property that versioning on the bucket existed to
+provide.
+
+The live bucket is now versioned with no second copy behind it. A delete there
+is recoverable only from its own version history, and that history has no
+backstop.
 
 ### How it got into this state
 

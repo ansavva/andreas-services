@@ -10,32 +10,13 @@ variable "media_bucket_name" {
     and written by the generation skills. Follows the repo's
     `[project]-[env]-[component]-[region]` convention.
 
-    It did not always. See `media_archive_bucket_name` below for the bucket this
-    one replaced and why that one is still here.
+    Do not change this value to rename the bucket. S3 has no rename: a changed
+    name is a destroy-and-recreate, and this bucket holds the only copy of the
+    generated media. Renaming means a second bucket and a verified copy, which
+    is what was done in August 2026 — see `../../README.md`.
   EOT
   type        = string
   default     = "studio-prod-media-us-east-1"
-}
-
-variable "media_archive_bucket_name" {
-  description = <<-EOT
-    The ORIGINAL media bucket, kept permanently.
-
-    Created from a separate `xharness` repo before studio absorbed the pipeline,
-    which is why its name does not follow the convention. It was not renamed,
-    because an S3 bucket cannot be: a name change is a destroy-and-recreate.
-    `media_bucket_name` is a second bucket, and the current objects were copied
-    across.
-
-    A copy of current objects is not a copy of the bucket. This one holds 1,613
-    noncurrent versions and 718 keys that survive only behind a delete marker —
-    the entire "an overwrite or a delete is recoverable" property the versioning
-    on these buckets exists for. That history is not reproducible anywhere else,
-    so the archive is retained rather than emptied and dropped. It carries
-    `prevent_destroy` for the same reason the live bucket does.
-  EOT
-  type        = string
-  default     = "xharness-prod-media-us-east-1"
 }
 
 variable "media_root_prefix" {
