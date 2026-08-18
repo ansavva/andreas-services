@@ -8,7 +8,13 @@ aws_region = "us-east-1"
 # names, studio only ever reads it — the IAM policy grants no write action.
 # An empty root prefix browses the whole bucket, which is what prod does; any
 # other value must end in a slash.
-media_bucket_name = "xharness-prod-media-us-east-1"
+media_bucket_name = "studio-prod-media-us-east-1"
+
+# The bucket the one above was renamed out of, retained permanently as the
+# archive. It holds the version history the copy did not carry, so it is a
+# real resource under management, not a leftover. Do not point
+# media_bucket_name at it.
+media_archive_bucket_name = "xharness-prod-media-us-east-1"
 media_root_prefix = ""
 
 api_throttling_rate_limit  = 25

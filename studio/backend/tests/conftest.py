@@ -7,7 +7,7 @@ import pytest
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")
 os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
-os.environ.setdefault("STUDIO_MEDIA_BUCKET", "xharness-prod-media-us-east-1")
+os.environ.setdefault("STUDIO_MEDIA_BUCKET", "studio-prod-media-us-east-1")
 # Assigned rather than defaulted: the browsable root is the whole bucket, and a
 # stale `STUDIO_MEDIA_ROOT_PREFIX` left in a shell would otherwise silently
 # rewrite what every test in the suite is asserting about.

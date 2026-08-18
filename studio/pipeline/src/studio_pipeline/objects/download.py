@@ -1,5 +1,5 @@
 """List or download objects from the media tree of the
-xharness-prod-media-us-east-1 bucket.
+studio-prod-media-us-east-1 bucket.
 
   studio download --folder <name>/reference --list
   studio download --folder <name>/reference --all --dest /tmp/refs --json

@@ -1,5 +1,5 @@
 """Upload local file(s) into the media tree of the
-xharness-prod-media-us-east-1 bucket.
+studio-prod-media-us-east-1 bucket.
 
   studio upload --folder <name>/output output/<name>/clip.mp4
   studio upload --folder <name>/reference img/*.webp --presign --json

@@ -133,7 +133,7 @@ def test_add_inputs_returns_the_key_it_wrote(media_bucket, tmp_path):
     assert added[0]["key"].startswith("projects/subject-a/input/")
     assert added[0]["key"].endswith(".jpeg")
     # It is really there.
-    media_bucket.head_object(Bucket="xharness-prod-media-us-east-1", Key=added[0]["key"])
+    media_bucket.head_object(Bucket="studio-prod-media-us-east-1", Key=added[0]["key"])
 
 
 def test_editing_a_bible_writes_it_back_where_it_was_read_from(media_bucket, tmp_path):

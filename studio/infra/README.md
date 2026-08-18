@@ -19,10 +19,13 @@ Applied by `.github/workflows/studio-prod.yaml`, not by hand. Read
 
 ## The media bucket
 
-**`xharness-prod-media-us-east-1`**, `us-east-1`, being renamed to
-**`studio-prod-media-us-east-1`** — see [The rename](#the-rename) below for
-where that has got to. 959 current objects and 1.27 GB of generated media, and
-**there is no second copy of it anywhere.**
+**`studio-prod-media-us-east-1`**, `us-east-1`. 938 current objects and 1.26 GB
+of generated media as of the August 2026 cutover.
+
+It was renamed from `xharness-prod-media-us-east-1`, which is retained as the
+archive — see [The rename](#the-rename). The archive is **not** a backup: it is
+frozen at the cutover and nothing writes to it, so this bucket's own versioning
+and `prevent_destroy` remain what protect current work.
 
 Counting the version history it is 2,572 versions and 2.75 GB, across 1,677
 distinct keys — 718 of which exist only behind a delete marker. That gap between
@@ -49,9 +52,9 @@ without anything being lost. Re-measure before relying on them.
 
 ### The rename
 
-The convention is `[project]-[env]-[component]-[region]`, which makes this
-`studio-prod-media-us-east-1`. It was not, because the bucket was created from a
-separate `xharness` repo before studio absorbed the pipeline.
+The convention is `[project]-[env]-[component]-[region]`. The bucket was
+`xharness-prod-media-us-east-1`, created from a separate `xharness` repo before
+studio absorbed the pipeline. It was renamed in August 2026.
 
 **S3 has no rename.** Changing the `bucket` argument is a destroy-and-recreate,
 and Terraform runs the destroy half against prior state, so `force_destroy`
@@ -62,16 +65,30 @@ therefore **a second bucket and a copy**, in three applies:
 | Step | Apply does | Live bucket after |
 | --- | --- | --- |
 | 1 ✅ | `moved` block: `module.media` → `module.media_archive`. State edit only, zero AWS changes. | archive |
-| 2 | Create `module.media` — the new bucket, empty. | archive |
-| — | Copy the 959 current objects across, server-side, and verify. | archive |
-| 3 | Flip `local.active_media`, and re-point the skills, backend, tests and docs. | **new** |
+| 2 ✅ | Create `module.media` — the new bucket, empty. | archive |
+| — ✅ | Copy the current objects across, server-side, and verify. | archive |
+| 3 ✅ | Flip `local.active_media`, and re-point the skills, backend, tests and docs. | **new** |
 
 Steps 1 and 2 cannot be one apply: Terraform refuses to declare `module.media`
 while a `moved` block still names it as a source.
 
 `local.active_media` in `envs/prod/main.tf` is the seam. The API's IAM policy,
 the Lambda's env var and the `/studio/prod/media-bucket` SSM parameter all
-follow it, so step 3 is one line to move and one line to revert.
+follow it, so step 3 was one line to move and is one line to revert — and the
+revert needs no data movement, because the archive still holds everything.
+
+The copy was verified before the seam moved: 938 keys, 1,261,751,658 bytes,
+every key present, every size equal, every ETag equal. `aws s3 sync` skips
+zero-byte keys ending in `/`, so one folder marker was copied separately; and
+it uses multipart copy above 8 MB, which produces a `-N` ETag that cannot be
+compared with a single-part MD5, so those 29 objects were re-copied single-part
+to make the comparison exact rather than assumed.
+
+The `XHARNESS_S3_*` environment variables became `STUDIO_S3_*` in the same
+commit. That is not tidiness: `dev-setup.sh` writes the variable only when it is
+absent, so an existing `.env` would have kept a pinned `XHARNESS_S3_BUCKET`
+pointing at the archive and quietly kept writing there. Renaming the variable
+makes a stale line inert instead of wrong.
 
 ### The archive is permanent
 
@@ -113,7 +130,7 @@ that matches nothing is not an error to S3.)
 Two trees, because they are two different things:
 
 ```
-s3://xharness-prod-media-us-east-1/
+s3://studio-prod-media-us-east-1/
   characters/<name>/          an IDENTITY record
       profile.yaml            the bible, including the described reference index
       reference/              generated character imagery, in purpose subfolders
@@ -149,15 +166,15 @@ URL** — short-lived, no credentials leaked — since it only needs a fetchable
 HTTPS URL for the duration of the job.
 
 ```bash
-aws s3 presign s3://xharness-prod-media-us-east-1/characters/<name>/reference/face/<name>_1.webp --expires-in 3600
+aws s3 presign s3://studio-prod-media-us-east-1/characters/<name>/reference/face/<name>_1.webp --expires-in 3600
 ```
 
 ```bash
-aws s3 cp ./<name>_1.webp s3://xharness-prod-media-us-east-1/characters/<name>/reference/face/<name>_1.webp
+aws s3 cp ./<name>_1.webp s3://studio-prod-media-us-east-1/characters/<name>/reference/face/<name>_1.webp
 ```
 
 ```bash
-aws s3 cp s3://xharness-prod-media-us-east-1/projects/<project>/runs/<run_id>/output/clip.mp4 ./clip.mp4
+aws s3 cp s3://studio-prod-media-us-east-1/projects/<project>/runs/<run_id>/output/clip.mp4 ./clip.mp4
 ```
 
 Prefer the `studio-s3` skill over raw CLI for anything that touches a record — moving

@@ -97,7 +97,7 @@ developer's machine and never deploys; the CI path filters exclude it from the
 prod workflow. The other half is an ordinary Flask + Vite service. Both share the
 media S3 bucket, which `studio/infra/modules/media` owns. It is also the one
 bucket whose name predates the naming convention below and is deliberately
-grandfathered — see `studio/infra/README.md`.
+renamed in August 2026 — see `studio/infra/README.md`.
 
 **Those skills come in two families, and picking one is the first step of any
 task in `studio/`** — route by what the task changes, not what it mentions:

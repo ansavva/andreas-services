@@ -14,13 +14,13 @@ def media_bucket():
     an environment variable by the deploy workflow. The default matches prod so
     local dev needs no extra configuration.
 
-    The name is grandfathered from before studio absorbed the generation
-    pipeline and does not follow the repo's naming convention. Renaming it is a
-    copy of the whole bucket plus a simultaneous change here, in the skills'
-    `s3_common.py`, in Terraform, in the deploy workflow and in the tests — a
-    deliberate separate pass. See `infra/README.md`.
+    Renamed from `xharness-prod-media-us-east-1` in August 2026, which is why
+    the default here changed. S3 has no rename, so it was done as a second
+    bucket and a verified copy; the original is retained permanently as the
+    archive, holding the version history the copy did not carry. Nothing in
+    this service reads the archive. See `infra/README.md`.
     """
-    return os.environ.get("STUDIO_MEDIA_BUCKET", "xharness-prod-media-us-east-1")
+    return os.environ.get("STUDIO_MEDIA_BUCKET", "studio-prod-media-us-east-1")
 
 
 def media_root_prefix():

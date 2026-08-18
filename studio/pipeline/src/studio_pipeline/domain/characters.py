@@ -1,5 +1,5 @@
 """`studio character` — manage on-model characters stored in the
-xharness-prod-media-us-east-1 S3 bucket.
+studio-prod-media-us-east-1 S3 bucket.
 
 A character is DATA, not a skill: each one is an S3 record under
 `characters/<name>/` (see the `studio-media-s3` skill), and this one tool manages them all:
