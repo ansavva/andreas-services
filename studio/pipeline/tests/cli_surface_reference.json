@@ -4868,6 +4868,21 @@
             "nargs": 1,
             "required": false,
             "type": "str"
+          },
+          "prompts": {
+            "choices": null,
+            "default": false,
+            "dest": "prompts",
+            "flag": true,
+            "flags": [
+              "--prompts"
+            ],
+            "help": "also print every prompt in full — what each panel and each shot says",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
           }
         }
       },

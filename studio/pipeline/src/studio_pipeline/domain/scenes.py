@@ -403,6 +403,35 @@ def handoff(s3, project: str, scene_id: str, n: int, from_run: str | None = None
 
 # ── reading the plan ────────────────────────────────────────────────────────
 
+def plan_prompts(manifest: dict) -> list[str]:
+    """Every word the plan will send, laid out to be read.
+
+    The prompts live in `scene.json` and are therefore already in the bucket,
+    but a raw manifest is not a readable thing — a prompt is prose and wants to
+    be read as prose before it is paid for.
+    """
+    out = []
+    if manifest.get("setting"):
+        out += ["", "=" * 70, "SETTING — prepended to every PANEL prompt", "=" * 70,
+                manifest["setting"]]
+    for shot in scene_shots(manifest):
+        roles = SB.panel_roles(shot)
+        out += ["", "=" * 70,
+                f"{shot.get('id')}  —  {shot.get('beat', '')}".rstrip(),
+                "=" * 70]
+        for panel, role in zip(shot.get("panels") or [], roles):
+            if SB.is_supplied(panel):
+                out += [f"--- panel {panel['n']} [{role}] — supplied image, no prompt",
+                        f"    {panel.get('key')}"]
+                continue
+            out += [f"--- panel {panel['n']} [{role}]  ({panel.get('model')})",
+                    panel.get("prompt") or ""]
+        motion = shot.get("motion") or {}
+        out += [f"--- motion  ({motion.get('model')}, {motion.get('duration')}s)",
+                motion.get("prompt") or ""]
+    return out
+
+
 def plan_table(manifest: dict) -> list[str]:
     """The plan as lines you can scan — `show` stays raw JSON for machines."""
     out = [f"{manifest['scene']}  [{manifest.get('status', '?')}]"]
@@ -491,7 +520,9 @@ def do_handoff(ref, from_run, project, shot):
 @main.command("plan")
 @click.argument("ref", required=True)
 @click.option("--project")
-def do_plan(ref, project):
+@click.option("--prompts", is_flag=True,
+              help="also print every prompt in full — what each panel and each shot says")
+def do_plan(ref, project, prompts):
     """A scene's plan, as a table rather than as JSON."""
     s3 = client()
     owner, sid = resolve_scene(s3, ref, project)
@@ -499,6 +530,8 @@ def do_plan(ref, project):
     if not manifest:
         die(f"no scene.json for {owner}/{sid}")
     print("\n".join(plan_table(manifest)))
+    if prompts:
+        print("\n".join(plan_prompts(manifest)))
 
 
 @main.command("sheet")
@@ -530,7 +563,14 @@ def do_sheet(ref, cols, cell, out, project):
         paths.append(lp)
         labels.append(caption)
     dest = os.path.join(out or tmp, f"{manifest.get('slug', sid)}-board.png")
-    print(contact_sheet.build(paths, dest, cols=cols, cell=cell, captions=labels))
+    local = contact_sheet.build(paths, dest, cols=cols, cell=cell, captions=labels)
+    # The board is the thing someone looks at to judge the scene. Leaving it on
+    # local disk means only whoever ran the command can see it.
+    key = scene_key(owner, sid, "review", "board.png")
+    s3.upload_file(local, BUCKET, key, ExtraArgs={"ContentType": "image/png"})
+    print(key)
+    if out:
+        print(f"  (local copy: {local})")
 
 
 @main.command("list")
