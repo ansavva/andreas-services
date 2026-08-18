@@ -43,8 +43,6 @@ export interface FileEntry {
    * different projects, and the bucket's layout is the backend's to know.
    */
   favorites_prefix: string | null;
-  /** True when this file is already in its project's favourites. */
-  favorited: boolean;
 }
 
 export interface FolderEntry {

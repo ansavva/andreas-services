@@ -114,12 +114,11 @@ export function ViewerChrome({
         {/* Keyed by the file, so scrolling to the next clip resets the star
             rather than carrying the last one's "added" state onto it — the bar
             stays mounted while the reel moves underneath it. */}
-        {(onFavorite || file.favorited) && (
+        {onFavorite && (
           <FavoriteButton
             key={file.key}
             noun={file.name}
-            favorited={file.favorited}
-            onFavorite={onFavorite ?? (() => Promise.resolve())}
+            onFavorite={onFavorite}
             tone="chrome"
           />
         )}

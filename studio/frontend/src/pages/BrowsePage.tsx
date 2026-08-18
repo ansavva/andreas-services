@@ -182,10 +182,12 @@ export function BrowsePage() {
    * Everything in one grid comes from one folder, so this is all of it or none
    * of it — but the API answers per file and this reads that answer rather than
    * inferring it from the prefix, which is the same reason `favorites_prefix`
-   * arrives per file in the first place.
+   * arrives per file in the first place. Already-favourited files are not
+   * filtered out, because nothing tracks which those are: a second press
+   * re-copies, and the server skips it as a no-op.
    */
   const favoritable = useMemo(
-    () => selection.selectedItems.filter((item) => item.favorites_prefix && !item.favorited),
+    () => selection.selectedItems.filter((item) => item.favorites_prefix),
     [selection.selectedItems],
   );
 

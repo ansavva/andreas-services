@@ -227,6 +227,32 @@ def scene_output_key(manifest: dict) -> str | None:
     return (manifest.get("output") or {}).get("key")
 
 
+def favorite(s3, ref: str, default_project: str | None = None) -> str:
+    """Copy a scene's assembled cut into the project's favourites folder.
+
+    `runs favorite` cannot do this. A cut is not a run — it is stitched from
+    several of them and has no prediction behind it — so the one artefact a
+    scene exists to produce was the one thing the favourites shelf could not be
+    handed, and favouriting it meant a hand-written `aws s3 cp` that had to get
+    the destination naming right on its own.
+
+    The copy is the whole feature. Nothing records that a scene was favourited,
+    here or in the scene manifest: the shelf is a flat folder of copies, and a
+    second press re-copies rather than consulting a flag.
+    """
+    project, sid = resolve_scene(s3, ref, default_project)
+    manifest = R.read_json(s3, scene_key(project, sid, "scene.json"))
+    src_key = scene_output_key(manifest)
+    if not src_key:
+        die(f"scene {project}/{sid} is planned but not assembled \u2014 nothing to "
+            f"favourite yet.\n       cut it first: studio scenes assemble {project}/{sid}")
+    dst = P.favorite_key(project, f"{sid}{os.path.splitext(src_key)[1]}")
+    s3.copy_object(Bucket=BUCKET, Key=dst,
+                   CopySource={"Bucket": BUCKET, "Key": src_key},
+                   MetadataDirective="COPY")
+    return dst
+
+
 # ── starting a scene ────────────────────────────────────────────────────────
 
 def new_scene(s3, project: str, slug: str, plan_path: str | None,
@@ -592,6 +618,15 @@ def do_show(ref, project):
     s3 = client()
     owner, sid = resolve_scene(s3, ref, project)
     print(json.dumps(R.read_json(s3, scene_key(owner, sid, "scene.json")), indent=2))
+
+
+@main.command("favorite")
+@click.argument("ref", required=True)
+@click.option("--project")
+def do_favorite(ref, project):
+    """Copy this scene's cut onto the project's favourites shelf."""
+    s3 = client()
+    print(favorite(s3, ref, project))
 
 
 @main.command("outputs")

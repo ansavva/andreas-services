@@ -101,19 +101,17 @@ export function MediaTile({
       </button>
 
       {/* The star sits opposite the checkbox — both are siblings of the tile
-          button rather than children of it, for the same reason. It follows the
-          checkbox's visibility rules with one exception: an *already* favourited
-          file shows its star at rest, because that is the state the grid is
-          reporting rather than a control being offered. */}
-      {(onFavorite || file.favorited) && (
+          button rather than children of it, for the same reason — and follows
+          the checkbox's visibility rules exactly. It is a control being offered,
+          never a state being reported: nothing here knows whether this file has
+          been favourited before. */}
+      {onFavorite && (
         <FavoriteButton
           noun={file.name}
-          favorited={file.favorited}
-          onFavorite={onFavorite ?? (() => Promise.resolve())}
+          onFavorite={onFavorite}
           tone="tile"
-          className={`absolute right-1.5 top-1.5 transition-opacity focus-visible:opacity-100
-                      group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100
-                      ${file.favorited ? "opacity-100" : "opacity-0"}`}
+          className="absolute right-1.5 top-1.5 opacity-0 transition-opacity focus-visible:opacity-100
+                     group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"
         />
       )}
 

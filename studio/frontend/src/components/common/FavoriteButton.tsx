@@ -6,8 +6,6 @@ type Phase = "idle" | "busy" | "done";
 interface Props {
   /** What is being favourited, written into the label. */
   noun: string;
-  /** True when it is already in its project's favourites — see the note below. */
-  favorited?: boolean;
   /** Resolves once the copy has landed. Rejecting leaves the star hollow. */
   onFavorite: () => Promise<unknown>;
   /** Which surface this sits on. The three `CopyKeyButton` has, for the same reasons. */
@@ -18,13 +16,12 @@ interface Props {
 /**
  * Copy a file onto its project's favourites shelf.
  *
- * **A gold star here means the file really is in the folder**, not that this
- * button was pressed. Every listing carries `favorited`, worked out server-side
- * by matching name and size against the favourites folder, so the state survives
- * a reload and shows up on a file favourited from another device. That is the
- * reason this is a lit indicator at all rather than a fire-and-forget action —
- * an unlit star over a file you picked last week would be a lie you could only
- * catch by opening the folder.
+ * **The star reports this press and nothing more.** It lights when the copy
+ * lands and goes back to hollow on reload, because favouriting is a copy and
+ * there is no starred/unstarred state anywhere to read: not on the object, not
+ * in the manifest, not in a listing. Deciding otherwise cost a listing of every
+ * favourites folder on every page of results, to light a star whose only job
+ * was to say a file was already on a shelf you can open and look at.
  *
  * Where a favourite *goes* is never asked. The server derives the folder from
  * the key, so pressing this in a run under `projects/<project>/` puts a copy in
@@ -37,13 +34,13 @@ interface Props {
  * card, row and tile in this app is itself a `<button>`, and a button inside a
  * button is invalid HTML browsers resolve by dropping one of them.
  *
- * Pressing an already-favourited file is not offered — the server would skip it
- * anyway — and un-favouriting is a plain delete of the copy, from inside the
- * favourites folder where it is unambiguous which object is going.
+ * Pressing a file that is already on the shelf is allowed and cheap: the server
+ * skips a copy whose name and size it already holds, so a second press is a
+ * no-op rather than a duplicate. Un-favouriting is a plain delete of the copy,
+ * from inside the favourites folder where it is unambiguous which object goes.
  */
 export function FavoriteButton({
   noun,
-  favorited = false,
   onFavorite,
   tone = "row",
   className = "",
@@ -76,7 +73,7 @@ export function FavoriteButton({
       );
   }, [onFavorite, phase]);
 
-  const lit = favorited || phase === "done";
+  const lit = phase === "done";
   const label = lit
     ? `${noun} is in favorites`
     : phase === "busy"

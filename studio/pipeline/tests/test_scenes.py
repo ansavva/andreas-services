@@ -270,6 +270,38 @@ def test_assemble_refuses_a_scene_with_nothing_in_it(media_bucket, tmp_path):
     assert "no shots" in r.output
 
 
+# --- favouriting -----------------------------------------------------------
+
+def test_favorite_copies_the_cut_onto_the_shelf(media_bucket):
+    r = run("scenes", "favorite", f"subject-a/{LEGACY}")
+    assert r.exit_code == 0, r.output
+    dst = f"projects/subject-a/favorites/{LEGACY}.mp4"
+    assert dst in r.output
+    media_bucket.head_object(Bucket=BUCKET, Key=dst)
+
+
+def test_favoriting_twice_is_the_same_copy_again(media_bucket):
+    """No flag is kept anywhere, so a second press just re-copies over the first.
+
+    That is the whole design: the shelf is a folder of copies, and nothing —
+    not the manifest, not the object — records that a scene has been favourited.
+    """
+    first = run("scenes", "favorite", f"subject-a/{LEGACY}")
+    second = run("scenes", "favorite", f"subject-a/{LEGACY}")
+    assert second.exit_code == 0, second.output
+    assert first.output == second.output
+    listing = media_bucket.list_objects_v2(
+        Bucket=BUCKET, Prefix="projects/subject-a/favorites/")
+    assert listing["KeyCount"] == 1, "a re-copy, not a second file"
+
+
+def test_favorite_refuses_a_scene_that_has_not_been_cut(media_bucket):
+    r = run("scenes", "favorite", f"subject-a/{PLANNED}")
+    assert r.exit_code != 0
+    assert "not assembled" in r.output
+    assert "studio scenes assemble" in r.output
+
+
 # --- reading the board -----------------------------------------------------
 
 def test_plan_marks_which_panels_exist(media_bucket):

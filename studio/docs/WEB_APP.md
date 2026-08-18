@@ -319,10 +319,12 @@ that breaks every time the pipeline ships.
   so `browse.reel_items` walks (bounded by `STUDIO_MAX_WALK_OBJECTS`), sorts, and
   presigns *only* the window it returns — which is strictly less signing than the
   old key-order paging did.
-- **The star is state, not a receipt.** `FavoriteButton` renders lit from the
-  listing's own `favorited`, so it reports the folder rather than the press —
-  which means it is right after a reload and right about a file favourited from
-  another device. It is keyed by `file.key` in `ViewerChrome` because that bar
+- **The star is a receipt, not state.** `FavoriteButton` lights when the copy
+  lands and is hollow again on reload, because favouriting is a copy and there
+  is no starred/unstarred flag anywhere to read. It reported the folder until
+  August 2026, which cost a listing of every favourites folder on every page of
+  results to say a file was already on a shelf you can open and look at. It is
+  keyed by `file.key` in `ViewerChrome` because that bar
   stays mounted while the reel scrolls underneath it, and without the key the
   last clip's "added" state would be painted onto the next one. Files that
   cannot be favourited never render it at all: `favorites_prefix` is null and
@@ -441,14 +443,13 @@ folder. Three more consequences worth knowing:
   copied flat onto the shelf beside the clips is noise, and the listing endpoints
   apply the same rule so the star and the API cannot disagree about what is
   acceptable.
-- **`favorited` on a listing is read from S3, not remembered.** Studio holds no
-  state, so `browse._mark_favorited` lists the favourites folder once per listing
-  (once per project on a reel page) and matches on name and size. That costs one
-  extra `ListObjectsV2` and buys a star that survives a reload — without it the
-  UI could only report presses from this session, and would go hollow over a file
-  that is very much still favourited. There is no un-favourite route: deleting
-  the copy from inside the favourites folder is unambiguous, and `DELETE
-  /api/objects` already does it.
+- **A listing says WHERE a favourite would go, never WHETHER there is one.**
+  `favorites_prefix` is pure string work off the key; there is no `favorited`
+  field, and nothing in the bucket records that a file has been favourited. The
+  folder is the record — open it and look. `browse.favorites_index` survives for
+  one job only, picking a free name inside `manage.favorite_objects`. There is
+  no un-favourite route either: deleting the copy from inside the favourites
+  folder is unambiguous, and `DELETE /api/objects` already does it.
 
 **`PATCH /api/text` is a PATCH because PUT is not in the CORS method list.** The
 verb list lives in four places that have to agree (see below), PATCH is already

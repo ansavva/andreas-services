@@ -49,12 +49,11 @@ def _file_entry(obj: dict, *, presigned: bool = True) -> dict:
         "size": obj.get("Size", 0),
         "last_modified": last_modified.isoformat() if last_modified else None,
         "kind": keys.kind(key),
-        # Where a favourite of this would go, and whether it is one already. The
-        # first is pure string work; the second is only *half* answered here —
-        # a key inside a favourites folder is self-evidently a favourite, and
-        # anything else needs the listing `_mark_favorited` does.
+        # Where a favourite of this would go, or None when it cannot be one.
+        # Pure string work, and the only favourites question a listing answers:
+        # whether a file has *already* been favourited is deliberately not
+        # tracked — see `manage.favorite_objects`.
         "favorites_prefix": keys.favorites_prefix(key),
-        "favorited": keys.is_favorite(key),
     }
     if presigned:
         entry["url"] = s3.presign(key)
@@ -74,8 +73,8 @@ def favorites_index(prefix: str) -> dict[str, int]:
     which is wrong only for two genuinely different clips that share a name and
     are the same length to the byte.
 
-    Used by `manage.favorite_objects` to decide between skipping and numbering,
-    and by `_mark_favorited` to fill in a star.
+    Used by `manage.favorite_objects` to pick a free name. Nothing else reads it
+    — listings do not report whether a file has been favourited.
     """
     _, objects = s3.list_folder(prefix)
     return {
@@ -83,31 +82,6 @@ def favorites_index(prefix: str) -> dict[str, int]:
         for obj in objects
         if obj["Key"] != prefix and not keys.is_folder_marker(obj["Key"], obj.get("Size", 0))
     }
-
-
-def _mark_favorited(entries: list[dict]) -> None:
-    """Fill in `favorited` for entries whose favourite would live elsewhere.
-
-    One extra listing per *distinct* favourites folder, which for a folder view
-    is one call and for a reel page is one per project on the page — a handful
-    at the very worst, since a page is 200 items and the bucket holds three
-    subjects. Cheap enough to be worth a star that survives a reload: without
-    this the button could only report what you pressed this session, and would
-    go hollow again on refresh over a file that is very much still favourited.
-
-    Deliberately called on the *presigned window* in the reel rather than on the
-    whole sorted walk — the walk can be twenty thousand entries and only two
-    hundred of them are about to be rendered.
-    """
-    wanted = {entry["favorites_prefix"] for entry in entries if entry["favorites_prefix"]}
-    if not wanted:
-        return
-
-    index = {prefix: favorites_index(prefix) for prefix in sorted(wanted)}
-    for entry in entries:
-        prefix = entry["favorites_prefix"]
-        if prefix:
-            entry["favorited"] = index[prefix].get(entry["name"]) == entry["size"]
 
 
 def _sort_files(files: list[dict], sort: str) -> None:
@@ -169,7 +143,6 @@ def list_folder(raw_prefix: str | None, raw_sort: str | None = None) -> dict:
         if obj["Key"] != prefix and not keys.is_folder_marker(obj["Key"], obj.get("Size", 0))
     ]
     _sort_files(files, sort)
-    _mark_favorited(files)
 
     folders = [
         {"prefix": folder, "name": keys.basename(folder)} for folder in folder_prefixes
@@ -229,7 +202,6 @@ def reel_items(
     window = entries[offset : offset + limit]
     for entry in window:
         entry["url"] = s3.presign(entry["key"])
-    _mark_favorited(window)
 
     next_offset = offset + len(window)
     return {
