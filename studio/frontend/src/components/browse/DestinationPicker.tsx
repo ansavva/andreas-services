@@ -7,7 +7,9 @@ import type { Crumb, FolderEntry } from "../../types";
 import { ROOT_PREFIX, parentPrefix } from "../../utils/location";
 
 interface Props {
-  /** What is being moved, written into the title — "3 files", "seed". */
+  /** Which operation this is picking a destination for. */
+  verb: "move" | "copy";
+  /** What is being moved or copied, written into the title — "3 files", "seed". */
   noun: string;
   /** Where the picker opens. Normally the folder being moved out of. */
   startPrefix: string;
@@ -17,14 +19,20 @@ interface Props {
    * explains itself instead of the request coming back as an error.
    */
   forbiddenPrefix?: string;
-  /** The folder the items are already in. Picking it is a no-op, so it is not offered. */
+  /**
+   * The folder the items are already in.
+   *
+   * Only meaningful for a move, where picking it is a no-op. A *copy* into the
+   * folder you are looking at is a real operation — it is how a file is
+   * duplicated, and the server numbers the second one — so it stays enabled.
+   */
   currentPrefix: string;
-  onMove: (destination: string) => Promise<unknown>;
+  onSubmit: (destination: string) => Promise<unknown>;
   onClose: () => void;
 }
 
 /**
- * Pick a destination folder by browsing to it.
+ * Pick a destination folder by browsing to it, for a move or for a copy.
  *
  * A typed prefix was the obvious alternative and is worse: the whole point of a
  * move is that you are looking at a library whose folder names are timestamps,
@@ -34,17 +42,18 @@ interface Props {
  * between.
  *
  * It is a `Dialog`, which portals to `<body>`, and that is safe *here*
- * specifically: moving is a browse-page action and the browse page is never
+ * specifically: both are browse-page actions and the browse page is never
  * inside a fullscreen element. The reel's controls stay inline for the reason
- * `ConfirmDeleteButton` documents, and that is why there is no move button in
- * `ViewerChrome`.
+ * `ConfirmDeleteButton` documents, and that is why there is no move or copy
+ * button in `ViewerChrome`.
  */
-export function MovePicker({
+export function DestinationPicker({
+  verb,
   noun,
   startPrefix,
   forbiddenPrefix,
   currentPrefix,
-  onMove,
+  onSubmit,
   onClose,
 }: Props) {
   const [prefix, setPrefix] = useState(startPrefix);
@@ -80,23 +89,27 @@ export function MovePicker({
   }, [prefix]);
 
   const inForbidden = forbiddenPrefix !== undefined && prefix.startsWith(forbiddenPrefix);
-  const isCurrent = prefix === currentPrefix;
-  const canMoveHere = !loading && !inForbidden && !isCurrent;
+  // A move into the folder the items are already in does nothing; a copy into it
+  // duplicates them, which is a thing people want.
+  const isNoOp = verb === "move" && prefix === currentPrefix;
+  const canSubmit = !loading && !inForbidden && !isNoOp;
 
   const submit = useCallback(() => {
     setBusy(true);
     setError(null);
-    onMove(prefix)
+    onSubmit(prefix)
       .then(() => onClose())
       .catch((err: Error) => setError(err.message))
       .finally(() => setBusy(false));
-  }, [onClose, onMove, prefix]);
+  }, [onClose, onSubmit, prefix]);
 
   return (
     <Dialog.Root open onOpenChange={(next: boolean) => !next && onClose()}>
       <Dialog.Backdrop />
       <Dialog.Popup className="flex max-h-[80vh] w-full max-w-lg flex-col gap-3 p-4">
-        <Dialog.Title>Move {noun}</Dialog.Title>
+        <Dialog.Title>
+          {verb === "move" ? "Move" : "Copy"} {noun}
+        </Dialog.Title>
 
         <Breadcrumbs.Root>
           {crumbs.map((crumb, index, all) => (
@@ -143,7 +156,8 @@ export function MovePicker({
 
               {folders.length === 0 && (
                 <Text variant="caption" tone="muted" className="p-3">
-                  No folders here — moving into this one is still fine.
+                  No folders here — {verb === "move" ? "moving" : "copying"} into this one is
+                  still fine.
                 </Text>
               )}
             </div>
@@ -168,8 +182,18 @@ export function MovePicker({
           {/* Disabled rather than absent, with the reason beside it: a button
               that vanishes when you navigate somewhere it cannot be used reads
               as a bug, not as an explanation. */}
-          <Button size="sm" disabled={!canMoveHere || busy} onClick={submit}>
-            {busy ? "Moving…" : isCurrent ? "Already here" : inForbidden ? "Not in itself" : "Move here"}
+          <Button size="sm" disabled={!canSubmit || busy} onClick={submit}>
+            {busy
+              ? verb === "move"
+                ? "Moving…"
+                : "Copying…"
+              : isNoOp
+                ? "Already here"
+                : inForbidden
+                  ? "Not in itself"
+                  : verb === "move"
+                    ? "Move here"
+                    : "Copy here"}
           </Button>
         </div>
       </Dialog.Popup>

@@ -49,11 +49,6 @@ def _file_entry(obj: dict, *, presigned: bool = True) -> dict:
         "size": obj.get("Size", 0),
         "last_modified": last_modified.isoformat() if last_modified else None,
         "kind": keys.kind(key),
-        # Where a favourite of this would go, or None when it cannot be one.
-        # Pure string work, and the only favourites question a listing answers:
-        # whether a file has *already* been favourited is deliberately not
-        # tracked — see `manage.favorite_objects`.
-        "favorites_prefix": keys.favorites_prefix(key),
     }
     if presigned:
         entry["url"] = s3.presign(key)
@@ -62,23 +57,17 @@ def _file_entry(obj: dict, *, presigned: bool = True) -> dict:
     return entry
 
 
-def favorites_index(prefix: str) -> dict[str, int]:
-    """What one favourites folder already holds, as `{name: size}`.
+def folder_names(prefix: str) -> set[str]:
+    """The basenames one folder already holds.
 
-    Name *and* size, because that pair is what stands in for "is this the same
-    file". Studio has nothing that records where a favourite was copied from —
-    it is a flat shelf of objects, deliberately, and adding provenance metadata
-    would be studio inventing a format inside a tree the pipeline owns. So a
-    favourite matches its source when the name and the byte count both match,
-    which is wrong only for two genuinely different clips that share a name and
-    are the same length to the byte.
-
-    Used by `manage.favorite_objects` to pick a free name. Nothing else reads it
-    — listings do not report whether a file has been favourited.
+    Used by `manage.copy_objects` to pick a name that overwrites nothing. Names
+    only: an earlier version carried sizes too, so that copying a byte-identical
+    file could be skipped, and that comparison is exactly the "has this already
+    been done" bookkeeping the favourites feature was removed for.
     """
     _, objects = s3.list_folder(prefix)
     return {
-        keys.basename(obj["Key"]): obj.get("Size", 0)
+        keys.basename(obj["Key"])
         for obj in objects
         if obj["Key"] != prefix and not keys.is_folder_marker(obj["Key"], obj.get("Size", 0))
     }

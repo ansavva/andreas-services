@@ -23,7 +23,6 @@ interface Props {
   onCurrentChange?: (item: FileEntry) => void;
   onRename?: (file: FileEntry, name: string) => Promise<unknown>;
   onDelete?: (file: FileEntry) => Promise<unknown>;
-  onFavorite?: (file: FileEntry) => Promise<unknown>;
 }
 
 /** Mount this many panes either side of the snapped one. */
@@ -56,7 +55,6 @@ export function ReelView({
   onCurrentChange,
   onRename,
   onDelete,
-  onFavorite,
 }: Props) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -201,13 +199,6 @@ export function ReelView({
           // decides whether the button exists at all.
           muted={isVideo ? playback.muted : undefined}
           onToggleMuted={isVideo ? playback.toggleMuted : undefined}
-          // The API decides what can be favourited; a null prefix means this
-          // one cannot, and the star does not render.
-          onFavorite={
-            onFavorite && currentItem.favorites_prefix
-              ? () => onFavorite(currentItem)
-              : undefined
-          }
         />
       )}
 

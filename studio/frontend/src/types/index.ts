@@ -32,17 +32,6 @@ export interface FileEntry {
   url: string;
   /** Highlighting hint, present on text files only. */
   language?: string;
-  /**
-   * Where a favourite of this file would be copied, or null if it cannot be one.
-   *
-   * Derived by the API from the key — `projects/<subject>/…` favourites into
-   * `projects/<subject>/favorites/`, and nothing in `characters/` favourites at
-   * all, because that tree holds who a subject is rather than what was generated
-   * of them. It arrives per file rather than being worked out here on purpose:
-   * the reel walks across subjects, so two items on screen can belong to
-   * different projects, and the bucket's layout is the backend's to know.
-   */
-  favorites_prefix: string | null;
 }
 
 export interface FolderEntry {
@@ -127,11 +116,10 @@ export interface MovedFolder {
   moved: boolean;
 }
 
-export interface Favorited {
-  favorited: number;
-  /** Files that were already there — a second press is a no-op, not an error. */
-  skipped: number;
-  /** The new keys, which may be numbered if the flat folder held the name. */
+export interface CopiedObjects {
+  destination: string;
+  copied: number;
+  /** The new keys, numbered where the destination already held the name. */
   keys: string[];
 }
 

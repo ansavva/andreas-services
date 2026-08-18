@@ -80,7 +80,7 @@ SHORT_HELP = {
     # Two commands read alike and are not, so both say which is which.
     "run": "submit a generation to any registered model (creates a run)",
     "models": "the model registry: list, show, refresh",
-    "runs": "query the run store: list, find, show, outputs, favorite",
+    "runs": "query the run store: list, find, show, outputs, adopt",
     # Its docstring's first line wraps mid-sentence, which truncates badly.
     "character": "manage on-model characters: profile, references, pools",
 }

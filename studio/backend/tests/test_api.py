@@ -224,17 +224,27 @@ def test_preflight_advertises_the_write_verbs():
     assert {"PATCH", "DELETE", "POST"} <= {m.strip() for m in allowed.split(",")}
 
 
-def test_add_favorites(media_bucket):
-    resp = _client().post("/api/favorites", json={"keys": [f"{RUN}output/wave-porch.jpeg"]})
+def test_copy_objects(media_bucket):
+    resp = _client().post(
+        "/api/objects/copy",
+        json={"keys": [f"{RUN}output/wave-porch.jpeg"], "destination": "projects/subject-a/input/"},
+    )
 
     assert resp.status_code == 201
-    assert resp.get_json()["keys"] == ["projects/subject-a/favorites/wave-porch.jpeg"]
+    assert resp.get_json()["keys"] == ["projects/subject-a/input/wave-porch.jpeg"]
 
 
-def test_add_favorites_outside_a_project_is_400(media_bucket):
-    resp = _client().post("/api/favorites", json={"keys": ["characters/subject-a/seed/subject-a_1.webp"]})
-    assert resp.status_code == 400
+def test_copy_objects_takes_anything_in_the_bucket(media_bucket):
+    """Unlike favouriting, which was images and video inside a project only."""
+    resp = _client().post(
+        "/api/objects/copy",
+        json={
+            "keys": ["characters/subject-a/seed/subject-a_1.webp"],
+            "destination": "projects/subject-a/input/",
+        },
+    )
+    assert resp.status_code == 201
 
 
-def test_add_favorites_without_a_body_is_400(media_bucket):
-    assert _client().post("/api/favorites").status_code == 400
+def test_copy_objects_without_a_body_is_400(media_bucket):
+    assert _client().post("/api/objects/copy").status_code == 400

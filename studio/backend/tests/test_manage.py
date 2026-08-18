@@ -461,9 +461,9 @@ def test_nothing_reaches_outside_a_configured_root(media_bucket, monkeypatch):
         lambda: manage.move_folder("secrets/", "characters/"),
         lambda: manage.move_folder("characters/subject-a/", "secrets/"),
         lambda: manage.update_text("secrets/keys.txt", "emptied"),
-        # Favouriting names no destination, so the only thing to confine is its
-        # source — and a source outside the root never reaches the copy.
-        lambda: manage.favorite_objects(["secrets/keys.txt"]),
+        # Both ends of a copy are confined too, for the same reasons as a move.
+        lambda: manage.copy_objects(["secrets/keys.txt"], "characters/subject-a/"),
+        lambda: manage.copy_objects(["characters/subject-a/profile.yaml"], "secrets/"),
     ):
         with pytest.raises(ValidationError):
             call()
@@ -473,71 +473,70 @@ def test_nothing_reaches_outside_a_configured_root(media_bucket, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Favorite
+# Copy
 #
-# The only write here that copies without deleting, and the only one whose
-# destination is derived rather than supplied. Both properties are asserted
-# directly: the source must survive, and no argument may aim the copy elsewhere.
+# The only write here that copies without deleting, so the source surviving is
+# asserted directly. Its one real difference from a move is what happens to a
+# name already taken at the destination: numbered, never refused and never
+# overwritten.
 # ---------------------------------------------------------------------------
 
-SUBJECT_A_FAVORITES = "projects/subject-a/favorites/"
-SUBJECT_B_FAVORITES = "projects/subject-b/favorites/"
 SCENE = "projects/subject-b/scenes/2026-08-16_07-40-22_stadium-encounter/"
 SHOT = f"{SCENE}shots/shot-01.mp4"
+INPUT_POOL = "projects/subject-a/input/"
 
 
-def test_favorite_copies_into_its_own_projects_favorites(media_bucket):
-    result = manage.favorite_objects([OUTPUT])
+def test_copy_leaves_the_source_where_it_was(media_bucket):
+    result = manage.copy_objects([OUTPUT], INPUT_POOL)
 
     assert result == {
-        "favorited": 1,
-        "skipped": 0,
-        "keys": [f"{SUBJECT_A_FAVORITES}wave-porch.jpeg"],
+        "destination": INPUT_POOL,
+        "copied": 1,
+        "keys": [f"{INPUT_POOL}wave-porch.jpeg"],
     }
-    assert _names(SUBJECT_A_FAVORITES) == ["wave-porch.jpeg"]
-    # A favourite is a copy. The original stays exactly where the pipeline put it
-    # — this is the one write in the module that leaves its source alone.
-    assert _names(f"{RUN}output/") == ["wave-porch.jpeg"]
+    assert "wave-porch.jpeg" in _names(INPUT_POOL)
+    assert _names(f"{RUN}output/") == ["wave-porch.jpeg"], "the source is still there"
 
 
-def test_favorite_takes_many_at_once_and_splits_them_by_project(media_bucket):
-    """One request, three files, two projects — and nobody named a destination.
+def test_copy_takes_many_at_once_from_anywhere(media_bucket):
+    """Sources may span projects and trees — only the destination is one folder.
 
-    This is what makes favouriting different from moving: the reel walks across
-    subjects, so a selection can span projects, and each file has exactly one
-    folder it belongs in. A move would need one request per destination.
+    Favouriting could not do this: it derived a destination per key, so it was
+    confined to media inside a project. A copy names its destination, so what a
+    source *is* stops mattering.
     """
-    result = manage.favorite_objects([OUTPUT, VIDEO, SHOT])
+    result = manage.copy_objects([OUTPUT, VIDEO, "characters/subject-a/profile.yaml"], INPUT_POOL)
 
-    assert result["favorited"] == 3
-    assert _names(SUBJECT_A_FAVORITES) == ["wave-porch.jpeg"]
-    assert sorted(_names(SUBJECT_B_FAVORITES)) == ["shot-01.mp4", "standing-flex.mp4"]
-
-
-def test_favoriting_twice_is_a_no_op(media_bucket):
-    manage.favorite_objects([OUTPUT])
-    result = manage.favorite_objects([OUTPUT])
-
-    assert result["favorited"] == 0
-    assert result["skipped"] == 1
-    # Not `wave-porch (2).jpeg`: same name and same size is the same file.
-    assert _names(SUBJECT_A_FAVORITES) == ["wave-porch.jpeg"]
+    assert result["copied"] == 3
+    assert set(_names(INPUT_POOL)) >= {"wave-porch.jpeg", "standing-flex.mp4", "profile.yaml"}
 
 
-def test_favorite_numbers_a_name_a_different_file_already_holds(media_bucket):
+def test_copying_the_same_file_twice_makes_a_second_copy(media_bucket):
+    """Ask for a copy, get a copy.
+
+    An earlier version of this compared byte sizes and skipped an identical
+    file — a copy quietly deciding not to copy, which is the same "has this been
+    done already" bookkeeping favourites was removed for.
+    """
+    manage.copy_objects([OUTPUT], INPUT_POOL)
+    result = manage.copy_objects([OUTPUT], INPUT_POOL)
+
+    assert result["keys"] == [f"{INPUT_POOL}wave-porch (2).jpeg"]
+    assert sorted(_names(INPUT_POOL)) == ["wave-porch (2).jpeg", "wave-porch.jpeg"]
+
+
+def test_copy_numbers_a_name_the_destination_already_holds(media_bucket):
     """Every scene calls its first shot `shot-01.mp4`, so this is the normal case."""
-    manage.favorite_objects([SHOT])
-    other = "projects/subject-b/scenes/2026-08-16_09-12-00_stadium-exit/shots/shot-01.mp4"
-    media_bucket.put_object(Bucket=config.media_bucket(), Key=other, Body=b"a-different-mp4")
+    media_bucket.put_object(Bucket=config.media_bucket(), Key=f"{INPUT_POOL}shot-01.mp4", Body=b"other")
 
-    result = manage.favorite_objects([other])
+    result = manage.copy_objects([SHOT], INPUT_POOL)
 
-    assert result["keys"] == [f"{SUBJECT_B_FAVORITES}shot-01 (2).mp4"]
-    assert sorted(_names(SUBJECT_B_FAVORITES)) == ["shot-01 (2).mp4", "shot-01.mp4"]
+    assert result["keys"] == [f"{INPUT_POOL}shot-01 (2).mp4"]
+    assert sorted(_names(INPUT_POOL)) == ["shot-01 (2).mp4", "shot-01.mp4"]
 
 
-def test_favorite_numbers_two_sources_of_one_name_in_a_single_request(media_bucket):
-    """The in-memory index has to be updated as the batch is planned.
+def test_copy_numbers_two_sources_of_one_name_in_a_single_request(media_bucket):
+    """The in-memory name set has to be updated as the batch is planned.
 
     Otherwise both files see the same empty folder, both claim `shot-01.mp4`,
     and the second copy silently overwrites the first — the one outcome nothing
@@ -546,69 +545,31 @@ def test_favorite_numbers_two_sources_of_one_name_in_a_single_request(media_buck
     other = "projects/subject-b/scenes/2026-08-16_09-12-00_stadium-exit/shots/shot-01.mp4"
     media_bucket.put_object(Bucket=config.media_bucket(), Key=other, Body=b"a-different-mp4")
 
-    result = manage.favorite_objects([SHOT, other])
+    result = manage.copy_objects([SHOT, other], INPUT_POOL)
 
-    assert result["favorited"] == 2
-    assert sorted(_names(SUBJECT_B_FAVORITES)) == ["shot-01 (2).mp4", "shot-01.mp4"]
-
-
-def test_favorite_refuses_a_character_photo(media_bucket):
-    """`characters/` holds who a subject is. There is nothing to pick between."""
-    with pytest.raises(ValidationError):
-        manage.favorite_objects(["characters/subject-a/seed/subject-a_1.webp"])
-    assert "favorites" not in _folders("characters/subject-a/")
+    assert result["copied"] == 2
+    assert sorted(_names(INPUT_POOL)) == ["shot-01 (2).mp4", "shot-01.mp4"]
 
 
-def test_favorite_refuses_run_metadata(media_bucket):
-    with pytest.raises(ValidationError):
-        manage.favorite_objects([f"{RUN}request.json"])
-    assert "favorites" not in _folders("projects/subject-a/")
+def test_copy_into_the_folder_a_file_is_already_in_duplicates_it(media_bucket):
+    """A move treats this as a no-op; for a copy it is how you duplicate a file."""
+    result = manage.copy_objects([OUTPUT], f"{RUN}output/")
+
+    assert result["keys"] == [f"{RUN}output/wave-porch (2).jpeg"]
+    assert sorted(_names(f"{RUN}output/")) == ["wave-porch (2).jpeg", "wave-porch.jpeg"]
 
 
-def test_favorite_refuses_something_that_is_already_a_favorite(media_bucket):
-    manage.favorite_objects([OUTPUT])
-    with pytest.raises(ValidationError):
-        manage.favorite_objects([f"{SUBJECT_A_FAVORITES}wave-porch.jpeg"])
-    assert _names(SUBJECT_A_FAVORITES) == ["wave-porch.jpeg"]
-
-
-def test_favorite_refuses_a_key_directly_under_projects(media_bucket):
-    """`projects/subject-a/project.json` belongs to no run and is not media either."""
-    media_bucket.put_object(
-        Bucket=config.media_bucket(), Key="projects/loose.mp4", Body=b"mp4-bytes"
-    )
-    with pytest.raises(ValidationError):
-        manage.favorite_objects(["projects/loose.mp4"])
-
-
-def test_favorite_of_a_missing_key_is_404(media_bucket):
+def test_copy_of_a_missing_key_is_404(media_bucket):
     with pytest.raises(NotFoundError):
-        manage.favorite_objects([f"{RUN}output/never-existed.jpeg"])
+        manage.copy_objects([f"{RUN}output/never-existed.jpeg"], INPUT_POOL)
 
 
-def test_favorite_copies_nothing_when_one_key_in_the_batch_is_refused(media_bucket):
-    """The whole batch is planned before anything is copied.
-
-    Same bargain `move_objects` makes: a selection half-favourited, with nothing
-    to say where the boundary fell, is worse than a request that did nothing.
-    """
-    with pytest.raises(ValidationError):
-        manage.favorite_objects([OUTPUT, "characters/subject-a/seed/subject-a_1.webp"])
-    assert "favorites" not in _folders("projects/subject-a/")
-
-
-def test_favorite_refuses_more_than_the_bulk_cap(media_bucket, monkeypatch):
+def test_copy_refuses_more_than_the_bulk_cap(media_bucket, monkeypatch):
     monkeypatch.setattr("studio_core.config.max_bulk_keys", lambda: 1)
     with pytest.raises(ValidationError):
-        manage.favorite_objects([OUTPUT, VIDEO])
+        manage.copy_objects([OUTPUT, VIDEO], INPUT_POOL)
 
 
-def test_favorite_is_off_when_no_projects_prefix_is_configured(media_bucket, monkeypatch):
-    """The knob that survives the pipeline reshaping the bucket again.
-
-    With nowhere identified as a project there is no derivable destination, so
-    every key is refused rather than copied somewhere invented.
-    """
-    monkeypatch.setattr("studio_core.config.projects_prefix", lambda: "")
+def test_copy_refuses_an_empty_key_list(media_bucket):
     with pytest.raises(ValidationError):
-        manage.favorite_objects([OUTPUT])
+        manage.copy_objects([], INPUT_POOL)

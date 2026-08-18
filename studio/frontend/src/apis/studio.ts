@@ -1,9 +1,9 @@
 import type {
   AssetResponse,
+  CopiedObjects,
   CreatedFolder,
   DeletedFolder,
   DeletedObjects,
-  Favorited,
   MovedFolder,
   MovedObjects,
   ReelResponse,
@@ -83,19 +83,16 @@ export function moveFolder(prefix: string, destination: string) {
 }
 
 /**
- * Copy files into their own project's favourites folder.
+ * Copy objects into another folder, leaving the sources where they are.
  *
- * The one write with no destination argument, and it is missing deliberately:
- * the server derives the folder from each key, so a favourite has exactly one
- * place it can land and this call cannot be pointed anywhere else. That is what
- * lets a selection spanning two subjects be favourited in one request — each
- * file goes to its own project.
- *
- * Files already there come back as `skipped` rather than as an error, so
- * pressing the star twice is a no-op instead of a duplicate.
+ * Same arguments as `moveObjects`, and it differs in two ways that both matter
+ * to the caller. Nothing is deleted. And a name the destination already holds is
+ * *numbered* — `clip.mp4` lands as `clip (2).mp4` — rather than refusing the
+ * whole request the way a move does, because copying a file into a folder that
+ * already has one by that name is ordinary rather than a mistake.
  */
-export function addFavorites(keys: string[]) {
-  return apiSend<Favorited>("POST", "/api/favorites", { keys });
+export function copyObjects(keys: string[], destination: string) {
+  return apiSend<CopiedObjects>("POST", "/api/objects/copy", { keys, destination });
 }
 
 /**

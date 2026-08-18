@@ -27,7 +27,6 @@ TEXT_EXTENSIONS = frozenset({".json", ".md", ".txt", ".yaml", ".yml", ".csv", ".
 # What can be favourited. The same two kinds the reel shows, and for the same
 # reason: a favourites folder is a shelf of picked output, not a second copy of
 # the run metadata that happened to sit beside it.
-FAVORITE_KINDS = frozenset({"image", "video"})
 
 # What the text viewer labels a text file as, for syntax highlighting.
 TEXT_LANGUAGES = {
@@ -170,73 +169,14 @@ def moved_prefix(prefix: str, destination: str) -> str:
 def numbered_name(name: str, index: int) -> str:
     """`shot-01.mp4` at 2 → `shot-01 (2).mp4`.
 
-    The convention already in `projects/<project>/favorites/`, which was filled by
-    hand from a Finder window and so holds a ` (3).mp4` and a ` copy.mp4`. Worth
-    matching rather than inventing a third form: this is only reached when a
-    favourite's name is already taken, which the flat favourites folder makes
-    ordinary — `shot-01.mp4` is what *every* scene calls its first shot.
+    The convention the bucket already holds, from folders filled by hand out of a
+    Finder window — there is a ` (3).mp4` and a ` copy.mp4` in there. Worth
+    matching rather than inventing a third form. Reached whenever a copy's name
+    is already taken at its destination, which is ordinary rather than rare:
+    `shot-01.mp4` is what *every* scene calls its first shot.
     """
     stem, ext = posixpath.splitext(name)
     return f"{stem} ({index}){ext}"
-
-
-def _project_segments(key: str) -> tuple[str, list[str]] | None:
-    """`(projects root, path within it)` for a key inside a project, else None.
-
-    Both favourite questions below reduce to this, and neither should ask it
-    twice: whether a key is favouritable and whether it already is a favourite
-    are two readings of the same three configured strings.
-    """
-    if not config.projects_prefix() or not config.favorites_folder():
-        return None
-
-    base = f"{config.media_root_prefix()}{config.projects_prefix()}"
-    if not key.startswith(base):
-        return None
-
-    segments = key[len(base):].split("/")
-    # `projects/<subject>/<something>` at the very least: a key sitting directly
-    # in `projects/` belongs to no project and has nowhere to be favourited to.
-    if len(segments) < 2 or not segments[0]:
-        return None
-    return base, segments
-
-
-def is_favorite(key: str) -> bool:
-    """Whether a key already sits in some project's favourites folder."""
-    split = _project_segments(key)
-    if split is None:
-        return False
-    _, segments = split
-    return len(segments) > 2 and segments[1] == config.favorites_folder()
-
-
-def favorites_prefix(key: str) -> str | None:
-    """Where a favourite of this key would go, or None if it cannot be one.
-
-    Three separate reasons to say None, and the caller does not need to tell them
-    apart — the UI shows a star or it does not:
-
-    * **It is not media.** Favourites are picked *output*; a `result.json` copied
-      flat into the folder beside the clips is noise, and the read endpoints use
-      the same rule so the button and the API agree about what they accept.
-    * **It is not inside a project.** `characters/<name>/seed/<name>_1.webp` is a
-      source photograph of who <name> is. There is no favouriting it, because
-      there is no favourites folder in that tree to hold it.
-    * **It is already a favourite.** Copying `favorites/x.mp4` back into
-      `favorites/` would only ever produce `x (2).mp4`.
-    """
-    if kind(key) not in FAVORITE_KINDS:
-        return None
-
-    split = _project_segments(key)
-    if split is None:
-        return None
-
-    base, segments = split
-    if is_favorite(key):
-        return None
-    return f"{base}{segments[0]}/{config.favorites_folder()}/"
 
 
 def is_within(prefix: str, candidate: str) -> bool:

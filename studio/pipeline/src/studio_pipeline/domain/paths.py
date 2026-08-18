@@ -24,7 +24,6 @@ They were the same folder once; they are not the same thing:
         chains/          <slug>.json
         scenes/          <scene_id>/{scene.json, shots/, output/}
         movies/          <movie_id>/{movie.json, scenes/, output/}
-        favorites/
         input/           the project working pool
 
     phrasebook/wording.yaml
@@ -78,9 +77,12 @@ POSE_GROUPS = ("body", "face")
 # basenames, because renaming a source photo loses information for nothing.
 CHAR_POOLS = ("reference", "corpus", "seed", "archive")
 
-# The project subtrees. `runs` is append-only history; `scenes` and `movies` are
-# derived from it; `input` is the working pool; `favorites` is human curation.
-PROJECT_DIRS = ("runs", "scenes", "movies", "chains", "favorites", "input")
+# The project subtrees the tools write to. `runs` is append-only history;
+# `scenes` and `movies` are derived from it; `input` is the working pool. A
+# project may hold other folders a person made — `favorites/` is one, left over
+# from a feature that derived that destination rather than asking for it — and
+# they are ordinary folders, browsable and copyable like any other.
+PROJECT_DIRS = ("runs", "scenes", "movies", "chains", "input")
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
@@ -207,7 +209,7 @@ def movie_key(p: str, movie_id: str, *parts: str) -> str:
     return s3c.key(_join(movie_prefix(p, movie_id), *parts))
 
 
-# chains, favorites, the input pool ------------------------------------------
+# chains and the input pool --------------------------------------------------
 
 def chains_prefix(p: str) -> str:
     return project_dir_prefix(p, "chains")
@@ -215,14 +217,6 @@ def chains_prefix(p: str) -> str:
 
 def chain_key(p: str, slug: str) -> str:
     return s3c.key(_join(chains_prefix(p), f"{slug}.json"))
-
-
-def favorites_prefix(p: str) -> str:
-    return project_dir_prefix(p, "favorites")
-
-
-def favorite_key(p: str, basename: str) -> str:
-    return s3c.key(_join(favorites_prefix(p), basename))
 
 
 def input_prefix(p: str) -> str:

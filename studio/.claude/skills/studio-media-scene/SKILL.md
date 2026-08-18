@@ -138,7 +138,6 @@ studio scenes handoff <project>/<slug> --shot 2
 
 # …repeat 4 and 5 for each shot, then cut
 studio scenes assemble <project>/<slug>
-studio scenes favorite <project>/<slug>      # a keeper, onto the shelf
 ```
 
 **Step 3 is not optional.** Each panel becomes the input to the next, and each
@@ -281,22 +280,6 @@ than destroyed.
 No storyboard? `studio scenes assemble <project>/<slug> --shot <runref> --shot
 <runref>` appends runs directly, so "just stitch these three clips" is still one
 command and a board stays optional.
-
-### Keeping one
-
-```bash
-studio scenes favorite <project>/<slug>
-```
-
-Copies the cut to `projects/<project>/favorites/<slug>.mp4`. `runs favorite`
-cannot do this — a cut is stitched from several runs and has no prediction
-behind it — so without this the one artefact a scene exists to produce was the
-one thing the shelf could not be handed.
-
-The copy is the whole feature: nothing anywhere records that a scene has been
-favourited, so pressing it twice re-copies rather than consulting a flag, and
-the shelf is read by opening it. The original stays where it is, so re-cutting
-the scene later does not disturb the keeper.
 
 Shots that agree on codec, geometry, frame rate and audio layout are
 **stream-copied** — the cut is bit-for-bit the sources joined end to end. Shots

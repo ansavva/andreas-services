@@ -13,8 +13,13 @@ interface Props {
   copyNoun?: "key" | "prefix";
   /** Opens the parent's rename field. The parent owns it so it can be full width. */
   onRename: () => void;
-  /** Opens the parent's destination picker. */
+  /** Opens the parent's destination picker on a move. */
   onMove: () => void;
+  /**
+   * Opens it on a copy. Optional because folders cannot be copied — there is no
+   * folder-copy endpoint — so a folder card passes only `onMove`.
+   */
+  onCopyTo?: () => void;
   onDelete: () => Promise<unknown>;
 }
 
@@ -52,6 +57,7 @@ export function ItemActions({
   copyNoun = "key",
   onRename,
   onMove,
+  onCopyTo,
   onDelete,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -106,6 +112,9 @@ export function ItemActions({
       <Dropdown.Content className="left-auto right-0">
         <Dropdown.Item onSelect={onRename}>Rename…</Dropdown.Item>
         <Dropdown.Item onSelect={onMove}>Move…</Dropdown.Item>
+        {/* "Copy to…" rather than "Copy", because the item below it copies the
+            key to the clipboard and the two must not read as the same thing. */}
+        {onCopyTo && <Dropdown.Item onSelect={onCopyTo}>Copy to…</Dropdown.Item>}
 
         <Dropdown.Item
           onClick={(event: React.MouseEvent) => {

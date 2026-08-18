@@ -242,7 +242,7 @@ projects/<project>/
     chains/         an ad-hoc sequence's frames (a planned scene derives its own)
     scenes/         runs cut into one continuous take
     movies/         scenes cut into one piece
-    favorites/      keepers, copied out of runs and scene cuts
+    favorites/      an ordinary folder someone made — the tools do not write here
     input/          the project working pool (<project>_in_<n>.<ext>)
 
 phrasebook/wording.yaml
@@ -469,8 +469,8 @@ or projects.
 |---|---|
 | `paths.py` | **The one module that knows the tree's shape.** Every key is built here, which is what keeps a global prefix applied in exactly one place. Library, not a command. |
 | `projects.py` | Project CRUD and the project **input pool**. `require_project()` turns a missing `--project` into an error that lists the real options. |
-| `runs.py` | The shared **run store** every engine records into: request/prompt/result, output archiving, runref resolution for chaining, `find --character` across projects, favourites. It refuses a URL-shaped binding — this is where "S3 is the only origin" is enforced in code. |
-| `scenes.py` | The **scene store**: a piece planned, shot and cut, under `projects/<p>/scenes/<slug>/`. Owns the manifest, `assemble`, `handoff`, `favorite`, and the read-only half of the CLI. |
+| `runs.py` | The shared **run store** every engine records into: request/prompt/result, output archiving, runref resolution for chaining, `find --character` across projects. It refuses a URL-shaped binding — this is where "S3 is the only origin" is enforced in code. |
+| `scenes.py` | The **scene store**: a piece planned, shot and cut, under `projects/<p>/scenes/<slug>/`. Owns the manifest, `assemble`, `handoff`, and the read-only half of the CLI. |
 | `storyboard.py` | **The plan document**, pure data: what a shot's panels mean, which one is the start frame once the chain has spoken, how a revision merges onto work already paid for. No S3, no models — so the rules that decide what a shot sends are testable on their own. |
 | `movies.py` | The **movie store**: scenes cut into one piece. The same shape one tier up. |
 | `frames.py` | Stills out of a run's video — the handoff frame, and the contact grid that lets a clip be looked at before more money is spent on it. Its `chain` store is for a sequence with no scene behind it; a planned scene derives its own frames from `scene.json`. |

@@ -4,7 +4,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Alert, Breadcrumbs, Button, Input, Spinner, Text } from "@ansavva/design-system";
 
 import {
-  addFavorites,
+  copyObjects,
   createFolder,
   deleteFolder,
   deleteObjects,
@@ -16,11 +16,10 @@ import {
 import { FileRow } from "../components/browse/FileRow";
 import { FolderCard } from "../components/browse/FolderCard";
 import { MediaTile } from "../components/browse/MediaTile";
-import { MovePicker } from "../components/browse/MovePicker";
+import { DestinationPicker } from "../components/browse/DestinationPicker";
 import { SortControl } from "../components/browse/SortControl";
 import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
 import { CopyKeyButton } from "../components/common/CopyKeyButton";
-import { FavoriteButton } from "../components/common/FavoriteButton";
 import { TextPage } from "../components/text/TextPage";
 import { ReelView } from "../components/viewer/ReelView";
 import { useAuth } from "../context/AuthContext";
@@ -31,16 +30,20 @@ import { DEFAULT_SORT, isSortOrder, type FileEntry, type SortOrder } from "../ty
 import { ROOT_PREFIX, folderPath, objectPath, parentPrefix, targetFromPath } from "../utils/location";
 
 /**
- * What the destination picker is open on.
+ * What the destination picker is open on, and which operation it will perform.
  *
- * Two shapes because the API has two move endpoints, and it has two because a
- * folder move carries a subtree and an object move does not — the counting and
- * the refusals are genuinely different. Collapsing them here would only push the
- * branch one layer down.
+ * Two shapes because a folder carries a subtree and a set of objects does not —
+ * the counting and the refusals are genuinely different, which is why the API
+ * has two move endpoints. Collapsing them here would only push the branch one
+ * layer down.
+ *
+ * `verb` rides along rather than being separate state so the two cannot drift:
+ * there is no way to have a picker open with no operation chosen, or to close
+ * one and leave a stale verb behind for the next.
  */
-type MoveTarget =
-  | { kind: "folder"; prefix: string; name: string }
-  | { kind: "objects"; keys: string[]; noun: string };
+type PickerTarget =
+  | { verb: "move"; kind: "folder"; prefix: string; name: string }
+  | { verb: "move" | "copy"; kind: "objects"; keys: string[]; noun: string };
 
 export function BrowsePage() {
   const location = useLocation();
@@ -65,7 +68,7 @@ export function BrowsePage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [newFolder, setNewFolder] = useState<string | null>(null);
   const [reelPrefix, setReelPrefix] = useState<string | null>(null);
-  const [moveTarget, setMoveTarget] = useState<MoveTarget | null>(null);
+  const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
 
   /**
    * Which folder the page *behind* the overlay is showing.
@@ -176,21 +179,6 @@ export function BrowsePage() {
 
   const selection = useSelection(media, prefix);
 
-  /**
-   * Which of the selection can actually be favourited.
-   *
-   * Everything in one grid comes from one folder, so this is all of it or none
-   * of it — but the API answers per file and this reads that answer rather than
-   * inferring it from the prefix, which is the same reason `favorites_prefix`
-   * arrives per file in the first place. Already-favourited files are not
-   * filtered out, because nothing tracks which those are: a second press
-   * re-copies, and the server skips it as a no-op.
-   */
-  const favoritable = useMemo(
-    () => selection.selectedItems.filter((item) => item.favorites_prefix),
-    [selection.selectedItems],
-  );
-
   /** "3 files", "1 key" — the count and its noun, agreeing about plurality. */
   const selectedNoun = useCallback(
     (one: string, many: string) => `${selection.count} ${selection.count === 1 ? one : many}`,
@@ -222,22 +210,6 @@ export function BrowsePage() {
     [reload],
   );
 
-  /**
-   * Favouriting is the one write that does not re-fetch, because it does not
-   * change this folder.
-   *
-   * The copy lands in `projects/<subject>/favorites/`, which is somewhere you
-   * are not: an item can only be favourited from outside that folder, so the
-   * listing on screen is the same listing afterwards. Re-fetching would be a
-   * request whose only visible effect is the grid flickering — and in the reel
-   * it would re-walk the subtree under the scroll position, which is exactly
-   * what `useReel.dropItem` exists to avoid. The star reports itself instead.
-   */
-  const favorite = useCallback(
-    (keys: string[]) => run(addFavorites(keys), { refresh: false }),
-    [run],
-  );
-
   const deleteSelected = useCallback(async () => {
     const keys = selection.selectedItems.map((item) => item.key);
     await run(deleteObjects(keys));
@@ -245,25 +217,33 @@ export function BrowsePage() {
   }, [run, selection]);
 
   /**
-   * The picker's submit, for whichever kind of thing it was opened on.
+   * The picker's submit, for whichever operation and kind it was opened on.
    *
-   * It deliberately does *not* close the picker — `MovePicker` closes itself on
+   * It deliberately does *not* close the picker — it closes itself on
    * a resolved promise and stays open with the message on a rejected one, which
    * is the same bargain `RenameForm` makes: "that name is taken there" is fixed
    * by picking a different folder, and closing to say so would throw away the
    * navigating you just did.
    */
-  const submitMove = useCallback(
+  const submitPicker = useCallback(
     async (destination: string) => {
-      if (!moveTarget) return;
-      if (moveTarget.kind === "folder") {
-        await run(moveFolder(moveTarget.prefix, destination));
+      if (!pickerTarget) return;
+      if (pickerTarget.kind === "folder") {
+        await run(moveFolder(pickerTarget.prefix, destination));
         return;
       }
-      await run(moveObjects(moveTarget.keys, destination));
+      if (pickerTarget.verb === "copy") {
+        // Unlike a move, a copy can land in the folder you are looking at — so
+        // this re-fetches, and `run` does by default. Favouriting skipped the
+        // refresh because its destination was always somewhere you were not.
+        await run(copyObjects(pickerTarget.keys, destination));
+        selection.clear();
+        return;
+      }
+      await run(moveObjects(pickerTarget.keys, destination));
       selection.clear();
     },
-    [moveTarget, run, selection],
+    [pickerTarget, run, selection],
   );
 
   /**
@@ -309,19 +289,6 @@ export function BrowsePage() {
     [location.search, navigate, reel, reelPrefix, run],
   );
 
-  /**
-   * Favouriting from inside the viewer, which — unlike renaming and deleting —
-   * behaves identically in both reels.
-   *
-   * Nothing leaves the list and nothing moves: the clip on screen is still the
-   * clip on screen, and a copy of it now exists on a shelf elsewhere. So there
-   * is no `dropItem`, no navigation, and no re-fetch on either path.
-   */
-  const favoriteOpenFile = useCallback(
-    (file: FileEntry) => favorite([file.key]),
-    [favorite],
-  );
-
   const submitNewFolder = useCallback(async () => {
     const name = (newFolder ?? "").trim();
     if (!name) {
@@ -340,7 +307,7 @@ export function BrowsePage() {
   // doing two things at once. The picker matters most here: it is often open
   // *on* the selection, so dropping it would be Escape cancelling the move by
   // emptying what was being moved.
-  const overlayOpen = openKey !== null || reelPrefix !== null || moveTarget !== null;
+  const overlayOpen = openKey !== null || reelPrefix !== null || pickerTarget !== null;
   useEffect(() => {
     if (overlayOpen || selection.count === 0) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -541,7 +508,7 @@ export function BrowsePage() {
                 onOpen={() => goToFolder(folder.prefix)}
                 onRename={(name) => run(renameFolder(folder.prefix, name))}
                 onMove={() =>
-                  setMoveTarget({ kind: "folder", prefix: folder.prefix, name: folder.name })
+                  setPickerTarget({ verb: "move", kind: "folder", prefix: folder.prefix, name: folder.name })
                 }
                 onDelete={() => run(deleteFolder(folder.prefix))}
               />
@@ -610,27 +577,46 @@ export function BrowsePage() {
                 noun={selectedNoun("key", "keys")}
               />
 
-              {/* Picking the keepers out of a run is the whole reason to select
-                  forty tiles at once, so the star belongs beside the bulk move
-                  and delete. Only the favouritable ones are sent — in this grid
-                  that is all or none, since a folder sits in one tree, but the
-                  filter is what makes that a fact rather than an assumption. */}
-              {favoritable.length > 0 && (
-                <FavoriteButton
-                  noun={`${favoritable.length} ${favoritable.length === 1 ? "file" : "files"}`}
-                  onFavorite={() =>
-                    favorite(favoritable.map((item) => item.key)).then(selection.clear)
-                  }
-                />
-              )}
-
               {/* Media has no per-tile menu the way a row does — sixty thumbnails
                   with a control each is the crowding this grid exists to avoid —
-                  so this bar is where a bulk move is reached from. */}
+                  so this bar is where a bulk move and a bulk copy are reached
+                  from. Picking the keepers out of a run is the whole reason to
+                  select forty tiles at once, and copying them somewhere is now
+                  how that is done. */}
               <button
                 type="button"
                 onClick={() =>
-                  setMoveTarget({
+                  setPickerTarget({
+                    verb: "copy",
+                    kind: "objects",
+                    keys: selection.selectedItems.map((item) => item.key),
+                    noun: selectedNoun("file", "files"),
+                  })
+                }
+                aria-label={`Copy ${selectedNoun("file", "files")} to…`}
+                title={`Copy ${selectedNoun("file", "files")} to…`}
+                className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
+                           focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                {/* Two sheets, one behind the other: the source stays, which is
+                    the whole difference from the arrow on the move button. */}
+                <svg
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="size-5 fill-none stroke-current stroke-[1.5]"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                  <path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
+                </svg>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setPickerTarget({
+                    verb: "move",
                     kind: "objects",
                     keys: selection.selectedItems.map((item) => item.key),
                     noun: selectedNoun("file", "files"),
@@ -673,9 +659,6 @@ export function BrowsePage() {
                 selectionActive={selection.count > 0}
                 onOpen={() => openFile(file)}
                 onToggleSelect={(extend) => selection.toggleAt(index, extend)}
-                onFavorite={
-                  file.favorites_prefix ? () => favorite([file.key]) : undefined
-                }
               />
             ))}
           </div>
@@ -693,7 +676,20 @@ export function BrowsePage() {
                 onOpen={() => openFile(file)}
                 onRename={(name) => run(renameObject(file.key, name))}
                 onMove={() =>
-                  setMoveTarget({ kind: "objects", keys: [file.key], noun: file.name })
+                  setPickerTarget({
+                    verb: "move",
+                    kind: "objects",
+                    keys: [file.key],
+                    noun: file.name,
+                  })
+                }
+                onCopyTo={() =>
+                  setPickerTarget({
+                    verb: "copy",
+                    kind: "objects",
+                    keys: [file.key],
+                    noun: file.name,
+                  })
                 }
                 onDelete={() => run(deleteObjects([file.key]))}
               />
@@ -723,7 +719,6 @@ export function BrowsePage() {
           onCurrentChange={onReelCurrentChange}
           onRename={renameOpenFile}
           onDelete={deleteOpenFile}
-          onFavorite={favoriteOpenFile}
         />
       ) : (
         openIndex >= 0 && (
@@ -736,7 +731,6 @@ export function BrowsePage() {
             onCurrentChange={onReelCurrentChange}
             onRename={renameOpenFile}
             onDelete={deleteOpenFile}
-            onFavorite={favoriteOpenFile}
           />
         )
       )}
@@ -746,16 +740,17 @@ export function BrowsePage() {
           edited, because these are notes and prompts a person wrote. */}
       {openText && <TextPage file={openText} onClose={closeItem} onSaved={reload} />}
 
-      {moveTarget && (
-        <MovePicker
-          noun={moveTarget.kind === "folder" ? moveTarget.name : moveTarget.noun}
+      {pickerTarget && (
+        <DestinationPicker
+          verb={pickerTarget.verb}
+          noun={pickerTarget.kind === "folder" ? pickerTarget.name : pickerTarget.noun}
           startPrefix={prefix}
           currentPrefix={prefix}
           // A folder cannot land inside itself, and the picker greys out the
           // branch rather than letting the request come back refused.
-          forbiddenPrefix={moveTarget.kind === "folder" ? moveTarget.prefix : undefined}
-          onMove={submitMove}
-          onClose={() => setMoveTarget(null)}
+          forbiddenPrefix={pickerTarget.kind === "folder" ? pickerTarget.prefix : undefined}
+          onSubmit={submitPicker}
+          onClose={() => setPickerTarget(null)}
         />
       )}
 
