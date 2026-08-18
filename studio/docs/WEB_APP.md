@@ -135,15 +135,14 @@ that sentence is no longer true of either half — a write-capable role now reac
 the whole bucket. Setting the prefix to a real value narrows reads and writes
 together, and is the lever to reach for if that ever needs to be true again.
 
-There is **no second live copy of this bucket.** An older mirror called
+There is **no second copy of this bucket anywhere.** An older mirror called
 `xharness-assets` used to exist and this file used to offer it as a fallback;
 it has since been deleted, and the note is removed rather than left to be
 believed. Versioning and `prevent_destroy` are what stand in its place.
 
-`xharness-prod-media-us-east-1` is not a counter-example. It is the bucket this
-one was renamed out of, it holds everything as of the August 2026 cutover, and
-it is kept for the version history that the copy did not carry — but it is
-frozen. Nothing writes to it, so it is a floor under recovery, not a mirror.
+`xharness-prod-media-us-east-1`, the bucket this one was renamed out of, is not
+a fallback either: it was deleted in August 2026 once the copy was verified, and
+its version history went with it. Nothing stands behind this bucket now.
 
 ## What the bucket looks like
 

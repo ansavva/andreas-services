@@ -16,9 +16,8 @@ def media_bucket():
 
     Renamed from `xharness-prod-media-us-east-1` in August 2026, which is why
     the default here changed. S3 has no rename, so it was done as a second
-    bucket and a verified copy; the original is retained permanently as the
-    archive, holding the version history the copy did not carry. Nothing in
-    this service reads the archive. See `infra/README.md`.
+    bucket and a verified copy; the old bucket was then deleted. See
+    `infra/README.md`.
     """
     return os.environ.get("STUDIO_MEDIA_BUCKET", "studio-prod-media-us-east-1")
 
