@@ -27,7 +27,14 @@ import { useReel } from "../hooks/useReel";
 import { useSelection } from "../hooks/useSelection";
 import { useTree } from "../hooks/useTree";
 import { DEFAULT_SORT, isSortOrder, type FileEntry, type SortOrder } from "../types";
-import { ROOT_PREFIX, folderPath, objectPath, parentPrefix, targetFromPath } from "../utils/location";
+import {
+  ROOT_PREFIX,
+  basename,
+  folderPath,
+  objectPath,
+  parentPrefix,
+  targetFromPath,
+} from "../utils/location";
 
 /**
  * What the destination picker is open on, and which operation it will perform.
@@ -112,11 +119,18 @@ export function BrowsePage() {
   const openText =
     browsing && openKey ? (others.find((item) => item.key === openKey) ?? null) : null;
 
+  /**
+   * `replace` is for the one navigation that is not a journey: leaving a folder
+   * because it no longer exists. Pushing there would leave the deleted prefix
+   * as the entry behind you, so back would load an empty listing of something
+   * you just destroyed. Every other move between folders is a real history
+   * entry, because the browser's back button has to retrace browsing.
+   */
   const goToFolder = useCallback(
-    (nextPrefix: string) => {
+    (nextPrefix: string, { replace = false }: { replace?: boolean } = {}) => {
       setReelPrefix(null);
       setActionError(null);
-      navigate({ pathname: folderPath(nextPrefix), search: location.search });
+      navigate({ pathname: folderPath(nextPrefix), search: location.search }, { replace });
     },
     [location.search, navigate],
   );
@@ -289,6 +303,25 @@ export function BrowsePage() {
     [location.search, navigate, reel, reelPrefix, run],
   );
 
+  /**
+   * Delete the folder you are standing in, then step up into its parent.
+   *
+   * The listing already had a delete for every folder *except* this one, which
+   * meant emptying a run folder and then getting rid of it took navigating back
+   * out to find it in the grid — and for a folder you arrived at by share link,
+   * out was somewhere you had never been.
+   *
+   * It refuses to refresh on the way out. `run` re-fetches by default, and the
+   * prefix it would re-fetch is the one that has just stopped existing: one
+   * request for an empty listing, rendered for as long as the navigation takes.
+   * Going up is what re-fetches, against a prefix that is still there.
+   */
+  const deleteCurrentFolder = useCallback(async () => {
+    const parent = parentPrefix(prefix);
+    await run(deleteFolder(prefix), { refresh: false });
+    goToFolder(parent, { replace: true });
+  }, [goToFolder, prefix, run]);
+
   const submitNewFolder = useCallback(async () => {
     const name = (newFolder ?? "").trim();
     if (!name) {
@@ -319,6 +352,10 @@ export function BrowsePage() {
 
   const crumbs = data?.breadcrumbs ?? [{ name: "/", prefix: ROOT_PREFIX }];
   const atRoot = prefix === ROOT_PREFIX;
+  // The current folder's own name, for the delete that acts on it. Taken from
+  // the prefix rather than from the last breadcrumb so it is there before the
+  // listing lands, and empty only at the root, where the control is disabled.
+  const folderName = basename(prefix);
   const isEmpty =
     !loading && !error && data && data.folders.length === 0 && data.files.length === 0;
 
@@ -354,9 +391,9 @@ export function BrowsePage() {
         Two rows, not one.
 
         These are two different kinds of control and they used to share a line:
-        where you are (back, breadcrumbs, the prefix) and what you can do here
-        (sort, new folder, play). On any real path the breadcrumbs took the width
-        and the four buttons wrapped underneath them anyway — in whatever order
+        where you are (back, breadcrumbs) and what you can do here (sort, copy the
+        prefix, delete, new folder, play). On any real path the breadcrumbs took
+        the width and the buttons wrapped underneath them anyway — in whatever order
         the flex run happened to break — so a folder deep in `projects/` opened
         onto a bar that looked different from the one at the root. Splitting them
         makes that layout the intended one rather than the one that fell out, and
@@ -401,11 +438,6 @@ export function BrowsePage() {
             ))}
           </Breadcrumbs.Root>
         </div>
-
-        {/* Clicking a folder navigates into it rather than opening an overlay, so
-            this is that folder's "opened" copy affordance — and it belongs beside
-            the path it copies rather than in the action row below. */}
-        <CopyKeyButton value={data?.prefix ?? prefix} noun="prefix" />
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-y border-line py-2">
@@ -413,30 +445,77 @@ export function BrowsePage() {
 
         <div className="flex-1" />
 
-        {/* An icon, like the copy control beside the path: "New folder" is a
-            noun-shaped action with an icon everyone already knows, and spelling
-            it out made it the widest thing in a row of three. The label lives on
-            `aria-label` and `title`, so it is still there for a screen reader and
-            for anyone who hovers. */}
-        <button
-          type="button"
-          onClick={() => setNewFolder("")}
-          aria-label="New folder"
-          title="New folder"
-          className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
-                     focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="size-5 fill-none stroke-current stroke-[1.5]"
+        {/*
+          One cluster of three icons, then the primary.
+
+          All three act on the folder you are in — copy its prefix, delete it,
+          make one inside it — so they read as a set: same weight, same size, and a
+          tighter gap between them than the row's own. The copy control used to sit up beside
+          the breadcrumbs, which put two of the three folder actions in one row
+          and the third in another; that is what made this bar look like loose
+          parts. The two rows still mean what the comment above says, with the
+          line drawn one notch tighter: *where you are* above, everything you can
+          *do* below.
+
+          The divider is doing real work rather than decorating. `Play reel` is
+          the only filled button on the page, and a delete sitting flush against
+          it is a mis-click with no undo — so the destructive icon is kept in the
+          middle of its own cluster, and a rule separates the cluster from the
+          primary. Do not close that gap.
+        */}
+        <div className="flex shrink-0 items-center gap-0.5">
+          <CopyKeyButton value={data?.prefix ?? prefix} noun="prefix" />
+
+          {/*
+            The folder you are in, deletable from inside it.
+
+            Every other folder in the library has a delete in the `ItemActions`
+            menu on its card — but that card is drawn by the folder's *parent*,
+            so the one folder without one was the folder you were standing in,
+            and getting rid of it meant navigating back out to find it in the
+            grid.
+
+            Armed before it fires, and the `bar` tone is why it is worth the
+            extra width: the trash can alone at rest, growing into a sentence
+            that names the folder once armed. An icon changing colour is not
+            enough for a press that takes a subtree with it. It is disabled at
+            the root, where `keys.assert_inside_root` refuses it anyway — saying
+            so before the round trip rather than after it.
+          */}
+          <ConfirmDeleteButton
+            tone="bar"
+            disabled={atRoot}
+            noun={atRoot ? "this folder" : folderName}
+            onConfirm={deleteCurrentFolder}
+          />
+
+          {/* An icon, like the two beside it: "New folder" is a noun-shaped
+              action with an icon everyone already knows, and spelling it out
+              made it the widest thing in the row. The label lives on
+              `aria-label` and `title`, so it is still there for a screen reader
+              and for anyone who hovers. */}
+          <button
+            type="button"
+            onClick={() => setNewFolder("")}
+            aria-label="New folder"
+            title="New folder"
+            className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
+                       focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
-            <path d="M12 10.5v5M9.5 13h5" />
-          </svg>
-        </button>
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="size-5 fill-none stroke-current stroke-[1.5]"
+            >
+              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+              <path d="M12 10.5v5M9.5 13h5" />
+            </svg>
+          </button>
+        </div>
+
+        <div aria-hidden="true" className="mx-1 h-6 w-px shrink-0 bg-line" />
 
         <Button size="sm" onClick={() => setReelPrefix(prefix)}>
           Play reel
