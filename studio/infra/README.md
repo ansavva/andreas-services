@@ -28,6 +28,11 @@ Counting the version history it is 2,572 versions and 2.75 GB, across 1,677
 distinct keys — 718 of which exist only behind a delete marker. That gap between
 959 and 1,677 is the whole reason the rename is a copy rather than a move.
 
+Those are a snapshot (18 Aug 2026) and they move on their own. Curating a
+character copies files from `corpus/` to `archive/` and deletes the originals,
+so ordinary use pushes current-object count down and delete-marker count up
+without anything being lost. Re-measure before relying on them.
+
 - **Private.** All four public-access blocks on, ACLs disabled
   (`BucketOwnerEnforced`). Objects reach Replicate and the browser only as
   short-lived presigned URLs, which work with every one of those flags on.
@@ -56,7 +61,7 @@ therefore **a second bucket and a copy**, in three applies:
 
 | Step | Apply does | Live bucket after |
 | --- | --- | --- |
-| 1 | `moved` block: `module.media` → `module.media_archive`. State edit only, zero AWS changes. | archive |
+| 1 ✅ | `moved` block: `module.media` → `module.media_archive`. State edit only, zero AWS changes. | archive |
 | 2 | Create `module.media` — the new bucket, empty. | archive |
 | — | Copy the 959 current objects across, server-side, and verify. | archive |
 | 3 | Flip `local.active_media`, and re-point the skills, backend, tests and docs. | **new** |

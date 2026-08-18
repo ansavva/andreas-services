@@ -40,13 +40,13 @@ data "aws_region" "current" {}
 # THIS bucket is unacceptable. So the "rename" is a second bucket plus a copy,
 # in three separate applies, and this file is at step 1 of 3:
 #
-#   1. THIS APPLY — rename the module address only. `module.media` becomes
-#      `module.media_archive`. A `moved` block is a state edit: no AWS resource
-#      is created, changed or destroyed. Terraform forbids declaring
-#      `module.media` again while this block names it as a source, which is the
-#      whole reason step 2 is a separate apply.
-#   2. Create `module.media` — the new, correctly-named, EMPTY bucket. The app
-#      keeps reading the archive; nothing is live yet.
+#   1. DONE — renamed the module address. `module.media` became
+#      `module.media_archive` via a `moved` block: a state edit, no AWS resource
+#      created, changed or destroyed. Terraform forbids declaring `module.media`
+#      again while such a block names it as a source, which is why creating the
+#      new bucket could not be folded into it.
+#   2. THIS APPLY — create `module.media`, the new correctly-named bucket. It is
+#      EMPTY and nothing reads it. The app keeps reading the archive.
 #   3. Copy the current objects across, verify, then flip `local.active_media`.
 #
 # The archive is retained permanently at the end of it, and that is the point
@@ -57,9 +57,13 @@ data "aws_region" "current" {}
 # provide. Both buckets carry `prevent_destroy`, which means `terraform destroy`
 # on this whole environment fails by design (see `modules/media/main.tf`).
 
-moved {
-  from = module.media
-  to   = module.media_archive
+module "media" {
+  source = "../../modules/media"
+
+  bucket_name = var.media_bucket_name
+  key_prefix  = var.media_root_prefix
+
+  tags = local.common_tags
 }
 
 module "media_archive" {
@@ -78,9 +82,10 @@ module "media_archive" {
 # a module reference, so that moving the pipeline from one bucket to the other
 # is a one-line change in its own commit, and a one-line revert.
 #
-# It points at the archive because the archive is still the only bucket that
-# exists. It keeps pointing there through step 2, because an empty bucket would
-# take the app down for the length of the copy. It moves in step 3.
+# It still points at the archive. `module.media` above now exists, but it is
+# empty — pointing the app at it before the copy would take studio down for the
+# length of the transfer, and serve 404s for every asset in the meantime. It
+# moves in step 3, after the copy is verified.
 locals {
   active_media = module.media_archive
 }
