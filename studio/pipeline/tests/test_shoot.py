@@ -903,3 +903,39 @@ def test_contact_sheet_still_sorts_and_labels_by_name_without_captions(tmp_path)
         paths.append(str(p))
     out = SHEET.build(paths, str(tmp_path / "sheet.png"), cols=2, cell=60, quiet=True)
     assert os.path.isfile(out)
+
+
+# --- the image budget ------------------------------------------------------
+
+def test_a_start_frame_counts_toward_the_total_image_cap():
+    """One model caps TOTAL images, not just the reference list.
+
+    Kling advertises `reference_images` "up to 7" and separately allows a start
+    frame beside them, which reads as 7 + 1 and is not — the prediction fails
+    outright with error 1201. It bites hardest with a character whose
+    `default_set` holds exactly seven, the shape a shoot produces, because
+    binding that plus a start frame is over by exactly one.
+    """
+    entry = REG.get("kling")
+    images = entry["images"]
+    assert images.get("start_counts_toward_max_refs"), "the registry must record this"
+    cap = images["max_refs"]
+
+    over = {images["refs"]: [f"k{i}" for i in range(cap)], images["start"]: "start"}
+    with pytest.raises(SUB.SubmitError) as exc:
+        SUB._check_image_budget(entry, over)
+    assert "IN TOTAL" in str(exc.value)
+    assert "--pick" in str(exc.value), "the error must name the fix"
+
+    # Exactly at the cap, and a bare reference set, both pass.
+    SUB._check_image_budget(entry, {images["refs"]: [f"k{i}" for i in range(cap - 1)],
+                                    images["start"]: "start"})
+    SUB._check_image_budget(entry, {images["refs"]: [f"k{i}" for i in range(cap)]})
+
+
+def test_models_without_the_flag_are_unaffected():
+    """The rule is registry-driven, not named per model: an image model with no
+    such cap must not start refusing reference sets."""
+    entry = REG.get("gpt-image-2")
+    field = entry["images"]["refs"]
+    SUB._check_image_budget(entry, {field: [f"k{i}" for i in range(12)]})

@@ -41,7 +41,7 @@ Settle consent before anything is published.
 | `prompt` | **max 2500 chars.** Supports `<<<image_1>>>` template refs. |
 | `start_image` | First frame. `.jpg/.jpeg/.png`, **max 10 MB**, min 300px, aspect 1:2.5–2.5:1. |
 | `end_image` | Last frame; requires `start_image`. |
-| `reference_images` | Up to **7** (4 with a reference video). The character-consistency mechanism. |
+| `reference_images` | The character-consistency mechanism. **The cap of 7 counts the start frame too** — see below. 4 with a reference video. |
 | `reference_video` | 3–10s; `video_reference_type` `feature` (style/camera) or `base` (editing). |
 | `multi_prompt` | JSON-encoded array `[{"prompt": "...", "duration": N}]`. **Max 6 shots, durations must sum to `duration`.** |
 | `mode` | `standard` = 720p · `pro` = 1080p · `4k`. |
@@ -71,10 +71,30 @@ A 9s standard clip is ~$1.52. Iterate at `standard`, finish at `pro`.
 | Multi-shot | **6 cuts max**, ≥1 s each, summing to the total |
 | Aspect ratio | 16:9 · 9:16 · 1:1 (ignored when a start frame is supplied) |
 | Images | `.jpg/.jpeg/.png` only — **`.webp` is rejected**, so convert S3 references |
+| Image COUNT | **7 in total**, start frame included — so 6 references at most alongside one |
 | Prompt | 2500 chars |
 
 `studio prompt --engine kling-replicate` enforces these as hard errors at
 author time rather than after a spent generation.
+
+### The image cap counts the start frame
+
+`reference_images` takes up to 7, and a start frame may be combined with them —
+which reads as 7 + 1 and is not. The limit is **seven images in total**, so a
+start frame leaves room for six references. Exceeding it fails the prediction
+outright:
+
+```
+Error code 1201: The number of images and elements exceeds the limit, max number is 7.
+```
+
+It fails fast and cheap, but only after a submit, and the two facts that produce
+the mistake sit in different rows of the schema table above. With a character
+whose `default_set` holds seven — a full face turnaround plus body plates, which
+is the shape `shoot` produces — binding `--character` and a start frame together
+is over the line by exactly one. Narrow the selection with `--pick`; the start
+frame already carries wardrobe and framing, so drop a body plate rather than a
+face one.
 
 ## Workflow
 

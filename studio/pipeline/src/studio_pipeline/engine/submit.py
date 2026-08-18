@@ -190,12 +190,48 @@ def check_payload_rules(entry: dict, payload: dict) -> None:
 # 2. preflight — reject what this model will not accept, before anything bills
 # --------------------------------------------------------------------------
 
+def _check_image_budget(entry: dict, bindings: dict) -> None:
+    """Some models cap TOTAL images, not just the reference list.
+
+    Kling advertises `reference_images` "up to 7" and separately allows a start
+    frame alongside them, which reads as 7 + 1 and is not: the cap counts every
+    image, so a start frame leaves room for six references. Over the line it
+    fails the whole prediction with
+
+        Error code 1201: The number of images and elements exceeds the limit,
+        max number is 7.
+
+    Cheap to hit and easy to miss, because the two halves of the rule sit in
+    different fields. It bites hardest with a character whose `default_set`
+    holds exactly seven — the shape `shoot` produces — since binding that plus a
+    start frame is over by one.
+
+    Registry-driven rather than named per model: `start_counts_toward_max_refs`.
+    """
+    images = entry.get("images") or {}
+    cap = images.get("max_refs")
+    if not cap or not images.get("start_counts_toward_max_refs"):
+        return
+    refs = bindings.get(images.get("refs")) or []
+    extra = [f for f in (images.get("start"), images.get("end")) if f and bindings.get(f)]
+    total = len(refs) + len(extra)
+    if total > cap:
+        raise SubmitError(
+            f"{entry['key']} accepts {cap} images IN TOTAL and the "
+            f"{'/'.join(extra)} counts toward that — got {len(refs)} reference "
+            f"image(s) plus {len(extra)}, which is {total}.\n"
+            f"       Narrow the selection to {cap - len(extra)} with --pick; the "
+            f"start frame already carries wardrobe and framing, so drop a body "
+            f"reference rather than a face one.")
+
+
 def preflight(entry: dict, payload: dict, bindings: dict, token: str) -> None:
     """Documented constraints first, then the live schema.
 
     Runs on --dry-run too, so an approved payload is a payload that submits.
     """
     model = entry["model"]
+    _check_image_budget(entry, bindings)
     MS.check_denied(payload, entry, model)
     props, schemas = MS.fetch(model, token)
     alts: dict[str, dict] = {}
