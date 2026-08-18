@@ -225,13 +225,17 @@ def test_a_body_plate_gets_the_whole_body_block_and_a_face_plate_does_not():
     A face plate crops at mid-chest, so legs and body hair are not in frame and
     would only be noise; it takes what shows above the crop.
     """
-    profile = {"body": {
+    profile = {"identity": {"height_read": "HEIGHT."}, "body": {
         "silhouette": "SIL.", "chest_and_shoulders": "CHEST.", "neck": "NECK.",
         "arms": "ARMS.", "lower_body_and_hands": "LEGS.", "body_hair": "HAIR."}}
     body = SHOOT._build_text(profile, "body")
     face = SHOOT._build_text(profile, "face")
     for part in ("SIL.", "CHEST.", "NECK.", "ARMS."):
         assert part in body and part in face, part
+    # Height is the one proportion stated as a NUMBER, and it lives in
+    # `identity`, so the body block alone never carried it. Both groups need it:
+    # a figure has no scale of its own against a plain backdrop.
+    assert body.startswith("HEIGHT.") and face.startswith("HEIGHT.")
     for part in ("LEGS.", "HAIR."):
         assert part in body, f"a body plate must carry {part}"
         assert part not in face, f"a face plate must not carry {part}"

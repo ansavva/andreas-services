@@ -218,12 +218,20 @@ def _build_text(profile: dict, group: str = "body") -> str:
     would be noise; it takes what shows above the crop. A body plate is the
     whole figure and takes everything. Same split as `must_intro_face` /
     `must_intro_body`, for the same reason.
+
+    HEIGHT comes first, and from `identity` rather than `body`. It is the one
+    proportion the bible states as a NUMBER, and it was the only one never
+    sent: the build clause read the `body:` block alone, so a corrected
+    height_read sat unused while the prompt argued the point in adjectives.
+    A figure has no scale of its own against a plain backdrop, so the number is
+    the only thing that can settle it.
     """
     body = profile.get("body") or {}
+    height = str((profile.get("identity") or {}).get("height_read") or "").strip()
     fields = ("silhouette", "chest_and_shoulders", "neck", "arms")
     if group != "face":
         fields += ("lower_body_and_hands", "body_hair")
-    parts = [str(body.get(k) or "").strip() for k in fields]
+    parts = [height] + [str(body.get(k) or "").strip() for k in fields]
     return " ".join(" ".join(p.split()) for p in parts if p)
 
 
