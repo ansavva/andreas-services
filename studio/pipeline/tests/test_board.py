@@ -404,3 +404,15 @@ def test_a_supplied_panel_is_never_rendered(media_bucket, no_network):
         assert "shot-02 panel 1" not in run(*argv).output
 
     assert "shot-02 panel 1 has no prompt" not in run("scenes", "check", SCENE).output
+
+
+def test_a_continuing_shot_with_no_panel_and_no_handoff_says_it_has_nothing(
+        media_bucket, no_network):
+    """Different from a shot that merely lacks its handoff. With no opening panel
+    either, the shot would compose itself out of references — that is not a rough
+    cut, it is a different shot."""
+    m = board_ready(media_bucket)
+    m["shots"][1]["panels"] = []
+    _s, _e, _r, notes = BOARD.shot_bindings(media_bucket, m, m["shots"][1], REG.get("kling"))
+    assert any("start from nothing" in n for n in notes)
+    assert not any("open on its own panel" in n for n in notes)

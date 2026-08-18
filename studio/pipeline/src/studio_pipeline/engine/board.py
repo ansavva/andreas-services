@@ -292,10 +292,20 @@ def shot_bindings(s3, manifest: dict, shot: dict, entry: dict) -> tuple[str | No
         # exactly the cut that turns out to jump, so it is said out loud even
         # though the render proceeds.
         if shot.get("continues"):
-            notes.append(
-                f"{shot['id']} continues the shot before it but has no handoff frame "
-                f"recorded, so it will open on its own panel and the cut may jump — "
-                f"studio scenes handoff {manifest['scene']} --shot {shot['n']}")
+            fix = f"studio scenes handoff {manifest['scene']} --shot {shot['n']}"
+            if roles["start_panel"] is None:
+                # No handoff and no opening panel: the shot has nothing to start
+                # from at all and would compose itself from references. That is
+                # not a rough cut, it is a different shot.
+                notes.append(
+                    f"{shot['id']} continues the shot before it, has no handoff frame "
+                    f"recorded and no opening panel — it would start from nothing and "
+                    f"compose itself. Render the shot before it first, then: {fix}")
+            else:
+                notes.append(
+                    f"{shot['id']} continues the shot before it but has no handoff frame "
+                    f"recorded, so it will open on its own panel and the cut may jump — "
+                    f"{fix}")
         if roles["start_panel"] is not None:
             start = key_of(roles["start_panel"])
 
