@@ -164,6 +164,7 @@ slots:
       A studio portrait of the person, front on, squared to the camera, looking straight down the lens. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame.
+      {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
       {light} {style} {quality} {must}
 
@@ -178,6 +179,7 @@ slots:
       A studio portrait of the person, turned about 45 degrees so the nose points toward the RIGHT edge of the frame, eyes returning to the lens. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame.
+      {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
       {light} {style} {quality} {must}
 
@@ -192,6 +194,7 @@ slots:
       A studio portrait of the person, in FULL PROFILE, turned 90 degrees so the nose points directly at the RIGHT edge of the frame, gaze level and straight ahead. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame.
+      {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
       {light} {style} {quality} {must}
 
@@ -217,6 +220,7 @@ slots:
       expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame.
+      {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
       {light} {style} {quality} {must}
 
@@ -231,6 +235,7 @@ slots:
       A studio portrait of the person, directly away from the camera, the back of the head to the lens. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame.
+      {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
       {light} {style} {quality} {must}
 
@@ -256,6 +261,7 @@ slots:
       expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame.
+      {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
       {light} {style} {quality} {must}
 
@@ -270,6 +276,7 @@ slots:
       A studio portrait of the person, in FULL PROFILE, turned 90 degrees so the nose points directly at the LEFT edge of the frame, gaze level and straight ahead. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame.
+      {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
       {light} {style} {quality} {must}
 
@@ -284,6 +291,7 @@ slots:
       A studio portrait of the person, turned about 45 degrees so the nose points toward the LEFT edge of the frame, eyes returning to the lens. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame.
+      {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
       {light} {style} {quality} {must}
 

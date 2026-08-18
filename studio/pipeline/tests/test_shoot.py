@@ -151,8 +151,8 @@ def test_face_back_three_quarters_bind_a_torso_guide(spec):
         "only the face back three-quarters should need a second guide"
 
 
-def test_every_body_slot_states_the_build_and_disowns_the_guides(spec):
-    """A body plate exists to record a build, and the first one lost it.
+def test_every_slot_states_the_build_and_disowns_the_guides(spec):
+    """A plate exists to record a person, and the first ones lost their build.
 
     The figure came back lean and narrow-shouldered with none of the bible's
     taper or arm mass, because the pose plate is a mannequin with proportions of
@@ -160,17 +160,37 @@ def test_every_body_slot_states_the_build_and_disowns_the_guides(spec):
     against a whole reference image. `{build}` puts the bible's own silhouette
     and arms in the foreground; the intro disowns the guide explicitly.
 
-    Face slots do not carry it: they crop at mid-chest, so there is no build in
-    frame to get wrong.
+    Face slots carry it too. They were exempted at first — "cropped at
+    mid-chest, so there is no build in frame to get wrong" — and a live front
+    plate came back narrow-shouldered on a character whose bible calls broad
+    shoulders on a medium frame his single most reliable cue. A mid-chest crop
+    shows the neck, the traps, the shoulder line and the upper arm, which is
+    most of what reads as build.
     """
     for slot in spec["slots"]:
-        if slot["group"] == "body":
-            assert "{build}" in slot["prompt"], slot["id"]
-            assert "{build_intro}" in slot["prompt"], slot["id"]
-        else:
-            assert "{build}" not in slot["prompt"], slot["id"]
+        assert "{build}" in slot["prompt"], slot["id"]
+        assert "{build_intro}" in slot["prompt"], slot["id"]
     intro = (spec["defaults"] or {}).get("build_intro", "")
     assert "NOT THE GUIDE" in intro, "the intro must disown the pose guide by name"
+
+
+def test_a_plate_wears_the_bibles_stated_colour_when_it_has_one():
+    """The schema files colour under `detail` — which the plate discards.
+
+    `detail` is dropped on purpose: it names embroidery and graphics a model
+    renders differently every time, which would make a group inconsistent. But
+    colour lives in that same field, so dropping it whole threw the colour away
+    too, and a live plate came back in a colour nobody picked. `colour:` is the
+    one word a plate may take, kept apart from the prose around it.
+    """
+    worn = SHOOT._first_top(
+        {"wardrobe": {"tops": [{"item": "Short-sleeve polo shirt", "colour": "White",
+                                "detail": "with a navy chest crest and embroidery"}]}})
+    assert "plain white short-sleeve polo shirt" in worn
+    assert "crest" not in worn, "detail must not leak into the plate"
+    # Optional: a bible naming the colour inside `item` already read correctly.
+    plain = SHOOT._first_top({"wardrobe": {"tops": [{"item": "White ribbed tank top"}]}})
+    assert "plain white ribbed tank top" in plain
 
 
 def test_the_build_text_comes_from_the_bible_not_the_spec(spec):

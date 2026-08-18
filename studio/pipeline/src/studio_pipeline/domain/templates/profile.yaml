@@ -54,6 +54,8 @@ wardrobe:
   always_dressed: true          # every character; prompts name a garment
   tops:                         # ordered by how often the character wears it
     - item: <garment>
+      colour: <one plain colour, optional>   # what a reference plate wears; the
+                                             # plate ignores `detail` entirely
       detail: <colour, cut, any embroidery or graphic>
   lower_body: <>
   footwear: <>

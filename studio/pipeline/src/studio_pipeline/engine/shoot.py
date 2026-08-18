@@ -162,12 +162,21 @@ def _first_top(profile: dict) -> str:
 
     The bible's first `tops[]` entry is the character's usual one, and its
     `detail` often names embroidery or a graphic — which a model renders
-    differently every time and would make the group inconsistent. So the item is
-    used and the detail is not.
+    differently every time and would make the group inconsistent. So the detail
+    is not used.
+
+    But the schema puts the COLOUR in that same field ("<colour, cut, any
+    embroidery or graphic>"), so dropping it whole threw the colour away too,
+    and a plate came back in a colour nobody chose. `colour:` is the narrow way
+    back in: one word the plate can state, kept apart from the prose it would
+    otherwise have to be parsed out of. Optional — a bible that names the colour
+    inside `item` ("white ribbed tank") already reads correctly without it.
     """
     tops = ((profile.get("wardrobe") or {}).get("tops")) or []
-    item = (tops[0].get("item") if tops and isinstance(tops[0], dict) else None) or "plain T-shirt"
-    return (f"Wearing a plain {item.strip().rstrip('.').lower()}, unbranded, "
+    top = tops[0] if tops and isinstance(tops[0], dict) else {}
+    item = (top.get("item") or "plain T-shirt").strip().rstrip(".").lower()
+    colour = str(top.get("colour") or "").strip().rstrip(".").lower()
+    return (f"Wearing a plain {colour + ' ' if colour else ''}{item}, unbranded, "
             f"with no logo, text or embroidery")
 
 
