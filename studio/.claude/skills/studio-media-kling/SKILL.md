@@ -72,6 +72,7 @@ A 9s standard clip is ~$1.52. Iterate at `standard`, finish at `pro`.
 | Aspect ratio | 16:9 · 9:16 · 1:1 (ignored when a start frame is supplied) |
 | Images | `.jpg/.jpeg/.png` only — **`.webp` is rejected**, so convert S3 references |
 | Image COUNT | **7 in total**, start frame included — so 6 references at most alongside one |
+| Start **and** end frame | **2 images TOTAL** — `reference_images` must be empty. See below |
 | Prompt | 2500 chars |
 
 `studio prompt --engine kling-replicate` enforces these as hard errors at
@@ -95,6 +96,27 @@ is the shape `shoot` produces — binding `--character` and a start frame togeth
 is over the line by exactly one. Narrow the selection with `--pick`; the start
 frame already carries wardrobe and framing, so drop a body plate rather than a
 face one.
+
+### An end frame clears the reference list
+
+A start frame and `reference_images` combine happily — that is the whole reason
+to reach for this model over Seedance. Add an **end** frame and that stops being
+true: the request is then capped at those two images and rejected outright if
+anything else is present.
+
+```
+Error (E006): Cannot use reference images together with end_image when
+start_image is set (max 2 images with end frame).
+```
+
+Nothing in the live schema says so, and the fields are independently valid, so
+this surfaces only after a submit. It is worth knowing because bracketing a shot
+between two approved compositions is otherwise the strongest thing you can do
+here — the prompt then only has to describe the movement between them. Just do
+not also send references: the two frames have already fixed the look at both
+ends.
+
+Enforced locally, so it costs a message rather than a round trip.
 
 ## Workflow
 

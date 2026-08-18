@@ -28,6 +28,7 @@ from click.testing import CliRunner
 from studio_pipeline import cli
 from studio_pipeline.adapters.s3 import BUCKET
 from studio_pipeline.domain import scenes as SC
+from studio_pipeline.domain import storyboard as SB
 from studio_pipeline.engine import board as BOARD
 from studio_pipeline.engine import registry as REG
 
@@ -135,11 +136,18 @@ def test_a_handoff_takes_the_start_slot_and_the_panel_becomes_a_reference(
     shot = m["shots"][1]
     shot["opens_on"]["key"] = "projects/subject-a/input/subject-a_3.png"
 
+    # The demotion itself is a plan-level fact, and it holds regardless of what
+    # any one model will accept.
+    roles = SB.resolve_roles(shot)
+    assert roles["demoted"] is True
+    assert roles["start_panel"] is None and roles["reference_panels"][0] == 0
+
     start, end, refs, notes = BOARD.shot_bindings(media_bucket, m, shot, REG.get("kling"))
     assert start == "projects/subject-a/input/subject-a_3.png"
-    assert refs[0].endswith("shot-02-p1.png"), "the demoted panel leads the references"
     assert end.endswith("shot-02-p2.png")
     assert any("seamless" in n for n in notes), "the demotion is reported, not silent"
+    # …and on THIS model the end frame then clears the reference list entirely.
+    assert refs == []
 
 
 def test_a_shot_that_expects_a_handoff_and_has_none_says_so(media_bucket, no_network):
@@ -157,12 +165,18 @@ def test_an_unrendered_panel_blocks_its_shot_and_names_the_fix(media_bucket, no_
 
 def test_the_scenes_own_frames_ride_along_behind_the_panels(media_bucket, no_network):
     """Panels are the instruction for THIS shot; the scene's earlier frames are
-    context, and context goes last."""
+    context, and context goes last.
+
+    Shown on a shot with no END frame, because an end frame clears the reference
+    list on this model — see the test below.
+    """
     m = board_ready(media_bucket)
     shot = m["shots"][1]
+    shot["panels"] = shot["panels"][:1]          # drop the end panel
     shot["opens_on"]["key"] = "projects/subject-a/input/subject-a_3.png"
 
-    _s, _e, refs, _n = BOARD.shot_bindings(media_bucket, m, shot, REG.get("kling"))
+    _s, end, refs, _n = BOARD.shot_bindings(media_bucket, m, shot, REG.get("kling"))
+    assert end is None
     assert refs[0].endswith("shot-02-p1.png"), "a panel first"
     assert refs[-1].endswith("shot-01-p1.png"), \
         "then the scene's own frames — here, shot 1's opening panel"
@@ -443,3 +457,45 @@ def test_a_review_sheet_still_keeps_a_local_copy_when_asked(media_bucket, no_net
                              str(tmp_path), {})
     assert "local copy" in out
     assert (tmp_path / "shot-01.png").is_file()
+
+
+def test_an_end_frame_drops_the_references_where_the_model_demands_it(
+        media_bucket, no_network):
+    """Kling takes a start frame and references together happily — but the moment
+    an end frame joins them the payload is capped at those two and the whole
+    request is rejected. Nothing in the live schema says so; it surfaced as an
+    E006 after a submit.
+
+    A shot bracketed by two approved compositions has already said what the
+    references would have said, so the references give way — and it is reported,
+    because a payload that quietly loses images is not the one that was
+    approved.
+    """
+    m = board_ready(media_bucket)
+    shot = m["shots"][1]
+    shot["opens_on"]["key"] = "projects/subject-a/input/subject-a_3.png"
+
+    start, end, refs, notes = BOARD.shot_bindings(media_bucket, m, shot, REG.get("kling"))
+    assert start and end, "this shot is bracketed"
+    assert refs == []
+    assert any("dropped" in n for n in notes)
+
+
+def test_submit_refuses_an_end_frame_beside_references(media_bucket, no_network):
+    """Defence in depth: the rule lives in the registry and `gather` enforces it,
+    so a caller that is not the board cannot spend money finding out."""
+    from types import SimpleNamespace
+
+    from studio_pipeline.engine import submit as SUB
+
+    args = SimpleNamespace(
+        start_key="projects/subject-a/input/subject-a_3.png",
+        end_key="projects/subject-a/input/subject-a_3.png",
+        start_run=None, end_run=None, image_run=None, character=(), ref_run=(),
+        input_=(), input=(), key=["projects/subject-a/input/subject-a_3.png"],
+        pick=None, pick_tag=None, slots=None, project="subject-a", no_refs=False)
+
+    with pytest.raises(SUB.SubmitError) as exc:
+        SUB.gather(REG.get("kling"), media_bucket, args)
+    assert "must be empty" in str(exc.value)
+    assert "drop the end frame" in str(exc.value).lower()

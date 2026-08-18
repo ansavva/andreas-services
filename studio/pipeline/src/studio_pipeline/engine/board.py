@@ -325,6 +325,17 @@ def shot_bindings(s3, manifest: dict, shot: dict, entry: dict) -> tuple[str | No
              if k != start and k not in refs]
     refs += list(motion_refs.get("keys") or [])
 
+    # Some models take a start frame and references together, but refuse both
+    # once an END frame joins them. A shot that brackets itself with two
+    # approved compositions has already said everything the references would
+    # have said, so the references are what give way — silently would be wrong,
+    # hence the note, and the payload shown for approval is the trimmed one.
+    if end and REG.field(entry, "images.end_excludes_refs") and refs:
+        notes.append(f"{shot['id']}: {len(refs)} reference(s) dropped — {entry['key']} "
+                     f"takes a start and an end frame together and nothing else. The two "
+                     f"frames already fix the look at both ends of the shot.")
+        refs = []
+
     cap = REG.field(entry, "images.max_refs")
     if cap:
         # The start and end frames may or may not count toward the cap; the

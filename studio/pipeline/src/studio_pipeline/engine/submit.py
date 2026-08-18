@@ -149,6 +149,18 @@ def gather(entry: dict, s3, args) -> dict:
         )
 
     if keys:
+        # A LAST frame can exclude the reference list even where a first frame
+        # does not. Kling takes a start frame and references together happily,
+        # but the moment an end frame joins them the payload is capped at those
+        # two images and the whole request is rejected. Nothing in the live
+        # schema says so — it surfaces only as an E006 after the submit, which
+        # is why it is recorded in the registry rather than learned twice.
+        if end_field in bindings and imgs.get("end_excludes_refs"):
+            raise SubmitError(
+                f"{entry['key']}: with both `{start_field}` and `{end_field}` set, "
+                f"`{refs_field}` must be empty — it takes those two images and no more.\n"
+                f"       Drop the references, or drop the end frame and let the "
+                f"prompt describe where the shot lands.")
         if start_field in bindings and imgs.get("start_excludes_refs"):
             raise SubmitError(
                 f"{entry['key']}: `{start_field}` and `{refs_field}` are mutually exclusive.\n"
