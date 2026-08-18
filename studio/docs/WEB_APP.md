@@ -324,13 +324,34 @@ that breaks every time the pipeline ships.
 - **Every write re-fetches the listing rather than patching state.** A rename
   changes an item's position under `newest` and certainly under `name`; replaying
   that into a sorted array correctly is more code than one request, and it is
-  code that would be wrong exactly where nobody tests. Two exceptions, for
-  opposite reasons: the recursive reel drops a deleted item locally
+  code that would be wrong exactly where nobody tests. Three exceptions, for
+  different reasons: the recursive reel drops a deleted item locally
   (`useReel.dropItem`) because re-walking would shift every already-loaded page
-  under the scroll position, and a **folder** move does not clear the selection
-  because there was none. A copy *does* re-fetch, unlike the favouriting it
+  under the scroll position; a **folder** move does not clear the selection
+  because there was none; and deleting the folder you are *in* skips the refresh
+  because the prefix it would refresh has just stopped existing — going up is
+  what re-fetches. A copy *does* re-fetch, unlike the favouriting it
   replaced: its destination can be the folder you are looking at, so the listing
   on screen may genuinely have changed.
+- **The folder you are in is deleted from the action row, not from a menu.**
+  Every other folder carries its own `Move…`/`Delete` in an `ItemActions` menu on
+  its card — but that card is drawn by the folder's *parent*, so the one folder
+  with no card on screen was the one you were standing in, and getting rid of it
+  meant navigating back out to find it in the grid. `BrowsePage` puts a
+  `ConfirmDeleteButton` (tone `bar`) in the action row, disabled at the root
+  where `keys.assert_inside_root` refuses it anyway. Leaving is the one
+  navigation between folders that **replaces** rather than pushes: the entry
+  behind you would otherwise be the prefix you just destroyed.
+- **The three folder icons are one cluster, and the rule before "Play reel" is
+  load-bearing.** Copy prefix, delete this folder and new folder all act on the
+  folder you are in, so they sit together at a tighter gap than the row's own —
+  which is why copy moved down out of the breadcrumb row, where it had been
+  stranded away from the other two. `Play reel` is the only filled button on the
+  page, and a delete flush against it is a mis-click with no undo, so the
+  destructive icon stays in the middle of the cluster and a `w-px` divider
+  separates the cluster from the primary. The two rows now split exactly as the
+  comment above them claims: *where you are* on top, everything you can *do*
+  below.
 - **Destructive confirmation is in the button, never in a dialog.**
   `ConfirmDeleteButton` arms on the first press, names what it will destroy, and
   disarms on a timeout, on blur, or on Escape. A portalled dialog is not painted
