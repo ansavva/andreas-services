@@ -89,6 +89,23 @@ defaults:
   minimal: >-
     Wearing plain, close-fitting, unbranded dark shorts and nothing else, so the
     build, proportions and posture read clearly
+  # A turnaround is used by comparing plates to each other, so the head must be
+  # the SAME SIZE in all of them. "Cropped at mid-chest" fixes the bottom edge
+  # and says nothing about scale: a live set came back with some heads half
+  # again as large as others, which reads as several sessions rather than one.
+  scale_face: >-
+    SCALE, held constant across the whole set: the crown of the head sits just
+    below the top edge of the frame with only a small margin above it, and the
+    head occupies roughly the upper third of the image. Do not zoom in closer
+    on some angles than others.
+  # "Turned about 45 degrees … eyes returning to the lens" came back nearer 30
+  # with the gaze wandering off camera, on two different characters. Degrees are
+  # not checkable by a model; what is in the picture is.
+  turn_check: >-
+    A TRUE forty-five degrees, not a slight turn: the far cheek is partly
+    hidden behind the bridge of the nose, the far ear is out of view, and the
+    near ear is fully visible. BOTH eyes look directly into the lens — the gaze
+    does not drift off camera.
   must_intro_face: >-
     Preserve these identity cues exactly:
   # A body plate exists to record a BUILD, and the first one rendered lost it:
@@ -179,7 +196,7 @@ slots:
       {identity_slots} show the person. {pose_slot} {guide}
       A studio portrait of the person, front on, squared to the camera, looking straight down the lens. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
-      no hips and no legs anywhere in the frame.
+      no hips and no legs anywhere in the frame. {scale_face}
       {face_intro}
       {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
@@ -193,9 +210,9 @@ slots:
     tags: [face, three-quarter, right, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
-      A studio portrait of the person, turned about 45 degrees so the nose points toward the RIGHT edge of the frame, eyes returning to the lens. Neutral expression, mouth
+      A studio portrait of the person, turned about 45 degrees so the nose points toward the RIGHT edge of the frame, eyes returning to the lens. {turn_check} Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
-      no hips and no legs anywhere in the frame.
+      no hips and no legs anywhere in the frame. {scale_face}
       {face_intro}
       {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
@@ -211,7 +228,7 @@ slots:
       {identity_slots} show the person. {pose_slot} {guide}
       A studio portrait of the person, in FULL PROFILE, turned 90 degrees so the nose points directly at the RIGHT edge of the frame, gaze level and straight ahead. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
-      no hips and no legs anywhere in the frame.
+      no hips and no legs anywhere in the frame. {scale_face}
       {face_intro}
       {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
@@ -238,7 +255,7 @@ slots:
       the front of the chin must not be visible. Neutral
       expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
-      no hips and no legs anywhere in the frame.
+      no hips and no legs anywhere in the frame. {scale_face}
       {face_intro}
       {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
@@ -254,7 +271,7 @@ slots:
       {identity_slots} show the person. {pose_slot} {guide}
       A studio portrait of the person, directly away from the camera, the back of the head to the lens. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
-      no hips and no legs anywhere in the frame.
+      no hips and no legs anywhere in the frame. {scale_face}
       {face_intro}
       {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
@@ -281,7 +298,7 @@ slots:
       the front of the chin must not be visible. Neutral
       expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
-      no hips and no legs anywhere in the frame.
+      no hips and no legs anywhere in the frame. {scale_face}
       {face_intro}
       {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
@@ -297,7 +314,7 @@ slots:
       {identity_slots} show the person. {pose_slot} {guide}
       A studio portrait of the person, in FULL PROFILE, turned 90 degrees so the nose points directly at the LEFT edge of the frame, gaze level and straight ahead. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
-      no hips and no legs anywhere in the frame.
+      no hips and no legs anywhere in the frame. {scale_face}
       {face_intro}
       {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}
@@ -311,9 +328,9 @@ slots:
     tags: [face, three-quarter, left, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
-      A studio portrait of the person, turned about 45 degrees so the nose points toward the LEFT edge of the frame, eyes returning to the lens. Neutral expression, mouth
+      A studio portrait of the person, turned about 45 degrees so the nose points toward the LEFT edge of the frame, eyes returning to the lens. {turn_check} Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
-      no hips and no legs anywhere in the frame.
+      no hips and no legs anywhere in the frame. {scale_face}
       {face_intro}
       {build_intro} {build}
       {age_intro} {age}. {top}. {backdrop_face}

@@ -267,6 +267,39 @@ def test_every_face_slot_states_the_crop(spec):
             assert "no legs" in slot["prompt"], slot["id"]
 
 
+def test_face_slots_hold_the_head_at_one_scale(spec):
+    """A turnaround is read by comparing its plates, so scale must be constant.
+
+    "CROPPED AT MID-CHEST" fixes the bottom edge and says nothing about how big
+    the head is. A live set came back with some heads half again the size of
+    others, which reads as several sessions rather than one turn.
+    """
+    for slot in spec["slots"]:
+        if slot["group"] == "face":
+            assert "{scale_face}" in slot["prompt"], slot["id"]
+    scale = (spec["defaults"] or {}).get("scale_face", "")
+    assert "SCALE" in scale and "upper third" in scale, "scale must be stated checkably"
+
+
+def test_three_quarter_slots_say_what_forty_five_degrees_looks_like(spec):
+    """"Turned about 45 degrees, eyes returning to the lens" did not bind.
+
+    It came back nearer 30 with the gaze wandering off camera, on two different
+    characters. A model cannot check an angle, but it can check what is in the
+    picture: the far ear out of view, the far cheek behind the nose, both eyes
+    on the lens.
+    """
+    tqs = [s for s in spec["slots"]
+           if s["id"].endswith(("three_quarter_left", "three_quarter_right"))
+           and "back" not in s["id"]]
+    assert tqs, "expected front three-quarter slots"
+    for slot in tqs:
+        assert "{turn_check}" in slot["prompt"], slot["id"]
+    check = (spec["defaults"] or {}).get("turn_check", "")
+    assert "far ear is out of view" in check
+    assert "BOTH eyes look directly into the lens" in check
+
+
 def test_the_set_covers_the_orientations_each_group_can_render(spec):
     """Face covers all eight. Body covers six.
 
