@@ -11,13 +11,15 @@ interface Props {
   file: FileEntry;
   onOpen: () => void;
   onRename: (name: string) => Promise<unknown>;
-  /** Asks the page to open its destination picker on this file. */
+  /** Asks the page to open its destination picker on this file, to move it. */
   onMove: () => void;
+  /** The same picker, to copy it instead. */
+  onCopyTo: () => void;
   onDelete: () => Promise<unknown>;
 }
 
 /** A non-media file — the run metadata JSON, a caption, a subject's profile. */
-export function FileRow({ file, onOpen, onRename, onMove, onDelete }: Props) {
+export function FileRow({ file, onOpen, onRename, onMove, onCopyTo, onDelete }: Props) {
   const viewable = file.kind === "text";
   const [renaming, setRenaming] = useState(false);
   const stopRenaming = useCallback(() => setRenaming(false), []);
@@ -71,6 +73,7 @@ export function FileRow({ file, onOpen, onRename, onMove, onDelete }: Props) {
         copyValue={file.key}
         onRename={() => setRenaming(true)}
         onMove={onMove}
+        onCopyTo={onCopyTo}
         onDelete={onDelete}
       />
 
