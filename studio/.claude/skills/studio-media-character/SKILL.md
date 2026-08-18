@@ -386,6 +386,48 @@ No new skill directory — ever. The character is now usable by the whole pipeli
 Names are lowercase `[a-z0-9_-]`. There is no reserved-name list: characters live
 under `characters/`, so a project named `misc` simply is not one.
 
+### When a plate comes back wrong, read the bible before rewriting the prompt
+
+A shoot fills its prompts from the bible, so a plate that is confidently and
+repeatably wrong is usually the record being followed correctly. Rewording the
+prompt against it just argues with the source. In one session the same character
+came back short and stocky, then narrow-chinned, then long-haired at the nape —
+and each time the bible said exactly that: a height he did not have, a chin the
+photographs contradicted, hair described as running long at the back. The prompt
+machinery was faultless throughout.
+
+So when a result is off, ask which field produced it and check that field against
+the seed photographs. Fixing the record fixes every future generation; fixing the
+prompt fixes one.
+
+Four failure shapes worth knowing, because none is obvious from reading the text:
+
+- **A field can be missing rather than wrong.** The chin was described twice
+  under `face:` and never appeared in `consistency.must`, which is the list the
+  prompt foregrounds — present in the record, absent from the payload.
+- **Amount and colour are separate claims.** "Only a little chest hair" was read
+  as *faint* as well as *sparse*, so it came back nearly invisible while the
+  densely-described legs came out dark. Say how much and how dark independently.
+- **Width words say nothing about depth.** "Full square chest, rounded capped
+  deltoids" describes a front view. The profiles rendered flat as a board until
+  the bible said the chest stands forward of the ribcage — front-on language
+  cannot be checked from the side.
+- **State the numbers you have.** `identity.height_read` is usually the only
+  proportion given as a figure, and a figure on a plain backdrop has no scale of
+  its own. Adjectives lose to a pose plate; a stated height does not.
+
+### Making a matched pair without a second render
+
+Opposite slots — the two three-quarters, the two profiles — are meant to be the
+same person turned. Two renders of one prompt will differ in build, scale and
+hair however tight the wording, because they are two rolls of a die.
+
+**Mirror one instead.** A horizontal flip of the right three-quarter *is* the
+left three-quarter, and being literally the same pixels it matches on every axis
+a second render could drift on. Record the provenance in the description and tag
+it `mirrored`, so nobody later reads it as independent evidence of the face. It
+costs nothing, and it is what `config/pose/` already does for its own plates.
+
 ## A bible describes identity, not a fixed look
 
 A character record is medium-agnostic on purpose:
