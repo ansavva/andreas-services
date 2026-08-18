@@ -5,7 +5,7 @@ Terraform for both halves of studio. One environment, `prod`, with state in
 
 | Module | What it is |
 |---|---|
-| `media` | **The media bucket.** The asset store both halves share. |
+| `media` | **The media bucket.** The asset store both halves share. Instantiated twice — the live bucket and the retained archive. |
 | `auth` | Cognito user pool (admin-create-only) + secretless SPA client |
 | `compute` | ECR repo, the API Lambda, and its IAM — including the bucket policy |
 | `api_gateway` | REST API, Cognito authorizer, CORS gateway responses, stage |
@@ -19,8 +19,14 @@ Applied by `.github/workflows/studio-prod.yaml`, not by hand. Read
 
 ## The media bucket
 
-**`xharness-prod-media-us-east-1`**, `us-east-1`. Around 500 objects and 700 MB
-of generated media, and **there is no second copy of it anywhere.**
+**`xharness-prod-media-us-east-1`**, `us-east-1`, being renamed to
+**`studio-prod-media-us-east-1`** — see [The rename](#the-rename) below for
+where that has got to. 959 current objects and 1.27 GB of generated media, and
+**there is no second copy of it anywhere.**
+
+Counting the version history it is 2,572 versions and 2.75 GB, across 1,677
+distinct keys — 718 of which exist only behind a delete marker. That gap between
+959 and 1,677 is the whole reason the rename is a copy rather than a move.
 
 - **Private.** All four public-access blocks on, ACLs disabled
   (`BucketOwnerEnforced`). Objects reach Replicate and the browser only as
@@ -36,19 +42,47 @@ of generated media, and **there is no second copy of it anywhere.**
   means removing `module.media` from state first, deliberately. There is no
   `force_destroy` either, so S3 refuses to delete it while it holds anything.
 
-### Why the name is wrong, and why it stays
+### The rename
 
-The convention is `[project]-[env]-[component]-[region]`, which would make this
-`studio-prod-media-us-east-1`. It is not, because the bucket was created from a
+The convention is `[project]-[env]-[component]-[region]`, which makes this
+`studio-prod-media-us-east-1`. It was not, because the bucket was created from a
 separate `xharness` repo before studio absorbed the pipeline.
 
-Renaming an S3 bucket is a destroy-and-recreate, so fixing it means copying
-~700 MB to a new bucket and re-pointing the skills' default, the backend config
-default, the Terraform variable, the deploy workflow and the tests **in one
-move**. That is a deliberate separate pass, not a side effect of something else.
-Until then the name is grandfathered and the `XHARNESS_S3_*` environment
-variables the skills read are grandfathered with it — do not rename one without
-the other.
+**S3 has no rename.** Changing the `bucket` argument is a destroy-and-recreate,
+and Terraform runs the destroy half against prior state, so `force_destroy`
+added in the same apply is not even read. For a bucket holding the only copy of
+1.27 GB of generated media, that operation does not get attempted. The rename is
+therefore **a second bucket and a copy**, in three applies:
+
+| Step | Apply does | Live bucket after |
+| --- | --- | --- |
+| 1 | `moved` block: `module.media` → `module.media_archive`. State edit only, zero AWS changes. | archive |
+| 2 | Create `module.media` — the new bucket, empty. | archive |
+| — | Copy the 959 current objects across, server-side, and verify. | archive |
+| 3 | Flip `local.active_media`, and re-point the skills, backend, tests and docs. | **new** |
+
+Steps 1 and 2 cannot be one apply: Terraform refuses to declare `module.media`
+while a `moved` block still names it as a source.
+
+`local.active_media` in `envs/prod/main.tf` is the seam. The API's IAM policy,
+the Lambda's env var and the `/studio/prod/media-bucket` SSM parameter all
+follow it, so step 3 is one line to move and one line to revert.
+
+### The archive is permanent
+
+`xharness-prod-media-us-east-1` is **not** deleted at the end. It is not a
+staging artefact.
+
+Copying current objects moves 959 of 1,677 keys. The other 718 are deleted
+objects still recoverable behind a delete marker, and the 1,613 noncurrent
+versions are the prior revisions that make an overwrite recoverable. None of it
+survives a copy, and none of it is reproducible from anywhere else — it *is* the
+recovery history that versioning on this bucket exists to provide.
+
+So the archive keeps `prevent_destroy`, keeps its versioning, and stays in
+state. Recovering something from before the cutover means reaching into it. If
+it is ever retired, that is a separate deliberate decision with its own
+argument, not a tidy-up at the end of this one.
 
 ### How it got into this state
 

@@ -24,7 +24,7 @@ data "aws_route53_zone" "main" {
 
 data "aws_region" "current" {}
 
-# THE MEDIA BUCKET.
+# THE MEDIA BUCKET — and the archive it is being renamed out of.
 #
 # Studio owns this bucket. It used to be the other way round: the bucket was
 # provisioned from a separate `xharness` repo, and this file carried a long note
@@ -34,22 +34,55 @@ data "aws_region" "current" {}
 # alongside the app that reads it, and the bucket was imported into this state
 # in August 2026.
 #
-# Two things follow. The bucket carries `prevent_destroy`, which means
-# `terraform destroy` on this whole environment now fails by design (see
-# `modules/media/main.tf`). And `module.compute` takes its bucket name from
-# `module.media` rather than a bare string, so the IAM policy that grants access
-# has a real dependency edge on the bucket it grants access to.
+# It is now being renamed to `studio-prod-media-us-east-1`, which the original
+# name never matched. An S3 bucket cannot actually be renamed: changing the
+# `bucket` argument is a destroy-and-recreate, and a destroy-and-recreate of
+# THIS bucket is unacceptable. So the "rename" is a second bucket plus a copy,
+# in three separate applies, and this file is at step 1 of 3:
 #
-# The name itself is grandfathered and does not follow the naming convention —
-# see `modules/media/variables.tf` for why, and what it would take to fix.
+#   1. THIS APPLY — rename the module address only. `module.media` becomes
+#      `module.media_archive`. A `moved` block is a state edit: no AWS resource
+#      is created, changed or destroyed. Terraform forbids declaring
+#      `module.media` again while this block names it as a source, which is the
+#      whole reason step 2 is a separate apply.
+#   2. Create `module.media` — the new, correctly-named, EMPTY bucket. The app
+#      keeps reading the archive; nothing is live yet.
+#   3. Copy the current objects across, verify, then flip `local.active_media`.
+#
+# The archive is retained permanently at the end of it, and that is the point
+# rather than an oversight. It holds 1,613 noncurrent object versions and 718
+# keys that exist only behind a delete marker — deleted, still recoverable. A
+# copy of current objects carries none of that, so deleting the archive would
+# destroy exactly the recovery history the versioning on these buckets exists to
+# provide. Both buckets carry `prevent_destroy`, which means `terraform destroy`
+# on this whole environment fails by design (see `modules/media/main.tf`).
 
-module "media" {
+moved {
+  from = module.media
+  to   = module.media_archive
+}
+
+module "media_archive" {
   source = "../../modules/media"
 
-  bucket_name = var.media_bucket_name
+  bucket_name = var.media_archive_bucket_name
   key_prefix  = var.media_root_prefix
 
   tags = local.common_tags
+}
+
+# THE CUTOVER SEAM.
+#
+# Everything downstream — the API's IAM policy, the Lambda's env var, the SSM
+# parameter the skills and `dev-setup.sh` read — follows this local rather than
+# a module reference, so that moving the pipeline from one bucket to the other
+# is a one-line change in its own commit, and a one-line revert.
+#
+# It points at the archive because the archive is still the only bucket that
+# exists. It keeps pointing there through step 2, because an empty bucket would
+# take the app down for the length of the copy. It moves in step 3.
+locals {
+  active_media = module.media_archive
 }
 
 module "auth" {
@@ -69,7 +102,7 @@ module "compute" {
 
   # From the module, not from the variable directly: this is what orders the
   # IAM policy after the bucket exists.
-  media_bucket_name = module.media.bucket_name
+  media_bucket_name = local.active_media.bucket_name
   media_root_prefix = var.media_root_prefix
   allowed_origin    = "https://${local.app_domain}"
 
