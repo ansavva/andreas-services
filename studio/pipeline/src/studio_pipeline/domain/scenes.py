@@ -69,6 +69,9 @@ from studio_pipeline.domain import (
 from studio_pipeline.domain import (
     runs as R,  # noqa: E402  — the run store; scenes are built from its records
 )
+from studio_pipeline.domain import (
+    storyboard as SB,  # noqa: E402  — the plan a scene is built FROM
+)
 
 # ── layout ──────────────────────────────────────────────────────────────────
 
@@ -91,11 +94,40 @@ def list_scenes(s3, project: str) -> list[str]:
     return P.list_ids(s3, P.scenes_prefix(project))
 
 
+def _newest(s3, project: str, ids: list[str]) -> str:
+    """The most recently created scene, read off the manifests.
+
+    Not `ids[-1]`. That worked only while every id began with a timestamp, which
+    made the lexical sort accidentally chronological. A scene created today is
+    keyed by its slug, and a lexical sort puts every slug after every timestamp —
+    so `latest` would have quietly meant "alphabetically last", and `movies new
+    --scene <p>/latest` is exactly the caller that would have got it wrong.
+
+    A scene whose manifest is missing or unreadable sorts by its position
+    instead, so one half-written scene cannot make the whole resolver fail —
+    `latest` is a convenience, and it should not be the thing that stops you
+    reaching the scene you actually named.
+    """
+    def created(scene_id: str) -> str:
+        try:
+            doc = read_manifest(s3, project, scene_id) or {}
+        except Exception:
+            return ""
+        return doc.get("created") or ""
+
+    return max(enumerate(ids), key=lambda pair: (created(pair[1]), pair[0]))[1]
+
+
 def resolve_scene(s3, ref: str, default_project: str | None = None) -> tuple[str, str]:
     """'<project>/<scene_id>' | '<project>/latest' | '<scene_id>' -> (project, id).
 
     Also the sceneref resolver `movies.py` uses — a movie addresses its scenes
     exactly the way a scene addresses its runs.
+
+    A scene is addressed by SLUG. Timestamped ids from before scenes were
+    planned rather than assembled still resolve, and permanently: to this
+    resolver both are just directory names, and the scenes carrying them are
+    finished cuts whose runs are still their history.
     """
     if "/" in ref:
         project, sid = ref.split("/", 1)
@@ -107,7 +139,7 @@ def resolve_scene(s3, ref: str, default_project: str | None = None) -> tuple[str
     if not ids:
         die(f"project {project} has no scenes")
     if sid == "latest":
-        return project, ids[-1]
+        return project, _newest(s3, project, ids)
     if sid in ids:
         return project, sid
     hits = [i for i in ids if sid in i]
@@ -122,6 +154,47 @@ def scene_shots(manifest: dict) -> list[dict]:
     """A scene's shots. Reads the pre-rename `parts` too, so an old manifest
     that escaped the migration still opens instead of looking empty."""
     return manifest.get("shots") or manifest.get("parts") or []
+
+
+# ── the manifest ────────────────────────────────────────────────────────────
+
+def manifest_key(project: str, scene_id: str) -> str:
+    return scene_key(project, scene_id, "scene.json")
+
+
+def read_manifest(s3, project: str, scene_id: str) -> dict | None:
+    """A scene's record, or None when there is no scene there."""
+    return R.read_json(s3, manifest_key(project, scene_id))
+
+
+def write_manifest(s3, manifest: dict) -> dict:
+    """Write a scene back, refreshing its derived fields first.
+
+    `status` is recomputed on every write and never read back as authority — the
+    same discipline the character index follows. It is in the document so a
+    person (or an agent reading `scenes show`) can see where a scene is without
+    replaying the rules.
+    """
+    manifest["status"] = SB.scene_status(manifest)
+    for shot in manifest.get("shots") or []:
+        shot["status"] = SB.shot_status(shot)
+    manifest["updated"] = R._now()
+    # The id comes off `scene`, not off `slug`: for a scene planned today the
+    # two agree, but a scene assembled before scenes were planned is keyed by
+    # `<timestamp>_<slug>` and writing it back under its bare slug would put it
+    # in a directory that does not exist.
+    project, _, scene_id = manifest["scene"].partition("/")
+    R.write_json(s3, manifest_key(project, scene_id), manifest)
+    return manifest
+
+
+def is_assembled(manifest: dict) -> bool:
+    """Whether this scene has been cut, as opposed to merely planned."""
+    return SB.is_assembled(manifest)
+
+
+def scene_output_key(manifest: dict) -> str | None:
+    return (manifest.get("output") or {}).get("key")
 
 
 # ── build ───────────────────────────────────────────────────────────────────

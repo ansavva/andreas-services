@@ -59,6 +59,69 @@ FIXTURE_OBJECTS = {
     "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch/output/wave-porch.jpeg": b"jpeg-bytes",
     "projects/subject-a/input/subject-a_1.webp": b"webp-bytes",
     "projects/subject-a/input/subject-a_2.webp": b"webp-bytes",
+    # A scene from before scenes were planned: keyed by <timestamp>_<slug>, no
+    # plan behind it, and already cut. It is here so back-compat is tested
+    # rather than assumed — these still exist in the real bucket.
+    "projects/subject-a/scenes/2026-08-16_07-40-22_old-cut/scene.json": (
+        b'{"scene": "subject-a/2026-08-16_07-40-22_old-cut",'
+        b' "project": "subject-a", "slug": "old-cut",'
+        b' "created": "2026-12-31T00:00:00+00:00", "characters": ["subject-a"],'
+        b' "shots": [{"n": 1, "run": "subject-a/2026-08-04_21-30-54_wave-porch",'
+        b'   "shot_key": "projects/subject-a/scenes/2026-08-16_07-40-22_old-cut/shots/shot-01.mp4"}],'
+        b' "stitch": {"method": "concat demuxer, stream copy (no re-encode)"},'
+        b' "output": {"key":'
+        b'   "projects/subject-a/scenes/2026-08-16_07-40-22_old-cut/output/old-cut.mp4",'
+        b'   "duration": 5.0}}'
+    ),
+    "projects/subject-a/scenes/2026-08-16_07-40-22_old-cut/shots/shot-01.mp4": b"mp4-bytes",
+    "projects/subject-a/scenes/2026-08-16_07-40-22_old-cut/output/old-cut.mp4": b"mp4-bytes",
+    # A scene as planned today: keyed by slug, two shots, one panel landed, and
+    # deliberately `"output": null` — the planned/assembled discriminator.
+    # Its `created` is DELIBERATELY older than the legacy scene's, so a test of
+    # `latest` proves the manifests are being read rather than the ids sorted.
+    "projects/subject-a/scenes/board-test/scene.json": (
+        b'{"scene": "subject-a/board-test", "project": "subject-a",'
+        b' "slug": "board-test", "version": 2, "status": "boarding",'
+        b' "created": "2026-01-01T00:00:00+00:00",'
+        b' "updated": "2026-01-01T00:00:00+00:00",'
+        b' "characters": ["subject-a"],'
+        b' "defaults": {"model": "kling", "panel_model": "nano-banana-pro",'
+        b'   "duration": 5, "chain": "board-test",'
+        b'   "panel_extra": {"output_format": "png"}},'
+        b' "shots": ['
+        b'  {"n": 1, "id": "shot-01", "beat": "opens", "status": "boarded",'
+        b'   "panels": [{"n": 1, "role": null, "prompt": "the opening frame",'
+        b'     "model": "nano-banana-pro", "extra": {"output_format": "png"},'
+        b'     "references": {"characters": ["subject-a"]},'
+        b'     "run": null, "source_key": null, "stale": false,'
+        b'     "key": "projects/subject-a/scenes/board-test/storyboard/shot-01-p1.png"}],'
+        b'   "motion": {"prompt": "the opening motion", "model": "kling", "duration": 5,'
+        b'     "references": {"chain": "board-test", "characters": [], "keys": []}},'
+        b'   "chain": {"slug": "board-test", "use_handoff": false,'
+        b'     "start_key": null, "from_run": null},'
+        b'   "run": null, "runref": null, "key": null, "shot_key": null,'
+        b'   "duration": null, "rendered": null},'
+        b'  {"n": 2, "id": "shot-02", "beat": "continues", "status": "planned",'
+        b'   "panels": [{"n": 1, "prompt": "he turns", "model": "nano-banana-pro",'
+        b'     "extra": {"output_format": "png"}, "references": {},'
+        b'     "run": null, "source_key": null, "key": null, "stale": false},'
+        b'    {"n": 2, "prompt": "he lands", "model": "nano-banana-pro",'
+        b'     "extra": {"output_format": "png"}, "references": {},'
+        b'     "run": null, "source_key": null, "key": null, "stale": false}],'
+        b'   "motion": {"prompt": "the second motion", "model": "kling", "duration": 5,'
+        b'     "references": {"chain": "board-test", "characters": [], "keys": []}},'
+        b'   "chain": {"slug": "board-test", "use_handoff": true,'
+        b'     "start_key": null, "from_run": null},'
+        b'   "run": null, "runref": null, "key": null, "shot_key": null,'
+        b'   "duration": null, "rendered": null}],'
+        b' "stitch": null, "output": null, "assembled": null}'
+    ),
+    "projects/subject-a/scenes/board-test/storyboard/shot-01-p1.png": b"png-bytes",
+    "projects/subject-a/chains/board-test.json": (
+        b'{"chain": "subject-a/board-test", "project": "subject-a",'
+        b' "slug": "board-test",'
+        b' "seed": "projects/subject-a/input/subject-a_1.webp", "frames": []}'
+    ),
     # The shared wording list.
     "phrasebook/wording.yaml": (
         b"models:\n"

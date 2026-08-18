@@ -115,12 +115,13 @@ def resolve_scene_output(s3, project: str, scene_id: str) -> tuple[str, dict]:
     already names it, so listing `output/` would be a second call that can only
     agree or be wrong.
     """
-    manifest = R.read_json(s3, SC.scene_key(project, scene_id, "scene.json"))
+    manifest = SC.read_manifest(s3, project, scene_id)
     if not manifest:
         die(f"{project}/{scene_id} has no scene.json — it cannot be cut into a movie")
-    key = (manifest.get("output") or {}).get("key")
+    key = SC.scene_output_key(manifest)
     if not key:
-        die(f"{project}/{scene_id} has no output recorded in its scene.json")
+        die(f"{project}/{scene_id} is planned but not assembled — "
+            f"run `studio scenes assemble {project}/{scene_id}` first")
     return key, manifest
 
 
@@ -146,14 +147,30 @@ def scene_characters(s3, manifest: dict) -> list[str]:
 def create(s3, project: str, slug: str, refs: list[str],
            dest_dir: str | None = None) -> dict:
     """Resolve scenerefs -> copy scenes in -> stitch -> upload -> write movie.json."""
+    # Resolve every scene before copying anything, and report ALL the ones that
+    # are not cut yet. A scene can now exist as a plan, so "not assembled" is an
+    # ordinary state rather than a broken record — being told about them one per
+    # attempt would mean one round trip per missing scene.
     resolved = []
     characters: set[str] = set()
+    planned: list[str] = []
     for ref in refs:
         sc_project, scene_id = SC.resolve_scene(s3, ref, project)
-        key, manifest = resolve_scene_output(s3, sc_project, scene_id)
+        manifest = SC.read_manifest(s3, sc_project, scene_id)
+        if not manifest:
+            die(f"{sc_project}/{scene_id} has no scene.json — it cannot be cut into a movie")
+        key = SC.scene_output_key(manifest)
+        if not key:
+            planned.append(f"{sc_project}/{scene_id}")
+            continue
         characters.update(scene_characters(s3, manifest))
         resolved.append({"sceneref": ref, "scene": f"{sc_project}/{scene_id}",
                          "source_key": key})
+    if planned:
+        die(f"{len(planned)} scene(s) are planned but not assembled:\n  "
+            + "\n  ".join(planned)
+            + "\n       assemble each one first: "
+              f"studio scenes assemble {planned[0]}")
 
     movie_id = new_movie_id(slug)
     print(f"movie {project}/{movie_id}")
