@@ -51,6 +51,28 @@ object as two JSON documents — `PROMPT` then `INPUT` — and get explicit
 approval. Re-approve after **any** edit. `--dry-run` renders exactly this
 without billing.
 
+**Approval is of a payload, not of a plan.** A yes to "shall I shoot?", a
+multiple-choice answer, or a payload shown several messages ago is not approval
+of the request about to be sent. Show it again and wait. No flag exists to
+answer this for a person, and if one appears, that is a bug.
+
+### 2b. NEVER put an image into a character without approval
+
+`characters/<name>/reference/` is who the character IS, and every later render is
+checked against it. Adding, replacing, renumbering or archiving anything there —
+or in `default_set` or the bible's `references:` index — is a **separate**
+decision from having agreed to spend money rendering something. Show the result,
+wait for a yes, then promote it:
+
+```bash
+studio character add-refs <name> --to <group> --from-run <runref>
+```
+
+`studio character shoot` therefore leaves its results in their runs and files
+nothing on its own. Both of these rules were broken in one session — a shoot
+submitted off a menu answer, its output then written into a character's face
+group unasked — which is why they are stated separately here.
+
 ### 3. S3 is the only origin
 
 Assets are never uploaded to a model provider. Anything sent to a model must

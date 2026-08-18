@@ -7,7 +7,7 @@ A character is DATA, not a skill: each one is an S3 record under
     characters/<name>/profile.yaml   the bible (SOURCE OF TRUTH), including the
                                      DESCRIBED index of the reference library
     characters/<name>/reference/     generated character imagery, in purpose
-                                     subfolders: face/ body/ wardrobe/ scene/ …
+                                     subfolders: face/ body/ wardrobe/ frame/ …
     characters/<name>/corpus/        collected material — uploads, keeper clips
     characters/<name>/seed/          the founding real-world source photos
     characters/<name>/archive/       retired material; never used unless named
@@ -81,6 +81,9 @@ import yaml
 from studio_pipeline import STUDIO_DIR
 from studio_pipeline.adapters import s3 as s3c
 from studio_pipeline.domain import paths as P
+# For `add-refs --from-run`: resolving a runref to its output keys. One-way —
+# the run store knows nothing about characters.
+from studio_pipeline.domain import runs as R
 
 PROFILE_FILE = "profile.yaml"
 PROFILE_CT = "application/yaml"
@@ -301,8 +304,13 @@ def cmd_textblock(name):
 
 @main.command("create")
 @click.argument("name", required=True)
+@click.option("--dry-run", is_flag=True, help="With --shoot: render the payloads, submit nothing.")
 @click.option("--from-profile", help="Local profile.yaml to seed with (default: blank template).")
-def cmd_create(name, from_profile):
+@click.option("--model", help="With --shoot: override the shot spec's model.")
+@click.option("--project", help="With --shoot: REQUIRED. The project the shoot's runs belong to.")
+@click.option("--shoot", is_flag=True,
+              help="Go straight into the standard reference shoot (asks before it bills).")
+def cmd_create(name, dry_run, from_profile, model, project, shoot):
     s3 = s3c.client()
     check_name(name)
     src = from_profile or TEMPLATE
@@ -310,11 +318,38 @@ def cmd_create(name, from_profile):
         die(f"profile source not found: {src}")
     if src != TEMPLATE:  # the template is deliberately unfilled; anything else must be real
         check_profile(parse_profile(read_text(src), src), src, name)
+    if shoot and src == TEMPLATE:
+        die("--shoot needs a real bible: the blank template has no wardrobe or consistency "
+            "block to build a prompt from. Pass --from-profile.")
     uri = put_file(s3, src, profile_key(name), PROFILE_CT)
     print(f"created character {name!r}: {uri}", file=sys.stderr)
     if src == TEMPLATE:
         print("  (blank template — fill it in, then `set-profile` the result.)", file=sys.stderr)
-    print(f"  next: add references with `studio character add-refs {name} <img>...`", file=sys.stderr)
+
+    if not shoot:
+        print(f"  next: seed photos with `studio character add-to {name} seed <img>...`, then\n"
+              f"        the standard set with `studio character shoot {name} --project <p>`",
+              file=sys.stderr)
+        return 0
+
+    # Deferred deliberately. The shoot invokes models and lives in `engine/`,
+    # which imports this module — so importing it at module scope would point the
+    # dependency arrow both ways. The character store stays ignorant of the
+    # engine; only this one call knows about it.
+    from types import SimpleNamespace
+
+    from studio_pipeline.engine import shoot as SHOOT
+    opts = SimpleNamespace(
+        project=project, model=model, dry_run=dry_run,
+        group="all", slot=(), identity="auto", identity_max=SHOOT.IDENTITY_MAX,
+        pick=None, pick_tag=None, seed_pick=None, aspect_ratio=None, extra=None,
+        review_sheet=None,
+        dest=None, expires=3600,
+    )
+    try:
+        return SHOOT.run_shoot(name, opts)
+    except SHOOT.ShootError as exc:
+        die(str(exc))
 
 
 @main.command("set-profile")
@@ -438,7 +473,12 @@ def do_push(s3, name: str, force: bool, local: str, base: str, etagf: str) -> No
 
     if prior is not None:
         sys.stderr.write(unified(prior, text, name))
-    uri = put_file(s3, local, f"{name}/{PROFILE_FILE}", PROFILE_CT)
+    # `profile_key`, never a hand-built path. This line read
+    # f"{name}/{PROFILE_FILE}" — the pre-migration layout — so every push landed
+    # at `<name>/profile.yaml` in the bucket root instead of under `characters/`,
+    # reported success, and wrote the local sidecars as though it had worked. The
+    # bible was never updated and nothing said so.
+    uri = put_file(s3, local, profile_key(name), PROFILE_CT)
     write_text(base, text)
     write_text(etagf, remote_etag(s3, name) or "")
     print(f"uploaded {uri}", file=sys.stderr)
@@ -649,42 +689,135 @@ def sync_index(s3, name: str, *, rename_map: dict[str, str] | None = None,
 
 # --- pools -----------------------------------------------------------------
 
-@main.command("add-refs")
-@click.argument("files", nargs=-1, required=True)
+@main.command("add-refs", epilog=(
+    "\n\nArguments:\n  FILES  Local image files. Omit when using --from-run."))
+@click.argument("files", nargs=-1)
 @click.argument("name", required=True)
+@click.option("--from-run", "from_run", multiple=True,
+              help=("Promote a RUN's output into reference/ instead of a local file. "
+                    "Repeatable; takes a runref like <project>/latest#1."))
+@click.option("--project", help="Default project for a bare runref given to --from-run.")
 @click.option("--replace", is_flag=True, help="Number from 1 (overwrites in place).")
 @click.option("--start", type=int, help="Start numbering at N (default: after current highest).")
 @click.option("--to", help=("Purpose subfolder inside reference/ (face, body, wardrobe, …). "
               "Omit to add at the root of reference/."))
-def cmd_add_refs(files, name, replace, start, to):
+def cmd_add_refs(files, name, from_run, project, replace, start, to):
     s3 = s3c.client()
-    """Add reference image(s), optionally into a purpose subfolder."""
+    """Add reference image(s), optionally into a purpose subfolder.
+
+    THIS IS THE GATE ON A CHARACTER'S IDENTITY. Everything else about a
+    generation is reversible bookkeeping; what sits in `reference/` is who the
+    character IS, and it is what every later render is held against. So a
+    generated image never arrives here on its own — `studio character shoot`
+    leaves its results in their runs and prints the `--from-run` line to promote
+    the ones a person chose to keep.
+
+    `--from-run` copies inside the bucket rather than downloading: the run keeps
+    its own output, and no record ends up naming a key that moved.
+    """
     check_name(name)
+    if not files and not from_run:
+        die("nothing to add — pass local file(s), or --from-run <runref> to promote "
+            "a run's output.")
     missing = [f for f in files if not os.path.isfile(f)]
     if missing:
         die(f"file(s) not found: {', '.join(missing)}")
+
+    run_keys: list[str] = []
+    # Keep each key paired with the shot slot its run recorded, so the spec's
+    # own description and tags can be written with the image instead of being
+    # retyped by hand. None for anything not shot against the spec.
+    run_slots: list[str | None] = []
+    for ref in from_run:
+        try:
+            keys = R.resolve_output_keys(s3, ref, project, kinds=IMG_EXTS)
+        except R.RunError as exc:
+            die(str(exc))
+        run_keys += keys
+        run_slots += [_run_slot(s3, ref, project)] * len(keys)
+
     group = to
     prefix = group_prefix(name, group)
     start = 1 if replace else (start if start is not None
                                     else pool_max_index(s3, name, "reference", group) + 1)
 
     folder = pool_folder(name, "reference") + (f"/{group}" if group else "")
-    for i, f in enumerate(files):
-        n = start + i
+    n = start
+    for f in files:
         ext = os.path.splitext(f)[1].lower() or ".webp"
         put_file(s3, f, s3c.key(f"{folder}/{prefix}{n}{ext}"),
                  "image/webp" if ext == ".webp" else None)
-    last = start + len(files) - 1
-    print(f"added {len(files)} image(s) to {folder}/ as {prefix}{start}..{prefix}{last}",
+        n += 1
+    described: dict[str, str] = {}
+    for key, slot_id in zip(run_keys, run_slots):
+        ext = os.path.splitext(key)[1].lower() or ".png"
+        rel = f"{group}/{prefix}{n}{ext}" if group else f"{prefix}{n}{ext}"
+        dest = s3c.key(f"{folder}/{prefix}{n}{ext}")
+        s3.copy_object(Bucket=s3c.BUCKET, CopySource={"Bucket": s3c.BUCKET, "Key": key},
+                       Key=dest)
+        print(f"  {key} -> {folder}/{prefix}{n}{ext}", file=sys.stderr)
+        if slot_id:
+            described[rel] = slot_id
+        n += 1
+    print(f"added {n - start} image(s) to {folder}/ as {prefix}{start}..{prefix}{n - 1}",
           file=sys.stderr)
 
     report = sync_index(s3, name)
+    if described:
+        _describe_from_spec(s3, name, described)
+        # `report` was taken before the descriptions were written, so without
+        # this the warning below names the very images just described.
+        report["undescribed"] = [f for f in report["undescribed"] if f not in described]
     if report["undescribed"]:
         print(f"  {len(report['undescribed'])} reference image(s) have no description yet. "
               f"An undescribed image cannot be picked by tag and is invisible to whoever "
               f"chooses the set:\n"
               f"    studio character set-ref-desc {name} <file> "
               f"--description '…' --tags face,neutral", file=sys.stderr)
+
+
+def _run_slot(s3, ref: str, project: str | None) -> str | None:
+    """The shot slot a run recorded, if it was one — see `record_extra`."""
+    try:
+        proj, run_id = R.resolve_run(s3, ref, project)
+        # `run_record` wraps the documents; the slot rides in request.json.
+        record = R.run_record(s3, proj, run_id) or {}
+        return ((record.get("request") or {}).get("reference_slot")) or None
+    except Exception:  # noqa: BLE001 — provenance is a bonus, never a blocker
+        return None
+
+
+def _describe_from_spec(s3, name: str, by_file: dict[str, str]) -> None:
+    """Write the shot spec's own description and tags onto promoted images.
+
+    The spec has carried a `description` and `tags` per slot from the start, and
+    for a while nothing read them: `shoot` stopped filing its output when
+    promotion became a separate human gate, and `add-refs` had no idea which
+    slot a run came from. So every promotion was a hand-retype of prose sitting
+    in the repo — which is how the two drift apart.
+    """
+    from studio_pipeline.engine import shoot as SHOOT  # local: shoot imports this module
+    try:
+        slots = {s["id"]: s for s in SHOOT.load_spec()["slots"]}
+    except Exception as exc:  # noqa: BLE001 — a broken spec must not lose the images
+        print(f"  note: could not read the shot spec ({exc}); promoted images are "
+              f"undescribed.", file=sys.stderr)
+        return
+    data, entries = read_index(s3, name)
+    etag = remote_etag(s3, name)
+    hits = 0
+    for entry in entries:
+        slot = slots.get(by_file.get(entry.get("file"), ""))
+        if not slot:
+            continue
+        entry["description"] = " ".join(slot["description"].split())
+        entry["tags"] = list(slot["tags"])
+        hits += 1
+    if not hits:
+        return
+    data["references"] = entries
+    write_profile(s3, name, data, etag)
+    print(f"  described {hits} image(s) from the shot spec.", file=sys.stderr)
 
 
 @main.command("add-to")

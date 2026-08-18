@@ -44,30 +44,6 @@ def media_root_prefix():
     return value if value.endswith("/") else value + "/"
 
 
-def projects_prefix():
-    """Where the per-subject project trees live, relative to the media root.
-
-    **The only place in this service that names a folder the pipeline owns**, and it
-    is here rather than inline because favourites are a *project* idea:
-    `projects/<name>/favorites/` holds the picks from `projects/<name>/`, while
-    `characters/<name>/` has no such thing — that tree holds who the subject is
-    rather than what was generated of them, and there is nothing there to pick
-    between.
-
-    Empty turns favourites off entirely rather than making every top-level folder
-    a project. If the pipeline reshapes the bucket again, a missing button is a much
-    better failure than a copy landing somewhere invented — which is the same
-    argument `media_root_prefix` makes and the reason both are knobs.
-    """
-    value = os.environ.get("STUDIO_PROJECTS_PREFIX", "projects").strip().strip("/")
-    return f"{value}/" if value else ""
-
-
-def favorites_folder():
-    """The folder inside a project that holds its picks. Empty turns them off."""
-    return os.environ.get("STUDIO_FAVORITES_FOLDER", "favorites").strip().strip("/")
-
-
 def presign_ttl_seconds():
     """How long a presigned URL is requested for.
 

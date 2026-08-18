@@ -147,6 +147,31 @@ EOF
       "$MEDIA_BUCKET" >> "$STUDIO_DIR/.env"
     log "pinned XHARNESS_S3_BUCKET=$MEDIA_BUCKET in studio/.env"
   fi
+  # -------------------------------------------------------------------------
+  # 3b. Copy the shared config assets out to the bucket.
+  #
+  #     studio/config/ is the SOURCE OF TRUTH for the pose plates a reference
+  #     shoot binds; S3 holds a copy because a model may only be handed a
+  #     presigned URL of an S3 object, never bytes from disk. So the plates have
+  #     to exist in the bucket before `studio character shoot` can use them.
+  #
+  #     --size-only because S3 mtimes always differ from local ones, which would
+  #     re-upload every plate on every session — and this script runs from the
+  #     SessionStart hook each time.
+  #
+  #     NEVER --delete. This writes to the prod bucket (studio has one
+  #     environment, deliberately), and --delete would remove anything under
+  #     config/ that is not in this checkout.
+  # -------------------------------------------------------------------------
+  if [ -n "$MEDIA_BUCKET" ] && [ -d "$STUDIO_DIR/config" ]; then
+    if aws s3 sync "$STUDIO_DIR/config/" "s3://$MEDIA_BUCKET/config/" --size-only \
+         --only-show-errors; then
+      log "synced studio/config/ -> s3://$MEDIA_BUCKET/config/"
+    else
+      warn "could not sync studio/config/ to s3://$MEDIA_BUCKET/config/ — the pose"
+      warn "  plates a reference shoot needs may be missing from the bucket."
+    fi
+  fi
 else
   warn "not signed in to AWS — skipping env files. Run 'aws login', then re-run"
   warn "  studio/scripts/dev-setup.sh to write them."

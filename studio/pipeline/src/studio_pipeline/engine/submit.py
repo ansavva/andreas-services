@@ -27,6 +27,7 @@ import sys
 import tempfile
 
 from studio_pipeline.adapters import replicate as RA
+from studio_pipeline.adapters import s3 as s3c
 from studio_pipeline.domain import runs as R
 from studio_pipeline.engine import refs as REFS
 from studio_pipeline.engine import registry as REG
@@ -118,14 +119,48 @@ def gather(entry: dict, s3, args) -> dict:
                                         cap=cap, cap_name=entry["key"])
     for ref in getattr(args, "ref_run", None) or []:
         keys += R.resolve_output_keys(s3, ref, project, kinds=exts)
-    if getattr(args, "input", None):
-        keys += REFS.project_input_keys(project, args.input)
+    # `input_`, because `input` shadows the builtin and Click was given the safe
+    # spelling. This read `args.input` through a defaulting getattr, so
+    # `--input 3` bound NOTHING and said nothing — the quietest possible failure:
+    # either a confusing "no image inputs", or a run that proceeds without the
+    # image the caller asked for. Both spellings are accepted now.
+    numbers = getattr(args, "input_", None) or getattr(args, "input", None)
+    if numbers:
+        keys += REFS.project_input_keys(project, numbers)
     keys += getattr(args, "key", None) or []
 
     seen: set[str] = set()
     keys = [k for k in keys if not (k in seen or seen.add(k))]  # de-dupe, keep order
 
+    # The format rule applies to EVERY image, not just the reference list. It
+    # used to be checked inside the `if keys:` block below, so a `.webp` start
+    # frame sailed through to a model that rejects `.webp` and failed at the
+    # provider instead — after the submit, and with the provider's wording
+    # rather than the one that names `studio convert`. A start frame is the
+    # commonest thing to hand straight from an image run, which is exactly where
+    # `.webp` comes from.
+    frames = [bindings[f] for f in (start_field, imgs.get("end")) if f and f in bindings]
+    bad_frames = [k for k in frames if os.path.splitext(k)[1].lower() not in exts]
+    if bad_frames:
+        raise SubmitError(
+            f"{entry['key']} accepts only {sorted(exts)}; incompatible: {bad_frames}\n"
+            f"       convert with: studio convert "
+            f"--for {entry['key']} --key <key> --add-input <project>"
+        )
+
     if keys:
+        # A LAST frame can exclude the reference list even where a first frame
+        # does not. Kling takes a start frame and references together happily,
+        # but the moment an end frame joins them the payload is capped at those
+        # two images and the whole request is rejected. Nothing in the live
+        # schema says so — it surfaces only as an E006 after the submit, which
+        # is why it is recorded in the registry rather than learned twice.
+        if end_field in bindings and imgs.get("end_excludes_refs"):
+            raise SubmitError(
+                f"{entry['key']}: with both `{start_field}` and `{end_field}` set, "
+                f"`{refs_field}` must be empty — it takes those two images and no more.\n"
+                f"       Drop the references, or drop the end frame and let the "
+                f"prompt describe where the shot lands.")
         if start_field in bindings and imgs.get("start_excludes_refs"):
             raise SubmitError(
                 f"{entry['key']}: `{start_field}` and `{refs_field}` are mutually exclusive.\n"
@@ -136,8 +171,8 @@ def gather(entry: dict, s3, args) -> dict:
         if bad:
             raise SubmitError(
                 f"{entry['key']} accepts only {sorted(exts)}; incompatible: {bad}\n"
-                f"       convert with: studio s3_convert "
-                f"--for {entry['key']} …"
+                f"       convert with: studio convert "
+                f"--for {entry['key']} --key <key> --add-input <project>"
             )
         if cap and len(keys) > cap:
             raise SubmitError(
@@ -146,7 +181,57 @@ def gather(entry: dict, s3, args) -> dict:
                 f"character's default_set) rather than hoping the extras are dropped.")
         bindings[refs_field] = keys
 
+    _warn_total_bytes(entry, s3, bindings)
     return bindings
+
+
+#: Measured, not documented. Every generation that succeeded sent no more than
+#: 6.41 MiB of images in total; the three that failed sent 13.89 MiB. A single
+#: 3.10 MiB image passed on its own, so the limit is on the SUM and not on any
+#: one file. This sits just above the largest known-good total.
+BYTES_WARN = 6.5 * 1024 * 1024
+
+
+def _warn_total_bytes(entry: dict, s3, bindings: dict) -> None:
+    """Warn when a VIDEO payload carries more image data than has ever worked.
+
+    A warning, not an error: 6.41 MiB is the largest total observed to succeed,
+    which is not the same as a documented ceiling, and refusing a payload on a
+    measurement would be worse than sending it.
+
+    It is worth saying at all because of HOW it fails. An oversized payload is
+    accepted, sits for over two minutes, and comes back `PA — Prediction
+    interrupted; please retry`, with no `started_at`, no metrics and empty logs.
+    That reads as an upstream blip and invites retrying it unchanged, which is
+    exactly what three consecutive failures were spent on.
+
+    Video only, because that is where the evidence is. The image models have
+    taken five 2.4 MiB plates — around 12 MiB — repeatedly and without
+    complaint, so warning about them would be a false alarm on every reference
+    shoot, and a warning that cries wolf is worse than none.
+    """
+    if entry.get("kind") != "video":
+        return
+    keys = []
+    for value in bindings.values():
+        keys += value if isinstance(value, list) else [value]
+    if not keys or s3 is None:
+        return
+    total = 0
+    try:
+        for key in keys:
+            total += s3.head_object(Bucket=s3c.BUCKET, Key=key)["ContentLength"]
+    except Exception:
+        return  # sizing is a courtesy; never let it break a submit
+    if total <= BYTES_WARN:
+        return
+    print(f"warning: this payload carries {total / 1048576:.1f} MiB of images across "
+          f"{len(keys)} file(s).\n"
+          f"         No generation above ~6.4 MiB has ever completed here — over that "
+          f"it tends to be accepted, hang, and fail as `PA`, which looks retryable and "
+          f"is not.\n"
+          f"         studio convert --key <key> --to jpeg --add-input <project>",
+          file=sys.stderr)
 
 
 def check_payload_rules(entry: dict, payload: dict) -> None:
@@ -184,12 +269,48 @@ def check_payload_rules(entry: dict, payload: dict) -> None:
 # 2. preflight — reject what this model will not accept, before anything bills
 # --------------------------------------------------------------------------
 
+def _check_image_budget(entry: dict, bindings: dict) -> None:
+    """Some models cap TOTAL images, not just the reference list.
+
+    Kling advertises `reference_images` "up to 7" and separately allows a start
+    frame alongside them, which reads as 7 + 1 and is not: the cap counts every
+    image, so a start frame leaves room for six references. Over the line it
+    fails the whole prediction with
+
+        Error code 1201: The number of images and elements exceeds the limit,
+        max number is 7.
+
+    Cheap to hit and easy to miss, because the two halves of the rule sit in
+    different fields. It bites hardest with a character whose `default_set`
+    holds exactly seven — the shape `shoot` produces — since binding that plus a
+    start frame is over by one.
+
+    Registry-driven rather than named per model: `start_counts_toward_max_refs`.
+    """
+    images = entry.get("images") or {}
+    cap = images.get("max_refs")
+    if not cap or not images.get("start_counts_toward_max_refs"):
+        return
+    refs = bindings.get(images.get("refs")) or []
+    extra = [f for f in (images.get("start"), images.get("end")) if f and bindings.get(f)]
+    total = len(refs) + len(extra)
+    if total > cap:
+        raise SubmitError(
+            f"{entry['key']} accepts {cap} images IN TOTAL and the "
+            f"{'/'.join(extra)} counts toward that — got {len(refs)} reference "
+            f"image(s) plus {len(extra)}, which is {total}.\n"
+            f"       Narrow the selection to {cap - len(extra)} with --pick; the "
+            f"start frame already carries wardrobe and framing, so drop a body "
+            f"reference rather than a face one.")
+
+
 def preflight(entry: dict, payload: dict, bindings: dict, token: str) -> None:
     """Documented constraints first, then the live schema.
 
     Runs on --dry-run too, so an approved payload is a payload that submits.
     """
     model = entry["model"]
+    _check_image_budget(entry, bindings)
     MS.check_denied(payload, entry, model)
     props, schemas = MS.fetch(model, token)
     alts: dict[str, dict] = {}
@@ -237,10 +358,20 @@ def execute(entry: dict, payload: dict, bindings: dict, s3, token: str, args) ->
     run = f"{project}/{run_id}"
 
     prompt_source = json.load(open(args.prompt_json)) if getattr(args, "prompt_json", None) else None
+    # `--character` doubles as "resolve refs from" and "this run is of", which is
+    # the same thing for `studio run`. A reference shoot resolves its own keys
+    # (seed photos, a pose plate) and so passes no `--character`, but the run is
+    # still OF that character — and `runs find --character` is how that
+    # association is read back. Hence the explicit override.
+    characters = list(getattr(args, "record_characters", None) or args.character or [])
     try:
         R.record_request(s3, project, run_id, kind=kind, engine=entry["skill"],
                          model=entry["model"], input=payload, bindings=bindings,
-                         characters=args.character or [], prompt_source=prompt_source)
+                         characters=characters, prompt_source=prompt_source,
+                         # Provenance a caller wants carried into the record. A
+                         # shoot puts its slot id here so promoting the output
+                         # later can recover what the image was meant to be.
+                         extra=getattr(args, "record_extra", None) or None)
     except R.RunError as e:
         raise SubmitError(f"refusing to record an invalid request: {e}")
     print(f"run {run}", file=sys.stderr)

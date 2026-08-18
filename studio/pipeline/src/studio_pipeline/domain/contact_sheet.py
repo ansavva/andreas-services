@@ -74,8 +74,19 @@ def _load_font(size: int):
     return ImageFont.load_default()
 
 
-def build(paths: list[str], out: str, cols: int, cell: int) -> None:
-    paths = sorted(paths, key=lambda p: _natural_key(os.path.basename(p)))
+def build(paths: list[str], out: str, cols: int, cell: int,
+          captions: list[str] | None = None, quiet: bool = False) -> str:
+    """Lay images out in a labelled grid.
+
+    `captions` serves the other caller: a payload review, where the order IS the
+    meaning — tile N is the image a prompt cites as `[ImageN]` — and the caption
+    has to say that rather than repeat a filename. Given captions, the order is
+    taken as authoritative and left alone; without them the sheet is
+    natural-sorted and captioned by basename, which is what browsing a pool wants.
+    """
+    if captions is None:
+        paths = sorted(paths, key=lambda p: _natural_key(os.path.basename(p)))
+        captions = [os.path.splitext(os.path.basename(p))[0] for p in paths]
     if not paths:
         sys.exit("no images to lay out")
     label_h = max(20, cell // 12)
@@ -93,10 +104,12 @@ def build(paths: list[str], out: str, cols: int, cell: int) -> None:
         except Exception as e:
             draw.text((x + 6, y + label_h + 6), f"[{e}]", fill="red", font=font)
         draw.rectangle([x, y, x + cell, y + label_h], fill="black")
-        draw.text((x + 6, y + 3), os.path.splitext(os.path.basename(path))[0], fill="white", font=font)
+        draw.text((x + 6, y + 3), captions[idx], fill="white", font=font)
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     sheet.save(out)
-    print(f"{out}  ({sheet.width}x{sheet.height}, {len(paths)} tiles)")
+    if not quiet:
+        print(f"{out}  ({sheet.width}x{sheet.height}, {len(paths)} tiles)")
+    return out
 
 
 @click.command(help=__doc__)

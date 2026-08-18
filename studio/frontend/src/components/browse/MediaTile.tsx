@@ -5,7 +5,6 @@ import { Checkbox } from "@ansavva/design-system";
 import { useSignedSrc } from "../../hooks/useSignedSrc";
 import { formatDuration } from "../../utils/format";
 import type { FileEntry } from "../../types";
-import { FavoriteButton } from "../common/FavoriteButton";
 
 interface Props {
   file: FileEntry;
@@ -14,8 +13,6 @@ interface Props {
   selectionActive: boolean;
   onOpen: () => void;
   onToggleSelect: (extend: boolean) => void;
-  /** Omitted for anything that cannot be favourited, which hides the star. */
-  onFavorite?: () => Promise<unknown>;
 }
 
 /**
@@ -31,7 +28,6 @@ export function MediaTile({
   selectionActive,
   onOpen,
   onToggleSelect,
-  onFavorite,
 }: Props) {
   const { src, failed, onError } = useSignedSrc(file.key, file.url);
   const [duration, setDuration] = useState<number | null>(null);
@@ -99,23 +95,6 @@ export function MediaTile({
           {file.name}
         </span>
       </button>
-
-      {/* The star sits opposite the checkbox — both are siblings of the tile
-          button rather than children of it, for the same reason. It follows the
-          checkbox's visibility rules with one exception: an *already* favourited
-          file shows its star at rest, because that is the state the grid is
-          reporting rather than a control being offered. */}
-      {(onFavorite || file.favorited) && (
-        <FavoriteButton
-          noun={file.name}
-          favorited={file.favorited}
-          onFavorite={onFavorite ?? (() => Promise.resolve())}
-          tone="tile"
-          className={`absolute right-1.5 top-1.5 transition-opacity focus-visible:opacity-100
-                      group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100
-                      ${file.favorited ? "opacity-100" : "opacity-0"}`}
-        />
-      )}
 
       {/* Hidden until it is wanted, so a grid of sixty is not sixty checkboxes
           over the media the app exists to show — but always visible once

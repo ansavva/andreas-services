@@ -5,7 +5,6 @@ import { formatBytes, formatDate } from "../../utils/format";
 import type { FileEntry } from "../../types";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
-import { FavoriteButton } from "../common/FavoriteButton";
 import { RenameButton } from "../common/RenameButton";
 
 interface Props {
@@ -20,8 +19,6 @@ interface Props {
   /** Present only for video. See the note on the sound button below. */
   muted?: boolean;
   onToggleMuted?: () => void;
-  /** Omitted for anything that cannot be favourited, which hides the star. */
-  onFavorite?: () => Promise<unknown>;
 }
 
 /**
@@ -48,7 +45,6 @@ export function ViewerChrome({
   onDelete,
   muted,
   onToggleMuted,
-  onFavorite,
 }: Props) {
   async function download() {
     // Signed with `response-content-disposition: attachment` server-side. A
@@ -109,19 +105,6 @@ export function ViewerChrome({
               <path d="M15.5 8.5a5 5 0 0 1 0 7M18 6a9 9 0 0 1 0 12" />
             )}
           </ChromeButton>
-        )}
-
-        {/* Keyed by the file, so scrolling to the next clip resets the star
-            rather than carrying the last one's "added" state onto it — the bar
-            stays mounted while the reel moves underneath it. */}
-        {(onFavorite || file.favorited) && (
-          <FavoriteButton
-            key={file.key}
-            noun={file.name}
-            favorited={file.favorited}
-            onFavorite={onFavorite ?? (() => Promise.resolve())}
-            tone="chrome"
-          />
         )}
 
         {/* Inline feedback rather than a toast, deliberately: see above. */}

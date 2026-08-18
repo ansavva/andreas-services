@@ -48,8 +48,6 @@ CLI
     studio runs show <project>/latest
     studio runs outputs <project>/latest --presign
     studio runs find --character <name>          # across every project
-    studio runs favorite <project>/latest#1      # keep a take
-    studio runs favorites <project>
 """
 from __future__ import annotations
 
@@ -72,7 +70,8 @@ SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp"}
 # What a binding is allowed to point at. Anything else is a typo or a URL, and
 # either way it must not reach a stored record.
-KEY_ROOTS = (s3c.key(P.CHARACTERS + "/"), s3c.key(P.PROJECTS + "/"), s3c.key("phrasebook/"))
+KEY_ROOTS = (s3c.key(P.CHARACTERS + "/"), s3c.key(P.PROJECTS + "/"), s3c.key("phrasebook/"),
+             s3c.key(P.config_root()))
 VID_EXTS = {".mp4", ".mov", ".webm", ".m4v"}
 
 
@@ -371,33 +370,6 @@ def resolve_output_keys(s3, ref: str, default_project: str | None = None,
     return keys
 
 
-# --- favorites ------------------------------------------------------------
-
-def favorite(s3, ref: str, default_project: str | None = None) -> list[str]:
-    """Copy a run output into the project's favorites/.
-
-    `favorites/` existed as a folder with nothing that wrote to it, which is how
-    it filled with unattributable files. Copying through here keeps the run as
-    the history and the favorite as a pointer to a moment in it — the basename
-    carries the run id, so a keeper is always traceable back.
-    """
-    project, run_id = resolve_run(s3, ref, default_project)
-    keys = resolve_output_keys(s3, ref, default_project)
-    out = []
-    for k in keys:
-        ext = os.path.splitext(k)[1]
-        dst = P.favorite_key(project, f"{run_id}{ext}")
-        s3.copy_object(Bucket=s3c.BUCKET, Key=dst,
-                       CopySource={"Bucket": s3c.BUCKET, "Key": k},
-                       MetadataDirective="COPY")
-        out.append(dst)
-    return out
-
-
-def list_favorites(s3, project: str) -> list[str]:
-    return s3c.list_keys(s3, P.favorites_prefix(project))
-
-
 # --- searching across projects --------------------------------------------
 
 def find_by_character(s3, character: str, projects: list[str] | None = None) -> list[str]:
@@ -512,26 +484,6 @@ def do_outputs(runref, expires, json_, presign, project):
     keys = resolve_output_keys(s3, runref, project)
     vals = presign(s3, keys, expires) if presign else keys
     print(json.dumps(vals, indent=2) if json_ else "\n".join(vals))
-
-
-@main.command("favorite")
-@click.argument("runref", required=True)
-@click.option("--project", help="Default project for a bare run id.")
-@reports(RunError)
-def do_favorite(runref, project):
-    s3 = s3c.client()
-
-    print("\n".join(favorite(s3, runref, project)))
-
-
-@main.command("favorites")
-@click.argument("project", required=True)
-@reports(RunError)
-def do_favorites(project):
-    s3 = s3c.client()
-
-    keys = list_favorites(s3, project)
-    print("\n".join(keys) or f"(no favorites in {project})")
 
 
 @main.command("adopt")

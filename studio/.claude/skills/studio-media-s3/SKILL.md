@@ -1,6 +1,6 @@
 ---
 name: studio-media-s3
-description: Read from and write to the xharness-prod-media-us-east-1 S3 bucket via the AWS CLI/boto3 — list a prefix, upload local files, download files to disk, and mint short-lived presigned HTTPS URLs (how images/videos reach Replicate). The canonical asset store for the studio-* workflow, holding CHARACTERS (identity records) and PROJECTS (runs, chains, scenes, movies, favorites, input). Use when a skill or task needs to store, fetch, list, or hand out large media assets, to record or address a run, or to cut runs into a scene and scenes into a movie.
+description: Read from and write to the xharness-prod-media-us-east-1 S3 bucket via the AWS CLI/boto3 — list a prefix, upload local files, download files to disk, and mint short-lived presigned HTTPS URLs (how images/videos reach Replicate). The canonical asset store for the studio-* workflow, holding CHARACTERS (identity records) and PROJECTS (runs, chains, scenes, movies, input). Use when a skill or task needs to store, fetch, list, or hand out large media assets, to record or address a run, or to cut runs into a scene and scenes into a movie.
 ---
 
 # S3 skill
@@ -57,7 +57,7 @@ projects/<project>/
     chains/<slug>.json      a scene's own frames, in order — its reference set while building
     scenes/<scene_id>/      runs cut into one continuous take: scene.json + shots/ + output/
     movies/<movie_id>/      scenes cut into one piece: movie.json + scenes/ + output/
-    favorites/              keepers, copied out of runs
+    favorites/              an ordinary folder someone made — keepers, copied in
     input/                  the project working pool (<project>_in_<n>.<ext>)
 
 phrasebook/wording.yaml     per-model wording lists
@@ -130,7 +130,6 @@ studio runs list <project> [--character <name>]
 studio runs show <project>/latest
 studio runs outputs <project>/latest --presign    # feed into the next render
 studio runs find --character <name>               # across every project
-studio runs favorite <project>/latest#1
 
 # Frames: verify a clip, and take the handoff frame for chaining
 studio frames grid <project>/latest --count 4 --dest /tmp/check
@@ -146,9 +145,11 @@ studio frames chain <project>/<slug> --args --max 7    # -> --key … --key …
 studio phrasebook check --model <model key> --text "<draft prompt>"
 studio phrasebook show --model <model key>
 
-# Scenes: cut a sequence of runs into one continuous take
-studio scenes new <project> --slug <slug> \
-  --shot <project>/<run_id>#1 --shot <project>/<run_id>#1 --shot <project>/latest#1
+# Scenes: a piece planned, shot and cut. `new` starts one from a plan;
+# `assemble` does the cutting, and takes runrefs directly when there is no plan.
+studio scenes new <project> --slug <slug> --from-json plan.json
+studio scenes assemble <project>/<slug> \
+  --shot <project>/<run_id>#1 --shot <project>/latest#1
 studio scenes list <project>
 studio scenes show <project>/latest
 

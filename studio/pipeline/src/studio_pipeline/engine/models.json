@@ -437,7 +437,9 @@
           ".jpg",
           ".jpeg",
           ".png"
-        ]
+        ],
+        "start_counts_toward_max_refs": true,
+        "end_excludes_refs": true
       },
       "prompt": {
         "max_chars": 2500

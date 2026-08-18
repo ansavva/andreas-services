@@ -6,7 +6,6 @@
         chains/         a scene's own frames, in order (frames.py)
         scenes/         runs cut into one continuous take (scenes.py)
         movies/         scenes cut into one piece (movies.py)
-        favorites/      keepers, copied out of runs (runs.py, `favorite`)
         input/          the working pool — uploads and frames to drive from
 
 PROJECT vs CHARACTER
@@ -213,7 +212,6 @@ def do_show(project, json_):
         "note": "no project.json — created before the record existed"}
     counts = {kind: len(P.list_ids(s3, P.project_dir_prefix(project, kind)))
               for kind in ("runs", "scenes", "movies")}
-    counts["favorites"] = len(s3c.list_keys(s3, P.favorites_prefix(project)))
     counts["input"] = len(input_keys(s3, project))
     counts["chains"] = len(s3c.list_keys(s3, P.chains_prefix(project)))
     # `--json` changes nothing here: the record is JSON either way. The flag

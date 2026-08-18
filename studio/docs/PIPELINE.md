@@ -82,6 +82,39 @@ submit time, since the signed URL itself is ~2 KB of noise and expires.
 The gate covers what is sent to the model. The surrounding steps — presigning,
 polling, downloads, uploads, recording the run — do not need approval.
 
+**Approval is of a payload, not of a plan.** A yes to "shall I render this?", an
+answer to a multiple-choice question, or a payload shown earlier in the
+conversation is not approval of the request about to be sent. Show it again and
+wait. There is deliberately no `--yes`-style flag on any generating command: an
+approval flag is precisely the door an agent walks through while believing some
+earlier exchange counted as consent. If one reappears, it is a bug.
+
+### 2b. NEVER put an image into a character without approval
+
+Runs are append-only history and descriptions can be rewritten, but
+`characters/<name>/reference/` is **who the character is** — every later render is
+verified against it, and every future generation may be driven by it. Adding,
+replacing, renumbering or archiving anything there, or in `default_set` or the
+bible's `references:` index, is a decision that belongs to the user and is
+**separate** from having agreed to spend money on a render.
+
+So a successful generation does not become identity by itself.
+`studio character shoot` leaves every result in its run and prints the promotion
+line; a person looks, and then:
+
+```bash
+studio runs outputs <project>/latest --presign            # look first
+studio character add-refs <name> --to <group> --from-run <runref>
+```
+
+`add-refs` copies inside the bucket, so the run keeps its own output and no
+record ends up naming a key that moved.
+
+Both this rule and the one above were broken in a single session — a shoot
+submitted on the strength of a menu answer, and its output then written into a
+character's face group that nobody had approved. Nothing was overwritten, but
+nothing about that was safe by design; it was safe by luck of the numbering.
+
 ### 3. S3 is the only origin
 
 **Assets are NEVER uploaded to Replicate.** Everything sent to a model must
@@ -113,14 +146,17 @@ studio/pipeline/
         │
         ├── domain/                WHAT THINGS ARE — records and the tree's shape
         │   ├── paths.py           the one module that knows the key layout
-        │   ├── runs.py  scenes.py  movies.py  frames.py  projects.py
+        │   ├── runs.py  scenes.py  storyboard.py  movies.py  frames.py
+        │   ├── projects.py
         │   ├── characters.py  curate.py  contact_sheet.py
         │   ├── phrasebook.py  rewrite.py  prompt.py
-        │   └── templates/profile.yaml
+        │   └── templates/profile.yaml  reference_shots.yaml
         │
         ├── engine/                MODEL INVOCATION
         │   ├── models.json        the REGISTRY — models are data, not code
         │   ├── runner.py          `studio run` / `studio models`
+        │   ├── shoot.py           `studio character shoot` — the standard set
+        │   ├── board.py           `studio scenes board` / `render` / `check`
         │   ├── registry.py  schema.py  submit.py  refs.py  add_model.py
         │
         ├── objects/               raw object access
@@ -195,7 +231,7 @@ live and work involving none borrowing a fake character called `misc`.
 characters/<name>/
     profile.yaml    the bible — identity, plus the DESCRIBED reference index
     reference/      generated character imagery, in purpose subfolders
-        face/  body/  wardrobe/  scene/ …
+        face/  body/  wardrobe/  frame/ …
     corpus/         collected material about the character — uploads, keeper clips
     seed/           the founding real-world source photos
     archive/        retired material — NEVER used unless the user names it
@@ -203,17 +239,31 @@ characters/<name>/
 projects/<project>/
     project.json    name, description, the characters involved
     runs/           one directory per submission
-    chains/         a scene's own frames, in order
+    chains/         an ad-hoc sequence's frames (a planned scene derives its own)
     scenes/         runs cut into one continuous take
     movies/         scenes cut into one piece
-    favorites/      keepers, copied out of runs
+    favorites/      an ordinary folder someone made — the tools do not write here
     input/          the project working pool (<project>_in_<n>.<ext>)
 
 phrasebook/wording.yaml
+
+config/pose/body/*.png       pose plates — how to stand, for a reference shoot
+config/pose/face/*.png       head-angle plates
 ```
 
 There is **no `media/` prefix** — the tree is at the bucket root. (There was one,
 inherited from mirroring Google Drive 1:1; it bought nothing.)
+
+**`config/` is the one tree whose source of truth is the repo.** It lives at
+`studio/config/`, and `dev-setup.sh` syncs it out (`--size-only`, never
+`--delete`). The bucket holds a copy because a model may only be handed a
+presigned URL of an S3 object — a plate that was never synced cannot be used, so
+`shoot` checks for them and says to re-run the script. Editing a plate in the
+bucket rather than the repo is how they diverge.
+
+It also has to be listed in `KEY_ROOTS` (`domain/runs.py`): a binding outside the
+known roots is refused when the request is recorded, which is what stops a typo
+or a URL from reaching a stored record.
 
 **Ask which project before generating anything.** `--project` is required and
 never inferred: where output lands is the one thing rerunning a command cannot
@@ -250,11 +300,14 @@ its bindings rather than trusted from the flags. That list is what makes "every
 run using this character" answerable now that the folder no longer says it:
 `runs.py find --character <name>`.
 
-Scenes and movies take the same id shape, so they sort the same way:
+A **scene is keyed by its slug** and created before anything renders — it is
+the plan as much as the record. A **movie** still takes the run id shape,
+because a movie is only ever a finished cut:
 
 ```
-projects/<project>/scenes/<YYYY-MM-DD_HH-MM-SS>_<slug>/
-    scene.json      the manifest — shots in cut order, as RUNREFS and S3 KEYS
+projects/<project>/scenes/<slug>/
+    scene.json      the plan AND the record — shots, panels, runs, the cut
+    storyboard/     the panels: shot-<NN>-p<M>.png
     shots/          each source clip, copied in, numbered in cut order
     output/         the stitched scene — <slug>.mp4
 
@@ -416,10 +469,11 @@ or projects.
 |---|---|
 | `paths.py` | **The one module that knows the tree's shape.** Every key is built here, which is what keeps a global prefix applied in exactly one place. Library, not a command. |
 | `projects.py` | Project CRUD and the project **input pool**. `require_project()` turns a missing `--project` into an error that lists the real options. |
-| `runs.py` | The shared **run store** every engine records into: request/prompt/result, output archiving, runref resolution for chaining, `find --character` across projects, favourites. It refuses a URL-shaped binding — this is where "S3 is the only origin" is enforced in code. |
-| `scenes.py` | The **scene store**: run outputs stitched into one continuous video under `projects/<p>/scenes/<scene_id>/`. |
+| `runs.py` | The shared **run store** every engine records into: request/prompt/result, output archiving, runref resolution for chaining, `find --character` across projects. It refuses a URL-shaped binding — this is where "S3 is the only origin" is enforced in code. |
+| `scenes.py` | The **scene store**: a piece planned, shot and cut, under `projects/<p>/scenes/<slug>/`. Owns the manifest, `assemble`, `handoff`, and the read-only half of the CLI. |
+| `storyboard.py` | **The plan document**, pure data: what a shot's panels mean, which one is the start frame once the chain has spoken, how a revision merges onto work already paid for. No S3, no models — so the rules that decide what a shot sends are testable on their own. |
 | `movies.py` | The **movie store**: scenes cut into one piece. The same shape one tier up. |
-| `frames.py` | Stills out of a run's video — the chaining handoff, the contact grid that lets a clip be looked at before more money is spent on it, and a scene's own accumulated frames. |
+| `frames.py` | Stills out of a run's video — the handoff frame, and the contact grid that lets a clip be looked at before more money is spent on it. Its `chain` store is for a sequence with no scene behind it; a planned scene derives its own frames from `scene.json`. |
 | `characters.py` | The character record: bible CRUD, the described reference index, pool listing, the compressed identity block. |
 | `curate.py` | The pool operations that go wrong by hand — dedupe, renumber, regroup, move. Every one is a dry run without `--apply`. |
 | `rewrite.py` | **When an object moves, the records that name it must follow.** `apply_moves()` is what curation and the migrator call; `check` walks every record and confirms what it names still exists. |
@@ -437,6 +491,8 @@ or projects.
 | `submit.py` | The one submit lifecycle, image and video alike. |
 | `schema.py` | Live schema fetch; validates fields, enums, ranges, `denied`. |
 | `refs.py` | Character reference selection and project input pool → S3 keys. |
+| `shoot.py` | `studio character shoot` — the STANDARD reference set, one run per slot in `domain/templates/reference_shots.yaml`. Reads the character's bible for the prompt, binds a pose plate from `config/`, then files, describes and indexes each result. Lives here rather than in `domain/` because it invokes models; it drives the same lifecycle as `runner.py` rather than repeating it. |
+| `board.py` | `studio scenes board` / `render` / `check` — the two commands that spend money in a scene's life, plus the free one that says whether they would work. Turns the plan's roles into bindings and hands them to the same lifecycle `runner.py` drives. Every cap, exclusion and format rule stays in `submit.py`; a copy here is the one that drifts. |
 | `add_model.py` | Onboarding: fetch schema + README, infer an entry, append it to the registry. It writes no documentation — see `studio-media-add-model`. |
 
 **`objects/` — moving bytes.** `upload.py`, `download.py`, `presign.py`

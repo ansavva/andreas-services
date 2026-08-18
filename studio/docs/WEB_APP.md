@@ -19,7 +19,7 @@ folders keep their structure, images and video are the focus, and every item can
 be opened fullscreen or flipped through as a vertical reel.
 
 **Studio reads the library and tidies it — it does not produce it.** It browses,
-and it can rename, move, delete, create folders, favourite, and edit the text
+and it can rename, move, copy, delete, create folders, and edit the text
 files in place. It cannot upload, and it cannot generate: making media is the
 pipeline's job, and the pipeline runs locally under a human's own AWS login, not
 through this API. That is a narrower boundary than the one this file used to
@@ -30,11 +30,10 @@ The line between "edit a text file" and "upload" is worth stating, because it is
 thinner than it sounds and is held in exactly one place: `manage.update_text`
 refuses a key that does not already exist.
 
-**Favouriting is the one write that adds an object, and the distinction that
-keeps it honest is where the bytes come from.** A favourite is a server-side
-`CopyObject` of something already in the bucket, so nothing arrives from
-outside; what studio still cannot do is put bytes in that were not there
-already. Every write it accepts either copies, moves, overwrites or removes
+**Copying is the one write that adds an object, and the distinction that keeps
+it honest is where the bytes come from.** A copy is a server-side `CopyObject`
+of something already in the bucket, so nothing arrives from outside; what studio
+still cannot do is put bytes in that were not there already. Every write it accepts either copies, moves, overwrites or removes
 something the pipeline produced.
 
 ## Stack
@@ -118,12 +117,12 @@ The parts of the old rule that still hold, and should keep holding:
   policy. (Studio can set that CORS rule now that it owns the bucket, which
   removes one of the two obstacles — but not the interesting one.) Argue for it separately if it is ever
   wanted; do not let it arrive as a side effect of something else.
-- **A favourite is a copy that keeps its source, and it is the only one.** Every
+- **`copy_objects` keeps its source, and it is the only write that does.** Every
   other `CopyObject` here is the first half of a rename or a move and is
-  followed by a delete. `manage.favorite_objects` is not, which means it is also
-  the only write that *adds* an object rather than relocating one — see the
-  correction at the top of this file. The bytes still come from inside the
-  bucket, so "studio cannot upload" is untouched by it.
+  followed by a delete, which makes this the only write that *adds* an object
+  rather than relocating one — see the correction at the top of this file. The
+  bytes still come from inside the bucket, so "studio cannot upload" is
+  untouched by it.
 - **`s3:DeleteObjectVersion` is deliberately absent**, and the bucket **is**
   versioned (`infra/modules/media`), so this role can only write tombstones, not
   erase history. Every delete it can perform is recoverable. With the prefix
@@ -157,14 +156,15 @@ characters/<subject>/           # who a subject is
 ├── seed/                       # source photos (.webp, .jpg, .jpeg, .JPG, .heic)
 ├── corpus/                     # the wider photo set
 ├── reference/                  # reference images + .txt captions,
-│   └── <face|body|scene|wardrobe>/   #   sometimes split by category
+│   └── <face|body|frame|wardrobe>/   #   sometimes split by category
 └── archive/                    # superseded output kept around
 projects/<subject>/             # what was generated of them
 ├── runs/<ts>_<slug>/           # request.json, result.json, sometimes prompt.json
 │   └── output/                 # the generated .jpeg / .webp / .mp4
 ├── scenes/<ts>_<slug>/         # scene.json + shots/ + output/, a stitched sequence
 ├── chains/<name>.json          # a scene's shot-to-shot plan
-└── favorites/                  # picked output, copied flat — studio writes here
+└── favorites/                  # an ordinary folder someone made, from before
+                               # copying let you choose a destination
 projects/misc/runs/<ts>_<slug>/ # unattributed runs, mostly seedance/kling video
 phrasebook/wording.yaml         # shared prompt wording
 ```
@@ -180,22 +180,14 @@ date sorts therefore fall back to the folder's name, which for a run folder *is*
 its date. Do not "fix" that by HEADing every prefix to invent a timestamp.
 
 The pipeline owns this layout and has reshaped it before. When it changes again,
-`media_root_prefix` is the first knob that matters. It is no longer the only
-one: **favourites made studio name two folders**, and they are the only two.
+`media_root_prefix` is the first knob that matters, and it is now the only one.
 
-```
-STUDIO_PROJECTS_PREFIX    projects   # what a "project" is, relative to the root
-STUDIO_FAVORITES_FOLDER   favorites  # the shelf inside one
-```
-
-Both live in `config.py` beside `media_root_prefix`, both default to what the
-bucket actually holds, and neither is set by Terraform or the deploy workflow —
-the defaults are the intended values, so there is nothing here to drift out of
-step the way `STUDIO_MEDIA_ROOT_PREFIX` can. **Setting either to the empty
-string turns favouriting off entirely**, which is the deliberate failure mode:
-if the pipeline reshapes the bucket again, a missing star is a much better
-outcome than copies landing in a folder that no longer means anything. Nothing
-else in studio names a folder, and nothing else should start to.
+There were briefly two more — `STUDIO_PROJECTS_PREFIX` and
+`STUDIO_FAVORITES_FOLDER` — because favouriting had to *derive* a destination
+from a key, which meant studio naming folders the pipeline owns. Deleting that
+feature deleted the need: a copy is handed its destination, so studio no longer
+knows what a "project" is or which folder inside one is special. **Nothing else
+in studio names a folder, and nothing else should start to.**
 
 **The run JSON is deliberately not parsed.** The pipeline owns its shape and
 changes it freely, so studio serves those files as text and the frontend shows
@@ -319,25 +311,26 @@ that breaks every time the pipeline ships.
   so `browse.reel_items` walks (bounded by `STUDIO_MAX_WALK_OBJECTS`), sorts, and
   presigns *only* the window it returns — which is strictly less signing than the
   old key-order paging did.
-- **The star is state, not a receipt.** `FavoriteButton` renders lit from the
-  listing's own `favorited`, so it reports the folder rather than the press —
-  which means it is right after a reload and right about a file favourited from
-  another device. It is keyed by `file.key` in `ViewerChrome` because that bar
-  stays mounted while the reel scrolls underneath it, and without the key the
-  last clip's "added" state would be painted onto the next one. Files that
-  cannot be favourited never render it at all: `favorites_prefix` is null and
-  the button does not exist, which is how `characters/` gets no star without the
-  frontend knowing anything about the bucket's shape.
+- **One picker, two verbs.** `DestinationPicker` serves both move and copy,
+  because "browse to a folder and press the button" is the same interaction
+  either way and a typed prefix is useless against folder names that are
+  timestamps. `verb` rides on the picker's target state rather than sitting
+  beside it, so there is no way to have one open with no operation chosen. The
+  single behavioural difference: a move into the folder the items are already in
+  is disabled as a no-op, while a **copy** into it stays enabled, because that is
+  how a file is duplicated and the server numbers the second one.
+  Folders get `Move…` only — there is no folder-copy endpoint — which is why
+  `ItemActions` takes `onCopyTo` as optional.
 - **Every write re-fetches the listing rather than patching state.** A rename
   changes an item's position under `newest` and certainly under `name`; replaying
   that into a sorted array correctly is more code than one request, and it is
   code that would be wrong exactly where nobody tests. Two exceptions, for
   opposite reasons: the recursive reel drops a deleted item locally
   (`useReel.dropItem`) because re-walking would shift every already-loaded page
-  under the scroll position, and **favouriting does not re-fetch at all** —
-  the copy lands in a folder you are by definition not in (an item inside
-  `favorites/` cannot be favourited), so the listing on screen is unchanged and
-  a refresh would be a request whose only visible effect is a flicker.
+  under the scroll position, and a **folder** move does not clear the selection
+  because there was none. A copy *does* re-fetch, unlike the favouriting it
+  replaced: its destination can be the folder you are looking at, so the listing
+  on screen may genuinely have changed.
 - **Destructive confirmation is in the button, never in a dialog.**
   `ConfirmDeleteButton` arms on the first press, names what it will destroy, and
   disarms on a timeout, on blur, or on Escape. A portalled dialog is not painted
@@ -411,7 +404,7 @@ Every route is behind the Cognito authorizer except `GET /api/health`.
 | `PATCH /api/folder` | `{prefix, name}` → renames a folder and its subtree |
 | `POST /api/objects/move` | `{keys: [...], destination}` → moves 1..N objects, names kept. 409 if taken |
 | `POST /api/folder/move` | `{prefix, destination}` → moves a folder and its subtree |
-| `POST /api/favorites` | `{keys: [...]}` → copies 1..N media files into their own project's `favorites/`. No destination |
+| `POST /api/objects/copy` | `{keys: [...], destination}` → copies 1..N objects, sources kept. Names numbered if taken |
 | `PATCH /api/text` | `{key, content}` → overwrites an existing text file |
 | `DELETE /api/objects` | `{keys: [...]}` → deletes 1..N objects |
 | `DELETE /api/folder` | `{prefix}` → deletes a folder and its subtree |
@@ -424,31 +417,24 @@ cannot become a rename by typing a filename into it — `move(x.jpeg → a/b.jpe
 puts the file *inside* `a/b.jpeg/`. That asymmetry is deliberate and the tests
 pin it.
 
-**`POST /api/favorites` takes no destination, and that is the whole design.**
-Move takes one and will put a file anywhere; favourite derives it from the key
-(`keys.favorites_prefix`) so there is exactly one legal answer per file and no
-argument that could aim it elsewhere. That is what lets one request favourite a
-selection spanning two subjects — each file goes to its own project — and it is
-why favouriting from `characters/` is a 400 rather than a copy into a guessed
-folder. Three more consequences worth knowing:
+**`POST /api/objects/copy` is `move` minus the delete, plus numbering.** Same
+body, same confinement at both ends, same bulk cap. Two differences, both
+deliberate:
 
-- **The folder is flat, so names collide, and that is ordinary rather than an
-  edge case** — every scene calls its first shot `shot-01.mp4`. Same name and
-  same size is read as "already favourited" and **skipped**; same name and a
-  different size is **numbered** (`shot-01 (2).mp4`, the convention the folder
-  already holds from being filled by hand). Nothing is ever overwritten.
-- **Only images and video**, the same two kinds the reel shows. A `result.json`
-  copied flat onto the shelf beside the clips is noise, and the listing endpoints
-  apply the same rule so the star and the API cannot disagree about what is
-  acceptable.
-- **`favorited` on a listing is read from S3, not remembered.** Studio holds no
-  state, so `browse._mark_favorited` lists the favourites folder once per listing
-  (once per project on a reel page) and matches on name and size. That costs one
-  extra `ListObjectsV2` and buys a star that survives a reload — without it the
-  UI could only report presses from this session, and would go hollow over a file
-  that is very much still favourited. There is no un-favourite route: deleting
-  the copy from inside the favourites folder is unambiguous, and `DELETE
-  /api/objects` already does it.
+- **A name the destination already holds is numbered, never refused.**
+  `clip.mp4` lands as `clip (2).mp4` — the convention the bucket already holds
+  from folders filled by hand. A move refuses the whole request on a conflict
+  because a half-done move splits a selection across two folders with nothing to
+  say where the boundary fell; a copy has no such split, and copying a file into
+  a folder that already holds the name is ordinary rather than a mistake.
+  Nothing is ever overwritten in either.
+- **Numbering looks at names only.** It does not compare sizes to decide that an
+  identical file is "already there" and skip it. That was how favouriting
+  behaved, and it is a copy quietly deciding not to copy. Ask for a copy, get a
+  copy.
+
+There is no `POST /api/folder/copy`: a subtree copy can be arbitrarily large with
+no progress to report, and nothing has wanted one yet. Argue for it separately.
 
 **`PATCH /api/text` is a PATCH because PUT is not in the CORS method list.** The
 verb list lives in four places that have to agree (see below), PATCH is already

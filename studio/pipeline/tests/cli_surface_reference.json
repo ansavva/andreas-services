@@ -157,8 +157,8 @@
             "help": "",
             "hidden": false,
             "multiple": false,
-            "nargs": "+",
-            "required": true,
+            "nargs": "*",
+            "required": false,
             "type": "str"
           },
           "name": {
@@ -176,6 +176,36 @@
         },
         "commands": {},
         "options": {
+          "from_run": {
+            "choices": null,
+            "default": null,
+            "dest": "from_run",
+            "flag": false,
+            "flags": [
+              "--from-run"
+            ],
+            "help": "Promote a RUN's output into reference/ instead of a local file. Repeatable; takes a runref like <project>/latest#1.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "Default project for a bare runref given to --from-run.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
           "replace": {
             "choices": null,
             "default": false,
@@ -214,7 +244,7 @@
             "flags": [
               "--to"
             ],
-            "help": "Purpose subfolder inside reference/ (face, body, wardrobe, \u2026). Omit to add at the root of reference/.",
+            "help": "Purpose subfolder inside reference/ (face, body, wardrobe, …). Omit to add at the root of reference/.",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -286,6 +316,21 @@
         },
         "commands": {},
         "options": {
+          "dry_run": {
+            "choices": null,
+            "default": false,
+            "dest": "dry_run",
+            "flag": true,
+            "flags": [
+              "--dry-run"
+            ],
+            "help": "With --shoot: render the payloads, submit nothing.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
           "from_profile": {
             "choices": null,
             "default": null,
@@ -300,6 +345,51 @@
             "nargs": 1,
             "required": false,
             "type": "str"
+          },
+          "model": {
+            "choices": null,
+            "default": null,
+            "dest": "model",
+            "flag": false,
+            "flags": [
+              "--model"
+            ],
+            "help": "With --shoot: override the shot spec's model.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "With --shoot: REQUIRED. The project the shoot's runs belong to.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "shoot": {
+            "choices": null,
+            "default": false,
+            "dest": "shoot",
+            "flag": true,
+            "flags": [
+              "--shoot"
+            ],
+            "help": "Go straight into the standard reference shoot (asks before it bills).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
           }
         }
       },
@@ -826,6 +916,258 @@
           }
         }
       },
+      "shoot": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "aspect_ratio": {
+            "choices": null,
+            "default": null,
+            "dest": "aspect_ratio",
+            "flag": false,
+            "flags": [
+              "--aspect-ratio"
+            ],
+            "help": "Override the spec's aspect ratio for every slot.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "dest": {
+            "choices": null,
+            "default": null,
+            "dest": "dest",
+            "flag": false,
+            "flags": [
+              "--dest"
+            ],
+            "help": "Also keep a local copy of each plate in this directory.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "dry_run": {
+            "choices": null,
+            "default": false,
+            "dest": "dry_run",
+            "flag": true,
+            "flags": [
+              "--dry-run"
+            ],
+            "help": "Render every payload for approval; submit nothing, bill nothing.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "expires": {
+            "choices": null,
+            "default": 3600,
+            "dest": "expires",
+            "flag": false,
+            "flags": [
+              "--expires"
+            ],
+            "help": "Presign expiry (default 3600).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "extra": {
+            "choices": null,
+            "default": null,
+            "dest": "extra",
+            "flag": false,
+            "flags": [
+              "--extra"
+            ],
+            "help": "JSON object merged into every slot's model inputs.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "group": {
+            "choices": [
+              "all",
+              "body",
+              "face"
+            ],
+            "default": "all",
+            "dest": "group",
+            "flag": false,
+            "flags": [
+              "--group"
+            ],
+            "help": "Shoot only this group of slots (default: all).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "identity": {
+            "choices": [
+              "auto",
+              "refs",
+              "seed"
+            ],
+            "default": "auto",
+            "dest": "identity",
+            "flag": false,
+            "flags": [
+              "--identity"
+            ],
+            "help": "Where identity comes from: seed photos, the reference index, or auto (seed when it has any).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "identity_max": {
+            "choices": null,
+            "default": 4,
+            "dest": "identity_max",
+            "flag": false,
+            "flags": [
+              "--identity-max"
+            ],
+            "help": "How many identity images to send per slot (default 4).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "model": {
+            "choices": null,
+            "default": null,
+            "dest": "model",
+            "flag": false,
+            "flags": [
+              "--model"
+            ],
+            "help": "Override the spec's model for every slot. See `models`.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "pick": {
+            "choices": null,
+            "default": null,
+            "dest": "pick",
+            "flag": false,
+            "flags": [
+              "--pick"
+            ],
+            "help": "Comma-separated reference files to carry identity, instead of seed/.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "pick_tag": {
+            "choices": null,
+            "default": null,
+            "dest": "pick_tag",
+            "flag": false,
+            "flags": [
+              "--pick-tag"
+            ],
+            "help": "Identity from references carrying ALL these tags.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "REQUIRED. The project these runs belong to.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "review_sheet": {
+            "choices": null,
+            "default": null,
+            "dest": "review_sheet",
+            "flag": false,
+            "flags": [
+              "--review-sheet"
+            ],
+            "help": "Write a labelled contact sheet per slot showing the images that payload sends, captioned [ImageN] in the order the model gets them.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "seed_pick": {
+            "choices": null,
+            "default": null,
+            "dest": "seed_pick",
+            "flag": false,
+            "flags": [
+              "--seed-pick"
+            ],
+            "help": "Comma-separated seed files to carry identity, when seed/ holds more than one slot sends.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "slot": {
+            "choices": null,
+            "default": null,
+            "dest": "slot",
+            "flag": false,
+            "flags": [
+              "--slot"
+            ],
+            "help": "Shoot only this slot id. Repeatable — see the spec for the ids.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
       "show": {
         "arguments": {
           "name": {
@@ -1333,7 +1675,7 @@
             "default": null,
             "dest": "group",
             "flag": false,
-            "help": "face, body, wardrobe, scene, \u2026",
+            "help": "face, body, wardrobe, frame, …",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -1655,7 +1997,7 @@
             "flags": [
               "--args"
             ],
-            "help": "print as `--key K --key K \u2026`, ready to paste into a run",
+            "help": "print as `--key K --key K …`, ready to paste into a run",
             "hidden": false,
             "multiple": false,
             "nargs": 0,
@@ -2352,7 +2694,7 @@
             "flags": [
               "--note"
             ],
-            "help": "optional free text \u2014 where this came from",
+            "help": "optional free text — where this came from",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -3206,7 +3548,7 @@
         "flags": [
           "--character"
         ],
-        "help": "A character supplying identity. Repeatable \u2014 one piece of work can involve several.",
+        "help": "A character supplying identity. Repeatable — one piece of work can involve several.",
         "hidden": false,
         "multiple": true,
         "nargs": 1,
@@ -3401,7 +3743,7 @@
         "flags": [
           "--model"
         ],
-        "help": "REQUIRED registry key. See `models` \u2014 the engines are peers.",
+        "help": "REQUIRED registry key. See `models` — the engines are peers.",
         "hidden": false,
         "multiple": false,
         "nargs": 1,
@@ -3657,58 +3999,6 @@
           }
         }
       },
-      "favorite": {
-        "arguments": {
-          "runref": {
-            "choices": null,
-            "default": null,
-            "dest": "runref",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "project": {
-            "choices": null,
-            "default": null,
-            "dest": "project",
-            "flag": false,
-            "flags": [
-              "--project"
-            ],
-            "help": "Default project for a bare run id.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          }
-        }
-      },
-      "favorites": {
-        "arguments": {
-          "project": {
-            "choices": null,
-            "default": null,
-            "dest": "project",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {}
-      },
       "find": {
         "arguments": {},
         "commands": {},
@@ -3928,6 +4218,382 @@
   "scenes": {
     "arguments": {},
     "commands": {
+      "assemble": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "dest": {
+            "choices": null,
+            "default": null,
+            "dest": "dest",
+            "flag": false,
+            "flags": [
+              "--dest"
+            ],
+            "help": "also keep the stitched file locally",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "shot": {
+            "choices": null,
+            "default": null,
+            "dest": "shot",
+            "flag": false,
+            "flags": [
+              "--shot"
+            ],
+            "help": "a run output to append, in cut order. Repeatable. Accepts <project>/<run_id>, <run_id>, a unique slug fragment, or #N.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "board": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "dest": {
+            "choices": null,
+            "default": null,
+            "dest": "dest",
+            "flag": false,
+            "flags": [
+              "--dest"
+            ],
+            "help": "also keep a local copy of each result",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "dry_run": {
+            "choices": null,
+            "default": false,
+            "dest": "dry_run",
+            "flag": true,
+            "flags": [
+              "--dry-run"
+            ],
+            "help": "show every payload for approval; submit nothing, bill nothing",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "expires": {
+            "choices": null,
+            "default": 3600,
+            "dest": "expires",
+            "flag": false,
+            "flags": [
+              "--expires"
+            ],
+            "help": "Presign expiry (default 3600).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "panel": {
+            "choices": null,
+            "default": null,
+            "dest": "panel",
+            "flag": false,
+            "flags": [
+              "--panel"
+            ],
+            "help": "only this panel number, within each shot",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "project, when the sceneref does not carry one",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "redo": {
+            "choices": null,
+            "default": false,
+            "dest": "redo",
+            "flag": true,
+            "flags": [
+              "--redo"
+            ],
+            "help": "render a panel again even though it exists",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "review_sheet": {
+            "choices": null,
+            "default": null,
+            "dest": "review_sheet",
+            "flag": false,
+            "flags": [
+              "--review-sheet"
+            ],
+            "help": "also keep a local copy of each payload's contact sheet here. The sheet is uploaded into the scene either way.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "shot": {
+            "choices": null,
+            "default": null,
+            "dest": "shot",
+            "flag": false,
+            "flags": [
+              "--shot"
+            ],
+            "help": "only this shot, by number or id. Repeatable.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "check": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "dest": {
+            "choices": null,
+            "default": null,
+            "dest": "dest",
+            "flag": false,
+            "flags": [
+              "--dest"
+            ],
+            "help": "also keep a local copy of each result",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "dry_run": {
+            "choices": null,
+            "default": false,
+            "dest": "dry_run",
+            "flag": true,
+            "flags": [
+              "--dry-run"
+            ],
+            "help": "show every payload for approval; submit nothing, bill nothing",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "expires": {
+            "choices": null,
+            "default": 3600,
+            "dest": "expires",
+            "flag": false,
+            "flags": [
+              "--expires"
+            ],
+            "help": "Presign expiry (default 3600).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "project, when the sceneref does not carry one",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "review_sheet": {
+            "choices": null,
+            "default": null,
+            "dest": "review_sheet",
+            "flag": false,
+            "flags": [
+              "--review-sheet"
+            ],
+            "help": "also keep a local copy of each payload's contact sheet here. The sheet is uploaded into the scene either way.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "shot": {
+            "choices": null,
+            "default": null,
+            "dest": "shot",
+            "flag": false,
+            "flags": [
+              "--shot"
+            ],
+            "help": "only this shot, by number or id. Repeatable.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "handoff": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "from_run": {
+            "choices": null,
+            "default": null,
+            "dest": "from_run",
+            "flag": false,
+            "flags": [
+              "--from-run"
+            ],
+            "help": "the run to take the frame from (default: the previous shot's)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "shot": {
+            "choices": null,
+            "default": null,
+            "dest": "shot",
+            "flag": false,
+            "flags": [
+              "--shot"
+            ],
+            "help": "the shot that should OPEN on this frame",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "int"
+          }
+        }
+      },
       "list": {
         "arguments": {
           "project": {
@@ -3963,15 +4629,30 @@
         },
         "commands": {},
         "options": {
-          "dest": {
+          "force": {
+            "choices": null,
+            "default": false,
+            "dest": "force",
+            "flag": true,
+            "flags": [
+              "--force"
+            ],
+            "help": "revise an existing scene, carrying its runs and panels across",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "from_json": {
             "choices": null,
             "default": null,
-            "dest": "dest",
+            "dest": "from_json",
             "flag": false,
             "flags": [
-              "--dest"
+              "--from-json"
             ],
-            "help": "also keep the stitched file locally",
+            "help": "the plan: shots, panels and the motion that carries them",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -4001,8 +4682,8 @@
             "flags": [
               "--shot"
             ],
-            "help": "a run output, in cut order. Repeatable. Accepts <project>/<run_id>, <run_id>, a unique slug fragment, or #N.",
-            "hidden": false,
+            "help": "",
+            "hidden": true,
             "multiple": true,
             "nargs": 1,
             "required": false,
@@ -4021,6 +4702,21 @@
             "multiple": false,
             "nargs": 1,
             "required": true,
+            "type": "str"
+          },
+          "title": {
+            "choices": null,
+            "default": "",
+            "dest": "title",
+            "flag": false,
+            "flags": [
+              "--title"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
             "type": "str"
           }
         }
@@ -4071,6 +4767,243 @@
             "nargs": 0,
             "required": false,
             "type": "bool"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "plan": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "prompts": {
+            "choices": null,
+            "default": false,
+            "dest": "prompts",
+            "flag": true,
+            "flags": [
+              "--prompts"
+            ],
+            "help": "also print every prompt in full — what each panel and each shot says",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
+      "render": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "dest": {
+            "choices": null,
+            "default": null,
+            "dest": "dest",
+            "flag": false,
+            "flags": [
+              "--dest"
+            ],
+            "help": "also keep a local copy of each result",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "dry_run": {
+            "choices": null,
+            "default": false,
+            "dest": "dry_run",
+            "flag": true,
+            "flags": [
+              "--dry-run"
+            ],
+            "help": "show every payload for approval; submit nothing, bill nothing",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "expires": {
+            "choices": null,
+            "default": 3600,
+            "dest": "expires",
+            "flag": false,
+            "flags": [
+              "--expires"
+            ],
+            "help": "Presign expiry (default 3600).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "project, when the sceneref does not carry one",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "review_sheet": {
+            "choices": null,
+            "default": null,
+            "dest": "review_sheet",
+            "flag": false,
+            "flags": [
+              "--review-sheet"
+            ],
+            "help": "also keep a local copy of each payload's contact sheet here. The sheet is uploaded into the scene either way.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "shot": {
+            "choices": null,
+            "default": null,
+            "dest": "shot",
+            "flag": false,
+            "flags": [
+              "--shot"
+            ],
+            "help": "the shot to render, by number or id. Repeatable, and required.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        }
+      },
+      "sheet": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "cell": {
+            "choices": null,
+            "default": 320,
+            "dest": "cell",
+            "flag": false,
+            "flags": [
+              "--cell"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "cols": {
+            "choices": null,
+            "default": 4,
+            "dest": "cols",
+            "flag": false,
+            "flags": [
+              "--cols"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "out": {
+            "choices": null,
+            "default": null,
+            "dest": "out",
+            "flag": false,
+            "flags": [
+              "--out"
+            ],
+            "help": "where to write the sheet (default: a temp directory)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
           },
           "project": {
             "choices": null,

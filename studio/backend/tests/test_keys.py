@@ -226,77 +226,12 @@ def test_assert_inside_root_confines_to_a_configured_root(confined_root):
 
 
 # ---------------------------------------------------------------------------
-# Favorites
+# Numbering a name that is taken
 #
-# Where a favourite goes is derived from the key alone, so this is the only
-# thing deciding it — there is no destination argument anywhere to correct it.
+# What `manage.copy_objects` reaches for when a copy's basename already exists
+# at its destination. The bucket already holds hand-made ` (3).mp4` names, so
+# this matches that rather than inventing a third form.
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "key,expected",
-    [
-        # Inside a project: the favourites folder of that project, whatever depth
-        # the file sits at.
-        (
-            "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/output/wave-porch.jpeg",
-            "projects/subject-a/favorites/",
-        ),
-        (
-            "projects/subject-b/scenes/2026-08-16_07-40-22_stadium/shots/shot-01.mp4",
-            "projects/subject-b/favorites/",
-        ),
-        # `misc` is a project like any other — unattributed runs still have
-        # somewhere to be picked into.
-        ("projects/misc/runs/2026-08-14_16-32-11_kling/output/kling.mp4", "projects/misc/favorites/"),
-        # Outside `projects/`: a subject's own photographs are not generated
-        # output and there is no folder in that tree to hold a pick.
-        ("characters/subject-a/seed/subject-a_1.webp", None),
-        ("phrasebook/wording.yaml", None),
-        # Not media: favourites are a shelf of picked output, not a second copy
-        # of the JSON that happened to sit beside it.
-        ("projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/request.json", None),
-        # Already a favourite — copying it back would only ever number itself.
-        ("projects/subject-b/favorites/shot-01.mp4", None),
-        # Loose in `projects/`, so it belongs to no project.
-        ("projects/loose.mp4", None),
-    ],
-)
-def test_favorites_prefix(key, expected):
-    assert keys.favorites_prefix(key) == expected
-
-
-def test_favorites_prefix_follows_the_browsable_root(confined_root, monkeypatch):
-    """Point the root at a subtree and favourites move with it, like everything else."""
-    monkeypatch.setattr(keys.config, "media_root_prefix", lambda: "library/")
-    assert (
-        keys.favorites_prefix("library/projects/subject-a/runs/x/output/a.jpeg")
-        == "library/projects/subject-a/favorites/"
-    )
-    # The same key without the root is not inside the library at all.
-    assert keys.favorites_prefix("projects/subject-a/runs/x/output/a.jpeg") is None
-
-
-def test_favorites_can_be_turned_off_entirely(monkeypatch):
-    monkeypatch.setattr(keys.config, "projects_prefix", lambda: "")
-    assert keys.favorites_prefix("projects/subject-a/runs/x/output/a.jpeg") is None
-    assert keys.is_favorite("projects/subject-a/favorites/a.jpeg") is False
-
-
-@pytest.mark.parametrize(
-    "key,expected",
-    [
-        ("projects/subject-b/favorites/shot-01.mp4", True),
-        # Nested inside the folder still counts — it is under the shelf.
-        ("projects/subject-b/favorites/keepers/shot-01.mp4", True),
-        ("projects/subject-b/runs/x/output/shot-01.mp4", False),
-        ("characters/subject-b/favorites/shot-01.mp4", False),
-        # A *file* called `favorites`, not the folder.
-        ("projects/subject-b/favorites", False),
-    ],
-)
-def test_is_favorite(key, expected):
-    assert keys.is_favorite(key) is expected
 
 
 @pytest.mark.parametrize(

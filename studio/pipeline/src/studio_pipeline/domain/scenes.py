@@ -1,17 +1,20 @@
-"""`studio scenes` — the shared SCENE store: many runs assembled into one cut.
+"""`studio scenes` — the SCENE store: a piece planned, shot, and cut.
 
-A **run** is one submission to a model (see `runs.py`). A **scene** is an
-ordered sequence of run outputs stitched into a single continuous video, kept
-together under the project it belongs to:
+A **run** is one submission to a model (see `runs.py`). A **scene** is an ordered
+sequence of run outputs stitched into a single continuous video — and, since
+storyboards, the plan those runs are made from. It is created before anything
+renders and filled in as work lands:
 
-    projects/<project>/scenes/<YYYY-MM-DD_HH-MM-SS>_<slug>/
-        scene.json      the manifest — ordered shots as RUNREFS and S3 KEYS
+    projects/<project>/scenes/<slug>/
+        scene.json      the plan AND the record — shots, panels, runs, the cut
+        storyboard/     the panels: shot-<NN>-p<M>.png
         shots/          each source clip, copied in, numbered in cut order
         output/         the stitched scene — <slug>.mp4
 
-Same id shape as a run (`<timestamp>_<slug>`), same project, same rule that the
-record OWNS its output. A scene is **derived**, never a source of truth: the
-runs it names remain the history, and a scene can always be rebuilt from them.
+Keyed by **slug**, not by timestamp. A scene now outlives any one cut of it, so
+naming it after the moment it was assembled stopped making sense. Scenes cut
+before this still exist under `<timestamp>_<slug>` and still resolve — to the
+resolver both are directory names, and those are finished pieces.
 
 THE WORD "SHOT"
 ---------------
@@ -27,7 +30,14 @@ WHY SHOTS ARE COPIED IN
 `shots/` holds a copy of each clip as it was at cut time, so a scene stays
 playable and re-stitchable even as its runs accumulate around it. The manifest
 records the originating **runref** alongside the copied key, so lineage is not
-lost by copying — `scene.json` names both.
+lost by copying — `scene.json` names both. The same holds for panels.
+
+RE-CUTTING OVERWRITES
+---------------------
+`output/<slug>.mp4` is replaced, not versioned by filename. The bucket versions
+every object and grants no `s3:DeleteObjectVersion`, so a previous cut is
+superseded rather than destroyed — and the scene folder always shows current
+state instead of accumulating cuts nobody prunes.
 
 S3 IS THE ONLY ORIGIN
 ---------------------
@@ -37,17 +47,23 @@ uploaded. Nothing is fetched from outside, and no presigned URL is ever stored �
 
 STITCHING
 ---------
-Handled by `video.py`, the same layer `movies.py` uses, so a scene and a movie
-join their inputs by identical rules: stream-copy when everything already
-agrees, re-encode to the first input's geometry (and say so in the manifest)
-when it does not. ffmpeg comes from the `imageio-ffmpeg` wheel.
+Handled by `adapters/ffmpeg.py`, the same layer `movies.py` uses, so a scene and
+a movie join their inputs by identical rules: stream-copy when everything already
+agrees, re-encode to the first input's geometry (and say so in the manifest) when
+it does not. ffmpeg comes from the `imageio-ffmpeg` wheel.
 
 CLI
 ---
-    studio scenes new <project> --slug <slug> --shot <runref> --shot <runref> …
+    studio scenes new <project> --slug <slug> --from-json plan.json
+    studio scenes plan <project>/<slug>
+    studio scenes sheet <project>/<slug>            # the board, as one image
+    studio scenes assemble <project>/<slug>
     studio scenes list <project>
     studio scenes show <project>/latest
     studio scenes outputs <project>/latest --presign
+
+The two that spend money — rendering the panels and rendering a shot — live
+beside the submit lifecycle they drive, not here.
 """
 from __future__ import annotations
 
@@ -59,16 +75,28 @@ import tempfile
 import click
 
 from studio_pipeline.adapters.ffmpeg import (  # noqa: E402  — shared with movies.py and frames.py
+    grab,
     probe,
     stitch,
 )
 from studio_pipeline.adapters.s3 import BUCKET, client, die, list_keys  # noqa: E402
+from studio_pipeline import errors  # noqa: E402
+from studio_pipeline.domain import contact_sheet  # noqa: E402  — a board is read by looking
+from studio_pipeline.domain import frames as FRAMES  # noqa: E402  — the chain and the pool
 from studio_pipeline.domain import (
     paths as P,  # noqa: E402  — the one module that knows the bucket's shape
 )
 from studio_pipeline.domain import (
     runs as R,  # noqa: E402  — the run store; scenes are built from its records
 )
+from studio_pipeline.domain import (
+    storyboard as SB,  # noqa: E402  — the plan a scene is built FROM
+)
+
+# What a scene is cut from. Shared with the run store rather than restated, so
+# a new container format is legal in both places at once.
+VIDEO_EXT = R.VID_EXTS
+
 
 # ── layout ──────────────────────────────────────────────────────────────────
 
@@ -87,8 +115,37 @@ def scene_key(project: str, scene_id: str, *parts: str) -> str:
 
 
 def list_scenes(s3, project: str) -> list[str]:
-    """Scene ids in a project, oldest first (ids sort chronologically)."""
+    """Scene ids in a project, sorted by id.
+
+    NOT oldest first any more. That held only while every id began with a
+    timestamp; slug-keyed ids sort alphabetically and land after every
+    timestamped one. `_newest` reads the manifests instead.
+    """
     return P.list_ids(s3, P.scenes_prefix(project))
+
+
+def _newest(s3, project: str, ids: list[str]) -> str:
+    """The most recently created scene, read off the manifests.
+
+    Not `ids[-1]`. That worked only while every id began with a timestamp, which
+    made the lexical sort accidentally chronological. A scene created today is
+    keyed by its slug, and a lexical sort puts every slug after every timestamp —
+    so `latest` would have quietly meant "alphabetically last", and `movies new
+    --scene <p>/latest` is exactly the caller that would have got it wrong.
+
+    A scene whose manifest is missing or unreadable sorts by its position
+    instead, so one half-written scene cannot make the whole resolver fail —
+    `latest` is a convenience, and it should not be the thing that stops you
+    reaching the scene you actually named.
+    """
+    def created(scene_id: str) -> str:
+        try:
+            doc = read_manifest(s3, project, scene_id) or {}
+        except Exception:
+            return ""
+        return doc.get("created") or ""
+
+    return max(enumerate(ids), key=lambda pair: (created(pair[1]), pair[0]))[1]
 
 
 def resolve_scene(s3, ref: str, default_project: str | None = None) -> tuple[str, str]:
@@ -96,6 +153,11 @@ def resolve_scene(s3, ref: str, default_project: str | None = None) -> tuple[str
 
     Also the sceneref resolver `movies.py` uses — a movie addresses its scenes
     exactly the way a scene addresses its runs.
+
+    A scene is addressed by SLUG. Timestamped ids from before scenes were
+    planned rather than assembled still resolve, and permanently: to this
+    resolver both are just directory names, and the scenes carrying them are
+    finished cuts whose runs are still their history.
     """
     if "/" in ref:
         project, sid = ref.split("/", 1)
@@ -107,7 +169,7 @@ def resolve_scene(s3, ref: str, default_project: str | None = None) -> tuple[str
     if not ids:
         die(f"project {project} has no scenes")
     if sid == "latest":
-        return project, ids[-1]
+        return project, _newest(s3, project, ids)
     if sid in ids:
         return project, sid
     hits = [i for i in ids if sid in i]
@@ -124,61 +186,170 @@ def scene_shots(manifest: dict) -> list[dict]:
     return manifest.get("shots") or manifest.get("parts") or []
 
 
-# ── build ───────────────────────────────────────────────────────────────────
+# ── the manifest ────────────────────────────────────────────────────────────
 
-def create(s3, project: str, slug: str, refs: list[str], dest_dir: str | None = None) -> dict:
-    """Resolve runrefs -> copy shots in -> stitch -> upload -> write scene.json."""
-    resolved = []
-    characters: set[str] = set()
+def manifest_key(project: str, scene_id: str) -> str:
+    return scene_key(project, scene_id, "scene.json")
+
+
+def read_manifest(s3, project: str, scene_id: str) -> dict | None:
+    """A scene's record, or None when there is no scene there."""
+    return R.read_json(s3, manifest_key(project, scene_id))
+
+
+def write_manifest(s3, manifest: dict) -> dict:
+    """Write a scene back, refreshing its derived fields first.
+
+    `status` is recomputed on every write and never read back as authority — the
+    same discipline the character index follows. It is in the document so a
+    person (or an agent reading `scenes show`) can see where a scene is without
+    replaying the rules.
+    """
+    manifest["status"] = SB.scene_status(manifest)
+    for shot in manifest.get("shots") or []:
+        shot["status"] = SB.shot_status(shot)
+    manifest["updated"] = R._now()
+    # The id comes off `scene`, not off `slug`: for a scene planned today the
+    # two agree, but a scene assembled before scenes were planned is keyed by
+    # `<timestamp>_<slug>` and writing it back under its bare slug would put it
+    # in a directory that does not exist.
+    project, _, scene_id = manifest["scene"].partition("/")
+    R.write_json(s3, manifest_key(project, scene_id), manifest)
+    return manifest
+
+
+def is_assembled(manifest: dict) -> bool:
+    """Whether this scene has been cut, as opposed to merely planned."""
+    return SB.is_assembled(manifest)
+
+
+def scene_output_key(manifest: dict) -> str | None:
+    return (manifest.get("output") or {}).get("key")
+
+
+# ── starting a scene ────────────────────────────────────────────────────────
+
+def new_scene(s3, project: str, slug: str, plan_path: str | None,
+              title: str = "", force: bool = False) -> dict:
+    """Ingest a plan and write `scene.json`. Nothing renders, nothing bills.
+
+    Re-ingesting is how a plan is revised, and it must not orphan work already
+    paid for — so `--force` merges the revision onto what the scene already has
+    rather than replacing it. See `storyboard.merge`.
+    """
+    SB.check_scene_slug(slug)
+    plan = SB.load_plan(plan_path) if plan_path else {"shots": []}
+    if title:
+        plan["title"] = title
+
+    manifest = SB.normalise(plan, project, slug)
+    if plan_path:
+        SB.validate(manifest)
+
+    existing = read_manifest(s3, project, slug)
+    if existing:
+        if not force:
+            die(f"{project}/{slug} already exists ({existing.get('status', 'unknown')}).\n"
+                f"       Revising a scene means re-ingesting it: pass --force, and "
+                f"every run, panel and cut it already has is carried across.")
+        manifest = SB.merge(existing, manifest)
+
+    return write_manifest(s3, manifest)
+
+
+def shot_video_key(s3, shot: dict, project: str) -> str | None:
+    """The video a shot rendered, resolved from its run if not already recorded."""
+    if shot.get("key"):
+        return shot["key"]
+    if not shot.get("run"):
+        return None
+    keys = R.resolve_output_keys(s3, shot.get("runref") or shot["run"],
+                                 default_project=project, kinds=VIDEO_EXT)
+    if len(keys) > 1:
+        die(f"shot {shot.get('id') or shot.get('n')}: its run has {len(keys)} videos; "
+            f"record which one by appending #N to the shot's runref")
+    return keys[0]
+
+
+# ── assembling ──────────────────────────────────────────────────────────────
+
+def assemble(s3, project: str, scene_id: str, refs: tuple[str, ...] = (),
+             dest_dir: str | None = None) -> dict:
+    """Copy each rendered shot in, stitch them, and record the cut.
+
+    Two ways in, and they are the same code path. Normally the shots come from
+    the scene's own plan, each one already rendered. `--shot <runref>` appends
+    runs directly instead, which is what makes the pre-storyboard one-liner —
+    "just stitch these three runs" — still a one-liner: a scene with no plan
+    plus a list of runrefs is exactly the old behaviour.
+
+    The cut OVERWRITES `output/<slug>.mp4`. The bucket versions every object and
+    grants no `s3:DeleteObjectVersion`, so a previous cut is never destroyed,
+    only superseded.
+    """
+    manifest = read_manifest(s3, project, scene_id)
+    if not manifest:
+        die(f"no scene {project}/{scene_id} — start one with "
+            f"`studio scenes new {project} --slug {scene_id}`")
+
+    shots = list(scene_shots(manifest))
+    characters = set(manifest.get("characters") or [])
+
     for ref in refs:
-        keys = R.resolve_output_keys(s3, ref, default_project=project)
-        vids = [k for k in keys if k.lower().endswith((".mp4", ".mov", ".m4v"))]
-        if not vids:
-            die(f"{ref}: no video output (got {keys or 'nothing'}) — "
-                f"append #N to pick one output")
-        if len(vids) > 1:
-            die(f"{ref}: {len(vids)} videos; append #N to pick one")
         run_project, run_id = R.resolve_run(s3, ref, default_project=project)
+        keys = R.resolve_output_keys(s3, ref, default_project=project, kinds=VIDEO_EXT)
+        if len(keys) > 1:
+            die(f"{ref}: {len(keys)} videos; append #N to pick one")
         characters.update(R.run_characters(s3, run_project, run_id))
-        resolved.append({"runref": ref, "run": f"{run_project}/{run_id}", "key": vids[0]})
+        shots.append({"n": len(shots) + 1, "id": f"shot-{len(shots) + 1:02d}",
+                      "runref": ref, "run": f"{run_project}/{run_id}", "key": keys[0]})
 
-    scene_id = new_scene_id(slug)
+    if not shots:
+        die(f"{project}/{scene_id} has no shots — plan some, or pass --shot <runref>")
+
+    unrendered = [s.get("id") or f"shot {s.get('n')}" for s in shots if not s.get("run")]
+    if unrendered:
+        die(f"{len(unrendered)} shot(s) have not been rendered: {', '.join(unrendered)}\n"
+            f"       studio scenes render {project}/{scene_id} --shot <n>")
+
+    slug = manifest.get("slug") or scene_id
     print(f"scene {project}/{scene_id}")
 
     tmp = tempfile.mkdtemp(prefix="scene-")
     local: list[str] = []
-    for n, shot in enumerate(resolved, 1):
-        ext = os.path.splitext(shot["key"])[1]
+    for n, shot in enumerate(shots, 1):
+        src = shot_video_key(s3, shot, project)
+        ext = os.path.splitext(src)[1]
         lp = os.path.join(tmp, f"shot-{n:02d}{ext}")
-        s3.download_file(BUCKET, shot["key"], lp)
+        s3.download_file(BUCKET, src, lp)
         local.append(lp)
         shot["n"] = n
+        shot["key"] = src
         shot["shot_key"] = scene_key(project, scene_id, "shots", f"shot-{n:02d}{ext}")
         # Server-side copy: the bytes never leave the bucket.
         s3.copy_object(Bucket=BUCKET, Key=shot["shot_key"],
-                       CopySource={"Bucket": BUCKET, "Key": shot["key"]})
+                       CopySource={"Bucket": BUCKET, "Key": src})
         print(f"  shot {n}: {shot['run']}")
 
     out_local = os.path.join(tmp, f"{R.slugify(slug)}.mp4")
     info = stitch(local, out_local, label="shots")
-    for shot, pr in zip(resolved, info.pop("probes")):
+    for shot, pr in zip(shots, info.pop("probes")):
         shot["duration"] = pr["duration"]
 
     out_key = scene_key(project, scene_id, "output", f"{R.slugify(slug)}.mp4")
+    superseded = R.read_json(s3, manifest_key(project, scene_id)) or {}
     s3.upload_file(out_local, BUCKET, out_key, ExtraArgs={"ContentType": "video/mp4"})
-    final = probe(out_local)
 
-    manifest = {
-        "scene": f"{project}/{scene_id}",
-        "project": project,
-        "characters": sorted(characters),
-        "slug": R.slugify(slug),
-        "created": R._now(),
-        "shots": resolved,
-        "stitch": info,
-        "output": {"key": out_key, **final},
-    }
-    R.write_json(s3, scene_key(project, scene_id, "scene.json"), manifest)
+    manifest["characters"] = sorted(characters)
+    manifest["shots"] = shots
+    manifest["stitch"] = info
+    manifest["output"] = {"key": out_key, **probe(out_local)}
+    manifest["assembled"] = R._now()
+    write_manifest(s3, manifest)
+
+    if scene_output_key(superseded):
+        print("  (the previous cut is superseded, not destroyed — it survives as "
+              "an object version)")
 
     if dest_dir:
         os.makedirs(dest_dir, exist_ok=True)
@@ -186,6 +357,102 @@ def create(s3, project: str, slug: str, refs: list[str], dest_dir: str | None = 
         os.replace(out_local, keep)
         manifest["local"] = keep
     return manifest
+
+
+# ── carrying a shot forward ─────────────────────────────────────────────────
+
+def handoff(s3, project: str, scene_id: str, n: int, from_run: str | None = None) -> dict:
+    """Take the previous shot's last frame and hand it to shot N.
+
+    Two things, and the second is the point: the frame goes into the project's
+    input pool, and is written onto shot N as the frame it opens on. There is no
+    third record — `storyboard.scene_frames` reads the sequence back off the
+    plan, so the scene's own frames cannot drift from the scene.
+    """
+    manifest = read_manifest(s3, project, scene_id)
+    if not manifest:
+        die(f"no scene {project}/{scene_id}")
+    shots = scene_shots(manifest)
+    by_n = {s.get("n"): s for s in shots}
+    shot, previous = by_n.get(n), by_n.get(n - 1)
+    if not shot:
+        die(f"{project}/{scene_id} has no shot {n} (it has {sorted(by_n)})")
+    if not previous:
+        die(f"shot {n} is the first shot — there is nothing before it to hand off from")
+    ref = from_run or previous.get("runref") or previous.get("run")
+    if not ref:
+        die(f"shot {previous.get('id')} has not been rendered, so it has no last frame\n"
+            f"       studio scenes render {project}/{scene_id} --shot {n - 1}")
+
+    tmp = tempfile.mkdtemp(prefix="handoff-")
+    _p, run_id, src = FRAMES.fetch_video(s3, ref, project, tmp)
+    local = grab(src, None, os.path.join(tmp, f"{run_id}_last.png"), from_end=0.2)
+    key = FRAMES.add_to_input_pool(project, local)
+
+    shot["continues"] = True
+    shot["opens_on"] = {"key": key, "from_run": f"{project}/{run_id}"}
+    write_manifest(s3, manifest)
+
+    print(key)
+    print(f"shot {n} ({shot.get('id')}) now opens on the last frame of "
+          f"{previous.get('id')}")
+    print(f"the scene's own frames are now: "
+          f"{len(SB.scene_frames(manifest))}", flush=True)
+    return manifest
+
+
+# ── reading the plan ────────────────────────────────────────────────────────
+
+def plan_prompts(manifest: dict) -> list[str]:
+    """Every word the plan will send, laid out to be read.
+
+    The prompts live in `scene.json` and are therefore already in the bucket,
+    but a raw manifest is not a readable thing — a prompt is prose and wants to
+    be read as prose before it is paid for.
+    """
+    out = []
+    if manifest.get("setting"):
+        out += ["", "=" * 70, "SETTING — prepended to every PANEL prompt", "=" * 70,
+                manifest["setting"]]
+    for shot in scene_shots(manifest):
+        roles = SB.panel_roles(shot)
+        out += ["", "=" * 70,
+                f"{shot.get('id')}  —  {shot.get('beat', '')}".rstrip(),
+                "=" * 70]
+        for panel, role in zip(shot.get("panels") or [], roles):
+            if SB.is_supplied(panel):
+                out += [f"--- panel {panel['n']} [{role}] — supplied image, no prompt",
+                        f"    {panel.get('key')}"]
+                continue
+            out += [f"--- panel {panel['n']} [{role}]  ({panel.get('model')})",
+                    panel.get("prompt") or ""]
+        motion = shot.get("motion") or {}
+        out += [f"--- motion  ({motion.get('model')}, {motion.get('duration')}s)",
+                motion.get("prompt") or ""]
+    return out
+
+
+def plan_table(manifest: dict) -> list[str]:
+    """The plan as lines you can scan — `show` stays raw JSON for machines."""
+    out = [f"{manifest['scene']}  [{manifest.get('status', '?')}]"]
+    if manifest.get("title"):
+        out.append(f"  {manifest['title']}")
+    for shot in scene_shots(manifest):
+        roles = SB.panel_roles(shot)
+        panels = shot.get("panels") or []
+        bits = []
+        for panel, role in zip(panels, roles):
+            mark = "*" if panel.get("key") else "-"
+            stale = "!" if panel.get("stale") else ""
+            bits.append(f"{mark}p{panel['n']}[{role}]{stale}")
+        motion = shot.get("motion") or {}
+        out.append(
+            f"  {shot.get('id', '?'):<10} {shot.get('status', '?'):<9} "
+            f"{motion.get('model', '?')} {motion.get('duration', '?')}s  "
+            f"{' '.join(bits) or '(no panels)'}  {shot.get('beat', '')}".rstrip())
+    if any(p.get("stale") for s in scene_shots(manifest) for p in s.get("panels") or []):
+        out.append("  ! = the panel on disk predates its prompt")
+    return out
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
@@ -197,22 +464,113 @@ def main():
 
 @main.command("new")
 @click.argument("project", required=True)
-@click.option("--dest", help="also keep the stitched file locally")
+@click.option("--force", is_flag=True,
+              help="revise an existing scene, carrying its runs and panels across")
+@click.option("--from-json", "from_json",
+              help="the plan: shots, panels and the motion that carries them")
 @click.option("--part", hidden=True, multiple=True)
-@click.option("--shot", multiple=True,
-              help=("a run output, in cut order. Repeatable. Accepts "
-                    "<project>/<run_id>, <run_id>, a unique slug fragment, or #N."))
+@click.option("--shot", hidden=True, multiple=True)
 @click.option("--slug", required=True)
-def do_new(project, dest, part, shot, slug):
-    """Assemble runs into one continuous cut."""
-    # `--part` is the old spelling of `--shot`, kept working and hidden. In
-    # argparse both wrote the same dest; Click gives two separate values, so
-    # the merge has to happen here or the alias is silently ignored.
-    shots = list(shot) + list(part)
-    if not shots:
-        die("a scene needs at least one --shot <runref>")
-    m = create(client(), project, slug, shots, dest)
+@click.option("--title", default="")
+@errors.reports(SB.PlanError, P.PathError)
+def do_new(project, force, from_json, part, shot, slug, title):
+    """Start a scene from a plan."""
+    # `--shot`/`--part` used to assemble a cut here. They are kept visible to
+    # the parser and answered with a redirect, because a silent "unknown
+    # option" on a command that still exists reads as a broken install.
+    if shot or part:
+        die("`scenes new` starts a scene from a plan; it no longer assembles one.\n"
+            f"       studio scenes new {project} --slug {slug}\n"
+            f"       studio scenes assemble {project}/{slug} "
+            + " ".join(f"--shot {r}" for r in (*shot, *part)))
+    m = new_scene(client(), project, slug, from_json, title, force)
+    print("\n".join(plan_table(m)))
+    print(f"\nnext: studio scenes check {m['scene']}")
+
+
+@main.command("assemble")
+@click.argument("ref", required=True)
+@click.option("--dest", help="also keep the stitched file locally")
+@click.option("--project")
+@click.option("--shot", multiple=True,
+              help=("a run output to append, in cut order. Repeatable. Accepts "
+                    "<project>/<run_id>, <run_id>, a unique slug fragment, or #N."))
+def do_assemble(ref, dest, project, shot):
+    """Cut a scene's rendered shots into one continuous take."""
+    s3 = client()
+    owner, sid = resolve_scene(s3, ref, project)
+    m = assemble(s3, owner, sid, shot, dest)
     print(json.dumps({k: m[k] for k in ("scene", "output", "stitch")}, indent=2))
+
+
+@main.command("handoff")
+@click.argument("ref", required=True)
+@click.option("--from-run", "from_run",
+              help="the run to take the frame from (default: the previous shot's)")
+@click.option("--project")
+@click.option("--shot", type=int, required=True,
+              help="the shot that should OPEN on this frame")
+def do_handoff(ref, from_run, project, shot):
+    """Carry the previous shot's last frame into the next one."""
+    s3 = client()
+    owner, sid = resolve_scene(s3, ref, project)
+    handoff(s3, owner, sid, shot, from_run)
+
+
+@main.command("plan")
+@click.argument("ref", required=True)
+@click.option("--project")
+@click.option("--prompts", is_flag=True,
+              help="also print every prompt in full — what each panel and each shot says")
+def do_plan(ref, project, prompts):
+    """A scene's plan, as a table rather than as JSON."""
+    s3 = client()
+    owner, sid = resolve_scene(s3, ref, project)
+    manifest = read_manifest(s3, owner, sid)
+    if not manifest:
+        die(f"no scene.json for {owner}/{sid}")
+    print("\n".join(plan_table(manifest)))
+    if prompts:
+        print("\n".join(plan_prompts(manifest)))
+
+
+@main.command("sheet")
+@click.argument("ref", required=True)
+@click.option("--cell", type=int, default=320)
+@click.option("--cols", type=int, default=4)
+@click.option("--out", help="where to write the sheet (default: a temp directory)")
+@click.option("--project")
+def do_sheet(ref, cols, cell, out, project):
+    """The whole board as one captioned contact sheet.
+
+    A board only means anything looked at. This is also the only way an agent
+    can read its own storyboard, which is why `frames grid` exists for clips.
+    """
+    s3 = client()
+    owner, sid = resolve_scene(s3, ref, project)
+    manifest = read_manifest(s3, owner, sid)
+    if not manifest:
+        die(f"no scene.json for {owner}/{sid}")
+    captions = SB.sheet_captions(manifest)
+    if not captions:
+        die(f"{owner}/{sid} has no panels yet — studio scenes board {owner}/{sid}")
+
+    tmp = tempfile.mkdtemp(prefix="board-")
+    paths, labels = [], []
+    for key, caption in captions:
+        lp = os.path.join(tmp, os.path.basename(key))
+        s3.download_file(BUCKET, key, lp)
+        paths.append(lp)
+        labels.append(caption)
+    dest = os.path.join(out or tmp, f"{manifest.get('slug', sid)}-board.png")
+    local = contact_sheet.build(paths, dest, cols=cols, cell=cell, captions=labels)
+    # The board is the thing someone looks at to judge the scene. Leaving it on
+    # local disk means only whoever ran the command can see it.
+    key = scene_key(owner, sid, "review", "board.png")
+    s3.upload_file(local, BUCKET, key, ExtraArgs={"ContentType": "image/png"})
+    print(key)
+    if out:
+        print(f"  (local copy: {local})")
 
 
 @main.command("list")

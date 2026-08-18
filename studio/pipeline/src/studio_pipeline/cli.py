@@ -30,7 +30,9 @@ from studio_pipeline.domain import rewrite as _rewrite
 from studio_pipeline.domain import runs as _runs
 from studio_pipeline.domain import scenes as _scenes
 from studio_pipeline.engine import add_model as _add_model
+from studio_pipeline.engine import board as _board
 from studio_pipeline.engine import runner as _runner
+from studio_pipeline.engine import shoot as _shoot
 from studio_pipeline.maintenance import backfill_replicate as _backfill
 from studio_pipeline.maintenance import migrate_layout as _migrate
 from studio_pipeline.objects import convert as _convert
@@ -78,7 +80,7 @@ SHORT_HELP = {
     # Two commands read alike and are not, so both say which is which.
     "run": "submit a generation to any registered model (creates a run)",
     "models": "the model registry: list, show, refresh",
-    "runs": "query the run store: list, find, show, outputs, favorite",
+    "runs": "query the run store: list, find, show, outputs, adopt",
     # Its docstring's first line wraps mid-sentence, which truncates badly.
     "character": "manage on-model characters: profile, references, pools",
 }
@@ -104,6 +106,19 @@ def main() -> None:
 # objects keeps one definition of each.
 main.add_command(_runner.main.commands["run"], "run")
 main.add_command(_runner.main.commands["models"], "models")
+
+# `shoot` reads as a character command and is defined in `engine/` because it
+# invokes models. Attaching it here rather than in `characters.py` keeps the
+# dependency arrow pointing one way: the character store knows nothing about the
+# engine, and only this wiring module knows about both.
+_character.main.add_command(_shoot.cmd_shoot, "shoot")
+
+# Same arrangement for the three scene commands that invoke models: the scene
+# store stays a store, and `board`/`render`/`check` read as scene commands
+# because that is what they are to a user.
+_scenes.main.add_command(_board.cmd_board, "board")
+_scenes.main.add_command(_board.cmd_render, "render")
+_scenes.main.add_command(_board.cmd_check, "check")
 
 
 for _name, _cmd in [

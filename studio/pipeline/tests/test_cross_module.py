@@ -81,7 +81,7 @@ def test_project_input_keys_resolve_in_the_order_asked_for(media_bucket):
 def test_missing_input_number_names_what_is_available(media_bucket):
     with pytest.raises(refs.RefError) as exc:
         refs.project_input_keys("subject-a", [7])
-    assert "[7]" in str(exc.value) and "[1, 2]" in str(exc.value)
+    assert "[7]" in str(exc.value) and "[1, 2, 3]" in str(exc.value)
 
 
 # --------------------------------------------------------------------------
@@ -134,3 +134,64 @@ def test_add_inputs_returns_the_key_it_wrote(media_bucket, tmp_path):
     assert added[0]["key"].endswith(".jpeg")
     # It is really there.
     media_bucket.head_object(Bucket="xharness-prod-media-us-east-1", Key=added[0]["key"])
+
+
+def test_editing_a_bible_writes_it_back_where_it_was_read_from(media_bucket, tmp_path):
+    """`edit --push` must write through `paths`, not a hand-built key.
+
+    It used to build `f"{name}/profile.yaml"` — the pre-migration layout — so a
+    push landed in the bucket ROOT, reported success, and updated the local
+    sidecars as though it had worked. The bible was untouched and nothing said
+    so, which is the worst shape a save bug can take.
+    """
+    from studio_pipeline.domain import characters as CHARACTER
+    from studio_pipeline.domain import paths as P
+
+    local = tmp_path / "subject-a.yaml"
+    base = tmp_path / ".subject-a.base.yaml"
+    etag = tmp_path / ".subject-a.etag"
+
+    original = CHARACTER.load_profile(media_bucket, "subject-a")
+    base.write_text("name: Subject A\n")
+    local.write_text("name: Subject A\ndescription: edited\n")
+    etag.write_text(CHARACTER.remote_etag(media_bucket, "subject-a") or "")
+
+    # The schema check guards writes; this test is about WHERE the bytes land.
+    CHARACTER.check_profile = lambda *a, **k: None
+    CHARACTER.do_push(media_bucket, "subject-a", False, str(local), str(base), str(etag))
+
+    written = CHARACTER.load_profile(media_bucket, "subject-a")
+    assert written != original, "the profile the reader loads was not updated"
+    assert written.get("description") == "edited"
+
+    keys = [o["Key"] for o in media_bucket.list_objects_v2(
+        Bucket=P.s3c.BUCKET).get("Contents", [])]
+    assert "subject-a/profile.yaml" not in keys, "wrote to the bucket root"
+    assert P.profile_key("subject-a") in keys
+
+
+def test_pushing_a_stale_bible_is_refused(media_bucket, tmp_path):
+    """The local copy can be hours old, and pushing it would revert everything.
+
+    `edit` caches the bible on disk and reports "no local changes" against that
+    cache — which says nothing about whether S3 moved on. A session that adds
+    references, describes them and rewrites `default_set` through the index
+    commands leaves a stale local file that still looks clean, and uploading it
+    would silently undo all of it. The recorded etag is what stops that, so the
+    refusal is asserted here rather than assumed.
+    """
+    from studio_pipeline.domain import characters as CHARACTER
+
+    local = tmp_path / "subject-a.yaml"
+    base = tmp_path / ".subject-a.base.yaml"
+    etag = tmp_path / ".subject-a.etag"
+
+    etag.write_text("an-etag-from-before-someone-else-wrote")
+    base.write_text("name: Subject A\n")
+    local.write_text("name: Subject A\ndescription: stale edit\n")
+
+    original = CHARACTER.load_profile(media_bucket, "subject-a")
+    CHARACTER.check_profile = lambda *a, **k: None
+    with pytest.raises(SystemExit):
+        CHARACTER.do_push(media_bucket, "subject-a", False, str(local), str(base), str(etag))
+    assert CHARACTER.load_profile(media_bucket, "subject-a") == original

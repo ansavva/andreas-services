@@ -1,4 +1,7 @@
+import json
+
 from studio_core.app_factory import create_app
+from studio_core.handlers.aws.api.api_handler import handler
 
 
 def _client():
@@ -224,17 +227,136 @@ def test_preflight_advertises_the_write_verbs():
     assert {"PATCH", "DELETE", "POST"} <= {m.strip() for m in allowed.split(",")}
 
 
-def test_add_favorites(media_bucket):
-    resp = _client().post("/api/favorites", json={"keys": [f"{RUN}output/wave-porch.jpeg"]})
+def test_copy_objects(media_bucket):
+    resp = _client().post(
+        "/api/objects/copy",
+        json={"keys": [f"{RUN}output/wave-porch.jpeg"], "destination": "projects/subject-a/input/"},
+    )
 
     assert resp.status_code == 201
-    assert resp.get_json()["keys"] == ["projects/subject-a/favorites/wave-porch.jpeg"]
+    assert resp.get_json()["keys"] == ["projects/subject-a/input/wave-porch.jpeg"]
 
 
-def test_add_favorites_outside_a_project_is_400(media_bucket):
-    resp = _client().post("/api/favorites", json={"keys": ["characters/subject-a/seed/subject-a_1.webp"]})
-    assert resp.status_code == 400
+def test_copy_objects_takes_anything_in_the_bucket(media_bucket):
+    """Unlike favouriting, which was images and video inside a project only."""
+    resp = _client().post(
+        "/api/objects/copy",
+        json={
+            "keys": ["characters/subject-a/seed/subject-a_1.webp"],
+            "destination": "projects/subject-a/input/",
+        },
+    )
+    assert resp.status_code == 201
 
 
-def test_add_favorites_without_a_body_is_400(media_bucket):
-    assert _client().post("/api/favorites").status_code == 400
+def test_copy_objects_without_a_body_is_400(media_bucket):
+    assert _client().post("/api/objects/copy").status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# The Lambda path, which the test client above cannot stand in for.
+#
+# Every test in this file so far drives `create_app().test_client()`, and Werkzeug
+# always sets `Content-Length` on a request it builds. Production does not: API
+# Gateway's proxy event omits the header, Mangum forwards the headers verbatim,
+# and `asgiref` sets `CONTENT_LENGTH` only from a header — so the body arrived
+# intact and Flask was told to read none of it. Every write answered 400 naming
+# its own field as missing while all 200-odd tests passed.
+#
+# These go through the real `Mangum(WsgiToAsgi(app))` handler with the header
+# absent, because that is the only shape that reproduces it.
+# ---------------------------------------------------------------------------
+
+
+def _proxy_event(method: str, path: str, body: dict | None = None) -> dict:
+    """An API Gateway REST proxy event, shaped like the deployed API's.
+
+    Deliberately no `Content-Length` in `headers` — that omission is the whole
+    point, and it is copied from the integration request of the live API.
+    """
+    return {
+        "resource": "/api/{proxy+}",
+        "path": path,
+        "httpMethod": method,
+        "headers": {"Content-Type": "application/json"},
+        "multiValueHeaders": {"Content-Type": ["application/json"]},
+        "queryStringParameters": None,
+        "multiValueQueryStringParameters": None,
+        "pathParameters": {"proxy": path.removeprefix("/api/")},
+        "stageVariables": None,
+        "requestContext": {
+            "resourcePath": "/api/{proxy+}",
+            "httpMethod": method,
+            "path": path,
+            "stage": "prod",
+            "protocol": "HTTP/1.1",
+            "requestId": "test",
+            "apiId": "test",
+            "identity": {"sourceIp": "127.0.0.1"},
+        },
+        "body": None if body is None else json.dumps(body),
+        "isBase64Encoded": False,
+    }
+
+
+def _invoke(method: str, path: str, body: dict | None = None):
+    response = handler(_proxy_event(method, path, body), None)
+    return response["statusCode"], json.loads(response["body"])
+
+
+def test_lambda_reads_a_json_body_without_a_content_length_header(media_bucket):
+    """The move from the bug report: a good body must not read as a missing one."""
+    status, body = _invoke(
+        "POST",
+        "/api/objects/move",
+        {
+            "keys": ["characters/subject-a/seed/subject-a_1.webp"],
+            "destination": "characters/subject-a/corpus/",
+        },
+    )
+
+    assert status == 200, body
+    assert body["moved"] == 1
+    assert body["keys"] == ["characters/subject-a/corpus/subject-a_1.webp"]
+
+
+def test_lambda_body_reaches_every_write_verb(media_bucket):
+    """POST, PATCH and DELETE all carry bodies, and all three were broken."""
+    assert _invoke("POST", "/api/folder", {"prefix": "projects/", "name": "fresh"})[0] == 201
+    assert _invoke(
+        "POST",
+        "/api/objects/copy",
+        {
+            "keys": ["characters/subject-a/seed/subject-a_1.webp"],
+            "destination": "characters/subject-a/reference/",
+        },
+    )[0] == 201
+    assert _invoke(
+        "PATCH",
+        "/api/object",
+        {"key": "characters/subject-a/profile.yaml", "name": "bible.yaml"},
+    )[0] == 200
+    assert _invoke(
+        "PATCH",
+        "/api/text",
+        {"key": "phrasebook/wording.yaml", "content": "greeting: hi\n"},
+    )[0] == 200
+    assert _invoke(
+        "DELETE",
+        "/api/objects",
+        {"keys": ["characters/subject-a/seed/subject-a_2.webp"]},
+    )[0] == 200
+
+
+def test_lambda_still_reports_a_genuinely_empty_body(media_bucket):
+    """The validation the bug was impersonating must survive the fix."""
+    status, body = _invoke("POST", "/api/objects/move", {"keys": [], "destination": "projects/"})
+    assert status == 400
+    assert body["error"] == "keys must be a non-empty list"
+
+
+def test_lambda_get_needs_no_body(media_bucket):
+    """A bodyless request must not acquire a phantom length."""
+    status, body = _invoke("GET", "/api/tree")
+    assert status == 200
+    assert body["prefix"] == ""

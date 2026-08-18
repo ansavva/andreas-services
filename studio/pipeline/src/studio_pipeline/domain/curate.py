@@ -232,8 +232,13 @@ def cmd_renumber(name, apply, group):
 @click.argument("file", required=True)
 @click.argument("name", required=True)
 @click.option("--apply", is_flag=True)
-@click.option("--from", "from_", type=click.Choice(["archive", "corpus", "reference", "seed"]), default='reference')
-@click.option("--to", type=click.Choice(["archive", "corpus", "reference", "seed"]), default='archive')
+# The parameter names are what Click passes to the callback, so they must match
+# the signature below — `--from`/`--to` alone would arrive as `from_`/`to` and the
+# call would fail with a TypeError. Nothing catches that until the command is run
+# WITH arguments: invoking it bare exits on usage first, which is why this
+# survived the argparse port.
+@click.option("--from", "src_pool", type=click.Choice(["archive", "corpus", "reference", "seed"]), default='reference')
+@click.option("--to", "dst_pool", type=click.Choice(["archive", "corpus", "reference", "seed"]), default='archive')
 def cmd_move(file, name, apply, src_pool, dst_pool):
     check_name(name)
     s3 = s3c.client()
@@ -280,7 +285,7 @@ def cmd_move(file, name, apply, src_pool, dst_pool):
         print("DRY RUN — nothing changed")
 
 
-@main.command("regroup", epilog="\n\nArguments:\n  FILES  Paths inside reference/.\n  GROUP  face, body, wardrobe, scene, …")
+@main.command("regroup", epilog="\n\nArguments:\n  FILES  Paths inside reference/.\n  GROUP  face, body, wardrobe, frame, …")
 @click.argument("files", nargs=-1, required=True)
 @click.argument("group", required=True)
 @click.argument("name", required=True)

@@ -76,16 +76,16 @@ def move_folder():
     return jsonify(manage.move_folder(payload.get("prefix"), payload.get("destination"))), 200
 
 
-@bp.post("/favorites")
-def add_favorites():
-    """Copy one or many objects into their own project's favorites folder.
+@bp.post("/objects/copy")
+def copy_objects():
+    """Copy one or many objects into another folder, leaving the sources alone.
 
-    A POST with no destination, which is the shape of the operation: the folder
-    is derived from each key rather than supplied, so this route cannot be talked
-    into putting a file somewhere else the way `POST /api/objects/move` can. 201
-    for the same reason `POST /api/folder` is — something new exists afterwards.
+    The same body as `/objects/move` and a POST for the same reasons. 201 rather
+    than 200 because something new exists afterwards, which is the one thing
+    that distinguishes it from the move beside it.
     """
-    return jsonify(manage.favorite_objects(_body().get("keys"))), 201
+    payload = _body()
+    return jsonify(manage.copy_objects(payload.get("keys"), payload.get("destination"))), 201
 
 
 @bp.patch("/text")

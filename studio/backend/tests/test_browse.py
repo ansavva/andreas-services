@@ -4,7 +4,7 @@ import pytest
 
 from studio_core import config
 from studio_core.errors import ValidationError
-from studio_core.services import browse, manage
+from studio_core.services import browse
 
 
 def test_root_lists_the_top_level(media_bucket):
@@ -211,10 +211,11 @@ def test_reel_reports_a_truncated_walk(media_bucket, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Favorites
+# What a listing carries
 #
-# Every listing says where a file's favourite would go and whether it is there
-# already, so the star can be drawn without a second request per tile.
+# A file entry used to answer two favourites questions — where a favourite of
+# this would go, and whether one exists. Both are gone: a copy names its own
+# destination, so nothing here has to guess one or report on it.
 # ---------------------------------------------------------------------------
 
 
@@ -222,51 +223,33 @@ def _entry(prefix, name):
     return next(f for f in browse.list_folder(prefix)["files"] if f["name"] == name)
 
 
-def test_a_listing_says_where_each_file_would_be_favorited(media_bucket):
-    entry = _entry("projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/output/", "wave-porch.jpeg")
-    assert entry["favorites_prefix"] == "projects/subject-a/favorites/"
-    assert entry["favorited"] is False
+def test_a_listing_carries_no_favourites_fields(media_bucket):
+    entry = _entry(
+        "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/output/", "wave-porch.jpeg"
+    )
 
-    # The run's own metadata is not favouritable, and neither is a subject's
-    # source photograph — both get a null rather than a prefix, which is what
-    # the UI reads to decide whether a star belongs on the item at all.
-    assert _entry("projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/", "request.json")[
-        "favorites_prefix"
-    ] is None
-    assert _entry("characters/subject-a/seed/", "subject-a_1.webp")["favorites_prefix"] is None
+    assert "favorites_prefix" not in entry
+    assert "favorited" not in entry
+    # The fields a listing does carry, unchanged.
+    assert entry["kind"] == "image"
+    assert entry["key"].endswith("wave-porch.jpeg")
 
 
-def test_a_favorited_file_says_so_in_the_listing_it_was_favorited_from(media_bucket):
-    """The star has to survive a reload, which means reading it from S3.
+def test_the_reel_carries_no_favourites_fields_either(media_bucket):
+    """The reel used to list every favourites folder on a page to light stars.
 
-    Studio keeps no state, so "is this favourited" is answered by listing the
-    favourites folder and matching on name and size — see
-    `browse.favorites_index`.
+    A page is 200 items across however many projects, so that was one extra S3
+    listing per project per page, spent on a question nothing asks any more.
     """
-    output = "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/output/"
-    manage.favorite_objects([f"{output}wave-porch.jpeg"])
-
-    assert _entry(output, "wave-porch.jpeg")["favorited"] is True
-
-
-def test_a_file_inside_the_favorites_folder_is_one(media_bucket):
-    manage.favorite_objects(
-        ["projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/output/wave-porch.jpeg"]
-    )
-    entry = _entry("projects/subject-a/favorites/", "wave-porch.jpeg")
-
-    assert entry["favorited"] is True
-    # And it cannot be favourited again — there is nowhere further for it to go.
-    assert entry["favorites_prefix"] is None
-
-
-def test_the_reel_marks_favorites_too(media_bucket):
-    manage.favorite_objects(
-        ["projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/output/wave-porch.jpeg"]
-    )
     items = browse.reel_items("projects/subject-a/", None, None)["items"]
 
-    by_key = {item["key"]: item for item in items}
-    source = by_key["projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/output/wave-porch.jpeg"]
-    assert source["favorited"] is True
-    assert by_key["projects/subject-a/favorites/wave-porch.jpeg"]["favorited"] is True
+    assert items, "the reel still lists the media"
+    assert all("favorites_prefix" not in item and "favorited" not in item for item in items)
+
+
+def test_folder_names_is_just_the_basenames(media_bucket):
+    """What `manage.copy_objects` reads to pick a name that overwrites nothing."""
+    names = browse.folder_names("projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/output/")
+
+    assert names == {"wave-porch.jpeg"}
+    assert browse.folder_names("projects/subject-a/nothing-here/") == set()

@@ -27,11 +27,11 @@ Renames and moves are copy-then-delete, in that order, and never the reverse. If
 the delete fails the library holds a duplicate, which is visible and fixable; if
 the order were reversed the failure would be data loss.
 
-`favorite_objects` is the exception that proves the ordering rule: it is a copy
-with **no** delete, because a favourite is a second copy of something that stays
-where it was. It is also the only write here that does not take a destination —
-the folder is derived from the key, so there is exactly one place a given file
-can be favourited to and no way to ask for another.
+`copy_objects` is the exception that proves the ordering rule: it is a copy with
+**no** delete, because the source stays where it was. It takes the same
+`{keys, destination}` a move does, and differs in exactly two places — nothing is
+deleted, and a name already taken at the destination is numbered rather than
+refused.
 
 `update_text` is the odd one out and is deliberately kept here rather than in
 `browse` beside the endpoint that reads the same files: it writes, and this
@@ -47,10 +47,10 @@ from studio_core.services import browse, keys
 
 logger = logging.getLogger(__name__)
 
-# How many `name (n).ext` variants one favourite name may spawn before the
-# request is refused. Generous — the flat folder makes a handful of collisions
+# How many `name (n).ext` variants one name may spawn in a destination before the
+# request is refused. Generous — copying the same clip into one folder twice is
 # ordinary — but finite, so a script cannot fill a folder with numbered copies.
-MAX_FAVORITE_VARIANTS = 100
+MAX_COPY_VARIANTS = 100
 
 
 def create_folder(raw_prefix: str | None, raw_name: str | None) -> dict:
@@ -214,34 +214,31 @@ def move_folder(raw_prefix: str | None, raw_destination: str | None) -> dict:
     return {"prefix": destination, "name": name, "objects": len(moved), "moved": True}
 
 
-def favorite_objects(raw_keys: list | None) -> dict:
-    """Copy one or many objects into their own project's favourites folder.
+def copy_objects(raw_keys: list | None, raw_destination: str | None) -> dict:
+    """Copy one or many objects into another folder, keeping their names.
 
     **The only write in this service that copies without deleting**, and that is
-    the whole point of it rather than an oversight: a favourite is a second copy
-    on a shelf, and the original stays where the pipeline put it. Every other
-    copy here is half of a rename. It is still not an upload — the bytes come
-    from an object already in the bucket, server-side, and nothing about this
-    endpoint can bring in a file from outside.
+    the point of it rather than an oversight. Every other copy here is half of a
+    rename or a move. It is still not an upload — the bytes come from an object
+    already in the bucket, server-side, and nothing about this endpoint can bring
+    in a file from outside.
 
-    Which folder is not asked for and cannot be supplied. `keys.favorites_prefix`
-    derives it from the key, so favouriting from a run under `projects/<project>/`
-    lands in `projects/<project>/favorites/` and favouriting from `characters/` is
-    refused rather than guessed at. That is what makes this different from
-    `move_objects`, which takes a destination and would happily put a file
-    anywhere: this one has exactly one legal answer per key, so it takes no
-    destination at all and cannot be talked into a different one.
+    It takes the same `{keys, destination}` as `move_objects` and differs in two
+    places:
 
-    **The folder is flat, so names collide, and this is where that is handled.**
-    Every scene calls its first shot `shot-01.mp4`, so "already taken" is the
-    ordinary case rather than the edge:
+    * **Nothing is deleted.** The sources stay where they are.
+    * **A name already taken at the destination is numbered, not refused.**
+      `clip.mp4` arriving beside a `clip.mp4` becomes `clip (2).mp4`. A move
+      refuses the whole request on a conflict because a half-done move leaves a
+      selection split across two folders with nothing to say where the boundary
+      fell; a copy has no such split, and copying a file into a folder that
+      already holds the name is the ordinary case rather than the edge.
 
-    * same name, same size → **skipped**, because it is already favourited and a
-      second press should be a no-op rather than a duplicate;
-    * same name, different file → **numbered** — `shot-01 (2).mp4`, the
-      convention the folder already holds;
-    * a hundred numbered variants → `ConflictError`, at which point the honest
-      answer is that a name is being used for too many different things.
+    **Numbering does not consult what is already there beyond the names.** An
+    earlier version of this compared byte sizes so that re-copying an identical
+    file was silently skipped — which is a copy quietly deciding not to copy, and
+    is the same "has this been done already" bookkeeping the favourites feature
+    was removed for. Ask for a copy, get a copy.
 
     Nothing is overwritten in any branch, which is the rule the rest of this
     module holds to as well.
@@ -251,68 +248,46 @@ def favorite_objects(raw_keys: list | None) -> dict:
 
     cap = config.max_bulk_keys()
     if len(raw_keys) > cap:
-        raise ValidationError(f"cannot favorite more than {cap} objects in one request")
+        raise ValidationError(f"cannot copy more than {cap} objects in one request")
 
+    destination = keys.clean_prefix(raw_destination)
     cleaned = [keys.clean_key(raw) for raw in raw_keys]
 
-    # Listed once per destination and then kept up to date in memory, so a bulk
-    # favourite of forty shots costs one listing rather than forty — and so two
-    # sources with the same basename in one request number each other correctly
-    # instead of both claiming the same free name.
-    taken: dict[str, dict[str, int]] = {}
+    # Listed once and then kept current in memory, so a bulk copy of forty costs
+    # one listing rather than forty — and so two sources sharing a basename in
+    # one request number each other correctly instead of both claiming the same
+    # free name.
+    taken = browse.folder_names(destination)
     copies: list[tuple[str, str]] = []
-    skipped = 0
 
     for source in cleaned:
-        destination = keys.favorites_prefix(source)
-        if destination is None:
-            raise ValidationError(
-                f"'{keys.basename(source)}' cannot be favorited — "
-                "favorites belong to a project, and only images and video go in them"
-            )
-        if destination not in taken:
-            taken[destination] = browse.favorites_index(destination)
-
-        # HEAD before copying, so a key that is not there is a clean 404 naming
-        # it rather than a CopyObject failure halfway through the batch. The
-        # size it returns is what tells an already-favourited file from a
-        # name that happens to be taken.
-        size = s3.head(source).get("ContentLength", 0)
-        name = _free_favorite_name(keys.basename(source), size, taken[destination])
-        if name is None:
-            skipped += 1
-            continue
-
-        taken[destination][name] = size
+        name = _free_copy_name(keys.basename(source), taken)
+        taken.add(name)
         copies.append((source, f"{destination}{name}"))
 
     for source, target in copies:
         s3.copy(source, target)
 
-    logger.info("Favorited %d objects (%d already there)", len(copies), skipped)
+    logger.info("Copied %d objects to %s", len(copies), destination)
     return {
-        "favorited": len(copies),
-        "skipped": skipped,
+        "destination": destination,
+        "copied": len(copies),
         "keys": [target for _, target in copies],
     }
 
 
-def _free_favorite_name(name: str, size: int, index: dict[str, int]) -> str | None:
-    """A name this favourite can take, or None when it is already there."""
-    if name not in index:
+def _free_copy_name(name: str, taken: set[str]) -> str:
+    """The first name this copy can take without overwriting anything."""
+    if name not in taken:
         return name
-    if index[name] == size:
-        return None
 
-    for attempt in range(2, MAX_FAVORITE_VARIANTS + 1):
+    for attempt in range(2, MAX_COPY_VARIANTS + 1):
         candidate = keys.numbered_name(name, attempt)
-        if candidate not in index:
+        if candidate not in taken:
             return candidate
-        if index[candidate] == size:
-            return None
 
     raise ConflictError(
-        f"'{name}' already names {MAX_FAVORITE_VARIANTS} different favorites — "
+        f"'{name}' already names {MAX_COPY_VARIANTS} files there — "
         "rename some of them first"
     )
 

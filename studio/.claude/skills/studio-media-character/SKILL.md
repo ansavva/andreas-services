@@ -34,7 +34,7 @@ storage layer; auth is your `aws login`).
 characters/<name>/profile.yaml   the bible — SOURCE OF TRUTH, one schema,
                                  including the DESCRIBED reference index
 characters/<name>/reference/     generated character imagery, in purpose
-                                 subfolders: face/ body/ wardrobe/ scene/ …
+                                 subfolders: face/ body/ wardrobe/ frame/ …
 characters/<name>/corpus/        collected material about the character —
                                  uploads, keeper clips. Material, not identity.
 characters/<name>/seed/          the founding real-world source photos
@@ -52,7 +52,7 @@ split: `studio runs find --character <name>`.
 | | `reference/` | `corpus/` | `seed/` | `archive/` |
 |---|---|---|---|---|
 | Answers | *Who is this person, shown how?* | *What else do we have of them?* | *What were they built from?* | *What did we retire?* |
-| Holds | generated imagery — face angles, body turnarounds, wardrobe, scene stills | uploads, keeper clips | the founding photographs | rejects, superseded takes |
+| Holds | generated imagery — face angles, body turnarounds, wardrobe, in-world frames | uploads, keeper clips | the founding photographs | rejects, superseded takes |
 | Sent to a model | a **chosen subset** | only by explicit key | rarely, by explicit key | **never**, unless the user names it |
 | Indexed | yes — every image described in the bible | no | no | no |
 | Numbered | `<name>_<group>_<n>.<ext>` within a group | basenames kept | basenames kept | basenames kept |
@@ -283,15 +283,150 @@ better than prose can, and a long identity paragraph fights it — see
    Fill **every** key — `create` refuses a bible missing any of them.
 2. `studio character create <name> --from-profile <your-bible.yaml>`.
 3. `studio character add-to <name> seed <source photos…>` — the founding images.
-4. `studio character add-refs <name> --to face <generated angles…>` (and `--to body`,
-   `--to wardrobe`), then **describe them**: `describe-refs --from-json` for a
-   batch, `set-ref-desc` for one.
-5. `studio character default-set <name> --set …` — the handful sent when nobody picks.
-   Keep it under the smallest cap in play (Kling 7).
+4. **`studio character shoot <name> --project <project>`** — the standard face and
+   body set, described and indexed in one pass. See below.
+5. `studio character add-refs <name> --to wardrobe <stills…>` for anything the
+   standard set does not cover, then **describe them**: `describe-refs
+   --from-json` for a batch, `set-ref-desc` for one.
+
+## THE TWO HUMAN GATES
+
+**A character's `reference/` is the one thing here you cannot fix later.** Runs
+are append-only history, descriptions can be rewritten, a project can be renamed
+— but what sits in `reference/` is *who the character is*, and every later render
+is held against it. So two separate decisions belong to the person, and neither
+may be inferred:
+
+1. **Spending.** Show the complete payload as the two documents — `PROMPT` then
+   `INPUT` — and wait for a yes to **that payload**. Not to a plan, not to a
+   menu option, not to "shall I shoot?". A payload approved earlier in the
+   conversation is not an approval of the one about to be sent; re-show it.
+2. **Identity.** A generated image does **not** go into `characters/<name>/`
+   because it rendered successfully. Show it, and wait for a yes before it is
+   added, replaced, renumbered or archived. This includes `reference/`,
+   `default_set`, and anything in the bible's `references:` index.
+
+Both of these have been broken in practice, in the same session:
+
+- a shoot was submitted on the strength of a multiple-choice answer rather than
+  a shown payload, using a `--yes` flag that no longer exists;
+- its result was then written straight into a character's face group, which
+  nobody had agreed to.
+
+The tools now enforce what they can. `shoot` has no approval flag and asks
+interactively, and it **never files its own output** — results stay in their run
+until someone promotes them with `add-refs --from-run`. What the tools cannot
+enforce is an agent deciding a previous message counted as consent. It does not.
+When in doubt, render the payload into the conversation and stop.
+
+## The standard set (`shoot`)
+
+A reference library is chosen from **by tag**, so an angle nobody shot is an angle
+nobody can pick. `shoot` renders the fourteen every character should have —
+eight `face` and six `body`. Face is a full turn: front, three-quarter and
+profile to each side, both three-quarter-backs, and back. Body is the same turn
+**without the two front three-quarters**, whose pose plate is refused as
+sensitive content by every model that has tried it. Face slots are cropped at
+mid-chest; body slots are the whole figure, head to feet.
+
+**Direction is always the edge of frame the face points toward**, never the
+subject's own left or right. `three_quarter_left` means the nose points at the
+left edge. This is not pedantry: the wording it replaced said "turned to THEIR
+LEFT so the viewer sees the LEFT side of the face", which instructs two opposite
+rotations at once, and both three-quarters duly came back facing the same way.
+
+Each is one recorded run built from three things: a **pose plate** (a generic,
+anonymous, untextured figure that says only how to stand), the character's **seed
+photographs** (who it is), and a prompt filled from the character's own bible —
+its usual top, and every cue in `consistency.must`.
+
+```bash
+studio character shoot <name> --project <project> --dry-run   # sixteen payloads, no spend
+studio character shoot <name> --project <project>             # shows them, then asks
+studio character shoot <name> --project <project> --group face
+studio character shoot <name> --project <project> --slot body_back   # re-shoot one
+```
+
+- **Nothing bills without approval.** Every payload is shown in full and the
+  batch then needs an explicit yes. There is no flag that answers it.
+- **Nothing enters the character.** Results stay in their runs; the shoot prints
+  the `add-refs --from-run` line for each. Look before promoting:
+  `studio runs outputs <project>/latest --presign`.
+- **`--project` is required**, as it is for any generating command.
+- **Identity comes from `seed/`** when it has any, because driving a shoot off
+  already-generated references feeds model output back in as identity and
+  compounds drift. `--identity refs` / `--pick` / `--pick-tag` override that.
+- **The medium comes from the character**, not from the spec — a slot renders in
+  whatever `rendering.default_style` says, and is told to match the medium of
+  the reference images it is given. A character drawn in ink is not turned into a
+  photograph.
+- **`--model` overrides the engine** for every slot; the spec's defaults are
+  chosen so any registered image model accepts them. A dry run preflights the
+  override, so a model that would refuse it costs nothing to find out.
+- **`--review-sheet DIR` shows the images each payload sends**, captioned
+  `[ImageN]` in the order the model receives them. A key is a name; a name is not
+  a look, and the mistakes that matter here are visual.
+- The pose plates live in the repo under `studio/config/` and are copied to the
+  bucket by `studio/scripts/dev-setup.sh`. If a shoot says one is missing, re-run
+  that script.
+
+Promoting a keeper, once a person has seen it and said so:
+
+```bash
+studio runs outputs <project>/latest --presign          # look at it first
+studio character add-refs <name> --to face --from-run <project>/latest#1
+studio character set-ref-desc <name> face/<file> --description "…" --tags face,front
+studio character default-set <name> --set …             # under the Kling cap of 7
+```
+
+`studio character create <name> --from-profile <bible> --shoot --project <p>`
+creates and shoots in one command, through the same two gates.
 
 No new skill directory — ever. The character is now usable by the whole pipeline.
 Names are lowercase `[a-z0-9_-]`. There is no reserved-name list: characters live
 under `characters/`, so a project named `misc` simply is not one.
+
+### When a plate comes back wrong, read the bible before rewriting the prompt
+
+A shoot fills its prompts from the bible, so a plate that is confidently and
+repeatably wrong is usually the record being followed correctly. Rewording the
+prompt against it just argues with the source. In one session the same character
+came back short and stocky, then narrow-chinned, then long-haired at the nape —
+and each time the bible said exactly that: a height he did not have, a chin the
+photographs contradicted, hair described as running long at the back. The prompt
+machinery was faultless throughout.
+
+So when a result is off, ask which field produced it and check that field against
+the seed photographs. Fixing the record fixes every future generation; fixing the
+prompt fixes one.
+
+Four failure shapes worth knowing, because none is obvious from reading the text:
+
+- **A field can be missing rather than wrong.** The chin was described twice
+  under `face:` and never appeared in `consistency.must`, which is the list the
+  prompt foregrounds — present in the record, absent from the payload.
+- **Amount and colour are separate claims.** "Only a little chest hair" was read
+  as *faint* as well as *sparse*, so it came back nearly invisible while the
+  densely-described legs came out dark. Say how much and how dark independently.
+- **Width words say nothing about depth.** "Full square chest, rounded capped
+  deltoids" describes a front view. The profiles rendered flat as a board until
+  the bible said the chest stands forward of the ribcage — front-on language
+  cannot be checked from the side.
+- **State the numbers you have.** `identity.height_read` is usually the only
+  proportion given as a figure, and a figure on a plain backdrop has no scale of
+  its own. Adjectives lose to a pose plate; a stated height does not.
+
+### Making a matched pair without a second render
+
+Opposite slots — the two three-quarters, the two profiles — are meant to be the
+same person turned. Two renders of one prompt will differ in build, scale and
+hair however tight the wording, because they are two rolls of a die.
+
+**Mirror one instead.** A horizontal flip of the right three-quarter *is* the
+left three-quarter, and being literally the same pixels it matches on every axis
+a second render could drift on. Record the provenance in the description and tag
+it `mirrored`, so nobody later reads it as independent evidence of the face. It
+costs nothing, and it is what `config/pose/` already does for its own plates.
 
 ## A bible describes identity, not a fixed look
 

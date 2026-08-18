@@ -142,3 +142,86 @@ def test_local_working_dirs_resolve_under_studio():
     assert characters.LOCAL_DIR.startswith(root)
     assert characters.LOCAL_DIR.endswith("local/characters")
     assert migrate_layout.JOURNAL_DIR.startswith(root)
+
+
+def test_every_callback_accepts_the_parameters_click_will_pass():
+    """A declared option must match its callback's signature, statically.
+
+    `--from` arrives as `from_` unless a name is given, and a callback expecting
+    `src_pool` then raises TypeError — but only when the command is invoked WITH
+    arguments. `test_every_subcommand_dispatches` invokes each leaf bare, so a
+    command with required arguments exits on usage before the callback is ever
+    called, and the mismatch survives. `studio curate move` was broken this way
+    from the argparse port until someone tried to move an image.
+    """
+    import inspect
+
+    import click
+
+    from studio_pipeline import cli
+
+    broken = []
+
+    def walk(command, path):
+        if isinstance(command, click.Group):
+            for name, sub in command.commands.items():
+                walk(sub, path + [name])
+            return
+        if command.callback is None:
+            return
+        signature = inspect.signature(command.callback)
+        if any(p.kind is p.VAR_KEYWORD for p in signature.parameters.values()):
+            return                      # **options — takes whatever it is given
+        unaccepted = {p.name for p in command.params} - set(signature.parameters)
+        if unaccepted:
+            broken.append(f"studio {' '.join(path)}: callback cannot accept {sorted(unaccepted)}")
+
+    walk(cli.main, [])
+    assert not broken, "\n".join(broken)
+
+
+def test_dry_run_actually_renders_a_payload(media_bucket, monkeypatch):
+    """`--dry-run` is the approval gate. It has to work.
+
+    It read `args.json` while Click had stored the flag as `json_` (`json` is not
+    a legal attribute name for it), so every `studio run --dry-run` raised
+    AttributeError — the one command the spending rule tells everyone to use
+    before billing. The wiring test above cannot see this: the callback takes
+    `**options`, so it accepts every parameter; the mismatch is in the body.
+    """
+    from click.testing import CliRunner
+
+    from studio_pipeline import cli
+
+    props = {f: {} for f in ("prompt", "aspect_ratio", "output_format", "input_images")}
+    monkeypatch.setattr("studio_pipeline.engine.schema.fetch", lambda *a, **k: (props, {}))
+
+    result = CliRunner().invoke(cli.main, [
+        "run", "--model", "gpt-image-2", "--project", "subject-a", "--dry-run",
+        "--prompt", "a test", "--key", "characters/subject-a/seed/subject-a_1.webp"])
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    assert "1/2  PROMPT" in result.output
+    assert "2/2  INPUT" in result.output
+    assert "a test" in result.output
+
+
+def test_input_pool_numbers_actually_bind(media_bucket, monkeypatch):
+    """`--input N` must reach the payload, not vanish.
+
+    Click stores it as `input_` (`input` shadows the builtin), and `gather` read
+    `args.input` through a defaulting getattr — so the flag bound nothing and
+    raised nothing. A silent drop is worse than the crash its sibling caused:
+    the run proceeds without the image the caller named.
+    """
+    from click.testing import CliRunner
+
+    from studio_pipeline import cli
+
+    props = {f: {} for f in ("prompt", "aspect_ratio", "input_images")}
+    monkeypatch.setattr("studio_pipeline.engine.schema.fetch", lambda *a, **k: (props, {}))
+
+    result = CliRunner().invoke(cli.main, [
+        "run", "--model", "gpt-image-2", "--project", "subject-a", "--dry-run",
+        "--prompt", "a test", "--input", "1"])
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    assert "projects/subject-a/input/subject-a_1.webp" in result.output
