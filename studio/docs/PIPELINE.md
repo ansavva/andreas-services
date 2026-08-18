@@ -239,7 +239,7 @@ characters/<name>/
 projects/<project>/
     project.json    name, description, the characters involved
     runs/           one directory per submission
-    chains/         a scene's own frames, in order
+    chains/         an ad-hoc sequence's frames (a planned scene derives its own)
     scenes/         runs cut into one continuous take
     movies/         scenes cut into one piece
     favorites/      keepers, copied out of runs
@@ -473,7 +473,7 @@ or projects.
 | `scenes.py` | The **scene store**: a piece planned, shot and cut, under `projects/<p>/scenes/<slug>/`. Owns the manifest, `assemble`, `handoff`, and the read-only half of the CLI. |
 | `storyboard.py` | **The plan document**, pure data: what a shot's panels mean, which one is the start frame once the chain has spoken, how a revision merges onto work already paid for. No S3, no models — so the rules that decide what a shot sends are testable on their own. |
 | `movies.py` | The **movie store**: scenes cut into one piece. The same shape one tier up. |
-| `frames.py` | Stills out of a run's video — the chaining handoff, the contact grid that lets a clip be looked at before more money is spent on it, and a scene's own accumulated frames. |
+| `frames.py` | Stills out of a run's video — the handoff frame, and the contact grid that lets a clip be looked at before more money is spent on it. Its `chain` store is for a sequence with no scene behind it; a planned scene derives its own frames from `scene.json`. |
 | `characters.py` | The character record: bible CRUD, the described reference index, pool listing, the compressed identity block. |
 | `curate.py` | The pool operations that go wrong by hand — dedupe, renumber, regroup, move. Every one is a dry run without `--apply`. |
 | `rewrite.py` | **When an object moves, the records that name it must follow.** `apply_moves()` is what curation and the migrator call; `check` walks every record and confirms what it names still exists. |

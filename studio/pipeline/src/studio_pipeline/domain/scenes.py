@@ -364,15 +364,10 @@ def assemble(s3, project: str, scene_id: str, refs: tuple[str, ...] = (),
 def handoff(s3, project: str, scene_id: str, n: int, from_run: str | None = None) -> dict:
     """Take the previous shot's last frame and hand it to shot N.
 
-    Three things at once, which is the point: the frame goes into the project's
-    input pool, gets recorded in the chain named by THIS scene, and is written
-    onto shot N as its start frame. Doing them separately is how a chain ends up
-    under the wrong name or a shot ends up opening on a panel when it meant to
-    continue a movement.
-
-    On first use it also seeds the chain with shot 1's start frame, because the
-    seed anchors the look the whole scene inherits and there is exactly one
-    moment when it is knowable.
+    Two things, and the second is the point: the frame goes into the project's
+    input pool, and is written onto shot N as the frame it opens on. There is no
+    third record — `storyboard.scene_frames` reads the sequence back off the
+    plan, so the scene's own frames cannot drift from the scene.
     """
     manifest = read_manifest(s3, project, scene_id)
     if not manifest:
@@ -394,22 +389,15 @@ def handoff(s3, project: str, scene_id: str, n: int, from_run: str | None = None
     local = grab(src, None, os.path.join(tmp, f"{run_id}_last.png"), from_end=0.2)
     key = FRAMES.add_to_input_pool(project, local)
 
-    chain = (shot.get("chain") or {}).get("slug") or manifest["slug"]
-    doc = FRAMES.load_chain(s3, project, chain)
-    if not doc.get("seed"):
-        first = shots[0]
-        seed = next((p.get("key") for p in first.get("panels") or [] if p.get("key")), None)
-        if seed:
-            doc["seed"] = seed
-            R.write_json(s3, FRAMES.chain_key(project, chain), doc)
-    doc = FRAMES.chain_add(s3, project, chain, key, f"{project}/{run_id}")
-
-    shot["chain"] = {**(shot.get("chain") or {}), "slug": chain, "use_handoff": True,
-                     "start_key": key, "from_run": f"{project}/{run_id}"}
+    shot["continues"] = True
+    shot["opens_on"] = {"key": key, "from_run": f"{project}/{run_id}"}
     write_manifest(s3, manifest)
-    print(f"{key}\nchain {doc['chain']}: {len(doc['frames'])} frame(s)")
+
+    print(key)
     print(f"shot {n} ({shot.get('id')}) now opens on the last frame of "
           f"{previous.get('id')}")
+    print(f"the scene's own frames are now: "
+          f"{len(SB.scene_frames(manifest))}", flush=True)
     return manifest
 
 

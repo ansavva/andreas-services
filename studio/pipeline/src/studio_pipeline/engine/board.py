@@ -56,7 +56,6 @@ import click
 from studio_pipeline.adapters import replicate as RA
 from studio_pipeline.adapters import s3 as s3c
 from studio_pipeline.domain import contact_sheet as SHEET
-from studio_pipeline.domain import frames as FRAMES
 from studio_pipeline.domain import paths as P
 from studio_pipeline.domain import runs as R
 from studio_pipeline.domain import scenes as SC
@@ -260,7 +259,7 @@ def shot_bindings(s3, manifest: dict, shot: dict, entry: dict) -> tuple[str | No
         # continues a movement and then quietly opened on a panel instead is
         # exactly the cut that turns out to jump, so it is said out loud even
         # though the render proceeds.
-        if (shot.get("chain") or {}).get("use_handoff"):
+        if shot.get("continues"):
             notes.append(
                 f"{shot['id']} continues the shot before it but has no handoff frame "
                 f"recorded, so it will open on its own panel and the cut may jump — "
@@ -272,16 +271,15 @@ def shot_bindings(s3, manifest: dict, shot: dict, entry: dict) -> tuple[str | No
     refs = [key_of(i) for i in roles["reference_panels"]]
     if roles["demoted"]:
         notes.append(f"{shot['id']} panel 1 is a reference, not the start frame — "
-                     f"the chain handoff opens the shot so the cut is seamless")
+                     f"the previous shot's last frame opens this one, so the cut "
+                     f"is seamless")
 
     motion_refs = (shot.get("motion") or {}).get("references") or {}
-    chain_slug = motion_refs.get("chain")
-    if chain_slug:
-        project, _, _ = manifest["scene"].partition("/")
-        doc = FRAMES.load_chain(s3, project, chain_slug)
-        chain = [k for k in FRAMES.chain_keys(doc, motion_refs.get("chain_max"))
-                 if k != start]
-        refs += chain
+    # The scene's own frames, read off the plan rather than out of a second
+    # document kept in sync beside it. The start frame is already bound, so it
+    # is not sent twice.
+    refs += [k for k in SB.scene_frames(manifest, motion_refs.get("max_scene_frames"))
+             if k != start and k not in refs]
     refs += list(motion_refs.get("keys") or [])
 
     cap = REG.field(entry, "images.max_refs")

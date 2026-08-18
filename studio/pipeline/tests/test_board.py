@@ -126,18 +126,17 @@ def test_the_first_shot_starts_from_its_own_panel(media_bucket, no_network):
         media_bucket, m, m["shots"][0], entry)
     assert start.endswith("shot-01-p1.png")
     assert end is None, "one panel is a start frame, not a pair"
-    # The chain's seed rides along: it is the look the whole scene inherits.
-    assert refs == ["projects/subject-a/input/subject-a_3.png"]
+    assert refs == [], "shot 1 IS the seed; there is nothing earlier to send"
 
 
 def test_a_handoff_takes_the_start_slot_and_the_panel_becomes_a_reference(
         media_bucket, no_network):
     m = board_ready(media_bucket)
     shot = m["shots"][1]
-    shot["chain"]["start_key"] = "projects/subject-a/input/subject-a_1.webp"
+    shot["opens_on"]["key"] = "projects/subject-a/input/subject-a_3.png"
 
     start, end, refs, notes = BOARD.shot_bindings(media_bucket, m, shot, REG.get("kling"))
-    assert start == "projects/subject-a/input/subject-a_1.webp"
+    assert start == "projects/subject-a/input/subject-a_3.png"
     assert refs[0].endswith("shot-02-p1.png"), "the demoted panel leads the references"
     assert end.endswith("shot-02-p2.png")
     assert any("seamless" in n for n in notes), "the demotion is reported, not silent"
@@ -156,23 +155,36 @@ def test_an_unrendered_panel_blocks_its_shot_and_names_the_fix(media_bucket, no_
     assert "studio scenes board" in r.output
 
 
-def test_the_chains_frames_ride_along_behind_the_panels(media_bucket, no_network):
-    """Panels are the instruction for THIS shot; the chain is context, and
-    context goes last."""
+def test_the_scenes_own_frames_ride_along_behind_the_panels(media_bucket, no_network):
+    """Panels are the instruction for THIS shot; the scene's earlier frames are
+    context, and context goes last."""
     m = board_ready(media_bucket)
+    shot = m["shots"][1]
+    shot["opens_on"]["key"] = "projects/subject-a/input/subject-a_3.png"
+
+    _s, _e, refs, _n = BOARD.shot_bindings(media_bucket, m, shot, REG.get("kling"))
+    assert refs[0].endswith("shot-02-p1.png"), "a panel first"
+    assert refs[-1].endswith("shot-01-p1.png"), \
+        "then the scene's own frames — here, shot 1's opening panel"
+
+
+def test_the_scenes_own_frames_come_from_the_plan_not_a_second_document(
+        media_bucket, no_network):
+    """A chain document beside the scene would be a second copy of the same
+    sequence. Nothing reads one any more, so a stale one cannot mislead."""
     media_bucket.put_object(
         Bucket=BUCKET, Key=f"projects/subject-a/chains/{PLANNED}.json",
         Body=json.dumps({
             "chain": f"subject-a/{PLANNED}", "project": "subject-a", "slug": PLANNED,
-            "seed": "projects/subject-a/input/subject-a_1.webp",
-            "frames": [{"n": 1, "key": "projects/subject-a/input/subject-a_2.webp"}],
+            "seed": "projects/subject-a/input/subject-a_2.webp", "frames": [],
         }).encode())
+    m = board_ready(media_bucket)
     shot = m["shots"][1]
-    shot["chain"]["start_key"] = "projects/subject-a/scenes/board-test/shots/shot-01.mp4"
+    shot["opens_on"]["key"] = "projects/subject-a/input/subject-a_3.png"
 
     _s, _e, refs, _n = BOARD.shot_bindings(media_bucket, m, shot, REG.get("kling"))
-    assert refs[0].endswith("shot-02-p1.png"), "a panel first"
-    assert refs[-1].endswith("subject-a_2.webp"), "the chain last"
+    assert not any("subject-a_2.webp" in k for k in refs), \
+        "the stale chain document must not reach the payload"
 
 
 # --- the model rules stay in submit ----------------------------------------
@@ -182,7 +194,7 @@ def test_a_start_frame_on_seedance_is_refused_in_submits_own_words(media_bucket,
     list. The refusal must come from `gather`, not from a copy of the rule."""
     m = board_ready(media_bucket)
     m["shots"][1]["motion"]["model"] = "seedance"
-    m["shots"][1]["chain"]["start_key"] = "projects/subject-a/input/subject-a_1.webp"
+    m["shots"][1]["opens_on"]["key"] = "projects/subject-a/input/subject-a_3.png"
     SC.write_manifest(media_bucket, m)
 
     r = run("scenes", "render", SCENE, "--shot", "2", "--dry-run")

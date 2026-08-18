@@ -1,6 +1,6 @@
 ---
 name: studio-media-scene
-description: Build a SCENE — a continuous piece longer than one generation — by chaining video runs, each starting from the previous clip's last frame, then stitching them into one cut. Use whenever a shot must run past a single model's duration ceiling (Kling stops at 15s), whenever a brief has several beats that must not be hard cuts, or whenever the user asks to continue, extend, or carry on from an existing clip. Owns the chain loop, the continuity rules that keep shots cutting together, the per-shot verification gate, and assembly via the scene store. For cutting several finished scenes into one piece, see studio-media-movie.
+description: Build a SCENE — a continuous piece longer than one generation — by storyboarding it as panels, rendering each shot from the previous shot's last frame, then stitching them into one cut. Use whenever a shot must run past a single model's duration ceiling (Kling stops at 15s), whenever a brief has several beats that must not be hard cuts, or whenever the user asks to continue, extend, or carry on from an existing clip. Owns the storyboard, the shot loop, the continuity rules that keep shots cutting together, the per-shot verification gate, and assembly via the scene store. For cutting several finished scenes into one piece, see studio-media-movie.
 ---
 
 # studio-media-scene — a shot longer than one generation
@@ -16,9 +16,9 @@ The family:
   verification grid; `studio scenes` is the scene store.
 - **`studio-media-kling`** / **`studio-media-seedance`** — render each shot.
 
-## Why chain at all
+## Why build a scene out of shots
 
-Three separate ceilings, and only chaining clears all three:
+Three separate ceilings, and only a sequence of shots clears all three:
 
 1. **Duration.** Kling caps at **15 s**. A 40-second piece is not one render.
 2. **Drift is cumulative *within* a generation.** Faces and hands go first, and
@@ -44,9 +44,9 @@ So the choice is real and worth stating to the user before spending:
 |---|---|---|
 | Exact beat timings | `multi_prompt` | Hard cuts between beats |
 | One unbroken take | single `action` | No timing control |
-| Both | **chain shots** — one take each, cut in post | An assembly step |
+| Both | **a sequence of shots** — one take each, cut in post | An assembly step |
 
-Chaining is how you get both. Each shot is a single continuous take, and shot
+A sequence of shots is how you get both. Each shot is a single continuous take, and shot
 boundaries are where the cuts go — deliberately, where you chose them.
 
 ## Storyboard first
@@ -90,7 +90,7 @@ already paid for. A panel whose prompt changed keeps its image and is marked
 **stale**: the picture on disk no longer illustrates the words beside it. That is
 a warning, not a block.
 
-### Panels are chained to each other
+### Panels inherit from each other
 
 Panel 1 renders from the character's references alone. Every later panel renders
 from those **plus the panels already on the board**, so the board converges on
@@ -149,8 +149,9 @@ four-shot scene with audio is real money, and shot N+1's start frame does not
 exist until shot N is rendered and its handoff taken.
 
 **`scenes handoff` replaces the old three-step dance** of grabbing a frame,
-adding it to the input pool and recording it in a chain by hand. It cannot be
-pointed at the wrong chain, which the hand version could and did.
+adding it to the input pool and recording it in a list kept beside the scene.
+The scene now records it directly, so there is no second list to point at the
+wrong thing — which the hand version could and did.
 
 ### The panel is usually not the start frame
 
@@ -220,36 +221,31 @@ produced since.
 **Not the character's curated `reference/` set.** Those images were shot in a
 different context — another location, another wardrobe, another light — so
 feeding them in mid-scene pulls the render toward that context and fights the
-continuity the chain exists to hold. The scene's own frames are already on-model
+continuity a scene exists to hold. The scene's own frames are already on-model
 for *this* scene in every respect that matters: setting, clothing, grade, and the
 current state of the action.
 
 Reach into `reference/` **only when the scene introduces something the existing
 frames cannot show** — a garment comes off and no frame yet shows the subject
 without it, a prop appears, a new character enters. Then send only the images
-that show that specific thing, and drop them again once a frame in the chain
+that show that specific thing, and drop them again once a frame in the scene
 covers it.
 
-For a scene with a plan, `studio scenes handoff` does all of this in one step
-and writes the frame onto the next shot as well. Driving it by hand — for a
-chain that has no scene behind it — is three commands:
+**The list is derived, not kept.** `studio scenes render` reads it off the plan:
+shot 1's opening panel is the seed, and every later shot's recorded handoff is
+the frame the shot before it produced. There is nothing to maintain, and nothing
+that can drift from the scene it describes — which a separate list beside the
+scene, written by hand, reliably did.
 
-```bash
-# once, naming what shot 1 started from
-studio frames chain <project>/<slug> --seed projects/<project>/input/<project>_in_<n>.png
+**Mind the cap** — Kling takes 7 images in total, the start frame included. Set
+`max_scene_frames` in a shot's `motion.references` to trim: the seed anchors the
+look the whole scene inherits and the newest frames carry the current state, so
+both ends are kept and the middle gives way.
 
-# each shot: the handoff frame is recorded as it is produced
-studio frames last <project>/latest --add-input --chain <slug>
-
-# next shot: paste the references straight in
-studio run --model kling --project <project> … \
-  $(studio frames chain <project>/<slug> --args --max 7)
-```
-
-**Mind the cap** — Kling takes 7 (4 alongside a reference video), so `--character`
-on a larger curated set errors out anyway. `--max` trims by dropping the *middle*
-of the chain: the seed anchors the look the whole scene inherits and the newest
-frames carry the current state, so both ends are kept.
+> **A sequence with no scene behind it** — clips you are chaining ad hoc, with no
+> plan — still has `studio frames chain`, which keeps its own list in
+> `projects/<p>/chains/<slug>.json`. Use it only when there is no scene; for
+> anything planned, the scene already knows.
 
 ## `reference_video` is not continuation — don't reach for it
 
@@ -287,7 +283,7 @@ command and a board stays optional.
 
 Shots that agree on codec, geometry, frame rate and audio layout are
 **stream-copied** — the cut is bit-for-bit the sources joined end to end. Shots
-chained through this loop agree automatically, because each inherits its geometry
+produced by this loop agree automatically, because each inherits its geometry
 from the previous shot's frame. Mixing in a clip rendered at another `mode` or
 aspect forces a re-encode, which `scene.json` records.
 
@@ -299,7 +295,7 @@ that is supposed to read as one shot.
 **Colour-match in an editor if the joins show.** A hard cut amplifies small
 differences between generations, and no prompt wording prevents that.
 
-## Failure modes seen in a real chain
+## Failure modes seen in a real scene
 
 | Symptom | Why | Move |
 |---|---|---|

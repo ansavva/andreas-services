@@ -22,11 +22,17 @@ promoting it into the identity set feeds generated pixels back in as identity
 and compounds drift. Chaining from the input pool is correct and expected —
 curating into a character's `reference/` is a separate, deliberate decision.
 
-CHAINS — the reference set for a scene is the SCENE'S OWN FRAMES
----------------------------------------------------------------
-When rendering shot N of a chained scene, its `reference_images` should be the
-frames that scene has already produced — the image shot 1 started from, plus each
+CHAINS — an ordered list of one sequence's own frames
+-----------------------------------------------------
+When rendering shot N of a sequence, its `reference_images` should be the frames
+that sequence has already produced — the image shot 1 started from, plus each
 handoff frame since — **not** the character's `reference/` set.
+
+**A planned scene does not need this.** `studio scenes` derives that list from
+`scene.json`, where both halves already live. A chain is for a sequence with no
+scene behind it, which is the only thing it was ever actually used for: two
+records of one sequence, kept in sync by hand, is the shape of every bug this
+repo has had to write a migrator for.
 
 Those frames are on-model for *this* scene: same location, wardrobe, lighting and
 grade. The curated set is a different context, so feeding it in mid-scene pulls
@@ -50,8 +56,8 @@ sibling commands is the rule people get wrong.
 `reference_images` (Kling 7). The seed is kept because it anchors the look the
 whole scene inherits.
 
-For a scene planned with `studio scenes`, `studio scenes handoff` does all of
-this in one step and cannot be pointed at the wrong chain.
+For anything planned with `studio scenes`, use `studio scenes handoff` instead:
+it records the frame on the shot itself, so there is no second list.
 
 ffmpeg comes from the `imageio-ffmpeg` wheel, so there is no system install.
 """

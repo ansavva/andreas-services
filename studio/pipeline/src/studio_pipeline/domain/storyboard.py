@@ -28,21 +28,34 @@ mean anything, and answers the one question the rest of the code needs:
     resolve_roles(shot)  ->  which panel is the start frame, which is the end,
                              and which merely ride along as references
 
-ROLES, AND WHY THE CHAIN OUTRANKS A PANEL
+ROLES, AND WHY A HANDOFF OUTRANKS A PANEL
 -----------------------------------------
 Panels are positional: the first is the start frame, the last the end frame, and
 anything between them is a reference. A panel may say `role` outright and win.
 
-Then the chain speaks. A chained scene hands each shot the **literal last frame**
-of the shot before it, and that frame is what makes the cut seamless — a
+Then continuity speaks. A shot that continues the one before it opens on that
+shot's **literal last frame**, and only that frame makes the cut seamless — a
 storyboard panel, however carefully composed, will differ from it in a hundred
 small ways that read as a jump. So when a shot has a handoff frame, the handoff
 becomes the start frame and the start *panel is demoted to a reference*, still
-steering where the shot goes without breaking the join. Shot 1 has no handoff, so
-its first panel really is the start.
+steering where the shot goes without breaking the join. Shot 1 has nothing before
+it, so its first panel really is the start.
 
-`use_handoff: false` on a shot forces the panel back — the right answer when a
+`"continues": false` on a shot forces the panel back — the right answer when a
 shot deliberately opens on a new composition rather than continuing a movement.
+
+THE SCENE'S OWN FRAMES ARE DERIVED, NOT STORED
+----------------------------------------------
+A shot's references should be the images this scene has already produced, not the
+character's curated set: those were shot in another context and pull the render
+toward it. That list used to live in a `chains/<slug>.json` written beside the
+scene and kept in sync by hand — two records of one sequence, which is the shape
+of every bug this repo has had to write a migrator for.
+
+It is now read off the plan: shot 1's opening panel is the seed, and every later
+shot's `opens_on.key` is the handoff the shot before it produced. See
+`scene_frames`. `studio frames chain` still exists for a sequence with no scene
+behind it, which is the only thing it was ever actually used for.
 
 NOTHING HERE KNOWS ABOUT MODELS
 -------------------------------
@@ -150,7 +163,6 @@ def normalise(plan: dict, project: str, slug: str) -> dict:
     …) are initialised to None and are the tools' to write, never the author's.
     """
     defaults = dict(plan.get("defaults") or {})
-    defaults.setdefault("chain", slug)
 
     shots = []
     for i, raw in enumerate(plan.get("shots") or [], 1):
@@ -163,7 +175,7 @@ def normalise(plan: dict, project: str, slug: str) -> dict:
             "status": "planned",
             "panels": _normalise_panels(raw.get("panels") or [], defaults, raw),
             "motion": _normalise_motion(raw.get("motion") or {}, defaults),
-            "chain": _normalise_chain(raw.get("chain") or {}, defaults, i),
+            **_normalise_opens(raw, i),
         }
         # Recorded by `scenes render` / `scenes assemble`, never authored.
         for k in ("run", "runref", "key", "shot_key", "duration", "rendered"):
@@ -182,8 +194,8 @@ def normalise(plan: dict, project: str, slug: str) -> dict:
         "updated": R._now(),
         "title": plan.get("title") or "",
         "logline": plan.get("logline") or "",
-        # Prepended byte-identical to every panel prompt. Panels are chained to
-        # each other so they converge on one look, but chaining is an image
+        # Prepended byte-identical to every panel prompt. Panels also inherit
+        # each other so they converge on one look, but that is an image
         # argument and this is a wording one — location, wardrobe, light, grade
         # stated once and repeated exactly, the trick the reference shot spec
         # uses with its shared prose fragments. Cheap, and it survives a panel
@@ -246,21 +258,60 @@ def _normalise_motion(raw: dict, defaults: dict) -> dict:
     # character's reference library mid-scene pulls the render toward the context
     # those images were shot in and fights the continuity the chain exists to
     # hold, so it stays empty unless the plan asks for it.
-    motion["references"].setdefault("chain", defaults.get("chain"))
+    motion["references"].setdefault("max_scene_frames", None)
     motion["references"].setdefault("characters", [])
     motion["references"].setdefault("keys", [])
     return motion
 
 
-def _normalise_chain(raw: dict, defaults: dict, n: int) -> dict:
+def _normalise_opens(raw: dict, n: int) -> dict:
+    """Where a shot opens: the intent, plus the frame once it has been taken.
+
+    `continues` is authored — does this shot pick up the movement of the one
+    before it? Shot 1 has nothing before it; every later shot continues by
+    default, which is the point of building a scene as a sequence rather than a
+    pile of clips.
+
+    `opens_on` is recorded by `scenes handoff`, never authored.
+    """
+    opens_on = raw.get("opens_on") or {}
     return {
-        "slug": raw.get("slug") or defaults.get("chain"),
-        # Shot 1 has nothing to hand off from. Every later shot continues by
-        # default, which is the whole point of building a scene as a chain.
-        "use_handoff": bool(raw["use_handoff"]) if "use_handoff" in raw else n > 1,
-        "start_key": raw.get("start_key"),
-        "from_run": raw.get("from_run"),
+        "continues": bool(raw["continues"]) if "continues" in raw else n > 1,
+        "opens_on": {"key": opens_on.get("key"), "from_run": opens_on.get("from_run")},
     }
+
+
+def scene_frames(manifest: dict, max_n: int | None = None) -> list[str]:
+    """The scene's OWN images, in order — what a shot's references are drawn from.
+
+    Derived, not stored. It used to live in a separate `chains/<slug>.json`,
+    written alongside the scene and kept in sync by hand — which is the shape of
+    every bug this repo has had to write a migrator for. A planned scene already
+    records both halves: shot 1's opening panel is the seed, and every later
+    shot's `opens_on.key` is the handoff frame produced by the shot before it.
+
+    The seed anchors the look the whole scene inherits and the newest frames
+    carry the current state, so when a cap forces a choice both ends are kept and
+    the middle gives way.
+    """
+    shots = manifest.get("shots") or []
+    keys: list[str] = []
+    if shots:
+        roles = resolve_roles(shots[0])
+        first = roles["start_panel"]
+        if first is not None and roles["panels"][first].get("key"):
+            keys.append(roles["panels"][first]["key"])
+    seeded = bool(keys)
+    for shot in shots:
+        key = ((shot.get("opens_on") or {}).get("key"))
+        if key and key not in keys:
+            keys.append(key)
+
+    if max_n is None or len(keys) <= max_n:
+        return keys
+    if seeded:
+        return [keys[0]] + keys[-(max_n - 1):]
+    return keys[-max_n:]
 
 
 # --------------------------------------------------------------------------
@@ -339,13 +390,13 @@ def panel_roles(shot: dict) -> list[str]:
 
 
 def resolve_roles(shot: dict) -> dict:
-    """What this shot actually sends, after the chain has spoken.
+    """What this shot actually sends, once continuity has spoken.
 
     Returns panel *positions* rather than keys, so an unboarded panel is still
     reportable — the caller knows which panel is missing rather than just that
     something is None.
 
-        handoff           the chain's frame, when this shot continues one
+        handoff           the previous shot's last frame, when this one continues it
         start_panel       index into `panels`, or None when the handoff took it
         end_panel         index, or None
         reference_panels  indices in panel order, demoted start first
@@ -353,8 +404,8 @@ def resolve_roles(shot: dict) -> dict:
     """
     panels = shot.get("panels") or []
     roles = panel_roles(shot)
-    chain = shot.get("chain") or {}
-    handoff = chain.get("start_key") if chain.get("use_handoff") else None
+    handoff = ((shot.get("opens_on") or {}).get("key")
+               if shot.get("continues") else None)
 
     start = next((i for i, r in enumerate(roles) if r == "start"), None)
     end = next((i for i, r in enumerate(roles) if r == "end"), None)
@@ -438,10 +489,10 @@ def merge(old: dict, new: dict) -> dict:
         for k in ("run", "runref", "key", "shot_key", "duration", "rendered"):
             if shot.get(k) is None:
                 shot[k] = prev.get(k)
-        prev_chain = prev.get("chain") or {}
-        for k in ("start_key", "from_run"):
-            if (shot.get("chain") or {}).get(k) is None:
-                shot["chain"][k] = prev_chain.get(k)
+        was_opens = prev.get("opens_on") or {}
+        for k in ("key", "from_run"):
+            if (shot.get("opens_on") or {}).get(k) is None:
+                shot["opens_on"][k] = was_opens.get(k)
 
         prev_panels = {p["n"]: p for p in prev.get("panels") or []}
         for panel in shot.get("panels") or []:
@@ -485,7 +536,7 @@ def board_order(manifest: dict) -> list[tuple[dict, dict]]:
     """Every (shot, panel) pair in board order — shot by shot, panel by panel.
 
     Panels are rendered in this order and each one sees the ones before it, so
-    the order is not merely presentational: it is the chain.
+    the order is not merely presentational: it is what each panel inherits.
     """
     return [(shot, panel)
             for shot in manifest.get("shots") or []

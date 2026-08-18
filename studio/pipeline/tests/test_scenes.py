@@ -296,12 +296,11 @@ def test_sheet_builds_a_captioned_grid_of_the_panels(media_bucket, tmp_path):
 
 
 def test_the_second_shot_expects_a_handoff_and_does_not_have_one_yet(media_bucket):
-    """Its panels cannot be resolved into a start frame until the shot before it
-    has rendered — which is why `render` refuses a shot whose handoff is
-    missing rather than quietly starting from a panel."""
+    """It still renders — from its own panel — but the render says so, because
+    that is exactly the cut that turns out to jump."""
     m = SC.read_manifest(media_bucket, "subject-a", PLANNED)
     r = SB.resolve_roles(m["shots"][1])
-    assert m["shots"][1]["chain"]["use_handoff"] is True
+    assert m["shots"][1]["continues"] is True
     assert r["handoff"] is None
     assert r["start_panel"] == 0, "with no handoff recorded, the panel still holds the slot"
     assert r["end_panel"] == 1
@@ -309,14 +308,7 @@ def test_the_second_shot_expects_a_handoff_and_does_not_have_one_yet(media_bucke
 
 # --- carrying a shot forward -----------------------------------------------
 
-def test_handoff_writes_the_chain_under_the_scenes_own_name(media_bucket):
-    """The bug this command exists to make unreachable.
-
-    `frames last --chain <project>/<slug>` slugified the slash away and created
-    `<project>-<slug>` — in the right project, under a name nothing could then
-    find. The only symptom was a second chain quietly appearing beside the real
-    one, because an absent chain reads as an empty one.
-    """
+def test_handoff_reports_when_there_is_no_video_to_take_a_frame_from(media_bucket):
     m = SC.read_manifest(media_bucket, "subject-a", PLANNED)
     m["shots"][0]["run"] = "subject-a/2026-08-04_21-30-54_wave-porch"
     m["shots"][0]["runref"] = "subject-a/2026-08-04_21-30-54_wave-porch#1"
@@ -349,18 +341,38 @@ def test_handoff_refuses_a_shot_that_is_not_in_the_scene(media_bucket):
 
 def test_a_chain_slug_accepts_both_spellings(media_bucket):
     from studio_pipeline.domain import frames as FRAMES
-    assert FRAMES.chain_slug("subject-a/board-test") == "board-test"
-    assert FRAMES.chain_slug("board-test") == "board-test"
-    assert FRAMES.chain_key("subject-a", "subject-a/board-test") == \
-        FRAMES.chain_key("subject-a", "board-test")
+    assert FRAMES.chain_slug("subject-a/loose-sequence") == "loose-sequence"
+    assert FRAMES.chain_slug("loose-sequence") == "loose-sequence"
+    assert FRAMES.chain_key("subject-a", "subject-a/loose-sequence") == \
+        FRAMES.chain_key("subject-a", "loose-sequence")
 
 
 def test_frames_last_no_longer_invents_a_second_chain(media_bucket):
-    """The qualified form now lands in the same document as the bare one."""
+    """The qualified form now lands in the same document as the bare one.
+
+    Chains survive only for sequences with no scene behind them — which is the
+    only thing they were ever actually used for. A planned scene derives its own
+    frames from `scene.json`.
+    """
     from studio_pipeline.domain import frames as FRAMES
-    doc = FRAMES.chain_add(media_bucket, "subject-a", "subject-a/board-test",
+    doc = FRAMES.chain_add(media_bucket, "subject-a", "subject-a/loose-sequence",
                            "projects/subject-a/input/subject-a_3.png", None)
-    assert doc["chain"] == "subject-a/board-test"
+    assert doc["chain"] == "subject-a/loose-sequence"
     keys = [o["Key"] for o in media_bucket.list_objects_v2(
         Bucket=BUCKET, Prefix="projects/subject-a/chains/")["Contents"]]
-    assert keys == ["projects/subject-a/chains/board-test.json"]
+    assert keys == ["projects/subject-a/chains/loose-sequence.json"]
+
+
+def test_a_handoff_writes_no_second_record(media_bucket):
+    """The point of collapsing chains into the scene: there is now exactly one
+    place the sequence lives, so it cannot drift from the scene it describes."""
+    m = SC.read_manifest(media_bucket, "subject-a", PLANNED)
+    m["shots"][0]["run"] = "subject-a/2026-08-04_21-30-54_wave-porch"
+    SC.write_manifest(media_bucket, m)
+
+    before = media_bucket.list_objects_v2(
+        Bucket=BUCKET, Prefix="projects/subject-a/chains/").get("Contents", [])
+    run("scenes", "handoff", f"subject-a/{PLANNED}", "--shot", "2")
+    after = media_bucket.list_objects_v2(
+        Bucket=BUCKET, Prefix="projects/subject-a/chains/").get("Contents", [])
+    assert [o["Key"] for o in before] == [o["Key"] for o in after]

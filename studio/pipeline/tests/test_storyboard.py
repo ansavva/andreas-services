@@ -9,7 +9,7 @@ is mostly about:
 
   * **Which panel is the start frame.** Get it wrong and the render still
     succeeds; it just cuts badly, or animates from the wrong composition. The
-    chain outranking a panel is the subtle half — a shot that continues a
+    handoff outranking a panel is the subtle half — a shot that continues a
     movement must open on the literal last frame of the shot before it, not on a
     panel that merely resembles it.
   * **A re-ingest orphaning paid work.** Revising a scene means re-ingesting the
@@ -64,7 +64,7 @@ def test_an_explicit_role_beats_the_positional_default():
     assert SB.panel_roles(shot) == ["reference", "reference", "end"]
 
 
-def test_the_chain_handoff_takes_the_start_slot_and_demotes_the_panel():
+def test_a_handoff_takes_the_start_slot_and_demotes_the_panel():
     """A cut is only seamless from the literal last frame of the shot before it.
 
     The displaced panel is not discarded — it rides along as a reference, still
@@ -72,7 +72,7 @@ def test_the_chain_handoff_takes_the_start_slot_and_demotes_the_panel():
     """
     m = plan()
     shot = m["shots"][1]
-    shot["chain"]["start_key"] = "projects/proj/input/proj_in_9.png"
+    shot["opens_on"]["key"] = "projects/proj/input/proj_in_9.png"
 
     r = SB.resolve_roles(shot)
     assert r["handoff"] == "projects/proj/input/proj_in_9.png"
@@ -85,17 +85,17 @@ def test_the_chain_handoff_takes_the_start_slot_and_demotes_the_panel():
 def test_shot_one_has_no_handoff_so_its_first_panel_really_is_the_start():
     m = plan()
     shot = m["shots"][0]
-    assert shot["chain"]["use_handoff"] is False, "nothing precedes shot 1"
+    assert shot["continues"] is False, "nothing precedes shot 1"
     r = SB.resolve_roles(shot)
     assert r["start_panel"] == 0 and r["demoted"] is False
 
 
-def test_use_handoff_false_forces_the_panel_back():
+def test_continues_false_forces_the_panel_back():
     """The right answer when a shot deliberately opens on a new composition."""
     m = plan()
     shot = m["shots"][1]
-    shot["chain"]["start_key"] = "projects/proj/input/proj_in_9.png"
-    shot["chain"]["use_handoff"] = False
+    shot["opens_on"]["key"] = "projects/proj/input/proj_in_9.png"
+    shot["continues"] = False
 
     r = SB.resolve_roles(shot)
     assert r["handoff"] is None
@@ -144,19 +144,20 @@ def test_a_panel_never_inherits_the_video_models_settings():
     assert m["shots"][0]["motion"]["extra"] == {"mode": "standard", "generate_audio": False}
 
 
-def test_the_chain_defaults_to_the_scene_slug():
+def test_only_the_first_shot_opens_on_its_own_panel_by_default():
+    """Building a scene as a sequence is the point; every later shot continues."""
     m = plan()
-    assert m["defaults"]["chain"] == "my-scene"
-    assert m["shots"][1]["chain"]["slug"] == "my-scene"
+    assert m["shots"][0]["continues"] is False
+    assert m["shots"][1]["continues"] is True
 
 
 def test_motion_references_default_to_the_scenes_own_frames_not_the_character():
-    """Sending a character's curated set mid-scene fights the continuity the
-    chain exists to hold, so it stays empty unless the plan asks."""
+    """Sending a character's curated set mid-scene fights the continuity a scene
+    exists to hold, so it stays empty unless the plan asks."""
     m = plan()
     refs = m["shots"][1]["motion"]["references"]
-    assert refs["chain"] == "my-scene"
     assert refs["characters"] == []
+    assert refs["max_scene_frames"] is None, "all of them, unless a cap is asked for"
 
 
 # --- validation ------------------------------------------------------------
@@ -231,7 +232,7 @@ def test_load_plan_names_the_file_that_is_wrong(tmp_path):
 # --- status ----------------------------------------------------------------
 
 def test_shot_status_is_derived_from_what_the_shot_has():
-    shot = {"panels": [{"n": 1, "prompt": "a"}], "chain": {}}
+    shot = {"panels": [{"n": 1, "prompt": "a"}]}
     assert SB.shot_status(shot) == "planned"
     shot["panels"][0]["key"] = "projects/p/scenes/s/storyboard/shot-01-p1.png"
     assert SB.shot_status(shot) == "boarded"
@@ -247,7 +248,7 @@ def test_a_reference_only_panel_does_not_hold_a_shot_back_from_boarded():
     A reference panel is optional steering; waiting on one would leave a shot
     perpetually unboarded for an image it can render perfectly well without.
     """
-    shot = {"chain": {}, "panels": [
+    shot = {"panels": [
         {"n": 1, "prompt": "a", "key": "k1"},
         {"n": 2, "prompt": "b", "role": "reference"},
         {"n": 3, "prompt": "c", "key": "k3"},
@@ -286,7 +287,7 @@ def test_a_re_ingest_carries_recorded_work_forward():
     old["shots"][0]["shot_key"] = "projects/proj/scenes/my-scene/shots/shot-01.mp4"
     old["shots"][0]["duration"] = 5.04
     old["shots"][0]["panels"][0]["key"] = "projects/proj/scenes/my-scene/storyboard/shot-01-p1.png"
-    old["shots"][1]["chain"]["start_key"] = "projects/proj/input/proj_in_9.png"
+    old["shots"][1]["opens_on"]["key"] = "projects/proj/input/proj_in_9.png"
 
     revised = plan()
     revised["shots"][0]["beat"] = "one, but reworded"
@@ -295,7 +296,7 @@ def test_a_re_ingest_carries_recorded_work_forward():
     assert merged["shots"][0]["run"] == "proj/2026-08-18_10-00-00_shot-01"
     assert merged["shots"][0]["duration"] == 5.04
     assert merged["shots"][0]["panels"][0]["key"].endswith("shot-01-p1.png")
-    assert merged["shots"][1]["chain"]["start_key"].endswith("proj_in_9.png")
+    assert merged["shots"][1]["opens_on"]["key"].endswith("proj_in_9.png")
     assert merged["shots"][0]["status"] == "cut"
 
 
@@ -368,3 +369,43 @@ def test_sheet_captions_name_the_role_because_position_does_not():
 
 def test_sheet_captions_skip_panels_that_do_not_exist_yet():
     assert SB.sheet_captions(plan()) == []
+
+
+# --- the scene's own frames ------------------------------------------------
+
+def test_scene_frames_are_derived_from_the_plan():
+    """They used to live in a `chains/<slug>.json` written beside the scene and
+    kept in sync by hand. Everything the list needs is already in the plan: shot
+    1's opening panel is the seed, and every later shot's `opens_on.key` is the
+    handoff the shot before it produced."""
+    m = plan()
+    assert SB.scene_frames(m) == [], "nothing rendered yet"
+
+    m["shots"][0]["panels"][0]["key"] = "seed.png"
+    assert SB.scene_frames(m) == ["seed.png"]
+
+    m["shots"][1]["opens_on"]["key"] = "handoff-1.png"
+    assert SB.scene_frames(m) == ["seed.png", "handoff-1.png"]
+
+
+def test_scene_frames_keep_both_ends_when_a_cap_forces_a_choice():
+    """The seed anchors the look the whole scene inherits; the newest frames
+    carry the current state. The middle is what gives way."""
+    m = plan()
+    m["shots"][0]["panels"][0]["key"] = "seed.png"
+    m["shots"][1]["opens_on"]["key"] = "h1.png"
+    # Stand in for a longer scene by appending shots that already have handoffs.
+    for i in range(2, 6):
+        m["shots"].append({"n": i + 1, "id": f"shot-{i:02d}", "panels": [],
+                           "opens_on": {"key": f"h{i}.png"}, "continues": True})
+
+    assert SB.scene_frames(m) == ["seed.png", "h1.png", "h2.png", "h3.png",
+                                  "h4.png", "h5.png"]
+    assert SB.scene_frames(m, 3) == ["seed.png", "h4.png", "h5.png"]
+
+
+def test_scene_frames_never_repeat_a_key():
+    m = plan()
+    m["shots"][0]["panels"][0]["key"] = "seed.png"
+    m["shots"][1]["opens_on"]["key"] = "seed.png"
+    assert SB.scene_frames(m) == ["seed.png"]
