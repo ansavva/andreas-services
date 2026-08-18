@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # Grant this environment read access to the private @ansavva/design-system
-# package on GitHub Packages (npm.pkg.github.com), which the humbugg and website
-# frontends depend on. Installing it requires a token carrying the
+# package on GitHub Packages (npm.pkg.github.com), which the humbugg, website and
+# studio frontends depend on. Installing it requires a token carrying the
 # `read:packages` scope (classic PAT) / "Packages: read" permission
 # (fine-grained PAT / GitHub App). The default GH_TOKEN in CI/sandboxes does NOT
 # have it — `npm ci` fails with `403 ... does not match expected scopes`.
@@ -70,7 +70,7 @@ emit_result() {
       log "Wire it into your shell / CI as NODE_AUTH_TOKEN, e.g.:"
       log "    eval \"\$($0 --export)\"     # current shell"
       log "    export NODE_AUTH_TOKEN=<token>   # or set it as a CI/env secret"
-      log "Then 'npm ci' in humbugg/marketing, humbugg/app and website/frontend will resolve the package."
+      log "Then 'npm ci' in humbugg/marketing, humbugg/app, website/frontend and studio/frontend will resolve the package."
       ;;
   esac
 }
