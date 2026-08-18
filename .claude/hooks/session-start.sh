@@ -2,9 +2,12 @@
 # SessionStart hook: project-level setup that runs every session (including
 # resumed) in both local and cloud environments.
 #
-# Heavy/cacheable installs (aws cli, tflint, pre-commit) live in the cloud
-# environment's Setup script so they benefit from the filesystem snapshot
-# cache. This hook only does work that genuinely needs to run per-session.
+# The shared CLI toolchain (aws, gh, tflint, terraform, ...) is owned by
+# scripts/dev-setup.sh in this repo rather than by the cloud environment's Setup
+# script, so it is versioned with the code and identical on a laptop and in a
+# cloud session. dev-setup.sh short-circuits on `command -v` per tool and only
+# reaches for Homebrew when something is genuinely missing, so when the image
+# already ships these CLIs this costs a handful of lookups.
 set -euo pipefail
 
 REPO="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
@@ -30,6 +33,12 @@ fi
 # Cloud-only steps below. Local dev environments already have these set up.
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
+fi
+
+# Shared CLI toolchain. Non-fatal: a missing tool should degrade the session,
+# not block it. The steps below depend on what this installs, so it runs first.
+if [ -f "$REPO/scripts/dev-setup.sh" ]; then
+  bash "$REPO/scripts/dev-setup.sh" >&2 || true
 fi
 
 # pre-commit: install the git hook and pre-download hook environments so

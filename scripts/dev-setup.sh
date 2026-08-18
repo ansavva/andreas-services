@@ -3,7 +3,8 @@
 # Shared developer / CI toolchain bootstrap for the andreas-services monorepo.
 #
 # Installs the cross-cutting tools every service needs (Terraform, tflint, AWS
-# CLI, Node.js, jq, zip, Stripe CLI) with Homebrew on BOTH macOS and Linux. Service-specific
+# CLI, GitHub CLI + its gh-stack extension, Node.js, jq, zip, Stripe CLI) with
+# Homebrew on BOTH macOS and Linux. Service-specific
 # runtimes live in per-service scripts, e.g. humbugg/scripts/dev-setup.sh (.NET).
 #
 # Homebrew details:
@@ -103,13 +104,89 @@ ensure_brew() {
   return 0
 }
 
+# Homebrew is installed lazily, the first time a tool actually turns out to be
+# missing. A machine that already has the toolchain — a developer laptop, or a
+# cloud image whose own setup already installed these CLIs — then costs nothing:
+# every tool short-circuits on `command -v` and Homebrew is never touched. That
+# is what makes this script cheap enough to run on every session start.
+BREW_STATE=unknown   # unknown | ready | unavailable
+require_brew() {
+  case "$BREW_STATE" in
+    ready)       return 0 ;;
+    unavailable) return 1 ;;
+  esac
+  if ensure_brew; then BREW_STATE=ready; return 0; fi
+  BREW_STATE=unavailable
+  return 1
+}
+
 # brew_ensure <cli-name> <formula>  (formula may be tap-qualified)
 brew_ensure() {
   local cli="$1" formula="$2"
   if have "$cli"; then skip "$cli" "$(command -v "$cli")"; return 0; fi
   if [[ "$CHECK_ONLY" -eq 1 ]]; then warn "$cli is MISSING (would: brew install $formula)"; return 0; fi
+  if ! require_brew; then
+    warn "$cli is MISSING and Homebrew is unavailable; skipping (see messages above)"
+    return 0
+  fi
+  # ensure_brew puts an already-installed Homebrew prefix on PATH, which may be
+  # exactly where this tool lives — re-check before shelling out to brew.
+  if have "$cli"; then skip "$cli" "$(command -v "$cli")"; return 0; fi
   log "installing $formula ..."
   brew_run install "$formula"
+}
+
+# gh-stack: GitHub's stacked-PR extension (github/gh-stack). The canonical
+# install resolves a release binary through api.github.com, which is the normal
+# path on a laptop and in CI. Some sandboxes (including Claude cloud sessions)
+# serve GitHub through a proxy that blocks the REST API while still allowing
+# anonymous git clones, so a source build is used as a fallback there. Both
+# paths end at `gh extension install`, so `gh stack` is the same command either
+# way. Non-fatal: without it, stacked PRs are still workable with plain git.
+# `gh extension install .` names the extension after the directory's basename
+# and requires the executable inside to match, so this path must end in
+# `gh-stack` — that is what makes the command `gh stack`.
+GH_STACK_SRC="$HOME/.local/share/gh-extensions-src/gh-stack"
+ensure_gh_stack() {
+  if ! have gh; then warn "gh not present; skipping gh-stack extension"; return 0; fi
+  if gh extension list 2>/dev/null | grep -q 'gh stack'; then
+    skip "gh-stack extension" "gh stack"
+    return 0
+  fi
+  if [[ "$CHECK_ONLY" -eq 1 ]]; then
+    warn "gh-stack extension is MISSING (would: gh extension install github/gh-stack)"
+    return 0
+  fi
+
+  log "installing gh-stack extension ..."
+  if gh extension install github/gh-stack >/dev/null 2>&1; then
+    ok "gh stack ready (release binary)"
+    return 0
+  fi
+
+  warn "gh-stack release download failed (GitHub API unreachable?); trying source build"
+  if ! have go; then
+    warn "go not present; gh-stack unavailable (stacked-PR commands will not work)"
+    return 0
+  fi
+  # The symlink gh creates points at this directory, so it has to outlive the
+  # build — keep it under $HOME rather than a temp dir.
+  if [[ -d "$GH_STACK_SRC/.git" ]]; then
+    git -C "$GH_STACK_SRC" fetch --depth 1 origin HEAD >/dev/null 2>&1 \
+      && git -C "$GH_STACK_SRC" reset --hard FETCH_HEAD >/dev/null 2>&1 || true
+  else
+    rm -rf "$GH_STACK_SRC"
+    mkdir -p "$(dirname "$GH_STACK_SRC")"
+    git clone --depth 1 https://github.com/github/gh-stack "$GH_STACK_SRC" >/dev/null 2>&1 || {
+      warn "could not clone github/gh-stack; gh-stack unavailable"; return 0; }
+  fi
+  ( cd "$GH_STACK_SRC" && go build -o ./gh-stack . ) >/dev/null 2>&1 || {
+    warn "gh-stack source build failed; gh-stack unavailable"; return 0; }
+  # gh only accepts "." for a local extension; an absolute path is parsed as
+  # OWNER/REPO and rejected. So install from inside the directory.
+  ( cd "$GH_STACK_SRC" && gh extension install . ) >/dev/null 2>&1 \
+    && ok "gh stack ready (built from source)" \
+    || warn "gh extension install failed; gh-stack unavailable"
 }
 
 # Agent skills for the tools this repo builds on: the Expo/EAS set and the
@@ -160,19 +237,17 @@ install_tflint_aws_plugin_best_effort() {
 # ---------------------------------------------------------------------------
 log "OS detected: $OS  (check-only: $CHECK_ONLY)"
 
-if ! ensure_brew; then
-  warn "Homebrew is not available; cannot continue. See messages above."
-  exit 1
-fi
-
 brew_ensure terraform hashicorp/tap/terraform
 brew_ensure tflint    terraform-linters/tap/tflint
 install_tflint_aws_plugin_best_effort
 brew_ensure aws  awscli
+brew_ensure gh   gh
 brew_ensure node node
 brew_ensure jq   jq
 brew_ensure zip  zip
 brew_ensure stripe stripe/stripe-cli/stripe
+
+ensure_gh_stack
 
 # Node version floor (the OS may already ship a newer/older node than brew's).
 if have node; then
@@ -193,5 +268,5 @@ fi
 
 log "shared toolchain ready. For complete service setup run its orchestrator, e.g.:"
 log "    ./humbugg/scripts/dev-setup.sh   # .NET + per-machine AWS"
-[[ "$PLATFORM" == "linux" && "$CHECK_ONLY" -ne 1 ]] && log "Tools are on PATH via /etc/profile.d/homebrew.sh (new shells) or: eval \"\$($LINUXBREW_PREFIX/bin/brew shellenv)\""
+[[ "$PLATFORM" == "linux" && "$CHECK_ONLY" -ne 1 && "$BREW_STATE" == "ready" ]] && log "Tools are on PATH via /etc/profile.d/homebrew.sh (new shells) or: eval \"\$($LINUXBREW_PREFIX/bin/brew shellenv)\"" || true
 ok "done."
