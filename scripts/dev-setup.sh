@@ -11,7 +11,9 @@
 #   - macOS (developer machines): brew runs as the normal user.
 #   - Linux (this cloud sandbox / CI): Homebrew refuses to run as root, so it is
 #     installed into the default prefix /home/linuxbrew/.linuxbrew owned by the
-#     non-root `ubuntu` user, and every `brew` call is run as that user via sudo.
+#     non-root `ubuntu` user, and every `brew` call is run as that user via
+#     $AS_BREW_USER (`sudo -H -u ubuntu`) — which applies when this script runs
+#     as root too, since root is exactly the case Homebrew rejects.
 #     The prefix bin is added to PATH (this run + /etc/profile.d) so root and CI
 #     agents can execute the installed tools.
 #   - terraform and tflint are NOT in homebrew-core; they come from taps
@@ -57,12 +59,32 @@ LINUXBREW_PREFIX="/home/linuxbrew/.linuxbrew"
 LINUX_BREW_USER="ubuntu"
 BREW_ENV=(HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1)
 
+# Prefix that DE-escalates to the Homebrew owner. This is not $SUDO and must
+# never be written as `$SUDO -u`: $SUDO is empty when we are already root, so
+# `$SUDO -u ubuntu git clone ...` expands to `-u ubuntu git clone ...` and the
+# shell tries to run a program called `-u`. Root has sudo too, so dropping
+# privileges always needs a real command here. Homebrew refuses to run as root
+# (unreviewed upstream build scripts would get root, and its sandbox does not
+# apply), which is why every brew call goes through this.
+if [[ "$(id -un)" == "$LINUX_BREW_USER" ]]; then
+  AS_BREW_USER=(env)                                   # already the right user
+elif command -v sudo >/dev/null 2>&1; then
+  AS_BREW_USER=(sudo -H -u "$LINUX_BREW_USER")         # -H so HOME is the owner's
+elif command -v runuser >/dev/null 2>&1; then
+  AS_BREW_USER=(runuser -u "$LINUX_BREW_USER" --)
+else
+  # No way to drop privileges: brew will run as whoever we are and refuse if
+  # that is root. Left empty deliberately so the failure is Homebrew's own.
+  AS_BREW_USER=()
+  [[ "$(id -u)" -eq 0 ]] && warn "neither sudo nor runuser found; Homebrew cannot be run as '$LINUX_BREW_USER'"
+fi
+
 # Run a brew command the right way for the platform.
 brew_run() {
   if [[ "$PLATFORM" == "macos" ]]; then
     env "${BREW_ENV[@]}" brew "$@"
   else
-    $SUDO -u "$LINUX_BREW_USER" env "${BREW_ENV[@]}" "$LINUXBREW_PREFIX/bin/brew" "$@"
+    "${AS_BREW_USER[@]}" env "${BREW_ENV[@]}" "$LINUXBREW_PREFIX/bin/brew" "$@"
   fi
 }
 
@@ -90,9 +112,17 @@ ensure_brew() {
     log "installing Homebrew into $LINUXBREW_PREFIX (owned by $LINUX_BREW_USER) ..."
     $SUDO mkdir -p "$LINUXBREW_PREFIX"
     $SUDO chown -R "$LINUX_BREW_USER:$LINUX_BREW_USER" "$(dirname "$LINUXBREW_PREFIX")"
-    $SUDO -u "$LINUX_BREW_USER" git clone --depth=1 https://github.com/Homebrew/brew "$LINUXBREW_PREFIX/Homebrew"
-    $SUDO -u "$LINUX_BREW_USER" mkdir -p "$LINUXBREW_PREFIX/bin"
-    $SUDO -u "$LINUX_BREW_USER" ln -sf "$LINUXBREW_PREFIX/Homebrew/bin/brew" "$LINUXBREW_PREFIX/bin/brew"
+    "${AS_BREW_USER[@]}" git clone --depth=1 https://github.com/Homebrew/brew "$LINUXBREW_PREFIX/Homebrew"
+    "${AS_BREW_USER[@]}" mkdir -p "$LINUXBREW_PREFIX/bin"
+    "${AS_BREW_USER[@]}" ln -sf "$LINUXBREW_PREFIX/Homebrew/bin/brew" "$LINUXBREW_PREFIX/bin/brew"
+  fi
+
+  # A bootstrap that got this far without producing a brew binary must fail
+  # loudly: `eval "$(missing-binary shellenv)"` evaluates an empty string and
+  # returns 0, so every later `brew install` fails one by one instead.
+  if [[ ! -x "$LINUXBREW_PREFIX/bin/brew" ]]; then
+    warn "Homebrew bootstrap did not produce $LINUXBREW_PREFIX/bin/brew"
+    return 1
   fi
 
   # Expose brew + its tools on PATH for this run and for future login shells.
@@ -132,6 +162,16 @@ brew_ensure() {
   # ensure_brew puts an already-installed Homebrew prefix on PATH, which may be
   # exactly where this tool lives — re-check before shelling out to brew.
   if have "$cli"; then skip "$cli" "$(command -v "$cli")"; return 0; fi
+  # Homebrew 6 stopped loading formulae, casks and commands from a third-party
+  # tap until they are trusted ("Skipping <tap> because it is not trusted").
+  # Trust this one entry rather than the whole tap, which Homebrew warns is
+  # broader than needed — `brew trust <user>/<tap>/<name>` works out for itself
+  # whether that is a formula or a cask. Non-fatal: older Homebrew has no
+  # `trust` subcommand and needs none.
+  if [[ "$formula" == */*/* ]]; then
+    brew_run trust "$formula" >/dev/null 2>&1 || \
+      warn "could not trust $formula (continuing; install may be skipped)"
+  fi
   log "installing $formula ..."
   brew_run install "$formula"
 }
