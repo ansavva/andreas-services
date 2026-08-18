@@ -353,6 +353,7 @@ def shot_bindings(s3, manifest: dict, shot: dict, entry: dict) -> tuple[str | No
 
 def shot_args(manifest: dict, shot: dict, entry: dict, opts) -> SimpleNamespace:
     motion = shot.get("motion") or {}
+    refs = motion.get("references") or {}
     d = SUB.defaults(entry["kind"])
     extra = dict(motion.get("extra") or {})
     if motion.get("duration") is not None:
@@ -367,12 +368,19 @@ def shot_args(manifest: dict, shot: dict, entry: dict, opts) -> SimpleNamespace:
         extra=json.dumps(extra) if extra else None,
         aspect_ratio=motion.get("aspect_ratio"),
         key=[],
-        # This module has already chosen every image. Letting `gather` resolve a
-        # character's `default_set` on top would silently add a curated set shot
-        # in another context, which is the thing the chain exists to avoid.
-        character=(), record_characters=tuple(manifest.get("characters") or ()),
+        # Empty UNLESS the plan asks for it. The default is to send the scene's
+        # own frames and nothing else, because a curated set was shot in another
+        # context and pulls the render toward it. But that cuts both ways: a
+        # scene built only from its own frames inherits whatever it has drifted
+        # into, shot after shot, and nothing pulls it back. A plan that names
+        # characters in `motion.references` is choosing identity stability over
+        # scene-specific framing, and it is a real choice with a real cost —
+        # measured: references hold the build and the body hair steady, and lose
+        # you the wardrobe and set particulars of the start frame.
+        character=tuple(refs.get("characters") or ()),
+        record_characters=tuple(manifest.get("characters") or ()),
         record_extra={"scene": manifest["scene"], "scene_shot": shot["id"]},
-        pick=None, pick_tag=None, slots=None,
+        pick=refs.get("pick"), pick_tag=refs.get("pick_tag"), slots=None,
         image_run=None, ref_run=(), input_=(), input=(),
         start_run=None, start_key=None, end_run=None, end_key=None,
         no_refs=False, dry_run=opts.dry_run, json_=False, json=False,

@@ -499,3 +499,19 @@ def test_submit_refuses_an_end_frame_beside_references(media_bucket, no_network)
         SUB.gather(REG.get("kling"), media_bucket, args)
     assert "must be empty" in str(exc.value)
     assert "drop the end frame" in str(exc.value).lower()
+
+
+def test_a_shot_can_ask_for_the_characters_references(media_bucket, no_network):
+    """Off by default, because a curated set was shot in another context and
+    pulls the render toward it. But a scene built only from its own frames
+    inherits whatever it has drifted into, and nothing pulls it back — so the
+    plan can choose identity stability instead, and that choice has to reach the
+    payload rather than being accepted and ignored."""
+    m = board_ready(media_bucket)
+    shot = m["shots"][0]
+    assert BOARD.shot_args(m, shot, REG.get("kling"), _opts()).character == ()
+
+    shot["motion"]["references"].update(characters=["subject-a"], pick_tag="face")
+    args = BOARD.shot_args(m, shot, REG.get("kling"), _opts())
+    assert args.character == ("subject-a",)
+    assert args.pick_tag == "face"
