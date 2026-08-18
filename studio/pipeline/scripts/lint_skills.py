@@ -145,6 +145,44 @@ def check_links(skill: pathlib.Path, text: str) -> list[str]:
             if not (skill.parent / t).resolve().exists()]
 
 
+# Anything that looks like a skill name, anywhere. `<` is excluded so the
+# placeholder form `studio-media-<key>` is not read as a skill called `<key>`.
+_SKILL_REF = re.compile(r"\bstudio-(?:media|code)-[a-z0-9][a-z0-9-]*(?<!-)")
+_SKIP_DIRS = {".venv", "node_modules", "dist", ".git", "__pycache__", ".pytest_cache"}
+_SKIP_SUFFIX = {".png", ".jpg", ".jpeg", ".webp", ".mp4", ".ico", ".lock", ".pyc"}
+
+
+def check_references(skills: set[str]) -> dict[str, list[str]]:
+    """Every `studio-media-*` / `studio-code-*` mentioned anywhere must exist.
+
+    The other checks only read the skills themselves, which is how renaming the
+    families left stale names in `.env.example` and `infra/README.md` — files
+    nothing thought to look at. A skill name is a cross-repo reference, so it
+    gets checked across the repo.
+    """
+    root = studio_pipeline.STUDIO_DIR
+    # The root `studio` router skill names both families to route into them, so
+    # it rots the same way if a family is ever renamed. Scan it too.
+    roots = [root, root.parent / "CLAUDE.md", root.parent / ".github" / "workflows",
+             root.parent / ".claude" / "skills" / "studio"]
+    stale: dict[str, list[str]] = {}
+    for base in roots:
+        files = [base] if base.is_file() else [
+            f for f in base.rglob("*")
+            if f.is_file() and f.suffix not in _SKIP_SUFFIX
+            and not _SKIP_DIRS & set(f.parts)
+        ]
+        for f in files:
+            try:
+                text = f.read_text()
+            except (UnicodeDecodeError, OSError):
+                continue
+            for ref in sorted(set(_SKILL_REF.findall(text))):
+                if ref not in skills:
+                    stale.setdefault(str(f.relative_to(root.parent)), []).append(ref)
+    return stale
+
+
 def main(verbose: bool = False) -> int:
     skills = sorted(SKILLS_DIR.glob("*/SKILL.md"))
     if not skills:
@@ -175,6 +213,9 @@ def main(verbose: bool = False) -> int:
             failures[name] = problems
         elif verbose:
             print(f"  ok  {name} ({family})")
+
+    for where, refs in check_references({s.parent.name for s in skills}).items():
+        failures[where] = [f"names a skill that does not exist: {r}" for r in refs]
 
     if failures:
         print(f"\n{len(failures)} skill(s) out of step with the CLI:\n", file=sys.stderr)

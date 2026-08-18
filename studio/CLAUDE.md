@@ -142,10 +142,11 @@ reaching for the AWS CLI, that is the signal you skipped the skill.
 `studio --help` lists the whole command surface and is the fastest correction
 when you are unsure a command exists.
 
-> The app half (`backend/`, `frontend/`) has no skill of its own yet —
-> `studio-code-pipeline` covers the pipeline, and
-> [docs/WEB_APP.md](docs/WEB_APP.md) covers the deployed service. Add
-> `studio-code-app` when it earns one.
+> The app half (`backend/`, `frontend/`) has no skill of its own yet.
+> `studio-code-pipeline` covers the pipeline; for the deployed service read
+> [docs/WEB_APP.md](docs/WEB_APP.md) directly. A second `studio-code-*` skill
+> can be added when one earns its place — the linter rejects any skill outside
+> the two families, so the prefix is not optional.
 
 ### The `studio-media-*` skills
 

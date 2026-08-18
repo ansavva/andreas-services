@@ -80,8 +80,10 @@ README for limiting sentences and flags any that name a live schema value as a
 
 ## Writing the model's skill page
 
-Create `studio-<key>/SKILL.md`, where `<key>` is the registry key with dots
-replaced by dashes. **Read two or three existing model skills first** —
+Create `studio-media-<key>/SKILL.md`, where `<key>` is the registry key with
+dots replaced by dashes. The `studio-media-` prefix is not optional — it is the
+family for using the pipeline, it is what `add-model` records in the registry's
+`skill` field, and a directory outside either family fails the skills linter. **Read two or three existing model skills first** —
 `studio-media-kling`, `studio-media-gpt-image-2` and `studio-media-nano-banana-pro` are the fullest
 — and match their shape. They are the specification; this list is the checklist.
 
@@ -131,6 +133,6 @@ costs at most a retry.
 
 ## Retiring a model
 
-Delete its entry from `models.json` and its `studio-<name>/` directory. Past
+Delete its entry from `models.json` and its `studio-media-<name>/` directory. Past
 runs are unaffected: `runs/` is append-only history and records the Replicate
 model id, so an unregistered model still reads back as its raw id.
