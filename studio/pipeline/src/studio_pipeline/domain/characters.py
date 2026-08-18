@@ -765,6 +765,9 @@ def cmd_add_refs(files, name, from_run, project, replace, start, to):
     report = sync_index(s3, name)
     if described:
         _describe_from_spec(s3, name, described)
+        # `report` was taken before the descriptions were written, so without
+        # this the warning below names the very images just described.
+        report["undescribed"] = [f for f in report["undescribed"] if f not in described]
     if report["undescribed"]:
         print(f"  {len(report['undescribed'])} reference image(s) have no description yet. "
               f"An undescribed image cannot be picked by tag and is invisible to whoever "
