@@ -4270,6 +4270,70 @@
   "scenes": {
     "arguments": {},
     "commands": {
+      "assemble": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "dest": {
+            "choices": null,
+            "default": null,
+            "dest": "dest",
+            "flag": false,
+            "flags": [
+              "--dest"
+            ],
+            "help": "also keep the stitched file locally",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "shot": {
+            "choices": null,
+            "default": null,
+            "dest": "shot",
+            "flag": false,
+            "flags": [
+              "--shot"
+            ],
+            "help": "a run output to append, in cut order. Repeatable. Accepts <project>/<run_id>, <run_id>, a unique slug fragment, or #N.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
       "list": {
         "arguments": {
           "project": {
@@ -4305,15 +4369,30 @@
         },
         "commands": {},
         "options": {
-          "dest": {
+          "force": {
+            "choices": null,
+            "default": false,
+            "dest": "force",
+            "flag": true,
+            "flags": [
+              "--force"
+            ],
+            "help": "revise an existing scene, carrying its runs and panels across",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "from_json": {
             "choices": null,
             "default": null,
-            "dest": "dest",
+            "dest": "from_json",
             "flag": false,
             "flags": [
-              "--dest"
+              "--from-json"
             ],
-            "help": "also keep the stitched file locally",
+            "help": "the plan: shots, panels and the motion that carries them",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -4343,8 +4422,8 @@
             "flags": [
               "--shot"
             ],
-            "help": "a run output, in cut order. Repeatable. Accepts <project>/<run_id>, <run_id>, a unique slug fragment, or #N.",
-            "hidden": false,
+            "help": "",
+            "hidden": true,
             "multiple": true,
             "nargs": 1,
             "required": false,
@@ -4363,6 +4442,21 @@
             "multiple": false,
             "nargs": 1,
             "required": true,
+            "type": "str"
+          },
+          "title": {
+            "choices": null,
+            "default": "",
+            "dest": "title",
+            "flag": false,
+            "flags": [
+              "--title"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
             "type": "str"
           }
         }
@@ -4413,6 +4507,119 @@
             "nargs": 0,
             "required": false,
             "type": "bool"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "plan": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "sheet": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "cell": {
+            "choices": null,
+            "default": 320,
+            "dest": "cell",
+            "flag": false,
+            "flags": [
+              "--cell"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "cols": {
+            "choices": null,
+            "default": 4,
+            "dest": "cols",
+            "flag": false,
+            "flags": [
+              "--cols"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "out": {
+            "choices": null,
+            "default": null,
+            "dest": "out",
+            "flag": false,
+            "flags": [
+              "--out"
+            ],
+            "help": "where to write the sheet (default: a temp directory)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
           },
           "project": {
             "choices": null,

@@ -20,7 +20,9 @@ from __future__ import annotations
 import json
 
 import pytest
+from click.testing import CliRunner
 
+from studio_pipeline import cli
 from studio_pipeline.adapters.s3 import BUCKET
 from studio_pipeline.domain import movies as MOV
 from studio_pipeline.domain import scenes as SC
@@ -28,6 +30,25 @@ from studio_pipeline.domain import storyboard as SB
 
 LEGACY = "2026-08-16_07-40-22_old-cut"
 PLANNED = "board-test"
+
+
+def run(*argv):
+    return CliRunner().invoke(cli.main, list(argv))
+
+
+def write_plan(tmp_path, **over):
+    plan = {
+        "defaults": {"model": "kling", "panel_model": "nano-banana-pro", "duration": 5},
+        "shots": [
+            {"id": "opening", "beat": "it opens",
+             "panels": [{"prompt": "the opening frame"}],
+             "motion": {"prompt": "it moves"}},
+        ],
+    }
+    plan.update(over)
+    path = tmp_path / "plan.json"
+    path.write_text(json.dumps(plan))
+    return str(path)
 
 
 # --- addressing ------------------------------------------------------------
@@ -162,6 +183,116 @@ def test_the_stored_plan_survives_a_round_trip_through_the_rules(media_bucket):
         ("projects/subject-a/scenes/board-test/storyboard/shot-01-p1.png",
          "shot-01 p1 [start]"),
     ]
+
+
+# --- starting and revising a scene -----------------------------------------
+
+def test_new_writes_a_scene_keyed_by_slug_with_no_timestamp(media_bucket, tmp_path):
+    r = run("scenes", "new", "subject-a", "--slug", "fresh",
+            "--from-json", write_plan(tmp_path))
+    assert r.exit_code == 0, r.output
+
+    keys = [o["Key"] for o in media_bucket.list_objects_v2(
+        Bucket=BUCKET, Prefix="projects/subject-a/scenes/fresh/")["Contents"]]
+    assert keys == ["projects/subject-a/scenes/fresh/scene.json"]
+
+    m = SC.read_manifest(media_bucket, "subject-a", "fresh")
+    assert m["scene"] == "subject-a/fresh"
+    assert m["status"] == "planned" and m["output"] is None
+    assert m["shots"][0]["id"] == "opening"
+
+
+def test_new_refuses_a_slug_shaped_like_a_run_id(media_bucket, tmp_path):
+    r = run("scenes", "new", "subject-a", "--slug", "2026-08-16_07-40-22_x",
+            "--from-json", write_plan(tmp_path))
+    assert r.exit_code == 1
+    assert "run id" in r.output
+
+
+def test_new_refuses_to_overwrite_a_scene_and_says_how_to_revise_it(media_bucket, tmp_path):
+    r = run("scenes", "new", "subject-a", "--slug", PLANNED,
+            "--from-json", write_plan(tmp_path))
+    assert r.exit_code == 1
+    assert "--force" in r.output
+
+
+def test_revising_carries_recorded_work_across(media_bucket, tmp_path):
+    """The whole reason `--force` merges instead of replacing: a clip already
+    paid for must not disappear because its beat was reworded."""
+    m = SC.read_manifest(media_bucket, "subject-a", PLANNED)
+    m["shots"][0]["run"] = "subject-a/2026-08-04_21-30-54_wave-porch"
+    SC.write_manifest(media_bucket, m)
+
+    plan = {"defaults": m["defaults"],
+            "shots": [{"id": "shot-01", "beat": "reworded",
+                       "panels": [{"prompt": "the opening frame"}],
+                       "motion": {"prompt": "the opening motion"}}]}
+    path = tmp_path / "revised.json"
+    path.write_text(json.dumps(plan))
+
+    r = run("scenes", "new", "subject-a", "--slug", PLANNED,
+            "--from-json", str(path), "--force")
+    assert r.exit_code == 0, r.output
+
+    back = SC.read_manifest(media_bucket, "subject-a", PLANNED)
+    assert back["shots"][0]["beat"] == "reworded"
+    assert back["shots"][0]["run"] == "subject-a/2026-08-04_21-30-54_wave-porch"
+    assert back["shots"][0]["panels"][0]["key"].endswith("shot-01-p1.png")
+
+
+def test_new_redirects_the_old_assembling_spelling(media_bucket):
+    """`--shot` used to cut a scene here. A silent 'no such option' on a command
+    that still exists reads as a broken install, so it answers with the move."""
+    r = run("scenes", "new", "subject-a", "--slug", "fresh",
+            "--shot", "subject-a/wave-porch")
+    assert r.exit_code == 1
+    assert "scenes assemble subject-a/fresh --shot subject-a/wave-porch" in r.output
+
+
+# --- assembling ------------------------------------------------------------
+
+def test_assemble_refuses_a_scene_that_is_not_there(media_bucket):
+    r = run("scenes", "assemble", "subject-a/board-test", "--project", "subject-a")
+    assert r.exit_code != 0
+
+
+def test_assemble_names_the_shots_that_have_not_been_rendered(media_bucket):
+    r = run("scenes", "assemble", f"subject-a/{PLANNED}")
+    assert r.exit_code == 1
+    assert "shot-01, shot-02" in r.output
+    assert "studio scenes render" in r.output
+
+
+def test_assemble_refuses_a_scene_with_nothing_in_it(media_bucket, tmp_path):
+    run("scenes", "new", "subject-a", "--slug", "empty-scene")
+    r = run("scenes", "assemble", "subject-a/empty-scene")
+    assert r.exit_code == 1
+    assert "no shots" in r.output
+
+
+# --- reading the board -----------------------------------------------------
+
+def test_plan_marks_which_panels_exist(media_bucket):
+    r = run("scenes", "plan", f"subject-a/{PLANNED}")
+    assert r.exit_code == 0, r.output
+    assert "*p1[start]" in r.output, "a landed panel"
+    assert "-p1[start]" in r.output, "one that has not been rendered"
+    assert "[boarding]" in r.output
+
+
+def test_sheet_refuses_a_board_with_no_panels(media_bucket, tmp_path):
+    run("scenes", "new", "subject-a", "--slug", "unboarded",
+        "--from-json", write_plan(tmp_path))
+    r = run("scenes", "sheet", "subject-a/unboarded")
+    assert r.exit_code != 0
+    assert "studio scenes board" in r.output
+
+
+def test_sheet_builds_a_captioned_grid_of_the_panels(media_bucket, tmp_path):
+    out = tmp_path / "board"
+    r = run("scenes", "sheet", f"subject-a/{PLANNED}", "--out", str(out))
+    assert r.exit_code == 0, r.output
+    assert (out / "board-test-board.png").is_file()
 
 
 def test_the_second_shot_expects_a_handoff_and_does_not_have_one_yet(media_bucket):
