@@ -192,7 +192,7 @@ def _age_text(profile: dict) -> str:
     return " ".join(str((profile.get("identity") or {}).get("apparent_age") or "").split())
 
 
-def _build_text(profile: dict) -> str:
+def _build_text(profile: dict, group: str = "body") -> str:
     """The person's PROPORTIONS, for a body plate — from the bible, never here.
 
     A body plate exists to record a build, and the first one rendered lost it:
@@ -207,9 +207,23 @@ def _build_text(profile: dict) -> str:
     `body.silhouette` — a ratio, in head-widths — and `body.arms`. This reads
     them out; the wording stays generic because the specifics belong to the
     character (hard rule 1).
+
+    WHICH FIELDS, AND WHY IT DEPENDS ON THE GROUP
+    It began as `silhouette` + `arms`, which left four of the bible's six body
+    fields unread — including `body_hair`, written expressly to defeat the
+    smooth fitness-model default a model renders when nobody says otherwise.
+    Unused, on the one plate that strips the wardrobe back to shorts.
+
+    A face plate crops at mid-chest, so legs and body hair are not in frame and
+    would be noise; it takes what shows above the crop. A body plate is the
+    whole figure and takes everything. Same split as `must_intro_face` /
+    `must_intro_body`, for the same reason.
     """
     body = profile.get("body") or {}
-    parts = [str(body.get(k) or "").strip() for k in ("silhouette", "arms")]
+    fields = ("silhouette", "chest_and_shoulders", "neck", "arms")
+    if group != "face":
+        fields += ("lower_body_and_hands", "body_hair")
+    parts = [str(body.get(k) or "").strip() for k in fields]
     return " ".join(" ".join(p.split()) for p in parts if p)
 
 
@@ -253,7 +267,7 @@ def build_prompt(slot: dict, spec: dict, profile: dict,
         "top": _first_top(profile),
         "style": _style_text(profile, defaults),
         "must": _must_text(profile, intro),
-        "build": _build_text(profile),
+        "build": _build_text(profile, slot["group"]),
         "age": _age_text(profile),
         "identity_block": (profile.get("text_identity_block") or "").strip(),
         "pose_slot": f"[Image{pose_position}]",

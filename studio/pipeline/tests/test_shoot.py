@@ -213,6 +213,32 @@ def test_a_plate_wears_the_bibles_stated_colour_when_it_has_one():
     assert "plain white ribbed tank top" in plain
 
 
+def test_a_body_plate_gets_the_whole_body_block_and_a_face_plate_does_not():
+    """Four of the bible's six body fields were never read.
+
+    `_build_text` began as silhouette + arms, which left `chest_and_shoulders`,
+    `neck`, `lower_body_and_hands` and `body_hair` unused — the last of those
+    written expressly to defeat the smooth fitness-model default a generator
+    produces when nobody says otherwise, and unused on the one plate that
+    strips the wardrobe back to shorts.
+
+    A face plate crops at mid-chest, so legs and body hair are not in frame and
+    would only be noise; it takes what shows above the crop.
+    """
+    profile = {"body": {
+        "silhouette": "SIL.", "chest_and_shoulders": "CHEST.", "neck": "NECK.",
+        "arms": "ARMS.", "lower_body_and_hands": "LEGS.", "body_hair": "HAIR."}}
+    body = SHOOT._build_text(profile, "body")
+    face = SHOOT._build_text(profile, "face")
+    for part in ("SIL.", "CHEST.", "NECK.", "ARMS."):
+        assert part in body and part in face, part
+    for part in ("LEGS.", "HAIR."):
+        assert part in body, f"a body plate must carry {part}"
+        assert part not in face, f"a face plate must not carry {part}"
+    # A bible missing any of them still renders.
+    assert SHOOT._build_text({"body": {"arms": "ARMS."}}, "body") == "ARMS."
+
+
 def test_the_build_text_comes_from_the_bible_not_the_spec(spec):
     """Hard rule 1: proportions are character specifics, so the spec may only
     name the placeholder. A bible with no `body:` block must still render."""
