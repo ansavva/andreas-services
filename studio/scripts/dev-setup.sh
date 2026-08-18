@@ -2,9 +2,15 @@
 #
 # dev-setup.sh — install the prerequisites the studio generation skills need.
 #
-# This is for the LOCAL half of studio: the skills under studio/.claude/skills/
-# that run inside Claude on your machine. The deployed half (backend/, frontend/)
-# is built by CI and needs nothing from here.
+# This is mainly for the LOCAL half of studio: the skills under
+# studio/.claude/skills/ that run inside Claude on your machine.
+#
+# It is not *only* that half, and the difference matters. CI builds the deployed
+# half, but a person or an agent working on it locally still needs the parts CI
+# gets for free: frontend/.env.local (step 3) and frontend/node_modules (step 4).
+# This header used to claim the deployed half "needs nothing from here", which
+# read as a scope boundary and left those prerequisites owned by no script at
+# all — the reason a clean checkout reported `tsc: not found`.
 #
 # The only hard requirement is `uv`. The pipeline itself is one package
 # (studio/pipeline) with one dependency set, exposing one command: `studio`.
@@ -178,7 +184,95 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Report optional external tools (never fatal — platform dependent).
+# 4. Install the frontend's node_modules.
+#
+#    Nothing else does, and that is what a fresh checkout trips over. `dev-up.sh`
+#    goes straight to `npm run dev`, CI does its own `npm ci`, and a laptop that
+#    ran `npm install` once by hand looks fine forever — so the gap is invisible
+#    on exactly the machines it does not affect. On a clean clone or a cloud
+#    agent's worktree the first symptom is `tsc: not found`, because `tsc` is a
+#    local devDependency and `node_modules/.bin` is where it lives. So is eslint,
+#    and so is vite. There is no global TypeScript to fall back on and there
+#    should not be one.
+#
+#    `@ansavva/design-system` comes from GitHub Packages, which has no anonymous
+#    read, so the install needs a `read:packages` token in NODE_AUTH_TOKEN — the
+#    committed `frontend/.npmrc` already reads it from there. The monorepo
+#    already has one script that resolves such a token from a PAT or from `gh`;
+#    studio simply never called it. Use it rather than adding a second mechanism.
+#
+#    Never fatal: the SessionStart hook runs this file, the pipeline half needs
+#    none of it, and a session must not fail to start over a frontend the task
+#    may never touch. A warning that names the fix is the useful outcome.
+# ---------------------------------------------------------------------------
+FRONTEND="$STUDIO_DIR/frontend"
+AUTH_SCRIPT="$STUDIO_DIR/../scripts/github-packages-auth.sh"
+
+# Up to date when node_modules' own lockfile is at least as new as the repo's.
+# npm writes node_modules/.package-lock.json on every install, so this is the
+# cheap check that makes running on every session free.
+frontend_is_current() {
+  [ -d "$FRONTEND/node_modules" ] &&
+    [ -f "$FRONTEND/node_modules/.package-lock.json" ] &&
+    [ ! "$FRONTEND/package-lock.json" -nt "$FRONTEND/node_modules/.package-lock.json" ]
+}
+
+if ! command -v npm >/dev/null 2>&1; then
+  warn "npm is missing — skipping frontend deps. The shared installer has it:"
+  warn "  ./scripts/dev-setup.sh (repo root)"
+elif frontend_is_current; then
+  log "frontend node_modules already current"
+else
+  # `--check` FIRST, and never a bare `--export`. In its ensure and export modes
+  # that script falls through to `gh auth refresh --scopes read:packages`, which
+  # is INTERACTIVE — it prompts and waits for a browser flow. The SessionStart
+  # hook runs this file, so calling it that way hangs the start of every session
+  # on any machine without a token. Measured, not feared: it blocked for seven
+  # minutes here before being killed.
+  #
+  # `--check` only inspects env vars, needs no input and exits non-zero quickly.
+  # Once it passes, `--export` resolves from that same env var and returns
+  # without ever reaching gh. The interactive path stays available to a person,
+  # which is where a prompt belongs — it is the remedy printed below.
+  # A developer machine usually already has the scope on its `gh` login, but
+  # `--check` reads only env vars and would miss it, warning at someone who is
+  # perfectly well authenticated. So hand gh's existing token to `--check` as one
+  # of the variables it does read. Reading a token is not refreshing one: this
+  # never prompts, and `--check` still verifies the token can actually read the
+  # package rather than trusting it.
+  if [ -z "${GITHUB_PACKAGES_TOKEN:-}" ] && command -v gh >/dev/null 2>&1; then
+    gh_existing="$(gh auth token 2>/dev/null || true)"
+    [ -n "$gh_existing" ] && export GITHUB_PACKAGES_TOKEN="$gh_existing"
+    unset gh_existing
+  fi
+
+  if [ -x "$AUTH_SCRIPT" ] && "$AUTH_SCRIPT" --check >/dev/null 2>&1; then
+    eval "$("$AUTH_SCRIPT" --export 2>/dev/null || true)"
+    log "GitHub Packages read access confirmed"
+  fi
+
+  if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+    warn "no read:packages token, so @ansavva/design-system cannot be installed."
+    warn "  Fix it with either of these, then re-run this script:"
+    warn "    ./scripts/github-packages-auth.sh                      # interactive, via gh"
+    warn "    export GITHUB_PACKAGES_TOKEN=<PAT with read:packages>  # CI / cloud agent"
+    warn "  Until then 'npm run typecheck', 'npm run lint' and 'npm run dev' all"
+    warn "  fail with a missing binary — tsc, eslint and vite are all local."
+  else
+    log "installing frontend node_modules (npm ci)..."
+    # `npm ci` rather than `install`: it is what CI runs, and it refuses to
+    # silently rewrite package-lock.json underneath a dev environment.
+    if (cd "$FRONTEND" && npm ci --no-audit --no-fund >/dev/null 2>&1); then
+      log "frontend node_modules installed"
+    else
+      warn "npm ci failed in studio/frontend. Re-run it directly to see why:"
+      warn "  cd studio/frontend && npm ci"
+    fi
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 5. Report optional external tools (never fatal — platform dependent).
 # ---------------------------------------------------------------------------
 if command -v ffmpeg >/dev/null 2>&1; then
   log "optional tool found: ffmpeg"

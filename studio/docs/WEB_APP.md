@@ -496,8 +496,11 @@ get-caller-identity` succeeding tells you nothing about whether boto3 can see
 credentials — export them. Same split the root `CLAUDE.md` documents for
 Terraform's provider.
 
-Copy `frontend/.env.local.example → .env.local` and fill in the Cognito ids from
-the prod outputs, or the app shows "Auth is not configured".
+`dev-setup.sh` writes `frontend/.env.local` from SSM and installs
+`frontend/node_modules` — do not hand-copy the example or hand-edit the result;
+the generated file says as much in its own header. Without the env file the app
+shows "Auth is not configured"; without node_modules every local binary is
+missing, and the first one you hit is `tsc: not found`.
 
 ## Creating users
 
