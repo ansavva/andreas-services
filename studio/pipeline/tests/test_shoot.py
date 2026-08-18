@@ -75,21 +75,47 @@ def test_every_pose_image_exists_in_the_repo(spec):
     assert not missing, f"pose plate(s) not in studio/config/: {missing}"
 
 
-def test_both_three_quarters_exist_and_face_opposite_ways(spec):
+def test_opposite_slots_carry_opposite_frame_directions(spec):
     """The defect this standard exists to prevent, asserted.
 
-    A live reference set had two "three-quarter" face frames that turned the same
-    way — coverage on paper, one angle in fact.
+    A live set had two "three-quarter" face frames turned the same way, and the
+    first shoot reproduced it — because the prompt said "turned to THEIR LEFT so
+    the viewer sees the LEFT side of the face", which instructs two opposite
+    rotations at once. Direction is now stated only as the edge of frame the
+    face points toward, so a slot and its twin must name opposite edges.
     """
+    by_id = {s["id"]: s for s in spec["slots"]}
     for group in P.POSE_GROUPS:
-        ids = {s["id"] for s in spec["slots"] if s["group"] == group}
-        assert f"{group}_three_quarter_left" in ids
-        assert f"{group}_three_quarter_right" in ids
+        for pair in ("three_quarter", "profile", "three_quarter_back"):
+            left, right = f"{group}_{pair}_left", f"{group}_{pair}_right"
+            assert left in by_id and right in by_id, f"{group} is missing {pair} pair"
+            assert "LEFT edge" in by_id[left]["prompt"], left
+            assert "RIGHT edge" not in by_id[left]["prompt"], left
+            assert "RIGHT edge" in by_id[right]["prompt"], right
+            assert "LEFT edge" not in by_id[right]["prompt"], right
+
+
+def test_no_prompt_describes_direction_from_the_subjects_own_side(spec):
+    """"Their left" is unresolvable without also knowing what the viewer sees,
+    and pairing the two is how the contradiction got in. Frame edges only."""
     for slot in spec["slots"]:
-        if slot["id"].endswith("_three_quarter_left"):
-            assert "THEIR LEFT" in slot["prompt"]
-        if slot["id"].endswith("_three_quarter_right"):
-            assert "THEIR RIGHT" in slot["prompt"]
+        text = slot["prompt"].lower()
+        for banned in ("their left", "their right", "his left", "his right"):
+            assert banned not in text, f"{slot['id']} says {banned!r}"
+
+
+def test_every_face_slot_states_the_crop(spec):
+    """"Head-and-shoulders studio portrait" did not bind — one slot came back as
+    a full-body figure and framing drifted wider slot by slot."""
+    for slot in spec["slots"]:
+        if slot["group"] == "face":
+            assert "CROPPED AT MID-CHEST" in slot["prompt"], slot["id"]
+            assert "no legs" in slot["prompt"], slot["id"]
+
+
+def test_the_set_covers_eight_orientations_in_both_groups(spec):
+    for group in P.POSE_GROUPS:
+        assert len([s for s in spec["slots"] if s["group"] == group]) == 8
 
 
 def test_every_body_slot_demands_the_whole_figure(spec):

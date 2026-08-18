@@ -322,9 +322,16 @@ When in doubt, render the payload into the conversation and stop.
 ## The standard set (`shoot`)
 
 A reference library is chosen from **by tag**, so an angle nobody shot is an angle
-nobody can pick. `shoot` renders the same nine every character should have — four
-`face` (front, both three-quarters, profile) and five `body` (front, both
-three-quarters, profile, back), each full figure head to feet.
+nobody can pick. `shoot` renders the same sixteen every character should have —
+eight `face` and the same eight `body`, a full turn in both: front, three-quarter
+and profile to each side, both three-quarter-backs, and back. Face slots are
+cropped at mid-chest; body slots are the whole figure, head to feet.
+
+**Direction is always the edge of frame the face points toward**, never the
+subject's own left or right. `three_quarter_left` means the nose points at the
+left edge. This is not pedantry: the wording it replaced said "turned to THEIR
+LEFT so the viewer sees the LEFT side of the face", which instructs two opposite
+rotations at once, and both three-quarters duly came back facing the same way.
 
 Each is one recorded run built from three things: a **pose plate** (a generic,
 anonymous, untextured figure that says only how to stand), the character's **seed
@@ -332,7 +339,7 @@ photographs** (who it is), and a prompt filled from the character's own bible �
 its usual top, and every cue in `consistency.must`.
 
 ```bash
-studio character shoot <name> --project <project> --dry-run   # nine payloads, no spend
+studio character shoot <name> --project <project> --dry-run   # sixteen payloads, no spend
 studio character shoot <name> --project <project>             # shows them, then asks
 studio character shoot <name> --project <project> --group face
 studio character shoot <name> --project <project> --slot body_back   # re-shoot one
@@ -354,6 +361,9 @@ studio character shoot <name> --project <project> --slot body_back   # re-shoot 
 - **`--model` overrides the engine** for every slot; the spec's defaults are
   chosen so any registered image model accepts them. A dry run preflights the
   override, so a model that would refuse it costs nothing to find out.
+- **`--review-sheet DIR` shows the images each payload sends**, captioned
+  `[ImageN]` in the order the model receives them. A key is a name; a name is not
+  a look, and the mistakes that matter here are visual.
 - The pose plates live in the repo under `studio/config/` and are copied to the
   bucket by `studio/scripts/dev-setup.sh`. If a shoot says one is missing, re-run
   that script.

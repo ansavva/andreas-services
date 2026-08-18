@@ -93,131 +93,184 @@ per_model:
 
 # ── the slots ───────────────────────────────────────────────────────────────
 #
-# face: head and shoulders, one consistent plain top, neutral mouth. Four
-# angles, and the two three-quarters face OPPOSITE ways — a set with both turned
-# the same way looks like coverage and is not.
+# EIGHT orientations, the same eight for face and for body, one per pose plate:
+# front, three-quarter and profile to each side, both three-quarter-backs, and
+# back. A `-left` slot and its `-right` twin must face OPPOSITE ways — a live
+# set once had two "three-quarter" frames turned the same way, which looks like
+# coverage and is not.
 #
-# body: full figure, head to feet, minimal clothing so the silhouette reads.
-# Five angles around the subject. Every body prompt says "head to feet" because
-# a mid-thigh crop is the failure that actually happens.
+# Direction is always stated as the edge of frame the face points toward, never
+# as the subject's own left or right. The wording it replaced said "turned to
+# THEIR LEFT so the viewer sees the LEFT side of the face", which instructs two
+# opposite rotations in one sentence — and both three-quarters duly came back
+# facing the same way.
+#
+# face: head and shoulders, cropped at mid-chest. The crop is spelled out on
+# every slot because "head-and-shoulders studio portrait" did not hold: one slot
+# returned a full-body figure and the framing drifted wider slot by slot.
+#
+# body: the whole figure head to feet, minimal clothing so the silhouette reads.
+# "HEAD TO FEET IN FRAME including both feet" is likewise explicit, because a
+# mid-thigh crop is the failure that actually happens.
 
 slots:
+  # ── face ──────────────────────────────────────────────────────────────
   - id: face_front
     group: face
     pose_image: config/pose/face/front.png
     description: >-
-      Head and shoulders, front on, squared to camera, looking straight down the
-      lens, neutral expression, grey studio backdrop.
+      Head and shoulders, front on, looking straight down the lens, neutral expression, grey studio backdrop.
     tags: [face, front, neutral, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
-      A head-and-shoulders studio portrait of the person, front on, shoulders
-      squared to camera, looking straight down the lens. Neutral expression,
-      mouth closed, eyes open and level. {top}. {backdrop_face} {light} {style} {quality}
-      {must}
-
-  - id: face_three_quarter_left
-    group: face
-    pose_image: config/pose/face/three-quarter-left.png
-    description: >-
-      Head and shoulders, three-quarter turned to his left, eyes to camera,
-      grey studio backdrop.
-    tags: [face, three-quarter, left, neutral, studio]
-    prompt: >-
-      {identity_slots} show the person. {pose_slot} {guide}
-      A head-and-shoulders studio portrait of the person, head and shoulders
-      turned about 45 degrees to THEIR LEFT so the viewer sees the left side of
-      the face, eyes returning to the lens. Neutral expression, mouth closed.
-      {top}. {backdrop_face} {light} {style} {quality} {must}
+      A studio portrait of the person, front on, squared to the camera, looking straight down the lens. Neutral expression, mouth
+      closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
+      no hips and no legs anywhere in the frame. {top}. {backdrop_face}
+      {light} {style} {quality} {must}
 
   - id: face_three_quarter_right
     group: face
     pose_image: config/pose/face/three-quarter-right.png
     description: >-
-      Head and shoulders, three-quarter turned to his right, eyes to camera,
-      grey studio backdrop.
-    tags: [face, three-quarter, right, neutral, studio]
+      Head and shoulders, face turned toward the right edge of frame, eyes to camera, grey studio backdrop.
+    tags: [face, three-quarter, right, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
-      A head-and-shoulders studio portrait of the person, head and shoulders
-      turned about 45 degrees to THEIR RIGHT so the viewer sees the right side
-      of the face, eyes returning to the lens. Neutral expression, mouth closed.
-      {top}. {backdrop_face} {light} {style} {quality} {must}
+      A studio portrait of the person, turned about 45 degrees so the nose points toward the RIGHT edge of the frame, eyes returning to the lens. Neutral expression, mouth
+      closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
+      no hips and no legs anywhere in the frame. {top}. {backdrop_face}
+      {light} {style} {quality} {must}
 
-  # Profiles face frame RIGHT, here and in the body group. One direction, so a
-  # profile plate and a profile prompt can never disagree about which way the
-  # nose points.
-  - id: face_profile
+  - id: face_profile_right
     group: face
-    pose_image: config/pose/face/profile.png
+    pose_image: config/pose/face/profile-right.png
     description: >-
-      Head and shoulders in full profile facing frame right, grey studio backdrop.
-    tags: [face, profile, neutral, studio]
+      Head and shoulders in full profile, face toward the right edge of frame, grey studio backdrop.
+    tags: [face, profile, right, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
-      A head-and-shoulders studio portrait of the person in FULL PROFILE, head
-      turned 90 degrees to face frame right, gaze level and straight ahead, not
-      at the lens. Neutral expression, mouth closed. The nose, brow and jaw line
-      read clearly against the backdrop. {top}. {backdrop_face} {light} {style} {quality}
-      {must}
+      A studio portrait of the person, in FULL PROFILE, turned 90 degrees so the nose points directly at the RIGHT edge of the frame, gaze level and straight ahead. Neutral expression, mouth
+      closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
+      no hips and no legs anywhere in the frame. {top}. {backdrop_face}
+      {light} {style} {quality} {must}
 
+  - id: face_three_quarter_back_right
+    group: face
+    pose_image: config/pose/face/three-quarter-back-right.png
+    description: >-
+      Head and shoulders from behind at three-quarters, face just off the right edge of view, grey studio backdrop.
+    tags: [face, three-quarter, back, right, studio]
+    prompt: >-
+      {identity_slots} show the person. {pose_slot} {guide}
+      A studio portrait of the person, turned about 135 degrees away, seen mostly from behind, the face just off the RIGHT edge of view. Neutral expression, mouth
+      closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
+      no hips and no legs anywhere in the frame. {top}. {backdrop_face}
+      {light} {style} {quality} {must}
+
+  - id: face_back
+    group: face
+    pose_image: config/pose/face/back.png
+    description: >-
+      Head and shoulders straight from behind, the back of the head to the lens, grey studio backdrop.
+    tags: [face, back, studio]
+    prompt: >-
+      {identity_slots} show the person. {pose_slot} {guide}
+      A studio portrait of the person, directly away from the camera, the back of the head to the lens. Neutral expression, mouth
+      closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
+      no hips and no legs anywhere in the frame. {top}. {backdrop_face}
+      {light} {style} {quality} {must}
+
+  - id: face_three_quarter_back_left
+    group: face
+    pose_image: config/pose/face/three-quarter-back-left.png
+    description: >-
+      Head and shoulders from behind at three-quarters, face just off the left edge of view, grey studio backdrop.
+    tags: [face, three-quarter, back, left, studio]
+    prompt: >-
+      {identity_slots} show the person. {pose_slot} {guide}
+      A studio portrait of the person, turned about 135 degrees away, seen mostly from behind, the face just off the LEFT edge of view. Neutral expression, mouth
+      closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
+      no hips and no legs anywhere in the frame. {top}. {backdrop_face}
+      {light} {style} {quality} {must}
+
+  - id: face_profile_left
+    group: face
+    pose_image: config/pose/face/profile-left.png
+    description: >-
+      Head and shoulders in full profile, face toward the left edge of frame, grey studio backdrop.
+    tags: [face, profile, left, studio]
+    prompt: >-
+      {identity_slots} show the person. {pose_slot} {guide}
+      A studio portrait of the person, in FULL PROFILE, turned 90 degrees so the nose points directly at the LEFT edge of the frame, gaze level and straight ahead. Neutral expression, mouth
+      closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
+      no hips and no legs anywhere in the frame. {top}. {backdrop_face}
+      {light} {style} {quality} {must}
+
+  - id: face_three_quarter_left
+    group: face
+    pose_image: config/pose/face/three-quarter-left.png
+    description: >-
+      Head and shoulders, face turned toward the left edge of frame, eyes to camera, grey studio backdrop.
+    tags: [face, three-quarter, left, studio]
+    prompt: >-
+      {identity_slots} show the person. {pose_slot} {guide}
+      A studio portrait of the person, turned about 45 degrees so the nose points toward the LEFT edge of the frame, eyes returning to the lens. Neutral expression, mouth
+      closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
+      no hips and no legs anywhere in the frame. {top}. {backdrop_face}
+      {light} {style} {quality} {must}
+
+  # ── body ──────────────────────────────────────────────────────────────
   - id: body_front
     group: body
     pose_image: config/pose/body/front.png
     description: >-
-      Full body head to feet, front on, arms relaxed at the sides, white
-      seamless backdrop.
-    tags: [body, front, full-body, studio]
+      Full body head to feet, front on, arms relaxed at the sides, white seamless backdrop.
+    tags: [body, front, neutral, full-body, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
-      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD
-      TO FEET IN FRAME including both feet, standing front on, shoulders squared
-      to camera, weight even on both legs, arms relaxed at the sides and clear
-      of the body, hands open. Neutral expression, looking at the lens.
+      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
+      FEET IN FRAME including both feet, standing front on, squared to the camera, weight even on
+      both legs, arms relaxed at the sides and clear of the body.
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
-
-  - id: body_three_quarter_left
-    group: body
-    pose_image: config/pose/body/three-quarter-left.png
-    description: >-
-      Full body head to feet, turned three-quarters to his left, white seamless
-      backdrop.
-    tags: [body, three-quarter, left, full-body, studio]
-    prompt: >-
-      {identity_slots} show the person. {pose_slot} {guide}
-      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD
-      TO FEET IN FRAME including both feet, the body turned about 45 degrees to
-      THEIR LEFT, head following the body, arms relaxed at the sides. Neutral
-      expression. {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
   - id: body_three_quarter_right
     group: body
     pose_image: config/pose/body/three-quarter-right.png
     description: >-
-      Full body head to feet, turned three-quarters to his right, white seamless
-      backdrop.
+      Full body head to feet, turned toward the right edge of frame, white seamless backdrop.
     tags: [body, three-quarter, right, full-body, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
-      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD
-      TO FEET IN FRAME including both feet, the body turned about 45 degrees to
-      THEIR RIGHT, head following the body, arms relaxed at the sides. Neutral
-      expression. {minimal}. {backdrop_body} {light} {style} {quality} {must}
+      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
+      FEET IN FRAME including both feet, standing turned about 45 degrees so the chest and the face point toward the RIGHT edge of the frame, weight even on
+      both legs, arms relaxed at the sides and clear of the body.
+      {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
-  - id: body_profile
+  - id: body_profile_right
     group: body
-    pose_image: config/pose/body/profile.png
+    pose_image: config/pose/body/profile-right.png
     description: >-
-      Full body head to feet in side profile facing frame right, white seamless
-      backdrop.
-    tags: [body, profile, side, full-body, studio]
+      Full body head to feet in side profile facing the right edge of frame, white seamless backdrop.
+    tags: [body, profile, right, full-body, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
-      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD
-      TO FEET IN FRAME including both feet, in SIDE PROFILE facing frame right,
-      body and head both turned 90 degrees, arms relaxed at the sides. The
-      posture and the line of the back read clearly. {minimal}. {backdrop_body}
-      {light} {style} {quality} {must}
+      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
+      FEET IN FRAME including both feet, standing in FULL PROFILE, turned 90 degrees so the chest and the face point directly at the RIGHT edge of the frame, weight even on
+      both legs, arms relaxed at the sides and clear of the body.
+      {minimal}. {backdrop_body} {light} {style} {quality} {must}
+
+  - id: body_three_quarter_back_right
+    group: body
+    pose_image: config/pose/body/three-quarter-back-right.png
+    description: >-
+      Full body head to feet from behind at three-quarters, face just off the right edge of view, white seamless backdrop.
+    tags: [body, three-quarter, back, right, full-body, studio]
+    prompt: >-
+      {identity_slots} show the person. {pose_slot} {guide}
+      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
+      FEET IN FRAME including both feet, standing turned about 135 degrees away, seen mostly from behind, the face just off the RIGHT edge of view, weight even on
+      both legs, arms relaxed at the sides and clear of the body.
+      {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
   - id: body_back
     group: body
@@ -227,13 +280,53 @@ slots:
     tags: [body, back, full-body, studio]
     prompt: >-
       {identity_slots} show the person. {pose_slot} {guide}
-      A full-length studio plate of the person seen STRAIGHT FROM BEHIND,
-      THE WHOLE FIGURE FROM HEAD TO FEET IN FRAME including both feet, standing
-      squarely, arms relaxed at the sides, the back of the head to the lens.
+      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
+      FEET IN FRAME including both feet, standing directly away from the camera, the back of the head and body to the lens, weight even on
+      both legs, arms relaxed at the sides and clear of the body.
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
-# What `--character <name>` sends when nobody picks. Face-led, one clean body
-# read, and kept well under the smallest cap in play (Kling takes 7).
+  - id: body_three_quarter_back_left
+    group: body
+    pose_image: config/pose/body/three-quarter-back-left.png
+    description: >-
+      Full body head to feet from behind at three-quarters, face just off the left edge of view, white seamless backdrop.
+    tags: [body, three-quarter, back, left, full-body, studio]
+    prompt: >-
+      {identity_slots} show the person. {pose_slot} {guide}
+      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
+      FEET IN FRAME including both feet, standing turned about 135 degrees away, seen mostly from behind, the face just off the LEFT edge of view, weight even on
+      both legs, arms relaxed at the sides and clear of the body.
+      {minimal}. {backdrop_body} {light} {style} {quality} {must}
+
+  - id: body_profile_left
+    group: body
+    pose_image: config/pose/body/profile-left.png
+    description: >-
+      Full body head to feet in side profile facing the left edge of frame, white seamless backdrop.
+    tags: [body, profile, left, full-body, studio]
+    prompt: >-
+      {identity_slots} show the person. {pose_slot} {guide}
+      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
+      FEET IN FRAME including both feet, standing in FULL PROFILE, turned 90 degrees so the chest and the face point directly at the LEFT edge of the frame, weight even on
+      both legs, arms relaxed at the sides and clear of the body.
+      {minimal}. {backdrop_body} {light} {style} {quality} {must}
+
+  - id: body_three_quarter_left
+    group: body
+    pose_image: config/pose/body/three-quarter-left.png
+    description: >-
+      Full body head to feet, turned toward the left edge of frame, white seamless backdrop.
+    tags: [body, three-quarter, left, full-body, studio]
+    prompt: >-
+      {identity_slots} show the person. {pose_slot} {guide}
+      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
+      FEET IN FRAME including both feet, standing turned about 45 degrees so the chest and the face point toward the LEFT edge of the frame, weight even on
+      both legs, arms relaxed at the sides and clear of the body.
+      {minimal}. {backdrop_body} {light} {style} {quality} {must}
+
+# What `--character <name>` sends when nobody picks. Sixteen slots does not mean
+# sixteen images sent: this stays face-led and under the smallest cap in play
+# (Kling takes 7).
 default_set:
   - face_front
   - face_three_quarter_left

@@ -5,15 +5,18 @@ plates**: one image per body or head orientation, used as a framing guide when a
 reference shoot renders a character's standard set.
 
 ```
-config/pose/body/{front,three-quarter-left,three-quarter-right,profile,
-                  back,back-three-quarter}.png
-config/pose/face/{front,three-quarter-left,three-quarter-right,profile}.png
-config/pose/source/body-sheet.jpg     what the body plates were cut from
-config/pose/prompts/*.md              prompts to regenerate either set
+config/pose/face/*.png    eight orientations
+config/pose/body/*.png    the same eight
+config/pose/source/       the sheets the plates came from
+config/pose/prompts/*.md  prompts to regenerate either set
 ```
 
-`source/` holds the multi-figure sheet the body plates came from, kept so the
-split stays reproducible. It lived inside a character's pools for a while —
+The eight, in turn order: `front`, `three-quarter-right`, `profile-right`,
+`three-quarter-back-right`, `back`, `three-quarter-back-left`, `profile-left`,
+`three-quarter-left`.
+
+`source/` holds the sheets the plates were cut from, kept so the splits stay
+reproducible. It lived inside a character's pools for a while —
 first `reference/`, where it was indexed as that character's identity, then
 `corpus/`. Both were wrong for the same reason: it is not a picture of anybody,
 so it belongs to no character.
@@ -50,20 +53,40 @@ tagged `body`, which meant `--pick-tag body` could hand a model a stranger's
 sculpt as one of that character's own reference slots. That is the mistake this
 directory exists to make impossible.
 
-Profiles and three-quarters face **frame right** by convention, so a plate and a
-prompt can never disagree about which way the nose points. The
-`three-quarter-left` plates are horizontal mirrors of their right-facing
-counterparts — from the same sculpt, which is a consistency no second render
-could match.
+**A plate's name is the edge of the frame its face points toward.** `-left`
+means the nose points at the left edge; equivalently, that side of the head is
+toward the camera — the two always coincide, so there is one rule and not two.
+Name from the pixels, never from a caption: the head sheet's own captions have
+the two back three-quarters swapped relative to its front labels, and naming from
+the subject's own left and right is what once produced a prompt instructing two
+opposite rotations in the same sentence.
+
+Where only one side exists in a source, its twin is a horizontal mirror — the
+same sculpt, which is a consistency no second render could match.
 
 ## Provenance, and how to replace the body plates
 
-The **body** plates were cut from `pose/source/body-sheet.jpg`, a third-party 3D
-anatomy study that was already in the media bucket, using
-`pipeline/scripts/split_pose_sheet.py` (measured cuts, so the split is
-reproducible). They are generic, unbranded and used privately, but they are not
-originally ours — if you want a set with no third-party lineage, regenerate them
-and keep the filenames:
+The **face** plates are cut straight from `pose/source/head-sheet.png` with
+`pipeline/scripts/split_pose_sheet.py` — measured cuts, so the split is
+reproducible and every plate is the same sculpt. gpt-image-2 was tried first on
+one tile: it isolated the right cell and gained resolution, but re-drew the
+sculpt, and a guide set cannot afford to drift between plates.
+
+The **body** plates come from `pose/source/body-sheet.jpg`, a third-party 3D
+anatomy study, cut the same way and then upscaled onto white by gpt-image-2 — an
+upscale and a background change only, which the model holds reliably where
+"rotate this figure to 45 degrees" does not. Two attempts at projecting a body
+from a head plate both came back near-front-on regardless of the angle asked
+for, so that route was abandoned.
+
+`three-quarter-left` and `three-quarter-right` in the body group are the one
+exception: their source figure was refused by gpt-image-2 twice and gpt-image-1.5
+once as sensitive content, so they remain at their original 129×478 while the
+other six are 1024×1536. nano-banana-pro was unavailable at the time and is the
+one model that has not actually refused it.
+
+These are generic, unbranded and used privately, but not originally ours — if you
+want a set with no third-party lineage, regenerate and keep the filenames:
 
 ```bash
 # one sheet, then split it into plates with the same script
@@ -72,8 +95,8 @@ studio run --model gpt-image-2 --project <project> --slug pose-sheet --no-refs \
 uv run python pipeline/scripts/split_pose_sheet.py <the sheet> --out config/pose/body
 ```
 
-The **face** plates are generated from `config/pose/prompts/face-sheet.md` the
-same way — no source sheet existed for head orientations.
+`config/pose/prompts/face-sheet.md` holds a prompt for generating a head sheet
+from scratch, for the case where no source sheet exists.
 
 Because every consumer addresses a plate by filename, swapping the images is a
 drop-in: nothing in the spec or the code changes.
