@@ -121,6 +121,33 @@ jobs:
 
       - name: Create the Terraform-owned image repository first
         run: |
+          set -euo pipefail
+
+          # This targeted apply exists for one situation: a fresh AWS account,
+          # where `build-and-push` has nowhere to push because Terraform has not
+          # run yet, and Terraform cannot run first because the Lambda
+          # references `${ecr_repo}:latest`. Once the repository exists it does
+          # nothing.
+          #
+          # "Does nothing" was too generous. `-target` makes Terraform refuse
+          # any plan whose state contains resources moved by a `moved` block
+          # outside the target set — "Moved resource instances excluded by
+          # targeting" — so a `moved` block anywhere in this configuration
+          # failed this step, and with it every studio deploy, while the full
+          # apply that would have consumed the move never ran. That is what
+          # happened to the media bucket rename in #259.
+          #
+          # So skip it once the repository is there. The bootstrap keeps working
+          # on a fresh account (no repository, and no prior state for a `moved`
+          # block to collide with), and refactors stop being able to break the
+          # pipeline through a step that had no work to do.
+          if aws ecr describe-repositories \
+               --repository-names "${{ env.API_ECR_REPO }}" >/dev/null 2>&1; then
+            echo "${{ env.API_ECR_REPO }} already exists — nothing to bootstrap."
+            exit 0
+          fi
+
+          echo "${{ env.API_ECR_REPO }} not found — bootstrapping it."
           terraform -chdir=studio/infra/envs/prod init -input=false
           terraform -chdir=studio/infra/envs/prod apply \
             -auto-approve -input=false \
