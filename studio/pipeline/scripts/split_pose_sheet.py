@@ -7,10 +7,13 @@ once. This cuts it into one plate per figure, which is what a reference shoot
 binds per slot.
 
 The cut is measured, not hand-tuned. Figures are found by projecting "pixels
-brighter than the background" onto each axis: bands of non-empty rows are the
+that differ from the background" onto each axis: bands of non-empty rows are the
 sheet's rows, and within each row band, bands of non-empty columns are the
 figures. So the same sheet always yields the same boxes, and a differently-laid-
-out sheet still works — nothing here assumes a count or an even spacing.
+out sheet still works — nothing here assumes a count, an even spacing, or which
+of the subject and the background is the darker. Captioned sheets work too: a
+label forms its own row band and is discarded for being far too short to be a
+figure.
 
     uv run python scripts/split_pose_sheet.py sheet.jpg --out /tmp/plates
     uv run python scripts/split_pose_sheet.py sheet.jpg --out /tmp/plates --report
@@ -19,9 +22,9 @@ Output is `<row>-<n>.png`, numbered left to right, top row first. Naming them fo
 what they SHOW is a judgement call made by eye afterwards — the point of this
 script is the geometry.
 
-Note what this does NOT do: it does not put its output into `studio/config/`.
-These crops carry the source sheet's background, lighting and provenance; the
-committed plates are generated from them so the set is uniform and ours. See
+Naming the output is a judgement call made by eye against the sheet's own
+captions, which is why this writes `<row>-<n>.png` and stops there. Where the
+plates end up, and under what names, is a separate and gated step — see
 studio/config/README.md.
 """
 
@@ -34,10 +37,15 @@ import sys
 
 from PIL import Image
 
-# How much brighter than the background a pixel must be to count as subject.
-# Wide margin: the sheets in question are light figures on a flat dark ground,
-# and a threshold near the noise floor picks up JPEG mottling in the background.
+# How far from the background a pixel must sit to count as subject. Measured as
+# an ABSOLUTE difference, so the same code reads light figures on a dark ground
+# and dark figures on a light one — the two sheets in use are one of each, and
+# hard-coding the polarity would mean a second script.
 THRESHOLD_MARGIN = 25
+# A caption strip is non-background too, so it forms its own row band. It is an
+# order of magnitude shorter than a figure, which is what tells them apart:
+# anything under this fraction of the tallest band is a label, not a subject.
+MIN_ROW_FRACTION = 0.4
 # Ignore bands thinner than this: a stray highlight is not a figure.
 MIN_BAND = 10
 # Breathing room around each figure, so a plate is not cropped tight to the skin.
@@ -67,12 +75,19 @@ def find_figures(image: Image.Image) -> list[tuple[int, int, int, int]]:
     px = grey.load()
 
     sample = [px[x, y] for y in range(0, height, 7) for x in range(0, width, 7)]
-    threshold = statistics.median(sample) + THRESHOLD_MARGIN
+    background = statistics.median(sample)
 
-    rows = [sum(1 for x in range(width) if px[x, y] > threshold) for y in range(height)]
+    def subject(x: int, y: int) -> bool:
+        return abs(px[x, y] - background) > THRESHOLD_MARGIN
+
+    rows = [sum(1 for x in range(width) if subject(x, y)) for y in range(height)]
+    bands = _bands(rows)
+    if bands:
+        tallest = max(b - a for a, b in bands)
+        bands = [(a, b) for a, b in bands if (b - a) >= tallest * MIN_ROW_FRACTION]
     boxes: list[tuple[int, int, int, int]] = []
-    for top, bottom in _bands(rows):
-        cols = [sum(1 for y in range(top, bottom) if px[x, y] > threshold)
+    for top, bottom in bands:
+        cols = [sum(1 for y in range(top, bottom) if subject(x, y))
                 for x in range(width)]
         for left, right in _bands(cols):
             boxes.append((
