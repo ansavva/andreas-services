@@ -27,6 +27,7 @@ import sys
 import tempfile
 
 from studio_pipeline.adapters import replicate as RA
+from studio_pipeline.adapters import s3 as s3c
 from studio_pipeline.domain import runs as R
 from studio_pipeline.engine import refs as REFS
 from studio_pipeline.engine import registry as REG
@@ -168,7 +169,50 @@ def gather(entry: dict, s3, args) -> dict:
                 f"character's default_set) rather than hoping the extras are dropped.")
         bindings[refs_field] = keys
 
+    _warn_total_bytes(s3, bindings)
     return bindings
+
+
+#: Measured, not documented. Every generation that succeeded sent no more than
+#: 6.41 MiB of images in total; the three that failed sent 13.89 MiB. A single
+#: 3.10 MiB image passed on its own, so the limit is on the SUM and not on any
+#: one file. This sits just above the largest known-good total.
+BYTES_WARN = 6.5 * 1024 * 1024
+
+
+def _warn_total_bytes(s3, bindings: dict) -> None:
+    """Warn when a payload carries more image data than has ever worked.
+
+    A warning, not an error: 6.41 MiB is the largest total observed to succeed,
+    which is not the same as a documented ceiling, and refusing a payload on a
+    measurement would be worse than sending it.
+
+    It is worth saying at all because of HOW it fails. An oversized payload is
+    accepted, sits for over two minutes, and comes back `PA — Prediction
+    interrupted; please retry`, with no `started_at`, no metrics and empty logs.
+    That reads as an upstream blip and invites retrying it unchanged, which is
+    exactly what three consecutive failures were spent on.
+    """
+    keys = []
+    for value in bindings.values():
+        keys += value if isinstance(value, list) else [value]
+    if not keys or s3 is None:
+        return
+    total = 0
+    try:
+        for key in keys:
+            total += s3.head_object(Bucket=s3c.BUCKET, Key=key)["ContentLength"]
+    except Exception:
+        return  # sizing is a courtesy; never let it break a submit
+    if total <= BYTES_WARN:
+        return
+    print(f"warning: this payload carries {total / 1048576:.1f} MiB of images across "
+          f"{len(keys)} file(s).\n"
+          f"         No generation above ~6.4 MiB has ever completed here — over that "
+          f"it tends to be accepted, hang, and fail as `PA`, which looks retryable and "
+          f"is not.\n"
+          f"         studio convert --key <key> --to jpeg --add-input <project>",
+          file=sys.stderr)
 
 
 def check_payload_rules(entry: dict, payload: dict) -> None:

@@ -223,7 +223,28 @@ def test_a_panel_is_rendered_in_a_format_its_video_model_accepts(media_bucket, n
     panel["extra"] = {}
     args = BOARD.panel_args(m, shot, panel, REG.get("gpt-image-2"),
                             _opts(dry_run=True))
-    assert json.loads(args.extra)["output_format"] == "png"
+    assert json.loads(args.extra)["output_format"] == "jpeg"
+
+
+def test_a_panel_takes_the_smallest_format_the_video_model_accepts():
+    """Among the formats that work, the smallest wins.
+
+    A PNG plate off these models is ~2 MiB against ~0.3 MiB for the same picture
+    as JPEG, and a panel is sent to a video model many times over its life. Kling
+    fails somewhere above ~6.4 MiB of images in total, and it fails as a
+    two-minute silence rather than a validation error, so the way not to meet
+    that is to never get near it.
+    """
+    # Kling takes .jpg/.jpeg/.png; these two models offer jpg and png.
+    assert BOARD.panel_format(REG.get("nano-banana-pro"), "kling") == "jpg"
+    # GPT Image offers png/jpeg/webp — webp is out, jpeg beats png.
+    assert BOARD.panel_format(REG.get("gpt-image-2"), "kling") == "jpeg"
+
+
+def test_a_panel_format_falls_back_rather_than_guessing(media_bucket):
+    """An unregistered video model says nothing about formats, so nothing is
+    forced — the plan's own `extra` is left to decide."""
+    assert BOARD.panel_format(REG.get("gpt-image-2"), "not-a-model") is None
 
 
 def test_an_explicit_format_in_the_plan_is_left_alone(media_bucket, no_network):
@@ -309,3 +330,44 @@ def _opts(**kw):
                 review_sheet=None, shot=(), panel=(), redo=False)
     base.update(kw)
     return SimpleNamespace(**base)
+
+
+def test_an_oversized_payload_warns_and_names_the_fix(media_bucket, no_network, capsys):
+    """The failure this warns about does not look like a failure.
+
+    Over roughly 6.4 MiB of images the provider accepts the job, sits on it for
+    two minutes, and returns `PA — Prediction interrupted; please retry` with no
+    start time, no metrics and empty logs. That reads as an upstream blip, which
+    is what three consecutive retries were spent on.
+    """
+    from types import SimpleNamespace
+
+    from studio_pipeline.engine import submit as SUB
+
+    big = "projects/subject-a/input/subject-a_9.png"
+    media_bucket.put_object(Bucket=BUCKET, Key=big, Body=b"x" * (7 * 1024 * 1024))
+    args = SimpleNamespace(
+        start_key=big, start_run=None, end_key=None, end_run=None, image_run=None,
+        character=(), ref_run=(), input_=(), input=(), key=[], pick=None,
+        pick_tag=None, slots=None, project="subject-a", no_refs=True)
+
+    SUB.gather(REG.get("kling"), media_bucket, args)
+    err = capsys.readouterr().err
+    assert "7.0 MiB" in err
+    assert "studio convert" in err
+    assert "PA" in err, "the symptom is what makes this worth saying"
+
+
+def test_a_payload_within_the_measured_range_says_nothing(media_bucket, no_network, capsys):
+    from types import SimpleNamespace
+
+    from studio_pipeline.engine import submit as SUB
+
+    args = SimpleNamespace(
+        start_key="projects/subject-a/input/subject-a_3.png", start_run=None,
+        end_key=None, end_run=None, image_run=None, character=(), ref_run=(),
+        input_=(), input=(), key=[], pick=None, pick_tag=None, slots=None,
+        project="subject-a", no_refs=True)
+
+    SUB.gather(REG.get("kling"), media_bucket, args)
+    assert "warning" not in capsys.readouterr().err

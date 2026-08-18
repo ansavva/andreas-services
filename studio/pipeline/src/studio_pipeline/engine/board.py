@@ -144,6 +144,46 @@ def earlier_panel_keys(manifest: dict, shot: dict, panel: dict) -> list[str]:
     return out
 
 
+#: Format name -> the extension a video model will be asked to accept.
+_FORMAT_EXT = {"jpg": ".jpg", "jpeg": ".jpeg", "png": ".png", "webp": ".webp"}
+
+#: Smallest first. A panel is looked at once and then sent to a video model
+#: several times, so its size is paid for repeatedly.
+_FORMAT_PREFERENCE = ("jpg", "jpeg", "png", "webp")
+
+
+def panel_format(panel_entry: dict, video_model: str) -> str | None:
+    """The format to render a panel in, given the model that will consume it.
+
+    Two rules, and the second is the one that costs money.
+
+    A panel the video model cannot read is wasted outright — Kling rejects
+    `.webp` and GPT Image writes `.webp` by default, so a whole board can be
+    rendered in a format the shots it exists for cannot open.
+
+    And among the formats that *are* accepted, the smallest wins. A PNG plate off
+    these models runs ~2 MiB against ~0.3 MiB for the same picture as JPEG, and a
+    panel is sent to a video model many times over its life. Kling's failure at
+    around 14 MiB of images was a two-minute silence and a retryable-looking
+    error, not a validation message, so the way to not meet it is to never get
+    near it. Both halves are read from the registry — a model with different
+    formats needs no edit here.
+    """
+    try:
+        video_entry = REG.get(video_model)
+    except REG.RegistryError:
+        return None
+    accepted = REG.accepts_ext(video_entry)
+    if not accepted:
+        return None
+    allowed = ((panel_entry.get("snapshot") or {}).get("output_format") or {}).get("enum")
+    allowed = allowed or list(_FORMAT_PREFERENCE)
+    for fmt in _FORMAT_PREFERENCE:
+        if fmt in allowed and _FORMAT_EXT[fmt] in accepted:
+            return fmt
+    return None
+
+
 def panel_args(manifest: dict, shot: dict, panel: dict, entry: dict, opts) -> SimpleNamespace:
     """The namespace `runner`/`submit` expect, for one panel."""
     refs = panel.get("references") or {}
@@ -151,19 +191,11 @@ def panel_args(manifest: dict, shot: dict, panel: dict, entry: dict, opts) -> Si
     extra = dict(panel.get("extra") or {})
     project, _, _ = manifest["scene"].partition("/")
 
-    # A panel is only useful if the video model will accept it. Kling rejects
-    # `.webp` and GPT Image writes it by default, so a whole board can be
-    # rendered into a format the shot it exists for cannot read. Derived from
-    # the consuming model rather than hard-coded, so a future engine with
-    # different formats needs no edit here.
     video = (shot.get("motion") or {}).get("model")
     if "output_format" not in extra and video:
-        try:
-            accepted = REG.accepts_ext(REG.get(video))
-        except REG.RegistryError:
-            accepted = set()
-        if accepted and ".webp" not in accepted and ".png" in accepted:
-            extra["output_format"] = "png"
+        fmt = panel_format(entry, video)
+        if fmt:
+            extra["output_format"] = fmt
 
     return SimpleNamespace(
         model=entry["key"],
