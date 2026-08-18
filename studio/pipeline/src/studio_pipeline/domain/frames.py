@@ -37,13 +37,21 @@ existing frames cannot show, and then send only the images that show it.
 `--chain` records each handoff frame as it is produced, so the list is derived
 rather than remembered:
 
-    studio frames last <runref> --add-input --chain <project>/<slug>
+    studio frames last <runref> --add-input --chain <slug>
     studio frames chain <project>/<slug> --seed <s3 key of shot 1's start image>
     studio frames chain <project>/<slug> --args --max 7   # -> --key … --key …
+
+`--chain` takes a bare slug or the qualified `<project>/<slug>` — the project
+comes from the runref either way. Both spellings work because `chain` requires
+the qualified one and these two never did, and a rule that differs between
+sibling commands is the rule people get wrong.
 
 `--max` keeps the seed plus the most recent frames, because every engine caps
 `reference_images` (Kling 7). The seed is kept because it anchors the look the
 whole scene inherits.
+
+For a scene planned with `studio scenes`, `studio scenes handoff` does all of
+this in one step and cannot be pointed at the wrong chain.
 
 ffmpeg comes from the `imageio-ffmpeg` wheel, so there is no system install.
 """
@@ -79,8 +87,25 @@ def fetch_video(s3, ref: str, project: str | None, tmp: str) -> tuple[str, str, 
     return run_project, run_id, local
 
 
+def chain_slug(slug: str) -> str:
+    """A chain slug, accepting the `<project>/<slug>` form `chain` takes.
+
+    `slugify` turns `/` into `-`, so `--chain <project>/<slug>` on `last`/`at`
+    used to create a chain called `<project>-<slug>` — in the right project, but
+    under a name `frames chain <project>/<slug>` could then never find. It went
+    unnoticed because a chain that does not exist reads as an empty one, so the
+    only symptom was a second chain quietly appearing beside the real one. The
+    module docstring taught that exact form, which is how it was reached.
+
+    Both spellings are accepted now rather than one being refused: `chain`
+    requires the qualified form and these two never did, and a rule that differs
+    between sibling commands is the rule people get wrong.
+    """
+    return R.slugify(slug.split("/", 1)[1] if "/" in slug else slug)
+
+
 def chain_key(project: str, slug: str) -> str:
-    return P.chain_key(project, R.slugify(slug))
+    return P.chain_key(project, chain_slug(slug))
 
 
 def load_chain(s3, project: str, slug: str) -> dict:
@@ -91,8 +116,8 @@ def load_chain(s3, project: str, slug: str) -> dict:
         doc = R.read_json(s3, chain_key(project, slug))
     except Exception:
         doc = None
-    return doc or {"chain": f"{project}/{R.slugify(slug)}", "project": project,
-                   "slug": R.slugify(slug), "seed": None, "frames": []}
+    return doc or {"chain": f"{project}/{chain_slug(slug)}", "project": project,
+                   "slug": chain_slug(slug), "seed": None, "frames": []}
 
 
 def chain_add(s3, project: str, slug: str, key: str, from_run: str | None) -> dict:

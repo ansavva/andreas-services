@@ -75,12 +75,14 @@ import tempfile
 import click
 
 from studio_pipeline.adapters.ffmpeg import (  # noqa: E402  — shared with movies.py and frames.py
+    grab,
     probe,
     stitch,
 )
 from studio_pipeline.adapters.s3 import BUCKET, client, die, list_keys  # noqa: E402
 from studio_pipeline import errors  # noqa: E402
 from studio_pipeline.domain import contact_sheet  # noqa: E402  — a board is read by looking
+from studio_pipeline.domain import frames as FRAMES  # noqa: E402  — the chain and the pool
 from studio_pipeline.domain import (
     paths as P,  # noqa: E402  — the one module that knows the bucket's shape
 )
@@ -113,7 +115,12 @@ def scene_key(project: str, scene_id: str, *parts: str) -> str:
 
 
 def list_scenes(s3, project: str) -> list[str]:
-    """Scene ids in a project, oldest first (ids sort chronologically)."""
+    """Scene ids in a project, sorted by id.
+
+    NOT oldest first any more. That held only while every id began with a
+    timestamp; slug-keyed ids sort alphabetically and land after every
+    timestamped one. `_newest` reads the manifests instead.
+    """
     return P.list_ids(s3, P.scenes_prefix(project))
 
 
@@ -352,6 +359,60 @@ def assemble(s3, project: str, scene_id: str, refs: tuple[str, ...] = (),
     return manifest
 
 
+# ── carrying a shot forward ─────────────────────────────────────────────────
+
+def handoff(s3, project: str, scene_id: str, n: int, from_run: str | None = None) -> dict:
+    """Take the previous shot's last frame and hand it to shot N.
+
+    Three things at once, which is the point: the frame goes into the project's
+    input pool, gets recorded in the chain named by THIS scene, and is written
+    onto shot N as its start frame. Doing them separately is how a chain ends up
+    under the wrong name or a shot ends up opening on a panel when it meant to
+    continue a movement.
+
+    On first use it also seeds the chain with shot 1's start frame, because the
+    seed anchors the look the whole scene inherits and there is exactly one
+    moment when it is knowable.
+    """
+    manifest = read_manifest(s3, project, scene_id)
+    if not manifest:
+        die(f"no scene {project}/{scene_id}")
+    shots = scene_shots(manifest)
+    by_n = {s.get("n"): s for s in shots}
+    shot, previous = by_n.get(n), by_n.get(n - 1)
+    if not shot:
+        die(f"{project}/{scene_id} has no shot {n} (it has {sorted(by_n)})")
+    if not previous:
+        die(f"shot {n} is the first shot — there is nothing before it to hand off from")
+    ref = from_run or previous.get("runref") or previous.get("run")
+    if not ref:
+        die(f"shot {previous.get('id')} has not been rendered, so it has no last frame\n"
+            f"       studio scenes render {project}/{scene_id} --shot {n - 1}")
+
+    tmp = tempfile.mkdtemp(prefix="handoff-")
+    _p, run_id, src = FRAMES.fetch_video(s3, ref, project, tmp)
+    local = grab(src, None, os.path.join(tmp, f"{run_id}_last.png"), from_end=0.2)
+    key = FRAMES.add_to_input_pool(project, local)
+
+    chain = (shot.get("chain") or {}).get("slug") or manifest["slug"]
+    doc = FRAMES.load_chain(s3, project, chain)
+    if not doc.get("seed"):
+        first = shots[0]
+        seed = next((p.get("key") for p in first.get("panels") or [] if p.get("key")), None)
+        if seed:
+            doc["seed"] = seed
+            R.write_json(s3, FRAMES.chain_key(project, chain), doc)
+    doc = FRAMES.chain_add(s3, project, chain, key, f"{project}/{run_id}")
+
+    shot["chain"] = {**(shot.get("chain") or {}), "slug": chain, "use_handoff": True,
+                     "start_key": key, "from_run": f"{project}/{run_id}"}
+    write_manifest(s3, manifest)
+    print(f"{key}\nchain {doc['chain']}: {len(doc['frames'])} frame(s)")
+    print(f"shot {n} ({shot.get('id')}) now opens on the last frame of "
+          f"{previous.get('id')}")
+    return manifest
+
+
 # ── reading the plan ────────────────────────────────────────────────────────
 
 def plan_table(manifest: dict) -> list[str]:
@@ -423,6 +484,20 @@ def do_assemble(ref, dest, project, shot):
     owner, sid = resolve_scene(s3, ref, project)
     m = assemble(s3, owner, sid, shot, dest)
     print(json.dumps({k: m[k] for k in ("scene", "output", "stitch")}, indent=2))
+
+
+@main.command("handoff")
+@click.argument("ref", required=True)
+@click.option("--from-run", "from_run",
+              help="the run to take the frame from (default: the previous shot's)")
+@click.option("--project")
+@click.option("--shot", type=int, required=True,
+              help="the shot that should OPEN on this frame")
+def do_handoff(ref, from_run, project, shot):
+    """Carry the previous shot's last frame into the next one."""
+    s3 = client()
+    owner, sid = resolve_scene(s3, ref, project)
+    handoff(s3, owner, sid, shot, from_run)
 
 
 @main.command("plan")

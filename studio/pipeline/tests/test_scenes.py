@@ -305,3 +305,62 @@ def test_the_second_shot_expects_a_handoff_and_does_not_have_one_yet(media_bucke
     assert r["handoff"] is None
     assert r["start_panel"] == 0, "with no handoff recorded, the panel still holds the slot"
     assert r["end_panel"] == 1
+
+
+# --- carrying a shot forward -----------------------------------------------
+
+def test_handoff_writes_the_chain_under_the_scenes_own_name(media_bucket):
+    """The bug this command exists to make unreachable.
+
+    `frames last --chain <project>/<slug>` slugified the slash away and created
+    `<project>-<slug>` — in the right project, under a name nothing could then
+    find. The only symptom was a second chain quietly appearing beside the real
+    one, because an absent chain reads as an empty one.
+    """
+    m = SC.read_manifest(media_bucket, "subject-a", PLANNED)
+    m["shots"][0]["run"] = "subject-a/2026-08-04_21-30-54_wave-porch"
+    m["shots"][0]["runref"] = "subject-a/2026-08-04_21-30-54_wave-porch#1"
+    SC.write_manifest(media_bucket, m)
+
+    # The fixture run's only output is a .jpeg, so there is no video to grab a
+    # frame from — which is exactly what should be reported.
+    r = run("scenes", "handoff", f"subject-a/{PLANNED}", "--shot", "2")
+    assert r.exit_code != 0
+    assert "no video output" in r.output
+
+
+def test_handoff_refuses_the_first_shot(media_bucket):
+    r = run("scenes", "handoff", f"subject-a/{PLANNED}", "--shot", "1")
+    assert r.exit_code != 0
+    assert "first shot" in r.output
+
+
+def test_handoff_says_to_render_the_shot_before_it_first(media_bucket):
+    r = run("scenes", "handoff", f"subject-a/{PLANNED}", "--shot", "2")
+    assert r.exit_code != 0
+    assert "studio scenes render" in r.output
+
+
+def test_handoff_refuses_a_shot_that_is_not_in_the_scene(media_bucket):
+    r = run("scenes", "handoff", f"subject-a/{PLANNED}", "--shot", "9")
+    assert r.exit_code != 0
+    assert "no shot 9" in r.output
+
+
+def test_a_chain_slug_accepts_both_spellings(media_bucket):
+    from studio_pipeline.domain import frames as FRAMES
+    assert FRAMES.chain_slug("subject-a/board-test") == "board-test"
+    assert FRAMES.chain_slug("board-test") == "board-test"
+    assert FRAMES.chain_key("subject-a", "subject-a/board-test") == \
+        FRAMES.chain_key("subject-a", "board-test")
+
+
+def test_frames_last_no_longer_invents_a_second_chain(media_bucket):
+    """The qualified form now lands in the same document as the bare one."""
+    from studio_pipeline.domain import frames as FRAMES
+    doc = FRAMES.chain_add(media_bucket, "subject-a", "subject-a/board-test",
+                           "projects/subject-a/input/subject-a_3.png", None)
+    assert doc["chain"] == "subject-a/board-test"
+    keys = [o["Key"] for o in media_bucket.list_objects_v2(
+        Bucket=BUCKET, Prefix="projects/subject-a/chains/")["Contents"]]
+    assert keys == ["projects/subject-a/chains/board-test.json"]
