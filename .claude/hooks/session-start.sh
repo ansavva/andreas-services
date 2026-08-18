@@ -41,6 +41,26 @@ if [ -f "$REPO/scripts/dev-setup.sh" ]; then
   bash "$REPO/scripts/dev-setup.sh" >&2 || true
 fi
 
+# Put Homebrew's prefix on PATH. dev-setup.sh installs the shared CLIs (gh, aws,
+# terraform, tflint) there, but it runs as a child process, so its PATH change
+# dies with it, and the /etc/profile.d/homebrew.sh entry it writes is read only
+# by login shells — neither this hook nor Claude's Bash tool spawns one. Without
+# this the tools are on disk and invisible: `which gh` reports nothing while
+# /home/linuxbrew/.linuxbrew/bin/gh runs fine. Export it for the rest of this
+# hook (the pre-commit and tflint steps below both depend on it) and hand it to
+# the session through CLAUDE_ENV_FILE so every later Bash call inherits it.
+BREW_PREFIX="/home/linuxbrew/.linuxbrew"
+if [ -x "$BREW_PREFIX/bin/brew" ]; then
+  eval "$("$BREW_PREFIX/bin/brew" shellenv)"
+  # Prepend rather than write an absolute PATH: studio/scripts/dev-setup.sh
+  # already appended `export PATH="<uv>:$PATH"` lines to this same file, and a
+  # later absolute assignment would drop them. Guarded so a resumed session does
+  # not stack duplicates.
+  if [ -n "${CLAUDE_ENV_FILE:-}" ] && ! grep -qs "$BREW_PREFIX/bin" "$CLAUDE_ENV_FILE"; then
+    echo "export PATH=\"$BREW_PREFIX/bin:$BREW_PREFIX/sbin:\$PATH\"" >> "$CLAUDE_ENV_FILE"
+  fi
+fi
+
 # pre-commit: install the git hook and pre-download hook environments so
 # `pre-commit run` is instant when Claude wants to verify a change.
 if command -v pre-commit &>/dev/null && [ -f "$REPO/.pre-commit-config.yaml" ]; then

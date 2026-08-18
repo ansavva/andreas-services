@@ -277,6 +277,16 @@ install_tflint_aws_plugin_best_effort() {
 # ---------------------------------------------------------------------------
 log "OS detected: $OS  (check-only: $CHECK_ONLY)"
 
+# Adopt an already-installed Homebrew prefix before the first `have` check.
+# brew_ensure short-circuits on `command -v` and only reaches require_brew (which
+# is what puts the prefix on PATH) when a tool is missing — and in --check mode it
+# returns before require_brew entirely. So on a machine where Homebrew installed
+# these tools in an earlier run, every one of them reads as MISSING until
+# something triggers the lazy bootstrap. Doing it here costs one `-x` test.
+if [[ "$PLATFORM" == "linux" && -x "$LINUXBREW_PREFIX/bin/brew" ]]; then
+  eval "$("$LINUXBREW_PREFIX/bin/brew" shellenv)"
+fi
+
 brew_ensure terraform hashicorp/tap/terraform
 brew_ensure tflint    terraform-linters/tap/tflint
 install_tflint_aws_plugin_best_effort
