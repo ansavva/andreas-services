@@ -168,3 +168,30 @@ def test_editing_a_bible_writes_it_back_where_it_was_read_from(media_bucket, tmp
         Bucket=P.s3c.BUCKET).get("Contents", [])]
     assert "subject-a/profile.yaml" not in keys, "wrote to the bucket root"
     assert P.profile_key("subject-a") in keys
+
+
+def test_pushing_a_stale_bible_is_refused(media_bucket, tmp_path):
+    """The local copy can be hours old, and pushing it would revert everything.
+
+    `edit` caches the bible on disk and reports "no local changes" against that
+    cache — which says nothing about whether S3 moved on. A session that adds
+    references, describes them and rewrites `default_set` through the index
+    commands leaves a stale local file that still looks clean, and uploading it
+    would silently undo all of it. The recorded etag is what stops that, so the
+    refusal is asserted here rather than assumed.
+    """
+    from studio_pipeline.domain import characters as CHARACTER
+
+    local = tmp_path / "subject-a.yaml"
+    base = tmp_path / ".subject-a.base.yaml"
+    etag = tmp_path / ".subject-a.etag"
+
+    etag.write_text("an-etag-from-before-someone-else-wrote")
+    base.write_text("name: Subject A\n")
+    local.write_text("name: Subject A\ndescription: stale edit\n")
+
+    original = CHARACTER.load_profile(media_bucket, "subject-a")
+    CHARACTER.check_profile = lambda *a, **k: None
+    with pytest.raises(SystemExit):
+        CHARACTER.do_push(media_bucket, "subject-a", False, str(local), str(base), str(etag))
+    assert CHARACTER.load_profile(media_bucket, "subject-a") == original

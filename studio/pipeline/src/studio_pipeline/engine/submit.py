@@ -252,7 +252,11 @@ def execute(entry: dict, payload: dict, bindings: dict, s3, token: str, args) ->
     try:
         R.record_request(s3, project, run_id, kind=kind, engine=entry["skill"],
                          model=entry["model"], input=payload, bindings=bindings,
-                         characters=characters, prompt_source=prompt_source)
+                         characters=characters, prompt_source=prompt_source,
+                         # Provenance a caller wants carried into the record. A
+                         # shoot puts its slot id here so promoting the output
+                         # later can recover what the image was meant to be.
+                         extra=getattr(args, "record_extra", None) or None)
     except R.RunError as e:
         raise SubmitError(f"refusing to record an invalid request: {e}")
     print(f"run {run}", file=sys.stderr)

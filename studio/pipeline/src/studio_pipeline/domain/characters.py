@@ -724,11 +724,17 @@ def cmd_add_refs(files, name, from_run, project, replace, start, to):
         die(f"file(s) not found: {', '.join(missing)}")
 
     run_keys: list[str] = []
+    # Keep each key paired with the shot slot its run recorded, so the spec's
+    # own description and tags can be written with the image instead of being
+    # retyped by hand. None for anything not shot against the spec.
+    run_slots: list[str | None] = []
     for ref in from_run:
         try:
-            run_keys += R.resolve_output_keys(s3, ref, project, kinds=IMG_EXTS)
+            keys = R.resolve_output_keys(s3, ref, project, kinds=IMG_EXTS)
         except R.RunError as exc:
             die(str(exc))
+        run_keys += keys
+        run_slots += [_run_slot(s3, ref, project)] * len(keys)
 
     group = to
     prefix = group_prefix(name, group)
@@ -742,23 +748,73 @@ def cmd_add_refs(files, name, from_run, project, replace, start, to):
         put_file(s3, f, s3c.key(f"{folder}/{prefix}{n}{ext}"),
                  "image/webp" if ext == ".webp" else None)
         n += 1
-    for key in run_keys:
+    described: dict[str, str] = {}
+    for key, slot_id in zip(run_keys, run_slots):
         ext = os.path.splitext(key)[1].lower() or ".png"
+        rel = f"{group}/{prefix}{n}{ext}" if group else f"{prefix}{n}{ext}"
         dest = s3c.key(f"{folder}/{prefix}{n}{ext}")
         s3.copy_object(Bucket=s3c.BUCKET, CopySource={"Bucket": s3c.BUCKET, "Key": key},
                        Key=dest)
         print(f"  {key} -> {folder}/{prefix}{n}{ext}", file=sys.stderr)
+        if slot_id:
+            described[rel] = slot_id
         n += 1
     print(f"added {n - start} image(s) to {folder}/ as {prefix}{start}..{prefix}{n - 1}",
           file=sys.stderr)
 
     report = sync_index(s3, name)
+    if described:
+        _describe_from_spec(s3, name, described)
     if report["undescribed"]:
         print(f"  {len(report['undescribed'])} reference image(s) have no description yet. "
               f"An undescribed image cannot be picked by tag and is invisible to whoever "
               f"chooses the set:\n"
               f"    studio character set-ref-desc {name} <file> "
               f"--description '…' --tags face,neutral", file=sys.stderr)
+
+
+def _run_slot(s3, ref: str, project: str | None) -> str | None:
+    """The shot slot a run recorded, if it was one — see `record_extra`."""
+    try:
+        proj, run_id = R.resolve_run(s3, ref, project)
+        # `run_record` wraps the documents; the slot rides in request.json.
+        record = R.run_record(s3, proj, run_id) or {}
+        return ((record.get("request") or {}).get("reference_slot")) or None
+    except Exception:  # noqa: BLE001 — provenance is a bonus, never a blocker
+        return None
+
+
+def _describe_from_spec(s3, name: str, by_file: dict[str, str]) -> None:
+    """Write the shot spec's own description and tags onto promoted images.
+
+    The spec has carried a `description` and `tags` per slot from the start, and
+    for a while nothing read them: `shoot` stopped filing its output when
+    promotion became a separate human gate, and `add-refs` had no idea which
+    slot a run came from. So every promotion was a hand-retype of prose sitting
+    in the repo — which is how the two drift apart.
+    """
+    from studio_pipeline.engine import shoot as SHOOT  # local: shoot imports this module
+    try:
+        slots = {s["id"]: s for s in SHOOT.load_spec()["slots"]}
+    except Exception as exc:  # noqa: BLE001 — a broken spec must not lose the images
+        print(f"  note: could not read the shot spec ({exc}); promoted images are "
+              f"undescribed.", file=sys.stderr)
+        return
+    data, entries = read_index(s3, name)
+    etag = remote_etag(s3, name)
+    hits = 0
+    for entry in entries:
+        slot = slots.get(by_file.get(entry.get("file"), ""))
+        if not slot:
+            continue
+        entry["description"] = " ".join(slot["description"].split())
+        entry["tags"] = list(slot["tags"])
+        hits += 1
+    if not hits:
+        return
+    data["references"] = entries
+    write_profile(s3, name, data, etag)
+    print(f"  described {hits} image(s) from the shot spec.", file=sys.stderr)
 
 
 @main.command("add-to")

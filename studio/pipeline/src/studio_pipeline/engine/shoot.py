@@ -476,6 +476,11 @@ def slot_args(slot: dict, spec: dict, entry: dict, name: str, opts) -> SimpleNam
         extra=json.dumps(extra) if extra else None,
         aspect_ratio=opts.aspect_ratio or slot.get("aspect_ratio") or defaults.get("aspect_ratio"),
         key=[], character=(), record_characters=(name,),
+        # The slot this run came from, carried into request.json. `add-refs
+        # --from-run` reads it back to write the description and tags the spec
+        # already holds for that slot — without it those fields are dead data
+        # and every promotion is a hand-retype of prose that is right there.
+        record_extra={"reference_slot": slot["id"]},
         pick=None, pick_tag=None, slots=None,
         image_run=None, ref_run=(), input_=(), input=(),
         start_run=None, start_key=None, end_run=None, end_key=None,
@@ -596,17 +601,24 @@ def run_shoot(name: str, opts) -> int:
         print("nothing submitted.", file=sys.stderr)
         return 1
 
+    # ONE BAD SLOT DOES NOT CANCEL THE REST. A failure here is almost always a
+    # property of that slot alone — a plate the model refuses as sensitive, most
+    # often — and says nothing about the others. Aborting on the first one cost a
+    # live shoot six healthy slots because the refusing slot happened to sort
+    # first: seven asked for, `0 slot(s) completed`. So every slot is attempted
+    # and the failures are reported together at the end.
     runrefs: dict[str, str] = {}
+    failed: list[tuple[str, str]] = []
     for slot, entry, args, payload, bindings in prepared:
         print(f"\n----- {slot['id']} -----", file=sys.stderr)
         try:
             code = SUB.execute(entry, payload, bindings, s3, token, args)
+            if code != 0:
+                raise SUB.SubmitError(f"exited {code}")
         except (SUB.SubmitError, RA.ReplicateError) as exc:
-            raise ShootError(f"slot {slot['id']!r} failed: {exc}\n"
-                             f"       {len(runrefs)} slot(s) completed; re-run the rest "
-                             f"with --slot.")
-        if code != 0:
-            raise ShootError(f"slot {slot['id']!r} exited {code}.")
+            print(f"  FAILED — {exc}", file=sys.stderr)
+            failed.append((slot["id"], str(exc)))
+            continue
         _project, run_id = R.resolve_run(s3, f"{opts.project}/latest", opts.project)
         runrefs[slot["id"]] = f"{opts.project}/{run_id}#1"
 
@@ -617,8 +629,17 @@ def run_shoot(name: str, opts) -> int:
     print(json.dumps({
         "character": name, "project": opts.project,
         "rendered": runrefs,
+        "failed": dict(failed),
         "filed_into_reference": None,
     }, indent=2))
+    if failed:
+        print(f"\n{len(failed)} slot(s) FAILED and were skipped:", file=sys.stderr)
+        for slot_id, why in failed:
+            print(f"  {slot_id}: {why}", file=sys.stderr)
+        print("  a slot the model refuses will refuse again — fix or drop its plate "
+              "rather than re-running it.", file=sys.stderr)
+    if not runrefs:
+        return 1
     print("\nNOT added to the character. Review each one, then promote the keepers:",
           file=sys.stderr)
     for slot_id, ref in runrefs.items():
@@ -627,7 +648,9 @@ def run_shoot(name: str, opts) -> int:
               file=sys.stderr)
     print(f"  studio runs outputs {opts.project}/latest --presign   # to look first",
           file=sys.stderr)
-    return 0
+    # Non-zero on a partial run: images exist and are listed above, but the set
+    # is incomplete and a caller should not read exit 0 as "the shoot is done".
+    return 1 if failed else 0
 
 
 SHOOT_OPTIONS = [

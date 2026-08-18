@@ -1,11 +1,16 @@
 # The reference shoot — the STANDARD set of face and body plates every
 # character's `reference/` library should hold, as data.
 #
-# One slot = one recorded run = one image in `reference/<group>/`. `studio
-# character shoot` reads this file, fills each prompt from the character's own
-# bible, binds the slot's pose plate from `config/pose/`, and writes the result
-# back into the index with the description and tags recorded here — so no image
-# ever lands undescribed.
+# One slot = one recorded run. `studio character shoot` reads this file, fills
+# each prompt from the character's own bible, binds the slot's pose plate from
+# `config/pose/`, and stops — the result stays in its run. Putting an image into
+# `reference/` changes who a character IS, so it is a separate human decision.
+#
+# The `description` and `tags` below are still this file's job, and they are used
+# at PROMOTION rather than at render: a shoot records its slot id in the run, and
+# `add-refs --from-run` reads it back and writes these two fields onto the image.
+# So no promoted image lands undescribed, and nobody retypes prose that is
+# already here. Neither field reaches the model — only `prompt` does.
 #
 # RULES THIS FILE OBEYS
 #

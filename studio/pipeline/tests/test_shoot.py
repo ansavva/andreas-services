@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -611,6 +612,58 @@ def test_promoting_a_run_output_is_a_separate_command(media_bucket):
     assert any(f.startswith("face/subject-a_face_") for f in files), files
     # the run keeps its own output
     media_bucket.head_object(Bucket=P.s3c.BUCKET, Key=run_output)
+
+
+def test_promoting_a_shot_run_carries_the_specs_description_and_tags(media_bucket, spec):
+    """The spec's `description`/`tags` were dead data for a while.
+
+    `shoot` stopped filing its own output once promotion became a separate human
+    gate, and `add-refs` had no idea which slot a run came from — so both fields
+    sat in the repo unread and every promotion retyped them by hand. Fourteen
+    descriptions were copied out of this file twice before it was noticed. The
+    slot id now rides in the run record and is read back here.
+    """
+    from studio_pipeline.domain import characters as CHARACTER
+
+    slot = next(s for s in spec["slots"] if s["id"] == "face_front")
+    run = "2026-08-04_21-30-54_wave-porch"
+    req = R.read_json(media_bucket, R.run_key("subject-a", run, "request.json"))
+    req["reference_slot"] = "face_front"
+    R.write_json(media_bucket, R.run_key("subject-a", run, "request.json"), req)
+
+    result = CliRunner().invoke(cli.main, [
+        "character", "add-refs", "subject-a", "--to", "face",
+        "--from-run", f"subject-a/{run}#1"])
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+
+    _data, entries = CHARACTER.read_index(media_bucket, "subject-a")
+    added = [e for e in entries if e.get("file", "").startswith("face/subject-a_face_")]
+    assert added, entries
+    assert added[-1]["description"] == " ".join(slot["description"].split())
+    assert added[-1]["tags"] == list(slot["tags"])
+
+
+def test_promoting_a_run_that_was_not_shot_leaves_it_undescribed(media_bucket):
+    """Provenance is a bonus, never a requirement: a run with no slot recorded
+    must still promote, and must not borrow some other slot's description."""
+    from studio_pipeline.domain import characters as CHARACTER
+
+    result = CliRunner().invoke(cli.main, [
+        "character", "add-refs", "subject-a", "--to", "face",
+        "--from-run", "subject-a/2026-08-04_21-30-54_wave-porch#1"])
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    _data, entries = CHARACTER.read_index(media_bucket, "subject-a")
+    added = [e for e in entries if e.get("file", "").startswith("face/subject-a_face_")]
+    assert added and not (added[-1].get("description") or "").strip()
+
+
+def test_a_shoot_records_the_slot_each_run_came_from(spec):
+    """The seam the promotion above depends on, asserted at the source."""
+    args = SHOOT.slot_args(spec["slots"][0], spec, REG.get(spec["defaults"]["model"]),
+                           "subject-a", SimpleNamespace(
+                               model=None, project="p", extra=None, aspect_ratio=None,
+                               dry_run=True, dest=None, expires=3600))
+    assert args.record_extra == {"reference_slot": spec["slots"][0]["id"]}
 
 
 def test_add_refs_with_nothing_to_add_says_so(media_bucket):
