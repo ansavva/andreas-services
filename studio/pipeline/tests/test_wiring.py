@@ -203,3 +203,25 @@ def test_dry_run_actually_renders_a_payload(media_bucket, monkeypatch):
     assert "1/2  PROMPT" in result.output
     assert "2/2  INPUT" in result.output
     assert "a test" in result.output
+
+
+def test_input_pool_numbers_actually_bind(media_bucket, monkeypatch):
+    """`--input N` must reach the payload, not vanish.
+
+    Click stores it as `input_` (`input` shadows the builtin), and `gather` read
+    `args.input` through a defaulting getattr — so the flag bound nothing and
+    raised nothing. A silent drop is worse than the crash its sibling caused:
+    the run proceeds without the image the caller named.
+    """
+    from click.testing import CliRunner
+
+    from studio_pipeline import cli
+
+    props = {f: {} for f in ("prompt", "aspect_ratio", "input_images")}
+    monkeypatch.setattr("studio_pipeline.engine.schema.fetch", lambda *a, **k: (props, {}))
+
+    result = CliRunner().invoke(cli.main, [
+        "run", "--model", "gpt-image-2", "--project", "subject-a", "--dry-run",
+        "--prompt", "a test", "--input", "1"])
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    assert "projects/subject-a/input/subject-a_1.webp" in result.output

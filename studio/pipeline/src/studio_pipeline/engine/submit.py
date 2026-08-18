@@ -118,8 +118,14 @@ def gather(entry: dict, s3, args) -> dict:
                                         cap=cap, cap_name=entry["key"])
     for ref in getattr(args, "ref_run", None) or []:
         keys += R.resolve_output_keys(s3, ref, project, kinds=exts)
-    if getattr(args, "input", None):
-        keys += REFS.project_input_keys(project, args.input)
+    # `input_`, because `input` shadows the builtin and Click was given the safe
+    # spelling. This read `args.input` through a defaulting getattr, so
+    # `--input 3` bound NOTHING and said nothing — the quietest possible failure:
+    # either a confusing "no image inputs", or a run that proceeds without the
+    # image the caller asked for. Both spellings are accepted now.
+    numbers = getattr(args, "input_", None) or getattr(args, "input", None)
+    if numbers:
+        keys += REFS.project_input_keys(project, numbers)
     keys += getattr(args, "key", None) or []
 
     seen: set[str] = set()
