@@ -614,6 +614,31 @@ def test_promoting_a_run_output_is_a_separate_command(media_bucket):
     media_bucket.head_object(Bucket=P.s3c.BUCKET, Key=run_output)
 
 
+def test_pick_and_seed_pick_combine_into_one_identity_set(media_bucket):
+    """Naming references used to silence --seed-pick outright.
+
+    That made the safer choice inexpressible: curated reference frames give
+    clean, consistent angles, and a couple of seed photographs anchor them to
+    the real source so a shoot is not driven purely by earlier model output.
+    The two pools now concatenate, references first, in the order named.
+    """
+    keys, source = SHOOT.identity_keys(
+        media_bucket, "subject-a", "auto",
+        "face/subject-a_1.webp", None, limit=4, seed_pick="subject-a_1")
+    assert source == "reference+seed"
+    assert len(keys) == 2
+    assert "/reference/" in keys[0] and "/seed/" in keys[1]
+
+
+def test_combining_pools_still_respects_the_cap(media_bucket):
+    """The combined set is what is checked, not each pool separately."""
+    with pytest.raises(SHOOT.ShootError) as exc:
+        SHOOT.identity_keys(
+            media_bucket, "subject-a", "auto",
+            "face/subject-a_1.webp", None, limit=1, seed_pick="subject-a_1")
+    assert "--identity-max" in str(exc.value)
+
+
 def test_promoting_a_shot_run_carries_the_specs_description_and_tags(media_bucket, spec):
     """The spec's `description`/`tags` were dead data for a while.
 

@@ -334,6 +334,21 @@ def _too_many(name: str, pool: str, keys: list[str], limit: int, how: str) -> Sh
     )
 
 
+def _seed_picked(name: str, seed_pick: str) -> list[str]:
+    """Resolve `--seed-pick` names, by basename or bare stem, in the order given."""
+    seed = [k for k in REFS.character_pool_keys(name, "seed")
+            if os.path.splitext(k)[1].lower() in R.IMG_EXTS]
+    want = [x.strip() for x in seed_pick.split(",") if x.strip()]
+    by_base = {os.path.basename(k): k for k in seed}
+    by_stem = {os.path.splitext(b)[0]: k for b, k in by_base.items()}
+    missing = [w for w in want if w not in by_base and w not in by_stem]
+    if missing:
+        raise ShootError(
+            f"not in {name}'s seed/: {', '.join(missing)}\n"
+            f"       see: studio character pool {name} seed")
+    return [by_base.get(w) or by_stem[w] for w in want]
+
+
 def identity_keys(s3, name: str, source: str, pick: str | None, tags: str | None,
                   limit: int = IDENTITY_MAX,
                   seed_pick: str | None = None) -> tuple[list[str], str]:
@@ -350,24 +365,28 @@ def identity_keys(s3, name: str, source: str, pick: str | None, tags: str | None
         keys = REFS.character_ref_keys(
             name, None, [x.strip() for x in pick.split(",")] if pick else None,
             [t.strip() for t in tags.split(",")] if tags else None)
+        # The two pools MIX. Naming references used to silence --seed-pick
+        # entirely, which is backwards for the case that wants both: curated
+        # reference frames give clean, consistent angles, and a couple of seed
+        # photographs anchor them to the real source so a shoot is not driven
+        # purely by earlier model output. Refusing the combination made the
+        # safer choice the one you could not express.
+        if seed_pick:
+            keys = keys + _seed_picked(name, seed_pick)
+            source = "reference+seed"
+        else:
+            source = "reference"
         if len(keys) > limit:
-            raise _too_many(name, "reference", keys, limit,
-                            "Narrow --pick / --pick-tag, or raise --identity-max.")
-        return keys, "reference"
+            raise _too_many(name, source, keys, limit,
+                            "Narrow --pick / --pick-tag / --seed-pick, or raise "
+                            "--identity-max.")
+        return keys, source
 
     if source in ("auto", "seed"):
         seed = REFS.character_pool_keys(name, "seed")
         seed = [k for k in seed if os.path.splitext(k)[1].lower() in R.IMG_EXTS]
         if seed_pick:
-            want = [x.strip() for x in seed_pick.split(",")]
-            by_base = {os.path.basename(k): k for k in seed}
-            by_stem = {os.path.splitext(b)[0]: k for b, k in by_base.items()}
-            missing = [w for w in want if w not in by_base and w not in by_stem]
-            if missing:
-                raise ShootError(
-                    f"not in {name}'s seed/: {', '.join(missing)}\n"
-                    f"       see: studio character pool {name} seed")
-            chosen = [by_base.get(w) or by_stem[w] for w in want]
+            chosen = _seed_picked(name, seed_pick)
             if len(chosen) > limit:
                 raise _too_many(name, "seed", chosen, limit,
                                 "Pick fewer, or raise --identity-max.")
