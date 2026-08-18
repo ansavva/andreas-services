@@ -145,7 +145,10 @@ defaults:
     reference images may barely show it, since a reference pool is mostly
     head-and-shoulders. So take the build from THIS DESCRIPTION first, never
     from the pose guide, and do not reshape it toward the guide in any
-    direction — not thinner, not thicker, not taller, not shorter:
+    direction — not thinner, not thicker, not taller, not shorter. NOTHING in
+    this description governs the FACE: where it mentions hair it means BODY
+    hair, and it must not change the facial hair, its length or its style —
+    those come from the reference images and the identity cues below:
   must_intro_body: >-
     Preserve these identity cues exactly — but the wardrobe named above governs
     this plate, so ignore any clothing rule among them:
