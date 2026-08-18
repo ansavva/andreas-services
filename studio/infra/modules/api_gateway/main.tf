@@ -1,5 +1,14 @@
 locals {
   prefix = "${var.project}-${var.environment}"
+
+  # The browser-facing CORS contract, stated once. Three places below serve it —
+  # the MOCK preflight and the two authorizer gateway responses — and they used
+  # to carry three hand-written copies of the same string.
+  #
+  # The fourth copy, `CORS(methods=...)` in `backend/studio_core/app_factory.py`,
+  # cannot be derived from here and still has to be kept in step by hand.
+  cors_methods = "GET,POST,PATCH,DELETE,OPTIONS"
+  cors_headers = "Content-Type,Authorization"
 }
 
 # REST API fronting the single Python Lambda.
@@ -96,13 +105,17 @@ resource "aws_api_gateway_integration" "health_get" {
 # the OPTIONS with no Authorization header and the authorizer would 401 it
 # before the real request ever happens.
 #
-# The method list below is what the *browser* is told, and it is answered here
-# rather than by Flask — so a verb the app implements but this omits is a CORS
-# failure no amount of Flask configuration can rescue. It has to stay in step
-# with `CORS(methods=...)` in `app_factory.py` and with the two gateway
-# responses further down. All four were widened together when studio gained its
-# write routes; a preflight is also sent for any request carrying a JSON body,
-# which every one of those routes does.
+# The method list is what the *browser* is told, and it is answered here rather
+# than by Flask — so a verb the app implements but this omits is a CORS failure
+# no amount of Flask configuration can rescue. This copy and the two gateway
+# responses further down now all read `local.cors_methods`, so the only copy left
+# to keep in step by hand is `CORS(methods=...)` in `app_factory.py`. A preflight
+# is also sent for any request carrying a JSON body, which every write route
+# does — so a missing verb here takes the whole write half of the app down.
+#
+# Widening the list is only half the job: it reaches a browser solely through a
+# new stage deployment, which is why the `triggers` hash below has to include
+# these values and not just resource ids.
 # ---------------------------------------------------------------------------
 resource "aws_api_gateway_method" "options" {
   rest_api_id   = aws_api_gateway_rest_api.main.id
@@ -137,8 +150,8 @@ resource "aws_api_gateway_integration_response" "options" {
   http_method = aws_api_gateway_method.options.http_method
   status_code = "200"
   response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PATCH,DELETE,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Headers" = "'${local.cors_headers}'"
+    "method.response.header.Access-Control-Allow-Methods" = "'${local.cors_methods}'"
     "method.response.header.Access-Control-Allow-Origin"  = "'${var.allowed_origin}'"
   }
   depends_on = [aws_api_gateway_method_response.options]
@@ -159,10 +172,19 @@ resource "aws_api_gateway_gateway_response" "unauthorized" {
   response_type = "UNAUTHORIZED"
   status_code   = "401"
 
+  # Declared rather than left to API Gateway's default because the SPA reads it:
+  # `apis/client.ts` falls back to `body.message` when a response is not the
+  # API's own `{"error": ...}` shape, which an authorizer rejection never is.
+  # Leaving it undeclared makes every apply strip it, and a 401 then reaches the
+  # UI as a bare status with nothing to show the user.
+  response_templates = {
+    "application/json" = "{\"message\":$context.error.messageString}"
+  }
+
   response_parameters = {
     "gatewayresponse.header.Access-Control-Allow-Origin"  = "'${var.allowed_origin}'"
-    "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
-    "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,POST,PATCH,DELETE,OPTIONS'"
+    "gatewayresponse.header.Access-Control-Allow-Headers" = "'${local.cors_headers}'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'${local.cors_methods}'"
   }
 }
 
@@ -171,10 +193,19 @@ resource "aws_api_gateway_gateway_response" "access_denied" {
   response_type = "ACCESS_DENIED"
   status_code   = "403"
 
+  # Declared rather than left to API Gateway's default because the SPA reads it:
+  # `apis/client.ts` falls back to `body.message` when a response is not the
+  # API's own `{"error": ...}` shape, which an authorizer rejection never is.
+  # Leaving it undeclared makes every apply strip it, and a 401 then reaches the
+  # UI as a bare status with nothing to show the user.
+  response_templates = {
+    "application/json" = "{\"message\":$context.error.messageString}"
+  }
+
   response_parameters = {
     "gatewayresponse.header.Access-Control-Allow-Origin"  = "'${var.allowed_origin}'"
-    "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
-    "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,POST,PATCH,DELETE,OPTIONS'"
+    "gatewayresponse.header.Access-Control-Allow-Headers" = "'${local.cors_headers}'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'${local.cors_methods}'"
   }
 }
 
@@ -193,9 +224,25 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_method.health_get.id,
       aws_api_gateway_integration.proxy_any.id,
       aws_api_gateway_integration.health_get.id,
-      aws_api_gateway_integration_response.options.id,
-      aws_api_gateway_gateway_response.unauthorized.id,
-      aws_api_gateway_gateway_response.access_denied.id,
+      # The CORS header *values*, not just the ids of the resources carrying
+      # them. An integration response's id is `agir-<api>-<resource>-OPTIONS-200`
+      # and a gateway response's is `aggr-<api>-<type>`; neither encodes
+      # `response_parameters`, so listing only ids meant a change to the allowed
+      # method list produced no new deployment and the stage went on serving the
+      # preflight it was born with.
+      #
+      # That is not hypothetical. When studio gained its write routes the method
+      # list was widened to `GET,POST,PATCH,DELETE,OPTIONS` here and applied
+      # cleanly, while the deployed stage kept answering `GET,OPTIONS` — so every
+      # write from the browser died at the preflight as an opaque CORS error with
+      # no status, for months, with `terraform plan` clean the whole time. The
+      # deployment is the only thing between this config and what a browser sees;
+      # anything a browser can observe has to be in this hash by value.
+      aws_api_gateway_integration_response.options.response_parameters,
+      aws_api_gateway_gateway_response.unauthorized.response_parameters,
+      aws_api_gateway_gateway_response.access_denied.response_parameters,
+      aws_api_gateway_gateway_response.unauthorized.response_templates,
+      aws_api_gateway_gateway_response.access_denied.response_templates,
       var.cognito_user_pool_arn,
       var.allowed_origin,
     ]))
