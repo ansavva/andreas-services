@@ -169,7 +169,7 @@ def gather(entry: dict, s3, args) -> dict:
                 f"character's default_set) rather than hoping the extras are dropped.")
         bindings[refs_field] = keys
 
-    _warn_total_bytes(s3, bindings)
+    _warn_total_bytes(entry, s3, bindings)
     return bindings
 
 
@@ -180,8 +180,8 @@ def gather(entry: dict, s3, args) -> dict:
 BYTES_WARN = 6.5 * 1024 * 1024
 
 
-def _warn_total_bytes(s3, bindings: dict) -> None:
-    """Warn when a payload carries more image data than has ever worked.
+def _warn_total_bytes(entry: dict, s3, bindings: dict) -> None:
+    """Warn when a VIDEO payload carries more image data than has ever worked.
 
     A warning, not an error: 6.41 MiB is the largest total observed to succeed,
     which is not the same as a documented ceiling, and refusing a payload on a
@@ -192,7 +192,14 @@ def _warn_total_bytes(s3, bindings: dict) -> None:
     interrupted; please retry`, with no `started_at`, no metrics and empty logs.
     That reads as an upstream blip and invites retrying it unchanged, which is
     exactly what three consecutive failures were spent on.
+
+    Video only, because that is where the evidence is. The image models have
+    taken five 2.4 MiB plates — around 12 MiB — repeatedly and without
+    complaint, so warning about them would be a false alarm on every reference
+    shoot, and a warning that cries wolf is worse than none.
     """
+    if entry.get("kind") != "video":
+        return
     keys = []
     for value in bindings.values():
         keys += value if isinstance(value, list) else [value]

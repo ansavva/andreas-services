@@ -371,3 +371,22 @@ def test_a_payload_within_the_measured_range_says_nothing(media_bucket, no_netwo
 
     SUB.gather(REG.get("kling"), media_bucket, args)
     assert "warning" not in capsys.readouterr().err
+
+
+def test_the_byte_warning_is_video_only(media_bucket, no_network, capsys):
+    """The image models have taken ~12 MiB of plates repeatedly and without
+    complaint, so warning about them would be a false alarm on every reference
+    shoot — and a warning that cries wolf is worse than none."""
+    from types import SimpleNamespace
+
+    from studio_pipeline.engine import submit as SUB
+
+    big = "projects/subject-a/input/subject-a_8.png"
+    media_bucket.put_object(Bucket=BUCKET, Key=big, Body=b"x" * (12 * 1024 * 1024))
+    args = SimpleNamespace(
+        start_key=None, start_run=None, end_key=None, end_run=None, image_run=None,
+        character=(), ref_run=(), input_=(), input=(), key=[big], pick=None,
+        pick_tag=None, slots=None, project="subject-a", no_refs=False)
+
+    SUB.gather(REG.get("nano-banana-pro"), media_bucket, args)
+    assert "warning" not in capsys.readouterr().err
