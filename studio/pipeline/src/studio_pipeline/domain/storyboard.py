@@ -309,9 +309,13 @@ def scene_frames(manifest: dict, max_n: int | None = None) -> list[str]:
 
     if max_n is None or len(keys) <= max_n:
         return keys
-    if seeded:
-        return [keys[0]] + keys[-(max_n - 1):]
-    return keys[-max_n:]
+    if not seeded:
+        return keys[-max_n:]
+    # The seed always survives, and the newest frames fill what is left. Guard
+    # the max_n == 1 case explicitly: `keys[-0:]` is the WHOLE list, not the
+    # empty one, so writing this as a single slice silently returns every frame
+    # and the cap does nothing.
+    return [keys[0]] + (keys[-(max_n - 1):] if max_n > 1 else [])
 
 
 # --------------------------------------------------------------------------

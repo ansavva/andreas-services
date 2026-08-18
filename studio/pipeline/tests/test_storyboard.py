@@ -402,6 +402,11 @@ def test_scene_frames_keep_both_ends_when_a_cap_forces_a_choice():
     assert SB.scene_frames(m) == ["seed.png", "h1.png", "h2.png", "h3.png",
                                   "h4.png", "h5.png"]
     assert SB.scene_frames(m, 3) == ["seed.png", "h4.png", "h5.png"]
+    assert SB.scene_frames(m, 2) == ["seed.png", "h5.png"]
+    # A cap of one is the seed alone. Written as one slice this returns the
+    # WHOLE list, because `keys[-0:]` is `keys[0:]` — the cap silently does
+    # nothing and every handoff frame is billed into the payload.
+    assert SB.scene_frames(m, 1) == ["seed.png"]
 
 
 def test_scene_frames_never_repeat_a_key():
