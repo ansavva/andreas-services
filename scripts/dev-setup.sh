@@ -3,7 +3,8 @@
 # Shared developer / CI toolchain bootstrap for the andreas-services monorepo.
 #
 # Installs the cross-cutting tools every service needs (Terraform, tflint, AWS
-# CLI, Node.js, jq, zip, Stripe CLI) with Homebrew on BOTH macOS and Linux. Service-specific
+# CLI, GitHub CLI, Node.js, jq, zip, Stripe CLI) with Homebrew on BOTH macOS and
+# Linux. Service-specific
 # runtimes live in per-service scripts, e.g. humbugg/scripts/dev-setup.sh (.NET).
 #
 # Homebrew details:
@@ -103,11 +104,34 @@ ensure_brew() {
   return 0
 }
 
+# Homebrew is installed lazily, the first time a tool actually turns out to be
+# missing. A machine that already has the toolchain — a developer laptop, or a
+# cloud image whose own setup already installed these CLIs — then costs nothing:
+# every tool short-circuits on `command -v` and Homebrew is never touched. That
+# is what makes this script cheap enough to run on every session start.
+BREW_STATE=unknown   # unknown | ready | unavailable
+require_brew() {
+  case "$BREW_STATE" in
+    ready)       return 0 ;;
+    unavailable) return 1 ;;
+  esac
+  if ensure_brew; then BREW_STATE=ready; return 0; fi
+  BREW_STATE=unavailable
+  return 1
+}
+
 # brew_ensure <cli-name> <formula>  (formula may be tap-qualified)
 brew_ensure() {
   local cli="$1" formula="$2"
   if have "$cli"; then skip "$cli" "$(command -v "$cli")"; return 0; fi
   if [[ "$CHECK_ONLY" -eq 1 ]]; then warn "$cli is MISSING (would: brew install $formula)"; return 0; fi
+  if ! require_brew; then
+    warn "$cli is MISSING and Homebrew is unavailable; skipping (see messages above)"
+    return 0
+  fi
+  # ensure_brew puts an already-installed Homebrew prefix on PATH, which may be
+  # exactly where this tool lives — re-check before shelling out to brew.
+  if have "$cli"; then skip "$cli" "$(command -v "$cli")"; return 0; fi
   log "installing $formula ..."
   brew_run install "$formula"
 }
@@ -160,15 +184,11 @@ install_tflint_aws_plugin_best_effort() {
 # ---------------------------------------------------------------------------
 log "OS detected: $OS  (check-only: $CHECK_ONLY)"
 
-if ! ensure_brew; then
-  warn "Homebrew is not available; cannot continue. See messages above."
-  exit 1
-fi
-
 brew_ensure terraform hashicorp/tap/terraform
 brew_ensure tflint    terraform-linters/tap/tflint
 install_tflint_aws_plugin_best_effort
 brew_ensure aws  awscli
+brew_ensure gh   gh
 brew_ensure node node
 brew_ensure jq   jq
 brew_ensure zip  zip
@@ -193,5 +213,5 @@ fi
 
 log "shared toolchain ready. For complete service setup run its orchestrator, e.g.:"
 log "    ./humbugg/scripts/dev-setup.sh   # .NET + per-machine AWS"
-[[ "$PLATFORM" == "linux" && "$CHECK_ONLY" -ne 1 ]] && log "Tools are on PATH via /etc/profile.d/homebrew.sh (new shells) or: eval \"\$($LINUXBREW_PREFIX/bin/brew shellenv)\""
+[[ "$PLATFORM" == "linux" && "$CHECK_ONLY" -ne 1 && "$BREW_STATE" == "ready" ]] && log "Tools are on PATH via /etc/profile.d/homebrew.sh (new shells) or: eval \"\$($LINUXBREW_PREFIX/bin/brew shellenv)\"" || true
 ok "done."
