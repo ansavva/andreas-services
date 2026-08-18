@@ -409,3 +409,34 @@ def test_scene_frames_never_repeat_a_key():
     m["shots"][0]["panels"][0]["key"] = "seed.png"
     m["shots"][1]["opens_on"]["key"] = "seed.png"
     assert SB.scene_frames(m) == ["seed.png"]
+
+
+# --- a supplied panel ------------------------------------------------------
+
+def test_a_panel_given_as_an_image_is_supplied_not_rendered():
+    """A plan can pin an image that already exists — the frame a scene opens on,
+    or a pose pulled out of an earlier clip that is exactly right and would only
+    be degraded by asking a model to reproduce it."""
+    assert SB.is_supplied({"key": "projects/p/input/p_in_9.jpg"}) is True
+    assert SB.is_supplied({"key": "k", "prompt": "   "}) is True, "whitespace is not a prompt"
+    assert SB.is_supplied({"key": "k", "prompt": "render this"}) is False
+    assert SB.is_supplied({"prompt": "render this"}) is False
+
+
+def test_a_supplied_panel_never_goes_stale():
+    """It has no prompt to have drifted from, so marking it stale would be a
+    permanent warning about nothing."""
+    old = plan()
+    old["shots"][0]["panels"][0].update(key="projects/p/input/p_in_9.jpg", prompt="")
+    revised = plan()
+    revised["shots"][0]["panels"][0].update(key="projects/p/input/p_in_9.jpg", prompt="")
+    revised["shots"][0]["beat"] = "reworded around it"
+
+    panel = SB.merge(old, revised)["shots"][0]["panels"][0]
+    assert panel["stale"] is False
+    assert panel["key"].endswith("p_in_9.jpg")
+
+
+def test_a_supplied_panel_still_counts_as_boarded():
+    shot = {"panels": [{"n": 1, "key": "projects/p/input/p_in_9.jpg", "prompt": ""}]}
+    assert SB.shot_status(shot) == "boarded"

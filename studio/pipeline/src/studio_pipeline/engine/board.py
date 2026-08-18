@@ -459,7 +459,7 @@ def run_check(ref: str, opts) -> int:
 
     for shot in shots:
         for panel in shot.get("panels") or []:
-            if panel.get("key") and not panel.get("stale"):
+            if SB.is_supplied(panel) or (panel.get("key") and not panel.get("stale")):
                 continue
             try:
                 entry, _args, payload, bindings = prepare_panel(s3, manifest, shot, panel, opts)
@@ -498,6 +498,10 @@ def run_board(ref: str, opts) -> int:
     for shot in shots:
         for panel in shot.get("panels") or []:
             if opts.panel and panel["n"] not in opts.panel:
+                continue
+            # A supplied panel is an image the plan pinned, not something to
+            # render — there is nothing to make, and --redo cannot make it.
+            if SB.is_supplied(panel):
                 continue
             if panel.get("key") and not (opts.redo or panel.get("stale")):
                 continue

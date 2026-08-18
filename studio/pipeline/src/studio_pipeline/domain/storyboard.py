@@ -367,6 +367,19 @@ def validate(manifest: dict) -> None:
 # roles — what each panel is FOR
 # --------------------------------------------------------------------------
 
+def is_supplied(panel: dict) -> bool:
+    """A panel given as an image rather than as something to render.
+
+    A plan can pin an image that already exists into the board — the frame a
+    scene is to open on, or a pose pulled out of an earlier clip that is exactly
+    right and would only be degraded by asking a model to reproduce it. Such a
+    panel carries a `key` and no `prompt`, and the two commands that render
+    panels must leave it alone: there is nothing to render, and nothing for it to
+    be out of date with respect to.
+    """
+    return bool(panel.get("key")) and not (panel.get("prompt") or "").strip()
+
+
 def panel_roles(shot: dict) -> list[str]:
     """One role per panel, positional unless the panel says otherwise.
 
@@ -502,9 +515,12 @@ def merge(old: dict, new: dict) -> dict:
             for k in ("run", "source_key", "key", "boarded"):
                 if panel.get(k) is None:
                     panel[k] = was.get(k)
-            if panel.get("key"):
+            # A supplied panel has no prompt to have drifted from.
+            if panel.get("key") and not is_supplied(panel):
                 panel["stale"] = bool(was.get("stale")) or (
                     _text(panel.get("prompt")) != _text(was.get("prompt")))
+            elif is_supplied(panel):
+                panel["stale"] = False
         shot["status"] = shot_status(shot)
 
     for k in ("created", "stitch", "output", "assembled"):

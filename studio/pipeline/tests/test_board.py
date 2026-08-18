@@ -390,3 +390,17 @@ def test_the_byte_warning_is_video_only(media_bucket, no_network, capsys):
 
     SUB.gather(REG.get("nano-banana-pro"), media_bucket, args)
     assert "warning" not in capsys.readouterr().err
+
+
+def test_a_supplied_panel_is_never_rendered(media_bucket, no_network):
+    """Not by `board`, not by `--redo`, not by `check`. There is nothing to make."""
+    m = SC.read_manifest(media_bucket, "subject-a", PLANNED)
+    m["shots"][1]["panels"][0].update(
+        key="projects/subject-a/input/subject-a_3.png", prompt="", stale=True)
+    SC.write_manifest(media_bucket, m)
+
+    for argv in (("scenes", "board", SCENE, "--dry-run"),
+                 ("scenes", "board", SCENE, "--dry-run", "--redo")):
+        assert "shot-02 panel 1" not in run(*argv).output
+
+    assert "shot-02 panel 1 has no prompt" not in run("scenes", "check", SCENE).output
