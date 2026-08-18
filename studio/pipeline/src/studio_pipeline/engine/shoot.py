@@ -623,7 +623,11 @@ SHOOT_OPTIONS = [
     click.option("--identity-max", type=int, default=IDENTITY_MAX,
                  help=f"How many identity images to send per slot (default {IDENTITY_MAX})."),
     click.option("--model", help="Override the spec's model for every slot. See `models`."),
-    click.option("--pick", help="Identity from these reference files instead of seed/."),
+    # Comma-separated, not repeatable — same shape as `refs --pick`. Saying so
+    # matters: repeating the flag is not an error, it just keeps the last one,
+    # so four --pick flags quietly send one identity image.
+    click.option("--pick", help="Comma-separated reference files to carry identity, "
+                                "instead of seed/."),
     click.option("--seed-pick", "seed_pick",
                  help="Comma-separated seed files to carry identity, when seed/ holds more "
                       "than one slot sends."),

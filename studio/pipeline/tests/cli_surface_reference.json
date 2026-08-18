@@ -244,7 +244,7 @@
             "flags": [
               "--to"
             ],
-            "help": "Purpose subfolder inside reference/ (face, body, wardrobe, \u2026). Omit to add at the root of reference/.",
+            "help": "Purpose subfolder inside reference/ (face, body, wardrobe, …). Omit to add at the root of reference/.",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -1084,7 +1084,7 @@
             "flags": [
               "--pick"
             ],
-            "help": "Identity from these reference files instead of seed/.",
+            "help": "Comma-separated reference files to carry identity, instead of seed/.",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -1159,7 +1159,7 @@
             "flags": [
               "--slot"
             ],
-            "help": "Shoot only this slot id. Repeatable \u2014 see the spec for the ids.",
+            "help": "Shoot only this slot id. Repeatable — see the spec for the ids.",
             "hidden": false,
             "multiple": true,
             "nargs": 1,
@@ -1675,7 +1675,7 @@
             "default": null,
             "dest": "group",
             "flag": false,
-            "help": "face, body, wardrobe, scene, \u2026",
+            "help": "face, body, wardrobe, scene, …",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -1997,7 +1997,7 @@
             "flags": [
               "--args"
             ],
-            "help": "print as `--key K --key K \u2026`, ready to paste into a run",
+            "help": "print as `--key K --key K …`, ready to paste into a run",
             "hidden": false,
             "multiple": false,
             "nargs": 0,
@@ -2694,7 +2694,7 @@
             "flags": [
               "--note"
             ],
-            "help": "optional free text \u2014 where this came from",
+            "help": "optional free text — where this came from",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -3548,7 +3548,7 @@
         "flags": [
           "--character"
         ],
-        "help": "A character supplying identity. Repeatable \u2014 one piece of work can involve several.",
+        "help": "A character supplying identity. Repeatable — one piece of work can involve several.",
         "hidden": false,
         "multiple": true,
         "nargs": 1,
@@ -3743,7 +3743,7 @@
         "flags": [
           "--model"
         ],
-        "help": "REQUIRED registry key. See `models` \u2014 the engines are peers.",
+        "help": "REQUIRED registry key. See `models` — the engines are peers.",
         "hidden": false,
         "multiple": false,
         "nargs": 1,
