@@ -7,9 +7,32 @@ variable "aws_region" {
 variable "media_bucket_name" {
   description = <<-EOT
     The media bucket. Created by `modules/media` in this state, read by the API
-    and written by the generation skills. The name is grandfathered from before
-    studio absorbed the pipeline and does not follow the naming convention —
-    `modules/media/variables.tf` explains why it has not been changed yet.
+    and written by the generation skills. Follows the repo's
+    `[project]-[env]-[component]-[region]` convention.
+
+    It did not always. See `media_archive_bucket_name` below for the bucket this
+    one replaced and why that one is still here.
+  EOT
+  type        = string
+  default     = "studio-prod-media-us-east-1"
+}
+
+variable "media_archive_bucket_name" {
+  description = <<-EOT
+    The ORIGINAL media bucket, kept permanently.
+
+    Created from a separate `xharness` repo before studio absorbed the pipeline,
+    which is why its name does not follow the convention. It was not renamed,
+    because an S3 bucket cannot be: a name change is a destroy-and-recreate.
+    `media_bucket_name` is a second bucket, and the current objects were copied
+    across.
+
+    A copy of current objects is not a copy of the bucket. This one holds 1,613
+    noncurrent versions and 718 keys that survive only behind a delete marker —
+    the entire "an overwrite or a delete is recoverable" property the versioning
+    on these buckets exists for. That history is not reproducible anywhere else,
+    so the archive is retained rather than emptied and dropped. It carries
+    `prevent_destroy` for the same reason the live bucket does.
   EOT
   type        = string
   default     = "xharness-prod-media-us-east-1"

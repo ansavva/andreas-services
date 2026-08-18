@@ -38,12 +38,21 @@ output "cognito_user_pool_client_id" {
   value       = module.auth.user_pool_client_id
 }
 
+# The bucket currently IN SERVICE — which during the rename is not necessarily
+# the correctly-named one. The deploy workflow copies this into
+# `/studio/prod/media-bucket`, and the skills and `dev-setup.sh` read it from
+# there, so this output is what actually moves the pipeline across.
 output "media_bucket_name" {
   description = "The media bucket the pipeline writes and the API reads"
-  value       = module.media.bucket_name
+  value       = local.active_media.bucket_name
 }
 
 output "media_uri" {
   description = "s3:// URI for the root of the media tree"
-  value       = module.media.media_uri
+  value       = local.active_media.media_uri
+}
+
+output "media_archive_bucket_name" {
+  description = "The retained original media bucket — holds the version history the live bucket's copy does not carry"
+  value       = module.media_archive.bucket_name
 }
