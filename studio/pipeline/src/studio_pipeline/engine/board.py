@@ -49,6 +49,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
 from types import SimpleNamespace
 
 import click
@@ -405,28 +406,41 @@ def prepare_shot(s3, manifest: dict, shot: dict, opts):
 # seeing what is actually being sent
 # --------------------------------------------------------------------------
 
-def review_sheet(s3, label: str, items: list[tuple[str, str]], out_dir: str,
-                 cache: dict) -> str:
+def review_sheet(s3, manifest: dict, label: str, items: list[tuple[str, str]],
+                 out_dir: str | None, cache: dict) -> str:
     """A labelled contact sheet of the images one payload binds.
 
     Separate from the shoot's version because the caption carries the image's
     ROLE, not just its position: for a shot, whether a picture is the start
     frame, the end frame or a reference is the thing most worth checking before
     paying, and `[Image3]` does not say.
+
+    **It is uploaded into the scene, not merely written to disk.** A review sheet
+    is the thing someone looks at to decide whether to spend money, and a local
+    path is no use to anyone who is not sitting at the machine that made it —
+    which, when the pipeline is driven remotely, is nobody. In the scene's own
+    `review/` folder it is browsable in the app, it outlives the working
+    directory, and it sits beside the panels it was built from. `--review-sheet
+    DIR` still keeps a local copy for whoever IS at that machine.
     """
-    os.makedirs(out_dir, exist_ok=True)
+    tmp = out_dir or tempfile.mkdtemp(prefix="review-")
+    os.makedirs(tmp, exist_ok=True)
     paths, captions = [], []
     for key, caption in items:
         local = cache.get(key)
         if local is None:
-            local = os.path.join(out_dir, f"src-{len(cache)}-{os.path.basename(key)}")
+            local = os.path.join(tmp, f"src-{len(cache)}-{os.path.basename(key)}")
             s3.download_file(s3c.BUCKET, key, local)
             cache[key] = local
         paths.append(local)
         captions.append(caption)
-    out = os.path.join(out_dir, f"{label}.png")
-    return SHEET.build(paths, out, cols=min(len(paths), 5), cell=320,
-                       captions=captions, quiet=True)
+    out = SHEET.build(paths, os.path.join(tmp, f"{label}.png"),
+                      cols=min(len(paths), 5), cell=320, captions=captions, quiet=True)
+
+    project, _, scene_id = manifest["scene"].partition("/")
+    key = SC.scene_key(project, scene_id, "review", f"{label}.png")
+    s3.upload_file(out, s3c.BUCKET, key, ExtraArgs={"ContentType": "image/png"})
+    return key if out_dir is None else f"{key}\n       (local copy: {out})"
 
 
 def _sheet_items(entry: dict, bindings: dict) -> list[tuple[str, str]]:
@@ -543,10 +557,9 @@ def run_board(ref: str, opts) -> int:
         run = f"{owner}/{R.new_run_id(args.slug)}"
         print(f"\n===== {shot['id']} panel {panel['n']}  ->  a storyboard panel =====")
         print(SUB.render(entry, run, payload, bindings, False))
-        if opts.review_sheet:
-            sheet = review_sheet(s3, f"{shot['id']}-p{panel['n']}",
-                                 _sheet_items(entry, bindings), opts.review_sheet, sheet_cache)
-            print(f"===== IMAGES — what this panel sends =====\n{sheet}")
+        sheet = review_sheet(s3, manifest, f"{shot['id']}-p{panel['n']}",
+                             _sheet_items(entry, bindings), opts.review_sheet, sheet_cache)
+        print(f"===== IMAGES — what this panel sends =====\n{sheet}")
 
     if opts.dry_run:
         print(f"\n(dry run — {len(prepared)} panel(s) rendered, nothing submitted, "
@@ -632,10 +645,9 @@ def run_render(ref: str, opts) -> int:
         run = f"{owner}/{R.new_run_id(args.slug)}"
         print(f"\n===== {shot['id']}  ->  a shot of {manifest['scene']} =====")
         print(SUB.render(entry, run, payload, bindings, False))
-        if opts.review_sheet:
-            sheet = review_sheet(s3, shot["id"], _sheet_items(entry, bindings),
-                                 opts.review_sheet, sheet_cache)
-            print(f"===== IMAGES — what {shot['id']} actually sends =====\n{sheet}")
+        sheet = review_sheet(s3, manifest, shot["id"], _sheet_items(entry, bindings),
+                             opts.review_sheet, sheet_cache)
+        print(f"===== IMAGES — what {shot['id']} actually sends =====\n{sheet}")
 
     if opts.dry_run:
         print(f"\n(dry run — {len(prepared)} shot(s) rendered, nothing submitted, "
@@ -693,7 +705,9 @@ SHARED = [
                  help="show every payload for approval; submit nothing, bill nothing"),
     click.option("--expires", type=int, default=3600, help="Presign expiry (default 3600)."),
     click.option("--project", help="project, when the sceneref does not carry one"),
-    click.option("--review-sheet", help="write a contact sheet of each payload's images here"),
+    click.option("--review-sheet",
+                 help=("also keep a local copy of each payload's contact sheet here. "
+                       "The sheet is uploaded into the scene either way.")),
 ]
 
 

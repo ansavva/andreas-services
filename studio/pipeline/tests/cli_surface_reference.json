@@ -4449,7 +4449,7 @@
             "flags": [
               "--review-sheet"
             ],
-            "help": "write a contact sheet of each payload's images here",
+            "help": "also keep a local copy of each payload's contact sheet here. The sheet is uploaded into the scene either way.",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -4558,7 +4558,7 @@
             "flags": [
               "--review-sheet"
             ],
-            "help": "write a contact sheet of each payload's images here",
+            "help": "also keep a local copy of each payload's contact sheet here. The sheet is uploaded into the scene either way.",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -4956,7 +4956,7 @@
             "flags": [
               "--review-sheet"
             ],
-            "help": "write a contact sheet of each payload's images here",
+            "help": "also keep a local copy of each payload's contact sheet here. The sheet is uploaded into the scene either way.",
             "hidden": false,
             "multiple": false,
             "nargs": 1,

@@ -416,3 +416,30 @@ def test_a_continuing_shot_with_no_panel_and_no_handoff_says_it_has_nothing(
     _s, _e, _r, notes = BOARD.shot_bindings(media_bucket, m, m["shots"][1], REG.get("kling"))
     assert any("start from nothing" in n for n in notes)
     assert not any("open on its own panel" in n for n in notes)
+
+
+def test_a_review_sheet_lands_in_the_scene_not_only_on_disk(media_bucket, no_network, tmp_path):
+    """A review sheet is what someone looks at to decide whether to spend money.
+    A local path is no use to anyone not sitting at the machine that made it —
+    which, when the pipeline is driven remotely, is nobody."""
+    m = board_ready(media_bucket)
+    entry = REG.get("kling")
+    start, end, refs, _n = BOARD.shot_bindings(media_bucket, m, m["shots"][0], entry)
+    bindings = {"start_image": start, "reference_images": refs}
+
+    out = BOARD.review_sheet(media_bucket, m, "shot-01",
+                             BOARD._sheet_items(entry, bindings), None, {})
+    assert out == "projects/subject-a/scenes/board-test/review/shot-01.png"
+    media_bucket.head_object(Bucket=BUCKET, Key=out)
+
+
+def test_a_review_sheet_still_keeps_a_local_copy_when_asked(media_bucket, no_network, tmp_path):
+    m = board_ready(media_bucket)
+    entry = REG.get("kling")
+    start, _e, refs, _n = BOARD.shot_bindings(media_bucket, m, m["shots"][0], entry)
+    out = BOARD.review_sheet(media_bucket, m, "shot-01",
+                             BOARD._sheet_items(entry, {"start_image": start,
+                                                        "reference_images": refs}),
+                             str(tmp_path), {})
+    assert "local copy" in out
+    assert (tmp_path / "shot-01.png").is_file()
