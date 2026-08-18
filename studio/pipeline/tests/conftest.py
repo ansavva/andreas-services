@@ -59,6 +59,9 @@ FIXTURE_OBJECTS = {
     "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch/output/wave-porch.jpeg": b"jpeg-bytes",
     "projects/subject-a/input/subject-a_1.webp": b"webp-bytes",
     "projects/subject-a/input/subject-a_2.webp": b"webp-bytes",
+    # A PNG in the pool: the video engines reject `.webp`, so anything that
+    # stands in for a real chain seed or handoff frame has to be one.
+    "projects/subject-a/input/subject-a_3.png": b"png-bytes",
     # A scene from before scenes were planned: keyed by <timestamp>_<slug>, no
     # plan behind it, and already cut. It is here so back-compat is tested
     # rather than assumed — these still exist in the real bucket.
@@ -120,7 +123,7 @@ FIXTURE_OBJECTS = {
     "projects/subject-a/chains/board-test.json": (
         b'{"chain": "subject-a/board-test", "project": "subject-a",'
         b' "slug": "board-test",'
-        b' "seed": "projects/subject-a/input/subject-a_1.webp", "frames": []}'
+        b' "seed": "projects/subject-a/input/subject-a_3.png", "frames": []}'
     ),
     # The shared wording list.
     "phrasebook/wording.yaml": (

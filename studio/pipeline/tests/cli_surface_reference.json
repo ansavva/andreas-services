@@ -4334,6 +4334,254 @@
           }
         }
       },
+      "board": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "dest": {
+            "choices": null,
+            "default": null,
+            "dest": "dest",
+            "flag": false,
+            "flags": [
+              "--dest"
+            ],
+            "help": "also keep a local copy of each result",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "dry_run": {
+            "choices": null,
+            "default": false,
+            "dest": "dry_run",
+            "flag": true,
+            "flags": [
+              "--dry-run"
+            ],
+            "help": "show every payload for approval; submit nothing, bill nothing",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "expires": {
+            "choices": null,
+            "default": 3600,
+            "dest": "expires",
+            "flag": false,
+            "flags": [
+              "--expires"
+            ],
+            "help": "Presign expiry (default 3600).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "panel": {
+            "choices": null,
+            "default": null,
+            "dest": "panel",
+            "flag": false,
+            "flags": [
+              "--panel"
+            ],
+            "help": "only this panel number, within each shot",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "project, when the sceneref does not carry one",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "redo": {
+            "choices": null,
+            "default": false,
+            "dest": "redo",
+            "flag": true,
+            "flags": [
+              "--redo"
+            ],
+            "help": "render a panel again even though it exists",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "review_sheet": {
+            "choices": null,
+            "default": null,
+            "dest": "review_sheet",
+            "flag": false,
+            "flags": [
+              "--review-sheet"
+            ],
+            "help": "write a contact sheet of each payload's images here",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "shot": {
+            "choices": null,
+            "default": null,
+            "dest": "shot",
+            "flag": false,
+            "flags": [
+              "--shot"
+            ],
+            "help": "only this shot, by number or id. Repeatable.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "check": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "dest": {
+            "choices": null,
+            "default": null,
+            "dest": "dest",
+            "flag": false,
+            "flags": [
+              "--dest"
+            ],
+            "help": "also keep a local copy of each result",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "dry_run": {
+            "choices": null,
+            "default": false,
+            "dest": "dry_run",
+            "flag": true,
+            "flags": [
+              "--dry-run"
+            ],
+            "help": "show every payload for approval; submit nothing, bill nothing",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "expires": {
+            "choices": null,
+            "default": 3600,
+            "dest": "expires",
+            "flag": false,
+            "flags": [
+              "--expires"
+            ],
+            "help": "Presign expiry (default 3600).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "project, when the sceneref does not carry one",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "review_sheet": {
+            "choices": null,
+            "default": null,
+            "dest": "review_sheet",
+            "flag": false,
+            "flags": [
+              "--review-sheet"
+            ],
+            "help": "write a contact sheet of each payload's images here",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "shot": {
+            "choices": null,
+            "default": null,
+            "dest": "shot",
+            "flag": false,
+            "flags": [
+              "--shot"
+            ],
+            "help": "only this shot, by number or id. Repeatable.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
       "list": {
         "arguments": {
           "project": {
@@ -4555,6 +4803,115 @@
             "multiple": false,
             "nargs": 1,
             "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "render": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "dest": {
+            "choices": null,
+            "default": null,
+            "dest": "dest",
+            "flag": false,
+            "flags": [
+              "--dest"
+            ],
+            "help": "also keep a local copy of each result",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "dry_run": {
+            "choices": null,
+            "default": false,
+            "dest": "dry_run",
+            "flag": true,
+            "flags": [
+              "--dry-run"
+            ],
+            "help": "show every payload for approval; submit nothing, bill nothing",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "expires": {
+            "choices": null,
+            "default": 3600,
+            "dest": "expires",
+            "flag": false,
+            "flags": [
+              "--expires"
+            ],
+            "help": "Presign expiry (default 3600).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "project, when the sceneref does not carry one",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "review_sheet": {
+            "choices": null,
+            "default": null,
+            "dest": "review_sheet",
+            "flag": false,
+            "flags": [
+              "--review-sheet"
+            ],
+            "help": "write a contact sheet of each payload's images here",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "shot": {
+            "choices": null,
+            "default": null,
+            "dest": "shot",
+            "flag": false,
+            "flags": [
+              "--shot"
+            ],
+            "help": "the shot to render, by number or id. Repeatable, and required.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": true,
             "type": "str"
           }
         }

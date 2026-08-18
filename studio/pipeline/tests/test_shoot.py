@@ -939,3 +939,28 @@ def test_models_without_the_flag_are_unaffected():
     entry = REG.get("gpt-image-2")
     field = entry["images"]["refs"]
     SUB._check_image_budget(entry, {field: [f"k{i}" for i in range(12)]})
+
+
+def test_a_start_frame_is_format_checked_like_every_other_image():
+    """The rule used to live inside the reference-list branch, so a `.webp`
+    start frame reached a model that rejects `.webp` and failed at the provider
+    — after the submit, and in the provider's words rather than ones that name
+    `studio convert`. A start frame is the commonest thing to hand straight from
+    an image run, which is exactly where `.webp` comes from.
+    """
+    entry = REG.get("kling")
+    images = entry["images"]
+    args = SimpleNamespace(
+        start_key="projects/p/input/p_in_1.webp", start_run=None,
+        end_key=None, end_run=None, image_run=None, character=(), ref_run=(),
+        input_=(), input=(), key=[], pick=None, pick_tag=None, slots=None,
+        project="p", no_refs=True,
+    )
+    with pytest.raises(SUB.SubmitError) as exc:
+        SUB.gather(entry, None, args)
+    assert ".webp" in str(exc.value)
+    assert "studio convert" in str(exc.value), "the error must name the fix"
+
+    # A legal start frame, with no references at all, still passes.
+    args.start_key = "projects/p/input/p_in_1.png"
+    assert SUB.gather(entry, None, args)[images["start"]].endswith(".png")

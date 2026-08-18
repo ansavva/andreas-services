@@ -131,6 +131,22 @@ def gather(entry: dict, s3, args) -> dict:
     seen: set[str] = set()
     keys = [k for k in keys if not (k in seen or seen.add(k))]  # de-dupe, keep order
 
+    # The format rule applies to EVERY image, not just the reference list. It
+    # used to be checked inside the `if keys:` block below, so a `.webp` start
+    # frame sailed through to a model that rejects `.webp` and failed at the
+    # provider instead — after the submit, and with the provider's wording
+    # rather than the one that names `studio convert`. A start frame is the
+    # commonest thing to hand straight from an image run, which is exactly where
+    # `.webp` comes from.
+    frames = [bindings[f] for f in (start_field, imgs.get("end")) if f and f in bindings]
+    bad_frames = [k for k in frames if os.path.splitext(k)[1].lower() not in exts]
+    if bad_frames:
+        raise SubmitError(
+            f"{entry['key']} accepts only {sorted(exts)}; incompatible: {bad_frames}\n"
+            f"       convert with: studio convert "
+            f"--for {entry['key']} --key <key> --add-input <project>"
+        )
+
     if keys:
         if start_field in bindings and imgs.get("start_excludes_refs"):
             raise SubmitError(

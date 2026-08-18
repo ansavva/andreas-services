@@ -81,7 +81,7 @@ def test_project_input_keys_resolve_in_the_order_asked_for(media_bucket):
 def test_missing_input_number_names_what_is_available(media_bucket):
     with pytest.raises(refs.RefError) as exc:
         refs.project_input_keys("subject-a", [7])
-    assert "[7]" in str(exc.value) and "[1, 2]" in str(exc.value)
+    assert "[7]" in str(exc.value) and "[1, 2, 3]" in str(exc.value)
 
 
 # --------------------------------------------------------------------------

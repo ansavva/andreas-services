@@ -182,6 +182,13 @@ def normalise(plan: dict, project: str, slug: str) -> dict:
         "updated": R._now(),
         "title": plan.get("title") or "",
         "logline": plan.get("logline") or "",
+        # Prepended byte-identical to every panel prompt. Panels are chained to
+        # each other so they converge on one look, but chaining is an image
+        # argument and this is a wording one — location, wardrobe, light, grade
+        # stated once and repeated exactly, the trick the reference shot spec
+        # uses with its shared prose fragments. Cheap, and it survives a panel
+        # being re-rendered on its own.
+        "setting": plan.get("setting") or "",
         "defaults": defaults,
         "shots": shots,
         "stitch": plan.get("stitch"),
@@ -459,6 +466,30 @@ def merge(old: dict, new: dict) -> dict:
 def _text(s: str | None) -> str:
     """Prompt text compared for meaning, not for whitespace."""
     return " ".join((s or "").split())
+
+
+def panel_prompt(manifest: dict, panel: dict) -> str:
+    """A panel's prompt with the scene's setting in front of it.
+
+    The setting is repeated byte-identically across the board on purpose: Kling
+    and the image models alike have no seed, so identical wording is the only
+    reproducibility lever there is, and rewording between panels is how a board
+    ends up self-consistent panel by panel and inconsistent overall.
+    """
+    setting = (manifest.get("setting") or "").strip()
+    body = (panel.get("prompt") or "").strip()
+    return f"{setting}\n\n{body}".strip() if setting else body
+
+
+def board_order(manifest: dict) -> list[tuple[dict, dict]]:
+    """Every (shot, panel) pair in board order — shot by shot, panel by panel.
+
+    Panels are rendered in this order and each one sees the ones before it, so
+    the order is not merely presentational: it is the chain.
+    """
+    return [(shot, panel)
+            for shot in manifest.get("shots") or []
+            for panel in shot.get("panels") or []]
 
 
 # --------------------------------------------------------------------------
