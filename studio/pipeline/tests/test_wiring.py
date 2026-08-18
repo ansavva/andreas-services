@@ -178,3 +178,28 @@ def test_every_callback_accepts_the_parameters_click_will_pass():
 
     walk(cli.main, [])
     assert not broken, "\n".join(broken)
+
+
+def test_dry_run_actually_renders_a_payload(media_bucket, monkeypatch):
+    """`--dry-run` is the approval gate. It has to work.
+
+    It read `args.json` while Click had stored the flag as `json_` (`json` is not
+    a legal attribute name for it), so every `studio run --dry-run` raised
+    AttributeError — the one command the spending rule tells everyone to use
+    before billing. The wiring test above cannot see this: the callback takes
+    `**options`, so it accepts every parameter; the mismatch is in the body.
+    """
+    from click.testing import CliRunner
+
+    from studio_pipeline import cli
+
+    props = {f: {} for f in ("prompt", "aspect_ratio", "output_format", "input_images")}
+    monkeypatch.setattr("studio_pipeline.engine.schema.fetch", lambda *a, **k: (props, {}))
+
+    result = CliRunner().invoke(cli.main, [
+        "run", "--model", "gpt-image-2", "--project", "subject-a", "--dry-run",
+        "--prompt", "a test", "--key", "characters/subject-a/seed/subject-a_1.webp"])
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    assert "1/2  PROMPT" in result.output
+    assert "2/2  INPUT" in result.output
+    assert "a test" in result.output

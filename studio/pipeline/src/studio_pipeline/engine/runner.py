@@ -268,7 +268,11 @@ def cmd_run(**options):
 
     run = f"{args.project}/{R.new_run_id(args.slug)}"
     if args.dry_run:
-        print(SUB.render(entry, run, payload, bindings, args.json))
+        # `json_`, not `json` — `--json` cannot be a Python attribute name, so
+        # Click was given the safe spelling and this line read the unsafe one.
+        # It made `--dry-run` raise AttributeError, which is the command the
+        # approval rule tells everyone to use before spending money.
+        print(SUB.render(entry, run, payload, bindings, args.json_))
         return 0
 
     try:
