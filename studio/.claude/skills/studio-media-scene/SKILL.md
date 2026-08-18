@@ -49,44 +49,121 @@ So the choice is real and worth stating to the user before spending:
 Chaining is how you get both. Each shot is a single continuous take, and shot
 boundaries are where the cuts go — deliberately, where you chose them.
 
-## The loop
+## Storyboard first
 
-Per shot, four steps. Only step 1 bills.
+A scene is planned before it is bought. Each shot gets one or more **panels** —
+stills, which cost cents — so the flow can be read before any video bills. The
+panels are not thrown away once looked at: they become the images the video
+model renders from.
 
-```bash
-# 0. ONCE, before shot 2: name what shot 1 started from
-studio frames chain <project>/<slug> --seed projects/<project>/input/<project>_in_<n>.png
+    plan  ->  panels  ->  shots  ->  the cut
 
-# 1. render this shot from the previous frame, with the SCENE'S OWN frames as
-#    references  (APPROVAL GATE — bills)
-studio run --model kling --project <project> --input-file input.json --prompt-json shot.json \
-  --project <project> --start-key projects/<project>/input/<project>_in_<n>.png \
-  $(studio frames chain <project>/<slug> --args --max 7) \
-  --slug <slug>-shot2 --poll
+The plan is a local JSON file you write and ingest. It is prose about a
+particular scene, so it lives in the bucket as data, never in the repository.
 
-# 2. LOOK AT IT — a contact sheet can be read, a video cannot
-studio frames grid <project>/latest --count 4 --dest /tmp/check
-
-# 3. take the handoff frame into the input pool AND into the chain
-studio frames last <project>/latest --add-input --chain <slug>
-
-# 4. …repeat for the next shot, then assemble
-studio scenes new <name> --slug <slug> \
-  --shot <project>/<run_id>#1 --shot <project>/<run_id>#1 --shot <project>/latest#1
+```json
+{
+  "characters": ["<name>"],
+  "setting": "One paragraph — location, wardrobe, light, grade. Prepended
+              byte-identical to every panel prompt.",
+  "defaults": {
+    "model": "kling", "panel_model": "nano-banana-pro",
+    "duration": 5, "extra": {"mode": "standard", "generate_audio": false}
+  },
+  "shots": [
+    {
+      "id": "shot-01",
+      "beat": "one line, for the board caption",
+      "panels": [
+        {"prompt": "the still prompt for this panel",
+         "references": {"characters": ["<name>"], "pick_tag": "face"}}
+      ],
+      "motion": {"prompt": "the motion prompt", "duration": 10}
+    }
+  ]
+}
 ```
 
-**Step 2 is not optional.** Each shot becomes the *input* to the next, so an
-unnoticed defect is inherited by everything downstream and re-billed. Checking a
-clip costs nothing; discovering the problem three shots later costs three shots.
+`id` is the merge key. Revising means re-ingesting with `--force`, which carries
+every run, panel and cut across — so rewording a beat cannot orphan a clip you
+already paid for. A panel whose prompt changed keeps its image and is marked
+**stale**: the picture on disk no longer illustrates the words beside it. That is
+a warning, not a block.
 
-**Step 3 writes to the input pool, never `reference/`.** An extracted frame is
-model output. Chaining from `input/` is correct; promoting generated pixels into
-the curated identity set is how drift compounds.
+### Panels are chained to each other
 
-**Step 1's references are the scene's own frames, not the character's.** This is
-the easiest thing in the whole loop to get wrong, because reaching for
-`--character` is the habit everywhere else in the harness. See the section below
-— it costs continuity, and the damage is inherited by every later shot.
+Panel 1 renders from the character's references alone. Every later panel renders
+from those **plus the panels already on the board**, so the board converges on
+one location, wardrobe and grade instead of drifting a shot at a time. Two things
+follow, and both bite if you do not expect them:
+
+- the board renders **in order**, and
+- **re-rendering panel *k* invalidates everything after it**, because they were
+  rendered against the old one.
+
+`setting` is the second, cheaper lever on the same problem: repeated
+byte-identically in front of every panel prompt, it survives a panel being
+re-rendered alone.
+
+### How many panels a shot wants
+
+Positional, unless a panel names its `role`: **the first is the start frame, the
+last is the end frame, and anything between them rides along as a reference.**
+One panel is just a start frame. Two bracket the shot, so the model interpolates
+between two compositions you approved rather than inventing where to land.
+
+## The loop
+
+Per shot, and only two steps bill.
+
+```bash
+# 1. write the plan, then ingest it  (free)
+studio scenes new <project> --slug <slug> --from-json plan.json
+studio scenes plan <project>/<slug>          # read it back as a table
+studio scenes check <project>/<slug>         # would every payload be accepted?
+
+# 2. render the panels  (APPROVAL GATE — bills, cents each)
+studio scenes board <project>/<slug> --dry-run --review-sheet /tmp/board
+studio scenes board <project>/<slug>
+
+# 3. LOOK AT THE BOARD — a sheet can be read, a plan cannot
+studio scenes sheet <project>/<slug> --out /tmp/board
+
+# 4. render one shot  (APPROVAL GATE — bills, dollars)
+studio scenes render <project>/<slug> --shot 1
+
+# 5. look at the clip, then carry its last frame into the next shot
+studio frames grid <project>/latest --count 4 --dest /tmp/check
+studio scenes handoff <project>/<slug> --shot 2
+
+# …repeat 4 and 5 for each shot, then cut
+studio scenes assemble <project>/<slug>
+```
+
+**Step 3 is not optional.** Each panel becomes the input to the next, and each
+shot becomes the input to the one after it, so an unnoticed defect is inherited
+by everything downstream and re-billed. Looking costs nothing.
+
+**`--shot` is required on `render`.** There is no whole-scene default: a
+four-shot scene with audio is real money, and shot N+1's start frame does not
+exist until shot N is rendered and its handoff taken.
+
+**`scenes handoff` replaces the old three-step dance** of grabbing a frame,
+adding it to the input pool and recording it in a chain by hand. It cannot be
+pointed at the wrong chain, which the hand version could and did.
+
+### The panel is usually not the start frame
+
+A cut is seamless only from the **literal last frame** of the shot before it. A
+panel composed for the same moment differs from that frame in a hundred small
+ways, all of which read as a jump. So once a shot has a handoff frame, the
+handoff opens the shot and the start panel **is demoted to a reference** — still
+steering where the shot goes, no longer breaking the join. The render says so
+when it happens.
+
+Shot 1 has nothing before it, so its first panel really is its start frame. A
+shot that deliberately opens on a new composition can set `use_handoff: false`
+and keep its panel.
 
 ## Continuity — what to hold, what to change
 
@@ -153,7 +230,9 @@ without it, a prop appears, a new character enters. Then send only the images
 that show that specific thing, and drop them again once a frame in the chain
 covers it.
 
-`--chain` makes the list derived rather than remembered:
+For a scene with a plan, `studio scenes handoff` does all of this in one step
+and writes the frame onto the next shot as well. Driving it by hand — for a
+chain that has no scene behind it — is three commands:
 
 ```bash
 # once, naming what shot 1 started from
@@ -191,12 +270,20 @@ It is the wrong tool for *"and then…"*.
 ## Assembly
 
 ```bash
-studio scenes new <project> --slug <slug> --shot <runref> --shot <runref> …
+studio scenes assemble <project>/<slug>
 ```
 
-`--shot` order is cut order. The scene lands at
-`projects/<project>/scenes/<YYYY-MM-DD_HH-MM-SS>_<slug>/` with `scene.json`, the
-source clips copied into `shots/`, and the stitched video in `output/`.
+Shot order is cut order, taken from the plan. The scene lands at
+`projects/<project>/scenes/<slug>/` with `scene.json`, the source clips copied
+into `shots/`, and the stitched video in `output/`.
+
+Re-cutting **overwrites** `output/<slug>.mp4`. The bucket versions every object
+and grants no delete-version permission, so a previous cut is superseded rather
+than destroyed.
+
+No storyboard? `studio scenes assemble <project>/<slug> --shot <runref> --shot
+<runref>` appends runs directly, so "just stitch these three clips" is still one
+command and a board stays optional.
 
 Shots that agree on codec, geometry, frame rate and audio layout are
 **stream-copied** — the cut is bit-for-bit the sources joined end to end. Shots

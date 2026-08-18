@@ -146,9 +146,11 @@ studio frames chain <project>/<slug> --args --max 7    # -> --key … --key …
 studio phrasebook check --model <model key> --text "<draft prompt>"
 studio phrasebook show --model <model key>
 
-# Scenes: cut a sequence of runs into one continuous take
-studio scenes new <project> --slug <slug> \
-  --shot <project>/<run_id>#1 --shot <project>/<run_id>#1 --shot <project>/latest#1
+# Scenes: a piece planned, shot and cut. `new` starts one from a plan;
+# `assemble` does the cutting, and takes runrefs directly when there is no plan.
+studio scenes new <project> --slug <slug> --from-json plan.json
+studio scenes assemble <project>/<slug> \
+  --shot <project>/<run_id>#1 --shot <project>/latest#1
 studio scenes list <project>
 studio scenes show <project>/latest
 

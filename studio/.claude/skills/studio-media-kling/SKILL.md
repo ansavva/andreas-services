@@ -184,7 +184,7 @@ and assembly — lives in **[`studio-media-scene`](../studio-media-scene/SKILL.m
 4. Hold the locked base identical.
 5. **Colour-match in assembly**; a hard cut amplifies small differences.
 
-Assemble with ``studio scenes new``. Parts chained this way inherit their
+Assemble with ``studio scenes assemble``. Parts chained this way inherit their
 geometry from each other, so the stitch is a stream copy with no re-encode.
 
 **Binding the frame: `--start-key`, not `--key`.** `--key` adds an explicit S3

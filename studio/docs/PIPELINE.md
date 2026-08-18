@@ -146,7 +146,8 @@ studio/pipeline/
         │
         ├── domain/                WHAT THINGS ARE — records and the tree's shape
         │   ├── paths.py           the one module that knows the key layout
-        │   ├── runs.py  scenes.py  movies.py  frames.py  projects.py
+        │   ├── runs.py  scenes.py  storyboard.py  movies.py  frames.py
+        │   ├── projects.py
         │   ├── characters.py  curate.py  contact_sheet.py
         │   ├── phrasebook.py  rewrite.py  prompt.py
         │   └── templates/profile.yaml  reference_shots.yaml
@@ -155,6 +156,7 @@ studio/pipeline/
         │   ├── models.json        the REGISTRY — models are data, not code
         │   ├── runner.py          `studio run` / `studio models`
         │   ├── shoot.py           `studio character shoot` — the standard set
+        │   ├── board.py           `studio scenes board` / `render` / `check`
         │   ├── registry.py  schema.py  submit.py  refs.py  add_model.py
         │
         ├── objects/               raw object access
@@ -298,11 +300,14 @@ its bindings rather than trusted from the flags. That list is what makes "every
 run using this character" answerable now that the folder no longer says it:
 `runs.py find --character <name>`.
 
-Scenes and movies take the same id shape, so they sort the same way:
+A **scene is keyed by its slug** and created before anything renders — it is
+the plan as much as the record. A **movie** still takes the run id shape,
+because a movie is only ever a finished cut:
 
 ```
-projects/<project>/scenes/<YYYY-MM-DD_HH-MM-SS>_<slug>/
-    scene.json      the manifest — shots in cut order, as RUNREFS and S3 KEYS
+projects/<project>/scenes/<slug>/
+    scene.json      the plan AND the record — shots, panels, runs, the cut
+    storyboard/     the panels: shot-<NN>-p<M>.png
     shots/          each source clip, copied in, numbered in cut order
     output/         the stitched scene — <slug>.mp4
 
@@ -465,7 +470,8 @@ or projects.
 | `paths.py` | **The one module that knows the tree's shape.** Every key is built here, which is what keeps a global prefix applied in exactly one place. Library, not a command. |
 | `projects.py` | Project CRUD and the project **input pool**. `require_project()` turns a missing `--project` into an error that lists the real options. |
 | `runs.py` | The shared **run store** every engine records into: request/prompt/result, output archiving, runref resolution for chaining, `find --character` across projects, favourites. It refuses a URL-shaped binding — this is where "S3 is the only origin" is enforced in code. |
-| `scenes.py` | The **scene store**: run outputs stitched into one continuous video under `projects/<p>/scenes/<scene_id>/`. |
+| `scenes.py` | The **scene store**: a piece planned, shot and cut, under `projects/<p>/scenes/<slug>/`. Owns the manifest, `assemble`, `handoff`, and the read-only half of the CLI. |
+| `storyboard.py` | **The plan document**, pure data: what a shot's panels mean, which one is the start frame once the chain has spoken, how a revision merges onto work already paid for. No S3, no models — so the rules that decide what a shot sends are testable on their own. |
 | `movies.py` | The **movie store**: scenes cut into one piece. The same shape one tier up. |
 | `frames.py` | Stills out of a run's video — the chaining handoff, the contact grid that lets a clip be looked at before more money is spent on it, and a scene's own accumulated frames. |
 | `characters.py` | The character record: bible CRUD, the described reference index, pool listing, the compressed identity block. |
@@ -486,6 +492,7 @@ or projects.
 | `schema.py` | Live schema fetch; validates fields, enums, ranges, `denied`. |
 | `refs.py` | Character reference selection and project input pool → S3 keys. |
 | `shoot.py` | `studio character shoot` — the STANDARD reference set, one run per slot in `domain/templates/reference_shots.yaml`. Reads the character's bible for the prompt, binds a pose plate from `config/`, then files, describes and indexes each result. Lives here rather than in `domain/` because it invokes models; it drives the same lifecycle as `runner.py` rather than repeating it. |
+| `board.py` | `studio scenes board` / `render` / `check` — the two commands that spend money in a scene's life, plus the free one that says whether they would work. Turns the plan's roles into bindings and hands them to the same lifecycle `runner.py` drives. Every cap, exclusion and format rule stays in `submit.py`; a copy here is the one that drifts. |
 | `add_model.py` | Onboarding: fetch schema + README, infer an entry, append it to the registry. It writes no documentation — see `studio-media-add-model`. |
 
 **`objects/` — moving bytes.** `upload.py`, `download.py`, `presign.py`
