@@ -52,7 +52,15 @@ internal sealed class InvitationService(ICurrentUser user, IProfileRepository pr
         if (!string.Equals(Normalize(user.Email ?? "missing@example.invalid"), item.Email, StringComparison.Ordinal) && !request.ConfirmAddressMismatch) throw ApiException.Conflict("The signed-in address differs from the invited address. Confirm to bind this invitation to this account.");
         var profile = await profiles.GetAsync(user.UserId, ct) ?? throw ApiException.Conflict("Complete your profile before joining.");
         var current = await members.GetByGroupAsync(groupId, ct); plans.EnsureParticipantCapacity(group.Plan, group.EntitlementId, current.Count(x => x.IsParticipating));
-        var membership = MembershipRepository.NewRecord(groupId, user.UserId, profile.DisplayName, false);
+        var isLateParticipant = group.Status == GroupStatus.Drawn;
+        if (isLateParticipant)
+            plans.EnsureCapability(group.Plan, group.EntitlementId, PlanCapability.LateParticipants);
+        var membership = MembershipRepository.NewRecord(
+            groupId,
+            user.UserId,
+            profile.DisplayName,
+            false,
+            participating: !isLateParticipant);
         try { await invitations.AcceptAndCreateMembershipAsync(id, user.UserId, membership, ct); }
         catch (TransactionCanceledException) { throw ApiException.Conflict("This invitation has already been used, revoked, expired, or accepted by this account."); }
         await audit.RecordAsync(AuditAction.InvitationAccepted, groupId, new("invitation", id), cancellationToken: ct); return new(groupId, true);

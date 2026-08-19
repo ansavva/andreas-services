@@ -77,7 +77,11 @@ public sealed class GroupsController(IGroupService groups) : ControllerBase
     public Task<GroupDetail> Reset(string groupId, CancellationToken cancellationToken) => groups.ResetAsync(groupId, cancellationToken);
 
     [HttpGet("{groupId}/assignment")]
-    public Task<RecipientAssignment> Assignment(string groupId, CancellationToken cancellationToken) => groups.GetAssignmentAsync(groupId, cancellationToken);
+    public Task<RecipientAssignment> Assignment(
+        string groupId,
+        [FromQuery(Name = "draw_version")] string? drawVersion,
+        CancellationToken cancellationToken) =>
+        groups.GetAssignmentAsync(groupId, drawVersion, cancellationToken);
 
     [HttpPost("{groupId}/assignment/reveal")]
     public Task<RevealResponse> Reveal(string groupId, [FromBody] RevealRequest request, CancellationToken cancellationToken) =>

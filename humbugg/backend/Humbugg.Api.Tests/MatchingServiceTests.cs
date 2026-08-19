@@ -73,4 +73,85 @@ public sealed class MatchingServiceTests
             Assert.All(result, pair => Assert.NotEqual(pair.Key, pair.Value));
         }
     }
+
+    [Fact]
+    public void LateParticipantChangesOneExistingAssignmentWhenDirectInsertionIsValid()
+    {
+        var current = new Dictionary<string, string>
+        {
+            ["a"] = "b",
+            ["b"] = "c",
+            ["c"] = "a"
+        };
+
+        var result = _subject.CreateMinimalChangeAssignments(current, "d", []);
+
+        Assert.Equal(4, result.Assignments.Count);
+        Assert.Equal(2, result.AffectedMemberIds.Count);
+        Assert.Contains("d", result.AffectedMemberIds);
+        AssertValid(result.Assignments, []);
+    }
+
+    [Fact]
+    public void LateParticipantFindsTheMinimumForAConstrainedGroup()
+    {
+        var current = new Dictionary<string, string>
+        {
+            ["a"] = "b",
+            ["b"] = "c",
+            ["c"] = "a"
+        };
+        string[][] exclusions = [["d", "a"], ["d", "b"]];
+
+        var result = _subject.CreateMinimalChangeAssignments(current, "d", exclusions);
+
+        Assert.True(result.AffectedMemberIds.Count > 2);
+        AssertValid(result.Assignments, exclusions);
+    }
+
+    [Fact]
+    public void LateParticipantFailsSafelyWhenExclusionsMakeReassignmentImpossible()
+    {
+        var current = new Dictionary<string, string>
+        {
+            ["a"] = "b",
+            ["b"] = "c",
+            ["c"] = "a"
+        };
+
+        var error = Assert.Throws<ApiException>(() => _subject.CreateMinimalChangeAssignments(
+            current,
+            "d",
+            [["d", "a"], ["d", "b"], ["d", "c"]]));
+
+        Assert.Equal(409, error.StatusCode);
+    }
+
+    [Fact]
+    public void LateParticipantResultIsDeterministic()
+    {
+        var current = new Dictionary<string, string>
+        {
+            ["a"] = "b",
+            ["b"] = "c",
+            ["c"] = "a"
+        };
+
+        var first = _subject.CreateMinimalChangeAssignments(current, "d", []);
+        for (var iteration = 0; iteration < 20; iteration++)
+            Assert.Equal(first.Assignments, _subject.CreateMinimalChangeAssignments(current, "d", []).Assignments);
+    }
+
+    private static void AssertValid(
+        IReadOnlyDictionary<string, string> assignments,
+        IEnumerable<string[]> exclusions)
+    {
+        Assert.Equal(assignments.Keys.Order(), assignments.Values.Order());
+        Assert.All(assignments, pair => Assert.NotEqual(pair.Key, pair.Value));
+        foreach (var exclusion in exclusions)
+        {
+            Assert.NotEqual(exclusion[1], assignments[exclusion[0]]);
+            Assert.NotEqual(exclusion[0], assignments[exclusion[1]]);
+        }
+    }
 }

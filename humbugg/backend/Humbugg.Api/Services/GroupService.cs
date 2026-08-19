@@ -26,6 +26,7 @@ public interface IGroupService
     Task<RecipientAssignment> DrawAsync(string groupId, CancellationToken cancellationToken = default);
     Task<GroupDetail> ResetAsync(string groupId, CancellationToken cancellationToken = default);
     Task<RecipientAssignment> GetAssignmentAsync(string groupId, CancellationToken cancellationToken = default);
+    Task<RecipientAssignment> GetAssignmentAsync(string groupId, string? drawVersion, CancellationToken cancellationToken = default);
     Task<RevealResponse> RevealAsync(string groupId, RevealRequest request, CancellationToken cancellationToken = default);
 }
 
@@ -294,7 +295,7 @@ internal sealed class GroupService(
                 ["participant_count"] = assignments.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 ["days_to_draw"] = DaysSince(group.CreatedAt).ToString(System.Globalization.CultureInfo.InvariantCulture)
             }, cancellationToken);
-        return await GetAssignmentAsync(groupId, cancellationToken);
+        return await GetAssignmentAsync(groupId, cancellationToken: cancellationToken);
     }
 
     public async Task<GroupDetail> ResetAsync(string groupId, CancellationToken cancellationToken = default)
@@ -307,11 +308,16 @@ internal sealed class GroupService(
         return await GetAsync(groupId, cancellationToken);
     }
 
-    public async Task<RecipientAssignment> GetAssignmentAsync(string groupId, CancellationToken cancellationToken = default)
+    public async Task<RecipientAssignment> GetAssignmentAsync(
+        string groupId,
+        string? drawVersion = null,
+        CancellationToken cancellationToken = default)
     {
         var (group, membership) = await RequireMembershipAsync(groupId, cancellationToken);
         if (group.Status != GroupStatus.Drawn) throw ApiException.Conflict("Assignments have not been created yet.");
         var draw = await groups.GetDrawAsync(groupId, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(drawVersion) && draw?.DrawId != drawVersion)
+            throw ApiException.Conflict("This assignment link is obsolete. Open the exchange again for fresh assignment access.");
         if (draw is null || !draw.Assignments.TryGetValue(membership.MemberId, out var recipientId))
             throw ApiException.NotFound("You do not have an assignment in this draw.");
         var recipient = await memberships.GetAsync(recipientId, cancellationToken)
@@ -321,6 +327,11 @@ internal sealed class GroupService(
             $"assignment_viewed:{membership.MemberId}", cancellationToken: cancellationToken);
         return Assignment(recipient);
     }
+
+    public Task<RecipientAssignment> GetAssignmentAsync(
+        string groupId,
+        CancellationToken cancellationToken = default) =>
+        GetAssignmentAsync(groupId, null, cancellationToken);
 
     public async Task<RevealResponse> RevealAsync(string groupId, RevealRequest request, CancellationToken cancellationToken = default)
     {

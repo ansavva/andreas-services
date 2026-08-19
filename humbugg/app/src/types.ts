@@ -135,6 +135,19 @@ export interface RevealAssignment {
   recipient: RecipientAssignment;
 }
 
+export interface LateParticipantPreview {
+  proposal_id: string;
+  member_id: string;
+  affected_participant_count: number;
+  expires_at: string;
+}
+
+export interface LateParticipantResult {
+  member_id: string;
+  affected_participant_count: number;
+  assignment_version: string;
+}
+
 export type InvitationStatus = 'sent' | 'delivered' | 'bounced' | 'accepted' | 'expired' | 'revoked';
 export interface ManagedInvitation {
   invitation_id: string;
