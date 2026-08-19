@@ -495,6 +495,130 @@
         },
         "refreshed": "2026-08-15"
       }
+    },
+    "veo-3.1": {
+      "model": "google/veo-3.1",
+      "kind": "video",
+      "skill": "studio-media-veo-3-1",
+      "backfill_slug": "veo31",
+      "images": {
+        "refs": "reference_images",
+        "max_refs": 3,
+        "start": "image",
+        "end": "last_frame",
+        "start_excludes_refs": false,
+        "end_excludes_refs": true,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "prompt": {
+        "max_chars": null
+      },
+      "note": "Google Veo 3.1. Native synced audio, 24 fps, SynthID watermark. The only video engine here with a SEED and with negative_prompt as a real parameter. reference_images caps at 3 and ONLY works at aspect_ratio 16:9 with duration 8 — the schema still accepts other combinations and silently drops the reference set. A last_frame is ignored when reference_images are present. accepts_ext unverified: the README names no formats.",
+      "snapshot": {
+        "duration": {
+          "enum": [
+            4,
+            6,
+            8
+          ],
+          "default": 8
+        },
+        "resolution": {
+          "enum": [
+            "720p",
+            "1080p"
+          ],
+          "default": "1080p"
+        },
+        "aspect_ratio": {
+          "enum": [
+            "16:9",
+            "9:16"
+          ],
+          "default": "16:9"
+        },
+        "generate_audio": {
+          "default": true
+        },
+        "reference_images": {
+          "default": []
+        }
+      },
+      "video": {
+        "negative": "param",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": false,
+        "resolution_field": "resolution",
+        "resolution_map": null,
+        "allow_intelligent_duration": false
+      },
+      "aliases": []
+    },
+    "grok-imagine-video": {
+      "model": "xai/grok-imagine-video",
+      "kind": "video",
+      "skill": "studio-media-grok-imagine-video",
+      "backfill_slug": "grokimaginevideo",
+      "images": {
+        "refs": null,
+        "max_refs": 0,
+        "start": "image",
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "prompt": {
+        "max_chars": null
+      },
+      "note": "xAI Grok Imagine Video (Aurora). Native synced audio incl. lip-sync. Two things nothing else here does: a true duration RANGE (1-15s, not an enum) and a video-EDITING mode via the `video` input (max 8.7s in, output matches its duration/ratio/resolution). No reference images and no last frame. NEGATIVE DIRECTION IS IGNORED — the model has no negative_prompt field and the README says prompt-embedded negatives are dropped too; describe what you want instead. accepts_ext confirmed by the README.",
+      "snapshot": {
+        "duration": {
+          "default": 5,
+          "minimum": 1,
+          "maximum": 15
+        },
+        "resolution": {
+          "enum": [
+            "720p",
+            "480p"
+          ],
+          "default": "720p"
+        },
+        "aspect_ratio": {
+          "enum": [
+            "auto",
+            "16:9",
+            "4:3",
+            "1:1",
+            "9:16",
+            "3:4",
+            "3:2",
+            "2:3"
+          ],
+          "default": "auto"
+        }
+      },
+      "video": {
+        "negative": "prompt",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": false,
+        "resolution_field": "resolution",
+        "resolution_map": null,
+        "allow_intelligent_duration": false
+      },
+      "aliases": []
     }
   }
 }
