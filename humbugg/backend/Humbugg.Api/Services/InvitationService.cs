@@ -22,10 +22,10 @@ internal sealed class InvitationService(ICurrentUser user, IProfileRepository pr
     IInvitationRepository invitations, IPlanCatalog plans, ITransactionalEmailTemplates templates, ITransactionalEmailService email,
     IAuditTrail audit, HumbuggSettings settings) : IInvitationService
 {
-    public async Task<IReadOnlyList<ManagedInvitation>> ListAsync(string groupId, CancellationToken ct = default) { await RequireOrganizer(groupId, ct); var result = new List<ManagedInvitation>(); foreach (var item in await invitations.GetByGroupAsync(groupId, ct)) result.Add(await Public(item, ct)); return result; }
+    public async Task<IReadOnlyList<ManagedInvitation>> ListAsync(string groupId, CancellationToken ct = default) { await RequireManager(groupId, ct); var result = new List<ManagedInvitation>(); foreach (var item in await invitations.GetByGroupAsync(groupId, ct)) result.Add(await Public(item, ct)); return result; }
     public async Task<CreateInvitationsResponse> CreateAsync(string groupId, CreateInvitationsRequest request, CancellationToken ct = default)
     {
-        var group = await RequireOrganizer(groupId, ct); var addresses = (request.Emails ?? []).Select(Normalize).ToList();
+        var group = await RequireManager(groupId, ct); var addresses = (request.Emails ?? []).Select(Normalize).ToList();
         if (addresses.Count == 0) throw ApiException.BadRequest("At least one email address is required.");
         if (addresses.Count != addresses.Distinct(StringComparer.Ordinal).Count()) throw ApiException.Conflict("Duplicate email addresses are not allowed.");
         var existing = (await invitations.GetByGroupAsync(groupId, ct)).Select(x => x.Email).ToHashSet(StringComparer.Ordinal);
@@ -36,7 +36,7 @@ internal sealed class InvitationService(ICurrentUser user, IProfileRepository pr
     }
     public async Task<ManagedInvitation> ResendAsync(string groupId, string id, CancellationToken ct = default)
     {
-        var group = await RequireOrganizer(groupId, ct); var item = await Get(groupId, id, ct);
+        var group = await RequireManager(groupId, ct); var item = await Get(groupId, id, ct);
         if (DateTimeOffset.TryParse(item.LastSentAt, out var sent) && DateTimeOffset.UtcNow - sent < TimeSpan.FromMinutes(15)) throw ApiException.Conflict("Wait 15 minutes before resending.");
         var secret = Secret(); var expires = DateTimeOffset.UtcNow.AddDays(14).ToString("O");
         var message = templates.Invitation(new($"{id}:{Guid.NewGuid():N}", item.Email, "there", "Your organizer", group.Name, new Uri(Link(groupId, id, secret))));
@@ -44,7 +44,7 @@ internal sealed class InvitationService(ICurrentUser user, IProfileRepository pr
         await audit.RecordAsync(AuditAction.InvitationResent, groupId, new("invitation", id), cancellationToken: ct);
         return await Public((await invitations.GetAsync(id, ct))!, ct);
     }
-    public async Task RevokeAsync(string groupId, string id, CancellationToken ct = default) { await RequireOrganizer(groupId, ct); await Get(groupId, id, ct); await invitations.UpdateAsync(id, "revoked", null, null, null, ct); await audit.RecordAsync(AuditAction.InvitationRevoked, groupId, new("invitation", id), cancellationToken: ct); }
+    public async Task RevokeAsync(string groupId, string id, CancellationToken ct = default) { await RequireManager(groupId, ct); await Get(groupId, id, ct); await invitations.UpdateAsync(id, "revoked", null, null, null, ct); await audit.RecordAsync(AuditAction.InvitationRevoked, groupId, new("invitation", id), cancellationToken: ct); }
     public async Task<AcceptInvitationResponse> AcceptAsync(string groupId, string id, AcceptInvitationRequest request, CancellationToken ct = default)
     {
         var group = await groups.GetAsync(groupId, ct) ?? throw ApiException.NotFound("Exchange not found."); var item = await Get(groupId, id, ct);
@@ -58,7 +58,7 @@ internal sealed class InvitationService(ICurrentUser user, IProfileRepository pr
         await audit.RecordAsync(AuditAction.InvitationAccepted, groupId, new("invitation", id), cancellationToken: ct); return new(groupId, true);
     }
     private async Task<ManagedInvitation> CreateOne(GroupRecord g, string address, CancellationToken ct) { var id = Guid.NewGuid().ToString("N"); var secret = Secret(); var now = DateTimeOffset.UtcNow.ToString("O"); var expires = DateTimeOffset.UtcNow.AddDays(14).ToString("O"); var message = templates.Invitation(new(id, address, "there", "Your organizer", g.Name, new Uri(Link(g.GroupId, id, secret)))); var row = new InvitationRecord(id, g.GroupId, address, Hash(secret), "sent", expires, now, now, LastSentAt: now, MessageId: message.MessageId); await invitations.CreateAsync(row, ct); await email.SendAsync(message, ct); await audit.RecordAsync(AuditAction.InvitationCreated, g.GroupId, new("invitation", id), cancellationToken: ct); return await Public(row, ct); }
-    private async Task<GroupRecord> RequireOrganizer(string id, CancellationToken ct) { var g = await groups.GetAsync(id, ct) ?? throw ApiException.NotFound("Exchange not found."); if (g.OwnerUserId != user.UserId) throw ApiException.Forbidden("Only the organizer can manage invitations."); plans.EnsureCapability(g.Plan, g.EntitlementId, PlanCapability.ManagedInvitations); return g; }
+    private async Task<GroupRecord> RequireManager(string id, CancellationToken ct) { var g = await groups.GetAsync(id, ct) ?? throw ApiException.NotFound("Exchange not found."); var membership = await members.GetByUserAndGroupAsync(user.UserId, id, ct); if (membership?.IsOrganizer != true) throw ApiException.Forbidden("Only an organizer can manage invitations."); plans.EnsureCapability(g.Plan, g.EntitlementId, PlanCapability.ManagedInvitations); return g; }
     private async Task<InvitationRecord> Get(string gid, string id, CancellationToken ct) { var x = await invitations.GetAsync(id, ct); return x is null || x.GroupId != gid ? throw ApiException.NotFound("Invitation not found.") : x; }
     private async Task<ManagedInvitation> Public(InvitationRecord x, CancellationToken ct) { var delivery = await invitations.GetDeliveryStatusAsync(x.MessageId, ct); var status = x.Status == "revoked" ? InvitationStatus.Revoked : x.Status == "accepted" ? InvitationStatus.Accepted : DateTimeOffset.Parse(x.ExpiresAt) <= DateTimeOffset.UtcNow ? InvitationStatus.Expired : delivery == "delivery" ? InvitationStatus.Delivered : delivery is "bounce" or "reject" or "complaint" or "suppressed" ? InvitationStatus.Bounced : InvitationStatus.Sent; return new(x.InvitationId, x.Email, status, x.ExpiresAt, x.AcceptedAt, x.LastSentAt); }
     private static string Normalize(string raw) { try { var a = new MailAddress(raw.Trim()); if (a.Address != raw.Trim()) throw new Exception(); return a.Address.ToLowerInvariant(); } catch { throw ApiException.BadRequest($"'{raw}' is not a valid single email address."); } }

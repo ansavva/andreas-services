@@ -36,6 +36,8 @@ export interface Membership {
   member_id: string;
   display_name: string;
   is_organizer: boolean;
+  is_owner?: boolean;
+  is_ready?: boolean;
   is_participating: boolean;
   wishlist?: string;
   avoidances?: string;
@@ -77,7 +79,7 @@ export interface DataExport {
     group_name: string;
     group_status: GroupStatus;
     member_id: string;
-    role: 'organizer' | 'participant';
+    role: 'owner' | 'co_organizer' | 'participant';
     is_participating: boolean;
     wishlist?: string | null;
     avoidances?: string | null;
@@ -97,6 +99,7 @@ export interface GroupSummary {
   plan: PlanCode;
   participant_limit: number;
   is_organizer: boolean;
+  is_owner: boolean;
   created_at: string;
   updated_at: string;
 }
