@@ -33,31 +33,32 @@ record is what names the library. Deliberate, and cheap: an id nobody was given
 cannot be guessed, so the difference between "no such node" and "not yours" is
 information an attacker has no way to reach.
 
-## What `before_request` will take over (#351)
+## What comes from `before_request` (#351)
 
-That PR puts `g.caller_sub` and `g.library` on every request, which is where
-this file's `_caller` and `_library` are headed. Both are written here in the
-meantime so the route works standalone on this branch, and `_library` mirrors
-the hook's three cases exactly — header, sole membership, refusal — rather than
-inventing a fourth. When #351 lands, `_caller` and `_library` are deleted, the
-`LIBRARY_HEADER` constant with them, and `_member_of` reads `g.caller_sub`'s
-memberships instead of resolving them per request.
+`g.caller_sub` and `g.library` are set on every request before any route here
+runs, so nothing in this file verifies a token or reads a header to decide which
+library a request is about. `/api/resolve` — the one route with no node to take
+a library from — reads `g.library`, which is the hook's three cases resolved:
+the `X-Studio-Library` header, a sole membership, or a refusal. Having a second
+description of that rule here is how the two would drift apart.
+
+`_memberships` is still a read per request, because the hook keeps only the
+library it resolved and not the rows it resolved it from. That is one query on
+one partition (`USER#<sub>`), and it is the check the *node* is authorised
+against — `g.library` answers a different question, and is not a substitute for
+it.
 """
 
 import logging
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from studio_core.errors import ForbiddenError, NotFoundError, ValidationError
-from studio_core.services import catalog, identity
+from studio_core.services import catalog
 
 logger = logging.getLogger(__name__)
 
 bp = Blueprint("nodes", __name__, url_prefix="/api")
-
-# The header naming which library a request is about — #351's, read here for the
-# one route that needs a library and is not given a node to take it from.
-LIBRARY_HEADER = "X-Studio-Library"
 
 # What a node looks like to a client, and the entire list of it.
 #
@@ -93,46 +94,20 @@ def _view(record: dict) -> dict:
     return view
 
 
-def _caller() -> list[str]:
-    """The libraries the caller is in. Replaced by `g` when #351 lands.
+def _memberships() -> list[str]:
+    """The libraries the caller is in, by id.
 
-    `caller_sub` raises `AuthError` — 401 — on a missing, malformed or
-    unverifiable token, so there is no unauthenticated path past this line.
+    `g.caller_sub` is `before_request`'s, which raises `AuthError` — 401 — on a
+    missing, malformed or unverifiable token, so there is no unauthenticated
+    path past this line and the token is verified once per request.
     """
-    sub = identity.caller_sub(request.headers.get("Authorization"))
-    return [membership["lib"] for membership in catalog.libraries_for(sub)]
+    return [membership["lib"] for membership in catalog.libraries_for(g.caller_sub)]
 
 
 def _member_of(lib: str, memberships: list[str]) -> None:
     """Refuse unless the caller is in the library the node says it belongs to."""
     if lib not in memberships:
         raise ForbiddenError(f"You are not a member of {lib}.")
-
-
-def _library(memberships: list[str]) -> str:
-    """Which library a request with no node to point at is about.
-
-    The same three cases #351's hook resolves, in the same order and with the
-    same statuses, because there is only one right answer and having two
-    descriptions of it is how they drift apart before the hook lands. A caller
-    in zero libraries is 403 and not 400: there is no header they could send
-    that would work, so "name one" is an instruction they cannot follow.
-    """
-    requested = request.headers.get(LIBRARY_HEADER)
-    if requested:
-        _member_of(requested, memberships)
-        return requested
-
-    if len(memberships) == 1:
-        return memberships[0]
-
-    if not memberships:
-        raise ForbiddenError("You are not a member of any library.")
-
-    raise ValidationError(
-        "You are a member of more than one library — name one in the "
-        f"{LIBRARY_HEADER} header: {', '.join(sorted(memberships))}"
-    )
 
 
 @bp.get("/nodes")
@@ -157,7 +132,7 @@ def list_nodes():
     if not parent_id:
         raise ValidationError("parent is required")
 
-    memberships = _caller()
+    memberships = _memberships()
     # Read before the listing rather than after, because the parent is what
     # names the library: an empty folder's children carry no `lib` to check, so
     # a listing authorised from its own results would authorise nothing at all
@@ -191,7 +166,7 @@ def list_nodes():
 @bp.get("/nodes/<node_id>")
 def get_node(node_id: str):
     """One node's record, by id."""
-    memberships = _caller()
+    memberships = _memberships()
     record = catalog.node(node_id)
     _member_of(record["lib"], memberships)
     return jsonify(_view(record)), 200
@@ -221,9 +196,11 @@ def resolve():
     every step is a child of the step before it. A node reached this way is in
     that library or the walk would not have reached it.
     """
-    memberships = _caller()
-    lib = _library(memberships)
-    root_id = catalog.library(lib)["root_node"]
+    # `g.library` and not a membership read: this is the one route with no node
+    # to take a library from, so the library is the one `before_request`
+    # resolved — the header, a sole membership, or the refusal it already
+    # raised. Nothing is checked again here because nothing new was named.
+    root_id = catalog.library(g.library)["root_node"]
 
     path = request.args.get("path") or ""
     walked: list[str] = []

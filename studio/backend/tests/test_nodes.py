@@ -15,10 +15,11 @@ these tests are about. The one exception is the second library below, which is
 literal because it has to exist without the caller ever being able to write to
 it.
 
-`identity.caller_sub` is stubbed on the module the routes resolve through, since
-verifying a real RS256 signature needs a live Cognito pool and `test_identity.py`
-already covers the four checks token by token. The 401 test is the one that does
-**not** stub it.
+`identity.caller_sub` is stubbed, since verifying a real RS256 signature needs a
+live Cognito pool and `test_identity.py` already covers the four checks token by
+token. It is `before_request` that calls it now rather than the routes — see the
+`signed_in` fixture below for why this module overrides `conftest`'s. The 401
+test hands the header back to the real parsing.
 """
 
 import pytest
@@ -37,15 +38,35 @@ _SEED_TIME = "2026-08-19T12:00:00.000000+00:00"
 BLOB_KEY = "projects/<project>/runs/2026-08-04_21-30-54_<slug>/output/<slug>.jpeg"
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def signed_in(monkeypatch):
-    """Whoever the next request is from. Defaults to the seeded library's owner."""
+    """Whoever the next request is from. Defaults to the seeded library's owner.
+
+    **Overrides `conftest`'s fixture of the same name**, and the difference is
+    the membership read. `conftest.SignedIn` stands in for `identity` *and*
+    `catalog` on `app_factory`, which is right for a suite whose tests are not
+    about who is in what — they are about listings and moves, and a static
+    membership keeps them saying so. Every test in this module is about exactly
+    that question: it writes rows and asserts what the hook and the route make of
+    them. So only the token half is stubbed here, and `before_request` reads its
+    memberships from the moto-backed table like the route does.
+
+    `authenticated = False` hands the header back to the real `caller_sub`
+    rather than raising a canned `AuthError`, so the 401 tests still exercise the
+    parsing that refuses a missing or bearerless header before a key is fetched.
+    """
+    real_caller_sub = identity.caller_sub
 
     class Caller:
         sub = CATALOG_OWNER
+        authenticated = True
 
     caller = Caller()
-    monkeypatch.setattr(identity, "caller_sub", lambda header: caller.sub)
+    monkeypatch.setattr(
+        identity,
+        "caller_sub",
+        lambda header: caller.sub if caller.authenticated else real_caller_sub(header),
+    )
     return caller
 
 
@@ -287,8 +308,10 @@ def test_fetching_a_node_in_another_library_is_403(catalog_table, signed_in):
     assert BLOB_KEY not in resp.get_data(as_text=True)
 
 
-def test_no_authorization_header_is_401(catalog_table):
+def test_no_authorization_header_is_401(catalog_table, signed_in):
     """Unstubbed, and refused before a key is ever fetched."""
+    signed_in.authenticated = False
+
     resp = _client().get(f"/api/nodes/{CATALOG_ROOT}")
 
     assert resp.status_code == 401
@@ -389,10 +412,13 @@ def test_resolving_in_a_library_the_caller_is_not_in_is_403(catalog_table, signe
 
 
 def test_resolving_without_naming_one_of_several_libraries_is_400(catalog_table, signed_in):
-    """The refusal #351's hook will make, made here in the meantime.
+    """`before_request`'s refusal, reached through this route.
 
-    A guess would be a rule nothing outside this route knows, and the caller's
-    own library ids are listed in the message so the retry is one round trip.
+    Asserted here and not only in `test_before_request.py` because `/api/resolve`
+    is the route that would be tempted to guess — it is handed a path and no
+    node, so a library it invented would be indistinguishable from a correct
+    answer until two libraries held the same name. The caller's own library ids
+    are listed in the message, so the retry is one round trip.
     """
     _second_library(catalog_table)
     catalog_table.put_item(
