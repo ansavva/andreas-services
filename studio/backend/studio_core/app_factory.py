@@ -17,6 +17,7 @@ from studio_core.errors import (
     ValidationError,
 )
 from studio_core.routes.browse import bp as browse_bp
+from studio_core.routes.libraries import bp as libraries_bp
 from studio_core.routes.manage import bp as manage_bp
 from studio_core.services import catalog, identity
 
@@ -188,6 +189,10 @@ def create_app() -> Flask:
     )
 
     app.register_blueprint(browse_bp)
+    # Its own blueprint rather than a fourth route in `browse`: it is the one
+    # route that is authenticated without being about a library's contents, and
+    # `routes/libraries.py` explains what that costs the request hook.
+    app.register_blueprint(libraries_bp)
     app.register_blueprint(manage_bp)
 
     @app.before_request

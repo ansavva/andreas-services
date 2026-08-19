@@ -417,9 +417,18 @@ that breaks every time the pipeline ships.
 
 Every route is behind the Cognito authorizer except `GET /api/health`.
 
+**`GET /api/libraries` is the one route that is authenticated without being
+about a library.** It answers "which libraries am I in", which is where the id a
+client puts in `X-Studio-Library` comes from, so it has to be reachable before
+one has been chosen. A caller who is in none gets an empty list and a 200, never
+a 403: "you are in no libraries" and "you asked for one you are not in" are
+different problems with different fixes, and this route is how the first one
+gets found.
+
 | Route | Returns |
 |---|---|
 | `GET /api/health` | `{"status": "ok"}` — liveness, touches no S3 |
+| `GET /api/libraries` | `[{id, name, role}]` — the caller's libraries. Authenticated, **not** library-scoped |
 | `GET /api/tree?prefix=&sort=` | One delimited listing: `folders`, `files` (each presigned), `breadcrumbs`, `counts` |
 | `GET /api/reel?prefix=&cursor=&page_size=&sort=` | Images and video beneath a prefix, recursively, paginated |
 | `GET /api/asset?key=&disposition=` | A fresh presigned URL for one object |
