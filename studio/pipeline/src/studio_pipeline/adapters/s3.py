@@ -82,15 +82,25 @@ def _resolve_credentials():
     }
 
 
-def client():
-    """A boto3 S3 client authenticated for the current AWS login/profile."""
+def session():
+    """A boto3 Session carrying the bridged credentials.
+
+    The credential bridge above is per-*session*, not per-service, so anything
+    else in the package that needs an AWS client asks for one of these rather
+    than repeating the `aws configure export-credentials` dance. `ddb.py` is the
+    second caller; this module stays the one auth path for the whole package.
+    """
     try:
         import boto3
     except ImportError:  # pragma: no cover - deps declared in entry scripts
         die("boto3 is not installed — run `uv sync` in studio/pipeline.")
     creds = _resolve_credentials()
-    session = boto3.session.Session(region_name=REGION, **(creds or {}))
-    return session.client("s3")
+    return boto3.session.Session(region_name=REGION, **(creds or {}))
+
+
+def client():
+    """A boto3 S3 client authenticated for the current AWS login/profile."""
+    return session().client("s3")
 
 
 _NUM_RE = re.compile(r"(\d+)")

@@ -141,6 +141,7 @@ studio/pipeline/
         │
         ├── adapters/              THE OUTSIDE WORLD — everything with a side effect
         │   ├── s3.py              credentials bridge, BUCKET/PREFIX/REGION
+        │   ├── ddb.py             the catalog table's client + item marshalling
         │   ├── replicate.py       the HTTP client
         │   └── ffmpeg.py          probe / stitch / grab
         │
@@ -163,7 +164,7 @@ studio/pipeline/
         │   └── upload.py  download.py  presign.py  convert.py
         │
         └── maintenance/           one-shots, quarantined
-            └── backfill_replicate.py  migrate_layout.py
+            └── backfill_replicate.py  migrate_layout.py  catalog_seed.py
 ```
 
 **Why the directories are named after what things ARE.** They used to be one
@@ -459,7 +460,8 @@ or projects.
 
 | Module | Purpose |
 |---|---|
-| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. One auth path for the whole package. |
+| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. One auth path for the whole package — `session()` is what everything else asks for. |
+| `ddb.py` | The catalog table's client and the typed-attribute marshalling every write needs. Takes its credentials from `s3.py`, because the bridge resolves a session and not an S3 session. Knows nothing about libraries or nodes. |
 | `replicate.py` | Token, HTTP, download, poll. |
 | `ffmpeg.py` | Probe, stitch, frame grab, contact grid. A scene and a movie join their inputs by identical rules because they call the same function. ffmpeg ships in the wheel; no system install. |
 
@@ -501,7 +503,15 @@ accepts it).
 
 **`maintenance/` — one-offs.** `backfill_replicate.py` imports historical
 predictions into the run store; `migrate_layout.py` is the move off the
-pre-restructure tree, kept for any bucket that still holds one.
+pre-restructure tree, kept for any bucket that still holds one;
+`catalog_seed.py` (`studio catalog plan | seed | verify`) records the bucket as
+it already stands into the DynamoDB catalog, copying and deleting nothing.
+
+The last two are the same shape deliberately — phases as separate invocations,
+`--dry-run` unless `--apply`, a journal under `local/migrations/` — because the
+ordering between phases is the safety property in both. What they do not share
+is a rewrite phase: a rewrite patches the keys recorded *inside* run and scene
+documents when objects move, and the catalog seed moves nothing.
 
 ---
 
