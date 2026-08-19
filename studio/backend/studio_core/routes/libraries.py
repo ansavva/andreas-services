@@ -8,16 +8,16 @@ point of it rather than an implementation detail — a route that required a
 library to be chosen before it would say which ones exist could never be
 reached first.
 
-**That shape is one `app_factory`'s hook cannot currently express.** #351 adds a
-`before_request` that resolves the caller *and* their library together, and
-skips both halves for the paths in `UNAUTHENTICATED_PATHS`. This route needs
-exactly one half skipped, and neither option in that set is it: listing the path
-there would make it reachable with no token at all, and leaving it out would
-refuse a caller who is in no library with the 403 `_resolve_library` raises —
-whose remedy is to read the empty list this route exists to return. The hook
-needs a second set, of paths that are authenticated but resolve no library, and
-this path is its first member. Until that lands, the route identifies the caller
-itself, which is also what keeps it working under `dev-up.sh` today.
+**That shape is why `app_factory`'s hook carries two path sets and not one.**
+`before_request` resolves the caller *and* their library together, and
+`UNAUTHENTICATED_PATHS` skips both halves at once — neither answer suits this
+route. Listing the path there would make it reachable with no token at all;
+leaving it out would refuse a caller who is in no library with the 403
+`_resolve_library` raises, whose remedy is to read the empty list this route
+exists to return. So this path is the first member of `LIBRARY_UNSCOPED_PATHS`:
+authenticated, about no library in particular, and reached with `g.library` set
+to `None`. This route is the reason that attribute is assigned there at all
+rather than left unset.
 
 **An empty list is a real answer, and always a 200.** A caller in no library is
 an account somebody created and never added to one — the pool is
@@ -29,10 +29,10 @@ in" would prevent.
 
 import logging
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify
 
 from studio_core.errors import NotFoundError
-from studio_core.services import catalog, identity
+from studio_core.services import catalog
 
 logger = logging.getLogger(__name__)
 
@@ -52,13 +52,11 @@ def libraries():
     order the table hands back is by library id, which is a UUID and therefore
     arbitrary to a human. The id breaks ties, so the order is total.
     """
-    # Resolved here rather than read off `g`: the hook that will put it there
-    # does not exist yet, and this is the route it must not run its library half
-    # for. `caller_sub` raises `AuthError` — 401 — on a missing, malformed or
-    # unverifiable token, so there is no unauthenticated path through this
-    # function to leave an empty list on.
-    sub = identity.caller_sub(request.headers.get("Authorization"))
-    summaries = [_summary(membership) for membership in catalog.libraries_for(sub)]
+    # `g.caller_sub` is `before_request`'s, and it raises `AuthError` — 401 — on
+    # a missing, malformed or unverifiable token before any route runs. So there
+    # is no unauthenticated path through this function to leave an empty list
+    # on, and the token is verified once per request rather than twice.
+    summaries = [_summary(membership) for membership in catalog.libraries_for(g.caller_sub)]
     return jsonify(sorted(summaries, key=lambda entry: (entry["name"], entry["id"]))), 200
 
 

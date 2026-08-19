@@ -5,12 +5,12 @@ catalog table, because the statuses are half of what is under test: "you are in
 none" and "you may not have that one" are different answers, and only a response
 distinguishes them.
 
-`identity.caller_sub` is stubbed on the module the route resolves through, since
-verifying a real RS256 signature needs a live Cognito pool and `test_identity.py`
-already covers the four checks token by token. The unauthenticated test is the
-one that does **not** stub it: a request with no `Authorization` header is
-refused by header parsing, before any key is fetched, so that path is exercised
-end to end for free.
+`identity.caller_sub` is stubbed, since verifying a real RS256 signature needs a
+live Cognito pool and `test_identity.py` already covers the four checks token by
+token. It is `before_request` that calls it now rather than the route — see the
+`signed_in` fixture below for why this module overrides `conftest`'s. The two
+401 tests hand the header back to the real parsing, which refuses it before any
+key is fetched.
 
 The extra rows are written literally rather than through `services.catalog`, for
 the reason `conftest` gives — `catalog` is the only module allowed to know these
@@ -34,15 +34,35 @@ STRANGER = "sub-stranger"
 _SEED_TIME = "2026-08-19T12:00:00.000000+00:00"
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def signed_in(monkeypatch):
-    """Whoever the next request is from. Defaults to the seeded library's owner."""
+    """Whoever the next request is from. Defaults to the seeded library's owner.
+
+    **Overrides `conftest`'s fixture of the same name**, and the difference is
+    the membership read. `conftest.SignedIn` stands in for `identity` *and*
+    `catalog` on `app_factory`, which is right for a suite whose tests are not
+    about who is in what — they are about listings and moves, and a static
+    membership keeps them saying so. Every test in this module is about exactly
+    that question: it writes rows and asserts what the hook and the route make of
+    them. So only the token half is stubbed here, and `before_request` reads its
+    memberships from the moto-backed table like the route does.
+
+    `authenticated = False` hands the header back to the real `caller_sub`
+    rather than raising a canned `AuthError`, so the 401 tests still exercise the
+    parsing that refuses a missing or bearerless header before a key is fetched.
+    """
+    real_caller_sub = identity.caller_sub
 
     class Caller:
         sub = CATALOG_OWNER
+        authenticated = True
 
     caller = Caller()
-    monkeypatch.setattr(identity, "caller_sub", lambda header: caller.sub)
+    monkeypatch.setattr(
+        identity,
+        "caller_sub",
+        lambda header: caller.sub if caller.authenticated else real_caller_sub(header),
+    )
     return caller
 
 
@@ -84,9 +104,9 @@ def test_a_caller_in_two_libraries_gets_both(catalog_table, signed_in):
     """Names and roles come from two different rows, and both must arrive.
 
     **No `X-Studio-Library` is sent**, and that is the case to keep passing: a
-    caller in more than one library and no header is exactly what #351's hook
-    answers 400 to, so this test fails the day `/api/libraries` is left inside
-    the library-resolving half of it.
+    caller in more than one library and no header is exactly what
+    `before_request` answers 400 to, so this test fails the day `/api/libraries`
+    leaves `LIBRARY_UNSCOPED_PATHS`.
     """
     _add_library(catalog_table, OTHER_LIBRARY, OTHER_NAME)
     _add_membership(catalog_table, CATALOG_OWNER, OTHER_LIBRARY)
@@ -122,15 +142,19 @@ def test_a_library_the_caller_is_not_in_is_not_listed(catalog_table, signed_in):
     assert [entry["id"] for entry in resp.get_json()] == [CATALOG_LIBRARY]
 
 
-def test_no_authorization_header_is_401(catalog_table):
+def test_no_authorization_header_is_401(catalog_table, signed_in):
     """Unstubbed, and refused before a key is ever fetched."""
+    signed_in.authenticated = False
+
     resp = _client().get("/api/libraries")
 
     assert resp.status_code == 401
     assert "error" in resp.get_json()
 
 
-def test_a_bearerless_authorization_header_is_401(catalog_table):
+def test_a_bearerless_authorization_header_is_401(catalog_table, signed_in):
+    signed_in.authenticated = False
+
     resp = _client().get("/api/libraries", headers={"Authorization": "Basic bm9wZQ=="})
 
     assert resp.status_code == 401
