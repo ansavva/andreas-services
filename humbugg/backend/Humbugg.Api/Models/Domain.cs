@@ -60,6 +60,18 @@ public sealed record ExchangeCustomization(
     string? ImageDataUrl = null);
 
 public sealed record InvitationPreview(string GroupId, string ExchangeName, ExchangeCustomization Customization);
+public sealed record ExchangeTemplate(
+    string TemplateId, string Name, string ExchangeName, string Description,
+    int SignupDeadlineDaysBeforeEvent, string WishlistPrompt,
+    string ExclusionsPolicy, ReminderSettings ReminderPreferences, ExchangeCustomization Customization,
+    IReadOnlyList<TemplateParticipant> PriorParticipants,
+    string? SourceGroupId, string CreatedAt, string UpdatedAt);
+public sealed record TemplateParticipant(string MemberId, string DisplayName, string Email);
+public sealed record SaveTemplateRequest(string? Name, string? SourceGroupId);
+public sealed record UpdateTemplateRequest(string? Name, string? ExchangeName, string? Description,
+    int? SignupDeadlineDaysBeforeEvent, string? WishlistPrompt, string? ExclusionsPolicy,
+    ReminderSettings? ReminderPreferences, UpdateCustomizationRequest? Customization);
+public sealed record ApplyTemplateRequest(string? TargetGroupId, string? EventDate, IReadOnlyList<string>? PriorMemberIds);
 
 public sealed record GroupSummary(
     string GroupId,

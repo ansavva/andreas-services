@@ -21,6 +21,7 @@ public class HumbuggSettingsTests
         "HUMBUGG_BILLING_TABLE",
         "HUMBUGG_INVITATIONS_TABLE",
         "HUMBUGG_REMINDERS_TABLE",
+        "HUMBUGG_TEMPLATES_TABLE",
     ];
 
     [Fact]
@@ -40,6 +41,7 @@ public class HumbuggSettingsTests
             Assert.Equal("set-HUMBUGG_BILLING_TABLE", settings.BillingRecordsTable);
             Assert.Equal("set-HUMBUGG_INVITATIONS_TABLE", settings.InvitationsTable);
             Assert.Equal("set-HUMBUGG_REMINDERS_TABLE", settings.RemindersTable);
+            Assert.Equal("set-HUMBUGG_TEMPLATES_TABLE", settings.TemplatesTable);
         });
     }
 
@@ -54,6 +56,7 @@ public class HumbuggSettingsTests
     [InlineData("HUMBUGG_BILLING_TABLE")]
     [InlineData("HUMBUGG_INVITATIONS_TABLE")]
     [InlineData("HUMBUGG_REMINDERS_TABLE")]
+    [InlineData("HUMBUGG_TEMPLATES_TABLE")]
     public void ThrowsWhenATableVariableIsMissing(string missing)
     {
         WithTablesSet(() =>
@@ -63,7 +66,7 @@ public class HumbuggSettingsTests
             var error = Assert.Throws<InvalidOperationException>(HumbuggSettings.FromEnvironment);
 
             // The message has to name the offending variable — a generic
-            // "configuration error" sends the reader hunting through ten.
+            // "configuration error" sends the reader hunting through eleven.
             Assert.Contains(missing, error.Message, StringComparison.Ordinal);
         });
     }
