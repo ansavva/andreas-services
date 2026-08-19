@@ -199,7 +199,35 @@ studio character refs <name> --presign --json          # generation-time: ordere
 studio character refs <name> --pick-tag body --keys    # a named selection, as keys
 studio character pool <name> corpus                    # material, not identity
 studio character add-to <name> seed photo.jpg          # founding source photos
+studio character rename <old> <new>                    # a new slug, records and all
 ```
+
+### Renaming a character
+
+A slug is a path segment, so a new one is not an edit — it is a move of every
+object in the record, plus a rewrite of everything that named the old one. Doing
+those separately is how a record ends up half-renamed:
+
+```bash
+studio character rename <old> <new>            # DRY RUN: the whole plan
+studio character rename <old> <new> --apply
+studio character rename <old> <new> --display-name "Some Name" --apply
+```
+
+One command, because three things have to move together — the objects (whose
+basenames carry the slug), the bible (`name`, `display_name`, and every path in
+`references` and `default_set`), and every run, scene, movie and project record
+that cites one of those keys or records the character by name. Descriptions
+follow their images: the index is carried across, never re-derived, so nothing
+in it is blanked and nothing undescribed is quietly added — `sync-refs` stays a
+separate decision.
+
+Two things it deliberately leaves alone. A **project** that happens to share the
+character's name is not renamed, and neither is a slug written into prose — a
+prompt that names the character still says the old one. Check afterwards with
+`studio rewrite check`.
+
+It refuses a destination that already exists rather than merging into it.
 
 ### Editing a bible by hand (`edit`)
 

@@ -13,6 +13,12 @@ Anything that moves objects — the migrator, curate — calls `apply_moves()` w
 {old key: new key}, and every document in the bucket that mentions an old key is
 rewritten. Documents are the only place keys live, so this is complete.
 
+A character rename needs a second pass, `rename_character()`, and cannot reuse
+the first: records also name a character in a `characters:`/`character:` field,
+where the value is a slug rather than a key. Swapping those through the same
+context-free mapping would rename a project that happens to share the name —
+which one does in the real bucket.
+
     studio rewrite check          # every recorded key resolves?
     studio rewrite check --json
 
@@ -88,6 +94,82 @@ def apply_moves(s3, mapping: dict[str, str], apply: bool = False) -> dict:
         except json.JSONDecodeError:
             continue
         n = _walk(doc, mapping)
+        if not n:
+            continue
+        touched[key] = n
+        if apply:
+            s3.put_object(Bucket=s3c.BUCKET, Key=key,
+                          Body=(json.dumps(doc, indent=2) + "\n").encode(),
+                          ContentType="application/json")
+    return touched
+
+
+# ── a character rename ──────────────────────────────────────────────────────
+#
+# Records name a character in two ways, and only one of them is a key. The keys
+# move with `apply_moves`; the NAME needs its own pass, and cannot share that
+# one: a project may be called the same thing as a character (they are in the
+# real bucket), so a context-free swap of every string equal to the old slug
+# would rename the project along with it.
+
+# The fields that record a character BY NAME: `characters: [...]` on a run,
+# scene, movie or project, and the `character:` scalar a shoot writes.
+CHARACTER_FIELDS = ("characters", "character")
+
+
+def project_docs(s3) -> list[str]:
+    """Every `project.json`.
+
+    `is_document` excludes them on purpose — they store no S3 keys, so
+    `apply_moves` has nothing to do there. They do carry a `characters` list.
+    """
+    out = []
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=s3c.BUCKET, Prefix=s3c.key(P.PROJECTS + "/")):
+        for obj in page.get("Contents", []):
+            if os.path.basename(obj["Key"]) == "project.json":
+                out.append(obj["Key"])
+    return out
+
+
+def _rename_fields(node, old: str, new: str) -> int:
+    """Swap the name in character-bearing fields only. Returns how many."""
+    changed = 0
+    if isinstance(node, dict):
+        for k, v in list(node.items()):
+            if k in CHARACTER_FIELDS:
+                if v == old:
+                    node[k] = new
+                    changed += 1
+                elif isinstance(v, list):
+                    for i, entry in enumerate(v):
+                        if entry == old:
+                            v[i] = new
+                            changed += 1
+                else:
+                    changed += _rename_fields(v, old, new)
+            else:
+                changed += _rename_fields(v, old, new)
+    elif isinstance(node, list):
+        for v in node:
+            changed += _rename_fields(v, old, new)
+    return changed
+
+
+def rename_character(s3, old: str, new: str, apply: bool = False) -> dict:
+    """Carry a character's new name into every record that names it.
+
+    Returns {document: fields changed}, so a caller reports which history it
+    touched rather than a bare count.
+    """
+    touched: dict[str, int] = {}
+    for key in all_documents(s3) + project_docs(s3):
+        body = s3.get_object(Bucket=s3c.BUCKET, Key=key)["Body"].read()
+        try:
+            doc = json.loads(body)
+        except json.JSONDecodeError:
+            continue
+        n = _rename_fields(doc, old, new)
         if not n:
             continue
         touched[key] = n

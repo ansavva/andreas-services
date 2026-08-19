@@ -825,6 +825,67 @@
           }
         }
       },
+      "rename": {
+        "arguments": {
+          "new": {
+            "choices": null,
+            "default": null,
+            "dest": "new",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
+          "old": {
+            "choices": null,
+            "default": null,
+            "dest": "old",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "Actually make the changes.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "display_name": {
+            "choices": null,
+            "default": null,
+            "dest": "display_name",
+            "flag": false,
+            "flags": [
+              "--display-name"
+            ],
+            "help": "Prose name for the bible (default: title-cased NEW).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
       "set-profile": {
         "arguments": {
           "file": {
