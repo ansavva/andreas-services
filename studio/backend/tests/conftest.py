@@ -8,15 +8,16 @@ os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")
 os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 os.environ.setdefault("STUDIO_MEDIA_BUCKET", "studio-prod-media-us-east-1")
+os.environ.setdefault("STUDIO_CATALOG_TABLE", "studio-prod-catalog")
 # Assigned rather than defaulted: the browsable root is the whole bucket, and a
 # stale `STUDIO_MEDIA_ROOT_PREFIX` left in a shell would otherwise silently
 # rewrite what every test in the suite is asserting about.
 os.environ["STUDIO_MEDIA_ROOT_PREFIX"] = ""
 
-from moto import mock_s3  # noqa: E402
+from moto import mock_dynamodb, mock_s3  # noqa: E402
 
 from studio_core import config  # noqa: E402
-from studio_core.clients.aws import s3  # noqa: E402
+from studio_core.clients.aws import dynamodb, s3  # noqa: E402
 
 # A miniature of the real bucket, which no longer wraps anything in `media/`:
 # `characters/` holds who a subject is, `projects/` holds what was generated of
@@ -59,3 +60,117 @@ def media_bucket():
             client.put_object(Bucket=config.media_bucket(), Key=key, Body=body)
         yield client
         s3.reset_client()
+
+
+# A miniature of the catalog table. Unlike the bucket above there is nothing
+# real to copy yet — nothing writes to this table in prod — so what it holds is
+# the smallest arrangement every catalog test needs: one library, two members,
+# and the root node the library points at.
+#
+# **The seed items below are written literally rather than through
+# `services.catalog`**, and that is the point of them. `catalog` is the only
+# module allowed to know these shapes, so a test that built its fixture with
+# `catalog`'s own key helpers would agree with any drift in them. Spelling the
+# items out means the schema is asserted from outside the module that
+# implements it.
+CATALOG_LIBRARY = "lib-0001"
+CATALOG_ROOT = "node-root"
+CATALOG_OWNER = "sub-owner"
+CATALOG_MEMBER = "sub-member"
+
+_SEED_TIME = "2026-08-19T12:00:00.000000+00:00"
+
+CATALOG_ITEMS = [
+    {
+        "pk": {"S": f"LIB#{CATALOG_LIBRARY}"},
+        "sk": {"S": "META"},
+        "name": {"S": "Library"},
+        "root_node": {"S": CATALOG_ROOT},
+        "created_at": {"S": _SEED_TIME},
+    },
+    {
+        "pk": {"S": f"USER#{CATALOG_OWNER}"},
+        "sk": {"S": f"LIB#{CATALOG_LIBRARY}"},
+        "role": {"S": "owner"},
+        "created_at": {"S": _SEED_TIME},
+    },
+    {
+        "pk": {"S": f"USER#{CATALOG_MEMBER}"},
+        "sk": {"S": f"LIB#{CATALOG_LIBRARY}"},
+        "role": {"S": "member"},
+        "created_at": {"S": _SEED_TIME},
+    },
+    # The root node: a real record with `path` "/" and no `parent_id`, which is
+    # what makes it unrenamable, unmovable and undeletable. It has no `NAME#`
+    # item because nothing lists it as a child of anything.
+    {
+        "pk": {"S": f"NODE#{CATALOG_ROOT}"},
+        "sk": {"S": "META"},
+        "node_id": {"S": CATALOG_ROOT},
+        "lib": {"S": CATALOG_LIBRARY},
+        "name": {"S": "Library"},
+        "kind": {"S": "folder"},
+        "path": {"S": "/"},
+        "created_at": {"S": _SEED_TIME},
+        "updated_at": {"S": _SEED_TIME},
+    },
+]
+
+
+@pytest.fixture
+def catalog_table():
+    """A live (moto-backed) copy of the catalog table, isolated per test."""
+    with mock_dynamodb():
+        dynamodb.reset_client()
+        client = boto3.client("dynamodb", region_name="us-east-1")
+        client.create_table(
+            TableName=config.catalog_table(),
+            BillingMode="PAY_PER_REQUEST",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            # Only the attributes an index is keyed on are declared. Everything
+            # else about an item is schemaless, which is what lets one table
+            # hold libraries, memberships and both halves of a node.
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+                {"AttributeName": "lib", "AttributeType": "S"},
+                {"AttributeName": "path", "AttributeType": "S"},
+                {"AttributeName": "created_at", "AttributeType": "S"},
+            ],
+            GlobalSecondaryIndexes=[
+                {
+                    "IndexName": "by-sk",
+                    "KeySchema": [
+                        {"AttributeName": "sk", "KeyType": "HASH"},
+                        {"AttributeName": "pk", "KeyType": "RANGE"},
+                    ],
+                    "Projection": {"ProjectionType": "ALL"},
+                },
+                {
+                    "IndexName": "by-path",
+                    "KeySchema": [
+                        {"AttributeName": "lib", "KeyType": "HASH"},
+                        {"AttributeName": "path", "KeyType": "RANGE"},
+                    ],
+                    "Projection": {"ProjectionType": "ALL"},
+                },
+                # Unused by `services.catalog` today — the reel is what will
+                # query it. Created anyway, so the fixture is the table rather
+                # than the subset one module happens to need.
+                {
+                    "IndexName": "by-recent",
+                    "KeySchema": [
+                        {"AttributeName": "lib", "KeyType": "HASH"},
+                        {"AttributeName": "created_at", "KeyType": "RANGE"},
+                    ],
+                    "Projection": {"ProjectionType": "ALL"},
+                },
+            ],
+        )
+        for item in CATALOG_ITEMS:
+            client.put_item(TableName=config.catalog_table(), Item=item)
+        yield client
+        dynamodb.reset_client()

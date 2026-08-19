@@ -15,7 +15,13 @@ mangum = "0.17.0"
 asgiref = "3.8.1"
 
 [tool.poetry.group.dev.dependencies]
-moto = {version = "4.2.14", extras = ["s3"]}
+# Both backends the suite mocks, named explicitly. The `dynamodb` extra adds
+# nothing `s3` had not already pulled in (`py-partiql-parser`, at the same pin)
+# plus `docker`, which only moto's DynamoDB-Streams-to-Lambda path uses. It is
+# declared anyway: leaning on a transitive of a *different* extra is how a
+# suite breaks on an unrelated dependency change, with an import error naming
+# neither service. Dev group only — the Lambda image installs `--only main`.
+moto = {version = "4.2.14", extras = ["s3", "dynamodb"]}
 pytest = "7.4.3"
 
 [build-system]
