@@ -1,0 +1,14 @@
+# Illustrative only. Do NOT create a real tfvars file here.
+#
+# `scripts/dev-aws-common.sh` passes every one of these as `-var=` on each
+# Terraform invocation, reading the machine UUID from
+# `~/.config/andreas-services/studio/machine-id` and the account and caller ARN
+# from `sts get-caller-identity`. A committed tfvars would pin one developer's
+# machine id into the repo and hand the next apply someone else's resources.
+
+aws_region        = "us-east-1"
+aws_account_id    = "123456789012"
+aws_principal_arn = "arn:aws:iam::123456789012:user/example"
+machine_id        = "00000000-0000-4000-8000-000000000000"
+machine_short_id  = "000000000000"
+machine_name      = "developer-machine"
