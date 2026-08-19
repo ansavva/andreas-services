@@ -2,6 +2,7 @@ import type {
   DataExport,
   GroupDetail,
   GroupSummary,
+  InvitationPreview,
   Membership,
   ManagedInvitation,
   PolicyConsent,
@@ -80,6 +81,17 @@ export const api = {
   getPlusPurchaseStatus: (token: string, id: string) =>
     request<PlusPurchaseStatus>(`/groups/${id}/billing/plus`, token),
   updateGroup: (token: string, id: string, data: Record<string, unknown>) => request<GroupDetail>(`/groups/${id}`, token, json('PATCH', data)),
+  updateCustomization: (token: string, id: string, data: Record<string, unknown>) => request<GroupDetail>(`/groups/${id}/customization`, token, json('PUT', data)),
+  getInvitation: async (id: string, invite_token: string) => {
+    const response = await fetch(`/api/groups/${id}/invitation?invite_token=${encodeURIComponent(invite_token)}`);
+    if (!response.ok) throw new Error('This invitation is invalid or has expired.');
+    return response.json() as Promise<InvitationPreview>;
+  },
+  getManagedInvitation: async (id: string, invitationId: string, token: string) => {
+    const response = await fetch(`/api/groups/${id}/invitations/${invitationId}/preview?token=${encodeURIComponent(token)}`);
+    if (!response.ok) throw new Error('This invitation is invalid or has expired.');
+    return response.json() as Promise<InvitationPreview>;
+  },
   deleteGroup: (token: string, id: string) => request<void>(`/groups/${id}`, token, json('DELETE')),
   rotateInvite: (token: string, id: string) => request<{ invite_url: string }>(`/groups/${id}/invite`, token, json('POST')),
   listInvitations: (token: string, id: string) => request<ManagedInvitation[]>(`/groups/${id}/invitations`, token),
