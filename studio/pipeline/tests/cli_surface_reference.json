@@ -144,6 +144,150 @@
       }
     }
   },
+  "catalog": {
+    "arguments": {},
+    "commands": {
+      "plan": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "actually do it (default is a dry run)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "journal": {
+            "choices": null,
+            "default": null,
+            "dest": "journal",
+            "flag": false,
+            "flags": [
+              "--journal"
+            ],
+            "help": "journal file name (default: the newest)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "seed": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "actually do it (default is a dry run)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "journal": {
+            "choices": null,
+            "default": null,
+            "dest": "journal",
+            "flag": false,
+            "flags": [
+              "--journal"
+            ],
+            "help": "journal file name (default: the newest)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "library_name": {
+            "choices": null,
+            "default": "Studio",
+            "dest": "library_name",
+            "flag": false,
+            "flags": [
+              "--library-name"
+            ],
+            "help": "display name for the library",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "owner_sub": {
+            "choices": null,
+            "default": null,
+            "dest": "owner_sub",
+            "flag": false,
+            "flags": [
+              "--owner-sub"
+            ],
+            "help": "Cognito `sub` of the library's owner (the membership row)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        }
+      },
+      "verify": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "actually do it (default is a dry run)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "journal": {
+            "choices": null,
+            "default": null,
+            "dest": "journal",
+            "flag": false,
+            "flags": [
+              "--journal"
+            ],
+            "help": "journal file name (default: the newest)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      }
+    },
+    "options": {}
+  },
   "character": {
     "arguments": {},
     "commands": {

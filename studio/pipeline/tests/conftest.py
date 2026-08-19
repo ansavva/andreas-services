@@ -24,9 +24,24 @@ os.environ["STUDIO_S3_PREFIX"] = ""
 # Never let a test reach the real API, whatever is in studio/.env.
 os.environ["REPLICATE_API_TOKEN"] = "r8_test_token"
 
-from moto import mock_s3
+from moto import mock_dynamodb, mock_s3
 
 BUCKET = "studio-prod-media-us-east-1"
+
+
+@pytest.fixture(autouse=True)
+def _no_live_dynamodb():
+    """No test may reach a real catalog table — including by accident.
+
+    Autouse rather than opt-in because of `test_every_subcommand_dispatches`,
+    which invokes every leaf command in the tree. `studio catalog verify` gets
+    far enough to ask whether the table exists, and without this that question
+    goes to AWS over the network with the fake credentials above. The table
+    itself is NOT created here: a command meeting a table that does not exist
+    is a case worth exercising, and the tests that want one build it.
+    """
+    with mock_dynamodb():
+        yield
 
 
 def _json(doc: dict) -> bytes:

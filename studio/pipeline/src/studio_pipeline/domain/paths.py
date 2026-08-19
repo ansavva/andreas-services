@@ -72,6 +72,11 @@ PROJECTS = "projects"
 CONFIG = "config"
 POSE_GROUPS = ("body", "face")
 
+# Also neither tree: the per-model wording lists. Named beside `CONFIG` because
+# the two share the property a caller cares about — they belong to no character
+# and no project, which is why `catalog_seed.py` records neither of them.
+PHRASEBOOK = "phrasebook"
+
 # The four character pools. `reference` is the only one with structure inside
 # it (purpose subfolders + the profile index); the rest keep arbitrary
 # basenames, because renaming a source photo loses information for nothing.
@@ -240,7 +245,7 @@ def input_key(p: str, n: int, ext: str) -> str:
 # ── the phrasebook ──────────────────────────────────────────────────────────
 
 def phrasebook_key() -> str:
-    return s3c.key("phrasebook/wording.yaml")
+    return s3c.key(_join(PHRASEBOOK, "wording.yaml"))
 
 
 # ── config ──────────────────────────────────────────────────────────────────
