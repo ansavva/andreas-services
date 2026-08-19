@@ -29,6 +29,60 @@ export AWS_DEFAULT_REGION="${AWS_REGION:-us-east-1}"
 export STUDIO_ALLOWED_ORIGIN="http://localhost:5173"
 
 # ---------------------------------------------------------------------------
+# What the API now needs before it can answer anything at all.
+#
+# The `before_request` hook identifies the caller on every request, so the two
+# Cognito values stopped being optional the day it landed. `config.py` gives
+# neither a default on purpose — a pool id that is merely *wrong* rejects every
+# caller, and one naming a different pool would admit that pool's users, so
+# there is no value worth guessing — which means an unset one is a `ConfigError`
+# and a 500 on the first request, not a warning at startup. Without these
+# exports the whole local API answers 500 before it reaches a route.
+#
+# Read from SSM, the same parameters and by the same method `dev-setup.sh`
+# already uses to write `frontend/.env.local`. They are written there by the
+# deploy workflow from Terraform's outputs, so they cannot drift from what is
+# deployed — and the frontend signing in against one pool while the backend
+# verifies against another is precisely the drift a hardcoded value would
+# create. This is the prod pool and the prod table: local points at prod for
+# studio, deliberately. See dev-setup.sh.
+#
+# `|| true` inside the helper because `set -e` would otherwise abort the script
+# on a missing parameter with no message, which is the opposite of the intent.
+# ---------------------------------------------------------------------------
+ssm() { aws ssm get-parameter --name "$1" --query Parameter.Value --output text 2>/dev/null || true; }
+
+POOL_ID="$(ssm /studio/prod/cognito-user-pool-id)"
+CLIENT_ID="$(ssm /studio/prod/cognito-client-id)"
+if [ -z "$POOL_ID" ] || [ -z "$CLIENT_ID" ]; then
+  echo "Could not read the Cognito values from SSM (/studio/prod/cognito-*)." >&2
+  echo "  The API verifies every request's token against them, so it would 500" >&2
+  echo "  on every call. Has studio been deployed?" >&2
+  exit 1
+fi
+export STUDIO_COGNITO_USER_POOL_ID="$POOL_ID"
+export STUDIO_COGNITO_CLIENT_ID="$CLIENT_ID"
+
+# The bucket and the table are exported only when SSM answers. Both have a
+# prod-matching default in `config.py`, so a missing parameter is survivable
+# where a missing pool id is not — and repeating either name here would be a
+# second copy to keep in step with that default for no gain. (There is no
+# `/studio/prod/catalog-table` parameter yet; this picks it up the day the
+# deploy workflow writes one, and falls through to the default until then.)
+#
+# Spelled as `if` blocks and not `[ -n "$X" ] && export ...`: under `set -e` a
+# one-liner whose test fails is a failed command, and the script would exit
+# silently on exactly the case it is meant to tolerate.
+MEDIA_BUCKET="$(ssm /studio/prod/media-bucket)"
+if [ -n "$MEDIA_BUCKET" ]; then
+  export STUDIO_MEDIA_BUCKET="$MEDIA_BUCKET"
+fi
+CATALOG_TABLE="$(ssm /studio/prod/catalog-table)"
+if [ -n "$CATALOG_TABLE" ]; then
+  export STUDIO_CATALOG_TABLE="$CATALOG_TABLE"
+fi
+
+# ---------------------------------------------------------------------------
 # Poetry, which nothing else installs.
 #
 # studio has two toolchains because it is two halves. The pipeline is uv (see

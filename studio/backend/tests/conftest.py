@@ -16,8 +16,9 @@ os.environ["STUDIO_MEDIA_ROOT_PREFIX"] = ""
 
 from moto import mock_dynamodb, mock_s3  # noqa: E402
 
-from studio_core import config  # noqa: E402
+from studio_core import app_factory, config  # noqa: E402
 from studio_core.clients.aws import dynamodb, s3  # noqa: E402
+from studio_core.errors import AuthError  # noqa: E402
 
 # A miniature of the real bucket, which no longer wraps anything in `media/`:
 # `characters/` holds who a subject is, `projects/` holds what was generated of
@@ -174,3 +175,58 @@ def catalog_table():
             client.put_item(TableName=config.catalog_table(), Item=item)
         yield client
         dynamodb.reset_client()
+
+
+# ─────────────────────────── the signed-in caller ───────────────────────────
+#
+# `app_factory`'s `before_request` hook identifies the caller and resolves their
+# library on every request that is not `OPTIONS` or `/api/health`. Neither half
+# can run for real in a test: `identity.caller_sub` verifies an RS256 signature
+# against a live Cognito pool's JWKS endpoint, and `catalog.libraries_for` reads
+# DynamoDB. So every route test in the suite would 401 or 502 before reaching the
+# route it is about.
+#
+# **This fixture is autouse, and that is the decision.** The alternative is a
+# header and a stub in each of the thirty-seven tests in `test_api.py`, none of
+# which is about authentication — they are about listings, moves and body
+# lengths, and they were written before there was a caller to have. Signing them
+# all in by default keeps each of them asserting the one thing it names.
+#
+# What it deliberately does *not* do is weaken the hook. The hook is unchanged
+# and fully exercised, by `test_before_request.py`, which reconfigures this same
+# object rather than opting out of it — so there is one description of "who is
+# calling" in the suite and it is this one.
+#
+# One object stands in for both modules because the hook uses exactly one
+# function from each, and patching `app_factory`'s *references* rather than the
+# modules themselves is what keeps `test_identity.py` testing the real
+# `caller_sub`.
+
+
+class SignedIn:
+    """The caller `before_request` will find, and the libraries they are in."""
+
+    def __init__(self):
+        self.sub = CATALOG_OWNER
+        self.libraries = [{"lib": CATALOG_LIBRARY, "role": "owner"}]
+        self.authenticated = True
+
+    # Stands in for `services.identity`.
+    def caller_sub(self, authorization_header):
+        if not self.authenticated:
+            raise AuthError("An Authorization header is required.")
+        return self.sub
+
+    # Stands in for `services.catalog`. Only the membership rows, which is all
+    # `_resolve_library` asks for.
+    def libraries_for(self, sub):
+        return [dict(library) for library in self.libraries]
+
+
+@pytest.fixture(autouse=True)
+def signed_in(monkeypatch):
+    """Sign every request in as the library's owner, unless a test says otherwise."""
+    caller = SignedIn()
+    monkeypatch.setattr(app_factory, "identity", caller)
+    monkeypatch.setattr(app_factory, "catalog", caller)
+    return caller
