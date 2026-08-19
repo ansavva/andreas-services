@@ -10,6 +10,7 @@ output "table_names" {
     email_messages   = aws_dynamodb_table.email_messages.name
     billing          = aws_dynamodb_table.billing.name
     invitations      = aws_dynamodb_table.invitations.name
+    reminders        = aws_dynamodb_table.reminders.name
   }
 }
 

@@ -51,6 +51,7 @@ env:
   MARKETING_ECR_REPO: humbugg-prod-marketing
   API_LAMBDA_NAME: humbugg-prod-api
   EMAIL_STATUS_LAMBDA_NAME: humbugg-prod-email-status
+  REMINDERS_LAMBDA_NAME: humbugg-prod-reminders
   MARKETING_LAMBDA_NAME: humbugg-prod-marketing
 
 jobs:
@@ -357,6 +358,7 @@ jobs:
             --arg profiles_table "humbugg-prod-profiles" \
             --arg groups_table "humbugg-prod-groups" \
             --arg invitations_table "humbugg-prod-invitations" \
+            --arg reminders_table "humbugg-prod-reminders" \
             --arg groupmembers_table "humbugg-prod-groupmembers" \
             --arg draws_table "humbugg-prod-draws" \
             --arg audit_events_table "humbugg-prod-audit-events" \
@@ -388,6 +390,7 @@ jobs:
               HUMBUGG_PROFILES_TABLE: $profiles_table,
               HUMBUGG_GROUPS_TABLE: $groups_table,
               HUMBUGG_INVITATIONS_TABLE: $invitations_table,
+              HUMBUGG_REMINDERS_TABLE: $reminders_table,
               HUMBUGG_GROUPMEMBERS_TABLE: $groupmembers_table,
               HUMBUGG_DRAWS_TABLE: $draws_table,
               HUMBUGG_AUDIT_EVENTS_TABLE: $audit_events_table,
@@ -424,6 +427,41 @@ jobs:
               HUMBUGG_EMAIL_MESSAGES_TABLE: $email_messages_table
             }}' > /tmp/env-humbugg-email-status.json
 
+          # The reminder consumer builds its own HumbuggSettings via FromEnvironment(),
+          # which requires every table name — not just the ones it reads. Sending a
+          # subset makes the scheduled Lambda throw on cold start.
+          jq -n \
+            --arg profiles_table "humbugg-prod-profiles" \
+            --arg groups_table "humbugg-prod-groups" \
+            --arg invitations_table "humbugg-prod-invitations" \
+            --arg reminders_table "humbugg-prod-reminders" \
+            --arg groupmembers_table "humbugg-prod-groupmembers" \
+            --arg draws_table "humbugg-prod-draws" \
+            --arg audit_events_table "humbugg-prod-audit-events" \
+            --arg analytics_events_table "humbugg-prod-analytics-events" \
+            --arg billing_table "humbugg-prod-billing" \
+            --arg email_messages_table "humbugg-prod-email-messages" \
+            --arg app_base_url "https://app.humbugg.com" \
+            --arg mailer_base_url "${HUMBUGG_MAILER_BASE_URL}" \
+            '{Variables: {
+              HUMBUGG_CONSUMER: "reminders",
+              HUMBUGG_PROFILES_TABLE: $profiles_table,
+              HUMBUGG_GROUPS_TABLE: $groups_table,
+              HUMBUGG_INVITATIONS_TABLE: $invitations_table,
+              HUMBUGG_REMINDERS_TABLE: $reminders_table,
+              HUMBUGG_GROUPMEMBERS_TABLE: $groupmembers_table,
+              HUMBUGG_DRAWS_TABLE: $draws_table,
+              HUMBUGG_AUDIT_EVENTS_TABLE: $audit_events_table,
+              HUMBUGG_ANALYTICS_EVENTS_TABLE: $analytics_events_table,
+              HUMBUGG_BILLING_TABLE: $billing_table,
+              HUMBUGG_EMAIL_MESSAGES_TABLE: $email_messages_table,
+              HUMBUGG_EMAIL_PROVIDER: "mailer",
+              HUMBUGG_MAILER_BASE_URL: $mailer_base_url,
+              HUMBUGG_MAILER_AUTH_MODE: "sigv4",
+              HUMBUGG_MAILER_SERVICE_ID: "humbugg",
+              APP_BASE_URL: $app_base_url
+            }}' > /tmp/env-humbugg-reminders.json
+
           # The marketing SSR Lambda no longer authenticates anyone — sign-in moved
           # to the product app — so the Cognito variables it used to receive are
           # gone. Its canonical origin is baked in at build time via
@@ -449,6 +487,15 @@ jobs:
 
           aws lambda wait function-updated \
             --function-name "${EMAIL_STATUS_LAMBDA_NAME}" \
+            --region "${{ env.AWS_REGION }}"
+
+          aws lambda update-function-configuration \
+            --function-name "${REMINDERS_LAMBDA_NAME}" \
+            --region "${{ env.AWS_REGION }}" \
+            --environment file:///tmp/env-humbugg-reminders.json
+
+          aws lambda wait function-updated \
+            --function-name "${REMINDERS_LAMBDA_NAME}" \
             --region "${{ env.AWS_REGION }}"
 
           aws lambda update-function-configuration \
@@ -480,6 +527,17 @@ jobs:
 
           aws lambda wait function-updated \
             --function-name "${EMAIL_STATUS_LAMBDA_NAME}" \
+            --region "${{ env.AWS_REGION }}"
+
+          aws lambda update-function-code \
+            --function-name "${REMINDERS_LAMBDA_NAME}" \
+            --image-uri "${API_ECR_URL}:${{ github.sha }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --output table \
+            --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
+
+          aws lambda wait function-updated \
+            --function-name "${REMINDERS_LAMBDA_NAME}" \
             --region "${{ env.AWS_REGION }}"
 
           aws lambda update-function-code \
