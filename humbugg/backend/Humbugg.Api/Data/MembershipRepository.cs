@@ -57,9 +57,7 @@ internal sealed class MembershipRepository(IAmazonDynamoDB db, HumbuggSettings s
 
     public async Task<MembershipRecord> CreateAsync(string groupId, string userId, string displayName, bool organizer, CancellationToken cancellationToken = default)
     {
-        var now = DateTimeOffset.UtcNow.ToString("O");
-        var memberId = MemberId(groupId, userId);
-        var record = new MembershipRecord(memberId, groupId, userId, displayName, organizer, true, "", "", new(), now, now);
+        var record = NewRecord(groupId, userId, displayName, organizer);
         await db.PutItemAsync(new PutItemRequest
         {
             TableName = settings.GroupMembersTable,
@@ -137,7 +135,7 @@ internal sealed class MembershipRepository(IAmazonDynamoDB db, HumbuggSettings s
         }
     }
 
-    private static Dictionary<string, AttributeValue> Write(MembershipRecord record) => new()
+    internal static Dictionary<string, AttributeValue> Write(MembershipRecord record) => new()
     {
         ["member_id"] = DynamoValues.S(record.MemberId),
         ["group_id"] = DynamoValues.S(record.GroupId),
@@ -156,6 +154,28 @@ internal sealed class MembershipRepository(IAmazonDynamoDB db, HumbuggSettings s
         item.String("member_id"), item.String("group_id"), item.String("user_id"), item.String("display_name"),
         item.Bool("is_organizer"), item.Bool("is_participating"), item.String("wishlist"), item.String("avoidances"),
         item.Address("address"), item.String("created_at"), item.String("updated_at"));
+
+    internal static MembershipRecord NewRecord(
+        string groupId,
+        string userId,
+        string displayName,
+        bool organizer,
+        bool participating = true)
+    {
+        var now = DateTimeOffset.UtcNow.ToString("O");
+        return new MembershipRecord(
+            MemberId(groupId, userId),
+            groupId,
+            userId,
+            displayName,
+            organizer,
+            participating,
+            "",
+            "",
+            new(),
+            now,
+            now);
+    }
 
     private static string MemberId(string groupId, string userId) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{groupId}:{userId}"))).ToLowerInvariant()[..32];

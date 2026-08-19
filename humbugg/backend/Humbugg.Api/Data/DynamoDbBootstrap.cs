@@ -14,6 +14,7 @@ internal sealed class DynamoDbBootstrap(IAmazonDynamoDB db, HumbuggSettings sett
         await EnsureAsync(settings.AuditEventsTable, "group_id", cancellationToken, "event_id");
         await EnsureAsync(settings.AnalyticsEventsTable, "idempotency_key", cancellationToken);
         await EnsureAsync(settings.EmailMessagesTable, "message_id", cancellationToken);
+        await EnsureInvitationsAsync(cancellationToken);
         await EnsureBillingAsync(cancellationToken);
     }
 
@@ -54,6 +55,19 @@ internal sealed class DynamoDbBootstrap(IAmazonDynamoDB db, HumbuggSettings sett
             ]
         }, cancellationToken);
         logger.LogInformation("Created local DynamoDB table {Table}", settings.GroupMembersTable);
+    }
+
+    private async Task EnsureInvitationsAsync(CancellationToken cancellationToken)
+    {
+        if (await ExistsAsync(settings.InvitationsTable, cancellationToken)) return;
+        await db.CreateTableAsync(new CreateTableRequest
+        {
+            TableName = settings.InvitationsTable,
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+            AttributeDefinitions = [new("invitation_id", ScalarAttributeType.S), new("group_id", ScalarAttributeType.S)],
+            KeySchema = [new("invitation_id", KeyType.HASH)],
+            GlobalSecondaryIndexes = [new() { IndexName = "group_id-index", KeySchema = [new("group_id", KeyType.HASH)], Projection = new() { ProjectionType = ProjectionType.ALL } }]
+        }, cancellationToken);
     }
 
     private async Task EnsureBillingAsync(CancellationToken cancellationToken)
