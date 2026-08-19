@@ -245,22 +245,27 @@ def test_the_preflight_allows_the_library_header():
 # `/api/libraries` takes one of the two skips and not the other, so each test
 # below asserts one half of that: it authenticates, and it resolves no library.
 #
-# **The route lands in #291 and does not exist here**, so these stand a probe up
-# at its path the way `_client` does at `/api/_probe`. That is the honest fixture
-# rather than a shortcut: what is under test is how the hook treats the path, and
-# the hook decides that from `request.path` before any view function is reached —
-# so writing the real route here would be inventing a route a PR early to test
-# something that does not consult it.
+# **The real route cannot answer these**, because what is under test is what the
+# hook left on `g`, and `/api/libraries` reports libraries rather than the caller
+# it resolved them for. So the probe below replaces that route's view function.
+# The substitution is safe precisely because of what these tests assert: the hook
+# decides both skips from `request.path`, before any view function is reached, so
+# which function answers is the one detail they must not depend on.
 
 
 def _libraries_client():
-    """A client whose probe sits at `/api/libraries` and reports what `g` holds."""
+    """A client whose `/api/libraries` reports what `g` holds.
+
+    The view function is *replaced* rather than a second rule added at the same
+    path — Werkzeug would keep matching the blueprint's, and the probe would
+    silently never run.
+    """
     app = create_app()
 
-    @app.get("/api/libraries")
     def _libraries():
         return jsonify({"sub": g.caller_sub, "library": g.library}), 200
 
+    app.view_functions["libraries.libraries"] = _libraries
     return app.test_client()
 
 

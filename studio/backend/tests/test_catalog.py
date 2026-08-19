@@ -71,6 +71,21 @@ def test_members_of_does_not_return_the_library_item(catalog_table):
     assert all("role" in member for member in catalog.members_of(CATALOG_LIBRARY))
 
 
+def test_library_returns_the_name_and_the_root(catalog_table):
+    # The two attributes a membership row does not carry, which is the whole
+    # reason this read exists beside `libraries_for`.
+    record = catalog.library(CATALOG_LIBRARY)
+    assert record["name"] == "Library"
+    assert record["root_node"] == CATALOG_ROOT
+    # The layout does not leave the module, exactly as for a node record.
+    assert "pk" not in record and "sk" not in record
+
+
+def test_library_raises_for_a_missing_id(catalog_table):
+    with pytest.raises(NotFoundError):
+        catalog.library("lib-gone")
+
+
 def test_node_raises_for_a_missing_id(catalog_table):
     with pytest.raises(NotFoundError):
         catalog.node("node-gone")

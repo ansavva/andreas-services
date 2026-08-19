@@ -139,6 +139,18 @@ def _lib_sk(lib: str) -> str:
     return f"LIB#{lib}"
 
 
+def _lib_pk(lib: str) -> str:
+    """The library's own partition — the same text as `_lib_sk`, spelled apart.
+
+    That the two agree is the mechanism rather than a coincidence: a membership
+    is filed under the *user* and carries `LIB#<id>` as its sort key, so the
+    inverted index reaches every member of a library by asking for the string
+    the library itself is keyed on. Collapsing them into one helper would make a
+    reader think one of the two callers had the wrong key.
+    """
+    return f"LIB#{lib}"
+
+
 def _user_pk(sub: str) -> str:
     return f"USER#{sub}"
 
@@ -253,6 +265,34 @@ def members_of(lib: str) -> list[dict]:
         }
         for row in rows
     ]
+
+
+def library(lib: str) -> dict:
+    """One library's own record: its name, and the node it opens on.
+
+    Separate from `libraries_for` for the reason stated there — a membership row
+    carries neither of those, and reading them for every membership would spend
+    a read per library on the callers that only want to know whether this one is
+    theirs. This is the other half of "whoever needs the names asks for them".
+
+    Raises rather than returning `None`, like `node`. A library id naming no row
+    is a caller's typo or a membership pointing at nothing, and both end
+    whatever was being attempted — with the single exception of
+    `GET /api/libraries`, which carries on and says why where it catches this.
+    """
+    try:
+        response = dynamodb.client().get_item(
+            TableName=config.catalog_table(),
+            Key={"pk": {"S": _lib_pk(lib)}, "sk": {"S": META}},
+        )
+    except ClientError as exc:
+        logger.warning("GetItem failed for %s: %s", lib, exc)
+        raise UpstreamError("Could not read the catalog") from exc
+
+    item = response.get("Item")
+    if not item:
+        raise NotFoundError(lib)
+    return _record(item)
 
 
 def node(node_id: str) -> dict:
