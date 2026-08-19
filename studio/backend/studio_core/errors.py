@@ -34,6 +34,27 @@ class AuthError(Exception):
     """
 
 
+class ForbiddenError(Exception):
+    """The caller is known and may not have this — maps to HTTP 403.
+
+    A sibling of `AuthError` rather than a subclass, because the two say
+    opposite things to the SPA: 401 means "sign in again" and 403 means "signing
+    in again will not help". Collapsing them would send a member of one library
+    who asked for another round a sign-in loop that cannot end.
+
+    **And not `NotFoundError`.** The tempting move is to answer 404 so that a
+    library id cannot be probed for existence, and it buys nothing here: a
+    library id is a v4 UUID that is never listed to a non-member, so anyone
+    holding one did not guess it. What the conflation *would* cost is real —
+    once libraries are shared, "you are not in that one" and "there is no such
+    one" are different problems with different fixes, and a member who mistyped
+    a header deserves to be told which they hit.
+
+    Its message is user-facing, and like `AuthError`'s it stays coarse: it names
+    the boundary that was crossed and never the rows that were read to find it.
+    """
+
+
 class ConfigError(RuntimeError):
     """A required integration is not configured — maps to HTTP 500."""
 

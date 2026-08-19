@@ -8,7 +8,14 @@ locals {
   # The fourth copy, `CORS(methods=...)` in `backend/studio_core/app_factory.py`,
   # cannot be derived from here and still has to be kept in step by hand.
   cors_methods = "GET,POST,PATCH,DELETE,OPTIONS"
-  cors_headers = "Content-Type,Authorization"
+
+  # `X-Studio-Library` names which library a request is about and is read by the
+  # API's `before_request` hook. Allowed here even though the SPA does not send
+  # it yet: a custom request header the preflight has not allowed fails in the
+  # browser with no status and no message, and this header is the hook's only
+  # knob — so the allowance ships with the code that reads it rather than with
+  # the first caller that needs it.
+  cors_headers = "Content-Type,Authorization,X-Studio-Library"
 }
 
 # REST API fronting the single Python Lambda.

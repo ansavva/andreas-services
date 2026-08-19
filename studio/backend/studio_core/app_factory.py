@@ -3,7 +3,7 @@
 import io
 import logging
 
-from flask import Flask, jsonify, request
+from flask import Flask, g, jsonify, request
 from flask_cors import CORS
 
 from studio_core import config
@@ -11,14 +11,47 @@ from studio_core.errors import (
     AuthError,
     ConfigError,
     ConflictError,
+    ForbiddenError,
     NotFoundError,
     UpstreamError,
     ValidationError,
 )
 from studio_core.routes.browse import bp as browse_bp
 from studio_core.routes.manage import bp as manage_bp
+from studio_core.services import catalog, identity
 
 logger = logging.getLogger(__name__)
+
+# The header naming which library a request is about. Absent on almost every
+# request, because the common case is one library and asking a user to name the
+# only thing they have would be a question with one answer.
+LIBRARY_HEADER = "X-Studio-Library"
+
+# Paths answered before the caller is known.
+#
+# `/api/health` is on it for two reasons that happen to agree. The deploy
+# workflow smoke-tests the deployed API with a plain unauthenticated GET, so a
+# 401 here would fail every deploy; and a health check that needs a token
+# reports on Cognito rather than on the Lambda, which is not the question it was
+# asked.
+UNAUTHENTICATED_PATHS = frozenset({"/api/health"})
+
+# Paths answered for a known caller, about no library in particular.
+#
+# **Two sets rather than one**, because identifying the caller and scoping the
+# request to a library are two decisions and `/api/libraries` (#291) needs
+# opposite answers to them. It is the route that says which libraries the caller
+# is in, so it cannot require that answer to have been found already — and the
+# caller it matters most for is the one in *no* library, whom `_resolve_library`
+# refuses with a 403 telling them exactly what they called to ask. Listing it
+# above instead would have fixed that by making the only route that reports on a
+# specific person the only route needing no proof of who they are.
+#
+# Unlike the set above, this one names a path before the route serving it lands.
+# That is safe here in a way it was not there: an entry that never matches a real
+# route leaves an authenticated caller at the 404 they were already getting,
+# whereas an unauthentication skip that missed would open a route to strangers.
+LIBRARY_UNSCOPED_PATHS = frozenset({"/api/libraries"})
 
 
 class BodyLengthMiddleware:
@@ -83,6 +116,55 @@ class ApiPathMiddleware:
         return self.app(environ, start_response)
 
 
+def _resolve_library(sub: str, requested: str | None) -> str:
+    """Which library this request is about, or a refusal saying why not.
+
+    Three cases, in the order they are cheap to be sure of:
+
+    * **The header names one.** Membership is asserted against the caller's own
+      rows and a non-member gets 403 — see `errors.ForbiddenError` for why that
+      is not a 404.
+    * **No header, one membership.** The overwhelmingly common case, and the
+      reason the header is optional at all: there is one library, so there is
+      nothing to choose between and no UI worth building to choose it.
+    * **No header, and the count is not one.** A refusal rather than a guess.
+      Picking the first, the oldest or the owned one would each be a rule
+      nothing outside this function knows, and every one of them would
+      eventually write a node into the wrong library.
+
+    The membership read is one query on one partition (`USER#<sub>`), which is
+    what makes doing it per request affordable — see `catalog.libraries_for`.
+    """
+    memberships = catalog.libraries_for(sub)
+
+    if requested:
+        if not any(membership["lib"] == requested for membership in memberships):
+            raise ForbiddenError(f"You are not a member of {requested}.")
+        return requested
+
+    if len(memberships) == 1:
+        return memberships[0]["lib"]
+
+    if not memberships:
+        # Authenticated, and a member of nothing. **Not the 400 below**: there
+        # is no header this caller could send that would work, so "name one" is
+        # an instruction they cannot follow. The pool is admin-create-only, so
+        # this is an account someone created and never added to a library — a
+        # provisioning gap, and 403 is the status that says the request was
+        # understood and refused rather than malformed.
+        raise ForbiddenError("You are not a member of any library.")
+
+    # Naming the choice, not just the header: these are the caller's own
+    # libraries, so listing them leaks nothing they cannot already read, and it
+    # turns the 400 into something answerable from curl without a second round
+    # trip to find out what the ids are.
+    choices = ", ".join(sorted(membership["lib"] for membership in memberships))
+    raise ValidationError(
+        "You are a member of more than one library — name one in the "
+        f"{LIBRARY_HEADER} header: {choices}"
+    )
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
     app.wsgi_app = ApiPathMiddleware(BodyLengthMiddleware(app.wsgi_app))
@@ -91,10 +173,17 @@ def create_app() -> Flask:
     # gateway responses in `modules/api_gateway`. All four have to agree: the
     # browser's preflight is answered by API Gateway, not by Flask, so a method
     # missing there is a CORS failure the Flask config cannot rescue.
+    #
+    # `X-Studio-Library` is subject to the same four-file agreement, and is
+    # added here and in `modules/api_gateway`'s `cors_headers` in the same
+    # change that starts reading it. A custom request header the browser has not
+    # been told is allowed fails the preflight, and the SPA sees a network error
+    # with no status — the one failure mode in this service that carries no
+    # message at all.
     CORS(
         app,
         resources={r"/api/*": {"origins": config.allowed_origin()}},
-        allow_headers=["Content-Type", "Authorization"],
+        allow_headers=["Content-Type", "Authorization", LIBRARY_HEADER],
         methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     )
 
@@ -106,12 +195,56 @@ def create_app() -> Flask:
         if request.method == "OPTIONS":
             return "", 204
 
+    @app.before_request
+    def resolve_caller():
+        """Put the caller and their library on `g` before any route runs.
+
+        Here rather than in each route because an authorization check a route
+        can forget is one a route will eventually forget — and the route that
+        forgets is the one that writes. Everything below this line may assume
+        `g.caller_sub` and `g.library` exist — with `g.library` **`None`** on a
+        `LIBRARY_UNSCOPED_PATHS` path, where the question being asked is about no
+        library in particular. It is assigned there rather than left unset for
+        exactly that reason: the promise this hook makes is that the attribute
+        exists, so an unscoped route reads a library of `None` instead of raising
+        `AttributeError` three frames down, in a route that never mentioned `g`.
+
+        **OPTIONS is tested for again**, even though `handle_preflight` above
+        already answers every preflight and Flask stops at the first
+        `before_request` to return something. That short-circuit is an ordering
+        guarantee held by two adjacent registrations, and the cost of losing it
+        is a 401 on a preflight, which the browser reports to the SPA as a
+        network error with no status. Cheap to state; expensive to rediscover.
+
+        **This also runs for a path no route matches**, because Flask resolves
+        routing inside `dispatch_request`, after `preprocess_request` — so an
+        unauthenticated `GET /api/nope` is 401 rather than 404. Left that way on
+        purpose: a stranger enumerating the route table is not owed the
+        difference between a path that exists and one that does not.
+        """
+        if request.method == "OPTIONS" or request.path in UNAUTHENTICATED_PATHS:
+            return None
+        g.caller_sub = identity.caller_sub(request.headers.get("Authorization"))
+        g.library = (
+            None
+            if request.path in LIBRARY_UNSCOPED_PATHS
+            else _resolve_library(g.caller_sub, request.headers.get(LIBRARY_HEADER))
+        )
+        return None
+
     # The message is deliberately coarse and never carries the token — see
     # `errors.AuthError`. Nothing is logged either: an unauthenticated call is a
     # normal event on a public endpoint, not an incident.
     @app.errorhandler(AuthError)
     def handle_auth_error(error):
         return jsonify({"error": str(error)}), 401
+
+    # Nothing is logged here either, for the reason above: a caller reaching a
+    # library they are not in is a normal event once libraries are shared, and
+    # the row that proves it is not something to copy into CloudWatch.
+    @app.errorhandler(ForbiddenError)
+    def handle_forbidden_error(error):
+        return jsonify({"error": str(error)}), 403
 
     @app.errorhandler(ValidationError)
     def handle_validation_error(error):
