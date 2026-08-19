@@ -19,6 +19,7 @@ from studio_core.errors import (
 from studio_core.routes.browse import bp as browse_bp
 from studio_core.routes.libraries import bp as libraries_bp
 from studio_core.routes.manage import bp as manage_bp
+from studio_core.routes.nodes import bp as nodes_bp
 from studio_core.services import catalog, identity
 
 logger = logging.getLogger(__name__)
@@ -193,6 +194,10 @@ def create_app() -> Flask:
     # route that is authenticated without being about a library's contents, and
     # `routes/libraries.py` explains what that costs the request hook.
     app.register_blueprint(libraries_bp)
+    # The catalog's read surface, kept apart from `browse` for the reason
+    # `routes/nodes.py` gives: one addresses the bucket by key, the other
+    # addresses the table by id, and they overlap until #309 retires the first.
+    app.register_blueprint(nodes_bp)
     app.register_blueprint(manage_bp)
 
     @app.before_request

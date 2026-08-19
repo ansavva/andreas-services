@@ -78,6 +78,7 @@ blob is now unreferenced is not a question a single delete can answer.
 """
 
 import logging
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -110,6 +111,19 @@ META = "META"
 # items per node — the record and its by-parent item — so it moves fifty nodes
 # per call.
 TRANSACTION_ITEMS = 100
+
+# DynamoDB's ceiling on one `BatchGetItem`, and how many times a *partial*
+# answer is asked again before it becomes an error. The two numbers belong
+# together: the batch is where `UnprocessedKeys` comes from, and a caller that
+# chunked without retrying would silently return fewer nodes than it was asked
+# for. See `records`.
+BATCH_GET_KEYS = 100
+BATCH_GET_ATTEMPTS = 4
+
+# The first pause before re-asking for unprocessed keys, doubling each attempt.
+# Small on purpose: `UnprocessedKeys` on a PAY_PER_REQUEST table means a brief
+# partition throttle, and this runs inside a request a person is waiting on.
+BATCH_GET_BACKOFF = 0.05
 
 _serialize = TypeSerializer().serialize
 _deserialize = TypeDeserializer().deserialize
@@ -317,6 +331,78 @@ def node(node_id: str) -> dict:
     return _record(item)
 
 
+def _batch_get(keys: list[dict]) -> list[dict]:
+    """One `BatchGetItem`, asked again until nothing is left unprocessed.
+
+    **`UnprocessedKeys` is not an exception, and that is the whole hazard.**
+    DynamoDB answers a throttled or oversized batch with HTTP 200, the items it
+    did read, and the keys it did not — so botocore's retry policy, which fires
+    on error codes, never sees it. Code that took `Responses` and moved on would
+    drop nodes from a folder listing at exactly the moment the table was busiest,
+    and would do it silently.
+
+    Bounded rather than looped forever: a request is being waited on, and a
+    partition that has not cleared after four tries is an upstream problem the
+    caller should hear about rather than a delay to absorb. Giving up raises,
+    because the alternative — returning what did arrive — is the silent
+    short listing this function exists to prevent.
+    """
+    table = config.catalog_table()
+    items: list[dict] = []
+    pending = {table: {"Keys": keys}}
+
+    for attempt in range(BATCH_GET_ATTEMPTS):
+        if attempt:
+            time.sleep(BATCH_GET_BACKOFF * 2 ** (attempt - 1))
+        try:
+            response = dynamodb.client().batch_get_item(RequestItems=pending)
+        except ClientError as exc:
+            logger.warning("BatchGetItem failed: %s", exc)
+            raise UpstreamError("Could not read the catalog") from exc
+
+        items.extend(response.get("Responses", {}).get(table, []))
+        pending = response.get("UnprocessedKeys") or {}
+        if not pending:
+            return items
+
+    logger.warning("BatchGetItem gave up with %d keys unread", len(pending[table]["Keys"]))
+    raise UpstreamError("Could not read the catalog")
+
+
+def records(node_ids: list[str]) -> dict[str, dict]:
+    """Full records for many nodes at once, keyed by id.
+
+    **This exists because `children` cannot answer with `size` or
+    `content_type`.** The by-parent item carries the index projection #280
+    defines and nothing more, so a listing that wants a file's size is one query
+    for the folder plus `ceil(n / 100)` batched reads for the records — and that
+    is the shape to keep. Widening the projection would remove the batch and put
+    a second copy of every mutable attribute on a second item, which every
+    rename and every text edit would then have to keep in step. A stale byte
+    count in a listing is worse than an extra round trip, and unlike the round
+    trip it is invisible.
+
+    Keyed by id rather than returned as a list because a batch answers in
+    whatever order it likes: the caller holds the order it wants — `children`
+    hands back name-ascending — and looks each record up.
+
+    Duplicate ids are collapsed before the call. `BatchGetItem` rejects a
+    request that names one key twice, and a caller merging two listings has no
+    reason to know that.
+    """
+    wanted = list(dict.fromkeys(node_ids))
+    found: dict[str, dict] = {}
+    for start in range(0, len(wanted), BATCH_GET_KEYS):
+        keys = [
+            {"pk": {"S": _node_pk(node_id)}, "sk": {"S": META}}
+            for node_id in wanted[start : start + BATCH_GET_KEYS]
+        ]
+        for item in _batch_get(keys):
+            record = _record(item)
+            found[record["node_id"]] = record
+    return found
+
+
 def children(parent_id: str) -> list[dict]:
     """One folder's contents, name-ascending.
 
@@ -346,6 +432,35 @@ def children(parent_id: str) -> list[dict]:
         record["name"] = _deserialize(item["sk"]).split("#", 1)[1]
         entries.append(record)
     return entries
+
+
+def child_by_name(parent_id: str, name: str) -> dict:
+    """The one child of a folder with this name, as the index projection.
+
+    A `GetItem` and not a filtered `children`, because the by-parent item is
+    keyed on exactly this question — `NODE#<parent>` and `NAME#<name>` are its
+    full primary key — so a name walk costs one read per segment regardless of
+    how many files the folder holds. That is what makes `/api/resolve` on a deep
+    path affordable, and it is the same uniqueness that `_put_name`'s condition
+    expression enforces on the way in: there cannot be two.
+
+    The projection, not the record. A walk only needs the next `node_id`, and
+    the caller that has arrived fetches the record with `node`. Raises
+    `NotFoundError` naming the segment, like every other read here.
+    """
+    try:
+        response = dynamodb.client().get_item(
+            TableName=config.catalog_table(),
+            Key={"pk": {"S": _node_pk(parent_id)}, "sk": {"S": _name_sk(name)}},
+        )
+    except ClientError as exc:
+        logger.warning("GetItem failed for '%s' under %s: %s", name, parent_id, exc)
+        raise UpstreamError("Could not read the catalog") from exc
+
+    item = response.get("Item")
+    if not item:
+        raise NotFoundError(name)
+    return {**_record(item), "name": name}
 
 
 def subtree(lib: str, path: str) -> list[dict]:
