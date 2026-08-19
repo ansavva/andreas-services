@@ -13,6 +13,9 @@ Flask-Cors = "5.0.0"
 Werkzeug = "3.0.4"
 mangum = "0.17.0"
 asgiref = "3.8.1"
+# The `crypto` extra is not optional: it brings `cryptography`, without which
+# PyJWT imports fine and then refuses the first RS256 token Cognito signs.
+PyJWT = {version = "2.13.0", extras = ["crypto"]}
 
 [tool.poetry.group.dev.dependencies]
 # Both backends the suite mocks, named explicitly. The `dynamodb` extra adds

@@ -18,6 +18,22 @@ class ConflictError(ValueError):
     """
 
 
+class AuthError(Exception):
+    """The caller did not prove who they are — maps to HTTP 401.
+
+    The one error here not built on a stdlib exception, because none of them
+    means "unauthenticated": `PermissionError` is an `OSError` about a file, and
+    hanging this off `ValueError` would file a rejected credential alongside a
+    malformed folder name. Which status comes back is the whole point — 401
+    tells the SPA to sign in again, 400 tells it to fix the request.
+
+    Its message is user-facing and stays coarse. Which of the checks failed is
+    of use to an attacker and of none to a caller, whose remedy is the same
+    either way, so nothing raised here names the claim — and nothing, ever,
+    echoes the token.
+    """
+
+
 class ConfigError(RuntimeError):
     """A required integration is not configured — maps to HTTP 500."""
 
