@@ -22,6 +22,22 @@ def media_bucket():
     return os.environ.get("STUDIO_MEDIA_BUCKET", "studio-prod-media-us-east-1")
 
 
+def catalog_table():
+    """The DynamoDB table that holds the library.
+
+    Every node's identity, name, parent and owner is a row in it; the bucket
+    above holds bytes and is never listed to find out what exists. Declared by
+    studio's own Terraform and passed in as an environment variable by the
+    deploy workflow, exactly like the bucket — and the default matches prod for
+    the same reason, because studio has one environment and local development
+    points at it.
+
+    Nothing reads it yet: listings still come from S3, so an unset variable is
+    currently harmless rather than a misconfiguration waiting to bite.
+    """
+    return os.environ.get("STUDIO_CATALOG_TABLE", "studio-prod-catalog")
+
+
 def media_root_prefix():
     """The prefix inside the bucket this service may read.
 
