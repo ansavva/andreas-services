@@ -47,3 +47,14 @@ output "media_uri" {
   description = "s3:// URI for the root of the media tree"
   value       = module.media.media_uri
 }
+
+output "catalog_table_name" {
+  description = <<-EOT
+    The catalog table the API reads and writes. The deploy workflow writes it to
+    `/studio/prod/catalog-table` and `update-lambda` reads it back — the same
+    route `media_bucket_name` takes, and the only one that works: the Lambda's
+    `environment` block is `ignore_changes`, so SSM is what actually carries a
+    Terraform value to a running function.
+  EOT
+  value       = module.catalog.table_name
+}

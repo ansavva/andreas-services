@@ -244,6 +244,7 @@ jobs:
           put /studio/prod/app-bucket            "$(tf app_bucket_name)"
           put /studio/prod/cf-dist-id            "$(tf cloudfront_distribution_id)"
           put /studio/prod/media-bucket          "$(tf media_bucket_name)"
+          put /studio/prod/catalog-table         "$(tf catalog_table_name)"
           put /studio/prod/cognito-user-pool-id  "$(tf cognito_user_pool_id)"
           put /studio/prod/cognito-client-id     "$(tf cognito_user_pool_client_id)"
 
@@ -290,20 +291,45 @@ jobs:
           set -euo pipefail
           get() { aws ssm get-parameter --name "/studio/prod/${1}" --query Parameter.Value --output text; }
           MEDIA_BUCKET=$(get media-bucket)
+          CATALOG_TABLE=$(get catalog-table)
+          POOL_ID=$(get cognito-user-pool-id)
+          CLIENT_ID=$(get cognito-client-id)
 
+          # THIS BLOCK, NOT TERRAFORM, IS WHAT SETS THE LAMBDA'S ENVIRONMENT.
+          # The function carries `ignore_changes = [environment]`, so the
+          # `environment` block in `modules/compute` applies at creation and
+          # never again. A variable added there and not here reads as its
+          # default — or as unset — in the running function, with a clean plan
+          # and a correct-looking console entry to hide it. Every variable the
+          # backend reads belongs in BOTH places.
+          #
+          # `update-function-configuration --environment` REPLACES the map
+          # rather than merging into it, so this document must be complete:
+          # dropping a line here unsets that variable on the next deploy.
+          #
           # An EMPTY root prefix is the correct value, not a missing one: the
           # pipeline dropped its `media/` wrapper and now writes
           # `characters/`, `projects/` and `phrasebook/` at the top level, so
-          # the browsable root is the bucket itself. This is the value that
-          # reaches the Lambda — Terraform's `environment` block only applies on
-          # creation (`ignore_changes`), so setting it there is not enough.
+          # the browsable root is the bucket itself.
+          #
+          # The Cognito ids are here because the Lambda validates the JWT
+          # itself — the gateway authorizer's claims cannot reach Flask through
+          # Mangum. They are the same two parameters the frontend build and
+          # `dev-setup.sh` read, so the API, the SPA and a local dev session all
+          # track one pool.
           jq -n --arg bucket "${MEDIA_BUCKET}" \
                 --arg prefix "" \
                 --arg origin "https://studio.andreas.services" \
+                --arg table "${CATALOG_TABLE}" \
+                --arg pool "${POOL_ID}" \
+                --arg client "${CLIENT_ID}" \
             '{Variables: {
-              STUDIO_MEDIA_BUCKET:      $bucket,
-              STUDIO_MEDIA_ROOT_PREFIX: $prefix,
-              STUDIO_ALLOWED_ORIGIN:    $origin
+              STUDIO_MEDIA_BUCKET:         $bucket,
+              STUDIO_MEDIA_ROOT_PREFIX:    $prefix,
+              STUDIO_ALLOWED_ORIGIN:       $origin,
+              STUDIO_CATALOG_TABLE:        $table,
+              STUDIO_COGNITO_USER_POOL_ID: $pool,
+              STUDIO_COGNITO_CLIENT_ID:    $client
             }}' > /tmp/env-api.json
 
           aws lambda update-function-configuration \

@@ -69,6 +69,29 @@ module "auth" {
   tags = local.common_tags
 }
 
+# THE CATALOG.
+#
+# The bucket above holds the bytes; this holds the library. Identity, name,
+# parent and owner are rows here, and an S3 key is an opaque `blob_key` nothing
+# derives or parses — so rename, move, share and transfer are row writes that
+# touch zero objects, and a lost row is a lost file even though every byte of it
+# survives. `modules/catalog` carries the full reasoning.
+#
+# The name is composed here rather than taken from a variable, because there is
+# nothing to decide: `[project]-[env]-[component]` gives `studio-prod-catalog`
+# and no other value is correct. Changing it is a destroy-and-recreate that
+# takes every row with it.
+#
+# PITR is left at the module's default of ON. It is the only recovery this data
+# has.
+module "catalog" {
+  source = "../../modules/catalog"
+
+  table_name = "${local.project}-${local.environment}-catalog"
+
+  tags = local.common_tags
+}
+
 module "compute" {
   source = "../../modules/compute"
 
@@ -80,6 +103,19 @@ module "compute" {
   media_bucket_name = module.media.bucket_name
   media_root_prefix = var.media_root_prefix
   allowed_origin    = "https://${local.app_domain}"
+
+  # Same reasoning, one step further: the ARN comes from the module so the item
+  # grants are ordered after the table, and the name comes from the module so
+  # the env var cannot name a table this state did not create.
+  catalog_table_name = module.catalog.table_name
+  catalog_table_arn  = module.catalog.table_arn
+
+  # The Lambda validates the JWT itself; the gateway's authorizer stays as the
+  # outer gate but its claims cannot reach Flask. These are the same two ids the
+  # SPA is built with and `dev-setup.sh` writes into `.env.local`, so all three
+  # surfaces track one pool by construction.
+  cognito_user_pool_id = module.auth.user_pool_id
+  cognito_client_id    = module.auth.user_pool_client_id
 
   tags = local.common_tags
 }

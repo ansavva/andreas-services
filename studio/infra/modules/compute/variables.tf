@@ -50,6 +50,52 @@ variable "allowed_origin" {
   type        = string
 }
 
+variable "catalog_table_name" {
+  description = <<-EOT
+    Name of the catalog table, reaching the Lambda as `STUDIO_CATALOG_TABLE`.
+    Pass `modules/catalog`'s output rather than a literal, for the same reason
+    `media_bucket_name` does: this module declares no table of its own, and
+    taking the name from the module is what orders the two.
+
+    A name here that no longer matches the table is not a plan-time error — it
+    is a runtime `ResourceNotFoundException` on the first query.
+  EOT
+  type        = string
+}
+
+variable "catalog_table_arn" {
+  description = <<-EOT
+    ARN of the catalog table, used to scope the API role's item grants. Take it
+    from `modules/catalog`'s output rather than rebuilding it from the name:
+    that is what gives the policy a real dependency edge on the table it grants
+    access to.
+
+    The policy appends `/index/*` to it — a Query against a GSI is authorized
+    against the index, not the table.
+  EOT
+  type        = string
+}
+
+variable "cognito_user_pool_id" {
+  description = <<-EOT
+    The pool the API validates tokens against, reaching the Lambda as
+    `STUDIO_COGNITO_USER_POOL_ID`. It builds the issuer and the JWKS URL. The
+    Lambda validates in-app rather than trusting the gateway's authorizer,
+    because the authorizer's claims cannot reach Flask through Mangum — see the
+    `environment` block in main.tf.
+  EOT
+  type        = string
+}
+
+variable "cognito_client_id" {
+  description = <<-EOT
+    The app client the SPA signs in against, reaching the Lambda as
+    `STUDIO_COGNITO_CLIENT_ID`. Checked against the token's `aud`: without it a
+    token minted for any other client of the same pool would validate.
+  EOT
+  type        = string
+}
+
 variable "tags" {
   description = "Tags applied to all resources"
   type        = map(string)
