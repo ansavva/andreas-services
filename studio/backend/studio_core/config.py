@@ -105,6 +105,31 @@ def max_walk_objects():
     return int(os.environ.get("STUDIO_MAX_WALK_OBJECTS", "20000"))
 
 
+def cognito_user_pool_id():
+    """The pool whose issuer and signing keys a caller's token is checked against.
+
+    Deliberately without a default, unlike the bucket: there is no value that is
+    harmlessly wrong here. A pool id that does not match the token's rejects
+    every caller, and one naming a *different* pool would admit that pool's
+    users. Unset is a misconfiguration for `services.identity` to report rather
+    than something to guess at. Set by the deploy workflow from the auth module's
+    output, and by `dev-up.sh` locally.
+    """
+    return os.environ.get("STUDIO_COGNITO_USER_POOL_ID", "")
+
+
+def cognito_client_id():
+    """The app client an ID token must be addressed to — its `aud` claim.
+
+    One pool can host several clients and only this one is the studio SPA, so
+    checking it is what stops a token minted for some other client of the same
+    pool from working here. Public by construction — it ships in the frontend
+    bundle — so it is an identifier, never a secret. No default, for the reason
+    above.
+    """
+    return os.environ.get("STUDIO_COGNITO_CLIENT_ID", "")
+
+
 def allowed_origin():
     """Value for Access-Control-Allow-Origin. Defaults to the prod app origin."""
     return os.environ.get("STUDIO_ALLOWED_ORIGIN", "https://studio.andreas.services")

@@ -8,6 +8,7 @@ from flask_cors import CORS
 
 from studio_core import config
 from studio_core.errors import (
+    AuthError,
     ConfigError,
     ConflictError,
     NotFoundError,
@@ -104,6 +105,13 @@ def create_app() -> Flask:
     def handle_preflight():
         if request.method == "OPTIONS":
             return "", 204
+
+    # The message is deliberately coarse and never carries the token — see
+    # `errors.AuthError`. Nothing is logged either: an unauthenticated call is a
+    # normal event on a public endpoint, not an incident.
+    @app.errorhandler(AuthError)
+    def handle_auth_error(error):
+        return jsonify({"error": str(error)}), 401
 
     @app.errorhandler(ValidationError)
     def handle_validation_error(error):
