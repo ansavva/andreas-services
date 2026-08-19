@@ -15,7 +15,7 @@ reader and the writer share a mistake.
 import pytest
 
 from studio_core import config
-from studio_core.errors import ConflictError, NotFoundError, ValidationError
+from studio_core.errors import ConflictError, NotFoundError, UpstreamError, ValidationError
 from studio_core.services import catalog
 from tests.conftest import (
     CATALOG_LIBRARY,
@@ -206,6 +206,146 @@ def test_children_carry_the_index_projection_only(catalog_table):
     # that needs it fetches the record.
     assert "blob_key" not in entry
     assert catalog.node(entry["node_id"])["blob_key"] == "blobs/node-x"
+
+
+def test_child_by_name_finds_one_child(catalog_table):
+    folder = _folder("characters")
+    assert catalog.child_by_name(CATALOG_ROOT, "characters")["node_id"] == folder["node_id"]
+
+
+def test_child_by_name_raises_for_a_name_that_is_not_there(catalog_table):
+    _folder("characters")
+    with pytest.raises(NotFoundError):
+        catalog.child_by_name(CATALOG_ROOT, "projects")
+
+
+def test_child_by_name_does_not_reach_into_another_folder(catalog_table):
+    # The key is (parent, name), so the same name in a sibling folder is a
+    # different item and must not answer for this one.
+    other = _folder("projects")
+    _folder("runs", parent=other["node_id"])
+    with pytest.raises(NotFoundError):
+        catalog.child_by_name(CATALOG_ROOT, "runs")
+
+
+# ──────────────────────────── records ────────────────────────────
+
+
+def _count_batch_gets(monkeypatch):
+    """Count `BatchGetItem` calls without changing what any of them return."""
+    real = catalog.dynamodb.client()
+    calls = {"count": 0}
+
+    class Counting:
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+        def batch_get_item(self, **kwargs):
+            calls["count"] += 1
+            return real.batch_get_item(**kwargs)
+
+    monkeypatch.setattr(catalog.dynamodb, "client", Counting)
+    return calls
+
+
+def test_records_returns_the_full_record_for_each_id(catalog_table):
+    # The point of the batch: `size` and `blob_key` live on the record half
+    # only, so this is what a listing has to call to report either.
+    clip = catalog.create_node(
+        CATALOG_ROOT, "clip.mp4", catalog.KIND_FILE, blob_key="blobs/node-x", size=17
+    )
+    folder = _folder("characters")
+
+    found = catalog.records([clip["node_id"], folder["node_id"]])
+
+    assert found[clip["node_id"]]["size"] == 17
+    assert found[clip["node_id"]]["blob_key"] == "blobs/node-x"
+    assert found[folder["node_id"]]["kind"] == "folder"
+
+
+def test_records_omits_an_id_that_is_not_there(catalog_table):
+    # Missing rather than raising: the caller holds the list it asked for and
+    # decides what an absent record means. `routes/nodes` logs it.
+    folder = _folder("characters")
+    found = catalog.records([folder["node_id"], "node-nope"])
+
+    assert set(found) == {folder["node_id"]}
+
+
+def test_records_collapses_a_repeated_id(catalog_table):
+    # `BatchGetItem` rejects a request naming one key twice, and a caller
+    # merging two listings has no reason to know that.
+    folder = _folder("characters")
+    assert set(catalog.records([folder["node_id"]] * 3)) == {folder["node_id"]}
+
+
+def test_records_of_nothing_reads_nothing(catalog_table):
+    # An empty folder listing must not send a `BatchGetItem` with no keys, which
+    # DynamoDB rejects.
+    assert catalog.records([]) == {}
+
+
+def test_records_chunks_past_the_batch_ceiling(catalog_table, monkeypatch):
+    """More ids than one `BatchGetItem` takes, and every one comes back.
+
+    The call count is asserted as well as the result, because moto is more
+    forgiving than DynamoDB about an oversized batch — a `records` that never
+    chunked could pass on the result alone here and fail in prod.
+    """
+    folder = _folder("corpus")
+    made = [_file(f"frame_{index:03d}.webp", parent=folder["node_id"]) for index in range(101)]
+
+    calls = _count_batch_gets(monkeypatch)
+    found = catalog.records([node["node_id"] for node in made])
+
+    assert set(found) == {node["node_id"] for node in made}
+    assert calls["count"] == 2
+
+
+def test_records_asks_again_for_unprocessed_keys(catalog_table, monkeypatch):
+    """`UnprocessedKeys` arrives on a **200**, so nothing below `records` retries it.
+
+    botocore retries error codes, and a throttled batch is not one — DynamoDB
+    answers with the items it managed and the keys it did not. A `records` that
+    read `Responses` and moved on would drop nodes from a listing precisely when
+    the table was busiest, and would do it without a log line.
+    """
+    ids = [_folder("characters")["node_id"], _folder("projects")["node_id"]]
+    real = catalog.dynamodb.client()
+    table = config.catalog_table()
+    withheld = {"done": False}
+
+    class Halving:
+        """Answers the first batch with one item and the rest unprocessed."""
+
+        def batch_get_item(self, RequestItems):  # noqa: N803 — boto3's own spelling
+            keys = RequestItems[table]["Keys"]
+            if withheld["done"] or len(keys) < 2:
+                return real.batch_get_item(RequestItems=RequestItems)
+            withheld["done"] = True
+            response = real.batch_get_item(RequestItems={table: {"Keys": keys[:1]}})
+            return {**response, "UnprocessedKeys": {table: {"Keys": keys[1:]}}}
+
+    monkeypatch.setattr(catalog.dynamodb, "client", Halving)
+    monkeypatch.setattr(catalog, "BATCH_GET_BACKOFF", 0)
+
+    assert set(catalog.records(ids)) == set(ids)
+
+
+def test_records_gives_up_rather_than_answering_short(catalog_table, monkeypatch):
+    """A batch that never clears is a 502, not a listing missing half its files."""
+    folder = _folder("characters")
+    table = config.catalog_table()
+
+    class Stalled:
+        def batch_get_item(self, RequestItems):  # noqa: N803 — boto3's own spelling
+            return {"Responses": {table: []}, "UnprocessedKeys": RequestItems}
+
+    monkeypatch.setattr(catalog.dynamodb, "client", Stalled)
+    monkeypatch.setattr(catalog, "BATCH_GET_BACKOFF", 0)
+
+    with pytest.raises(UpstreamError):
+        catalog.records([folder["node_id"]])
 
 
 # ──────────────────────────── subtree ────────────────────────────

@@ -425,10 +425,40 @@ a 403: "you are in no libraries" and "you asked for one you are not in" are
 different problems with different fixes, and this route is how the first one
 gets found.
 
+**A node is `{id, lib, parent_id, name, kind, size, content_type, created_at,
+updated_at}` and never `blob_key`.** The view is an allowlist rather than a
+`pop`, so an attribute added to a record is invisible to a client until someone
+adds it here on purpose. The S3 key stays internal because it is *meaningless* —
+prod holds `characters/<slug>/…` keys written years before the catalog alongside
+`blobs/<node_id>` keys written after it, and both are correct forever only for as
+long as nothing outside `services.catalog` parses one. `path` is withheld too,
+for a weaker reason: it is a materialised index of ancestor ids that a move
+rebuilds, and `parent_id` answers the same question authoritatively.
+
+**Every node response is membership-checked against the node's own `lib`**, not
+against the library the request claimed. A node id is a v4 UUID, so this is not a
+guard against guessing; it is the guard against a *shared* id once a library has
+more than one member. A node that does not exist is 404 before that check can
+run, which is safe for the same reason — an id nobody was given cannot be
+reached.
+
+**`GET /api/nodes` is one query plus `ceil(n / 100)` batched reads, and that is
+the shape to keep.** The by-parent item carries the index projection only
+(`node_id, lib, kind, path, created_at`), so `size` and `content_type` come from
+a `BatchGetItem` over the `META` rows. Widening the projection would make the
+listing a single query and put a mutable copy of every file's metadata on a
+second item, which every rename and every text edit would then have to keep in
+step (#309). `UnprocessedKeys` comes back on a **200**, so botocore's retries
+never see it — `catalog.records` retries it explicitly and raises rather than
+answering with a short listing.
+
 | Route | Returns |
 |---|---|
 | `GET /api/health` | `{"status": "ok"}` — liveness, touches no S3 |
 | `GET /api/libraries` | `[{id, name, role}]` — the caller's libraries. Authenticated, **not** library-scoped |
+| `GET /api/nodes?parent=` | The children of one folder, name-ascending. 404 unknown parent, 403 another library |
+| `GET /api/nodes/<id>` | One node. 404 unknown id, 403 another library |
+| `GET /api/resolve?path=` | A slash-joined name path → the node it names. An empty path is the library root |
 | `GET /api/tree?prefix=&sort=` | One delimited listing: `folders`, `files` (each presigned), `breadcrumbs`, `counts` |
 | `GET /api/reel?prefix=&cursor=&page_size=&sort=` | Images and video beneath a prefix, recursively, paginated |
 | `GET /api/asset?key=&disposition=` | A fresh presigned URL for one object |
