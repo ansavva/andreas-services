@@ -134,5 +134,10 @@ resource "aws_dynamodb_table" "catalog" {
     enabled = var.point_in_time_recovery_enabled
   }
 
+  # See the variable for why this is not covered by `prevent_destroy` on the
+  # media bucket: that guard stops Terraform, this one also stops a console
+  # click and a targeted CLI delete.
+  deletion_protection_enabled = var.deletion_protection_enabled
+
   tags = var.tags
 }

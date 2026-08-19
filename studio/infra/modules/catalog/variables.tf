@@ -21,6 +21,28 @@ variable "point_in_time_recovery_enabled" {
   default     = true
 }
 
+variable "deletion_protection_enabled" {
+  description = <<-EOT
+    Refuse `DeleteTable` at the AWS API, not just in Terraform.
+
+    Defaults to ON, and it is not a duplicate of `prevent_destroy` on the media
+    bucket. That is a Terraform lifecycle guard: it errors at plan time, so a
+    `terraform destroy` over this whole state fails and removes nothing. It says
+    nothing about a `-target`ed destroy of this table alone, a console click, or
+    a stray CLI call — and studio's pipeline half runs under a human's own AWS
+    login with real credentials, so those are the paths that matter here.
+
+    It is also the half PITR does not cover. PITR pays to *recover*, out of
+    band, into a new table, by someone who first has to notice. This makes the
+    delete fail instead, at the moment a person can still change their mind.
+
+    Turning it off is an in-place update, so a genuine teardown is a deliberate
+    two-step rather than a blocked one.
+  EOT
+  type        = bool
+  default     = true
+}
+
 variable "tags" {
   description = "Tags applied to all resources"
   type        = map(string)
