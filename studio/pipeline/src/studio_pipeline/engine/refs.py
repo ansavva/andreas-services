@@ -114,7 +114,7 @@ def character_pool_keys(character: str, pool: str) -> list[str]:
 def project_input_keys(project: str, numbers: list[int]) -> list[str]:
     """Resolve input-pool numbers to S3 keys, in the order asked for."""
     with _reason(f"project {project}'s input pool"):
-        keys = PROJECTS.input_keys(s3c.client(), project)
+        keys = PROJECTS.input_keys(project)
     by_n = _numbered(keys)
     missing = [n for n in numbers if n not in by_n]
     if missing:

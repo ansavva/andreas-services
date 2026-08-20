@@ -35,13 +35,10 @@ def presign(names, expires, folder, json_, key):
         paths = [key.strip("/")]
     else:
         folder = folder.strip("/")
-        # Natural order, not the API's. `/api/nodes` returns children
-        # name-ascending, which is lexical — see `store.natural_key` for why
-        # `_10` sorting before `_2` would matter here.
-        available = sorted(
-            (entry["name"] for entry in store.children(folder) if entry.get("kind") == "file"),
-            key=store.natural_key,
-        )
+        # Natural order, not the API's — `store.files` owns that decision and
+        # why it matters. This is the call site it matters most at: these URLs
+        # become `[Image1]..[ImageN]` positionally.
+        available = [entry["name"] for entry in store.files(folder)]
         if names:
             missing = [n for n in names if n not in available]
             if missing:

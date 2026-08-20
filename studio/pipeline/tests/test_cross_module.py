@@ -129,7 +129,7 @@ def test_add_inputs_returns_the_key_it_wrote(media_bucket, tmp_path):
     """
     src = tmp_path / "frame.jpeg"
     src.write_bytes(b"jpeg-bytes")
-    added = projects.add_inputs(media_bucket, "subject-a", [str(src)])
+    added = projects.add_inputs("subject-a", [str(src)])
     assert len(added) == 1
     assert added[0]["key"].startswith("projects/subject-a/input/")
     assert added[0]["key"].endswith(".jpeg")

@@ -243,7 +243,7 @@ def cmd_run(**options):
     # Where a run lands is never guessed. It used to fall back to the character
     # name and then to a pseudo-character called `misc`, which is how output
     # ended up in three different places for one piece of work. Ask instead.
-    args.project = PROJ.require_project(s3, args.project)
+    args.project = PROJ.require_project(args.project)
 
     payload = build_payload(entry, args)
 

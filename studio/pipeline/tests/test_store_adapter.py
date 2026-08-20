@@ -302,3 +302,44 @@ def test_a_missing_chain_of_folders_is_created_deepest_last(apis, monkeypatch):
 
     assert [payload["name"] for verb, route, payload in calls
             if verb == "POST" and route == "/api/nodes"] == ["<project>", "runs"]
+
+
+# ──────────────────────────── listing files (#305) ────────────────────────────
+
+
+def test_files_are_natural_sorted_and_folders_are_dropped(apis):
+    """Three decisions in one place, because each has been a bug somewhere.
+
+    The order is positional downstream (`[Image1]..[ImageN]`), and the catalog
+    returns folders in the same list as files — where `list_objects_v2` put them
+    in a separate field, so the filter used to be structural and is now explicit.
+    """
+    calls, table = apis
+    table[("GET", "/api/resolve")] = {"id": "node-folder", "kind": "folder"}
+    table[("GET", "/api/nodes")] = [
+        {"name": "shot-10.png", "kind": "file"},
+        {"name": "shot-2.png", "kind": "file"},
+        {"name": "shot-1.png", "kind": "file"},
+        {"name": "thumbs", "kind": "folder"},
+    ]
+
+    assert [entry["name"] for entry in store.files("projects/<project>/input")] == [
+        "shot-1.png", "shot-2.png", "shot-10.png",
+    ]
+    assert calls  # the listing was actually fetched, not assumed
+
+
+def test_a_folder_that_is_not_there_lists_as_empty(apis, monkeypatch):
+    """Callers ask "what is in here" and none tells absent from empty.
+
+    `resolve` 404s on a project with no `input/` yet, and the paginator this
+    replaces answered the same question with zero keys.
+    """
+    _, _ = apis
+
+    def _get(_route, **params):
+        raise api.NotFound("no such node", 404)
+
+    monkeypatch.setattr(api, "get", _get)
+
+    assert store.files("projects/<project>/input") == []

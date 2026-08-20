@@ -462,7 +462,7 @@ or projects.
 
 | Module | Purpose |
 |---|---|
-| `store.py` | **The media store, addressed by path and reached through the API.** Resolve a name path to a node, list, read, write, upload, copy, presign, and ensure a folder exists. No bucket name, no credentials — bytes travel to S3 directly on presigned URLs the API signs, which is what keeps a video out of the Lambda's request limit. `s3.py` is being retired into this. |
+| `store.py` | **The media store, addressed by path and reached through the API.** Resolve a name path to a node, list its files in natural order, read, write, upload, copy, presign, and ensure a folder exists. No bucket name, no credentials — bytes travel to S3 directly on presigned URLs the API signs, which is what keeps a video out of the Lambda's request limit. `s3.py` is being retired into this. |
 | `api.py` | One transport for every call the CLI makes: bearer token, refresh-on-401, library header, error mapping. Decided once so no caller re-decides it. |
 | `auth.py` | The Cognito sign-in behind `studio login`, and the token cache it writes. |
 | `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. One auth path for the whole package — `session()` is what everything else asks for. **Shrinking**: everything above the adapters is moving onto `store.py`, and `domain/runs.py` no longer imports this. |
@@ -475,7 +475,7 @@ or projects.
 | Module | Purpose |
 |---|---|
 | `paths.py` | **The one module that knows the tree's shape.** Every key is built here, which is what keeps a global prefix applied in exactly one place. Library, not a command. |
-| `projects.py` | Project CRUD and the project **input pool**. `require_project()` turns a missing `--project` into an error that lists the real options. |
+| `projects.py` | Project CRUD and the project **input pool**. `require_project()` turns a missing `--project` into an error that lists the real options. Creating a project creates its **folder** as well as its `project.json` — S3 invented the folder out of the key's slashes and the catalog does not, so without it the file has no parent and neither does any run recorded afterwards. |
 | `runs.py` | The shared **run store** every engine records into: request/prompt/result, output archiving, runref resolution for chaining, `find --character` across projects. It refuses a URL-shaped binding — this is where "S3 is the only origin" is enforced in code, and it has to be, because the API stores these documents as bytes and never decodes one. A run is created by `POST /api/runs`, which makes the folder and writes its documents together and answers 409 to a re-send; `result.json` and the outputs are ordinary writes into that folder afterwards, because they do not exist until the prediction comes back. |
 | `scenes.py` | The **scene store**: a piece planned, shot and cut, under `projects/<p>/scenes/<slug>/`. Owns the manifest, `assemble`, `handoff`, and the read-only half of the CLI. |
 | `storyboard.py` | **The plan document**, pure data: what a shot's panels mean, which one is the start frame once the chain has spoken, how a revision merges onto work already paid for. No S3, no models — so the rules that decide what a shot sends are testable on their own. |
