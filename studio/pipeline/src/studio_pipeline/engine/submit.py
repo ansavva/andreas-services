@@ -27,7 +27,7 @@ import sys
 import tempfile
 
 from studio_pipeline.adapters import replicate as RA
-from studio_pipeline.adapters import s3 as s3c
+from studio_pipeline.adapters import store
 from studio_pipeline.domain import runs as R
 from studio_pipeline.engine import refs as REFS
 from studio_pipeline.engine import registry as REG
@@ -220,8 +220,8 @@ def _warn_total_bytes(entry: dict, s3, bindings: dict) -> None:
     total = 0
     try:
         for key in keys:
-            total += s3.head_object(Bucket=s3c.BUCKET, Key=key)["ContentLength"]
-    except Exception:
+            total += store.size(key)
+    except Exception:  # noqa: BLE001
         return  # sizing is a courtesy; never let it break a submit
     if total <= BYTES_WARN:
         return

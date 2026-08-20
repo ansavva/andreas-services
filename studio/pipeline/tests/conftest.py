@@ -26,6 +26,8 @@ os.environ["REPLICATE_API_TOKEN"] = "r8_test_token"
 
 from moto import mock_dynamodb, mock_s3
 
+from studio_pipeline.adapters import api as _api
+
 BUCKET = "studio-prod-media-us-east-1"
 
 
@@ -194,11 +196,114 @@ FIXTURE_OBJECTS = {
 
 
 @pytest.fixture
-def media_bucket():
-    """A moto S3 bucket seeded with the miniature tree."""
+def media_bucket(monkeypatch):
+    """A moto S3 bucket seeded with the miniature tree, with `store` aimed at it.
+
+    **The shim is the point of this fixture now, not a detail.** `adapters/store`
+    reaches the API, and these tests are not about the transport — they are about
+    what `shoot`, `board` and `curate` *do*: which references they pick, in what
+    order, what they write and where. Pointing `store` at the same moto bucket
+    keeps every one of those assertions meaning exactly what it meant before the
+    migration, against the same fixture tree.
+
+    What is deliberately *not* covered here: that `store` can talk to the API at
+    all. `test_store_adapter` and `test_api_client` own that, and the first real
+    end-to-end exercise is the integration suite. Splitting it this way is what
+    stops a moto shim from quietly becoming the only thing that is ever tested —
+    which is the trap that let `store.resolve` ship broken.
+    """
     with mock_s3():
         s3 = boto3.client("s3", region_name="us-east-1")
         s3.create_bucket(Bucket=BUCKET)
         for key, body in FIXTURE_OBJECTS.items():
             s3.put_object(Bucket=BUCKET, Key=key, Body=body)
+        _aim_store_at(s3, monkeypatch)
         yield s3
+
+
+def _aim_store_at(s3, monkeypatch):
+    """Redirect `adapters/store` onto a moto bucket, one operation at a time.
+
+    A node's "id" here is its key. That is a fiction the real API does not share,
+    and it is safe only because nothing in these tests reads an id for anything
+    but handing it straight back — asserted by the fact that no test inspects
+    one.
+    """
+    import pathlib
+
+    from studio_pipeline.adapters import store as _store
+
+    def _head(path):
+        return s3.head_object(Bucket=BUCKET, Key=path)
+
+    def _resolve(path):
+        clean = path.strip("/")
+        try:
+            meta = _head(clean)
+        except Exception as error:  # noqa: BLE001
+            raise _api.NotFound(f"No such object: {clean}", 404) from error
+        return {
+            "id": clean,
+            "name": clean.rsplit("/", 1)[-1],
+            "size": meta["ContentLength"],
+            "kind": "file",
+        }
+
+    def _children(path):
+        prefix = path.strip("/") + "/"
+        found = s3.list_objects_v2(Bucket=BUCKET, Prefix=prefix)
+        contents = found.get("Contents", [])
+        if not contents:
+            raise _api.NotFound(f"No such object: {path}", 404)
+        return [
+            {
+                "id": item["Key"],
+                "name": item["Key"][len(prefix):],
+                "kind": "file",
+                "size": item["Size"],
+            }
+            for item in contents
+            if not item["Key"].endswith("/") and "/" not in item["Key"][len(prefix):]
+        ]
+
+    def _read(path):
+        return s3.get_object(Bucket=BUCKET, Key=path.strip("/"))["Body"].read()
+
+    def _download(path, destination):
+        destination = pathlib.Path(destination)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(_read(path))
+        return destination
+
+    def _write(path, body, *, content_type):
+        s3.put_object(Bucket=BUCKET, Key=path.strip("/"), Body=body, ContentType=content_type)
+        return {"id": path.strip("/"), "size": len(body), "content_type": content_type}
+
+    def _upload(path, source, *, content_type):
+        return _write(path, pathlib.Path(source).read_bytes(), content_type=content_type)
+
+    def _copy(source, destination, *, content_type):
+        return _write(destination, _read(source), content_type=content_type)
+
+    def _exists(path):
+        try:
+            _head(path.strip("/"))
+        except Exception:  # noqa: BLE001
+            return False
+        return True
+
+    def _size(path):
+        return _resolve(path)["size"]
+
+    def _presign(path, *, disposition="inline"):
+        params = {"Bucket": BUCKET, "Key": path.strip("/")}
+        if disposition == "attachment":
+            params["ResponseContentDisposition"] = "attachment"
+        return s3.generate_presigned_url("get_object", Params=params, ExpiresIn=3600)
+
+    for name, value in [
+        ("resolve", _resolve), ("children", _children), ("read", _read),
+        ("download", _download), ("write", _write), ("upload", _upload),
+        ("copy", _copy), ("exists", _exists), ("size", _size), ("presign", _presign),
+    ]:
+        monkeypatch.setattr(_store, name, value)

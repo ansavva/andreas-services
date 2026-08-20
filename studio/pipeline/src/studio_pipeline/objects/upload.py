@@ -10,11 +10,11 @@ s3:// URI per file; --presign also prints a temporary HTTPS URL.
 """
 import json
 import mimetypes
-import os
+import pathlib
 
 import click
 
-from studio_pipeline.adapters import s3 as s3c
+from studio_pipeline.adapters import store
 
 # mimetypes doesn't know some media types on every platform; pin the ones we use.
 mimetypes.add_type("image/webp", ".webp")
@@ -32,28 +32,44 @@ def content_type(path: str) -> str:
 @click.option("--json", "json_", is_flag=True, help="Emit a JSON list instead of text.")
 @click.option("--presign", is_flag=True, help="Also emit a temporary HTTPS URL per file.")
 def upload(files, expires, folder, json_, presign):
-    s3 = s3c.client()
+    _warn_ignored_expiry(expires)
     folder = folder.strip("/")
     results = []
     for path in files:
-        if not os.path.isfile(path):
-            s3c.die(f"not a file: {path}")
-        name = os.path.basename(path)
-        key = s3c.key(f"{folder}/{name}")
-        s3.upload_file(path, s3c.BUCKET, key, ExtraArgs={"ContentType": content_type(path)})
-        entry = {"name": name, "key": key, "uri": f"s3://{s3c.BUCKET}/{key}"}
+        source = pathlib.Path(path)
+        if not source.is_file():
+            raise click.ClickException(f"not a file: {path}")
+        remote = f"{folder}/{source.name}"
+        node = store.upload(remote, source, content_type=content_type(path))
+        # `key` rather than `path`, because two SKILL.md pages document that
+        # field by name. It holds the same string it always did. #406 renames it
+        # when it rewrites those pages; changing it here would make them wrong
+        # first and right later.
+        entry = {"name": source.name, "key": remote, "id": node.get("id", "")}
         if presign:
-            entry["url"] = s3.generate_presigned_url(
-                "get_object",
-                Params={"Bucket": s3c.BUCKET, "Key": key},
-                ExpiresIn=expires,
-            )
+            entry["url"] = store.presign(remote)
         results.append(entry)
 
     if json_:
         print(json.dumps(results, indent=2))
     else:
-        for e in results:
-            print(e["uri"])
-            if "url" in e:
-                print(f"  {e['url']}")
+        for entry in results:
+            # The `s3://bucket/key` line is gone: the CLI no longer knows a
+            # bucket, and printing one it had guessed would be worse than
+            # printing the path it actually wrote.
+            print(entry["key"])
+            if "url" in entry:
+                print(f"  {entry['url']}")
+
+
+def _warn_ignored_expiry(expires: int) -> None:
+    """See the note in `objects/presign.py` — the API owns the URL's lifetime."""
+    context = click.get_current_context(silent=True)
+    if context is None:
+        return
+    source = context.get_parameter_source("expires")
+    if source is not None and source.name != "DEFAULT":
+        click.echo(
+            f"warning: --expires {expires} is ignored; the API sets the URL's lifetime.",
+            err=True,
+        )

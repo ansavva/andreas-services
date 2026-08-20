@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 import string
 import sys
 from types import SimpleNamespace
@@ -65,6 +66,7 @@ import yaml
 
 from studio_pipeline.adapters import replicate as RA
 from studio_pipeline.adapters import s3 as s3c
+from studio_pipeline.adapters import store
 from studio_pipeline.domain import characters as CHARACTER
 from studio_pipeline.domain import paths as P
 from studio_pipeline.domain import projects as PROJ
@@ -344,9 +346,7 @@ def check_plates(s3, slots: list[dict]) -> None:
     missing = []
     for slot in slots:
         for key in plate_keys(slot):
-            try:
-                s3.head_object(Bucket=s3c.BUCKET, Key=key)
-            except Exception:  # noqa: BLE001 — any failure here means "cannot use it"
+            if not store.exists(key):
                 missing.append(key)
     if missing:
         raise ShootError(
@@ -488,7 +488,7 @@ def review_sheet(s3, slot_id: str, keys: list[str], out_dir: str, cache: dict) -
         local = cache.get(key)
         if local is None:
             local = os.path.join(out_dir, f"src-{len(cache)}-{os.path.basename(key)}")
-            s3.download_file(s3c.BUCKET, key, local)
+            store.download(key, pathlib.Path(local))
             cache[key] = local
         paths.append(local)
         captions.append(f"[Image{i}] {os.path.basename(key)}")
