@@ -26,7 +26,7 @@ The family:
   supplies the character's bible and the reference images this engine requires.
   **FIRST load `studio-media-character`** — never generate a character from a text
   prompt alone (see "Reference images are MANDATORY" below).
-- **`studio-media-s3`** — the `studio-prod-media-us-east-1` asset store references and
+- **`studio-media-s3`** — the media asset store (`STUDIO_S3_BUCKET`) references and
   outputs live in.
 
 ## The model: `bytedance/seedance-2.0`
@@ -137,7 +137,7 @@ job is already `processing`/`succeeded`, and `cancel_predictions` any duplicates
 ### Output location (always) — the run owns it
 
 Generated videos are stored in **S3** (bucket
-`studio-prod-media-us-east-1`), not in git, and every submission is a **run**:
+the bucket named by `STUDIO_S3_BUCKET`), not in git, and every submission is a **run**:
 
 ```
 projects/<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/

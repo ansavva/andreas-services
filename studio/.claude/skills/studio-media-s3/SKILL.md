@@ -1,6 +1,6 @@
 ---
 name: studio-media-s3
-description: Read from and write to the studio-prod-media-us-east-1 S3 bucket via the AWS CLI/boto3 — list a prefix, upload local files, download files to disk, and mint short-lived presigned HTTPS URLs (how images/videos reach Replicate). The canonical asset store for the studio-* workflow, holding CHARACTERS (identity records) and PROJECTS (runs, chains, scenes, movies, input). Use when a skill or task needs to store, fetch, list, or hand out large media assets, to record or address a run, or to cut runs into a scene and scenes into a movie.
+description: Read from and write to studio's media S3 bucket via the AWS CLI/boto3 — list a prefix, upload local files, download files to disk, and mint short-lived presigned HTTPS URLs (how images/videos reach Replicate). The canonical asset store for the studio-* workflow, holding CHARACTERS (identity records) and PROJECTS (runs, chains, scenes, movies, input). Use when a skill or task needs to store, fetch, list, or hand out large media assets, to record or address a run, or to cut runs into a scene and scenes into a movie.
 ---
 
 # S3 skill
@@ -10,16 +10,25 @@ base64-inlined into the agent context), so it handles full-resolution images and
 multi-MB videos cheaply. It replaced the Google Drive layer for the
 `studio-*` workflow.
 
-Everything lives in one bucket, **`studio-prod-media-us-east-1`**, at its
-**root** — there is no wrapper prefix. (There was a `media/` one, inherited from
-mirroring Google Drive 1:1; it bought nothing and is gone.) Paths passed to
-these scripts are full keys, e.g. `characters/<name>/reference`. The bucket is
-provisioned by Terraform in [`infra/`](../../../infra/README.md).
+Everything lives in one bucket, at its **root** — there is no wrapper prefix.
+(There was a `media/` one, inherited from mirroring Google Drive 1:1; it bought
+nothing and is gone.) Paths passed to these scripts are full keys, e.g.
+`characters/<name>/reference`. The buckets are provisioned by Terraform in
+[`infra/`](../../../infra/README.md).
 
-Bucket / prefix / region are overridable via env: `STUDIO_S3_BUCKET`
-(default `studio-prod-media-us-east-1`), `STUDIO_S3_PREFIX` (default
-empty — set it only to stage a copy of the tree elsewhere), `AWS_REGION`
-(default `us-east-1`).
+**Which bucket is `STUDIO_S3_BUCKET`, and it is not production.** Until August
+2026 this page named `studio-prod-media-us-east-1` as the default, and it was
+the truth: local development ran against prod. It does not any more. Every
+machine has its own `studio-dev-<short12>-media-<region>` bucket, and
+`dev-setup.sh` pins it into `studio/.env` from Terraform's outputs.
+
+So: **read the variable, do not assume the value**, and never hard-code a bucket
+name into a command on the strength of this page. If `STUDIO_S3_BUCKET` is unset
+or still names a prod bucket, `dev-setup.sh` is what fixes it — see
+[studio/CLAUDE.md](../../../CLAUDE.md).
+
+`STUDIO_S3_PREFIX` (default empty — set it only to stage a copy of the tree
+elsewhere) and `AWS_REGION` (default `us-east-1`) are the other two knobs.
 
 ## Credentials
 
