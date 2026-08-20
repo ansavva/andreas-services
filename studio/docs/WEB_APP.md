@@ -462,6 +462,7 @@ answering with a short listing.
 | `POST /api/nodes` | `{parent, name, kind, blob_key?}` → creates a folder or a file. **201.** 409 if the name is taken |
 | `PATCH /api/nodes/<id>` | `{name}` to rename **or** `{parent}` to move — both at once is a 400, not a guess |
 | `DELETE /api/nodes/<id>` | Node and subtree. Rows first, then blobs |
+| `GET /api/nodes/<id>/download-url` | A fresh presigned GET for the node's blob. `disposition=attachment` to download |
 | `GET /api/tree?prefix=&sort=` | One delimited listing: `folders`, `files` (each presigned), `breadcrumbs`, `counts` |
 | `GET /api/reel?prefix=&cursor=&page_size=&sort=` | Images and video beneath a prefix, recursively, paginated |
 | `GET /api/asset?key=&disposition=` | A fresh presigned URL for one object |
