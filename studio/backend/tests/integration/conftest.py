@@ -15,7 +15,7 @@ Terraform state object in S3, keyed by the machine id at
 `~/.config/andreas-services/studio/machine-id` — the same way
 `dev-aws-common.sh` finds them, so a developer's stack and this suite cannot end
 up pointing at two different places. Set `STUDIO_DEV_MACHINE_ID` to target a
-stack this machine did not create, which is what `dev-aws-bootstrap.sh` prints.
+stack this machine did not create; `dev-aws-setup.sh` prints the id it used.
 
 **The token comes from `dev-token.sh` rather than being minted here.** One
 description of how you sign in: the script is what a developer uses and what
@@ -76,7 +76,7 @@ def _machine_id() -> str:
     else:
         pytest.fail(
             f"No machine id at {MACHINE_ID_FILE} and STUDIO_DEV_MACHINE_ID is unset. "
-            "Run studio/scripts/dev-aws-bootstrap.sh first."
+            "Run studio/scripts/dev-aws-setup.sh first."
         )
     if not UUID_SHAPE.match(value):
         pytest.fail(f"Machine id in {MACHINE_ID_FILE} is not a lowercase UUID.")

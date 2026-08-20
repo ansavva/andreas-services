@@ -138,10 +138,18 @@ convenience. If you need prod data in front of you today, the deployed app at
 ### Provisioning one
 
 ```bash
-./studio/scripts/dev-aws-bootstrap.sh     # provision, seed the account, prove a token
-./studio/scripts/dev-aws-reset.sh --dry-run   # what a reset would remove
-./studio/scripts/dev-aws-destroy.sh       # tear it down; the machine id is kept
+./studio/scripts/dev-aws-setup.sh                    # provision this machine's stack
+./studio/scripts/dev-user.sh --generate-password     # its one test account
+./studio/scripts/dev-token.sh                        # prove sign-in works; prints a token
+./studio/scripts/dev-aws-reset.sh --dry-run          # what a reset would remove
+./studio/scripts/dev-aws-destroy.sh                  # tear it down; the machine id is kept
 ```
+
+**`STUDIO_DEV_MACHINE_ID` targets a stack this machine did not create.** Export
+it and every command above agrees, because `dev-aws-common.sh` persists it. Two
+cases need it: an ephemeral environment, where a generated id dies with the
+container and leaves the stack running, billing and unreachable; and a second
+machine reaching an existing stack deliberately.
 
 The machine id is the only handle on the resources — the Terraform state key is
 built from it. Losing it strands a running, billing stack.
@@ -254,9 +262,10 @@ when you are unsure a command exists.
 every call, so failing early is the faster way to find out.
 
 ```bash
-studio/scripts/dev-aws-bootstrap.sh   # once per machine: provision + seed the account
-studio/scripts/dev-setup.sh           # the pipeline half — installs uv, warms caches
-studio/scripts/dev-up.sh              # the app half — backend :8000, frontend :5173
+studio/scripts/dev-aws-setup.sh                    # once per machine: provision the stack
+studio/scripts/dev-user.sh --generate-password     # once per machine: its test account
+studio/scripts/dev-setup.sh                        # the pipeline half — installs uv, warms caches
+studio/scripts/dev-up.sh                           # the app half — backend :8000, frontend :5173
 ```
 
 `dev-setup.sh` runs from the SessionStart hook and **tolerates a missing stack**,

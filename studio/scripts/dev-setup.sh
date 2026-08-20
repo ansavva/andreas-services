@@ -212,7 +212,7 @@ else
   warn "no dev stack readable — skipping env files."
   warn "  Either you are not signed in to AWS, or this machine has never"
   warn "  provisioned one. Both are fixed by:"
-  warn "    aws login  &&  ./studio/scripts/dev-aws-bootstrap.sh"
+  warn "    aws login  &&  ./studio/scripts/dev-aws-setup.sh"
   warn "  Nothing here points at production any more (#287)."
 fi
 
