@@ -37,11 +37,18 @@ jobs:
       # that matters here — the empty-value bug #384 fixed lived in a `run:`
       # block and no tool in this repo was looking at one.
       - name: Lint workflows
-        uses: docker://rhysd/actionlint:1.7.12
-        with:
+        shell: bash
+        run: |
+          set -euo pipefail
+          # `docker run` rather than `uses: docker://rhysd/actionlint`, because
+          # that form passes `args:` to the container without shell parsing:
+          # the quotes around the -ignore regex arrived as literal characters,
+          # the pattern matched nothing, and the step failed on the four
+          # findings it was meant to defer. Here bash does the quoting.
+          #
           # `-ignore` filters shellcheck's warning/info/style messages so the
-          # embedded shellcheck matches the threshold the next step uses on
-          # `*.sh`. One policy, not two.
+          # embedded shellcheck matches the --severity=error the next step uses
+          # on `*.sh`. One policy, not two.
           #
           # It filters only shellcheck MESSAGES. actionlint's own checks —
           # workflow syntax, expression types, unknown action inputs, bad
@@ -49,10 +56,15 @@ jobs:
           # other tool in this repo performs.
           #
           # What it defers, measured against main: SC2034 on a loop counter in
-          # `humbugg-pr.yml`, `humbugg-prod.yaml` and `mailer-pr.yml`, and SC2016
-          # on deliberate single quotes in `studio-pr.yml`. Four, all false
-          # positives on inspection, none an error.
-          args: -color -ignore 'SC[0-9]+:(warning|info|style)'
+          # humbugg-pr.yml, humbugg-prod.yaml and mailer-pr.yml, and SC2016 on
+          # deliberate single quotes in studio-pr.yml. Four, all false positives
+          # on inspection, none an error.
+          #
+          # Pinned rather than `latest`: this gates every PR touching a deploy
+          # workflow, and a linter that moves underneath the repo turns
+          # unrelated PRs red for reasons nobody changed.
+          docker run --rm -v "$PWD:/repo" --workdir /repo rhysd/actionlint:1.7.12 \
+            -color -ignore 'SC[0-9]+:(warning|info|style)'
 
       # shellcheck is preinstalled on the runner image.
       #
