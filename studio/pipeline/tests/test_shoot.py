@@ -729,7 +729,6 @@ def test_a_shoot_never_writes_into_the_character(media_bucket, spec, monkeypatch
 def test_promoting_a_run_output_is_a_separate_command(media_bucket):
     """`add-refs --from-run` is the second gate, and it copies rather than moves."""
     from studio_pipeline.domain import characters as CHARACTER
-    from studio_pipeline.domain import paths as P
 
     run_output = "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch/output/wave-porch.jpeg"
     result = CliRunner().invoke(cli.main, [

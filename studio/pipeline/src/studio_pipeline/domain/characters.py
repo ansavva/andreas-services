@@ -180,7 +180,9 @@ def main():
 @main.command("list")
 @click.option("--json", "json_", is_flag=True)
 def cmd_list(json_):
-    s3 = s3c.client()
+    # No S3 client: `character list` is the first command that needs no AWS at
+    # all. The catalog answers it, and `main()` builds no client for a command
+    # that does not ask for one.
     names = P.list_characters()
     if json_:
         print(json.dumps(names, indent=2))
