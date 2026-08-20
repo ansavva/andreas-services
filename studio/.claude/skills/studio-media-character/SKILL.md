@@ -1,6 +1,6 @@
 ---
 name: studio-media-character
-description: Manage on-model characters — create, update, list, curate, and load a character whose profile bible and reference library live in the studio-prod-media-us-east-1 S3 bucket. Use whenever a request names a known/recurring character, or the user wants to add, edit, describe, curate, or inspect one. A character is DATA (an S3 record under characters/<name>/), not a per-character skill: this one skill manages them all, and its described reference index is how a SUBSET of a large reference library is chosen for a generation instead of sending the folder whole.
+description: Manage on-model characters — create, update, list, curate, and load a character whose profile bible and reference library live in studio's media S3 bucket. Use whenever a request names a known/recurring character, or the user wants to add, edit, describe, curate, or inspect one. A character is DATA (an S3 record under characters/<name>/), not a per-character skill: this one skill manages them all, and its described reference index is how a SUBSET of a large reference library is chosen for a generation instead of sending the folder whole.
 ---
 
 # studio-media-character
@@ -27,7 +27,7 @@ character is an S3 record managed by this one skill, used by the video pipeline
 ## Where a character lives (S3)
 
 Each character is a record under `characters/<name>/` in the
-**`studio-prod-media-us-east-1`** bucket (the generic **`studio-media-s3`** skill is the
+media bucket named by `STUDIO_S3_BUCKET` (the generic **`studio-media-s3`** skill is the
 storage layer; auth is your `aws login`).
 
 ```
