@@ -975,3 +975,105 @@ def test_confirming_in_another_library_is_403(catalog_table, media_bucket, signe
     resp = _post(f"/api/nodes/{OTHER_NODE}/confirm-upload", {})
 
     assert resp.status_code == 403
+
+
+# ──────────────────────────── POST /api/runs ────────────────────────────
+
+RUN_NAME = "2026-08-04_21-30-54_wave-porch-1x1"
+REQUEST_JSON = '{"model": "x", "prompt": "a porch"}'
+
+
+def _record_run(**overrides):
+    payload = {
+        "parent": CATALOG_ROOT,
+        "name": RUN_NAME,
+        "documents": {"request.json": REQUEST_JSON},
+        "outputs": [{"name": "wave-porch.jpeg", "size": 4, "content_type": "image/jpeg"}],
+    }
+    payload.update(overrides)
+    return _post("/api/runs", payload)
+
+
+def test_recording_a_run_creates_the_folder_documents_and_outputs(
+    catalog_table, media_bucket, signed_in
+):
+    resp = _record_run()
+
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert body["run"]["name"] == RUN_NAME
+    assert body["run"]["kind"] == "folder"
+    assert [doc["name"] for doc in body["documents"]] == ["request.json"]
+    assert [out["name"] for out in body["outputs"]] == ["wave-porch.jpeg"]
+
+    children = catalog.children(body["run"]["id"])
+    assert sorted(entry["name"] for entry in children) == ["request.json", "wave-porch.jpeg"]
+
+
+def test_a_recorded_document_round_trips_byte_identical(catalog_table, media_bucket, signed_in):
+    """The assertion #296 asks for by name, through the route that serves text."""
+    body = _record_run().get_json()
+    key = catalog.blob_key_for(body["documents"][0]["id"])
+
+    stored = media_bucket.get_object(Bucket=config.media_bucket(), Key=key)["Body"].read()
+
+    assert stored.decode() == REQUEST_JSON
+
+
+def test_a_document_is_stored_as_text_and_never_decoded(catalog_table, media_bucket, signed_in):
+    """`text/plain`, not `application/json` — nothing should be tempted to parse it."""
+    body = _record_run().get_json()
+
+    assert body["documents"][0]["content_type"].startswith("text/plain")
+
+
+def test_a_documents_size_counts_bytes_not_characters(catalog_table, media_bucket, signed_in):
+    """`len(text)` would be wrong for anything non-ASCII."""
+    text = '{"prompt": "café"}'
+    body = _record_run(documents={"request.json": text}).get_json()
+
+    assert body["documents"][0]["size"] == len(text.encode()) != len(text)
+
+
+def test_an_output_comes_back_with_an_upload_url_for_its_own_key(
+    catalog_table, media_bucket, signed_in
+):
+    """One round trip: the placeholder and the URL its bytes go to, together."""
+    body = _record_run().get_json()
+    output = body["outputs"][0]
+
+    assert catalog.blob_key_for(output["id"]) in output["upload_url"]
+    assert output["headers"] == {"Content-Length": "4", "Content-Type": "image/jpeg"}
+    assert "blob_key" not in output
+
+
+def test_recording_a_run_needs_a_parent(catalog_table, media_bucket, signed_in):
+    assert _post("/api/runs", {"name": RUN_NAME}).status_code == 400
+
+
+def test_an_oversized_document_is_refused(catalog_table, media_bucket, signed_in):
+    resp = _record_run(documents={"request.json": "x" * (config.max_text_bytes() + 1)})
+
+    assert resp.status_code == 400
+    assert "output" in resp.get_json()["error"]
+
+
+def test_an_output_without_a_size_is_refused(catalog_table, media_bucket, signed_in):
+    resp = _record_run(outputs=[{"name": "clip.mp4", "content_type": "video/mp4"}])
+
+    assert resp.status_code == 400
+
+
+def test_a_duplicate_run_name_is_409(catalog_table, media_bucket, signed_in):
+    """Run folders are `<ts>_<slug>`, so a collision means the CLI re-sent one."""
+    _record_run()
+
+    assert _record_run().status_code == 409
+
+
+def test_recording_a_run_in_another_library_is_403(catalog_table, media_bucket, signed_in):
+    _second_library(catalog_table)
+
+    resp = _record_run(parent=OTHER_ROOT)
+
+    assert resp.status_code == 403

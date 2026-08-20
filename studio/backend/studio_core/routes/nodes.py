@@ -528,3 +528,132 @@ def _api_blob_key(record: dict) -> str:
     if record.get("blob_key") != blob_key:
         raise ValidationError("this node's blob was not written through the API")
     return blob_key
+
+
+# ──────────────────────────── recording a run ────────────────────────────
+#
+# `POST /api/runs` is the CLI's entry point (#309), not the app's. The pipeline
+# produces a run folder, two small JSON documents and some number of large
+# outputs; this records the shape of that in the catalog so the browser can see
+# it, and hands back an upload URL per output so the bytes go straight to S3.
+
+
+@bp.post("/runs")
+def record_run():
+    """Record a run: its folder, its documents, and placeholders for its outputs.
+
+    **The documents are stored as bytes and never decoded**, which is the rule
+    `docs/WEB_APP.md` has held since before the catalog: the pipeline owns the
+    shape of `request.json` and changes it freely, so the moment this parsed one
+    into typed fields it would become a liar. They arrive as strings, they are
+    encoded to UTF-8, and they are written verbatim. Nothing here reads a key
+    inside them, and `GET /api/text` hands them back byte-identical.
+
+    **Documents inline, outputs by presigned PUT**, and the split is by size
+    rather than by kind. A `result.json` is a few hundred bytes and travels fine
+    in this request; a video would blow the Lambda's 6 MB limit, so each output
+    gets a placeholder node and a URL from #294 that the caller PUTs to directly.
+    The response carries those URLs so recording a run is one round trip rather
+    than one per file.
+
+    **The run folder keeps its `<ts>_<slug>` name.** It sorts chronologically as
+    a string and the UI depends on that; this route does not parse it either, and
+    deliberately does not derive a timestamp from it.
+
+    Not transactional across the whole run, and it cannot be: the documents are
+    S3 writes and the nodes are DynamoDB writes. A failure part-way leaves a run
+    folder holding fewer children than it should, which is a visible,
+    re-runnable state — the same trade `catalog.delete_node` makes deliberately.
+    """
+    body = _body()
+    parent_id = body.get("parent")
+    name = body.get("name")
+    documents = body.get("documents") or {}
+    outputs = body.get("outputs") or []
+
+    if not parent_id:
+        raise ValidationError("parent is required")
+    if not isinstance(documents, dict):
+        raise ValidationError("documents must be an object of name -> contents")
+    if not isinstance(outputs, list):
+        raise ValidationError("outputs must be a list")
+
+    total = sum(len(text.encode()) for text in documents.values() if isinstance(text, str))
+    if total > config.max_text_bytes():
+        raise ValidationError(
+            f"documents must total at most {config.max_text_bytes()} bytes — "
+            "upload anything larger as an output"
+        )
+
+    memberships = _memberships()
+    parent = catalog.node(parent_id)
+    _member_of(parent["lib"], memberships)
+
+    run = catalog.create_node(parent_id, name, catalog.KIND_FOLDER)
+
+    written = []
+    for document_name, text in documents.items():
+        if not isinstance(text, str):
+            raise ValidationError(f"'{document_name}' must be a string")
+        written.append(_write_document(run["node_id"], document_name, text))
+
+    placeholders = []
+    for entry in outputs:
+        if not isinstance(entry, dict):
+            raise ValidationError("each output must be an object")
+        placeholders.append(_placeholder_for(run["node_id"], entry))
+
+    return jsonify(
+        {"run": _view(run), "documents": written, "outputs": placeholders}
+    ), 201
+
+
+def _write_document(run_id: str, name: str, text: str) -> dict:
+    """One document: a node, its bytes, and the size read back off the write.
+
+    The node is created first because its id is what names the key — the same
+    ordering the upload routes use, for the same reason. `set_blob` then records
+    the length that was actually encoded rather than `len(text)`, which counts
+    characters and would be wrong for anything non-ASCII.
+    """
+    node = catalog.create_node(run_id, name, catalog.KIND_FILE)
+    blob_key = catalog.blob_key_for(node["node_id"])
+    payload = text.encode()
+    # `text/plain` and not `application/json`, deliberately: the frontend shows
+    # these as text and never decodes them, and a JSON content type is an
+    # invitation to a browser — or a future contributor — to do exactly that.
+    s3.put_text(blob_key, payload, "text/plain; charset=utf-8")
+    return _view(
+        catalog.set_blob(
+            node["node_id"],
+            blob_key,
+            size=len(payload),
+            content_type="text/plain; charset=utf-8",
+        )
+    )
+
+
+def _placeholder_for(run_id: str, entry: dict) -> dict:
+    """One output: a placeholder node and the URL its bytes go to.
+
+    Signed here rather than left to a second call, so recording a run is one
+    round trip. The same bounds as `upload-url` apply because it is the same
+    signature: one key, one exact length, one content type.
+    """
+    size = entry.get("size")
+    content_type = entry.get("content_type")
+    if not isinstance(size, int) or isinstance(size, bool) or size < 0:
+        raise ValidationError("each output needs a non-negative integer size")
+    if size > config.max_upload_bytes():
+        raise ValidationError(f"an output must be at most {config.max_upload_bytes()} bytes")
+    if not isinstance(content_type, str) or not content_type:
+        raise ValidationError("each output needs a content_type")
+
+    node = catalog.create_node(run_id, entry.get("name"), catalog.KIND_FILE)
+    blob_key = catalog.blob_key_for(node["node_id"])
+    return {
+        **_view(node),
+        "upload_url": s3.presign_put(blob_key, content_length=size, content_type=content_type),
+        "expires_in": config.upload_ttl_seconds(),
+        "headers": {"Content-Length": str(size), "Content-Type": content_type},
+    }
