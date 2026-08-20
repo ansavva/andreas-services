@@ -1,0 +1,91 @@
+# Two file types deploy this monorepo and neither had a PR check.
+#
+# A change to `.github/workflows/**` matches no service's PR filter, so every
+# workflow edit merged unvalidated — including #384, which rewrote the SSM reads
+# in three prod deploys and reported five `skipping` jobs and nothing else.
+# `studio/scripts/**` is the same: four shell scripts and a Python file merged
+# under #378 with no check that any of them parsed.
+#
+# Neither gap is a service's to close, which is why this is `shared`.
+name: Shared · Lint · PR
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - '**/*.sh'
+
+concurrency:
+  group: shared-pr-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Workflows + shell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned rather than `latest`: this runs on every PR touching a deploy
+      # workflow, and a linter that changes underneath the repo turns an
+      # unrelated PR red for reasons nobody changed.
+      #
+      # actionlint runs shellcheck over every `run:` block, which is the half
+      # that matters here — the empty-value bug #384 fixed lived in a `run:`
+      # block and no tool in this repo was looking at one.
+      - name: Lint workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          # `docker run` rather than `uses: docker://rhysd/actionlint`, because
+          # that form passes `args:` to the container without shell parsing:
+          # the quotes around the -ignore regex arrived as literal characters,
+          # the pattern matched nothing, and the step failed on the four
+          # findings it was meant to defer. Here bash does the quoting.
+          #
+          # `-ignore` filters shellcheck's warning/info/style messages so the
+          # embedded shellcheck matches the --severity=error the next step uses
+          # on `*.sh`. One policy, not two.
+          #
+          # It filters only shellcheck MESSAGES. actionlint's own checks —
+          # workflow syntax, expression types, unknown action inputs, bad
+          # `needs:` references — still fail the job, and those are the ones no
+          # other tool in this repo performs.
+          #
+          # What it defers, measured against main: SC2034 on a loop counter in
+          # humbugg-pr.yml, humbugg-prod.yaml and mailer-pr.yml, and SC2016 on
+          # deliberate single quotes in studio-pr.yml. Four, all false positives
+          # on inspection, none an error.
+          #
+          # Pinned rather than `latest`: this gates every PR touching a deploy
+          # workflow, and a linter that moves underneath the repo turns
+          # unrelated PRs red for reasons nobody changed.
+          docker run --rm -v "$PWD:/repo" --workdir /repo rhysd/actionlint:1.7.12 \
+            -color -ignore 'SC[0-9]+:(warning|info|style)'
+
+      # shellcheck is preinstalled on the runner image.
+      #
+      # **`--severity=error`, deliberately.** The 25 tracked scripts are clean at
+      # `error` today and carry 12 findings at `warning` — mostly SC2034 on
+      # variables a sourced helper exports for its callers, and SC2155 inherited
+      # verbatim between humbugg's and studio's dev-AWS scripts. Gating at
+      # `warning` would mean either a cleanup none of this PR is about or a
+      # check that is red on arrival, and a check that is red on arrival is one
+      # people learn to ignore. Raise it once those twelve are dealt with.
+      #
+      # `--external-sources` so a `source dev-aws-common.sh` is followed rather
+      # than reported as unfollowable.
+      - name: Lint shell scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          # -z/-0 because a filename may contain a space; `git ls-files` is the
+          # list of what is tracked, so nothing in .venv or node_modules is
+          # reached.
+          count=$(git ls-files '*.sh' | wc -l)
+          echo "Checking ${count} tracked shell scripts."
+          git ls-files -z '*.sh' |
+            xargs -0 shellcheck --severity=error --external-sources
