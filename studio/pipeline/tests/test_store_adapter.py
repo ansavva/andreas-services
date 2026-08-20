@@ -175,3 +175,31 @@ def test_download_writes_to_disk_creating_parents(apis, monkeypatch, tmp_path):
     written = store.download("clip.mp4", tmp_path / "nested" / "clip.mp4")
 
     assert written.read_bytes() == b"xyz"
+
+
+def test_resolve_goes_through_the_real_api_signature(monkeypatch):
+    """**The regression guard for a bug the other tests here could not see.**
+
+    Every test above stubs `api.get`, and a stub is free to name its first
+    parameter anything. The real one was not: `def get(path, **params)`, while
+    `store.resolve` calls `api.get("/api/resolve", path=...)`. The two collided,
+    so `resolve` raised `TypeError` on every call — and the suite was green,
+    because no test drove the real signature.
+
+    This one stubs `urlopen` instead, so the signature is part of what is
+    asserted.
+    """
+    from studio_pipeline.adapters import auth
+
+    monkeypatch.setattr(auth, "id_token", lambda **_: "token")
+    monkeypatch.setattr(auth, "api_url", lambda: "https://api.example")
+    seen = {}
+
+    def _urlopen(request, timeout=None):  # noqa: ARG001
+        seen["url"] = request.full_url
+        return _Response(b'{"id": "node-1"}')
+
+    monkeypatch.setattr(api.urllib.request, "urlopen", _urlopen)
+
+    assert store.resolve("characters/<name>/reference")["id"] == "node-1"
+    assert "path=characters" in seen["url"]

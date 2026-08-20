@@ -114,14 +114,14 @@ def _send(method: str, url: str, token: str, payload: dict | None) -> tuple[int,
         raise ApiError(f"Could not reach {auth.api_url()}: {error.reason}", 0) from error
 
 
-def request(method: str, path: str, payload: dict | None = None, **params) -> dict | list:
+def request(method: str, route: str, payload: dict | None = None, **params) -> dict | list:
     """Call the API, refreshing the token once if it says the token is stale.
 
     Returns the decoded body. A 204 or an empty body is `{}` rather than `None`,
     so a caller never has to distinguish "no content" from "failed" — the
     exceptions carry that.
     """
-    url = f"{auth.api_url()}{path}"
+    url = f"{auth.api_url()}{route}"
     if params:
         url = f"{url}?{urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})}"
 
@@ -142,20 +142,31 @@ def request(method: str, path: str, payload: dict | None = None, **params) -> di
         raise ApiError(f"The API returned a body that is not JSON (HTTP {status}).", status) from error
 
 
-def get(path: str, **params) -> dict | list:
-    return request("GET", path, None, **params)
+# **`route`, not `path`, and this is a fix rather than a preference.** These take
+# arbitrary query parameters as keywords, and the API has a route whose parameter
+# is literally `path` — `GET /api/resolve?path=…`. With the positional named
+# `path`, `api.get("/api/resolve", path=...)` raised
+# `TypeError: got multiple values for argument 'path'`, which means
+# `store.resolve` could not run at all.
+#
+# It shipped green because `test_store_adapter` stubbed `api.get` with a stub
+# whose own first parameter was named differently, so the collision existed only
+# in the real signature. `test_resolve_goes_through_the_real_api_signature`
+# closes that by driving the genuine function.
+def get(route: str, **params) -> dict | list:
+    return request("GET", route, None, **params)
 
 
-def post(path: str, payload: dict | None = None, **params) -> dict | list:
-    return request("POST", path, payload or {}, **params)
+def post(route: str, payload: dict | None = None, **params) -> dict | list:
+    return request("POST", route, payload or {}, **params)
 
 
-def patch(path: str, payload: dict, **params) -> dict | list:
-    return request("PATCH", path, payload, **params)
+def patch(route: str, payload: dict, **params) -> dict | list:
+    return request("PATCH", route, payload, **params)
 
 
-def delete(path: str, **params) -> dict | list:
-    return request("DELETE", path, None, **params)
+def delete(route: str, **params) -> dict | list:
+    return request("DELETE", route, None, **params)
 
 
 def libraries() -> list:
