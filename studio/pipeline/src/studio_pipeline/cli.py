@@ -37,6 +37,7 @@ from studio_pipeline.maintenance import backfill_replicate as _backfill
 from studio_pipeline.maintenance import catalog_seed as _catalog
 from studio_pipeline.maintenance import migrate_layout as _migrate
 from studio_pipeline.objects import convert as _convert
+from studio_pipeline.session import commands as _session
 from studio_pipeline.objects import download as _download
 from studio_pipeline.objects import presign as _presign
 from studio_pipeline.objects import upload as _upload
@@ -51,6 +52,8 @@ class _Grouped(click.Group):
     """
 
     SECTIONS = [
+        # First, because nothing below it works until you have signed in.
+        ("session",     ["login", "logout", "whoami"]),
         ("generate",    ["run", "models", "add-model"]),
         ("records",     ["runs", "scenes", "movies", "frames", "projects"]),
         ("characters",  ["character", "curate", "contact-sheet"]),
@@ -89,8 +92,9 @@ SHORT_HELP = {
 
 ROOT_HELP = """The studio generation pipeline.
 
-Runs locally, under your own AWS login, against the media bucket. Nothing here
-deploys. `studio <command> --help` for a command's own options.
+Runs locally and talks to the studio API. Start with `studio login`. Nothing
+here deploys, and nothing here needs an AWS account — that is the point of
+#308. `studio <command> --help` for a command's own options.
 
 Note `run` and `runs` are different: `run` submits a generation, `runs` queries
 the ones already recorded.
@@ -106,6 +110,13 @@ def main() -> None:
 # `run` and `models` are the runner's own two subcommands, lifted to the top
 # level because that is where a user meets them. Attaching the existing command
 # objects keeps one definition of each.
+# The session commands, registered first because nothing else works without
+# them: after #308 the CLI holds no AWS credentials and every store call is an
+# authenticated HTTP request.
+main.add_command(_session.cmd_login, "login")
+main.add_command(_session.cmd_logout, "logout")
+main.add_command(_session.cmd_whoami, "whoami")
+
 main.add_command(_runner.main.commands["run"], "run")
 main.add_command(_runner.main.commands["models"], "models")
 

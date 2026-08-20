@@ -17,6 +17,10 @@ dependencies = [
     "pillow>=10.0",
     "imageio-ffmpeg>=0.5",
     "click>=8.4.2",
+    # SRP sign-in for `studio login`. The pool allows ALLOW_USER_SRP_AUTH and
+    # nothing else, the AWS CLI cannot do SRP, and after #308 the CLI holds no
+    # AWS credentials to fall back on.
+    "pycognito>=2024.5.1",
 ]
 
 [project.scripts]
