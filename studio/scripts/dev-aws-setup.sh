@@ -52,20 +52,15 @@ log "Resource prefix: $RESOURCE_PREFIX"
 log "Terraform state: s3://andreas-services-terraform-state/$STATE_KEY"
 
 if [[ "$CHECK_ONLY" -eq 1 ]]; then
-  # Read the state object straight out of S3 rather than running `terraform
-  # init` and `terraform output`. A check should not reconfigure the backend or
-  # download providers to answer a yes/no question, and this way it works from a
-  # cold checkout with no .terraform directory.
-  state_json="$(aws_dev s3 cp "s3://andreas-services-terraform-state/$STATE_KEY" -)" ||
-    die "Terraform state is missing. Run ./studio/scripts/dev-aws-setup.sh --profile $AWS_PROFILE_VALUE."
-  [[ "$(jq -r '.outputs.machine_id.value // empty' <<<"$state_json")" == "$MACHINE_ID" ]] ||
-    die "Terraform state does not match this machine ID."
-  pool_id="$(jq -r '.outputs.cognito_user_pool_id.value // empty' <<<"$state_json")"
-  client_id="$(jq -r '.outputs.cognito_user_pool_client_id.value // empty' <<<"$state_json")"
-  bucket="$(jq -r '.outputs.media_bucket_name.value // empty' <<<"$state_json")"
-  table="$(jq -r '.outputs.catalog_table_name.value // empty' <<<"$state_json")"
-  [[ -n "$pool_id" && -n "$client_id" && -n "$bucket" && -n "$table" ]] ||
-    die "Terraform state is missing required development outputs."
+  # `load_dev_stack_outputs` reads the state object straight out of S3 rather
+  # than running `terraform init` and `terraform output`: a check should not
+  # reconfigure the backend or download providers to answer a yes/no question,
+  # and this way it works from a cold checkout with no .terraform directory.
+  # `dev-user.sh` and `dev-token.sh` share it, so a stack is located one way.
+  load_dev_stack_outputs
+  pool_id="$DEV_POOL_ID"
+  bucket="$DEV_BUCKET"
+  table="$DEV_TABLE"
   # The state can describe resources that no longer exist — a hand-deleted
   # bucket, a pool removed from the console — so each one is reached for rather
   # than trusted. This is the check that tells a developer their stack is ready
@@ -107,3 +102,4 @@ printf '\nConfirm the stack at any time with:\n  ./studio/scripts/dev-aws-setup.
 # The bucket and table are empty and the pool has no accounts. Say so, because
 # an empty stack looks identical to a broken one from the app.
 printf '\nThe bucket, table and pool are empty. Nothing has been seeded into them,\nand dev-setup.sh still writes prod values into the local env files.\n'
+printf '\nGive the pool its one test account with:\n  ./studio/scripts/dev-user.sh\n'

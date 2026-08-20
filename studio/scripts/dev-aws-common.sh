@@ -15,6 +15,21 @@ MACHINE_ID_FILE="$CONFIG_DIR/machine-id"
 AWS_PROFILE_VALUE="${AWS_PROFILE:-default}"
 AWS_REGION_VALUE="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
 
+# The dev stack's one account, and the file its password lives in.
+#
+# **The address is committed and the password never can be.** `.test` is a
+# reserved TLD (RFC 2606), so this can never be a real mailbox and Cognito can
+# never mail a stranger on a typo — which is what makes hard-coding it safe and
+# what makes it worth hard-coding: `dev-user.sh` creates exactly the account
+# `dev-token.sh` signs in as, and one constant is how those cannot drift onto
+# two different people.
+#
+# The password file sits outside the repo on purpose. A default here would be a
+# credential in a git history, and there is no value that would be safe to put
+# in one.
+STUDIO_DEV_USER_EMAIL="dev@studio.test"
+DEV_ENV_FILE="$CONFIG_DIR/dev.env"
+
 log()  { printf '\033[1;34m[dev-aws]\033[0m %s\n' "$*"; }
 ok()   { printf '\033[1;32m[ ok ]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[warn]\033[0m %s\n' "$*" >&2; }
@@ -113,4 +128,49 @@ terraform_init() {
 
 terraform_output_json() {
   terraform -chdir="$TF_DIR" output -json
+}
+
+load_dev_stack_outputs() {
+  # This machine's stack, read straight out of the Terraform state object in S3
+  # rather than through `terraform init` + `terraform output`. A caller that
+  # only wants to know a pool id should not reconfigure a backend or download a
+  # provider to find out, and this way it works from a cold checkout with no
+  # .terraform directory. `dev-aws-setup.sh --check` reads it the same way.
+  local state_json
+  state_json="$(aws_dev s3 cp "s3://andreas-services-terraform-state/$STATE_KEY" -)" ||
+    die "Terraform state is missing. Run ./studio/scripts/dev-aws-setup.sh --profile $AWS_PROFILE_VALUE."
+  [[ "$(jq -r '.outputs.machine_id.value // empty' <<<"$state_json")" == "$MACHINE_ID" ]] ||
+    die "Terraform state does not match this machine ID."
+  DEV_POOL_ID="$(jq -r '.outputs.cognito_user_pool_id.value // empty' <<<"$state_json")"
+  DEV_CLIENT_ID="$(jq -r '.outputs.cognito_user_pool_client_id.value // empty' <<<"$state_json")"
+  DEV_BUCKET="$(jq -r '.outputs.media_bucket_name.value // empty' <<<"$state_json")"
+  DEV_TABLE="$(jq -r '.outputs.catalog_table_name.value // empty' <<<"$state_json")"
+  [[ -n "$DEV_POOL_ID" && -n "$DEV_CLIENT_ID" && -n "$DEV_BUCKET" && -n "$DEV_TABLE" ]] ||
+    die "Terraform state is missing required development outputs."
+}
+
+load_dev_user_password() {
+  # Order: an exported value wins, then the file, then a prompt. Never a
+  # default — see the constant above.
+  #
+  # Nothing in this function, or in either caller, echoes the value. The prompt
+  # is `read -s`, the errors name the *variable* and never its contents, and no
+  # caller interpolates it into a log line, a command echo or a URL. That is a
+  # rule and not a nicety: `dev-user.sh` passes it to `admin-set-user-password`,
+  # which puts it in this shell's history if a caller ever inlines it.
+  local prompt_allowed="${1:-true}"
+  if [[ -z "${STUDIO_DEV_USER_PASSWORD:-}" && -f "$DEV_ENV_FILE" ]]; then
+    # shellcheck source=/dev/null
+    source "$DEV_ENV_FILE"
+  fi
+  if [[ -z "${STUDIO_DEV_USER_PASSWORD:-}" ]]; then
+    [[ "$prompt_allowed" == "true" ]] ||
+      die "STUDIO_DEV_USER_PASSWORD is not set and $DEV_ENV_FILE provides none."
+    printf 'Password for %s (not echoed): ' "$STUDIO_DEV_USER_EMAIL" >&2
+    read -rs STUDIO_DEV_USER_PASSWORD
+    printf '\n' >&2
+  fi
+  [[ -n "${STUDIO_DEV_USER_PASSWORD:-}" ]] ||
+    die "STUDIO_DEV_USER_PASSWORD is empty."
+  export STUDIO_DEV_USER_PASSWORD
 }
