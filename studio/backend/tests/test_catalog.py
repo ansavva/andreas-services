@@ -142,9 +142,27 @@ def test_create_node_stores_a_blob_key_verbatim(catalog_table):
     assert catalog.node(created["node_id"])["blob_key"] == key
 
 
-def test_create_node_requires_a_blob_key_for_a_file(catalog_table):
-    with pytest.raises(ValidationError):
-        catalog.create_node(CATALOG_ROOT, "clip.mp4", catalog.KIND_FILE)
+def test_create_node_derives_a_blob_key_for_a_file_that_omits_one(catalog_table):
+    """**Reverses this test's own previous assertion**, which was a ValidationError.
+
+    #294 added the upload routes, and a client cannot name `blobs/<node_id>` at
+    create time because it does not know the id yet — so the only way to have an
+    id-derived key is for both to be minted here. The node is a placeholder until
+    the bytes land: a key, and nothing behind it.
+    """
+    created = catalog.create_node(CATALOG_ROOT, "clip.mp4", catalog.KIND_FILE)
+
+    assert created["blob_key"] == catalog.blob_key_for(created["node_id"])
+    assert "size" not in created
+
+
+def test_create_node_keeps_an_explicit_blob_key_verbatim(catalog_table):
+    """Prod holds keys written long before this table, and they stay where they are."""
+    legacy = "characters/subject-a/seed/subject-a_1.webp"
+
+    created = catalog.create_node(CATALOG_ROOT, "old.webp", catalog.KIND_FILE, blob_key=legacy)
+
+    assert catalog.node(created["node_id"])["blob_key"] == legacy
 
 
 def test_create_node_refuses_a_blob_key_on_a_folder(catalog_table):

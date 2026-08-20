@@ -22,6 +22,8 @@ token. It is `before_request` that calls it now rather than the routes — see t
 test hands the header back to the real parsing.
 """
 
+from urllib.parse import parse_qs, urlparse
+
 import pytest
 
 from studio_core import config
@@ -471,11 +473,20 @@ def test_creating_a_folder(catalog_table, signed_in):
     assert "blob_key" not in body
 
 
-def test_creating_a_file_needs_a_blob_key(catalog_table, signed_in):
-    """The whole definition of a folder is a node with no blob (#280)."""
+def test_creating_a_file_without_a_blob_key_makes_a_placeholder(catalog_table, signed_in):
+    """**Reverses what #293 asserted here**, which was a 400, and #294 is why.
+
+    A client cannot name `blobs/<node_id>` at create time because it does not
+    know the id yet, so the only way to have an id-derived key is for
+    `create_node` to mint both together. The node is a placeholder until the
+    bytes land: a key with no object behind it, and no size.
+    """
     resp = _post("/api/nodes", {"parent": CATALOG_ROOT, "name": "clip.mp4", "kind": "file"})
 
-    assert resp.status_code == 400
+    assert resp.status_code == 201
+    created = catalog.node(resp.get_json()["id"])
+    assert created["blob_key"] == catalog.blob_key_for(created["node_id"])
+    assert "size" not in created
 
 
 def test_creating_a_file(catalog_table, signed_in):
@@ -772,5 +783,195 @@ def test_a_download_url_in_another_library_is_403(catalog_table, media_bucket, s
     _second_library(catalog_table)
 
     resp = _get(f"/api/nodes/{OTHER_NODE}/download-url")
+
+    assert resp.status_code == 403
+
+
+# ──────────── POST /api/nodes/<id>/upload-url + confirm ────────────
+
+
+def _placeholder(name="clip.mp4"):
+    """A file node whose key is the API's own — what an upload targets."""
+    return catalog.create_node(CATALOG_ROOT, name, catalog.KIND_FILE)
+
+
+def test_an_upload_url_is_signed_for_the_nodes_own_key(catalog_table, signed_in):
+    created = _placeholder()
+
+    resp = _post(
+        f"/api/nodes/{created['node_id']}/upload-url",
+        {"size": 17, "content_type": "video/mp4"},
+    )
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert catalog.blob_key_for(created["node_id"]) in body["url"]
+    assert body["expires_in"] == config.upload_ttl_seconds()
+
+
+def test_an_upload_url_signs_the_length_and_type(catalog_table, signed_in):
+    """The constraint #294 asks for: an oversized body is refused by S3, not found later.
+
+    `content-length` and `content-type` in `X-Amz-SignedHeaders` is what makes
+    that true — a client sending different values fails signature validation and
+    writes nothing. Asserted against the URL rather than trusted, because the
+    whole bound rests on it.
+    """
+    created = _placeholder()
+
+    body = _post(
+        f"/api/nodes/{created['node_id']}/upload-url",
+        {"size": 17, "content_type": "video/mp4"},
+    ).get_json()
+
+    signed = parse_qs(urlparse(body["url"]).query)["X-Amz-SignedHeaders"][0]
+    assert "content-length" in signed
+    assert "content-type" in signed
+    assert body["headers"] == {"Content-Length": "17", "Content-Type": "video/mp4"}
+
+
+def test_an_upload_url_cannot_be_redirected_to_another_key(catalog_table, signed_in):
+    """The key is the node's own, never one the caller named.
+
+    The `blob_key` in the body is ignored — a caller-supplied key would make this
+    a signature for an arbitrary object in the bucket.
+    """
+    created = _placeholder()
+
+    body = _post(
+        f"/api/nodes/{created['node_id']}/upload-url",
+        {"size": 17, "content_type": "video/mp4", "blob_key": "characters/someone-elses.webp"},
+    ).get_json()
+
+    assert "someone-elses" not in body["url"]
+    assert catalog.blob_key_for(created["node_id"]) in body["url"]
+
+
+def test_an_oversized_upload_is_refused_at_signing(catalog_table, signed_in):
+    created = _placeholder()
+
+    resp = _post(
+        f"/api/nodes/{created['node_id']}/upload-url",
+        {"size": config.max_upload_bytes() + 1, "content_type": "video/mp4"},
+    )
+
+    assert resp.status_code == 400
+    assert "multipart" in resp.get_json()["error"]
+
+
+def test_a_boolean_size_is_not_an_integer(catalog_table, signed_in):
+    """`True` is an `int` in Python, and would otherwise sign a one-byte upload."""
+    created = _placeholder()
+
+    resp = _post(
+        f"/api/nodes/{created['node_id']}/upload-url",
+        {"size": True, "content_type": "video/mp4"},
+    )
+
+    assert resp.status_code == 400
+
+
+def test_an_upload_url_needs_a_content_type(catalog_table, signed_in):
+    created = _placeholder()
+
+    resp = _post(f"/api/nodes/{created['node_id']}/upload-url", {"size": 17})
+
+    assert resp.status_code == 400
+
+
+def test_a_legacy_key_cannot_be_overwritten_through_a_signature(catalog_table, signed_in):
+    """A node whose bytes predate the catalog is not what these routes are for."""
+    created = catalog.create_node(
+        CATALOG_ROOT, "old.webp", catalog.KIND_FILE, blob_key=REAL_KEY
+    )
+
+    resp = _post(
+        f"/api/nodes/{created['node_id']}/upload-url",
+        {"size": 17, "content_type": "image/webp"},
+    )
+
+    assert resp.status_code == 400
+
+
+def test_a_folder_cannot_be_uploaded_to(catalog_table, signed_in):
+    folder = _folder("characters")
+
+    resp = _post(
+        f"/api/nodes/{folder['node_id']}/upload-url",
+        {"size": 17, "content_type": "video/mp4"},
+    )
+
+    assert resp.status_code == 400
+
+
+def test_an_upload_url_in_another_library_is_403(catalog_table, signed_in):
+    _second_library(catalog_table)
+
+    resp = _post(
+        f"/api/nodes/{OTHER_NODE}/upload-url", {"size": 17, "content_type": "video/mp4"}
+    )
+
+    assert resp.status_code == 403
+
+
+def test_a_node_stays_a_placeholder_until_confirmed(catalog_table, media_bucket, signed_in):
+    """Signing changes no row, and confirming before the bytes land is a 404."""
+    created = _placeholder()
+
+    _post(
+        f"/api/nodes/{created['node_id']}/upload-url",
+        {"size": 17, "content_type": "video/mp4"},
+    )
+    assert "size" not in catalog.node(created["node_id"])
+
+    assert _post(f"/api/nodes/{created['node_id']}/confirm-upload", {}).status_code == 404
+
+
+def test_confirming_writes_what_s3_stored_not_what_the_client_claimed(
+    catalog_table, media_bucket, signed_in
+):
+    """The declared size is checked once, not trusted twice.
+
+    The upload is signed for 17 bytes and the object put here is a different
+    length — moto does not enforce the signature, which is what lets the test
+    ask the question at all: does the row come from S3 or from the request?
+    """
+    created = _placeholder()
+    _post(
+        f"/api/nodes/{created['node_id']}/upload-url",
+        {"size": 17, "content_type": "video/mp4"},
+    )
+    media_bucket.put_object(
+        Bucket=config.media_bucket(),
+        Key=catalog.blob_key_for(created["node_id"]),
+        Body=b"four",
+        ContentType="video/mp4",
+    )
+
+    body = _post(f"/api/nodes/{created['node_id']}/confirm-upload", {}).get_json()
+
+    assert body["size"] == 4
+    assert body["content_type"] == "video/mp4"
+    assert catalog.node(created["node_id"])["size"] == 4
+
+
+def test_confirming_never_returns_blob_key(catalog_table, media_bucket, signed_in):
+    created = _placeholder()
+    media_bucket.put_object(
+        Bucket=config.media_bucket(),
+        Key=catalog.blob_key_for(created["node_id"]),
+        Body=b"four",
+    )
+
+    body = _post(f"/api/nodes/{created['node_id']}/confirm-upload", {}).get_data(as_text=True)
+
+    assert "blob_key" not in body
+    assert "blobs/" not in body
+
+
+def test_confirming_in_another_library_is_403(catalog_table, media_bucket, signed_in):
+    _second_library(catalog_table)
+
+    resp = _post(f"/api/nodes/{OTHER_NODE}/confirm-upload", {})
 
     assert resp.status_code == 403

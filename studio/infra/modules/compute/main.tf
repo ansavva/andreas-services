@@ -104,13 +104,18 @@ resource "aws_iam_role_policy" "logs" {
 #     and `assert_inside_root` refuses an operation aimed at the root itself, so
 #     "delete everything" is not expressible through the API. With the prefix
 #     empty this is the FIRST line of defence, not the second.
-#   * There is no multipart grant, and no path that creates an object out of
-#     bytes the caller supplied. `PutObject` here writes zero-byte folder
-#     markers, overwrites text files that already exist, and lands the
-#     destination half of a `CopyObject` — a rename, a move, or a favourite.
-#     Every one of those is either something already in the bucket or nothing at
-#     all. The API exposes no upload, and adding one is a separate decision that
-#     should be argued on its own.
+#   * There is no multipart grant. **There IS now a path that creates an object
+#     out of bytes the caller supplied**, and this paragraph used to say there
+#     was not — #294 was the separate decision this note asked for.
+#     `POST /api/nodes/<id>/upload-url` signs a PUT, so the bytes go to S3
+#     directly and never through this role at all. What bounds it is the
+#     signature rather than this policy: one key (`blobs/<node_id>`, never one
+#     the caller names), one exact content length, one content type, and a TTL
+#     shorter than a read URL's. A signed URL cannot be redirected at another
+#     object without invalidating itself.
+#     The rest still holds: `PutObject` here writes zero-byte folder markers,
+#     overwrites text files that already exist, and lands the destination half
+#     of a `CopyObject` — a rename, a move, or a favourite.
 #   * `s3:DeleteObjectVersion` is deliberately absent, and the bucket IS
 #     versioned (`modules/media`). So a delete through this role writes a
 #     tombstone it cannot then reach past: every erasure it can perform is

@@ -75,6 +75,28 @@ def max_text_bytes():
     return int(os.environ.get("STUDIO_MAX_TEXT_BYTES", str(1024 * 1024)))
 
 
+def max_upload_bytes():
+    """The largest body an upload may declare — 5 GiB, S3's single-PUT ceiling.
+
+    Not a policy number: it is the point past which a single `PutObject` is
+    impossible and multipart would be required, and there is deliberately no
+    multipart grant. Declaring it at signing time means an oversized upload is
+    refused by the signature rather than discovered after the bytes have moved.
+    """
+    return int(os.environ.get("STUDIO_MAX_UPLOAD_BYTES", str(5 * 1024**3)))
+
+
+def upload_ttl_seconds():
+    """How long an upload URL is signed for. Shorter than a read URL.
+
+    A read URL is handed out by the dozen while a person browses; an upload URL
+    is handed out once, immediately before a client that already has the bytes
+    sends them. There is no reason for it to outlive that, and every reason for
+    a grant that *writes* to be the shortest-lived thing this service issues.
+    """
+    return int(os.environ.get("STUDIO_UPLOAD_TTL_SECONDS", "300"))
+
+
 def max_bulk_keys():
     """How many objects one delete request may name.
 

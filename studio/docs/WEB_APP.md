@@ -108,15 +108,25 @@ The parts of the old rule that still hold, and should keep holding:
   library" is not expressible through the API. This used to be described as the
   first of two lines of defence with IAM behind it; with the prefix empty it is
   the only one, which is the reason to be conservative when changing it.
-- **No upload, and no multipart grant.** The `PutObject` calls this service
-  makes write a zero-byte folder marker and overwrite an *existing* text file
-  (`manage.update_text`, capped at `max_text_bytes` and refused outright for a
-  key that is not already there, so it cannot create); `CopyObject` supplies the
-  rest. A real upload would need CORS on the bucket *and* would blow the
-  Lambda's 6 MB request limit on any video, so it is blocked by more than
-  policy. (Studio can set that CORS rule now that it owns the bucket, which
-  removes one of the two obstacles — but not the interesting one.) Argue for it separately if it is ever
-  wanted; do not let it arrive as a side effect of something else.
+- **Upload exists as of #294; multipart still does not.** This bullet used to
+  read "No upload, and no multipart grant", and it asked for the reversal to be
+  argued separately rather than arriving as a side effect. It was.
+  `POST /api/nodes/<id>/upload-url` signs a PUT and `POST
+  /api/nodes/<id>/confirm-upload` finalises the row once `HeadObject` succeeds.
+  The 6 MB Lambda request limit — the obstacle that made this more than a policy
+  question — is answered by the bytes never transiting the Lambda at all.
+  What bounds it is the signature, not the IAM policy: one key
+  (`blobs/<node_id>`, never one the caller names), one exact content length, one
+  content type, and a TTL shorter than a read URL's. `content-length` and
+  `content-type` are signed headers, so an oversized body is refused by S3
+  rather than discovered after it has moved.
+  The other `PutObject` calls are unchanged: a zero-byte folder marker and an
+  overwrite of an *existing* text file (`manage.update_text`, capped at
+  `max_text_bytes` and refused outright for a key that is not already there, so
+  it cannot create); `CopyObject` supplies the rest.
+  **Still no multipart grant**, and `max_upload_bytes` is S3's single-PUT
+  ceiling rather than a policy number — past it a single `PutObject` is
+  impossible, which is a separate decision again.
 - **`copy_objects` keeps its source, and it is the only write that does.** Every
   other `CopyObject` here is the first half of a rename or a move and is
   followed by a delete, which makes this the only write that *adds* an object
@@ -463,6 +473,8 @@ answering with a short listing.
 | `PATCH /api/nodes/<id>` | `{name}` to rename **or** `{parent}` to move — both at once is a 400, not a guess |
 | `DELETE /api/nodes/<id>` | Node and subtree. Rows first, then blobs |
 | `GET /api/nodes/<id>/download-url` | A fresh presigned GET for the node's blob. `disposition=attachment` to download |
+| `POST /api/nodes/<id>/upload-url` | `{size, content_type}` → a presigned PUT for `blobs/<id>`. Signed length and type |
+| `POST /api/nodes/<id>/confirm-upload` | `HeadObject`s the blob and writes `size`/`content_type` onto the row |
 | `GET /api/tree?prefix=&sort=` | One delimited listing: `folders`, `files` (each presigned), `breadcrumbs`, `counts` |
 | `GET /api/reel?prefix=&cursor=&page_size=&sort=` | Images and video beneath a prefix, recursively, paginated |
 | `GET /api/asset?key=&disposition=` | A fresh presigned URL for one object |

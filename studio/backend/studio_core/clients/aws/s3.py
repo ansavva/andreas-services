@@ -248,6 +248,40 @@ def presign(key: str, *, disposition: str = "inline", filename: str | None = Non
         raise UpstreamError("Could not sign a media URL") from exc
 
 
+def presign_put(key: str, *, content_length: int, content_type: str) -> str:
+    """A presigned PUT for exactly one key, length and content type.
+
+    **This is the only path by which bytes from outside the bucket can enter
+    it**, and every argument here is a bound on that.
+
+    `content-length` and `content-type` are in `X-Amz-SignedHeaders` — verified
+    against botocore rather than assumed — so a client that sends a different
+    length or a different type fails signature validation at S3 and writes
+    nothing. That is stronger than a POST policy's `content-length-range`: the
+    length is not merely bounded, it is fixed at signing time.
+
+    The key is likewise signed, so a URL issued for one object cannot be
+    redirected at another. There is no wildcard and no multipart grant; the
+    caller gets one object, one size, one type, once.
+
+    Local signing, no network call — the same as `presign`.
+    """
+    try:
+        return client().generate_presigned_url(
+            "put_object",
+            Params={
+                "Bucket": config.media_bucket(),
+                "Key": key,
+                "ContentLength": content_length,
+                "ContentType": content_type,
+            },
+            ExpiresIn=config.upload_ttl_seconds(),
+        )
+    except ClientError as exc:
+        logger.warning("Presign PUT failed for %s: %s", key, exc)
+        raise UpstreamError("Could not sign an upload URL") from exc
+
+
 def head(key: str) -> dict:
     try:
         return client().head_object(Bucket=config.media_bucket(), Key=key)
