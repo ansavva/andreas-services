@@ -86,6 +86,15 @@ export STUDIO_COGNITO_CLIENT_ID="$CLIENT_ID"
 export STUDIO_MEDIA_BUCKET="$MEDIA_BUCKET"
 export STUDIO_CATALOG_TABLE="$CATALOG_TABLE"
 
+# Where `studio login` and every other CLI call go (#300). Defaults to the
+# deployed API; pointed at the Flask process this script is about to start, so
+# the CLI drives the local API against this machine's dev stack rather than the
+# Lambda.
+export STUDIO_API_URL="http://localhost:8000"
+# The pool ids the CLI signs in against are already exported above, for the API.
+# `studio login` reads the same two, so the CLI and the API it calls cannot
+# disagree about which pool a token came from.
+
 # ---------------------------------------------------------------------------
 # Poetry, which nothing else installs.
 #
