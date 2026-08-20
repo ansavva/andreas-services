@@ -39,7 +39,20 @@ jobs:
       - name: Lint workflows
         uses: docker://rhysd/actionlint:1.7.12
         with:
-          args: -color
+          # `-ignore` filters shellcheck's warning/info/style messages so the
+          # embedded shellcheck matches the threshold the next step uses on
+          # `*.sh`. One policy, not two.
+          #
+          # It filters only shellcheck MESSAGES. actionlint's own checks —
+          # workflow syntax, expression types, unknown action inputs, bad
+          # `needs:` references — still fail the job, and those are the ones no
+          # other tool in this repo performs.
+          #
+          # What it defers, measured against main: SC2034 on a loop counter in
+          # `humbugg-pr.yml`, `humbugg-prod.yaml` and `mailer-pr.yml`, and SC2016
+          # on deliberate single quotes in `studio-pr.yml`. Four, all false
+          # positives on inspection, none an error.
+          args: -color -ignore 'SC[0-9]+:(warning|info|style)'
 
       # shellcheck is preinstalled on the runner image.
       #
