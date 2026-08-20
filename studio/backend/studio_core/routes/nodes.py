@@ -10,7 +10,16 @@ overlap for as long as the migration takes (#309 onwards), so keeping them in
 separate files is what stops a reader from having to work out which storage a
 given handler is talking to.
 
-## Three rules hold across all three routes
+## Why the writes are here and not in `routes/manage.py`
+
+#293 named `manage.py`, and that would put two different addressing schemes in
+one file. Every route in `manage` takes an S3 key or a prefix; every route here
+takes a node id. They overlap until #309 retires the first, and during that
+overlap the one thing a reader must never have to work out is which storage a
+handler is talking to — which is the same reason the read routes were split out
+in the first place. The verbs moved; the split did not.
+
+## Three rules hold across all three read routes
 
 **`blob_key` never leaves.** `_view` is an **allowlist**, not a `pop`. That
 choice is the mechanism: a denylist would leak the next internal attribute
@@ -53,6 +62,7 @@ import logging
 
 from flask import Blueprint, g, jsonify, request
 
+from studio_core.clients.aws import s3
 from studio_core.errors import ForbiddenError, NotFoundError, ValidationError
 from studio_core.services import catalog
 
@@ -217,3 +227,125 @@ def resolve():
             raise NotFoundError("/".join(walked)) from error
 
     return jsonify(_view(catalog.node(node_id))), 200
+
+
+def _body() -> dict:
+    """The JSON body, or an empty dict.
+
+    `silent=True` so a malformed body surfaces as the missing-field
+    `ValidationError` below rather than Flask's generic parse failure — a 400
+    naming the field beats a 400 naming nothing. Same helper, same reason, as
+    `routes/manage.py`.
+    """
+    payload = request.get_json(silent=True)
+    return payload if isinstance(payload, dict) else {}
+
+
+@bp.post("/nodes")
+def create_node():
+    """Create a folder, or a file pointing at a blob that already exists.
+
+    **The parent is what authorises this**, not the library the request
+    resolved: the node being created has no `lib` yet, and the parent's is the
+    one it will inherit — `catalog.create_node` reads it off the parent rather
+    than taking it as an argument, so that a node cannot be listed in one
+    library's subtree and owned by another.
+
+    `kind` is `folder` or `file`, and a file needs `blob_key`. That asymmetry is
+    the whole definition of a folder (#280: a node with no blob), and it is
+    enforced in `services.catalog` rather than here so the CLI gets the same
+    refusal when it writes through the API (#309).
+    """
+    body = _body()
+    parent_id = body.get("parent")
+    if not parent_id:
+        raise ValidationError("parent is required")
+
+    memberships = _memberships()
+    parent = catalog.node(parent_id)
+    _member_of(parent["lib"], memberships)
+
+    record = catalog.create_node(
+        parent_id,
+        body.get("name"),
+        body.get("kind"),
+        blob_key=body.get("blob_key"),
+        size=body.get("size"),
+        content_type=body.get("content_type"),
+    )
+    return jsonify(_view(record)), 201
+
+
+@bp.patch("/nodes/<node_id>")
+def update_node(node_id: str):
+    """Rename a node (`name`) or move it (`parent`) — one or the other.
+
+    **Sending both is a 400 rather than a guess**, and refusing is the point.
+    On the S3 side the two are different routes, and `keys.clean_name` refuses a
+    slash so a rename cannot become a move by punctuation. Here they are two
+    fields on one verb, so the separation has to be stated: a request that asks
+    for both has two plausible orderings with different outcomes when the
+    destination already holds that name, and picking one silently is how a file
+    ends up somewhere nobody looked.
+
+    A name collision is a transaction condition failure and comes back **409**,
+    which is what tells the UI to keep the rename field open rather than closing
+    it and reporting success.
+    """
+    body = _body()
+    name = body.get("name")
+    parent_id = body.get("parent")
+    if name is not None and parent_id is not None:
+        raise ValidationError("send name or parent, not both")
+    if name is None and parent_id is None:
+        raise ValidationError("send name to rename, or parent to move")
+
+    memberships = _memberships()
+    record = catalog.node(node_id)
+    _member_of(record["lib"], memberships)
+
+    if name is not None:
+        return jsonify(_view(catalog.rename_node(node_id, name))), 200
+
+    # **The destination is not re-checked here**, and that is deliberate rather
+    # than an omission. `catalog.move_node` already refuses a destination in a
+    # different library, so a destination that survives it is in the same one as
+    # the node — which was membership-checked above. Repeating the rule here
+    # would be a second description of it, and the one that drifts.
+    #
+    # Moving a node to another library is a transfer (#325), not a move: it
+    # carries blob keys, share links and membership implications with it.
+    return jsonify(_view(catalog.move_node(node_id, parent_id))), 200
+
+
+@bp.delete("/nodes/<node_id>")
+def delete_node(node_id: str):
+    """Delete a node and everything beneath it, rows first and then blobs.
+
+    **That order is the recoverable one.** An orphan blob is invisible to every
+    reader and collectable later; a row pointing at a blob that is gone is a
+    broken tile in the grid, which is the failure a user sees. So if the second
+    half fails, what is left is the harmless kind of inconsistent.
+
+    **This is safe only while no two rows share a `blob_key`.**
+    `catalog.delete_node` says so itself and declines to answer whether a blob
+    is still referenced — there is no index on `blob_key` and the question is
+    not cheap. Nothing creates a shared key today: copy-on-write copies are
+    #334, in the Deferred milestone. **#334 has to revisit this**, because the
+    day a copy shares a key, deleting one row here deletes the other's bytes.
+
+    The subtree bound is `catalog.subtree`'s and it refuses rather than
+    truncates — a half-finished delete reporting success is precisely what a
+    limit would produce.
+    """
+    memberships = _memberships()
+    record = catalog.node(node_id)
+    _member_of(record["lib"], memberships)
+
+    result = catalog.delete_node(node_id)
+    if result["blob_keys"]:
+        s3.delete(result["blob_keys"])
+    # `blob_keys` is not returned. It is the internal half of a record for the
+    # reason `_view` exists, and a client that received one would eventually
+    # parse it.
+    return jsonify({"id": result["node_id"], "deleted": result["deleted"]}), 200

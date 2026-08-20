@@ -459,6 +459,9 @@ answering with a short listing.
 | `GET /api/nodes?parent=` | The children of one folder, name-ascending. 404 unknown parent, 403 another library |
 | `GET /api/nodes/<id>` | One node. 404 unknown id, 403 another library |
 | `GET /api/resolve?path=` | A slash-joined name path → the node it names. An empty path is the library root |
+| `POST /api/nodes` | `{parent, name, kind, blob_key?}` → creates a folder or a file. **201.** 409 if the name is taken |
+| `PATCH /api/nodes/<id>` | `{name}` to rename **or** `{parent}` to move — both at once is a 400, not a guess |
+| `DELETE /api/nodes/<id>` | Node and subtree. Rows first, then blobs |
 | `GET /api/tree?prefix=&sort=` | One delimited listing: `folders`, `files` (each presigned), `breadcrumbs`, `counts` |
 | `GET /api/reel?prefix=&cursor=&page_size=&sort=` | Images and video beneath a prefix, recursively, paginated |
 | `GET /api/asset?key=&disposition=` | A fresh presigned URL for one object |
@@ -496,6 +499,13 @@ deliberate:
   identical file is "already there" and skip it. That was how favouriting
   behaved, and it is a copy quietly deciding not to copy. Ask for a copy, get a
   copy.
+
+**`PATCH /api/nodes/<id>` refuses `name` and `parent` together.** On the
+key-addressed side rename and move are different routes, and `keys.clean_name`
+refuses a slash so a rename cannot become a move by punctuation. Collapsed onto
+one verb, the separation has to be stated instead: the two orderings give
+different answers when the destination already holds that name, and choosing one
+silently is how a file ends up somewhere nobody looks for it.
 
 There is no `POST /api/folder/copy`: a subtree copy can be arbitrarily large with
 no progress to report, and nothing has wanted one yet. Argue for it separately.
