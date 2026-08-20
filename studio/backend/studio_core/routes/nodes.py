@@ -62,6 +62,7 @@ import logging
 
 from flask import Blueprint, g, jsonify, request
 
+from studio_core import config
 from studio_core.clients.aws import s3
 from studio_core.errors import ForbiddenError, NotFoundError, ValidationError
 from studio_core.services import catalog
@@ -349,3 +350,63 @@ def delete_node(node_id: str):
     # reason `_view` exists, and a client that received one would eventually
     # parse it.
     return jsonify({"id": result["node_id"], "deleted": result["deleted"]}), 200
+
+
+@bp.get("/nodes/<node_id>/download-url")
+def download_url(node_id: str):
+    """A fresh presigned GET for one node's blob.
+
+    **The id-addressed twin of `/api/asset`**, and it exists separately for the
+    same reason the rest of this file does: `/api/asset` takes a key and this
+    takes a node id, and a client that has an id should never have to learn a
+    key to fetch bytes — that coupling is what the catalog was built to remove.
+
+    **Signed fresh on every call rather than returned by the listing routes.**
+    A presigned URL dies with the credentials that signed it, not with the
+    `ExpiresIn` it was asked for: the Lambda's role credentials rotate, and a URL
+    outlives them by nothing. So `list_nodes` deliberately hands out no URLs at
+    all, and a client re-signs here when one stops working — the behaviour
+    `config.presign_ttl_seconds` documents and the frontend already relies on
+    for `/api/asset`.
+
+    `disposition=attachment` is what makes a download download. The URL points at
+    S3, so it is cross-origin to the app, and a cross-origin `<a download>` is
+    ignored by browsers — signing `response-content-disposition` into the URL is
+    the only thing that works. The filename comes from the node's `name`, which
+    is the one a person recognises; `blob_key` is meaningless to them and, for
+    everything written before the catalog, does not resemble the name at all.
+
+    A folder has no blob and is a **400** rather than a 404: the node is there,
+    the request does not apply to it.
+    """
+    memberships = _memberships()
+    record = catalog.node(node_id)
+    _member_of(record["lib"], memberships)
+
+    blob_key = record.get("blob_key")
+    if not blob_key:
+        raise ValidationError("a folder has nothing to download")
+
+    disposition = request.args.get("disposition") or "inline"
+    if disposition not in ("inline", "attachment"):
+        raise ValidationError("disposition must be 'inline' or 'attachment'")
+
+    # `head` before signing, so a record pointing at a blob that is not there is
+    # a clean 404 here rather than a URL that only fails once the browser follows
+    # it. The same order `browse.asset_url` uses, for the same reason.
+    metadata = s3.head(blob_key)
+    url = s3.presign(blob_key, disposition=disposition, filename=record["name"])
+
+    return jsonify(
+        {
+            "id": node_id,
+            "name": record["name"],
+            "url": url,
+            "expires_in": config.presign_ttl_seconds(),
+            # From S3 rather than from the record: the object is the thing being
+            # fetched, and a row whose `size` drifted from the bytes would send a
+            # client a number the download then contradicts.
+            "size": metadata.get("ContentLength", 0),
+            "content_type": metadata.get("ContentType"),
+        }
+    ), 200

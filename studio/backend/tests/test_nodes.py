@@ -681,3 +681,96 @@ def test_deleting_in_another_library_is_403(catalog_table, media_bucket, signed_
 
     assert resp.status_code == 403
     assert catalog.node(OTHER_NODE)["node_id"] == OTHER_NODE
+
+
+# ─────────────── GET /api/nodes/<id>/download-url ───────────────
+
+# These need the bucket as well as the table: the route heads the object before
+# signing, so a node whose blob is absent is a 404 and not a URL.
+REAL_KEY = "characters/subject-a/seed/subject-a_1.webp"
+
+
+def _file_on_disk(name="seed.webp", key=REAL_KEY):
+    return catalog.create_node(CATALOG_ROOT, name, catalog.KIND_FILE, blob_key=key)
+
+
+def test_a_download_url_is_signed_for_the_nodes_blob(catalog_table, media_bucket, signed_in):
+    created = _file_on_disk()
+
+    resp = _get(f"/api/nodes/{created['node_id']}/download-url")
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["id"] == created["node_id"]
+    assert body["expires_in"] == config.presign_ttl_seconds()
+    # The signature covers the key, so the key is necessarily in the URL. That is
+    # not the leak `_view` guards against — the URL *is* the grant, and it is
+    # useless for any other object.
+    assert "X-Amz-Signature" in body["url"]
+    assert REAL_KEY in body["url"]
+
+
+def test_a_download_url_reports_the_objects_size_not_the_rows(
+    catalog_table, media_bucket, signed_in
+):
+    """S3 is asked, because the bytes are what is being fetched.
+
+    The row here claims a size that is deliberately wrong. A response that
+    repeated it would hand the client a number the download then contradicts.
+    """
+    created = catalog.create_node(
+        CATALOG_ROOT, "seed.webp", catalog.KIND_FILE, blob_key=REAL_KEY, size=999_999
+    )
+
+    body = _get(f"/api/nodes/{created['node_id']}/download-url").get_json()
+
+    real = media_bucket.head_object(Bucket=config.media_bucket(), Key=REAL_KEY)
+    assert body["size"] == real["ContentLength"] != 999_999
+
+
+def test_a_download_url_can_ask_for_attachment(catalog_table, media_bucket, signed_in):
+    """The node's name, not the blob key — the key is meaningless to a person."""
+    created = _file_on_disk(name="my portrait.webp")
+
+    body = _get(
+        f"/api/nodes/{created['node_id']}/download-url?disposition=attachment"
+    ).get_json()
+
+    assert "response-content-disposition" in body["url"].lower()
+    assert "my%20portrait.webp" in body["url"] or "my+portrait.webp" in body["url"]
+
+
+def test_a_bad_disposition_is_400(catalog_table, media_bucket, signed_in):
+    created = _file_on_disk()
+
+    resp = _get(f"/api/nodes/{created['node_id']}/download-url?disposition=nope")
+
+    assert resp.status_code == 400
+
+
+def test_a_folder_has_nothing_to_download(catalog_table, media_bucket, signed_in):
+    """400, not 404 — the node is there, the request does not apply to it."""
+    folder = _folder("characters")
+
+    resp = _get(f"/api/nodes/{folder['node_id']}/download-url")
+
+    assert resp.status_code == 400
+
+
+def test_a_row_pointing_at_a_missing_blob_is_404(catalog_table, media_bucket, signed_in):
+    """Head before sign, so this fails here rather than in the browser."""
+    created = catalog.create_node(
+        CATALOG_ROOT, "gone.webp", catalog.KIND_FILE, blob_key="characters/gone.webp"
+    )
+
+    resp = _get(f"/api/nodes/{created['node_id']}/download-url")
+
+    assert resp.status_code == 404
+
+
+def test_a_download_url_in_another_library_is_403(catalog_table, media_bucket, signed_in):
+    _second_library(catalog_table)
+
+    resp = _get(f"/api/nodes/{OTHER_NODE}/download-url")
+
+    assert resp.status_code == 403
