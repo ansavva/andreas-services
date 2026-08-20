@@ -181,7 +181,7 @@ def main():
 @click.option("--json", "json_", is_flag=True)
 def cmd_list(json_):
     s3 = s3c.client()
-    names = P.list_characters(s3)
+    names = P.list_characters()
     if json_:
         print(json.dumps(names, indent=2))
     elif names:
@@ -1161,7 +1161,7 @@ def cmd_rename(old, new, apply, display_name):
 
     keys = record_keys(s3, old)
     if not keys:
-        have = P.list_characters(s3)
+        have = P.list_characters()
         die(f"no character {old!r} (have: {', '.join(have) or 'none'}).")
     if record_keys(s3, new):
         die(f"{new!r} already exists — nothing here overwrites a record. "

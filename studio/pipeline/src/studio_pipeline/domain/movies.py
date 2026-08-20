@@ -80,7 +80,7 @@ def movie_key(project: str, movie_id: str, *parts: str) -> str:
 
 def list_movies(s3, project: str) -> list[str]:
     """Movie ids in a project, oldest first (ids sort chronologically)."""
-    return P.list_ids(s3, P.movies_prefix(project))
+    return P.list_ids(P.movies_prefix(project))
 
 
 def resolve_movie(s3, ref: str, default_project: str | None = None) -> tuple[str, str]:

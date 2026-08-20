@@ -26,6 +26,21 @@ out of the Lambda's 6 MB request limit, and it is also **hard rule #3 intact**:
 anything handed to a model is an S3 object reached by a short-lived presigned
 URL, never an upload from disk.
 
+## Two ways in, because two kinds of thing live in the bucket
+
+Most of the tree is **owned** — a character, a project, everything under them —
+and is addressed by name path through the catalog. A little of it is **shared**:
+`phrasebook/wording.yaml` and the `config/pose/` plates, which belong to no
+character and no project, which `catalog_seed.py` deliberately does not record,
+and which `dev-setup.sh` syncs straight into the bucket. Those have no node, so
+`resolve` 404s on them.
+
+`shared_read` and `shared_presign` reach them through the API's key-addressed
+route (`GET /api/asset`) instead. Still the API, still no credentials here — a
+different route to the same authority, not an exception to it. Keeping the two
+names apart is the point: a call site reaching for `shared_*` is saying "this
+is owned by nobody", which is exactly the fact that makes it correct.
+
 ## What is deliberately not here
 
 No `copy`, no `delete`, no `move`. Those are catalog operations now — a move
@@ -182,6 +197,22 @@ def write(path: str, body: bytes, *, content_type: str) -> dict:
 def upload(path: str, source: Path, *, content_type: str) -> dict:
     """Write a local file into the store."""
     return write(path, source.read_bytes(), content_type=content_type)
+
+
+def shared_presign(key: str, *, disposition: str = "inline") -> str:
+    """A short-lived URL for shared material, addressed by key.
+
+    For the phrasebook and the pose plates only. Anything a character or a
+    project owns has a node, and reaching it this way would bypass the
+    permission check that node carries.
+    """
+    signed = api.get("/api/asset", key=key.strip("/"), disposition=disposition)
+    return signed["url"]
+
+
+def shared_read(key: str) -> bytes:
+    """The bytes of one shared file. See `shared_presign`."""
+    return _fetch(shared_presign(key))
 
 
 def _fetch(url: str) -> bytes:
