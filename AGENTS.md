@@ -9,10 +9,26 @@ Each subdirectory is a **fully self-contained deployable unit** — it has its o
 
 The AWS CLI is available and authenticated in this environment (`aws ...`), so
 prefer it for read-only investigation of live infrastructure (CloudFront, S3,
-Lambda, DynamoDB, SSM, etc.) when diagnosing issues. Note: outbound HTTP to
-`*.andreas.services` is blocked by the sandbox network policy (responses look
-like `403 host_not_allowed` / "Host not in allowlist"), so use AWS APIs rather
-than `curl` against the live sites; final browser verification is on the user.
+Lambda, DynamoDB, SSM, etc.) when diagnosing issues.
+
+**`curl` against the live sites usually works — test it, do not assume.** This
+file used to state flatly that outbound HTTP to `*.andreas.services` was blocked
+by the sandbox network policy (`403 host_not_allowed`). That is not true in
+general: `studio.andreas.services` and `studio-api.andreas.services` both answer
+`200`. The rule was written from one sandbox that did block it and was then
+believed rather than retested, which cost a session the check it was in the
+middle of — it reported the site unreachable, and it was not. A blocked sandbox
+is still possible, so try the request and read what comes back.
+
+**What `curl` can and cannot settle.** It proves reachability, DNS, TLS, CORS
+preflight, and what a deployed bundle contains. It cannot exercise an
+authenticated route: every `/api` path sits behind the API Gateway Cognito
+authorizer, so an unauthenticated call returns the gateway's
+`{"message":"Unauthorized"}` and never reaches the application — a 401 there
+says nothing about the code. Signing in for real needs a token, which needs a
+pool account; `studio/scripts/dev-token.sh` mints one against the **dev** pool.
+Final verification against prod is a browser, and that is on the user.
+
 Prefer fixing infrastructure through Terraform + the deploy pipeline over manual
 CLI mutations, to avoid IaC drift.
 
