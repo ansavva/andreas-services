@@ -410,3 +410,121 @@ def download_url(node_id: str):
             "content_type": metadata.get("ContentType"),
         }
     ), 200
+
+
+@bp.post("/nodes/<node_id>/upload-url")
+def upload_url(node_id: str):
+    """Sign a PUT for one node's blob. Call `confirm-upload` once it lands.
+
+    **This is the reversal `docs/WEB_APP.md` and `modules/compute/main.tf` both
+    said would have to be argued separately (#294), and this is the argument.**
+    Until now no path in this service could create an object out of bytes a
+    caller supplied: `PutObject` wrote zero-byte folder markers and overwrote
+    text files that already existed, and `CopyObject` did the rest — every write
+    was either something already in the bucket or nothing at all. That property
+    is now gone, deliberately, and these are the bounds that replace it.
+
+    **The bytes never transit the Lambda**, which is what makes this possible at
+    all: an upload through the API would blow the 6 MB request limit on any
+    video. It also means the API never sees what is stored.
+
+    **The grant is one object, one length, one type, once.** `content-length` and
+    `content-type` are signed headers, so a client sending different values fails
+    signature validation and writes nothing — an oversized body is refused by S3
+    rather than discovered afterwards, which is the constraint #294 asks for. The
+    key is signed too, so a URL issued for this node cannot be redirected at
+    another object. The TTL is `config.upload_ttl_seconds`, shorter than a read
+    URL's and well under the Lambda credential lifetime.
+
+    **Still no multipart grant.** `max_upload_bytes` is S3's single-PUT ceiling
+    rather than a policy number: past it a single `PutObject` is impossible, and
+    multipart is a separate decision again.
+
+    The row is not touched here. The node stays a placeholder — a key with no
+    object behind it — until `confirm-upload` runs. A client that signs a URL and
+    never uses it has changed nothing.
+    """
+    body = _body()
+    size = body.get("size")
+    content_type = body.get("content_type")
+    # `isinstance(size, bool)` because `True` is an `int` in Python and a body of
+    # `{"size": true}` would otherwise sign a one-byte upload.
+    if not isinstance(size, int) or isinstance(size, bool) or size < 0:
+        raise ValidationError("size must be a non-negative integer")
+    if size > config.max_upload_bytes():
+        raise ValidationError(
+            f"size must be at most {config.max_upload_bytes()} bytes — "
+            "there is no multipart upload"
+        )
+    if not isinstance(content_type, str) or not content_type:
+        raise ValidationError("content_type is required")
+
+    memberships = _memberships()
+    record = catalog.node(node_id)
+    _member_of(record["lib"], memberships)
+    blob_key = _api_blob_key(record)
+
+    return jsonify(
+        {
+            "id": node_id,
+            "url": s3.presign_put(blob_key, content_length=size, content_type=content_type),
+            "expires_in": config.upload_ttl_seconds(),
+            # Echoed because they are not advisory: the PUT must carry exactly
+            # these two or the signature fails.
+            "headers": {"Content-Length": str(size), "Content-Type": content_type},
+        }
+    ), 200
+
+
+@bp.post("/nodes/<node_id>/confirm-upload")
+def confirm_upload(node_id: str):
+    """Finalise a placeholder once its bytes have landed.
+
+    **`HeadObject` first, and the row is written from what it returns** rather
+    than from anything the client says. The client already declared a size when
+    it asked for the URL; repeating it here would trust the same claim twice
+    instead of checking it once. S3 knows what it stored.
+
+    Until this runs the node is a placeholder. A client that uploads and never
+    confirms leaves an object whose row does not know its size — the state a
+    collector would tidy. **There is no `catalog gc`**: #294 assumed one and it
+    does not exist, so today that is a hand cleanup. Worth knowing before this
+    route is driven at volume.
+    """
+    memberships = _memberships()
+    record = catalog.node(node_id)
+    _member_of(record["lib"], memberships)
+    blob_key = _api_blob_key(record)
+
+    # 404 when the object is not there — the upload did not happen, or did not
+    # finish. Distinguishable from a node that does not exist, because that is a
+    # 404 raised earlier, off the record.
+    metadata = s3.head(blob_key)
+    updated = catalog.set_blob(
+        node_id,
+        blob_key,
+        size=metadata.get("ContentLength", 0),
+        content_type=metadata.get("ContentType"),
+    )
+    return jsonify(_view(updated)), 200
+
+
+def _api_blob_key(record: dict) -> str:
+    """The key both upload routes work on, or a refusal.
+
+    Shared so the two cannot disagree about which objects are writable through a
+    signature — a distinction a signed URL makes permanent the moment it is
+    handed out.
+
+    The key is the node's own, never one the caller named: a caller-supplied key
+    would turn this into a signature for an arbitrary object in the bucket, which
+    is the entire thing being avoided. A node whose `blob_key` is anything else
+    predates the catalog (#309), and overwriting bytes that were written before
+    this table existed is not what these routes are for.
+    """
+    if record["kind"] != catalog.KIND_FILE:
+        raise ValidationError("only a file can carry a blob")
+    blob_key = catalog.blob_key_for(record["node_id"])
+    if record.get("blob_key") != blob_key:
+        raise ValidationError("this node's blob was not written through the API")
+    return blob_key

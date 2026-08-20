@@ -637,6 +637,20 @@ def _folder_node(node_id: str) -> dict:
     return record
 
 
+def blob_key_for(node_id: str) -> str:
+    """Where a node uploaded through the API keeps its bytes.
+
+    One function so the answer is stated once: the upload route signs for this
+    key, `create_node` records it, and the confirm route heads it. Three callers
+    computing `f"blobs/{node_id}"` independently is three chances to disagree
+    about a value a signature is scoped to.
+
+    Deliberately opaque and deliberately not derived from the name: a rename must
+    not move bytes, and #309's legacy keys must stay parseable by nobody.
+    """
+    return f"blobs/{node_id}"
+
+
 def create_node(
     parent_id: str,
     raw_name: str | None,
@@ -654,24 +668,38 @@ def create_node(
     listed in one library's subtree and owned by another. The parent already
     knows, so it is asked.
 
-    `blob_key` is required for a file and refused for a folder, which is the
-    whole of the distinction: #280 defines a folder as a node with no blob. Size
-    and content type are optional because the caller writing the object may not
-    know either yet — `set_blob` fills them in later.
+    A folder is refused a `blob_key`, which is the whole of the distinction:
+    #280 defines a folder as a node with no blob. Size and content type are
+    optional because the caller writing the object may not know either yet —
+    `set_blob` fills them in later.
+
+    **A file may omit `blob_key`, and then it is a placeholder** whose key is
+    derived as `blobs/<node_id>`. That changed in #294, which added the upload
+    routes: a client cannot name `blobs/<node_id>` at create time because it does
+    not know the id yet, so the only way to have an id-derived key is for this
+    function to mint both together. Until the bytes land the node has a key and
+    no object behind it — a row the reel skips and nothing can download. Note
+    there is **no collector for abandoned placeholders yet**; #294 assumes a
+    `catalog gc` that does not exist, so today they accumulate and are removed by
+    hand.
+
+    An explicit `blob_key` is still stored exactly as given, because prod holds
+    keys written long before this table did.
     """
     if kind not in KINDS:
         raise ValidationError(f"kind must be one of {', '.join(sorted(KINDS))}")
-    if kind == KIND_FILE and not blob_key:
-        raise ValidationError("a file needs a blob_key")
     if kind == KIND_FOLDER and blob_key:
         raise ValidationError("a folder cannot carry a blob_key")
 
     name = keys.clean_name(raw_name)
     parent = _folder_node(parent_id)
     now = _now()
+    node_id = f"node-{uuid.uuid4()}"
+    if kind == KIND_FILE and not blob_key:
+        blob_key = blob_key_for(node_id)
 
     record = {
-        "node_id": f"node-{uuid.uuid4()}",
+        "node_id": node_id,
         "parent_id": parent_id,
         "lib": parent["lib"],
         "name": name,
