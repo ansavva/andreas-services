@@ -25,6 +25,13 @@ reserved for real S3 keys, so the storage invariant holds.
 
 Idempotent: a prediction whose run already exists is skipped, so it is safe to
 re-run.
+
+It writes through `domain/runs.py` and holds no AWS client of its own, so since
+#304 it reaches the store through the API like every other run writer. That is
+not the same call as the rest of `maintenance/`: `catalog_seed.py` and
+`migrate_layout.py` enumerate the raw bucket and keep boto3 deliberately,
+because applying the prefix at the AWS boundary is the job. This one only
+records runs.
 """
 from __future__ import annotations
 
@@ -40,7 +47,6 @@ import urllib.request
 import click
 
 from studio_pipeline import env_value
-from studio_pipeline.adapters import s3 as s3c
 from studio_pipeline.domain import runs as R
 from studio_pipeline.engine import registry as REG
 
@@ -119,7 +125,6 @@ def run_id_for(pred: dict, slug_hint: str) -> str:
 @click.option("--until", help="ISO date, exclusive upper bound.")
 def backfill_replicate(dry_run, max_pages, project, since, until):
     token = load_token()
-    s3 = s3c.client()
 
     # --- collect predictions in range -------------------------------------
     url, preds, pages = API, [], 0
@@ -146,7 +151,7 @@ def backfill_replicate(dry_run, max_pages, project, since, until):
         if purged:
             stats["purged"] += 1
 
-        if R.read_json(s3, R.run_key(project, rid, "request.json")) is not None:
+        if R.read_json(R.run_key(project, rid, "request.json")) is not None:
             stats["skipped"] += 1
             continue
 
@@ -162,7 +167,7 @@ def backfill_replicate(dry_run, max_pages, project, since, until):
             continue
 
         R.record_request(
-            s3, project, rid, kind=kind, engine=engine, model=model,
+            project, rid, kind=kind, engine=engine, model=model,
             input=plain, bindings={},
             extra={
                 "backfilled": True,
@@ -191,11 +196,11 @@ def backfill_replicate(dry_run, max_pages, project, since, until):
                     print(f"  {rid}: output no longer fetchable ({e})", file=sys.stderr)
                     stats["failed_download"] += 1
                     continue
-                out_keys.append(R.upload_output(s3, project, rid, local, base))
+                out_keys.append(R.upload_output(project, rid, local, base))
                 os.remove(local)
 
         R.record_result(
-            s3, project, rid, prediction_id=pid, status=full.get("status") or "unknown",
+            project, rid, prediction_id=pid, status=full.get("status") or "unknown",
             outputs=out_keys, source_urls=out_urls, error=full.get("error"),
             extra={
                 "backfilled": True,

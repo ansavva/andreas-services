@@ -287,7 +287,19 @@ def _aim_store_at(s3, monkeypatch):
         return entries
 
     def _read(path):
-        return s3.get_object(Bucket=BUCKET, Key=path.strip("/"))["Body"].read()
+        """Bytes, or `api.NotFound` — the failure the real store raises.
+
+        moto answers a missing key with botocore's `NoSuchKey`, which no caller
+        of `store` catches. `read_json` returns None on `api.NotFound` and lets
+        anything else through, so a shim that leaked `NoSuchKey` would turn
+        "this run has no result.json yet" into a traceback in the tests and
+        nowhere else.
+        """
+        clean = path.strip("/")
+        try:
+            return s3.get_object(Bucket=BUCKET, Key=clean)["Body"].read()
+        except Exception as error:  # noqa: BLE001 - moto raises a generated class
+            raise _api.NotFound(f"No such object: {clean}", 404) from error
 
     def _download(path, destination):
         destination = pathlib.Path(destination)
@@ -304,6 +316,20 @@ def _aim_store_at(s3, monkeypatch):
 
     def _copy(source, destination, *, content_type):
         return _write(destination, _read(source), content_type=content_type)
+
+    def _folder(path):
+        """A no-op that answers, because S3 has no folders to create.
+
+        `store.folder` exists so a run can be told to exist before a document is
+        written inside it — a catalog row that S3 never needed, because a key
+        with slashes in it produced the appearance of a folder. Against moto the
+        honest shim is therefore to report success without writing anything: the
+        folder is there the moment its first object is.
+
+        The id is the path, as everywhere else in this shim.
+        """
+        clean = path.strip("/")
+        return {"id": clean, "name": clean.rsplit("/", 1)[-1], "kind": "folder"}
 
     def _exists(path):
         try:
@@ -325,5 +351,6 @@ def _aim_store_at(s3, monkeypatch):
         ("resolve", _resolve), ("children", _children), ("read", _read),
         ("download", _download), ("write", _write), ("upload", _upload),
         ("copy", _copy), ("exists", _exists), ("size", _size), ("presign", _presign),
+        ("folder", _folder),
     ]:
         monkeypatch.setattr(_store, name, value)

@@ -608,8 +608,8 @@ def run_board(ref: str, opts) -> int:
             print(f"  FAILED — {exc}", file=sys.stderr)
             failed.append((label, str(exc)))
             continue
-        _p, run_id = R.resolve_run(s3, f"{owner}/latest", owner)
-        outs = R.run_outputs(s3, owner, run_id)
+        _p, run_id = R.resolve_run(f"{owner}/latest", owner)
+        outs = R.run_outputs(owner, run_id)
         if not outs:
             failed.append((label, "the run recorded no output"))
             continue
@@ -694,7 +694,7 @@ def run_render(ref: str, opts) -> int:
             print(f"  FAILED — {exc}", file=sys.stderr)
             failed.append((shot["id"], str(exc)))
             continue
-        _p, run_id = R.resolve_run(s3, f"{owner}/latest", owner)
+        _p, run_id = R.resolve_run(f"{owner}/latest", owner)
         shot.update(run=f"{owner}/{run_id}", runref=f"{owner}/{run_id}#1",
                     rendered=R._now())
         SC.write_manifest(s3, manifest)

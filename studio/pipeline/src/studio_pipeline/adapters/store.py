@@ -43,10 +43,14 @@ is owned by nobody", which is exactly the fact that makes it correct.
 
 ## What is deliberately not here
 
-No `copy`, no `delete`, no `move`. Those are catalog operations now — a move
+No `delete`, no `move`, no `rename`. Those are catalog operations now — a move
 rewrites rows and touches no object — and they belong on the API's node routes,
-which the migrating call sites will call directly. A byte mover that also
-pretended to move things would invite exactly the key-shuffling this replaces.
+which the migrating call sites call directly. A byte mover that also pretended
+to move things would invite exactly the key-shuffling this replaces.
+
+`copy` is here and is the exception that proves it: it moves bytes, twice, and
+says so. See its docstring for why it is not the cheap catalog operation it
+looks like.
 """
 
 from __future__ import annotations
@@ -111,6 +115,49 @@ def exists(path: str) -> bool:
     except api.NotFound:
         return False
     return True
+
+
+def folder(path: str) -> dict:
+    """Ensure a folder exists at a name path and return its node.
+
+    **Folders were free in S3 and are rows now**, and that is the whole reason
+    this exists. `characters/<name>/reference/face/` needed no creating — a key
+    with slashes in it produced the appearance of one — so nothing in the
+    pipeline ever asked for a folder, and `store.write` resolves the parent it
+    is given rather than inventing it. Under the catalog a run has to be told to
+    exist before a document can be written inside it.
+
+    Missing ancestors are created too, deepest last, so a caller that knows the
+    path it wants does not have to walk it. Idempotent by construction: a
+    `Conflict` means something else created it between the resolve and the
+    create, and the node it made is the right answer.
+
+    Refuses to hand back a file. A caller asking for a folder is about to write
+    children into it, and `catalog.create_node` would refuse them one at a time
+    with the parent's id rather than the path that was actually wrong.
+    """
+    clean = path.strip("/")
+    try:
+        node = resolve(clean)
+    except api.NotFound:
+        node = None
+    if node is not None:
+        if node.get("kind") != "folder":
+            raise StoreError(f"{clean!r} is a file, not a folder.")
+        return node
+    if not clean:
+        # The library root is created with the library, so its absence is not
+        # something a client can fix by creating one.
+        raise StoreError("The library root does not exist.")
+
+    parent_path, _, name = clean.rpartition("/")
+    parent = folder(parent_path)
+    try:
+        return api.post(
+            "/api/nodes", {"parent": parent["id"], "name": name, "kind": "folder"}
+        )
+    except api.Conflict:
+        return resolve(clean)
 
 
 def size(path: str) -> int:

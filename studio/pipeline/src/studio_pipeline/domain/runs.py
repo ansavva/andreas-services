@@ -21,15 +21,38 @@ answerable now that the folder no longer says.
 
 THE INVARIANT
 -------------
-S3 is the only origin. Replicate never receives bytes — only a short-lived
-presigned URL pointing back into this bucket. Consequently `request.json` stores
-S3 **keys**, never presigned URLs: URLs expire (the record would rot), they are
-~2 KB of noise each, and they carry time-limited bucket access that must not
-outlive the request. `record_request()` REFUSES to write a binding that looks
-like a URL, so the rule is enforced in code rather than remembered.
+The store is the only origin. Replicate never receives bytes — only a
+short-lived presigned URL the API mints. Consequently `request.json` stores
+**paths**, never presigned URLs: URLs expire (the record would rot), they are
+~2 KB of noise each, and they carry time-limited access that must not outlive
+the request. `record_request()` REFUSES to write a binding that looks like a
+URL, so the rule is enforced in code rather than remembered.
 
-Because keys are stable, any run replays: re-mint fresh URLs from the recorded
-keys and resubmit.
+Because paths are stable, any run replays: re-mint fresh URLs from the recorded
+paths and resubmit.
+
+WHERE THE WRITES GO, SINCE #304
+-------------------------------
+Through the API, and nothing here holds a bucket name or a credential.
+
+A run is CREATED by `POST /api/runs` — one request that makes the run folder and
+writes its documents together, and answers **409** if that folder is already
+there. That refusal is worth having: a run id is `<timestamp>_<slug>`, so a
+collision means the CLI re-sent a run rather than made a new one.
+
+Everything after that is an ordinary write into a folder that now exists —
+`result.json` through `store.write`, each output through `store.upload`. The
+split is not tidiness: `request.json` is written BEFORE the submission and
+`result.json` only after it comes back, which is what leaves a record behind
+when a prediction times out. One call cannot do both, and a run that recorded
+nothing until it succeeded would lose exactly the runs worth investigating.
+
+**Documents are written as `text/plain`, not `application/json`.** The API's
+run route decided that (see `_write_document` in `routes/nodes.py`): the
+pipeline owns the shape of these documents and changes it freely, so nothing
+should be invited to parse them. `write_json` here matches it deliberately —
+otherwise a run's `request.json` and its `result.json` would carry different
+content types depending only on which code path wrote them.
 
 CHAINING
 --------
@@ -56,10 +79,11 @@ import json
 import mimetypes
 import os
 import re
+from pathlib import Path
 
 import click
 
-from studio_pipeline.adapters import s3 as s3c
+from studio_pipeline.adapters import api, store
 from studio_pipeline.domain import (
     paths as P,
 )
@@ -70,8 +94,10 @@ SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp"}
 # What a binding is allowed to point at. Anything else is a typo or a URL, and
 # either way it must not reach a stored record.
-KEY_ROOTS = (s3c.key(P.CHARACTERS + "/"), s3c.key(P.PROJECTS + "/"), s3c.key("phrasebook/"),
-             s3c.key(P.config_root()))
+#
+# Plain paths since #303: there is no bucket prefix to apply, so these are the
+# four roots of the tree as `paths.py` builds them.
+KEY_ROOTS = (P.CHARACTERS + "/", P.PROJECTS + "/", "phrasebook/", P.config_root())
 VID_EXTS = {".mp4", ".mov", ".webm", ".m4v"}
 
 
@@ -103,20 +129,43 @@ def run_key(project: str, run_id: str, *parts: str) -> str:
 
 # --- json io --------------------------------------------------------------
 
-def write_json(s3, key: str, obj) -> str:
-    s3.put_object(
-        Bucket=s3c.BUCKET,
-        Key=key,
-        Body=json.dumps(obj, indent=2, sort_keys=False).encode(),
-        ContentType="application/json",
-    )
-    return key
+#: The content type every run document is stored under. See the module
+#: docstring — the API's run route picks this, and the two write paths must not
+#: disagree about it.
+DOCUMENT_TYPE = "text/plain; charset=utf-8"
 
 
-def read_json(s3, key: str):
+def dumps(obj) -> str:
+    """The one serialization for every run document.
+
+    `sort_keys=False` is load-bearing rather than a default spelled out: these
+    documents are read by people, and `run_id` first then `project` then what
+    was sent is the order they are written in.
+    """
+    return json.dumps(obj, indent=2, sort_keys=False)
+
+
+def write_json(path: str, obj) -> str:
+    """Write one document into a folder that already exists.
+
+    Not a creation path. `store.write` resolves the parent, so this can only
+    write into a run `POST /api/runs` has already made — which is the ordering
+    the run store has always had, now enforced rather than implied.
+    """
+    store.write(path, dumps(obj).encode(), content_type=DOCUMENT_TYPE)
+    return path
+
+
+def read_json(path: str):
+    """One document, or None when it is not there.
+
+    None rather than a raise, unchanged from the boto3 version: `run_record`
+    asks for all three documents and a run legitimately has no `result.json`
+    until it finishes, and `prompt.json` only when a structured source was used.
+    """
     try:
-        return json.loads(s3.get_object(Bucket=s3c.BUCKET, Key=key)["Body"].read().decode())
-    except s3.exceptions.NoSuchKey:
+        return json.loads(store.read(path).decode())
+    except api.NotFound:
         return None
 
 
@@ -153,14 +202,18 @@ def check_bindings(bindings: dict) -> dict:
     return clean
 
 
-def presign(s3, keys: list[str], expires: int = 3600) -> list[str]:
-    """Mint fresh presigned URLs for keys — the ONLY way assets reach Replicate."""
-    return [
-        s3.generate_presigned_url(
-            "get_object", Params={"Bucket": s3c.BUCKET, "Key": k}, ExpiresIn=expires
-        )
-        for k in keys
-    ]
+def presign(paths: list[str], expires: int = 3600) -> list[str]:
+    """Mint fresh presigned URLs — the ONLY way assets reach Replicate.
+
+    `expires` is accepted and ignored. The API signs these against its own
+    credentials and owns the TTL (`STUDIO_PRESIGN_TTL_SECONDS`), so a number
+    passed here cannot be honoured. The parameter survives because `submit.py`
+    threads `--expires` down from a CLI flag that
+    `cli_surface_reference.json` records, and #308 keeps this epic's diff to
+    that file to the three session commands. `objects/presign.py` warns when a
+    person typed one; this is the library path and has no context to warn from.
+    """
+    return [store.presign(path) for path in paths]
 
 
 # --- human review ---------------------------------------------------------
@@ -222,11 +275,22 @@ def characters_used(bindings: dict | None, declared: list[str] | None = None) ->
 
 
 def record_request(
-    s3, project: str, run_id: str, *, kind: str, engine: str, model: str,
+    project: str, run_id: str, *, kind: str, engine: str, model: str,
     input: dict, bindings: dict | None = None, prompt_source: dict | None = None,
     characters: list[str] | None = None, extra: dict | None = None,
 ) -> str:
-    """Write request.json (and prompt.json when a structured source was used)."""
+    """Create the run and write request.json (and prompt.json, when there is one).
+
+    **This is the call that brings the run into existence** — `POST /api/runs`
+    makes the folder and writes both documents in one request. Everything later
+    in the run's life writes into that folder and would fail without it, which
+    is why nothing else creates it.
+
+    The bindings are checked BEFORE the request is sent, not by the API. It
+    stores these documents as bytes and never decodes them, so the only place
+    hard rule #3 can be enforced is here — and `submit.py` catches the
+    `RunError` and refuses to submit at all.
+    """
     clean = check_bindings(bindings or {})
     doc = {
         "run_id": run_id,
@@ -240,22 +304,47 @@ def record_request(
         "bindings": clean,
         **(extra or {}),
     }
-    key = write_json(s3, run_key(project, run_id, "request.json"), doc)
+    documents = {"request.json": dumps(doc)}
     if prompt_source is not None:
-        write_json(s3, run_key(project, run_id, "prompt.json"), prompt_source)
-    return key
+        documents["prompt.json"] = dumps(prompt_source)
+
+    try:
+        api.post("/api/runs", {
+            "parent": store.folder(P.runs_prefix(project))["id"],
+            "name": run_id,
+            "documents": documents,
+        })
+    except api.Conflict as exc:
+        # A run id carries a timestamp to the second, so this is not two runs
+        # racing — it is the same run recorded twice.
+        raise RunError(f"run {project}/{run_id} is already recorded") from exc
+    return run_key(project, run_id, "request.json")
 
 
-def upload_output(s3, project: str, run_id: str, local: str, name: str | None = None) -> str:
+def upload_output(project: str, run_id: str, local: str, name: str | None = None) -> str:
+    """Put one artifact in the run's `output/` folder and return its path.
+
+    The folder is ensured here rather than at `record_request`, so a run that
+    failed or timed out leaves no empty `output/` behind. Under S3 that folder
+    only ever appeared when an object landed in it; this keeps that true now
+    that it is a row.
+
+    Deliberately NOT `POST /api/runs`'s `outputs` field, which would put the
+    artifacts flat in the run folder — a name is one segment, so that route
+    cannot nest them. `<run>/output/<file>` is the layout `run_outputs`,
+    `resolve_output_keys`, every scene and movie manifest and every `SKILL.md`
+    are written in terms of, and it is not what #304 is here to change.
+    """
     base = name or os.path.basename(local)
-    key = run_key(project, run_id, "output", base)
+    path = run_key(project, run_id, "output", base)
+    store.folder(run_key(project, run_id, "output"))
     ct = mimetypes.guess_type(local)[0] or "application/octet-stream"
-    s3.upload_file(local, s3c.BUCKET, key, ExtraArgs={"ContentType": ct})
-    return key
+    store.upload(path, Path(local), content_type=ct)
+    return path
 
 
 def record_result(
-    s3, project: str, run_id: str, *, prediction_id: str | None, status: str,
+    project: str, run_id: str, *, prediction_id: str | None, status: str,
     outputs: list[str] | None = None, source_urls: list[str] | None = None,
     error=None, extra: dict | None = None,
 ) -> str:
@@ -273,35 +362,55 @@ def record_result(
         "error": error,
         **(extra or {}),
     }
-    return write_json(s3, run_key(project, run_id, "result.json"), doc)
+    return write_json(run_key(project, run_id, "result.json"), doc)
 
 
 # --- reading runs ---------------------------------------------------------
 
-def list_runs(s3, project: str) -> list[str]:
+def list_runs(project: str) -> list[str]:
     """Run ids in a project, oldest first (ids sort chronologically)."""
     return P.list_ids(P.runs_prefix(project))
 
 
-def run_outputs(s3, project: str, run_id: str) -> list[str]:
-    """Output keys of a run, natural-sorted."""
-    return s3c.list_keys(s3, f"{run_prefix(project, run_id)}/output")
+def run_outputs(project: str, run_id: str) -> list[str]:
+    """Output paths of a run, natural-sorted.
+
+    **The sort is not cosmetic.** These paths become `[Image1]..[ImageN]` when
+    a later run consumes them, and the mapping is positional — the API returns
+    children name-ascending, which is lexical, so `-10` would arrive before
+    `-2` and a model would be handed the wrong frame under the right name.
+
+    A run with no `output/` folder is an empty list rather than an error: a run
+    that failed, timed out or is still in flight legitimately has none, and
+    every caller here already distinguishes empty from broken by the status in
+    `result.json`.
+    """
+    folder = run_key(project, run_id, "output")
+    try:
+        entries = store.children(folder)
+    except api.NotFound:
+        return []
+    names = sorted(
+        (e["name"] for e in entries if e.get("kind") == "file" and e.get("name")),
+        key=store.natural_key,
+    )
+    return [f"{folder}/{name}" for name in names]
 
 
-def run_record(s3, project: str, run_id: str) -> dict:
+def run_record(project: str, run_id: str) -> dict:
     return {
         "run_id": run_id,
         "project": project,
-        "request": read_json(s3, run_key(project, run_id, "request.json")),
-        "result": read_json(s3, run_key(project, run_id, "result.json")),
-        "prompt": read_json(s3, run_key(project, run_id, "prompt.json")),
-        "outputs": run_outputs(s3, project, run_id),
+        "request": read_json(run_key(project, run_id, "request.json")),
+        "result": read_json(run_key(project, run_id, "result.json")),
+        "prompt": read_json(run_key(project, run_id, "prompt.json")),
+        "outputs": run_outputs(project, run_id),
     }
 
 
-def run_characters(s3, project: str, run_id: str) -> list[str]:
+def run_characters(project: str, run_id: str) -> list[str]:
     """The characters a run recorded. Falls back to reading its bindings."""
-    req = read_json(s3, run_key(project, run_id, "request.json")) or {}
+    req = read_json(run_key(project, run_id, "request.json")) or {}
     if "characters" in req:
         return req["characters"]
     return characters_used(req.get("bindings"))
@@ -331,16 +440,16 @@ def parse_runref(ref: str, default_project: str | None = None) -> tuple[str, str
     return project, run_id, index
 
 
-def resolve_run(s3, ref: str, default_project: str | None = None) -> tuple[str, str]:
+def resolve_run(ref: str, default_project: str | None = None) -> tuple[str, str]:
     project, run_id, _ = parse_runref(ref, default_project)
     if run_id in ("latest", "last"):
-        runs = list_runs(s3, project)
+        runs = list_runs(project)
         if not runs:
             raise RunError(f"no runs in project {project!r}")
         return project, runs[-1]
     if not RUN_ID_RE.match(run_id):
         # Allow a unique suffix match, e.g. '<slug>'
-        matches = [r for r in list_runs(s3, project) if r.endswith(run_id) or run_id in r]
+        matches = [r for r in list_runs(project) if r.endswith(run_id) or run_id in r]
         if len(matches) == 1:
             return project, matches[0]
         if not matches:
@@ -349,16 +458,16 @@ def resolve_run(s3, ref: str, default_project: str | None = None) -> tuple[str, 
     return project, run_id
 
 
-def resolve_output_keys(s3, ref: str, default_project: str | None = None,
+def resolve_output_keys(ref: str, default_project: str | None = None,
                         kinds: set[str] | None = None) -> list[str]:
-    """S3 keys of a runref's output — what chaining consumes."""
+    """Paths of a runref's output — what chaining consumes."""
     _project, _run_id, index = parse_runref(ref, default_project)
-    project, run_id = resolve_run(s3, ref, default_project)
-    keys = run_outputs(s3, project, run_id)
+    project, run_id = resolve_run(ref, default_project)
+    keys = run_outputs(project, run_id)
     if kinds:
         keys = [k for k in keys if os.path.splitext(k)[1].lower() in kinds]
     if not keys:
-        have = [os.path.splitext(k)[1] for k in run_outputs(s3, project, run_id)]
+        have = [os.path.splitext(k)[1] for k in run_outputs(project, run_id)]
         raise RunError(
             f"run {project}/{run_id} has no output matching {sorted(kinds or [])} "
             f"(it holds {have or 'nothing'})"
@@ -372,7 +481,7 @@ def resolve_output_keys(s3, ref: str, default_project: str | None = None,
 
 # --- searching across projects --------------------------------------------
 
-def find_by_character(s3, character: str, projects: list[str] | None = None) -> list[str]:
+def find_by_character(character: str, projects: list[str] | None = None) -> list[str]:
     """Every runref that recorded this character, across every project.
 
     Runs used to live in a character's folder, so this was a listing. They live
@@ -380,33 +489,49 @@ def find_by_character(s3, character: str, projects: list[str] | None = None) -> 
     """
     hits = []
     for project in (projects or P.list_projects()):
-        for run_id in list_runs(s3, project):
-            if character in run_characters(s3, project, run_id):
+        for run_id in list_runs(project):
+            if character in run_characters(project, run_id):
                 hits.append(f"{project}/{run_id}")
     return hits
 
 
 # --- legacy import --------------------------------------------------------
 
-def adopt(s3, project: str, key: str) -> str:
+def adopt(project: str, key: str) -> str:
     """Wrap a pre-scheme artifact in a synthetic run so history is uniform.
 
     Existing files are already named <YYYY-MM-DD_HH-MM-SS>_<slug>.<ext>, so the
     run id is taken from the filename and nothing is renamed.
+
+    **A move now, where it used to be a copy and a delete.** The catalog moves
+    a node by rewriting one row, so the bytes never travel and — the part that
+    matters — the node keeps its id. Anything that already named this file, a
+    share link included, still names it after it has been adopted. The old
+    `CopyObject`/`DeleteObject` pair could not offer that: it produced a
+    different object and destroyed the original.
+
+    The run is created before the move, so a failure leaves a run holding its
+    `request.json` and no output — visible, and re-runnable once the cause is
+    fixed. The other order would leave the artifact parented to a folder that
+    was never made.
     """
     base = os.path.basename(key)
     stem, ext = os.path.splitext(base)
     run_id = stem if RUN_ID_RE.match(stem) else new_run_id(stem)
     dst = run_key(project, run_id, "output", base)
-    if dst == key:
+    if dst == key.strip("/"):
         raise RunError(f"{key} is already inside its run")
-    s3.copy_object(Bucket=s3c.BUCKET, CopySource={"Bucket": s3c.BUCKET, "Key": key},
-                   Key=dst, MetadataDirective="COPY")
-    s3.delete_object(Bucket=s3c.BUCKET, Key=key)
-    record_request(s3, project, run_id, kind="video" if ext.lower() in VID_EXTS else "image",
+    try:
+        node = store.resolve(key)
+    except api.NotFound as exc:
+        raise RunError(f"no such object: {key}") from exc
+
+    record_request(project, run_id, kind="video" if ext.lower() in VID_EXTS else "image",
                    engine="(pre-scheme)", model="(unrecorded)", input={},
                    bindings={})
-    record_result(s3, project, run_id, prediction_id=None, status="adopted",
+    output = store.folder(run_key(project, run_id, "output"))
+    api.patch(f"/api/nodes/{node['id']}", {"parent": output["id"]})
+    record_result(project, run_id, prediction_id=None, status="adopted",
                   outputs=[dst], extra={"note": "imported from the legacy output/ folder; "
                                                 "prompt and model were not recorded at the time"})
     return dst
@@ -417,6 +542,25 @@ def adopt(s3, project: str, key: str) -> str:
 @click.group(help=__doc__)
 def main():
     pass
+
+
+def _warn_ignored_expiry(expires: int) -> None:
+    """`--expires` is accepted and ignored, loudly. See `objects/presign.py`.
+
+    The API signs these URLs against its own credentials and owns their TTL, so
+    a number typed here cannot be honoured. The flag stays because
+    `cli_surface_reference.json` is a contract; saying nothing would make it the
+    silent no-op the `XHARNESS_S3_*` rename exists to have avoided.
+    """
+    context = click.get_current_context(silent=True)
+    if context is None:
+        return
+    source = context.get_parameter_source("expires")
+    if source is not None and source.name != "DEFAULT":
+        click.echo(
+            f"warning: --expires {expires} is ignored; the API sets the URL's lifetime.",
+            err=True,
+        )
 
 
 
@@ -433,12 +577,10 @@ def main():
 @click.option("--json", "json_", is_flag=True)
 @reports(RunError)
 def do_list(project, character, json_):
-    s3 = s3c.client()
-
-    runs = list_runs(s3, project)
+    runs = list_runs(project)
     if character:
         runs = [r for r in runs
-                if character in run_characters(s3, project, r)]
+                if character in run_characters(project, r)]
     if json_:
         print(json.dumps(runs, indent=2))
     else:
@@ -451,9 +593,7 @@ def do_list(project, character, json_):
 @click.option("--project", multiple=True, help="Limit to these projects. Repeatable.")
 @reports(RunError)
 def do_find(character, json_, project):
-    s3 = s3c.client()
-
-    hits = find_by_character(s3, character, project)
+    hits = find_by_character(character, project)
     if json_:
         print(json.dumps(hits, indent=2))
     else:
@@ -465,10 +605,8 @@ def do_find(character, json_, project):
 @click.option("--project", help="Default project for a bare run id.")
 @reports(RunError)
 def do_show(runref, project):
-    s3 = s3c.client()
-
-    project, run_id = resolve_run(s3, runref, project)
-    print(json.dumps(run_record(s3, project, run_id), indent=2))
+    project, run_id = resolve_run(runref, project)
+    print(json.dumps(run_record(project, run_id), indent=2))
 
 
 @main.command("outputs")
@@ -479,10 +617,18 @@ def do_show(runref, project):
 @click.option("--project", help="Default project for a bare run id.")
 @reports(RunError)
 def do_outputs(runref, expires, json_, presign, project):
-    s3 = s3c.client()
+    """`--presign` reaches `store` directly, and that is a fix.
 
-    keys = resolve_output_keys(s3, runref, project)
-    vals = presign(s3, keys, expires) if presign else keys
+    The flag is named `presign` and so is this module's function, so inside
+    this body the flag shadows it — `presign(s3, keys, expires)` called `True`
+    and raised `TypeError: 'bool' object is not callable` for as long as the
+    option has existed. `--help` printed happily, and nothing invoked it.
+    Renaming the parameter is not available: `cli_surface_reference.json`
+    records the dest, and it is a contract. Doing the work inline is.
+    """
+    _warn_ignored_expiry(expires)
+    keys = resolve_output_keys(runref, project)
+    vals = [store.presign(key) for key in keys] if presign else keys
     print(json.dumps(vals, indent=2) if json_ else "\n".join(vals))
 
 
@@ -491,7 +637,5 @@ def do_outputs(runref, expires, json_, presign, project):
 @click.option("--key", required=True, help="Full S3 key of the existing object.")
 @reports(RunError)
 def do_adopt(project, key):
-    s3 = s3c.client()
-
-    print(adopt(s3, project, key))
+    print(adopt(project, key))
 

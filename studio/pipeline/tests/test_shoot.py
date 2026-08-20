@@ -780,9 +780,9 @@ def test_promoting_a_shot_run_carries_the_specs_description_and_tags(media_bucke
 
     slot = next(s for s in spec["slots"] if s["id"] == "face_front")
     run = "2026-08-04_21-30-54_wave-porch"
-    req = R.read_json(media_bucket, R.run_key("subject-a", run, "request.json"))
+    req = R.read_json(R.run_key("subject-a", run, "request.json"))
     req["reference_slot"] = "face_front"
-    R.write_json(media_bucket, R.run_key("subject-a", run, "request.json"), req)
+    R.write_json(R.run_key("subject-a", run, "request.json"), req)
 
     result = CliRunner().invoke(cli.main, [
         "character", "add-refs", "subject-a", "--to", "face",

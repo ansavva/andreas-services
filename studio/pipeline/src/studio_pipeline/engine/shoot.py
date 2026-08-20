@@ -682,7 +682,7 @@ def run_shoot(name: str, opts) -> int:
             print(f"  FAILED — {exc}", file=sys.stderr)
             failed.append((slot["id"], str(exc)))
             continue
-        _project, run_id = R.resolve_run(s3, f"{opts.project}/latest", opts.project)
+        _project, run_id = R.resolve_run(f"{opts.project}/latest", opts.project)
         runrefs[slot["id"]] = f"{opts.project}/{run_id}#1"
 
     # GATE 2 — the results stay in their runs. Putting a generated image into

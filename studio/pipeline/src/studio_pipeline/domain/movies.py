@@ -140,7 +140,7 @@ def scene_characters(s3, manifest: dict) -> list[str]:
         run = shot.get("run") or ""
         if "/" in run:
             rp, rid = run.split("/", 1)
-            found.update(R.run_characters(s3, rp, rid))
+            found.update(R.run_characters(rp, rid))
     return sorted(found)
 
 
@@ -208,7 +208,7 @@ def create(s3, project: str, slug: str, refs: list[str],
         "stitch": info,
         "output": {"key": out_key, **final},
     }
-    R.write_json(s3, movie_key(project, movie_id, "movie.json"), manifest)
+    R.write_json(movie_key(project, movie_id, "movie.json"), manifest)
 
     if dest_dir:
         os.makedirs(dest_dir, exist_ok=True)
@@ -259,7 +259,7 @@ def do_show(ref, project):
     """One movie's record."""
     s3 = client()
     owner, mid = resolve_movie(s3, ref, project)
-    print(json.dumps(R.read_json(s3, movie_key(owner, mid, "movie.json")), indent=2))
+    print(json.dumps(R.read_json(movie_key(owner, mid, "movie.json")), indent=2))
 
 
 @main.command("outputs")
@@ -273,7 +273,7 @@ def do_outputs(ref, expires, presign, project):
     owner, mid = resolve_movie(s3, ref, project)
     keys = list_keys(s3, movie_prefix(owner, mid) + "/output/")
     if presign:
-        for k, u in zip(keys, R.presign(s3, keys, expires)):
+        for k, u in zip(keys, R.presign(keys, expires)):
             print(f"{k}\n  {u}")
     else:
         print("\n".join(keys))
