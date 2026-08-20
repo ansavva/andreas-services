@@ -1,4 +1,5 @@
 using Humbugg.Api.Consumers;
+using Humbugg.Api.Consumers.EmailStatus;
 using Xunit;
 
 namespace Humbugg.Api.Tests;
@@ -45,6 +46,64 @@ public sealed class EmailArchitectureTests
             var source = File.ReadAllText(file);
             Assert.DoesNotContain(".Adapters", source, StringComparison.Ordinal);
             Assert.DoesNotContain("Amazon.", source, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
+    /// A consumer reads only the configuration it uses.
+    /// </summary>
+    /// <remarks>
+    /// This is the regression guard for #387. The email-status consumer called
+    /// <c>HumbuggSettings.FromEnvironment()</c>, which is the API's contract and since
+    /// #239 requires all eight DynamoDB table variables. The deploy sets two on that
+    /// Lambda, so it threw at init on every invocation: the feedback queue was never
+    /// drained and every humbugg prod deploy went red for six days.
+    ///
+    /// Asserted against the source rather than by starting the consumer, because the
+    /// failure was at construction and the fix is that the call is not there at all.
+    /// </remarks>
+    [Fact]
+    public void ConsumersDoNotReadTheApisFullSettingsContract()
+    {
+        var consumers = Path.Combine(BackendRoot(), "Humbugg.Api", "Consumers");
+
+        foreach (var file in Directory.EnumerateFiles(consumers, "*.cs", SearchOption.AllDirectories))
+        {
+            // Comment lines are stripped first: the rule is about what the code calls,
+            // and the comment explaining why it must not call this names it verbatim.
+            var source = string.Join(
+                '\n',
+                File.ReadAllLines(file).Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
+            Assert.DoesNotContain("HumbuggSettings.FromEnvironment()", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void ARequiredTableNamesTheVariableItIsMissing()
+    {
+        const string variable = "HUMBUGG_TEST_ONLY_MISSING_TABLE";
+        Environment.SetEnvironmentVariable(variable, null);
+
+        var error = Assert.Throws<InvalidOperationException>(
+            () => AwsLambdaEmailStatusConsumer.RequiredTable(variable));
+
+        Assert.Contains(variable, error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ARequiredTableTrimsTheValueItReads()
+    {
+        const string variable = "HUMBUGG_TEST_ONLY_PRESENT_TABLE";
+        Environment.SetEnvironmentVariable(variable, "  humbugg-prod-email-messages  ");
+        try
+        {
+            Assert.Equal(
+                "humbugg-prod-email-messages",
+                AwsLambdaEmailStatusConsumer.RequiredTable(variable));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, null);
         }
     }
 
