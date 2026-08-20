@@ -30,8 +30,15 @@ AWS_REGION_VALUE="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
 STUDIO_DEV_USER_EMAIL="dev@studio.test"
 DEV_ENV_FILE="$CONFIG_DIR/dev.env"
 
-log()  { printf '\033[1;34m[dev-aws]\033[0m %s\n' "$*"; }
-ok()   { printf '\033[1;32m[ ok ]\033[0m %s\n' "$*"; }
+# **Progress goes to stderr, all of it.** `dev-token.sh`'s stdout is a data
+# channel — the whole point of it is `Bearer $(dev-token.sh)` — and `log` used to
+# write to stdout, so the token came back with a log line glued to the front of
+# it. The integration suite caught it on the assertion that the result is a JWT.
+#
+# Every script here is now safe to capture: stdout carries the answer, stderr
+# carries the narration. `warn` and `die` were already right.
+log()  { printf '\033[1;34m[dev-aws]\033[0m %s\n' "$*" >&2; }
+ok()   { printf '\033[1;32m[ ok ]\033[0m %s\n' "$*" >&2; }
 warn() { printf '\033[1;33m[warn]\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; exit 1; }
 
