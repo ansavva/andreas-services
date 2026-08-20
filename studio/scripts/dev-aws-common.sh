@@ -52,6 +52,23 @@ aws_dev() {
 
 load_machine_id() {
   local create_if_missing="${1:-false}"
+  # **`STUDIO_DEV_MACHINE_ID` targets a stack this machine did not create**, and
+  # persists it so every later command agrees. Two cases need it and neither is
+  # exotic: an ephemeral environment, where a generated id dies with the
+  # container and leaves the stack running, billing, and its state key
+  # unguessable; and a second machine reaching an existing stack on purpose.
+  #
+  # It lives here rather than as a flag on one script because every dev-AWS
+  # command needs the same answer, and `backend/tests/integration/conftest.py`
+  # already reads this variable.
+  if [[ -n "${STUDIO_DEV_MACHINE_ID:-}" ]]; then
+    [[ "$STUDIO_DEV_MACHINE_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] ||
+      die "STUDIO_DEV_MACHINE_ID is not a lowercase UUID."
+    mkdir -p "$CONFIG_DIR"
+    chmod 700 "$CONFIG_DIR"
+    printf '%s\n' "$STUDIO_DEV_MACHINE_ID" > "$MACHINE_ID_FILE"
+    chmod 600 "$MACHINE_ID_FILE"
+  fi
   if [[ ! -f "$MACHINE_ID_FILE" ]]; then
     [[ "$create_if_missing" == "true" ]] ||
       die "No machine ID exists. Run ./studio/scripts/dev-aws-setup.sh first."
@@ -166,9 +183,25 @@ load_dev_user_password() {
   # rule and not a nicety: `dev-user.sh` passes it to `admin-set-user-password`,
   # which puts it in this shell's history if a caller ever inlines it.
   local prompt_allowed="${1:-true}"
+  local generate="${2:-false}"
   if [[ -z "${STUDIO_DEV_USER_PASSWORD:-}" && -f "$DEV_ENV_FILE" ]]; then
     # shellcheck source=/dev/null
     source "$DEV_ENV_FILE"
+  fi
+  if [[ -z "${STUDIO_DEV_USER_PASSWORD:-}" && "$generate" == "true" ]]; then
+    # 24 hex characters plus a fixed upper/lower/digit tail, because the pool
+    # requires all three classes and `openssl rand -hex` alone can produce a
+    # string with no uppercase. Written before it is used, so a re-run against
+    # an existing stack converges the same password rather than minting a second
+    # one nothing has recorded.
+    require_command openssl
+    umask 077
+    mkdir -p "$CONFIG_DIR"
+    printf 'STUDIO_DEV_USER_PASSWORD=%s\n' "$(openssl rand -hex 12)Aa1" > "$DEV_ENV_FILE"
+    chmod 600 "$DEV_ENV_FILE"
+    # shellcheck source=/dev/null
+    source "$DEV_ENV_FILE"
+    ok "Generated the dev account password into $DEV_ENV_FILE (not printed)."
   fi
   if [[ -z "${STUDIO_DEV_USER_PASSWORD:-}" ]]; then
     [[ "$prompt_allowed" == "true" ]] ||

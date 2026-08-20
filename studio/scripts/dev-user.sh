@@ -31,13 +31,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/dev-aws-common.sh"
 
 CHECK_ONLY=0
+GENERATE=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    # For a non-interactive provisioning run: mint a policy-valid password into
+    # dev.env rather than prompting. Never printed, and a re-run reuses what is
+    # already there.
+    --generate-password) GENERATE=true ;;
     --profile) [[ $# -ge 2 ]] || die "--profile requires a value."; AWS_PROFILE_VALUE="$2"; shift ;;
     --region) [[ $# -ge 2 ]] || die "--region requires a value."; AWS_REGION_VALUE="$2"; shift ;;
     --check) CHECK_ONLY=1 ;;
     --help|-h)
-      printf 'Usage: %s [--profile NAME] [--region REGION] [--check]\n' "$0"
+      printf 'Usage: %s [--profile NAME] [--region REGION] [--check] [--generate-password]\n' "$0"
       exit 0
       ;;
     *) die "Unknown option: $1" ;;
@@ -71,7 +76,7 @@ if [[ "$CHECK_ONLY" -eq 1 ]]; then
   exit 0
 fi
 
-load_dev_user_password
+load_dev_user_password true "$GENERATE"
 
 if user_exists; then
   log "Account exists; converging its password."

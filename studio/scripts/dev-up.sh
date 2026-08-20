@@ -72,7 +72,7 @@ if ! dev_stack="$(
   echo "Could not read this machine's dev stack." >&2
   echo "  The API verifies every request's token against the dev pool, so it" >&2
   echo "  would 500 on every call. Provision one with:" >&2
-  echo "    ./studio/scripts/dev-aws-bootstrap.sh" >&2
+  echo "    ./studio/scripts/dev-aws-setup.sh && ./studio/scripts/dev-user.sh" >&2
   exit 1
 fi
 IFS=$'\t' read -r POOL_ID CLIENT_ID MEDIA_BUCKET CATALOG_TABLE <<<"$dev_stack"
