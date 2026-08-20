@@ -475,6 +475,7 @@ answering with a short listing.
 | `GET /api/nodes/<id>/download-url` | A fresh presigned GET for the node's blob. `disposition=attachment` to download |
 | `POST /api/nodes/<id>/upload-url` | `{size, content_type}` → a presigned PUT for `blobs/<id>`. Signed length and type |
 | `POST /api/nodes/<id>/confirm-upload` | `HeadObject`s the blob and writes `size`/`content_type` onto the row |
+| `POST /api/runs` | Records a run: folder, documents inline, and an upload URL per output |
 | `GET /api/tree?prefix=&sort=` | One delimited listing: `folders`, `files` (each presigned), `breadcrumbs`, `counts` |
 | `GET /api/reel?prefix=&cursor=&page_size=&sort=` | Images and video beneath a prefix, recursively, paginated |
 | `GET /api/asset?key=&disposition=` | A fresh presigned URL for one object |
