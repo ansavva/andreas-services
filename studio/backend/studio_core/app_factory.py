@@ -55,6 +55,24 @@ UNAUTHENTICATED_PATHS = frozenset({"/api/health"})
 # whereas an unauthentication skip that missed would open a route to strangers.
 LIBRARY_UNSCOPED_PATHS = frozenset({"/api/libraries"})
 
+# The verbs and headers this API accepts, and **one of four places that have to
+# agree**. The other three are all in `modules/api_gateway`: the MOCK
+# integration response that answers the preflight, and the `UNAUTHORIZED` and
+# `ACCESS_DENIED` gateway responses beside it — where they are already a single
+# `local.cors_methods`, so the split that can actually drift is this list
+# against that local.
+#
+# A verb missing from any of them is a CORS failure no Flask configuration can
+# rescue, because the browser's preflight is answered by API Gateway and never
+# reaches Flask. The SPA sees a network error with no status: the one failure in
+# this service that carries no message at all.
+#
+# Named constants rather than literals in the `CORS(...)` call below because
+# `tests/test_cors_agreement.py` asserts them against both the registered routes
+# and the Terraform local — the convention is now a check (#297).
+CORS_METHODS = ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
+CORS_HEADERS = ["Content-Type", "Authorization", LIBRARY_HEADER]
+
 
 class BodyLengthMiddleware:
     """Restore `CONTENT_LENGTH` from the body that actually arrived.
@@ -185,8 +203,8 @@ def create_app() -> Flask:
     CORS(
         app,
         resources={r"/api/*": {"origins": config.allowed_origin()}},
-        allow_headers=["Content-Type", "Authorization", LIBRARY_HEADER],
-        methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=CORS_HEADERS,
+        methods=CORS_METHODS,
     )
 
     app.register_blueprint(browse_bp)

@@ -18,13 +18,18 @@ The generation pipeline writes every image and video it produces into
 folders keep their structure, images and video are the focus, and every item can
 be opened fullscreen or flipped through as a vertical reel.
 
-**Studio reads the library and tidies it — it does not produce it.** It browses,
-and it can rename, move, copy, delete, create folders, and edit the text
-files in place. It cannot upload, and it cannot generate: making media is the
-pipeline's job, and the pipeline runs locally under a human's own AWS login, not
-through this API. That is a narrower boundary than the one this file used to
-describe ("a reader and only a reader"), and the reasoning behind the change is
-in **What this service may do to the bucket** below.
+**Studio reads the library, tidies it, and now accepts bytes for it — it still
+does not produce it.** It browses, and it can rename, move, copy, delete, create
+folders, and edit the text files in place. **It can now also accept an upload**
+(#294), through a presigned PUT that the bytes travel to directly. What it still
+cannot do is *generate*: making media is the pipeline's job, and the pipeline
+decides what to make and pays for it.
+
+The boundary has widened twice, and this file has recorded each widening rather
+than replacing the sentence. It began as "a reader and only a reader"; it became
+a reader that tidies; it is now a reader that tidies and accepts. The reasoning
+for each is in **What this service may do to the bucket** below — read it before
+widening it a third time.
 
 The line between "edit a text file" and "upload" is worth stating, because it is
 thinner than it sounds and is held in exactly one place: `manage.update_text`
@@ -131,8 +136,10 @@ The parts of the old rule that still hold, and should keep holding:
   other `CopyObject` here is the first half of a rename or a move and is
   followed by a delete, which makes this the only write that *adds* an object
   rather than relocating one — see the correction at the top of this file. The
-  bytes still come from inside the bucket, so "studio cannot upload" is
-  untouched by it.
+  bytes come from inside the bucket — which used to make "studio cannot upload"
+  true as a whole, and no longer does. `copy_objects` is still not an upload;
+  the upload is `POST /api/nodes/<id>/upload-url`, above, and it is the only
+  path by which bytes from outside enter the bucket.
 - **`s3:DeleteObjectVersion` is deliberately absent**, and the bucket **is**
   versioned (`infra/modules/media`), so this role can only write tombstones, not
   erase history. Every delete it can perform is recoverable. With the prefix
