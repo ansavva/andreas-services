@@ -109,13 +109,18 @@ in both, by design.
 | `studio/` | AI media generation pipeline **and** a browser over its output | Claude Code skills (local, `uv`) + Flask + React/Vite/TS + Lambda (Docker) + Cognito + S3 (no database) |
 | `infra/` | Shared infrastructure | Terraform |
 
-**`studio/` breaks two of this repo's rules, both deliberately.** It runs
-**local against prod** — one media bucket, one Cognito pool, no dev
-environment — because it is a view onto a single library of generated media
-and an empty second copy would exercise none of the behaviour that matters. A
-delete run locally is a delete in production; bucket versioning without
-`s3:DeleteObjectVersion` is what makes that recoverable. See
-`studio/CLAUDE.md`. And:
+**`studio/` used to break this repo's environment rule and no longer does.**
+Until August 2026 it ran **local against prod** — one media bucket, one Cognito
+pool, no dev environment — on the reasoning that a view onto a single library of
+generated media would exercise nothing against an empty second copy. That is
+over: studio has a per-machine dev stack like every other service, and
+`dev-setup.sh` and `dev-up.sh` point at it. The reasoning was answered rather
+than abandoned — the dev stack is *seeded* from a published fixture, so it is
+not empty.
+
+Running the **CLI** against production is still wanted occasionally and the safe
+mechanism is **undecided**. There is no flag for it, and adding one is a
+decision nobody has made. See `studio/CLAUDE.md`. And:
 
 **`studio/` is the one service that is not purely a deployable unit.** Half of it
 — `studio/.claude/skills/`, sixteen skills — runs locally inside Claude on a

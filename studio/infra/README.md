@@ -1,7 +1,16 @@
 # studio — infrastructure
 
-Terraform for both halves of studio. One environment, `prod`, with state in
-`s3://andreas-services-terraform-state/studio/prod/terraform.tfstate`.
+Terraform for both halves of studio. **Two environments now**, and the second
+one is recent: `prod`, with state in
+`s3://andreas-services-terraform-state/studio/prod/terraform.tfstate`, and
+`dev`, which is **per machine** — its state key carries the AWS account and a
+persistent machine UUID
+(`studio/dev/<account>/<machine-id>/terraform.tfstate`), so two developers, or
+one developer's two machines, never collide.
+
+This file used to say "one environment, `prod`", and that was the whole posture:
+local development pointed at production. It does not any longer — see the root
+[CLAUDE.md](../../CLAUDE.md) and `../CLAUDE.md`.
 
 | Module | What it is |
 |---|---|
@@ -11,8 +20,23 @@ Terraform for both halves of studio. One environment, `prod`, with state in
 | `api_gateway` | REST API, Cognito authorizer, CORS gateway responses, stage |
 | `api_domain` | `studio-api.andreas.services` custom domain + Route53 record |
 | `hosting` | The SPA's S3 bucket, CloudFront, OAC, SPA-fallback function |
+| `dev_storage` | **dev only.** The dev media bucket and catalog table |
 
-Applied by `.github/workflows/studio-prod.yaml`, not by hand. Read
+`envs/dev` composes `auth` and `dev_storage` and nothing else — no hosting, no
+CloudFront, no API Gateway, no Lambda. The dev backend is Flask on `:8000` under
+`dev-up.sh`, so a per-machine CloudFront distribution would cost twenty minutes
+per apply and per destroy to prove nothing.
+
+**`dev_storage` exists rather than reusing `media` + `catalog` because
+`prevent_destroy` takes a literal, not a variable.** A bucket
+`dev-aws-destroy.sh` can delete cannot come from the module guarding the prod
+one. The dev bucket therefore sets `force_destroy = true` at creation — a flag
+added during a later rename is read off prior state and never applied — and
+drops versioning.
+
+`envs/prod` is applied by `.github/workflows/studio-prod.yaml`, not by hand.
+`envs/dev` is the opposite: **never applied by CI**, only by
+`scripts/dev-aws-setup.sh` on a developer's machine. Read
 [../docs/WEB_APP.md](../docs/WEB_APP.md) for the deploy DAG.
 
 ---

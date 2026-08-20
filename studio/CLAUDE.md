@@ -84,36 +84,67 @@ URL. This is enforced in code: `runs.py` refuses a URL-shaped binding.
 
 ---
 
-## LOCAL RUNS AGAINST PROD. THIS IS DELIBERATE.
+## LOCAL RUNS AGAINST A DEV STACK. THIS CHANGED IN AUGUST 2026.
 
-Studio has **one environment**, and both halves of local development point at
-it. `studio <command>` reads and writes the live media bucket. `dev-up.sh`
-serves the app from localhost against that same bucket, signing in to the
-**live** Cognito pool. There is no dev bucket, no dev pool, no seed data.
+**This section used to be headed "LOCAL RUNS AGAINST PROD. THIS IS
+DELIBERATE."** It is kept, inverted, rather than deleted, because anyone who
+learned studio before now learned the opposite rule and needs to find out what
+replaced it.
 
-That is a real departure from every other service in this monorepo, and it is
-on purpose: studio is a view onto one library of generated media. A second,
-empty bucket would exercise none of the behaviour that matters — the listing,
-the sorting, the reel, the tidy-up all only mean anything against real
-material — and keeping two copies of ~700 MB in sync would be its own failure
-mode.
+Studio has a **per-machine dev stack**: its own Cognito pool, media bucket and
+catalog table, named `studio-dev-<short12>-*` and keyed to a persistent UUID in
+`~/.config/andreas-services/studio/machine-id`. `dev-setup.sh` and `dev-up.sh`
+point at it. `studio <command>` reads and writes **that** bucket.
 
-**What follows from it, and what you must hold in your head:**
+### What the old rule said, and why it was not simply wrong
 
-- **A `delete` you run locally is a delete in production.** So is a rename, a
-  move, and a `curate` pass. There is no undo prompt beyond the one the command
-  itself gives you.
-- What makes that survivable is not care, it is the bucket: versioning is on,
-  and neither the API role nor your own commands are granted
-  `s3:DeleteObjectVersion`. Every delete is a tombstone, so it is recoverable.
-  Do not "tidy up" that grant.
-- `scripts/dev-setup.sh` writes `frontend/.env.local` and pins the bucket in
-  `.env`, reading both from SSM — the values the deploy workflow wrote from
-  Terraform's outputs, so local cannot drift from what is deployed. Re-run it
-  rather than editing either file.
-- The one thing that is genuinely local is the **API**: `dev-up.sh` runs Flask
-  on `:8000` and the SPA points at it, so backend changes are tested locally
-  against real data before they reach the Lambda.
+It said a second, empty bucket would exercise none of the behaviour that
+matters — the listing, the sorting, the reel, the tidy-up all only mean anything
+against real material — and that keeping two copies of ~700 MB in sync would be
+its own failure mode.
+
+**Both points were correct. The answer is that the dev stack is not empty and is
+not a copy.** It is seeded from a small, purpose-made fixture published once and
+downloaded per machine (#284, #285): real model output, chosen to exercise the
+shapes the app cares about, and never a copy of anyone's production library.
+
+### What follows from the change
+
+- **A `delete` you run locally is no longer a delete in production.** The old
+  section's warnings about that are retired. What you can now destroy is your own
+  dev stack, and `dev-aws-destroy.sh` exists to do it deliberately.
+- **The prod bucket's protections are unchanged and still matter.** Versioning is
+  on, and neither the API role nor your own commands are granted
+  `s3:DeleteObjectVersion`, so every delete there is a recoverable tombstone. Do
+  not "tidy up" that grant. It guards the deployed service, which is still real.
+- **`dev-setup.sh` writes `frontend/.env.local` and pins `STUDIO_S3_BUCKET` and
+  `STUDIO_CATALOG_TABLE` in `.env` from the dev stack's Terraform outputs** — not
+  from SSM, which holds what the deploy workflow wrote and knows nothing about a
+  dev stack. Re-run it rather than editing either file.
+- **A `.env` pinned to a prod bucket predates this change.** `dev-setup.sh` names
+  it loudly rather than rewriting it — the file is yours — but it points your
+  commands at production and should be changed.
+
+### The one thing that is genuinely unsettled
+
+**Running the CLI against production is still wanted sometimes, and how to do it
+safely is undecided.** There is no flag, no environment variable and no
+documented procedure, and that is not an oversight — it is an open question.
+
+Do not design one unprompted, and do not reintroduce the old behaviour as a
+convenience. If you need prod data in front of you today, the deployed app at
+`studio.andreas.services` reads it.
+
+### Provisioning one
+
+```bash
+./studio/scripts/dev-aws-bootstrap.sh     # provision, seed the account, prove a token
+./studio/scripts/dev-aws-reset.sh --dry-run   # what a reset would remove
+./studio/scripts/dev-aws-destroy.sh       # tear it down; the machine id is kept
+```
+
+The machine id is the only handle on the resources — the Terraform state key is
+built from it. Losing it strands a running, billing stack.
 
 ---
 
@@ -218,12 +249,21 @@ when you are unsure a command exists.
 
 ## Local development
 
+**A dev stack comes first.** Both scripts below read this machine's, and
+`dev-up.sh` refuses to start without one — an API with no Cognito pool 500s on
+every call, so failing early is the faster way to find out.
+
 ```bash
-studio/scripts/dev-setup.sh   # the pipeline half — installs uv, warms caches
-studio/scripts/dev-up.sh      # the app half — backend :8000, frontend :5173
+studio/scripts/dev-aws-bootstrap.sh   # once per machine: provision + seed the account
+studio/scripts/dev-setup.sh           # the pipeline half — installs uv, warms caches
+studio/scripts/dev-up.sh              # the app half — backend :8000, frontend :5173
 ```
 
-Both need a live AWS login (`aws login`). Note the credential split the root
+`dev-setup.sh` runs from the SessionStart hook and **tolerates a missing stack**,
+warning and carrying on; it still has a toolchain to install. `dev-up.sh` does
+not.
+
+All three need a live AWS login (`aws login`). Note the credential split the root
 [CLAUDE.md](../CLAUDE.md) documents: the AWS CLI reads its own login cache,
 boto3 and the Terraform provider do not, so export before running Terraform:
 
