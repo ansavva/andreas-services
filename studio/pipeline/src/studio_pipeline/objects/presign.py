@@ -14,11 +14,10 @@ private; no credentials are exposed.
   studio presign --key <name>/output/clip.mp4
 """
 import json
-import os
 
 import click
 
-from studio_pipeline.adapters import s3 as s3c
+from studio_pipeline.adapters import api, store
 
 
 @click.command(help=__doc__, epilog="\n\nArguments:\n  NAMES  With --folder: specific basenames (default: all in the folder).")
@@ -28,41 +27,60 @@ from studio_pipeline.adapters import s3 as s3c
 @click.option("--json", "json_", is_flag=True, help="Emit JSON [{key,url}] instead of one URL per line.")
 @click.option("--key", help="An exact key (e.g. projects/<p>/runs/<id>/output/clip.mp4).")
 def presign(names, expires, folder, json_, key):
+    _warn_ignored_expiry(expires)
     if not folder and not key:
-        s3c.die("pass --folder <path> or --key <path>.")
-
-    s3 = s3c.client()
+        raise click.ClickException("pass --folder <path> or --key <path>.")
 
     if key:
-        keys = [s3c.key(key)]
+        paths = [key.strip("/")]
     else:
         folder = folder.strip("/")
-        all_keys = s3c.list_keys(s3, folder)
+        # Natural order, not the API's. `/api/nodes` returns children
+        # name-ascending, which is lexical — see `store.natural_key` for why
+        # `_10` sorting before `_2` would matter here.
+        available = sorted(
+            (entry["name"] for entry in store.children(folder) if entry.get("kind") == "file"),
+            key=store.natural_key,
+        )
         if names:
-            by_name = {os.path.basename(k): k for k in all_keys}
-            missing = [n for n in names if n not in by_name]
+            missing = [n for n in names if n not in available]
             if missing:
-                s3c.die(f"not found under {folder}/: {', '.join(missing)}")
-            keys = [by_name[n] for n in names]
+                raise click.ClickException(f"not found under {folder}/: {', '.join(missing)}")
+            chosen = list(names)
         else:
-            keys = all_keys
-        if not keys:
-            s3c.die(f"no objects under {folder}/")
+            chosen = available
+        if not chosen:
+            raise click.ClickException(f"no objects under {folder}/")
+        paths = [f"{folder}/{name}" for name in chosen]
 
-    results = [
-        {
-            "key": k,
-            "url": s3.generate_presigned_url(
-                "get_object",
-                Params={"Bucket": s3c.BUCKET, "Key": k},
-                ExpiresIn=expires,
-            ),
-        }
-        for k in keys
-    ]
+    try:
+        results = [{"key": path, "url": store.presign(path)} for path in paths]
+    except api.NotFound as error:
+        raise click.ClickException(str(error)) from error
 
     if json_:
         print(json.dumps(results, indent=2))
     else:
-        for r in results:
-            print(r["url"])
+        for entry in results:
+            print(entry["url"])
+
+
+def _warn_ignored_expiry(expires: int) -> None:
+    """`--expires` is accepted and ignored, loudly.
+
+    **Kept rather than removed** because `cli_surface_reference.json` is a
+    contract and #308 says this epic's diff to it should be the three session
+    commands and nothing else. But the API owns the TTL now — it signs the URL
+    against its own credentials, using `STUDIO_PRESIGN_TTL_SECONDS` — so a
+    number passed here cannot be honoured. A flag that silently does nothing is
+    the failure the `XHARNESS_S3_*` rename was designed to avoid, so it says so.
+    """
+    context = click.get_current_context(silent=True)
+    if context is None:
+        return
+    source = context.get_parameter_source("expires")
+    if source is not None and source.name != "DEFAULT":
+        click.echo(
+            f"warning: --expires {expires} is ignored; the API sets the URL's lifetime.",
+            err=True,
+        )

@@ -36,6 +36,7 @@ pretended to move things would invite exactly the key-shuffling this replaces.
 
 from __future__ import annotations
 
+import re
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -47,6 +48,24 @@ TIMEOUT_SECONDS = 300
 
 class StoreError(RuntimeError):
     """The store could not be read or written."""
+
+
+_NUM_RE = re.compile(r"(\d+)")
+
+
+def natural_key(name: str):
+    """Sort key so `<name>_2` precedes `<name>_10`, which lexical sort flips.
+
+    **Load-bearing, not cosmetic.** `studio presign --folder <name>/reference`
+    feeds images to a model as `[Image1]..[ImageN]` and the mapping is
+    positional — a folder that sorted `_10` before `_2` would hand the model its
+    references in the wrong order, and the prompt would name the wrong one.
+
+    It lives here because the API returns children *name-ascending*, which is
+    DynamoDB's lexical sort-key order. The natural ordering is the CLI's, and
+    always was; `adapters/s3.py` re-exports this so its callers do not churn.
+    """
+    return [int(part) if part.isdigit() else part.lower() for part in _NUM_RE.split(name)]
 
 
 def resolve(path: str) -> dict:

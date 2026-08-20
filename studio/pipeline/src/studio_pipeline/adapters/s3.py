@@ -10,7 +10,6 @@
 # the bridge.
 import json
 import os
-import re
 import subprocess
 import sys
 
@@ -103,12 +102,10 @@ def client():
     return session().client("s3")
 
 
-_NUM_RE = re.compile(r"(\d+)")
-
-
-def natural_key(s: str):
-    """Sort key so <name>_2 < <name>_10 (lexical sort would flip them)."""
-    return [int(t) if t.isdigit() else t.lower() for t in _NUM_RE.split(s)]
+# Re-exported, not redefined: `store.natural_key` is the one definition now, and
+# a dozen callers still import it from here. Two copies of a sort that decides
+# which reference image a model is handed is exactly the drift worth avoiding.
+from studio_pipeline.adapters.store import natural_key  # noqa: E402,F401
 
 
 def list_keys(s3, rel_prefix: str):

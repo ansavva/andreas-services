@@ -1,5 +1,4 @@
-"""List or download objects from the media tree of the
-studio-prod-media-us-east-1 bucket.
+"""List or download objects from the media tree, through the studio API.
 
   studio download --folder <name>/reference --list
   studio download --folder <name>/reference --all --dest /tmp/refs --json
@@ -10,11 +9,11 @@ all to --dest; NAME... downloads specific basenames. --json emits machine output
 (a list for --list, a {name: local_path} map for downloads).
 """
 import json
-import os
+import pathlib
 
 import click
 
-from studio_pipeline.adapters import s3 as s3c
+from studio_pipeline.adapters import api, store
 
 
 @click.command(help=__doc__, epilog="\n\nArguments:\n  NAMES  Specific basenames to download (default: see --list/--all).")
@@ -25,30 +24,34 @@ from studio_pipeline.adapters import s3 as s3c
 @click.option("--json", "json_", is_flag=True, help="Emit JSON instead of text.")
 @click.option("--list", "list_", is_flag=True, help="List basenames under the folder; download nothing.")
 def download(names, all_, dest, folder, json_, list_):
-    s3 = s3c.client()
     folder = folder.strip("/")
-    keys = s3c.list_keys(s3, folder)
-    by_name = {os.path.basename(k): k for k in keys}
+    try:
+        entries = store.children(folder)
+    except api.NotFound as error:
+        raise click.ClickException(f"no such folder: {folder}") from error
+    available = sorted(
+        (entry["name"] for entry in entries if entry.get("kind") == "file"),
+        key=store.natural_key,
+    )
 
     if list_ or (not all_ and not names):
-        names = sorted(by_name, key=s3c.natural_key)
-        print(json.dumps(names, indent=2) if json_ else "\n".join(names))
+        print(json.dumps(available, indent=2) if json_ else "\n".join(available))
         return
 
     if all_:
-        wanted = sorted(by_name, key=s3c.natural_key)
+        wanted = available
     else:
-        wanted = names
-        missing = [n for n in wanted if n not in by_name]
+        missing = [n for n in names if n not in available]
         if missing:
-            s3c.die(f"not found under {folder}/: {', '.join(missing)}")
+            raise click.ClickException(f"not found under {folder}/: {', '.join(missing)}")
+        wanted = list(names)
 
-    os.makedirs(dest, exist_ok=True)
+    destination = pathlib.Path(dest)
+    destination.mkdir(parents=True, exist_ok=True)
     out = {}
     for name in wanted:
-        local = os.path.join(dest, name)
-        s3.download_file(s3c.BUCKET, by_name[name], local)
-        out[name] = os.path.abspath(local)
+        local = store.download(f"{folder}/{name}", destination / name)
+        out[name] = str(local.resolve())
 
     if json_:
         print(json.dumps(out, indent=2))
