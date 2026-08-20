@@ -44,43 +44,56 @@ export STUDIO_ALLOWED_ORIGIN="http://localhost:5173"
 # deploy workflow from Terraform's outputs, so they cannot drift from what is
 # deployed — and the frontend signing in against one pool while the backend
 # verifies against another is precisely the drift a hardcoded value would
-# create. This is the prod pool and the prod table: local points at prod for
-# studio, deliberately. See dev-setup.sh.
+# create.
 #
-# `|| true` inside the helper because `set -e` would otherwise abort the script
-# on a missing parameter with no message, which is the opposite of the intent.
+# **THIS MACHINE'S DEV STACK, NOT PROD.** studio used to read `/studio/prod/*`
+# here and serve the local API against the live bucket and the live pool. That
+# is over (#287): this repo no longer connects to production, the way every
+# other service in the monorepo already works. Running the CLI against prod is
+# still wanted occasionally and the safe mechanism is undecided — it is not a
+# flag on this script.
+#
+# The values come from the dev stack's Terraform outputs rather than SSM,
+# because SSM holds what the *deploy workflow* wrote and nothing deploys a dev
+# stack. `load_dev_stack_outputs` is the same reader `dev-user.sh`,
+# `dev-token.sh` and the integration harness use.
 # ---------------------------------------------------------------------------
-ssm() { aws ssm get-parameter --name "$1" --query Parameter.Value --output text 2>/dev/null || true; }
-
-POOL_ID="$(ssm /studio/prod/cognito-user-pool-id)"
-CLIENT_ID="$(ssm /studio/prod/cognito-client-id)"
-if [ -z "$POOL_ID" ] || [ -z "$CLIENT_ID" ]; then
-  echo "Could not read the Cognito values from SSM (/studio/prod/cognito-*)." >&2
-  echo "  The API verifies every request's token against them, so it would 500" >&2
-  echo "  on every call. Has studio been deployed?" >&2
+# A subshell, because `dev-aws-common.sh`'s `die` exits and the failure here
+# needs a message this script writes rather than that one. Its `log` output goes
+# to stderr, so what is captured is exactly the four values.
+if ! dev_stack="$(
+  # shellcheck source=dev-aws-common.sh
+  source "$ROOT/studio/scripts/dev-aws-common.sh"
+  load_machine_id false
+  load_aws_identity
+  load_dev_stack_outputs
+  printf '%s\t%s\t%s\t%s\n' "$DEV_POOL_ID" "$DEV_CLIENT_ID" "$DEV_BUCKET" "$DEV_TABLE"
+)"; then
+  echo "Could not read this machine's dev stack." >&2
+  echo "  The API verifies every request's token against the dev pool, so it" >&2
+  echo "  would 500 on every call. Provision one with:" >&2
+  echo "    ./studio/scripts/dev-aws-bootstrap.sh" >&2
   exit 1
 fi
+IFS=$'\t' read -r POOL_ID CLIENT_ID MEDIA_BUCKET CATALOG_TABLE <<<"$dev_stack"
+
 export STUDIO_COGNITO_USER_POOL_ID="$POOL_ID"
 export STUDIO_COGNITO_CLIENT_ID="$CLIENT_ID"
+# Exported unconditionally now, unlike the SSM version. `config.py`'s defaults
+# name PROD resources, so falling through to them is no longer a survivable
+# outcome — it is the exact thing this issue removes. `load_dev_stack_outputs`
+# refuses an incomplete state, so reaching here means all four are set.
+export STUDIO_MEDIA_BUCKET="$MEDIA_BUCKET"
+export STUDIO_CATALOG_TABLE="$CATALOG_TABLE"
 
-# The bucket and the table are exported only when SSM answers. Both have a
-# prod-matching default in `config.py`, so a missing parameter is survivable
-# where a missing pool id is not — and repeating either name here would be a
-# second copy to keep in step with that default for no gain. (There is no
-# `/studio/prod/catalog-table` parameter yet; this picks it up the day the
-# deploy workflow writes one, and falls through to the default until then.)
-#
-# Spelled as `if` blocks and not `[ -n "$X" ] && export ...`: under `set -e` a
-# one-liner whose test fails is a failed command, and the script would exit
-# silently on exactly the case it is meant to tolerate.
-MEDIA_BUCKET="$(ssm /studio/prod/media-bucket)"
-if [ -n "$MEDIA_BUCKET" ]; then
-  export STUDIO_MEDIA_BUCKET="$MEDIA_BUCKET"
-fi
-CATALOG_TABLE="$(ssm /studio/prod/catalog-table)"
-if [ -n "$CATALOG_TABLE" ]; then
-  export STUDIO_CATALOG_TABLE="$CATALOG_TABLE"
-fi
+# Where `studio login` and every other CLI call go (#300). Defaults to the
+# deployed API; pointed at the Flask process this script is about to start, so
+# the CLI drives the local API against this machine's dev stack rather than the
+# Lambda.
+export STUDIO_API_URL="http://localhost:8000"
+# The pool ids the CLI signs in against are already exported above, for the API.
+# `studio login` reads the same two, so the CLI and the API it calls cannot
+# disagree about which pool a token came from.
 
 # ---------------------------------------------------------------------------
 # Poetry, which nothing else installs.
