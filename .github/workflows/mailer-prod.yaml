@@ -181,12 +181,26 @@ jobs:
       - name: Read Terraform outputs
         run: |
           terraform -chdir=mailer/infra/envs/prod init -input=false
-          echo "ECR_URL=$(terraform -chdir=mailer/infra/envs/prod output -raw ecr_repository_url)" >> "$GITHUB_ENV"
-          echo "CONTENT_BUCKET=$(terraform -chdir=mailer/infra/envs/prod output -raw content_bucket)" >> "$GITHUB_ENV"
-          echo "MESSAGES_TABLE=$(terraform -chdir=mailer/infra/envs/prod output -raw messages_table)" >> "$GITHUB_ENV"
-          echo "SUPPRESSIONS_TABLE=$(terraform -chdir=mailer/infra/envs/prod output -raw suppressions_table)" >> "$GITHUB_ENV"
-          echo "SERVICE_REGISTRY=$(terraform -chdir=mailer/infra/envs/prod output -raw service_registry_json)" >> "$GITHUB_ENV"
-          echo "CONFIG_SET_REGISTRY=$(terraform -chdir=mailer/infra/envs/prod output -raw configuration_set_registry_json)" >> "$GITHUB_ENV"
+          # Assign, check, then export. `echo "X=$(terraform output …)"` took its
+          # exit status from `echo`, not from the substitution, so a renamed or
+          # deleted output wrote an EMPTY STRING and the step went green under
+          # `bash -e`. `terraform output -raw` also SUCCEEDS on an output that
+          # exists and is empty, so the emptiness check is not redundant with
+          # the exit status.
+          put() {
+            local value
+            value="$(terraform -chdir=mailer/infra/envs/prod output -raw "$2")" || exit 1
+            [ -n "$value" ] ||
+              { echo "::error::Terraform output '$2' is empty; refusing to continue." >&2; exit 1; }
+            echo "$1=$value" >> "$GITHUB_ENV"
+          }
+
+          put ECR_URL            ecr_repository_url
+          put CONTENT_BUCKET     content_bucket
+          put MESSAGES_TABLE     messages_table
+          put SUPPRESSIONS_TABLE suppressions_table
+          put SERVICE_REGISTRY   service_registry_json
+          put CONFIG_SET_REGISTRY configuration_set_registry_json
           terraform -chdir=mailer/infra/envs/prod output -json lambda_function_names > /tmp/functions.json
       - name: Pin code and environment
         run: |
