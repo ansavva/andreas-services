@@ -161,8 +161,9 @@ Rotate on a schedule and immediately on any suspected exposure.
 
 ## 6. Ownership
 
-- **Billing / Stripe account owner:** Andreas (`asavva1991@gmail.com`) — owns the
-  Stripe account, product catalog, and key rotation.
+- **Billing / Stripe account owner:** the repo owner — owns the Stripe account,
+  product catalog, and key rotation. The address is in the Stripe dashboard and
+  is deliberately not recorded here; this repo is public.
 - **Infra / secret wiring:** whoever owns the `humbugg-production` GitHub
   environment and the Humbugg Terraform state.
 - Changes to products, prices, or keys must be reflected in the GitHub
