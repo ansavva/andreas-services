@@ -430,14 +430,30 @@ jobs:
 
       - name: Read infrastructure values from SSM
         run: |
-          get() { aws ssm get-parameter --name "/scout/prod/${1}" \
-            --query Parameter.Value --output text; }
+          # Assign, check, then export. `echo "X=$(get …)" >> "$GITHUB_ENV"`
+          # took its exit status from `echo`, not from the substitution, so a
+          # failed or renamed parameter wrote an EMPTY STRING and the step went
+          # green under `bash -e`. An assignment carries the substitution's
+          # status, and `exit` inside a function called at top level ends the
+          # job rather than a subshell.
+          #
+          # `None` is what `--output text` prints for a null value, so it is an
+          # empty read wearing a name.
+          put() {
+            local value
+            value="$(aws ssm get-parameter --name "$2" \
+              --query Parameter.Value --output text)" || exit 1
+            [ -n "$value" ] && [ "$value" != "None" ] ||
+              { echo "::error::$2 resolved empty; refusing to continue." >&2; exit 1; }
+            echo "$1=$value" >> "$GITHUB_ENV"
+          }
 
-          echo "VITE_API_URL=$(get api-url)"            >> "$GITHUB_ENV"
-          echo "S3_BUCKET=$(get s3-bucket)"             >> "$GITHUB_ENV"
-          echo "CF_DIST_ID=$(get cf-dist-id)"           >> "$GITHUB_ENV"
-          echo "VITE_COGNITO_USER_POOL_ID=$(get cognito-user-pool-id)" >> "$GITHUB_ENV"
-          echo "VITE_COGNITO_CLIENT_ID=$(get cognito-client-id)"       >> "$GITHUB_ENV"
+          put VITE_API_URL              /scout/prod/api-url
+          put S3_BUCKET                 /scout/prod/s3-bucket
+          put CF_DIST_ID                /scout/prod/cf-dist-id
+          # Vite inlines these; empty ships an SPA whose login can never succeed.
+          put VITE_COGNITO_USER_POOL_ID /scout/prod/cognito-user-pool-id
+          put VITE_COGNITO_CLIENT_ID    /scout/prod/cognito-client-id
 
       - name: Install dependencies
         run: cd scout/frontend && npm ci

@@ -334,13 +334,29 @@ jobs:
 
       - name: Read infrastructure values from SSM
         run: |
-          get() { aws ssm get-parameter --name "/humbugg/prod/${1}" \
-            --query Parameter.Value --output text; }
-          echo "API_ECR_URL=$(get ecr-url)"                     >> "$GITHUB_ENV"
-          echo "MARKETING_ECR_URL=$(get marketing-ecr-url)"           >> "$GITHUB_ENV"
-          echo "COGNITO_USER_POOL_ID=$(get cognito-user-pool-id)"   >> "$GITHUB_ENV"
-          echo "COGNITO_CLIENT_ID=$(get cognito-client-id)"         >> "$GITHUB_ENV"
-          echo "HUMBUGG_MAILER_BASE_URL=$(aws ssm get-parameter --name /mailer/prod/humbugg/api-url --query Parameter.Value --output text)" >> "$GITHUB_ENV"
+          # Assign, check, then export. `echo "X=$(get …)" >> "$GITHUB_ENV"`
+          # took its exit status from `echo`, not from the substitution, so a
+          # failed or renamed parameter wrote an EMPTY STRING and the step went
+          # green under `bash -e`. An assignment carries the substitution's
+          # status, and `exit` inside a function called at top level ends the
+          # job rather than a subshell.
+          #
+          # `None` is what `--output text` prints for a null value, so it is an
+          # empty read wearing a name.
+          put() {
+            local value
+            value="$(aws ssm get-parameter --name "$2" \
+              --query Parameter.Value --output text)" || exit 1
+            [ -n "$value" ] && [ "$value" != "None" ] ||
+              { echo "::error::$2 resolved empty; refusing to continue." >&2; exit 1; }
+            echo "$1=$value" >> "$GITHUB_ENV"
+          }
+
+          put API_ECR_URL             /humbugg/prod/ecr-url
+          put MARKETING_ECR_URL       /humbugg/prod/marketing-ecr-url
+          put COGNITO_USER_POOL_ID    /humbugg/prod/cognito-user-pool-id
+          put COGNITO_CLIENT_ID       /humbugg/prod/cognito-client-id
+          put HUMBUGG_MAILER_BASE_URL /mailer/prod/humbugg/api-url
           # EMAIL_STATUS_LAMBDA_NAME is not read from SSM: the name is deterministic
           # (humbugg-prod-email-status) and already set as a job-level env default,
           # matching BACKEND/FRONTEND. Reading a missing SSM param here silently produced an
@@ -528,11 +544,19 @@ jobs:
 
       - name: Read infrastructure values from SSM
         run: |
-          get() { aws ssm get-parameter --name "/humbugg/prod/${1}" \
-            --query Parameter.Value --output text; }
+          # `put` rather than `echo "X=$(get …)"`, which took its exit status
+          # from `echo` and shipped an empty value on a failed read.
+          put() {
+            local value
+            value="$(aws ssm get-parameter --name "$2" \
+              --query Parameter.Value --output text)" || exit 1
+            [ -n "$value" ] && [ "$value" != "None" ] ||
+              { echo "::error::$2 resolved empty; refusing to continue." >&2; exit 1; }
+            echo "$1=$value" >> "$GITHUB_ENV"
+          }
 
-          echo "S3_BUCKET=$(get s3-bucket)"   >> "$GITHUB_ENV"
-          echo "CF_DIST_ID=$(get cf-dist-id)" >> "$GITHUB_ENV"
+          put S3_BUCKET  /humbugg/prod/s3-bucket
+          put CF_DIST_ID /humbugg/prod/cf-dist-id
 
       - name: Sync hashed assets (long cache)
         run: |
@@ -593,13 +617,22 @@ jobs:
 
       - name: Read infrastructure values from SSM
         run: |
-          get() { aws ssm get-parameter --name "/humbugg/prod/${1}" \
-            --query Parameter.Value --output text; }
+          # `put` rather than `echo "X=$(get …)"`, which took its exit status
+          # from `echo` and shipped an empty value on a failed read.
+          put() {
+            local value
+            value="$(aws ssm get-parameter --name "$2" \
+              --query Parameter.Value --output text)" || exit 1
+            [ -n "$value" ] && [ "$value" != "None" ] ||
+              { echo "::error::$2 resolved empty; refusing to continue." >&2; exit 1; }
+            echo "$1=$value" >> "$GITHUB_ENV"
+          }
 
-          echo "APP_S3_BUCKET=$(get app-s3-bucket)"     >> "$GITHUB_ENV"
-          echo "APP_CF_DIST_ID=$(get app-cf-dist-id)"   >> "$GITHUB_ENV"
-          echo "EXPO_PUBLIC_COGNITO_USER_POOL_ID=$(get cognito-user-pool-id)" >> "$GITHUB_ENV"
-          echo "EXPO_PUBLIC_COGNITO_CLIENT_ID=$(get cognito-client-id)"       >> "$GITHUB_ENV"
+          put APP_S3_BUCKET                    /humbugg/prod/app-s3-bucket
+          put APP_CF_DIST_ID                   /humbugg/prod/app-cf-dist-id
+          # Metro inlines these; empty ships an app that cannot sign anyone in.
+          put EXPO_PUBLIC_COGNITO_USER_POOL_ID /humbugg/prod/cognito-user-pool-id
+          put EXPO_PUBLIC_COGNITO_CLIENT_ID    /humbugg/prod/cognito-client-id
 
       - name: Install product app dependencies
         env:
