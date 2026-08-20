@@ -754,7 +754,19 @@ jobs:
   smoke-test:
     name: Production Smoke Test
     needs: [update-lambda, deploy-frontend-assets, deploy-app, email-feedback-smoke-test]
-    if: ${{ !cancelled() && needs.update-lambda.result == 'success' && needs.deploy-frontend-assets.result == 'success' && needs.deploy-app.result == 'success' && needs.email-feedback-smoke-test.result == 'success' }}
+    # `!= 'failure'` rather than `== 'success'`, because a SKIPPED upstream job is
+    # not a reason to skip this one. The three deploy jobs are path-filtered, so a
+    # backend-only change skips `deploy-frontend-assets` and `deploy-app` — and
+    # under the old `== 'success'` that skipped the smoke test too. The surfaces it
+    # checks are live either way; not redeploying one is precisely when you want to
+    # know it still answers.
+    #
+    # Found while verifying #387: that deploy went green with the smoke test
+    # skipped, which is the state this condition was supposed to prevent.
+    #
+    # `!cancelled()` still stops it after a cancellation, and a genuine `failure`
+    # upstream still stops it — that part was right.
+    if: ${{ !cancelled() && needs.update-lambda.result != 'failure' && needs.deploy-frontend-assets.result != 'failure' && needs.deploy-app.result != 'failure' && needs.email-feedback-smoke-test.result != 'failure' }}
     runs-on: ubuntu-latest
     steps:
       - name: Verify the three surfaces
