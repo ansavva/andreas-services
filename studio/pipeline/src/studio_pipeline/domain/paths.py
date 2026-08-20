@@ -3,8 +3,7 @@
 Before this file the layout lived as ~20 inline f-strings spread across eight
 scripts (`f"{owner}/{RUNS}/{run_id}"`, `f"{owner}/scenes/{scene_id}"`,
 `f"{name}/{cfg['folder']}"` …). Moving a folder meant finding all of them. Now
-every key in the harness is built here, and `s3_common.key()` remains the one
-place a global prefix is applied.
+every path in the pipeline is built here.
 
 THE TWO TREES
 -------------
@@ -41,12 +40,37 @@ never part of a production key — the run records which characters it used
 (`request.json: characters[]`), and `character_of()` reads one back out of a
 binding.
 
+WHAT THESE STRINGS ARE, SINCE #303
+----------------------------------
+**Name paths, not S3 keys.** Every builder here returns a path the API resolves
+through `GET /api/resolve` — the same string a person types and the same one
+`adapters/store` takes. Nothing in this module knows a bucket name, a prefix or
+a credential.
+
+The bucket prefix is gone from the CLI entirely, and that is a removal rather
+than a default: `STUDIO_S3_PREFIX` let this half of studio disagree with the
+API about where the tree starts, and the API already owns that decision
+(`STUDIO_MEDIA_ROOT_PREFIX`). One authority, not two that happen to agree.
+
 CONVENTION — `*_prefix()` vs `*_key()`
 --------------------------------------
-`*_prefix()` returns a path **relative to the bucket prefix**, which is what
-`s3_common.list_keys()` takes. `*_key()` returns a **full S3 key**, which is
-what get/put/copy take. `runs.py` and `scenes.py` disagreed about this before;
-mixing them silently produced `media/media/…`, so the split is now by name.
+Both return the same kind of string now, and the pair survives only because
+twelve modules and every `SKILL.md` are written in these terms. Read `*_key()`
+as "addresses one file" and `*_prefix()` as "addresses a folder"; the old
+meaning — full key versus prefix-relative — died with the prefix. The bug the
+split was invented for (`runs.py` and `scenes.py` disagreeing, producing
+`media/media/…`) cannot recur, because there is no prefix to apply twice.
+
+SHARED MATERIAL IS NOT IN THE CATALOG
+-------------------------------------
+`phrasebook_key`, `config_key` and `pose_key` are shared, not owned — they
+belong to no character and no project, `catalog_seed.py` records neither of
+them, and `dev-setup.sh` syncs the pose plates straight into the bucket. They
+therefore have **no catalog node**, and resolving one would 404.
+
+They are still not read with boto3. They go through the API's key-addressed
+routes — `store.shared_presign` / `store.shared_read` over `GET /api/asset` —
+which is the same authority reached a different way. See `adapters/store`.
 
 LEGACY
 ------
@@ -59,7 +83,7 @@ from __future__ import annotations
 import os
 import re
 
-from studio_pipeline.adapters import s3 as s3c
+from studio_pipeline.adapters import api, store
 
 # ── names ───────────────────────────────────────────────────────────────────
 
@@ -114,7 +138,7 @@ def character_prefix(name: str) -> str:
 
 
 def character_key(name: str, *parts: str) -> str:
-    return s3c.key(_join(character_prefix(name), *parts))
+    return _join(character_prefix(name), *parts)
 
 
 def profile_key(name: str) -> str:
@@ -133,8 +157,7 @@ def characters_root() -> str:
 
 def character_of(key: str) -> str | None:
     """'characters/<c>/reference/…' -> '<c>'. Anything else -> None."""
-    rel = _strip_prefix(key)
-    parts = rel.split("/")
+    parts = key.strip("/").split("/")
     if len(parts) >= 2 and parts[0] == CHARACTERS:
         return parts[1] or None
     return None
@@ -147,7 +170,7 @@ def project_prefix(p: str) -> str:
 
 
 def project_key(p: str, *parts: str) -> str:
-    return s3c.key(_join(project_prefix(p), *parts))
+    return _join(project_prefix(p), *parts)
 
 
 def project_json_key(p: str) -> str:
@@ -165,8 +188,7 @@ def projects_root() -> str:
 
 
 def project_of(key: str) -> str | None:
-    rel = _strip_prefix(key)
-    parts = rel.split("/")
+    parts = key.strip("/").split("/")
     if len(parts) >= 2 and parts[0] == PROJECTS:
         return parts[1] or None
     return None
@@ -183,7 +205,7 @@ def run_prefix(p: str, run_id: str) -> str:
 
 
 def run_key(p: str, run_id: str, *parts: str) -> str:
-    return s3c.key(_join(run_prefix(p, run_id), *parts))
+    return _join(run_prefix(p, run_id), *parts)
 
 
 # scenes --------------------------------------------------------------------
@@ -197,7 +219,7 @@ def scene_prefix(p: str, scene_id: str) -> str:
 
 
 def scene_key(p: str, scene_id: str, *parts: str) -> str:
-    return s3c.key(_join(scene_prefix(p, scene_id), *parts))
+    return _join(scene_prefix(p, scene_id), *parts)
 
 
 # movies --------------------------------------------------------------------
@@ -211,7 +233,7 @@ def movie_prefix(p: str, movie_id: str) -> str:
 
 
 def movie_key(p: str, movie_id: str, *parts: str) -> str:
-    return s3c.key(_join(movie_prefix(p, movie_id), *parts))
+    return _join(movie_prefix(p, movie_id), *parts)
 
 
 # chains and the input pool --------------------------------------------------
@@ -221,7 +243,7 @@ def chains_prefix(p: str) -> str:
 
 
 def chain_key(p: str, slug: str) -> str:
-    return s3c.key(_join(chains_prefix(p), f"{slug}.json"))
+    return _join(chains_prefix(p), f"{slug}.json")
 
 
 def input_prefix(p: str) -> str:
@@ -239,13 +261,14 @@ def input_basename(p: str, n: int, ext: str) -> str:
 
 
 def input_key(p: str, n: int, ext: str) -> str:
-    return s3c.key(_join(input_prefix(p), input_basename(p, n, ext)))
+    return _join(input_prefix(p), input_basename(p, n, ext))
 
 
 # ── the phrasebook ──────────────────────────────────────────────────────────
 
 def phrasebook_key() -> str:
-    return s3c.key(_join(PHRASEBOOK, "wording.yaml"))
+    """SHARED. Read it with `store.shared_read` — it has no catalog node."""
+    return _join(PHRASEBOOK, "wording.yaml")
 
 
 # ── config ──────────────────────────────────────────────────────────────────
@@ -259,7 +282,8 @@ def config_prefix(*parts: str) -> str:
 
 
 def config_key(*parts: str) -> str:
-    return s3c.key(config_prefix(*parts))
+    """SHARED. See the module docstring — not resolvable, key-addressed."""
+    return config_prefix(*parts)
 
 
 def pose_prefix(group: str) -> str:
@@ -269,45 +293,57 @@ def pose_prefix(group: str) -> str:
 
 
 def pose_key(group: str, basename: str) -> str:
-    """A plate's full key. `basename` carries its own extension."""
-    return s3c.key(_join(pose_prefix(group), basename))
+    """A plate's key. `basename` carries its own extension.
+
+    SHARED, so a shoot hands this to `store.shared_presign` and not to
+    `store.presign`. The plates arrive by `dev-setup.sh`'s sync and no catalog
+    row is ever written for them; resolving one would 404 and a reference shoot
+    would silently lose its framing guide.
+    """
+    return _join(pose_prefix(group), basename)
 
 
 # ── listing ─────────────────────────────────────────────────────────────────
 
-def _strip_prefix(key: str) -> str:
-    pre = s3c.PREFIX
-    return key[len(pre):] if pre and key.startswith(pre) else key
+def _folder_names(path: str) -> list[str]:
+    """The immediate folder names under a path, natural-sorted.
+
+    **A missing path is an empty list, not an error.** `GET /api/resolve` 404s
+    on a library with no `characters/` yet, and the paginator this replaces
+    answered the same question with zero `CommonPrefixes`. Callers ask "what is
+    there" and none of them distinguish empty from absent, so neither does this.
+    Only a 404 means empty — a 403 is a different fact and is left to surface.
+
+    Folders only. The catalog returns files and folders together, where
+    `list_objects_v2` with a delimiter returned them in separate fields — so the
+    filter is now explicit where it used to be structural, and dropping it would
+    list `project.json` as a project.
+    """
+    try:
+        entries = store.children(path)
+    except api.NotFound:
+        return []
+    names = [e["name"] for e in entries if e.get("kind") == "folder" and e.get("name")]
+    return sorted(names, key=store.natural_key)
 
 
-def _immediate_children(s3, prefix: str) -> list[str]:
-    """The immediate 'folder' names under a media-relative prefix."""
-    full = s3c.key(prefix.rstrip("/") + "/")
-    out: list[str] = []
-    paginator = s3.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=s3c.BUCKET, Prefix=full, Delimiter="/"):
-        for cp in page.get("CommonPrefixes", []) or []:
-            name = cp["Prefix"][len(full):].rstrip("/")
-            if name:
-                out.append(name)
-    return sorted(out, key=s3c.natural_key)
+def list_characters() -> list[str]:
+    return _folder_names(CHARACTERS)
 
 
-def list_characters(s3) -> list[str]:
-    return _immediate_children(s3, CHARACTERS)
+def list_projects() -> list[str]:
+    return _folder_names(PROJECTS)
 
 
-def list_projects(s3) -> list[str]:
-    return _immediate_children(s3, PROJECTS)
-
-
-def list_ids(s3, prefix: str) -> list[str]:
-    """Ids directly under a media-relative prefix — runs, scenes, movies.
+def list_ids(prefix: str) -> list[str]:
+    """Ids directly under a path — runs, scenes, movies.
 
     Ids sort chronologically because they start with a timestamp, so the plain
-    sort is also 'oldest first'.
+    sort is also 'oldest first'. Deliberately NOT the natural sort the folder
+    listings use: a natural sort orders digit runs by numeric value, which for
+    a timestamp is not the same question.
     """
-    return sorted(_immediate_children(s3, prefix))
+    return sorted(_folder_names(prefix))
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -385,7 +421,7 @@ def classify(old_key: str) -> tuple[str, str] | None:
 
     head, _, rest = rel.partition("/")
     if head == "phrasebook":
-        return "phrasebook", s3c.key(_join("phrasebook", rest))
+        return "phrasebook", _join("phrasebook", rest)
     if not rest:
         raise PathError(f"unmapped legacy key (no folder): {old_key!r}")
 

@@ -33,6 +33,7 @@ from studio_pipeline.domain import runs as R
 from studio_pipeline.engine import registry as REG
 from studio_pipeline.engine import shoot as SHOOT
 from studio_pipeline.engine import submit as SUB
+from tests.conftest import BUCKET
 
 REPO_CONFIG = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "config"
@@ -728,7 +729,6 @@ def test_a_shoot_never_writes_into_the_character(media_bucket, spec, monkeypatch
 def test_promoting_a_run_output_is_a_separate_command(media_bucket):
     """`add-refs --from-run` is the second gate, and it copies rather than moves."""
     from studio_pipeline.domain import characters as CHARACTER
-    from studio_pipeline.domain import paths as P
 
     run_output = "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch/output/wave-porch.jpeg"
     result = CliRunner().invoke(cli.main, [
@@ -739,7 +739,7 @@ def test_promoting_a_run_output_is_a_separate_command(media_bucket):
     files = CHARACTER.ref_files(media_bucket, "subject-a")
     assert any(f.startswith("face/subject-a_face_") for f in files), files
     # the run keeps its own output
-    media_bucket.head_object(Bucket=P.s3c.BUCKET, Key=run_output)
+    media_bucket.head_object(Bucket=BUCKET, Key=run_output)
 
 
 def test_pick_and_seed_pick_combine_into_one_identity_set(media_bucket):
@@ -870,7 +870,7 @@ def test_review_sheet_labels_images_in_the_order_the_model_gets_them(media_bucke
     ]
     for key in keys:
         Image.new("RGB", (40, 60), "grey").save(tmp_path / "src.png")
-        media_bucket.upload_file(str(tmp_path / "src.png"), P.s3c.BUCKET, key)
+        media_bucket.upload_file(str(tmp_path / "src.png"), BUCKET, key)
 
     out = SHOOT.review_sheet(media_bucket, "face_front", keys, str(tmp_path / "sheet"), {})
     assert os.path.isfile(out)
@@ -882,7 +882,7 @@ def test_review_sheet_downloads_each_image_once(media_bucket, spec, tmp_path):
     from PIL import Image
     key = "characters/subject-a/seed/subject-a_1.webp"
     Image.new("RGB", (40, 60), "grey").save(tmp_path / "src.png")
-    media_bucket.upload_file(str(tmp_path / "src.png"), P.s3c.BUCKET, key)
+    media_bucket.upload_file(str(tmp_path / "src.png"), BUCKET, key)
 
     cache: dict = {}
     SHOOT.review_sheet(media_bucket, "a", [key], str(tmp_path / "s"), cache)

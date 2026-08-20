@@ -250,12 +250,22 @@ def _aim_store_at(s3, monkeypatch):
         }
 
     def _children(path):
-        prefix = path.strip("/") + "/"
-        found = s3.list_objects_v2(Bucket=BUCKET, Prefix=prefix)
+        """Files AND folders, as `GET /api/nodes?parent=` returns them.
+
+        The delimiter is what makes folders appear: `list_objects_v2` reports
+        them as `CommonPrefixes`, separately from the objects, where the catalog
+        returns both kinds in one list distinguished by `kind`. Returning only
+        the files here made this fixture agree with a bug — `paths.list_projects`
+        would have seen an empty tree and every scene test would have passed by
+        asserting on nothing.
+        """
+        prefix = path.strip("/") + "/" if path.strip("/") else ""
+        found = s3.list_objects_v2(Bucket=BUCKET, Prefix=prefix, Delimiter="/")
         contents = found.get("Contents", [])
-        if not contents:
+        folders = found.get("CommonPrefixes", []) or []
+        if not contents and not folders:
             raise _api.NotFound(f"No such object: {path}", 404)
-        return [
+        entries = [
             {
                 "id": item["Key"],
                 "name": item["Key"][len(prefix):],
@@ -265,6 +275,16 @@ def _aim_store_at(s3, monkeypatch):
             for item in contents
             if not item["Key"].endswith("/") and "/" not in item["Key"][len(prefix):]
         ]
+        entries += [
+            {
+                "id": cp["Prefix"].rstrip("/"),
+                "name": cp["Prefix"][len(prefix):].rstrip("/"),
+                "kind": "folder",
+            }
+            for cp in folders
+            if cp["Prefix"][len(prefix):].rstrip("/")
+        ]
+        return entries
 
     def _read(path):
         return s3.get_object(Bucket=BUCKET, Key=path.strip("/"))["Body"].read()

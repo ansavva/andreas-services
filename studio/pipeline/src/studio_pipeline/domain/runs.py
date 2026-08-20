@@ -280,7 +280,7 @@ def record_result(
 
 def list_runs(s3, project: str) -> list[str]:
     """Run ids in a project, oldest first (ids sort chronologically)."""
-    return P.list_ids(s3, P.runs_prefix(project))
+    return P.list_ids(P.runs_prefix(project))
 
 
 def run_outputs(s3, project: str, run_id: str) -> list[str]:
@@ -379,7 +379,7 @@ def find_by_character(s3, character: str, projects: list[str] | None = None) -> 
     in a project now, so it is a scan of what each run recorded about itself.
     """
     hits = []
-    for project in (projects or P.list_projects(s3)):
+    for project in (projects or P.list_projects()):
         for run_id in list_runs(s3, project):
             if character in run_characters(s3, project, run_id):
                 hits.append(f"{project}/{run_id}")

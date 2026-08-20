@@ -92,7 +92,7 @@ def require_project(s3, project: str | None) -> str:
     set of real options, not the name of the flag that was left out.
     """
     if not project:
-        have = P.list_projects(s3)
+        have = P.list_projects()
         die("no project given. Every generating command needs --project.\n"
             f"       existing projects: {', '.join(have) or '(none yet)'}\n"
             "       create one with: studio projects new <project>")
@@ -147,7 +147,7 @@ def main():
 def do_list(json_):
     """Every project."""
     s3 = s3c.client()
-    names = P.list_projects(s3)
+    names = P.list_projects()
     if json_:
         print(json.dumps([read_project(s3, n) or {"name": n} for n in names], indent=2))
     elif names:
@@ -172,7 +172,7 @@ def do_new(project, characters, description):
     if read_project(s3, project):
         die(f"project {project!r} already exists")
     for c in characters:
-        if c not in P.list_characters(s3):
+        if c not in P.list_characters():
             die(f"no character {c!r} (see `studio character list`)")
     print(write_project(s3, {"name": project, "created": _now(),
                              "description": description,
@@ -188,7 +188,7 @@ def do_init(project, description):
     project = P.check_slug(project, "project name")
     if read_project(s3, project):
         die(f"project {project!r} already has a project.json")
-    if project not in P.list_projects(s3):
+    if project not in P.list_projects():
         die(f"nothing under {P.project_prefix(project)}/ — use `new` to create a project")
     # The characters are read back out of the runs rather than asked for: the
     # history already knows, and asking invites a wrong answer.
@@ -210,7 +210,7 @@ def do_show(project, json_):
     doc = read_project(s3, project) or {
         "name": project,
         "note": "no project.json — created before the record existed"}
-    counts = {kind: len(P.list_ids(s3, P.project_dir_prefix(project, kind)))
+    counts = {kind: len(P.list_ids(P.project_dir_prefix(project, kind)))
               for kind in ("runs", "scenes", "movies")}
     counts["input"] = len(input_keys(s3, project))
     counts["chains"] = len(s3c.list_keys(s3, P.chains_prefix(project)))

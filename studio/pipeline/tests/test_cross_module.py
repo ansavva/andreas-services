@@ -10,6 +10,7 @@ import pytest
 
 from studio_pipeline.domain import phrasebook, projects
 from studio_pipeline.engine import refs
+from tests.conftest import BUCKET
 
 
 # --------------------------------------------------------------------------
@@ -165,7 +166,7 @@ def test_editing_a_bible_writes_it_back_where_it_was_read_from(media_bucket, tmp
     assert written.get("description") == "edited"
 
     keys = [o["Key"] for o in media_bucket.list_objects_v2(
-        Bucket=P.s3c.BUCKET).get("Contents", [])]
+        Bucket=BUCKET).get("Contents", [])]
     assert "subject-a/profile.yaml" not in keys, "wrote to the bucket root"
     assert P.profile_key("subject-a") in keys
 

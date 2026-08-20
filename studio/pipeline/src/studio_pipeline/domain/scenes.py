@@ -121,7 +121,7 @@ def list_scenes(s3, project: str) -> list[str]:
     timestamp; slug-keyed ids sort alphabetically and land after every
     timestamped one. `_newest` reads the manifests instead.
     """
-    return P.list_ids(s3, P.scenes_prefix(project))
+    return P.list_ids(P.scenes_prefix(project))
 
 
 def _newest(s3, project: str, ids: list[str]) -> str:
