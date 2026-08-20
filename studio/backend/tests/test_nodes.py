@@ -26,6 +26,7 @@ import pytest
 
 from studio_core import config
 from studio_core.app_factory import create_app
+from studio_core.errors import NotFoundError
 from studio_core.services import catalog, identity
 from tests.conftest import CATALOG_LIBRARY, CATALOG_OWNER, CATALOG_ROOT
 
@@ -77,6 +78,18 @@ def _client():
 def _get(path, **headers):
     """The route, with a header that the stub ignores and the real code needs."""
     return _client().get(path, headers={"Authorization": "Bearer t", **headers})
+
+
+def _post(path, body, **headers):
+    return _client().post(path, json=body, headers={"Authorization": "Bearer t", **headers})
+
+
+def _patch(path, body, **headers):
+    return _client().patch(path, json=body, headers={"Authorization": "Bearer t", **headers})
+
+
+def _delete(path, **headers):
+    return _client().delete(path, headers={"Authorization": "Bearer t", **headers})
 
 
 def _folder(name, parent=CATALOG_ROOT):
@@ -444,3 +457,227 @@ def test_resolving_as_a_member_of_no_library_is_403(catalog_table, signed_in):
     resp = _get("/api/resolve?path=clip.mp4")
 
     assert resp.status_code == 403
+
+
+# ──────────────────────── POST /api/nodes ────────────────────────
+
+
+def test_creating_a_folder(catalog_table, signed_in):
+    resp = _post("/api/nodes", {"parent": CATALOG_ROOT, "name": "characters", "kind": "folder"})
+
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert (body["name"], body["kind"], body["parent_id"]) == ("characters", "folder", CATALOG_ROOT)
+    assert "blob_key" not in body
+
+
+def test_creating_a_file_needs_a_blob_key(catalog_table, signed_in):
+    """The whole definition of a folder is a node with no blob (#280)."""
+    resp = _post("/api/nodes", {"parent": CATALOG_ROOT, "name": "clip.mp4", "kind": "file"})
+
+    assert resp.status_code == 400
+
+
+def test_creating_a_file(catalog_table, signed_in):
+    resp = _post(
+        "/api/nodes",
+        {
+            "parent": CATALOG_ROOT,
+            "name": "clip.mp4",
+            "kind": "file",
+            "blob_key": BLOB_KEY,
+            "size": 17,
+            "content_type": "video/mp4",
+        },
+    )
+
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert body["size"] == 17
+    # The one field that must not leave, asserted on the route that accepts it.
+    assert "blob_key" not in body
+    assert BLOB_KEY not in resp.get_data(as_text=True)
+
+
+def test_creating_without_a_parent_is_400(catalog_table, signed_in):
+    resp = _post("/api/nodes", {"name": "characters", "kind": "folder"})
+
+    assert resp.status_code == 400
+
+
+def test_creating_a_duplicate_name_is_409(catalog_table, signed_in):
+    """409 and not 400: it tells the UI to keep the name field open."""
+    _folder("characters")
+
+    resp = _post("/api/nodes", {"parent": CATALOG_ROOT, "name": "characters", "kind": "folder"})
+
+    assert resp.status_code == 409
+
+
+def test_creating_in_another_callers_library_is_403(catalog_table, signed_in):
+    """The parent authorises the create — the new node has no `lib` of its own yet."""
+    _second_library(catalog_table)
+
+    resp = _post("/api/nodes", {"parent": OTHER_ROOT, "name": "characters", "kind": "folder"})
+
+    assert resp.status_code == 403
+
+
+# ──────────────────── PATCH /api/nodes/<id> ────────────────────
+
+
+def test_renaming_a_node(catalog_table, signed_in):
+    created = _folder("characters")
+
+    resp = _patch(f"/api/nodes/{created['node_id']}", {"name": "subjects"})
+
+    assert resp.status_code == 200
+    assert resp.get_json()["name"] == "subjects"
+    assert catalog.node(created["node_id"])["name"] == "subjects"
+
+
+def test_renaming_a_folder_leaves_every_descendant_untouched(catalog_table, signed_in):
+    """`path` names ancestors by id, and a rename changes none of them.
+
+    The assertion the ticket asks for, and the reason rename and move are
+    separate fields: a rename that rewrote descendants would be doing a move's
+    work for none of a move's reasons.
+    """
+    folder = _folder("characters")
+    child = _folder("<name>", parent=folder["node_id"])
+    grandchild = _file("profile.yaml", parent=child["node_id"])
+    before = {node["node_id"]: node["path"] for node in (child, grandchild)}
+
+    assert _patch(f"/api/nodes/{folder['node_id']}", {"name": "subjects"}).status_code == 200
+
+    for node_id, path in before.items():
+        assert catalog.node(node_id)["path"] == path
+
+
+def test_renaming_onto_an_existing_name_is_409(catalog_table, signed_in):
+    _folder("characters")
+    other = _folder("projects")
+
+    resp = _patch(f"/api/nodes/{other['node_id']}", {"name": "characters"})
+
+    assert resp.status_code == 409
+
+
+def test_moving_a_node(catalog_table, signed_in):
+    source = _folder("characters")
+    destination = _folder("archive")
+
+    resp = _patch(f"/api/nodes/{source['node_id']}", {"parent": destination["node_id"]})
+
+    assert resp.status_code == 200
+    assert resp.get_json()["parent_id"] == destination["node_id"]
+
+
+def test_sending_both_name_and_parent_is_400(catalog_table, signed_in):
+    """A refusal rather than a guess — the two orderings differ on a collision."""
+    source = _folder("characters")
+    destination = _folder("archive")
+
+    resp = _patch(
+        f"/api/nodes/{source['node_id']}",
+        {"name": "subjects", "parent": destination["node_id"]},
+    )
+
+    assert resp.status_code == 400
+    assert catalog.node(source["node_id"])["name"] == "characters"
+
+
+def test_sending_neither_name_nor_parent_is_400(catalog_table, signed_in):
+    created = _folder("characters")
+
+    assert _patch(f"/api/nodes/{created['node_id']}", {}).status_code == 400
+
+
+def test_moving_into_another_library_is_400(catalog_table, signed_in):
+    """`catalog.move_node` owns this rule; the route does not restate it."""
+    _second_library(catalog_table)
+    catalog_table.put_item(
+        TableName=config.catalog_table(),
+        Item={
+            "pk": {"S": f"USER#{CATALOG_OWNER}"},
+            "sk": {"S": f"LIB#{OTHER_LIBRARY}"},
+            "role": {"S": "member"},
+            "created_at": {"S": _SEED_TIME},
+        },
+    )
+    source = _folder("characters")
+
+    resp = _patch(f"/api/nodes/{source['node_id']}", {"parent": OTHER_ROOT})
+
+    assert resp.status_code == 400
+
+
+def test_patching_a_node_in_another_library_is_403(catalog_table, signed_in):
+    _second_library(catalog_table)
+
+    resp = _patch(f"/api/nodes/{OTHER_NODE}", {"name": "mine.jpeg"})
+
+    assert resp.status_code == 403
+
+
+# ──────────────────── DELETE /api/nodes/<id> ────────────────────
+
+
+def test_deleting_a_node(catalog_table, media_bucket, signed_in):
+    created = _folder("characters")
+
+    resp = _delete(f"/api/nodes/{created['node_id']}")
+
+    assert resp.status_code == 200
+    assert resp.get_json() == {"id": created["node_id"], "deleted": 1}
+    with pytest.raises(NotFoundError):
+        catalog.node(created["node_id"])
+
+
+def test_deleting_a_folder_takes_its_subtree(catalog_table, media_bucket, signed_in):
+    folder = _folder("characters")
+    child = _folder("<name>", parent=folder["node_id"])
+    grandchild = _folder("seed", parent=child["node_id"])
+
+    resp = _delete(f"/api/nodes/{folder['node_id']}")
+
+    assert resp.get_json()["deleted"] == 3
+    for gone in (folder, child, grandchild):
+        with pytest.raises(NotFoundError):
+            catalog.node(gone["node_id"])
+
+
+def test_deleting_a_file_removes_its_blob(catalog_table, media_bucket, signed_in):
+    """Rows first, then blobs. Asserted against the bucket, not a call log."""
+    key = "characters/subject-a/seed/subject-a_1.webp"
+    created = catalog.create_node(CATALOG_ROOT, "seed.webp", catalog.KIND_FILE, blob_key=key)
+
+    assert _delete(f"/api/nodes/{created['node_id']}").status_code == 200
+
+    listed = media_bucket.list_objects_v2(Bucket=config.media_bucket(), Prefix=key)
+    assert listed.get("KeyCount") == 0
+
+
+def test_deleting_never_returns_blob_keys(catalog_table, media_bucket, signed_in):
+    """The internal half of a record does not leave, on the verb that knows them all."""
+    created = catalog.create_node(
+        CATALOG_ROOT, "seed.webp", catalog.KIND_FILE, blob_key=BLOB_KEY
+    )
+
+    body = _delete(f"/api/nodes/{created['node_id']}").get_data(as_text=True)
+
+    assert "blob_key" not in body
+    assert BLOB_KEY not in body
+
+
+def test_deleting_the_library_root_is_400(catalog_table, media_bucket, signed_in):
+    assert _delete(f"/api/nodes/{CATALOG_ROOT}").status_code == 400
+
+
+def test_deleting_in_another_library_is_403(catalog_table, media_bucket, signed_in):
+    _second_library(catalog_table)
+
+    resp = _delete(f"/api/nodes/{OTHER_NODE}")
+
+    assert resp.status_code == 403
+    assert catalog.node(OTHER_NODE)["node_id"] == OTHER_NODE
