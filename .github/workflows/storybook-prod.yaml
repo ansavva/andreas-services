@@ -302,18 +302,29 @@ jobs:
 
       - name: Read infrastructure values from SSM
         run: |
-          get() { aws ssm get-parameter --name "/storybook/prod/${1}" \
-            --query Parameter.Value --output text; }
+          # Assign, check, then export. `echo "X=$(get …)" >> "$GITHUB_ENV"`
+          # took its exit status from `echo`, not from the substitution, so a
+          # failed or renamed parameter wrote an EMPTY STRING and the step went
+          # green under `bash -e`. `None` is what `--output text` prints for a
+          # null value, so it is an empty read wearing a name.
+          put() {
+            local value
+            value="$(aws ssm get-parameter --name "$2" \
+              --query Parameter.Value --output text)" || exit 1
+            [ -n "$value" ] && [ "$value" != "None" ] ||
+              { echo "::error::$2 resolved empty; refusing to continue." >&2; exit 1; }
+            echo "$1=$value" >> "$GITHUB_ENV"
+          }
 
-          echo "ECR_URL=$(get ecr-url)"                         >> "$GITHUB_ENV"
-          echo "IMAGE_WORKER_ECR_URL=$(get image-worker-ecr-url)" >> "$GITHUB_ENV"
-          echo "LAMBDA_NAME=$(get lambda-name)"                 >> "$GITHUB_ENV"
-          echo "IMAGE_WORKER_LAMBDA=$(get image-worker-lambda)" >> "$GITHUB_ENV"
-          echo "S3_BACKEND_BUCKET=$(get s3-backend-bucket)"     >> "$GITHUB_ENV"
-          echo "APP_URL=$(get app-url)"                         >> "$GITHUB_ENV"
-          echo "IMAGE_QUEUE_URL=$(get image-queue-url)"         >> "$GITHUB_ENV"
-          echo "COGNITO_POOL_ID=$(get cognito-user-pool-id)"    >> "$GITHUB_ENV"
-          echo "COGNITO_CLIENT_ID=$(get cognito-client-id)"     >> "$GITHUB_ENV"
+          put ECR_URL              /storybook/prod/ecr-url
+          put IMAGE_WORKER_ECR_URL /storybook/prod/image-worker-ecr-url
+          put LAMBDA_NAME          /storybook/prod/lambda-name
+          put IMAGE_WORKER_LAMBDA  /storybook/prod/image-worker-lambda
+          put S3_BACKEND_BUCKET    /storybook/prod/s3-backend-bucket
+          put APP_URL              /storybook/prod/app-url
+          put IMAGE_QUEUE_URL      /storybook/prod/image-queue-url
+          put COGNITO_POOL_ID      /storybook/prod/cognito-user-pool-id
+          put COGNITO_CLIENT_ID    /storybook/prod/cognito-client-id
 
       - name: Update API Lambda env vars + code
         env:
@@ -433,15 +444,27 @@ jobs:
 
       - name: Read infrastructure values from SSM
         run: |
-          get() { aws ssm get-parameter --name "/storybook/prod/${1}" \
-            --query Parameter.Value --output text; }
+          # Assign, check, then export. `echo "X=$(get …)" >> "$GITHUB_ENV"`
+          # took its exit status from `echo`, not from the substitution, so a
+          # failed or renamed parameter wrote an EMPTY STRING and the step went
+          # green under `bash -e`. `None` is what `--output text` prints for a
+          # null value, so it is an empty read wearing a name.
+          put() {
+            local value
+            value="$(aws ssm get-parameter --name "$2" \
+              --query Parameter.Value --output text)" || exit 1
+            [ -n "$value" ] && [ "$value" != "None" ] ||
+              { echo "::error::$2 resolved empty; refusing to continue." >&2; exit 1; }
+            echo "$1=$value" >> "$GITHUB_ENV"
+          }
 
-          echo "VITE_API_URL=$(get api-url)"                         >> "$GITHUB_ENV"
-          echo "VITE_COGNITO_POOL_ID=$(get cognito-user-pool-id)"   >> "$GITHUB_ENV"
-          echo "VITE_COGNITO_CLIENT_ID=$(get cognito-client-id)"    >> "$GITHUB_ENV"
-          echo "VITE_COGNITO_DOMAIN=$(get cognito-domain)"          >> "$GITHUB_ENV"
-          echo "S3_FRONTEND_BUCKET=$(get s3-frontend-bucket)"       >> "$GITHUB_ENV"
-          echo "CF_DIST_ID=$(get cf-dist-id)"                       >> "$GITHUB_ENV"
+          put VITE_API_URL         /storybook/prod/api-url
+          put S3_FRONTEND_BUCKET   /storybook/prod/s3-frontend-bucket
+          put CF_DIST_ID           /storybook/prod/cf-dist-id
+          # Vite inlines these; empty ships an SPA whose login can never succeed.
+          put VITE_COGNITO_POOL_ID   /storybook/prod/cognito-user-pool-id
+          put VITE_COGNITO_CLIENT_ID /storybook/prod/cognito-client-id
+          put VITE_COGNITO_DOMAIN    /storybook/prod/cognito-domain
 
       - name: Set up Node.js 24
         uses: actions/setup-node@v6

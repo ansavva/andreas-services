@@ -435,9 +435,22 @@ jobs:
 
       - name: Read infra values from SSM
         run: |
-          get() { aws ssm get-parameter --name "/website/prod/${1}" --query Parameter.Value --output text; }
-          echo "S3_BUCKET=$(get assets-bucket)" >> "$GITHUB_ENV"
-          echo "CF_DIST_ID=$(get cf-dist-id)"    >> "$GITHUB_ENV"
+          # Assign, check, then export. `echo "X=$(get …)" >> "$GITHUB_ENV"`
+          # took its exit status from `echo`, not from the substitution, so a
+          # failed or renamed parameter wrote an EMPTY STRING and the step went
+          # green under `bash -e`. `None` is what `--output text` prints for a
+          # null value, so it is an empty read wearing a name.
+          put() {
+            local value
+            value="$(aws ssm get-parameter --name "$2" \
+              --query Parameter.Value --output text)" || exit 1
+            [ -n "$value" ] && [ "$value" != "None" ] ||
+              { echo "::error::$2 resolved empty; refusing to continue." >&2; exit 1; }
+            echo "$1=$value" >> "$GITHUB_ENV"
+          }
+
+          put S3_BUCKET  /website/prod/assets-bucket
+          put CF_DIST_ID /website/prod/cf-dist-id
 
       - name: Sync assets to S3 (immutable)
         run: |
