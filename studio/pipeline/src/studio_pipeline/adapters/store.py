@@ -89,6 +89,41 @@ def children(path: str) -> list:
     return listed if isinstance(listed, list) else []
 
 
+def exists(path: str) -> bool:
+    """Whether a node is there. Cheaper than fetching it, and never raises."""
+    try:
+        resolve(path)
+    except api.NotFound:
+        return False
+    return True
+
+
+def size(path: str) -> int:
+    """The recorded byte size of a file, or 0 if it has none yet.
+
+    Off the node record rather than a HEAD against the object: the catalog knows
+    this, and a placeholder that has not been confirmed genuinely has no size —
+    reporting 0 is the honest answer, not a failure.
+    """
+    return int(resolve(path).get("size") or 0)
+
+
+def copy(source: str, destination: str, *, content_type: str) -> dict:
+    """Copy one file's bytes to another path.
+
+    **The bytes travel through this process**, which a server-side
+    `CopyObject` did not. That is the cost, and it is accepted here rather than
+    hidden: the alternative is a second node pointing at one blob, which is
+    copy-on-write (#334, deferred) and carries a hazard already written into the
+    API's delete route — the day two rows share a key, deleting one destroys the
+    other's bytes.
+
+    So this is a real copy: two blobs, two independent lifetimes. Fine for the
+    images it is used for; reconsider before pointing it at video.
+    """
+    return write(destination, read(source), content_type=content_type)
+
+
 def read(path: str) -> bytes:
     """The bytes of one file."""
     signed = api.get(f"/api/nodes/{resolve(path)['id']}/download-url")

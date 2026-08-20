@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -56,6 +57,7 @@ import click
 
 from studio_pipeline.adapters import replicate as RA
 from studio_pipeline.adapters import s3 as s3c
+from studio_pipeline.adapters import store
 from studio_pipeline.domain import contact_sheet as SHEET
 from studio_pipeline.domain import paths as P
 from studio_pipeline.domain import runs as R
@@ -449,7 +451,7 @@ def review_sheet(s3, manifest: dict, label: str, items: list[tuple[str, str]],
         local = cache.get(key)
         if local is None:
             local = os.path.join(tmp, f"src-{len(cache)}-{os.path.basename(key)}")
-            s3.download_file(s3c.BUCKET, key, local)
+            store.download(key, pathlib.Path(local))
             cache[key] = local
         paths.append(local)
         captions.append(caption)
@@ -458,7 +460,7 @@ def review_sheet(s3, manifest: dict, label: str, items: list[tuple[str, str]],
 
     project, _, scene_id = manifest["scene"].partition("/")
     key = SC.scene_key(project, scene_id, "review", f"{label}.png")
-    s3.upload_file(out, s3c.BUCKET, key, ExtraArgs={"ContentType": "image/png"})
+    store.upload(key, pathlib.Path(out), content_type="image/png")
     return key if out_dir is None else f"{key}\n       (local copy: {out})"
 
 
@@ -613,10 +615,12 @@ def run_board(ref: str, opts) -> int:
             continue
         src = outs[0]
         dest = panel_storyboard_key(manifest, shot, panel, os.path.splitext(src)[1])
-        # Server-side copy: the run keeps its own output, and the board holds a
-        # copy of the panel as it was when it was approved.
-        s3.copy_object(Bucket=s3c.BUCKET, Key=dest,
-                       CopySource={"Bucket": s3c.BUCKET, "Key": src})
+        # The run keeps its own output; the board holds a copy of the panel as it
+        # was when approved. This was a server-side CopyObject and is now a read
+        # and a write through the API, so the bytes travel through this process —
+        # see `store.copy`. A shared blob would have been cheaper and is #334's
+        # hazard, not this one's.
+        store.copy(src, dest, content_type="image/png")
         panel.update(run=f"{owner}/{run_id}", source_key=src, key=dest,
                      boarded=R._now(), stale=False)
         SC.write_manifest(s3, manifest)
