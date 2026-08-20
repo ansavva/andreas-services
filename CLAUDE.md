@@ -89,6 +89,16 @@ Final verification against prod is a browser, and that is on the user.
 Prefer fixing infrastructure through Terraform + the deploy pipeline over manual
 CLI mutations, to avoid IaC drift.
 
+**GitHub access depends on where the session runs — read the `github-access`
+skill before any `gh` command or GitHub 403.** In a Claude cloud session the egress
+proxy denies nearly every repo-scoped `gh` call (REST `/repos/*`, most GraphQL, all
+of `/actions/secrets` and `/actions/variables`), and the `mcp__github__*` tools are
+the working channel. The proxy also strips `Authorization` and injects its own App
+identity, so `gh auth status` reports `The token in GH_TOKEN is invalid` when the
+token is fine — **never rotate a PAT on the strength of that message.** Locally,
+with a real PAT and no proxy, `gh` behaves normally. Secret *values* are unreadable
+in both, by design.
+
 ## Services
 
 | Directory | Purpose | Stack |
