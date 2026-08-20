@@ -194,8 +194,8 @@ def do_init(project, description):
     # history already knows, and asking invites a wrong answer.
     from studio_pipeline.domain import runs as R
     chars: set[str] = set()
-    for run_id in R.list_runs(s3, project):
-        chars.update(R.run_characters(s3, project, run_id))
+    for run_id in R.list_runs(project):
+        chars.update(R.run_characters(project, run_id))
     print(write_project(s3, {"name": project, "created": _now(),
                              "description": description, "characters": sorted(chars)}))
 

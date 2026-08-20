@@ -81,7 +81,7 @@ def convert(add_input, dest_key, for_, key, project, quality, run, to):
     # --- resolve the source -------------------------------------------------
     if run:
         try:
-            keys = R.resolve_output_keys(s3, run, project, kinds=R.IMG_EXTS)
+            keys = R.resolve_output_keys(run, project, kinds=R.IMG_EXTS)
         except R.RunError as e:
             die(str(e))
         if len(keys) > 1:

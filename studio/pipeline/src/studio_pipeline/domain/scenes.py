@@ -194,7 +194,7 @@ def manifest_key(project: str, scene_id: str) -> str:
 
 def read_manifest(s3, project: str, scene_id: str) -> dict | None:
     """A scene's record, or None when there is no scene there."""
-    return R.read_json(s3, manifest_key(project, scene_id))
+    return R.read_json(manifest_key(project, scene_id))
 
 
 def write_manifest(s3, manifest: dict) -> dict:
@@ -214,7 +214,7 @@ def write_manifest(s3, manifest: dict) -> dict:
     # `<timestamp>_<slug>` and writing it back under its bare slug would put it
     # in a directory that does not exist.
     project, _, scene_id = manifest["scene"].partition("/")
-    R.write_json(s3, manifest_key(project, scene_id), manifest)
+    R.write_json(manifest_key(project, scene_id), manifest)
     return manifest
 
 
@@ -263,7 +263,7 @@ def shot_video_key(s3, shot: dict, project: str) -> str | None:
         return shot["key"]
     if not shot.get("run"):
         return None
-    keys = R.resolve_output_keys(s3, shot.get("runref") or shot["run"],
+    keys = R.resolve_output_keys(shot.get("runref") or shot["run"],
                                  default_project=project, kinds=VIDEO_EXT)
     if len(keys) > 1:
         die(f"shot {shot.get('id') or shot.get('n')}: its run has {len(keys)} videos; "
@@ -296,11 +296,11 @@ def assemble(s3, project: str, scene_id: str, refs: tuple[str, ...] = (),
     characters = set(manifest.get("characters") or [])
 
     for ref in refs:
-        run_project, run_id = R.resolve_run(s3, ref, default_project=project)
-        keys = R.resolve_output_keys(s3, ref, default_project=project, kinds=VIDEO_EXT)
+        run_project, run_id = R.resolve_run(ref, default_project=project)
+        keys = R.resolve_output_keys(ref, default_project=project, kinds=VIDEO_EXT)
         if len(keys) > 1:
             die(f"{ref}: {len(keys)} videos; append #N to pick one")
-        characters.update(R.run_characters(s3, run_project, run_id))
+        characters.update(R.run_characters(run_project, run_id))
         shots.append({"n": len(shots) + 1, "id": f"shot-{len(shots) + 1:02d}",
                       "runref": ref, "run": f"{run_project}/{run_id}", "key": keys[0]})
 
@@ -337,7 +337,7 @@ def assemble(s3, project: str, scene_id: str, refs: tuple[str, ...] = (),
         shot["duration"] = pr["duration"]
 
     out_key = scene_key(project, scene_id, "output", f"{R.slugify(slug)}.mp4")
-    superseded = R.read_json(s3, manifest_key(project, scene_id)) or {}
+    superseded = R.read_json(manifest_key(project, scene_id)) or {}
     s3.upload_file(out_local, BUCKET, out_key, ExtraArgs={"ContentType": "video/mp4"})
 
     manifest["characters"] = sorted(characters)
@@ -591,7 +591,7 @@ def do_show(ref, project):
     """One scene's record."""
     s3 = client()
     owner, sid = resolve_scene(s3, ref, project)
-    print(json.dumps(R.read_json(s3, scene_key(owner, sid, "scene.json")), indent=2))
+    print(json.dumps(R.read_json(scene_key(owner, sid, "scene.json")), indent=2))
 
 
 @main.command("outputs")
@@ -605,7 +605,7 @@ def do_outputs(ref, expires, presign, project):
     owner, sid = resolve_scene(s3, ref, project)
     keys = list_keys(s3, P.scene_prefix(owner, sid) + "/output/")
     if presign:
-        for k, u in zip(keys, R.presign(s3, keys, expires)):
+        for k, u in zip(keys, R.presign(keys, expires)):
             print(f"{k}\n  {u}")
     else:
         print("\n".join(keys))

@@ -204,9 +204,11 @@ the monorepo — studio's setup is one guarded, non-fatal step inside it.
 
 External tools:
 - **AWS CLI** (`aws`) — `brew install awscli` — **required**. It is how the
-  pipeline reaches the bucket: `store/s3.py` bridges `aws configure
-  export-credentials` into boto3, because boto3's own chain does not understand
-  an `aws login` session. Sign in with `aws login` each session.
+  pipeline's remaining direct AWS access reaches the bucket: `adapters/s3.py`
+  bridges `aws configure export-credentials` into boto3, because boto3's own
+  chain does not understand an `aws login` session. Sign in with `aws login`
+  each session. Everything already on `adapters/store.py` needs no AWS login at
+  all — it authenticates to the API with `studio login`.
 - **ffmpeg** — `brew install ffmpeg` — optional. The scene and movie code
   vendors `imageio-ffmpeg`; this is for checking a render by hand.
 
@@ -460,7 +462,10 @@ or projects.
 
 | Module | Purpose |
 |---|---|
-| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. One auth path for the whole package — `session()` is what everything else asks for. |
+| `store.py` | **The media store, addressed by path and reached through the API.** Resolve a name path to a node, list, read, write, upload, copy, presign, and ensure a folder exists. No bucket name, no credentials — bytes travel to S3 directly on presigned URLs the API signs, which is what keeps a video out of the Lambda's request limit. `s3.py` is being retired into this. |
+| `api.py` | One transport for every call the CLI makes: bearer token, refresh-on-401, library header, error mapping. Decided once so no caller re-decides it. |
+| `auth.py` | The Cognito sign-in behind `studio login`, and the token cache it writes. |
+| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. One auth path for the whole package — `session()` is what everything else asks for. **Shrinking**: everything above the adapters is moving onto `store.py`, and `domain/runs.py` no longer imports this. |
 | `ddb.py` | The catalog table's client and the typed-attribute marshalling every write needs. Takes its credentials from `s3.py`, because the bridge resolves a session and not an S3 session. Knows nothing about libraries or nodes. |
 | `replicate.py` | Token, HTTP, download, poll. |
 | `ffmpeg.py` | Probe, stitch, frame grab, contact grid. A scene and a movie join their inputs by identical rules because they call the same function. ffmpeg ships in the wheel; no system install. |
@@ -471,7 +476,7 @@ or projects.
 |---|---|
 | `paths.py` | **The one module that knows the tree's shape.** Every key is built here, which is what keeps a global prefix applied in exactly one place. Library, not a command. |
 | `projects.py` | Project CRUD and the project **input pool**. `require_project()` turns a missing `--project` into an error that lists the real options. |
-| `runs.py` | The shared **run store** every engine records into: request/prompt/result, output archiving, runref resolution for chaining, `find --character` across projects. It refuses a URL-shaped binding — this is where "S3 is the only origin" is enforced in code. |
+| `runs.py` | The shared **run store** every engine records into: request/prompt/result, output archiving, runref resolution for chaining, `find --character` across projects. It refuses a URL-shaped binding — this is where "S3 is the only origin" is enforced in code, and it has to be, because the API stores these documents as bytes and never decodes one. A run is created by `POST /api/runs`, which makes the folder and writes its documents together and answers 409 to a re-send; `result.json` and the outputs are ordinary writes into that folder afterwards, because they do not exist until the prediction comes back. |
 | `scenes.py` | The **scene store**: a piece planned, shot and cut, under `projects/<p>/scenes/<slug>/`. Owns the manifest, `assemble`, `handoff`, and the read-only half of the CLI. |
 | `storyboard.py` | **The plan document**, pure data: what a shot's panels mean, which one is the start frame once the chain has spoken, how a revision merges onto work already paid for. No S3, no models — so the rules that decide what a shot sends are testable on their own. |
 | `movies.py` | The **movie store**: scenes cut into one piece. The same shape one tier up. |

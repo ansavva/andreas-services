@@ -94,7 +94,7 @@ def gather(entry: dict, s3, args) -> dict:
     if start_field:
         if start_run:
             bindings[start_field] = R.resolve_output_keys(
-                s3, start_run, project, kinds=exts)[0]
+                start_run, project, kinds=exts)[0]
         elif start_key:
             bindings[start_field] = start_key
         if end_run or end_key:
@@ -102,7 +102,7 @@ def gather(entry: dict, s3, args) -> dict:
                 raise SubmitError(
                     f"a last frame requires a first frame ({end_field} needs {start_field}).")
             bindings[end_field] = (
-                R.resolve_output_keys(s3, end_run, project, kinds=exts)[0]
+                R.resolve_output_keys(end_run, project, kinds=exts)[0]
                 if end_run else end_key
             )
 
@@ -113,12 +113,12 @@ def gather(entry: dict, s3, args) -> dict:
     cap = imgs.get("max_refs")
     keys: list[str] = []
     if getattr(args, "image_run", None):
-        keys += R.resolve_output_keys(s3, args.image_run, project, kinds=exts)
+        keys += R.resolve_output_keys(args.image_run, project, kinds=exts)
     for character in (args.character or []):
         keys += REFS.character_ref_keys(character, slots, pick, tags,
                                         cap=cap, cap_name=entry["key"])
     for ref in getattr(args, "ref_run", None) or []:
-        keys += R.resolve_output_keys(s3, ref, project, kinds=exts)
+        keys += R.resolve_output_keys(ref, project, kinds=exts)
     # `input_`, because `input` shadows the builtin and Click was given the safe
     # spelling. This read `args.input` through a defaulting getattr, so
     # `--input 3` bound NOTHING and said nothing — the quietest possible failure:
@@ -365,7 +365,7 @@ def execute(entry: dict, payload: dict, bindings: dict, s3, token: str, args) ->
     # association is read back. Hence the explicit override.
     characters = list(getattr(args, "record_characters", None) or args.character or [])
     try:
-        R.record_request(s3, project, run_id, kind=kind, engine=entry["skill"],
+        R.record_request(project, run_id, kind=kind, engine=entry["skill"],
                          model=entry["model"], input=payload, bindings=bindings,
                          characters=characters, prompt_source=prompt_source,
                          # Provenance a caller wants carried into the record. A
@@ -378,15 +378,15 @@ def execute(entry: dict, payload: dict, bindings: dict, s3, token: str, args) ->
 
     # Mint presigned URLs at the last possible moment; they are never stored.
     for f, val in bindings.items():
-        payload[f] = (R.presign(s3, val, args.expires) if isinstance(val, list)
-                      else R.presign(s3, [val], args.expires)[0])
+        payload[f] = (R.presign(val, args.expires) if isinstance(val, list)
+                      else R.presign([val], args.expires)[0])
     if bindings:
         print(f"minted presigned URL(s) for {sorted(bindings)}", file=sys.stderr)
 
     created = RA.create_prediction(entry["model"], payload, token)
     pid = created.get("id")
     if not pid:
-        R.record_result(s3, project, run_id, prediction_id=None, status="failed",
+        R.record_result(project, run_id, prediction_id=None, status="failed",
                         error="no prediction id returned")
         raise SubmitError(f"no prediction id returned: {json.dumps(created)[:400]}")
 
@@ -400,18 +400,18 @@ def execute(entry: dict, payload: dict, bindings: dict, s3, token: str, args) ->
         cur = RA.poll(pid, token, args.interval, args.timeout,
                       on_status=lambda s: print(f"  {s}", file=sys.stderr))
     except TimeoutError as e:
-        R.record_result(s3, project, run_id, prediction_id=pid, status="timeout", error=str(e))
+        R.record_result(project, run_id, prediction_id=pid, status="timeout", error=str(e))
         raise SubmitError(f"{e}; prediction {pid} may still be running.")
 
     if cur.get("status") != "succeeded":
-        R.record_result(s3, project, run_id, prediction_id=pid, status=cur.get("status"),
+        R.record_result(project, run_id, prediction_id=pid, status=cur.get("status"),
                         error=cur.get("error"))
         raise SubmitError(f"prediction {cur.get('status')}: {cur.get('error')}")
 
     out = cur.get("output")
     urls = [out] if isinstance(out, str) else list(out or [])
     if not urls:
-        R.record_result(s3, project, run_id, prediction_id=pid, status="succeeded",
+        R.record_result(project, run_id, prediction_id=pid, status="succeeded",
                         error="no output returned")
         raise SubmitError("prediction succeeded but returned no output.")
 
@@ -422,14 +422,14 @@ def execute(entry: dict, payload: dict, bindings: dict, s3, token: str, args) ->
         ext = os.path.splitext(u.split("?")[0])[1] or d["default_ext"]
         base = f"{R.slugify(args.slug)}{'' if len(urls) == 1 else f'-{i}'}{ext}"
         local = RA.download(u, os.path.join(staged, base))
-        out_keys.append(R.upload_output(s3, project, run_id, local, base))
+        out_keys.append(R.upload_output(project, run_id, local, base))
         if getattr(args, "dest", None):
             os.makedirs(args.dest, exist_ok=True)
             os.replace(local, os.path.join(args.dest, base))
         else:
             os.remove(local)
 
-    R.record_result(s3, project, run_id, prediction_id=pid, status="succeeded",
+    R.record_result(project, run_id, prediction_id=pid, status="succeeded",
                     outputs=out_keys, source_urls=urls)
     print(json.dumps({
         "run": run, "runref": f"{run}#1", "model": entry["model"],

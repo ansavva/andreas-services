@@ -81,8 +81,8 @@ from studio_pipeline.domain import runs as R  # noqa: E402
 
 def fetch_video(s3, ref: str, project: str | None, tmp: str) -> tuple[str, str, str]:
     """Resolve a runref to exactly one video and download it. -> (project, run_id, path)."""
-    run_project, run_id = R.resolve_run(s3, ref, default_project=project)
-    keys = R.resolve_output_keys(s3, ref, default_project=project)
+    run_project, run_id = R.resolve_run(ref, default_project=project)
+    keys = R.resolve_output_keys(ref, default_project=project)
     vids = [k for k in keys if k.lower().endswith(VIDEO_EXT)]
     if not vids:
         die(f"{ref}: no video output (got {keys or 'nothing'})")
@@ -119,7 +119,7 @@ def load_chain(s3, project: str, slug: str) -> dict:
     missing key rather than raising, so check the value, not just for an error."""
     doc = None
     try:
-        doc = R.read_json(s3, chain_key(project, slug))
+        doc = R.read_json(chain_key(project, slug))
     except Exception:
         doc = None
     return doc or {"chain": f"{project}/{chain_slug(slug)}", "project": project,
@@ -132,7 +132,7 @@ def chain_add(s3, project: str, slug: str, key: str, from_run: str | None) -> di
         return doc
     doc["frames"].append({"n": len(doc["frames"]) + 1, "key": key,
                           "from_run": from_run, "added": R._now()})
-    R.write_json(s3, chain_key(project, slug), doc)
+    R.write_json(chain_key(project, slug), doc)
     return doc
 
 
@@ -259,7 +259,7 @@ def do_chain(ref, add_key, args, max_, seed):
     doc = load_chain(s3, project, slug)
     if seed:
         doc["seed"] = seed
-        R.write_json(s3, chain_key(project, slug), doc)
+        R.write_json(chain_key(project, slug), doc)
     for k in add_key:
         doc = chain_add(s3, project, slug, k, None)
     keys = chain_keys(doc, max_)

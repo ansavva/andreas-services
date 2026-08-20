@@ -203,3 +203,102 @@ def test_resolve_goes_through_the_real_api_signature(monkeypatch):
 
     assert store.resolve("characters/<name>/reference")["id"] == "node-1"
     assert "path=characters" in seen["url"]
+
+
+# ──────────────────────────── folders (#304) ────────────────────────────
+#
+# Folders were free in S3 — a key with slashes in it looked like one — and are
+# rows now. `store.folder` is what a caller uses to say a run exists before
+# writing a document inside it.
+
+
+def test_an_existing_folder_is_returned_without_creating_anything(apis):
+    calls, table = apis
+    table[("GET", "/api/resolve")] = {"id": "node-runs", "kind": "folder"}
+
+    assert store.folder("projects/<project>/runs")["id"] == "node-runs"
+    assert not [call for call in calls if call[0] == "POST"]
+
+
+def test_a_missing_folder_is_created_under_its_parent(apis, monkeypatch):
+    calls, table = apis
+    # `store.folder` resolves the folder and then its parent, and both are
+    # `GET /api/resolve` — so this one answers by path rather than by route.
+    def _get(_route, **params):
+        calls.append(("GET", _route, params))
+        if params.get("path") == "projects/<project>/runs":
+            raise api.NotFound("no such node", 404)
+        return {"id": "node-project", "kind": "folder"}
+
+    monkeypatch.setattr(api, "get", _get)
+    table[("POST", "/api/nodes")] = {"id": "node-runs", "kind": "folder"}
+
+    assert store.folder("projects/<project>/runs")["id"] == "node-runs"
+    assert calls[-1] == (
+        "POST", "/api/nodes",
+        {"parent": "node-project", "name": "runs", "kind": "folder"},
+    )
+
+
+def test_a_folder_that_appears_between_the_resolve_and_the_create_is_not_an_error(
+    apis, monkeypatch
+):
+    """409 means somebody else made it, and the node they made is the answer."""
+    calls, table = apis
+    answers = [api.NotFound("no such node", 404), {"id": "node-parent", "kind": "folder"},
+               {"id": "node-theirs", "kind": "folder"}]
+
+    def _get(_route, **params):
+        calls.append(("GET", _route, params))
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(api, "get", _get)
+    table[("POST", "/api/nodes")] = api.Conflict("'runs' already exists here", 409)
+
+    assert store.folder("projects/<project>/runs")["id"] == "node-theirs"
+
+
+def test_a_file_is_not_a_folder(apis):
+    """Refused here, where the path is still known.
+
+    `catalog.create_node` would refuse the children one at a time, naming the
+    parent's id — which says nothing about which path was wrong.
+    """
+    _, table = apis
+    table[("GET", "/api/resolve")] = {"id": "node-1", "kind": "file"}
+
+    with pytest.raises(store.StoreError, match="is a file"):
+        store.folder("projects/<project>/project.json")
+
+
+def test_a_missing_chain_of_folders_is_created_deepest_last(apis, monkeypatch):
+    """Ancestors too, so a caller states the path it wants rather than walking it.
+
+    `projects/<p>/runs/<run>/output` is four levels below the root and a fresh
+    project has none of them: `projects/<p>` is written by `project create` and
+    the rest were free in S3. Creating only the leaf would 404 on its parent.
+    """
+    calls, table = apis
+    present = {"projects"}
+
+    def _get(_route, **params):
+        calls.append(("GET", _route, params))
+        path = params.get("path")
+        if path not in present:
+            raise api.NotFound(f"no such node: {path}", 404)
+        return {"id": f"node:{path}", "kind": "folder"}
+
+    def _post(_route, payload=None, **params):
+        calls.append(("POST", _route, payload))
+        return {"id": f"node:{payload['name']}", "kind": "folder"}
+
+    monkeypatch.setattr(api, "get", _get)
+    monkeypatch.setattr(api, "post", _post)
+
+    store.folder("projects/<project>/runs")
+
+    assert [payload["name"] for verb, route, payload in calls
+            if verb == "POST" and route == "/api/nodes"] == ["<project>", "runs"]

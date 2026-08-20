@@ -736,7 +736,7 @@ def cmd_add_refs(files, name, from_run, project, replace, start, to):
     run_slots: list[str | None] = []
     for ref in from_run:
         try:
-            keys = R.resolve_output_keys(s3, ref, project, kinds=IMG_EXTS)
+            keys = R.resolve_output_keys(ref, project, kinds=IMG_EXTS)
         except R.RunError as exc:
             die(str(exc))
         run_keys += keys
@@ -785,9 +785,9 @@ def cmd_add_refs(files, name, from_run, project, replace, start, to):
 def _run_slot(s3, ref: str, project: str | None) -> str | None:
     """The shot slot a run recorded, if it was one — see `record_extra`."""
     try:
-        proj, run_id = R.resolve_run(s3, ref, project)
+        proj, run_id = R.resolve_run(ref, project)
         # `run_record` wraps the documents; the slot rides in request.json.
-        record = R.run_record(s3, proj, run_id) or {}
+        record = R.run_record(proj, run_id) or {}
         return ((record.get("request") or {}).get("reference_slot")) or None
     except Exception:  # noqa: BLE001 — provenance is a bonus, never a blocker
         return None
