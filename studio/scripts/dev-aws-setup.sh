@@ -98,7 +98,7 @@ table="$(jq -r '.catalog_table_name.value' <<<"$outputs")"
 ok "AWS development resources are ready."
 printf '\n  Cognito user pool:   %s\n  Cognito app client:  %s\n  Media bucket:        s3://%s/\n  Catalog table:       %s\n' \
   "$pool_id" "$client_id" "$bucket" "$table"
-printf '\nConfirm the stack at any time with:\n  ./studio/scripts/dev-aws-setup.sh --check --profile %s\n' "$AWS_PROFILE_VALUE"
+printf '\nConfirm the stack at any time with:\n  ./studio/scripts/dev-aws-setup.sh --check %s\n' "$(aws_profile_flag)"
 # The bucket and table are empty and the pool has no accounts. Say so, because
 # an empty stack looks identical to a broken one from the app.
 printf '\nThe bucket, table and pool are empty. Nothing has been seeded into them,\nand dev-setup.sh still writes prod values into the local env files.\n'

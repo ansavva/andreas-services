@@ -106,6 +106,8 @@ else
   load_machine_id true >/dev/null
 fi
 load_machine_id false
+# The id is known only now, so the names keyed to it are derived only now.
+derive_machine_scoped_names
 
 printf '\n╔══════════════════════════════════════════════════════════════════╗\n'
 printf '║  SAVE THIS. It is the only handle on the stack about to exist.   ║\n'
@@ -148,6 +150,9 @@ token="$("$SCRIPT_DIR/dev-token.sh" --no-prompt --profile "$AWS_PROFILE_VALUE" -
 
 # The claims, never the token. A JWT payload is base64url with the padding
 # stripped, so it is re-added before decoding.
+# Belt and braces: strip any colour escapes and keep only the last line, so a
+# stray log line on stdout degrades the report rather than corrupting it.
+token="$(printf '%s\n' "$token" | sed 's/\x1b\[[0-9;]*m//g' | tail -n1 | tr -d '[:space:]')"
 payload="$(printf '%s' "$token" | cut -d. -f2)"
 case $(( ${#payload} % 4 )) in 2) payload="${payload}==";; 3) payload="${payload}=";; esac
 claims="$(printf '%s' "$payload" | tr '_-' '/+' | base64 -d 2>/dev/null || true)"

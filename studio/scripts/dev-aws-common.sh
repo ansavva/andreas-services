@@ -15,6 +15,12 @@ MACHINE_ID_FILE="$CONFIG_DIR/machine-id"
 AWS_PROFILE_VALUE="${AWS_PROFILE:-default}"
 AWS_REGION_VALUE="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
 
+# The `--profile` fragment every AWS call actually uses, decided once by
+# `resolve_aws_profile`. An empty array means "pass no --profile at all and let
+# the CLI resolve credentials the way it normally would".
+AWS_PROFILE_ARGS=()
+AWS_PROFILE_RESOLVED=0
+
 # The dev stack's one account, and the file its password lives in.
 #
 # **The address is committed and the password never can be.** `.test` is a
@@ -30,8 +36,14 @@ AWS_REGION_VALUE="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
 STUDIO_DEV_USER_EMAIL="dev@studio.test"
 DEV_ENV_FILE="$CONFIG_DIR/dev.env"
 
-log()  { printf '\033[1;34m[dev-aws]\033[0m %s\n' "$*"; }
-ok()   { printf '\033[1;32m[ ok ]\033[0m %s\n' "$*"; }
+# Progress goes to stderr, like warn/die. It is still on the terminal, but it is
+# no longer mixed into a script's *value*: `dev-token.sh` emits a JWT on stdout
+# and nothing else, so `dev-aws-bootstrap.sh` can capture it. While these logged
+# to stdout, that capture picked up "Signing in as ..." and a pair of ANSI colour
+# escapes ahead of the token, and the bootstrap's claims decode fell over on it
+# and reported "jq or base64 differs here" — a real token, an unreadable report.
+log()  { printf '\033[1;34m[dev-aws]\033[0m %s\n' "$*" >&2; }
+ok()   { printf '\033[1;32m[ ok ]\033[0m %s\n' "$*" >&2; }
 warn() { printf '\033[1;33m[warn]\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; exit 1; }
 
@@ -40,7 +52,69 @@ require_command() {
 }
 
 aws_dev() {
-  aws --no-cli-pager --profile "$AWS_PROFILE_VALUE" --region "$AWS_REGION_VALUE" "$@"
+  aws --no-cli-pager ${AWS_PROFILE_ARGS[@]+"${AWS_PROFILE_ARGS[@]}"} \
+    --region "$AWS_REGION_VALUE" "$@"
+}
+
+aws_dev_probe() {
+  # aws_dev, with any exported AWS_PROFILE stripped so the explicit decision in
+  # AWS_PROFILE_ARGS is the only thing selecting credentials.
+  env -u AWS_PROFILE aws --no-cli-pager ${AWS_PROFILE_ARGS[@]+"${AWS_PROFILE_ARGS[@]}"} \
+    --region "$AWS_REGION_VALUE" "$@"
+}
+
+resolve_aws_profile() {
+  # Decide once whether to name a profile at all.
+  #
+  # **`--profile default` is not a harmless way of saying "the usual
+  # credentials".** Naming a profile makes the CLI resolve *that profile* and
+  # stop; it will not fall back to `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`
+  # in the environment. So on a machine whose credentials arrive as environment
+  # variables — CI, a container, a Claude cloud session — every call here failed
+  # `NoCredentials` while a bare `aws sts get-caller-identity` two lines earlier
+  # succeeded, because `~/.aws/config` had a `[default]` section holding
+  # settings but no keys. The error names credentials, so it reads as an expired
+  # session and invites an `aws login` that cannot fix it.
+  #
+  # The fallback is deliberately narrow: it triggers only when the named profile
+  # resolves *no* credentials and ambient ones *do* work. A profile that
+  # authenticates is always used as given, so this can never silently retarget a
+  # working profile at a different account.
+  [[ "$AWS_PROFILE_RESOLVED" -eq 1 ]] && return 0
+  AWS_PROFILE_RESOLVED=1
+
+  if [[ -z "$AWS_PROFILE_VALUE" ]]; then
+    AWS_PROFILE_ARGS=()
+    return 0
+  fi
+
+  AWS_PROFILE_ARGS=(--profile "$AWS_PROFILE_VALUE")
+  aws --no-cli-pager --profile "$AWS_PROFILE_VALUE" --region "$AWS_REGION_VALUE" \
+    sts get-caller-identity >/dev/null 2>&1 && return 0
+
+  # `env -u AWS_PROFILE` because an exported AWS_PROFILE would steer this probe
+  # too, and then it would not be testing ambient credentials at all.
+  env -u AWS_PROFILE aws --no-cli-pager --region "$AWS_REGION_VALUE" \
+    sts get-caller-identity >/dev/null 2>&1 || return 0
+
+  warn "Profile '$AWS_PROFILE_VALUE' resolves no credentials, but the environment does. Using those."
+  AWS_PROFILE_ARGS=()
+  AWS_PROFILE_VALUE=""
+  # Drop it from the environment as well, not just from our own argv. A stale
+  # exported AWS_PROFILE steers every later `aws` call and, more importantly,
+  # the Terraform AWS provider — which would then fail the apply for exactly the
+  # reason we just decided to route around.
+  unset AWS_PROFILE
+  return 0
+}
+
+aws_profile_flag() {
+  # The `--profile X` fragment for user-facing hints, empty when running on
+  # ambient credentials so printed commands stay copy-pasteable.
+  if [[ ${#AWS_PROFILE_ARGS[@]} -gt 0 ]]; then
+    printf -- '--profile %s' "$AWS_PROFILE_VALUE"
+  fi
+  return 0
 }
 
 load_machine_id() {
@@ -73,12 +147,30 @@ load_machine_id() {
 
 load_aws_identity() {
   local identity
+  resolve_aws_profile
   identity="$(aws_dev sts get-caller-identity --output json)" ||
-    die "Could not authenticate with AWS profile '$AWS_PROFILE_VALUE'."
+    die "Could not authenticate with AWS$(
+      [[ -n "$AWS_PROFILE_VALUE" ]] && printf " profile '%s'" "$AWS_PROFILE_VALUE"
+      true
+    ). Sign in, or put credentials in the environment."
   AWS_ACCOUNT_ID="$(jq -r '.Account' <<<"$identity")"
   AWS_PRINCIPAL_ARN="$(jq -r '.Arn' <<<"$identity")"
   [[ "$AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || die "AWS returned an invalid account ID."
   MACHINE_NAME="$(hostname -s 2>/dev/null || hostname)"
+  [[ -n "${MACHINE_ID:-}" ]] && derive_machine_scoped_names
+  return 0
+}
+
+derive_machine_scoped_names() {
+  # Split out of `load_aws_identity` because the machine id is not always known
+  # at the moment the AWS identity is.
+  #
+  # `dev-aws-bootstrap.sh` characterises the environment *before* pinning an id
+  # — deliberately, since `--check` must not write one to disk — so folding
+  # these two derivations into the identity call made that script fail with
+  # `MACHINE_SHORT_ID: unbound variable` on precisely the cold checkout it
+  # exists to serve. It went unseen because the credential error above fired
+  # first and hid it.
   RESOURCE_PREFIX="studio-dev-$MACHINE_SHORT_ID"
   STATE_KEY="studio/dev/$AWS_ACCOUNT_ID/$MACHINE_ID/terraform.tfstate"
 }
@@ -101,16 +193,22 @@ export_temporary_aws_credentials() {
   # set into the long-running backend container. It is also what makes `terraform apply` work at
   # all: `aws login` writes a cache only the AWS CLI reads, so the S3 backend resolves it while the
   # AWS provider does not. See "Running Terraform locally?" in the root CLAUDE.md.
-  aws_dev sts get-caller-identity >/dev/null ||
-    die "AWS profile '$AWS_PROFILE_VALUE' does not currently have a valid session. Sign in to AWS and try again."
-  credentials="$(aws configure export-credentials --profile "$AWS_PROFILE_VALUE" --format process)" ||
-    die "AWS CLI could not export temporary credentials for profile '$AWS_PROFILE_VALUE'."
+  resolve_aws_profile
+  aws_dev_probe sts get-caller-identity >/dev/null ||
+    die "AWS credentials are not currently valid. Sign in to AWS and try again."
+  if [[ ${#AWS_PROFILE_ARGS[@]} -gt 0 ]]; then
+    credentials="$(aws configure export-credentials \
+      "${AWS_PROFILE_ARGS[@]}" --format process)"
+  else
+    credentials="$(env -u AWS_PROFILE aws configure export-credentials --format process)"
+  fi || die "AWS CLI could not export temporary credentials."
   export AWS_ACCESS_KEY_ID="$(jq -r '.AccessKeyId' <<<"$credentials")"
   export AWS_SECRET_ACCESS_KEY="$(jq -r '.SecretAccessKey' <<<"$credentials")"
   export AWS_SESSION_TOKEN="$(jq -r '.SessionToken // empty' <<<"$credentials")"
   export AWS_CREDENTIAL_EXPIRATION="$(jq -r '.Expiration // empty' <<<"$credentials")"
-  aws --no-cli-pager --region "$AWS_REGION_VALUE" sts get-caller-identity >/dev/null ||
-    die "AWS CLI exported invalid or expired credentials for profile '$AWS_PROFILE_VALUE'. Sign in to AWS and try again."
+  env -u AWS_PROFILE aws --no-cli-pager --region "$AWS_REGION_VALUE" \
+    sts get-caller-identity >/dev/null ||
+    die "AWS CLI exported invalid or expired credentials. Sign in to AWS and try again."
   if [[ -n "$AWS_CREDENTIAL_EXPIRATION" ]]; then
     log "AWS credentials refreshed; they expire at $AWS_CREDENTIAL_EXPIRATION."
   else
@@ -138,7 +236,7 @@ load_dev_stack_outputs() {
   # .terraform directory. `dev-aws-setup.sh --check` reads it the same way.
   local state_json
   state_json="$(aws_dev s3 cp "s3://andreas-services-terraform-state/$STATE_KEY" -)" ||
-    die "Terraform state is missing. Run ./studio/scripts/dev-aws-setup.sh --profile $AWS_PROFILE_VALUE."
+    die "Terraform state is missing. Run ./studio/scripts/dev-aws-setup.sh $(aws_profile_flag)."
   [[ "$(jq -r '.outputs.machine_id.value // empty' <<<"$state_json")" == "$MACHINE_ID" ]] ||
     die "Terraform state does not match this machine ID."
   DEV_POOL_ID="$(jq -r '.outputs.cognito_user_pool_id.value // empty' <<<"$state_json")"
