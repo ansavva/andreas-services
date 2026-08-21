@@ -31,7 +31,7 @@ Every command is a DRY RUN unless you pass --apply.
 
   studio curate dedupe <name> --pool reference
   studio curate renumber <name> --group face
-  studio curate move <name> face/<name>_face_3.png --from reference --to archive
+  studio curate move face/<name>_face_3.png <name> --from reference --to archive
   studio curate regroup <name> face <name>_3.jpg <name>_4.jpg --apply
 
 NOTHING HERE MOVES BYTES ANY MORE

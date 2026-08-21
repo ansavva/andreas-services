@@ -313,3 +313,90 @@ def test_ordered_moves_breaks_a_swap_through_a_temporary():
         occupied.discard(src)
         occupied.add(dst)
     assert occupied == {one, two}
+
+
+# ── the branch that destroys bytes ──────────────────────────────────────────
+#
+# `move` is a reparent like `regroup`, with one exception: if a byte-identical
+# copy is already waiting in the destination, the source is DELETED and nothing
+# arrives. That is the only path in this module that removes an image, and it
+# was the only one with no execution test.
+
+
+def test_move_between_pools_is_a_reparent(catalog):
+    """The ordinary case writes nothing and keeps the node."""
+    node_id = catalog.resolve(f"{REF}/{NAME}_5.webp")["id"]
+
+    result = run("move", f"{NAME}_5.webp", NAME, "--from", "reference",
+                 "--to", "archive", "--apply")
+    assert result.exit_code == 0, result.output
+
+    assert catalog.uploaded_images == [], "a reparent must not re-upload the image"
+    assert not [c for c in catalog.calls if c[0] == "DELETE"], "nothing is destroyed"
+    assert catalog.path_of(node_id) == f"characters/{NAME}/archive/{NAME}_5.webp"
+    assert catalog.blobs[node_id] == b"loose-five", "same node, same bytes"
+
+
+def test_move_onto_an_identical_copy_deletes_the_source(catalog):
+    """**The one path here that destroys an image**, so it is pinned.
+
+    Nothing is preserved into the destination because a byte-identical copy is
+    already there — so the source is removed rather than moved, and the records
+    citing it have nowhere to follow to. The command says so; this asserts both
+    halves, because a delete that reported itself as a move would be the worst
+    shape this bug could take.
+    """
+    archive = f"characters/{NAME}/archive"
+    catalog.seed(f"{archive}/{NAME}_5.webp", b"loose-five")  # identical bytes
+    source_id = catalog.resolve(f"{REF}/{NAME}_5.webp")["id"]
+    twin_id = catalog.resolve(f"{archive}/{NAME}_5.webp")["id"]
+
+    result = run("move", f"{NAME}_5.webp", NAME, "--from", "reference",
+                 "--to", "archive", "--apply")
+    assert result.exit_code == 0, result.output
+
+    assert source_id not in catalog.nodes, "the source is gone"
+    assert catalog.blobs[twin_id] == b"loose-five", "the copy already there is untouched"
+    assert catalog.uploaded_images == [], "nothing was uploaded to replace it"
+    assert "only removing the source" in result.output
+    # The citing run is warned about rather than silently rewritten to nothing.
+    assert "dangle" in result.output
+
+
+def test_move_is_a_dry_run_without_apply(catalog):
+    """Every command in this module is. The destroying one most of all."""
+    archive = f"characters/{NAME}/archive"
+    catalog.seed(f"{archive}/{NAME}_5.webp", b"loose-five")
+    source_id = catalog.resolve(f"{REF}/{NAME}_5.webp")["id"]
+
+    result = run("move", f"{NAME}_5.webp", NAME, "--from", "reference", "--to", "archive")
+
+    assert result.exit_code == 0, result.output
+    assert "DRY RUN" in result.output
+    assert source_id in catalog.nodes, "a dry run must not delete anything"
+    assert catalog.patched == []
+
+
+def test_dedupe_removes_the_duplicate_and_keeps_the_first(catalog):
+    """Which one survives is not arbitrary — natural order decides it."""
+    catalog.seed(f"{FACE}/{NAME}_face_9.webp", b"face-one")  # identical to _face_1
+    keeper = catalog.resolve(f"{FACE}/{NAME}_face_1.webp")["id"]
+    dupe = catalog.resolve(f"{FACE}/{NAME}_face_9.webp")["id"]
+
+    result = run("dedupe", NAME, "--group", "face", "--apply")
+    assert result.exit_code == 0, result.output
+
+    assert keeper in catalog.nodes, "the first by natural order is kept"
+    assert dupe not in catalog.nodes
+    assert catalog.uploaded_images == []
+
+
+def test_dedupe_is_a_dry_run_without_apply(catalog):
+    catalog.seed(f"{FACE}/{NAME}_face_9.webp", b"face-one")
+    dupe = catalog.resolve(f"{FACE}/{NAME}_face_9.webp")["id"]
+
+    result = run("dedupe", NAME, "--group", "face")
+
+    assert result.exit_code == 0, result.output
+    assert "DRY RUN" in result.output
+    assert dupe in catalog.nodes
