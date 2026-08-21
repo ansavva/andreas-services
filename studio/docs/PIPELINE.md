@@ -469,7 +469,7 @@ or projects.
 | `store.py` | **The media store, addressed by path and reached through the API.** Resolve a name path to a node, list its files in natural order, read, write, upload, copy, presign, and ensure a folder exists. No bucket name, no credentials — bytes travel to S3 directly on presigned URLs the API signs, which is what keeps a video out of the Lambda's request limit. `s3.py` is being retired into this. |
 | `api.py` | One transport for every call the CLI makes: bearer token, refresh-on-401, library header, error mapping. Decided once so no caller re-decides it. |
 | `auth.py` | The Cognito sign-in behind `studio login`, and the token cache it writes. |
-| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. One auth path for the whole package — `session()` is what everything else asks for. **Shrinking**: everything above the adapters is moving onto `store.py`; `domain/runs.py` and the whole of `engine/` no longer import this. |
+| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. One auth path for the whole package — `session()` is what everything else asks for. **Almost gone**: nothing in `domain/`, `engine/` or `objects/` imports it any more. The three that still do are `adapters/ddb.py`, which needs `session()` for the catalog table, and the two migrators in `maintenance/`, which enumerate the raw bucket deliberately — applying the prefix at the AWS boundary is their job. |
 | `ddb.py` | The catalog table's client and the typed-attribute marshalling every write needs. Takes its credentials from `s3.py`, because the bridge resolves a session and not an S3 session. Knows nothing about libraries or nodes. |
 | `replicate.py` | Token, HTTP, download, poll. |
 | `ffmpeg.py` | Probe, stitch, frame grab, contact grid. A scene and a movie join their inputs by identical rules because they call the same function. ffmpeg ships in the wheel; no system install. |
@@ -486,11 +486,11 @@ or projects.
 | `movies.py` | The **movie store**: scenes cut into one piece. The same shape one tier up, including the folders a cut needs. Copying a scene in is a read plus a write rather than a server-side `CopyObject`; see `store.copy` for why one blob under two rows is not on offer. |
 | `frames.py` | Stills out of a run's video — the handoff frame, and the contact grid that lets a clip be looked at before more money is spent on it. Its `chain` store is for a sequence with no scene behind it; a planned scene derives its own frames from `scene.json`. |
 | `characters/` | The character record, in five modules since it passed 1,200 lines. `base` — names, the four pools, paths, and `TEMPLATE`. `profile` — the bible: schema, load/write, and the `edit` local round trip whose conflict check is what stops two people overwriting each other. That check compared the S3 **ETag** and now compares the node's **`updated_at`**: the catalog exposes no ETag by design, `updated_at` has microsecond resolution so two writes cannot share one, and its only weakness is a false refusal after a rename — which errs the safe way. It is check-then-write, not compare-and-swap; closing that window needs an `If-Match` on the API. `refs` — the described reference index and `resolve_selection`, which decides what a model is actually shown. `pools` — corpus/seed/archive, material rather than identity. `rename` — a new slug across nodes, bible and records at once. It held an S3 client until #306 and holds none now: renaming the character is **one `PATCH` per slugged basename plus one for the folder**, no bytes move, and every node keeps its id. What survived is the RECORD half — a run names this character by path, so `rewrite` still carries every document that cited one. `cli` assembles the group; commands are `@click.command` and registered there, which is what keeps the package acyclic. `__init__` re-exports the names the rest of the package already imports. |
-| `curate.py` | The pool operations that go wrong by hand — dedupe, renumber, regroup, move. Every one is a dry run without `--apply`. |
-| `rewrite.py` | **When an object moves, the records that name it must follow.** `apply_moves()` is what curation and the migrator call; `rename_character()` is its companion for the name a record stores rather than the key, and cannot share the same mapping because a project may be called what a character is; `check` walks every record and confirms what it names still exists. |
+| `curate.py` | The pool operations that go wrong by hand — dedupe, renumber, regroup, move. Every one is a dry run without `--apply`. Since #306 a renumber and a regroup are **row updates**: one `PATCH` each, no object written, the blob keeps its id and its bytes. `move` is the exception worth knowing — when a byte-identical copy is already in the destination it deletes the source instead, which is the one path here that removes an image. |
+| `rewrite.py` | **When a record's subject moves, the records that name it must follow.** #306 expected this to be deletable — nothing moves under the catalog — and it is not, because a record names a **path**, not a node, so a rename in place still strands it. See #420. `apply_moves()` is what curation and the migrator call; `rename_character()` is its companion for the name a record stores rather than the key, and cannot share the same mapping because a project may be called what a character is; `check` walks every record and confirms what it names still exists. |
 | `prompt.py` | Prompt assembly and validation — the structured object in, the serialized prompt plus engine params out. |
-| `phrasebook.py` | Per-model wording lists, kept as data in S3 like characters. |
-| `contact_sheet.py` | Labeled thumbnail grids over arbitrary keys. |
+| `phrasebook.py` | Per-model wording lists, kept as data in S3 like characters. **Shared material, so neither direction uses a node**: `catalog_seed.py` records none for it, so it is read by key over `GET /api/asset` and written by `PATCH /api/text`. That write can only overwrite — `put_object` could invent the file and the API deliberately cannot — so `phrasebook add` against a library that has never held a `wording.yaml` fails and says what putting one there takes. Reading is unchanged: a missing phrasebook is still an empty one. |
+| `contact_sheet.py` | Labeled thumbnail grids over arbitrary keys. The character-pool half walks the pool **recursively**, like `characters/refs`: `reference` is the default and holds group folders rather than images, so a one-level listing would report the commonest invocation as an empty pool. Each tile's local name carries its group, because `face/<name>_1` and `body/<name>_1` share a basename and collided in one directory. |
 
 **`engine/` — invoking a model.**
 
@@ -508,7 +508,11 @@ or projects.
 
 **`objects/` — moving bytes.** `upload.py`, `download.py`, `presign.py`
 (how assets reach Replicate) and `convert.py` (re-encode so a target engine
-accepts it).
+accepts it). `convert` writes into the project input pool through
+`projects.add_inputs` rather than repeating its numbering, staging the converted
+bytes to a temp file because that function takes local paths; `--dest-key`
+ensures the destination folder first, since the catalog has no folder until
+something asks for one.
 
 **`maintenance/` — one-offs.** `backfill_replicate.py` imports historical
 predictions into the run store; `migrate_layout.py` is the move off the

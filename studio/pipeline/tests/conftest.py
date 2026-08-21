@@ -430,11 +430,25 @@ def _aim_store_at(s3, monkeypatch):
 
     monkeypatch.setattr(_api, "patch", _move_or_rename)
     monkeypatch.setattr(_api, "delete", _delete)
+    def _shared_read(key):
+        """Shared material, addressed by key.
+
+        Identical to `_read` here and NOT the same thing: the phrasebook and the
+        pose plates have no catalog node, so the real store reaches them over
+        `GET /api/asset` rather than resolving a path. This fixture's ids are
+        keys, which collapses the difference — the tests that care that the two
+        routes stay apart stub `api` itself (`test_paths`, `test_phrasebook`).
+        """
+        return _read(key)
+
+    def _shared_presign(key, *, disposition="inline"):
+        return _presign(key, disposition=disposition)
 
     for name, value in [
         ("resolve", _resolve), ("children", _children), ("read", _read),
         ("download", _download), ("write", _write), ("upload", _upload),
         ("copy", _copy), ("exists", _exists), ("size", _size), ("presign", _presign),
-        ("folder", _folder),
+        ("folder", _folder), ("shared_read", _shared_read),
+        ("shared_presign", _shared_presign),
     ]:
         monkeypatch.setattr(_store, name, value)

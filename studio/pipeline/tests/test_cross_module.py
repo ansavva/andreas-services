@@ -89,7 +89,7 @@ def test_missing_input_number_names_what_is_available(media_bucket):
 # build -> phrasebook
 # --------------------------------------------------------------------------
 def test_phrasebook_terms(media_bucket):
-    assert phrasebook.terms(media_bucket, "kling") == [
+    assert phrasebook.terms("kling") == [
         {"avoid": "bare chest", "use": "chest"},
         {"avoid": "shirtless", "use": "omit entirely"},
     ]
@@ -97,11 +97,11 @@ def test_phrasebook_terms(media_bucket):
 
 def test_phrasebook_terms_for_unknown_model_is_empty_not_an_error(media_bucket):
     """A model with no section must not break prompt authoring."""
-    assert phrasebook.terms(media_bucket, "no-such-model") == []
+    assert phrasebook.terms("no-such-model") == []
 
 
 def test_prompt_authoring_survives_an_unreachable_phrasebook(monkeypatch):
-    """Authoring must keep working without credentials.
+    """Authoring must keep working when the phrasebook cannot be reached.
 
     A fetch failure degrades to a warning saying the list was not read, which
     is honest — rather than reporting a draft as checked when it was not.
@@ -109,7 +109,7 @@ def test_prompt_authoring_survives_an_unreachable_phrasebook(monkeypatch):
     from studio_pipeline.domain import prompt as build
 
     def boom(*_a, **_k):
-        raise RuntimeError("no credentials")
+        raise RuntimeError("the API is unreachable")
 
     monkeypatch.setattr(build.PHRASEBOOK, "terms", boom)
     terms, reason = build.phrasebook_terms("kling")

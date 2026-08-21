@@ -1,16 +1,19 @@
-"""`studio upload` / `download` / `presign`, now over the API (#302, step b).
+"""`studio upload` / `download` / `presign` / `convert`, over the API (#302, #305).
 
 **These had no tests before this file.** The three commands were migrated off
 boto3 and the suite went on passing 431/431, which says nothing — nothing
 invoked them. That silence is the reason the migration needed tests before it
-could be believed, not after.
+could be believed, not after. `convert` joined them for the same reason.
 
 Stubbed at `store`, because what is under test here is the command layer: which
-paths it builds, what order it lists in, and what it prints.
+paths it builds, what order it lists in, and what it prints. The `convert`
+section is the exception and uses the moto fixture instead — it re-encodes with
+PIL, so it needs bytes that are really an image.
 """
 
 from __future__ import annotations
 
+import io
 import json
 import pathlib
 
@@ -19,6 +22,7 @@ from click.testing import CliRunner
 
 from studio_pipeline import cli
 from studio_pipeline.adapters import api, store
+from tests.conftest import BUCKET
 
 
 @pytest.fixture
@@ -199,3 +203,73 @@ def test_upload_refuses_a_missing_file(fake_store, tmp_path):
 
     assert result.exit_code != 0
     assert "not a file" in result.output
+
+
+# ─────────────────────────────── convert ───────────────────────────────
+#
+# `media_bucket`, not `fake_store`: PIL has to open the source, so the bytes
+# have to be a real image rather than a marker.
+
+
+@pytest.fixture
+def source_png(media_bucket):
+    """A real PNG in the tree, since the fixture's images are markers."""
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (4, 4), "white").save(buffer, "PNG")
+    key = "characters/<name>/corpus/photo.png"
+    media_bucket.put_object(Bucket=BUCKET, Key=key, Body=buffer.getvalue())
+    return key
+
+
+def test_convert_numbers_on_from_the_input_pool(source_png, media_bucket):
+    """`projects.add_inputs` owns the numbering, and this proves it is asked.
+
+    The pool already holds `<project>_in_3`, so the converted file is `_in_4`.
+    A second implementation of that rule is what this module used to carry, and
+    a stale one overwrites an existing input rather than failing.
+
+    Only `<project>_in_<n>` counts, which is why the fixture's `<project>_1..3`
+    do not move the number: those names predate the convention.
+    """
+    media_bucket.put_object(
+        Bucket=BUCKET, Key="projects/subject-a/input/subject-a_in_3.png", Body=b"png"
+    )
+
+    result = _run("convert", "--key", source_png, "--to", "jpg",
+                  "--add-input", "subject-a")
+
+    assert result.exit_code == 0, result.output
+    assert result.output.splitlines()[0] == "projects/subject-a/input/subject-a_in_4.jpg"
+    written = media_bucket.head_object(
+        Bucket=BUCKET, Key="projects/subject-a/input/subject-a_in_4.jpg"
+    )
+    assert written["ContentType"] == "image/jpeg"
+
+
+def test_convert_to_an_explicit_destination_ensures_the_parent(source_png, monkeypatch):
+    """Folders were free in S3 and are catalog rows now.
+
+    `--dest-key` is the flag most likely to name a folder nothing has written
+    to yet, and `store.write` resolves the parent it is handed rather than
+    inventing it.
+    """
+    made = []
+    monkeypatch.setattr(store, "folder",
+                        lambda path: made.append(path) or {"id": f"node:{path}"})
+
+    result = _run("convert", "--key", source_png, "--to", "webp",
+                  "--dest-key", "projects/subject-a/derived/frame.webp")
+
+    assert result.exit_code == 0, result.output
+    assert made == ["projects/subject-a/derived"]
+
+
+def test_convert_names_a_source_that_is_not_there(media_bucket):
+    """A runref can resolve to a key nothing wrote; a traceback does not say which."""
+    result = _run("convert", "--key", "projects/subject-a/input/nothing.png",
+                  "--to", "jpg", "--add-input", "subject-a")
+
+    assert result.exit_code == 1
+    assert "no such object: projects/subject-a/input/nothing.png" in result.output

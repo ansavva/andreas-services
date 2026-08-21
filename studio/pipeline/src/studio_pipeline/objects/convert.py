@@ -6,10 +6,22 @@ them: **GPT Image writes `.webp` by default, and Kling accepts only
 straight to `studio-media-kling` as a start frame. Seedance is permissive; Nano Banana
 writes `.jpg`/`.png`.
 
-This converts an existing S3 object (or a run's output) and writes the result
-back into the tree — by default into the **project's input pool**, which is
-where working material belongs. The source is never modified: a run's output is
+This converts an existing object (or a run's output) and writes the result back
+into the tree — by default into the **project's input pool**, which is where
+working material belongs. The source is never modified: a run's output is
 append-only history, so it is copied, not re-encoded in place.
+
+Everything moves through `adapters/store`, so nothing here holds a bucket name
+or a credential. Two consequences worth knowing:
+
+  * The **pool numbering is `projects.add_inputs`'**, not a second copy of it.
+    The bytes are in memory and that function takes local paths, so they are
+    staged to a temp file — cheaper than a second implementation of the naming
+    rule, which is what this module used to carry.
+  * `--dest-key` **ensures the destination folder first.** Folders were free in
+    S3 (a key with slashes in it produced the appearance of one) and are
+    catalog rows now, so a write into a folder nothing has created yet fails on
+    a parent that does not exist.
 
   # a run's output -> PNG in the project's input pool
   studio convert --run <project>/latest#1 --to png --add-input <project>
@@ -29,12 +41,13 @@ from __future__ import annotations
 import io
 import os
 import sys
+import tempfile
 
 import click
 
 from studio_pipeline.errors import die
-from studio_pipeline.adapters import s3 as s3c
-from studio_pipeline.domain import paths as P
+from studio_pipeline.adapters import api, store
+from studio_pipeline.domain import projects as PROJECTS
 from studio_pipeline.domain import runs as R
 from studio_pipeline.engine import registry as REG
 
@@ -46,18 +59,23 @@ CONTENT_TYPE = {".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp"
 
 
 
+def _into_input_pool(project: str, data: bytes, ext: str) -> str:
+    """Write converted bytes into a project's input pool, and return the key.
 
-def next_input_index(s3, project: str) -> int:
-    """Continue the project's input-pool numbering (<project>_in_<n>)."""
-    import re
+    **`projects.add_inputs` owns the numbering**, and this module used to carry
+    a second copy of it. That function takes local paths — the pool is normally
+    fed from disk — so the bytes are staged to a temp file rather than
+    reimplementing `<project>_in_<n>`. It also ensures the pool folder, which a
+    project that has never had an input does not have.
 
-    pat = re.compile(rf"^{re.escape(project)}_in_(\d+)\.")
-    hi = 0
-    for key in s3c.list_keys(s3, P.input_prefix(project)):
-        m = pat.match(os.path.basename(key))
-        if m:
-            hi = max(hi, int(m.group(1)))
-    return hi + 1
+    The staged basename is thrown away; only its extension survives, because
+    that is what the pool's own name is built from.
+    """
+    with tempfile.TemporaryDirectory(prefix="convert-") as tmp:
+        staged = os.path.join(tmp, f"converted{ext}")
+        with open(staged, "wb") as fh:
+            fh.write(data)
+        return PROJECTS.add_inputs(project, [staged])[0]["key"]
 
 
 @click.command(help=__doc__)
@@ -73,8 +91,6 @@ def next_input_index(s3, project: str) -> int:
 def convert(add_input, dest_key, for_, key, project, quality, run, to):
     if not add_input and not dest_key:
         die("choose a destination: --add-input PROJECT (usual) or --dest-key KEY.")
-
-    s3 = s3c.client()
 
     # --- resolve the source -------------------------------------------------
     if run:
@@ -110,7 +126,12 @@ def convert(add_input, dest_key, for_, key, project, quality, run, to):
     # --- convert (source is never modified) ---------------------------------
     from PIL import Image
 
-    body = s3.get_object(Bucket=s3c.BUCKET, Key=key)["Body"].read()
+    try:
+        body = store.read(key)
+    except api.NotFound:
+        # Named, because the commonest source of one is a runref that resolved
+        # to a key nothing wrote — and a traceback does not say which key.
+        die(f"no such object: {key}")
     im = Image.open(io.BytesIO(body))
     if target_ext == ".jpg" and im.mode in ("RGBA", "P", "LA"):
         im = im.convert("RGB")  # JPEG has no alpha channel
@@ -121,14 +142,18 @@ def convert(add_input, dest_key, for_, key, project, quality, run, to):
 
     # --- destination --------------------------------------------------------
     if dest_key:
-        dst = dest_key
+        dst = dest_key.strip("/")
+        # The parent has to exist before a file can hang off it. S3 made the
+        # folder out of the key's slashes; the catalog does not, and `--dest-key`
+        # is the flag most likely to name somewhere nothing has written yet.
+        # A key with no slash sits in the library root, which is already there —
+        # asking for it would try to create a folder named after the file.
+        if "/" in dst:
+            store.folder(dst.rsplit("/", 1)[0])
+        store.write(dst, data, content_type=CONTENT_TYPE[target_ext])
     else:
-        project = add_input
-        n = next_input_index(s3, project)
-        dst = P.input_key(project, n, target_ext)
+        dst = _into_input_pool(add_input, data, target_ext)
 
-    s3.put_object(Bucket=s3c.BUCKET, Key=dst, Body=data,
-                  ContentType=CONTENT_TYPE[target_ext])
     print(dst)
     print(f"converted {os.path.basename(key)} ({ext}, {len(body)} B) -> "
           f"{os.path.basename(dst)} ({target_ext}, {len(data)} B); source untouched",

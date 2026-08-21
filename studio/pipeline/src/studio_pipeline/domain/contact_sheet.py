@@ -7,7 +7,7 @@ image set changes to refresh the sheet.
 
 Two sources:
 
-  # pull a character pool straight from S3 (characters/<name>/<pool>/)
+  # pull a character pool from the media store (characters/<name>/<pool>/)
   studio contact_sheet --character <name> --folder originals --out /tmp/<name>_originals.png
 
   # or build from a local directory of images already on disk
@@ -20,38 +20,64 @@ Images are laid out in natural-sorted order (<name>_1, <name>_2, … <name>_10) 
 position is stable across runs. --cols / --cell tune the grid.
 """
 import os
+import pathlib
 import sys
 import tempfile
 
 import click
 from PIL import Image, ImageDraw, ImageFont
 
-from studio_pipeline.adapters import s3 as s3c
+from studio_pipeline.adapters import store
 from studio_pipeline.domain import paths as P
 
 IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp"}
 
 
-def _natural_key(name: str):
-    import re
+def _pool_images(root: str) -> list[str]:
+    """Every image under a pool, as paths relative to it, natural-sorted.
 
-    return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", name)]
+    **Recursive, and it has to be** — the same call `characters.refs.ref_files`
+    makes and for the same reason. `reference` is this command's DEFAULT pool
+    and holds purpose subfolders rather than images, so a one-level listing
+    reports the commonest invocation as an empty pool. `list_keys` was
+    recursive by default and hid the decision; walking is now explicit.
+
+    `children_or_empty` is what makes a missing pool empty rather than an
+    error, and it distinguishes a 404 from a 403 — a refused pool must not read
+    as a character with no images.
+    """
+    found: list[str] = []
+
+    def walk(prefix: str) -> None:
+        for entry in store.children_or_empty(prefix):
+            path = f"{prefix}/{entry['name']}"
+            if entry.get("kind") == "folder":
+                walk(path)
+            elif os.path.splitext(entry["name"])[1].lower() in IMG_EXTS:
+                found.append(path[len(root) + 1:])
+
+    walk(root)
+    return sorted(found, key=store.natural_key)
 
 
-def _gather_from_s3(character: str, folder: str, dest: str) -> list[str]:
-    s3 = s3c.client()
-    prefix = P.char_pool_prefix(character, folder)
-    keys = s3c.list_keys(s3, prefix)
-    if not keys:
-        sys.exit(f"no objects under {s3c.key(prefix)}/")
+def _gather_from_store(character: str, folder: str, dest: str) -> list[str]:
+    """Download a character pool into `dest`, one local file per image.
+
+    **The local name carries the group** (`face_<name>_1.webp`), because it
+    becomes the tile's caption and a basename does not survive the walk:
+    `face/<name>_1` and `body/<name>_1` both exist, so bare basenames collided
+    in one directory — the second download overwrote the first and the sheet
+    showed one image twice under one label.
+    """
+    root = P.char_pool_prefix(character, folder)
+    relative = _pool_images(root)
+    if not relative:
+        sys.exit(f"no images under {root}/")
     os.makedirs(dest, exist_ok=True)
     paths = []
-    for k in keys:
-        base = os.path.basename(k)
-        if os.path.splitext(base)[1].lower() not in IMG_EXTS:
-            continue
-        local = os.path.join(dest, base)
-        s3.download_file(s3c.BUCKET, k, local)
+    for rel in relative:
+        local = os.path.join(dest, rel.replace("/", "_"))
+        store.download(f"{root}/{rel}", pathlib.Path(local))
         paths.append(local)
     return paths
 
@@ -85,7 +111,10 @@ def build(paths: list[str], out: str, cols: int, cell: int,
     natural-sorted and captioned by basename, which is what browsing a pool wants.
     """
     if captions is None:
-        paths = sorted(paths, key=lambda p: _natural_key(os.path.basename(p)))
+        # `store.natural_key` is the one definition of this sort in the package —
+        # a second copy of the order that decides which image a model is handed is
+        # exactly the drift worth not having.
+        paths = sorted(paths, key=lambda p: store.natural_key(os.path.basename(p)))
         captions = [os.path.splitext(os.path.basename(p))[0] for p in paths]
     if not paths:
         sys.exit("no images to lay out")
@@ -127,5 +156,5 @@ def contact_sheet(cell, character, cols, folder, out, src):
         paths = _gather_from_dir(src)
     else:
         tmp = tempfile.mkdtemp(prefix=f"{character}-{folder}-")
-        paths = _gather_from_s3(character, folder, tmp)
+        paths = _gather_from_store(character, folder, tmp)
     build(paths, out, cols, cell)

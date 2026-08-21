@@ -76,7 +76,6 @@ import sys
 
 import click
 
-from studio_pipeline.adapters import s3 as s3c
 from studio_pipeline.domain import phrasebook as PHRASEBOOK
 
 # --- engine capabilities ----------------------------------------------------
@@ -163,13 +162,20 @@ def phrasebook_terms(model_key: str) -> tuple[list[dict], str | None]:
     instead — kept as DATA in S3 rather than in this repository, the same way
     characters are.
 
-    Authoring must keep working without credentials, so a fetch failure degrades
-    to a warning rather than an error: the caller is told the list was not read,
-    which is honest, instead of being told the draft was checked, which would not be.
+    Authoring must keep working when the phrasebook cannot be reached — no
+    session, no network, a library that has never held one — so a fetch failure
+    degrades to a warning rather than an error: the caller is told the list was
+    not read, which is honest, instead of being told the draft was checked,
+    which would not be.
+
+    That covers a refusal too, and deliberately. A 403 still leaves the draft
+    unchecked, and the warning says so. What must never happen is a refusal
+    reported as "no substitutions apply", and `phrasebook.load` raises rather
+    than let one become that.
     """
     try:
-        return PHRASEBOOK.terms(s3c.client(), model_key), None
-    except SystemExit as exc:  # the store reports failure by exiting
+        return PHRASEBOOK.terms(model_key), None
+    except SystemExit as exc:  # `die`, from the write path this shares a module with
         return [], str(exc) or "the phrasebook could not be read"
     except Exception as exc:  # a bug here must not block authoring
         return [], f"could not read the phrasebook ({exc.__class__.__name__})"
