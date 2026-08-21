@@ -69,6 +69,7 @@ import click
 
 from pathlib import Path
 
+from studio_pipeline.errors import die
 from studio_pipeline.adapters import api, store  # noqa: E402
 from studio_pipeline.domain import paths as P  # noqa: E402
 
@@ -76,9 +77,6 @@ IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp"}
 PROJECT_FILE = "project.json"
 
 
-def die(msg: str) -> None:
-    print(f"error: {msg}", file=sys.stderr)
-    raise SystemExit(1)
 
 
 def _now() -> str:

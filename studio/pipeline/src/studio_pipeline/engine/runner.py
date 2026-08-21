@@ -41,7 +41,9 @@ from studio_pipeline.engine import registry as REG
 from studio_pipeline.engine import schema as MS
 from studio_pipeline.engine import submit as SUB
 
-die = RA.die
+# `errors.die`, not a copy re-exported from the HTTP adapter — see
+# `errors.die`'s docstring for the nine that used to exist.
+from studio_pipeline.errors import die  # noqa: E402
 
 
 # --------------------------------------------------------------------------

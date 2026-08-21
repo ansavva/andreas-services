@@ -139,7 +139,7 @@ studio/pipeline/
         ├── errors.py              domain failure -> `error: …` and exit 1
         │                          `reports` for a module that raises, `die` for
         │                          one that finds the problem mid-function.
-        │                          Seven older copies of `die` still to collapse.
+        │                          One `die`, where there were nine.
         ├── __init__.py            STUDIO_DIR, ENV_FILE, env_value
         │
         ├── adapters/              THE OUTSIDE WORLD — everything with a side effect

@@ -12,7 +12,6 @@ way:
 """
 
 import json
-import sys
 import time
 import urllib.error
 import urllib.request
@@ -101,6 +100,3 @@ def poll(prediction_id: str, token: str, interval: int, timeout: int,
     return cur
 
 
-def die(msg: str) -> "None":
-    print(f"error: {msg}", file=sys.stderr)
-    raise SystemExit(1)

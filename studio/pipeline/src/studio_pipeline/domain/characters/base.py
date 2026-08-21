@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import os
 import re
-import sys
 
+from studio_pipeline.errors import die
 from studio_pipeline import STUDIO_DIR
 from studio_pipeline.adapters import s3 as s3c
 from studio_pipeline.domain import TEMPLATES_DIR
@@ -35,9 +35,6 @@ LOCAL_DIR = str(STUDIO_DIR / "local" / "characters")
 NAME_RE = P.NAME_RE
 
 
-def die(msg: str) -> None:
-    print(f"error: {msg}", file=sys.stderr)
-    sys.exit(1)
 
 
 def check_name(name: str) -> None:

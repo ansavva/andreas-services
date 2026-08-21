@@ -48,10 +48,10 @@ import datetime as dt
 import io
 import json
 import os
-import sys
 
 import click
 
+from studio_pipeline.errors import die
 from studio_pipeline import STUDIO_DIR  # noqa: E402
 from studio_pipeline.adapters import s3 as s3c  # noqa: E402
 from studio_pipeline.domain import paths as P  # noqa: E402
@@ -62,9 +62,6 @@ JOURNAL_DIR = str(STUDIO_DIR / "local" / "migrations")
 JSON_DOCS = ("request.json", "result.json", "scene.json")
 
 
-def die(msg: str) -> None:
-    print(f"error: {msg}", file=sys.stderr)
-    raise SystemExit(1)
 
 
 # ── the plan ────────────────────────────────────────────────────────────────

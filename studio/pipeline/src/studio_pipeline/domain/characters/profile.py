@@ -356,9 +356,14 @@ def cmd_edit(name, diff, discard, force, path, pull, push):
         if not os.path.isfile(local):
             die(f"no local copy at {local} — run `edit {name}` first to pull it.")
         remote, _ = fetch_profile(s3, name)
-        diff = unified(remote, read_text(local), name)
-        sys.stdout.write(diff if diff else "")
-        if not diff:
+        # `text`, not `diff`. The flag was rebound to the diff itself, so the
+        # `if not diff` below asked about the text while reading as though it
+        # asked about the option. Harmless here — inside this branch the flag is
+        # already known true — but it is the `--keys` bug's exact shape, and
+        # `test_cli_shadowing` refuses it rather than judging each case.
+        text = unified(remote, read_text(local), name)
+        sys.stdout.write(text)
+        if not text:
             print(f"{local} matches s3.", file=sys.stderr)
         return
 

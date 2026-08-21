@@ -46,6 +46,7 @@ import urllib.request
 
 import click
 
+from studio_pipeline.errors import die
 from studio_pipeline import env_value
 from studio_pipeline.domain import runs as R
 from studio_pipeline.engine import registry as REG
@@ -66,9 +67,6 @@ def classify(model: str) -> tuple[str, str, str]:
     return (entry["skill"], entry["kind"], entry.get("backfill_slug", entry["key"]))
 
 
-def die(msg: str) -> "None":
-    print(f"error: {msg}", file=sys.stderr)
-    raise SystemExit(1)
 
 
 def load_token() -> str:

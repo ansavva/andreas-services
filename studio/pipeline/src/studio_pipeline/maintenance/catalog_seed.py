@@ -74,11 +74,11 @@ import datetime as dt
 import json
 import mimetypes
 import os
-import sys
 import uuid
 
 import click
 
+from studio_pipeline.errors import die
 from studio_pipeline import STUDIO_DIR  # noqa: E402
 from studio_pipeline.adapters import ddb as ddbc  # noqa: E402
 from studio_pipeline.adapters import s3 as s3c  # noqa: E402
@@ -95,9 +95,6 @@ SHARED_PREFIXES = (P.CONFIG + "/", P.PHRASEBOOK + "/")
 _NAMESPACE = uuid.NAMESPACE_URL
 
 
-def die(msg: str) -> None:
-    print(f"error: {msg}", file=sys.stderr)
-    raise SystemExit(1)
 
 
 # ── identity ────────────────────────────────────────────────────────────────
