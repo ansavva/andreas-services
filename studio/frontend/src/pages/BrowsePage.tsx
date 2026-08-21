@@ -23,18 +23,11 @@ import { CopyKeyButton } from "../components/common/CopyKeyButton";
 import { TextPage } from "../components/text/TextPage";
 import { ReelView } from "../components/viewer/ReelView";
 import { useAuth } from "../context/AuthContext";
+import { useFolder, type FolderPin } from "../hooks/useFolder";
 import { useReel } from "../hooks/useReel";
 import { useSelection } from "../hooks/useSelection";
-import { useTree } from "../hooks/useTree";
 import { DEFAULT_SORT, isSortOrder, type FileEntry, type SortOrder } from "../types";
-import {
-  ROOT_PREFIX,
-  basename,
-  folderPath,
-  objectPath,
-  parentPrefix,
-  targetFromPath,
-} from "../utils/location";
+import { folderPath, objectPath, targetFromPath, type FolderId } from "../utils/location";
 
 /**
  * What the destination picker is open on, and which operation it will perform.
@@ -61,40 +54,60 @@ export function BrowsePage() {
   /**
    * The URL is the state.
    *
-   * `/projects/<project>/runs/` is a folder and `/projects/<project>/runs/x/output/clip.mp4`
-   * is that clip, open. Nothing here mirrors the location into component state:
-   * doing so is what makes browser back and a pasted link disagree, and both
-   * have to work for a share link to mean anything.
+   * `/f/<node_id>` is a folder and `/o/<node_id>` is that file, open. Nothing
+   * here mirrors the location into component state: doing so is what makes
+   * browser back and a pasted link disagree, and both have to work for a share
+   * link to mean anything.
    */
   const target = useMemo(() => targetFromPath(location.pathname), [location.pathname]);
-  const openKey = target.kind === "object" ? target.key : null;
+  const openId = target.kind === "object" ? target.id : null;
 
   const sortParam = params.get("sort");
   const sort: SortOrder = isSortOrder(sortParam) ? sortParam : DEFAULT_SORT;
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [newFolder, setNewFolder] = useState<string | null>(null);
-  const [reelPrefix, setReelPrefix] = useState<string | null>(null);
+  const [reelFolder, setReelFolder] = useState<FolderPin>(null);
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
 
   /**
    * Which folder the page *behind* the overlay is showing.
    *
-   * Normally that is whatever the URL points at. While the recursive reel is
-   * open it is pinned to the folder the reel was launched from, and that pin is
-   * load-bearing: the reel walks across folders and rewrites the URL to each
-   * clip as it goes, so without it every scroll would land on a key in a
-   * different folder and re-fetch the listing underneath — a request per clip,
-   * for a listing nobody can see.
+   * Normally that is whatever the URL points at — outright for `/f/<id>`, and
+   * for `/o/<id>` the file's parent, which `useFolder` settles. While the
+   * recursive reel is open it is pinned to the folder the reel was launched
+   * from, and that pin is load-bearing: the reel walks across folders and
+   * rewrites the URL to each clip as it goes, so without it every scroll would
+   * land on a file in a different folder and re-fetch the listing underneath —
+   * a request per clip, for a listing nobody can see.
    */
-  const prefix = reelPrefix ?? target.prefix;
-
-  const { data, loading, error, reload } = useTree(prefix, sort);
+  const { folderId, data, loading, error, reload } = useFolder(target, sort, reelFolder);
 
   // "Play reel" walks recursively from wherever you are, so a folder of only
   // subfolders — `projects/<project>/` — still opens onto real media. Fetched lazily:
   // the pages cost nothing until the reel is actually opened that way.
-  const reel = useReel(reelPrefix ?? prefix, sort, reelPrefix !== null);
+  const reel = useReel(folderId ?? null, sort, reelFolder !== null);
+
+  /**
+   * The listing's own breadcrumbs are where every *path* on this page comes
+   * from now.
+   *
+   * The URL used to carry the path, so the folder's name, its parent and
+   * whether it was the root were all string arithmetic on it. An id URL carries
+   * none of that, and the crumbs already do: the server walks `parent_id` and
+   * hands back the trail with an id and a name path per level. Reading it here
+   * rather than rebuilding it is what keeps the SPA off a path↔id translation of
+   * its own.
+   *
+   * `prefix` is `null` until the listing lands, and it is not `""` — `""` is the
+   * root, and "create this folder at the root" is not a safe reading of "we do
+   * not know yet". Every control that writes is disabled while it is null.
+   */
+  const crumbs = data?.breadcrumbs ?? [];
+  const prefix = data?.prefix ?? null;
+  const atRoot = crumbs.length <= 1;
+  const parentId = crumbs.at(-2)?.id ?? null;
+  const folderName = crumbs.at(-1)?.name ?? "";
 
   const media = useMemo(
     () => (data?.files ?? []).filter((file) => file.kind === "image" || file.kind === "video"),
@@ -114,10 +127,10 @@ export function BrowsePage() {
    * Resolved only while the recursive reel is closed: with it open the URL names
    * a clip from some other folder, which this listing is not expected to hold.
    */
-  const browsing = reelPrefix === null;
-  const openIndex = browsing && openKey ? media.findIndex((item) => item.key === openKey) : -1;
+  const browsing = reelFolder === null;
+  const openIndex = browsing && openId ? media.findIndex((item) => item.id === openId) : -1;
   const openText =
-    browsing && openKey ? (others.find((item) => item.key === openKey) ?? null) : null;
+    browsing && openId ? (others.find((item) => item.id === openId) ?? null) : null;
 
   /**
    * `replace` is for the one navigation that is not a journey: leaving a folder
@@ -127,17 +140,17 @@ export function BrowsePage() {
    * entry, because the browser's back button has to retrace browsing.
    */
   const goToFolder = useCallback(
-    (nextPrefix: string, { replace = false }: { replace?: boolean } = {}) => {
-      setReelPrefix(null);
+    (nextId: FolderId, { replace = false }: { replace?: boolean } = {}) => {
+      setReelFolder(null);
       setActionError(null);
-      navigate({ pathname: folderPath(nextPrefix), search: location.search }, { replace });
+      navigate({ pathname: folderPath(nextId), search: location.search }, { replace });
     },
     [location.search, navigate],
   );
 
   const openFile = useCallback(
     (file: FileEntry) => {
-      navigate({ pathname: objectPath(file.key), search: location.search });
+      navigate({ pathname: objectPath(file.id), search: location.search });
     },
     [location.search, navigate],
   );
@@ -154,11 +167,14 @@ export function BrowsePage() {
    */
   const closeItem = useCallback(() => {
     if (location.key === "default") {
-      navigate({ pathname: folderPath(prefix), search: location.search }, { replace: true });
+      navigate(
+        { pathname: folderPath(folderId ?? null), search: location.search },
+        { replace: true },
+      );
     } else {
       navigate(-1);
     }
-  }, [location.key, location.search, navigate, prefix]);
+  }, [folderId, location.key, location.search, navigate]);
 
   /**
    * Closing the *recursive reel* is the opposite case, and that is why it is a
@@ -167,16 +183,16 @@ export function BrowsePage() {
    * drop the pin and put the URL back on the folder it was launched from.
    */
   const closeReel = useCallback(() => {
-    const launchedFrom = reelPrefix ?? prefix;
-    setReelPrefix(null);
+    const launchedFrom = reelFolder ? reelFolder.id : (folderId ?? null);
+    setReelFolder(null);
     navigate({ pathname: folderPath(launchedFrom), search: location.search }, { replace: true });
-  }, [location.search, navigate, prefix, reelPrefix]);
+  }, [folderId, location.search, navigate, reelFolder]);
 
   // Scrolling the reel rewrites the URL rather than pushing to it. Twenty clips
   // scrolled past would otherwise be twenty back presses to escape.
   const onReelCurrentChange = useCallback(
     (item: FileEntry) => {
-      navigate({ pathname: objectPath(item.key), search: location.search }, { replace: true });
+      navigate({ pathname: objectPath(item.id), search: location.search }, { replace: true });
     },
     [location.search, navigate],
   );
@@ -191,7 +207,7 @@ export function BrowsePage() {
     [params, setParams],
   );
 
-  const selection = useSelection(media, prefix);
+  const selection = useSelection(media, folderId ?? null);
 
   /** "3 files", "1 key" — the count and its noun, agreeing about plurality. */
   const selectedNoun = useCallback(
@@ -225,6 +241,8 @@ export function BrowsePage() {
   );
 
   const deleteSelected = useCallback(async () => {
+    // Still keys: `DELETE /api/objects` is key-addressed until #316. The
+    // selection holds ids; the entries it holds them for carry both.
     const keys = selection.selectedItems.map((item) => item.key);
     await run(deleteObjects(keys));
     selection.clear();
@@ -277,30 +295,33 @@ export function BrowsePage() {
   const deleteOpenFile = useCallback(
     async (file: FileEntry) => {
       await run(deleteObjects([file.key]));
-      if (reelPrefix !== null) {
-        reel.dropItem(file.key);
+      if (reelFolder !== null) {
+        reel.dropItem(file.id);
       } else {
         navigate(
-          { pathname: folderPath(parentPrefix(file.key)), search: location.search },
+          { pathname: folderPath(folderId ?? null), search: location.search },
           { replace: true },
         );
       }
     },
-    [location.search, navigate, reel, reelPrefix, run],
+    [folderId, location.search, navigate, reel, reelFolder, run],
   );
 
+  /**
+   * A rename leaves the URL alone, and that is the point of #313.
+   *
+   * The address used to be the object's key, so renaming it stranded the address
+   * bar on a key that no longer existed and every link anyone had sent. It names
+   * the node id now, and a rename does not move a node — so there is nothing to
+   * navigate. The reel still drops the pane, because its name, its key and its
+   * presigned URL all went stale even though its id did not.
+   */
   const renameOpenFile = useCallback(
     async (file: FileEntry, name: string) => {
-      const result = await run(renameObject(file.key, name));
-      if (reelPrefix !== null) {
-        reel.dropItem(file.key);
-        return;
-      }
-      // The URL names the object, so a rename has to move it or the address bar
-      // is left pointing at a key that no longer exists.
-      navigate({ pathname: objectPath(result.key), search: location.search }, { replace: true });
+      await run(renameObject(file.key, name));
+      if (reelFolder !== null) reel.dropItem(file.id);
     },
-    [location.search, navigate, reel, reelPrefix, run],
+    [reel, reelFolder, run],
   );
 
   /**
@@ -317,14 +338,14 @@ export function BrowsePage() {
    * Going up is what re-fetches, against a prefix that is still there.
    */
   const deleteCurrentFolder = useCallback(async () => {
-    const parent = parentPrefix(prefix);
+    if (prefix === null) return;
     await run(deleteFolder(prefix), { refresh: false });
-    goToFolder(parent, { replace: true });
-  }, [goToFolder, prefix, run]);
+    goToFolder(parentId, { replace: true });
+  }, [goToFolder, parentId, prefix, run]);
 
   const submitNewFolder = useCallback(async () => {
     const name = (newFolder ?? "").trim();
-    if (!name) {
+    if (!name || prefix === null) {
       setNewFolder(null);
       return;
     }
@@ -340,7 +361,7 @@ export function BrowsePage() {
   // doing two things at once. The picker matters most here: it is often open
   // *on* the selection, so dropping it would be Escape cancelling the move by
   // emptying what was being moved.
-  const overlayOpen = openKey !== null || reelPrefix !== null || pickerTarget !== null;
+  const overlayOpen = openId !== null || reelFolder !== null || pickerTarget !== null;
   useEffect(() => {
     if (overlayOpen || selection.count === 0) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -350,15 +371,8 @@ export function BrowsePage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [overlayOpen, selection]);
 
-  const crumbs = data?.breadcrumbs ?? [{ name: "/", prefix: ROOT_PREFIX }];
-  const atRoot = prefix === ROOT_PREFIX;
-  // The current folder's own name, for the delete that acts on it. Taken from
-  // the prefix rather than from the last breadcrumb so it is there before the
-  // listing lands, and empty only at the root, where the control is disabled.
-  const folderName = basename(prefix);
   const isEmpty =
     !loading && !error && data && data.folders.length === 0 && data.files.length === 0;
-
   return (
     <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-6 p-4 sm:p-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -414,7 +428,7 @@ export function BrowsePage() {
           size="sm"
           disabled={atRoot}
           aria-label="Up one folder"
-          onClick={() => goToFolder(parentPrefix(prefix))}
+          onClick={() => goToFolder(parentId)}
         >
           <span aria-hidden="true">←</span> Back
         </Button>
@@ -425,12 +439,12 @@ export function BrowsePage() {
           <Breadcrumbs.Root>
             {crumbs.map((crumb, index, all) => (
               <Breadcrumbs.Item
-                key={crumb.prefix}
+                key={crumb.id}
                 current={index === all.length - 1}
-                href={folderPath(crumb.prefix)}
+                href={folderPath(crumb.id)}
                 onClick={(event: React.MouseEvent) => {
                   event.preventDefault();
-                  goToFolder(crumb.prefix);
+                  goToFolder(crumb.id);
                 }}
               >
                 {crumb.name}
@@ -464,7 +478,7 @@ export function BrowsePage() {
           primary. Do not close that gap.
         */}
         <div className="flex shrink-0 items-center gap-0.5">
-          <CopyKeyButton value={data?.prefix ?? prefix} noun="prefix" />
+          <CopyKeyButton value={prefix ?? ""} noun="prefix" />
 
           {/*
             The folder you are in, deletable from inside it.
@@ -484,7 +498,7 @@ export function BrowsePage() {
           */}
           <ConfirmDeleteButton
             tone="bar"
-            disabled={atRoot}
+            disabled={atRoot || prefix === null}
             noun={atRoot ? "this folder" : folderName}
             onConfirm={deleteCurrentFolder}
           />
@@ -497,9 +511,11 @@ export function BrowsePage() {
           <button
             type="button"
             onClick={() => setNewFolder("")}
+            disabled={prefix === null}
             aria-label="New folder"
             title="New folder"
             className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
+                       disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent
                        focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <svg
@@ -517,7 +533,7 @@ export function BrowsePage() {
 
         <div aria-hidden="true" className="mx-1 h-6 w-px shrink-0 bg-line" />
 
-        <Button size="sm" onClick={() => setReelPrefix(prefix)}>
+        <Button size="sm" onClick={() => setReelFolder({ id: folderId ?? null })}>
           Play reel
         </Button>
       </div>
@@ -535,7 +551,7 @@ export function BrowsePage() {
           className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-card p-3"
         >
           <Text variant="caption" tone="muted">
-            New folder in {prefix}
+            New folder in {prefix ?? "…"}
           </Text>
           <div className="min-w-48 flex-1">
             <Input value={newFolder} onValueChange={setNewFolder} placeholder="folder name" />
@@ -581,10 +597,10 @@ export function BrowsePage() {
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {data.folders.map((folder) => (
               <FolderCard
-                key={folder.prefix}
+                key={folder.id}
                 name={folder.name}
                 prefix={folder.prefix}
-                onOpen={() => goToFolder(folder.prefix)}
+                onOpen={() => goToFolder(folder.id)}
                 onRename={(name) => run(renameFolder(folder.prefix, name))}
                 onMove={() =>
                   setPickerTarget({ verb: "move", kind: "folder", prefix: folder.prefix, name: folder.name })
@@ -732,9 +748,9 @@ export function BrowsePage() {
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             {media.map((file, index) => (
               <MediaTile
-                key={file.key}
+                key={file.id}
                 file={file}
-                selected={selection.selected.has(file.key)}
+                selected={selection.selected.has(file.id)}
                 selectionActive={selection.count > 0}
                 onOpen={() => openFile(file)}
                 onToggleSelect={(extend) => selection.toggleAt(index, extend)}
@@ -750,7 +766,7 @@ export function BrowsePage() {
           <div className="flex flex-col gap-2">
             {others.map((file) => (
               <FileRow
-                key={file.key}
+                key={file.id}
                 file={file}
                 onOpen={() => openFile(file)}
                 onRename={(name) => run(renameObject(file.key, name))}
@@ -786,7 +802,7 @@ export function BrowsePage() {
         the folder recursively, paged in from the API. There is no lightbox any
         more; both routes land here.
       */}
-      {reelPrefix !== null ? (
+      {reelFolder !== null ? (
         <ReelView
           items={reel.items}
           loading={reel.loading}
@@ -823,8 +839,8 @@ export function BrowsePage() {
         <DestinationPicker
           verb={pickerTarget.verb}
           noun={pickerTarget.kind === "folder" ? pickerTarget.name : pickerTarget.noun}
-          startPrefix={prefix}
-          currentPrefix={prefix}
+          startPrefix={prefix ?? ""}
+          currentPrefix={prefix ?? ""}
           // A folder cannot land inside itself, and the picker greys out the
           // branch rather than letting the request come back refused.
           forbiddenPrefix={pickerTarget.kind === "folder" ? pickerTarget.prefix : undefined}
@@ -833,14 +849,16 @@ export function BrowsePage() {
         />
       )}
 
-      {/* A share link to a key this folder does not hold — deleted upstream, or
-          mistyped. The listing loaded fine, so this is specific and worth
-          saying rather than silently showing the folder. */}
-      {openKey && openIndex < 0 && !openText && !loading && !error && (
+      {/* A share link to a node this folder does not hold — deleted upstream
+          between the link being sent and being opened. The listing loaded fine,
+          so this is specific and worth saying rather than silently showing the
+          folder. The id itself is not shown: it is what the address bar already
+          says, and it names nothing a person can act on. */}
+      {openId && openIndex < 0 && !openText && !loading && !error && (
         <Alert.Root intent="warning">
           <Alert.Title>That file is not here any more</Alert.Title>
           <Alert.Description>
-            Nothing in this folder matches {openKey}. It may have been renamed or deleted.
+            Nothing in this folder matches that link. It may have been deleted.
           </Alert.Description>
         </Alert.Root>
       )}

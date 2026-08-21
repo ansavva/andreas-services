@@ -4,7 +4,6 @@ import { Alert, Breadcrumbs, Button, Dialog, Spinner, Text } from "@ansavva/desi
 
 import { getTree } from "../../apis/studio";
 import type { Crumb, FolderEntry } from "../../types";
-import { ROOT_PREFIX, parentPrefix } from "../../utils/location";
 
 interface Props {
   /** Which operation this is picking a destination for. */
@@ -70,7 +69,11 @@ export function DestinationPicker({
 
     // Always by name: this is a folder chooser, and "newest first" is an answer
     // to a question nobody asks while looking for somewhere to put something.
-    getTree(prefix, "name")
+    // By prefix, not by node id: what this picker produces is a *destination*,
+    // and every write route that takes one is still prefix-addressed (#316
+    // retires them). Browsing by the same address it hands back keeps the two
+    // from having to agree through a translation.
+    getTree({ prefix }, "name")
       .then((result) => {
         if (cancelled) return;
         setFolders(result.folders);
@@ -87,6 +90,12 @@ export function DestinationPicker({
       cancelled = true;
     };
   }, [prefix]);
+
+  // Up, and whether there is an up, come from the trail the listing returned
+  // rather than from cutting `prefix` on its last slash. The server built that
+  // trail by walking `parent_id`, so it is the tree's own answer; the string
+  // version was a second, guessing implementation of it.
+  const parent = crumbs.at(-2)?.prefix;
 
   const inForbidden = forbiddenPrefix !== undefined && prefix.startsWith(forbiddenPrefix);
   // A move into the folder the items are already in does nothing; a copy into it
@@ -114,7 +123,7 @@ export function DestinationPicker({
         <Breadcrumbs.Root>
           {crumbs.map((crumb, index, all) => (
             <Breadcrumbs.Item
-              key={crumb.prefix}
+              key={crumb.id}
               current={index === all.length - 1}
               href="#"
               onClick={(event: React.MouseEvent) => {
@@ -136,15 +145,15 @@ export function DestinationPicker({
 
           {!loading && (
             <div className="flex flex-col">
-              {prefix !== ROOT_PREFIX && (
-                <PickerRow up onSelect={() => setPrefix(parentPrefix(prefix))}>
+              {parent !== undefined && (
+                <PickerRow up onSelect={() => setPrefix(parent)}>
                   Up one folder
                 </PickerRow>
               )}
 
               {folders.map((folder) => (
                 <PickerRow
-                  key={folder.prefix}
+                  key={folder.id}
                   // The folder being moved cannot be its own destination, and
                   // showing it greyed says why better than hiding it does.
                   disabled={folder.prefix === forbiddenPrefix}
