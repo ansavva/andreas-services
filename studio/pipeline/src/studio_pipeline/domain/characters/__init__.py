@@ -40,7 +40,7 @@ from studio_pipeline.domain.characters.profile import (
     load_profile,
     local_paths,
     parse_profile,
-    remote_etag,
+    remote_version,
     unified,
     write_profile,
 )
@@ -64,6 +64,6 @@ __all__ = [
     "do_pull", "do_push", "fetch_profile", "group_prefix", "load_profile",
     "local_paths", "main", "parse_profile", "pool_folder", "pool_max_index",
     "profile_key", "put_file", "read_index", "read_text", "ref_files", "ref_root",
-    "remote_etag", "rename_in_profile", "rename_moves", "renamed_file",
+    "remote_version", "rename_in_profile", "rename_moves", "renamed_file",
     "resolve_selection", "sync_index", "unified", "write_profile", "write_text",
 ]

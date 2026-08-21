@@ -17,13 +17,15 @@ instead of quietly dropping their edit.
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
+import pathlib
 import sys
 import tempfile
 
 import click
 
-from studio_pipeline.adapters import s3 as s3c
+from studio_pipeline.adapters import api, store
 # For `add-refs --from-run`: resolving a runref to its output keys. One-way —
 # the run store knows nothing about characters.
 from studio_pipeline.domain import runs as R
@@ -38,7 +40,7 @@ from studio_pipeline.domain.characters.base import (
 )
 from studio_pipeline.domain.characters.profile import (
     load_profile,
-    remote_etag,
+    remote_version,
     write_profile,
 )
 
@@ -54,41 +56,56 @@ from studio_pipeline.domain.characters.profile import (
 # regardless of where it lives or what it is called.
 
 def ref_root(name: str) -> str:
-    return s3c.key(pool_folder(name, "reference")) + "/"
+    return pool_folder(name, "reference") + "/"
 
 
-def ref_files(s3, name: str) -> list[str]:
-    """Every image in reference/, as paths relative to it. Sidecars excluded."""
+def ref_files(name: str) -> list[str]:
+    """Every image in reference/, as paths relative to it. Sidecars excluded.
+
+    **Recursive, and it has to be**, which is the one place `store.files` is not
+    enough on its own: the index keys entries on `face/<name>_1.png`, so a
+    listing one folder deep would see the group folders and none of the images
+    inside them, and `sync_index` would then drop every described entry as
+    missing. `list_keys` was recursive by default and hid this; walking is now
+    explicit.
+    """
     root = ref_root(name)
-    return [k[len(root):] for k in s3c.list_keys(s3, pool_folder(name, "reference"))
-            if os.path.splitext(k)[1].lower() in IMG_EXTS]
+    found = []
+
+    def walk(prefix: str) -> None:
+        for entry in store.children_or_empty(prefix):
+            path = f"{prefix}/{entry['name']}"
+            if entry.get("kind") == "folder":
+                walk(path)
+            elif os.path.splitext(entry["name"])[1].lower() in IMG_EXTS:
+                found.append(path[len(root):])
+
+    walk(root.rstrip("/"))
+    return sorted(found, key=store.natural_key)
 
 
-def _sidecar_caption(s3, image_key: str) -> str:
+def _sidecar_caption(image_key: str) -> str:
     """Text of the <basename>.txt sidecar next to an image key, or '' if none.
 
     Predates the profile index. Kept as a fallback so a character whose
     descriptions were only ever written as sidecars still reads sensibly.
     """
-    txt_key = os.path.splitext(image_key)[0] + ".txt"
     try:
-        return s3.get_object(Bucket=s3c.BUCKET, Key=txt_key)["Body"].read().decode("utf-8").strip()
-    except s3.exceptions.NoSuchKey:
-        return ""
-    except Exception:
+        return store.read(os.path.splitext(image_key)[0] + ".txt").decode("utf-8").strip()
+    except api.NotFound:
         return ""
 
 
-def read_index(s3, name: str) -> tuple[dict, list[dict]]:
+def read_index(name: str) -> tuple[dict, list[dict]]:
     """(profile, references) — the index as the bible currently records it."""
-    data = load_profile(s3, name)
+    data = load_profile(name)
     entries = data.get("references") or []
     if not isinstance(entries, list):
         die(f"{name}'s `references:` must be a list of {{file, description, tags}} entries")
     return data, entries
 
 
-def resolve_selection(s3, name: str, pick: list[str] | None = None,
+def resolve_selection(name: str, pick: list[str] | None = None,
                       tags: list[str] | None = None,
                       slots: list[int] | None = None) -> list[str]:
     """Which reference images to send, as S3 keys, in index order.
@@ -98,7 +115,7 @@ def resolve_selection(s3, name: str, pick: list[str] | None = None,
     with a large reference/ and no default_set will overrun every model's cap,
     and the caller is expected to say so rather than truncate.
     """
-    _data, entries = read_index(s3, name)
+    _data, entries = read_index(name)
     by_file = {e.get("file"): e for e in entries if e.get("file")}
     root = ref_root(name)
 
@@ -118,10 +135,10 @@ def resolve_selection(s3, name: str, pick: list[str] | None = None,
             have = sorted({t for e in entries for t in (e.get("tags") or [])})
             die(f"no reference of {name} carries all of {sorted(want)}. Tags in use: {have or '(none)'}")
     else:
-        data, _ = read_index(s3, name)
+        data, _ = read_index(name)
         chosen = list(data.get("default_set") or []) or [e["file"] for e in entries]
         if not chosen:
-            chosen = ref_files(s3, name)
+            chosen = ref_files(name)
 
     keys = [root + f for f in chosen]
     if slots:
@@ -132,7 +149,7 @@ def resolve_selection(s3, name: str, pick: list[str] | None = None,
     return keys
 
 
-def sync_index(s3, name: str, *, rename_map: dict[str, str] | None = None,
+def sync_index(name: str, *, rename_map: dict[str, str] | None = None,
                apply: bool = True) -> dict:
     """Reconcile `references:` against what is actually in reference/.
 
@@ -141,19 +158,19 @@ def sync_index(s3, name: str, *, rename_map: dict[str, str] | None = None,
     marked `missing: true` rather than dropped — losing a written description
     because an object moved is worse than carrying a stale entry.
     """
-    data, entries = read_index(s3, name)
-    etag = remote_etag(s3, name)
+    data, entries = read_index(name)
+    version = remote_version(name)
     for e in entries:
         if rename_map and e.get("file") in rename_map:
             e["file"] = rename_map[e["file"]]
 
-    on_disk = ref_files(s3, name)
+    on_disk = ref_files(name)
     known = {e.get("file") for e in entries}
     added = []
     for f in on_disk:
         if f not in known:
             entries.append({"file": f,
-                            "description": _sidecar_caption(s3, ref_root(name) + f),
+                            "description": _sidecar_caption(ref_root(name) + f),
                             "tags": []})
             added.append(f)
     # An entry whose file is gone is FLAGGED, not dropped — losing a written
@@ -181,7 +198,7 @@ def sync_index(s3, name: str, *, rename_map: dict[str, str] | None = None,
         data["default_set"] = [f for f in data["default_set"] if f in have]
     data.setdefault("default_set", [])
     if apply:
-        write_profile(s3, name, data, etag)
+        write_profile(name, data, version)
     return {"added": added, "missing": gone, "dropped": dropped,
             "undescribed": [e["file"] for e in entries
                             if not (e.get("description") or "").strip()]}
@@ -202,7 +219,6 @@ def sync_index(s3, name: str, *, rename_map: dict[str, str] | None = None,
 @click.option("--to", help=("Purpose subfolder inside reference/ (face, body, wardrobe, …). "
               "Omit to add at the root of reference/."))
 def cmd_add_refs(files, name, from_run, project, replace, start, to):
-    s3 = s3c.client()
     """Add reference image(s), optionally into a purpose subfolder.
 
     THIS IS THE GATE ON A CHARACTER'S IDENTITY. Everything else about a
@@ -234,27 +250,32 @@ def cmd_add_refs(files, name, from_run, project, replace, start, to):
         except R.RunError as exc:
             die(str(exc))
         run_keys += keys
-        run_slots += [_run_slot(s3, ref, project)] * len(keys)
+        run_slots += [_run_slot(ref, project)] * len(keys)
 
     group = to
     prefix = group_prefix(name, group)
     start = 1 if replace else (start if start is not None
-                                    else pool_max_index(s3, name, "reference", group) + 1)
+                                    else pool_max_index(name, "reference", group) + 1)
 
     folder = pool_folder(name, "reference") + (f"/{group}" if group else "")
+    store.folder(folder)
     n = start
     for f in files:
         ext = os.path.splitext(f)[1].lower() or ".webp"
-        put_file(s3, f, s3c.key(f"{folder}/{prefix}{n}{ext}"),
+        put_file(f, f"{folder}/{prefix}{n}{ext}",
                  "image/webp" if ext == ".webp" else None)
         n += 1
     described: dict[str, str] = {}
     for key, slot_id in zip(run_keys, run_slots):
         ext = os.path.splitext(key)[1].lower() or ".png"
         rel = f"{group}/{prefix}{n}{ext}" if group else f"{prefix}{n}{ext}"
-        dest = s3c.key(f"{folder}/{prefix}{n}{ext}")
-        s3.copy_object(Bucket=s3c.BUCKET, CopySource={"Bucket": s3c.BUCKET, "Key": key},
-                       Key=dest)
+        dest = f"{folder}/{prefix}{n}{ext}"
+        # A read plus a write where this was a server-side `CopyObject`. The run
+        # keeps its own output — that is the point of promoting rather than
+        # moving — so two blobs is the correct outcome here and not merely the
+        # affordable one. See `store.copy`.
+        store.copy(key, dest, content_type=mimetypes.guess_type(dest)[0]
+                   or "application/octet-stream")
         print(f"  {key} -> {folder}/{prefix}{n}{ext}", file=sys.stderr)
         if slot_id:
             described[rel] = slot_id
@@ -262,9 +283,9 @@ def cmd_add_refs(files, name, from_run, project, replace, start, to):
     print(f"added {n - start} image(s) to {folder}/ as {prefix}{start}..{prefix}{n - 1}",
           file=sys.stderr)
 
-    report = sync_index(s3, name)
+    report = sync_index(name)
     if described:
-        _describe_from_spec(s3, name, described)
+        _describe_from_spec(name, described)
         # `report` was taken before the descriptions were written, so without
         # this the warning below names the very images just described.
         report["undescribed"] = [f for f in report["undescribed"] if f not in described]
@@ -276,7 +297,7 @@ def cmd_add_refs(files, name, from_run, project, replace, start, to):
               f"--description '…' --tags face,neutral", file=sys.stderr)
 
 
-def _run_slot(s3, ref: str, project: str | None) -> str | None:
+def _run_slot(ref: str, project: str | None) -> str | None:
     """The shot slot a run recorded, if it was one — see `record_extra`."""
     try:
         proj, run_id = R.resolve_run(ref, project)
@@ -287,7 +308,7 @@ def _run_slot(s3, ref: str, project: str | None) -> str | None:
         return None
 
 
-def _describe_from_spec(s3, name: str, by_file: dict[str, str]) -> None:
+def _describe_from_spec(name: str, by_file: dict[str, str]) -> None:
     """Write the shot spec's own description and tags onto promoted images.
 
     The spec has carried a `description` and `tags` per slot from the start, and
@@ -303,8 +324,8 @@ def _describe_from_spec(s3, name: str, by_file: dict[str, str]) -> None:
         print(f"  note: could not read the shot spec ({exc}); promoted images are "
               f"undescribed.", file=sys.stderr)
         return
-    data, entries = read_index(s3, name)
-    etag = remote_etag(s3, name)
+    data, entries = read_index(name)
+    version = remote_version(name)
     hits = 0
     for entry in entries:
         slot = slots.get(by_file.get(entry.get("file"), ""))
@@ -316,7 +337,7 @@ def _describe_from_spec(s3, name: str, by_file: dict[str, str]) -> None:
     if not hits:
         return
     data["references"] = entries
-    write_profile(s3, name, data, etag)
+    write_profile(name, data, version)
     print(f"  described {hits} image(s) from the shot spec.", file=sys.stderr)
 
 
@@ -324,9 +345,8 @@ def _describe_from_spec(s3, name: str, by_file: dict[str, str]) -> None:
 @click.argument("name", required=True)
 @click.option("--apply", is_flag=True, help="Write the index back (default: dry run).")
 def cmd_sync_refs(name, apply):
-    s3 = s3c.client()
     check_name(name)
-    report = sync_index(s3, name, apply=apply)
+    report = sync_index(name, apply=apply)
     if not apply:
         print("(dry run — pass --apply to write the index back)", file=sys.stderr)
     print(json.dumps(report, indent=2))
@@ -338,10 +358,9 @@ def cmd_sync_refs(name, apply):
 @click.option("--description")
 @click.option("--tags", help="Comma-separated, replacing the existing tags.")
 def cmd_set_ref_desc(file, name, description, tags):
-    s3 = s3c.client()
     check_name(name)
-    data, entries = read_index(s3, name)
-    etag = remote_etag(s3, name)
+    data, entries = read_index(name)
+    version = remote_version(name)
     hit = next((e for e in entries if e.get("file") == file), None)
     if not hit:
         stems = {os.path.splitext(os.path.basename(e.get("file", "")))[0]: e for e in entries}
@@ -354,7 +373,7 @@ def cmd_set_ref_desc(file, name, description, tags):
     if tags is not None:
         hit["tags"] = [t.strip() for t in tags.split(",") if t.strip()]
     data["references"] = entries
-    write_profile(s3, name, data, etag)
+    write_profile(name, data, version)
     print(json.dumps(hit, indent=2))
 
 
@@ -362,7 +381,6 @@ def cmd_set_ref_desc(file, name, description, tags):
 @click.argument("name", required=True)
 @click.option("--from-json", required=True, help="JSON object: {file: {description, tags}}.")
 def cmd_describe_refs(name, from_json):
-    s3 = s3c.client()
     """Describe many reference images in ONE profile write.
 
     Describing a 40-image library one call at a time is 40 profile round-trips
@@ -375,8 +393,8 @@ def cmd_describe_refs(name, from_json):
     if not isinstance(batch, dict):
         die("--from-json must contain an object of {file: {description, tags}}")
 
-    data, entries = read_index(s3, name)
-    etag = remote_etag(s3, name)
+    data, entries = read_index(name)
+    version = remote_version(name)
     by_file = {e.get("file"): e for e in entries}
     unknown = [f for f in batch if f not in by_file]
     if unknown:
@@ -389,7 +407,7 @@ def cmd_describe_refs(name, from_json):
         if "tags" in spec:
             by_file[f]["tags"] = list(spec["tags"])
     data["references"] = entries
-    write_profile(s3, name, data, etag)
+    write_profile(name, data, version)
     left = [e["file"] for e in entries if not (e.get("description") or "").strip()]
     print(f"described {len(batch)} image(s); {len(left)} still undescribed", file=sys.stderr)
     if left:
@@ -400,11 +418,10 @@ def cmd_describe_refs(name, from_json):
 @click.argument("name", required=True)
 @click.option("--set", "set_", multiple=True, help="Files from the index, in slot order. Repeat the flag per file.")
 def cmd_default_set(name, set_):
-    s3 = s3c.client()
     """Name the images sent when --character is given with no selector."""
     check_name(name)
-    data, entries = read_index(s3, name)
-    etag = remote_etag(s3, name)
+    data, entries = read_index(name)
+    version = remote_version(name)
     if set_ is None:
         print(json.dumps(data.get("default_set") or [], indent=2))
         return
@@ -413,7 +430,7 @@ def cmd_default_set(name, set_):
     if unknown:
         die(f"not in {name}'s reference index: {', '.join(unknown)}")
     data["default_set"] = list(set_)
-    write_profile(s3, name, data, etag)
+    write_profile(name, data, version)
     print(json.dumps(data["default_set"], indent=2))
 
 
@@ -430,12 +447,12 @@ def cmd_default_set(name, set_):
 @click.option("--slots", help=("Comma-separated 1-based positions WITHIN the resolved "
               "selection."))
 def cmd_refs(name, describe, dest, expires, json_, keys, pick, pick_tag, presign, slots):
-    s3 = s3c.client()
+    _warn_ignored_expiry(expires)
     """The reference set: describe it, or resolve a selection of it."""
     check_name(name)
 
     if describe:
-        _data, entries = read_index(s3, name)
+        _data, entries = read_index(name)
         if not entries:
             die(f"{name} has no reference index. Build one with "
                 f"`studio character sync-refs {name} --apply`.")
@@ -462,21 +479,18 @@ def cmd_refs(name, describe, dest, expires, json_, keys, pick, pick_tag, presign
     # module: ruff saw `tempfile` used and unimported, which it could only be
     # because nothing ever ran the line. Renaming the flag's parameter is not
     # available — `cli_surface_reference.json` records the dest.
-    selected = resolve_selection(s3, name, pick, tags, slots)
+    selected = resolve_selection(name, pick, tags, slots)
     if not selected:
         die(f"no reference images resolved for {name}")
 
     if presign:
-        results = [{"key": k,
-                    "url": s3.generate_presigned_url(
-                        "get_object", Params={"Bucket": s3c.BUCKET, "Key": k},
-                        ExpiresIn=expires)} for k in selected]
+        results = [{"key": k, "url": store.presign(k)} for k in selected]
         if json_:
             print(json.dumps(results, indent=2))
         else:
             for r in results:
                 print(r["url"])
-        print(f"presigned {len(selected)} reference image(s) for {name} ({expires}s). "
+        print(f"presigned {len(selected)} reference image(s) for {name}. "
               "Slot N is position N in THIS list; cite as [Image1]…", file=sys.stderr)
         return
 
@@ -490,10 +504,23 @@ def cmd_refs(name, describe, dest, expires, json_, keys, pick, pick_tag, presign
     for k in selected:
         base = os.path.basename(k)
         local = os.path.join(dest, base)
-        s3.download_file(s3c.BUCKET, k, local)
+        store.download(k, pathlib.Path(local))
         out[base] = os.path.abspath(local)
     print(json.dumps(out, indent=2))
     print(f"downloaded {len(out)} reference image(s) to {dest}. For Replicate prefer "
           "`refs <name> --presign` (full-res, zero context cost).", file=sys.stderr)
 
 
+
+
+def _warn_ignored_expiry(expires: int) -> None:
+    """`--expires` is accepted and ignored, loudly. See `objects/presign.py`."""
+    context = click.get_current_context(silent=True)
+    if context is None:
+        return
+    source = context.get_parameter_source("expires")
+    if source is not None and source.name != "DEFAULT":
+        click.echo(
+            f"warning: --expires {expires} is ignored; the API sets the URL's lifetime.",
+            err=True,
+        )

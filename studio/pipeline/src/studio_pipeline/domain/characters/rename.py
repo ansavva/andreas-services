@@ -4,6 +4,19 @@ A slug is a path segment, so changing it is not an edit: it is a move of every
 object in the record plus a rewrite of every string that named the old one.
 Doing that by hand is the failure `curate` and `rewrite` exist to prevent, which
 is why it is a command rather than a runbook.
+
+**The one module here still holding an S3 client, deliberately.** Its object
+half is `curate.copy` and `rewrite.apply_moves`, neither of which has moved onto
+the API yet (#306) — so migrating this one would mean migrating those two in the
+same change, and `curate` alone is twenty-one call sites. The bible half is
+already through the API: `load_profile`, `write_profile` and the version check
+are the same calls every other command makes.
+
+Worth knowing what this becomes. `record_keys` enumerates every key under the
+character INCLUDING zero-byte folder markers, and `rename_moves` rewrites each
+one; under the catalog a rename of the character folder is a single `PATCH` that
+moves nothing and leaves every node id intact. Most of this file is machinery
+for a problem the catalog does not have.
 """
 from __future__ import annotations
 
@@ -22,7 +35,7 @@ from studio_pipeline.domain.characters.base import (
 )
 from studio_pipeline.domain.characters.profile import (
     load_profile,
-    remote_etag,
+    remote_version,
     write_profile,
 )
 
@@ -170,8 +183,8 @@ def cmd_rename(old, new, apply, display_name):
     if len(renamed) > 8:
         print(f"    … and {len(renamed) - 8} more basename(s)")
 
-    data = load_profile(s3, old)
-    etag = remote_etag(s3, old)
+    data = load_profile(old)
+    version = remote_version(old)
     was_display = data.get("display_name")
     data["name"] = new
     data["display_name"] = display_name
@@ -204,7 +217,7 @@ def cmd_rename(old, new, apply, display_name):
     # Checked before anything moves, not after: once the objects are under the new
     # prefix there is no clean way to refuse, and silently overwriting someone
     # else's edit is the failure `write_profile` exists to prevent.
-    if remote_etag(s3, old) != etag:
+    if remote_version(old) != version:
         die(f"{old}'s {PROFILE_FILE} changed since it was read — re-run to pick up the "
             f"new version rather than overwriting it. Nothing has moved.")
 
@@ -213,7 +226,7 @@ def cmd_rename(old, new, apply, display_name):
     for src, dst in curate.ordered_moves(list(object_moves.items())):
         curate.copy(s3, src, dst)
         s3.delete_object(Bucket=s3c.BUCKET, Key=src)
-    write_profile(s3, new, data)
+    write_profile(new, data)
     s3.delete_object(Bucket=s3c.BUCKET, Key=profile_src)
     print(f"\nAPPLIED — {new} now holds {len(moves)} object(s). "
           f"Verify with `studio rewrite check`.")

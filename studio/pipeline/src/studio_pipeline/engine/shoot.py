@@ -617,7 +617,7 @@ def run_shoot(name: str, opts) -> int:
 
     spec = load_spec()
     slots = select_slots(spec, opts.group, tuple(opts.slot or ()))
-    profile = CHARACTER.load_profile(s3, name)
+    profile = CHARACTER.load_profile(name)
     # Deliberately NOT the full write-time schema check. `create`/`set-profile`
     # enforce that on the way in; refusing to render because `voice:` is absent
     # would be a reading command policing a writing rule. What a shoot actually

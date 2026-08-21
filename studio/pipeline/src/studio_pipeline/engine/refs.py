@@ -31,7 +31,7 @@ import contextlib
 import io
 import os
 
-from studio_pipeline.adapters import s3 as s3c
+from studio_pipeline.adapters import store
 from studio_pipeline.domain import characters as CHARACTER
 from studio_pipeline.domain import projects as PROJECTS
 
@@ -87,7 +87,7 @@ def character_ref_keys(character: str, slots: list[int] | None = None,
     group, so the resolved selection is what defines the order a model sees.
     """
     with _reason(f"{character}'s reference set"):
-        keys = CHARACTER.resolve_selection(s3c.client(), character, pick, tags, slots)
+        keys = CHARACTER.resolve_selection(character, pick, tags, slots)
 
     if cap is not None and len(keys) > cap:
         raise RefError(
@@ -108,7 +108,8 @@ def character_pool_keys(character: str, pool: str) -> list[str]:
     those images specifically.
     """
     with _reason(f"{character}'s {pool} pool"):
-        return s3c.list_keys(s3c.client(), CHARACTER.pool_folder(character, pool))
+        folder = CHARACTER.pool_folder(character, pool)
+        return [f"{folder}/{e['name']}" for e in store.files(folder)]
 
 
 def project_input_keys(project: str, numbers: list[int]) -> list[str]:

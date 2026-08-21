@@ -4,12 +4,33 @@
 described index of their reference library (which `refs.py` owns the operations
 on). Everything here is about the document itself.
 
-**The ETag is the conflict check**, and it is the one thing in this file that
-does not survive the move onto the API unchanged: `remote_etag` is an S3 concept
-and the catalog does not expose one. `edit --push` and every index write refuse
-when it has moved, so a bible edited in two places fails loudly instead of one
-edit silently winning. Replacing it needs a decision, not a substitution — see
-the `#305` follow-up.
+THE CONFLICT CHECK, AND WHAT REPLACED THE ETAG
+----------------------------------------------
+A bible is edited in two ways at once — by a person through `edit`, and by the
+index commands (`add-refs`, `describe-refs`, `set-ref-desc`, `default-set`,
+`sync-refs`) — so both record a version when they read and refuse to write if it
+has moved. Without it a `--push` of a local copy pulled an hour ago silently
+reverts every description written since.
+
+**It was the S3 ETag. It is now the node's `updated_at`**, because the catalog
+exposes no ETag and deliberately never will: `blob_key` does not leave the API,
+so there is nothing content-addressed for a client to compare.
+
+`updated_at` is a sound substitute and the reasoning is worth keeping:
+
+- **Microsecond resolution** (`catalog._now`), so two writes cannot share a
+  value the way they could under S3's one-second `LastModified`. That was the
+  objection to using a timestamp and it does not apply.
+- **It moves on every write to the blob**, which is what the check needs.
+- **It also moves on a rename or a move, which touch no bytes.** That is a
+  false refusal — the check fires when it need not have. It errs toward
+  refusing, tells the reader to re-run, and loses nothing; an ETag erred the
+  same way for a metadata-only copy.
+
+What it is NOT is a content hash: two writes of identical bytes produce
+different values where an ETag produced the same one. Nothing here wanted that
+property — the question asked is "did anyone write since I read", not "are the
+bytes the ones I saw".
 """
 from __future__ import annotations
 
@@ -20,7 +41,8 @@ import sys
 import click
 import yaml
 
-from studio_pipeline.adapters import s3 as s3c
+from studio_pipeline.adapters import api, store
+from studio_pipeline.domain import paths as P
 from studio_pipeline.domain.characters.base import (
     LOCAL_DIR,
     PROFILE_CT,
@@ -91,48 +113,52 @@ def check_profile(data: dict, where: str, name: str | None = None) -> None:
         die(f"{where} declares name: {data.get('name')!r}, but this is character {name!r}.")
 
 
-def load_profile(s3, name: str) -> dict:
-    key = profile_key(name)
+def load_profile(name: str) -> dict:
+    path = profile_key(name)
     try:
-        text = s3.get_object(Bucket=s3c.BUCKET, Key=key)["Body"].read().decode("utf-8")
-    except s3.exceptions.NoSuchKey:
-        die(f"no {PROFILE_FILE} for character {name!r} (looked at s3://{s3c.BUCKET}/{key}).")
-    return parse_profile(text, f"s3://{s3c.BUCKET}/{key}")
+        text = store.read(path).decode("utf-8")
+    except api.NotFound:
+        die(f"no {PROFILE_FILE} for character {name!r} (looked at {path}).")
+    return parse_profile(text, path)
 
 
-def write_profile(s3, name: str, data: dict, etag: str | None = None) -> None:
+def write_profile(name: str, data: dict, version: str | None = None) -> None:
     """Put a bible back, refusing if it changed underneath us.
 
     Every index command goes through here, so a description written while
     someone else was editing the bible fails loudly instead of silently
     dropping their edit.
+
+    **Check-then-write, not a conditional write.** There is a window between the
+    two in which someone else's write can land and be lost. It was there under
+    the ETag as well — S3 had no compare-and-swap either — and closing it means
+    an `If-Match` on the API, which is a route change and not this one. The
+    window is microseconds against a document a human edits.
     """
-    if etag is not None and remote_etag(s3, name) != etag:
-        die(f"{name}'s profile.yaml changed in S3 since it was read — re-run to pick up "
+    if version is not None and remote_version(name) != version:
+        die(f"{name}'s profile.yaml changed since it was read — re-run to pick up "
             "the new version rather than overwriting it.")
     text = yaml.safe_dump(data, sort_keys=False, allow_unicode=True,
                           default_flow_style=False, width=100)
-    s3.put_object(Bucket=s3c.BUCKET, Key=profile_key(name),
-                  Body=text.encode("utf-8"), ContentType=PROFILE_CT)
+    store.folder(P.character_prefix(name))
+    store.write(profile_key(name), text.encode("utf-8"), content_type=PROFILE_CT)
 
 
 @click.command("show")
 @click.argument("name", required=True)
 def cmd_show(name):
-    s3 = s3c.client()
     check_name(name)
-    key = profile_key(name)
+    path = profile_key(name)
     try:
-        body = s3.get_object(Bucket=s3c.BUCKET, Key=key)["Body"].read()
-    except s3.exceptions.NoSuchKey:
-        die(f"no {PROFILE_FILE} for character {name!r} (looked at s3://{s3c.BUCKET}/{key}).")
+        body = store.read(path)
+    except api.NotFound:
+        die(f"no {PROFILE_FILE} for character {name!r} (looked at {path}).")
     sys.stdout.write(body.decode("utf-8"))
 
 
 @click.command("textblock")
 @click.argument("name", required=True)
 def cmd_textblock(name):
-    s3 = s3c.client()
     """Emit a pasteable text identity block for engines with no reference system.
 
     Seedance and Kling-on-Replicate both carry identity through `reference_images`;
@@ -143,7 +169,7 @@ def cmd_textblock(name):
     prose.
     """
     check_name(name)
-    data = load_profile(s3, name)
+    data = load_profile(name)
 
     authored = (data.get("text_identity_block") or "").strip()
     if authored and not authored.startswith("<"):  # "<>" is the unfilled template
@@ -175,7 +201,6 @@ def cmd_textblock(name):
 @click.option("--shoot", is_flag=True,
               help="Go straight into the standard reference shoot (asks before it bills).")
 def cmd_create(name, dry_run, from_profile, model, project, shoot):
-    s3 = s3c.client()
     check_name(name)
     src = from_profile or TEMPLATE
     if not os.path.isfile(src):
@@ -185,8 +210,8 @@ def cmd_create(name, dry_run, from_profile, model, project, shoot):
     if shoot and src == TEMPLATE:
         die("--shoot needs a real bible: the blank template has no wardrobe or consistency "
             "block to build a prompt from. Pass --from-profile.")
-    uri = put_file(s3, src, profile_key(name), PROFILE_CT)
-    print(f"created character {name!r}: {uri}", file=sys.stderr)
+    path = put_file(src, profile_key(name), PROFILE_CT)
+    print(f"created character {name!r}: {path}", file=sys.stderr)
     if src == TEMPLATE:
         print("  (blank template — fill it in, then `set-profile` the result.)", file=sys.stderr)
 
@@ -220,13 +245,11 @@ def cmd_create(name, dry_run, from_profile, model, project, shoot):
 @click.argument("file", required=True)
 @click.argument("name", required=True)
 def cmd_set_profile(file, name):
-    s3 = s3c.client()
     check_name(name)
     if not os.path.isfile(file):
         die(f"profile file not found: {file}")
     check_profile(parse_profile(read_text(file), file), file, name)
-    uri = put_file(s3, file, profile_key(name), PROFILE_CT)
-    print(f"updated {uri}", file=sys.stderr)
+    print(f"updated {put_file(file, profile_key(name), PROFILE_CT)}", file=sys.stderr)
 
 
 # --- local round-trip editing (`edit`) ------------------------------------
@@ -243,20 +266,36 @@ def local_paths(name: str, override: str | None = None) -> tuple[str, str, str]:
     return path, os.path.join(d, f".{stem}.base.yaml"), os.path.join(d, f".{stem}.etag")
 
 
-def fetch_profile(s3, name: str) -> tuple[str, str]:
-    """(text, etag) of the remote profile.yaml."""
-    key = profile_key(name)
+def fetch_profile(name: str) -> tuple[str, str]:
+    """(text, version) of the stored profile.yaml.
+
+    Two calls where this was one: the bytes come from a presigned URL and the
+    version off the node record, and no single route hands out both. Read the
+    version FIRST — a write landing between the two then produces a version
+    older than the text, so the next push refuses and re-reads. The other order
+    would produce a version NEWER than the text, and a push would overwrite the
+    write it never saw.
+    """
+    path = profile_key(name)
+    version = remote_version(name)
     try:
-        obj = s3.get_object(Bucket=s3c.BUCKET, Key=key)
-    except s3.exceptions.NoSuchKey:
-        die(f"no {PROFILE_FILE} for character {name!r} (looked at s3://{s3c.BUCKET}/{key}).")
-    return obj["Body"].read().decode("utf-8"), obj["ETag"].strip('"')
+        return store.read(path).decode("utf-8"), version or ""
+    except api.NotFound:
+        die(f"no {PROFILE_FILE} for character {name!r} (looked at {path}).")
+        raise  # unreachable; `die` exits. Here so the return type is honest.
 
 
-def remote_etag(s3, name: str) -> str | None:
+def remote_version(name: str) -> str | None:
+    """The node's `updated_at`, or None if there is no node.
+
+    **Only a 404 is None.** This caught every exception, which made a refusal
+    indistinguishable from a missing bible — and a missing version disables the
+    conflict check (`if recorded and current and ...`), so a 403 would have
+    turned the guard off rather than reporting it.
+    """
     try:
-        return s3.head_object(Bucket=s3c.BUCKET, Key=profile_key(name))["ETag"].strip('"')
-    except Exception:
+        return store.resolve(profile_key(name)).get("updated_at")
+    except api.NotFound:
         return None
 
 
@@ -265,14 +304,14 @@ def unified(before: str, after: str, name: str) -> str:
         difflib.unified_diff(
             before.splitlines(keepends=True),
             after.splitlines(keepends=True),
-            fromfile=f"s3://{name}/{PROFILE_FILE}",
+            fromfile=f"{name}/{PROFILE_FILE}",
             tofile=f"local/{name}.yaml",
         )
     )
 
 
-def do_pull(s3, name: str, force: bool, local: str, base: str, etagf: str) -> None:
-    text, etag = fetch_profile(s3, name)
+def do_pull(name: str, force: bool, local: str, base: str, etagf: str) -> None:
+    text, version = fetch_profile(name)
     if os.path.exists(local) and not force:
         current = read_text(local)
         prior = read_text(base) if os.path.exists(base) else None
@@ -283,16 +322,16 @@ def do_pull(s3, name: str, force: bool, local: str, base: str, etagf: str) -> No
             )
     write_text(local, text)
     write_text(base, text)
-    write_text(etagf, etag)
+    write_text(etagf, version)
     print(local)  # stdout: pipeable, e.g. `code "$(... edit <name>)"`
     print(
-        f"pulled s3://{s3c.BUCKET}/{profile_key(name)}\n"
+        f"pulled {profile_key(name)}\n"
         f"  edit the file above, then re-run `edit {name}` to upload it.",
         file=sys.stderr,
     )
 
 
-def do_push(s3, name: str, force: bool, local: str, base: str, etagf: str) -> None:
+def do_push(name: str, force: bool, local: str, base: str, etagf: str) -> None:
     if not os.path.isfile(local):
         die(f"no local copy at {local} — run `edit {name}` first to pull it.")
     text = read_text(local)
@@ -308,10 +347,10 @@ def do_push(s3, name: str, force: bool, local: str, base: str, etagf: str) -> No
         return
 
     recorded = read_text(etagf).strip() if os.path.exists(etagf) else None
-    current = remote_etag(s3, name)
+    current = remote_version(name)
     if recorded and current and recorded != current and not force:
         die(
-            f"s3 {PROFILE_FILE} for {name!r} changed since you pulled it — uploading would\n"
+            f"the stored {PROFILE_FILE} for {name!r} changed since you pulled it — uploading would\n"
             "  discard that change. Re-run with --force to overwrite, or --discard to\n"
             "  throw away your local edits and re-pull."
         )
@@ -327,10 +366,10 @@ def do_push(s3, name: str, force: bool, local: str, base: str, etagf: str) -> No
     # at `<name>/profile.yaml` in the bucket root instead of under `characters/`,
     # reported success, and wrote the local sidecars as though it had worked. The
     # bible was never updated and nothing said so.
-    uri = put_file(s3, local, profile_key(name), PROFILE_CT)
+    path = put_file(local, profile_key(name), PROFILE_CT)
     write_text(base, text)
-    write_text(etagf, remote_etag(s3, name) or "")
-    print(f"uploaded {uri}", file=sys.stderr)
+    write_text(etagf, remote_version(name) or "")
+    print(f"uploaded {path}", file=sys.stderr)
 
 
 @click.command("edit")
@@ -343,19 +382,18 @@ def do_push(s3, name: str, force: bool, local: str, base: str, etagf: str) -> No
 @click.option("--pull", is_flag=True, help="Force the download direction.")
 @click.option("--push", is_flag=True, help="Force the upload direction.")
 def cmd_edit(name, diff, discard, force, path, pull, push):
-    s3 = s3c.client()
     check_name(name)
     local, base, etagf = local_paths(name, path)
 
     if discard:
         force = True
-        do_pull(s3, name, force, local, base, etagf)
+        do_pull(name, force, local, base, etagf)
         return
 
     if diff:
         if not os.path.isfile(local):
             die(f"no local copy at {local} — run `edit {name}` first to pull it.")
-        remote, _ = fetch_profile(s3, name)
+        remote, _ = fetch_profile(name)
         # `text`, not `diff`. The flag was rebound to the diff itself, so the
         # `if not diff` below asked about the text while reading as though it
         # asked about the option. Harmless here — inside this branch the flag is
@@ -364,15 +402,15 @@ def cmd_edit(name, diff, discard, force, path, pull, push):
         text = unified(remote, read_text(local), name)
         sys.stdout.write(text)
         if not text:
-            print(f"{local} matches s3.", file=sys.stderr)
+            print(f"{local} matches the stored bible.", file=sys.stderr)
         return
 
     # Direction: explicit flags win; otherwise pull when there is no working copy
     # yet, push once there is one. That makes the flow "run, edit, run again".
     if pull:
-        do_pull(s3, name, force, local, base, etagf)
+        do_pull(name, force, local, base, etagf)
     elif push or os.path.isfile(local):
-        do_push(s3, name, force, local, base, etagf)
+        do_push(name, force, local, base, etagf)
     else:
-        do_pull(s3, name, force, local, base, etagf)
+        do_pull(name, force, local, base, etagf)
 

@@ -247,6 +247,20 @@ def _aim_store_at(s3, monkeypatch):
             "name": clean.rsplit("/", 1)[-1],
             "size": meta["ContentLength"],
             "kind": "file",
+            # **`updated_at` is not optional here.** It is the optimistic-concurrency
+            # token `characters.profile` replaced the S3 ETag with, and the check
+            # that uses it is written `if recorded and current and ...` — so a shim
+            # that omitted it did not fail, it turned the guard OFF, and
+            # `test_pushing_a_stale_bible_is_refused` passed while asserting
+            # nothing. Caught by that test failing the other way once the real code
+            # started reading the field.
+            #
+            # `LastModified` has one-second resolution where the catalog's is
+            # microseconds. That is a fixture being coarser than the thing it
+            # stands in for, not a behaviour difference: nothing asks whether two
+            # writes a millisecond apart differ, only whether a recorded value
+            # still matches.
+            "updated_at": meta["LastModified"].isoformat(),
         }
 
     def _children(path):
