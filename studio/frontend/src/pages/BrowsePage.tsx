@@ -533,7 +533,13 @@ export function BrowsePage() {
 
         <div aria-hidden="true" className="mx-1 h-6 w-px shrink-0 bg-line" />
 
-        <Button size="sm" onClick={() => setReelFolder({ id: folderId ?? null })}>
+        {/* Disabled while the folder is unsettled — a cold `/o/<id>` link has
+            not learned its parent yet, and `?? null` would play the root. */}
+        <Button
+          size="sm"
+          disabled={folderId === undefined}
+          onClick={() => setReelFolder({ id: folderId ?? null })}
+        >
           Play reel
         </Button>
       </div>
