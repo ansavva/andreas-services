@@ -2387,6 +2387,32 @@
     },
     "options": {}
   },
+  "login": {
+    "arguments": {},
+    "commands": {},
+    "options": {
+      "email": {
+        "choices": null,
+        "default": null,
+        "dest": "email",
+        "flag": false,
+        "flags": [
+          "--email"
+        ],
+        "help": "The account to sign in as. Prompted for if omitted.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      }
+    }
+  },
+  "logout": {
+    "arguments": {},
+    "commands": {},
+    "options": {}
+  },
   "migrate-layout": {
     "arguments": {},
     "commands": {
@@ -5342,5 +5368,10 @@
         "type": "bool"
       }
     }
+  },
+  "whoami": {
+    "arguments": {},
+    "commands": {},
+    "options": {}
   }
 }
