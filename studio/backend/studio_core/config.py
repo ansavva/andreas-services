@@ -32,8 +32,9 @@ def catalog_table():
     the same reason, because studio has one environment and local development
     points at it.
 
-    Nothing reads it yet: listings still come from S3, so an unset variable is
-    currently harmless rather than a misconfiguration waiting to bite.
+    **Every listing reads it as of #309.** It used to be inert — listings came
+    from S3 and an unset variable was harmless — and it is now the difference
+    between a browsable library and an empty one.
     """
     return os.environ.get("STUDIO_CATALOG_TABLE", "studio-prod-catalog")
 
@@ -108,23 +109,22 @@ def max_bulk_keys():
 
 
 def max_folder_objects():
-    """How many objects a folder rename or delete will touch before refusing.
+    """How many nodes one subtree operation will touch, and now also the reel's.
 
-    A folder rename is a CopyObject per key and the Lambda has a wall clock, so
-    this is a guard against a request that would time out halfway through and
-    leave the tree in two places at once.
+    A folder rename or delete is a CopyObject or a transaction per node and the
+    Lambda has a wall clock, so this guards a request that would time out halfway
+    through and leave the tree in two places at once. For those it is a
+    **refusal** — half a move reported as a whole one is the outcome there is no
+    recovering from.
+
+    The reel reads the same number and **truncates** instead, saying so in
+    `truncated`: a page of a library is allowed to be shorter than the library.
+    That is what retires `STUDIO_MAX_WALK_OBJECTS` (20,000), which bounded a walk
+    over S3 *objects* — the reel enumerates rows now (#310), so there is one
+    number for how much of a subtree this service will hold in memory rather than
+    two that had drifted an order of magnitude apart.
     """
     return int(os.environ.get("STUDIO_MAX_FOLDER_OBJECTS", "2000"))
-
-
-def max_walk_objects():
-    """How many objects the recursive reel walk will enumerate.
-
-    Sorting by date means the whole prefix has to be listed before any page can
-    be cut from it, so the walk is bounded and reports when it stopped early
-    rather than pretending the tail does not exist.
-    """
-    return int(os.environ.get("STUDIO_MAX_WALK_OBJECTS", "20000"))
 
 
 def cognito_user_pool_id():

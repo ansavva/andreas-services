@@ -213,8 +213,9 @@ def create_app() -> Flask:
     # `routes/libraries.py` explains what that costs the request hook.
     app.register_blueprint(libraries_bp)
     # The catalog's read surface, kept apart from `browse` for the reason
-    # `routes/nodes.py` gives: one addresses the bucket by key, the other
-    # addresses the table by id, and they overlap until #309 retires the first.
+    # `routes/nodes.py` gives: one returns node records, the other returns a
+    # folder ready to draw. Both read the catalog since #309; `manage` below is
+    # the last blueprint still addressing the bucket, until #316.
     app.register_blueprint(nodes_bp)
     app.register_blueprint(manage_bp)
 

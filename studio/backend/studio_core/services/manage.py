@@ -43,7 +43,7 @@ import logging
 from studio_core import config
 from studio_core.clients.aws import s3
 from studio_core.errors import ConflictError, NotFoundError, ValidationError
-from studio_core.services import browse, keys
+from studio_core.services import keys
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +57,10 @@ def create_folder(raw_prefix: str | None, raw_name: str | None) -> dict:
     """Create an empty folder inside `raw_prefix`.
 
     S3 has no directories, so this writes the same zero-byte marker object the
-    console does. `browse` filters those back out of every listing, which is why
-    a folder made here shows up as a folder and never as a 0 B file.
+    console does. Nothing renders it: listings come from the catalog now (#309),
+    where a folder is a row and a marker has nothing to be. The one place that
+    still has to skip one is `_folder_names` below, which reads a delimited
+    listing to pick a free copy name.
     """
     parent = keys.clean_prefix(raw_prefix)
     name = keys.clean_name(raw_name)
@@ -257,7 +259,7 @@ def copy_objects(raw_keys: list | None, raw_destination: str | None) -> dict:
     # one listing rather than forty — and so two sources sharing a basename in
     # one request number each other correctly instead of both claiming the same
     # free name.
-    taken = browse.folder_names(destination)
+    taken = _folder_names(destination)
     copies: list[tuple[str, str]] = []
 
     for source in cleaned:
@@ -273,6 +275,32 @@ def copy_objects(raw_keys: list | None, raw_destination: str | None) -> dict:
         "destination": destination,
         "copied": len(copies),
         "keys": [target for _, target in copies],
+    }
+
+
+def _folder_names(prefix: str) -> set[str]:
+    """The basenames one folder already holds, so a copy can avoid all of them.
+
+    **This lived in `browse` until #309 and is here now because `browse` stopped
+    listing S3.** It is a write-path question — "what name is free" — and it was
+    only ever in the read module because that was where the listing helpers were.
+
+    Names only: an earlier version carried sizes too, so that copying a
+    byte-identical file could be skipped, and that comparison is exactly the "has
+    this already been done" bookkeeping the favourites feature was removed for.
+
+    **The zero-byte-marker filter is the last one in the service.** A marker
+    cannot exist in the catalog — a folder is a row — so `keys.is_folder_marker`
+    went with the S3 listings that produced them (#312). It is spelled out here
+    because `create_folder` above still writes one, and a delimited listing
+    returns both it and the prefix itself as objects. This goes when the copy
+    path becomes a row write (#317).
+    """
+    _, objects = s3.list_folder(prefix)
+    return {
+        keys.basename(obj["Key"])
+        for obj in objects
+        if obj["Key"] != prefix and not (obj.get("Size", 0) == 0 and obj["Key"].endswith("/"))
     }
 
 

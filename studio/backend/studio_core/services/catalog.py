@@ -99,10 +99,12 @@ KINDS = frozenset({KIND_FOLDER, KIND_FILE})
 # `by-sk` inverts the table so an sk can be asked who points at it; the only
 # question this module asks it is "who is in library X". `by-path` is the
 # subtree index: hashed on `lib`, ranged on `path`, so one `begins_with` reads a
-# whole branch. The third GSI, `by-recent`, is for the reel and has no caller
-# here yet, which is why it is not named.
+# whole branch. `by-recent` is hashed on `lib` and ranged on `created_at`, and
+# is the only index that returns rows in an order a caller did not sort for —
+# `browse.reel_items` reads it (#310).
 BY_SK_INDEX = "by-sk"
 BY_PATH_INDEX = "by-path"
+BY_RECENT_INDEX = "by-recent"
 
 # The sort key of the record half of a node, and of a library.
 META = "META"
@@ -215,22 +217,52 @@ def child_path(record: dict) -> str:
 # ──────────────────────────── reads ────────────────────────────
 
 
-def _query(**kwargs) -> list[dict]:
-    """Every page of one query, as raw items.
+def _pages(**kwargs):
+    """Every page of one query.
 
     Paginated rather than single-shot because DynamoDB's 1 MB page is measured
     in bytes read, not items returned: a filtered query can come back empty with
     a `LastEvaluatedKey` still set, and code that trusted the first page would
     report an empty folder for a full one.
+
+    A generator so a bounded caller can stop asking. Abandoning it mid-branch is
+    what makes `_records_from`'s limit a limit on *round trips* rather than on
+    the list it hands back.
     """
-    items: list[dict] = []
     try:
-        for page in dynamodb.client().get_paginator("query").paginate(**kwargs):
-            items.extend(page.get("Items", []))
+        yield from dynamodb.client().get_paginator("query").paginate(**kwargs)
     except ClientError as exc:
         logger.warning("Query failed (%s): %s", kwargs.get("IndexName", "table"), exc)
         raise UpstreamError("Could not read the catalog") from exc
-    return items
+
+
+def _query(**kwargs) -> list[dict]:
+    """Every item one query returns, unfiltered and unbounded."""
+    return [item for page in _pages(**kwargs) for item in page.get("Items", [])]
+
+
+def _records_from(limit: int, **kwargs) -> tuple[list[dict], bool]:
+    """The `META` records one query returns, and whether it was cut short.
+
+    **Both halves of a node sit in `by-path` and `by-recent`** — #280 puts `lib`,
+    `path` and `created_at` on the by-parent item too — so an unfiltered query
+    returns a node twice, once complete and once as a projection. `META` is the
+    half that is the record.
+
+    The limit therefore counts *records* and not items. Counting items would
+    bound a listing at roughly half the nodes it names, and would do it
+    differently depending on how many of them are the library root, which has no
+    by-parent half at all.
+    """
+    records: list[dict] = []
+    for page in _pages(**kwargs):
+        for item in page.get("Items", []):
+            if _deserialize(item["sk"]) != META:
+                continue
+            if len(records) >= limit:
+                return records, True
+            records.append(_record(item))
+    return records, False
 
 
 def libraries_for(sub: str) -> list[dict]:
@@ -463,35 +495,64 @@ def child_by_name(parent_id: str, name: str) -> dict:
     return {**_record(item), "name": name}
 
 
-def subtree(lib: str, path: str) -> list[dict]:
-    """Every node beneath a path, as full records — refusing rather than truncating.
+def branch(lib: str, path: str, limit: int) -> tuple[list[dict], bool]:
+    """Every node beneath a path, as full records, stopping at `limit`.
 
     One `begins_with` on `by-path` reads a whole branch, which is what the
     materialised `path` is for. Pass `child_path(record)` to get a node's
     descendants; the node itself is not among them, because its own `path` names
     its ancestors and stops short.
 
-    **The by-parent items are filtered out here.** They sit in this index too —
-    #280 puts `lib` and `path` on both halves of a node — so an unfiltered query
-    returns every node twice, once complete and once as a projection. `META` is
-    the half that is the record.
-
-    **The cap is a refusal, not a limit**, and that is inherited deliberately
-    from `manage._subtree`. Both callers of this function are writes: a move
-    rewrites every descendant's `path` and a delete removes every descendant's
-    rows. A truncated answer to either is the setup for doing half the job and
-    reporting success.
+    Returns whether it stopped early rather than deciding what that means. The
+    two callers want opposite things — `subtree` turns it into a refusal,
+    `browse.reel_items` into a page boundary — and a function that picked one
+    would need a second copy of itself for the other.
     """
-    cap = config.max_folder_objects()
-    items = _query(
+    return _records_from(
+        limit,
         TableName=config.catalog_table(),
         IndexName=BY_PATH_INDEX,
         KeyConditionExpression="lib = :lib AND begins_with(#path, :path)",
         ExpressionAttributeNames={"#path": "path"},
         ExpressionAttributeValues={":lib": {"S": lib}, ":path": {"S": path}},
     )
-    records = [_record(item) for item in items if _deserialize(item["sk"]) == META]
-    if len(records) > cap:
+
+
+def recent(lib: str, limit: int) -> tuple[list[dict], bool]:
+    """Every node in a library, newest first, stopping at `limit`.
+
+    The only read here that returns rows in an order the *table* chose rather
+    than one the caller sorted for. `browse.reel_items` is the caller: a reel
+    over a whole library wants the newest of it, and `by-path` cannot answer
+    that — its range key is an ancestor list, so its order is the tree's.
+
+    **Descending, and that is what makes truncating safe.** What a cut drops is
+    the oldest rows, which is the tail a reel was never going to reach; cutting
+    a `by-path` query drops an arbitrary branch instead.
+    """
+    return _records_from(
+        limit,
+        TableName=config.catalog_table(),
+        IndexName=BY_RECENT_INDEX,
+        KeyConditionExpression="lib = :lib",
+        ExpressionAttributeValues={":lib": {"S": lib}},
+        ScanIndexForward=False,
+    )
+
+
+def subtree(lib: str, path: str) -> list[dict]:
+    """`branch`, with the cap as a refusal rather than a limit.
+
+    **The refusal is the point**, and it is inherited deliberately from
+    `manage._subtree`. Both callers of this function are writes: a move rewrites
+    every descendant's `path` and a delete removes every descendant's rows. A
+    truncated answer to either is the setup for doing half the job and reporting
+    success. `browse.reel_items` reads `branch` directly for exactly the opposite
+    reason — a page of a library is allowed to be shorter than the library.
+    """
+    cap = config.max_folder_objects()
+    records, truncated = branch(lib, path, cap + 1)
+    if truncated or len(records) > cap:
         raise ValidationError(
             f"this folder holds more than {cap} items — "
             "move or delete it in smaller pieces"

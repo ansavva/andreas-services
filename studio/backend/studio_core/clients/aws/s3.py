@@ -194,8 +194,9 @@ def put_folder_marker(prefix: str) -> None:
     """Write the zero-byte object that makes an empty folder visible.
 
     The console's own convention, and the only way a new folder can exist before
-    anything is in it — S3 has no directories to create. `services.browse`
-    filters these back out of every listing, so the marker is never a file.
+    anything is in it — S3 has no directories to create. Nothing renders one any
+    more: listings come from the catalog (#309), where a folder is a row.
+    `manage._folder_names` is the last reader that has to skip one.
     """
     try:
         client().put_object(Bucket=config.media_bucket(), Key=prefix, Body=b"")

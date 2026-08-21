@@ -177,6 +177,107 @@ def catalog_table():
         dynamodb.reset_client()
 
 
+# ─────────────────────── the same tree, as catalog rows ───────────────────────
+#
+# **Derived from `FIXTURE_OBJECTS` rather than written out beside it**, and that
+# is the whole point of it. The bucket and the catalog are two descriptions of
+# one library, and a hand-maintained second list would drift from the first on
+# the day somebody added a file to one of them. Deriving means the two agree by
+# construction — which is the same reason `pipeline/tests/conftest.py` mirrors
+# this file rather than inventing its own tree.
+#
+# Three properties of the real thing are reproduced deliberately:
+#
+# * **A key ending in `/` becomes a folder, never a file.** That is the fixture's
+#   zero-byte marker, and it is the demonstration that a marker cannot exist in
+#   a catalog — there is nothing for it to be but the folder it was faking.
+# * **`blob_key` is the object's own key**, not `blobs/<node_id>`. Prod is full
+#   of keys written years before this table existed and they stay where they are,
+#   so the fixture holds the legacy shape rather than the one #294 mints.
+# * **`created_at` increases by one microsecond per node, in declaration order.**
+#   Sub-second resolution is the point: it is what retires the key tie-break in
+#   `browse._sort_records`, and a fixture stamped to the second would let the
+#   retired workaround pass unnoticed.
+
+CATALOG_TREE_START = "2026-08-19T12:30:00.{:06d}+00:00"
+
+
+def _tree_items(objects: dict) -> list[dict]:
+    """Every node the object map implies, ancestors first."""
+    items: list[dict] = []
+    folders = {(): CATALOG_ROOT}
+    minted = 0
+
+    def _node(name: str, parent: tuple, kind: str, key: str | None) -> str:
+        nonlocal minted
+        minted += 1
+        node_id = f"node-{minted:03d}"
+        stamp = CATALOG_TREE_START.format(minted)
+        parent_id = folders[parent]
+        # `path` is the ancestor ids, root first and the node's own id absent —
+        # the same string `catalog.child_path` builds for a node's children.
+        ancestors = [folders[parent[:depth]] for depth in range(len(parent) + 1)]
+        path = "".join(f"/{ancestor}" for ancestor in ancestors)
+        record = {
+            "node_id": {"S": node_id},
+            "parent_id": {"S": parent_id},
+            "lib": {"S": CATALOG_LIBRARY},
+            "name": {"S": name},
+            "kind": {"S": kind},
+            "path": {"S": f"{path}/"},
+            "created_at": {"S": stamp},
+            "updated_at": {"S": stamp},
+        }
+        if key is not None:
+            record["blob_key"] = {"S": key}
+            record["size"] = {"N": str(len(objects[key]))}
+            record["content_type"] = {"S": "application/octet-stream"}
+        items.append({"pk": {"S": f"NODE#{node_id}"}, "sk": {"S": "META"}, **record})
+        items.append(
+            {
+                "pk": {"S": f"NODE#{parent_id}"},
+                "sk": {"S": f"NAME#{name}"},
+                "node_id": {"S": node_id},
+                "lib": {"S": CATALOG_LIBRARY},
+                "kind": {"S": kind},
+                "path": {"S": f"{path}/"},
+                "created_at": {"S": stamp},
+            }
+        )
+        return node_id
+
+    for key in objects:
+        segments = key.split("/")
+        # A trailing slash leaves an empty last segment: the key is a folder
+        # marker, so every segment of it is a folder and there is no file.
+        names, leaf = segments[:-1], segments[-1] or None
+        for depth, name in enumerate(names):
+            branch = tuple(names[: depth + 1])
+            if branch not in folders:
+                folders[branch] = _node(name, branch[:-1], "folder", None)
+        if leaf is not None:
+            _node(leaf, tuple(names), "file", key)
+
+    return items
+
+
+CATALOG_TREE_ITEMS = _tree_items(FIXTURE_OBJECTS)
+
+
+@pytest.fixture
+def catalog_tree(media_bucket, catalog_table):
+    """The fixture bucket *and* the catalog rows that describe it.
+
+    Every browse test wants both: the rows say what exists, and the objects are
+    what `presign` signs for. Hands back both clients so a test can add to either
+    — and a test that adds to only one is testing the disagreement, which is
+    occasionally the point.
+    """
+    for item in CATALOG_TREE_ITEMS:
+        catalog_table.put_item(TableName=config.catalog_table(), Item=item)
+    return media_bucket, catalog_table
+
+
 # ─────────────────────────── the signed-in caller ───────────────────────────
 #
 # `app_factory`'s `before_request` hook identifies the caller and resolves their
