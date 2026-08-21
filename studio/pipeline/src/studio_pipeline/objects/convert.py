@@ -32,6 +32,7 @@ import sys
 
 import click
 
+from studio_pipeline.errors import die
 from studio_pipeline.adapters import s3 as s3c
 from studio_pipeline.domain import paths as P
 from studio_pipeline.domain import runs as R
@@ -44,9 +45,6 @@ PIL_FORMAT = {".png": "PNG", ".jpg": "JPEG", ".webp": "WEBP"}
 CONTENT_TYPE = {".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp"}
 
 
-def die(msg: str) -> "None":
-    print(f"error: {msg}", file=sys.stderr)
-    raise SystemExit(1)
 
 
 def next_input_index(s3, project: str) -> int:

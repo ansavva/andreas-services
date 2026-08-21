@@ -11,7 +11,8 @@
 import json
 import os
 import subprocess
-import sys
+
+from studio_pipeline.errors import die
 
 # STUDIO_S3_*, not XHARNESS_S3_*. The bucket was renamed to
 # `studio-prod-media-us-east-1` and the variables were renamed with it, which is
@@ -38,9 +39,6 @@ REGION = (
 )
 
 
-def die(msg: str) -> "None":
-    print(f"error: {msg}", file=sys.stderr)
-    sys.exit(1)
 
 
 def key(rel_path: str) -> str:

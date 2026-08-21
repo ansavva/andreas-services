@@ -49,6 +49,7 @@ import sys
 
 import click
 
+from studio_pipeline.errors import die
 from studio_pipeline.adapters import s3 as s3c
 from studio_pipeline.domain import rewrite
 from studio_pipeline.domain.characters import (
@@ -65,9 +66,6 @@ IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp"}
 ENGINE_CAPS = {"kling": 7, "seedance": 9, "nano-banana": 14}
 
 
-def die(msg: str) -> "None":
-    print(f"error: {msg}", file=sys.stderr)
-    raise SystemExit(1)
 
 
 def folder(name: str, pool: str, group: str | None = None) -> str:

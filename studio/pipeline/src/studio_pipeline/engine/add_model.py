@@ -44,7 +44,9 @@ from studio_pipeline.adapters import replicate as RA
 from studio_pipeline.engine import registry as REG
 from studio_pipeline.engine import schema as MS
 
-die = RA.die
+# `errors.die`, not a copy re-exported from the HTTP adapter — see
+# `errors.die`'s docstring for the nine that used to exist.
+from studio_pipeline.errors import die  # noqa: E402
 
 # Field names to look for, most specific first. The TYPE decides the role, not
 # the name: a reference set is an array, a first/last frame is a single string.
