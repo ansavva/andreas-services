@@ -108,6 +108,20 @@ def children(path: str) -> list:
     return listed if isinstance(listed, list) else []
 
 
+def children_or_empty(path: str) -> list:
+    """`children`, with a missing folder reported as empty rather than raising.
+
+    The forgiving read `files` already makes, exposed on its own for the one
+    caller that needs folders as well — `characters.refs.ref_files` walks the
+    group subfolders, because the reference index keys entries on
+    `face/<name>_1.png` and a listing one level deep would find no images at all.
+    """
+    try:
+        return children(path)
+    except api.NotFound:
+        return []
+
+
 def files(path: str) -> list[dict]:
     """The file children of a folder, natural-sorted by name. Missing folder -> [].
 
@@ -131,10 +145,7 @@ def files(path: str) -> list[dict]:
     `paths._folder_names` is the folder-shaped twin and keeps a plain sort — its
     ids are timestamps, where a numeric-run sort asks a different question.
     """
-    try:
-        entries = children(path)
-    except api.NotFound:
-        return []
+    entries = children_or_empty(path)
     return sorted(
         (entry for entry in entries if entry.get("kind") == "file" and entry.get("name")),
         key=lambda entry: natural_key(entry["name"]),

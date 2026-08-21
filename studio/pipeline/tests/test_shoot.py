@@ -712,14 +712,14 @@ def test_a_shoot_never_writes_into_the_character(media_bucket, spec, monkeypatch
     monkeypatch.setattr("studio_pipeline.engine.schema.fetch", lambda *a, **k: (props, {}))
 
     from studio_pipeline.domain import characters as CHARACTER
-    before_index = CHARACTER.load_profile(media_bucket, "subject-a")
-    before_files = CHARACTER.ref_files(media_bucket, "subject-a")
+    before_index = CHARACTER.load_profile("subject-a")
+    before_files = CHARACTER.ref_files("subject-a")
 
     CliRunner().invoke(cli.main, [
         "character", "shoot", "subject-a", "--project", "subject-a", "--dry-run"])
 
-    assert CHARACTER.ref_files(media_bucket, "subject-a") == before_files
-    assert CHARACTER.load_profile(media_bucket, "subject-a") == before_index
+    assert CHARACTER.ref_files("subject-a") == before_files
+    assert CHARACTER.load_profile("subject-a") == before_index
     # And the module must not be able to: the filing helpers were removed
     # outright rather than left behind a flag.
     assert not hasattr(SHOOT, "file_output")
@@ -736,7 +736,7 @@ def test_promoting_a_run_output_is_a_separate_command(media_bucket):
         "--from-run", "subject-a/2026-08-04_21-30-54_wave-porch#1"])
     assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
 
-    files = CHARACTER.ref_files(media_bucket, "subject-a")
+    files = CHARACTER.ref_files("subject-a")
     assert any(f.startswith("face/subject-a_face_") for f in files), files
     # the run keeps its own output
     media_bucket.head_object(Bucket=BUCKET, Key=run_output)
@@ -789,7 +789,7 @@ def test_promoting_a_shot_run_carries_the_specs_description_and_tags(media_bucke
         "--from-run", f"subject-a/{run}#1"])
     assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
 
-    _data, entries = CHARACTER.read_index(media_bucket, "subject-a")
+    _data, entries = CHARACTER.read_index("subject-a")
     added = [e for e in entries if e.get("file", "").startswith("face/subject-a_face_")]
     assert added, entries
     assert added[-1]["description"] == " ".join(slot["description"].split())
@@ -805,7 +805,7 @@ def test_promoting_a_run_that_was_not_shot_leaves_it_undescribed(media_bucket):
         "character", "add-refs", "subject-a", "--to", "face",
         "--from-run", "subject-a/2026-08-04_21-30-54_wave-porch#1"])
     assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
-    _data, entries = CHARACTER.read_index(media_bucket, "subject-a")
+    _data, entries = CHARACTER.read_index("subject-a")
     added = [e for e in entries if e.get("file", "").startswith("face/subject-a_face_")]
     assert added and not (added[-1].get("description") or "").strip()
 

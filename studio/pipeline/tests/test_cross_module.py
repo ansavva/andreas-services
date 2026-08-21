@@ -152,10 +152,10 @@ def test_editing_a_bible_writes_it_back_where_it_was_read_from(media_bucket, tmp
     base = tmp_path / ".subject-a.base.yaml"
     etag = tmp_path / ".subject-a.etag"
 
-    original = CHARACTER.load_profile(media_bucket, "subject-a")
+    original = CHARACTER.load_profile("subject-a")
     base.write_text("name: Subject A\n")
     local.write_text("name: Subject A\ndescription: edited\n")
-    etag.write_text(CHARACTER.remote_etag(media_bucket, "subject-a") or "")
+    etag.write_text(CHARACTER.remote_version("subject-a") or "")
 
     # The schema check guards writes; this test is about WHERE the bytes land.
     #
@@ -168,9 +168,9 @@ def test_editing_a_bible_writes_it_back_where_it_was_read_from(media_bucket, tmp
     # every later test in the session.
     from studio_pipeline.domain.characters import profile as PROFILE
     monkeypatch.setattr(PROFILE, "check_profile", lambda *a, **k: None)
-    CHARACTER.do_push(media_bucket, "subject-a", False, str(local), str(base), str(etag))
+    CHARACTER.do_push("subject-a", False, str(local), str(base), str(etag))
 
-    written = CHARACTER.load_profile(media_bucket, "subject-a")
+    written = CHARACTER.load_profile("subject-a")
     assert written != original, "the profile the reader loads was not updated"
     assert written.get("description") == "edited"
 
@@ -187,8 +187,13 @@ def test_pushing_a_stale_bible_is_refused(media_bucket, tmp_path, monkeypatch):
     cache — which says nothing about whether S3 moved on. A session that adds
     references, describes them and rewrites `default_set` through the index
     commands leaves a stale local file that still looks clean, and uploading it
-    would silently undo all of it. The recorded etag is what stops that, so the
-    refusal is asserted here rather than assumed.
+    would silently undo all of it. The recorded version is what stops that, so
+    the refusal is asserted here rather than assumed.
+
+    **It was an S3 ETag and is the node's `updated_at`** (#305). The check is
+    written `if recorded and current and ...`, so a version that cannot be read
+    disables it rather than failing — which is exactly what happened when the
+    moto shim was first pointed at this and did not report the field.
     """
     from studio_pipeline.domain import characters as CHARACTER
 
@@ -200,9 +205,9 @@ def test_pushing_a_stale_bible_is_refused(media_bucket, tmp_path, monkeypatch):
     base.write_text("name: Subject A\n")
     local.write_text("name: Subject A\ndescription: stale edit\n")
 
-    original = CHARACTER.load_profile(media_bucket, "subject-a")
+    original = CHARACTER.load_profile("subject-a")
     from studio_pipeline.domain.characters import profile as PROFILE
     monkeypatch.setattr(PROFILE, "check_profile", lambda *a, **k: None)
     with pytest.raises(SystemExit):
-        CHARACTER.do_push(media_bucket, "subject-a", False, str(local), str(base), str(etag))
-    assert CHARACTER.load_profile(media_bucket, "subject-a") == original
+        CHARACTER.do_push("subject-a", False, str(local), str(base), str(etag))
+    assert CHARACTER.load_profile("subject-a") == original

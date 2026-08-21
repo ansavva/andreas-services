@@ -13,12 +13,13 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
 
-from studio_pipeline.errors import die
 from studio_pipeline import STUDIO_DIR
-from studio_pipeline.adapters import s3 as s3c
+from studio_pipeline.adapters import store
 from studio_pipeline.domain import TEMPLATES_DIR
 from studio_pipeline.domain import paths as P
+from studio_pipeline.errors import die
 
 PROFILE_FILE = "profile.yaml"
 PROFILE_CT = "application/yaml"
@@ -81,25 +82,42 @@ def group_prefix(name: str, group: str | None) -> str:
     return f"{name}_{group}_" if group else f"{name}_"
 
 
-def pool_max_index(s3, name: str, pool: str, group: str | None = None) -> int:
-    """Highest N among numbered files in a pool (optionally one subfolder)."""
+def pool_max_index(name: str, pool: str, group: str | None = None) -> int:
+    """Highest N among numbered files in a pool (optionally one subfolder).
+
+    **The subfolder exclusion is gone with the recursive listing that needed
+    it.** `store.files` is one folder deep, so a file in `reference/face/` is
+    simply not among `reference/`'s children — where `list_keys` returned the
+    whole subtree and the filter had to put it back.
+
+    Read off the names rather than counted, for the reason `projects.py` gives:
+    a pool is pruned by hand, so `len()` would reuse an index and two images
+    would end up answering to one name.
+    """
     pat = re.compile(rf"^{re.escape(group_prefix(name, group))}(\d+)\.")
     folder = pool_folder(name, pool) + (f"/{group}" if group else "")
     hi = 0
-    for key in s3c.list_keys(s3, folder):
-        if group is None and "/" in key[len(s3c.key(folder)) + 1:]:
-            continue  # a subfolder numbers itself
-        if (m := pat.match(os.path.basename(key))):
+    for entry in store.files(folder):
+        if (m := pat.match(entry["name"])):
             hi = max(hi, int(m.group(1)))
     return hi
 
 
-def put_file(s3, local: str, key: str, content_type: str | None = None) -> str:
+def put_file(local: str, path: str, content_type: str | None = None) -> str:
+    """Upload one local file to a name path, creating its folder if needed.
+
+    Returns the PATH, where this returned an `s3://bucket/key` URI. The CLI has
+    no bucket name any more, and printing a guessed one would be worse than
+    printing what was actually written — the call `objects/upload.py` already
+    made.
+    """
     import mimetypes
 
     ct = content_type or mimetypes.guess_type(local)[0] or "application/octet-stream"
-    s3.upload_file(local, s3c.BUCKET, key, ExtraArgs={"ContentType": ct})
-    return f"s3://{s3c.BUCKET}/{key}"
+    parent, _, _name = path.strip("/").rpartition("/")
+    store.folder(parent)
+    store.upload(path, Path(local), content_type=ct)
+    return path
 
 
 
