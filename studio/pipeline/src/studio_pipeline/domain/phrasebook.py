@@ -12,6 +12,26 @@ It is kept **as data in S3, not in this repository**:
 Same split the repo uses for characters — the tooling is code, the specifics are
 data. This file holds only the machinery.
 
+SHARED MATERIAL, SO NEITHER HALF USES A NODE (#305)
+---------------------------------------------------
+The phrasebook belongs to no character and no project, `catalog_seed.py`
+deliberately records no node for it, and `store.resolve` therefore 404s on it.
+Both directions go through the API's **key-addressed** routes instead:
+
+    read    store.shared_read(KEY)          GET   /api/asset
+    write   api.patch("/api/text", …)       PATCH /api/text
+
+**The write cannot create the file, and the read used to be able to.**
+`put_object` was happy to invent an object; `PATCH /api/text` requires the key
+to name one that already exists, because studio's API has no upload and this is
+the one write in it a person authors. So `studio phrasebook add` against a
+library that has never held a `wording.yaml` now fails instead of quietly
+starting one, and `save` says what that takes. Nothing in the repo puts the file
+there: `dev-setup.sh` syncs `config/` only, and the dev-stack seed is #285 and
+does not exist yet — so on a fresh dev stack `add` fails until the file is
+copied in out of band. Reading is unaffected; a missing phrasebook still reads
+as an empty one.
+
 SHAPE
 -----
     version: 1
@@ -35,45 +55,72 @@ CLI
 from __future__ import annotations
 
 import datetime as dt
-import io
 import json
 
 import click
 import yaml
 
-from studio_pipeline.adapters.s3 import BUCKET, client, die  # noqa: E402
+from studio_pipeline.adapters import api, store  # noqa: E402
 from studio_pipeline.domain import paths as P  # noqa: E402
+from studio_pipeline.errors import die  # noqa: E402
 
 KEY = P.phrasebook_key()
 
 
-def load(s3) -> dict:
+def _empty() -> dict:
+    """A fresh empty document.
+
+    A function rather than a constant: every caller goes on to mutate what it
+    is given, and a shared `{"models": {}}` would collect the first `add`'s
+    section and hand it to the next reader.
+    """
+    return {"version": 1, "models": {}}
+
+
+def load() -> dict:
+    """The wording lists, or an empty document when there are none yet.
+
+    **Only a 404 is "no phrasebook".** This used to catch every exception and
+    grep the message for `NoSuchKey`, because a missing key surfaced differently
+    across botocore versions — which made a refusal indistinguishable from an
+    absent file, and the phrasebook then reports "no substitutions apply" for a
+    draft it never checked. `api.Forbidden` is a different fact and is left to
+    surface.
+    """
     try:
-        body = s3.get_object(Bucket=BUCKET, Key=KEY)["Body"].read()
-    except s3.exceptions.NoSuchKey:
-        return {"version": 1, "models": {}}
-    except Exception as exc:  # missing key surfaces differently across botocore versions
-        if "NoSuchKey" in str(exc) or "404" in str(exc):
-            return {"version": 1, "models": {}}
-        raise
-    return yaml.safe_load(io.BytesIO(body)) or {"version": 1, "models": {}}
+        body = store.shared_read(KEY)
+    except api.NotFound:
+        return _empty()
+    return yaml.safe_load(body) or _empty()
 
 
-def save(s3, doc: dict) -> str:
+def save(doc: dict) -> str:
+    """Write the wording list back through `PATCH /api/text`.
+
+    **It can only overwrite.** The route refuses a key that names nothing, so
+    this is where the one behaviour `put_object` had and the API does not gets
+    reported rather than swallowed. See the module docstring.
+    """
     doc["updated"] = dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    s3.put_object(Bucket=BUCKET, Key=KEY,
-                  Body=yaml.safe_dump(doc, sort_keys=False, allow_unicode=True).encode(),
-                  ContentType="application/x-yaml")
+    content = yaml.safe_dump(doc, sort_keys=False, allow_unicode=True)
+    try:
+        api.patch("/api/text", {"key": KEY, "content": content})
+    except api.NotFound:
+        die(f"there is no {KEY} in this library, and the API cannot create one — "
+            "it overwrites an existing file and never invents one. Put a "
+            "wording.yaml in the bucket at that key first; nothing in the repo "
+            "syncs it (dev-setup.sh syncs config/ only, and the dev-stack seed "
+            "is #285).")
     return KEY
 
 
-def terms(s3, model_key: str) -> list[dict]:
+def terms(model_key: str) -> list[dict]:
     """The avoid/use pairs for one model.
 
     One fetch, so a caller can check many fields locally and keep per-field
     attribution instead of making a round trip each time.
     """
-    section = (load(s3).get("models") or {}).get(model_key) or {}
+    section = (load().get("models") or {}).get(model_key) or {}
     return [{"avoid": e["avoid"], "use": e["use"]}
             for e in (section.get("entries") or []) if e.get("avoid")]
 
@@ -81,12 +128,11 @@ def terms(s3, model_key: str) -> list[dict]:
 def _open():
     """The document and its model sections, loaded once.
 
-    Every command needs all three, and they were shared by living in one
-    `_run`. A helper keeps that sharing without the dispatch.
+    Every command needs both, and they were shared by living in one `_run`. A
+    helper keeps that sharing without the dispatch.
     """
-    s3 = client()
-    doc = load(s3)
-    return s3, doc, doc.setdefault("models", {})
+    doc = load()
+    return doc, doc.setdefault("models", {})
 
 
 @click.group(help=__doc__)
@@ -97,7 +143,7 @@ def main():
 @main.command("models")
 def do_models():
     """List the models covered."""
-    _s3, _doc, models = _open()
+    _doc, models = _open()
     for k, v in models.items():
         print(f"{k:20} {v.get('replicate','?'):40} "
               f"entries={len(v.get('entries') or [])}")
@@ -107,15 +153,14 @@ def do_models():
 @click.option("--model", required=True)
 def do_terms(model):
     """The avoid/use pairs for one model, as JSON."""
-    s3, _doc, _models = _open()
-    print(json.dumps(terms(s3, model)))
+    print(json.dumps(terms(model)))
 
 
 @main.command("show")
 @click.option("--model", help="limit to one model key")
 def do_show(model):
     """Print the phrasebook."""
-    _s3, _doc, models = _open()
+    _doc, models = _open()
     if model and model not in models:
         die(f"no phrasebook section for {model!r}")
     out = {model: models[model]} if model else models
@@ -127,7 +172,7 @@ def do_show(model):
 @click.option("--text", required=True)
 def do_check(model, text):
     """Scan text against this model's wording list. Exits 1 on a hit."""
-    _s3, _doc, models = _open()
+    _doc, models = _open()
     section = models.get(model)
     if not section:
         print(f"no wording list for {model}")
@@ -154,7 +199,7 @@ def do_check(model, text):
 @click.option("--use", required=True)
 def do_add(avoid, model, note, replicate, use):
     """Record a substitution."""
-    s3, doc, models = _open()
+    doc, models = _open()
     section = models.setdefault(model, {"replicate": None, "entries": []})
     if replicate:
         section["replicate"] = replicate
@@ -164,4 +209,6 @@ def do_add(avoid, model, note, replicate, use):
         "note": note,
         "added": dt.datetime.now(dt.UTC).strftime("%Y-%m-%d"),
     })
-    print(f"recorded -> s3://{BUCKET}/{save(s3, doc)}")
+    # The path, not an `s3://` URI: the CLI knows no bucket name any more, and
+    # printing one it guessed would be worse than printing none.
+    print(f"recorded -> {save(doc)}")
