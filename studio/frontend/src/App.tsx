@@ -1,13 +1,12 @@
 import type { ReactNode } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter } from "react-router-dom";
 
 import { Alert, Spinner } from "@ansavva/design-system";
 
 import { isAuthConfigured } from "./amplify";
 import { LoginForm } from "./components/auth/LoginForm";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import { BrowsePage } from "./pages/BrowsePage";
-import { LegacyRedirect } from "./pages/LegacyRedirect";
+import { StudioRoutes } from "./routes";
 
 function Gate({ children }: { children: ReactNode }) {
   const { authenticated, loading } = useAuth();
@@ -39,40 +38,22 @@ function Gate({ children }: { children: ReactNode }) {
 }
 
 /**
- * Three routes, and the third is a bridge.
+ * The gate wraps the routes rather than sitting inside one.
  *
- * `/f/<node_id>` and `/o/<node_id>` are canonical (#313): the URL names a node
- * by id, so a share link outlives the rename or move that used to invalidate it.
- * `/` is the library root, whose id nothing knows before the first request.
+ * `LegacyRedirect` makes an authenticated call — every `/api` route is behind
+ * the Cognito authorizer — so a resolver rendered before sign-in would 401 on a
+ * share link that is perfectly good. Signing in leaves the URL where it was, and
+ * the redirect happens on the far side of it.
  *
- * `*` is every URL studio handed out before that — the S3 key, spelled
- * `/projects/<project>/runs/…/output/clip.mp4` — and it goes to `LegacyRedirect`,
- * which asks the API what the path names and replaces itself with the id URL.
- * Matching those by *exclusion* is what reserves `/f/` and `/o/`; see
- * `utils/location`.
- *
- * **The gate wraps the routes rather than sitting inside one**, because the
- * resolver is an authenticated call: every `/api` route is behind the Cognito
- * authorizer, so a resolver rendered before sign-in would 401 on a link that is
- * perfectly good. Signing in leaves the URL where it was, and the redirect then
- * happens on the far side.
- *
- * Two things outside this file have to agree with it. CloudFront's
- * viewer-request function must send all of these to `index.html` — including the
- * legacy ones ending in `.mp4`, which is why it routes by location rather than
- * by extension (`infra/modules/hosting`). And sign-out sends the user to `/`.
+ * The route table itself is in `routes.tsx`. See there for what the three shapes
+ * mean.
  */
 export function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Gate>
-          <Routes>
-            <Route path="/" element={<BrowsePage />} />
-            <Route path="/f/:nodeId" element={<BrowsePage />} />
-            <Route path="/o/:nodeId" element={<BrowsePage />} />
-            <Route path="*" element={<LegacyRedirect />} />
-          </Routes>
+          <StudioRoutes />
         </Gate>
       </BrowserRouter>
     </AuthProvider>

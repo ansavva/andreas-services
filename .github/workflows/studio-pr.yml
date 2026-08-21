@@ -88,7 +88,7 @@ jobs:
         run: cd studio/backend && docker build -t studio-api:ci .
 
   frontend:
-    name: Frontend — lint/typecheck/build
+    name: Frontend — lint/typecheck/test/build
     needs: detect-changes
     if: needs.detect-changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
@@ -115,8 +115,12 @@ jobs:
       - name: Lint
         run: cd studio/frontend && npm run lint
 
-      - name: Typecheck
-        run: cd studio/frontend && npm run typecheck
+      # One suite, and it covers the legacy-URL resolver. Everything else on
+      # this surface fails loudly — a broken listing is a blank page — but a
+      # share link written before #313 that quietly stops resolving is invisible
+      # until somebody reports it, so that is the piece with tests.
+      - name: Run tests
+        run: cd studio/frontend && npm test
 
       - name: Build
         run: cd studio/frontend && npm run build
