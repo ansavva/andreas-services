@@ -26,7 +26,7 @@ The family:
   supplies the character's bible and the reference images this engine requires.
   **FIRST load `studio-media-character`** — never generate a character from a text
   prompt alone (see "Reference images are MANDATORY" below).
-- **`studio-media-s3`** — the media asset store (`STUDIO_S3_BUCKET`) references and
+- **`studio-media-s3`** — the media library holding references and
   outputs live in.
 
 ## The model: `bytedance/seedance-2.0`
@@ -136,8 +136,8 @@ job is already `processing`/`succeeded`, and `cancel_predictions` any duplicates
 
 ### Output location (always) — the run owns it
 
-Generated videos are stored in **S3** (bucket
-the bucket named by `STUDIO_S3_BUCKET`), not in git, and every submission is a **run**:
+Generated videos are stored in the **media library**, not in git, and every
+submission is a **run**:
 
 ```
 projects/<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/
@@ -233,9 +233,9 @@ re-minting fresh URLs.
 **Seedance and Replicate do NOT require tiny references** — sharper references
 give better character consistency, and presigned S3 URLs carry full-resolution
 images at zero context cost (only the short URL enters the agent context, and
-through the runner, not even that). Presigned URLs default to a 1 h
-expiry (`--expires` to change) — plenty for a render job. See the **`studio-media-s3`** skill
-for details and `aws login` setup.
+through the runner, not even that). The API sets the URL's lifetime and
+`--expires` is ignored — it is comfortably longer than a render job. See the
+**`studio-media-s3`** skill for details and for `studio login`.
 
 ## Available Replicate MCP tools (common)
 
