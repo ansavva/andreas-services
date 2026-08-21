@@ -64,7 +64,7 @@ def defaults(kind: str) -> dict:
 # 1. gather — every image input, as S3 keys, never URLs
 # --------------------------------------------------------------------------
 
-def gather(entry: dict, s3, args) -> dict:
+def gather(entry: dict, args) -> dict:
     """Resolve all image inputs to S3 keys and bind them to this model's fields.
 
     Returns {field: key | [keys]}. Order matters for the reference list: an
@@ -181,7 +181,7 @@ def gather(entry: dict, s3, args) -> dict:
                 f"character's default_set) rather than hoping the extras are dropped.")
         bindings[refs_field] = keys
 
-    _warn_total_bytes(entry, s3, bindings)
+    _warn_total_bytes(entry, bindings)
     return bindings
 
 
@@ -192,7 +192,7 @@ def gather(entry: dict, s3, args) -> dict:
 BYTES_WARN = 6.5 * 1024 * 1024
 
 
-def _warn_total_bytes(entry: dict, s3, bindings: dict) -> None:
+def _warn_total_bytes(entry: dict, bindings: dict) -> None:
     """Warn when a VIDEO payload carries more image data than has ever worked.
 
     A warning, not an error: 6.41 MiB is the largest total observed to succeed,
@@ -215,7 +215,7 @@ def _warn_total_bytes(entry: dict, s3, bindings: dict) -> None:
     keys = []
     for value in bindings.values():
         keys += value if isinstance(value, list) else [value]
-    if not keys or s3 is None:
+    if not keys:
         return
     total = 0
     try:
@@ -350,7 +350,7 @@ def render(entry: dict, run: str, payload: dict, bindings: dict, as_json: bool) 
 # 4-9. execute — record, presign, submit, poll, archive, record
 # --------------------------------------------------------------------------
 
-def execute(entry: dict, payload: dict, bindings: dict, s3, token: str, args) -> int:
+def execute(entry: dict, payload: dict, bindings: dict, token: str, args) -> int:
     kind = entry["kind"]
     d = defaults(kind)
     project = args.project

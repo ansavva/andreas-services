@@ -469,7 +469,7 @@ or projects.
 | `store.py` | **The media store, addressed by path and reached through the API.** Resolve a name path to a node, list its files in natural order, read, write, upload, copy, presign, and ensure a folder exists. No bucket name, no credentials — bytes travel to S3 directly on presigned URLs the API signs, which is what keeps a video out of the Lambda's request limit. `s3.py` is being retired into this. |
 | `api.py` | One transport for every call the CLI makes: bearer token, refresh-on-401, library header, error mapping. Decided once so no caller re-decides it. |
 | `auth.py` | The Cognito sign-in behind `studio login`, and the token cache it writes. |
-| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. One auth path for the whole package — `session()` is what everything else asks for. **Shrinking**: everything above the adapters is moving onto `store.py`, and `domain/runs.py` no longer imports this. |
+| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. One auth path for the whole package — `session()` is what everything else asks for. **Shrinking**: everything above the adapters is moving onto `store.py`; `domain/runs.py` and the whole of `engine/` no longer import this. |
 | `ddb.py` | The catalog table's client and the typed-attribute marshalling every write needs. Takes its credentials from `s3.py`, because the bridge resolves a session and not an S3 session. Knows nothing about libraries or nodes. |
 | `replicate.py` | Token, HTTP, download, poll. |
 | `ffmpeg.py` | Probe, stitch, frame grab, contact grid. A scene and a movie join their inputs by identical rules because they call the same function. ffmpeg ships in the wheel; no system install. |

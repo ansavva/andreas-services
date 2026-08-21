@@ -56,7 +56,6 @@ from types import SimpleNamespace
 import click
 
 from studio_pipeline.adapters import replicate as RA
-from studio_pipeline.adapters import s3 as s3c
 from studio_pipeline.adapters import store
 from studio_pipeline.domain import contact_sheet as SHEET
 from studio_pipeline.domain import paths as P
@@ -224,7 +223,7 @@ def panel_args(manifest: dict, shot: dict, panel: dict, entry: dict, opts) -> Si
     )
 
 
-def prepare_panel(s3, manifest: dict, shot: dict, panel: dict, opts):
+def prepare_panel(manifest: dict, shot: dict, panel: dict, opts):
     """Everything up to (not including) the submit, for one panel."""
     from studio_pipeline.engine import runner as RUN  # local: runner imports this module's peers
 
@@ -252,7 +251,7 @@ def prepare_panel(s3, manifest: dict, shot: dict, panel: dict, opts):
     args.key += list((panel.get("references") or {}).get("keys") or [])
 
     try:
-        bindings = SUB.gather(entry, s3, args)
+        bindings = SUB.gather(entry, args)
     except (SUB.SubmitError, REFS.RefError, R.RunError) as exc:
         raise BoardError(f"{shot['id']} panel {panel['n']}: {exc}")
     payload = RUN.build_payload(entry, args)
@@ -267,8 +266,8 @@ def prepare_panel(s3, manifest: dict, shot: dict, panel: dict, opts):
 # a shot
 # --------------------------------------------------------------------------
 
-def shot_bindings(s3, manifest: dict, shot: dict, entry: dict) -> tuple[str | None, str | None,
-                                                                       list[str], list[str]]:
+def shot_bindings(manifest: dict, shot: dict, entry: dict) -> tuple[str | None, str | None,
+                                                                   list[str], list[str]]:
     """(start, end, reference keys, notes) — the whole role resolution, applied.
 
     Order is load-bearing: the demoted start panel first, then the remaining
@@ -391,7 +390,7 @@ def shot_args(manifest: dict, shot: dict, entry: dict, opts) -> SimpleNamespace:
     )
 
 
-def prepare_shot(s3, manifest: dict, shot: dict, opts):
+def prepare_shot(manifest: dict, shot: dict, opts):
     """Everything up to (not including) the submit, for one shot's video."""
     from studio_pipeline.engine import runner as RUN
 
@@ -408,11 +407,11 @@ def prepare_shot(s3, manifest: dict, shot: dict, opts):
         raise BoardError(f"{shot['id']} has no motion prompt.")
 
     args = shot_args(manifest, shot, entry, opts)
-    start, end, refs, notes = shot_bindings(s3, manifest, shot, entry)
+    start, end, refs, notes = shot_bindings(manifest, shot, entry)
     args.start_key, args.end_key, args.key = start, end, refs
 
     try:
-        bindings = SUB.gather(entry, s3, args)
+        bindings = SUB.gather(entry, args)
     except (SUB.SubmitError, REFS.RefError, R.RunError) as exc:
         raise BoardError(f"{shot['id']}: {exc}")
     payload = RUN.build_payload(entry, args)
@@ -427,7 +426,7 @@ def prepare_shot(s3, manifest: dict, shot: dict, opts):
 # seeing what is actually being sent
 # --------------------------------------------------------------------------
 
-def review_sheet(s3, manifest: dict, label: str, items: list[tuple[str, str]],
+def review_sheet(manifest: dict, label: str, items: list[tuple[str, str]],
                  out_dir: str | None, cache: dict) -> str:
     """A labelled contact sheet of the images one payload binds.
 
@@ -476,12 +475,11 @@ def _sheet_items(entry: dict, bindings: dict) -> list[tuple[str, str]]:
 
 
 def _resolve(ref: str, project: str | None):
-    s3 = s3c.client()
     owner, sid = SC.resolve_scene(ref, project)
     manifest = SC.read_manifest(owner, sid)
     if not manifest:
         raise BoardError(f"no scene.json for {owner}/{sid}")
-    return s3, owner, sid, manifest
+    return owner, sid, manifest
 
 
 # --------------------------------------------------------------------------
@@ -495,7 +493,7 @@ def run_check(ref: str, opts) -> int:
     between two paid renders, and a whole board can be planned wrong in one way —
     so the refusals are collected rather than raised one at a time.
     """
-    s3, _owner, _sid, manifest = _resolve(ref, opts.project)
+    _owner, _sid, manifest = _resolve(ref, opts.project)
     shots = select_shots(manifest, tuple(opts.shot or ()))
     token = RA.load_token()
     problems: list[str] = []
@@ -507,13 +505,13 @@ def run_check(ref: str, opts) -> int:
             if SB.is_supplied(panel) or (panel.get("key") and not panel.get("stale")):
                 continue
             try:
-                entry, _args, payload, bindings = prepare_panel(s3, manifest, shot, panel, opts)
+                entry, _args, payload, bindings = prepare_panel(manifest, shot, panel, opts)
                 SUB.preflight(entry, payload, bindings, token)
                 ok += 1
             except (BoardError, MS.SchemaError) as exc:
                 problems.append(str(exc))
         try:
-            entry, _args, payload, bindings, shot_notes = prepare_shot(s3, manifest, shot, opts)
+            entry, _args, payload, bindings, shot_notes = prepare_shot(manifest, shot, opts)
             SUB.preflight(entry, payload, bindings, token)
             notes += shot_notes
             ok += 1
@@ -536,7 +534,7 @@ def run_check(ref: str, opts) -> int:
 # --------------------------------------------------------------------------
 
 def run_board(ref: str, opts) -> int:
-    s3, owner, sid, manifest = _resolve(ref, opts.project)
+    owner, sid, manifest = _resolve(ref, opts.project)
     shots = select_shots(manifest, tuple(opts.shot or ()))
 
     wanted = []
@@ -566,7 +564,7 @@ def run_board(ref: str, opts) -> int:
     sheet_cache: dict[str, str] = {}
     prepared = []
     for shot, panel in wanted:
-        entry, args, payload, bindings = prepare_panel(s3, manifest, shot, panel, opts)
+        entry, args, payload, bindings = prepare_panel(manifest, shot, panel, opts)
         try:
             SUB.preflight(entry, payload, bindings, token)
         except MS.SchemaError as exc:
@@ -578,7 +576,7 @@ def run_board(ref: str, opts) -> int:
         run = f"{owner}/{R.new_run_id(args.slug)}"
         print(f"\n===== {shot['id']} panel {panel['n']}  ->  a storyboard panel =====")
         print(SUB.render(entry, run, payload, bindings, False))
-        sheet = review_sheet(s3, manifest, f"{shot['id']}-p{panel['n']}",
+        sheet = review_sheet(manifest, f"{shot['id']}-p{panel['n']}",
                              _sheet_items(entry, bindings), opts.review_sheet, sheet_cache)
         print(f"===== IMAGES — what this panel sends =====\n{sheet}")
 
@@ -601,7 +599,7 @@ def run_board(ref: str, opts) -> int:
         label = f"{shot['id']} p{panel['n']}"
         print(f"\n----- {label} -----", file=sys.stderr)
         try:
-            code = SUB.execute(entry, payload, bindings, s3, token, args)
+            code = SUB.execute(entry, payload, bindings, token, args)
             if code != 0:
                 raise SUB.SubmitError(f"exited {code}")
         except (SUB.SubmitError, RA.ReplicateError) as exc:
@@ -645,13 +643,13 @@ def run_board(ref: str, opts) -> int:
 # --------------------------------------------------------------------------
 
 def run_render(ref: str, opts) -> int:
-    s3, owner, sid, manifest = _resolve(ref, opts.project)
+    owner, sid, manifest = _resolve(ref, opts.project)
     shots = select_shots(manifest, tuple(opts.shot))
     token = RA.load_token()
 
     prepared, notes = [], []
     for shot in shots:
-        entry, args, payload, bindings, shot_notes = prepare_shot(s3, manifest, shot, opts)
+        entry, args, payload, bindings, shot_notes = prepare_shot(manifest, shot, opts)
         try:
             SUB.preflight(entry, payload, bindings, token)
         except MS.SchemaError as exc:
@@ -668,7 +666,7 @@ def run_render(ref: str, opts) -> int:
         run = f"{owner}/{R.new_run_id(args.slug)}"
         print(f"\n===== {shot['id']}  ->  a shot of {manifest['scene']} =====")
         print(SUB.render(entry, run, payload, bindings, False))
-        sheet = review_sheet(s3, manifest, shot["id"], _sheet_items(entry, bindings),
+        sheet = review_sheet(manifest, shot["id"], _sheet_items(entry, bindings),
                              opts.review_sheet, sheet_cache)
         print(f"===== IMAGES — what {shot['id']} actually sends =====\n{sheet}")
 
@@ -687,7 +685,7 @@ def run_render(ref: str, opts) -> int:
     for shot, entry, args, payload, bindings in prepared:
         print(f"\n----- {shot['id']} -----", file=sys.stderr)
         try:
-            code = SUB.execute(entry, payload, bindings, s3, token, args)
+            code = SUB.execute(entry, payload, bindings, token, args)
             if code != 0:
                 raise SUB.SubmitError(f"exited {code}")
         except (SUB.SubmitError, RA.ReplicateError) as exc:

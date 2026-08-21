@@ -65,7 +65,6 @@ import click
 import yaml
 
 from studio_pipeline.adapters import replicate as RA
-from studio_pipeline.adapters import s3 as s3c
 from studio_pipeline.adapters import store
 from studio_pipeline.domain import TEMPLATES_DIR
 from studio_pipeline.domain import characters as CHARACTER
@@ -344,10 +343,13 @@ def _plate_key(slot: dict, field: str) -> str:
             f"slot {slot['id']!r}: {field} {rel!r} must be a key under "
             f"{P.CONFIG}/ — plates are config, not character material."
         )
-    return s3c.key(rel)
+    # No prefixing on the way out. `store` addresses by tree-relative path, so
+    # the slot's value already IS the key — this went through `s3.key`, which
+    # had become the identity function once the global prefix went.
+    return rel
 
 
-def check_plates(s3, slots: list[dict]) -> None:
+def check_plates(slots: list[dict]) -> None:
     """Every plate must already be in the bucket. Fail once, listing all of them."""
     missing = []
     for slot in slots:
@@ -399,7 +401,7 @@ def _seed_picked(name: str, seed_pick: str) -> list[str]:
     return [by_base.get(w) or by_stem[w] for w in want]
 
 
-def identity_keys(s3, name: str, source: str, pick: str | None, tags: str | None,
+def identity_keys(name: str, source: str, pick: str | None, tags: str | None,
                   limit: int = IDENTITY_MAX,
                   seed_pick: str | None = None) -> tuple[list[str], str]:
     """The images that say WHO this is, and where they came from.
@@ -474,7 +476,7 @@ def identity_keys(s3, name: str, source: str, pick: str | None, tags: str | None
 # seeing what is actually being sent
 # --------------------------------------------------------------------------
 
-def review_sheet(s3, slot_id: str, keys: list[str], out_dir: str, cache: dict) -> str:
+def review_sheet(slot_id: str, keys: list[str], out_dir: str, cache: dict) -> str:
     """A labelled contact sheet of the images one payload binds, in slot order.
 
     The payload review names its images (`<presigned: characters/…>`) but a name
@@ -559,7 +561,7 @@ def slot_args(slot: dict, spec: dict, entry: dict, name: str, opts) -> SimpleNam
     )
 
 
-def prepare(slot: dict, spec: dict, profile: dict, name: str, s3, opts):
+def prepare(slot: dict, spec: dict, profile: dict, name: str, opts):
     """Everything up to (not including) the submit: bindings, prompt, payload."""
     from studio_pipeline.engine import runner as RUN  # local: runner imports this module's peers
 
@@ -579,7 +581,7 @@ def prepare(slot: dict, spec: dict, profile: dict, name: str, s3, opts):
     # Resolve bindings BEFORE the prompt: the citation numbers are positions in
     # the resolved list, and only `gather` knows what that list is.
     try:
-        bindings = SUB.gather(entry, s3, args)
+        bindings = SUB.gather(entry, args)
     except (SUB.SubmitError, REFS.RefError, R.RunError) as exc:
         raise ShootError(str(exc))
     field = (entry.get("images") or {}).get("refs")
@@ -612,7 +614,6 @@ def prepare(slot: dict, spec: dict, profile: dict, name: str, s3, opts):
 def run_shoot(name: str, opts) -> int:
     """The whole shoot. Shared with `character create --shoot`."""
     CHARACTER.check_name(name)
-    s3 = s3c.client()
     opts.project = PROJ.require_project(opts.project)
 
     spec = load_spec()
@@ -627,9 +628,9 @@ def run_shoot(name: str, opts) -> int:
     if thin:
         print(f"warning: {name}'s bible has no {', '.join(thin)} — the prompts will carry "
               f"less to hold the render on-model.", file=sys.stderr)
-    check_plates(s3, slots)
+    check_plates(slots)
 
-    ident, source = identity_keys(s3, name, opts.identity, opts.pick, opts.pick_tag,
+    ident, source = identity_keys(name, opts.identity, opts.pick, opts.pick_tag,
                                   opts.identity_max, getattr(opts, "seed_pick", None))
     opts.identity = ident
     print(f"identity from {source}/ — {len(ident)} image(s):", file=sys.stderr)
@@ -639,7 +640,7 @@ def run_shoot(name: str, opts) -> int:
     token = RA.load_token()
     prepared = []
     for slot in slots:
-        entry, args, payload, bindings = prepare(slot, spec, profile, name, s3, opts)
+        entry, args, payload, bindings = prepare(slot, spec, profile, name, opts)
         try:
             SUB.preflight(entry, payload, bindings, token)
         except MS.SchemaError as exc:
@@ -654,7 +655,7 @@ def run_shoot(name: str, opts) -> int:
         print(SUB.render(entry, run, payload, bindings, False))
         if opts.review_sheet:
             field = (entry.get("images") or {}).get("refs")
-            sheet = review_sheet(s3, slot["id"], bindings.get(field) or [],
+            sheet = review_sheet(slot["id"], bindings.get(field) or [],
                                  opts.review_sheet, sheet_cache)
             print(f"===== IMAGES — what {slot['id']} actually sends =====\n{sheet}")
 
@@ -681,7 +682,7 @@ def run_shoot(name: str, opts) -> int:
     for slot, entry, args, payload, bindings in prepared:
         print(f"\n----- {slot['id']} -----", file=sys.stderr)
         try:
-            code = SUB.execute(entry, payload, bindings, s3, token, args)
+            code = SUB.execute(entry, payload, bindings, token, args)
             if code != 0:
                 raise SUB.SubmitError(f"exited {code}")
         except (SUB.SubmitError, RA.ReplicateError) as exc:
