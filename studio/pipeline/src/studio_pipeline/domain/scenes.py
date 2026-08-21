@@ -69,7 +69,9 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import mimetypes
 import os
+import pathlib
 import tempfile
 
 import click
@@ -79,7 +81,8 @@ from studio_pipeline.adapters.ffmpeg import (  # noqa: E402  — shared with mov
     probe,
     stitch,
 )
-from studio_pipeline.adapters.s3 import BUCKET, client, die, list_keys  # noqa: E402
+from studio_pipeline.adapters import store  # noqa: E402
+from studio_pipeline.errors import die  # noqa: E402
 from studio_pipeline import errors  # noqa: E402
 from studio_pipeline.domain import contact_sheet  # noqa: E402  — a board is read by looking
 from studio_pipeline.domain import frames as FRAMES  # noqa: E402  — the chain and the pool
@@ -114,7 +117,7 @@ def scene_key(project: str, scene_id: str, *parts: str) -> str:
     return P.scene_key(project, scene_id, *parts)
 
 
-def list_scenes(s3, project: str) -> list[str]:
+def list_scenes(project: str) -> list[str]:
     """Scene ids in a project, sorted by id.
 
     NOT oldest first any more. That held only while every id began with a
@@ -124,7 +127,7 @@ def list_scenes(s3, project: str) -> list[str]:
     return P.list_ids(P.scenes_prefix(project))
 
 
-def _newest(s3, project: str, ids: list[str]) -> str:
+def _newest(project: str, ids: list[str]) -> str:
     """The most recently created scene, read off the manifests.
 
     Not `ids[-1]`. That worked only while every id began with a timestamp, which
@@ -140,7 +143,7 @@ def _newest(s3, project: str, ids: list[str]) -> str:
     """
     def created(scene_id: str) -> str:
         try:
-            doc = read_manifest(s3, project, scene_id) or {}
+            doc = read_manifest(project, scene_id) or {}
         except Exception:
             return ""
         return doc.get("created") or ""
@@ -148,7 +151,7 @@ def _newest(s3, project: str, ids: list[str]) -> str:
     return max(enumerate(ids), key=lambda pair: (created(pair[1]), pair[0]))[1]
 
 
-def resolve_scene(s3, ref: str, default_project: str | None = None) -> tuple[str, str]:
+def resolve_scene(ref: str, default_project: str | None = None) -> tuple[str, str]:
     """'<project>/<scene_id>' | '<project>/latest' | '<scene_id>' -> (project, id).
 
     Also the sceneref resolver `movies.py` uses — a movie addresses its scenes
@@ -165,11 +168,11 @@ def resolve_scene(s3, ref: str, default_project: str | None = None) -> tuple[str
         project, sid = default_project, ref
     else:
         die(f"cannot resolve scene {ref!r}: no project given (use <project>/<scene_id>)")
-    ids = list_scenes(s3, project)
+    ids = list_scenes(project)
     if not ids:
         die(f"project {project} has no scenes")
     if sid == "latest":
-        return project, _newest(s3, project, ids)
+        return project, _newest(project, ids)
     if sid in ids:
         return project, sid
     hits = [i for i in ids if sid in i]
@@ -192,18 +195,23 @@ def manifest_key(project: str, scene_id: str) -> str:
     return scene_key(project, scene_id, "scene.json")
 
 
-def read_manifest(s3, project: str, scene_id: str) -> dict | None:
+def read_manifest(project: str, scene_id: str) -> dict | None:
     """A scene's record, or None when there is no scene there."""
     return R.read_json(manifest_key(project, scene_id))
 
 
-def write_manifest(s3, manifest: dict) -> dict:
+def write_manifest(manifest: dict) -> dict:
     """Write a scene back, refreshing its derived fields first.
 
     `status` is recomputed on every write and never read back as authority — the
     same discipline the character index follows. It is in the document so a
     person (or an agent reading `scenes show`) can see where a scene is without
     replaying the rules.
+
+    **The scene's folder is ensured here**, because this is the only place a
+    scene is written and `new_scene` writes one that has never existed. S3 made
+    `scenes/<slug>/` out of the slashes in the key; the catalog needs the node,
+    and without it starting a scene would fail on a parent nobody had made.
     """
     manifest["status"] = SB.scene_status(manifest)
     for shot in manifest.get("shots") or []:
@@ -214,6 +222,7 @@ def write_manifest(s3, manifest: dict) -> dict:
     # `<timestamp>_<slug>` and writing it back under its bare slug would put it
     # in a directory that does not exist.
     project, _, scene_id = manifest["scene"].partition("/")
+    store.folder(scene_prefix(project, scene_id))
     R.write_json(manifest_key(project, scene_id), manifest)
     return manifest
 
@@ -229,7 +238,7 @@ def scene_output_key(manifest: dict) -> str | None:
 
 # ── starting a scene ────────────────────────────────────────────────────────
 
-def new_scene(s3, project: str, slug: str, plan_path: str | None,
+def new_scene(project: str, slug: str, plan_path: str | None,
               title: str = "", force: bool = False) -> dict:
     """Ingest a plan and write `scene.json`. Nothing renders, nothing bills.
 
@@ -246,7 +255,7 @@ def new_scene(s3, project: str, slug: str, plan_path: str | None,
     if plan_path:
         SB.validate(manifest)
 
-    existing = read_manifest(s3, project, slug)
+    existing = read_manifest(project, slug)
     if existing:
         if not force:
             die(f"{project}/{slug} already exists ({existing.get('status', 'unknown')}).\n"
@@ -254,10 +263,10 @@ def new_scene(s3, project: str, slug: str, plan_path: str | None,
                 f"every run, panel and cut it already has is carried across.")
         manifest = SB.merge(existing, manifest)
 
-    return write_manifest(s3, manifest)
+    return write_manifest(manifest)
 
 
-def shot_video_key(s3, shot: dict, project: str) -> str | None:
+def shot_video_key(shot: dict, project: str) -> str | None:
     """The video a shot rendered, resolved from its run if not already recorded."""
     if shot.get("key"):
         return shot["key"]
@@ -273,7 +282,7 @@ def shot_video_key(s3, shot: dict, project: str) -> str | None:
 
 # ── assembling ──────────────────────────────────────────────────────────────
 
-def assemble(s3, project: str, scene_id: str, refs: tuple[str, ...] = (),
+def assemble(project: str, scene_id: str, refs: tuple[str, ...] = (),
              dest_dir: str | None = None) -> dict:
     """Copy each rendered shot in, stitch them, and record the cut.
 
@@ -285,9 +294,10 @@ def assemble(s3, project: str, scene_id: str, refs: tuple[str, ...] = (),
 
     The cut OVERWRITES `output/<slug>.mp4`. The bucket versions every object and
     grants no `s3:DeleteObjectVersion`, so a previous cut is never destroyed,
-    only superseded.
+    only superseded — and a replace through the API keeps the node's identity,
+    so anything already naming the cut still names it.
     """
-    manifest = read_manifest(s3, project, scene_id)
+    manifest = read_manifest(project, scene_id)
     if not manifest:
         die(f"no scene {project}/{scene_id} — start one with "
             f"`studio scenes new {project} --slug {scene_id}`")
@@ -316,19 +326,26 @@ def assemble(s3, project: str, scene_id: str, refs: tuple[str, ...] = (),
     print(f"scene {project}/{scene_id}")
 
     tmp = tempfile.mkdtemp(prefix="scene-")
+    store.folder(scene_key(project, scene_id, "shots"))
     local: list[str] = []
     for n, shot in enumerate(shots, 1):
-        src = shot_video_key(s3, shot, project)
+        src = shot_video_key(shot, project)
         ext = os.path.splitext(src)[1]
         lp = os.path.join(tmp, f"shot-{n:02d}{ext}")
-        s3.download_file(BUCKET, src, lp)
+        store.download(src, pathlib.Path(lp))
         local.append(lp)
         shot["n"] = n
         shot["key"] = src
         shot["shot_key"] = scene_key(project, scene_id, "shots", f"shot-{n:02d}{ext}")
-        # Server-side copy: the bytes never leave the bucket.
-        s3.copy_object(Bucket=BUCKET, Key=shot["shot_key"],
-                       CopySource={"Bucket": BUCKET, "Key": src})
+        # **This was a server-side `CopyObject` and is now a read plus a write**,
+        # so the bytes travel through this process — and for a scene they are
+        # video, which is the case `store.copy` says to reconsider before
+        # reaching for. It is accepted here for the reason the alternative is
+        # worse: a second node pointing at one blob is copy-on-write (#334), and
+        # the API's delete route destroys the shared bytes when either row goes.
+        # The upload is already local, so the extra cost is one PUT per shot.
+        store.upload(shot["shot_key"], pathlib.Path(lp),
+                     content_type=mimetypes.guess_type(lp)[0] or "application/octet-stream")
         print(f"  shot {n}: {shot['run']}")
 
     out_local = os.path.join(tmp, f"{R.slugify(slug)}.mp4")
@@ -338,14 +355,15 @@ def assemble(s3, project: str, scene_id: str, refs: tuple[str, ...] = (),
 
     out_key = scene_key(project, scene_id, "output", f"{R.slugify(slug)}.mp4")
     superseded = R.read_json(manifest_key(project, scene_id)) or {}
-    s3.upload_file(out_local, BUCKET, out_key, ExtraArgs={"ContentType": "video/mp4"})
+    store.folder(scene_key(project, scene_id, "output"))
+    store.upload(out_key, pathlib.Path(out_local), content_type="video/mp4")
 
     manifest["characters"] = sorted(characters)
     manifest["shots"] = shots
     manifest["stitch"] = info
     manifest["output"] = {"key": out_key, **probe(out_local)}
     manifest["assembled"] = R._now()
-    write_manifest(s3, manifest)
+    write_manifest(manifest)
 
     if scene_output_key(superseded):
         print("  (the previous cut is superseded, not destroyed — it survives as "
@@ -361,7 +379,7 @@ def assemble(s3, project: str, scene_id: str, refs: tuple[str, ...] = (),
 
 # ── carrying a shot forward ─────────────────────────────────────────────────
 
-def handoff(s3, project: str, scene_id: str, n: int, from_run: str | None = None) -> dict:
+def handoff(project: str, scene_id: str, n: int, from_run: str | None = None) -> dict:
     """Take the previous shot's last frame and hand it to shot N.
 
     Two things, and the second is the point: the frame goes into the project's
@@ -369,7 +387,7 @@ def handoff(s3, project: str, scene_id: str, n: int, from_run: str | None = None
     third record — `storyboard.scene_frames` reads the sequence back off the
     plan, so the scene's own frames cannot drift from the scene.
     """
-    manifest = read_manifest(s3, project, scene_id)
+    manifest = read_manifest(project, scene_id)
     if not manifest:
         die(f"no scene {project}/{scene_id}")
     shots = scene_shots(manifest)
@@ -385,13 +403,13 @@ def handoff(s3, project: str, scene_id: str, n: int, from_run: str | None = None
             f"       studio scenes render {project}/{scene_id} --shot {n - 1}")
 
     tmp = tempfile.mkdtemp(prefix="handoff-")
-    _p, run_id, src = FRAMES.fetch_video(s3, ref, project, tmp)
+    _p, run_id, src = FRAMES.fetch_video(ref, project, tmp)
     local = grab(src, None, os.path.join(tmp, f"{run_id}_last.png"), from_end=0.2)
     key = FRAMES.add_to_input_pool(project, local)
 
     shot["continues"] = True
     shot["opens_on"] = {"key": key, "from_run": f"{project}/{run_id}"}
-    write_manifest(s3, manifest)
+    write_manifest(manifest)
 
     print(key)
     print(f"shot {n} ({shot.get('id')}) now opens on the last frame of "
@@ -457,6 +475,19 @@ def plan_table(manifest: dict) -> list[str]:
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
 
+def _warn_ignored_expiry(expires: int) -> None:
+    """`--expires` is accepted and ignored, loudly. See `objects/presign.py`."""
+    context = click.get_current_context(silent=True)
+    if context is None:
+        return
+    source = context.get_parameter_source("expires")
+    if source is not None and source.name != "DEFAULT":
+        click.echo(
+            f"warning: --expires {expires} is ignored; the API sets the URL's lifetime.",
+            err=True,
+        )
+
+
 @click.group(help=__doc__)
 def main():
     pass
@@ -483,7 +514,7 @@ def do_new(project, force, from_json, part, shot, slug, title):
             f"       studio scenes new {project} --slug {slug}\n"
             f"       studio scenes assemble {project}/{slug} "
             + " ".join(f"--shot {r}" for r in (*shot, *part)))
-    m = new_scene(client(), project, slug, from_json, title, force)
+    m = new_scene(project, slug, from_json, title, force)
     print("\n".join(plan_table(m)))
     print(f"\nnext: studio scenes check {m['scene']}")
 
@@ -497,9 +528,8 @@ def do_new(project, force, from_json, part, shot, slug, title):
                     "<project>/<run_id>, <run_id>, a unique slug fragment, or #N."))
 def do_assemble(ref, dest, project, shot):
     """Cut a scene's rendered shots into one continuous take."""
-    s3 = client()
-    owner, sid = resolve_scene(s3, ref, project)
-    m = assemble(s3, owner, sid, shot, dest)
+    owner, sid = resolve_scene(ref, project)
+    m = assemble(owner, sid, shot, dest)
     print(json.dumps({k: m[k] for k in ("scene", "output", "stitch")}, indent=2))
 
 
@@ -512,9 +542,8 @@ def do_assemble(ref, dest, project, shot):
               help="the shot that should OPEN on this frame")
 def do_handoff(ref, from_run, project, shot):
     """Carry the previous shot's last frame into the next one."""
-    s3 = client()
-    owner, sid = resolve_scene(s3, ref, project)
-    handoff(s3, owner, sid, shot, from_run)
+    owner, sid = resolve_scene(ref, project)
+    handoff(owner, sid, shot, from_run)
 
 
 @main.command("plan")
@@ -524,9 +553,8 @@ def do_handoff(ref, from_run, project, shot):
               help="also print every prompt in full — what each panel and each shot says")
 def do_plan(ref, project, prompts):
     """A scene's plan, as a table rather than as JSON."""
-    s3 = client()
-    owner, sid = resolve_scene(s3, ref, project)
-    manifest = read_manifest(s3, owner, sid)
+    owner, sid = resolve_scene(ref, project)
+    manifest = read_manifest(owner, sid)
     if not manifest:
         die(f"no scene.json for {owner}/{sid}")
     print("\n".join(plan_table(manifest)))
@@ -546,9 +574,8 @@ def do_sheet(ref, cols, cell, out, project):
     A board only means anything looked at. This is also the only way an agent
     can read its own storyboard, which is why `frames grid` exists for clips.
     """
-    s3 = client()
-    owner, sid = resolve_scene(s3, ref, project)
-    manifest = read_manifest(s3, owner, sid)
+    owner, sid = resolve_scene(ref, project)
+    manifest = read_manifest(owner, sid)
     if not manifest:
         die(f"no scene.json for {owner}/{sid}")
     captions = SB.sheet_captions(manifest)
@@ -559,7 +586,7 @@ def do_sheet(ref, cols, cell, out, project):
     paths, labels = [], []
     for key, caption in captions:
         lp = os.path.join(tmp, os.path.basename(key))
-        s3.download_file(BUCKET, key, lp)
+        store.download(key, pathlib.Path(lp))
         paths.append(lp)
         labels.append(caption)
     dest = os.path.join(out or tmp, f"{manifest.get('slug', sid)}-board.png")
@@ -567,7 +594,8 @@ def do_sheet(ref, cols, cell, out, project):
     # The board is the thing someone looks at to judge the scene. Leaving it on
     # local disk means only whoever ran the command can see it.
     key = scene_key(owner, sid, "review", "board.png")
-    s3.upload_file(local, BUCKET, key, ExtraArgs={"ContentType": "image/png"})
+    store.folder(scene_key(owner, sid, "review"))
+    store.upload(key, pathlib.Path(local), content_type="image/png")
     print(key)
     if out:
         print(f"  (local copy: {local})")
@@ -577,7 +605,7 @@ def do_sheet(ref, cols, cell, out, project):
 @click.argument("project", required=True)
 def do_list(project):
     """Every scene in a project."""
-    ids = list_scenes(client(), project)
+    ids = list_scenes(project)
     if not ids:
         print(f"project {project} has no scenes")
     for i in ids:
@@ -589,8 +617,7 @@ def do_list(project):
 @click.option("--project")
 def do_show(ref, project):
     """One scene's record."""
-    s3 = client()
-    owner, sid = resolve_scene(s3, ref, project)
+    owner, sid = resolve_scene(ref, project)
     print(json.dumps(R.read_json(scene_key(owner, sid, "scene.json")), indent=2))
 
 
@@ -601,11 +628,12 @@ def do_show(ref, project):
 @click.option("--project")
 def do_outputs(ref, expires, presign, project):
     """The stitched file(s), as keys or as temporary URLs."""
-    s3 = client()
-    owner, sid = resolve_scene(s3, ref, project)
-    keys = list_keys(s3, P.scene_prefix(owner, sid) + "/output/")
+    _warn_ignored_expiry(expires)
+    owner, sid = resolve_scene(ref, project)
+    output = P.scene_prefix(owner, sid) + "/output"
+    keys = [f"{output}/{e['name']}" for e in store.files(output)]
     if presign:
-        for k, u in zip(keys, R.presign(keys, expires)):
+        for k, u in zip(keys, R.presign(keys)):
             print(f"{k}\n  {u}")
     else:
         print("\n".join(keys))

@@ -64,6 +64,7 @@ ffmpeg comes from the `imageio-ffmpeg` wheel, so there is no system install.
 from __future__ import annotations
 
 import os
+import pathlib
 import tempfile
 
 import click
@@ -73,13 +74,14 @@ from studio_pipeline.adapters.ffmpeg import (  # noqa: E402  — shared ffmpeg l
     contact_grid,
     grab,
 )
-from studio_pipeline.adapters.s3 import BUCKET, client, die  # noqa: E402
+from studio_pipeline.adapters import store  # noqa: E402
+from studio_pipeline.errors import die  # noqa: E402
 from studio_pipeline.domain import paths as P  # noqa: E402
 from studio_pipeline.domain import projects as PROJECTS
 from studio_pipeline.domain import runs as R  # noqa: E402
 
 
-def fetch_video(s3, ref: str, project: str | None, tmp: str) -> tuple[str, str, str]:
+def fetch_video(ref: str, project: str | None, tmp: str) -> tuple[str, str, str]:
     """Resolve a runref to exactly one video and download it. -> (project, run_id, path)."""
     run_project, run_id = R.resolve_run(ref, default_project=project)
     keys = R.resolve_output_keys(ref, default_project=project)
@@ -89,7 +91,7 @@ def fetch_video(s3, ref: str, project: str | None, tmp: str) -> tuple[str, str, 
     if len(vids) > 1:
         die(f"{ref}: {len(vids)} videos — append #N to pick one")
     local = os.path.join(tmp, os.path.basename(vids[0]))
-    s3.download_file(BUCKET, vids[0], local)
+    store.download(vids[0], pathlib.Path(local))
     return run_project, run_id, local
 
 
@@ -114,24 +116,28 @@ def chain_key(project: str, slug: str) -> str:
     return P.chain_key(project, chain_slug(slug))
 
 
-def load_chain(s3, project: str, slug: str) -> dict:
+def load_chain(project: str, slug: str) -> dict:
     """An absent chain reads as an empty one — `read_json` returns None for a
-    missing key rather than raising, so check the value, not just for an error."""
-    doc = None
-    try:
-        doc = R.read_json(chain_key(project, slug))
-    except Exception:
-        doc = None
+    missing key rather than raising, so check the value, not just for an error.
+
+    The bare `except` is gone with the boto3 client it was written for. It made
+    a refusal look like an empty chain, and an empty chain is the state
+    `chain_add` appends to — so a 403 would have started a second chain beside
+    the real one rather than saying no.
+    """
+    doc = R.read_json(chain_key(project, slug))
     return doc or {"chain": f"{project}/{chain_slug(slug)}", "project": project,
                    "slug": chain_slug(slug), "seed": None, "frames": []}
 
 
-def chain_add(s3, project: str, slug: str, key: str, from_run: str | None) -> dict:
-    doc = load_chain(s3, project, slug)
+def chain_add(project: str, slug: str, key: str, from_run: str | None) -> dict:
+    """Append one frame to a chain, creating the `chains/` folder if needed."""
+    doc = load_chain(project, slug)
     if any(f["key"] == key for f in doc["frames"]):
         return doc
     doc["frames"].append({"n": len(doc["frames"]) + 1, "key": key,
                           "from_run": from_run, "added": R._now()})
+    store.folder(P.chains_prefix(project))
     R.write_json(chain_key(project, slug), doc)
     return doc
 
@@ -171,7 +177,7 @@ def add_to_input_pool(project: str, path: str) -> str:
 def _fetch(ref, project, dest):
     """Pull the run's video down and decide where frames will be written."""
     tmp = tempfile.mkdtemp(prefix="frames-")
-    owner, run_id, src = fetch_video(client(), ref, project, tmp)
+    owner, run_id, src = fetch_video(ref, project, tmp)
     dest_dir = dest or tmp
     os.makedirs(dest_dir, exist_ok=True)
     return owner, run_id, src, dest_dir
@@ -188,7 +194,7 @@ def _emit(project, run_id, out, add_input, chain):
     key = add_to_input_pool(project, out)
     print(key)
     if chain:
-        doc = chain_add(client(), project, chain, key, f"{project}/{run_id}")
+        doc = chain_add(project, chain, key, f"{project}/{run_id}")
         print(f"chain {doc['chain']}: {len(doc['frames'])} frame(s)")
 
 
@@ -252,16 +258,16 @@ def do_grid(ref, count, dest, project):
 @click.option("--seed", help="S3 key of the image shot 1 started from")
 def do_chain(ref, add_key, args, max_, seed):
     """The frames recorded for a scene chain, in order."""
-    s3 = client()
     if "/" not in ref:
         die("chain ref must be <project>/<slug>")
     project, slug = ref.split("/", 1)
-    doc = load_chain(s3, project, slug)
+    doc = load_chain(project, slug)
     if seed:
         doc["seed"] = seed
+        store.folder(P.chains_prefix(project))
         R.write_json(chain_key(project, slug), doc)
     for k in add_key:
-        doc = chain_add(s3, project, slug, k, None)
+        doc = chain_add(project, slug, k, None)
     keys = chain_keys(doc, max_)
     if not keys:
         die(f"chain {project}/{slug} is empty — record frames with "
