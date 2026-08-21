@@ -477,8 +477,8 @@ def _sheet_items(entry: dict, bindings: dict) -> list[tuple[str, str]]:
 
 def _resolve(ref: str, project: str | None):
     s3 = s3c.client()
-    owner, sid = SC.resolve_scene(s3, ref, project)
-    manifest = SC.read_manifest(s3, owner, sid)
+    owner, sid = SC.resolve_scene(ref, project)
+    manifest = SC.read_manifest(owner, sid)
     if not manifest:
         raise BoardError(f"no scene.json for {owner}/{sid}")
     return s3, owner, sid, manifest
@@ -623,7 +623,7 @@ def run_board(ref: str, opts) -> int:
         store.copy(src, dest, content_type="image/png")
         panel.update(run=f"{owner}/{run_id}", source_key=src, key=dest,
                      boarded=R._now(), stale=False)
-        SC.write_manifest(s3, manifest)
+        SC.write_manifest(manifest)
         boarded[label] = dest
 
     # GATE 2 — the board exists; nothing is animated yet.
@@ -697,7 +697,7 @@ def run_render(ref: str, opts) -> int:
         _p, run_id = R.resolve_run(f"{owner}/latest", owner)
         shot.update(run=f"{owner}/{run_id}", runref=f"{owner}/{run_id}#1",
                     rendered=R._now())
-        SC.write_manifest(s3, manifest)
+        SC.write_manifest(manifest)
         rendered[shot["id"]] = f"{owner}/{run_id}#1"
 
     # GATE 2 — never assemble on its own. Cutting is a decision about the whole

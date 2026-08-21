@@ -14,6 +14,26 @@ import functools
 import sys
 
 
+def die(msg: str) -> None:
+    """Report and exit 1 — the imperative twin of `reports`.
+
+    `reports` is for a module that raises; this is for one that discovers the
+    problem mid-function and has nothing useful to raise. Both print the same
+    `error: <message>` line, which is what a caller greps for.
+
+    It lives here rather than in `adapters/s3.py`, where the copy the pipeline
+    grew up on sat. That put a printing helper behind an AWS import, so
+    `adapters/ffmpeg.py` imported an S3 module for it — and retiring that module
+    would have taken the whole CLI's error path with it. **Seven other copies of
+    this function are still scattered across the package** (`characters.py`,
+    `curate.py`, `projects.py`, `convert.py`, `catalog_seed.py`,
+    `migrate_layout.py`, `backfill_replicate.py`); they should collapse onto
+    this one, separately from any migration.
+    """
+    print(f"error: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
 def reports(*exception_types: type[BaseException]):
     """Report the named exceptions as `error: <message>` and exit 1.
 

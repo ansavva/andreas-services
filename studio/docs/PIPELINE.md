@@ -137,6 +137,9 @@ studio/pipeline/
     └── studio_pipeline/
         ├── cli.py                 `studio` — the root group, wiring only
         ├── errors.py              domain failure -> `error: …` and exit 1
+        │                          `reports` for a module that raises, `die` for
+        │                          one that finds the problem mid-function.
+        │                          Seven older copies of `die` still to collapse.
         ├── __init__.py            STUDIO_DIR, ENV_FILE, env_value
         │
         ├── adapters/              THE OUTSIDE WORLD — everything with a side effect
@@ -477,9 +480,9 @@ or projects.
 | `paths.py` | **The one module that knows the tree's shape.** Every key is built here, which is what keeps a global prefix applied in exactly one place. Library, not a command. |
 | `projects.py` | Project CRUD and the project **input pool**. `require_project()` turns a missing `--project` into an error that lists the real options. Creating a project creates its **folder** as well as its `project.json` — S3 invented the folder out of the key's slashes and the catalog does not, so without it the file has no parent and neither does any run recorded afterwards. |
 | `runs.py` | The shared **run store** every engine records into: request/prompt/result, output archiving, runref resolution for chaining, `find --character` across projects. It refuses a URL-shaped binding — this is where "S3 is the only origin" is enforced in code, and it has to be, because the API stores these documents as bytes and never decodes one. A run is created by `POST /api/runs`, which makes the folder and writes its documents together and answers 409 to a re-send; `result.json` and the outputs are ordinary writes into that folder afterwards, because they do not exist until the prediction comes back. |
-| `scenes.py` | The **scene store**: a piece planned, shot and cut, under `projects/<p>/scenes/<slug>/`. Owns the manifest, `assemble`, `handoff`, and the read-only half of the CLI. |
+| `scenes.py` | The **scene store**: a piece planned, shot and cut, under `projects/<p>/scenes/<slug>/`. Owns the manifest, `assemble`, `handoff`, and the read-only half of the CLI. Writing a manifest ensures the scene's folder — `new_scene` writes one for a scene that has never existed, and the catalog has no folder until something asks for it. |
 | `storyboard.py` | **The plan document**, pure data: what a shot's panels mean, which one is the start frame once the chain has spoken, how a revision merges onto work already paid for. No S3, no models — so the rules that decide what a shot sends are testable on their own. |
-| `movies.py` | The **movie store**: scenes cut into one piece. The same shape one tier up. |
+| `movies.py` | The **movie store**: scenes cut into one piece. The same shape one tier up, including the folders a cut needs. Copying a scene in is a read plus a write rather than a server-side `CopyObject`; see `store.copy` for why one blob under two rows is not on offer. |
 | `frames.py` | Stills out of a run's video — the handoff frame, and the contact grid that lets a clip be looked at before more money is spent on it. Its `chain` store is for a sequence with no scene behind it; a planned scene derives its own frames from `scene.json`. |
 | `characters.py` | The character record: bible CRUD, the described reference index, pool listing, the compressed identity block, and `rename` — a new slug across objects, bible and records at once. |
 | `curate.py` | The pool operations that go wrong by hand — dedupe, renumber, regroup, move. Every one is a dry run without `--apply`. |

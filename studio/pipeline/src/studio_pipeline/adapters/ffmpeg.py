@@ -25,7 +25,7 @@ import re
 import subprocess
 import tempfile
 
-from studio_pipeline.adapters.s3 import die
+from studio_pipeline.errors import die
 
 VIDEO_EXT = (".mp4", ".mov", ".m4v", ".webm")
 

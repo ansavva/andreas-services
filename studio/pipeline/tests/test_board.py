@@ -60,13 +60,13 @@ def run(*argv):
 
 def board_ready(s3):
     """The fixture scene, with every panel landed so a shot can be rendered."""
-    m = SC.read_manifest(s3, "subject-a", PLANNED)
+    m = SC.read_manifest("subject-a", PLANNED)
     for shot in m["shots"]:
         for panel in shot["panels"]:
             key = f"projects/subject-a/scenes/{PLANNED}/storyboard/{shot['id']}-p{panel['n']}.png"
             s3.put_object(Bucket=BUCKET, Key=key, Body=b"png-bytes")
             panel["key"] = key
-    return SC.write_manifest(s3, m)
+    return SC.write_manifest(m)
 
 
 # --- the gates -------------------------------------------------------------
@@ -209,7 +209,7 @@ def test_a_start_frame_on_seedance_is_refused_in_submits_own_words(media_bucket,
     m = board_ready(media_bucket)
     m["shots"][1]["motion"]["model"] = "seedance"
     m["shots"][1]["opens_on"]["key"] = "projects/subject-a/input/subject-a_3.png"
-    SC.write_manifest(media_bucket, m)
+    SC.write_manifest(m)
 
     r = run("scenes", "render", SCENE, "--shot", "2", "--dry-run")
     assert r.exit_code != 0
@@ -217,11 +217,11 @@ def test_a_start_frame_on_seedance_is_refused_in_submits_own_words(media_bucket,
 
 
 def test_a_webp_panel_bound_into_kling_is_refused_naming_convert(media_bucket, no_network):
-    m = SC.read_manifest(media_bucket, "subject-a", PLANNED)
+    m = SC.read_manifest("subject-a", PLANNED)
     key = f"projects/subject-a/scenes/{PLANNED}/storyboard/shot-01-p1.webp"
     media_bucket.put_object(Bucket=BUCKET, Key=key, Body=b"webp-bytes")
     m["shots"][0]["panels"][0]["key"] = key
-    SC.write_manifest(media_bucket, m)
+    SC.write_manifest(m)
 
     r = run("scenes", "render", SCENE, "--shot", "1", "--dry-run")
     assert r.exit_code != 0
@@ -231,7 +231,7 @@ def test_a_webp_panel_bound_into_kling_is_refused_naming_convert(media_bucket, n
 def test_a_panel_is_rendered_in_a_format_its_video_model_accepts(media_bucket, no_network):
     """Kling rejects `.webp` and GPT Image writes it by default, so a whole
     board can be rendered into a format the shot it exists for cannot read."""
-    m = SC.read_manifest(media_bucket, "subject-a", PLANNED)
+    m = SC.read_manifest("subject-a", PLANNED)
     shot, panel = m["shots"][1], m["shots"][1]["panels"][0]
     panel["model"] = "gpt-image-2"
     panel["extra"] = {}
@@ -262,7 +262,7 @@ def test_a_panel_format_falls_back_rather_than_guessing(media_bucket):
 
 
 def test_an_explicit_format_in_the_plan_is_left_alone(media_bucket, no_network):
-    m = SC.read_manifest(media_bucket, "subject-a", PLANNED)
+    m = SC.read_manifest("subject-a", PLANNED)
     shot, panel = m["shots"][1], m["shots"][1]["panels"][0]
     panel["model"] = "gpt-image-2"
     panel["extra"] = {"output_format": "jpg"}
@@ -302,7 +302,7 @@ def test_a_panel_sees_the_panels_before_it(media_bucket, no_network):
 
 
 def test_the_first_panel_on_the_board_sees_nothing(media_bucket, no_network):
-    m = SC.read_manifest(media_bucket, "subject-a", PLANNED)
+    m = SC.read_manifest("subject-a", PLANNED)
     m["shots"][0]["panels"][0]["key"] = None
     shot = m["shots"][0]
     assert BOARD.earlier_panel_keys(m, shot, shot["panels"][0]) == []
@@ -319,10 +319,10 @@ def test_a_long_board_keeps_the_newest_panels_rather_than_refusing(media_bucket)
 # --- check -----------------------------------------------------------------
 
 def test_check_reports_every_problem_at_once(media_bucket, no_network):
-    m = SC.read_manifest(media_bucket, "subject-a", PLANNED)
+    m = SC.read_manifest("subject-a", PLANNED)
     m["shots"][0]["motion"]["model"] = "not-a-model"
     m["shots"][1]["panels"][0]["prompt"] = ""
-    SC.write_manifest(media_bucket, m)
+    SC.write_manifest(m)
 
     r = run("scenes", "check", SCENE)
     assert r.exit_code == 1
@@ -408,10 +408,10 @@ def test_the_byte_warning_is_video_only(media_bucket, no_network, capsys):
 
 def test_a_supplied_panel_is_never_rendered(media_bucket, no_network):
     """Not by `board`, not by `--redo`, not by `check`. There is nothing to make."""
-    m = SC.read_manifest(media_bucket, "subject-a", PLANNED)
+    m = SC.read_manifest("subject-a", PLANNED)
     m["shots"][1]["panels"][0].update(
         key="projects/subject-a/input/subject-a_3.png", prompt="", stale=True)
-    SC.write_manifest(media_bucket, m)
+    SC.write_manifest(m)
 
     for argv in (("scenes", "board", SCENE, "--dry-run"),
                  ("scenes", "board", SCENE, "--dry-run", "--redo")):
