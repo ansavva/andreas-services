@@ -121,7 +121,7 @@ studio curate groups   <name>                       # what reference/ holds, by 
 studio curate regroup  <name> face <name>_3.jpg     # move into a purpose subfolder
 studio curate dedupe   <name> --pool reference      # remove byte-identical copies
 studio curate renumber <name> --group face          # close holes -> contiguous 1..N
-studio curate move     <name> face/<name>_3.jpg --from reference --to archive
+studio curate move     face/<name>_3.jpg <name> --from reference --to archive
 ```
 
 **Moving an image moves its records too.** Run records, scene manifests and

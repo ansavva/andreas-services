@@ -122,6 +122,30 @@ def children_or_empty(path: str) -> list:
         return []
 
 
+def walk_files(path: str) -> list[str]:
+    """Every file path beneath a folder, depth first, natural order per level.
+
+    **The catalog has no prefix scan.** `list_objects_v2` took a prefix and
+    returned the whole subtree in pages; a listing here is per folder, because
+    that is the unit a node's library membership authorises. So the descent is
+    explicit and costs one request per folder rather than one per thousand
+    objects — worse for a wide shallow tree, and the price of the listing being
+    checked rather than assumed.
+
+    Only two callers want a subtree at all (`rewrite` and a character rename),
+    and both are maintenance-shaped. Anything reading one folder should use
+    `files`.
+    """
+    found: list[str] = []
+    for entry in children_or_empty(path):
+        child = f"{path.rstrip('/')}/{entry['name']}"
+        if entry.get("kind") == "folder":
+            found += walk_files(child)
+        else:
+            found.append(child)
+    return found
+
+
 def files(path: str) -> list[dict]:
     """The file children of a folder, natural-sorted by name. Missing folder -> [].
 

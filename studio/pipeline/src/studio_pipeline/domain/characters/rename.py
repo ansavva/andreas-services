@@ -5,18 +5,24 @@ object in the record plus a rewrite of every string that named the old one.
 Doing that by hand is the failure `curate` and `rewrite` exist to prevent, which
 is why it is a command rather than a runbook.
 
-**The one module here still holding an S3 client, deliberately.** Its object
-half is `curate.copy` and `rewrite.apply_moves`, neither of which has moved onto
-the API yet (#306) — so migrating this one would mean migrating those two in the
-same change, and `curate` alone is twenty-one call sites. The bible half is
-already through the API: `load_profile`, `write_profile` and the version check
-are the same calls every other command makes.
+WHAT THIS COST, AND WHAT IT COSTS NOW
+-------------------------------------
+It was a `CopyObject` and a `DeleteObject` for every object under the character,
+ordered so a half-finished run left a duplicate rather than a hole, plus a
+zero-byte folder marker per folder that had to be carried or the app lost a
+folder from its listing.
 
-Worth knowing what this becomes. `record_keys` enumerates every key under the
-character INCLUDING zero-byte folder markers, and `rename_moves` rewrites each
-one; under the catalog a rename of the character folder is a single `PATCH` that
-moves nothing and leaves every node id intact. Most of this file is machinery
-for a problem the catalog does not have.
+It is now **one `PATCH` per file whose basename carries the slug, and one more
+for the character's folder.** No bytes move, no node changes identity, and there
+are no folder markers because a folder is a row. The old ordering problem is
+gone with it: a rename inside one parent cannot collide, because `<old>_` and
+`<new>_` differ by construction.
+
+`record_keys` and `rename_moves` survive, and only for the RECORDS. A run,
+scene, movie or chain names this character by path, so every one of those paths
+still changes and `rewrite` still has to carry them — see its module docstring
+for why the catalog did not retire that. What they no longer drive is any object
+operation.
 """
 from __future__ import annotations
 
@@ -25,7 +31,7 @@ import re
 
 import click
 
-from studio_pipeline.adapters import s3 as s3c
+from studio_pipeline.adapters import api, store
 from studio_pipeline.domain import paths as P
 from studio_pipeline.domain.characters.base import (
     PROFILE_FILE,
@@ -87,24 +93,26 @@ def rename_in_profile(node, old: str, new: str) -> int:
     return changed
 
 
-def record_keys(s3, name: str) -> list[str]:
-    """Every key under a character, INCLUDING zero-byte folder markers.
+def record_paths(name: str) -> list[str]:
+    """Every file path under a character.
 
-    `s3c.list_keys` drops the markers, which is right for listing images and
-    wrong here: dropping one silently deletes a folder the app shows.
+    **No folder markers, because there are none.** The S3 version had to keep
+    the zero-byte marker objects — dropping one deleted a folder the app showed.
+    A folder is a row now and moves with its parent, so there is nothing to
+    carry.
     """
-    prefix = s3c.key(P.character_prefix(name)) + "/"
-    out = []
-    for page in s3.get_paginator("list_objects_v2").paginate(
-            Bucket=s3c.BUCKET, Prefix=prefix):
-        out += [o["Key"] for o in page.get("Contents", [])]
-    return sorted(out, key=s3c.natural_key)
+    return sorted(store.walk_files(P.character_prefix(name)), key=store.natural_key)
 
 
 def rename_moves(keys: list[str], old: str, new: str) -> dict[str, str]:
-    """{old key: new key} — the prefix changes, and so does a slugged basename."""
-    old_root = s3c.key(P.character_prefix(old)) + "/"
-    new_root = s3c.key(P.character_prefix(new)) + "/"
+    """{old path: new path} — the prefix changes, and so does a slugged basename.
+
+    Pure, and now only feeds `rewrite`: nothing copies an object from the left
+    of this map to the right. The catalog renames the folder and the basenames
+    and every path below follows.
+    """
+    old_root = P.character_prefix(old) + "/"
+    new_root = P.character_prefix(new) + "/"
     moves = {}
     for key in keys:
         head, _sep, base = key[len(old_root):].rpartition("/")
@@ -129,18 +137,18 @@ def cmd_rename(old, new, apply, display_name):
 
     Three things carry the old slug and all three have to move at once:
 
-      * every object under `characters/<old>/`, whose basenames are prefixed
-        with it (`<old>_face_1.png`);
+      * every node under `characters/<old>/`, whose basenames are prefixed
+        with it (`<old>_face_1.png`) — renamed in place, no bytes moved;
       * the bible — `name`, `display_name`, and every path in `references`,
         `default_set` and any other file-ish string;
-      * every run, scene, movie and chain document that cites one of those keys,
-        or records the character by name.
+      * every run, scene, movie and chain document that cites one of those
+        paths, or records the character by name.
 
     The index is FOLLOWED, never re-derived: `sync-refs` is not run, because
     reconciling here would add every undescribed image in `reference/` as a
     blank entry and drop `default_set` names — both separate decisions.
 
-    One limit worth knowing: a record follows where it stores an S3 key, or
+    One limit worth knowing: a record follows where it stores a path, or
     records the character in a `characters:`/`character:` field. A slug buried
     in a sentence — a prompt that names the character — is left alone, because
     editing prose is not a rename. So is a project that shares the name.
@@ -151,16 +159,15 @@ def cmd_rename(old, new, apply, display_name):
     check_name(new)
     if old == new:
         die("OLD and NEW are the same name.")
-    s3 = s3c.client()
     # Local, not module-level: curate imports this module, so importing it back
     # at the top would be a cycle.
-    from studio_pipeline.domain import curate, rewrite
+    from studio_pipeline.domain import rewrite
 
-    keys = record_keys(s3, old)
+    keys = record_paths(old)
     if not keys:
         have = P.list_characters()
         die(f"no character {old!r} (have: {', '.join(have) or 'none'}).")
-    if record_keys(s3, new):
+    if store.exists(P.character_prefix(new)):
         die(f"{new!r} already exists — nothing here overwrites a record. "
             f"Pick another name, or move that one out of the way first.")
 
@@ -185,6 +192,12 @@ def cmd_rename(old, new, apply, display_name):
 
     data = load_profile(old)
     version = remote_version(old)
+    # Resolved BEFORE anything is renamed: after the folder moves, these paths
+    # do not exist to resolve. The ids do not change, which is the whole reason
+    # this is cheap.
+    nodes = {path: store.resolve(path) for path in object_moves
+             if os.path.basename(path) != os.path.basename(object_moves[path])}
+    character_node = store.resolve(P.character_prefix(old))
     was_display = data.get("display_name")
     data["name"] = new
     data["display_name"] = display_name
@@ -196,8 +209,8 @@ def cmd_rename(old, new, apply, display_name):
     # follow the objects; the name they record follows separately, since a
     # project may be called the same thing as a character and must not be
     # renamed along with it.
-    cited = rewrite.apply_moves(s3, moves, apply=apply)
-    named = rewrite.rename_character(s3, old, new, apply=apply)
+    cited = rewrite.apply_moves(moves, apply=apply)
+    named = rewrite.rename_character(old, new, apply=apply)
     touched: dict[str, int] = dict(cited)
     for k, n in named.items():
         touched[k] = touched.get(k, 0) + n
@@ -221,12 +234,18 @@ def cmd_rename(old, new, apply, display_name):
         die(f"{old}'s {PROFILE_FILE} changed since it was read — re-run to pick up the "
             f"new version rather than overwriting it. Nothing has moved.")
 
-    # Copy before delete, never the reverse: a half-done copy leaves a duplicate,
-    # a half-done delete loses the only copy.
-    for src, dst in curate.ordered_moves(list(object_moves.items())):
-        curate.copy(s3, src, dst)
-        s3.delete_object(Bucket=s3c.BUCKET, Key=src)
+    # **Basenames first, then the folder.** Either order addresses the right
+    # nodes — an id does not care what its path is — but doing the folder first
+    # would make every message below name a path that no longer exists if a
+    # later step failed. `ordered_moves` is not needed: a rename inside one
+    # parent goes from `<old>_` to `<new>_`, which cannot collide.
+    for path, node in nodes.items():
+        api.patch(f"/api/nodes/{node['id']}", {"name": os.path.basename(moves[path])})
+    api.patch(f"/api/nodes/{character_node['id']}", {"name": new})
+
+    # The bible moved with the folder and is now at the new path; this rewrites
+    # its CONTENTS. No version is passed: the one that was read belongs to a
+    # path that no longer exists, and the check above already ran against it.
     write_profile(new, data)
-    s3.delete_object(Bucket=s3c.BUCKET, Key=profile_src)
-    print(f"\nAPPLIED — {new} now holds {len(moves)} object(s). "
+    print(f"\nAPPLIED — {new} now holds {len(moves)} node(s), and no object moved. "
           f"Verify with `studio rewrite check`.")
