@@ -160,7 +160,7 @@ def add_to_input_pool(project: str, path: str) -> str:
     changed, and only failed AFTER the upload had already happened.
     """
     try:
-        added = PROJECTS.add_inputs(client(), project, [path])
+        added = PROJECTS.add_inputs(project, [path])
     except SystemExit as exc:
         die(f"could not add to project {project}'s input pool: {exc}")
     if not added:

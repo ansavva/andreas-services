@@ -607,7 +607,7 @@ def run_shoot(name: str, opts) -> int:
     """The whole shoot. Shared with `character create --shoot`."""
     CHARACTER.check_name(name)
     s3 = s3c.client()
-    opts.project = PROJ.require_project(s3, opts.project)
+    opts.project = PROJ.require_project(opts.project)
 
     spec = load_spec()
     slots = select_slots(spec, opts.group, tuple(opts.slot or ()))

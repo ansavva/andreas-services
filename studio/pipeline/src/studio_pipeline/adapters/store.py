@@ -108,6 +108,39 @@ def children(path: str) -> list:
     return listed if isinstance(listed, list) else []
 
 
+def files(path: str) -> list[dict]:
+    """The file children of a folder, natural-sorted by name. Missing folder -> [].
+
+    Three decisions, made once. Each has already been a bug or a near one:
+
+    - **The kind filter is now explicit where it used to be structural.**
+      `list_objects_v2` with a delimiter put folders in `CommonPrefixes`, a
+      separate field, so a caller got files whether it filtered or not. The
+      catalog returns both in one list keyed by `kind`, and dropping the filter
+      lists a subfolder as if it were an object.
+    - **The natural sort is load-bearing.** `children` is name-ascending, which
+      is DynamoDB's lexical order: `_10` before `_2`. These names become
+      `[Image1]..[ImageN]` positionally, so lexical order hands a model the
+      wrong image under the right name.
+    - **A folder that is not there is empty, not an error.** Every caller asks
+      "what is in here" and none distinguishes absent from empty; `resolve`
+      404s on a project with no `input/` yet, and the paginator this replaces
+      answered with zero keys.
+
+    Entries, not names, because a caller usually wants `size` or `id` too.
+    `paths._folder_names` is the folder-shaped twin and keeps a plain sort — its
+    ids are timestamps, where a numeric-run sort asks a different question.
+    """
+    try:
+        entries = children(path)
+    except api.NotFound:
+        return []
+    return sorted(
+        (entry for entry in entries if entry.get("kind") == "file" and entry.get("name")),
+        key=lambda entry: natural_key(entry["name"]),
+    )
+
+
 def exists(path: str) -> bool:
     """Whether a node is there. Cheaper than fetching it, and never raises."""
     try:

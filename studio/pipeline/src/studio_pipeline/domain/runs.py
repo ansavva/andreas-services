@@ -386,15 +386,7 @@ def run_outputs(project: str, run_id: str) -> list[str]:
     `result.json`.
     """
     folder = run_key(project, run_id, "output")
-    try:
-        entries = store.children(folder)
-    except api.NotFound:
-        return []
-    names = sorted(
-        (e["name"] for e in entries if e.get("kind") == "file" and e.get("name")),
-        key=store.natural_key,
-    )
-    return [f"{folder}/{name}" for name in names]
+    return [f"{folder}/{entry['name']}" for entry in store.files(folder)]
 
 
 def run_record(project: str, run_id: str) -> dict:
