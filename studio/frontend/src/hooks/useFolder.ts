@@ -84,7 +84,10 @@ export function useFolder(target: Target, sort: SortOrder, pin: FolderPin) {
   return {
     folderId,
     data: listing,
-    loading: tree.loading,
+    // A failed lookup is not still loading. `useTree` fetches nothing while the
+    // folder is unsettled, so its `loading` stays true forever after a lookup
+    // that threw — which would draw the spinner underneath the error.
+    loading: lookupError === null && tree.loading,
     // A dead object link and an unreadable folder are the same thing to the
     // page: it has nothing to draw and should say why.
     error: tree.error ?? lookupError,
