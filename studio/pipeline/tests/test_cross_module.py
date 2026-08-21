@@ -137,7 +137,7 @@ def test_add_inputs_returns_the_key_it_wrote(media_bucket, tmp_path):
     media_bucket.head_object(Bucket="studio-prod-media-us-east-1", Key=added[0]["key"])
 
 
-def test_editing_a_bible_writes_it_back_where_it_was_read_from(media_bucket, tmp_path):
+def test_editing_a_bible_writes_it_back_where_it_was_read_from(media_bucket, tmp_path, monkeypatch):
     """`edit --push` must write through `paths`, not a hand-built key.
 
     It used to build `f"{name}/profile.yaml"` — the pre-migration layout — so a
@@ -158,7 +158,16 @@ def test_editing_a_bible_writes_it_back_where_it_was_read_from(media_bucket, tmp
     etag.write_text(CHARACTER.remote_etag(media_bucket, "subject-a") or "")
 
     # The schema check guards writes; this test is about WHERE the bytes land.
-    CHARACTER.check_profile = lambda *a, **k: None
+    #
+    # Patched on the module that DEFINES it, not on the package that re-exports
+    # it. `do_push` resolves `check_profile` as its own global, so assigning to
+    # `CHARACTER.check_profile` rebinds a different name and the real check
+    # still runs — which is what this line used to do before `characters`
+    # became a package, and it worked only because both names lived in one
+    # module. Via `monkeypatch` so it is undone: the bare assignment leaked into
+    # every later test in the session.
+    from studio_pipeline.domain.characters import profile as PROFILE
+    monkeypatch.setattr(PROFILE, "check_profile", lambda *a, **k: None)
     CHARACTER.do_push(media_bucket, "subject-a", False, str(local), str(base), str(etag))
 
     written = CHARACTER.load_profile(media_bucket, "subject-a")
@@ -171,7 +180,7 @@ def test_editing_a_bible_writes_it_back_where_it_was_read_from(media_bucket, tmp
     assert P.profile_key("subject-a") in keys
 
 
-def test_pushing_a_stale_bible_is_refused(media_bucket, tmp_path):
+def test_pushing_a_stale_bible_is_refused(media_bucket, tmp_path, monkeypatch):
     """The local copy can be hours old, and pushing it would revert everything.
 
     `edit` caches the bible on disk and reports "no local changes" against that
@@ -192,7 +201,8 @@ def test_pushing_a_stale_bible_is_refused(media_bucket, tmp_path):
     local.write_text("name: Subject A\ndescription: stale edit\n")
 
     original = CHARACTER.load_profile(media_bucket, "subject-a")
-    CHARACTER.check_profile = lambda *a, **k: None
+    from studio_pipeline.domain.characters import profile as PROFILE
+    monkeypatch.setattr(PROFILE, "check_profile", lambda *a, **k: None)
     with pytest.raises(SystemExit):
         CHARACTER.do_push(media_bucket, "subject-a", False, str(local), str(base), str(etag))
     assert CHARACTER.load_profile(media_bucket, "subject-a") == original

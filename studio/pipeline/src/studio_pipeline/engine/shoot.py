@@ -67,6 +67,7 @@ import yaml
 from studio_pipeline.adapters import replicate as RA
 from studio_pipeline.adapters import s3 as s3c
 from studio_pipeline.adapters import store
+from studio_pipeline.domain import TEMPLATES_DIR
 from studio_pipeline.domain import characters as CHARACTER
 from studio_pipeline.domain import paths as P
 from studio_pipeline.domain import projects as PROJ
@@ -79,9 +80,12 @@ from studio_pipeline.engine import submit as SUB
 die = RA.die
 
 SPEC_FILE = "reference_shots.yaml"
-SPEC_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(CHARACTER.__file__)), "templates", SPEC_FILE
-)
+# `TEMPLATES_DIR`, not `dirname(CHARACTER.__file__)`. That expression resolved
+# the spec only while `characters` was a single module one level above
+# `templates/`; the moment it became a package (#305) it pointed a segment too
+# deep and the shoot lost its spec. The directory names itself now — the same
+# correction `STUDIO_DIR` exists for.
+SPEC_PATH = str(TEMPLATES_DIR / SPEC_FILE)
 
 # One plate plus a handful of identity images is what a slot needs. Seed pools
 # run to twenty-odd photographs, and sending all of them would breach the

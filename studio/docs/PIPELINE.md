@@ -152,7 +152,8 @@ studio/pipeline/
         │   ├── paths.py           the one module that knows the key layout
         │   ├── runs.py  scenes.py  storyboard.py  movies.py  frames.py
         │   ├── projects.py
-        │   ├── characters.py  curate.py  contact_sheet.py
+        │   ├── characters/       base.py profile.py refs.py pools.py rename.py cli.py
+        │   ├── curate.py  contact_sheet.py
         │   ├── phrasebook.py  rewrite.py  prompt.py
         │   └── templates/profile.yaml  reference_shots.yaml
         │
@@ -484,7 +485,7 @@ or projects.
 | `storyboard.py` | **The plan document**, pure data: what a shot's panels mean, which one is the start frame once the chain has spoken, how a revision merges onto work already paid for. No S3, no models — so the rules that decide what a shot sends are testable on their own. |
 | `movies.py` | The **movie store**: scenes cut into one piece. The same shape one tier up, including the folders a cut needs. Copying a scene in is a read plus a write rather than a server-side `CopyObject`; see `store.copy` for why one blob under two rows is not on offer. |
 | `frames.py` | Stills out of a run's video — the handoff frame, and the contact grid that lets a clip be looked at before more money is spent on it. Its `chain` store is for a sequence with no scene behind it; a planned scene derives its own frames from `scene.json`. |
-| `characters.py` | The character record: bible CRUD, the described reference index, pool listing, the compressed identity block, and `rename` — a new slug across objects, bible and records at once. |
+| `characters/` | The character record, in five modules since it passed 1,200 lines. `base` — names, the four pools, paths, and `TEMPLATE`. `profile` — the bible: schema, load/write, and the `edit` local round trip whose ETag check is what stops two people overwriting each other. `refs` — the described reference index and `resolve_selection`, which decides what a model is actually shown. `pools` — corpus/seed/archive, material rather than identity. `rename` — a new slug across objects, bible and records at once. `cli` assembles the group; commands are `@click.command` and registered there, which is what keeps the package acyclic. `__init__` re-exports the names the rest of the package already imports. |
 | `curate.py` | The pool operations that go wrong by hand — dedupe, renumber, regroup, move. Every one is a dry run without `--apply`. |
 | `rewrite.py` | **When an object moves, the records that name it must follow.** `apply_moves()` is what curation and the migrator call; `rename_character()` is its companion for the name a record stores rather than the key, and cannot share the same mapping because a project may be called what a character is; `check` walks every record and confirms what it names still exists. |
 | `prompt.py` | Prompt assembly and validation — the structured object in, the serialized prompt plus engine params out. |
