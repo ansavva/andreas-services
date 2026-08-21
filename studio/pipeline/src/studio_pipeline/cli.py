@@ -34,6 +34,7 @@ from studio_pipeline.engine import board as _board
 from studio_pipeline.engine import runner as _runner
 from studio_pipeline.engine import shoot as _shoot
 from studio_pipeline.maintenance import backfill_replicate as _backfill
+from studio_pipeline.maintenance import catalog_gc as _catalog_gc
 from studio_pipeline.maintenance import catalog_seed as _catalog
 from studio_pipeline.maintenance import migrate_layout as _migrate
 from studio_pipeline.objects import convert as _convert
@@ -132,6 +133,13 @@ _character.main.add_command(_shoot.cmd_shoot, "shoot")
 _scenes.main.add_command(_board.cmd_board, "board")
 _scenes.main.add_command(_board.cmd_render, "render")
 _scenes.main.add_command(_board.cmd_check, "check")
+
+# `gc` reads as a fourth catalog phase and is its own module because it is the
+# only one that deletes. Attaching it here rather than defining it inside
+# `catalog_seed.py` keeps that separation visible: the seed copies nothing,
+# moves nothing and deletes nothing, and nothing in it should have to say so
+# twice.
+_catalog.main.add_command(_catalog_gc.cmd_gc, "gc")
 
 
 for _name, _cmd in [

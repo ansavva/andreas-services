@@ -27,6 +27,8 @@ os.environ["REPLICATE_API_TOKEN"] = "r8_test_token"
 from moto import mock_dynamodb, mock_s3
 
 from studio_pipeline.adapters import api as _api
+from studio_pipeline.adapters import ddb as ddbc
+from studio_pipeline.adapters import s3 as s3c
 
 BUCKET = "studio-prod-media-us-east-1"
 
@@ -452,3 +454,51 @@ def _aim_store_at(s3, monkeypatch):
         ("shared_presign", _shared_presign),
     ]:
         monkeypatch.setattr(_store, name, value)
+
+
+# ── the catalog table, shared by every suite that needs one ──────────────────
+#
+# These lived in `test_catalog_seed.py` and `test_catalog_gc.py` imported them,
+# which is what `gc`'s own comment wanted — the two must not drift into testing
+# different schemas, because an index that drops a row is exactly the corruption
+# `gc` must not read as "unreferenced". Importing a fixture across test modules
+# makes ruff read every use as a redefinition (F811), so they live here instead:
+# same guarantee, and pytest resolves them without an import at all.
+
+_KEY_SCHEMA = [{"AttributeName": "pk", "KeyType": "HASH"},
+
+               {"AttributeName": "sk", "KeyType": "RANGE"}]
+
+
+def _index(name, hash_key, range_key):
+    return {"IndexName": name,
+            "KeySchema": [{"AttributeName": hash_key, "KeyType": "HASH"},
+                          {"AttributeName": range_key, "KeyType": "RANGE"}],
+            "Projection": {"ProjectionType": "ALL"}}
+
+
+@pytest.fixture
+def catalog_table():
+    """`studio-<env>-catalog` as the schema describes it."""
+    ddb = boto3.client("dynamodb", region_name="us-east-1")
+    ddb.create_table(
+        TableName=ddbc.TABLE,
+        BillingMode="PAY_PER_REQUEST",
+        KeySchema=_KEY_SCHEMA,
+        AttributeDefinitions=[{"AttributeName": n, "AttributeType": "S"}
+                              for n in ("pk", "sk", "lib", "path", "created_at")],
+        GlobalSecondaryIndexes=[_index("by-sk", "sk", "pk"),
+                                _index("by-path", "lib", "path"),
+                                _index("by-recent", "lib", "created_at")],
+    )
+    return ddb
+
+
+@pytest.fixture
+def shared_objects(media_bucket):
+    """The bucket plus the pose plates. `phrasebook/` is already in the fixture."""
+    for key in ("config/pose/body/standing.png", "config/pose/face/three-quarter.png"):
+        media_bucket.put_object(Bucket=s3c.BUCKET, Key=key, Body=b"png-bytes")
+    return media_bucket
+
+
