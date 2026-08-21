@@ -1,6 +1,6 @@
 ---
 name: studio-media-character
-description: Manage on-model characters — create, update, list, curate, and load a character whose profile bible and reference library live in studio's media S3 bucket. Use whenever a request names a known/recurring character, or the user wants to add, edit, describe, curate, or inspect one. A character is DATA (an S3 record under characters/<name>/), not a per-character skill: this one skill manages them all, and its described reference index is how a SUBSET of a large reference library is chosen for a generation instead of sending the folder whole.
+description: Manage on-model characters — create, update, list, curate, and load a character whose profile bible and reference library live in studio's media library. Use whenever a request names a known/recurring character, or the user wants to add, edit, describe, curate, or inspect one. A character is DATA (an S3 record under characters/<name>/), not a per-character skill: this one skill manages them all, and its described reference index is how a SUBSET of a large reference library is chosen for a generation instead of sending the folder whole.
 ---
 
 # studio-media-character
@@ -26,9 +26,9 @@ character is an S3 record managed by this one skill, used by the video pipeline
 
 ## Where a character lives (S3)
 
-Each character is a record under `characters/<name>/` in the
-media bucket named by `STUDIO_S3_BUCKET` (the generic **`studio-media-s3`** skill is the
-storage layer; auth is your `aws login`).
+Each character is a record under `characters/<name>/` — a name path in the
+media library, reached through the API. The generic **`studio-media-s3`** skill
+is the storage layer; `studio login` is the auth.
 
 ```
 characters/<name>/profile.yaml   the bible — SOURCE OF TRUTH, one schema,
@@ -93,7 +93,7 @@ should not be decided by whatever a folder listing happened to return.
 studio character refs <name> --describe            # what every image shows, and its tags
 studio character refs <name> --pick-tag face --keys
 studio character refs <name> --pick face/<name>_4.jpg,body/<name>_8.png --presign
-studio character default-set <name> --set face/<name>_4.jpg body/<name>_8.png
+studio character default-set <name> --set face/<name>_4.jpg --set body/<name>_8.png
 ```
 
 The same selectors exist on the runner: `--pick`, `--pick-tag`, and `--slots`
@@ -104,8 +104,8 @@ sent, which is what `[ImageN]` refers to).
 and is invisible to whoever chooses the set — so it may as well not be there.
 
 ```bash
-studio character add-refs <name> --to face /tmp/new/*.png   # numbered within face/
-studio character set-ref-desc <name> face/<name>_5.png \
+studio character add-refs /tmp/new/*.png <name> --to face   # numbered within face/
+studio character set-ref-desc face/<name>_5.png <name> \
   --description "Three-quarter right, looking off camera." --tags face,three-quarter
 studio character describe-refs <name> --from-json batch.json   # a whole pass, atomically
 studio character sync-refs <name> --apply                      # reconcile index vs folder
@@ -118,7 +118,7 @@ RUN unless you pass `--apply`, and nothing is ever deleted outright:
 
 ```bash
 studio curate groups   <name>                       # what reference/ holds, by group
-studio curate regroup  <name> face <name>_3.jpg     # move into a purpose subfolder
+studio curate regroup  <name>_3.jpg face <name>     # move into a purpose subfolder
 studio curate dedupe   <name> --pool reference      # remove byte-identical copies
 studio curate renumber <name> --group face          # close holes -> contiguous 1..N
 studio curate move     face/<name>_3.jpg <name> --from reference --to archive
@@ -183,22 +183,22 @@ silently stops being checked against. For a **worked example**, read a live one
 ## The management tool
 
 `studio character` is the CRUD + load layer. It goes through the same storage
-layer as everything else in **`studio-media-s3`** — the AWS-login-bridged client, the
-key builders, natural sort — so there is one auth path and no bytes in the agent
-context. Requires an `aws login` (see the `studio-media-s3` skill).
+layer as everything else in **`studio-media-s3`** — one API session, one set of
+path builders, one natural sort — so there is one auth path and no bytes in the
+agent context. Requires `studio login` (see the `studio-media-s3` skill).
 
 ```bash
 studio character list                                  # every character
 studio character show <name>                           # print a character's profile.yaml (from S3)
 studio character create <name> --from-profile /tmp/<name>.md   # new character record
-studio character set-profile <name> /tmp/<name>.md     # replace the bible
+studio character set-profile /tmp/<name>.md <name>     # replace the bible
 studio character edit <name>                           # pull the bible to edit locally; re-run to upload
-studio character add-refs <name> --to face /tmp/*.png  # add refs into a purpose group
+studio character add-refs /tmp/*.png <name> --to face  # add refs into a purpose group
 studio character refs <name> --describe                # what every image shows
 studio character refs <name> --presign --json          # generation-time: ordered signed URLs
 studio character refs <name> --pick-tag body --keys    # a named selection, as keys
 studio character pool <name> corpus                    # material, not identity
-studio character add-to <name> seed photo.jpg          # founding source photos
+studio character add-to photo.jpg <name> seed          # founding source photos
 studio character rename <old> <new>                    # a new slug, records and all
 ```
 
@@ -310,10 +310,10 @@ better than prose can, and a long identity paragraph fights it — see
    an existing character's live bible, `studio character show <name>`, as a reference).
    Fill **every** key — `create` refuses a bible missing any of them.
 2. `studio character create <name> --from-profile <your-bible.yaml>`.
-3. `studio character add-to <name> seed <source photos…>` — the founding images.
+3. `studio character add-to <source photos…> <name> seed` — the founding images.
 4. **`studio character shoot <name> --project <project>`** — the standard face and
    body set, described and indexed in one pass. See below.
-5. `studio character add-refs <name> --to wardrobe <stills…>` for anything the
+5. `studio character add-refs <stills…> <name> --to wardrobe` for anything the
    standard set does not cover, then **describe them**: `describe-refs
    --from-json` for a batch, `set-ref-desc` for one.
 
@@ -403,7 +403,7 @@ Promoting a keeper, once a person has seen it and said so:
 ```bash
 studio runs outputs <project>/latest --presign          # look at it first
 studio character add-refs <name> --to face --from-run <project>/latest#1
-studio character set-ref-desc <name> face/<file> --description "…" --tags face,front
+studio character set-ref-desc face/<file> <name> --description "…" --tags face,front
 studio character default-set <name> --set …             # under the Kling cap of 7
 ```
 

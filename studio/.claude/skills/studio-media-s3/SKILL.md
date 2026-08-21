@@ -1,48 +1,42 @@
 ---
 name: studio-media-s3
-description: Read from and write to studio's media S3 bucket via the AWS CLI/boto3 — list a prefix, upload local files, download files to disk, and mint short-lived presigned HTTPS URLs (how images/videos reach Replicate). The canonical asset store for the studio-* workflow, holding CHARACTERS (identity records) and PROJECTS (runs, chains, scenes, movies, input). Use when a skill or task needs to store, fetch, list, or hand out large media assets, to record or address a run, or to cut runs into a scene and scenes into a movie.
+description: Address studio's media through the studio API — list a folder, upload local files, download to disk, and mint short-lived presigned HTTPS URLs (how images and videos reach Replicate). The canonical asset store for the studio-* workflow, holding CHARACTERS (identity records) and PROJECTS (runs, chains, scenes, movies, input), addressed by NAME PATH and reached with `studio login`; the CLI holds no cloud credentials and knows no bucket name. Use when a task needs to store, fetch, list or hand out large media, to record or address a run, or to cut runs into a scene and scenes into a movie.
 ---
 
-# S3 skill
+# studio-media-s3
 
-The asset layer for studio. Files move **disk ↔ S3 directly** (never
-base64-inlined into the agent context), so it handles full-resolution images and
-multi-MB videos cheaply. It replaced the Google Drive layer for the
-`studio-*` workflow.
+The asset layer for studio. Files move **disk ↔ store directly** — never
+base64-inlined into the agent context — so full-resolution images and multi-MB
+videos cost nothing to handle.
 
-Everything lives in one bucket, at its **root** — there is no wrapper prefix.
-(There was a `media/` one, inherited from mirroring Google Drive 1:1; it bought
-nothing and is gone.) Paths passed to these scripts are full keys, e.g.
-`characters/<name>/reference`. The buckets are provisioned by Terraform in
-[`infra/`](../../../infra/README.md).
+The skill is still called `studio-media-s3` and the store is still S3
+underneath. You do not address it as S3, and nothing here can.
 
-**Which bucket is `STUDIO_S3_BUCKET`, and it is not production.** Until August
-2026 this page named `studio-prod-media-us-east-1` as the default, and it was
-the truth: local development ran against prod. It does not any more. Every
-machine has its own `studio-dev-<short12>-media-<region>` bucket, and
-`dev-setup.sh` pins it into `studio/.env` from Terraform's outputs.
+## Everything goes through the API
 
-So: **read the variable, do not assume the value**, and never hard-code a bucket
-name into a command on the strength of this page. If `STUDIO_S3_BUCKET` is unset
-or still names a prod bucket, `dev-setup.sh` is what fixes it — see
-[studio/CLAUDE.md](../../../CLAUDE.md).
-
-`STUDIO_S3_PREFIX` (default empty — set it only to stage a copy of the tree
-elsewhere) and `AWS_REGION` (default `us-east-1`) are the other two knobs.
-
-## Credentials
-
-No `.env` entry — S3 uses your **AWS CLI login**. Sign in once per session:
+`studio` is an API client. It signs in as a user, calls
+`studio-api.andreas.services`, and holds **no cloud credentials at all** — reads,
+writes, listings and presigned URLs are all API calls. A machine with no cloud
+account configured runs the whole pipeline.
 
 ```bash
-aws login          # or: aws sso login  /  aws configure
+studio login          # prompts for email + password; stores the session
+studio whoami         # who you are, and which libraries you can reach
+studio logout
 ```
 
-The scripts resolve whatever the CLI can (the newer `login_session` from
-`aws login`, SSO, `credential_process`, or static keys) into boto3 credentials
-via `aws configure export-credentials`. This bridge matters because boto3's own
-default chain does **not** understand `aws login`. If a script reports it can't
-resolve credentials, run `aws login` again (sessions are short-lived).
+Sessions refresh themselves; a `401` after that means sign in again.
+
+**There is no bucket name, and never a key you compose.** Material is addressed
+by **name path** — `characters/<name>/reference/face/<name>_3.jpg` — which is
+the same string a person types and the string every record stores. That it looks
+like an object key is a coincidence of how the tree was laid out, and it ends the
+first time something is renamed without its bytes moving. Ask for the path you
+mean; do not build one out of a prefix.
+
+Bytes still travel straight to storage, not through the API: a presigned URL is
+handed back and the transfer happens against it. That is what keeps a video out
+of a request-size limit, and it is what makes the rule below hold.
 
 ## The layout
 
@@ -69,13 +63,18 @@ projects/<project>/
     favorites/              an ordinary folder someone made — keepers, copied in
     input/                  the project working pool (<project>_in_<n>.<ext>)
 
-phrasebook/wording.yaml     per-model wording lists
+phrasebook/wording.yaml     per-model wording lists     ⟵ SHARED, see below
+config/pose/                the reference shoot's framing plates   ⟵ SHARED
 ```
 
 `<run_id>` is `YYYY-MM-DD_HH-MM-SS_<slug>`, so runs sort chronologically. The
 **run owns its output** — medium is an attribute (`result.json`, the file
 extension), never a folder name, so one video and ten images take the same shape.
 `<scene_id>` and `<movie_id>` take the same shape for the same reason.
+
+**Listings are one folder deep.** There is no prefix scan: a folder is a record
+and listing it is a permission-checked read of that record. Walk down to the
+folder you mean rather than asking for a subtree.
 
 ### The tiers, and the word "shot"
 
@@ -100,13 +99,33 @@ likeness went into it, inferred from the bindings, not just declared). That list
 is what makes "every run using this character" answerable now that the folder no
 longer says: `studio runs find --character <name>`.
 
-### THE RULE — S3 is the only origin
+### THE RULE — the store is the only origin
 
 **Assets are never uploaded to Replicate.** Anything sent to a model must already
-be an S3 object and reaches Replicate only as a short-lived **presigned URL**
-minted at submit time. Signed URLs are never *stored* either: run records hold S3
-keys, and the run store refuses a URL-shaped binding. Keys are stable, so any run
-replays by re-minting.
+be in the store and reaches Replicate only as a short-lived **presigned URL**
+minted at submit time. Signed URLs are never *stored* either: run records hold
+paths, and the run store refuses a URL-shaped binding. Paths are stable, so any
+run replays by re-minting.
+
+## SHARED MATERIAL IS ADDRESSED DIFFERENTLY, AND IT BITES
+
+`phrasebook/wording.yaml` and the `config/pose/` plates belong to **no character
+and no project**. Nothing owns them, so nothing records them, so they have **no
+catalog record to resolve**. They are reached by key through the API's shared
+route instead — still the API, still no credentials, a different door to the same
+authority.
+
+**A command that resolves a path fails on them.** `studio download`,
+`studio presign` and anything taking `--folder` or `--key` all resolve first and
+answer "not found" for both trees. What reaches them is the command that owns
+them: `studio phrasebook` for the wording lists, and `studio character shoot`
+for the plates.
+
+That failure is quiet where it costs most. A reference shoot binds a pose plate
+as its framing guide; a plate that is not there takes the guide with it, and the
+render comes back plausible and wrongly framed. If a shoot reports a missing
+plate, the plates live in the repo under `studio/config/` and reach the store via
+`studio/scripts/dev-setup.sh` — re-run it rather than uploading one by hand.
 
 ## The commands
 
@@ -114,20 +133,18 @@ Every command below is a subcommand of `studio` — `studio --help` for the whol
 surface. Model invocation (the registry, the runner, live schema validation)
 lives in [`studio-media-core`](../studio-media-core/SKILL.md); this skill is storage.
 
-The code behind them is mapped in
-[docs/PIPELINE.md](../../../docs/PIPELINE.md#the-modules).
-
 ```bash
 # Projects — ASK which one before generating anything; offer to create one
 studio projects list
 studio projects new <project> --character <name> --description "…"
 studio projects show <project>
 
-# List / download / upload / presign, by key prefix
+# List / download / upload / presign, by folder path
 studio download --folder characters/<name>/reference --list
 studio download --folder characters/<name>/reference --all --dest /tmp/refs --json
-studio upload --folder characters/<name>/seed photo.jpg
+studio upload photo.jpg --folder characters/<name>/seed
 studio presign --folder characters/<name>/reference/face --json
+studio presign --key projects/<project>/runs/<run_id>/output/clip.mp4
 
 # Formats differ between engines: GPT Image writes .webp, Kling takes only
 # .jpg/.jpeg/.png. Convert a still before handing it over as a start frame.
@@ -135,7 +152,7 @@ studio presign --folder characters/<name>/reference/face --json
 studio convert --run <project>/latest#1 --for kling --add-input <project>
 
 # Runs: history, chaining, and keepers
-studio runs list <project> [--character <name>]
+studio runs list <project> --character <name>
 studio runs show <project>/latest
 studio runs outputs <project>/latest --presign    # feed into the next render
 studio runs find --character <name>               # across every project
@@ -150,7 +167,7 @@ studio frames chain <project>/<slug> --seed projects/<p>/input/<p>_in_<n>.png
 studio frames last  <project>/latest --add-input --chain <slug>
 studio frames chain <project>/<slug> --args --max 7    # -> --key … --key …
 
-# Phrasebook: per-model wording lists (data lives in S3)
+# Phrasebook: per-model wording lists (shared material — see above)
 studio phrasebook check --model <model key> --text "<draft prompt>"
 studio phrasebook show --model <model key>
 
@@ -167,15 +184,15 @@ studio movies new <project> --slug <slug> \
   --scene <project>/<scene_id> --scene <project>/latest
 studio movies show <project>/latest
 
-# Integrity: does every recorded key still resolve?
+# Integrity: does every recorded path still resolve?
 studio rewrite check
 ```
 
 `--shot` and `--scene` are repeatable and **order is the cut order**. Each takes
 a runref / sceneref, so a chained sequence assembles straight from its own
-history. Sources are copied in server-side, so a scene or movie stays playable
-and re-stitchable, and the manifest records both the copied key and the
-originating ref — copying never loses lineage.
+history. Sources are copied in, so a scene or movie stays playable and
+re-stitchable, and the manifest records both the copied path and the originating
+ref — copying never loses lineage.
 
 ### Runrefs and scenerefs
 
@@ -190,21 +207,37 @@ takes. A scene has exactly one output, so it needs no `#N`.
 
 ## Handing assets to Replicate
 
-The bucket is **private**. To let Replicate fetch an image or video, presign it —
-a short-lived (default 1 h) HTTPS URL that carries its own signature. Pass the
-resulting URLs straight into a prediction's `reference_images` / `image` inputs.
-Only short URLs enter the agent context; the bytes never do. This replaces the
-old Drive→local→Replicate-Files-upload dance — no `REPLICATE_API_TOKEN` needed
-for references.
+The store is **private**. To let Replicate fetch an image or video, presign it —
+a short-lived HTTPS URL carrying its own signature, signed by the API against
+credentials the CLI does not hold. Pass the URLs straight into a prediction's
+`reference_images` / `image` inputs. Only short URLs enter the agent context; the
+bytes never do. No `REPLICATE_API_TOKEN` is needed for references.
+
+**`--expires` is accepted and ignored, everywhere it appears.** The API owns the
+URL's lifetime and sets it centrally; a number passed here cannot be honoured, so
+the command says so on stderr rather than pretending. It is comfortably longer
+than a render job. The flag survives because the CLI surface is a contract.
 
 ## Notes
 
-- Uploads overwrite a same-named key; the bucket is **versioned**, so the prior
-  revision is retained (mirrors Drive's update-in-place-with-history).
-- `list_keys` skips zero-byte folder markers and natural-sorts (`<name>_2`
-  before `<name>_10`).
-- Moving an object means rewriting the records that name it. Use `studio curate`
-  (which does) rather than `aws s3 mv` (which does not), and run
-  `studio rewrite check` if you ever move something by hand.
-- Provisioning, teardown, and the presigned-URL cheatsheet live in
-  [`infra/README.md`](../../../infra/README.md).
+- **Renaming or moving anything is a record update. No bytes move.** A pool move,
+  a regroup, a renumber and a whole character rename are each a handful of row
+  edits; the file keeps its bytes and its identity. Use `studio curate` and
+  `studio character rename`, which do it.
+- **But the records that NAME it still have to be rewritten**, because a record
+  stores a path, not an identity. `curate` and `rename` carry them along; that is
+  the step whose absence once left 69 records pointing at reference images that
+  no longer existed. `studio rewrite check` reports any that remain.
+- **Writing to a path that already holds a file replaces it and keeps the
+  record**, so everything naming it stays true. Production keeps prior revisions;
+  a local dev stack is not the place to rely on that.
+- **Listings are natural-sorted** (`<name>_2` before `<name>_10`). Load-bearing,
+  not cosmetic: presigned URLs become `[Image1]…[ImageN]` positionally, so a
+  lexical order hands a model the wrong image under the right name.
+- **Nothing here deletes.** Deleting is a record operation and lives on the
+  commands that own the thing; `studio curate` preserves into the destination
+  rather than removing. `studio catalog gc` collects blobs no record names, and
+  is a dry run without `--apply`.
+- Provisioning and teardown live in [`infra/README.md`](../../../infra/README.md).
+  Which stack your commands reach — per-machine dev, not production — is in
+  [studio/CLAUDE.md](../../../CLAUDE.md).
