@@ -123,8 +123,7 @@ def test_render_requires_a_shot(media_bucket, no_network):
 def test_the_first_shot_starts_from_its_own_panel(media_bucket, no_network):
     m = board_ready(media_bucket)
     entry = REG.get("kling")
-    start, end, refs, _notes = BOARD.shot_bindings(
-        media_bucket, m, m["shots"][0], entry)
+    start, end, refs, _notes = BOARD.shot_bindings(m, m["shots"][0], entry)
     assert start.endswith("shot-01-p1.png")
     assert end is None, "one panel is a start frame, not a pair"
     assert refs == [], "shot 1 IS the seed; there is nothing earlier to send"
@@ -142,7 +141,7 @@ def test_a_handoff_takes_the_start_slot_and_the_panel_becomes_a_reference(
     assert roles["demoted"] is True
     assert roles["start_panel"] is None and roles["reference_panels"][0] == 0
 
-    start, end, refs, notes = BOARD.shot_bindings(media_bucket, m, shot, REG.get("kling"))
+    start, end, refs, notes = BOARD.shot_bindings(m, shot, REG.get("kling"))
     assert start == "projects/subject-a/input/subject-a_3.png"
     assert end.endswith("shot-02-p2.png")
     assert any("seamless" in n for n in notes), "the demotion is reported, not silent"
@@ -152,7 +151,7 @@ def test_a_handoff_takes_the_start_slot_and_the_panel_becomes_a_reference(
 
 def test_a_shot_that_expects_a_handoff_and_has_none_says_so(media_bucket, no_network):
     m = board_ready(media_bucket)
-    _s, _e, _r, notes = BOARD.shot_bindings(media_bucket, m, m["shots"][1], REG.get("kling"))
+    _s, _e, _r, notes = BOARD.shot_bindings(m, m["shots"][1], REG.get("kling"))
     assert any("scenes handoff" in n for n in notes)
 
 
@@ -175,7 +174,7 @@ def test_the_scenes_own_frames_ride_along_behind_the_panels(media_bucket, no_net
     shot["panels"] = shot["panels"][:1]          # drop the end panel
     shot["opens_on"]["key"] = "projects/subject-a/input/subject-a_3.png"
 
-    _s, end, refs, _n = BOARD.shot_bindings(media_bucket, m, shot, REG.get("kling"))
+    _s, end, refs, _n = BOARD.shot_bindings(m, shot, REG.get("kling"))
     assert end is None
     assert refs[0].endswith("shot-02-p1.png"), "a panel first"
     assert refs[-1].endswith("shot-01-p1.png"), \
@@ -196,7 +195,7 @@ def test_the_scenes_own_frames_come_from_the_plan_not_a_second_document(
     shot = m["shots"][1]
     shot["opens_on"]["key"] = "projects/subject-a/input/subject-a_3.png"
 
-    _s, _e, refs, _n = BOARD.shot_bindings(media_bucket, m, shot, REG.get("kling"))
+    _s, _e, refs, _n = BOARD.shot_bindings(m, shot, REG.get("kling"))
     assert not any("subject-a_2.webp" in k for k in refs), \
         "the stale chain document must not reach the payload"
 
@@ -365,7 +364,7 @@ def test_an_oversized_payload_warns_and_names_the_fix(media_bucket, no_network, 
         character=(), ref_run=(), input_=(), input=(), key=[], pick=None,
         pick_tag=None, slots=None, project="subject-a", no_refs=True)
 
-    SUB.gather(REG.get("kling"), media_bucket, args)
+    SUB.gather(REG.get("kling"), args)
     err = capsys.readouterr().err
     assert "7.0 MiB" in err
     assert "studio convert" in err
@@ -383,7 +382,7 @@ def test_a_payload_within_the_measured_range_says_nothing(media_bucket, no_netwo
         input_=(), input=(), key=[], pick=None, pick_tag=None, slots=None,
         project="subject-a", no_refs=True)
 
-    SUB.gather(REG.get("kling"), media_bucket, args)
+    SUB.gather(REG.get("kling"), args)
     assert "warning" not in capsys.readouterr().err
 
 
@@ -402,7 +401,7 @@ def test_the_byte_warning_is_video_only(media_bucket, no_network, capsys):
         character=(), ref_run=(), input_=(), input=(), key=[big], pick=None,
         pick_tag=None, slots=None, project="subject-a", no_refs=False)
 
-    SUB.gather(REG.get("nano-banana-pro"), media_bucket, args)
+    SUB.gather(REG.get("nano-banana-pro"), args)
     assert "warning" not in capsys.readouterr().err
 
 
@@ -427,7 +426,7 @@ def test_a_continuing_shot_with_no_panel_and_no_handoff_says_it_has_nothing(
     cut, it is a different shot."""
     m = board_ready(media_bucket)
     m["shots"][1]["panels"] = []
-    _s, _e, _r, notes = BOARD.shot_bindings(media_bucket, m, m["shots"][1], REG.get("kling"))
+    _s, _e, _r, notes = BOARD.shot_bindings(m, m["shots"][1], REG.get("kling"))
     assert any("start from nothing" in n for n in notes)
     assert not any("open on its own panel" in n for n in notes)
 
@@ -438,10 +437,10 @@ def test_a_review_sheet_lands_in_the_scene_not_only_on_disk(media_bucket, no_net
     which, when the pipeline is driven remotely, is nobody."""
     m = board_ready(media_bucket)
     entry = REG.get("kling")
-    start, end, refs, _n = BOARD.shot_bindings(media_bucket, m, m["shots"][0], entry)
+    start, end, refs, _n = BOARD.shot_bindings(m, m["shots"][0], entry)
     bindings = {"start_image": start, "reference_images": refs}
 
-    out = BOARD.review_sheet(media_bucket, m, "shot-01",
+    out = BOARD.review_sheet(m, "shot-01",
                              BOARD._sheet_items(entry, bindings), None, {})
     assert out == "projects/subject-a/scenes/board-test/review/shot-01.png"
     media_bucket.head_object(Bucket=BUCKET, Key=out)
@@ -450,10 +449,10 @@ def test_a_review_sheet_lands_in_the_scene_not_only_on_disk(media_bucket, no_net
 def test_a_review_sheet_still_keeps_a_local_copy_when_asked(media_bucket, no_network, tmp_path):
     m = board_ready(media_bucket)
     entry = REG.get("kling")
-    start, _e, refs, _n = BOARD.shot_bindings(media_bucket, m, m["shots"][0], entry)
-    out = BOARD.review_sheet(media_bucket, m, "shot-01",
+    start, _e, refs, _n = BOARD.shot_bindings(m, m["shots"][0], entry)
+    out = BOARD.review_sheet(m, "shot-01",
                              BOARD._sheet_items(entry, {"start_image": start,
-                                                        "reference_images": refs}),
+                                                       "reference_images": refs}),
                              str(tmp_path), {})
     assert "local copy" in out
     assert (tmp_path / "shot-01.png").is_file()
@@ -475,7 +474,7 @@ def test_an_end_frame_drops_the_references_where_the_model_demands_it(
     shot = m["shots"][1]
     shot["opens_on"]["key"] = "projects/subject-a/input/subject-a_3.png"
 
-    start, end, refs, notes = BOARD.shot_bindings(media_bucket, m, shot, REG.get("kling"))
+    start, end, refs, notes = BOARD.shot_bindings(m, shot, REG.get("kling"))
     assert start and end, "this shot is bracketed"
     assert refs == []
     assert any("dropped" in n for n in notes)
@@ -496,7 +495,7 @@ def test_submit_refuses_an_end_frame_beside_references(media_bucket, no_network)
         pick=None, pick_tag=None, slots=None, project="subject-a", no_refs=False)
 
     with pytest.raises(SUB.SubmitError) as exc:
-        SUB.gather(REG.get("kling"), media_bucket, args)
+        SUB.gather(REG.get("kling"), args)
     assert "must be empty" in str(exc.value)
     assert "drop the end frame" in str(exc.value).lower()
 

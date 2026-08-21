@@ -504,29 +504,29 @@ def _seed_plates(s3, spec):
 
 def test_missing_plates_point_at_dev_setup(media_bucket, spec):
     with pytest.raises(SHOOT.ShootError, match="dev-setup"):
-        SHOOT.check_plates(media_bucket, spec["slots"])
+        SHOOT.check_plates(spec["slots"])
 
 
 def test_plates_present_pass_the_check(media_bucket, spec):
     _seed_plates(media_bucket, spec)
-    SHOOT.check_plates(media_bucket, spec["slots"])  # no raise
+    SHOOT.check_plates(spec["slots"])  # no raise
 
 
 def test_identity_prefers_seed_over_generated_references(media_bucket):
-    keys, source = SHOOT.identity_keys(media_bucket, "subject-a", "auto", None, None)
+    keys, source = SHOOT.identity_keys("subject-a", "auto", None, None)
     assert source == "seed"
     assert all("/seed/" in k for k in keys)
 
 
 def test_identity_falls_back_to_references_when_seed_is_empty(media_bucket):
-    keys, source = SHOOT.identity_keys(media_bucket, "subject-b", "auto", None, None)
+    keys, source = SHOOT.identity_keys("subject-b", "auto", None, None)
     assert source == "reference"
     assert keys
 
 
 def test_identity_seed_explicitly_refuses_to_substitute(media_bucket):
     with pytest.raises(SHOOT.ShootError, match="seed/"):
-        SHOOT.identity_keys(media_bucket, "subject-b", "seed", None, None)
+        SHOOT.identity_keys("subject-b", "seed", None, None)
 
 
 def test_an_oversized_identity_pool_is_refused_not_truncated(media_bucket):
@@ -539,13 +539,13 @@ def test_an_oversized_identity_pool_is_refused_not_truncated(media_bucket):
     does too.
     """
     with pytest.raises(SHOOT.ShootError) as exc:
-        SHOOT.identity_keys(media_bucket, "subject-a", "refs", None, None, limit=1)
+        SHOOT.identity_keys("subject-a", "refs", None, None, limit=1)
     assert "holds" in str(exc.value)          # says how many it found
     assert "subject-a_1.webp" in str(exc.value)  # and lists them to choose from
 
 
 def test_seed_pick_names_the_identity_images(media_bucket):
-    keys, source = SHOOT.identity_keys(media_bucket, "subject-a", "seed", None, None,
+    keys, source = SHOOT.identity_keys("subject-a", "seed", None, None,
                                        limit=4, seed_pick="subject-a_1.webp")
     assert source == "seed"
     assert keys == ["characters/subject-a/seed/subject-a_1.webp"]
@@ -553,7 +553,7 @@ def test_seed_pick_names_the_identity_images(media_bucket):
 
 def test_seed_pick_rejects_a_file_that_is_not_there(media_bucket):
     with pytest.raises(SHOOT.ShootError, match="not in"):
-        SHOOT.identity_keys(media_bucket, "subject-a", "seed", None, None,
+        SHOOT.identity_keys("subject-a", "seed", None, None,
                             seed_pick="nope.webp")
 
 
@@ -573,7 +573,7 @@ def test_citations_match_where_the_plate_actually_lands(media_bucket, spec):
                            identity=["characters/subject-a/seed/subject-a_1.webp"])
     args = SHOOT.slot_args(slot, spec, entry, "subject-a", opts)
     args.key = [SHOOT.plate_key(slot), *opts.identity]
-    bindings = SUB.gather(entry, media_bucket, args)
+    bindings = SUB.gather(entry, args)
     ordered = bindings[entry["images"]["refs"]]
 
     assert len(ordered) == 2, ordered
@@ -751,7 +751,7 @@ def test_pick_and_seed_pick_combine_into_one_identity_set(media_bucket):
     The two pools now concatenate, references first, in the order named.
     """
     keys, source = SHOOT.identity_keys(
-        media_bucket, "subject-a", "auto",
+        "subject-a", "auto",
         "face/subject-a_1.webp", None, limit=4, seed_pick="subject-a_1")
     assert source == "reference+seed"
     assert len(keys) == 2
@@ -762,7 +762,7 @@ def test_combining_pools_still_respects_the_cap(media_bucket):
     """The combined set is what is checked, not each pool separately."""
     with pytest.raises(SHOOT.ShootError) as exc:
         SHOOT.identity_keys(
-            media_bucket, "subject-a", "auto",
+            "subject-a", "auto",
             "face/subject-a_1.webp", None, limit=1, seed_pick="subject-a_1")
     assert "--identity-max" in str(exc.value)
 
@@ -872,7 +872,7 @@ def test_review_sheet_labels_images_in_the_order_the_model_gets_them(media_bucke
         Image.new("RGB", (40, 60), "grey").save(tmp_path / "src.png")
         media_bucket.upload_file(str(tmp_path / "src.png"), BUCKET, key)
 
-    out = SHOOT.review_sheet(media_bucket, "face_front", keys, str(tmp_path / "sheet"), {})
+    out = SHOOT.review_sheet("face_front", keys, str(tmp_path / "sheet"), {})
     assert os.path.isfile(out)
     assert out.endswith("face_front.png")
 
@@ -885,9 +885,9 @@ def test_review_sheet_downloads_each_image_once(media_bucket, spec, tmp_path):
     media_bucket.upload_file(str(tmp_path / "src.png"), BUCKET, key)
 
     cache: dict = {}
-    SHOOT.review_sheet(media_bucket, "a", [key], str(tmp_path / "s"), cache)
+    SHOOT.review_sheet("a", [key], str(tmp_path / "s"), cache)
     first = dict(cache)
-    SHOOT.review_sheet(media_bucket, "b", [key], str(tmp_path / "s"), cache)
+    SHOOT.review_sheet("b", [key], str(tmp_path / "s"), cache)
     assert cache == first, "the second slot re-downloaded an image it already had"
 
 
@@ -941,7 +941,7 @@ def test_models_without_the_flag_are_unaffected():
     SUB._check_image_budget(entry, {field: [f"k{i}" for i in range(12)]})
 
 
-def test_a_start_frame_is_format_checked_like_every_other_image():
+def test_a_start_frame_is_format_checked_like_every_other_image(monkeypatch):
     """The rule used to live inside the reference-list branch, so a `.webp`
     start frame reached a model that rejects `.webp` and failed at the provider
     — after the submit, and in the provider's words rather than ones that name
@@ -950,6 +950,12 @@ def test_a_start_frame_is_format_checked_like_every_other_image():
     """
     entry = REG.get("kling")
     images = entry["images"]
+    # `gather` sizes whatever it bound, to warn about an oversized payload.
+    # These keys are invented, so the sizing is stubbed out rather than sent —
+    # not because it may not run, but because it is a different subject and has
+    # its own tests in `test_board`. This used to be a `None` s3 client passed
+    # positionally, which turned a test's need into a production parameter.
+    monkeypatch.setattr("studio_pipeline.adapters.store.size", lambda _key: 0)
     args = SimpleNamespace(
         start_key="projects/p/input/p_in_1.webp", start_run=None,
         end_key=None, end_run=None, image_run=None, character=(), ref_run=(),
@@ -957,10 +963,10 @@ def test_a_start_frame_is_format_checked_like_every_other_image():
         project="p", no_refs=True,
     )
     with pytest.raises(SUB.SubmitError) as exc:
-        SUB.gather(entry, None, args)
+        SUB.gather(entry, args)
     assert ".webp" in str(exc.value)
     assert "studio convert" in str(exc.value), "the error must name the fix"
 
     # A legal start frame, with no references at all, still passes.
     args.start_key = "projects/p/input/p_in_1.png"
-    assert SUB.gather(entry, None, args)[images["start"]].endswith(".png")
+    assert SUB.gather(entry, args)[images["start"]].endswith(".png")

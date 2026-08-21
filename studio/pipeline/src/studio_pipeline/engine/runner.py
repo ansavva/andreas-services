@@ -33,7 +33,6 @@ from types import SimpleNamespace
 import click
 
 from studio_pipeline.adapters import replicate as RA
-from studio_pipeline.adapters import s3 as s3c
 from studio_pipeline.domain import projects as PROJ
 from studio_pipeline.domain import runs as R
 from studio_pipeline.engine import refs as REFS
@@ -240,7 +239,6 @@ def cmd_run(**options):
         args.timeout = d["timeout"]
 
     token = RA.load_token()
-    s3 = s3c.client()
 
     # Where a run lands is never guessed. It used to fall back to the character
     # name and then to a pseudo-character called `misc`, which is how output
@@ -250,7 +248,7 @@ def cmd_run(**options):
     payload = build_payload(entry, args)
 
     try:
-        bindings = SUB.gather(entry, s3, args)
+        bindings = SUB.gather(entry, args)
         SUB.check_payload_rules(entry, payload)
     except (SUB.SubmitError, REFS.RefError, R.RunError) as e:
         die(str(e))
@@ -278,7 +276,7 @@ def cmd_run(**options):
         return 0
 
     try:
-        return SUB.execute(entry, payload, bindings, s3, token, args)
+        return SUB.execute(entry, payload, bindings, token, args)
     except (SUB.SubmitError, RA.ReplicateError) as e:
         die(str(e))
 
