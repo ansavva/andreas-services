@@ -365,9 +365,16 @@ def _aim_store_at(s3, monkeypatch):
         return {"id": clean, "name": clean.rsplit("/", 1)[-1], "kind": "folder"}
 
     def _exists(path):
+        """`_resolve`, not `_head` — a folder is a node and answers here too.
+
+        It was a bare head, which is every object and no folder. `character
+        rename` asks whether the destination character exists, and against a
+        head that question answered "no" for a character that plainly did,
+        letting the rename run onto a live record.
+        """
         try:
-            _head(path.strip("/"))
-        except Exception:  # noqa: BLE001
+            _resolve(path)
+        except _api.NotFound:
             return False
         return True
 
@@ -391,7 +398,7 @@ def _aim_store_at(s3, monkeypatch):
         assert that no object was written. `test_curate` does that separately,
         against `api` itself.
         """
-        src = route.rsplit("/", 1)[-1]
+        src = route.removeprefix("/api/nodes/")
         if "name" in payload:
             head, _, _base = src.rpartition("/")
             dst = f"{head}/{payload['name']}" if head else payload["name"]
@@ -415,7 +422,7 @@ def _aim_store_at(s3, monkeypatch):
         return {"id": dst}
 
     def _delete(route, **_params):
-        node = route.rsplit("/", 1)[-1]
+        node = route.removeprefix("/api/nodes/")
         for item in s3.list_objects_v2(Bucket=BUCKET, Prefix=node).get("Contents", []):
             if item["Key"] == node or item["Key"].startswith(node + "/"):
                 s3.delete_object(Bucket=BUCKET, Key=item["Key"])

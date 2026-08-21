@@ -90,8 +90,6 @@ IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp"}
 ENGINE_CAPS = {"kling": 7, "seedance": 9, "nano-banana": 14}
 
 
-
-
 def folder(name: str, pool: str, group: str | None = None) -> str:
     return pool_folder(name, pool) + (f"/{group}" if group else "")
 
@@ -438,7 +436,3 @@ def cmd_groups(name):
               f"  studio character refs {name} --describe\n"
               f"  studio character default-set {name} --set <file> <file> …", file=sys.stderr)
     _ = root
-
-
-
-

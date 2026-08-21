@@ -13,6 +13,7 @@ from click.testing import CliRunner
 
 from studio_pipeline import cli
 from studio_pipeline.domain import rewrite
+from studio_pipeline.domain.characters import rename
 from tests.conftest import BUCKET
 
 OLD, NEW = "subject-a", "subject-c"
@@ -119,9 +120,20 @@ def test_a_basename_without_the_slug_is_left_alone(bucket):
         bucket, f"characters/{NEW}/corpus/")
 
 
-def test_a_folder_marker_survives(bucket):
-    """A zero-byte marker is a folder the app shows; dropping one deletes it."""
+def test_an_empty_folder_follows_without_being_carried(bucket):
+    """A folder is a row now, so it moves because its parent did.
+
+    This was `test_a_folder_marker_survives`, and the expectation is obsolete
+    rather than merely restated: there are no marker objects to survive.
+    `record_paths` enumerates FILES, so the empty folder is not in the move
+    list at all — where the S3 version had to list every zero-byte marker and
+    copy each one, and dropping one deleted a folder the app showed.
+
+    The marker written below is only how moto spells an empty folder; what is
+    asserted about it is that the command never named it.
+    """
     bucket.put_object(Bucket=BUCKET, Key=f"characters/{OLD}/favourites/", Body=b"")
+    assert [p for p in rename.record_paths(OLD) if "favourites" in p] == []
     assert run(OLD, NEW, "--apply").exit_code == 0
     assert f"characters/{NEW}/favourites/" in keys_under(bucket, f"characters/{NEW}/")
 
@@ -188,7 +200,7 @@ def test_a_project_sharing_the_name_is_not_renamed(bucket):
 
 def test_no_record_dangles_afterwards(bucket):
     assert run(OLD, NEW, "--apply").exit_code == 0
-    assert rewrite.check(bucket)["dangling"] == []
+    assert rewrite.check()["dangling"] == []
 
 
 # ── the refusals ────────────────────────────────────────────────────────────
