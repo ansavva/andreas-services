@@ -1,17 +1,36 @@
-"""`studio rewrite` — when an object moves, the records that NAME it must follow.
+"""`studio rewrite` — when a record's subject moves, the records that NAME it follow.
 
-Run records, scene and movie manifests and chain files all store S3 keys. That
-is deliberate (keys are stable; presigned URLs expire and leak access), but it
-means moving an object silently invalidates every document that cited it.
+Run records, scene and movie manifests and chain files all store **paths**. That
+is deliberate (a path is stable and readable; a presigned URL expires and leaks
+access), but it means renaming or reparenting anything silently invalidates
+every document that cited it.
 
 That is not hypothetical: the layout migration found 69 references that had been
 dangling for weeks because `curate.py` renumbered reference images after the
 runs that cited them. Nothing was wrong with the renumbering — there was just no
 step that carried the records along with it. This is that step.
 
-Anything that moves objects — the migrator, curate — calls `apply_moves()` with
-{old key: new key}, and every document in the bucket that mentions an old key is
-rewritten. Documents are the only place keys live, so this is complete.
+WHY THIS SURVIVED THE CATALOG
+-----------------------------
+**#306 expected this module's move path to be deleted**, on the reasoning that
+under the catalog nothing moves: a rename is a row update and the blob never
+budges. The first half is true — `curate` writes no objects now — and the
+conclusion still does not follow.
+
+A record does not name a node. It names a path, checked against
+`runs.KEY_ROOTS` and rebuilt by `runs.resolve_output_keys` out of a folder and a
+name. So a node renamed in place leaves every path that cited it unresolvable,
+which is the same dangling record for a different reason.
+
+What retires this is records naming **node ids** — an id survives a rename by
+construction. That is unfiled and it is not small: it moves the binding
+invariant, the runref vocabulary, and the terms every `SKILL.md` is written in.
+Until somebody decides it, `curate` carries the records along.
+
+Anything that moves a record's subject — the migrator, curate, a character
+rename — calls `apply_moves()` with {old path: new path}, and every document
+that mentions an old path is rewritten. Documents are the only place paths live,
+so this is complete.
 
 A character rename needs a second pass, `rename_character()`, and cannot reuse
 the first: records also name a character in a `characters:`/`character:` field,
@@ -33,7 +52,7 @@ import os
 
 import click
 
-from studio_pipeline.adapters import s3 as s3c
+from studio_pipeline.adapters import api, store
 from studio_pipeline.domain import paths as P
 
 # Documents whose CONTENT names S3 keys. Everything else is opaque bytes.
@@ -46,15 +65,15 @@ def is_document(key: str) -> bool:
     return "/chains/" in key and key.endswith(".json")
 
 
-def all_documents(s3) -> list[str]:
-    """Every key-bearing document in the tree."""
-    out = []
-    paginator = s3.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=s3c.BUCKET, Prefix=s3c.key(P.PROJECTS + "/")):
-        for obj in page.get("Contents", []):
-            if is_document(obj["Key"]):
-                out.append(obj["Key"])
-    return out
+def all_documents() -> list[str]:
+    """Every path-bearing document in the tree.
+
+    `store.walk_files` descends folder by folder where this was one paginated
+    `list_objects_v2` — see its docstring for why the catalog has no prefix
+    scan. This is the widest walk in the package and it is a maintenance
+    command; nothing on a hot path does it.
+    """
+    return [path for path in store.walk_files(P.PROJECTS) if is_document(path)]
 
 
 def _walk(node, mapping: dict[str, str]) -> int:
@@ -78,7 +97,7 @@ def _walk(node, mapping: dict[str, str]) -> int:
     return changed
 
 
-def apply_moves(s3, mapping: dict[str, str], apply: bool = False) -> dict:
+def apply_moves(mapping: dict[str, str], apply: bool = False) -> dict:
     """Rewrite every document that names a moved key.
 
     Returns {document: fields changed} for the ones that matched, so a caller
@@ -87,21 +106,41 @@ def apply_moves(s3, mapping: dict[str, str], apply: bool = False) -> dict:
     if not mapping:
         return {}
     touched: dict[str, int] = {}
-    for key in all_documents(s3):
-        body = s3.get_object(Bucket=s3c.BUCKET, Key=key)["Body"].read()
-        try:
-            doc = json.loads(body)
-        except json.JSONDecodeError:
+    for path in all_documents():
+        doc = _load(path)
+        if doc is None:
             continue
         n = _walk(doc, mapping)
         if not n:
             continue
-        touched[key] = n
+        touched[path] = n
         if apply:
-            s3.put_object(Bucket=s3c.BUCKET, Key=key,
-                          Body=(json.dumps(doc, indent=2) + "\n").encode(),
-                          ContentType="application/json")
+            _save(path, doc)
     return touched
+
+
+def _load(path: str):
+    """One document, or None if it is not JSON or not there any more."""
+    try:
+        return json.loads(store.read(path))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    except api.NotFound:
+        # Listed a moment ago and gone now. A record that vanished mid-walk is
+        # not this command's problem to report.
+        return None
+
+
+def _save(path: str, doc) -> None:
+    """Write a document back, byte-for-byte in the shape the pipeline wrote it.
+
+    `text/plain`, matching `POST /api/runs` and `runs.write_json`: these are
+    bytes the pipeline reserves the right to reshape and nothing should be
+    invited to parse. The trailing newline is kept because every existing
+    document has one.
+    """
+    store.write(path, (json.dumps(doc, indent=2) + "\n").encode(),
+                content_type="text/plain; charset=utf-8")
 
 
 # ── a character rename ──────────────────────────────────────────────────────
@@ -117,19 +156,14 @@ def apply_moves(s3, mapping: dict[str, str], apply: bool = False) -> dict:
 CHARACTER_FIELDS = ("characters", "character")
 
 
-def project_docs(s3) -> list[str]:
+def project_docs() -> list[str]:
     """Every `project.json`.
 
-    `is_document` excludes them on purpose — they store no S3 keys, so
+    `is_document` excludes them on purpose — they store no paths, so
     `apply_moves` has nothing to do there. They do carry a `characters` list.
     """
-    out = []
-    paginator = s3.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=s3c.BUCKET, Prefix=s3c.key(P.PROJECTS + "/")):
-        for obj in page.get("Contents", []):
-            if os.path.basename(obj["Key"]) == "project.json":
-                out.append(obj["Key"])
-    return out
+    return [path for path in store.walk_files(P.PROJECTS)
+            if os.path.basename(path) == "project.json"]
 
 
 def _rename_fields(node, old: str, new: str) -> int:
@@ -156,33 +190,32 @@ def _rename_fields(node, old: str, new: str) -> int:
     return changed
 
 
-def rename_character(s3, old: str, new: str, apply: bool = False) -> dict:
+def rename_character(old: str, new: str, apply: bool = False) -> dict:
     """Carry a character's new name into every record that names it.
 
     Returns {document: fields changed}, so a caller reports which history it
     touched rather than a bare count.
     """
     touched: dict[str, int] = {}
-    for key in all_documents(s3) + project_docs(s3):
-        body = s3.get_object(Bucket=s3c.BUCKET, Key=key)["Body"].read()
-        try:
-            doc = json.loads(body)
-        except json.JSONDecodeError:
+    for path in all_documents() + project_docs():
+        doc = _load(path)
+        if doc is None:
             continue
         n = _rename_fields(doc, old, new)
         if not n:
             continue
-        touched[key] = n
+        touched[path] = n
         if apply:
-            s3.put_object(Bucket=s3c.BUCKET, Key=key,
-                          Body=(json.dumps(doc, indent=2) + "\n").encode(),
-                          ContentType="application/json")
+            _save(path, doc)
     return touched
 
 
 # ── the standing integrity check ────────────────────────────────────────────
 
-KEY_ROOTS = (P.CHARACTERS + "/", P.PROJECTS + "/", "phrasebook/")
+# The path roots a record may name. Mirrors `runs.KEY_ROOTS`, which is the
+# writing half of the same rule — a binding that would fail there must be found
+# here rather than counted as a stranger's string.
+KEY_ROOTS = (P.CHARACTERS + "/", P.PROJECTS + "/", "phrasebook/", P.config_root())
 
 
 def collect_keys(node) -> list[str]:
@@ -199,27 +232,31 @@ def collect_keys(node) -> list[str]:
     return out
 
 
-def check(s3) -> dict:
-    """Which recorded keys no longer resolve, and which record names them."""
+def check() -> dict:
+    """Which recorded paths no longer resolve, and which record names them.
+
+    **The half of this module #306 keeps.** Its move path exists because paths
+    dangle; this exists to find the ones that already have — after manual
+    surgery, an interrupted `curate`, or anything that wrote the tree without
+    going through a command.
+
+    `store.exists` per distinct path, memoised, where this did a `head_object`.
+    Same shape, one authorised request instead of one bucket read.
+    """
     resolved: dict[str, bool] = {}
     dangling: list[dict] = []
     checked = 0
-    docs = all_documents(s3)
-    for doc_key in docs:
-        try:
-            doc = json.loads(s3.get_object(Bucket=s3c.BUCKET, Key=doc_key)["Body"].read())
-        except json.JSONDecodeError:
+    docs = all_documents()
+    for doc_path in docs:
+        doc = _load(doc_path)
+        if doc is None:
             continue
         for ref in collect_keys(doc):
             checked += 1
             if ref not in resolved:
-                try:
-                    s3.head_object(Bucket=s3c.BUCKET, Key=ref)
-                    resolved[ref] = True
-                except Exception:
-                    resolved[ref] = False
+                resolved[ref] = store.exists(ref)
             if not resolved[ref]:
-                dangling.append({"record": doc_key, "missing": ref})
+                dangling.append({"record": doc_path, "missing": ref})
     return {"documents": len(docs), "references": checked,
             "distinct": len(resolved), "dangling": dangling}
 
@@ -233,7 +270,7 @@ def main():
 @click.option("--json", "json_", is_flag=True)
 def do_check(json_):
     """Report records that name an object which is no longer there."""
-    report = check(s3c.client())
+    report = check()
     if json_:
         print(json.dumps(report, indent=2))
     else:

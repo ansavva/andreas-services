@@ -236,11 +236,30 @@ def _aim_store_at(s3, monkeypatch):
     def _head(path):
         return s3.head_object(Bucket=BUCKET, Key=path)
 
+    def _folder_node(clean):
+        """A folder node if anything lives under this prefix, else None.
+
+        **The real API resolves a folder; S3 has none to resolve.** `_resolve`
+        used to `head_object` and give up, so every caller that named a folder
+        got a 404 from the fixture and a node from production. It went unnoticed
+        while nothing resolved one — `store.folder` is stubbed and `store.files`
+        goes straight to a listing. `character rename` resolves the character's
+        own folder, and that is what found it.
+        """
+        prefix = clean + "/" if clean else ""
+        listed = s3.list_objects_v2(Bucket=BUCKET, Prefix=prefix, Delimiter="/", MaxKeys=1)
+        if not listed.get("Contents") and not listed.get("CommonPrefixes"):
+            return None
+        return {"id": clean, "name": clean.rsplit("/", 1)[-1], "kind": "folder"}
+
     def _resolve(path):
         clean = path.strip("/")
         try:
             meta = _head(clean)
         except Exception as error:  # noqa: BLE001
+            node = _folder_node(clean)
+            if node is not None:
+                return node
             raise _api.NotFound(f"No such object: {clean}", 404) from error
         return {
             "id": clean,
@@ -360,6 +379,50 @@ def _aim_store_at(s3, monkeypatch):
         if disposition == "attachment":
             params["ResponseContentDisposition"] = "attachment"
         return s3.generate_presigned_url("get_object", Params=params, ExpiresIn=3600)
+
+    def _move_or_rename(route, payload):
+        """`PATCH /api/nodes/<id>` against moto, where a node id IS its key.
+
+        **A copy and a delete, standing in for a row update.** That is the one
+        place this shim is structurally unlike the thing it imitates: production
+        renames a node and the blob never moves, which is the whole point of
+        #306. So the tests built on this fixture can assert the RESULT of a
+        rename — where the file ended up, which records followed — and cannot
+        assert that no object was written. `test_curate` does that separately,
+        against `api` itself.
+        """
+        src = route.rsplit("/", 1)[-1]
+        if "name" in payload:
+            head, _, _base = src.rpartition("/")
+            dst = f"{head}/{payload['name']}" if head else payload["name"]
+        else:
+            dst = f"{payload['parent'].rstrip('/')}/{src.rsplit('/', 1)[-1]}"
+        if dst == src:
+            return {"id": src}
+        # A folder id is its prefix, so renaming one moves everything beneath it.
+        moved = False
+        for item in s3.list_objects_v2(Bucket=BUCKET, Prefix=src).get("Contents", []):
+            key = item["Key"]
+            if key != src and not key.startswith(src + "/"):
+                continue
+            target = dst + key[len(src):]
+            s3.copy_object(Bucket=BUCKET, CopySource={"Bucket": BUCKET, "Key": key},
+                           Key=target, MetadataDirective="COPY")
+            s3.delete_object(Bucket=BUCKET, Key=key)
+            moved = True
+        if not moved:
+            raise _api.NotFound(f"No such node: {src}", 404)
+        return {"id": dst}
+
+    def _delete(route, **_params):
+        node = route.rsplit("/", 1)[-1]
+        for item in s3.list_objects_v2(Bucket=BUCKET, Prefix=node).get("Contents", []):
+            if item["Key"] == node or item["Key"].startswith(node + "/"):
+                s3.delete_object(Bucket=BUCKET, Key=item["Key"])
+        return {"id": node, "deleted": 1}
+
+    monkeypatch.setattr(_api, "patch", _move_or_rename)
+    monkeypatch.setattr(_api, "delete", _delete)
 
     for name, value in [
         ("resolve", _resolve), ("children", _children), ("read", _read),
