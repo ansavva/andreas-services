@@ -145,24 +145,34 @@ def test_tree_rejects_an_unknown_sort(catalog_tree):
 
 # ---------------------------------------------------------------------------
 # Writes
+#
+# **On `catalog_tree` rather than `media_bucket` since #316.** These routes write
+# rows now, so the fixture has to hold the rows; the bucket is still there
+# because a copy and a text save move real bytes.
+#
+# What they send is unchanged. `prefix`, `key` and `destination` were always the
+# slash-joined name path a listing hands back — for material written before the
+# catalog it happened to equal the S3 key, and these requests are the proof that
+# the SPA needed no change.
 # ---------------------------------------------------------------------------
 
 RUN = "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/"
 
 
-def test_create_folder(media_bucket):
+def test_create_folder(catalog_tree):
     resp = _client().post("/api/folder", json={"prefix": "characters/subject-a/", "name": "keepers"})
     assert resp.status_code == 201
     assert resp.get_json()["prefix"] == "characters/subject-a/keepers/"
 
 
-def test_create_folder_conflict_is_409(media_bucket):
+def test_create_folder_conflict_is_409(catalog_tree):
+    """A transaction condition failure, not a listing this route did first."""
     resp = _client().post("/api/folder", json={"prefix": "characters/subject-a/", "name": "seed"})
     assert resp.status_code == 409
     assert "error" in resp.get_json()
 
 
-def test_rename_object(media_bucket):
+def test_rename_object(catalog_tree):
     resp = _client().patch(
         "/api/object",
         json={"key": f"{RUN}output/wave-porch.jpeg", "name": "keeper.jpeg"},
@@ -171,20 +181,25 @@ def test_rename_object(media_bucket):
     assert resp.get_json()["key"] == f"{RUN}output/keeper.jpeg"
 
 
-def test_rename_object_rejects_a_slash(media_bucket):
+def test_rename_object_rejects_a_slash(catalog_tree):
     resp = _client().patch(
         "/api/object", json={"key": f"{RUN}output/wave-porch.jpeg", "name": "a/b.jpeg"}
     )
     assert resp.status_code == 400
 
 
-def test_rename_folder(media_bucket):
+def test_rename_folder(catalog_tree):
     resp = _client().patch("/api/folder", json={"prefix": RUN, "name": "wave-porch-final"})
     assert resp.status_code == 200
-    assert resp.get_json()["objects"] == 3
+    # No `objects` count: a rename changes one name and moves nothing beneath it.
+    assert resp.get_json() == {
+        "prefix": "projects/subject-a/runs/wave-porch-final/",
+        "name": "wave-porch-final",
+        "renamed": True,
+    }
 
 
-def test_move_objects(media_bucket):
+def test_move_objects(catalog_tree):
     resp = _client().post(
         "/api/objects/move",
         json={"keys": [f"{RUN}output/wave-porch.jpeg"], "destination": "characters/subject-a/"},
@@ -193,7 +208,7 @@ def test_move_objects(media_bucket):
     assert resp.get_json()["keys"] == ["characters/subject-a/wave-porch.jpeg"]
 
 
-def test_move_objects_conflict_is_409(media_bucket):
+def test_move_objects_conflict_is_409(catalog_tree):
     resp = _client().post(
         "/api/objects/move",
         json={
@@ -204,22 +219,25 @@ def test_move_objects_conflict_is_409(media_bucket):
     assert resp.status_code == 409
 
 
-def test_move_folder(media_bucket):
+def test_move_folder(catalog_tree):
     resp = _client().post(
         "/api/folder/move", json={"prefix": RUN, "destination": "projects/misc/runs/"}
     )
     assert resp.status_code == 200
-    assert resp.get_json()["objects"] == 3
+    # `descendants` replaces `objects`, and counts a different thing: no object
+    # moved, and what the move touched is the `path` on every row beneath it.
+    assert resp.get_json()["descendants"] == 4
 
 
-def test_move_folder_into_itself_is_400(media_bucket):
+def test_move_folder_into_itself_is_400(catalog_tree):
     resp = _client().post("/api/folder/move", json={"prefix": RUN, "destination": RUN})
     assert resp.status_code == 400
 
 
-def test_update_text(media_bucket):
+def test_update_text(catalog_tree):
     resp = _client().patch(
-        "/api/text", json={"key": "characters/subject-a/profile.yaml", "content": "name: Subject Alt\n"}
+        "/api/text",
+        json={"key": "characters/subject-a/profile.yaml", "content": "name: Subject Alt\n"},
     )
     assert resp.status_code == 200
     assert resp.get_json()["bytes"] == len(b"name: Subject Alt\n")
@@ -228,21 +246,21 @@ def test_update_text(media_bucket):
     assert reread.get_json()["content"] == "name: Subject Alt\n"
 
 
-def test_update_text_on_a_binary_key_is_400(media_bucket):
+def test_update_text_on_a_binary_key_is_400(catalog_tree):
     resp = _client().patch(
         "/api/text", json={"key": f"{RUN}output/wave-porch.jpeg", "content": "nope"}
     )
     assert resp.status_code == 400
 
 
-def test_update_text_on_a_missing_key_is_404(media_bucket):
+def test_update_text_on_a_missing_key_is_404(catalog_tree):
     resp = _client().patch(
         "/api/text", json={"key": "characters/subject-a/nowhere.md", "content": "# new"}
     )
     assert resp.status_code == 404
 
 
-def test_delete_objects_takes_a_body(media_bucket):
+def test_delete_objects_takes_a_body(catalog_tree):
     resp = _client().delete(
         "/api/objects", json={"keys": [f"{RUN}output/wave-porch.jpeg"]}
     )
@@ -250,19 +268,20 @@ def test_delete_objects_takes_a_body(media_bucket):
     assert resp.get_json()["deleted"] == 1
 
 
-def test_delete_objects_without_a_body_is_400(media_bucket):
+def test_delete_objects_without_a_body_is_400(catalog_tree):
     assert _client().delete("/api/objects").status_code == 400
 
 
-def test_delete_folder(media_bucket):
+def test_delete_folder(catalog_tree):
     resp = _client().delete("/api/folder", json={"prefix": RUN})
     assert resp.status_code == 200
-    assert resp.get_json()["deleted"] == 3
+    # Rows, not objects: the run folder, its `output` folder and its three files.
+    assert resp.get_json()["deleted"] == 5
 
 
-def test_delete_folder_refuses_the_root(media_bucket):
+def test_delete_folder_refuses_the_root(catalog_tree):
     assert _client().delete("/api/folder", json={"prefix": ""}).status_code == 400
-    # And with no prefix at all, which normalises *to* the root.
+    # And with no prefix at all, which resolves *to* the root.
     assert _client().delete("/api/folder", json={}).status_code == 400
 
 
@@ -285,7 +304,8 @@ def test_preflight_advertises_the_write_verbs():
     assert {"PATCH", "DELETE", "POST"} <= {m.strip() for m in allowed.split(",")}
 
 
-def test_copy_objects(media_bucket):
+def test_copy_objects(catalog_tree):
+    _client().post("/api/folder", json={"prefix": "projects/subject-a/", "name": "input"})
     resp = _client().post(
         "/api/objects/copy",
         json={"keys": [f"{RUN}output/wave-porch.jpeg"], "destination": "projects/subject-a/input/"},
@@ -295,8 +315,9 @@ def test_copy_objects(media_bucket):
     assert resp.get_json()["keys"] == ["projects/subject-a/input/wave-porch.jpeg"]
 
 
-def test_copy_objects_takes_anything_in_the_bucket(media_bucket):
+def test_copy_objects_takes_anything_in_the_library(catalog_tree):
     """Unlike favouriting, which was images and video inside a project only."""
+    _client().post("/api/folder", json={"prefix": "projects/subject-a/", "name": "input"})
     resp = _client().post(
         "/api/objects/copy",
         json={
@@ -307,7 +328,7 @@ def test_copy_objects_takes_anything_in_the_bucket(media_bucket):
     assert resp.status_code == 201
 
 
-def test_copy_objects_without_a_body_is_400(media_bucket):
+def test_copy_objects_without_a_body_is_400(catalog_tree):
     assert _client().post("/api/objects/copy").status_code == 400
 
 
@@ -362,23 +383,23 @@ def _invoke(method: str, path: str, body: dict | None = None):
     return response["statusCode"], json.loads(response["body"])
 
 
-def test_lambda_reads_a_json_body_without_a_content_length_header(media_bucket):
+def test_lambda_reads_a_json_body_without_a_content_length_header(catalog_tree):
     """The move from the bug report: a good body must not read as a missing one."""
     status, body = _invoke(
         "POST",
         "/api/objects/move",
         {
             "keys": ["characters/subject-a/seed/subject-a_1.webp"],
-            "destination": "characters/subject-a/corpus/",
+            "destination": "characters/subject-b/corpus/",
         },
     )
 
     assert status == 200, body
     assert body["moved"] == 1
-    assert body["keys"] == ["characters/subject-a/corpus/subject-a_1.webp"]
+    assert body["keys"] == ["characters/subject-b/corpus/subject-a_1.webp"]
 
 
-def test_lambda_body_reaches_every_write_verb(media_bucket):
+def test_lambda_body_reaches_every_write_verb(catalog_tree):
     """POST, PATCH and DELETE all carry bodies, and all three were broken."""
     assert _invoke("POST", "/api/folder", {"prefix": "projects/", "name": "fresh"})[0] == 201
     assert _invoke(
@@ -406,7 +427,7 @@ def test_lambda_body_reaches_every_write_verb(media_bucket):
     )[0] == 200
 
 
-def test_lambda_still_reports_a_genuinely_empty_body(media_bucket):
+def test_lambda_still_reports_a_genuinely_empty_body(catalog_tree):
     """The validation the bug was impersonating must survive the fix."""
     status, body = _invoke("POST", "/api/objects/move", {"keys": [], "destination": "projects/"})
     assert status == 400
