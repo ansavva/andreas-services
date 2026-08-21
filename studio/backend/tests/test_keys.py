@@ -105,32 +105,10 @@ def test_language():
     assert keys.language("a/caption.txt") == "text"
 
 
-def test_folder_marker_detection():
-    assert keys.is_folder_marker("characters/subject-a/seed/", 0)
-    assert not keys.is_folder_marker("characters/subject-a/seed/a.webp", 0)
-    assert not keys.is_folder_marker("characters/subject-a/seed/", 12)
-
-
-def test_breadcrumbs():
-    trail = keys.breadcrumbs("projects/subject-b/runs/")
-    assert [entry["name"] for entry in trail] == ["/", "projects", "subject-b", "runs"]
-    assert [entry["prefix"] for entry in trail] == [
-        "",
-        "projects/",
-        "projects/subject-b/",
-        "projects/subject-b/runs/",
-    ]
-
-
-def test_breadcrumbs_at_root():
-    assert keys.breadcrumbs("") == [{"name": "/", "prefix": ""}]
-
-
-def test_breadcrumbs_under_a_configured_root(confined_root):
-    """The root crumb takes the root prefix's own name when there is one."""
-    trail = keys.breadcrumbs("characters/subject-a/")
-    assert [entry["name"] for entry in trail] == ["characters", "subject-a"]
-    assert [entry["prefix"] for entry in trail] == ["characters/", "characters/subject-a/"]
+# `is_folder_marker` and `breadcrumbs` were tested here until #309–#312. Both
+# described S3 listings: a marker cannot exist where a folder is a row, and a
+# breadcrumb trail is a walk up `parent_id` rather than a string split. Their
+# tests went with them — `tests/test_browse.py` covers the trail now.
 
 
 # ---------------------------------------------------------------------------

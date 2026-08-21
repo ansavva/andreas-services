@@ -11,6 +11,23 @@ matter: `..`, a leading `/` and a backslash are rejected before normalisation,
 so no input can walk out of the bucket or smuggle a key past the checks below.
 Point the root at a real prefix and the confinement comes back with it, which is
 why the check stays.
+
+## What #312 could take, and what it could not
+
+#312 shrinks this module to classification and naming, on the premise that the
+API accepts node ids and has nothing left to guard. **Half of that premise holds
+today.** The *read* path stopped taking keys in #309–#311, so `breadcrumbs` and
+`is_folder_marker` went with it — the first is a walk up `parent_id` in
+`services.browse` now, and the second described a zero-byte object that cannot
+exist where a folder is a row.
+
+The rest could not go. `services.manage` is still the key-addressed write
+surface and calls `clean_key`, `clean_prefix`, `assert_inside_root`, `is_within`,
+`with_name`, `renamed_prefix`, `moved_prefix`, `basename` and `numbered_name` —
+and it is retired by the *next* milestone (#316, #317, #319), not this one.
+Deleting them now would delete every write this service can do. They stay, and
+they stay strict, because with the browsable root empty they are the only line
+between a query string and `GetObject`.
 """
 
 import posixpath
@@ -230,35 +247,5 @@ def content_type(key: str) -> str:
     return TEXT_CONTENT_TYPES.get(extension(key), "text/plain")
 
 
-def is_folder_marker(key: str, size: int) -> bool:
-    """True for the zero-byte objects the console creates to fake a folder.
-
-    The bucket has none today — the pipeline writes real keys — but anyone who
-    opens the console and makes a folder creates one, and it is not a file and
-    must never appear in a listing.
-    """
-    return size == 0 and key.endswith("/")
-
-
 def basename(key: str) -> str:
     return posixpath.basename(key.rstrip("/"))
-
-
-def breadcrumbs(prefix: str) -> list[dict]:
-    """Ancestor trail for a prefix, root first, each entry navigable.
-
-    The root crumb is named after the root prefix, so it reads as `/` when the
-    browsable root is the whole bucket and as the prefix's own name otherwise.
-    """
-    root = config.media_root_prefix()
-    trail = [{"name": root.rstrip("/") or "/", "prefix": root}]
-
-    remainder = prefix[len(root):].strip("/") if prefix.startswith(root) else ""
-    if not remainder:
-        return trail
-
-    walked = root
-    for segment in remainder.split("/"):
-        walked = f"{walked}{segment}/"
-        trail.append({"name": segment, "prefix": walked})
-    return trail

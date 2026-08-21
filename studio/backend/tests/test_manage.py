@@ -1,13 +1,20 @@
-"""The write half of the API.
+"""The write half of the API — still key-addressed, still writing to S3.
 
-These lean on `browse` to assert outcomes rather than on boto3 directly: what
-matters about a rename is that the browser now shows the file under its new name
-and no longer under the old one, which is exactly what a listing answers.
+These used to assert outcomes through `browse.list_folder`, on the reasoning
+that what matters about a rename is that the browser now shows the file under
+its new name. **That stopped being available in #309**: a listing reads the
+catalog, and nothing in this module writes a row, so a listing would report the
+tree these writes have just stopped describing. The helpers below read the
+bucket directly instead, which is the only thing these functions change.
+
+That gap is the migration, not a hole in the tests. #316 and #317 move these
+verbs onto the catalog, at which point both halves are one write again.
 """
 
 import pytest
 
 from studio_core import config
+from studio_core.clients.aws import s3
 from studio_core.errors import ConflictError, NotFoundError, ValidationError
 from studio_core.services import browse, manage
 
@@ -17,11 +24,20 @@ VIDEO = "projects/subject-b/runs/2026-08-14_21-47-05_standing-flex/output/standi
 
 
 def _names(prefix):
-    return [f["name"] for f in browse.list_folder(prefix)["files"]]
+    """The file basenames one prefix holds, straight off a delimited listing."""
+    _, objects = s3.list_folder(prefix)
+    return [
+        obj["Key"][len(prefix) :]
+        for obj in objects
+        # The prefix itself and any folder marker come back as zero-byte
+        # objects. `manage._folder_names` skips them for the same reason.
+        if obj["Key"] != prefix and not obj["Key"].endswith("/")
+    ]
 
 
 def _folders(prefix):
-    return [f["name"] for f in browse.list_folder(prefix)["folders"]]
+    folders, _ = s3.list_folder(prefix)
+    return [folder[len(prefix) :].rstrip("/") for folder in folders]
 
 
 # ---------------------------------------------------------------------------
@@ -573,3 +589,25 @@ def test_copy_refuses_more_than_the_bulk_cap(media_bucket, monkeypatch):
 def test_copy_refuses_an_empty_key_list(media_bucket):
     with pytest.raises(ValidationError):
         manage.copy_objects([], INPUT_POOL)
+
+
+def test_folder_names_is_just_the_basenames(media_bucket):
+    """What `copy_objects` reads to pick a name that overwrites nothing.
+
+    Lived in `test_browse.py` until #309, beside the helper it covers. The helper
+    moved to `manage` when `browse` stopped listing S3; the test moved with it.
+    """
+    names = manage._folder_names(f"{RUN}output/")
+
+    assert names == {"wave-porch.jpeg"}
+    assert manage._folder_names("projects/subject-a/nothing-here/") == set()
+
+
+def test_folder_names_skips_a_folder_marker(media_bucket):
+    """The last reader in the service that still has to know what one is.
+
+    `characters/subject-a/seed/` is a zero-byte object as well as a folder, so a
+    delimited listing of its parent returns it among the objects. It is not a
+    name a copy would collide with.
+    """
+    assert manage._folder_names("characters/subject-a/") == {"profile.yaml"}

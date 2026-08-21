@@ -393,6 +393,66 @@ def test_subtree_returns_records_not_index_projections(catalog_table):
     assert found[0]["blob_key"] == "blobs/node-x"
 
 
+def test_branch_truncates_where_subtree_refuses(catalog_table, monkeypatch):
+    """The same query, and the caller decides what a short answer means.
+
+    `subtree`'s two callers are writes, where half a job reported as a whole one
+    is unrecoverable. The reel's is a page of a library, which is allowed to be
+    shorter than the library — so `branch` reports the cut and lets the caller
+    choose. One function rather than two nearly identical ones.
+    """
+    parent = _folder("projects")
+    for index in range(3):
+        _folder(f"run-{index}", parent=parent["node_id"])
+
+    records, truncated = catalog.branch(CATALOG_LIBRARY, catalog.child_path(parent), 2)
+
+    assert len(records) == 2
+    assert truncated is True
+
+
+def test_recent_returns_the_library_newest_first(catalog_table):
+    """`by-recent` is the one read here whose order the table chose."""
+    first = _folder("projects")
+    second = _folder("characters")
+    third = _file("clip.mp4", parent=second["node_id"])
+
+    records, truncated = catalog.recent(CATALOG_LIBRARY, 10)
+
+    assert truncated is False
+    # The root is in the library too, and is the oldest row in it.
+    assert [entry["node_id"] for entry in records] == [
+        third["node_id"],
+        second["node_id"],
+        first["node_id"],
+        CATALOG_ROOT,
+    ]
+
+
+def test_recent_drops_the_oldest_when_it_truncates(catalog_table):
+    """What makes cutting this query safe, where cutting `branch` is arbitrary."""
+    _folder("projects")
+    newest = _folder("characters")
+
+    records, truncated = catalog.recent(CATALOG_LIBRARY, 1)
+
+    assert truncated is True
+    assert [entry["node_id"] for entry in records] == [newest["node_id"]]
+
+
+def test_recent_returns_records_not_index_projections(catalog_table):
+    # Both halves of a node sit in `by-recent` as well — #280 puts `lib` and
+    # `created_at` on the by-parent item — so an unfiltered query would return
+    # every node twice and half of them without a `blob_key`.
+    _file("clip.mp4", blob_key="blobs/node-x")
+
+    records, _ = catalog.recent(CATALOG_LIBRARY, 10)
+    files = [entry for entry in records if entry["kind"] == catalog.KIND_FILE]
+
+    assert len(files) == 1
+    assert files[0]["blob_key"] == "blobs/node-x"
+
+
 def test_subtree_refuses_past_the_folder_cap(catalog_table, monkeypatch):
     monkeypatch.setenv("STUDIO_MAX_FOLDER_OBJECTS", "2")
     parent = _folder("projects")

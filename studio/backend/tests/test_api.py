@@ -8,6 +8,15 @@ def _client():
     return create_app().test_client()
 
 
+def _unsigned(value):
+    """A response with its presigned URLs dropped — two calls sign two URLs."""
+    if isinstance(value, dict):
+        return {key: _unsigned(item) for key, item in value.items() if key != "url"}
+    if isinstance(value, list):
+        return [_unsigned(item) for item in value]
+    return value
+
+
 def test_health():
     resp = _client().get("/api/health")
     assert resp.status_code == 200
@@ -20,36 +29,85 @@ def test_options_preflight():
     assert "Access-Control-Allow-Origin" in resp.headers
 
 
-def test_stage_prefixed_path_still_routes(media_bucket):
+def test_stage_prefixed_path_still_routes(catalog_tree):
     """A direct stage invoke arrives as /prod/api/... — the middleware strips it."""
     resp = _client().get("/prod/api/tree?prefix=characters/")
     assert resp.status_code == 200
 
 
-def test_tree_with_no_prefix_opens_on_the_bucket_root(media_bucket):
-    """What the app requests first, and what broke when `media/` went away."""
+def test_tree_with_no_prefix_opens_on_the_library_root(catalog_tree):
+    """What the app requests first, and what broke when `media/` went away.
+
+    The empty prefix used to mean the bucket root and now means the library's
+    root node. Both answer to the same request, which is why the SPA needed no
+    change for #309.
+    """
     resp = _client().get("/api/tree")
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["prefix"] == ""
-    # Newest-first is the default sort, and folders have no date to sort by, so
-    # the order here is the name descending.
+    # Newest-first, on the folders' own `created_at` — a folder is a row now and
+    # is stamped like anything else.
     assert [f["name"] for f in body["folders"]] == ["projects", "phrasebook", "characters"]
 
 
-def test_tree(media_bucket):
+def test_tree(catalog_tree):
     resp = _client().get("/api/tree?prefix=characters/subject-a/seed/")
     assert resp.status_code == 200
     assert len(resp.get_json()["files"]) == 2
 
 
-def test_tree_rejects_escape(media_bucket):
-    resp = _client().get("/api/tree?prefix=../elsewhere")
+def test_tree_takes_a_node_id_instead_of_a_prefix(catalog_tree):
+    """The cold-load address: a share link carries an id and no path (#313).
+
+    Same folder, same body — including `prefix`, which is read back off the
+    breadcrumb walk rather than echoed from the request.
+    """
+    by_prefix = _client().get("/api/tree?prefix=characters/subject-a/seed/").get_json()
+    node_id = next(
+        crumb["id"] for crumb in by_prefix["breadcrumbs"] if crumb["name"] == "seed"
+    )
+
+    by_node = _client().get(f"/api/tree?node={node_id}").get_json()
+
+    assert _unsigned(by_node) == _unsigned(by_prefix)
+    assert by_node["prefix"] == "characters/subject-a/seed/"
+
+
+def test_tree_refuses_a_prefix_and_a_node_together(catalog_tree):
+    """Two addresses that can disagree. Refused rather than resolved by rule."""
+    node_id = _client().get("/api/tree").get_json()["folders"][0]["id"]
+    resp = _client().get(f"/api/tree?prefix=characters/&node={node_id}")
+
     assert resp.status_code == 400
     assert "error" in resp.get_json()
 
 
-def test_reel(media_bucket):
+def test_reel_takes_a_node_id_too(catalog_tree):
+    by_prefix = _client().get("/api/reel?prefix=characters/subject-a/").get_json()
+    node_id = next(
+        crumb["id"] for crumb in _client()
+        .get("/api/tree?prefix=characters/subject-a/")
+        .get_json()["breadcrumbs"]
+        if crumb["name"] == "subject-a"
+    )
+
+    assert _unsigned(_client().get(f"/api/reel?node={node_id}").get_json()) == _unsigned(by_prefix)
+
+
+def test_tree_on_a_path_that_names_nothing_is_404(catalog_tree):
+    """`..` used to be refused as a string before it could be looked up.
+
+    `keys.clean_prefix` rejected it, and did so as a 400. It is now looked up
+    like any other name and found to be nothing — which it always was, since
+    `keys.clean_name` refuses a `..` on the way in.
+    """
+    resp = _client().get("/api/tree?prefix=../elsewhere")
+    assert resp.status_code == 404
+    assert "error" in resp.get_json()
+
+
+def test_reel(catalog_tree):
     resp = _client().get("/api/reel?prefix=characters/subject-a/")
     assert resp.status_code == 200
     assert all(item["kind"] in ("image", "video") for item in resp.get_json()["items"])
@@ -75,13 +133,13 @@ def test_unknown_route_is_404():
     assert resp.status_code == 404
 
 
-def test_tree_accepts_a_sort(media_bucket):
+def test_tree_accepts_a_sort(catalog_tree):
     resp = _client().get("/api/tree?prefix=characters/subject-a/seed/&sort=name_desc")
     assert resp.status_code == 200
     assert [f["name"] for f in resp.get_json()["files"]] == ["subject-a_2.webp", "subject-a_1.webp"]
 
 
-def test_tree_rejects_an_unknown_sort(media_bucket):
+def test_tree_rejects_an_unknown_sort(catalog_tree):
     assert _client().get("/api/tree?sort=sideways").status_code == 400
 
 
@@ -355,7 +413,7 @@ def test_lambda_still_reports_a_genuinely_empty_body(media_bucket):
     assert body["error"] == "keys must be a non-empty list"
 
 
-def test_lambda_get_needs_no_body(media_bucket):
+def test_lambda_get_needs_no_body(catalog_tree):
     """A bodyless request must not acquire a phantom length."""
     status, body = _invoke("GET", "/api/tree")
     assert status == 200

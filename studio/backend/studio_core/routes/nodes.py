@@ -5,19 +5,22 @@ distinction is not tidiness. `browse` addresses the bucket — every route there
 takes an S3 key or prefix, and what it returns is assembled by listing objects.
 These routes address the *catalog*, where a node has an id, a name and a parent,
 and an S3 key is an opaque attribute nothing outside `services.catalog` ever
-sees. The two surfaces answer the same questions from different sources and
-overlap for as long as the migration takes (#309 onwards), so keeping them in
-separate files is what stops a reader from having to work out which storage a
-given handler is talking to.
+sees. Since #309 `browse` reads the catalog too, so what separates them is no
+longer the storage but the answer: these routes return a node's *record*, and
+`browse` returns a folder ready to draw — presigned, sorted, with breadcrumbs
+and counts. Its write half still addresses the bucket, and keeping the files
+apart is what stops a reader having to work out which of the two a handler is.
 
 ## Why the writes are here and not in `routes/manage.py`
 
 #293 named `manage.py`, and that would put two different addressing schemes in
 one file. Every route in `manage` takes an S3 key or a prefix; every route here
-takes a node id. They overlap until #309 retires the first, and during that
-overlap the one thing a reader must never have to work out is which storage a
-handler is talking to — which is the same reason the read routes were split out
-in the first place. The verbs moved; the split did not.
+takes a node id. They overlap until #316 retires the first — #309 took the
+*reads*, so `routes/browse.py` is a catalog reader now and `manage` is the last
+blueprint left addressing the bucket. Through that overlap the one thing a
+reader must never have to work out is which storage a handler is talking to,
+which is the same reason the read routes were split out in the first place. The
+verbs moved; the split did not.
 
 ## Three rules hold across all three read routes
 
