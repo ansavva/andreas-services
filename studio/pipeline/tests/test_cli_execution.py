@@ -121,3 +121,36 @@ def test_exit_code_is_honoured(media_bucket, argv, expected):
         f"`studio {' '.join(argv)}` exited {result.exit_code}, expected {expected}\n"
         f"{result.output}"
     )
+
+
+def test_character_refs_downloads(media_bucket, tmp_path):
+    """**The path ruff found and 517 tests did not.**
+
+    Splitting `characters.py` into a package left `tempfile` unimported in the
+    module that took `refs`' download branch, so `studio character refs <name>`
+    with no `--keys` and no `--presign` raised `NameError`. Nothing caught it:
+    `test_every_subcommand_dispatches` invokes each leaf with no arguments and
+    stops at the usage error, which never reaches a body.
+
+    That is the same shape as the two failures `--help is not a test` was
+    written for. The download branch is the default one — no flag selects it —
+    so it is the branch a person gets by typing the obvious thing.
+    """
+    result = CliRunner().invoke(
+        cli.main, ["character", "refs", "subject-a", "--dest", str(tmp_path)]
+    )
+
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    assert list(tmp_path.iterdir()), "nothing was written to --dest"
+
+
+def test_character_refs_keys_still_prints_keys(media_bucket):
+    """The other half of the same fix: `--keys` must still print them.
+
+    The bug was that BOTH branches printed keys, so a test of `--keys` alone
+    would have passed against the broken code.
+    """
+    result = CliRunner().invoke(cli.main, ["character", "refs", "subject-a", "--keys"])
+
+    assert result.exit_code == 0, result.output
+    assert "characters/subject-a/reference/" in result.output
