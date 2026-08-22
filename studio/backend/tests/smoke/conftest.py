@@ -176,7 +176,15 @@ class Api:
         except urllib.error.HTTPError as error:
             status, payload = error.code, error.read()
 
-        parsed = json.loads(payload) if payload else None
+        # A body that is not JSON is a body the application did not write —
+        # API Gateway's own `Unauthorized`, or a CloudFront error page. Decoding
+        # it defensively keeps the *status* readable instead of replacing a
+        # useful 403 with a JSONDecodeError three frames down.
+        try:
+            parsed = json.loads(payload) if payload else None
+        except ValueError:
+            parsed = payload.decode(errors="replace")[:500]
+
         if status != expect:
             # The body carries the API's own message, which is the whole reason
             # this is worth reading — "Could not read the catalog" is what a
@@ -239,7 +247,7 @@ def root_node(api, only_library, fixture) -> str:
 
 
 @pytest.fixture(scope="session")
-def scratch(api, root_node) -> str:
+def scratch(api, root_node):
     """A folder of this run's own, removed afterwards **however the run ends**.
 
     Session-scoped so one teardown covers every test: a `DELETE` of this folder
