@@ -217,6 +217,16 @@ data "aws_iam_policy_document" "catalog_access" {
     effect = "Allow"
     actions = [
       "dynamodb:GetItem",
+      # **`BatchGetItem` is not covered by `GetItem`.** Omitting it took the
+      # deployed app down: every folder listing is `catalog.children` (a Query
+      # for the by-parent items) plus `catalog.records` (one BatchGetItem for
+      # their `META` rows), so the listing failed with `Could not read the
+      # catalog` while sign-in — which only queries — kept working.
+      #
+      # The unit suite cannot catch this. moto does not enforce IAM, so every
+      # test passes against a policy that grants nothing at all. A grant is only
+      # ever proved by a real call.
+      "dynamodb:BatchGetItem",
       "dynamodb:Query",
       "dynamodb:PutItem",
       "dynamodb:UpdateItem",
