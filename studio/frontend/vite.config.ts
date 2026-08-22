@@ -48,8 +48,13 @@ export default defineConfig({
   // `apis/studio` call *count* nor its stubbed answer leaks into the next case —
   // "the resolver was not called" is one of the assertions, and it is worthless
   // against a shared tally.
+  //
+  // `setupFiles` fills in two browser APIs this jsdom does not have —
+  // `localStorage` and `CSS.escape` — which are the environment's gaps rather
+  // than the app's. See `src/test-setup.ts`.
   test: {
     environment: "jsdom",
+    setupFiles: ["./src/test-setup.ts"],
     clearMocks: true,
     restoreMocks: true,
     include: ["src/**/*.test.{ts,tsx}"],
