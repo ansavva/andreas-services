@@ -4,6 +4,27 @@ import { isAuthConfigured } from "../amplify";
 
 const API_URL = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 
+/**
+ * Which library every request is about, as `X-Studio-Library`.
+ *
+ * **A module variable set once, not an argument threaded through twenty call
+ * sites.** The header has to be on *every* call — the API resolves a library
+ * before any route runs, and a caller in more than one gets a 400 asking them to
+ * name one — so the failure mode of threading it is that the one call site
+ * somebody forgets is the one that writes into the wrong library. There is one
+ * writer, `context/LibraryContext`, and this is the only reader.
+ *
+ * `null` until the library list has landed, and that is the ordinary state for
+ * exactly one request: `GET /api/libraries` itself, which is answered without a
+ * library on purpose. Nothing else is fetched before it resolves — see the gate
+ * in `App`.
+ */
+let currentLibrary: string | null = null;
+
+export function setLibrary(id: string | null): void {
+  currentLibrary = id;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -61,6 +82,16 @@ async function request<T>(
 
   const headers: Record<string, string> = { Accept: "application/json" };
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
+  // Sent whenever one is chosen, including for the single-library caller who
+  // never sees a switcher: the API would resolve their sole membership without
+  // it, and a header that is only present sometimes is a difference between two
+  // callers that nothing else in the app would exercise.
+  //
+  // `X-Studio-Library` is a custom request header, so the browser preflights it
+  // and API Gateway — not Flask — answers that preflight. It is in
+  // `app_factory.CORS_HEADERS` and in `modules/api_gateway`'s `cors_headers`;
+  // missing from either, this fails as a network error with no status.
+  if (currentLibrary) headers["X-Studio-Library"] = currentLibrary;
   if (isAuthConfigured) {
     const session = await fetchAuthSession();
     const token = session.tokens?.idToken?.toString();

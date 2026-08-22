@@ -20,6 +20,7 @@ import { DestinationPicker } from "../components/browse/DestinationPicker";
 import { SortControl } from "../components/browse/SortControl";
 import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
 import { CopyKeyButton } from "../components/common/CopyKeyButton";
+import { LibrarySwitcher } from "../components/common/LibrarySwitcher";
 import { TextPage } from "../components/text/TextPage";
 import { ReelView } from "../components/viewer/ReelView";
 import { useAuth } from "../context/AuthContext";
@@ -384,6 +385,10 @@ export function BrowsePage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* A sibling of the sign-out button, never inside a listing row: every
+              card and row on this page is itself a `<button>`, and the switcher
+              renders one. See `LibrarySwitcher`. */}
+          <LibrarySwitcher />
           {email && (
             <Text variant="caption" tone="muted" className="hidden sm:block">
               {email}

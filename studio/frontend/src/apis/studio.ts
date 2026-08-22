@@ -4,6 +4,7 @@ import type {
   CreatedFolder,
   DeletedFolder,
   DeletedObjects,
+  Library,
   MovedFolder,
   MovedObjects,
   NodeRecord,
@@ -30,6 +31,18 @@ import { apiGet, apiSend } from "./client";
  * 400 — the API refuses to guess which one meant it.
  */
 export type FolderRef = { node?: string; prefix?: string };
+
+/**
+ * The libraries the signed-in caller is in.
+ *
+ * **The one call that is authenticated and not about a library**, which is what
+ * makes it the first one the app makes: every other route resolves a library
+ * before it runs, and the id it resolves against comes from here. Called once,
+ * by `context/LibraryContext`, before anything is rendered that could fetch.
+ */
+export function getLibraries() {
+  return apiGet<Library[]>("/api/libraries");
+}
 
 /** Immediate contents of one folder. */
 export function getTree(where: FolderRef, sort: SortOrder) {

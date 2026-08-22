@@ -23,6 +23,20 @@ export function isSortOrder(value: string | null): value is SortOrder {
 }
 
 /**
+ * One entry of `GET /api/libraries` — a library the signed-in caller is in.
+ *
+ * `role` is `owner` or `member` and the app reads it for exactly one thing:
+ * transferring a subtree between libraries needs `owner` in both. Everything
+ * else in this API is authorised by membership alone, so it is typed as the two
+ * words rather than as a permission model there is no more of.
+ */
+export interface Library {
+  id: string;
+  name: string;
+  role: "owner" | "member";
+}
+
+/**
  * What a node is, as `/api/nodes` and `/api/resolve` report it.
  *
  * Not `MediaKind`. That one is classified from the extension and answers "how do
