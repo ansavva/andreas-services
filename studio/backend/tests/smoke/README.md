@@ -100,3 +100,15 @@ what makes it exercise the function's role rather than a developer's.
 - **Everything created must be created under `scratch`**, which is deleted at
   session teardown however the run ends, and swept at setup if a killed job left
   one behind.
+- **Do not assert on a subtree delete's count.** `catalog.subtree` is a query on
+  the eventually-consistent `by-path` index, and asking it moments after the
+  writes is a flake — one that would leave orphan rows in a production table
+  rather than merely failing. The tests delete a node at a time and leave the
+  subtree bound to `tests/test_catalog.py`, where a fake answers an index read
+  the moment it is written.
+
+  The teardown *is* a subtree delete, and that is the one place this is
+  accepted: it runs after every test, several round trips later. If the index
+  ever lagged that far it would leave rows below a folder that is gone, which
+  nothing sweeps. Confined to this library, and worth knowing before assuming a
+  clean count of what it holds.

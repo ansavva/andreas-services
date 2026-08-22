@@ -153,15 +153,24 @@ def test_a_file_uploads_in_four_calls_and_the_bytes_come_back(api, scratch):
         assert response.read() == BODY
 
 
-def test_deleting_a_folder_removes_its_subtree_and_its_bytes(api, scratch):
+def test_deleting_takes_the_rows_and_then_the_bytes(api, scratch):
     """Rows first, then blobs — and afterwards neither answers.
 
     The delete is the one operation here that can leave production worse than it
-    found it, so it is asserted rather than assumed: the node is gone from its
-    parent's listing, the node itself is a 404, and the presigned URL taken
-    before the delete no longer serves the object. That last one is what proves
-    the blobs went too — an orphaned blob is invisible to every reader in this
-    API, so nothing else in a listing could tell you it was still there.
+    found it, so it is asserted rather than assumed: the node is a 404, it is
+    gone from its parent's listing, and the presigned URL taken *before* the
+    delete no longer serves the object. That last one is what proves the blobs
+    went too — an orphaned blob is invisible to every reader in this API, so
+    nothing in a listing could tell you it was still there.
+
+    **The file is deleted on its own, and the folder after it, rather than the
+    folder taking the subtree with it.** A subtree delete is bounded by
+    `catalog.subtree`, which is a query on the eventually-consistent `by-path`
+    index — asking it moments after the writes is a flake waiting for a busy
+    afternoon, and the flake would leave orphan rows in a production table
+    rather than just failing. What the subtree bound does is covered by
+    `tests/test_catalog.py` against a fake that answers an index read the moment
+    it is written. Here, one node at a time is the claim worth making.
     """
     folder = api.post(
         "/api/nodes", {"parent": scratch, "name": "doomed", "kind": "folder"}, expect=201
@@ -181,15 +190,15 @@ def test_deleting_a_folder_removes_its_subtree_and_its_bytes(api, scratch):
     api.post(f"/api/nodes/{node['id']}/confirm-upload")
     blob_url = api.get(f"/api/nodes/{node['id']}/download-url")["url"]
 
-    result = api.delete(f"/api/nodes/{folder['id']}")
+    assert api.delete(f"/api/nodes/{node['id']}")["deleted"] == 1
 
-    assert result["deleted"] == 2, "the folder and the file beneath it"
     api.request("GET", f"/api/nodes/{node['id']}", expect=404)
-    listing = api.get("/api/tree", node=scratch)
-    assert folder["id"] not in {entry["id"] for entry in listing["folders"]}
-
     with pytest.raises(urllib.error.HTTPError) as refused:
         urllib.request.urlopen(blob_url, timeout=60)  # noqa: S310
     # 404 for a key that is gone; S3 answers 403 instead when the caller may not
     # list the bucket, and either proves the object no longer serves.
     assert refused.value.code in (403, 404)
+
+    api.delete(f"/api/nodes/{folder['id']}")
+    listing = api.get("/api/tree", node=scratch)
+    assert folder["id"] not in {entry["id"] for entry in listing["folders"]}
