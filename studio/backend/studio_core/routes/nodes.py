@@ -296,24 +296,51 @@ def create_node():
     the whole definition of a folder (#280: a node with no blob), and it is
     enforced in `services.catalog` rather than here so the CLI gets the same
     refusal when it writes through the API (#309).
+
+    **`on_conflict` is `fail` unless a caller asks otherwise, and that default is
+    the point of having the field at all.** A taken name is a 409 for the CLI, for
+    `record_run` and for every existing caller — a run that finds its folder
+    already there has hit something worth stopping on. `number` is the uploader's
+    (#294): a person dragging `clip.mp4` into a folder that already holds one
+    means "put this here too", the same reading `POST /api/objects/copy` has made
+    since #317, and refusing it would make uploading a phone camera roll an
+    exercise in renaming. The numbering itself is `catalog.create_numbered`, so
+    the two entry points cannot produce different forms of the same name.
+
+    **The response carries the name that was actually taken**, which is how a
+    numbering caller learns it landed as `clip (2).mp4`. There is no second
+    round trip and no field saying whether it was renamed: `_view` already
+    reports `name`, and a client that compares it to what it sent has its answer.
     """
     body = _body()
     parent_id = body.get("parent")
     if not parent_id:
         raise ValidationError("parent is required")
 
+    on_conflict = body.get("on_conflict") or "fail"
+    if on_conflict not in ("fail", "number"):
+        raise ValidationError("on_conflict must be 'fail' or 'number'")
+
     memberships = _memberships()
     parent = catalog.node(parent_id)
     _member_of(parent["lib"], memberships)
 
-    record = catalog.create_node(
-        parent_id,
-        body.get("name"),
-        body.get("kind"),
-        blob_key=body.get("blob_key"),
-        size=body.get("size"),
-        content_type=body.get("content_type"),
-    )
+    if on_conflict == "number":
+        # No `blob_key`, `size` or `content_type` here, and that is not an
+        # omission to fill in later. Numbering exists for the upload, which mints
+        # a placeholder and learns all three from `HeadObject` at
+        # `confirm-upload`; a caller that already knows where its bytes are knows
+        # whether the name is free, and gets the 409 it should.
+        record = catalog.create_numbered(parent_id, body.get("name"), body.get("kind"))
+    else:
+        record = catalog.create_node(
+            parent_id,
+            body.get("name"),
+            body.get("kind"),
+            blob_key=body.get("blob_key"),
+            size=body.get("size"),
+            content_type=body.get("content_type"),
+        )
     return jsonify(_view(record)), 201
 
 
@@ -579,11 +606,21 @@ def confirm_upload(node_id: str):
     it asked for the URL; repeating it here would trust the same claim twice
     instead of checking it once. S3 knows what it stored.
 
-    Until this runs the node is a placeholder. A client that uploads and never
-    confirms leaves an object whose row does not know its size — the state a
-    collector would tidy. **There is no `catalog gc`**: #294 assumed one and it
-    does not exist, so today that is a hand cleanup. Worth knowing before this
-    route is driven at volume.
+    Until this runs the node is a placeholder, and there are two of them. A
+    client that PUT its bytes and never confirmed leaves an object whose row does
+    not know its size — harmless, since the row names the object and the listing
+    presigns it; only `size` reads 0. A client that never got the bytes there
+    leaves the damaging one: **a row naming a key with nothing behind it**, which
+    `browse._file_entry` presigns like any other and the grid draws as a tile
+    that will not load.
+
+    **`studio catalog gc` (#318) does not collect either of them, and this
+    docstring used to imply otherwise by saying no such command existed.** It
+    does exist now — and it deletes *blobs no row names*, which is the opposite
+    direction. A placeholder is a row no blob answers. Nothing collects that
+    today; the SPA's uploader deletes the node itself when a PUT fails
+    (`frontend/src/apis/upload.ts`), which is why the broken tile is rare rather
+    than why it is impossible.
     """
     memberships = _memberships()
     record = catalog.node(node_id)
