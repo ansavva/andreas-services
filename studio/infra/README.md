@@ -72,7 +72,7 @@ Three GSIs, all `projection_type = ALL` over the same rows:
 |---|---|---|
 | `by-sk` | `sk` / `pk` | "who is in library X" — the reverse of the membership row |
 | `by-path` | `lib` / `path` | a whole subtree in one `begins_with` |
-| `by-recent` | `lib` / `created_at` | newest-first across a library, genuinely paginated |
+| `by-recent` | `reel` / `created_at` | newest-first across a library, genuinely paginated. **Sparse** — `reel` is written only onto image and video file nodes, so folders and entity rows stay out of the enumeration |
 
 `path` is a materialised list of ancestor ids (`/node-a/node-b/`) and is
 **derived**: `parent_id` is authoritative, a move rewrites `path` across every

@@ -72,6 +72,25 @@ resource "aws_dynamodb_table" "catalog" {
     type = "S"
   }
 
+  # The reel's partition key, and it is deliberately NOT `lib`.
+  #
+  # Its value IS the library id — the same string — so this looks like a
+  # duplicate and is not. A DynamoDB item enters a GSI only when it carries both
+  # of that index's key attributes, so what the attribute is *named* decides who
+  # is in the index. `reel` is written onto file nodes whose content type is an
+  # image or a video, and onto nothing else. Folder nodes, entity records,
+  # membership rows and slug claims all carry `lib` and stay out.
+  #
+  # That is a fix, not just accommodation for the new entity rows. Hashing the
+  # index on `lib` put every folder in the library into the reel's enumeration,
+  # where `browse.reel_items` filtered them out in memory — after they had
+  # already been counted against `max_folder_objects`. A sparse index spends the
+  # cap on things the reel can actually show.
+  attribute {
+    name = "reel"
+    type = "S"
+  }
+
   # Reverse lookup. Membership rows are `USER#<sub>` / `LIB#<lib>`, which answers
   # "which libraries can this caller see" from the base table; this index answers
   # the other direction — "who is in library X" — without a second row per
@@ -107,9 +126,16 @@ resource "aws_dynamodb_table" "catalog" {
   # and a run writes its whole output inside one second. `created_at` is a real
   # microsecond timestamp, so ties stopped being the common case — see
   # `browse._sort_records`, which documents the tie-break as gone.
+  #
+  # **Hashed on `reel`, not on `lib`, which makes it sparse.** See that
+  # attribute above for why the rename is the whole mechanism. Changing a GSI's
+  # key schema is a drop-and-add rather than an update, and that is safe here in
+  # a way it would not be on a base table: an index holds no data of its own, so
+  # Terraform removing this one and creating the replacement costs a backfill
+  # and nothing else. The reel returns partial results while that backfill runs.
   global_secondary_index {
     name            = "by-recent"
-    hash_key        = "lib"
+    hash_key        = "reel"
     range_key       = "created_at"
     projection_type = "ALL"
   }
