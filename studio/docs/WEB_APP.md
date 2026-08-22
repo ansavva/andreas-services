@@ -1003,6 +1003,31 @@ assertions and is worthless against a tally shared with the previous case.
 not an oversight, and the bar for the next test is the resolver's: a failure the
 app cannot report on its own.
 
+### Two suites that do not run on a PR
+
+`backend/tests/integration/` and `backend/tests/smoke/` are both skipped at
+collection unless asked for by name — `STUDIO_INTEGRATION=1` and `STUDIO_SMOKE=1`
+— because both write to a real AWS account. They exist because moto **does not
+enforce IAM at all**: the whole backend suite passes against a policy granting
+nothing.
+
+They are not two copies of the same idea. The integration suite runs Flask
+in-process against this machine's dev stack, under a developer's own
+credentials, and settles what a fake cannot — a presigned URL that really
+fetches, a real `TransactWriteItems` cancellation, a bucket byte-identical
+either side of a move. **It never exercises the Lambda's execution role**, which
+is far narrower than a developer's. The smoke suite is the one that does: it
+signs in to the real pool and drives the deployed API over HTTPS, which is the
+only way to find out whether the deployed function may make the calls the code
+makes. `dynamodb:BatchGetItem` missing from the API role shipped through that
+gap behind a fully green suite.
+
+The smoke suite runs in `studio-prod.yaml` **after** the deploy, so it is a
+detector and not a gate — studio has no staging. Its account is a member of
+exactly one library and can reach nothing else; see
+[`../backend/tests/smoke/README.md`](../backend/tests/smoke/README.md) and
+[`PROD_SMOKE.md`](PROD_SMOKE.md).
+
 ## Creating users
 
 There is no sign-up. Accounts are created out of band, and **the two pools have
@@ -1029,7 +1054,9 @@ is how it gets diagnosed. There is **no script for granting membership yet** —
 ## Deployment
 
 `.github/workflows/studio-prod.yaml` — `detect-changes → bootstrap-ecr →
-build-and-push → deploy-infra → update-lambda + deploy-frontend`. The SPA is
+build-and-push → deploy-infra → update-lambda + deploy-frontend`, with `smoke`
+after `update-lambda` — a post-deploy detector, not a gate ([`PROD_SMOKE.md`](PROD_SMOKE.md)).
+The SPA is
 built in `deploy-frontend` rather than earlier because Vite inlines every
 `VITE_*` value at build time and the Cognito ids come out of the apply.
 

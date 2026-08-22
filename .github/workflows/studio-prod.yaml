@@ -9,8 +9,16 @@ name: Studio · Deploy · Prod
 #
 #   detect-changes ─► bootstrap-ecr ─► build-and-push ─► deploy-infra
 #                                                            │
-#                                                            ├─► update-lambda
+#                                                            ├─► update-lambda ─► smoke
 #                                                            └─► deploy-frontend
+#
+# `smoke` is a DETECTOR, NOT A GATE, and the position in that graph is the whole
+# reason to say so. Studio has no staging environment: this workflow deploys
+# straight to production, so by the time the smoke suite signs in, the new image
+# is already serving every request. Nothing it asserts can prevent a bad deploy.
+# It fails the run because red is the signal — a broken deploy announcing itself
+# in minutes with a named cause beats finding out weeks later from whoever opened
+# the site, which is how a missing `dynamodb:BatchGetItem` grant was found.
 #
 # Two surfaces come out of this: studio.andreas.services (the Vite SPA on
 # S3 + CloudFront) and studio-api.andreas.services (the Flask Lambda).
@@ -65,6 +73,7 @@ jobs:
       infra: ${{ steps.filter.outputs.infra }}
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      smoke: ${{ steps.filter.outputs.smoke }}
     steps:
       - uses: actions/checkout@v7
         if: github.event_name == 'push'
@@ -81,6 +90,16 @@ jobs:
               - '.github/workflows/studio-prod.yaml'
             frontend:
               - 'studio/frontend/**'
+              - '.github/workflows/studio-prod.yaml'
+            # The smoke run's own inputs. Its suite lives under
+            # `studio/backend/**` and is covered there too; what this filter
+            # adds is the fixture and the seeder, which change nothing that
+            # deploys — so a change to either would otherwise start this
+            # workflow, skip every job, and never re-seed.
+            smoke:
+              - 'studio/seeds/**'
+              - 'studio/scripts/prod-seed-smoke.py'
+              - 'studio/backend/tests/smoke/**'
               - '.github/workflows/studio-prod.yaml'
 
   # ---------------------------------------------------------------------------
@@ -460,3 +479,123 @@ jobs:
           aws cloudfront create-invalidation \
             --distribution-id "${CF_DIST_ID}" --paths '/*' \
             --output table --query 'Invalidation.{Id:Id,Status:Status}'
+
+  # ---------------------------------------------------------------------------
+  # Seed the smoke account, then drive the deployed API as that account.
+  #
+  # A DETECTOR, NOT A GATE — see the header. This runs after the new image is
+  # already live, and its job is to make a broken deploy say so.
+  #
+  # It is the only thing anywhere that exercises the LAMBDA'S OWN EXECUTION
+  # ROLE. The unit suite runs against moto, which enforces no IAM at all; the
+  # opt-in integration suite runs Flask in-process under a developer's far wider
+  # credentials. A missing `dynamodb:BatchGetItem` grant reached production
+  # through exactly that gap, behind a fully green suite, and was found by a
+  # person opening the site.
+  #
+  # `environment: studio-production` is load-bearing twice over: it is where
+  # AWS_ROLE_ARN lives, and where SMOKE_TEST_USER_PASSWORD lives. A job missing
+  # that key sees an environment secret as an empty string, silently — the seed
+  # step below fails by name rather than trying to sign in as nobody.
+  # ---------------------------------------------------------------------------
+  smoke:
+    name: Smoke Test · Prod API
+    needs: [detect-changes, update-lambda]
+    # `!= 'failure'` rather than `== 'success'`: update-lambda legitimately
+    # *skips* for a change to the fixture or the seeder, which deploy nothing,
+    # and re-seeding then verifying the live API is exactly what such a change
+    # should do.
+    if: |
+      !cancelled()
+      && needs.update-lambda.result != 'failure'
+      && (
+        (github.event_name == 'push'
+         && (needs.detect-changes.outputs.backend == 'true'
+             || needs.detect-changes.outputs.infra == 'true'
+             || needs.detect-changes.outputs.smoke == 'true'))
+        || (github.event_name == 'workflow_dispatch' && inputs.run_app)
+        || github.event_name == 'workflow_run'
+      )
+    runs-on: ubuntu-latest
+    environment: studio-production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Poetry
+        run: pipx install poetry==2.2.1
+
+      # The suite is pytest and nothing else — it imports no `studio_core` and
+      # makes no AWS call. Installing the backend's dev group is how it gets a
+      # runner, and keeps the smoke tree in the same suite a developer already
+      # runs (where it skips, silently, without STUDIO_SMOKE).
+      - name: Install backend dependencies
+        run: cd studio/backend && poetry install --no-root --no-interaction
+
+      # For the seeder and the SRP sign-in, both of which declare their own
+      # dependencies inline (PEP 723). Neither belongs in the Lambda image's
+      # lockfile: one needs boto3 the image already has, the other a Cognito
+      # client it must never ship.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Read the pool from SSM
+        run: |
+          set -euo pipefail
+          # Assign, check, then export — the pattern deploy-frontend documents:
+          # `echo "X=$(get …)" >> "$GITHUB_ENV"` takes its exit status from
+          # `echo`, so a renamed parameter writes an EMPTY STRING and the step
+          # goes green. `None` is what `--output text` prints for a null value,
+          # which is an empty read wearing a name.
+          put() {
+            local value
+            value="$(aws ssm get-parameter --name "$2" \
+              --query Parameter.Value --output text)" || exit 1
+            [ -n "$value" ] && [ "$value" != "None" ] ||
+              { echo "::error::$2 resolved empty; refusing to continue." >&2; exit 1; }
+            echo "$1=$value" >> "$GITHUB_ENV"
+          }
+
+          put STUDIO_SMOKE_POOL_ID   /studio/prod/cognito-user-pool-id
+          put STUDIO_SMOKE_CLIENT_ID /studio/prod/cognito-client-id
+
+      # Idempotent, and it runs BEFORE the suite so a provisioning problem fails
+      # here with a named error rather than as a mystery assertion afterwards.
+      # The CI role already carries `cognito-idp:*` and `dynamodb:*` on `*`
+      # (infra/envs/shared/main.tf), so unlike the SSM statement beside them this
+      # needed no IAM change.
+      #
+      # The seeder refuses to finish if the account holds more than one
+      # membership. That check is the whole point of the exercise: one
+      # membership is what makes this account structurally unable to address any
+      # other library, since `before_request` resolves a request's library from
+      # the caller's own rows.
+      - name: Seed the smoke account
+        env:
+          SMOKE_TEST_USER_PASSWORD: ${{ secrets.SMOKE_TEST_USER_PASSWORD }}
+        run: uv run studio/scripts/prod-seed-smoke.py
+
+      # A literal base URL, so nothing can resolve it empty — and the suite
+      # itself has no default for it, so a run that was not told where to aim
+      # refuses rather than guessing.
+      - name: Run the smoke suite
+        env:
+          STUDIO_SMOKE: '1'
+          STUDIO_SMOKE_BASE_URL: https://studio-api.andreas.services
+          SMOKE_TEST_USER_PASSWORD: ${{ secrets.SMOKE_TEST_USER_PASSWORD }}
+        run: cd studio/backend && poetry run pytest tests/smoke -q
