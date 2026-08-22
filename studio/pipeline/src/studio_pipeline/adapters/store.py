@@ -41,6 +41,12 @@ different route to the same authority, not an exception to it. Keeping the two
 names apart is the point: a call site reaching for `shared_*` is saying "this
 is owned by nobody", which is exactly the fact that makes it correct.
 
+**These two are the only reason `?key=` on that route is still a raw S3 key.**
+#432 moved the rest of the API onto node ids and name paths and #312 deleted the
+confinement that guarded them; `keys.clean_key` survives for this one parameter.
+Give shared material catalog nodes and both go together — until then, deleting
+either breaks `phrasebook` and every pose plate a shoot binds.
+
 ## What is deliberately not here
 
 No `delete`, no `move`, no `rename`. Those are catalog operations now — a move

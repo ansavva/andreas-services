@@ -498,8 +498,9 @@ export function BrowsePage() {
             extra width: the trash can alone at rest, growing into a sentence
             that names the folder once armed. An icon changing colour is not
             enough for a press that takes a subtree with it. It is disabled at
-            the root, where `keys.assert_inside_root` refuses it anyway — saying
-            so before the round trip rather than after it.
+            the root, which the API refuses anyway — the root node has no
+            `parent_id`, so there is no `NAME#` item to delete — saying so before
+            the round trip rather than after it.
           */}
           <ConfirmDeleteButton
             tone="bar"

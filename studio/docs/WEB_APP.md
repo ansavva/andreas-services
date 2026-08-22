@@ -147,15 +147,16 @@ creating folders live here now.
 
 The parts of the old rule that still hold, and should keep holding:
 
-- **`services/keys.py` is the gate on anything key-addressed.** `clean_name`
-  refuses a slash rather than escaping it — a rename must not be able to become a
-  move — and `assert_inside_root` refuses an operation aimed at the root, so
-  "delete the library" is not expressible through the API. This used to be
-  described as the first of two lines of defence with IAM behind it; with the
-  prefix empty it is the only one, which is the reason to be conservative when
-  changing it. **What it is not is a library boundary** — it is a string check
-  against one prefix, and one prefix is the whole bucket. #312 shrinks it to
-  classification and naming as the key-addressed routes retire.
+- **`services/keys.py` is classification and naming, and one raw key** (#312).
+  `clean_name` refuses a slash rather than escaping it — a rename must not be
+  able to become a move — and that refusal is about *names*, not about S3, so it
+  is untouched. What went was the confinement half: `clean_prefix`,
+  `assert_inside_root` and the five prefix-arithmetic helpers had no caller left
+  once every route took a node id or a name path. "Delete the library" is not
+  expressible because the root node has no `parent_id` and so no `NAME#` item to
+  rewrite — the same refusal, arrived at from the data instead of from a string
+  comparison. `clean_key` stayed, for the one parameter below that is still an
+  S3 key.
 - **Upload exists as of #294; multipart still does not.** This bullet used to
   read "No upload, and no multipart grant", and it asked for the reversal to be
   argued separately rather than arriving as a side effect. It was.
@@ -387,8 +388,8 @@ that breaks every time the pipeline ships.
 - **Presigned URLs die with the Lambda's credentials, not with `ExpiresIn`.** A
   URL signed by temporary credentials stops working when those rotate, whatever
   expiry was requested. `STUDIO_PRESIGN_TTL_SECONDS` defaults to 900 and the
-  frontend re-signs through `/api/asset` from a media element's `onError`
-  (`useSignedSrc`), capped at one retry per key.
+  frontend re-signs through `/api/asset?node=` from a media element's `onError`
+  (`useSignedSrc`), capped at one retry per node.
 - **A cross-origin `<a download>` is ignored by browsers.** Downloads work only
   because `/api/asset?disposition=attachment` signs
   `response-content-disposition` into the URL itself.
@@ -544,7 +545,8 @@ that breaks every time the pipeline ships.
   with no card on screen was the one you were standing in, and getting rid of it
   meant navigating back out to find it in the grid. `BrowsePage` puts a
   `ConfirmDeleteButton` (tone `bar`) in the action row, disabled at the root
-  where `keys.assert_inside_root` refuses it anyway. Leaving is the one
+  where the API refuses it anyway — the root node has no `parent_id`, so there
+  is no `NAME#` item to delete. Leaving is the one
   navigation between folders that **replaces** rather than pushes: the entry
   behind you would otherwise be the prefix you just destroyed.
 - **The three folder icons are one cluster, and the rule before "Play reel" is
@@ -563,21 +565,30 @@ that breaks every time the pipeline ships.
   while a `<video>` is in native fullscreen — the same constraint that keeps
   `CopyKeyButton`'s feedback inline — and a dialog in a fixed position trains a
   second click that lands before anyone reads it.
-- **`services/keys.py` is the only thing between a query string and
-  `GetObject` — on the routes that still take a key.** `/api/asset`, `/api/text`
-  and the key-addressed write routes normalise and confine every prefix and key
-  to `config.media_root_prefix()`. That root is empty in prod, so the
+- **`GET /api/asset?key=` is the last query string in the service that becomes
+  an S3 key, and it is not going away.** Everything else — every listing, every
+  write, `GET /api/text` — is a node id or a name path resolved against the
+  catalog, so `keys.clean_prefix` and `assert_inside_root` went with #312. This
+  one parameter survives because that route is also how the **pipeline** reads
+  *shared* material: `phrasebook/wording.yaml` and the `config/pose/` plates
+  belong to no character and no project, `catalog_seed` deliberately records no
+  node for them, and `GET /api/resolve` 404s on them by design. A name path
+  cannot address a thing with no node.
+
+  So `keys.clean_key` still runs, on one parameter, and what it is doing is
+  worth knowing: `config.media_root_prefix()` is empty in prod, so the
   confinement check passes everything and the traversal rules (`..`, a leading
-  `/`, a backslash — all rejected before normalisation) are what is actually
-  holding the line. Test changes to it directly — `posixpath.normpath` strips a
-  trailing slash, which is why the folder check happens on the raw value, and it
-  is why the tests set a non-empty root to keep the confinement branch covered.
-  **Nothing id-addressed goes through it**, and that is not an oversight: a name
-  is looked up as an exact `NAME#` sort key and `clean_name` refuses a slash, a
-  `.`, a `..` and a control character on the way *in*, so `../elsewhere` is a
-  name nothing is called rather than traversal to reject. `keys.kind` and
-  `keys.language` — extension classification — are used by both halves and
-  survive #312; the confinement half does not.
+  `/`, a backslash — all rejected *before* normalisation) are the whole of it.
+  Test changes to it directly — `posixpath.normpath` strips a trailing slash,
+  which is why the folder check happens on the raw value, and it is why the
+  tests set a non-empty root to keep the confinement branch covered.
+
+  **Nothing id-addressed or name-addressed goes through it**, and that is not an
+  oversight: a name is looked up as an exact `NAME#` sort key and `clean_name`
+  refuses a slash, a `.`, a `..` and a control character on the way *in*, so
+  `../elsewhere` is a name nothing is called rather than traversal to reject.
+  `keys.kind` and `keys.language` — extension classification — are used
+  everywhere and were never in question.
 - **`.heic` is not in `IMAGE_EXTENSIONS`, and a couple of seed photos are
   `.heic`.** They list as ordinary files rather than tiles. That is the current
   behaviour, not a considered decision — but before adding the extension, note
@@ -692,11 +703,13 @@ answering with a short listing.
 
 **Two addressing schemes, and which one a route uses is the fastest thing to
 check about it.** Everything on `/api/nodes*`, `/api/libraries` and
-`/api/resolve` takes a **node id**. `/api/tree` and `/api/reel` take either. The
-rest — `/api/asset`, `/api/text`, and every write under `/api/folder`,
-`/api/object(s)` — takes a **key or prefix**, which is the older surface: the
-SPA still calls it, and #312 and #316-onwards retire it. Nothing new should be
-added to it.
+`/api/resolve` takes a **node id**. `/api/tree`, `/api/reel`, `/api/asset` and
+`/api/text` take either, and both together is a 400 rather than a guess. The
+writes under `/api/folder` and `/api/object(s)` take a **name path** — the same
+slash-joined string a listing hands back as `key`, walked against the catalog
+(#316, #317, #319). Nothing but the catalog is addressed any more, with one
+exception stated in the conventions below: `GET /api/asset?key=` is a raw S3
+key, because the pipeline reads shared material with no node through it.
 
 | Route | Returns |
 |---|---|
@@ -714,8 +727,8 @@ added to it.
 | `POST /api/runs` | Records a run: folder, documents inline, and an upload URL per output |
 | `GET /api/tree?node=\|prefix=&sort=` | One folder ready to draw: `folders`, `files` (each presigned), `breadcrumbs`, `counts`. One address or the other — both is a 400 |
 | `GET /api/reel?node=\|prefix=&cursor=&page_size=&sort=` | Images and video beneath a folder, recursively, paginated. Same two addresses |
-| `GET /api/asset?key=&disposition=` | A fresh presigned URL for one object |
-| `GET /api/text?key=` | A `.json` / `.md` / `.txt` object's contents, capped at 1 MB |
+| `GET /api/asset?node=\|key=&disposition=` | A fresh presigned URL for one object. **`key` here is a raw S3 key**, the only one left — see below |
+| `GET /api/text?node=\|key=` | A `.json` / `.md` / `.txt` object's contents, capped at 1 MB. Same two addresses `PATCH /api/text` takes |
 | `POST /api/folder` | `{prefix, name}` → creates an empty folder. One row, no object. 409 if taken |
 | `PATCH /api/object` | `{key, name}` → renames one file in place. 409 if taken |
 | `PATCH /api/folder` | `{prefix, name}` → renames a folder. Its subtree does not move |
@@ -726,20 +739,28 @@ added to it.
 | `DELETE /api/objects` | `{keys: [...]}` → deletes 1..N files. Rows first, then blobs |
 | `DELETE /api/folder` | `{prefix}` → deletes a folder and its subtree. Rows first, then blobs |
 
-**The eight routes above take a name path, not an S3 key** (#316, #317, #319).
-`prefix`, `key` and `destination` are the slash-joined names `GET /api/tree`
-hands back and every share link is made of; `services.manage` walks them against
-the catalog one `NAME#` lookup per segment, starting at the library's root.
-Nothing changed on the wire, which is why the SPA needed no change. For material
-written before the catalog a name path and a blob key are the same string; for
-anything written since they are not, and nothing may assume they are.
+**The eight write routes above take a name path, not an S3 key** (#316, #317,
+#319), and so does `GET /api/text?key=` (#432). `prefix`, `key` and
+`destination` are the slash-joined names `GET /api/tree` hands back and every
+share link is made of; the service walks them against the catalog one `NAME#`
+lookup per segment, starting at the library's root. Nothing changed on the wire,
+which is why the SPA needed no change. For material written before the catalog a
+name path and a blob key are the same string; for anything written since they
+are not, and nothing may assume they are.
 
-**That also retired the confinement they used to need.** `keys.clean_prefix` and
-`assert_inside_root` normalised a string and compared it against
+**`GET /api/text` was the exception until #432 and it was a visible one.** The
+save resolved a name path to a node and wrote that node's `blob_key`; the read
+did a `GetObject` on the string it was handed. So on anything uploaded through
+the app — a row minted by #294, bytes at `blobs/<node-id>` — the editor could
+save a file it could not then re-open. Both walk the catalog now, and both take
+`?node=` as well.
+
+**That also retired the confinement the writes used to need.** `keys.clean_prefix`
+and `assert_inside_root` normalised a string and compared it against
 `media_root_prefix`, which in prod is empty and therefore excluded nothing. A
 walk cannot leave the library it starts in, so `../elsewhere` is not traversal to
 reject — it is a name nothing is called, and it 404s. Those functions and five
-more now have no caller; #312 removes them.
+more are gone (#312).
 
 **Rename and move are separate routes and must stay separate.** A rename takes a
 `name` and changes the last segment; a move takes a `destination` folder and
