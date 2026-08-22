@@ -42,8 +42,8 @@ decides what to make and pays for it.
 The boundary has widened twice, and this file has recorded each widening rather
 than replacing the sentence. It began as "a reader and only a reader"; it became
 a reader that tidies; it is now a reader that tidies and accepts. The reasoning
-for each is in **What this service may do to the bucket** below — read it before
-widening it a third time.
+for each is in **What this service may do to the library** below — read it
+before widening it a third time.
 
 The line between "edit a text file" and "upload" is worth stating, because it is
 thinner than it sounds and is held in exactly one place: `manage.update_text`
@@ -916,14 +916,26 @@ app cannot report on its own.
 
 ## Creating users
 
-There is no sign-up. Accounts are created out of band:
+There is no sign-up. Accounts are created out of band, and **the two pools have
+two scripts** — `create-user.sh` defaults `USER_POOL_ID` from SSM, which is the
+**prod** pool, so it is not the one to reach for while developing:
 
 ```bash
-STUDIO_EMAIL=you@example.com ./studio/scripts/create-user.sh
+STUDIO_EMAIL=you@example.com ./studio/scripts/create-user.sh   # prod pool
+./studio/scripts/dev-user.sh --generate-password               # this machine's dev pool
 ```
 
 Cognito emails a temporary password; signing in with it prompts for a new one.
 Pass `STUDIO_PASSWORD` to set a permanent one directly instead.
+
+**A pool account is not access to anything.** Membership is a catalog row
+(`USER#<sub>` / `LIB#<lib_id>`), and creating the Cognito user does not write
+one — so a freshly created account signs in, renders, and gets a 403 from
+`before_request` with "You are not a member of any library." That is the right
+status: the pool is admin-create-only, so it is a provisioning gap rather than
+anything the caller did wrong, and `GET /api/libraries` returning an empty 200
+is how it gets diagnosed. There is **no script for granting membership yet** —
+#321 is open — so today it is a hand-written row.
 
 ## Deployment
 
