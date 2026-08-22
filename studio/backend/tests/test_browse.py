@@ -2,7 +2,7 @@ import pytest
 
 from studio_core import config
 from studio_core.errors import ForbiddenError, NotFoundError, ValidationError
-from studio_core.services import browse, catalog
+from studio_core.services import browse, catalog, manage
 from tests.conftest import CATALOG_LIBRARY
 
 # Every listing test drives `catalog_tree`: the rows say what exists and the
@@ -278,38 +278,224 @@ def test_reel_items_carry_their_full_name_path(catalog_tree):
     )
 
 
-def test_asset_url_inline_and_attachment(media_bucket):
-    key = "projects/subject-b/runs/2026-08-14_21-47-05_standing-flex/output/standing-flex.mp4"
+# ---------------------------------------------------------------------------
+# The two file-at-a-time reads
+#
+# `/api/asset` and `/api/text` took `?node=` in #432 and stopped being the last
+# path between a query string and `GetObject` — with one exception these tests
+# pin down deliberately, because it is the reason `keys.clean_key` survived
+# #312: `/api/asset?key=` is still a raw S3 key, and shared material with no
+# catalog node is why.
+# ---------------------------------------------------------------------------
 
-    inline = browse.asset_url(key, "inline")
+
+def _minted(media_bucket, parent, name, body, *, content_type=None):
+    """A file written the way #294 writes one: a `blobs/<node-id>` key.
+
+    The shape the whole of #432 is about. Everything in `catalog_tree` carries a
+    pre-catalog `blob_key` that happens to equal its name path, so a route
+    reading the name path off the wire agrees with it by accident — a fixture
+    that could not tell the bug from correct behaviour.
+    """
+    record = catalog.create_node(_node_id(parent), name, catalog.KIND_FILE)
+    media_bucket.put_object(
+        Bucket=config.media_bucket(), Key=record["blob_key"], Body=body
+    )
+    catalog.set_blob(
+        record["node_id"], record["blob_key"], size=len(body), content_type=content_type
+    )
+    assert record["blob_key"].startswith("blobs/")
+    return record
+
+
+def test_asset_url_by_node_inline_and_attachment(catalog_tree):
+    node_id = _node_id(
+        "projects/subject-b/runs/2026-08-14_21-47-05_standing-flex/output/standing-flex.mp4"
+    )
+
+    inline = browse.asset_url(CATALOG_LIBRARY, None, "inline", node_id=node_id)
     assert inline["kind"] == "video"
     assert inline["size"] == len(b"mp4-bytes")
     assert "response-content-disposition" not in inline["url"]
+    # The name path, never `blob_key`, and never the id it was addressed by.
+    assert inline["key"] == (
+        "projects/subject-b/runs/2026-08-14_21-47-05_standing-flex/output/standing-flex.mp4"
+    )
+    assert inline["name"] == "standing-flex.mp4"
 
-    attachment = browse.asset_url(key, "attachment")
+    attachment = browse.asset_url(CATALOG_LIBRARY, None, "attachment", node_id=node_id)
     assert "response-content-disposition" in attachment["url"]
     assert "standing-flex.mp4" in attachment["url"]
 
 
-def test_text_object(media_bucket):
-    result = browse.text_object("projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/request.json")
+def test_asset_url_by_node_reaches_a_blob_a_name_path_cannot(catalog_tree):
+    """#432, stated as the thing that was broken.
+
+    A row minted by the upload routes keeps its bytes at `blobs/<node-id>`. The
+    old `?key=` read signed the string a listing called `key`, which for this row
+    names no object at all — so the download button on anything uploaded since
+    #294 signed a URL onto nothing.
+    """
+    media_bucket, _ = catalog_tree
+    record = _minted(media_bucket, "characters/subject-a/seed/", "minted.webp", b"webp")
+
+    signed = browse.asset_url(CATALOG_LIBRARY, None, None, node_id=record["node_id"])
+    assert signed["key"] == "characters/subject-a/seed/minted.webp"
+    assert signed["size"] == len(b"webp")
+    # The blob key is what got signed, and it never appears in the answer.
+    assert "blobs/" in signed["url"]
+    assert "blobs/" not in signed["key"]
+
+    # The same request addressed the old way finds nothing, which is the bug.
+    with pytest.raises(NotFoundError):
+        browse.asset_url(CATALOG_LIBRARY, "characters/subject-a/seed/minted.webp", None)
+
+
+def test_asset_url_by_key_signs_material_that_has_no_node(catalog_tree, media_bucket):
+    """The one raw S3 key left, and the reason it is left.
+
+    `phrasebook/wording.yaml` and the `config/pose/` plates belong to no character
+    and no project, `catalog_seed` records no node for them, and the pipeline
+    reads them over this route. An object with no row is exactly that case, and
+    it must still sign — which is what keeps `keys.clean_key` alive.
+    """
+    media_bucket.put_object(
+        Bucket=config.media_bucket(), Key="config/pose/body/stand.png", Body=b"plate"
+    )
+    signed = browse.asset_url(CATALOG_LIBRARY, "config/pose/body/stand.png", None)
+
+    assert signed["key"] == "config/pose/body/stand.png"
+    assert signed["name"] == "stand.png"
+    assert signed["kind"] == "image"
+    assert signed["size"] == len(b"plate")
+
+
+def test_asset_url_refuses_a_key_and_a_node_together(catalog_tree):
+    with pytest.raises(ValidationError):
+        browse.asset_url(
+            CATALOG_LIBRARY,
+            "characters/subject-a/profile.yaml",
+            None,
+            node_id=_node_id("characters/subject-a/profile.yaml"),
+        )
+
+
+def test_asset_url_rejects_a_bad_disposition_before_it_reads_anything(catalog_tree):
+    """Checked first, so a bad disposition is a 400 even on a key that is a 404."""
+    with pytest.raises(ValidationError):
+        browse.asset_url(CATALOG_LIBRARY, "nothing/at/all.png", "evil")
+
+
+def test_asset_url_on_a_folder_is_a_validation_error(catalog_tree):
+    """The node is there; the request does not apply to it.
+
+    Same answer `GET /api/nodes/<id>/download-url` gives, deliberately — two
+    routes signing one node's bytes must not disagree about what a folder is.
+    """
+    with pytest.raises(ValidationError):
+        browse.asset_url(
+            CATALOG_LIBRARY, None, None, node_id=_node_id("characters/subject-a/seed/")
+        )
+
+
+def test_asset_url_on_a_placeholder_is_not_found(catalog_tree, catalog_table):
+    """A row #294 minted whose upload never landed. There is nothing to sign."""
+    parent = _node_id("characters/subject-a/seed/")
+    record = catalog.create_node(parent, "pending.webp", catalog.KIND_FILE)
+    catalog_table.update_item(
+        TableName=config.catalog_table(),
+        Key={"pk": {"S": f"NODE#{record['node_id']}"}, "sk": {"S": "META"}},
+        UpdateExpression="REMOVE blob_key",
+    )
+
+    with pytest.raises(NotFoundError):
+        browse.asset_url(CATALOG_LIBRARY, None, None, node_id=record["node_id"])
+
+
+def test_asset_url_on_another_librarys_node_is_forbidden(catalog_tree):
+    """The node's own `lib` is the guard, because a node id is shareable."""
+    node_id = _node_id("characters/subject-a/profile.yaml")
+    with pytest.raises(ForbiddenError):
+        browse.asset_url("lib-someone-else", None, None, node_id=node_id)
+
+
+def test_text_object_by_name_path(catalog_tree):
+    result = browse.text_object(
+        CATALOG_LIBRARY,
+        "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/request.json",
+    )
     assert result["language"] == "json"
     assert result["content"] == '{"model": "x"}'
     assert result["truncated"] is False
 
 
-def test_text_object_reads_yaml(media_bucket):
+def test_text_object_by_node_answers_identically(catalog_tree):
+    """Same body either way, which is the contract `?node=` was added under."""
+    path = "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/request.json"
+    assert browse.text_object(CATALOG_LIBRARY, path) == browse.text_object(
+        CATALOG_LIBRARY, None, node_id=_node_id(path)
+    )
+
+
+def test_text_object_reads_yaml(catalog_tree):
     """Profiles and the phrasebook are YAML now, where they used to be markdown."""
-    result = browse.text_object("phrasebook/wording.yaml")
+    result = browse.text_object(CATALOG_LIBRARY, "phrasebook/wording.yaml")
     assert result["language"] == "yaml"
     assert result["content"] == "greeting: hello\n"
 
 
-def test_text_object_truncates(media_bucket, monkeypatch):
+def test_text_object_truncates(catalog_tree, monkeypatch):
     monkeypatch.setattr("studio_core.config.max_text_bytes", lambda: 4)
-    result = browse.text_object("characters/subject-a/profile.yaml")
+    result = browse.text_object(CATALOG_LIBRARY, "characters/subject-a/profile.yaml")
     assert result["truncated"] is True
     assert len(result["content"]) == 4
+
+
+def test_text_object_refuses_a_key_and_a_node_together(catalog_tree):
+    with pytest.raises(ValidationError):
+        browse.text_object(
+            CATALOG_LIBRARY,
+            "characters/subject-a/profile.yaml",
+            node_id=_node_id("characters/subject-a/profile.yaml"),
+        )
+
+
+def test_text_object_refuses_a_binary_file(catalog_tree):
+    with pytest.raises(ValidationError):
+        browse.text_object(CATALOG_LIBRARY, "characters/subject-a/seed/subject-a_1.webp")
+
+
+def test_text_object_refuses_a_folder(catalog_tree):
+    with pytest.raises(ValidationError):
+        browse.text_object(CATALOG_LIBRARY, "characters/subject-a/seed/")
+
+
+def test_reading_text_finds_what_saving_text_wrote(catalog_tree):
+    """#432 in one assertion: the read and the write address the same node.
+
+    Both take a name path; before this the save resolved it against the catalog
+    and the read `GetObject`d it, so on a `blobs/<node-id>` file the editor could
+    save a file it could not then re-open. Reaching into `manage` is the point —
+    the pair is what was broken, so the test has to exercise the pair.
+    """
+    media_bucket, _ = catalog_tree
+    record = _minted(
+        media_bucket,
+        "characters/subject-a/",
+        "notes.md",
+        b"# before\n",
+        content_type="text/markdown",
+    )
+
+    manage.update_text(CATALOG_LIBRARY, "characters/subject-a/notes.md", "# after\n")
+    reread = browse.text_object(CATALOG_LIBRARY, "characters/subject-a/notes.md")
+
+    assert reread["content"] == "# after\n"
+    assert reread["key"] == "characters/subject-a/notes.md"
+    assert reread["name"] == "notes.md"
+    assert browse.text_object(
+        CATALOG_LIBRARY, None, node_id=record["node_id"]
+    ) == reread
 
 
 # ---------------------------------------------------------------------------

@@ -114,6 +114,12 @@ def test_reel(catalog_tree):
 
 
 def test_asset_missing_key_is_404(media_bucket):
+    """No `catalog_tree`, on purpose: `?key=` reads the bucket and nothing else.
+
+    That is the one raw S3 key the API still takes, and this and the test below
+    are what say so — they would 502 on a missing catalog if the route had been
+    moved onto it wholesale.
+    """
     resp = _client().get("/api/asset?key=characters/subject-a/seed/nope.webp")
     assert resp.status_code == 404
 
@@ -123,9 +129,49 @@ def test_asset_rejects_bad_disposition(media_bucket):
     assert resp.status_code == 400
 
 
-def test_text_rejects_binary(media_bucket):
+def test_asset_takes_a_node_id(catalog_tree):
+    node_id = _client().get("/api/tree?prefix=characters/subject-a/").get_json()["files"][0]["id"]
+    body = _client().get(f"/api/asset?node={node_id}").get_json()
+
+    assert body["key"] == "characters/subject-a/profile.yaml"
+    assert "X-Amz-Signature" in body["url"]
+
+
+def test_asset_refuses_a_key_and_a_node_together(catalog_tree):
+    node_id = _client().get("/api/tree?prefix=characters/subject-a/").get_json()["files"][0]["id"]
+    resp = _client().get(f"/api/asset?key=phrasebook/wording.yaml&node={node_id}")
+
+    assert resp.status_code == 400
+    assert "error" in resp.get_json()
+
+
+def test_text_takes_a_node_id(catalog_tree):
+    node_id = _client().get("/api/tree?prefix=characters/subject-a/").get_json()["files"][0]["id"]
+    by_node = _client().get(f"/api/text?node={node_id}").get_json()
+    by_path = _client().get("/api/text?key=characters/subject-a/profile.yaml").get_json()
+
+    assert by_node == by_path
+
+
+def test_text_refuses_a_key_and_a_node_together(catalog_tree):
+    node_id = _client().get("/api/tree?prefix=characters/subject-a/").get_json()["files"][0]["id"]
+    resp = _client().get(f"/api/text?key=characters/subject-a/profile.yaml&node={node_id}")
+
+    assert resp.status_code == 400
+
+
+def test_text_rejects_binary(catalog_tree):
     resp = _client().get("/api/text?key=characters/subject-a/seed/subject-a_1.webp")
     assert resp.status_code == 400
+
+
+def test_text_on_a_path_that_names_nothing_is_404(catalog_tree):
+    """`GET /api/text?key=` is a name path now, so a bad one is a 404, not a 400.
+
+    It used to be `keys.clean_key` refusing a string. The read and
+    `PATCH /api/text` answer the same way about the same address (#432).
+    """
+    assert _client().get("/api/text?key=characters/subject-a/nowhere.md").status_code == 404
 
 
 def test_unknown_route_is_404():
