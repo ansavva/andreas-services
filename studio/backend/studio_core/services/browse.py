@@ -207,6 +207,37 @@ def _timestamp(record: dict) -> str:
     return record.get("updated_at") or record.get("created_at") or _UNDATED
 
 
+def is_abandoned_upload(record: dict) -> bool:
+    """A row that names bytes which never arrived — an upload that stopped mid-way.
+
+    **`"size" in record`, not `record.get("size")`.** A confirmed empty file has
+    `size` 0 and a placeholder has it absent — `_attributes` drops `None` and
+    keeps `0` — so membership tells them apart and truthiness does not. That
+    distinction is the whole reason this is a function rather than an inline
+    check somebody later "simplifies".
+
+    `create_node` mints `blob_key` immediately, and `_file_entry` presigns any
+    row carrying one. So without this an abandoned upload is **a tile the grid
+    draws and cannot load** — which is what #442 reported and what
+    `routes/nodes` claimed was impossible. That claim was true under #294, when
+    a listing came from `ListObjectsV2` and an object that did not exist could
+    not appear in one; #424 moved listings onto the catalog and nothing
+    revisited it.
+
+    **A row with no `blob_key` at all is a different thing and still lists.**
+    Nothing signs for it, so it draws an item with no preview rather than a
+    broken one — which is what it is, and `test_a_file_row_with_no_blob_lists_
+    without_a_url` pins that on purpose. Only the combination is a defect: a key
+    promised, and no bytes behind it.
+
+    **A hidden row is not a collected one.** `catalog gc` deletes blobs no row
+    names; this is a row no blob answers, and nothing collects it. Hiding it
+    stops a user seeing a broken tile and leaves the row to accumulate — the
+    lesser of the two, and #442 carries the rest.
+    """
+    return bool(record.get("blob_key")) and "size" not in record
+
+
 def _file_entry(record: dict, prefix: str) -> dict:
     """One file row as a listing entry, presigned.
 
@@ -351,7 +382,11 @@ def list_folder(
     prefix = breadcrumbs[-1]["prefix"]
 
     folders = [record for record in records if record["kind"] == catalog.KIND_FOLDER]
-    files = [record for record in records if record["kind"] != catalog.KIND_FOLDER]
+    files = [
+        record
+        for record in records
+        if record["kind"] != catalog.KIND_FOLDER and not is_abandoned_upload(record)
+    ]
     _sort_records(folders, sort)
     _sort_records(files, sort)
 
@@ -417,7 +452,9 @@ def reel_items(
     media = [
         record
         for record in rows
-        if record["kind"] == catalog.KIND_FILE and keys.kind(record["name"]) in REEL_KINDS
+        if record["kind"] == catalog.KIND_FILE
+        and not is_abandoned_upload(record)
+        and keys.kind(record["name"]) in REEL_KINDS
     ]
     _sort_records(media, sort)
 
