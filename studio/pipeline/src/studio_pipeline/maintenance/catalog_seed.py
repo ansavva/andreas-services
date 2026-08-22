@@ -11,8 +11,8 @@ the bucket as it stands and gives every folder and object a row.
 **IT COPIES NOTHING, MOVES NOTHING AND DELETES NOTHING.** Every existing
 `characters/<slug>/…` and `projects/<slug>/…` key stays exactly where it is and
 is simply recorded as a node's `blob_key`. That is also why there is no rewrite
-phase here, unlike `migrate_layout.py`: a rewrite exists to patch the keys
-recorded *inside* documents when objects move, and nothing moves.
+phase here: a rewrite exists to patch the keys recorded *inside* documents when
+objects move, and nothing moves.
 
 THREE PHASES, EACH ITS OWN INVOCATION
 -------------------------------------
@@ -23,10 +23,11 @@ THREE PHASES, EACH ITS OWN INVOCATION
     verify   read the table back and re-list the bucket: every node's blob
              resolves, and every object is claimed by exactly one node.
 
-Every phase is `--dry-run` unless `--apply`, and they are separate commands for
-the same reason they are in `migrate_layout.py` — the ordering is the safety
-property. The journal (`local/migrations/<ts>.json`, git-ignored) records what
-each phase did. Nothing about the seed is ever written into the bucket.
+Every phase is `--dry-run` unless `--apply`, and they are separate commands
+because the ordering between them is the safety property — the same reason the
+`migrate-layout` command this shape was inherited from split its five. The
+journal (`local/migrations/<ts>.json`, git-ignored) records what each phase did.
+Nothing about the seed is ever written into the bucket.
 
 EVERYTHING HERE IS A PURE FUNCTION OF THE BUCKET
 ------------------------------------------------
@@ -34,12 +35,12 @@ Ids are derived (uuid5 over `s3://<bucket>/<key>`), not drawn at random, and
 timestamps are derived from `LastModified`. No phase reads a clock.
 
 That is load-bearing, not tidiness. The three phases each rebuild the plan from
-a fresh listing — `migrate_layout.py` does the same — so `seed` and `verify` can
-only agree with `plan` if the plan is reproducible. Random ids would make a
-resumed seed create a *second* tree beside the half-written first one, because
-nothing would recognise the nodes already there. This is the same property
-`paths.classify()` gives the migrator: the code that writes the map and the code
-that checks it agree by construction.
+a fresh listing, so `seed` and `verify` can only agree with `plan` if the plan
+is reproducible. Random ids would make a resumed seed create a *second* tree
+beside the half-written first one, because nothing would recognise the nodes
+already there. It is the same property the layout migrator got from keeping its
+key map in `paths.py`: the code that writes the map and the code that checks it
+agree by construction.
 
 A derived id is still an opaque id. Nothing reads one back to recover a key, and
 a later rename or move breaks any correspondence anyway — the derivation exists

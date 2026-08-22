@@ -33,11 +33,9 @@ from studio_pipeline.engine import add_model as _add_model
 from studio_pipeline.engine import board as _board
 from studio_pipeline.engine import runner as _runner
 from studio_pipeline.engine import shoot as _shoot
-from studio_pipeline.maintenance import backfill_replicate as _backfill
 from studio_pipeline.maintenance import catalog_gc as _catalog_gc
 from studio_pipeline.maintenance import catalog_seed as _catalog
 from studio_pipeline.maintenance import dev_seed as _dev_seed
-from studio_pipeline.maintenance import migrate_layout as _migrate
 from studio_pipeline.objects import convert as _convert
 from studio_pipeline.session import commands as _session
 from studio_pipeline.objects import download as _download
@@ -61,8 +59,7 @@ class _Grouped(click.Group):
         ("characters",  ["character", "curate", "contact-sheet"]),
         ("authoring",   ["prompt", "phrasebook"]),
         ("objects",     ["upload", "download", "presign", "convert"]),
-        ("maintenance", ["rewrite", "backfill-replicate", "migrate-layout",
-                         "catalog", "dev-seed"]),
+        ("maintenance", ["rewrite", "catalog", "dev-seed"]),
     ]
 
     def format_commands(self, ctx, formatter):
@@ -162,8 +159,6 @@ for _name, _cmd in [
     ("presign", _presign.presign),
     ("convert", _convert.convert),
     ("rewrite", _rewrite.main),
-    ("backfill-replicate", _backfill.backfill_replicate),
-    ("migrate-layout", _migrate.main),
     ("catalog", _catalog.main),
     ("dev-seed", _dev_seed.main),
 ]:

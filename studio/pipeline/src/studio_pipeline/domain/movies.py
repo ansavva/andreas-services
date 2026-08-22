@@ -74,7 +74,7 @@ def new_movie_id(slug: str, when: dt.datetime | None = None) -> str:
 
 
 def movie_prefix(project: str, movie_id: str) -> str:
-    """Tree-relative — feeds `list_keys`. Use `movie_key` for get/put."""
+    """Tree-relative — addresses a FOLDER. Use `movie_key` for get/put."""
     return P.movie_prefix(project, movie_id)
 
 

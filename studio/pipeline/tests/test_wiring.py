@@ -134,14 +134,20 @@ def test_packaged_data_files_exist():
 
 
 def test_local_working_dirs_resolve_under_studio():
-    """`character edit` and the migrator write here; both are git-ignored."""
+    """`character edit` and the catalog journal write here; both are git-ignored.
+
+    The journal half of this used to read `migrate_layout.JOURNAL_DIR`. That
+    command is deleted; `catalog_seed` holds the same constant and is what
+    `catalog plan | seed | verify | gc` journal through, so the assertion moved
+    rather than went.
+    """
     from studio_pipeline.domain import characters
-    from studio_pipeline.maintenance import migrate_layout
+    from studio_pipeline.maintenance import catalog_seed
 
     root = str(studio_pipeline.STUDIO_DIR)
     assert characters.LOCAL_DIR.startswith(root)
     assert characters.LOCAL_DIR.endswith("local/characters")
-    assert migrate_layout.JOURNAL_DIR.startswith(root)
+    assert catalog_seed.JOURNAL_DIR.startswith(root)
 
 
 def test_every_callback_accepts_the_parameters_click_will_pass():

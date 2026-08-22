@@ -72,15 +72,18 @@ They are still not read with boto3. They go through the API's key-addressed
 routes — `store.shared_presign` / `store.shared_read` over `GET /api/asset` —
 which is the same authority reached a different way. See `adapters/store`.
 
-LEGACY
-------
-`classify()` / `relocate()` map a key from the OLD layout (`media/<owner>/…`)
-to its new home. They exist for `migrate_layout.py` and should be deleted once
-no bucket anywhere still holds an old tree.
+NO LEGACY MAP LIVES HERE ANY MORE
+---------------------------------
+`LEGACY_PREFIX`, `LEGACY_MAP`, `classify()` and `relocate()` mapped a key from
+the pre-restructure layout (`media/<owner>/…`) to its new home, for
+`migrate-layout`. That command is gone and so are they: the migration finished,
+the source bucket was deleted in August 2026, and no `media/`-layout tree
+survives. What the old tree looked like and how each folder was reinterpreted
+is recorded in `docs/PIPELINE.md`, under the historical heading in
+"The two trees".
 """
 from __future__ import annotations
 
-import os
 import re
 
 from studio_pipeline.adapters import api, store
@@ -329,134 +332,3 @@ def list_ids(prefix: str) -> list[str]:
     a timestamp is not the same question.
     """
     return sorted(_folder_names(prefix))
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# LEGACY — the pre-restructure layout, and the map out of it.
-# Everything below is migration-only and goes away with the old tree.
-# ════════════════════════════════════════════════════════════════════════════
-
-# The pre-restructure prefix. Only `classify()` below still needs to recognise
-# it; the legacy key BUILDERS are gone, because nothing writes the old tree any
-# more and keeping them would let something start again by accident.
-LEGACY_PREFIX = "media/"
-
-
-# ── the relocation map ──────────────────────────────────────────────────────
-#
-# One rule per old folder. Order matters: the first rule whose `match` accepts a
-# key wins, so the narrow rules (which slice `input/` in two) come first.
-#
-# `dest` receives (owner, rest) where `rest` is everything after the folder, and
-# returns a NEW-layout key. `owner` doubles as the character name and, for
-# production folders, the project name — the two current owners become the two
-# current projects, which is why every runref already recorded stays valid.
-
-# Generated character imagery lived in the input pool to stay under the engine
-# reference caps. It is reference material, and belongs with the character.
-#
-# A generic anatomy sheet used to be listed here too, which sent it to
-# `reference/` — where it was indexed as identity and tagged `body`, so
-# `--pick-tag body` could hand a model a stranger's sculpt as one of the
-# character's own reference slots. Generic pose material is CONFIG: it lives in
-# the repo and is copied to `config/pose/`, never into a character.
-_TURNAROUND_RE = re.compile(r"^[a-z0-9_-]+_in_\d+\.[A-Za-z0-9]+$")
-_SHEET_NAMES: set[str] = set()
-
-# Owners that were never characters — production history with no identity.
-NON_CHARACTER_OWNERS = {"misc"}
-
-
-def _is_turnaround(basename: str) -> bool:
-    return bool(_TURNAROUND_RE.match(basename)) or basename in _SHEET_NAMES
-
-
-LEGACY_MAP: list[tuple[str, str, str]] = [
-    # (rule id, old folder pattern for the report, human note)
-    ("profile", "media/<c>/profile.yaml", "-> characters/<c>/profile.yaml"),
-    ("reference", "media/<c>/reference/*", "-> characters/<c>/reference/*"),
-    ("turnarounds", "media/<c>/input/<c>_in_*", "-> characters/<c>/reference/* (generated)"),
-    ("uploads", "media/<c>/input/*", "-> characters/<c>/corpus/* (raw uploads)"),
-    ("seed", "media/<c>/originals/*", "-> characters/<c>/seed/*"),
-    ("corpus", "media/<c>/other/*", "-> characters/<c>/corpus/*"),
-    ("archive", "media/<c>/trash/*", "-> characters/<c>/archive/*"),
-    ("favorites", "media/<c>/favorites/*", "-> projects/<c>/favorites/*"),
-    ("runs", "media/<c>/runs/*", "-> projects/<c>/runs/*"),
-    ("shots", "media/<c>/scenes/<id>/parts/part-NN.*", "-> .../scenes/<id>/shots/shot-NN.*"),
-    ("scenes", "media/<c>/scenes/*", "-> projects/<c>/scenes/*"),
-    ("chains", "media/<c>/chains/*", "-> projects/<c>/chains/*"),
-    ("phrasebook", "media/phrasebook/*", "-> phrasebook/*"),
-]
-
-_PART_RE = re.compile(r"^part-(\d+)(\.[A-Za-z0-9]+)$")
-
-
-def classify(old_key: str) -> tuple[str, str] | None:
-    """(rule_id, new_key) for an old-layout key, or None if it is not old-layout.
-
-    Returning None means "nothing to do" — either the key is already in the new
-    tree, or it is a folder marker. A key that IS old-layout but matches no rule
-    raises, because silently leaving one behind is how a migration loses data.
-    """
-    if not old_key.startswith(LEGACY_PREFIX):
-        return None
-    rel = old_key[len(LEGACY_PREFIX):]
-    if not rel or rel.endswith("/"):
-        return None  # folder marker — dropped, not moved
-
-    head, _, rest = rel.partition("/")
-    if head == "phrasebook":
-        return "phrasebook", _join("phrasebook", rest)
-    if not rest:
-        raise PathError(f"unmapped legacy key (no folder): {old_key!r}")
-
-    owner = head
-    folder, _, tail = rest.partition("/")
-
-    if rest == "profile.yaml":
-        return "profile", profile_key(owner)
-
-    if folder == "reference":
-        return "reference", character_key(owner, "reference", tail)
-
-    if folder == "input":
-        base = os.path.basename(tail)
-        if _is_turnaround(base):
-            return "turnarounds", character_key(owner, "reference", tail)
-        return "uploads", character_key(owner, "corpus", tail)
-
-    if folder == "originals":
-        return "seed", character_key(owner, "seed", tail)
-    if folder == "other":
-        return "corpus", character_key(owner, "corpus", tail)
-    if folder == "trash":
-        return "archive", character_key(owner, "archive", tail)
-
-    if folder == "favorites":
-        return "favorites", project_key(owner, "favorites", tail)
-    if folder == "runs":
-        return "runs", project_key(owner, "runs", tail)
-    if folder == "chains":
-        return "chains", project_key(owner, "chains", tail)
-
-    if folder == "scenes":
-        sid, _, inner = tail.partition("/")
-        if inner.startswith("parts/"):
-            base = os.path.basename(inner)
-            m = _PART_RE.match(base)
-            if not m:
-                raise PathError(f"unrecognised scene part name: {old_key!r}")
-            return "shots", scene_key(owner, sid, "shots", f"shot-{m.group(1)}{m.group(2)}")
-        return "scenes", scene_key(owner, sid, inner)
-
-    raise PathError(f"unmapped legacy key: {old_key!r}")
-
-
-def relocate(old_key: str) -> str | None:
-    """The new home of an old key, or None when there is nothing to move.
-
-    Idempotent by construction: a new-layout key does not start with `media/`,
-    so `relocate(relocate(k))` is always None.
-    """
-    hit = classify(old_key)
-    return hit[1] if hit else None

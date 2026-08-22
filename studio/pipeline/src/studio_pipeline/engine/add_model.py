@@ -158,7 +158,9 @@ def infer(model: str, props: dict, schemas: dict, text: str) -> tuple[dict, list
         # `studio-media-*` is the family for using the pipeline; `studio-code-*`
         # is for changing it. A model's page is always a media skill.
         "skill": f"studio-media-{key.replace('.', '-')}",
-        "backfill_slug": re.sub(r"[^a-z0-9]", "", key.lower()),
+        # `backfill_slug` was minted here and is gone from every entry: it named
+        # the output file a `backfill-replicate` import wrote, and that command
+        # is deleted. Nothing else ever read it.
         "images": {
             "refs": refs, "max_refs": cap,
             "start": start, "end": end,

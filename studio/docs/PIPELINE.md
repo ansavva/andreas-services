@@ -181,8 +181,7 @@ studio/pipeline/
         │   └── upload.py  download.py  presign.py  convert.py
         │
         └── maintenance/           one-shots, quarantined
-            └── backfill_replicate.py  migrate_layout.py  catalog_seed.py
-                catalog_gc.py  dev_seed.py
+            └── catalog_seed.py  catalog_gc.py  dev_seed.py
 ```
 
 **Why the directories are named after what things ARE.** They used to be one
@@ -235,10 +234,10 @@ External tools:
 - **AWS CLI** (`aws`) — `brew install awscli` — **required only for the
   maintenance commands.** `adapters/s3.py` bridges `aws configure
   export-credentials` into boto3, because boto3's own chain does not understand
-  an `aws login` session. It has five importers left: `adapters/ddb.py` for the
-  catalog table, and the four `maintenance/` modules that enumerate the raw
-  bucket — `catalog_gc.py`, `catalog_seed.py`, `dev_seed.py` and
-  `migrate_layout.py`. Sign in with `aws login` before running one of those.
+  an `aws login` session. It has four importers left: `adapters/ddb.py` for the
+  catalog table, and the three `maintenance/` modules that enumerate the raw
+  bucket — `catalog_gc.py`, `catalog_seed.py` and `dev_seed.py`. Sign in with
+  `aws login` before running one of those.
   Everything else needs **no AWS account at all** — that is the point of #308,
   and this bullet said "required" flatly until it landed.
 - **ffmpeg** — `brew install ffmpeg` — optional. The scene and movie code
@@ -298,6 +297,99 @@ config/pose/face/*.png       head-angle plates
 
 There is **no `media/` prefix** — the tree is at the bucket root. (There was one,
 inherited from mirroring Google Drive 1:1; it bought nothing.)
+
+### HISTORICAL — the `media/<owner>/` tree, and the move off it
+
+Nothing in this section describes anything that still runs. It is kept because
+the *shape* of the old tree is not recoverable from anywhere else: the source
+bucket was deleted in August 2026, and `studio migrate-layout` — the five-phase
+command that did the move, and `paths.classify()` / `paths.relocate()`, the map
+it moved by — were deleted once the owner confirmed no `media/`-layout tree
+survives. What it moved is history; **why each folder became what it became** is
+still the reason the current tree is shaped the way it is.
+
+The old tree had exactly one axis, the **owner**, and everything hung off it.
+The move split that axis in two: an owner became both a **character** (who
+someone is) and a **project** (work someone did), which is the distinction the
+section above is entirely built on.
+
+| Old | New | Why |
+|---|---|---|
+| `media/<owner>/profile.yaml` | `characters/<owner>/profile.yaml` | identity |
+| `media/<owner>/reference/…` | `characters/<owner>/reference/…` | identity |
+| `media/<owner>/input/<owner>_in_<n>.<ext>` | `characters/<owner>/reference/…` | **generated** character imagery |
+| `media/<owner>/input/…` (everything else) | `characters/<owner>/corpus/…` | **raw uploads** |
+| `media/<owner>/originals/…` | `characters/<owner>/seed/…` | the founding real-world photos |
+| `media/<owner>/other/…` | `characters/<owner>/corpus/…` | collected material |
+| `media/<owner>/trash/…` | `characters/<owner>/archive/…` | retired, not deleted |
+| `media/<owner>/favorites/…` | `projects/<owner>/favorites/…` | a keeper is **work**, not identity |
+| `media/<owner>/runs/…` | `projects/<owner>/runs/…` | work |
+| `media/<owner>/scenes/<id>/parts/part-NN.<ext>` | `projects/<owner>/scenes/<id>/shots/shot-NN.<ext>` | a "part" is a **shot** |
+| `media/<owner>/scenes/<id>/…` | `projects/<owner>/scenes/<id>/…` | work |
+| `media/<owner>/chains/…` | `projects/<owner>/chains/…` | work |
+| `media/phrasebook/…` | `phrasebook/…` | shared — belongs to no owner |
+
+Three of those rows are the ones that carried judgement rather than a rename:
+
+- **`input/` split in two, on the filename.** One folder held both material a
+  person uploaded and imagery the harness had generated of the character —
+  generated frames lived in the input pool only to stay under the engines'
+  reference caps. Generated frames are *reference*; uploads are *corpus*. The
+  test was a filename shape, `<owner>_in_<n>.<ext>`.
+- **`favorites/` crossed from the character tree to the project tree.** Marking
+  an output a keeper says something about the work, not about who is in it.
+- **`parts/part-NN` became `shots/shot-NN`.** The vocabulary change was made in
+  the object names as well as in the code, so nothing was left reading "part"
+  in one place and "shot" in another. `scene.json` was rewritten to match —
+  `parts` → `shots`, `part_key` → `shot_key`, `uniform_parts` →
+  `uniform_shots` — which is what the rewrite phase below was for.
+
+**The `input/` rule was already half-hollow when it was deleted, and the record
+would mislead without this.** The turnaround test was a filename regex *or*
+membership of a set of named generic sheets — and that set had already been
+emptied. A generic anatomy sheet used to be listed in it, which sent it to
+`reference/`, where it was indexed as identity and tagged `body`; `--pick-tag
+body` could then hand a model a stranger's sculpt as one of the character's own
+reference slots. Generic pose material is **config**: it lives in the repo and
+is copied to `config/pose/`, and never into a character. So by the end only the
+regex ever fired, and the "or a named sheet" half of the rule matched nothing.
+
+**Five phases, each its own invocation, and the ordering was the safety
+property.** Not five steps behind one switch — separate commands, every one a
+dry run unless given `--apply`:
+
+    plan     what would move, grouped by rule. UNMAPPED had to be 0.
+    copy     server-side copy old -> new. Idempotent; skipped what was there.
+    rewrite  patch the S3 keys recorded INSIDE the copied documents.
+    verify   every destination exists, and every key any document names resolves.
+    delete   remove the originals. Refused unless verify had passed.
+
+Nothing was rewritten before everything was copied, and nothing was deleted
+before everything was verified. Splitting the phases into separate invocations
+is what made that ordering something a person had to step through rather than
+something a flag could skip.
+
+Two details are worth keeping:
+
+- **The rewrite phase was not cosmetic.** A run record holds S3 keys, not URLs
+  — that is the point of `runs.check_bindings` — so moving objects without
+  patching the records would have left every recorded run pointing at keys that
+  no longer existed, and chaining from history would have broken. This is the
+  same rule stated elsewhere as *moving an object means rewriting the records
+  that name it*; `domain/rewrite.py` still exists for it.
+- **`verify` separated breakage it had caused from breakage it had inherited.**
+  Curation had renumbered and removed reference images after the runs that
+  cited them, so some records already pointed at keys that were gone. A
+  reference to something that was never a destination was already broken;
+  reporting those separately is what stopped inherited breakage from blocking a
+  migration that did not cause it.
+
+**A note on what this would do if it were still here.** It predated the
+catalog. It had no DynamoDB import at all, so it was unaware that every object
+in the bucket is now a row's `blob_key`: its `copy` and `delete` phases would
+move objects out from under the catalog rows, and its `rewrite` phase would
+patch JSON documents without touching a single row. That is the other half of
+why it went.
 
 **`config/` is the one tree whose source of truth is the repo.** It lives at
 `studio/config/`, and `dev-setup.sh` syncs it out (`--size-only`, never
@@ -521,7 +613,7 @@ or projects.
 | `store.py` | **The media store, addressed by path and reached through the API.** Resolve a name path to a node, list its files in natural order, read, write, upload, copy, presign, and ensure a folder exists. No bucket name, no credentials — bytes travel to S3 directly on presigned URLs the API signs, which is what keeps a video out of the Lambda's request limit. `s3.py` is being retired into this. |
 | `api.py` | One transport for every call the CLI makes: bearer token, refresh-on-401, library header, error mapping. Decided once so no caller re-decides it. |
 | `auth.py` | The Cognito sign-in behind `studio login`, and the token cache it writes. |
-| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. One auth path for the whole package — `session()` is what everything else asks for. **Almost gone**: nothing in `domain/`, `engine/` or `objects/` imports it any more. The five that still do are `adapters/ddb.py`, which needs `session()` for the catalog table, and all four one-shots in `maintenance/` — `catalog_gc.py`, `catalog_seed.py`, `dev_seed.py` and `migrate_layout.py` — which enumerate the raw bucket deliberately, because applying the prefix at the AWS boundary is their job. |
+| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. One auth path for the whole package — `session()` is what everything else asks for. **Almost gone**: nothing in `domain/`, `engine/` or `objects/` imports it any more. The four that still do are `adapters/ddb.py`, which needs `session()` for the catalog table, and all three one-shots in `maintenance/` — `catalog_gc.py`, `catalog_seed.py` and `dev_seed.py` — which enumerate the raw bucket deliberately. Its listing helpers and its bucket-prefix knob went with `migrate-layout`, the only caller of either. |
 | `ddb.py` | The catalog table's client and the typed-attribute marshalling every write needs. Takes its credentials from `s3.py`, because the bridge resolves a session and not an S3 session. Knows nothing about libraries or nodes. |
 | `replicate.py` | Token, HTTP, download, poll. |
 | `ffmpeg.py` | Probe, stitch, frame grab, contact grid. A scene and a movie join their inputs by identical rules because they call the same function. ffmpeg ships in the wheel; no system install. |
@@ -574,9 +666,12 @@ bytes to a temp file because that function takes local paths; `--dest-key`
 ensures the destination folder first, since the catalog has no folder until
 something asks for one.
 
-**`maintenance/` — one-offs.** `backfill_replicate.py` imports historical
-predictions into the run store; `migrate_layout.py` is the move off the
-pre-restructure tree, kept for any bucket that still holds one;
+**`maintenance/` — one-offs.** Two of these have finished and are deleted:
+`backfill_replicate.py` (a one-shot import of historical Replicate predictions,
+which nothing records ever running, and whose target population only shrank as
+Replicate purged old prediction inputs and outputs) and `migrate_layout.py`
+(the move off the pre-restructure `media/<owner>/` tree — see the historical
+section under [The two trees](#the-two-trees--characters-and-projects)).
 `catalog_seed.py` (`studio catalog plan | seed | verify`) records the bucket as
 it already stands into the DynamoDB catalog, copying and deleting nothing;
 `catalog_gc.py` (`studio catalog gc`) is the fourth catalog phase and the only
@@ -586,10 +681,10 @@ written under; `dev_seed.py` (`studio dev-seed tree | publish`) **promotes** a
 handful of nodes out of a dev stack into the shared seed fixture — it calls no
 model and costs nothing, and its gate is hard rule #1 rather than money.
 
-`catalog_seed.py` and `migrate_layout.py` are the same shape deliberately — phases as separate invocations,
-`--dry-run` unless `--apply`, a journal under `local/migrations/` — because the
-ordering between phases is the safety property in both. What they do not share
-is a rewrite phase: a rewrite patches the keys recorded *inside* run and scene
+`catalog_seed.py` has the shape `migrate_layout.py` had — phases as separate
+invocations, `--dry-run` unless `--apply`, a journal under `local/migrations/` —
+because the ordering between phases is the safety property. What it never had is
+a rewrite phase: a rewrite patches the keys recorded *inside* run and scene
 documents when objects move, and the catalog seed moves nothing.
 
 ---

@@ -479,13 +479,20 @@ Cognito pool 500s on every call, so failing early is the faster way to find out.
 
 ## The seed bucket
 
-**Declared, and empty whether or not it exists.** `studio-dev-seed-us-east-1` is
-`modules/dev_seed`, wired into `envs/prod/main.tf`, so CI applies it alongside
-every other studio infra change. This section used to say "declared, never
-applied — the bucket still does not exist", which was written before a later
-change under `studio/infra/` deployed. **Do not read a claim about existence out
-of this file**; `terraform -chdir=studio/infra/envs/prod state list` answers it,
-and needs only the S3 backend rather than provider credentials.
+**Applied, and empty.** `studio-dev-seed-us-east-1` exists —
+`arn:aws:s3:::studio-dev-seed-us-east-1`, `us-east-1`, confirmed by
+`head-bucket` on 2026-08-22. It is `modules/dev_seed`, wired into
+`envs/prod/main.tf`, so CI applied it alongside a later change under
+`studio/infra/`.
+
+This section twice said otherwise. It first said "declared, never applied — the
+bucket still does not exist", written before that deploy and then believed
+rather than rechecked. Correcting it, the next version refused to claim
+anything either way and pointed at `terraform state list`. That was honest but
+it is not what a reference is for: one `head-bucket` settles it, and a document
+that declines to answer its own question makes every reader run the same
+command. The lesson worth keeping is the first one — **an existence claim about
+infrastructure rots the moment CI runs, so date it or check it.**
 
 **What is certain is that nothing has ever been published into it.** No fixture
 exists — `studio/fixtures/dev-seed/` is not in this repo and `studio dev-seed

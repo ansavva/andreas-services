@@ -119,7 +119,7 @@ def new_run_id(slug: str, when: dt.datetime | None = None) -> str:
 
 
 def run_prefix(project: str, run_id: str) -> str:
-    """Tree-relative — feeds `list_keys`. Use `run_key` for get/put."""
+    """Tree-relative — addresses a FOLDER. Use `run_key` for get/put."""
     return P.run_prefix(project, run_id)
 
 

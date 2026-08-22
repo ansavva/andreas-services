@@ -7,8 +7,8 @@ description: Add a new Replicate model to the studio-* harness — fetch its liv
 
 Models are **data**. Adding one is an entry in the model registry plus a skill
 page — no submitter to write, no five files to edit. Once registered, a model is
-immediately invokable by `studio run --model <key>`, importable by the backfill,
-and convertible for by `studio convert --for <key>`.
+immediately invokable by `studio run --model <key>` and convertible for by
+`studio convert --for <key>`.
 
 Onboarding is two jobs with a clean seam. The command does the part that is
 mechanical — fetch, infer, propose, write the registry. **You write the page**,
