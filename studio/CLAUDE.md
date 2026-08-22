@@ -6,18 +6,20 @@ identity. Everything else in this file is an index.
 
 ## What studio is
 
-Studio is one service with two halves that share one S3 bucket.
+Studio is one service with two halves that share one library.
 
 | Half | Where | Runs | Doc |
 |---|---|---|---|
-| **The pipeline** — makes the media | `pipeline/` (code) + `.claude/skills/` (docs) | Locally, inside Claude, under your own AWS login. **Never deploys.** | [docs/PIPELINE.md](docs/PIPELINE.md) |
+| **The pipeline** — makes the media | `pipeline/` (code) + `.claude/skills/` (docs) | Locally, inside Claude, on the token `studio login` stores — **no AWS credentials at all** (#308). **Never deploys.** | [docs/PIPELINE.md](docs/PIPELINE.md) |
 | **The app** — browses the media | `backend/`, `frontend/` | `studio.andreas.services` + `studio-api.andreas.services`, deployed by CI | [docs/WEB_APP.md](docs/WEB_APP.md) |
 | The library both read | `infra/modules/catalog` + `infra/modules/media` | prod: `studio-prod-catalog` + `s3://studio-prod-media-us-east-1/`. Locally: this machine's dev stack. | [infra/README.md](infra/README.md) |
 
-**That row used to name the prod bucket flatly, and it is now two corrections
+**That row used to name the prod bucket flatly, and it is now three corrections
 deep.** The library is a DynamoDB table with an S3 bucket behind it — nothing
-lists the bucket to find out what exists — and the pipeline half runs against
-this machine's `studio-dev-<short12>-*` stack, not against prod.
+lists the bucket to find out what exists; the pipeline half runs against this
+machine's `studio-dev-<short12>-*` stack, not against prod; and it reaches it
+through the API rather than through an AWS login of its own. Only the four
+`maintenance/` one-shots and `adapters/ddb.py` still need `aws login`.
 
 That split is unusual for this monorepo, where a service directory is normally a
 deployable unit and nothing else. It is deliberate: the tools that produce the
@@ -116,10 +118,12 @@ production library.
 
 **That is the design, and the last step of it has not been taken.** The loader
 is `dev-aws-seed.sh` (#285); the seed bucket and the writer are #284 —
-`infra/modules/dev_seed` and `studio dev-seed publish`, both landed, **neither
-ever executed.** The bucket has not been applied and nothing has been published
-into it. So a stack today is still empty apart from the shared material, and the
+`infra/modules/dev_seed`, wired into `envs/prod` and applied by CI, and `studio
+dev-seed publish`. Both landed; **`publish` has never been run.** So no fixture
+exists, a stack today is still empty apart from the shared material, and the
 paragraph above describes where this is going rather than what you will find.
+(This used to add that the bucket had never been applied. Do not assert that
+either way from here — see [infra/README.md](infra/README.md).)
 
 What is left is not code. `publish` **promotes** a fixture out of a dev stack
 rather than generating one — it calls no model and costs nothing — so someone
@@ -168,12 +172,15 @@ studio dev-seed publish --path <p>                   # promote a fixture (dry ru
 ./studio/scripts/dev-aws-destroy.sh                  # tear it down; the machine id is kept
 ```
 
-**`dev-aws-seed.sh` has never loaded anything.** The bucket it reads is declared
-but not applied, and no fixture has been published into it — so the script stops
-on its first read and says so. It is human-gated, but not because publishing
-generates media: `studio dev-seed publish` is a copy. What
-a fresh stack actually holds is the shared material `dev-setup.sh` pushes: the
-pose plates, and a starting `phrasebook/wording.yaml` (#425).
+**`dev-aws-seed.sh` has never loaded anything**, because no fixture has been
+published — so the script stops on its first read and says so. It is
+human-gated, but **not because publishing generates media**: `studio dev-seed
+publish` promotes nodes that already exist, calls no model and costs nothing.
+The gate is hard rule #1 — `catalog.json` lands in git, so the publisher refuses
+a stack whose path segments are not placeholder-shaped and requires
+`--placeholders-only` before `--apply`. What a fresh stack actually holds is the
+shared material `dev-setup.sh` pushes: the pose plates, and a starting
+`phrasebook/wording.yaml` (#425).
 
 **`STUDIO_DEV_MACHINE_ID` targets a stack this machine did not create.** Export
 it and every command above agrees, because `dev-aws-common.sh` persists it. Two
@@ -188,8 +195,9 @@ built from it. Losing it strands a running, billing stack.
 
 ## Which skill
 
-**Load one before doing anything else in `studio/`.** Sixteen skills in **two
-families**; route by what the task *changes*, not by what it mentions.
+**Load one before doing anything else in `studio/`.** Eighteen skills in **two
+families** — seventeen `studio-media-*` and one `studio-code-*`; route by what
+the task *changes*, not by what it mentions.
 
 | If the task changes… | Load | Examples |
 |---|---|---|
@@ -230,7 +238,7 @@ when you are unsure a command exists.
 | Write a tight, repeatable video prompt | `studio-media-prompt` |
 | Invoke a model generically, or inspect its schema | `studio-media-core` |
 | Register a new Replicate model | `studio-media-add-model` |
-| Pick a video engine | `studio-media-seedance` · `studio-media-kling` |
+| Pick a video engine | `studio-media-seedance` · `studio-media-kling` · `studio-media-veo-3-1` · `studio-media-grok-imagine-video` |
 | Pick an image engine | `studio-media-nano-banana-pro` · `studio-media-nano-banana-2` · `studio-media-gpt-image-2` · `studio-media-gpt-image-1-5` |
 
 **Ask which project before generating anything.** Work is addressed as

@@ -34,7 +34,7 @@ def _seed(s3, ddb, **over):
 
 
 def _get(ddb, pk, sk):
-    got = ddb.get_item(TableName=ddbc.TABLE, Key={"pk": {"S": pk}, "sk": {"S": sk}})
+    got = ddb.get_item(TableName=ddbc.table(), Key={"pk": {"S": pk}, "sk": {"S": sk}})
     return ddbc.from_item(got["Item"]) if "Item" in got else None
 
 
@@ -232,7 +232,7 @@ def test_every_node_is_reachable_through_the_by_path_index(media_bucket, catalog
     """A subtree listing is a `begins_with` — and an index drops a row missing a key."""
     plan, _ = _seed(media_bucket, catalog_table)
     page = catalog_table.query(
-        TableName=ddbc.TABLE, IndexName="by-path",
+        TableName=ddbc.table(), IndexName="by-path",
         KeyConditionExpression="#l = :lib AND begins_with(#p, :root)",
         ExpressionAttributeNames={"#l": "lib", "#p": "path"},
         ExpressionAttributeValues={":lib": {"S": plan["lib"]},
@@ -291,7 +291,7 @@ def test_verify_reports_a_node_missing_its_by_parent_item(media_bucket, catalog_
     plan, _ = _seed(media_bucket, catalog_table)
     node = next(n for n in plan["nodes"] if n["kind"] == "file")
     catalog_table.delete_item(
-        TableName=ddbc.TABLE,
+        TableName=ddbc.table(),
         Key={"pk": {"S": f"NODE#{node['parent_id']}"},
              "sk": {"S": f"NAME#{node['name']}"}})
 
@@ -338,7 +338,7 @@ def test_seed_refuses_when_the_table_does_not_exist(media_bucket, tmp_path, monk
         cli.main, ["catalog", "seed", "--owner-sub", OWNER_SUB])
 
     assert result.exit_code == 1
-    assert ddbc.TABLE in result.output
+    assert ddbc.table() in result.output
 
 
 def test_seed_and_verify_run_from_the_cli(shared_objects, catalog_table, tmp_path,

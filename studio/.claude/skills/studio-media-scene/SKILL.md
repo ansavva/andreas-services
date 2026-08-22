@@ -59,7 +59,8 @@ model renders from.
     plan  ->  panels  ->  shots  ->  the cut
 
 The plan is a local JSON file you write and ingest. It is prose about a
-particular scene, so it lives in the bucket as data, never in the repository.
+particular scene, so it lives in the library as data — a node in the catalog,
+under the scene it plans — never in the repository.
 
 ```json
 {
@@ -273,9 +274,15 @@ Shot order is cut order, taken from the plan. The scene lands at
 `projects/<project>/scenes/<slug>/` with `scene.json`, the source clips copied
 into `shots/`, and the stitched video in `output/`.
 
-Re-cutting **overwrites** `output/<slug>.mp4`. The bucket versions every object
-and grants no delete-version permission, so a previous cut is superseded rather
-than destroyed.
+Re-cutting **overwrites** `output/<slug>.mp4`: the path keeps its record, so
+everything naming the scene stays true, and the folder shows current state
+instead of accumulating cuts nobody prunes.
+
+**Do not count on getting the previous cut back.** Production keeps prior
+revisions; a local dev stack deliberately does not, and your commands run
+against a dev stack. If a cut is worth keeping, keep it under its own slug
+before re-cutting — this is the page you are on when you re-cut, so it is the
+page that has to say so.
 
 No storyboard? `studio scenes assemble <project>/<slug> --shot <runref> --shot
 <runref>` appends runs directly, so "just stitch these three clips" is still one

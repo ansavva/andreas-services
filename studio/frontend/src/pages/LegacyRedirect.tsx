@@ -28,8 +28,10 @@ import { folderPath, legacyPath, objectPath, ROOT_PATH } from "../utils/location
  *
  * **A failure is shown, not swallowed.** A link that resolves to nothing is a
  * link somebody is holding that no longer works, and quietly landing them on the
- * root would make it look like it did. This is also the piece with a test:
- * nothing else in this app is a promise made to URLs written before it existed.
+ * root would make it look like it did. It is also the piece whose test exercises
+ * the whole route table (`LegacyRedirect.test.tsx` renders `StudioRoutes`),
+ * because nothing else in this app is a promise made to URLs written before it
+ * existed.
  */
 export function LegacyRedirect() {
   const location = useLocation();

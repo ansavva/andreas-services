@@ -33,8 +33,9 @@ or a credential. Two consequences worth knowing:
   studio convert --key projects/<p>/input/<p>_in_3.webp \
       --to png --dest-key projects/<p>/input/<p>_in_3.png
 
-Prints the new S3 key. With `--for`, an already-compatible image is left alone
-and its existing key is printed, so the command is safe to run unconditionally.
+Prints the new name path. With `--for`, an already-compatible image is left
+alone and its existing path is printed, so the command is safe to run
+unconditionally.
 """
 from __future__ import annotations
 
@@ -81,6 +82,11 @@ def _into_input_pool(project: str, data: bytes, ext: str) -> str:
 @click.command(help=__doc__)
 @click.option("--add-input", help=("Write into PROJECT's input pool as <project>_in_<n> (the usual "
               "destination)."))
+# `--dest-key` / `--key` and their help text say "S3 key" and take a NAME PATH.
+# Both are frozen: `tests/cli_surface_reference.json` is the argparse-era capture
+# of the CLI surface and `test_help_text_survived` compares these strings against
+# it, so correcting the wording here is a contract change and not a comment fix.
+# Same standing as `--expires` in `objects/presign.py`.
 @click.option("--dest-key", help="Explicit destination S3 key instead.")
 @click.option("--for", "for_", type=click.Choice(["gpt-image-1.5", "gpt-image-2", "kling", "nano-banana-2", "nano-banana-pro", "seedance"]), help="Convert only if this engine would reject the current format.")
 @click.option("--key", help="Source S3 key (full).")

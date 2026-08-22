@@ -106,8 +106,11 @@ behind. So:
   `prevent_destroy`.** `prevent_destroy` is a Terraform lifecycle guard: it
   errors at plan time, so a `terraform destroy` over this state fails. It says
   nothing about a `-target`ed destroy of this table alone, a console click, or a
-  stray CLI call — and studio's pipeline half runs under a human's own AWS login
-  with real credentials, so those are the paths that matter here. It is also the
+  stray CLI call — and there is a human in this account who signs in with
+  `aws login` to run Terraform, the `maintenance/` one-shots and the `dev-aws-*`
+  scripts, so those are the paths that matter here. (This used to say the
+  *pipeline* ran under that login. Since #308 it does not; the risk is unchanged,
+  because the human still does.) It is also the
   half PITR does not cover: PITR pays to recover, out of band, into a *new*
   table, by someone who first has to notice. This makes the delete fail instead,
   at the moment a person can still change their mind. Turning it off is an
@@ -443,9 +446,9 @@ eval "$(aws configure export-credentials --format env)"   # the provider needs t
 ```
 
 `dev-aws-seed.sh` is in the list because that is where it belongs, not because
-it works: it stops on its first read until #284 publishes a fixture. It is
-listed after `dev-user.sh` because the library it writes needs a member, and the
-`sub` comes from the dev pool.
+it works: it stops on its first read until a fixture is published. #284 landed
+the publisher; nobody has run it. It is listed after `dev-user.sh` because the
+library it writes needs a member, and the `sub` comes from the dev pool.
 
 ```bash
 ./studio/scripts/dev-aws-reset.sh --dry-run          # what a reset would remove
@@ -461,10 +464,12 @@ Cognito pool 500s on every call, so failing early is the faster way to find out.
 
 > **What you get today is a stack with only the shared material in it.** The
 > bucket, the table and the pool are provisioned; `dev-aws-seed.sh` exists
-> (#285) and stops on its first read, because the fixture it loads is #284 and
-> **has never been published** — there is nothing to download and nothing that
-> script has ever loaded end to end. `dev-aws-reset.sh` empties a stack and does
-> not re-seed.
+> (#285) and stops on its first read, because **no fixture has ever been
+> published** — there is nothing to download and nothing that script has ever
+> loaded end to end. Its first read is `v1/catalog.json` out of the seed bucket,
+> and it fails identically whether that object is missing or the bucket is,
+> which is why the message names the fixture. `dev-aws-reset.sh` empties a stack
+> and does not re-seed.
 >
 > What *is* there is what `dev-setup.sh` pushes: the pose plates under
 > `config/`, and — since #425 — a starting `phrasebook/wording.yaml`, copied
@@ -474,13 +479,21 @@ Cognito pool 500s on every call, so failing early is the faster way to find out.
 
 ## The seed bucket
 
-**Declared, never applied.** `studio-dev-seed-us-east-1` is `modules/dev_seed`,
-wired into `envs/prod` — and no `terraform apply` has run since, so the bucket
-still does not exist and `scripts/dev-aws-seed.sh` still stops on its first
-read. Nothing below has been executed. What changed with #284 is that the
-design is now code that CI will apply on the next studio infra change, rather
-than a comment in `modules/dev_storage/main.tf` describing a bucket nobody had
-written.
+**Declared, and empty whether or not it exists.** `studio-dev-seed-us-east-1` is
+`modules/dev_seed`, wired into `envs/prod/main.tf`, so CI applies it alongside
+every other studio infra change. This section used to say "declared, never
+applied — the bucket still does not exist", which was written before a later
+change under `studio/infra/` deployed. **Do not read a claim about existence out
+of this file**; `terraform -chdir=studio/infra/envs/prod state list` answers it,
+and needs only the S3 backend rather than provider credentials.
+
+**What is certain is that nothing has ever been published into it.** No fixture
+exists — `studio/fixtures/dev-seed/` is not in this repo and `studio dev-seed
+publish --apply` has never been run — so `scripts/dev-aws-seed.sh` still stops
+on its first read. That used to be true for two reasons; it is now true for one.
+Nothing below has been executed either way. What changed with #284 is that the
+design is code rather than a comment in `modules/dev_storage/main.tf` describing
+a bucket nobody had written.
 
 **Why `envs/prod` owns it.** Its name says `dev` because that is who it serves;
 the root says prod because that is the only studio root with an account-level
@@ -570,9 +583,12 @@ slug, and a face is not text.
 
 ### The two documents
 
-`v1/catalog.json` and `v1/manifest.json`, **authoritative in
-`studio/fixtures/dev-seed/<version>/`** and copied into the bucket byte-identical
-for the loader. `dev-aws-seed.sh`'s header specifies them field by field — it
+`v1/catalog.json` and `v1/manifest.json`. **The contract is that they are
+authoritative in `studio/fixtures/dev-seed/<version>/`** — `FIXTURE_DIR` in
+`dev_seed.py` — and copied into the bucket byte-identical for the loader, so
+`catalog.json` is reviewable in git before anything reaches a machine. That
+directory is not in the repo today: the first `publish --apply` is what creates
+it, so read this as the contract it is rather than somewhere to go and look. `dev-aws-seed.sh`'s header specifies them field by field — it
 shipped first and its author constructed the schema because #284 only sketched
 it. That contract is no longer one-sided: `test_dev_seed.py` feeds the
 publisher's output through the loader's own `fixture_problems` shell function, so
@@ -582,10 +598,10 @@ somebody's machine. Neither side needed changing to make them agree.
 `v1/` is a version **prefix**, not object versioning: a fixture change is
 additive and a machine is re-seeded to a known revision by naming `v2/`.
 
-Two things are still true and worth saying plainly: **the bucket has never been
-created, and nothing has ever been published to it.** Until a human runs
-`studio dev-seed publish --apply` against a stack they have driven, a fresh dev
-stack holds only the shared material `dev-setup.sh` pushes.
+One thing is worth saying plainly: **nothing has ever been published.** Until a
+human runs `studio dev-seed publish --apply` against a stack they have driven, a
+fresh dev stack holds only the shared material `dev-setup.sh` pushes — whether or
+not the bucket is standing there empty by then.
 
 ---
 

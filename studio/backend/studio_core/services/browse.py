@@ -67,8 +67,11 @@ def clean_sort(raw: str | None) -> str:
 # the reverse of how it reads. A listing is a query on `pk = NODE#<parent>`, so
 # an id is the thing it already needs; a path has to be walked from the library
 # root one `GetItem` per segment before the listing can start. `prefix` survives
-# because the SPA and every share link ever handed out are still paths of names
-# — #313 moves them onto ids, and this walk goes with them.
+# because share links are paths of names: #313 moved the SPA itself onto ids —
+# it routes on `/f/<node_id>` and `/o/<node_id>` now — but a link already sitting
+# in somebody's messages cannot be rewritten, so the walk stays for those. The
+# removal this note used to promise is not coming from #313; it comes whenever
+# the legacy links stop being served.
 
 
 def _segments(raw: str | None) -> list[str]:
@@ -249,9 +252,11 @@ def _file_entry(record: dict, prefix: str) -> dict:
     materialised index of ancestor ids that a move rebuilds.
 
     For everything written before the catalog the name path and the blob key are
-    the same string, which is what lets the key-addressed write routes keep
-    working until #316 retires them. They are not the same string for anything
-    written since, and nothing here may assume they are.
+    the same string, which is what let the read path move onto rows first (#309).
+    #316 did not retire the name-path routes — it made them catalog writes that
+    still take a name path — so that coincidence is still load-bearing for
+    anything written before the table. The two are not the same string for
+    anything written since, and nothing here may assume they are.
 
     `size`, `content_type` and the timestamp come off the row (#311). `kind` and
     `language` are still classified from the extension, because `content_type`

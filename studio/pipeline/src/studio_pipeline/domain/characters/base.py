@@ -5,9 +5,10 @@ one all import it and none imports another's commands, so the package has no
 cycle to reason about — which the single file did have, in the form of `curate`
 and `shoot` importing it back and being deferred to function scope for it.
 
-Nothing here reaches storage on its own. `pool_max_index` and `put_file` still
-take an S3 client because their call sites do; that goes with the API migration
-and not with the move.
+Nothing here reaches storage on its own. `pool_max_index` and `put_file` took an
+S3 client when this was split out, deferred to the API migration rather than
+done with the move. That migration landed: neither takes a client now, no call
+site passes one, and both go through `adapters/store` like everything else.
 """
 from __future__ import annotations
 

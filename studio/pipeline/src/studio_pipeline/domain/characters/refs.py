@@ -10,8 +10,10 @@ sent when nobody picks, and `resolve_selection` turns a `--pick` / `--pick-tag`
 With subfolders a filename number is unique only within its group, so the
 position a model sees is the only stable citation.
 
-Every write goes through `profile.write_profile`, which refuses on a changed
-ETag — so a description written while someone else was editing the bible fails
+Every write goes through `profile.write_profile`, which refuses when the node's
+`updated_at` has moved since the read — it was the S3 ETag until the catalog
+stopped exposing one (`profile.py` says why `updated_at` is a sound substitute).
+Either way a description written while someone else was editing the bible fails
 instead of quietly dropping their edit.
 """
 from __future__ import annotations

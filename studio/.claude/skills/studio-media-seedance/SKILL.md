@@ -1,39 +1,50 @@
 ---
 name: studio-media-seedance
-description: Generate videos with ByteDance Seedance 2.0 via the Replicate MCP — the scripted/API engine of the studio-* family. Use whenever the user wants to create, generate, or render a video, clip, animation, or motion piece (with optional native audio, first/last-frame images, or reference images/videos/audio). Covers the model input schema, the create-then-poll flow, output naming, and how images reach Replicate (presigned S3 URLs). Part of the studio-* family: pair with studio-media-prompt (--engine seedance) to author the prompt and studio-media-character for on-model character videos. For renders on the Kling models use studio-media-kling instead.
+description: Generate videos with ByteDance Seedance 2.0 via `studio run --model seedance` — the multimodal engine of the studio-* family, with native audio, first/last-frame images, and reference images, videos and audio. Use whenever the user wants to create, generate, or render a video, clip, animation, or motion piece on Seedance. Covers the model input schema, the mutually exclusive image fields, the duration and resolution ranges, and how references reach Replicate (presigned URLs the runner mints at submit time). Pair with studio-media-prompt (--engine seedance) to author the prompt and studio-media-character for on-model character videos. For renders on the Kling models use studio-media-kling instead.
 ---
 
 # studio-media-seedance — Seedance 2.0 video generation
 
-The **scripted/API** rendering engine of the **`studio-*`** family. Generate videos by creating a
-Replicate prediction against **`bytedance/seedance-2.0`**
-(<https://replicate.com/bytedance/seedance-2.0>) through the **Replicate MCP
-server**, polling it, and saving the output MP4 to S3. There is no build step —
-the "work" is the MCP call, the poll, and the download.
+The **multimodal** rendering engine of the **`studio-*`** family: nine reference
+images, reference *videos* and *audio*, native synced sound, and an intelligent
+duration mode none of the others have.
 
-> **Which engine?** This skill is **Seedance 2.0**. For the **Kling 3.0 / O3 Omni**
-> models — also on Replicate — use **`studio-media-kling`**: different constraints
-> (3-15s, native multi-shot to 6 cuts, no seed) and, importantly, a **different
-> wording lists**, so a draft written for one may want rephrasing for the other,
-> so don't apply this skill's wording rules there.
+Rendered with **`bytedance/seedance-2.0` on Replicate**
+(<https://replicate.com/bytedance/seedance-2.0>) through the shared runner —
+`studio run --model seedance`. There is no separate submitter and no MCP path:
+one command records the run, mints the presigned URLs, polls, and archives the
+finished video into the run.
+
+> **Which engine?** This skill is **Seedance 2.0**. For the **Kling 3.0 / O3
+> Omni** models — also on Replicate — use **`studio-media-kling`**: different
+> constraints (3–15 s, native multi-shot to 6 cuts, a start frame that combines
+> with references) and a **different wording list**, so a draft written for one
+> may want rephrasing for the other.
 
 The family:
-- **`studio-media-prompt`** — author the prompt as structured JSON (camera / subject /
-  action / scene / lighting / style / audio, multi-shot timelines). Its `input`
-  object drops straight into the call below. Use it for tight or repeatable
-  control; plain prose is fine for a quick one-off.
+- **`studio-media-core`** — the runner, the registry, and what validates before
+  anything bills. Everything on this page runs through it.
+- **`studio-media-prompt`** — author the prompt as structured JSON (camera /
+  subject / action / scene / lighting / style / audio, multi-shot timelines).
+  Its `input` object drops straight into `--input-file`. Use it for tight or
+  repeatable control; plain prose is fine for a quick one-off.
 - **`studio-media-character`** — for a video of a known/recurring character: it
   supplies the character's bible and the reference images this engine requires.
-  **FIRST load `studio-media-character`** — never generate a character from a text
-  prompt alone (see "Reference images are MANDATORY" below).
-- **`studio-media-s3`** — the media library holding references and
-  outputs live in.
+  **FIRST load `studio-media-character`** — never generate a character from a
+  text prompt alone (see "Reference images are MANDATORY" below).
+- **`studio-media-s3`** — where references and outputs live, and how they are
+  addressed.
+
+## A likeness is a likeness
+
+A character built from photographs of a real person is a real person's likeness.
+Settle consent before anything is published.
 
 ## The model: `bytedance/seedance-2.0`
 
 Multimodal video generation with **native audio**, multimodal reference inputs
 (images / video / audio), and intelligent duration control. Output is a single
-video file URL.
+video file.
 
 ### Input schema
 
@@ -53,16 +64,22 @@ video file URL.
 
 Key constraint: **`image`/`last_frame_image` and `reference_images` are mutually
 exclusive.** Use `image` for a specific first frame; use `reference_images` when
-you want a character/style carried across a freshly composed scene.
+you want a character/style carried across a freshly composed scene. The runner
+enforces this locally rather than letting Replicate reject a billed request.
 
-## Prompt approval gate (MANDATORY)
+`studio models show seedance` prints the live schema; it is authoritative over
+this table.
 
-**Before submitting any prompt to the model, show the user the exact final
-prompt text and wait for their explicit approval. Do not call
-`create_models_predictions` until they say yes.** Re-approve after any edit to
-the prompt. The gate covers the prompt sent to the model — the surrounding steps
-(presigning references, downloads, uploads, polling) do not need approval. This
-keeps output on-brief and avoids failed/billed renders.
+## Approval gate (MANDATORY) — the FULL payload
+
+**Show the user the complete payload as the two documents — `PROMPT` then
+`INPUT` — and wait for explicit approval before submitting.** Every parameter,
+not just the prompt text: a wrong `resolution` or a wrong `duration` bills
+exactly like a wrong prompt. Re-approve after **any** edit. A yes given to a
+plan, to a menu answer, or to a payload shown several messages ago is not
+approval of the request about to be sent.
+
+`--dry-run` renders exactly that review and bills nothing.
 
 ## Wording
 
@@ -71,97 +88,84 @@ broad-shouldered — carry the physique.
 
 `studio prompt` checks a draft against this model's wording list and suggests
 the preferred alternative where one is recorded; see
-`studio phrasebook show seedance`.
+`studio phrasebook show --model seedance`.
 
-## Submit with FRESH presigned URLs minted in code (MANDATORY)
-
-**Never hand-paste presigned reference URLs into a prediction call, and never
-reuse presigned URLs across calls.** They are ~2 KB each, expire, and a single
-mistyped character yields a 400/expired fetch and a dead (often billed) render.
-Instead, **mint fresh presigned URLs from code at the moment you submit**, using
-the existing presign code, and submit in the same step.
-
-Use the helper — it presigns the character's reference set fresh and POSTs the
-prediction directly to the Replicate HTTP API (needs `REPLICATE_API_TOKEN`), so
-no URL passes through the agent context:
+## Invoke
 
 ```bash
 # input.json = the built `input` object WITHOUT image/reference fields
 #   (studio-media-prompt: studio prompt prompt.json --emit input  → the .input object)
-set -a; . ./.env; set +a
 studio run \
   --model seedance --project <project> --input-file input.json \
-  --character <character> --slots 1,2,3,6 --slug <slug> --poll
+  --character <name> --slots 1,2,3,6 --slug <slug> --poll
 ```
 
-The helper serves **both** video engines (`--engine seedance|kling`), records the
-run, mints references fresh (deleting any image/reference fields baked into the
-input file), and on `--poll` archives the finished video into the run.
-`--slots` picks which reference numbers map to `[Image1..N]` in order; omit it to
-use the whole set. `--dry-run` prints the payload and bills nothing. Only fall
-back to the MCP `create_models_predictions` tool for a job with no images at all
-— and then record the run by hand.
+The runner serves every registered model, image and video. It records the run
+before submitting, resolves the character's selection to paths, mints fresh
+presigned URLs at submit time (dropping any image/reference fields baked into
+the input file), and on `--poll` archives the finished video into the run.
+`--slots` picks positions **within the resolved selection**, which is what
+`[Image1..N]` refers to; omit it to send the whole selection. `--dry-run` prints
+the payload and bills nothing.
+
+**`--project` is required and never inferred.** Where output lands is the one
+thing rerunning a command cannot undo, so it is asked for rather than guessed.
+
+**Never paste a presigned URL by hand.** They are ~2 KB each, they expire, and a
+single mistyped character yields an expired fetch and a dead — often billed —
+render. The runner mints them in the same step that submits, so none passes
+through the agent context.
+
+**Never `Prefer: wait` on a video job.** Seedance renders take longer than the
+60 s wait window, and a timed-out wait retries internally, creating **duplicate
+predictions that all bill**. The runner creates and then polls, which is what
+`--poll` does.
 
 ### Chaining — animate a frame from a studio-media-image run
 
 ```bash
 studio run \
-  --model seedance --project <project> --input-file input.json --project <project> \
+  --model seedance --project <project> --input-file input.json \
   --start-run <project>/latest#1 --slug <slug> --poll
 ```
 
 `--start-run` / `--end-run` bind an earlier run's output to `image` /
-`last_frame_image`; `--ref-run` adds a run's output as reference material. Since
-`image` and `reference_images` are mutually exclusive here, the helper **refuses**
-a start frame combined with `--character`/`--ref-run` rather than letting Replicate
+`last_frame_image`; `--ref-run` adds a run's output as reference material;
+`--start-key` / `--end-key` / `--key` take an explicit path. Since `image` and
+`reference_images` are mutually exclusive here, the runner **refuses** a start
+frame combined with `--character`/`--ref-run` rather than letting Replicate
 reject it — a start frame already carries identity. (On Kling the two combine
-freely, so the same command with `--engine kling` is allowed.)
+freely, so the same command with `--model kling` is allowed.)
 
-## How to generate a video (MCP fallback, no references)
+### Output — the run owns it
 
-Use the Replicate MCP tool `create_models_predictions` with
-`model_owner: "bytedance"`, `model_name: "seedance-2.0"`, and an `input` object.
-
-**Do NOT set `Prefer: wait` on video jobs.** Seedance renders always take longer
-than the 60s wait window, and a timed-out `wait` call retries internally —
-creating **duplicate predictions that all bill** (this happened once and spent
-~2 clips of compute for one result). Instead, create the prediction with no
-`wait`, take the returned `prediction_id`, and poll `get_predictions` until
-`status` is `succeeded`, `failed`, or `canceled`. On success, `output` is the
-video URL — download it with `curl` and hand the local path back to the user.
-
-If a create call ever errors or times out, **don't blindly re-create it** —
-first `list_predictions` (filtered to `bytedance/seedance-2.0`) to see whether a
-job is already `processing`/`succeeded`, and `cancel_predictions` any duplicates.
-
-### Output location (always) — the run owns it
-
-Generated videos are stored in the **media library**, not in git, and every
-submission is a **run**:
+Generated videos are stored in the media library, never in git, and every
+submission is a **run** under the **project**:
 
 ```
 projects/<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/
-    request.json    what we sent — references as S3 KEYS, never signed URLs
+    request.json    what we sent — references as paths, never signed URLs
     prompt.json     the studio-media-prompt source, when one was used
     result.json     prediction id, status, media types, output keys
     output/         the rendered video
 ```
 
-The owner is the character, or `misc` for a video not tied to one. `--poll`
-archives the finished video into its run automatically, so there is no separate
-upload step — the flow is still download-then-upload, so video bytes never pass
-through the agent context.
+A run belongs to a project, not to a character: one piece of work can involve
+several characters, and `request.json` records `characters[]` alongside
+`project` so "every run using this character" stays answerable. There is no
+`misc` owner and no per-character `output/` folder — that shape is what the
+two-tree split abolished.
 
-Inspect and chain runs with the shared store:
+`--poll` archives the finished video into its run automatically, so there is no
+separate upload step, and the flow stays download-then-upload — video bytes
+never pass through the agent context.
 
 ```bash
-studio runs list <character>
+studio runs list <project>
 studio runs show <project>/latest
 studio runs outputs <project>/latest --presign
+studio runs find --character <name>
 ```
-
-There is no longer a per-character `output/` folder; pre-existing videos were
-imported into synthetic runs via `studio runs adopt`.
 
 Minimal example input:
 
@@ -177,84 +181,87 @@ Minimal example input:
 ### Reference images are MANDATORY for any character video
 
 **Rule (non-negotiable): never generate a video of a known character without
-passing that character's reference images in `reference_images`.** A text prompt
-alone drifts off-model. If you are about to call the model with only a `prompt`
-for a character, STOP and load **`studio-media-character`** first.
+sending that character's reference images.** A text prompt alone drifts
+off-model. If you are about to submit with only a `prompt` for a character,
+STOP and load **`studio-media-character`** first.
 
 - Seedance 2.0 accepts up to **9** `reference_images`. Reference them in the
   prompt as `[Image1]`, `[Image2]`, …
-- Each character keeps a **fixed, numbered reference set in S3** (at
-  `characters/<character>/reference/`), a chosen subset per generation so identity
-  stays locked without re-picking. **`studio-media-character`** hands you ordered
-  presigned URLs for it (`studio character refs <name> --presign`); under the hood
-  that is `studio presign --folder <character>/reference` (below).
+- **Slot N is position N in the resolved selection** — not a trailing file
+  number. Numbers in filenames are unique only within a group, so reading one as
+  a slot aims an instruction at whatever happens to sit in that position.
+- Each character's reference library is **indexed in its bible**, and a
+  selection is named (`--pick`, `--pick-tag`) or comes from `default_set`. An
+  over-cap selection is refused rather than truncated.
 - `reference_images` **cannot** be combined with `image` / `last_frame_image`.
 
-### How image files reach Replicate (presigned S3 URLs)
+### How reference images reach Replicate
 
-Replicate accepts a file input as a URL or an inline data URL. Since references
-and outputs live in **S3**, the primary path is a **presigned HTTPS URL**: the
-object stays private, Replicate fetches it via a short-lived signed URL, and only
-a short URL (never the bytes) enters the agent context. No `REPLICATE_API_TOKEN`
-is needed for references.
+Replicate accepts a file input as a URL. References live in the media library,
+so the path is a short-lived **presigned HTTPS URL** minted by the API: the
+store stays private, Replicate fetches the object during the job, and only a
+short URL — never the bytes — exists anywhere. No `REPLICATE_API_TOKEN` is
+needed for references.
+
+Normally you never do this by hand: `--character <name>` on the runner resolves
+the selection and presigns it. To look at what a selection resolves to first:
 
 ```bash
-# References for a character — ordered presigned URLs (via studio-media-character)
-studio character refs <character> --presign --json > refs.json
-# equivalently, straight from the studio-media-s3 skill:
-studio presign --folder <character>/reference --json > refs.json
-# -> [{ "key": "characters/<character>/reference/face/<character>_1.webp", "url": "…" }, …]
-# Pass the .url values as reference_images; <character>_1 -> [Image1], <character>_2 -> [Image2], ...
-
+studio character refs <name> --describe
+studio character refs <name> --pick-tag face --presign --json > refs.json
+# -> [{ "key": "characters/<name>/reference/face/<name>_face_4.jpg", "url": "…" }, …]
 ```
 
-### THE RULE — S3 is the only origin
+`refs` resolves the **bible's index** — which is why the index exists. Do not
+substitute a folder listing for it: `reference/` holds purpose subfolders
+(`face/`, `body/`, `wardrobe/` …), listings are one folder deep, and the folder
+does not say what any image shows. `studio presign --folder` is for a folder of
+files you already know, e.g.:
+
+```bash
+studio presign --folder characters/<name>/reference/face --json
+```
+
+### THE RULE — the store is the only origin
 
 **Assets are never uploaded to Replicate.** Everything sent to a model must
-already be an S3 object and reaches Replicate only as a short-lived **presigned
-URL** minted at submit time. For an ad-hoc local image, upload it to S3 first,
-then reference its key:
+already be in the media library and reaches Replicate only as a short-lived
+presigned URL minted at submit time. For an ad-hoc local image, put it in the
+library first — `studio upload` mints the catalog record and the presigned PUT
+together, so no cloud credential is involved:
 
 ```bash
-studio upload --folder <character>/originals <img>
+studio upload --folder characters/<name>/corpus <img>
 ```
+
+A character has four pools — `reference/`, `corpus/`, `seed/`, `archive/` — and
+which one a file belongs in is a decision, not a default. Working material for a
+piece of work goes in the **project's** input pool instead
+(`studio projects add-inputs <img> <project>`).
 
 The two former escape hatches — one that POSTed bytes to Replicate's Files
 API, one that inlined them as a base64 data URL — have been **removed**: both
 sent assets to Replicate, and the data-URL path also burned ≈1 token per
 character of agent context.
 
-Signed URLs are also never *stored*: `request.json` records S3 keys, and
-the run store refuses a URL-shaped binding. Keys are stable, so any run replays by
+Signed URLs are also never *stored*: `request.json` records paths, and the run
+store refuses a URL-shaped binding. Paths are stable, so any run replays by
 re-minting fresh URLs.
 
 ### Full-res references, zero context cost
 
 **Seedance and Replicate do NOT require tiny references** — sharper references
-give better character consistency, and presigned S3 URLs carry full-resolution
-images at zero context cost (only the short URL enters the agent context, and
-through the runner, not even that). The API sets the URL's lifetime and
-`--expires` is ignored — it is comfortably longer than a render job. See the
+give better character consistency, and presigned URLs carry full-resolution
+images at zero context cost. The API sets the URL's lifetime and `--expires` is
+accepted and ignored — it is comfortably longer than a render job. See the
 **`studio-media-s3`** skill for details and for `studio login`.
-
-## Available Replicate MCP tools (common)
-
-- `get_models` / `get_models_readme` — inspect a model's schema and docs.
-- `create_models_predictions` — run an official model (this one).
-- `get_predictions` / `list_predictions` — poll or list runs.
-- `cancel_predictions` — cancel a running job.
-- `search` / `search_docs` — find models and client usage docs.
-
-Always pass a `jq_filter` to these tools to keep responses small (e.g.
-`{id, status, output, error}` when polling).
 
 ## Characters
 
 Characters are **data, not skills** — a single **`studio-media-character`** skill
-manages them all, and each one is an S3 record (`characters/<name>/` with a
-`profile.yaml` bible and a described `reference/` library). To generate an
-on-model character video, load **`studio-media-character`**: it reads the bible and
-hands you the fixed reference set as ordered presigned URLs; this engine skill is
-character-agnostic. A character's rendering style is chosen per video (realistic
-by default, or an optional stylized look from its bible §5), not fixed by the
-engine.
+manages them all, and each one is a record under `characters/<name>/` with a
+`profile.yaml` bible and a described `reference/` library. To generate an
+on-model character video, load **`studio-media-character`**: it reads the bible
+and resolves the reference selection; this engine skill is character-agnostic. A
+character's rendering style is chosen per video (realistic by default, or an
+optional stylized look from its bible) rather than fixed by the engine.

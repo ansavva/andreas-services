@@ -100,10 +100,15 @@ resource "aws_iam_role_policy" "logs" {
 #
 # What still holds the line:
 #
-#   * `services/keys.py` validates every key and prefix before it reaches boto3,
-#     and `assert_inside_root` refuses an operation aimed at the root itself, so
-#     "delete everything" is not expressible through the API. With the prefix
-#     empty this is the FIRST line of defence, not the second.
+#   * Every key that reaches `PutObject`, `DeleteObject` or `CopyObject` comes
+#     off a node record's `blob_key`, never off a request. This bullet used to
+#     name `services/keys.py` and `assert_inside_root` as the line of defence;
+#     #312 deleted that function along with six other string helpers, and what
+#     replaced it is the catalog — `services/manage` resolves a name path to a
+#     node and passes that node's key, and nothing outside `services/catalog`
+#     composes one, so "delete everything" is not expressible through the API.
+#     `keys.clean_key` still validates exactly one parameter, `GET /api/asset?key=`,
+#     which reads and cannot write. See `clients/aws/s3.py`.
 #   * There is no multipart grant. **There IS now a path that creates an object
 #     out of bytes the caller supplied**, and this paragraph used to say there
 #     was not — #294 was the separate decision this note asked for.
@@ -113,9 +118,13 @@ resource "aws_iam_role_policy" "logs" {
 #     the caller names), one exact content length, one content type, and a TTL
 #     shorter than a read URL's. A signed URL cannot be redirected at another
 #     object without invalidating itself.
-#     The rest still holds: `PutObject` here writes zero-byte folder markers,
-#     overwrites text files that already exist, and lands the destination half
-#     of a `CopyObject` — a rename, a move, or a favourite.
+#     The `PutObject` this role grants has exactly two callers left: `put_text`,
+#     which overwrites a text file that already exists, and the destination half
+#     of `copy_objects`. The
+#     zero-byte folder marker went with the listings that read it (#316, #317) —
+#     `manage.create_folder` writes one row and no objects — and a rename or a
+#     move is a catalog transaction that touches no bytes at all. Favourites are
+#     gone with the feature.
 #   * `s3:DeleteObjectVersion` is deliberately absent, and the bucket IS
 #     versioned (`modules/media`). So a delete through this role writes a
 #     tombstone it cannot then reach past: every erasure it can perform is
@@ -123,11 +132,12 @@ resource "aws_iam_role_policy" "logs" {
 #     it is why the versioning flag in `modules/media` is not hygiene.
 #
 # `GetObject` is what signs presigned URLs and what HeadObject checks against;
-# both read the same permission. `CopyObject` — which is what a rename, a move
-# and a favourite all are — needs `GetObject` on the source and `PutObject` on
-# the destination. Favourites need no grant of their own for that reason: the
-# source and the destination are both inside the same root everything else here
-# is scoped to.
+# both read the same permission. `CopyObject` needs `GetObject` on the source and
+# `PutObject` on the destination, so it needs no grant of its own: source and
+# destination are both inside the same root everything else here is scoped to.
+# `services.manage.copy_objects` is the only caller left. Renames and moves were
+# copies too, once — they are catalog transactions now and duplicate nothing, so
+# the shape of this grant is carried by one operation rather than four.
 data "aws_iam_policy_document" "media_access" {
   statement {
     sid       = "ListBrowsableRoot"
@@ -186,11 +196,11 @@ resource "aws_iam_role_policy" "media_access" {
 # the table IS.
 #
 # THE INDEX ARNs ARE NOT OPTIONAL. DynamoDB authorizes a Query against the index
-# it names, not against the base table, so with `<arn>` alone every `by-sk`,
-# `by-path` and `by-recent` query fails AccessDenied while a plain folder
-# listing — `pk = NODE#<parent>` on the base table — keeps working. That
-# asymmetry is exactly the sort that ships: the common path is fine, and the
-# reel, the subtree walk and "who is in this library" are what break.
+# it names, not against the base table, so with `<arn>` alone every `by-path` and
+# `by-recent` query fails AccessDenied while a plain folder listing —
+# `pk = NODE#<parent>` on the base table — keeps working. That asymmetry is
+# exactly the sort that ships: the common path is fine, and the reel and the
+# subtree walk are what break.
 # `/index/*` rather than three literals because every index is
 # `projection_type = ALL` over the same rows, so naming them one by one would
 # restrict nothing and would make adding a fourth index a two-module change.
@@ -254,11 +264,13 @@ resource "aws_lambda_function" "api" {
   role          = aws_iam_role.api.arn
   package_type  = "Image"
   image_uri     = local.api_image
-  # 15s was ample while every request was one listing. A folder rename is a
-  # CopyObject per key — server-side, so the bytes never move through here, but
-  # still one round trip each — and `STUDIO_MAX_FOLDER_OBJECTS` bounds that at
-  # 2000. The Lambda refuses anything larger rather than relying on this number,
-  # so the timeout is the backstop and the config value is the contract.
+  # 15s was ample while every request was one listing. A subtree operation is a
+  # chunked `TransactWriteItems` — a move rewriting `path` on every descendant, a
+  # delete removing two items per node — and `STUDIO_MAX_FOLDER_OBJECTS` bounds
+  # that at 2000. (It used to be a `CopyObject` per key, server-side but still one
+  # round trip each; since #316 a rename and a move move no bytes.) The Lambda
+  # refuses anything larger rather than relying on this number, so the timeout is
+  # the backstop and the config value is the contract.
   timeout     = 60
   memory_size = 512
 

@@ -8,7 +8,14 @@ import { RenameForm } from "../common/RenameForm";
 
 interface Props {
   name: string;
-  /** The folder's full S3 prefix — what a key under it starts with. */
+  /**
+   * The folder's full slash-joined *name* path.
+   *
+   * It used to be described as the S3 prefix, and both halves of that were
+   * wrong: it is not a key, and no blob key beneath it starts with it — the
+   * catalog puts every uploaded blob at `blobs/<node-id>`. Named `prefix`
+   * because that is what the write routes still call this address.
+   */
   prefix: string;
   onOpen: () => void;
   onRename: (name: string) => Promise<unknown>;
@@ -59,8 +66,10 @@ export function FolderCard({ name, prefix, onOpen, onRename, onMove, onDelete }:
         </span>
       </button>
 
-      {/* A folder has no object of its own, so what goes on the clipboard is the
-          prefix — which is what you actually want for an `aws s3 ls`. */}
+      {/* A folder has no object of its own, so what goes on the clipboard is its
+          name path. This used to claim that was what you want for an
+          `aws s3 ls`; it is not one, and the thing it is pasted into is the
+          `studio` CLI, which takes name paths and holds no AWS credentials. */}
       <ItemActions
         name={name}
         copyValue={prefix}

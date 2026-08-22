@@ -1,6 +1,6 @@
 ---
 name: studio-media-add-model
-description: Add a new Replicate model to the studio-* harness — fetch its live input schema and README, propose a registry entry for review, write it to models.json, then write the model's own skill page. Use whenever a new or different Replicate model should become invokable (a newer image model, another video engine, a model someone linked), or when an existing entry needs re-checking against a changed schema. Covers what to verify by hand, what belongs on a model page, and why the schema alone is not enough.
+description: Add a new Replicate model to the studio-* harness — fetch its live input schema and README, propose a registry entry for review, write it to the registry, then write the model's own skill page. Use whenever a new or different Replicate model should become invokable (a newer image model, another video engine, a model someone linked), or when an existing entry needs re-checking against a changed schema. Covers what to verify by hand, what belongs on a model page, and why the schema alone is not enough.
 ---
 
 # studio-media-add-model — onboarding a Replicate model
@@ -102,10 +102,13 @@ explain, and repeating them here is how they drift.
 | Failure modes | How output goes wrong on *this* model and what to change in the prompt |
 
 Two things not to write: **no character names anywhere** (hard rule 1 — use
-`<name>`), and **no module paths or function names**. A skill
+`<name>`), and **no module paths, file names or function names**. A skill
 describes the CLI surface; implementation belongs in
-[docs/PIPELINE.md](../../../docs/PIPELINE.md), and the pipeline test suite fails
-the build if a skill names one.
+[docs/PIPELINE.md](../../../docs/PIPELINE.md), and the **skills linter** fails
+the build if a media skill names one. That linter is not part of the pipeline
+test suite and deliberately does not live under `tests/` — checking markdown is
+not what that suite is for. Pre-commit runs it locally and the PR workflow
+enforces it; `studio-code-pipeline` says where it is.
 
 Everything in the table is in what `add-model` already printed, plus the model's
 README. If a section would be a `TODO`, the page is not finished — an unfinished
@@ -133,6 +136,8 @@ costs at most a retry.
 
 ## Retiring a model
 
-Delete its entry from `models.json` and its `studio-media-<name>/` directory. Past
-runs are unaffected: `runs/` is append-only history and records the Replicate
-model id, so an unregistered model still reads back as its raw id.
+Remove its entry from the registry and delete its `studio-media-<key>/` skill
+directory. `studio models` lists what is registered and `studio models show
+<key>` prints the entry, so you can see what is going. Past runs are unaffected:
+`runs/` is append-only history and records the Replicate model id, so an
+unregistered model still reads back as its raw id.

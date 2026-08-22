@@ -55,10 +55,18 @@ split: `studio runs find --character <name>`.
 | Holds | generated imagery — face angles, body turnarounds, wardrobe, in-world frames | uploads, keeper clips | the founding photographs | rejects, superseded takes |
 | Sent to a model | a **chosen subset** | only by explicit key | rarely, by explicit key | **never**, unless the user names it |
 | Indexed | yes — every image described in the bible | no | no | no |
-| Numbered | `<name>_<group>_<n>.<ext>` within a group | basenames kept | basenames kept | basenames kept |
+| Numbered | yes, within a group | basenames kept | basenames kept | basenames kept |
 
 Only `reference/` is numbered, because only `reference/` is cited by slot.
 Renaming a source photo throws away whatever its filename recorded.
+
+**The numbering is what `add-refs` produces, not a rule you have to obey.** It
+names new images `<name>_<group>_<n>` continuing after that group's highest
+index, and `curate renumber` closes holes in it. Nothing reads a filename to
+decide anything: the bible's index says which image is which, and slot N is
+position N in the resolved selection. Naming conventions for folder contents
+were deliberately dropped everywhere else, and this is the residue of the one
+place a tool still generates them.
 
 The project's `input/` pool is a **separate thing entirely** — working material
 for a piece of work, not anything about a character. Frames pulled off a clip
@@ -137,9 +145,9 @@ not a file move.
 
 ## The bible is structured YAML — one schema, every character
 
-`profile.yaml` is canonical in S3 (edit it via this skill). The schema is
-[`characters/templates/profile.yaml`](../../../pipeline/src/studio_pipeline/domain/templates/profile.yaml) and **every character carries
-the same top-level keys**, so a prompt or a check reads a path
+`profile.yaml` is canonical in the library (edit it via this skill). One schema,
+and **every character carries the same top-level keys**, so a prompt or a check
+reads a path
 (`consistency.must`, `identity.signature_features`) instead of pattern-matching
 headings out of prose:
 
@@ -190,8 +198,8 @@ agent context. Requires `studio login` (see the `studio-media-s3` skill).
 ```bash
 studio character list                                  # every character
 studio character show <name>                           # print a character's profile.yaml (from S3)
-studio character create <name> --from-profile /tmp/<name>.md   # new character record
-studio character set-profile /tmp/<name>.md <name>     # replace the bible
+studio character create <name> --from-profile /tmp/<name>.yaml   # new character record
+studio character set-profile /tmp/<name>.yaml <name>     # replace the bible
 studio character edit <name>                           # pull the bible to edit locally; re-run to upload
 studio character add-refs /tmp/*.png <name> --to face  # add refs into a purpose group
 studio character refs <name> --describe                # what every image shows
@@ -232,7 +240,7 @@ It refuses a destination that already exists rather than merging into it.
 ### Editing a bible by hand (`edit`)
 
 `edit` round-trips `profile.yaml` so you can change it in a real editor. The first
-run **pulls** it to `local/characters/<name>.md` (git-ignored) and prints the
+run **pulls** it to `local/characters/<name>.yaml` (git-ignored) and prints the
 path; once that working copy exists, the next run **pushes** it back — so the
 loop is *run, edit, run again*. It prints a diff before uploading.
 
@@ -242,11 +250,25 @@ studio character edit <name> --diff     # what have I changed vs S3?
 studio character edit <name> --discard  # bin my local edits, re-pull
 ```
 
-It keeps two hidden sidecars next to the working copy — `.<name>.base.md` (the
-pristine pull, for the diff) and `.<name>.etag` (the S3 ETag at pull time). The
-ETag is what makes the push safe: if `profile.yaml` changed in S3 after you pulled,
-the upload is **refused** rather than silently clobbering that change. `--force`
-overrides, `--pull` / `--push` pin the direction, `--path` moves the working copy.
+It keeps two hidden sidecars next to the working copy — `.<name>.base.yaml` (the
+pristine pull, for the diff) and `.<name>.etag` (the version recorded at pull
+time). That second one makes the push safe: if the bible changed after you
+pulled, the upload is **refused** rather than silently clobbering the change.
+`--force` overrides, `--pull` / `--push` pin the direction, `--path` moves the
+working copy.
+
+**It is not an ETag, despite the filename.** The guard used to be the S3 ETag
+and is now the record's `updated_at`, because the catalog exposes no ETag and
+deliberately never will — nothing content-addressed leaves the API. The sidecar
+kept its old name, which is why the ETag reading survives; say `updated_at` when
+describing what is compared. Two consequences of the substitute: it has
+microsecond resolution, so two writes cannot share a value; and it moves on a
+rename or a move, which touch no bytes, so the check can refuse when it need not
+have. It errs toward refusing and tells you to re-run, which loses nothing.
+
+The same guard covers the index commands (`add-refs`, `describe-refs`,
+`set-ref-desc`, `default-set`, `sync-refs`), because a bible is edited by a
+person and by those commands at once.
 
 `add-refs --to <group>` numbers new images `<name>_<group>_<n>` continuing after
 that group's current highest index; `--replace` renumbers from 1, `--start N`
@@ -306,9 +328,10 @@ better than prose can, and a long identity paragraph fights it — see
 
 ## Adding a new character
 
-1. Write the bible from [`characters/templates/profile.yaml`](../../../pipeline/src/studio_pipeline/domain/templates/profile.yaml) (read
-   an existing character's live bible, `studio character show <name>`, as a reference).
-   Fill **every** key — `create` refuses a bible missing any of them.
+1. Write the bible. `studio character create <name>` with no `--from-profile`
+   starts one from the blank template; read a live one
+   (`studio character show <name>`) as a worked example. Fill **every** key —
+   `create` refuses a bible missing any of them.
 2. `studio character create <name> --from-profile <your-bible.yaml>`.
 3. `studio character add-to <source photos…> <name> seed` — the founding images.
 4. **`studio character shoot <name> --project <project>`** — the standard face and
@@ -369,7 +392,7 @@ photographs** (who it is), and a prompt filled from the character's own bible �
 its usual top, and every cue in `consistency.must`.
 
 ```bash
-studio character shoot <name> --project <project> --dry-run   # sixteen payloads, no spend
+studio character shoot <name> --project <project> --dry-run   # fourteen payloads, no spend
 studio character shoot <name> --project <project>             # shows them, then asks
 studio character shoot <name> --project <project> --group face
 studio character shoot <name> --project <project> --slot body_back   # re-shoot one

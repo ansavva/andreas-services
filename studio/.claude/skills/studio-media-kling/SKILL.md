@@ -120,9 +120,11 @@ Enforced locally, so it costs a message rather than a round trip.
 
 ## Workflow
 
-```bash
-set -a; . ./.env; set +a          # REPLICATE_API_TOKEN
+**No token export is needed.** `studio run` reads `REPLICATE_API_TOKEN`
+from the environment and falls back to `studio/.env` on its own, so the
+`set -a; . ./.env; set +a` line older notes open with is a no-op.
 
+```bash
 # 1) author + validate; emits a ready Replicate input
 studio prompt shot.json \
   --engine kling-replicate
@@ -199,14 +201,14 @@ Full workflow — the loop, the continuity rules, the per-part verification gate
 and assembly — lives in **[`studio-media-scene`](../studio-media-scene/SKILL.md)**. In short:
 
 1. Render part 1.
-2. Export its **last frame** with ``studio frames last` <runref> --add-input`;
+2. Export its **last frame** with `studio frames last <runref> --add-input`;
    use the resulting input-pool key as part 2's `start_image`.
 3. Carry a **pose-continuity line** in part 2's `subject` — `"…, arms already
    raised in a bicep flex"` — so the pose doesn't reset on frame one.
 4. Hold the locked base identical.
 5. **Colour-match in assembly**; a hard cut amplifies small differences.
 
-Assemble with ``studio scenes assemble``. Parts chained this way inherit their
+Assemble with `studio scenes assemble`. Parts chained this way inherit their
 geometry from each other, so the stitch is a stream copy with no re-encode.
 
 **Binding the frame: `--start-key`, not `--key`.** `--key` adds an explicit S3
@@ -297,7 +299,7 @@ frame, `mode: standard`, `generate_audio: true` throughout (15 s + 10 s + 10 s +
   `reference/` library. Those images were made in another context and pull the
   render toward it. Reach into `reference/` only when the scene introduces
   something no existing frame shows. See
-  [`studio-media-scene`](../studio-media-scene/SKILL.md); ``studio frames chain``
+  [`studio-media-scene`](../studio-media-scene/SKILL.md); `studio frames chain`
   derives the list.
 - **Every shot came back 960×960 24 fps / AAC 44.1 kHz stereo**, so chained shots
   stitch as a stream copy with no re-encode.

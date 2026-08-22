@@ -129,7 +129,7 @@ def test_a_reference_from_any_row_counts(media_bucket, catalog_table):
     """
     _put(media_bucket, MODERN_KEY)
     catalog_table.put_item(
-        TableName=ddbc.TABLE,
+        TableName=ddbc.table(),
         Item=ddbc.to_item({"pk": "NODE#node-elsewhere", "sk": "META",
                            "lib": "lib-some-other-library", "kind": "file",
                            "blob_key": MODERN_KEY}))
@@ -283,14 +283,14 @@ def test_it_refuses_when_no_row_names_a_blob(media_bucket, catalog_table, journa
     """
     result = _run()
     assert result.exit_code == 1
-    assert ddbc.TABLE in result.output
+    assert ddbc.table() in result.output
     assert "names a blob" in result.output
 
 
 def test_it_refuses_when_the_table_does_not_exist(media_bucket, journalled):
     result = _run()
     assert result.exit_code == 1
-    assert ddbc.TABLE in result.output
+    assert ddbc.table() in result.output
 
 
 def test_gc_refuses_when_the_bucket_is_unset(monkeypatch):

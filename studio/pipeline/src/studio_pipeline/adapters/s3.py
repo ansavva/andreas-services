@@ -1,6 +1,14 @@
-# Shared helpers for the studio-media-s3 skill: credential resolution + a boto3 S3 client,
-# plus bucket/prefix config and small utilities. Imported by s3_upload.py /
-# s3_download.py / s3_presign.py — not run directly.
+# Direct S3 access for the code that still needs it: credential resolution + a
+# boto3 S3 client, plus bucket/prefix config and small utilities. Not run
+# directly.
+#
+# The three modules named here — s3_upload.py / s3_download.py / s3_presign.py —
+# were the script-era callers and none of them exists; the skill this called
+# itself helpers for was rewritten by #406 and describes the API, not a bucket.
+# What imports it now is `adapters/ddb.py` (for the session) and the four
+# `maintenance/` commands, which reach S3 and DynamoDB straight because they
+# reconcile the two against each other. Everything else goes through
+# `adapters/store.py`.
 #
 # Credentials: the Terraform provider and boto3's default chain do NOT understand
 # the AWS CLI's `aws login` (login_session) credentials. The AWS CLI does, so we

@@ -141,7 +141,6 @@ if dev_stack="$(
 # These are the DEV Cognito pool and client. Local development does not sign in
 # against production; see the note in dev-setup.sh.
 VITE_API_URL=http://localhost:8000
-VITE_AWS_REGION=${AWS_REGION:-us-east-1}
 VITE_COGNITO_USER_POOL_ID=$POOL_ID
 VITE_COGNITO_CLIENT_ID=$CLIENT_ID
 EOF

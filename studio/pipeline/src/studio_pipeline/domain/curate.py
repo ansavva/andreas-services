@@ -60,9 +60,9 @@ every run that cited the first one pointing at a path that no longer resolves â€
 exactly as a `CopyObject` did, for a different reason.
 
 What retires this is records naming **node ids**, which survive a rename by
-construction. That is a real change and nobody has filed it: it moves the
-binding invariant, `resolve_output_keys`, and the vocabulary every `SKILL.md`
-is written in. Until then `regroup`, `renumber` and `move` carry the records
+construction. That is #420, open, and it is not small: it moves the binding
+invariant, `resolve_output_keys`, and the vocabulary every `SKILL.md` is written
+in. Until it is decided, `regroup`, `renumber` and `move` carry the records
 along, and skipping that step is still what left 69 records dangling.
 """
 from __future__ import annotations

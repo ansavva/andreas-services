@@ -48,9 +48,11 @@ def upload(files, expires, folder, json_, presign):
         remote = f"{folder}/{source.name}"
         node = store.upload(remote, source, content_type=content_type(path))
         # `key` rather than `path`, because two SKILL.md pages document that
-        # field by name. It holds the same string it always did. #406 renames it
-        # when it rewrites those pages; changing it here would make them wrong
-        # first and right later.
+        # field by name — `studio-media-character` and `studio-media-seedance`
+        # both print `{"key": …, "url": …}`. It holds the same string it always
+        # did, which is a name path. This used to defer the rename to #406; that
+        # shipped and left the field alone, so renaming it is its own change and
+        # has to edit those two pages in the same commit.
         entry = {"name": source.name, "key": remote, "id": node.get("id", "")}
         if presign:
             entry["url"] = store.presign(remote)

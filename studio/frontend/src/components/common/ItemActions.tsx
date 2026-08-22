@@ -7,7 +7,8 @@ import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 interface Props {
   /** What is being acted on, written into every label. */
   name: string;
-  /** The object key, or a folder's prefix — what "Copy" puts on the clipboard. */
+  /** A file's or folder's name path — what "Copy" puts on the clipboard. Not an
+   *  S3 key; see `CopyKeyButton`, which this hands it to. */
   copyValue: string;
   /** What `copyValue` names, which is all that differs between the two labels. */
   copyNoun?: "key" | "prefix";

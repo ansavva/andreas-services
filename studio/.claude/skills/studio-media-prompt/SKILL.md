@@ -16,8 +16,8 @@ skill:
 
 | Engine skill | Model | Access | `--engine` |
 |---|---|---|---|
-| **`studio-media-seedance`** | Seedance 2.0 | Replicate MCP/API, scripted | `seedance` (default) |
-| **`studio-media-kling`** | Kling 3.0 Omni | Replicate, scripted | `kling-replicate` |
+| **`studio-media-seedance`** | Seedance 2.0 | Replicate, via `studio run --model seedance` | `seedance` (default) |
+| **`studio-media-kling`** | Kling 3.0 Omni | Replicate, via `studio run --model kling` | `kling-replicate` |
 
 Use this skill when the user wants precise, repeatable control, a multi-shot
 timeline, or a template they can tweak. For a quick one-off, plain prose is fine
@@ -219,10 +219,11 @@ color used sparingly for a joke or a signal.
 
 ## Approve before sending
 
-**Show the user the final prompt and get approval before it is rendered.** Both
-engines bill per run. `studio-media-seedance` will not submit until the user has
-approved the exact text; `studio-media-kling` is typed in by hand, so the same gate
-applies before you hand over a prompt to paste.
+**Show the user the complete payload and get approval before it is rendered.**
+Both engines bill per run, and both are submitted by the same command, so the
+same gate applies to each: show the two documents — `PROMPT` then `INPUT` — and
+wait for a yes to *that payload*. `--dry-run` renders exactly that and bills
+nothing. Re-approve after any edit.
 
 ## Workflow
 
@@ -279,15 +280,28 @@ non-zero as **errors**, per engine.
 
 ### 2) Render via the engine skill
 
-- **Seedance** → **`studio-media-seedance`**: the `input` object drops straight into
-  the Replicate MCP `create_models_predictions` call
-  (`model_owner: "bytedance"`, `model_name: "seedance-2.0"`). Add
-  `reference_images` for characters (cannot be combined with `image` /
-  `last_frame_image`), then poll → download → save to S3.
-- **Kling** → **`studio-media-kling`**: the `input` object posts to
-  `kwaivgi/kling-v3-omni-video` on Replicate. Add `start_image` / `reference_images`
-  as https URLs (upload or presign), submit **without** `Prefer: wait`, poll, then
-  save the MP4 to S3.
+Both engines are driven by the same command. Save the `input` object to a file
+and hand it to the runner, which records the run, submits without
+`Prefer: wait`, polls, and archives the output:
+
+```bash
+studio prompt prompt.json --emit input > input.json
+studio run --model seedance --project <project> --input-file input.json \
+  --character <name> --slug <slug> --poll
+```
+
+- **Seedance** → **`studio-media-seedance`** (`--model seedance`). Bind identity
+  with `--character` (it resolves the selection and presigns it); a first frame
+  goes on `--start-run` / `--start-key` and **cannot** be combined with
+  references here.
+- **Kling** → **`studio-media-kling`** (`--model kling`). Same flags, and a start
+  frame **does** combine with references. Kling takes only `.jpg/.jpeg/.png`.
+
+**Never add an image to the payload as an https URL you produced yourself, and
+never upload one to Replicate.** Uploading an asset *to* Replicate is exactly
+what THE RULE forbids: everything sent to a model must already be in the media
+library, and the runner mints the short-lived presigned URL at submit time. Any
+image field baked into `input.json` is dropped for that reason.
 
 ## When NOT to use JSON
 

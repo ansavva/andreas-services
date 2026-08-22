@@ -25,8 +25,11 @@ it.
 
 **So the split from `routes/nodes.py` is no longer about which storage a handler
 talks to** — both write the same table — and `routes/nodes.py` says what it is
-about instead: these routes take a name path, those take a node id, and #313
-moves the SPA from the first to the second. The files stay apart until it does.
+about instead: these routes take a name path, those take a node id. #313 moved
+the SPA onto ids and these routes stayed, because the name path is what every
+share link issued before it is made of. Two live addressing schemes, one file
+each; the merge is owed when the name-path routes go and is not waiting on
+anything else.
 
 `g.library` is `before_request`'s, resolved and membership-checked once per
 request. Nothing here checks it again, for `/api/resolve`'s reason: every walk

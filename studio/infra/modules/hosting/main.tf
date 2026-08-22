@@ -74,12 +74,18 @@ resource "aws_cloudfront_function" "spa_fallback" {
   # Routes by WHERE the build puts things, not by whether the path looks like a
   # file — which is the distinction studio's share links turn on.
   #
-  # A studio URL is the object's S3 key: `/projects/<project>/runs/…/output/clip.mp4`.
-  # The obvious rule ("has an extension, so serve it") sends that straight to the
-  # origin, which does not have it; the distribution's 403/404 fallbacks then
-  # rescue it into index.html, so the link *works* — after a round trip to S3 and
-  # an error page, on every share link anyone opens. Worse, it is accidental:
-  # remove those custom_error_response blocks and every shared clip 404s.
+  # A studio URL is `/f/<node_id>` or `/o/<node_id>` since #313. Before that it
+  # was the object's own S3 key — `/projects/<project>/runs/…/output/clip.mp4` —
+  # and those links are still handed to the SPA, which resolves the legacy form
+  # itself; a link already sitting in somebody's messages cannot be rewritten.
+  # So the rule below still has to carry both.
+  #
+  # The obvious rule ("has an extension, so serve it") sends the legacy form
+  # straight to the origin, which does not have it; the distribution's 403/404
+  # fallbacks then rescue it into index.html, so the link *works* — after a round
+  # trip to S3 and an error page, on every one of those anyone opens. Worse, it is
+  # accidental: remove those custom_error_response blocks and every shared clip
+  # 404s.
   #
   # Vite emits exactly two things — hashed files under /assets/ and index.html —
   # so passing those through and rewriting everything else is both complete and
@@ -97,7 +103,7 @@ resource "aws_cloudfront_function" "spa_fallback" {
       }
 
       // Everything else is a client-side route — including one that ends in
-      // `.mp4`, because that is what an object's share link looks like.
+      // `.mp4`, because that is what a share link issued before #313 looks like.
       request.uri = '/index.html';
       return request;
     }

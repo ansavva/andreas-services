@@ -17,10 +17,16 @@ os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")
 os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 # Explicit rather than defaulted: the pipeline's bucket and prefix come from
-# XHARNESS_S3_* , and a stale value in a shell would silently move every
-# assertion in the suite onto a different tree.
+# STUDIO_S3_*, and a stale value in a shell would silently move every assertion
+# in the suite onto a different tree. Set here by their real names — writing the
+# retired `XHARNESS_S3_*` would reintroduce by hand the variable the rename made
+# inert, whose whole job is to point at nothing (see `adapters/s3.py`).
 os.environ["STUDIO_S3_BUCKET"] = "studio-prod-media-us-east-1"
 os.environ["STUDIO_S3_PREFIX"] = ""
+# The catalog table has no default either, for the reason `adapters/ddb.py`
+# gives, so the suite has to name one — `catalog gc` and `catalog seed` refuse
+# before they reach moto otherwise.
+os.environ["STUDIO_CATALOG_TABLE"] = "studio-prod-catalog"
 # Never let a test reach the real API, whatever is in studio/.env.
 os.environ["REPLICATE_API_TOKEN"] = "r8_test_token"
 
@@ -482,7 +488,7 @@ def catalog_table():
     """`studio-<env>-catalog` as the schema describes it."""
     ddb = boto3.client("dynamodb", region_name="us-east-1")
     ddb.create_table(
-        TableName=ddbc.TABLE,
+        TableName=ddbc.table(),
         BillingMode="PAY_PER_REQUEST",
         KeySchema=_KEY_SCHEMA,
         AttributeDefinitions=[{"AttributeName": n, "AttributeType": "S"}

@@ -69,9 +69,11 @@ driven versus the other two.
 `studio prompt`'s `--engine` list does not include this model, so drive it
 directly and pass its parameters with `--extra`:
 
-```bash
-set -a; . ./.env; set +a          # REPLICATE_API_TOKEN
+**No token export is needed.** `studio run` reads `REPLICATE_API_TOKEN`
+from the environment and falls back to `studio/.env` on its own, so the
+`set -a; . ./.env; set +a` line older notes open with is a no-op.
 
+```bash
 # animate a still
 studio run \
   --model grok-imagine-video --project <project> \
@@ -95,10 +97,12 @@ alternative is always a full re-render.
 
 **There is no binding flag for it.** `--start-run`, `--ref-run` and friends map
 onto the registry's first-frame / last-frame / reference fields; `video` is none
-of those, so nothing binds an S3 object to it. Editing therefore takes two steps:
+of those, so nothing binds a stored object to it. Editing therefore takes two
+steps — and note `presign` needs `--key` for an exact object: a bare positional
+is a *basename*, meaningful only alongside `--folder`.
 
 ```bash
-studio presign <key>              # temporary HTTPS URL for the clip in S3
+studio presign --key <path>       # temporary HTTPS URL for that exact object
 studio run --model grok-imagine-video --project <project> \
   --prompt "Add a silver necklace to the woman." \
   --extra '{"video": "<the presigned URL>"}' \

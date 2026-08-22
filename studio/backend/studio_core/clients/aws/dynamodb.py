@@ -21,12 +21,16 @@ Two decisions are baked into `client()`, and both are load-bearing.
   rather than "you are looking in the wrong region", and sends the reader off to
   check Terraform.
 
-**There are no operation wrappers here yet, and that is deliberate.** Nothing in
-this service reads or writes the table: listings still come straight from S3, and
-the catalog repository and the services over it arrive with the API. Until then
-the table is inert. This module is the connection and the cache hook the tests
-need; guessing at the signatures of query and transaction helpers before there is
-a caller is how they end up wrong in a way nobody notices.
+**There are still no operation wrappers here, and the reason changed when the
+table came alive.** It used to be that nothing read or wrote it, and guessing at
+the signatures of query and transaction helpers before there was a caller was how
+they end up wrong in a way nobody notices. There are callers now: `services.catalog`
+reaches `client()` at eight sites — `get_item`, `batch_get_item`,
+`transact_write_items` and a paginated `query` — and every listing in
+`services.browse` is one of those queries. What keeps the wrappers out is the
+boundary that module holds: it is the only place that knows a `pk`, an `sk` or a
+`NAME#` prefix, and a helper here would be a second place holding half of the same
+layout. This module is the connection and the cache hook, and nothing else.
 """
 
 import boto3

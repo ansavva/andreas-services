@@ -65,9 +65,12 @@ character-aware or project-aware — a folder is a folder. **An uploaded file ke
 the name it arrived with**, and a name the folder already holds is *numbered*
 (`clip.mp4` → `clip (2).mp4`) rather than refused or overwritten, which is the
 form `POST /api/objects/copy` has produced since #317. The `<project>_in_<n>` and
-`<name>_<group>_<n>` conventions the pipeline once implied are **not** applied
-and nothing depended on them — `refs.py`: "Slot N is position N in the resolved
-selection, not a trailing file number".
+`<name>_<group>_<n>` conventions are **not** applied here and nothing on this
+side depended on them — `refs.py`: "Slot N is position N in the resolved
+selection, not a trailing file number". They are **not retired**: the pipeline
+still numbers its own input pool `<project>_in_<n>.<ext>` on every
+`projects.add_inputs`, reading the highest N off the names rather than counting
+them. It is simply not the app's business what a folder's names mean.
 
 Where the numbering happens is a decision worth stating: **in the API**
 (`catalog.create_numbered`), not in the browser. A client-side version would be a
@@ -117,15 +120,18 @@ studio/
 │                             # routes.tsx is the URL table; *.test.tsx is vitest
 ├── infra/
 │   ├── modules/              # auth, compute, api_gateway, api_domain, hosting,
-│   │                         #   media, catalog, dev_storage
+│   │                         #   media, catalog, dev_storage, dev_seed
 │   ├── envs/prod/            # applied by CI
 │   └── envs/dev/             # per machine, applied only by scripts/dev-aws-*.sh
 ├── pipeline/                 # the generation half's code — local only, never deploys
-├── scripts/                  # create-user.sh; dev-setup.sh / dev-up.sh;
-│                             #   dev-aws-{setup,reset,destroy}.sh, dev-user.sh, dev-token.sh
+├── scripts/                  # create-user.sh, add-member.sh; dev-setup.sh / dev-up.sh;
+│                             #   dev-aws-{setup,reset,destroy,seed}.sh, dev-shared-material.sh,
+│                             #   dev-user.sh, dev-token.sh;
+│                             #   prod-seed-smoke.py, prod-github-set-secrets.sh
 ├── .claude/skills/           # the generation half's docs — local only, never deploys
 ├── docs/
 │   ├── PIPELINE.md           # the local half
+│   ├── PROD_SMOKE.md         # the post-deploy smoke run
 │   └── WEB_APP.md            # ← this file
 └── CLAUDE.md                 # the index over both
 ```
@@ -144,9 +150,11 @@ data source for it. That is no longer the arrangement — see
 table, declared in `infra/modules/catalog`, and has never been anything else.
 
 What did **not** change is which side of the fence this API sits on. The
-pipeline runs from a laptop under a human's own AWS login. This Lambda is the
-only thing reachable from the internet, so it is still the thing worth scoping,
-and everything below still applies to it.
+pipeline runs from a laptop, and since #308 it holds **no AWS credentials at
+all** — it signs in with `studio login` and comes through this same API. This
+sentence said "under a human's own AWS login" and predates that. This Lambda is
+still the only thing reachable from the internet, so it is still the thing worth
+scoping, and everything below still applies to it.
 
 ### The S3 grant, which confines nothing
 
@@ -507,7 +515,8 @@ that breaks every time the pipeline ships.
     URL. `replace` is load-bearing: leaving the old URL in history makes back
     re-enter the resolver and push forward again. The node's `kind` picks the
     route, so a link that lost its trailing slash in a chat client still lands
-    right. **This is the only tested part of the frontend** — see Testing below.
+    right. **This was the first tested part of the frontend, and is no longer
+    the only one** — see Testing below.
   - **Do not simplify the viewer-request function to extension matching.** A
     legacy share link *ends in `.mp4`*, so `modules/hosting` routes by
     **location** (`/assets/…` and `/index.html` pass through, everything else
@@ -658,11 +667,15 @@ that breaks every time the pipeline ships.
   `lifecycle { ignore_changes = [environment] }` means the `environment` block
   in `modules/compute` only applies the first time the function is created;
   after that the `jq` block in `studio-prod.yaml`'s `update-lambda` job is the
-  only thing that sets `STUDIO_MEDIA_ROOT_PREFIX` and `STUDIO_CATALOG_TABLE`.
-  Change one without the other and the value you read in the code is not the
-  value that is running. `--environment` **replaces** the map rather than
-  merging into it, so that document has to be complete: dropping a line unsets
-  the variable on the next deploy. `STUDIO_MEDIA_ROOT_PREFIX` is also
+  only thing that sets the function's environment — **all six of it**:
+  `STUDIO_MEDIA_BUCKET`, `STUDIO_MEDIA_ROOT_PREFIX`, `STUDIO_ALLOWED_ORIGIN`,
+  `STUDIO_CATALOG_TABLE`, `STUDIO_COGNITO_USER_POOL_ID`,
+  `STUDIO_COGNITO_CLIENT_ID`. This bullet named two of the six, which is exactly
+  the mistake the next sentence warns about. `--environment` **replaces** the map
+  rather than merging into it, so that document has to be complete: dropping a
+  line unsets the variable on the next deploy, and a variable added to
+  `modules/compute` and not here reads as its default in the running function
+  behind a clean plan. `STUDIO_MEDIA_ROOT_PREFIX` is also
   legitimately the empty string — do not "fix" it by dropping the line.
   `STUDIO_CATALOG_TABLE` is the one that changed character: it was inert while
   listings came from S3, and since #309 an unset value is the difference between
@@ -780,6 +793,7 @@ key, because the pipeline reads shared material with no node through it.
 | `GET /api/resolve?path=` | A slash-joined name path → the node it names. An empty path is the library root |
 | `POST /api/nodes` | `{parent, name, kind, blob_key?, on_conflict?}` → creates a folder or a file. **201.** 409 if the name is taken, unless `on_conflict: "number"` |
 | `PATCH /api/nodes/<id>` | `{name}` to rename **or** `{parent}` to move — both at once is a 400, not a guess |
+| `POST /api/nodes/<id>/transfer` | `{lib}` → hands the node and its subtree to another library. **Owner in both**, or 403; the node keeps its id, so every share link survives and now resolves only for the destination's members |
 | `DELETE /api/nodes/<id>` | Node and subtree. Rows first, then blobs |
 | `GET /api/nodes/<id>/download-url` | A fresh presigned GET for the node's blob. `disposition=attachment` to download |
 | `POST /api/nodes/<id>/upload-url` | `{size, content_type}` → a presigned PUT for `blobs/<id>`. Signed length and type |
@@ -971,8 +985,8 @@ where their commands write is worse than telling them.
 
 ## Testing
 
-**The backend has a suite; the frontend has one test, and that asymmetry is
-deliberate.** `backend/tests/` is moto-backed pytest over a miniature of the
+**The backend has a suite; the frontend has seven test files, and how it got
+from none to seven is the useful part.** `backend/tests/` is moto-backed pytest over a miniature of the
 catalog table and the bucket, and covers the whole read and write surface. It is
 moto and not a real stack on purpose: the dev stack costs an apply, and a suite
 that needs AWS is a suite that stops being run. `frontend` ran on
@@ -985,12 +999,24 @@ reports it — there is no blank page, because the app is working perfectly for
 everyone who never had one. `vitest` + `@testing-library/react` + `jsdom`,
 `npm test`, run in `studio-pr.yml` beside lint and typecheck.
 
-`src/pages/LegacyRedirect.test.tsx` and `src/utils/location.test.ts` are the
-whole of it, and what they assert is: an old `/projects/…` URL resolves **once**
-and lands on the id URL with its `?sort=` intact; `replace` keeps the old URL out
-of history, so back does not walk into the resolver again; the node's `kind`
-picks `/f/` or `/o/`; a 404 is shown rather than swallowed into a redirect to the
-root; an id URL reaches `BrowsePage` with no resolve at all.
+Those two were the whole of it, and what they assert is: an old `/projects/…`
+URL resolves **once** and lands on the id URL with its `?sort=` intact; `replace`
+keeps the old URL out of history, so back does not walk into the resolver again;
+the node's `kind` picks `/f/` or `/o/`; a 404 is shown rather than swallowed into
+a redirect to the root; an id URL reaches `BrowsePage` with no resolve at all.
+
+Five more have since cleared the same bar — a failure the app cannot report on
+its own:
+
+| File | What it pins |
+|---|---|
+| `pages/LegacyRedirect.test.tsx` | the resolver, above |
+| `utils/location.test.ts` | the id↔URL mapping: the root is `/` and needs no id, a legacy path decodes per segment so a `#` or a space in a real filename survives, and a hand-edited URL lands on the root rather than throwing |
+| `apis/client.test.ts` | `X-Studio-Library` is sent once a library is chosen, absent before one is, and follows the **last** choice rather than the first |
+| `apis/studio.test.ts` | `getAsset` and `getText` ask by **node**, never by key, and sign inline unless a download asked otherwise; `saveText` sends the name path `PATCH /api/text` takes |
+| `components/NodeAddressing.test.tsx` | the *argument* rather than the parameter: a row carries both `id` and `key`, both are `string`, and passing `key` typechecks and then fails only on material uploaded through the app (#432) |
+| `apis/upload.test.ts` | create → sign → PUT → confirm; the size declared is the file's; `Content-Length` is deliberately not set; a failed PUT does not confirm and deletes the placeholder it made |
+| `components/common/LibrarySwitcher.test.tsx` | one membership shows no switcher and still sets the header; two show a switcher that reopens on the last choice and ignores a stored library the caller has left |
 
 Two things follow for anyone adding to this. The route table lives in
 `routes.tsx` rather than `App.tsx` so it can be exercised without the auth stack
@@ -999,9 +1025,10 @@ test is every URL resolving to the same thing. And `vite.config.ts` sets both
 `clearMocks` and `restoreMocks`: "the resolver was not called" is one of the
 assertions and is worthless against a tally shared with the previous case.
 
-**Everything else on this surface is typecheck-only.** That is the honest state,
-not an oversight, and the bar for the next test is the resolver's: a failure the
-app cannot report on its own.
+**Everything else on this surface is still typecheck-only**, and the bar for the
+next test is unchanged: a failure the app cannot report on its own. What the
+seven have in common is that none of them is a blank page — a wrong header, a
+wrong argument that typechecks, a confirm that fires after a failed PUT.
 
 ### Two suites that do not run on a PR
 
@@ -1048,8 +1075,28 @@ one — so a freshly created account signs in, renders, and gets a 403 from
 `before_request` with "You are not a member of any library." That is the right
 status: the pool is admin-create-only, so it is a provisioning gap rather than
 anything the caller did wrong, and `GET /api/libraries` returning an empty 200
-is how it gets diagnosed. There is **no script for granting membership yet** —
-#321 is open — so today it is a hand-written row.
+is how it gets diagnosed. **`scripts/add-member.sh` writes that row** (#435,
+closing #321). This section used to say there was no script and that the row was
+hand-written, which was an instruction to hand-edit the production catalog:
+
+```bash
+STUDIO_EMAIL=you@example.com STUDIO_LIBRARY=lib-… ./studio/scripts/add-member.sh
+STUDIO_LIBRARY=lib-… ./studio/scripts/add-member.sh --list
+```
+
+It reads the `sub` off the pool account rather than inventing one, is safe to run
+repeatedly, and leaves an existing membership exactly as it is — **including its
+role**, because "add" quietly demoting an owner is the kind of surprise that
+costs somebody their library. `STUDIO_ROLE` is `member` by default; `owner` is
+the wider grant and what a transfer needs in both libraries.
+
+Its defaults come from SSM, so they point at **prod**, like `create-user.sh` and
+unlike everything named `dev-*`. Set `USER_POOL_ID` and `CATALOG_TABLE` from
+`dev-aws-setup.sh`'s outputs to reach this machine's stack; there is no flag for
+it, for the reason `../CLAUDE.md` gives about not designing one unprompted.
+
+**Deliberately a script and not a route**: a route that granted membership would
+be a route that could grant itself access to somebody else's library.
 
 ## Deployment
 
