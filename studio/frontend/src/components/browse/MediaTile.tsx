@@ -29,7 +29,7 @@ export function MediaTile({
   onOpen,
   onToggleSelect,
 }: Props) {
-  const { src, failed, onError } = useSignedSrc(file.key, file.url);
+  const { src, failed, onError } = useSignedSrc(file.id, file.url);
   const [duration, setDuration] = useState<number | null>(null);
 
   return (

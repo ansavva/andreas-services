@@ -71,19 +71,33 @@ export function resolvePath(path: string) {
 }
 
 /**
- * A fresh presigned URL for one object.
+ * A fresh presigned URL for one node's bytes.
  *
  * Two callers: the download button (`attachment`, which is the only way a
  * cross-origin download actually downloads), and the media surfaces re-signing
  * a URL that expired while the tab sat idle.
+ *
+ * **By node id, and that is the fix rather than a tidy-up (#432).** The route
+ * also takes a `key`, and there it means a raw *S3* key rather than the name
+ * path everything else in this file sends — the pipeline reads shared material
+ * that has no catalog node through it. So a name path handed to `key` signs
+ * whatever object happens to sit at that string, which since #294 is nothing at
+ * all for anything uploaded through the app: its bytes are at `blobs/<id>`.
  */
-export function getAsset(key: string, disposition: "inline" | "attachment" = "inline") {
-  return apiGet<AssetResponse>("/api/asset", { key, disposition });
+export function getAsset(node: string, disposition: "inline" | "attachment" = "inline") {
+  return apiGet<AssetResponse>("/api/asset", { node, disposition });
 }
 
-/** A JSON/markdown/text object's contents, for the text page. */
-export function getText(key: string) {
-  return apiGet<TextResponse>("/api/text", { key });
+/**
+ * A JSON/markdown/text object's contents, for the text page.
+ *
+ * By node id for `getAsset`'s reason, minus the trap: `GET /api/text?key=` is a
+ * *name path* and agrees with `saveText` exactly (#432). The id is simply the
+ * cheaper address — a path costs the API a read per segment — and every row has
+ * carried one since #313.
+ */
+export function getText(node: string) {
+  return apiGet<TextResponse>("/api/text", { node });
 }
 
 // ---------------------------------------------------------------------------

@@ -11,10 +11,15 @@ import { getAsset } from "../apis/studio";
  * images. Rather than polling or guessing a TTL, every media element reports
  * its own `onError` here and we re-sign exactly the ones that failed.
  *
- * `attempted` caps this at one retry per key so a genuinely missing object
+ * `attempted` caps this at one retry per node so a genuinely missing object
  * (deleted upstream between the listing and the render) cannot loop.
+ *
+ * **Takes the node id, not the key.** It used to pass the row's name path to
+ * `/api/asset?key=`, which signs a raw S3 key — so anything uploaded through
+ * the app, whose bytes live at `blobs/<id>`, could never be re-signed and every
+ * expired tile stayed broken (#432).
  */
-export function useSignedSrc(key: string, initialUrl: string) {
+export function useSignedSrc(nodeId: string, initialUrl: string) {
   const [src, setSrc] = useState(initialUrl);
   const [attempted, setAttempted] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -23,7 +28,7 @@ export function useSignedSrc(key: string, initialUrl: string) {
     setSrc(initialUrl);
     setAttempted(false);
     setFailed(false);
-  }, [initialUrl, key]);
+  }, [initialUrl, nodeId]);
 
   const onError = useCallback(() => {
     if (attempted) {
@@ -31,10 +36,10 @@ export function useSignedSrc(key: string, initialUrl: string) {
       return;
     }
     setAttempted(true);
-    getAsset(key)
+    getAsset(nodeId)
       .then((asset) => setSrc(asset.url))
       .catch(() => setFailed(true));
-  }, [attempted, key]);
+  }, [attempted, nodeId]);
 
   return { src, failed, onError };
 }

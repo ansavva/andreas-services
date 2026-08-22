@@ -50,7 +50,7 @@ export function ViewerChrome({
     // Signed with `response-content-disposition: attachment` server-side. A
     // plain <a download> would be ignored here, because the presigned URL is
     // cross-origin to this app.
-    const asset = await getAsset(file.key, "attachment");
+    const asset = await getAsset(file.id, "attachment");
     window.location.assign(asset.url);
   }
 

@@ -24,7 +24,7 @@ interface Props {
  * transport lives in `VideoScrubber` instead, above the frame.
  */
 export function MediaSurface({ file, active = true, muted = true, onVideoRef }: Props) {
-  const { src, failed, onError } = useSignedSrc(file.key, file.url);
+  const { src, failed, onError } = useSignedSrc(file.id, file.url);
 
   if (failed) {
     return (
