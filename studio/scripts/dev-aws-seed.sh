@@ -131,6 +131,18 @@ SEED_BUCKET="${STUDIO_DEV_SEED_BUCKET:-studio-dev-seed-us-east-1}"
 FIXTURE_VERSION="v1"
 DRY_RUN=0
 
+# One node per line, tab-separated, read by all three passes below.
+#
+# **`created_at` comes third, ahead of the two fields that can be empty, and
+# that is not cosmetic.** `read` with `IFS=$'\t'` collapses RUNS of tabs — tab
+# counts as IFS whitespace — so `p<TAB>folder<TAB><TAB><TAB>2026` parses as
+# three fields and puts the timestamp in `source`. Only trailing fields may
+# safely be empty. `node_row_fixup` blanks them again afterwards so this
+# ordering is a convenience and not the only thing holding it up.
+NODE_ROWS_JQ='.nodes[]
+  | [.path, .kind, .created_at, (.source // ""), (.content_type // "")]
+  | @tsv'
+
 # ── pure helpers ────────────────────────────────────────────────────────────
 #
 # These read nothing and write nothing, which is what lets the test suite source
@@ -188,6 +200,14 @@ materialised() {
     done < <(printf '%s\n' "$prefix" | tr '/' '\n')
   fi
   printf '%s' "$out"
+}
+
+node_row_fixup() {
+  # Called immediately after each `read` of a NODE_ROWS_JQ line, on the caller's
+  # own variables. A folder node carries neither a `source` nor a
+  # `content_type` — the fixture validator rejects one that does — so whatever
+  # tab-collapsing left in them is noise.
+  [[ "$kind" == "file" ]] || { source=""; content_type=""; }
 }
 
 sha256_of() {
@@ -490,9 +510,10 @@ main() {
   # bucket — the checksum in the manifest is the only thing that says the
   # fixture is the fixture, so it is checked before anything is written.
   log "Loading $file_count object(s) into s3://$bucket/blobs/ ..."
-  local path kind source content_type created_at node_id parent_id parent_prefix
+  local path kind created_at source content_type node_id parent_id parent_prefix
   local expected actual size local_file
-  while IFS=$'\t' read -r path kind source content_type created_at; do
+  while IFS=$'\t' read -r path kind created_at source content_type; do
+    node_row_fixup
     [[ "$kind" == "file" ]] || continue
     node_id="$(derive_node_id "$bucket" "$path")"
     local_file="$workdir/$node_id"
@@ -505,7 +526,7 @@ main() {
     aws_dev s3 cp "$local_file" "s3://$bucket/blobs/$node_id" \
       --content-type "$content_type" --only-show-errors ||
       die "Could not write blobs/$node_id to s3://$bucket/."
-  done < <(jq -r '.nodes[] | [.path, .kind, (.source // ""), (.content_type // ""), .created_at] | @tsv' <<<"$catalog_json")
+  done < <(jq -r "$NODE_ROWS_JQ" <<<"$catalog_json")
   ok "Fixture bytes loaded."
 
   # ── 2. the shared material ───────────────────────────────────────────────
@@ -537,7 +558,8 @@ main() {
 
   # Nodes in path order, which puts every parent before its children: a
   # parent's path is a proper prefix of its child's, so it always sorts first.
-  while IFS=$'\t' read -r path kind source content_type created_at; do
+  while IFS=$'\t' read -r path kind created_at source content_type; do
+    node_row_fixup
     node_id="$(derive_node_id "$bucket" "$path")"
     # A cheap pre-check, so a re-run reports what it skipped instead of
     # discovering it one cancelled transaction at a time.
@@ -556,7 +578,7 @@ main() {
                "$created_at" "$content_type" "$size")"
     ddb_transaction "$table" "$items" && status=0 || status=$?
     if [[ "$status" -eq 0 ]]; then created=$((created + 1)); else skipped=$((skipped + 1)); fi
-  done < <(jq -r '.nodes[] | [.path, .kind, (.source // ""), (.content_type // ""), .created_at] | @tsv' <<<"$catalog_json" | sort)
+  done < <(jq -r "$NODE_ROWS_JQ" <<<"$catalog_json" | sort)
   ok "Catalog written: $created node(s) created, $skipped already there."
 
   # ── 4. verify ────────────────────────────────────────────────────────────
@@ -567,7 +589,8 @@ main() {
   # and phrasebook/ are in there too and belong to no library.
   log "Verifying against manifest.json ..."
   local verified=0 bytes=0 failures=0
-  while IFS=$'\t' read -r path kind source content_type created_at; do
+  while IFS=$'\t' read -r path kind created_at source content_type; do
+    node_row_fixup
     [[ "$kind" == "file" ]] || continue
     node_id="$(derive_node_id "$bucket" "$path")"
     local_file="$workdir/verify-$node_id"
@@ -585,7 +608,7 @@ main() {
     fi
     verified=$((verified + 1))
     bytes=$((bytes + $(jq -r --arg k "$source" '.objects[$k].size' <<<"$manifest_json")))
-  done < <(jq -r '.nodes[] | [.path, .kind, (.source // ""), (.content_type // ""), .created_at] | @tsv' <<<"$catalog_json")
+  done < <(jq -r "$NODE_ROWS_JQ" <<<"$catalog_json")
 
   local declared_count declared_bytes
   declared_count="$(jq -r '.object_count' <<<"$manifest_json")"

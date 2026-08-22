@@ -361,3 +361,27 @@ def test_the_phrasebook_is_left_alone_when_one_already_exists():
 
     assert code == 2
     assert not any(c.startswith("s3 cp") for c in calls), calls
+
+
+def test_a_folder_row_survives_the_tab_collapse_trap():
+    """`read` with `IFS=$'\\t'` collapses RUNS of tabs — tab is IFS whitespace.
+
+    A folder node carries no `source` and no `content_type`, so its row has two
+    empty fields. Put them anywhere but last and `p<TAB>folder<TAB><TAB><TAB>T0`
+    parses as three fields, landing the timestamp in `source` and leaving
+    `created_at` empty — which writes a node with no `created_at` and sorts the
+    whole library wrong. Caught here rather than in a fixture nobody has yet.
+    """
+    rows = _source_and_run(SEED, f"""
+      catalog={json.dumps(json.dumps(GOOD_CATALOG))}
+      while IFS=$'\\t' read -r path kind created_at source content_type; do
+        node_row_fixup
+        printf '%s|%s|%s|%s|%s\\n' "$path" "$kind" "$created_at" "$source" "$content_type"
+      done < <(jq -r "$NODE_ROWS_JQ" <<<"$catalog")
+    """).splitlines()
+
+    assert rows == [
+        "projects|folder|2026-08-19T09:12:44.000000+00:00||",
+        "projects/demo|folder|2026-08-19T09:12:44.000001+00:00||",
+        "projects/demo/a.PNG|file|2026-08-19T09:12:44.000002+00:00|v1/media/a.png|image/png",
+    ]
