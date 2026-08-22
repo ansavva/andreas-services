@@ -45,6 +45,11 @@ jobs:
           filters: |
             backend:
               - 'studio/backend/**'
+              # The smoke fixture is validated by tests/test_smoke_fixture.py,
+              # which pins the rule that the smoke account is a member of
+              # exactly one library. Without this line the one edit that could
+              # break it is the one edit that never runs the check.
+              - 'studio/seeds/**'
               - '.github/workflows/studio-pr.yml'
             frontend:
               - 'studio/frontend/**'
