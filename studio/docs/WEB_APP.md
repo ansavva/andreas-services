@@ -190,9 +190,14 @@ The parts of the old rule that still hold, and should keep holding:
   path by which bytes from outside enter the bucket.
 - **`s3:DeleteObjectVersion` is deliberately absent**, and the bucket **is**
   versioned (`infra/modules/media`), so this role can only write tombstones, not
-  erase history. Every delete it can perform is recoverable. With the prefix
-  confining nothing, this is the strongest guarantee left standing — do not
-  drop it to tidy the policy.
+  erase history. Every delete of an *object* it can perform is recoverable. With
+  the prefix confining nothing, this is the strongest guarantee left standing —
+  do not drop it to tidy the policy.
+  **It says nothing about a row**, and the two are now deleted separately:
+  `DELETE /api/nodes/<id>` removes rows first and blobs second, so a delete that
+  half-succeeds leaves recoverable bytes nothing can name. Read this guarantee
+  as exactly what it is — the bytes survive — and read the next section for what
+  covers the half that does not.
 
 The part that **did** change and should not be glossed over: scope. It used to
 be true that every grant stopped at `media/*`. With `media_root_prefix` empty
@@ -506,8 +511,11 @@ that breaks every time the pipeline ships.
   enumerated, not the complexity. Presigning still happens *after* the slice —
   one page's worth of URLs, never the branch's. Keep it that way.
   The enumeration bound **truncates** rather than refusing, and says so in
-  `truncated`: a page of a library may be shorter than the library, and a caller
-  showing one should say so rather than imply the tail does not exist.
+  `truncated`: a page of a library may be shorter than the library. The SPA
+  carries it through `useReel` to `ReelView`, which renders the count as
+  `12 of 2000+` — the `+` is the whole of the UI for it, and it is enough,
+  because the alternative is a reel that silently claims the library ends where
+  the cap did.
 - **One picker, two verbs.** `DestinationPicker` serves both move and copy,
   because "browse to a folder and press the button" is the same interaction
   either way and a typed prefix is useless against folder names that are
