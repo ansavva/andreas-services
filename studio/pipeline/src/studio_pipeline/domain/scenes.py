@@ -112,7 +112,7 @@ VIDEO_EXT = R.VID_EXTS
 # ── layout ──────────────────────────────────────────────────────────────────
 
 def scene_prefix(project: str, scene_id: str) -> str:
-    """Tree-relative — feeds `list_keys`. Use `scene_key` for get/put."""
+    """Tree-relative — addresses a FOLDER. Use `scene_key` for get/put."""
     return P.scene_prefix(project, scene_id)
 
 

@@ -62,10 +62,11 @@ from studio_pipeline.maintenance.catalog_seed import (
 # is a statement about what may be DELETED, and it must not silently widen the
 # day a new tree is added there.
 #
-# Note a non-empty `STUDIO_S3_PREFIX` puts every key outside this list, so
-# nothing is collected. That is the correct failure: the listing below is of the
-# raw bucket, as in both migrators, and a prefixed tree is one this command has
-# never been shown to be right about.
+# This used to add that a non-empty `STUDIO_S3_PREFIX` would put every key
+# outside the list, so nothing would be collected. That variable is gone —
+# nothing in the package reads a bucket prefix any more — so the caveat is
+# dropped rather than kept as a warning about a knob that does not exist. The
+# listing below is still of the raw bucket, which is the part that mattered.
 COLLECTABLE_PREFIXES = ("blobs/", "characters/", "projects/")
 
 # `DeleteObjects` takes a thousand keys and no more.

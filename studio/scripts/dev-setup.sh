@@ -169,20 +169,17 @@ EOF
   # so there is no successor name to point at — only a line to delete. Keep this
   # list appended to whenever a variable retires; the cost of an extra entry is
   # one grep per session and the cost of a missing one is a wrong diagnosis.
-  for dead in STUDIO_S3_MEDIA_PREFIX STUDIO_MAX_WALK_OBJECTS; do
+  #
+  # STUDIO_S3_PREFIX used to need a message of its own, because "nothing reads
+  # it" would have been a lie — the layout migrator did, and only it. That
+  # command is deleted, no reader is left, and it joins the list. The WARNING
+  # is not what retired; a stale pin in someone's .env is exactly as silent as
+  # it ever was, and this is what breaks the silence.
+  for dead in STUDIO_S3_PREFIX STUDIO_S3_MEDIA_PREFIX STUDIO_MAX_WALK_OBJECTS; do
     if grep -q "^${dead}=" "$STUDIO_DIR/.env"; then
       warn "studio/.env sets ${dead} — retired, and read by nothing. Delete the line."
     fi
   done
-  # STUDIO_S3_PREFIX gets its own message because "nothing reads it" would be a
-  # lie: `maintenance/migrate_layout.py` still does, and only it. So a pin here
-  # changes nothing about any command a person actually runs while remaining
-  # live enough that a grep finds a reader — the most confusing of the three
-  # states, and the reason it is called out rather than swept in above.
-  if grep -q "^STUDIO_S3_PREFIX=" "$STUDIO_DIR/.env"; then
-    warn "studio/.env sets STUDIO_S3_PREFIX — the CLI has had no bucket prefix"
-    warn "  since #303; only the layout migrator reads it. Delete the line."
-  fi
   # A .env pinned to the PROD bucket predates #287 and now points the CLI at
   # production, which is the thing this change removes. Named loudly rather
   # than rewritten: the file is the developer's, and silently repointing where

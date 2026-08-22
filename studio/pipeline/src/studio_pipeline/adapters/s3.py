@@ -5,7 +5,7 @@
 # The three modules named here — s3_upload.py / s3_download.py / s3_presign.py —
 # were the script-era callers and none of them exists; the skill this called
 # itself helpers for was rewritten by #406 and describes the API, not a bucket.
-# What imports it now is `adapters/ddb.py` (for the session) and the four
+# What imports it now is `adapters/ddb.py` (for the session) and the three
 # `maintenance/` commands, which reach S3 and DynamoDB straight because they
 # reconcile the two against each other. Everything else goes through
 # `adapters/store.py`.
@@ -54,13 +54,13 @@ def bucket() -> str:
             "       mean. There is deliberately no default: this used to fall back to\n"
             "       the production bucket, which is not a thing to guess at.")
     return BUCKET
-# The tree lives at the bucket ROOT. `media/` was a leftover from mirroring
-# Google Drive 1:1 and bought nothing — the bucket is the media store. This
-# stays as the single place a global prefix could be reintroduced (a shared
-# bucket, a staging copy) without any other module learning about it.
-PREFIX = os.environ.get("STUDIO_S3_PREFIX", "")
-if PREFIX:
-    PREFIX = PREFIX.strip("/") + "/"
+# `PREFIX` / `STUDIO_S3_PREFIX` lived here and is deleted too. The tree is at
+# the bucket ROOT, and this had survived as "the single place a global prefix
+# could be reintroduced" — but the only reader left was the layout migrator,
+# and that went with the migration it served. A seam nothing sits behind is not
+# a seam; reintroducing one is a decision, and it should be made where the
+# module that needs it lives rather than pre-declared here.
+#
 # `MEDIA_PREFIX` / `STUDIO_S3_MEDIA_PREFIX` lived here and is deleted. It was
 # the pre-restructure `media/` wrapper, described as "used only by the
 # migrator" — and by the time it was removed nothing read it at all, migrator
@@ -74,15 +74,6 @@ REGION = (
 )
 
 
-
-
-def key(rel_path: str) -> str:
-    """Turn a tree-relative path into a full S3 key.
-
-    e.g. "characters/<name>/reference/face_01.png" -> the same, since PREFIX is
-    empty by default. Build paths with `paths.py`, not by hand.
-    """
-    return PREFIX + rel_path.lstrip("/")
 
 
 def _resolve_credentials():
@@ -135,31 +126,10 @@ def client():
     return session().client("s3")
 
 
-# Re-exported, not redefined: `store.natural_key` is the one definition, and two
-# copies of a sort that decides which reference image a model is handed is
-# exactly the drift worth avoiding.
-#
-# This comment used to claim "a dozen callers still import it from here". None
-# do — every caller reaches `store.natural_key` directly, and the only use left
-# is `_list` below. The re-export survives on the weaker ground that deleting it
-# would break an import nobody has written yet for no gain; the count was
-# measured, not the claim.
-from studio_pipeline.adapters.store import natural_key  # noqa: E402,F401
-
-
-def list_keys(s3, rel_prefix: str):
-    """Object keys under <rel_prefix>/, excluding folder markers, natural-sorted."""
-    return _list(s3, key(rel_prefix.rstrip("/") + "/"))
-
-
-def _list(s3, prefix: str):
-    keys = []
-    paginator = s3.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=BUCKET, Prefix=prefix):
-        for obj in page.get("Contents", []):
-            key = obj["Key"]
-            if key.endswith("/"):
-                continue  # folder marker
-            keys.append(key)
-    keys.sort(key=natural_key)
-    return keys
+# `list_keys` / `_list` and a re-export of `store.natural_key` lived here and
+# are deleted. The listing helpers had one caller — the layout migrator, which
+# is gone — and the re-export existed only to sort their results. Its comment
+# already recorded a measurement: no caller imports `natural_key` from here,
+# every one reaches `store.natural_key` directly, and that is still true. The
+# one definition of the sort stays in `store.py`, which is the point the
+# re-export was making.

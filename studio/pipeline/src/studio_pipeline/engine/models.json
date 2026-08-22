@@ -25,7 +25,6 @@
       "model": "google/nano-banana-pro",
       "kind": "image",
       "skill": "studio-media-nano-banana-pro",
-      "backfill_slug": "nanobanana",
       "images": {
         "refs": "image_input",
         "max_refs": 14,
@@ -96,7 +95,6 @@
       "model": "google/nano-banana-2",
       "kind": "image",
       "skill": "studio-media-nano-banana-2",
-      "backfill_slug": "nanobanana2",
       "images": {
         "refs": "image_input",
         "max_refs": 14,
@@ -166,7 +164,6 @@
       "model": "openai/gpt-image-2",
       "kind": "image",
       "skill": "studio-media-gpt-image-2",
-      "backfill_slug": "gptimage2",
       "images": {
         "refs": "input_images",
         "max_refs": null,
@@ -262,7 +259,6 @@
       "model": "openai/gpt-image-1.5",
       "kind": "image",
       "skill": "studio-media-gpt-image-1-5",
-      "backfill_slug": "gptimage15",
       "images": {
         "refs": "input_images",
         "max_refs": null,
@@ -345,7 +341,6 @@
       "model": "bytedance/seedance-2.0",
       "kind": "video",
       "skill": "studio-media-seedance",
-      "backfill_slug": "seedance",
       "aliases": [],
       "images": {
         "refs": "reference_images",
@@ -423,7 +418,6 @@
       "model": "kwaivgi/kling-v3-omni-video",
       "kind": "video",
       "skill": "studio-media-kling",
-      "backfill_slug": "kling",
       "aliases": [
         "kling-replicate"
       ],
@@ -500,7 +494,6 @@
       "model": "google/veo-3.1",
       "kind": "video",
       "skill": "studio-media-veo-3-1",
-      "backfill_slug": "veo31",
       "images": {
         "refs": "reference_images",
         "max_refs": 3,
@@ -564,7 +557,6 @@
       "model": "xai/grok-imagine-video",
       "kind": "video",
       "skill": "studio-media-grok-imagine-video",
-      "backfill_slug": "grokimaginevideo",
       "images": {
         "refs": null,
         "max_refs": 0,

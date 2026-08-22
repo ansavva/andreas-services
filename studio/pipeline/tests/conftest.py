@@ -16,13 +16,15 @@ import pytest
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")
 os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
-# Explicit rather than defaulted: the pipeline's bucket and prefix come from
-# STUDIO_S3_*, and a stale value in a shell would silently move every assertion
-# in the suite onto a different tree. Set here by their real names — writing the
-# retired `XHARNESS_S3_*` would reintroduce by hand the variable the rename made
-# inert, whose whole job is to point at nothing (see `adapters/s3.py`).
+# Explicit rather than defaulted: the pipeline's bucket comes from
+# STUDIO_S3_BUCKET, and a stale value in a shell would silently move every
+# assertion in the suite onto a different tree. Set here by its real name —
+# writing the retired `XHARNESS_S3_BUCKET` would reintroduce by hand the
+# variable the rename made inert, whose whole job is to point at nothing (see
+# `adapters/s3.py`). `STUDIO_S3_PREFIX` was pinned to "" beside it and is no
+# longer set: nothing reads a bucket prefix now, and `test_paths.py` asserts
+# that by setting a non-empty one and expecting it to be ignored.
 os.environ["STUDIO_S3_BUCKET"] = "studio-prod-media-us-east-1"
-os.environ["STUDIO_S3_PREFIX"] = ""
 # The catalog table has no default either, for the reason `adapters/ddb.py`
 # gives, so the suite has to name one — `catalog gc` and `catalog seed` refuse
 # before they reach moto otherwise.
