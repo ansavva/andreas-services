@@ -114,11 +114,19 @@ published once and downloaded per machine (#284, #285): real model output,
 chosen to exercise the shapes the app cares about, and never a copy of anyone's
 production library.
 
-**That is the design, and half of it is not built.** The loader is
-`dev-aws-seed.sh` (#285); the fixture is #284, needs a human to generate it, and
-does not exist. So a stack today is empty apart from the shared material, and
-the paragraph above describes where this is going rather than what you will
-find.
+**That is the design, and the last step of it has not been taken.** The loader
+is `dev-aws-seed.sh` (#285); the seed bucket and the writer are #284 —
+`infra/modules/dev_seed` and `studio dev-seed publish`, both landed, **neither
+ever executed.** The bucket has not been applied and nothing has been published
+into it. So a stack today is still empty apart from the shared material, and the
+paragraph above describes where this is going rather than what you will find.
+
+What is left is not code. `publish` **promotes** a fixture out of a dev stack
+rather than generating one — it calls no model and costs nothing — so someone
+has to drive their own stack through a session first, with placeholder names
+from the first generation, and then choose the six to eight nodes worth every
+machine downloading. `infra/README.md` has the selection rules and the
+hard-rule-#1 guard.
 
 ### What follows from the change
 
@@ -154,13 +162,16 @@ convenience. If you need prod data in front of you today, the deployed app at
 ./studio/scripts/dev-user.sh --generate-password     # its one test account
 ./studio/scripts/dev-token.sh                        # prove sign-in works; prints a token
 ./studio/scripts/dev-aws-seed.sh                     # load the fixture — see below
+studio dev-seed tree                                 # what this stack holds, by path
+studio dev-seed publish --path <p>                   # promote a fixture (dry run)
 ./studio/scripts/dev-aws-reset.sh --dry-run          # what a reset would remove
 ./studio/scripts/dev-aws-destroy.sh                  # tear it down; the machine id is kept
 ```
 
-**`dev-aws-seed.sh` has never loaded anything.** The fixture it downloads is
-#284, which is human-gated because it generates media, and the bucket it would
-live in does not exist — so the script stops on its first read and says so. What
+**`dev-aws-seed.sh` has never loaded anything.** The bucket it reads is declared
+but not applied, and no fixture has been published into it — so the script stops
+on its first read and says so. It is human-gated, but not because publishing
+generates media: `studio dev-seed publish` is a copy. What
 a fresh stack actually holds is the shared material `dev-setup.sh` pushes: the
 pose plates, and a starting `phrasebook/wording.yaml` (#425).
 

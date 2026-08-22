@@ -22,6 +22,7 @@ local development pointed at production. It does not any longer — see the root
 | `api_domain` | `studio-api.andreas.services` custom domain + Route53 record |
 | `hosting` | The SPA's S3 bucket, CloudFront, OAC, SPA-fallback function |
 | `dev_storage` | **dev only.** `media` + `catalog` with every guard removed |
+| `dev_seed` | **the shared fixture bucket.** Versioned, undeletable, one per account |
 
 **`catalog` is listed first because it is the one that matters.** Everything
 else in this directory is reconstructible: the ECR image from git, the SPA
@@ -461,31 +462,33 @@ Cognito pool 500s on every call, so failing early is the faster way to find out.
 
 ## The seed bucket
 
-**Design recorded, not yet built.** `studio-dev-seed-us-east-1` is not declared
-by any Terraform and has never held anything. What names it now is a comment in
-`modules/dev_storage/main.tf` and one reader, `scripts/dev-aws-seed.sh`, written
-against the contract below and against #284's — a reader that has therefore
-never successfully read. It is documented here because `dev_storage`'s decisions
-already lean on it (versioning off in dev is justified by "recovery is
-re-seeding"), and a justification whose subject does not exist is exactly the
-thing that rots quietly.
+**Declared, never applied.** `studio-dev-seed-us-east-1` is `modules/dev_seed`,
+wired into `envs/prod` — and no `terraform apply` has run since, so the bucket
+still does not exist and `scripts/dev-aws-seed.sh` still stops on its first
+read. Nothing below has been executed. What changed with #284 is that the
+design is now code that CI will apply on the next studio infra change, rather
+than a comment in `modules/dev_storage/main.tf` describing a bucket nobody had
+written.
 
-The reader also fixes the shape of two documents `#284` only sketched:
-`v1/catalog.json` and `v1/manifest.json`. Both are authoritative in git, both
-are validated before a byte is written, and the header of `dev-aws-seed.sh`
-spells them out field by field. Publishing something the loader rejects is the
-expected way to discover a disagreement between them.
+**Why `envs/prod` owns it.** Its name says `dev` because that is who it serves;
+the root says prod because that is the only studio root with an account-level
+lifecycle. `envs/dev` is per machine and `dev-aws-destroy.sh` tears it down — a
+bucket every developer's stack is seeded from must be out of reach of a
+teardown. A third root would have been the tidier home and nothing applies it,
+which is how the bucket stayed a design note for as long as it did. The
+`Environment` tag is overridden to `dev` in the module block so the tag and the
+name cannot disagree.
 
 What it is for: **one shared fixture, published once, downloaded per machine**
 (#284, #285). Real model output chosen to exercise the shapes the app cares
-about — a run folder with documents and outputs, a character with reference
-subfolders, a scene, a video, a `.heic` that does not tile, a name that sorts
-badly. Never a copy of anyone's production library, which is the point that
-distinguishes this from the old "just point at prod" arrangement and the reason
-it can be shared at all.
+about — stills at two or three aspect ratios, one short video, a run folder with
+`request.json` and `result.json`, a folder three deep, one deliberately awkward
+name, an empty folder. Six to eight objects; every machine downloads it. Never a
+copy of anyone's production library, which is the point that distinguishes this
+from the old "just point at prod" arrangement and the reason it can be shared at
+all.
 
-Its intended posture, and the reasoning that has to survive into the
-implementation:
+Its posture, and what each decision is actually protecting:
 
 - **One bucket for the account, not one per machine.** The whole value is that
   every developer's stack is seeded from the same bytes; a per-machine copy
@@ -493,19 +496,84 @@ implementation:
 - **Versioned**, unlike the dev buckets it feeds. It is the *only* copy of a
   fixture that someone curated by hand, so it has the property the dev media
   buckets are allowed to lack — and it is small enough that the history costs
-  nothing.
-- **Write is a deliberate promotion, read is ordinary.** A dev stack only ever
-  reads it, so the seed script needs `GetObject`/`ListBucket` and nothing more.
-  Putting a fixture *in* is `#284`'s promotion step and should stay a thing a
-  human does on purpose, because every machine provisioned afterwards inherits
-  whatever was promoted.
-- **Not `force_destroy`, and not disposable.** It outlives every dev stack that
-  reads it. `dev-aws-destroy.sh` must never be able to reach it, which is
-  another reason it does not belong in `envs/dev` at all — it is account-level,
-  like the Terraform state bucket.
+  nothing. Concretely it protects against a re-publish of `v1/` overwriting good
+  bytes in place: the `v1/media/…` keys are stable across publishes of the same
+  version, so a mistaken `--apply` replaces rather than adds.
+- **No `force_destroy`, and `prevent_destroy` on top.** It outlives every dev
+  stack that reads it, and there is no upstream to re-fetch it from — re-curating
+  a fixture means driving a dev stack through a session of generations again,
+  which costs money. `terraform destroy` on `envs/prod` already failed by design
+  because of the media bucket; this is a second reason. The price is stated
+  rather than discovered: **renaming this bucket later is an out-of-band
+  empty-then-delete**, because the root [CLAUDE.md](../../CLAUDE.md)'s rule is
+  that `force_destroy` is set at creation or never, and this is the creation.
+- **All four public-access blocks on, ACLs off, SSE-S3.** Nothing here is
+  public; `dev-aws-seed.sh` reads it with the developer's own AWS login.
+- **One lifecycle rule**, aborting incomplete multipart uploads after seven
+  days — a fixture carries a video, and an interrupted `cp` bills for parts no
+  listing shows. Noncurrent versions are deliberately *not* expired: the
+  versioning above is the recovery, and a fixture is touched a few times a year,
+  so a 30-day rule would remove the recovery on exactly the timescale nobody
+  notices.
+- **Write is a deliberate promotion, read is ordinary** — but *today that is
+  procedure, not IAM.* There is one human principal in this account and it both
+  publishes and seeds, so there is no bucket policy and no read-only role: what
+  makes a write deliberate is that `studio dev-seed publish` is a dry run unless
+  `--apply` and refuses without an explicit attestation. The day a second
+  developer gets an identity of their own is the day the read-only bucket policy
+  goes into `modules/dev_seed`.
 
-Until #284 lands, treat every claim in this section as intent. The one fact is
-the name.
+### Putting a fixture in
+
+`studio dev-seed publish` (`pipeline/…/maintenance/dev_seed.py`). It **promotes**
+a fixture out of a dev stack rather than building one: a human drives the CLI
+against their own stack as ordinary work, and a handful of the nodes that
+produces become the fixture. So it calls no model, needs no provider token, and
+carries no approval gate of its own — the approval happened when the generations
+were run. `pipeline/tests/test_dev_seed.py` pins that, and says what the pin
+cannot see.
+
+It reads the source stack's **catalog table**, not a bucket listing, and walks
+`parent_id` to build each node's path — the API mints `node-<uuid4>` at random,
+so a dev stack's ids are derived from nothing. **The fixture therefore carries no
+ids at all**: `dev-aws-seed.sh` derives them as `uuid5` over
+`s3://<dev bucket>/<path>`, with the bucket name inside the derivation, so two
+machines get different ids from one fixture and that is correct.
+
+Promotion is selective by construction. `--path` is required and repeatable,
+there is no `--all`, a folder brings its subtree, ancestors are added because
+the loader refuses a fixture whose parent folders are missing, and
+`--max-objects` caps what the expansion can reach. Refusing to publish
+everything is the default, not an option.
+
+`catalog.json` lands in git, so **hard rule #1 applies to the promotion itself**.
+The publisher refuses a stack whose `characters/` or `projects/` segments are not
+placeholder-shaped — the whole stack, not just the selection, because #284 is
+explicit that generating naturally and sanitising afterwards is the wrong order.
+It also refuses any published segment shaped like a personal name, reports the
+capitalised tokens found in promoted text, and requires `--placeholders-only`
+before `--apply`. What that cannot catch is written out in `name_problems`, and
+the short version is: a lowercase first name is indistinguishable from a project
+slug, and a face is not text.
+
+### The two documents
+
+`v1/catalog.json` and `v1/manifest.json`, **authoritative in
+`studio/fixtures/dev-seed/<version>/`** and copied into the bucket byte-identical
+for the loader. `dev-aws-seed.sh`'s header specifies them field by field — it
+shipped first and its author constructed the schema because #284 only sketched
+it. That contract is no longer one-sided: `test_dev_seed.py` feeds the
+publisher's output through the loader's own `fixture_problems` shell function, so
+a disagreement about a field is a red test rather than a fixture rejected on
+somebody's machine. Neither side needed changing to make them agree.
+
+`v1/` is a version **prefix**, not object versioning: a fixture change is
+additive and a machine is re-seeded to a known revision by naming `v2/`.
+
+Two things are still true and worth saying plainly: **the bucket has never been
+created, and nothing has ever been published to it.** Until a human runs
+`studio dev-seed publish --apply` against a stack they have driven, a fresh dev
+stack holds only the shared material `dev-setup.sh` pushes.
 
 ---
 
