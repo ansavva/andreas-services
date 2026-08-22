@@ -22,12 +22,52 @@ export function isSortOrder(value: string | null): value is SortOrder {
   return value !== null && value in SORT_LABELS;
 }
 
+/**
+ * What a node is, as `/api/nodes` and `/api/resolve` report it.
+ *
+ * Not `MediaKind`. That one is classified from the extension and answers "how do
+ * I draw this"; this one is the catalog's own answer to "is this a folder", and
+ * the two share a field name on different shapes. A listing entry carries the
+ * first, a record the second.
+ */
+export type NodeKind = "folder" | "file";
+
+/**
+ * One node's record — the whole of what the catalog will say about it.
+ *
+ * No `blob_key` and no `path`, deliberately and permanently: see the header of
+ * `backend/studio_core/routes/nodes.py`. Absent attributes are absent rather
+ * than null, which is why every optional field here is `?` and not `| null`.
+ */
+export interface NodeRecord {
+  id: string;
+  lib: string;
+  /** Absent on the library root, and that absence is what identifies it. */
+  parent_id?: string;
+  name: string;
+  kind: NodeKind;
+  size?: number;
+  content_type?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
 export interface FileEntry {
+  /** The node id. This is what the URL names and what a selection holds. */
+  id: string;
+  /**
+   * The slash-joined *name* path — never the S3 key it is stored under.
+   *
+   * Still here because the write routes are still key-addressed (#316 retires
+   * them). It is also what `CopyKeyButton` puts on the clipboard, which is what
+   * a `studio` command takes.
+   */
   key: string;
   name: string;
   size: number;
   last_modified: string | null;
   kind: MediaKind;
+  content_type: string | null;
   /** Presigned inline GET. Short-lived — re-sign through `getAsset` when it dies. */
   url: string;
   /** Highlighting hint, present on text files only. */
@@ -35,11 +75,15 @@ export interface FileEntry {
 }
 
 export interface FolderEntry {
+  id: string;
   prefix: string;
   name: string;
+  last_modified: string | null;
 }
 
 export interface Crumb {
+  /** The node the crumb names — a crumb is a navigation target, so it has one. */
+  id: string;
   name: string;
   prefix: string;
 }

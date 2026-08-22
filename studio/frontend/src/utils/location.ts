@@ -1,105 +1,102 @@
 /**
- * The URL *is* the S3 path.
+ * The URL names a node, by id.
  *
- * `studio.andreas.services/projects/<project>/runs/2026-08-14_.../output/clip.mp4`
- * opens that clip; `studio.andreas.services/projects/<project>/runs/` opens that
- * folder. The trailing slash is the whole distinction, and it is the same one S3
- * makes — which is why it is carried rather than normalised away.
+ * `/f/<node_id>` is a folder and `/o/<node_id>` is one file, open. Nothing about
+ * where the node sits appears in the address — that is the point of #313. Two
+ * things follow, and both were the reasons the URL used to be the S3 key:
  *
- * Three consequences worth knowing before changing anything here:
+ * * **A share link survives a rename and a move.** Renaming a clip used to
+ *   invalidate every link to it, because the link *was* its key. A node id is
+ *   the one thing about a node that never changes, so the link outlives both.
+ * * **There is nothing left to encode.** A node id is a v4 UUID, so the
+ *   per-segment encoding this file used to carry — there to keep the spaces and
+ *   `#` in real filenames from eating the separators — has nothing to protect
+ *   any more. `legacyPath` still decodes, because the paths *it* reads are the
+ *   old key-shaped links and those still contain both.
  *
- * * **A share link is a key, so it must survive a round trip.** Every segment is
- *   encoded and decoded individually: encoding the whole path would eat the
- *   separators, and not encoding at all would break on the spaces and `#` that
- *   real filenames in this bucket contain.
- * * **CloudFront has to agree.** A key ending in `.mp4` looks exactly like a
- *   static asset, so `modules/hosting`'s viewer-request function routes by
- *   location (`/assets/…`) rather than by extension. Change one and the other
- *   stops being true.
- * * **The root is the bucket, so the path and the key are now the same string.**
- *   the pipeline dropped the `media/` wrapper this used to prepend, so `/` is the
- *   root and every other path is a key verbatim. That makes the mapping an
- *   identity — but it is kept as a mapping rather than inlined, because the
- *   backend's `media_root_prefix` can be pointed at a subtree again, and this is
- *   the one place the frontend would have to agree with it.
+ * **`/f/` and `/o/` are reserved.** An old share link is matched by exclusion —
+ * anything that is neither is handed to the resolver — so a library holding a
+ * top-level folder named `f` or `o` would shadow one of these. The root holds
+ * `projects/` and `characters/`, and the resolver is a bridge that comes out
+ * once no old link is in circulation, so this is stated rather than defended.
+ *
+ * **CloudFront still has to agree, and still needs no change.** Its
+ * viewer-request function routes by *location* — `/assets/…` and `/index.html`
+ * pass through, everything else rewrites to `index.html` — rather than by "does
+ * this look like a file". The new ids are extensionless and the old links end in
+ * `.mp4`; a location rule serves both, and an extension rule would break the
+ * second. See `infra/modules/hosting/main.tf`.
  */
 
-export const ROOT_PREFIX = "";
+/**
+ * The library root, and the one folder addressed by something other than an id.
+ *
+ * Its id is not knowable before the first request — `/api/libraries` returns the
+ * library, not its root node — so an app that insisted on `/f/<id>` everywhere
+ * would have to resolve before it could draw anything. `GET /api/tree` with
+ * neither `?node=` nor `?prefix=` is already the root, so `/` costs no lookup.
+ * It is also where sign-out lands.
+ */
+export const ROOT_PATH = "/";
 
-export type Target =
-  | { kind: "folder"; prefix: string }
-  | { kind: "object"; key: string; prefix: string };
+/** A folder node id, or `null` for the library root. */
+export type FolderId = string | null;
 
-function encodeKey(key: string): string {
-  return key
-    .split("/")
-    .map((segment) => encodeURIComponent(segment))
-    .join("/");
+export type Target = { kind: "folder"; id: FolderId } | { kind: "object"; id: string };
+
+/** The in-app path for a folder. */
+export function folderPath(id: FolderId): string {
+  return id === null ? ROOT_PATH : `/f/${id}`;
 }
 
-function decodeKey(path: string): string {
-  return path
-    .split("/")
-    .map((segment) => {
-      try {
-        return decodeURIComponent(segment);
-      } catch {
-        // A hand-edited URL can contain a stray `%`. Better to look for a key
-        // that does not exist than to throw on the way to rendering.
-        return segment;
-      }
-    })
-    .join("/");
-}
-
-/** The folder one key sits in — always ending in a slash. */
-export function parentPrefix(key: string): string {
-  const trimmed = key.replace(/\/+$/, "");
-  const cut = trimmed.lastIndexOf("/");
-  return cut < 0 ? ROOT_PREFIX : trimmed.slice(0, cut + 1);
-}
-
-export function basename(key: string): string {
-  const trimmed = key.replace(/\/+$/, "");
-  return trimmed.slice(trimmed.lastIndexOf("/") + 1);
-}
-
-/** The in-app path for a folder. Always ends in a slash. */
-export function folderPath(prefix: string): string {
-  return `/${encodeKey(prefix)}`;
-}
-
-/** The in-app path for one object — this is the share link. */
-export function objectPath(key: string): string {
-  return `/${encodeKey(key)}`;
+/** The in-app path for one open file — this is the share link. */
+export function objectPath(id: string): string {
+  return `/o/${id}`;
 }
 
 /**
  * Read a pathname back into what it points at.
  *
- * Anything outside `ROOT_PREFIX` resolves to the root rather than erroring: the
- * API validates keys properly and will say so, and a stale bookmark should land
- * somewhere usable instead of on a crash. With the root empty nothing is outside
- * it, so what that check catches today is `/` alone — but it is written against
- * the constant so pointing the root at a subtree keeps working.
+ * Anything unrecognised resolves to the root rather than erroring, which is the
+ * same bargain the key-shaped version made: a stale bookmark should land
+ * somewhere usable instead of on a crash. In practice the router has already
+ * sent the old shapes to the resolver, so what reaches here unrecognised is a
+ * hand-edited URL.
  */
 export function targetFromPath(pathname: string): Target {
-  const raw = decodeKey(pathname.replace(/^\/+/, ""));
+  const segments = pathname.split("/").filter(Boolean);
+  const [scope, id] = segments;
 
-  if (!raw || !`${raw}/`.startsWith(ROOT_PREFIX)) {
-    return { kind: "folder", prefix: ROOT_PREFIX };
+  if (segments.length === 2 && id) {
+    if (scope === "f") return { kind: "folder", id };
+    if (scope === "o") return { kind: "object", id };
   }
 
-  if (raw.endsWith("/")) {
-    return { kind: "folder", prefix: raw };
-  }
+  return { kind: "folder", id: null };
+}
 
-  // A root prefix typed without its trailing slash is still the root folder,
-  // not an object of that name. Unreachable while the root is empty, since
-  // `raw` is non-empty by here.
-  if (`${raw}/` === ROOT_PREFIX) {
-    return { kind: "folder", prefix: ROOT_PREFIX };
-  }
-
-  return { kind: "object", key: raw, prefix: parentPrefix(raw) };
+/**
+ * An old key-shaped URL as the name path `GET /api/resolve` takes.
+ *
+ * Every segment is decoded individually — encoding was applied that way, and the
+ * separators would be eaten by decoding the whole string at once. The trailing
+ * slash that used to mean "folder" is dropped rather than read: `/api/resolve`
+ * returns the node's `kind`, so the distinction the slash carried is now
+ * answered by the thing being resolved instead of guessed from its address.
+ */
+export function legacyPath(pathname: string): string {
+  return pathname
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => {
+      try {
+        return decodeURIComponent(segment);
+      } catch {
+        // A hand-edited URL can carry a stray `%`. Better to resolve a name
+        // that does not exist — which is a 404 the resolver reports — than to
+        // throw on the way to rendering.
+        return segment;
+      }
+    })
+    .join("/");
 }

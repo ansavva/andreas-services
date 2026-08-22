@@ -1,13 +1,14 @@
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import type { ReactNode } from "react";
+import { BrowserRouter } from "react-router-dom";
 
 import { Alert, Spinner } from "@ansavva/design-system";
 
 import { isAuthConfigured } from "./amplify";
 import { LoginForm } from "./components/auth/LoginForm";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import { BrowsePage } from "./pages/BrowsePage";
+import { StudioRoutes } from "./routes";
 
-function Gate() {
+function Gate({ children }: { children: ReactNode }) {
   const { authenticated, loading } = useAuth();
 
   if (!isAuthConfigured) {
@@ -33,32 +34,27 @@ function Gate() {
     );
   }
 
-  return authenticated ? <BrowsePage /> : <LoginForm />;
+  return authenticated ? <>{children}</> : <LoginForm />;
 }
 
 /**
- * One route, matching everything.
+ * The gate wraps the routes rather than sitting inside one.
  *
- * The path *is* the S3 key — `/projects/<project>/runs/…/output/clip.mp4` — so there is
- * nothing to enumerate here and no depth to declare: a bucket's shape is not
- * known to the router. `BrowsePage` reads `location.pathname` through
- * `utils/location` and decides what it points at; a path that resolves to
- * nothing sensible falls back to the library root rather than 404ing, because a
- * stale bookmark should land somewhere usable.
+ * `LegacyRedirect` makes an authenticated call — every `/api` route is behind
+ * the Cognito authorizer — so a resolver rendered before sign-in would 401 on a
+ * share link that is perfectly good. Signing in leaves the URL where it was, and
+ * the redirect happens on the far side of it.
  *
- * Two things outside this file have to agree with it. CloudFront's
- * viewer-request function must send these paths to `index.html` — including the
- * ones ending in `.mp4`, which is why it routes by location rather than by
- * extension (`infra/modules/hosting`). And sign-out sends the user to `/`, which
- * is the root listing.
+ * The route table itself is in `routes.tsx`. See there for what the three shapes
+ * mean.
  */
 export function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Routes>
-          <Route path="*" element={<Gate />} />
-        </Routes>
+        <Gate>
+          <StudioRoutes />
+        </Gate>
       </BrowserRouter>
     </AuthProvider>
   );

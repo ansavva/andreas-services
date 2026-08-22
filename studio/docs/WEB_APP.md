@@ -67,6 +67,7 @@ studio/
 ├── frontend/                 # Vite + React SPA (studio.andreas.services)
 │   ├── index.html            # pins data-theme="dark"
 │   └── src/                  # apis, components, pages, hooks, context, utils, types
+│                             # routes.tsx is the URL table; *.test.tsx is vitest
 ├── infra/
 │   ├── modules/              # auth, compute, api_gateway, api_domain, hosting, media
 │   └── envs/prod/
@@ -165,8 +166,9 @@ its version history went with it. Nothing stands behind this bucket now.
 
 **There is no `media/` wrapper.** There was until August 2026, and studio's
 browsable root was hard-coded to it in five places — the Flask config default,
-the SPA's `ROOT_PREFIX`, the Terraform variable, the IAM prefix condition and
-the deploy workflow's `jq` block. When the pipeline flattened the bucket, every
+the SPA's `ROOT_PREFIX` (gone since #313, which took the paths out of the SPA's
+URLs), the Terraform variable, the IAM prefix condition and the deploy
+workflow's `jq` block. When the pipeline flattened the bucket, every
 listing came back empty and the app rendered an empty root with no error, since
 a prefix that matches nothing is not an error to S3. The browsable root is now
 the bucket itself (`media_root_prefix = ""`).
@@ -282,23 +284,46 @@ that breaks every time the pipeline ships.
   clears, but only when no overlay is open, because the reel, the text page and
   the move picker each bind Escape to their own close — and the picker is often
   open *on* the selection, so clearing it there would be Escape cancelling a move
-  by emptying what was being moved. Selection is keyed by object key rather
+  by emptying what was being moved. Selection is keyed by node id rather
   than by grid index: a listing can be re-fetched underneath one — every write
   does exactly that — and an index-keyed selection would quietly come to mean
-  different files.
-- **The URL is the S3 key, and CloudFront has to be in on it.** `utils/location`
-  maps `projects/<project>/runs/x/output/clip.mp4` ⟷
-  `/projects/<project>/runs/x/output/clip.mp4`, segment-encoded so spaces and `#` in
-  real filenames survive; a trailing slash means a folder, exactly as it does in
-  S3. With the browsable root empty the two sides are now the same string, but
-  it stays a mapping: `ROOT_PREFIX` there has to agree with the backend's
-  `media_root_prefix`, and that is the seam where they meet. The catch is that a share link
-  *ends in `.mp4`*, so the viewer-request function in `modules/hosting` routes by
-  **location** (`/assets/…` and `/index.html` pass through, everything else
-  rewrites) rather than by "does this look like a file". The old
-  extension-matching version sent every share link to S3, where the 403/404
-  fallbacks rescued it into `index.html` — it worked, by accident, one wasted
-  origin round trip at a time.
+  different files. It held the object key until #313 and holds the id for the
+  same reason one press further on: an id survives the rename that changes a key.
+- **The URL names a node by id, and CloudFront still has to be in on it.**
+  `/f/<node_id>` is a folder and `/o/<node_id>` is one file, open; `/` is the
+  library root, whose id nothing knows before the first request. `utils/location`
+  is the whole of that mapping. The URL used to *be* the S3 key, which meant
+  renaming a clip invalidated every link to it — a node id is the one thing about
+  a node that never changes, so a share link now outlives both a rename and a
+  move.
+  - **The old links still work, through one resolver.** Anything matching
+    neither id route goes to `pages/LegacyRedirect`, which asks
+    `GET /api/resolve` what the name path names and `replace`s itself with the id
+    URL. `replace` is load-bearing: leaving the old URL in history makes back
+    re-enter the resolver and push forward again. The node's `kind` picks the
+    route, so a link that lost its trailing slash in a chat client still lands
+    right. **This is the only tested part of the frontend** — see Testing below.
+  - **Do not simplify the viewer-request function to extension matching.** A
+    legacy share link *ends in `.mp4`*, so `modules/hosting` routes by
+    **location** (`/assets/…` and `/index.html` pass through, everything else
+    rewrites) rather than by "does this look like a file". That rule serves the
+    extensionless id URLs and the legacy ones alike and needed no change for
+    #313. The extension-matching version it replaced sent every share link to
+    S3, where the 403/404 fallbacks rescued it into `index.html` — it worked, by
+    accident, one wasted origin round trip at a time.
+- **An object URL names the file, not its folder, so the folder is asked for.**
+  `hooks/useFolder` reads `parent_id` off `GET /api/nodes/<id>` — but only when
+  the listing already in hand does not hold the file. That is what keeps a reel
+  scrolling forty clips at zero requests: it rewrites the URL to each one, and
+  every one is in the listing. A cold share link asks once. Keeping the last
+  folder instead would be wrong rather than merely lazy — going back into an
+  object URL after browsing elsewhere would keep a folder the file is not in.
+- **Names and paths come off the breadcrumbs.** The folder's own name, its
+  parent and whether it is the root were string arithmetic on the URL and are
+  now read from the trail `GET /api/tree` returns, which the server built by
+  walking `parent_id`. Rebuilding any of it client-side would be a second,
+  guessing implementation — and a path↔id translation layer in the SPA is
+  exactly what #313 exists to avoid.
 - **The reel is sized in `dvh`, not `inset-0`, and sound lives in the top bar
   because of it.** `index.html` asks for `viewport-fit=cover`, so a `fixed`
   element pinned to all four sides is laid out against the *large* viewport —
@@ -483,8 +508,8 @@ answering with a short listing.
 | `POST /api/nodes/<id>/upload-url` | `{size, content_type}` → a presigned PUT for `blobs/<id>`. Signed length and type |
 | `POST /api/nodes/<id>/confirm-upload` | `HeadObject`s the blob and writes `size`/`content_type` onto the row |
 | `POST /api/runs` | Records a run: folder, documents inline, and an upload URL per output |
-| `GET /api/tree?prefix=&sort=` | One delimited listing: `folders`, `files` (each presigned), `breadcrumbs`, `counts` |
-| `GET /api/reel?prefix=&cursor=&page_size=&sort=` | Images and video beneath a prefix, recursively, paginated |
+| `GET /api/tree?node=\|prefix=&sort=` | One folder ready to draw: `folders`, `files` (each presigned), `breadcrumbs`, `counts`. One address or the other — both is a 400 |
+| `GET /api/reel?node=\|prefix=&cursor=&page_size=&sort=` | Images and video beneath a folder, recursively, paginated. Same two addresses |
 | `GET /api/asset?key=&disposition=` | A fresh presigned URL for one object |
 | `GET /api/text?key=` | A `.json` / `.md` / `.txt` object's contents, capped at 1 MB |
 | `POST /api/folder` | `{prefix, name}` → creates an empty folder. 409 if taken |
@@ -584,6 +609,7 @@ poetry run pytest                                          # moto-backed, no AWS
 cd studio/frontend
 export NODE_AUTH_TOKEN=$(gh auth token)                    # needs read:packages
 npm ci && npm run dev
+npm test                                                   # vitest, no AWS needed
 ```
 
 `aws login` writes a cache only the AWS CLI reads, so `aws sts
@@ -596,6 +622,38 @@ Terraform's provider.
 the generated file says as much in its own header. Without the env file the app
 shows "Auth is not configured"; without node_modules every local binary is
 missing, and the first one you hit is `tsc: not found`.
+
+## Testing
+
+**The backend has a suite; the frontend has one test, and that asymmetry is
+deliberate.** `backend/tests/` is moto-backed pytest over a miniature of the
+real bucket and covers the whole read and write surface. `frontend` ran on
+`lint → typecheck → build` alone until #313, on the reasoning that every failure
+this SPA can have is a blank page somebody sees immediately.
+
+The legacy-URL resolver broke that reasoning, so it got a runner. A share link
+written before #313 that quietly stops resolving is invisible until a user
+reports it — there is no blank page, because the app is working perfectly for
+everyone who never had one. `vitest` + `@testing-library/react` + `jsdom`,
+`npm test`, run in `studio-pr.yml` beside lint and typecheck.
+
+`src/pages/LegacyRedirect.test.tsx` and `src/utils/location.test.ts` are the
+whole of it, and what they assert is: an old `/projects/…` URL resolves **once**
+and lands on the id URL with its `?sort=` intact; `replace` keeps the old URL out
+of history, so back does not walk into the resolver again; the node's `kind`
+picks `/f/` or `/o/`; a 404 is shown rather than swallowed into a redirect to the
+root; an id URL reaches `BrowsePage` with no resolve at all.
+
+Two things follow for anyone adding to this. The route table lives in
+`routes.tsx` rather than `App.tsx` so it can be exercised without the auth stack
+— the gate renders a "not configured" notice when no user pool is set, which in a
+test is every URL resolving to the same thing. And `vite.config.ts` sets both
+`clearMocks` and `restoreMocks`: "the resolver was not called" is one of the
+assertions and is worthless against a tally shared with the previous case.
+
+**Everything else on this surface is typecheck-only.** That is the honest state,
+not an oversight, and the bar for the next test is the resolver's: a failure the
+app cannot report on its own.
 
 ## Creating users
 

@@ -6,6 +6,7 @@ import type {
   DeletedObjects,
   MovedFolder,
   MovedObjects,
+  NodeRecord,
   ReelResponse,
   RenamedFolder,
   RenamedObject,
@@ -16,14 +17,44 @@ import type {
 } from "../types";
 import { apiGet, apiSend } from "./client";
 
+/**
+ * Which folder a listing is about — one address or the other, never both.
+ *
+ * `node` is the cheap one and the one the SPA routes on: a listing is a query on
+ * the parent id, so an id is the argument the query already wants, while a path
+ * costs a read per segment to walk down from the library root first. `prefix`
+ * stays because the destination picker is choosing a *prefix* for a write route
+ * that takes one, and because every share link ever handed out is a path.
+ *
+ * Neither is the library root, which is why both are optional. Sending both is a
+ * 400 — the API refuses to guess which one meant it.
+ */
+export type FolderRef = { node?: string; prefix?: string };
+
 /** Immediate contents of one folder. */
-export function getTree(prefix: string, sort: SortOrder) {
-  return apiGet<TreeResponse>("/api/tree", { prefix, sort });
+export function getTree(where: FolderRef, sort: SortOrder) {
+  return apiGet<TreeResponse>("/api/tree", { ...where, sort });
 }
 
-/** One page of images and videos beneath a prefix, recursively. */
-export function getReel(prefix: string, sort: SortOrder, cursor?: string) {
-  return apiGet<ReelResponse>("/api/reel", { prefix, sort, cursor });
+/** One page of images and videos beneath a folder, recursively. */
+export function getReel(where: FolderRef, sort: SortOrder, cursor?: string) {
+  return apiGet<ReelResponse>("/api/reel", { ...where, sort, cursor });
+}
+
+/** One node's record, by id. The SPA reads it for `parent_id`. */
+export function getNode(id: string) {
+  return apiGet<NodeRecord>(`/api/nodes/${encodeURIComponent(id)}`);
+}
+
+/**
+ * The node a slash-joined name path names, walked from the library root.
+ *
+ * The one call the legacy-URL resolver makes, and the reason old `/projects/…`
+ * share links keep working: it turns the address they carry into the id the app
+ * now routes on. An empty path is the root.
+ */
+export function resolvePath(path: string) {
+  return apiGet<NodeRecord>("/api/resolve", { path });
 }
 
 /**
