@@ -154,6 +154,29 @@ def _point_config_at_the_dev_stack(dev_stack):
             os.environ[name] = value
 
 
+@pytest.fixture(autouse=True)
+def signed_in():
+    """Switch off the unit suite's stub caller for this whole tree.
+
+    `tests/conftest.py` autouses a fixture of this name that replaces
+    `app_factory`'s references to `identity` and `catalog` with a stand-in
+    returning `sub-owner` and `lib-0001`. That is right where it lives —
+    thirty-seven route tests that are not about authentication would otherwise
+    each need a token — and a conftest applies to every directory beneath it,
+    so it reaches here too.
+
+    Here it is silently wrong. A test that builds the app would be signed in as
+    a subject the real pool never issued, scoped to a library the real table
+    does not hold, and would fail on a 403 that says nothing about what it was
+    checking. Overriding the name in *this* conftest rather than in one module
+    means a test added later inherits the real `before_request` rather than
+    finding out the hard way.
+
+    Nothing to yield: the point is that the parent fixture does not run.
+    """
+    return None
+
+
 @pytest.fixture(scope="session")
 def id_token() -> str:
     """A real ID token for the dev pool's test account, via `dev-token.sh`.
