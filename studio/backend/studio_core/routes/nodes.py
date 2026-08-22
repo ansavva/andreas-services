@@ -8,19 +8,23 @@ and an S3 key is an opaque attribute nothing outside `services.catalog` ever
 sees. Since #309 `browse` reads the catalog too, so what separates them is no
 longer the storage but the answer: these routes return a node's *record*, and
 `browse` returns a folder ready to draw — presigned, sorted, with breadcrumbs
-and counts. Its write half still addresses the bucket, and keeping the files
-apart is what stops a reader having to work out which of the two a handler is.
+and counts. Keeping the files apart is what stops a reader having to work out
+which of the two a handler is.
 
 ## Why the writes are here and not in `routes/manage.py`
 
-#293 named `manage.py`, and that would put two different addressing schemes in
-one file. Every route in `manage` takes an S3 key or a prefix; every route here
-takes a node id. They overlap until #316 retires the first — #309 took the
-*reads*, so `routes/browse.py` is a catalog reader now and `manage` is the last
-blueprint left addressing the bucket. Through that overlap the one thing a
-reader must never have to work out is which storage a handler is talking to,
-which is the same reason the read routes were split out in the first place. The
-verbs moved; the split did not.
+#293 named `manage.py`, and that would have put two different addressing schemes
+in one file: every route there took an S3 key or a prefix, and every route here
+takes a node id.
+
+**Since #316 both write the same table, and the split survived it on a narrower
+argument.** What `manage` takes is a slash-joined *name path* — the address every
+share link and every `GET /api/tree` response is made of — and what these take is
+a node id. A name path costs a `GetItem` per segment and can be made ambiguous by
+a rename; an id cannot. #313 moves the SPA from the first to the second, at which
+point one of the two files has nothing left in it. Until then a reader must not
+have to work out which address a handler takes, which is the same reason the read
+routes were split out in the first place.
 
 ## Three rules hold across all three read routes
 

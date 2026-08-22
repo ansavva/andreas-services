@@ -7,10 +7,17 @@ that retires is stated where each workaround used to live — `_sort_records` fo
 the date-tie break, `_folder_entry` for "a folder has no LastModified",
 `reel_items` for the twenty-thousand-object walk.
 
-`asset_url` and `text_object` below are the exception: they still take an S3 key
-and still read the object, because they are the key-addressed pair that the
-key-addressed *write* routes are retired with (#316 onwards). Nothing else here
-takes a key.
+`asset_url` and `text_object` below are the exception, and they **outlived the
+thing they were paired with**. They were expected to retire alongside the
+key-addressed writes; #316–#319 moved those onto name paths and node ids and left
+these two still taking a raw S3 key and reading the object at it.
+
+That works for everything written before the catalog, where a name path and a
+blob key are the same string, and for nothing written since — a row minted by
+#294 keeps its bytes at `blobs/<node-id>`, which no client is ever handed. The
+id-addressed replacements exist: `GET /api/nodes/<id>/download-url` for the
+first, and nothing yet for the second. #312 is where this has to be settled,
+because `keys.clean_key` survives only to guard these two.
 
 Run metadata (`request.json`, `result.json`, `prompt.json`) is deliberately
 *not* parsed — those files are served as text and the frontend shows them
@@ -457,12 +464,14 @@ def _reel_page_size(raw: int | str | None) -> int:
 
 # ─────────────────────── the two key-addressed reads ───────────────────────
 #
-# Everything above addresses the catalog. These two still take an S3 key,
-# because they are the pair the key-addressed *writes* in `routes/manage.py`
-# depend on — `/api/asset` re-signs what a listing handed out, `/api/text` reads
-# what `PATCH /api/text` writes back. They are retired together (#316 onwards).
-# `GET /api/nodes/<id>/download-url` is already the id-addressed twin of the
-# first.
+# Everything above addresses the catalog. These two still take an S3 key.
+#
+# `/api/asset` re-signs what a listing handed out and `/api/text` reads what
+# `PATCH /api/text` writes back — and that second pairing is now **asymmetric**:
+# since #319 the save resolves a name path to a node and writes that node's
+# `blob_key`, while this read still does a `GetObject` on the string it was
+# given. The two agree for material written before the catalog and only for
+# that. See the module docstring; #312 owns the fix.
 
 
 def asset_url(raw_key: str, disposition: str | None) -> dict:

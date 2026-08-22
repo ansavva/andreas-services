@@ -140,7 +140,6 @@ export interface RenamedObject {
 export interface RenamedFolder {
   prefix: string;
   name: string;
-  objects: number;
   renamed: boolean;
 }
 
@@ -156,8 +155,13 @@ export interface MovedObjects {
 export interface MovedFolder {
   prefix: string;
   name: string;
-  objects: number;
   moved: boolean;
+  /**
+   * Rows whose `path` the move rewrote. Not an object count — a move copies no
+   * bytes since #316, so a folder rename reports nothing at all and this reports
+   * how much of the tree came along.
+   */
+  descendants: number;
 }
 
 export interface CopiedObjects {

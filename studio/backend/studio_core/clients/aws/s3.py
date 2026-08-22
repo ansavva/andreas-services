@@ -3,22 +3,29 @@
 **This module can write, and that is a recent and deliberate change.** Studio was
 built as a reader of a bucket a separate pipeline owned, and for most of its
 life the Lambda role carried `ListBucket` and `GetObject` and nothing else. It
-now also carries `PutObject` and `DeleteObject`, because studio is
-where the library actually gets tidied — a run that produced nothing worth
-keeping is noticed in the browser, not in the pipeline.
+now also carries `PutObject` and `DeleteObject`, because studio is where the
+library actually gets tidied — a run that produced nothing worth keeping is
+noticed in the browser, not in the pipeline.
 
-Three things keep that from being a licence to do anything:
+**Nothing here lists any more.** `list_folder`, `walk_all`, `exists`,
+`prefix_exists` and `put_folder_marker` went with #316 and #317: a folder is a
+row, a name is unique because a condition expression says so, and "what is in
+this folder" is a query on the catalog. That is the point of the milestone
+rather than a side effect — the listing was the expensive half of every write,
+and the zero-byte marker existed only to make an empty folder visible to one.
 
-* Every key still goes through `services.keys`, so nothing outside the
-  browsable root is reachable whatever the caller sends, and the root itself
-  cannot be renamed or deleted. Note that the root is the whole bucket now
-  that the pipeline has dropped its `media/` wrapper, so that first clause is
-  carrying less weight than it used to — see `modules/compute`.
-* There is no multipart upload and no path that creates a key from nothing. The
-  three writes here are a zero-byte folder marker, a `CopyObject` within the same
-  bucket — which is what a rename and a move are — and `put_text`, which
-  overwrites a text file that already exists. None of them can bring a new object
-  into the library, so "studio cannot upload" is still true.
+What is left is bytes, and four things bound them:
+
+* **A key reaching `CopyObject`, `PutObject` or `DeleteObject` comes off a node
+  record**, never off a request. `services.manage` resolves a name path to a node
+  and passes that node's `blob_key`; nothing outside `services.catalog` composes
+  one. That is what replaced `services.keys` as the line between a query string
+  and `GetObject`.
+* **`copy` and `put_text` cannot bring an object in from outside.** A copy's
+  source is already in this bucket, and `put_text` overwrites a file the caller
+  has already proved is a text node with bytes behind it.
+* **`presign_put` is the one exception, and it is bounded at signing time** —
+  one key, one exact length, one content type, once. See its docstring.
 * Deletes are explicit and bounded (`config.max_bulk_keys`,
   `config.max_folder_objects`); nothing in this service deletes by wildcard.
 
@@ -27,8 +34,7 @@ the `.md`, `.yaml` and `.json` files in this bucket are notes and prompts a
 person writes, and reading one in the browser and then going elsewhere to fix a
 typo in it is the kind of friction that means it never gets fixed. It is
 confined to `keys.TEXT_EXTENSIONS`, capped at `config.max_text_bytes`, and
-refuses a key that is not already there. Media is still the pipeline's to
-produce, and an upload path for it would be a different argument.
+refuses a node with no blob.
 """
 
 import logging
@@ -68,85 +74,18 @@ def reset_client():
     _client = None
 
 
-def list_folder(prefix: str) -> tuple[list[str], list[dict]]:
-    """One delimited listing: immediate subfolders and immediate objects."""
-    folders: list[str] = []
-    objects: list[dict] = []
-    paginator = client().get_paginator("list_objects_v2")
-
-    try:
-        for page in paginator.paginate(
-            Bucket=config.media_bucket(), Prefix=prefix, Delimiter="/"
-        ):
-            folders.extend(cp["Prefix"] for cp in page.get("CommonPrefixes", []))
-            objects.extend(page.get("Contents", []))
-    except ClientError as exc:
-        logger.warning("ListObjectsV2 failed for %s: %s", prefix, exc)
-        raise UpstreamError("Could not list the media bucket") from exc
-
-    return folders, objects
-
-
-def walk_all(prefix: str, limit: int) -> tuple[list[dict], bool]:
-    """Every object beneath a prefix, up to `limit`.
-
-    Returns the objects and whether the listing was cut short. Used wherever a
-    whole subtree has to be known before anything can be decided about it —
-    sorting the reel by date, and counting a folder before renaming or deleting
-    it — none of which can be answered from one page.
-    """
-    objects: list[dict] = []
-    truncated = False
-    paginator = client().get_paginator("list_objects_v2")
-
-    try:
-        for page in paginator.paginate(Bucket=config.media_bucket(), Prefix=prefix):
-            for obj in page.get("Contents", []):
-                if len(objects) >= limit:
-                    return objects, True
-                objects.append(obj)
-    except ClientError as exc:
-        logger.warning("ListObjectsV2 walk_all failed for %s: %s", prefix, exc)
-        raise UpstreamError("Could not list the media bucket") from exc
-
-    return objects, truncated
-
-
-def exists(key: str) -> bool:
-    """Whether one object is there. The pre-check every rename and create makes."""
-    try:
-        client().head_object(Bucket=config.media_bucket(), Key=key)
-        return True
-    except ClientError as exc:
-        code = exc.response.get("Error", {}).get("Code")
-        if code in ("404", "NoSuchKey", "NotFound"):
-            return False
-        logger.warning("HeadObject failed for %s: %s", key, exc)
-        raise UpstreamError("Could not read the object") from exc
-
-
-def prefix_exists(prefix: str) -> bool:
-    """Whether anything at all lives under a prefix.
-
-    A folder is not a thing in S3, so "does this folder exist" can only be asked
-    as "is there a key that starts with it". One key is enough to answer it.
-    """
-    try:
-        response = client().list_objects_v2(
-            Bucket=config.media_bucket(), Prefix=prefix, MaxKeys=1
-        )
-    except ClientError as exc:
-        logger.warning("ListObjectsV2 failed for %s: %s", prefix, exc)
-        raise UpstreamError("Could not list the media bucket") from exc
-
-    return response.get("KeyCount", 0) > 0
-
-
 def copy(source_key: str, dest_key: str) -> None:
-    """Server-side copy within the media bucket. The first half of a rename.
+    """Server-side copy within the media bucket. The whole of a copy.
 
-    Server-side, so a 200 MB video never travels through the Lambda — which is
-    what makes renaming a run folder of finished output affordable at all.
+    **It used to be the first half of a rename**, and of a move, and of a folder
+    rename — one call per key, followed by a delete. Those are transactions now
+    (#316), so the one caller left is `services.manage.copy_objects`, which is
+    the only operation in the service that is *supposed* to duplicate bytes. Each
+    copy gets its own object rather than a second row on one key: `delete_node`
+    does not ask whether a blob is still referenced, so a shared key would mean
+    deleting one copy destroys the other's. Copy-on-write is #334.
+
+    Server-side, so a 200 MB video never travels through the Lambda.
     """
     try:
         client().copy_object(
@@ -190,27 +129,12 @@ def delete(keys: list[str]) -> None:
             )
 
 
-def put_folder_marker(prefix: str) -> None:
-    """Write the zero-byte object that makes an empty folder visible.
-
-    The console's own convention, and the only way a new folder can exist before
-    anything is in it — S3 has no directories to create. Nothing renders one any
-    more: listings come from the catalog (#309), where a folder is a row.
-    `manage._folder_names` is the last reader that has to skip one.
-    """
-    try:
-        client().put_object(Bucket=config.media_bucket(), Key=prefix, Body=b"")
-    except ClientError as exc:
-        logger.warning("PutObject failed for %s: %s", prefix, exc)
-        raise UpstreamError("Could not create the folder") from exc
-
-
 def put_text(key: str, body: bytes, content_type: str) -> None:
     """Overwrite a text object with new contents.
 
     The only write in this module that carries a caller-supplied body, and the
     caller is `services.manage.update_text`, which has already established that
-    the key names an existing text file small enough to hold in memory. S3 has
+    the node is a text file carrying a blob, small enough to hold in memory. S3 has
     no partial write and no conditional put, so this is a whole-object replace —
     the previous contents are gone unless the bucket is versioned, which is one
     more reason to turn versioning on.

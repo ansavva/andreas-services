@@ -33,7 +33,10 @@ widening it a third time.
 
 The line between "edit a text file" and "upload" is worth stating, because it is
 thinner than it sounds and is held in exactly one place: `manage.update_text`
-refuses a key that does not already exist.
+refuses a node that is not a file carrying a blob. That used to be `s3.exists` on
+a key; #319 moved it onto the row without weakening it, and it now also refuses
+the case the key-addressed form could not represent — a placeholder whose upload
+never landed.
 
 **Copying is the one write that adds an object, and the distinction that keeps
 it honest is where the bytes come from.** A copy is a server-side `CopyObject`
@@ -126,17 +129,22 @@ The parts of the old rule that still hold, and should keep holding:
   content type, and a TTL shorter than a read URL's. `content-length` and
   `content-type` are signed headers, so an oversized body is refused by S3
   rather than discovered after it has moved.
-  The other `PutObject` calls are unchanged: a zero-byte folder marker and an
-  overwrite of an *existing* text file (`manage.update_text`, capped at
-  `max_text_bytes` and refused outright for a key that is not already there, so
-  it cannot create); `CopyObject` supplies the rest.
+  The only other `PutObject` is an overwrite of an *existing* text file
+  (`manage.update_text`, capped at `max_text_bytes` and refused outright for a
+  node with no blob, so it cannot create). **The zero-byte folder marker is
+  gone** (#316): a folder is a row, so there is nothing left for a marker to
+  fake and nothing left that reads one.
   **Still no multipart grant**, and `max_upload_bytes` is S3's single-PUT
   ceiling rather than a policy number — past it a single `PutObject` is
   impossible, which is a separate decision again.
-- **`copy_objects` keeps its source, and it is the only write that does.** Every
-  other `CopyObject` here is the first half of a rename or a move and is
-  followed by a delete, which makes this the only write that *adds* an object
-  rather than relocating one — see the correction at the top of this file. The
+- **`copy_objects` is the only `CopyObject` left.** It used to be one of four:
+  a rename, a folder rename and a move were each a copy per key followed by a
+  delete. #316 made all three catalog transactions that move no bytes at all, so
+  the one copy remaining is the one that was always *supposed* to duplicate
+  something. Each copy gets its own object rather than a second row pointing at
+  one key — `catalog.delete_node` does not ask whether a blob is still
+  referenced, so a shared key would mean deleting one copy destroyed the other's
+  bytes. Copy-on-write is #334 and has to revisit that. The
   bytes come from inside the bucket — which used to make "studio cannot upload"
   true as a whole, and no longer does. `copy_objects` is still not an upload;
   the upload is `POST /api/nodes/<id>/upload-url`, above, and it is the only
@@ -512,23 +520,48 @@ answering with a short listing.
 | `GET /api/reel?node=\|prefix=&cursor=&page_size=&sort=` | Images and video beneath a folder, recursively, paginated. Same two addresses |
 | `GET /api/asset?key=&disposition=` | A fresh presigned URL for one object |
 | `GET /api/text?key=` | A `.json` / `.md` / `.txt` object's contents, capped at 1 MB |
-| `POST /api/folder` | `{prefix, name}` → creates an empty folder. 409 if taken |
-| `PATCH /api/object` | `{key, name}` → renames one object in place. 409 if taken |
-| `PATCH /api/folder` | `{prefix, name}` → renames a folder and its subtree |
-| `POST /api/objects/move` | `{keys: [...], destination}` → moves 1..N objects, names kept. 409 if taken |
-| `POST /api/folder/move` | `{prefix, destination}` → moves a folder and its subtree |
-| `POST /api/objects/copy` | `{keys: [...], destination}` → copies 1..N objects, sources kept. Names numbered if taken |
-| `PATCH /api/text` | `{key, content}` → overwrites an existing text file |
-| `DELETE /api/objects` | `{keys: [...]}` → deletes 1..N objects |
-| `DELETE /api/folder` | `{prefix}` → deletes a folder and its subtree |
+| `POST /api/folder` | `{prefix, name}` → creates an empty folder. One row, no object. 409 if taken |
+| `PATCH /api/object` | `{key, name}` → renames one file in place. 409 if taken |
+| `PATCH /api/folder` | `{prefix, name}` → renames a folder. Its subtree does not move |
+| `POST /api/objects/move` | `{keys: [...], destination}` → moves 1..N files, names kept. 409 if taken |
+| `POST /api/folder/move` | `{prefix, destination}` → moves a folder; descendants' `path` is rewritten |
+| `POST /api/objects/copy` | `{keys: [...], destination}` → copies 1..N files, sources kept. Names numbered if taken |
+| `PATCH /api/text` | `{key, content}` → overwrites a text file's bytes and restamps its row |
+| `DELETE /api/objects` | `{keys: [...]}` → deletes 1..N files. Rows first, then blobs |
+| `DELETE /api/folder` | `{prefix}` → deletes a folder and its subtree. Rows first, then blobs |
+
+**The eight routes above take a name path, not an S3 key** (#316, #317, #319).
+`prefix`, `key` and `destination` are the slash-joined names `GET /api/tree`
+hands back and every share link is made of; `services.manage` walks them against
+the catalog one `NAME#` lookup per segment, starting at the library's root.
+Nothing changed on the wire, which is why the SPA needed no change. For material
+written before the catalog a name path and a blob key are the same string; for
+anything written since they are not, and nothing may assume they are.
+
+**That also retired the confinement they used to need.** `keys.clean_prefix` and
+`assert_inside_root` normalised a string and compared it against
+`media_root_prefix`, which in prod is empty and therefore excluded nothing. A
+walk cannot leave the library it starts in, so `../elsewhere` is not traversal to
+reject — it is a name nothing is called, and it 404s. Those functions and five
+more now have no caller; #312 removes them.
 
 **Rename and move are separate routes and must stay separate.** A rename takes a
-`name` and changes the last segment; a move takes a `destination` prefix and
-changes the folder. `keys.clean_name` refuses a slash, so a rename cannot become
-a move by punctuation, and a destination is always read as a prefix, so a move
-cannot become a rename by typing a filename into it — `move(x.jpeg → a/b.jpeg)`
-puts the file *inside* `a/b.jpeg/`. That asymmetry is deliberate and the tests
-pin it.
+`name` and changes the last segment; a move takes a `destination` folder and
+changes the parent. `keys.clean_name` refuses a slash, so a rename cannot become
+a move by punctuation, and a destination is always read as a folder, so a move
+cannot become a rename by typing a filename into it — under S3 `move(x.jpeg →
+a/b.jpeg)` put the file *inside* a conjured `a/b.jpeg/`, and against the catalog
+the same request is a 404 because no folder is called that. The asymmetry is
+deliberate, the refusal got louder, and the tests pin both.
+
+**A conflict is a transaction condition failure, not a listing.** Every create,
+rename and move puts its `NAME#` item under `attribute_not_exists(pk)` and turns
+the cancelled transaction into the 409 the API always returned. The check used to
+be a read followed by a write with a window between them; the window is gone
+rather than narrowed. A bulk move still pre-checks every destination with a read,
+because each file is its own transaction and a conflict found on the eighth would
+leave seven already moved — that read is a courtesy, and the condition expression
+is the guarantee.
 
 **`POST /api/objects/copy` is `move` minus the delete, plus numbering.** Same
 body, same confinement at both ends, same bulk cap. Two differences, both
@@ -547,7 +580,7 @@ deliberate:
   copy.
 
 **`PATCH /api/nodes/<id>` refuses `name` and `parent` together.** On the
-key-addressed side rename and move are different routes, and `keys.clean_name`
+name-path side rename and move are different routes, and `keys.clean_name`
 refuses a slash so a rename cannot become a move by punctuation. Collapsed onto
 one verb, the separation has to be stated instead: the two orderings give
 different answers when the destination already holds that name, and choosing one

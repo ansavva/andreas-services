@@ -214,8 +214,9 @@ def create_app() -> Flask:
     app.register_blueprint(libraries_bp)
     # The catalog's read surface, kept apart from `browse` for the reason
     # `routes/nodes.py` gives: one returns node records, the other returns a
-    # folder ready to draw. Both read the catalog since #309; `manage` below is
-    # the last blueprint still addressing the bucket, until #316.
+    # folder ready to draw. All three blueprints read and write the catalog
+    # since #316; what separates `manage` from `nodes` is that it takes a name
+    # path where `nodes` takes an id, and #313 retires the first.
     app.register_blueprint(nodes_bp)
     app.register_blueprint(manage_bp)
 

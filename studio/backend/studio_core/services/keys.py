@@ -12,22 +12,43 @@ so no input can walk out of the bucket or smuggle a key past the checks below.
 Point the root at a real prefix and the confinement comes back with it, which is
 why the check stays.
 
-## What #312 could take, and what it could not
+## What #312 can take now, and the one thing it still cannot
 
 #312 shrinks this module to classification and naming, on the premise that the
-API accepts node ids and has nothing left to guard. **Half of that premise holds
-today.** The *read* path stopped taking keys in #309–#311, so `breadcrumbs` and
-`is_folder_marker` went with it — the first is a walk up `parent_id` in
-`services.browse` now, and the second described a zero-byte object that cannot
-exist where a folder is a row.
+API has nothing left to guard. **#316–#319 finished making that true for the
+writes.** `services.manage` addresses the catalog: it resolves a slash-joined
+name path one exact `NAME#` lookup per segment, starting at the library's own
+root node, so there is no prefix to normalise and nothing to confine — a name
+path cannot name a node outside the library, and `..` is a name nothing is
+called rather than traversal to reject.
 
-The rest could not go. `services.manage` is still the key-addressed write
-surface and calls `clean_key`, `clean_prefix`, `assert_inside_root`, `is_within`,
-`with_name`, `renamed_prefix`, `moved_prefix`, `basename` and `numbered_name` —
-and it is retired by the *next* milestone (#316, #317, #319), not this one.
-Deleting them now would delete every write this service can do. They stay, and
-they stay strict, because with the browsable root empty they are the only line
-between a query string and `GetObject`.
+**Seven functions have no caller left**, and #312 owns removing them and their
+tests. They are still here, and still exercised by `tests/test_keys.py`, because
+deleting behaviour and deleting its tests in different changes is how a rule
+gets lost:
+
+* `clean_prefix`, `assert_inside_root`, `is_within`, `parent_prefix`,
+  `with_name`, `renamed_prefix`, `moved_prefix`.
+
+Three of those describe operations that no longer exist as string edits at all:
+`with_name` was a rename, `moved_prefix` was a move, and `renamed_prefix` was a
+folder rename. They are `catalog.rename_node` and `catalog.move_node` now, and
+the separation they held is held by the argument each one takes.
+
+**`clean_key` is the exception and it is load-bearing.** `browse.asset_url` and
+`browse.text_object` still take a raw S3 key from a query string and still do a
+`GetObject` at it — they were expected to retire with the key-addressed writes
+and did not — so this is still the only line between that query string and the
+bucket, and `_reject_traversal`, `_normalise` and `basename` stay alive
+underneath it. #312 has to move those two routes onto node ids before it can take
+any of the four.
+
+**`clean_name` keeps every refusal it has.** None of them was ever about S3: a
+slash is refused so a rename cannot become a move by punctuation, `.` and `..`
+because they name nothing, control characters because a name holding a newline
+can be written and then never referenced from a URL again, and 255 UTF-8 bytes
+because a name is one segment. It refuses rather than strips — a silently altered
+name is a rename nobody asked for.
 """
 
 import posixpath
