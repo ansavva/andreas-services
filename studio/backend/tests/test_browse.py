@@ -568,7 +568,11 @@ def test_newest_first_puts_a_later_write_first(catalog_tree):
     """
     seed = browse.list_folder(CATALOG_LIBRARY, "characters/subject-a/", "name")
     seed_id = next(f["id"] for f in seed["folders"] if f["name"] == "seed")
-    catalog.create_node(seed_id, "subject-a_0_written_last.webp", catalog.KIND_FILE)
+    # Confirmed, not just created. `create_node` alone leaves a row naming bytes
+    # that never arrived, which listings now hide (#442) — and this test is about
+    # ordering, not about placeholders.
+    written = catalog.create_node(seed_id, "subject-a_0_written_last.webp", catalog.KIND_FILE)
+    catalog.set_blob(written["node_id"], written["blob_key"], size=9, content_type="image/webp")
 
     newest = [
         f["name"]
@@ -746,3 +750,68 @@ def test_no_browse_response_carries_a_blob_key_or_a_path(catalog_tree):
         # Present, so the test is looking at populated responses rather than
         # passing on three empty dicts.
         assert "id" in found
+
+
+# ── abandoned uploads (#442) ─────────────────────────────────────────────────
+
+
+def _uploaded(parent_prefix, name, *, confirm_size=None):
+    """A file the way an upload makes one: created, then confirmed or not."""
+    node = catalog.create_node(_node_id(parent_prefix), name, catalog.KIND_FILE)
+    if confirm_size is not None:
+        catalog.set_blob(node["node_id"], node["blob_key"], size=confirm_size,
+                         content_type="image/webp")
+    return node
+
+
+def test_an_upload_that_never_confirmed_is_not_listed(catalog_tree, media_bucket):
+    """**The broken tile #442 reported.**
+
+    `create_node` mints `blob_key` immediately and `_file_entry` presigns any row
+    carrying one — so before this, a PUT that failed left a tile the grid drew
+    and could not load. `routes/nodes` claimed that was impossible, and it was,
+    under #294: a listing came from `ListObjectsV2` then, and an object that does
+    not exist cannot appear in one.
+    """
+    _uploaded("characters/subject-a/seed/", "never-arrived.webp")
+
+    names = [
+        f["name"]
+        for f in browse.list_folder(CATALOG_LIBRARY, "characters/subject-a/seed/")["files"]
+    ]
+
+    assert "never-arrived.webp" not in names
+
+
+def test_a_confirmed_empty_file_is_listed(catalog_tree, media_bucket):
+    """**Why the check is `"size" in record` and not `record.get("size")`.**
+
+    A confirmed empty file has `size` 0; a placeholder has it absent, because
+    `_attributes` drops `None` and keeps `0`. Truthiness cannot tell them apart
+    and membership can — so a falsy check would hide a legitimately empty file
+    the user uploaded on purpose.
+    """
+    media_bucket.put_object(
+        Bucket=config.media_bucket(),
+        Key=catalog.blob_key_for(
+            _uploaded("characters/subject-a/seed/", "genuinely-empty.webp",
+                      confirm_size=0)["node_id"]
+        ),
+        Body=b"",
+    )
+
+    names = [
+        f["name"]
+        for f in browse.list_folder(CATALOG_LIBRARY, "characters/subject-a/seed/")["files"]
+    ]
+
+    assert "genuinely-empty.webp" in names
+
+
+def test_an_abandoned_upload_is_kept_out_of_the_reel_too(catalog_tree, media_bucket):
+    """The reel signs its own window, so it needs the same filter as the listing."""
+    _uploaded("characters/subject-a/seed/", "never-arrived-reel.webp")
+
+    names = [item["name"] for item in browse.reel_items(CATALOG_LIBRARY, "", None, None)["items"]]
+
+    assert "never-arrived-reel.webp" not in names
