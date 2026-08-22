@@ -45,3 +45,18 @@ variable "machine_name" {
   description = "Human-readable machine hostname stored only as a resource tag"
   type        = string
 }
+
+variable "spa_origins" {
+  description = <<-EOT
+    Where the local SPA is served from, allowed to send the presigned upload PUT
+    at this machine's media bucket. Vite's port is pinned in
+    `frontend/vite.config.ts` and `dev-up.sh` prints the same URL, so the default
+    is right on every machine and `dev-aws-common.sh` does not pass it.
+
+    It has a default for that reason, unlike every other variable in this file:
+    those identify the machine and must not be guessable, this one is the same
+    everywhere. Override it only if you serve the SPA somewhere else.
+  EOT
+  type        = list(string)
+  default     = ["http://localhost:5173"]
+}

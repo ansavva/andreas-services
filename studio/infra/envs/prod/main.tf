@@ -57,6 +57,12 @@ module "media" {
   bucket_name = var.media_bucket_name
   key_prefix  = var.media_root_prefix
 
+  # Built from `local.app_domain`, like the API's `allowed_origin` below, so the
+  # two CORS surfaces cannot come to name different hostnames for one SPA. This
+  # one is about the presigned PUT only: the upload's bytes go browser → S3 and
+  # never through the API.
+  cors_allowed_origins = ["https://${local.app_domain}"]
+
   tags = local.common_tags
 }
 

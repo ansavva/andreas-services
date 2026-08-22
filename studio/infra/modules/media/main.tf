@@ -70,3 +70,40 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
     bucket_key_enabled = true
   }
 }
+
+# CORS, and it exists for exactly ONE request: the presigned PUT a browser sends
+# when someone uploads into a folder (#294). That PUT is cross-origin, it carries
+# a `Content-Type` S3 has to be told to accept, and so it preflights — without a
+# rule here the browser never sends the body and the upload fails with no status
+# attached. Reads need nothing: the app draws media with `<img src>` and
+# `<video src>`, and plain media loading is not subject to CORS at all.
+#
+# Deliberately narrow, on all four axes:
+#
+#   * PUT only. GET is not here because nothing fetches this bucket with `fetch`
+#     — `GET /api/text` is served through the API precisely so a second CORS
+#     surface would not have to agree with the API's own (see
+#     `docs/WEB_APP.md`). Adding a method here means adding it there too.
+#   * `content-type` and `content-length` only, because those are exactly the two
+#     `s3.presign_put` puts in `X-Amz-SignedHeaders`. A client sending anything
+#     else fails signature validation and writes nothing, so a wider list would
+#     grant nothing and only blur what the signature actually covers. Note
+#     `content-length` never appears in a preflight — it is a forbidden header
+#     name, so the browser sets it itself and script cannot — and it is listed
+#     anyway so this rule and the signature read the same.
+#   * No `expose_headers`. The uploader reads the PUT's *status* and nothing
+#     else; `confirm-upload` learns the size from `HeadObject` server-side rather
+#     than from an `ETag` the browser would have to be allowed to see.
+#   * Origins from the caller. There is no `*` here and there must not be: a
+#     wildcard would let any page a signed-in user visits complete a PUT whose
+#     URL it had somehow obtained.
+resource "aws_s3_bucket_cors_configuration" "this" {
+  bucket = aws_s3_bucket.this.id
+
+  cors_rule {
+    allowed_methods = ["PUT"]
+    allowed_origins = var.cors_allowed_origins
+    allowed_headers = ["content-type", "content-length"]
+    max_age_seconds = 3600
+  }
+}

@@ -85,5 +85,10 @@ module "storage" {
   media_bucket_name  = local.media_bucket_name
   catalog_table_name = local.catalog_table_name
 
+  # Passed explicitly even though the module defaults to the same value, so the
+  # one thing that differs between this bucket's CORS rule and prod's is visible
+  # here rather than only in the module.
+  cors_allowed_origins = var.spa_origins
+
   tags = local.common_tags
 }
