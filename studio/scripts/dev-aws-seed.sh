@@ -37,10 +37,17 @@
 # change rather than a mutation. Override the bucket with `--seed-bucket` or
 # `STUDIO_DEV_SEED_BUCKET`, and the prefix with `--fixture-version`.
 #
-# **NEITHER THE BUCKET NOR THE FIXTURE EXISTS YET.** They are #284, which is
-# human-gated because it generates media. Until it lands, every run of this
+# **NEITHER THE BUCKET NOR THE FIXTURE EXISTS YET.** The bucket is declared
+# (`infra/modules/dev_seed`, wired into `envs/prod`) and has never been applied;
+# nothing has ever been published into it. Until both happen, every run of this
 # script stops at the first read and says so. That is the expected outcome
 # today, not a fault in your stack.
+#
+# It is gated on a human, but NOT because publishing generates media — #284 was
+# rewritten and `studio dev-seed publish` is a copy out of a dev stack that
+# calls no model and costs nothing. What needs a human is the driving: someone
+# has to have run the generations, with placeholder names, and then choose which
+# six to eight nodes are worth every machine downloading.
 #
 # ── THE CONTRACT WITH #284 ─────────────────────────────────────────────────
 #
@@ -48,6 +55,11 @@
 # the bucket for this to read. This script is a loader and validates them
 # rather than repairing them: anything malformed is reported and nothing is
 # written.
+#
+# **This contract was one-sided when it was written here and is not any more.**
+# `studio dev-seed publish` is the writer, and `pipeline/tests/test_dev_seed.py`
+# feeds its output through `fixture_problems` below — so the two halves cannot
+# drift without a red test. Neither side had to move to make them agree.
 #
 #   catalog.json
 #     {

@@ -183,3 +183,30 @@ resource "aws_ssm_parameter" "api_domain" {
 
   tags = local.common_tags
 }
+
+# THE SHARED DEV-SEED BUCKET, DECLARED HERE ON PURPOSE.
+#
+# It serves the dev environment and it is named for that — `studio-dev-seed-…`,
+# the convention's `[project]-[env]-[component]-[region]` — but its LIFECYCLE is
+# account-level, and this is the only studio root with an account-level
+# lifecycle. `envs/dev` is per machine and is torn down by
+# `dev-aws-destroy.sh`; a bucket every developer's stack is seeded from must not
+# be reachable by a teardown, and a third root nothing applies would leave the
+# bucket a design note (#284) rather than a resource.
+#
+# So: name and tags say DEV, because that is who it serves; the root says PROD,
+# because that is what owns and applies it. `Environment` is overridden below
+# rather than inherited so the tag and the name cannot disagree — a stray bucket
+# is found by its tags or not at all.
+#
+# It carries `prevent_destroy`, as the media bucket above does, which is another
+# reason it belongs in a root that is never destroyed on purpose.
+module "dev_seed" {
+  source = "../../modules/dev_seed"
+
+  bucket_name = "${local.project}-dev-seed-${data.aws_region.current.name}"
+
+  tags = merge(local.common_tags, {
+    Environment = "dev"
+  })
+}
