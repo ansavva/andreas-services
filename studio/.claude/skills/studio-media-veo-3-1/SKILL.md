@@ -87,9 +87,11 @@ Confirm before trusting a `.webp` binding.
 `studio prompt`'s `--engine` list does not include this model, so drive it
 directly and pass its parameters with `--extra`:
 
-```bash
-set -a; . ./.env; set +a          # REPLICATE_API_TOKEN
+**No token export is needed.** `studio run` reads `REPLICATE_API_TOKEN`
+from the environment and falls back to `studio/.env` on its own, so the
+`set -a; . ./.env; set +a` line older notes open with is a no-op.
 
+```bash
 studio run \
   --model veo-3.1 --project <project> \
   --prompt "…" \

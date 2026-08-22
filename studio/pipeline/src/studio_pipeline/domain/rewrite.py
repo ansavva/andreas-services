@@ -23,9 +23,10 @@ name. So a node renamed in place leaves every path that cited it unresolvable,
 which is the same dangling record for a different reason.
 
 What retires this is records naming **node ids** — an id survives a rename by
-construction. That is unfiled and it is not small: it moves the binding
+construction. That is #420, open, and it is not small: it moves the binding
 invariant, the runref vocabulary, and the terms every `SKILL.md` is written in.
-Until somebody decides it, `curate` carries the records along.
+Until it is decided, `curate` carries the records along (`curate.py` states the
+same thing from the other side).
 
 Anything that moves a record's subject — the migrator, curate, a character
 rename — calls `apply_moves()` with {old path: new path}, and every document

@@ -49,11 +49,12 @@ TIES, AND WHY `created_at` IS NOT JUST `LastModified`
 -----------------------------------------------------
 S3's `LastModified` has one-second resolution and a run writes its whole output
 inside one second, so equal timestamps are the common case rather than the edge.
-That is why `services/browse.py::_sort_files` breaks ties on the full key to this
-day. The catalog's `created_at` is meant to retire that workaround, so the tie is
-resolved once, here, at the only moment the key is still available to resolve it
-with: objects sharing a second are ordered by key and given consecutive
-microseconds. The result reproduces today's ordering out of one sortable field.
+That is why `services/browse.py::_sort_records` used to break ties on the full
+key in a second pass. The catalog's `created_at` retired that workaround, and
+this is where it is paid for: the tie is resolved once, here, at the only moment
+the key is still available to resolve it with — objects sharing a second are
+ordered by key and given consecutive microseconds. `_sort_records` now sorts on
+one field, and it reproduces the ordering the two passes gave.
 
 WHAT IS NOT A NODE
 ------------------
@@ -291,7 +292,7 @@ def content_type(key: str) -> str:
     """Guessed from the extension, not read back with a HEAD.
 
     Every writer in this package sets `ContentType` from exactly this call
-    (`objects/upload.py`, `domain/runs.py`, `domain/characters.py`), so guessing
+    (`objects/upload.py`, `domain/runs.py`, `domain/characters/`), so guessing
     reproduces what is stored for anything the pipeline wrote — at zero
     requests, against a bucket with thousands of objects. `content_type` is a
     node attribute the API may correct later; a HEAD per object to seed it would
@@ -542,7 +543,7 @@ def _session(journal_name, phase, apply=None, needs_table=False):
         if plan["unmapped"]:
             die(f"{len(plan['unmapped'])} unmapped key(s) — run `plan` and resolve them first")
         if not ddbc.table_exists(ddb):
-            die(f"no table '{ddbc.TABLE}' — it is created by studio's Terraform. "
+            die(f"no table '{ddbc.table()}' — it is created by studio's Terraform. "
                 "Apply the infra first, or set STUDIO_CATALOG_TABLE.")
         print(f"[{'APPLY' if apply else 'dry run'}] {phase}: "
               f"{len(plan['nodes'])} node(s) in scope\n")

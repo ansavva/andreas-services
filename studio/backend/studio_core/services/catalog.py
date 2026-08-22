@@ -108,13 +108,15 @@ KINDS = frozenset({KIND_FOLDER, KIND_FILE})
 # branches on it.
 ROLE_OWNER = "owner"
 
-# `by-sk` inverts the table so an sk can be asked who points at it; the only
-# question this module asks it is "who is in library X". `by-path` is the
-# subtree index: hashed on `lib`, ranged on `path`, so one `begins_with` reads a
-# whole branch. `by-recent` is hashed on `lib` and ranged on `created_at`, and
-# is the only index that returns rows in an order a caller did not sort for —
-# `browse.reel_items` reads it (#310).
-BY_SK_INDEX = "by-sk"
+# `by-path` is the subtree index: hashed on `lib`, ranged on `path`, so one
+# `begins_with` reads a whole branch. `by-recent` is hashed on `lib` and ranged
+# on `created_at`, and is the only index that returns rows in an order a caller
+# did not sort for — `browse.reel_items` reads it (#310).
+#
+# The table carries a third index and this module does not name it. `by-sk`
+# inverts the table so an sk can be asked who points at it, which answers "who is
+# in library X"; the only thing that asks is `scripts/add-member.sh`, and the
+# `members_of` that used to read it here was deleted for having no route.
 BY_PATH_INDEX = "by-path"
 BY_RECENT_INDEX = "by-recent"
 
@@ -163,18 +165,15 @@ def _name_sk(name: str) -> str:
     return f"NAME#{name}"
 
 
-def _lib_sk(lib: str) -> str:
-    return f"LIB#{lib}"
-
-
 def _lib_pk(lib: str) -> str:
-    """The library's own partition — the same text as `_lib_sk`, spelled apart.
+    """The library's own partition.
 
-    That the two agree is the mechanism rather than a coincidence: a membership
-    is filed under the *user* and carries `LIB#<id>` as its sort key, so the
-    inverted index reaches every member of a library by asking for the string
-    the library itself is keyed on. Collapsing them into one helper would make a
-    reader think one of the two callers had the wrong key.
+    The same text a membership row carries as its *sort* key, and that the two
+    agree is the mechanism rather than a coincidence: a membership is filed under
+    the *user*, so the inverted `by-sk` index reaches every member of a library by
+    asking for the string the library itself is keyed on. There used to be a
+    `_lib_sk` here spelled apart from this one to say so; it went with
+    `members_of`, and `scripts/add-member.sh` is what asks that question now.
     """
     return f"LIB#{lib}"
 
@@ -294,30 +293,6 @@ def libraries_for(sub: str) -> list[dict]:
     return [
         {
             "lib": row["sk"].split("#", 1)[1],
-            "role": row.get("role"),
-            "created_at": row.get("created_at"),
-        }
-        for row in rows
-    ]
-
-
-def members_of(lib: str) -> list[dict]:
-    """Everyone with access to one library.
-
-    The reverse of `libraries_for`, and the reason `by-sk` exists: membership is
-    stored under the *user's* partition so a sign-in reads one partition, which
-    leaves "who else is in here" with nothing to query but the inverted index.
-    """
-    items = _query(
-        TableName=config.catalog_table(),
-        IndexName=BY_SK_INDEX,
-        KeyConditionExpression="sk = :sk",
-        ExpressionAttributeValues={":sk": {"S": _lib_sk(lib)}},
-    )
-    rows = [_attributes(item) for item in items]
-    return [
-        {
-            "sub": row["pk"].split("#", 1)[1],
             "role": row.get("role"),
             "created_at": row.get("created_at"),
         }

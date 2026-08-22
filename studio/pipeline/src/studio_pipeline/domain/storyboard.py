@@ -80,13 +80,7 @@ VERSION = 2
 
 ROLES = ("start", "end", "reference")
 
-#: A shot's progress, derived from what it has rather than declared.
-SHOT_STATUS = ("planned", "boarded", "rendered", "cut")
-SCENE_STATUS = ("planned", "boarding", "boarded", "shooting", "assembled")
-
-#: Panel fields the plan author writes. Everything else on a panel is recorded
-#: by the tools and carried across a re-ingest.
-PANEL_AUTHORED = ("role", "prompt", "model", "aspect_ratio", "extra", "references")
+#: Panel fields recorded by the tools and carried across a re-ingest.
 PANEL_RECORDED = ("run", "source_key", "key", "boarded", "stale")
 
 

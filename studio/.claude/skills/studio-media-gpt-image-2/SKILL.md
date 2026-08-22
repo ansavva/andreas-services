@@ -68,5 +68,8 @@ letting the render fail. Two ways out:
 
 # or convert an existing run output (the source is never modified)
 studio convert \
-  --run <project>/latest#1 --for kling --add-input <name>
+  --run <project>/latest#1 --for kling --add-input <project>
 ```
+
+`--add-input` takes a **PROJECT** — the destination is that project's input
+pool, `projects/<project>/input/<project>_in_<n>.png`.

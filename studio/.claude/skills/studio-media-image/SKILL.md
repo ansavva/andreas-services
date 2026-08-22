@@ -30,13 +30,16 @@ loss. Iterate on the frame, spend on the motion once.
 ## THE RULE — S3 is the only origin
 
 **Assets are never uploaded to Replicate.** Everything sent to a model must
-already be an S3 object, and it reaches Replicate only as a short-lived
-**presigned URL** minted at submit time. Consequently `request.json` stores S3
-**keys**, never signed URLs — they expire, they are ~2 KB of noise, and they
-carry time-limited bucket access that must not outlive the request.
+already be in the media library, and it reaches Replicate only as a short-lived
+**presigned URL** minted at submit time. Consequently `request.json` stores
+**paths**, never signed URLs — they expire, they are ~2 KB of noise, and they
+carry time-limited access that must not outlive the request.
 The run store refuses to record a URL-shaped binding, so this is enforced in code.
 
-To use a local file, upload it to S3 first (`studio-media-s3` skill), then reference its key.
+To use a local file, put it in the library first — `studio upload` mints the
+catalog record and the presigned PUT together, so no cloud credential is
+involved (`studio-media-s3` skill). Working material for a piece of work belongs
+in the project's input pool: `studio projects add-inputs <img> <project>`.
 
 ## The models — peers, no default, one skill each
 
@@ -77,10 +80,16 @@ studio run --model nano-banana-pro --project <project> \
 One runner serves every model, image and video — see
 [`studio-media-core`](../studio-media-core/SKILL.md).
 
-`--character` does two things: supplies the chosen reference subset as identity,
-names the run's owner, and puts the run under that character in S3. Add
-`--slots 1,2,4` to use part of the set. `--extra '{"…"}'` passes model-specific
-inputs. `--dry-run` prints the exact payload and submits nothing.
+`--character` does two things: it supplies that character's chosen reference
+subset as identity, and it records the character on the run so
+`studio runs find --character <name>` can answer later. It does **not** decide
+where the run lands — every run goes under `projects/<project>/`, which is why
+`--project` is required and never inferred. It is repeatable: one piece of work
+can involve several characters.
+
+Add `--slots 1,2,4` to use part of the resolved selection. `--extra '{"…"}'`
+passes model-specific inputs. `--dry-run` prints the exact payload and submits
+nothing.
 
 ### Validation — the whole payload, before anything is recorded
 
@@ -126,7 +135,8 @@ studio runs outputs <project>/latest --presign
 ## Chaining — feeding a run into the next one
 
 Runs are addressed by **runref**: `<project>/<run_id>`, `<project>/latest`, a unique
-slug fragment, or a bare run id when `--character` supplies the owner. Append
+slug fragment, or a bare run id when the project is supplied out of band
+(`--project`). Append
 `#N` to pick the Nth output (1-based); the default is every output.
 
 | Flag | Meaning |
@@ -208,8 +218,8 @@ is copied, never re-encoded in place:
 
 ```bash
 studio convert \
-  --run <project>/latest#1 --for kling --add-input <name>
-# -> projects/<project>/input/<project>_in_<n>.png   (prints the new key)
+  --run <project>/latest#1 --for kling --add-input <project>
+# -> projects/<project>/input/<project>_in_<n>.png   (prints the new path)
 ```
 
 `--for` converts only when the target engine would reject the current format and

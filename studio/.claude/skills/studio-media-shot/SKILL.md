@@ -56,14 +56,14 @@ after three billed calls.
       "identity_from": "reference set (6 images)",
       "prompt": { "…the image prompt as JSON…" },
       "input": { "…the Replicate input…" },
-      "output": "run {owner}/{ts}_{slug} -> output/{slug}.jpg",
+      "output": "run {project}/{ts}_{slug} -> output/{slug}.jpg",
       "gate": "approve payload; then eyeball the frame against the bible `consistency`"
     },
     {
       "n": 2,
       "skill": "s3",
       "produces": "a Kling-compatible copy, only if needed",
-      "command": "studio convert --run {owner}/latest#1 --for kling --add-input {owner}",
+      "command": "studio convert --run {project}/latest#1 --for kling --add-input {project}",
       "gate": "none — no model call, nothing bills"
     },
     {
@@ -74,7 +74,7 @@ after three billed calls.
       "start_frame": "the run output from step 1",
       "prompt": { "…the studio-media-prompt JSON…" },
       "input": { "…the Replicate input…" },
-      "output": "run {owner}/{ts}_{slug} -> output/{slug}.mp4",
+      "output": "run {project}/{ts}_{slug} -> output/{slug}.mp4",
       "gate": "approve payload (two-document review)"
     }
   ]
@@ -127,7 +127,7 @@ fabricated, not preserved.
 ### 5. Normalise the format
 
 ```bash
-studio convert --run {owner}/latest#1 --for kling --add-input {owner}
+studio convert --run {project}/latest#1 --for kling --add-input {project}
 ```
 
 Safe to run unconditionally: an already-accepted image is left untouched and its
@@ -146,10 +146,13 @@ frame already fixes background, lighting, and wardrobe, so:
 ### 7. Animate from the frame
 
 ```bash
-studio run --model kling --project <project> \
-  --input-file input.json --project {project} --prompt-json prompt.json \
-  --start-run {name}/latest#1 --slug {slug} --poll
+studio run --model kling --project {project} \
+  --input-file input.json --prompt-json prompt.json \
+  --start-run {project}/latest#1 --slug {slug} --poll
 ```
+
+A runref is `<project>/<run_id>` — the project, never a character. `latest#1` is
+the newest run in that project, first output.
 
 ### 8. Deliver
 

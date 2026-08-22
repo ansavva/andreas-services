@@ -70,11 +70,15 @@ export interface FileEntry {
   /** The node id. This is what the URL names and what a selection holds. */
   id: string;
   /**
-   * The slash-joined *name* path — never the S3 key it is stored under.
+   * The slash-joined *name* path — never the S3 key it is stored under. For
+   * anything uploaded through the app the two do not resemble each other at
+   * all: the blob sits at `blobs/<node-id>`.
    *
-   * Still here because the write routes are still key-addressed (#316 retires
-   * them). It is also what `CopyKeyButton` puts on the clipboard, which is what
-   * a `studio` command takes.
+   * Still called `key` because the write routes still call their address that.
+   * #316 is closed and did not retire them — it made them catalog writes, which
+   * take a name path under the old parameter name. It is also what
+   * `CopyKeyButton` puts on the clipboard, which is what a `studio` command
+   * takes.
    */
   key: string;
   name: string;

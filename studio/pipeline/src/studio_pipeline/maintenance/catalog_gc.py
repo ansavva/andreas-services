@@ -166,7 +166,7 @@ def cmd_gc(apply, journal):
     """List the blobs nothing references; remove them with `--apply`."""
     ddb = ddbc.client()
     if not ddbc.table_exists(ddb):
-        die(f"no table '{ddbc.TABLE}' — the references live in it. Apply the "
+        die(f"no table '{ddbc.table()}' — the references live in it. Apply the "
             "infra first, or set STUDIO_CATALOG_TABLE.")
 
     referenced = referenced_keys(ddb)
@@ -174,7 +174,7 @@ def cmd_gc(apply, journal):
     # names no blob, which would make every object in the bucket look like
     # garbage — the one input that turns this command into a bucket wipe.
     if not referenced:
-        die(f"no row in '{ddbc.TABLE}' names a blob. An unseeded or wrong table "
+        die(f"no row in '{ddbc.table()}' names a blob. An unseeded or wrong table "
             "makes every object look unreferenced, so this refuses rather than "
             "proposing the whole bucket. Run `studio catalog seed`, or check "
             "STUDIO_CATALOG_TABLE.")
@@ -182,14 +182,14 @@ def cmd_gc(apply, journal):
     s3 = s3c.client()
     found = survey(s3, referenced)
     print(f"[{'APPLY' if apply else 'dry run'}] bucket {s3c.bucket()}, "
-          f"table {ddbc.TABLE}, {len(referenced)} referenced key(s)\n")
+          f"table {ddbc.table()}, {len(referenced)} referenced key(s)\n")
     report(found)
 
     jpath = journal_path(journal)
     doc = load_journal(jpath)
 
     if not apply:
-        doc["gc"] = {"bucket": s3c.bucket(), "table": ddbc.TABLE,
+        doc["gc"] = {"bucket": s3c.bucket(), "table": ddbc.table(),
                      "referenced": len(referenced), "bytes": orphan_bytes(found),
                      "orphans": found["orphans"]}
         save_journal(jpath, doc)
@@ -218,7 +218,7 @@ def cmd_gc(apply, journal):
     for entry in res["failed"]:
         print(f"FAILED       {entry}")
 
-    doc["gc_applied"] = {"bucket": s3c.bucket(), "table": ddbc.TABLE,
+    doc["gc_applied"] = {"bucket": s3c.bucket(), "table": ddbc.table(),
                          "deleted": res["deleted"], "failed": res["failed"],
                          "unconfirmed": unconfirmed, "withdrawn": withdrawn}
     save_journal(jpath, doc)

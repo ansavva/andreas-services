@@ -3,7 +3,13 @@ import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 type Tone = "row" | "tile" | "chrome";
 
 interface Props {
-  /** The S3 object key, or a folder's prefix. Copied verbatim. */
+  /**
+   * The slash-joined *name* path — a file's, or a folder's. Copied verbatim.
+   *
+   * Not the S3 key, which this used to say it was: an uploaded blob lives at
+   * `blobs/<node-id>`, so the two have not matched since the catalog. What lands
+   * on the clipboard is what a `studio` command takes. See `types/index.ts`.
+   */
   value: string;
   /**
    * What `value` names — the only thing that differs between the labels.
@@ -20,12 +26,17 @@ interface Props {
 }
 
 /**
- * Copies one object key to the clipboard.
+ * Copies one node's address to the clipboard.
  *
- * It exists once rather than per surface because the key is the thing you reach
- * for from everywhere — a thumbnail, a file row, the open viewer — and a button
- * that looked or behaved differently in each of those places would be three
- * affordances to learn instead of one. Only the paint changes, through `tone`.
+ * It exists once rather than per surface because the address is the thing you
+ * reach for from everywhere — a thumbnail, a file row, the open viewer — and a
+ * button that looked or behaved differently in each of those places would be
+ * three affordances to learn instead of one. Only the paint changes, through
+ * `tone`.
+ *
+ * The name is from when that address was an S3 key. It is a name path now (see
+ * `value`), and the name survives because it is what the surrounding components
+ * call this one in their own comments — worth renaming only alongside those.
  *
  * It is always a *sibling* of whatever opens the resource, never a child: every
  * card, row and tile in this app is itself a `<button>`, and a button inside a
@@ -78,7 +89,7 @@ export function CopyKeyButton({ value, noun = "key", tone = "row", className = "
 }
 
 /**
- * The three surfaces a key is copied from. `chrome` deliberately matches
+ * The three surfaces an address is copied from. `chrome` deliberately matches
  * `ViewerChrome`'s own buttons — it sits in that row and must not read as a
  * different kind of control.
  */

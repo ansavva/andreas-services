@@ -4,8 +4,14 @@ The local half of studio: the Claude Code skills that produce the media, and
 the rules that govern them. For the deployed browser over the output, see
 [WEB_APP.md](WEB_APP.md); for the map of both, [../CLAUDE.md](../CLAUDE.md).
 
-Nothing here deploys. These skills run inside Claude on your own machine, under
-your own AWS login, and reach the same bucket the app reads. Skills live in
+Nothing here deploys. These skills run inside Claude on your own machine and
+reach the library **through the studio API**: `studio login` is the one
+credential an ordinary session needs, and nothing here needs an AWS account at
+all (#308). Nor is it the bucket the deployed app reads — local work runs
+against this machine's dev stack. This sentence read "under your own AWS login,
+and reach the same bucket the app reads", and both halves are now wrong: #308
+took the login away and #287 the shared bucket. See
+[../CLAUDE.md](../CLAUDE.md). Skills live in
 `studio/.claude/skills/`, in two families: **`studio-media-*`** for using the
 pipeline to make media, **`studio-code-*`** for working on the pipeline's own
 code. The code is one package with one dependency set — see [Layout](#layout).
@@ -120,7 +126,8 @@ nothing about that was safe by design; it was safe by luck of the numbering.
 **Assets are NEVER uploaded to Replicate.** Everything sent to a model must
 already be an S3 object, reaching Replicate only as a short-lived presigned URL
 minted at submit time — and signed URLs are never stored. Full detail under
-[asset storage](#asset-storage) below; enforced in code by `runs.py`.
+[THE RULE — S3 is the only origin](#the-rule--s3-is-the-only-origin) below;
+enforced in code by `runs.py`.
 
 ---
 
@@ -143,10 +150,16 @@ studio/pipeline/
         ├── __init__.py            STUDIO_DIR, ENV_FILE, env_value
         │
         ├── adapters/              THE OUTSIDE WORLD — everything with a side effect
-        │   ├── s3.py              credentials bridge, BUCKET/PREFIX/REGION
+        │   ├── store.py           the media store, by path, through the API
+        │   ├── api.py             one transport: token, refresh, library header
+        │   ├── auth.py            Cognito sign-in + the token cache
+        │   ├── s3.py              the AWS-login bridge — almost gone, see below
         │   ├── ddb.py             the catalog table's client + item marshalling
         │   ├── replicate.py       the HTTP client
         │   └── ffmpeg.py          probe / stitch / grab
+        │
+        ├── session/               `studio login` / `logout` / `whoami`
+        │   └── commands.py        the three commands, and no more
         │
         ├── domain/                WHAT THINGS ARE — records and the tree's shape
         │   ├── paths.py           the one module that knows the key layout
@@ -169,6 +182,7 @@ studio/pipeline/
         │
         └── maintenance/           one-shots, quarantined
             └── backfill_replicate.py  migrate_layout.py  catalog_seed.py
+                catalog_gc.py  dev_seed.py
 ```
 
 **Why the directories are named after what things ARE.** They used to be one
@@ -206,26 +220,50 @@ It runs automatically at the start of every Claude Code session, from the repo's
 so a fresh session comes up ready to use. That hook is shared with the rest of
 the monorepo — studio's setup is one guarded, non-fatal step inside it.
 
+Then sign in to studio itself — **this is the one credential an ordinary
+session needs**:
+
+```bash
+studio login
+```
+
+`adapters/auth.py` signs in to Cognito, `adapters/api.py` carries the token on
+every call, and `adapters/store.py` addresses the library by path. No bucket
+name and no AWS credentials anywhere in that path.
+
 External tools:
-- **AWS CLI** (`aws`) — `brew install awscli` — **required**. It is how the
-  pipeline's remaining direct AWS access reaches the bucket: `adapters/s3.py`
-  bridges `aws configure export-credentials` into boto3, because boto3's own
-  chain does not understand an `aws login` session. Sign in with `aws login`
-  each session. Everything already on `adapters/store.py` needs no AWS login at
-  all — it authenticates to the API with `studio login`.
+- **AWS CLI** (`aws`) — `brew install awscli` — **required only for the
+  maintenance commands.** `adapters/s3.py` bridges `aws configure
+  export-credentials` into boto3, because boto3's own chain does not understand
+  an `aws login` session. It has five importers left: `adapters/ddb.py` for the
+  catalog table, and the four `maintenance/` modules that enumerate the raw
+  bucket — `catalog_gc.py`, `catalog_seed.py`, `dev_seed.py` and
+  `migrate_layout.py`. Sign in with `aws login` before running one of those.
+  Everything else needs **no AWS account at all** — that is the point of #308,
+  and this bullet said "required" flatly until it landed.
 - **ffmpeg** — `brew install ffmpeg` — optional. The scene and movie code
   vendors `imageio-ffmpeg`; this is for checking a render by hand.
 
 API keys:
 - **REPLICATE_API_TOKEN** — https://replicate.com/account/api-tokens —
-  **required**. Every engine runs on Replicate: `bytedance/seedance-2.0`,
-  `kwaivgi/kling-v3-omni-video`, `google/nano-banana-pro`,
+  **required**. Every engine runs on Replicate — video:
+  `bytedance/seedance-2.0`, `kwaivgi/kling-v3-omni-video`, `google/veo-3.1`,
+  `xai/grok-imagine-video`; image: `google/nano-banana-pro`,
   `google/nano-banana-2`, `openai/gpt-image-2`, `openai/gpt-image-1.5`.
+  `engine/models.json` is the list that is actually true.
   Put it in `studio/.env` (copy `studio/.env.example`; `.env` is git-ignored).
 
-Asset storage uses your **AWS login**, not an API key. Character profiles,
-reference images and every generated asset live in S3 (bucket
-`studio-prod-media-us-east-1`), never in git — see
+Asset storage needs **neither an AWS login nor a key of its own.** Character
+profiles, reference images and every generated asset live in S3 and never in
+git, but the CLI reaches them through the API on the token `studio login` stored
+and never names a bucket. Which bucket answers depends on where you are: locally
+it is this machine's dev stack's, and `studio-prod-media-us-east-1` is the
+deployed app's.
+
+**This paragraph named the prod bucket as where local work stores things, and
+that was wrong twice over** — the login is gone (#308) and the bucket is not
+that one (#287). `studio/.env.example` says the same in the same words, because
+this is the mistake that writes to production from a laptop. See
 [`../infra/README.md`](../infra/README.md).
 
 ### The two trees — characters and projects
@@ -337,7 +375,8 @@ Both are **derived, never a source of truth**: the runs they name remain the
 history, so either can always be rebuilt. Sources are copied in server-side so a
 scene stays playable as its runs accumulate around it, and each manifest records
 the originating ref beside the copied key — copying does not lose lineage. Both
-stitch through the same `s3/scripts/video.py`, which stream-copies when the
+stitch through the same function — `adapters/ffmpeg.py`'s `stitch()`, which
+stream-copies when the
 inputs already agree on codec, geometry, frame rate and audio layout, and
 re-encodes (recording that it did) when they don't.
 
@@ -386,10 +425,11 @@ binding, so this is enforced in code. To use a local file, upload it to S3 first
 
 ## Available skills
 
-All fifteen live in `studio/.claude/skills/` and are discovered as
+All eighteen live in `studio/.claude/skills/` and are discovered as
 `studio:<name>` — directory-scoped, so they surface when the work is under
-`studio/`. The `[studio-*]` marker below is historical; every skill here is
-part of the pipeline now.
+`studio/`. Seventeen are `studio-media-*` and one is `studio-code-*`; `ls` that
+directory rather than trusting this number, which three docs have disagreed
+about before.
 
 | Skill     | What it does                                              |
 |-----------|-----------------------------------------------------------|
@@ -405,9 +445,12 @@ part of the pipeline now.
 | `studio-media-gpt-image-1-5` | `openai/gpt-image-1.5` — the one that does **transparent backgrounds** and exposes `input_fidelity` (dial face preservation up *or down*). Aspect limited to `1:1`/`3:2`/`2:3` |
 | `studio-media-seedance`  | `bytedance/seedance-2.0` — native audio, first/last frame, reference images/videos/audio. A start frame and a reference set **cannot** be combined |
 | `studio-media-kling`     | `kwaivgi/kling-v3-omni-video` — Kling 3.0 / O3 Omni (~$0.168/s, `reference_images` for consistency, native multi-shot to 6 cuts). Start frame and reference images can be combined |
+| `studio-media-veo-3-1`   | `google/veo-3.1` — the control-oriented engine, and the only one with a repeatable **seed** and a real `negative_prompt`. Reference images work only at 16:9 and 8 seconds; durations are a 4/6/8s enum |
+| `studio-media-grok-imagine-video` | `xai/grok-imagine-video` — animates one approved still, any integer 1–15s, and is the only registered model that **edits an existing clip**. No reference images, so not for holding a character on-model |
 | `studio-media-prompt`    | Author prompts as structured JSON for either engine (`--engine seedance\|kling-replicate`); validates rules and routes technical fields + the negative prompt where each engine takes them |
 | `studio-media-character` | Manage on-model characters (create/update/list/curate/load) whose bible + described reference library live in S3 (`characters/<name>/`); characters are data, not skills |
 | `studio-media-s3`               | Address the media store through the API by name path (list, upload, download, presign) — the asset store holding **characters** and **projects**, plus the shared **run store** (`runs.py`), **scene store** (`scenes.py`) and **movie store** (`movies.py`), the project registry (`projects.py`), the layout module (`paths.py`) and the record rewriter (`rewrite.py`). Storage only; model invocation lives in `studio-media-core` |
+| `studio-code-pipeline` | **The other family, and the only member of it.** Changing the pipeline's own code — a subcommand, a module move, the registry's machinery, a wiring failure, a test. Not for making media |
 
 ---
 ## How the code is invoked
@@ -468,7 +511,7 @@ names rotted into references to files that no longer existed. A doc that names a
 module has to be maintained alongside the code — keeping it here, next to this
 paragraph, is what makes that possible.
 
-The package is `studio/pipeline/src/studio_pipeline/`, in five subpackages.
+The package is `studio/pipeline/src/studio_pipeline/`, in six subpackages.
 
 **`adapters/` — the outside world.** Nothing here knows about characters, runs
 or projects.
@@ -478,10 +521,18 @@ or projects.
 | `store.py` | **The media store, addressed by path and reached through the API.** Resolve a name path to a node, list its files in natural order, read, write, upload, copy, presign, and ensure a folder exists. No bucket name, no credentials — bytes travel to S3 directly on presigned URLs the API signs, which is what keeps a video out of the Lambda's request limit. `s3.py` is being retired into this. |
 | `api.py` | One transport for every call the CLI makes: bearer token, refresh-on-401, library header, error mapping. Decided once so no caller re-decides it. |
 | `auth.py` | The Cognito sign-in behind `studio login`, and the token cache it writes. |
-| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. One auth path for the whole package — `session()` is what everything else asks for. **Almost gone**: nothing in `domain/`, `engine/` or `objects/` imports it any more. The three that still do are `adapters/ddb.py`, which needs `session()` for the catalog table, and the two migrators in `maintenance/`, which enumerate the raw bucket deliberately — applying the prefix at the AWS boundary is their job. |
+| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. One auth path for the whole package — `session()` is what everything else asks for. **Almost gone**: nothing in `domain/`, `engine/` or `objects/` imports it any more. The five that still do are `adapters/ddb.py`, which needs `session()` for the catalog table, and all four one-shots in `maintenance/` — `catalog_gc.py`, `catalog_seed.py`, `dev_seed.py` and `migrate_layout.py` — which enumerate the raw bucket deliberately, because applying the prefix at the AWS boundary is their job. |
 | `ddb.py` | The catalog table's client and the typed-attribute marshalling every write needs. Takes its credentials from `s3.py`, because the bridge resolves a session and not an S3 session. Knows nothing about libraries or nodes. |
 | `replicate.py` | Token, HTTP, download, poll. |
 | `ffmpeg.py` | Probe, stitch, frame grab, contact grid. A scene and a movie join their inputs by identical rules because they call the same function. ffmpeg ships in the wheel; no system install. |
+
+**`session/` — who you are.** `commands.py` is `studio login` / `logout` /
+`whoami` and nothing else; everything the CLI knows about identity it reads back
+off the stored token. The acceptance test for the whole of #308 is that these
+work on a machine with **no AWS credentials configured at all**, which is why
+`adapters/auth.py` builds an unsigned Cognito client — `InitiateAuth` needs no
+AWS identity, but boto3 resolves the credential chain at construction and would
+fail first.
 
 **`domain/` — the tree and the records in it.**
 
@@ -527,9 +578,15 @@ something asks for one.
 predictions into the run store; `migrate_layout.py` is the move off the
 pre-restructure tree, kept for any bucket that still holds one;
 `catalog_seed.py` (`studio catalog plan | seed | verify`) records the bucket as
-it already stands into the DynamoDB catalog, copying and deleting nothing.
+it already stands into the DynamoDB catalog, copying and deleting nothing;
+`catalog_gc.py` (`studio catalog gc`) is the fourth catalog phase and the only
+one that **deletes** — blobs no row names, decided by the table and never by the
+shape of a key, over an allowlist of the three prefixes a blob has ever been
+written under; `dev_seed.py` (`studio dev-seed tree | publish`) **promotes** a
+handful of nodes out of a dev stack into the shared seed fixture — it calls no
+model and costs nothing, and its gate is hard rule #1 rather than money.
 
-The last two are the same shape deliberately — phases as separate invocations,
+`catalog_seed.py` and `migrate_layout.py` are the same shape deliberately — phases as separate invocations,
 `--dry-run` unless `--apply`, a journal under `local/migrations/` — because the
 ordering between phases is the safety property in both. What they do not share
 is a rewrite phase: a rewrite patches the keys recorded *inside* run and scene

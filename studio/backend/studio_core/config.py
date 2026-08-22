@@ -51,8 +51,11 @@ def media_root_prefix():
     browsing to. The knob stays because the confinement it drives is real — set
     it to `some/prefix/` and both this API and the Lambda's IAM policy narrow to
     it — but a value of `""` (or `"/"`, which as an S3 prefix would match
-    nothing) means the root. Anything else is returned slash-terminated so it
-    can be handed straight to `ListObjectsV2`.
+    nothing) means the root. Anything else is returned slash-terminated because
+    two comparisons expect it that way: `keys.clean_key`'s root check, and the
+    prefix the Lambda's IAM policy is scoped to. Nothing lists any more (#316,
+    #317), so the termination stopped being about an argument to `ListObjectsV2`
+    and is about those two.
     """
     value = os.environ.get("STUDIO_MEDIA_ROOT_PREFIX", "").strip()
     if value in ("", "/"):
@@ -101,8 +104,14 @@ def upload_ttl_seconds():
 def max_bulk_keys():
     """How many objects one delete request may name.
 
-    `DeleteObjects` takes 1000 keys per call, so this is one round trip. A
-    larger selection is refused rather than silently split: a partially applied
+    1000 because `DeleteObjects` took 1000 keys per call, so a bulk delete was
+    one round trip. It is not one any more — against the catalog it is a
+    transaction per node with the blobs going in a single call at the end — so
+    the number bounds a per-node cost it was never chosen for. `manage._bulk`
+    states that arithmetic where the cap is enforced; what the number should be
+    is #431, open and undecided, and not a thing to settle in passing here.
+
+    A larger selection is refused rather than silently split: a partially applied
     bulk delete is the worst possible outcome to report back to a UI.
     """
     return int(os.environ.get("STUDIO_MAX_BULK_KEYS", "1000"))
@@ -111,11 +120,13 @@ def max_bulk_keys():
 def max_folder_objects():
     """How many nodes one subtree operation will touch, and now also the reel's.
 
-    A folder rename or delete is a CopyObject or a transaction per node and the
-    Lambda has a wall clock, so this guards a request that would time out halfway
+    A folder delete or a subtree move is a transaction per node and the Lambda
+    has a wall clock, so this guards a request that would time out halfway
     through and leave the tree in two places at once. For those it is a
     **refusal** — half a move reported as a whole one is the outcome there is no
-    recovering from.
+    recovering from. (A folder *rename* was a `CopyObject` per key once and is
+    not bounded by this at all since #316: it rewrites one row and nothing
+    beneath it moves.)
 
     The reel reads the same number and **truncates** instead, saying so in
     `truncated`: a page of a library is allowed to be shorter than the library.

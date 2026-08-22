@@ -7,11 +7,18 @@ URLs the API hands out. No boto3, no bucket name, no credentials.
 
 ## Why a path-addressed facade rather than rewriting every call site to use ids
 
-Twenty-five modules and seventy-one boto3 calls address the tree by key today,
-and every `SKILL.md` describes the CLI in those terms. Rewriting all of them to
-carry node ids in one change would be a refactor nobody could review. This keeps
-the vocabulary the pipeline already has — a path — and changes only what is
-underneath it. Call sites migrate one area at a time.
+Twenty-five modules and seventy-one boto3 calls addressed the tree by key when
+this was written, and every `SKILL.md` described the CLI in those terms.
+Rewriting all of them to carry node ids in one change would have been a refactor
+nobody could review, so this kept the vocabulary the pipeline already had — a
+path — and changed only what sits underneath it, and the call sites migrated one
+area at a time.
+
+**They have.** What still opens an S3 client is `adapters/s3.py`, `adapters/ddb`
+borrowing its session, and the four `maintenance/` commands, which reconcile the
+bucket against the table and so have to see both. Everything else is here. The
+census above is the history of why this module exists, not a count of what is
+left to do.
 
 **The path is not a key.** It is the name path the API resolves: the same string
 a person types and the same one `paths.py` builds. That it currently equals the
@@ -88,7 +95,9 @@ def natural_key(name: str):
 
     It lives here because the API returns children *name-ascending*, which is
     DynamoDB's lexical sort-key order. The natural ordering is the CLI's, and
-    always was; `adapters/s3.py` re-exports this so its callers do not churn.
+    always was. `adapters/s3.py` re-exports it — but not, as this used to say,
+    to spare its callers a churn: that module counted them and there are none.
+    The re-export is kept for its own `_list`, on the weaker ground it states.
     """
     return [int(part) if part.isdigit() else part.lower() for part in _NUM_RE.split(name)]
 

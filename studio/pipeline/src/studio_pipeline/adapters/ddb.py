@@ -12,12 +12,40 @@ from __future__ import annotations
 import os
 
 from studio_pipeline.adapters import s3 as s3c
+from studio_pipeline.errors import die
 
-# `[project]-[env]-[component]`, the monorepo's naming convention. Studio has
-# exactly one environment and local runs against it (see studio/CLAUDE.md), so
-# `prod` here is the real table and not a placeholder for a dev copy that does
-# not exist. Overridable for the same reason `STUDIO_S3_BUCKET` is.
-TABLE = os.environ.get("STUDIO_CATALOG_TABLE", "studio-prod-catalog")
+# `[project]-[env]-[component]`, the monorepo's naming convention.
+#
+# **No default, and the absence is the point.** This read
+# `os.environ.get("STUDIO_CATALOG_TABLE", "studio-prod-catalog")`, justified at
+# the time by studio having exactly one environment that local runs addressed.
+# `studio/CLAUDE.md` says the opposite now — the CLI targets a per-machine dev
+# stack — so the default meant a maintenance command run in a shell that had not
+# loaded `studio/.env` addressed the PRODUCTION catalog. One of the readers is
+# `catalog gc`, which deletes: a dry run against the wrong table calls prod's
+# blobs unreferenced, and the `--apply` that follows removes them.
+#
+# #434 removed exactly this default from `adapters/s3.py` and this is the same
+# removal, for the reason stated there: a value that quietly points somewhere
+# plausible is worse than no value. It was latent only because every command
+# reading both asks `s3c.bucket()` first and dies there — call ordering, not a
+# guard.
+TABLE = os.environ.get("STUDIO_CATALOG_TABLE", "")
+
+
+def table() -> str:
+    """The catalog table, or a refusal naming what to do about it.
+
+    Asked for through here rather than read off `TABLE`, exactly as
+    `s3.bucket()` is, so "unset" cannot be discovered halfway through a
+    paginate.
+    """
+    if not TABLE:
+        die("STUDIO_CATALOG_TABLE is not set.\n"
+            "       Run studio/scripts/dev-setup.sh, or export it for the stack you\n"
+            "       mean. There is deliberately no default: this used to fall back to\n"
+            "       the production catalog, which is not a thing to guess at.")
+    return TABLE
 
 
 def client():
@@ -78,7 +106,7 @@ def put(doc: dict, *, unique: bool = True) -> dict:
     renamed things in. It is the condition the API uses for "name already
     taken"; here it is what makes an interrupted seed resumable.
     """
-    action = {"TableName": TABLE, "Item": to_item(doc)}
+    action = {"TableName": table(), "Item": to_item(doc)}
     if unique:
         action["ConditionExpression"] = "attribute_not_exists(pk)"
     return {"Put": action}
@@ -111,14 +139,14 @@ def scan(ddb, **kwargs):
     precisely the corruption `verify` is looking for.
     """
     paginator = ddb.get_paginator("scan")
-    for page in paginator.paginate(TableName=TABLE, **kwargs):
+    for page in paginator.paginate(TableName=table(), **kwargs):
         for item in page.get("Items", []):
             yield from_item(item)
 
 
 def table_exists(ddb) -> bool:
     try:
-        ddb.describe_table(TableName=TABLE)
+        ddb.describe_table(TableName=table())
     except ddb.exceptions.ResourceNotFoundException:
         return False
     return True

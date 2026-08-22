@@ -132,7 +132,7 @@ def source() -> tuple[str, str]:
     `STUDIO_CATALOG_TABLE`), pinned by `dev-setup.sh` from the dev stack's
     Terraform outputs.
     """
-    bucket, table = s3c.bucket(), ddbc.TABLE
+    bucket, table = s3c.bucket(), ddbc.table()
     for name in (bucket, table):
         if "prod" in name:
             die(f"refusing to read '{name}' — a fixture is promoted from a dev "
@@ -159,7 +159,7 @@ def read_library(ddb, library: str | None = None) -> dict:
             metas[item["node_id"]] = item
 
     if not libraries:
-        die(f"no library in '{ddbc.TABLE}'. Sign in to the local app and put "
+        die(f"no library in '{ddbc.table()}'. Sign in to the local app and put "
             "something in it first — a fixture is promoted from work, not built.")
     if library is None and len(libraries) > 1:
         die("this table holds more than one library; name one with --library:\n"
@@ -167,7 +167,7 @@ def read_library(ddb, library: str | None = None) -> dict:
                         for lib, row in sorted(libraries.items())))
     lib = library or next(iter(libraries))
     if lib not in libraries:
-        die(f"no library '{lib}' in '{ddbc.TABLE}'")
+        die(f"no library '{lib}' in '{ddbc.table()}'")
 
     root = libraries[lib].get("root_node")
     nodes = {nid: row for nid, row in metas.items() if row.get("lib") == lib}

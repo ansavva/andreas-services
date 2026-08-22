@@ -76,6 +76,11 @@ resource "aws_dynamodb_table" "catalog" {
   # "which libraries can this caller see" from the base table; this index answers
   # the other direction — "who is in library X" — without a second row per
   # membership to keep in step.
+  #
+  # **Its consumer is `scripts/add-member.sh`, not the API.** The API had a
+  # `catalog.members_of` reading it that no route ever called, and that function
+  # was deleted; the script queries `--index-name by-sk` to show a library's
+  # members before it adds one, so the index is live and this is who keeps it so.
   global_secondary_index {
     name            = "by-sk"
     hash_key        = "sk"
@@ -95,11 +100,13 @@ resource "aws_dynamodb_table" "catalog" {
     projection_type = "ALL"
   }
 
-  # Newest/oldest across a library, genuinely paginated. This is what retires the
-  # reel's current shape: today it lists up to 20,000 S3 objects and breaks ties
-  # on the key, because `LastModified` has one-second resolution and a run writes
-  # its whole output inside one second. `created_at` is a real microsecond
-  # timestamp, so ties stop being the common case.
+  # Newest/oldest across a library, genuinely paginated. This is the index the
+  # reel moved onto (#310), and it retired two things at once: the walk over up
+  # to 20,000 S3 objects that `STUDIO_MAX_WALK_OBJECTS` bounded, and the key
+  # tie-break that walk needed because `LastModified` has one-second resolution
+  # and a run writes its whole output inside one second. `created_at` is a real
+  # microsecond timestamp, so ties stopped being the common case — see
+  # `browse._sort_records`, which documents the tie-break as gone.
   global_secondary_index {
     name            = "by-recent"
     hash_key        = "lib"

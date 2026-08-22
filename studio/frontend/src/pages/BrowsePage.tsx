@@ -257,8 +257,10 @@ export function BrowsePage() {
   );
 
   const deleteSelected = useCallback(async () => {
-    // Still keys: `DELETE /api/objects` is key-addressed until #316. The
-    // selection holds ids; the entries it holds them for carry both.
+    // Still `keys`: `DELETE /api/objects` kept that parameter name through
+    // #316, which made it a catalog write taking name paths rather than
+    // retiring it. The selection holds ids; the entries it holds them for
+    // carry both.
     const keys = selection.selectedItems.map((item) => item.key);
     await run(deleteObjects(keys));
     selection.clear();

@@ -11,7 +11,7 @@ one wastes a session:
 | | `studio-media-*` | `studio-code-*` |
 |---|---|---|
 | You are | making media with studio | changing studio |
-| Fifteen of them, covering | characters, prompts, engines, scenes, the stores | this |
+| Seventeen of them, covering | characters, prompts, engines, scenes, the stores | this |
 | They describe | the CLI surface — `studio <command>` | the code behind it |
 | May name modules | **no** | **yes** — that is the subject |
 
@@ -80,9 +80,16 @@ uv run python scripts/lint_skills.py              # the docs guard
 ```
 
 The suite never reaches the network: `conftest.py` pins a fake
-`REPLICATE_API_TOKEN` and a moto bucket seeded with a miniature of the real tree.
+`REPLICATE_API_TOKEN` and stands up a miniature of the real library under moto —
+`mock_dynamodb` **and** `mock_s3`, because the library is a catalog table with a
+bucket behind it. **Mock both.** The catalog is what says a thing exists;
+seeding only the bucket produces a tree nothing can list, which is the shape of
+the old S3-as-truth fixture and no longer resembles what the code reads. An
+autouse fixture also blocks any reach at a real table, so an unmocked call fails
+rather than escaping.
+
 It deliberately mirrors `studio/backend/tests/conftest.py` — both halves of
-studio read the same tree, so the two fixtures agreeing is what makes a
+studio read the same library, so the two fixtures agreeing is what makes a
 disagreement between them mean something.
 
 ## The rule that keeps the two halves apart

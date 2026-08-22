@@ -151,10 +151,6 @@ def char_pool_prefix(name: str, pool: str) -> str:
     return _join(character_prefix(name), pool)
 
 
-def characters_root() -> str:
-    return CHARACTERS + "/"
-
-
 def character_of(key: str) -> str | None:
     """'characters/<c>/reference/…' -> '<c>'. Anything else -> None."""
     parts = key.strip("/").split("/")
@@ -181,17 +177,6 @@ def project_dir_prefix(p: str, kind: str) -> str:
     if kind not in PROJECT_DIRS:
         raise PathError(f"unknown project dir {kind!r}; expected one of {list(PROJECT_DIRS)}")
     return _join(project_prefix(p), kind)
-
-
-def projects_root() -> str:
-    return PROJECTS + "/"
-
-
-def project_of(key: str) -> str | None:
-    parts = key.strip("/").split("/")
-    if len(parts) >= 2 and parts[0] == PROJECTS:
-        return parts[1] or None
-    return None
 
 
 # runs ----------------------------------------------------------------------

@@ -22,10 +22,11 @@ A movie names its scenes; the scenes name their runs; the runs are the history.
 So a movie can always be rebuilt, and nothing about it is worth protecting
 except the ORDER — which is the one thing it actually contributes.
 
-Scenes are copied in server-side for the same reason a scene copies its shots:
-a movie stays playable and re-cuttable while its scenes are rebuilt around it,
-and `movie.json` records the sceneref beside the copied key, so copying does not
-lose lineage.
+Scenes are copied in for the same reason a scene copies its shots: a movie stays
+playable and re-cuttable while its scenes are rebuilt around it, and
+`movie.json` records the sceneref beside the copied key, so copying does not
+lose lineage. That copy was a server-side `CopyObject` and is a download plus an
+upload now — `create` says why the bytes have to travel.
 
 A SCENE OR A LONGER SCENE?
 --------------------------
@@ -110,23 +111,6 @@ def resolve_movie(ref: str, default_project: str | None = None) -> tuple[str, st
 
 
 # ── build ───────────────────────────────────────────────────────────────────
-
-def resolve_scene_output(project: str, scene_id: str) -> tuple[str, dict]:
-    """A scene's finished video, read off its manifest.
-
-    Read rather than listed: a scene has exactly one output and its manifest
-    already names it, so listing `output/` would be a second call that can only
-    agree or be wrong.
-    """
-    manifest = SC.read_manifest(project, scene_id)
-    if not manifest:
-        die(f"{project}/{scene_id} has no scene.json — it cannot be cut into a movie")
-    key = SC.scene_output_key(manifest)
-    if not key:
-        die(f"{project}/{scene_id} is planned but not assembled — "
-            f"run `studio scenes assemble {project}/{scene_id}` first")
-    return key, manifest
-
 
 def scene_characters(manifest: dict) -> list[str]:
     """Whose likeness is in a scene.

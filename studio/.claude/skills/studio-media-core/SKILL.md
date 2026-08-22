@@ -5,10 +5,10 @@ description: The shared machinery every studio-* engine runs on — the model RE
 
 # studio-media-core — the runner every model shares
 
-**Models are data, not code.** One entry per model in
-[`engine/models.json`](../../../pipeline/src/studio_pipeline/engine/models.json), one runner over all of them. Adding
-a model is a reviewed data change plus a written page — never an edit to five
-scripts, which is what it used to be.
+**Models are data, not code.** One entry per model in the **registry**, one
+runner over all of them. Adding a model is a reviewed data change plus a written
+page — never an edit to five scripts, which is what it used to be.
+`studio models` is the whole surface onto it.
 
 This skill is the plumbing. For how to *use* a given model, read its own skill:
 
@@ -120,9 +120,12 @@ actually honours.** `studio-media-add-model` reads both for exactly this reason.
 
 ## Invariants this machinery defends
 
-- **S3 is the only origin.** Nothing is ever uploaded to Replicate. Assets reach
-  it only as presigned URLs minted at submit time, and signed URLs are never
-  stored — run records hold S3 keys, and the run store refuses a URL-shaped binding.
+- **The store is the only origin.** Nothing is ever uploaded to Replicate.
+  Assets reach it only as presigned URLs minted at submit time, and signed URLs
+  are never stored — run records hold **paths**, and the run store refuses a
+  URL-shaped binding. A path looks key-shaped because of how the tree was laid
+  out; that coincidence ends at the first rename, so read it as a path (see
+  [`studio-media-s3`](../studio-media-s3/SKILL.md)).
 - **The request is recorded before submitting**, so a failed render
   is still history.
 - **Never `Prefer: wait`.** A timed-out wait retries internally and can create

@@ -66,10 +66,12 @@ def _warn_ignored_expiry(expires: int) -> None:
     """`--expires` is accepted and ignored, loudly.
 
     **Kept rather than removed** because `cli_surface_reference.json` is a
-    contract and #308 says this epic's diff to it should be the three session
-    commands and nothing else. But the API owns the TTL now — it signs the URL
-    against its own credentials, using `STUDIO_PRESIGN_TTL_SECONDS` — so a
-    number passed here cannot be honoured. A flag that silently does nothing is
+    contract: it is the argparse-era capture of the CLI surface, and dropping a
+    parameter from it is a deliberate re-capture rather than a side effect. (It
+    was also outside the scope #308 set, but that epic is closed and the
+    contract argument never needed it.) But the API owns the TTL now — it signs
+    the URL against its own credentials, using `STUDIO_PRESIGN_TTL_SECONDS` — so
+    a number passed here cannot be honoured. A flag that silently does nothing is
     the failure the `XHARNESS_S3_*` rename was designed to avoid, so it says so.
     """
     context = click.get_current_context(silent=True)

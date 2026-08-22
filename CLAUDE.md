@@ -106,7 +106,7 @@ in both, by design.
 | `storybook/` | AI portrait studio | Flask + React/Vite/HeroUI + Lambda (Docker) + DynamoDB |
 | `humbugg/` | Gift-exchange platform | ASP.NET Core 10 (C# 14) + React/Vite (marketing, `www`) + Expo/Expo Router (product app, `app`) + Lambda (Docker) + DynamoDB |
 | `scout/` | Events from Gmail | Python Lambdas + React/Vite/TS + DynamoDB |
-| `studio/` | AI media generation pipeline **and** a browser over its output | Claude Code skills (local, `uv`) + Flask + React/Vite/TS + Lambda (Docker) + Cognito + S3 (no database) |
+| `studio/` | AI media generation pipeline **and** a browser over its output | Claude Code skills (local, `uv`) + Flask + React/Vite/TS + Lambda (Docker) + Cognito + **DynamoDB** (`studio-prod-catalog`, three GSIs) + S3 |
 | `infra/` | Shared infrastructure | Terraform |
 
 **`studio/` used to break this repo's environment rule and no longer does.**
@@ -116,16 +116,21 @@ generated media would exercise nothing against an empty second copy. That is
 over: studio has a per-machine dev stack like every other service, and
 `dev-setup.sh` and `dev-up.sh` point at it. The reasoning was answered rather
 than abandoned — the dev stack is *seeded* from a published fixture, so it is
-not meant to be empty. **The loader exists (`dev-aws-seed.sh`, #285) and the
-fixture does not (#284, human-gated because it generates), so today a stack is
-empty apart from the pose plates and a starting phrasebook.**
+not meant to be empty. **The loader exists (`dev-aws-seed.sh`, #285) and no
+fixture has ever been published — #284 landed as code and nobody has run `studio
+dev-seed publish --apply` — so today a stack is empty apart from the pose plates
+and a starting phrasebook.** It is human-gated, but **not** because publishing
+generates media: `publish` promotes nodes that already exist in a dev stack, so
+it calls no model and costs nothing. The gate is hard rule #1 — `catalog.json`
+lands in git, so the publisher requires `--placeholders-only` before `--apply`.
+`studio/CLAUDE.md` has the reasoning.
 
 Running the **CLI** against production is still wanted occasionally and the safe
 mechanism is **undecided**. There is no flag for it, and adding one is a
 decision nobody has made. See `studio/CLAUDE.md`. And:
 
 **`studio/` is the one service that is not purely a deployable unit.** Half of it
-— `studio/.claude/skills/`, sixteen skills — runs locally inside Claude on a
+— `studio/.claude/skills/`, eighteen skills — runs locally inside Claude on a
 developer's machine and never deploys; the CI path filters exclude it from the
 prod workflow. The other half is an ordinary Flask + Vite service. Both share the
 media S3 bucket, which `studio/infra/modules/media` owns. It is also the one
@@ -146,7 +151,7 @@ screen and starting work tends to end in hand-rolled `aws s3` calls that a
 `studio` subcommand already does. Full routing table in
 [studio/CLAUDE.md](studio/CLAUDE.md#which-skill).
 
-Those sixteen skills live in `studio/.claude/skills/` and are directory-scoped:
+Those eighteen skills live in `studio/.claude/skills/` and are directory-scoped:
 they register only once a file under `studio/` has been read, so a `Skill` call
 on the first action of a session returns `Unknown skill`. That is a timing
 artifact, not a missing skill. The root **`studio`** skill is the entry point —

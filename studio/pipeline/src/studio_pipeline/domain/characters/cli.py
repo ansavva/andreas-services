@@ -38,7 +38,8 @@ keys for every character, so a prompt or a check reads `consistency.must` or
 `identity.signature_features` by path instead of pattern-matching prose. It
 describes WHO the character is — never how the record was assembled.
 
-Requires an AWS login (`aws login`; see the `studio-media-s3` skill).
+Requires a studio login (`studio login`; see the `studio-media-s3` skill). Not
+an AWS one — the CLI holds no cloud credentials and knows no bucket name.
 
 Subcommands:
   list                         Every character.

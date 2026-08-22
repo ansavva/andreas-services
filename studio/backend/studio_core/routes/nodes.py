@@ -1,12 +1,13 @@
 """The catalog's read surface: list a folder, fetch a node, resolve a name path.
 
 Its own blueprint rather than three more routes in `routes/browse.py`, and the
-distinction is not tidiness. `browse` addresses the bucket — every route there
-takes an S3 key or prefix, and what it returns is assembled by listing objects.
-These routes address the *catalog*, where a node has an id, a name and a parent,
-and an S3 key is an opaque attribute nothing outside `services.catalog` ever
-sees. Since #309 `browse` reads the catalog too, so what separates them is no
-longer the storage but the answer: these routes return a node's *record*, and
+distinction is not tidiness. **Both address the catalog** — a node has an id, a
+name and a parent, and an S3 key is an opaque attribute nothing outside
+`services.catalog` ever sees. The original split was storage: `browse` addressed
+the bucket, every route there took an S3 key or prefix, and what it returned was
+assembled by listing objects. Since #309 it reads the catalog too, so what
+separates them is the answer rather than the storage: these routes return a
+node's *record*, and
 `browse` returns a folder ready to draw — presigned, sorted, with breadcrumbs
 and counts. Keeping the files apart is what stops a reader having to work out
 which of the two a handler is.
@@ -21,10 +22,14 @@ takes a node id.
 argument.** What `manage` takes is a slash-joined *name path* — the address every
 share link and every `GET /api/tree` response is made of — and what these take is
 a node id. A name path costs a `GetItem` per segment and can be made ambiguous by
-a rename; an id cannot. #313 moves the SPA from the first to the second, at which
-point one of the two files has nothing left in it. Until then a reader must not
-have to work out which address a handler takes, which is the same reason the read
-routes were split out in the first place.
+a rename; an id cannot.
+
+**This used to say the files merge when #313 moves the SPA onto ids. #313 shipped
+and they did not.** What kept them apart is that `manage`'s routes still serve the
+name paths in share links issued before it, so both addressing schemes are live
+and a reader must not have to work out which one a handler takes — the same reason
+the read routes were split out in the first place. The merge is owed once the
+name-path routes go, and nothing else blocks it.
 
 ## Three rules hold across all three read routes
 

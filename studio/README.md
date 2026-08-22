@@ -7,7 +7,7 @@ An AI media generation pipeline, and a private browser over what it produces.
 | App | https://studio.andreas.services |
 | API | https://studio-api.andreas.services |
 
-Studio is two things sharing one S3 bucket:
+Studio is two things sharing one library:
 
 - **The pipeline** — a set of Claude Code skills that generate images and video
   through Replicate. It runs on your own machine, inside Claude, and never
@@ -33,7 +33,7 @@ alone until August 2026, when both of those stopped being true at once.
 
 ## What it does
 
-- **Browse** the bucket's folders, newest first, with run folders shown as a name
+- **Browse** the library's folders, newest first, with run folders shown as a name
   and a date rather than one long timestamped token. The order is switchable —
   newest, oldest, or by name either way — and travels in the URL.
 - **Grid** of every image and video in a folder. Videos paint their own first
@@ -44,9 +44,11 @@ alone until August 2026, when both of those stopped being true at once.
   Videos get a transport along the bottom — play/pause, a seek bar, skip either
   way — while sound sits in the top bar with the other controls, because the
   bottom edge of a phone screen is where the browser puts its own toolbar.
-- **Share links.** The URL is the S3 path
-  (`/projects/<project>/runs/2026-08-14_…/output/clip.mp4`), so the address bar is always
-  a link to exactly what is on screen.
+- **Share links.** The URL names a node by **id** — `/f/<id>` is a folder,
+  `/o/<id>` is one open file — so a link survives the rename or move that used to
+  break it. It used to *be* the S3 path
+  (`/projects/<project>/runs/2026-08-14_…/output/clip.mp4`); those links still
+  work, resolved once through `GET /api/resolve` and replaced with the id URL.
 - **A page per text file** — the pipeline's `request.json`, `result.json`,
   `prompt.json` and `scene.json`, the subject `profile.yaml` files and the
   reference captions. JSON is pretty-printed and markdown is rendered, and every
@@ -54,26 +56,29 @@ alone until August 2026, when both of those stopped being true at once.
   bytes in a textarea, Save writes it back. Leaving with unsaved changes asks
   first. A file too large to be shown in full cannot be edited, because saving a
   truncated copy would delete the rest of it.
-- **Favourite** a photo or a clip and it is copied onto that project's shelf —
-  `projects/<project>/favorites/`, flat, alongside the picks that are already there.
-  You never say where: the star knows, because the file's own path does. From a
-  grid selection it takes the whole selection at once, and a selection spanning
-  two subjects splits itself between their projects. A gold star means the file
-  really is on the shelf, not that you pressed something — it is read back from
-  the bucket, so it is still there tomorrow and on another device. Pressing it
-  twice does nothing the second time; two different clips that share a name get
-  the second one numbered (`shot-01 (2).mp4`) rather than overwritten. Files in
-  `characters/` have no star at all — that tree is who a subject *is*, not
-  output to pick between — and neither does the run metadata. To un-favourite,
-  delete the copy from inside the favourites folder.
-- **Tidy up.** Create a folder, rename a file or a folder, move files and folders
-  anywhere in the library, delete one file, a whole folder, or a grid selection.
-  Moving opens a picker you browse to a destination in — a folder cannot be moved
-  inside itself, and the picker greys that branch out rather than letting the
-  request come back refused. Delete confirms twice in the control itself — press
-  once and it turns red and names what it is about to remove, press again and it
-  goes. There is no dialog.
+- **Tidy up.** Create a folder, rename a file or a folder, move **or copy** files
+  and folders anywhere in the library, delete one file, a whole folder, or a grid
+  selection. Move and copy share one picker you browse to a
+  destination in — a folder cannot be moved inside itself, and the picker greys
+  that branch out rather than letting the request come back refused. A copy into a
+  folder that already holds the name is numbered (`clip (2).mp4`), never
+  overwritten or skipped. Delete confirms twice in the control itself — press once
+  and it turns red and names what it is about to remove, press again and it goes.
+  There is no dialog.
+- **Upload.** The folder toolbar takes any number of files into the folder on
+  screen, numbered the same way a copy is if a name is taken. HEIC is refused with
+  a message, because no browser but Safari can draw it.
+- **Switch library.** An account can be a member of more than one, and a subtree
+  can be handed from one to another (`POST /api/nodes/<id>/transfer`, owner in
+  both).
 - **Download** any single file.
+
+**There used to be a star, and there is no longer one.** Favouriting copied a
+file onto `projects/<project>/favorites/` — a destination studio *derived* from
+the file's own key, which meant studio naming folders the pipeline owns. Generic
+copy replaced it: you choose the destination, and a copy is always a copy rather
+than bookkeeping about whether one had been made already. The old folders are
+still there, as ordinary folders.
 
 ### Keys
 
@@ -100,27 +105,32 @@ of one, and renames and moves copy before they delete so a failure leaves a
 duplicate rather than a hole. The bucket is versioned and the role cannot delete
 a version, so what it does remove is recoverable.
 
-**There is still no upload.** Routing the bytes through the Lambda caps a file
-at 6 MB, which is useless for video, and a direct browser upload would need a
-CORS rule on the bucket. Generating media is the pipeline's job, and the
-pipeline runs on a laptop under a human's own AWS login rather than through this
-API — which is the boundary that actually matters, and the reason this one is
-worth keeping even though studio now owns the bucket and could set that CORS
-rule if it wanted to.
+**Upload arrived, and the sentence it replaced is worth keeping.** This paragraph
+read "there is still no upload" on two grounds: routing bytes through the Lambda
+caps a file at 6 MB, useless for video, and a direct browser upload would need a
+CORS rule on the bucket. Both were answered rather than overruled.
+`POST /api/nodes/<id>/upload-url` signs a PUT the browser sends **straight to
+S3**, so the 6 MB request limit never applies; and studio owns the bucket now, so
+it sets that rule itself — one line, `PUT` only, `content-type` +
+`content-length`, no `GET`, and `backend/tests/test_cors_agreement.py` holds both
+media buckets to it.
 
-Two writes look like uploads and are not. Saving a text file refuses any key that
-does not already exist, so it can overwrite a `profile.yaml` but cannot bring a
-new object into the library — that check is the whole difference, and it is
-deliberately a single, testable line. Favouriting *does* add an object, but it is
-a server-side copy of something already in the bucket, so the bytes never come
-from outside and never travel through the Lambda; a 200 MB clip is favourited as
-cheaply as a thumbnail.
+What bounds an upload is the signature rather than the IAM policy: one key the
+caller does not name, one exact content length, one content type, and a TTL
+shorter than a read URL's. There is still **no multipart grant**, so
+`STUDIO_MAX_UPLOAD_BYTES` is S3's single-PUT ceiling and not a policy number.
 
-**A favourite is a pick, not a like.** It is a file in a folder you can open in
-the AWS console, and its whole purpose is to survive studio being switched off.
-Beyond that this is not a social app: no comments, no counts, no cross-folder
-infinite feed. The reel is a way to flip through a folder quickly, and that is
-all it is.
+**Studio still does not generate.** That is the boundary that mattered, and "no
+upload" was never the same statement. Making media is the pipeline's job, and the
+pipeline decides what to make and pays for it.
+
+Saving a text file is still not an upload either: it refuses any node that is not
+a file already carrying bytes, so it can overwrite a `profile.yaml` and cannot
+bring a new object into the library. That check is the whole difference and is
+deliberately a single, testable line.
+
+**Not a social app.** No comments, no counts, no cross-folder infinite feed. The
+reel is a way to flip through a folder quickly, and that is all it is.
 
 ## Access
 
@@ -147,8 +157,14 @@ between libraries requires in both.
 
 ## Development
 
+**A per-machine dev stack comes first, and `dev-up.sh` refuses to start without
+one** — an API with no Cognito pool 500s on every call, so failing early is the
+faster way to find out.
+
 ```bash
 aws login
+./studio/scripts/dev-aws-setup.sh                    # once per machine
+./studio/scripts/dev-user.sh --generate-password     # its one test account
 ```
 
 ```bash

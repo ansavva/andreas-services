@@ -11,8 +11,10 @@ breakable — and all three break quietly:
   * **The scenes already in the bucket.** They are keyed `<timestamp>_<slug>`
     and have no plan behind them. They must keep resolving, and `movies` must
     keep cutting them, or a real finished piece becomes unreachable.
-  * **A planned scene reaching `movies`.** `resolve_scene_output` reads the
-    manifest's output key; a plan has none. The failure has to name the fix.
+  * **A planned scene reaching `movies`.** `movies.create` reads each scene's
+    output key off its manifest and a plan has none. It collects every scene
+    missing one before it fails, so the message names all of them and the fix —
+    a movie is cut from several scenes and they are planned together.
 """
 
 from __future__ import annotations
@@ -140,11 +142,6 @@ def test_a_manifest_is_written_back_where_it_came_from(media_bucket):
 
 # --- the contract movies depends on ----------------------------------------
 
-def test_a_planned_scene_cut_into_a_movie_says_how_to_fix_it(media_bucket):
-    with pytest.raises(SystemExit):
-        MOV.resolve_scene_output("subject-a", PLANNED)
-
-
 def test_movies_reports_every_unassembled_scene_at_once(media_bucket, capsys):
     """One round trip per missing scene is the thing worth avoiding — a movie is
     cut from several scenes and they are typically planned together."""
@@ -161,12 +158,6 @@ def test_movies_reports_every_unassembled_scene_at_once(media_bucket, capsys):
     assert "2 scene(s) are planned but not assembled" in err
     assert PLANNED in err and "second-plan" in err
     assert "studio scenes assemble" in err
-
-
-def test_a_legacy_scene_still_cuts_into_a_movie(media_bucket):
-    key, manifest = MOV.resolve_scene_output("subject-a", LEGACY)
-    assert key.endswith("output/old-cut.mp4")
-    assert MOV.scene_characters(manifest) == ["subject-a"]
 
 
 # --- the plan, read back off the record ------------------------------------

@@ -19,7 +19,6 @@ from studio_core.errors import ConflictError, NotFoundError, UpstreamError, Vali
 from studio_core.services import catalog
 from tests.conftest import (
     CATALOG_LIBRARY,
-    CATALOG_MEMBER,
     CATALOG_OWNER,
     CATALOG_ROOT,
 )
@@ -54,21 +53,6 @@ def test_libraries_for_a_stranger_is_empty(catalog_table):
     # Not an error: "you are in no libraries" is a real answer, and the caller
     # that turns it into a 403 is the one with the request in front of it.
     assert catalog.libraries_for("sub-nobody") == []
-
-
-def test_members_of_lists_everyone(catalog_table):
-    members = catalog.members_of(CATALOG_LIBRARY)
-    assert sorted((member["sub"], member["role"]) for member in members) == [
-        (CATALOG_MEMBER, "member"),
-        (CATALOG_OWNER, "owner"),
-    ]
-
-
-def test_members_of_does_not_return_the_library_item(catalog_table):
-    # `by-sk` is hashed on the sort key, and the library's own item shares the
-    # `META` sort key with every node. Querying `LIB#<id>` must reach only the
-    # memberships.
-    assert all("role" in member for member in catalog.members_of(CATALOG_LIBRARY))
 
 
 def test_library_returns_the_name_and_the_root(catalog_table):

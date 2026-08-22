@@ -70,9 +70,10 @@ export function DestinationPicker({
     // Always by name: this is a folder chooser, and "newest first" is an answer
     // to a question nobody asks while looking for somewhere to put something.
     // By prefix, not by node id: what this picker produces is a *destination*,
-    // and every write route that takes one is still prefix-addressed (#316
-    // retires them). Browsing by the same address it hands back keeps the two
-    // from having to agree through a translation.
+    // and every write route that takes one still names its address `prefix` —
+    // #316 turned those routes into catalog writes but left the parameter, so
+    // what they take is a name path. Browsing by the same address it hands back
+    // keeps the two from having to agree through a translation.
     getTree({ prefix }, "name")
       .then((result) => {
         if (cancelled) return;

@@ -34,16 +34,25 @@ lost by copying — `scene.json` names both. The same holds for panels.
 
 RE-CUTTING OVERWRITES
 ---------------------
-`output/<slug>.mp4` is replaced, not versioned by filename. The bucket versions
-every object and grants no `s3:DeleteObjectVersion`, so a previous cut is
-superseded rather than destroyed — and the scene folder always shows current
-state instead of accumulating cuts nobody prunes.
+`output/<slug>.mp4` is replaced, not versioned by filename, so the scene folder
+always shows current state instead of accumulating cuts nobody prunes.
 
-S3 IS THE ONLY ORIGIN
----------------------
-Shots are server-side copies within the bucket; only the stitched output is
-uploaded. Nothing is fetched from outside, and no presigned URL is ever stored —
-`scene.json` holds S3 keys, exactly as `request.json` does.
+**What makes that recoverable is true of PROD only.** The prod bucket versions
+every object and grants no `s3:DeleteObjectVersion`, so a superseded cut is
+still there to restore. A per-machine dev stack has no versioning, deliberately
+— `infra/modules/dev_storage/main.tf` says why: the recovery there is a re-seed
+via `dev-aws-reset.sh`, and version history would only slow the teardown and
+bill for bytes nobody restores. Against dev, a re-cut destroys the previous one.
+
+THE STORE IS THE ONLY ORIGIN
+----------------------------
+Shots were server-side copies within the bucket. They are a download plus an
+upload now, so every shot's bytes travel through this process — for a scene that
+is video, and a 200 MB clip is the ordinary case. `assemble` says why the copy
+has to be real: a second node pointing at one blob is copy-on-write (#334), and
+the API's delete route destroys the shared bytes when either row goes. Nothing
+is fetched from outside, and no presigned URL is ever stored — `scene.json`
+holds paths, exactly as `request.json` does.
 
 STITCHING
 ---------
@@ -67,7 +76,6 @@ beside the submit lifecycle they drive, not here.
 """
 from __future__ import annotations
 
-import datetime as dt
 import json
 import mimetypes
 import os
@@ -102,11 +110,6 @@ VIDEO_EXT = R.VID_EXTS
 
 
 # ── layout ──────────────────────────────────────────────────────────────────
-
-def new_scene_id(slug: str, when: dt.datetime | None = None) -> str:
-    """Same id shape as a run: <YYYY-MM-DD_HH-MM-SS>_<slug>."""
-    return R.new_run_id(slug, when)
-
 
 def scene_prefix(project: str, scene_id: str) -> str:
     """Tree-relative — feeds `list_keys`. Use `scene_key` for get/put."""

@@ -444,9 +444,8 @@ jobs:
 
           put S3_BUCKET  /studio/prod/app-bucket
           put CF_DIST_ID /studio/prod/cf-dist-id
-          # Literals, so nothing can resolve them empty.
+          # A literal, so nothing can resolve it empty.
           echo "VITE_API_URL=https://studio-api.andreas.services" >> "$GITHUB_ENV"
-          echo "VITE_AWS_REGION=${{ env.AWS_REGION }}"            >> "$GITHUB_ENV"
           # Vite inlines these; empty ships an SPA whose login can never succeed.
           put VITE_COGNITO_USER_POOL_ID /studio/prod/cognito-user-pool-id
           put VITE_COGNITO_CLIENT_ID    /studio/prod/cognito-client-id
