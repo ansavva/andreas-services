@@ -273,6 +273,16 @@ when you are unsure a command exists.
   `character`/`curate`/`run` subcommand had no handler to dispatch to — usage
   never reaches either. `pipeline/tests/` covers wiring and *execution* for
   that reason, and runs on PR even though the pipeline deploys nowhere.
+- **The prod deploy ends in a smoke run against the live API, and it is a
+  detector rather than a gate.** Studio has no staging, so it runs *after* the
+  new image is already serving. It is the only thing that exercises the Lambda's
+  own execution role — moto enforces no IAM and the integration suite runs under
+  a developer's far wider credentials — which is how a missing
+  `dynamodb:BatchGetItem` grant reached production. It signs in as an account
+  that is a member of **exactly one library** and can address nothing else; that
+  is the mechanism, not a courtesy, and `seeds/smoke.json`,
+  `scripts/prod-seed-smoke.py` and `backend/tests/smoke/` all hold it up. See
+  [docs/PROD_SMOKE.md](docs/PROD_SMOKE.md).
 - **The CLI surface is a contract.** `pipeline/tests/cli_surface_reference.json`
   records every option, arity, default and help string. Changing the CLI means
   regenerating it deliberately — never editing it to make a test pass.
