@@ -6,6 +6,8 @@ import unittest
 import base64
 
 import boto3
+from asgiref.wsgi import WsgiToAsgi
+from mangum import Mangum
 from moto import mock_dynamodb, mock_s3
 
 os.environ.setdefault("SCOUT_ARTIFACTS_BUCKET", "scout-artifacts-test")
@@ -73,6 +75,42 @@ def _request(method, path, *, body=None, query=None):
         "body": base64.b64encode(data).decode() if is_binary else data.decode(),
         "isBase64Encoded": is_binary,
     }
+
+
+def _lambda_request(method, path, *, body=None, with_content_length=True):
+    """Drive the app the way prod does: through Mangum, off an API Gateway event.
+
+    REST API's proxy event does not reliably carry ``Content-Length`` in
+    ``headers``, and nothing downstream of it synthesises the length — which is
+    what ``BodyLengthMiddleware`` exists to survive.
+    """
+    payload = json.dumps(body) if body is not None else ""
+    headers = {"Content-Type": "application/json"}
+    if with_content_length:
+        headers["Content-Length"] = str(len(payload.encode()))
+    event = {
+        "resource": "/{proxy+}",
+        "path": f"/api{path}",
+        "httpMethod": method,
+        "headers": headers,
+        "multiValueHeaders": {},
+        "queryStringParameters": None,
+        "pathParameters": {"proxy": f"api{path}"},
+        "requestContext": {
+            "resourcePath": "/{proxy+}",
+            "httpMethod": method,
+            "path": f"/prod/api{path}",
+            "stage": "prod",
+            "requestId": "test",
+            "identity": {"sourceIp": "127.0.0.1"},
+            "domainName": "events.andreas.services",
+            "apiId": "test",
+            "protocol": "HTTP/1.1",
+        },
+        "body": payload,
+        "isBase64Encoded": False,
+    }
+    return Mangum(WsgiToAsgi(create_app()), lifespan="off")(event, None)
 
 
 def _json(response):
@@ -413,6 +451,22 @@ class TestApi(unittest.TestCase):
         self.assertEqual(defaults["link_follow_cap"], 10)
         updated = _json(_request("PUT", "/admin/settings", body={"link_follow_cap": 20}))
         self.assertEqual(updated["link_follow_cap"], 20)
+
+    # --- the Lambda path -------------------------------------------------
+    def test_write_survives_an_event_without_content_length(self):
+        # The header is what asgiref turns into CONTENT_LENGTH; without it
+        # Werkzeug reads a zero-byte body and the route 400s on its own field.
+        created = _lambda_request(
+            "POST", "/admin/labels/event",
+            body={"name": "Music"}, with_content_length=False)
+        self.assertEqual(created["statusCode"], 201)
+        self.assertEqual(json.loads(created["body"])["name"], "Music")
+
+    def test_write_still_works_when_content_length_is_present(self):
+        created = _lambda_request(
+            "POST", "/admin/labels/event", body={"name": "Theatre"})
+        self.assertEqual(created["statusCode"], 201)
+        self.assertEqual(json.loads(created["body"])["name"], "Theatre")
 
 
 if __name__ == "__main__":

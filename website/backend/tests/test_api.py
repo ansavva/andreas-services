@@ -1,4 +1,8 @@
+import json
 from decimal import Decimal
+
+from asgiref.wsgi import WsgiToAsgi
+from mangum import Mangum
 
 from website_core.clients.external import kit
 from website_core.app_factory import create_app
@@ -79,3 +83,57 @@ def test_route_handles_custom_domain_base_path(intake_table):
         json={"email": "sam@acme.com", "message": "help"},
     )
     assert resp.status_code == 201
+
+
+def _lambda_post(path, body, *, with_content_length=True):
+    """Drive the app the way prod does: through Mangum, off an API Gateway event.
+
+    REST API's proxy event does not reliably carry ``Content-Length`` in
+    ``headers``, and nothing downstream of it synthesises the length — which is
+    what ``BodyLengthMiddleware`` exists to survive.
+    """
+    payload = json.dumps(body)
+    headers = {"Content-Type": "application/json"}
+    if with_content_length:
+        headers["Content-Length"] = str(len(payload.encode()))
+    event = {
+        "resource": "/{proxy+}",
+        "path": path,
+        "httpMethod": "POST",
+        "headers": headers,
+        "multiValueHeaders": {},
+        "queryStringParameters": None,
+        "pathParameters": {"proxy": path.lstrip("/")},
+        "requestContext": {
+            "resourcePath": "/{proxy+}",
+            "httpMethod": "POST",
+            "path": "/prod" + path,
+            "stage": "prod",
+            "requestId": "test",
+            "identity": {"sourceIp": "127.0.0.1"},
+            "domainName": "www.andreas.services",
+            "apiId": "test",
+            "protocol": "HTTP/1.1",
+        },
+        "body": payload,
+        "isBase64Encoded": False,
+    }
+    return Mangum(WsgiToAsgi(create_app()), lifespan="off")(event, None)
+
+
+def test_lambda_write_survives_an_event_without_content_length(intake_table):
+    # The header is what asgiref turns into CONTENT_LENGTH; without it Werkzeug
+    # reads a zero-byte body and the route 400s on the very field that was sent.
+    resp = _lambda_post(
+        "/api/intake",
+        {"email": "sam@acme.com", "message": "help"},
+        with_content_length=False,
+    )
+    assert resp["statusCode"] == 201, resp["body"]
+    assert json.loads(resp["body"])["email"] == "sam@acme.com"
+
+
+def test_lambda_write_still_works_when_content_length_is_present(intake_table):
+    resp = _lambda_post("/api/intake", {"email": "sam@acme.com", "message": "help"})
+    assert resp["statusCode"] == 201, resp["body"]
+    assert json.loads(resp["body"])["email"] == "sam@acme.com"
