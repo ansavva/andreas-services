@@ -7,17 +7,20 @@ that retires is stated where each workaround used to live — `_sort_records` fo
 the date-tie break, `_folder_entry` for "a folder has no LastModified",
 `reel_items` for the twenty-thousand-object walk.
 
-`asset_url` and `text_object` below are the exception, and they **outlived the
-thing they were paired with**. They were expected to retire alongside the
-key-addressed writes; #316–#319 moved those onto name paths and node ids and left
-these two still taking a raw S3 key and reading the object at it.
+`asset_url` and `text_object` below **address the catalog too now** (#432). Both
+take `?node=<id>`, both refuse it alongside a `key`, and `GET /api/text` walks a
+name path exactly as `PATCH /api/text` does — the pair had drifted into
+addressing two different things, which is what #432 was filed about. What they
+could not reach before was anything written since the catalog: a row minted by
+#294 keeps its bytes at `blobs/<node-id>`, and no client is ever handed that
+string.
 
-That works for everything written before the catalog, where a name path and a
-blob key are the same string, and for nothing written since — a row minted by
-#294 keeps its bytes at `blobs/<node-id>`, which no client is ever handed. The
-id-addressed replacements exist: `GET /api/nodes/<id>/download-url` for the
-first, and nothing yet for the second. #312 is where this has to be settled,
-because `keys.clean_key` survives only to guard these two.
+**One raw S3 key survives, on `/api/asset?key=`, and it is not an oversight.**
+Shared material — `phrasebook/wording.yaml`, the `config/pose/` plates — belongs
+to no character and no project and deliberately has no node, so there is no id
+and no name path that can address it. `keys.clean_key` and the traversal rules
+under it stay alive for that one parameter; #312 expected to take them and
+cannot.
 
 Run metadata (`request.json`, `result.json`, `prompt.json`) is deliberately
 *not* parsed — those files are served as text and the frontend shows them
@@ -28,7 +31,7 @@ import logging
 
 from studio_core import config
 from studio_core.clients.aws import s3
-from studio_core.errors import ForbiddenError, ValidationError
+from studio_core.errors import ForbiddenError, NotFoundError, ValidationError
 from studio_core.services import catalog, keys
 
 logger = logging.getLogger(__name__)
@@ -81,12 +84,23 @@ def _segments(raw: str | None) -> list[str]:
     return [segment for segment in (raw or "").split("/") if segment]
 
 
-def _folder_at(lib: str, raw_prefix: str | None, node_id: str | None) -> dict:
-    """The folder a request names, by id or by path — one or the other.
+def _node_at(
+    lib: str, raw_prefix: str | None, node_id: str | None, label: str = "prefix"
+) -> dict:
+    """The node a request names, by id or by name path — one or the other.
+
+    **It was `_folder_at` and it never checked for a folder**, which is why it is
+    now named for what it returns. `/api/asset` and `/api/text` address a *file*
+    the same two ways since #432, and they resolve it here rather than repeating
+    the walk — one description of "which node did this request mean" for all four
+    read endpoints.
 
     **Both together is a 400 rather than a guess**, the same refusal
     `PATCH /api/nodes/<id>` makes about `name` and `parent`: the two can disagree,
     and picking one silently is how a listing shows a folder nobody asked for.
+    `label` is the query parameter the caller actually sent — `prefix` on a
+    listing, `key` on the two file routes — so the message names something the
+    caller can find in their own URL.
 
     Membership is checked against the node's own `lib` and not against the
     library the request resolved, which is `routes/nodes`' rule and matters for
@@ -101,7 +115,7 @@ def _folder_at(lib: str, raw_prefix: str | None, node_id: str | None) -> dict:
     than wrong.
     """
     if node_id and raw_prefix:
-        raise ValidationError("send prefix or node, not both")
+        raise ValidationError(f"send {label} or node, not both")
 
     if node_id:
         record = catalog.node(node_id)
@@ -154,6 +168,29 @@ def _breadcrumbs(record: dict) -> list[dict]:
         prefix = f"{prefix}{ancestor['name']}/"
         trail.append({"id": ancestor["node_id"], "name": ancestor["name"], "prefix": prefix})
     return trail
+
+
+def _name_path(record: dict) -> str:
+    """One node's slash-joined name path — the address every response calls `key`.
+
+    **Composed by walking, never read off the row**, for the reason `_file_entry`
+    gives: `path` names ancestors by *id* and `blob_key` is the attribute that
+    must not leave. So a node addressed by `?node=` still answers with the same
+    kind of string a node addressed by `?key=` was asked for, and neither answer
+    leaks where the bytes actually sit.
+
+    The root contributes no segment — it is the empty prefix everywhere else —
+    so a file directly under it is just its own name. Same cost and same shape as
+    `_breadcrumbs`, one `GetItem` per level; this returns the string rather than
+    the trail because the two file routes have nothing to navigate.
+    """
+    names = [record["name"]]
+    walked = record
+    while walked.get("parent_id"):
+        walked = catalog.node(walked["parent_id"])
+        if walked.get("parent_id"):
+            names.append(walked["name"])
+    return "/".join(reversed(names))
 
 
 # ───────────────────────── rows as listing entries ─────────────────────────
@@ -303,7 +340,7 @@ def list_folder(
     beside it, were both artefacts of asking S3 what a folder was.
     """
     sort = clean_sort(raw_sort)
-    folder = _folder_at(lib, raw_prefix, node_id)
+    folder = _node_at(lib, raw_prefix, node_id)
     records = _records_for(catalog.children(folder["node_id"]))
 
     # **The prefix is read back off the crumbs, never echoed from the request.**
@@ -366,7 +403,7 @@ def reel_items(
     limit = _reel_page_size(page_size)
     offset = _reel_offset(cursor)
 
-    folder = _folder_at(lib, raw_prefix, node_id)
+    folder = _node_at(lib, raw_prefix, node_id)
     breadcrumbs = _breadcrumbs(folder)
     prefix = breadcrumbs[-1]["prefix"]
 
@@ -462,66 +499,125 @@ def _reel_page_size(raw: int | str | None) -> int:
     return min(value, MAX_REEL_PAGE_SIZE)
 
 
-# ─────────────────────── the two key-addressed reads ───────────────────────
+# ───────────────────────── the two file-at-a-time reads ─────────────────────
 #
-# Everything above addresses the catalog. These two still take an S3 key.
+# `/api/asset` re-signs what a listing handed out; `/api/text` reads what
+# `PATCH /api/text` writes back. Both take `?node=<id>` since #432, the way
+# `/api/tree` and `/api/reel` took it in #424, and both together is a 400.
 #
-# `/api/asset` re-signs what a listing handed out and `/api/text` reads what
-# `PATCH /api/text` writes back — and that second pairing is now **asymmetric**:
-# since #319 the save resolves a name path to a node and writes that node's
-# `blob_key`, while this read still does a `GetObject` on the string it was
-# given. The two agree for material written before the catalog and only for
-# that. See the module docstring; #312 owns the fix.
+# **`?key=` does not mean the same thing on the two of them, and that is the one
+# thing to know about this section.** On `/api/text` it is a *name path*, walked
+# against the catalog exactly as `PATCH /api/text` walks it — that pairing was
+# the whole of #432, and it is now symmetric. On `/api/asset` it is still a raw
+# **S3 key**, because that route is also how the pipeline reads *shared*
+# material: `phrasebook/wording.yaml` and the `config/pose/` plates belong to no
+# character and no project, `catalog_seed` deliberately records no node for
+# them, and `GET /api/resolve` 404s on them by design (see
+# `pipeline/adapters/store.shared_read`). A name path cannot address a thing with
+# no node, so the key-addressed form stays and `keys.clean_key` stays with it —
+# which is why #312 could not take all four of the functions it expected to.
 
 
-def asset_url(raw_key: str, disposition: str | None) -> dict:
+def _blob_at(lib: str, raw_path: str | None, node_id: str | None) -> dict:
+    """The file node one of these two routes names, with bytes behind it.
+
+    Three refusals, and each is a different answer to a different mistake: a
+    folder is a 400 because the node exists and the request does not apply to it
+    (`GET /api/nodes/<id>/download-url`'s rule, kept identical); a placeholder
+    minted by #294 whose upload never landed is a 404 naming the file, because
+    there is genuinely nothing to read; and a name path that names nothing is
+    `catalog.child_by_name`'s own 404.
+    """
+    record = _node_at(lib, raw_path, node_id, "key")
+    if record["kind"] != catalog.KIND_FILE:
+        raise ValidationError("a folder has no contents to read")
+    if not record.get("blob_key"):
+        raise NotFoundError(record["name"])
+    return record
+
+
+def asset_url(
+    lib: str, raw_key: str | None, disposition: str | None, *, node_id: str | None = None
+) -> dict:
     """A fresh presigned URL for one object.
 
     Used both to drive downloads and to re-sign a URL the browser found expired,
     which is why it exists separately from the listing endpoints.
+
+    **`?node=` is the address the SPA uses and the only one that works for
+    anything written since the catalog.** A row minted by #294 keeps its bytes at
+    `blobs/<node-id>`, which no client is ever handed, so signing the string a
+    listing called `key` would sign a key that does not exist. Under `?key=` this
+    still signs what it was given — see the section comment above for the shared
+    material that needs it.
+
+    `size` and `content_type` come from S3 in both branches rather than off the
+    row, because this endpoint's job is to prove the bytes are there before it
+    signs for them.
     """
-    key = keys.clean_key(raw_key)
     if disposition not in (None, "", "inline", "attachment"):
         raise ValidationError("disposition must be 'inline' or 'attachment'")
 
+    if node_id:
+        # `raw_key` is handed on rather than ignored: sending both is the 400
+        # `_node_at` makes, and swallowing one here would answer for a request
+        # that named two different things.
+        record = _blob_at(lib, raw_key, node_id)
+        key, name, blob_key = _name_path(record), record["name"], record["blob_key"]
+    else:
+        # A raw S3 key, and the last query string in the service that becomes one.
+        key = blob_key = keys.clean_key(raw_key)
+        name = keys.basename(key)
+
     # HEAD before signing so a mistyped key is a clean 404 rather than a URL that
     # only fails once the browser follows it.
-    metadata = s3.head(key)
+    metadata = s3.head(blob_key)
 
     return {
         "key": key,
-        "name": keys.basename(key),
-        "kind": keys.kind(key),
+        "name": name,
+        # Classified from the *name*, never from `content_type`, for
+        # `_file_entry`'s reason: the header is what an uploader claimed and the
+        # extension is what the browser will actually try to decode.
+        "kind": keys.kind(name),
         "size": metadata.get("ContentLength", 0),
         "content_type": metadata.get("ContentType"),
         "expires_in": config.presign_ttl_seconds(),
-        "url": s3.presign(key, disposition=disposition or "inline"),
+        "url": s3.presign(blob_key, disposition=disposition or "inline", filename=name),
     }
 
 
-def text_object(raw_key: str) -> dict:
-    """An object's contents as text, for the read-only viewer.
+def text_object(lib: str, raw_key: str | None, *, node_id: str | None = None) -> dict:
+    """An object's contents as text, for the viewer and the editor behind it.
 
     Serving this through the API rather than letting the viewer fetch the
     presigned URL keeps it on one authenticated same-origin request — a
     cross-origin `fetch` to S3 would need CORS on a bucket this service does not
     own and must not modify.
+
+    **This and `PATCH /api/text` address one node by the same two routes now**
+    (#432). Until this change the save resolved a name path and the read did a
+    `GetObject` on the string it was handed, so the pair agreed only for material
+    written before the catalog: a file the editor could save was a file the
+    editor could not re-open. Both walk the catalog, so a rename cannot separate
+    them and a `blobs/<node-id>` blob is reachable from both.
     """
-    key = keys.clean_key(raw_key)
-    if keys.kind(key) != "text":
+    record = _blob_at(lib, raw_key, node_id)
+    name = record["name"]
+    if keys.kind(name) != "text":
         raise ValidationError("key is not a viewable text file")
 
     cap = config.max_text_bytes()
     # One byte over the cap tells us it was truncated without reading it all.
-    body = s3.get_body(key, cap + 1)
+    body = s3.get_body(record["blob_key"], cap + 1)
     truncated = len(body) > cap
     if truncated:
         body = body[:cap]
 
     return {
-        "key": key,
-        "name": keys.basename(key),
-        "language": keys.language(key),
+        "key": _name_path(record),
+        "name": name,
+        "language": keys.language(name),
         "truncated": truncated,
         "content": body.decode("utf-8", errors="replace"),
     }

@@ -68,7 +68,7 @@ export function TextPage({ file, onClose, onSaved }: Props) {
     setError(null);
     setDraft(null);
 
-    getText(file.key)
+    getText(file.id)
       .then((result) => {
         if (!cancelled) setData(result);
       })
@@ -79,7 +79,7 @@ export function TextPage({ file, onClose, onSaved }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [file.key]);
+  }, [file.id]);
 
   /**
    * Leaving with unsaved edits asks once.

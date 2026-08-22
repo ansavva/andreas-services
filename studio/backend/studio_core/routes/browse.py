@@ -6,13 +6,19 @@ read the same rows since #309; the difference is what they hand back.
 counts — because it answers "what is this node". These two answer "draw this
 folder", which needs all four.
 
-**Both accept `?node=<id>` and `?prefix=<path>`, and exactly one of them.** The
-id is the cheaper address and the one #313 moves the SPA onto: a listing is a
-query on the parent id, so `?node=` is the argument the query already wants,
-while `?prefix=` costs a `GetItem` per segment to walk the path down from the
-library root first. The path address stays because every share link ever handed
-out is one. Sending both is a 400 rather than a guess — `services.browse`
-refuses it, for the reason `PATCH /api/nodes/<id>` refuses `name` with `parent`.
+**All four routes accept `?node=<id>` and a path, and exactly one of them.** The
+id is the cheaper address and the one the SPA sends: a listing is a query on the
+parent id, so `?node=` is the argument the query already wants, while a path
+costs a `GetItem` per segment to walk down from the library root first. The path
+address stays because every share link ever handed out is one. Sending both is a
+400 rather than a guess — `services.browse` refuses it, for the reason
+`PATCH /api/nodes/<id>` refuses `name` with `parent`.
+
+`/api/asset` and `/api/text` joined that shape in #432; before it they took a raw
+S3 key and read the object at it, which could not reach a blob written since the
+catalog. **`/api/asset?key=` is still a raw S3 key** — the one place in the API
+where that parameter is not a name path — because it is also how the pipeline
+reads shared material, which has no node to address.
 """
 
 from flask import Blueprint, g, jsonify, request
@@ -57,13 +63,31 @@ def reel():
 
 @bp.get("/asset")
 def asset():
-    """A fresh presigned URL for one object — refreshes and downloads."""
+    """A fresh presigned URL for one object — refreshes and downloads.
+
+    `?key=` here is a **raw S3 key**, unlike everywhere else in the API, and is
+    the pipeline's only way to reach shared material that has no node. `?node=`
+    is what the SPA sends. See `services.browse`'s section comment.
+    """
     return jsonify(
-        browse.asset_url(request.args.get("key"), request.args.get("disposition"))
+        browse.asset_url(
+            g.library,
+            request.args.get("key"),
+            request.args.get("disposition"),
+            node_id=request.args.get("node"),
+        )
     ), 200
 
 
 @bp.get("/text")
 def text():
-    """A JSON/markdown/text object's contents, for the read-only viewer."""
-    return jsonify(browse.text_object(request.args.get("key"))), 200
+    """A JSON/markdown/text object's contents, for the viewer and its editor.
+
+    The read half of `PATCH /api/text`, and it takes the same two addresses the
+    save does since #432 — `?key=` is a name path, not an S3 key.
+    """
+    return jsonify(
+        browse.text_object(
+            g.library, request.args.get("key"), node_id=request.args.get("node")
+        )
+    ), 200

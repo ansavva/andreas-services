@@ -68,8 +68,9 @@ costs one row and removes that branch everywhere.
 
 Its missing `parent_id` is then load-bearing: it is what makes "rename the
 library root", "move it" and "delete it" refuse, since there is no `NAME#` item
-to rewrite. That is the same refusal `keys.assert_inside_root` makes on the S3
-side, arrived at from the data rather than from a string comparison.
+to rewrite. That is the same refusal `keys.assert_inside_root` used to make from
+a string comparison against the media root, arrived at from the data instead —
+which is why that function had no caller left and went with #312.
 
 ## What this module does not do
 
