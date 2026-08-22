@@ -116,7 +116,9 @@ generated media would exercise nothing against an empty second copy. That is
 over: studio has a per-machine dev stack like every other service, and
 `dev-setup.sh` and `dev-up.sh` point at it. The reasoning was answered rather
 than abandoned — the dev stack is *seeded* from a published fixture, so it is
-not empty.
+not meant to be empty. **The loader exists (`dev-aws-seed.sh`, #285) and the
+fixture does not (#284, human-gated because it generates), so today a stack is
+empty apart from the pose plates and a starting phrasebook.**
 
 Running the **CLI** against production is still wanted occasionally and the safe
 mechanism is **undecided**. There is no flag for it, and adding one is a

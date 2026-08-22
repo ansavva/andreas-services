@@ -142,8 +142,9 @@ def test_add_reports_the_path_and_not_a_bucket(media_bucket, patched):
 def test_add_to_a_library_with_no_phrasebook_says_what_that_takes(media_bucket, patched):
     """**The behaviour change.** `put_object` could create the file; PATCH cannot.
 
-    The refusal has to name the fix, because the CLI has no way to perform it:
-    `dev-setup.sh` syncs `config/` only and the dev-stack seed is #285.
+    The refusal has to name the fix, because the CLI has no way to perform it —
+    the fix is `dev-setup.sh`, which copies the repo's seed copy in when the key
+    is absent (#425).
     """
     _calls, outcome = patched
     outcome["raises"] = api.NotFound("phrasebook/wording.yaml", 404)
@@ -167,3 +168,22 @@ def test_reading_commands_write_nothing(media_bucket, patched):
         assert _run(*argv).exit_code == 0, argv
 
     assert calls == []
+
+
+def test_the_repo_seed_is_a_document_this_module_can_extend():
+    """`studio/phrasebook/wording.yaml`, the copy `dev-setup.sh` puts in an empty
+    stack (#425).
+
+    It only has to be loadable and extendable — it is deliberately empty of
+    entries, because an entry records what a model was observed to do with a
+    phrasing and an invented one would ship a guess as knowledge. What this
+    catches is the seed being unparseable or the wrong shape, which would leave
+    `phrasebook add` broken in a way that looks like the bug #425 fixed.
+    """
+    from studio_pipeline import STUDIO_DIR
+
+    seed = STUDIO_DIR / "phrasebook" / "wording.yaml"
+    doc = yaml.safe_load(seed.read_text())
+
+    assert doc == {"version": 1, "models": {}}
+    assert doc.setdefault("models", {}) == {}  # what `_open()` does to it

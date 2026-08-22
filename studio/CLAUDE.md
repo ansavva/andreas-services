@@ -108,10 +108,17 @@ matters — the listing, the sorting, the reel, the tidy-up all only mean anythi
 against real material — and that keeping two copies of ~700 MB in sync would be
 its own failure mode.
 
-**Both points were correct. The answer is that the dev stack is not empty and is
-not a copy.** It is seeded from a small, purpose-made fixture published once and
-downloaded per machine (#284, #285): real model output, chosen to exercise the
-shapes the app cares about, and never a copy of anyone's production library.
+**Both points were correct. The answer is that the dev stack is not meant to be
+empty and is not a copy.** It is seeded from a small, purpose-made fixture
+published once and downloaded per machine (#284, #285): real model output,
+chosen to exercise the shapes the app cares about, and never a copy of anyone's
+production library.
+
+**That is the design, and half of it is not built.** The loader is
+`dev-aws-seed.sh` (#285); the fixture is #284, needs a human to generate it, and
+does not exist. So a stack today is empty apart from the shared material, and
+the paragraph above describes where this is going rather than what you will
+find.
 
 ### What follows from the change
 
@@ -146,9 +153,16 @@ convenience. If you need prod data in front of you today, the deployed app at
 ./studio/scripts/dev-aws-setup.sh                    # provision this machine's stack
 ./studio/scripts/dev-user.sh --generate-password     # its one test account
 ./studio/scripts/dev-token.sh                        # prove sign-in works; prints a token
+./studio/scripts/dev-aws-seed.sh                     # load the fixture — see below
 ./studio/scripts/dev-aws-reset.sh --dry-run          # what a reset would remove
 ./studio/scripts/dev-aws-destroy.sh                  # tear it down; the machine id is kept
 ```
+
+**`dev-aws-seed.sh` has never loaded anything.** The fixture it downloads is
+#284, which is human-gated because it generates media, and the bucket it would
+live in does not exist — so the script stops on its first read and says so. What
+a fresh stack actually holds is the shared material `dev-setup.sh` pushes: the
+pose plates, and a starting `phrasebook/wording.yaml` (#425).
 
 **`STUDIO_DEV_MACHINE_ID` targets a stack this machine did not create.** Export
 it and every command above agrees, because `dev-aws-common.sh` persists it. Two

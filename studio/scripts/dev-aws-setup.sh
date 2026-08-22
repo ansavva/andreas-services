@@ -4,10 +4,10 @@
 # Port of humbugg/scripts/dev-aws-setup.sh, argument for argument, so the
 # mechanism is learned once and applies to both services. What studio does not
 # do here is write local env files: humbugg's version ends by populating
-# backend/.env and the two frontends' .env.local, while studio's dev-setup.sh
-# still reads its values from SSM and points local at prod. Teaching it to point
-# at this stack instead is its own change; until then this script provisions the
-# resources and prints them.
+# backend/.env and the two frontends' .env.local, while studio's `dev-setup.sh`
+# owns that — it reads this stack's Terraform outputs and runs from the
+# SessionStart hook besides. This script provisions the resources, prints them,
+# and names the three steps that follow.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -101,5 +101,13 @@ printf '\n  Cognito user pool:   %s\n  Cognito app client:  %s\n  Media bucket: 
 printf '\nConfirm the stack at any time with:\n  ./studio/scripts/dev-aws-setup.sh --check %s\n' "$(aws_profile_flag)"
 # The bucket and table are empty and the pool has no accounts. Say so, because
 # an empty stack looks identical to a broken one from the app.
-printf '\nThe bucket, table and pool are empty. Nothing has been seeded into them,\nand dev-setup.sh still writes prod values into the local env files.\n'
-printf '\nGive the pool its one test account with:\n  ./studio/scripts/dev-user.sh\n'
+printf '\nThe bucket, table and pool are empty. Nothing has been seeded into them.\n'
+# `dev-aws-seed.sh` is NOT called from here, deliberately. It needs the test
+# account to exist — the library it writes has to have a member — and the
+# fixture it downloads is #284 and has not been published, so calling it would
+# end every provisioning run on a failure that is nobody's fault. Print the
+# order instead; wire it up when there is something to load.
+printf '\nThen, in order:\n'
+printf '  ./studio/scripts/dev-user.sh      # its one test account\n'
+printf '  ./studio/scripts/dev-aws-seed.sh  # load the published fixture\n'
+printf '  ./studio/scripts/dev-setup.sh     # write the local env files\n'

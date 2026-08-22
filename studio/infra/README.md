@@ -294,6 +294,14 @@ any other top-level folder. `config/`, `phrasebook/` and the pose plates have
 **no catalog node** and resolving one by name would 404 — they belong to no
 character and no project, so `catalog_seed.py` records neither of them.
 
+`phrasebook/` is repo-**seeded** rather than repo-owned, and the distinction is
+the reason the two pushes sit in one file (`scripts/dev-shared-material.sh`).
+`studio/phrasebook/wording.yaml` is copied in only when the key is absent,
+because the bucket's copy becomes the live document at the first
+`studio phrasebook add` and a sync would delete its entries. Without that first
+copy `add` is permanently unavailable — `PATCH /api/text` overwrites and never
+invents (#425).
+
 A project's material may involve several characters, so a character name is
 never part of a production key; each run records which characters it used. See
 [../docs/PIPELINE.md](../docs/PIPELINE.md) for what lives in a run, a scene and
@@ -416,9 +424,15 @@ eval "$(aws configure export-credentials --format env)"   # the provider needs t
 ./studio/scripts/dev-aws-setup.sh                    # provision this machine's stack
 ./studio/scripts/dev-user.sh --generate-password     # its one test account
 ./studio/scripts/dev-token.sh                        # prove sign-in works; prints a token
+./studio/scripts/dev-aws-seed.sh                     # load the fixture — see below
 ./studio/scripts/dev-setup.sh                        # write the env files, install toolchains
 ./studio/scripts/dev-up.sh                           # backend :8000, frontend :5173
 ```
+
+`dev-aws-seed.sh` is in the list because that is where it belongs, not because
+it works: it stops on its first read until #284 publishes a fixture. It is
+listed after `dev-user.sh` because the library it writes needs a member, and the
+`sub` comes from the dev pool.
 
 ```bash
 ./studio/scripts/dev-aws-reset.sh --dry-run          # what a reset would remove
@@ -432,23 +446,35 @@ lines in `studio/.env`. It runs from the SessionStart hook and tolerates a
 missing stack, warning and carrying on. `dev-up.sh` does not: an API with no
 Cognito pool 500s on every call, so failing early is the faster way to find out.
 
-> **What you get today is an EMPTY stack.** The bucket, the table and the pool
-> are provisioned and nothing has been put in them: `dev-aws-seed.sh` is #285
-> and does not exist, and the seed bucket it would read is #284 and has not been
-> created. `dev-aws-reset.sh` says so on every run, and it is not a re-seed —
-> it empties. #425 tracks the narrower version of the same gap:
-> `phrasebook/wording.yaml` is not seeded either, so anything reading the
-> phrasebook fails against a fresh stack. `dev-setup.sh` does sync
-> `studio/config/` out, so the pose plates are the one thing that is there.
+> **What you get today is a stack with only the shared material in it.** The
+> bucket, the table and the pool are provisioned; `dev-aws-seed.sh` exists
+> (#285) and stops on its first read, because the fixture it loads is #284 and
+> **has never been published** — there is nothing to download and nothing that
+> script has ever loaded end to end. `dev-aws-reset.sh` empties a stack and does
+> not re-seed.
+>
+> What *is* there is what `dev-setup.sh` pushes: the pose plates under
+> `config/`, and — since #425 — a starting `phrasebook/wording.yaml`, copied
+> from the repo when the key is absent so `studio phrasebook add` works on a
+> fresh stack. Neither has a catalog node, so neither shows the library
+> populated; the table is still empty.
 
 ## The seed bucket
 
-**Design recorded, not yet built.** `studio-dev-seed-us-east-1` is named in one
-comment in `modules/dev_storage/main.tf` and nowhere else — no Terraform
-declares it, and nothing writes or reads it. It is documented here because
-`dev_storage`'s decisions already lean on it (versioning off in dev is justified
-by "recovery is re-seeding"), and a justification whose subject does not exist
-is exactly the thing that rots quietly.
+**Design recorded, not yet built.** `studio-dev-seed-us-east-1` is not declared
+by any Terraform and has never held anything. What names it now is a comment in
+`modules/dev_storage/main.tf` and one reader, `scripts/dev-aws-seed.sh`, written
+against the contract below and against #284's — a reader that has therefore
+never successfully read. It is documented here because `dev_storage`'s decisions
+already lean on it (versioning off in dev is justified by "recovery is
+re-seeding"), and a justification whose subject does not exist is exactly the
+thing that rots quietly.
+
+The reader also fixes the shape of two documents `#284` only sketched:
+`v1/catalog.json` and `v1/manifest.json`. Both are authoritative in git, both
+are validated before a byte is written, and the header of `dev-aws-seed.sh`
+spells them out field by field. Publishing something the loader rejects is the
+expected way to discover a disagreement between them.
 
 What it is for: **one shared fixture, published once, downloaded per machine**
 (#284, #285). Real model output chosen to exercise the shapes the app cares

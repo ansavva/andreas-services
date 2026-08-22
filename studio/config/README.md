@@ -1,8 +1,13 @@
 # `studio/config/` — shared config assets
 
-Material that belongs to no character and no project. Today that means **pose
+Material that belongs to no character and no project. Here that means **pose
 plates**: one image per body or head orientation, used as a framing guide when a
 reference shoot renders a character's standard set.
+
+The other shared material in the repo is `studio/phrasebook/wording.yaml`, and
+it follows the opposite rule — a seed copied in only when the bucket has none,
+because from the first `studio phrasebook add` the bucket's copy is the live
+document. Both pushes live in `scripts/dev-shared-material.sh`.
 
 ```
 config/pose/face/*.png    eight orientations
