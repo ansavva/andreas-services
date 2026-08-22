@@ -13,10 +13,24 @@ Studio's app half is a private media browser, served from two hostnames:
 | App | `studio.andreas.services` | Vite + React SPA on S3 + CloudFront. Dark-only. |
 | API | `studio-api.andreas.services` | Flask Lambda behind an API Gateway custom domain. |
 
-The generation pipeline writes every image and video it produces into
-`s3://studio-prod-media-us-east-1/`. Studio makes that browsable:
-folders keep their structure, images and video are the focus, and every item can
-be opened fullscreen or flipped through as a vertical reel.
+**The library is a DynamoDB table; the bucket is where its bytes happen to
+live.** Every folder, name, parent, size and timestamp is a row in
+`studio-prod-catalog`, and an S3 key is an opaque `blob_key` on a row that
+nothing outside `services/catalog.py` parses. That is the inversion this whole
+document turns on: studio used to *be* a rendering of `ListObjectsV2`, and it is
+now a rendering of a query. Nothing lists the bucket to find out what exists.
+
+What that bought is what the old shape could not have: a rename that moves no
+bytes, a share link that survives one, a library that can have more than one
+member, and a `parent_id` that a folder can be reached through without a string
+being cut on `/`. What it costs is that a lost row is a lost file even though
+every byte of it survives — S3 versioning does not reach a row, and the table's
+PITR is its only recovery. See [../infra/README.md](../infra/README.md).
+
+The generation pipeline produces the media and records it through
+`POST /api/runs`. Studio makes the result browsable: folders keep their
+structure, images and video are the focus, and every item can be opened
+fullscreen or flipped through as a vertical reel.
 
 **Studio reads the library, tidies it, and now accepts bytes for it — it still
 does not produce it.** It browses, and it can rename, move, copy, delete, create
@@ -28,8 +42,8 @@ decides what to make and pays for it.
 The boundary has widened twice, and this file has recorded each widening rather
 than replacing the sentence. It began as "a reader and only a reader"; it became
 a reader that tidies; it is now a reader that tidies and accepts. The reasoning
-for each is in **What this service may do to the bucket** below — read it before
-widening it a third time.
+for each is in **What this service may do to the library** below — read it
+before widening it a third time.
 
 The line between "edit a text file" and "upload" is worth stating, because it is
 thinner than it sounds and is held in exactly one place: `manage.update_text`
@@ -51,10 +65,19 @@ something the pipeline produced.
 | Backend | Flask (Python 3.11) + Mangum, Docker container Lambda behind API Gateway REST |
 | Frontend | Vite + React 19 + Tailwind v4 + the design system's **web** leaves, static build to S3 + CloudFront |
 | Auth | AWS Cognito (admin-create-only user pool); SRP via Amplify Auth on the SPA, Cognito authorizer on every `/api` route |
-| Data | **None.** No DynamoDB, no cache. Listings come straight from S3 on each request. |
-| Routing | Path-based, and the path *is* the S3 key. `/projects/<project>/runs/…/clip.mp4` opens that clip. |
+| Data | **DynamoDB, single-table** (`studio-prod-catalog`) — one item pair per node, three `ALL`-projected GSIs. No cache. Listings are a query. |
+| Blobs | S3, addressed only by a row's opaque `blob_key`. Never listed. |
+| Routing | By node id. `/f/<id>` is a folder, `/o/<id>` is one open file; a pre-#313 name path is resolved once and redirected. |
 | Media | Presigned S3 GET URLs, direct from the browser to S3 |
-| Infra | Terraform in `studio/infra/` (`modules/` + `envs/prod`) |
+| Infra | Terraform in `studio/infra/` (`modules/` + `envs/prod` + a per-machine `envs/dev`) |
+
+Both of the first two rows used to read differently and the change is worth
+naming rather than editing over. **Data** said "None. No DynamoDB, no cache —
+listings come straight from S3 on each request", which was the design until
+#309–#311. **Routing** said "the path *is* the S3 key", which was true until
+#313 and is the reason share links written before it need a resolver at all: a
+key changes when a file is renamed, so every link to a renamed clip broke. A
+node id does not change, ever, which is the whole argument for both.
 
 ## Directory Structure
 
@@ -64,43 +87,56 @@ studio/
 │   ├── Dockerfile
 │   ├── pyproject.toml
 │   ├── studio_core/          # routes → services → clients
-│   │   ├── routes/           # browse.py (reads) + manage.py (writes)
-│   │   └── services/         # browse.py, manage.py, keys.py
-│   └── tests/                # pytest + moto over a miniature of the real bucket
+│   │   ├── routes/           # nodes.py + libraries.py (the catalog's surface),
+│   │   │                     #   browse.py (a folder ready to draw), manage.py (writes)
+│   │   ├── services/         # catalog.py owns the item shapes; browse.py, manage.py,
+│   │   │                     #   identity.py (JWT), keys.py (classification + confinement)
+│   │   └── clients/aws/      # dynamodb.py, s3.py — the only boto3 in the service
+│   └── tests/                # pytest + moto over a miniature of the table and the bucket
 ├── frontend/                 # Vite + React SPA (studio.andreas.services)
 │   ├── index.html            # pins data-theme="dark"
 │   └── src/                  # apis, components, pages, hooks, context, utils, types
 │                             # routes.tsx is the URL table; *.test.tsx is vitest
 ├── infra/
-│   ├── modules/              # auth, compute, api_gateway, api_domain, hosting, media
-│   └── envs/prod/
-├── scripts/                  # create-user.sh, dev-up.sh, dev-setup.sh
-├── .claude/skills/           # the generation pipeline — local only, never deploys
+│   ├── modules/              # auth, compute, api_gateway, api_domain, hosting,
+│   │                         #   media, catalog, dev_storage
+│   ├── envs/prod/            # applied by CI
+│   └── envs/dev/             # per machine, applied only by scripts/dev-aws-*.sh
+├── pipeline/                 # the generation half's code — local only, never deploys
+├── scripts/                  # create-user.sh; dev-setup.sh / dev-up.sh;
+│                             #   dev-aws-{setup,reset,destroy}.sh, dev-user.sh, dev-token.sh
+├── .claude/skills/           # the generation half's docs — local only, never deploys
 ├── docs/
 │   ├── PIPELINE.md           # the local half
 │   └── WEB_APP.md            # ← this file
 └── CLAUDE.md                 # the index over both
 ```
 
-## What this service may do to the bucket
+## What this service may do to the library
+
+Two stores, and the interesting half of this section is that **only one of them
+has a boundary IAM can describe.**
 
 `studio-prod-media-us-east-1` is studio's own bucket, declared in
 `infra/modules/media` and imported into `studio/prod` state in August 2026. It
 did not used to be: it was provisioned from a separate repo, and this section
 used to be titled *The media bucket is not ours* and forbade any resource or
 data source for it. That is no longer the arrangement — see
-[../infra/README.md](../infra/README.md).
+[../infra/README.md](../infra/README.md). `studio-prod-catalog` is studio's own
+table, declared in `infra/modules/catalog`, and has never been anything else.
 
 What did **not** change is which side of the fence this API sits on. The
-pipeline writes to the bucket from a laptop under a human's own AWS login. This
-Lambda is the only thing reachable from the internet, so it is still the thing
-worth scoping, and everything below still applies to it.
+pipeline runs from a laptop under a human's own AWS login. This Lambda is the
+only thing reachable from the internet, so it is still the thing worth scoping,
+and everything below still applies to it.
 
-The Lambda role's policy (`modules/compute`) now grants four actions:
+### The S3 grant, which confines nothing
+
+The Lambda role's policy (`modules/compute`) grants four actions:
 `s3:ListBucket` (prefix-conditioned), `s3:GetObject`, `s3:PutObject` and
-`s3:DeleteObject`. All four are scoped to `media_root_prefix`, **which is now
-empty** — see *What the bucket looks like* below — so in practice they cover the
-whole bucket.
+`s3:DeleteObject`. All four are scoped to `media_root_prefix`, **which is
+empty** — see *What the library looks like* below — so in practice they cover
+the whole bucket.
 
 **That is a reversal of what this file used to say, and it was deliberate.** The
 old rule was "do not add a write action; a feature that needs one belongs in the
@@ -111,12 +147,15 @@ creating folders live here now.
 
 The parts of the old rule that still hold, and should keep holding:
 
-- **`services/keys.py` is the gate.** `clean_name` refuses a slash rather than
-  escaping it — a rename must not be able to become a move — and
-  `assert_inside_root` refuses an operation aimed at the root, so "delete the
-  library" is not expressible through the API. This used to be described as the
-  first of two lines of defence with IAM behind it; with the prefix empty it is
-  the only one, which is the reason to be conservative when changing it.
+- **`services/keys.py` is the gate on anything key-addressed.** `clean_name`
+  refuses a slash rather than escaping it — a rename must not be able to become a
+  move — and `assert_inside_root` refuses an operation aimed at the root, so
+  "delete the library" is not expressible through the API. This used to be
+  described as the first of two lines of defence with IAM behind it; with the
+  prefix empty it is the only one, which is the reason to be conservative when
+  changing it. **What it is not is a library boundary** — it is a string check
+  against one prefix, and one prefix is the whole bucket. #312 shrinks it to
+  classification and naming as the key-addressed routes retire.
 - **Upload exists as of #294; multipart still does not.** This bullet used to
   read "No upload, and no multipart grant", and it asked for the reversal to be
   argued separately rather than arriving as a side effect. It was.
@@ -151,15 +190,75 @@ The parts of the old rule that still hold, and should keep holding:
   path by which bytes from outside enter the bucket.
 - **`s3:DeleteObjectVersion` is deliberately absent**, and the bucket **is**
   versioned (`infra/modules/media`), so this role can only write tombstones, not
-  erase history. Every delete it can perform is recoverable. With the prefix
-  confining nothing, this is the strongest guarantee left standing — do not
-  drop it to tidy the policy.
+  erase history. Every delete of an *object* it can perform is recoverable. With
+  the prefix confining nothing, this is the strongest guarantee left standing —
+  do not drop it to tidy the policy.
+  **It says nothing about a row**, and the two are now deleted separately:
+  `DELETE /api/nodes/<id>` removes rows first and blobs second, so a delete that
+  half-succeeds leaves recoverable bytes nothing can name. Read this guarantee
+  as exactly what it is — the bytes survive — and read the next section for what
+  covers the half that does not.
 
 The part that **did** change and should not be glossed over: scope. It used to
 be true that every grant stopped at `media/*`. With `media_root_prefix` empty
 that sentence is no longer true of either half — a write-capable role now reaches
 the whole bucket. Setting the prefix to a real value narrows reads and writes
 together, and is the lever to reach for if that ever needs to be true again.
+
+### The catalog grant, and why the boundary is not in IAM at all
+
+**Under the catalog the S3 grant cannot express the security boundary, and
+neither can the DynamoDB one.** Say that plainly rather than leaving the prefix
+argument above to be read as one, because the prefix argument is where a reader
+arrives from and it no longer generalises:
+
+- **A row has no prefix to scope by.** `blob_key` is deliberately opaque — prod
+  holds `characters/<slug>/…` keys written years before the table beside
+  `blobs/<node_id>` keys written after it — so there is no string an IAM
+  condition could match that means "this library".
+- **Membership is a table lookup, not an identity.** Whether a caller may see a
+  node is answered by a `USER#<sub>` query, on rows the same policy grants
+  access to. IAM cannot ask a question whose answer is in the data it is
+  guarding.
+- **Two nodes in different libraries are two items in one partition space.**
+  There is no per-library partition to condition `dynamodb:LeadingKeys` on and
+  there deliberately is not one: `lib` is an attribute a transfer rewrites
+  (#322), and a key you can move an item across is not a key you can authorise
+  on.
+
+So the policy's job is narrow — grant the six item operations the model
+performs, on this table and `<arn>/index/*`, and nothing that changes what the
+table *is*. `Scan` is absent because a scan crosses library boundaries by
+construction. `BatchWriteItem` is absent because a node is two items and every
+write is a `TransactWriteItems`. `CreateTable`, `DeleteTable` and everything
+touching PITR are absent because nothing reachable from the internet should be
+able to delete the library outright.
+
+**What holds the line instead is membership, checked in
+`services/catalog.py`'s callers inside the API.** Every node response is checked
+against the node's own `lib` — not against the library the request claimed —
+because a node id is shareable and the node's own answer is the only
+authoritative one. `before_request` resolves the caller's library once per
+request from `X-Studio-Library`, a sole membership, or a refusal. That is the
+boundary. It is code, it is one consistency boundary, and it is the reason the
+API is the only writer to this table.
+
+**The consequence for reviewers: an IAM diff can no longer tell you whether the
+boundary moved.** It could when the answer was a prefix. Anything that widens
+who can see what is now a change in `routes/nodes.py`, `routes/libraries.py` or
+`app_factory`'s request hook, and reads as ordinary application code. #332 is
+open on whether IAM should express any of it; until it is decided, do not read a
+clean Terraform plan as evidence.
+
+**A row has no version history either**, and this is where the two stores stop
+being analogous. An overwrite during a move or a transfer rewrites `path` or
+`lib` across a whole subtree and leaves nothing behind. The bucket's tombstone
+guarantee below has no counterpart here — the catalog's only recovery is the
+table's PITR, restored out of band by a human into a new table, plus
+`deletion_protection_enabled` refusing a `DeleteTable` at the API rather than
+only in Terraform.
+
+### The bucket's own protections, unchanged
 
 There is **no second copy of this bucket anywhere.** An older mirror called
 `xharness-assets` used to exist and this file used to offer it as a fallback;
@@ -170,7 +269,32 @@ believed. Versioning and `prevent_destroy` are what stand in its place.
 a fallback either: it was deleted in August 2026 once the copy was verified, and
 its version history went with it. Nothing stands behind this bucket now.
 
-## What the bucket looks like
+## What the library looks like
+
+**The tree below is the catalog's, not the bucket's.** Rows carry the names,
+the parents and the shape; the bucket carries bytes under whatever key a row
+happens to point at. The two agreed exactly, key for name path, up until the
+catalog was seeded — which is what let the read path move onto rows without the
+SPA noticing (#309) — and they have been diverging ever since. Read the diagram
+as the folder tree a person sees.
+
+**Two kinds of `blob_key` exist, and both are correct forever.** Anything
+written before the catalog keeps the key it was written under
+(`characters/<slug>/…`, `projects/<slug>/…`); anything written through
+`POST /api/nodes/<id>/upload-url` since gets `blobs/<node_id>`, which
+`catalog.blob_key_for` is the single definition of. **A legacy key is a pointer
+with no meaning left in it.** It reads like a path and is not one — a rename
+does not touch it, a move does not touch it, and nothing outside
+`services/catalog.py` may split it on `/`. The moment something does, the
+coupling the catalog was built to remove is back, and it is back only for the
+half of the library that is old enough to look tempting. #335 is open on
+normalising the legacy keys; until then, `blobs/` sitting alongside
+`characters/` in the bucket is the expected state and not a mess to tidy.
+
+Because a row and a blob are deleted separately, a blob can outlive every row
+that pointed at it. That is what `studio catalog gc` is for (#318) — it is the
+only sanctioned way to find an orphan, precisely because "unreferenced" is a
+question only the table can answer.
 
 **There is no `media/` wrapper.** There was until August 2026, and studio's
 browsable root was hard-coded to it in five places — the Flask config default,
@@ -198,20 +322,32 @@ projects/<subject>/             # what was generated of them
                                # copying let you choose a destination
 projects/misc/runs/<ts>_<slug>/ # unattributed runs, mostly seedance/kling video
 phrasebook/wording.yaml         # shared prompt wording
+config/pose/                    # shared pose plates; source of truth is the repo
+blobs/<node_id>                 # bytes uploaded through the API — no tree, by design
 ```
 
-Four things about this shape drive the UI: run and scene folders sort
+Three things about this shape drive the UI: run and scene folders sort
 chronologically because their names start with a timestamp; a run's output lives
-one level down in `output/`, so a run folder itself usually shows only JSON; a
-subject is split across two top-level trees — `characters/<name>/` and
+one level down in `output/`, so a run folder itself usually shows only JSON; and
+a subject is split across two top-level trees — `characters/<name>/` and
 `projects/<name>/` are the same subject, and reel mode is what puts them back
-together, since it walks recursively from wherever you are; and **a folder has
-no LastModified** — a delimited listing returns common prefixes, not objects. The
-date sorts therefore fall back to the folder's name, which for a run folder *is*
-its date. Do not "fix" that by HEADing every prefix to invent a timestamp.
+together, since it walks recursively from wherever you are.
+
+There used to be a fourth, and it is retired rather than deleted because anyone
+who read this file before will look for it. **"A folder has no LastModified"**
+was true of a delimited listing, which returns common prefixes, and a common
+prefix is not an object. So the date sorts fell back to the folder's name — which
+for a run folder *is* its date — and this file warned against HEADing every
+prefix to invent a timestamp. A folder is a row now (#311), stamped by
+`catalog._now` like every other row, and `_folder_entry` carries
+`last_modified`. The warning is gone with the constraint; the reason it was
+right is that the fix it forbade would have been a per-prefix round trip to
+reconstruct something the data did not have.
 
 The pipeline owns this layout and has reshaped it before. When it changes again,
-`media_root_prefix` is the first knob that matters, and it is now the only one.
+the catalog is what has to be reshaped with it — `media_root_prefix` narrows the
+key-addressed remnant and the Lambda's S3 policy, and narrows nothing about what
+a query returns.
 
 There were briefly two more — `STUDIO_PROJECTS_PREFIX` and
 `STUDIO_FAVORITES_FOLDER` — because favouriting had to *derive* a destination
@@ -257,8 +393,11 @@ that breaks every time the pipeline ships.
   because `/api/asset?disposition=attachment` signs
   `response-content-disposition` into the URL itself.
 - **Text is served through `/api/text`, not fetched from the presigned URL.** A
-  cross-origin `fetch` to S3 would need a CORS configuration on a bucket studio
-  does not own and must not modify.
+  cross-origin `fetch` to S3 would need a CORS configuration on the media
+  bucket. Studio does own that bucket now (`infra/modules/media`), so this is a
+  decision rather than an impossibility — and the decision is no: one
+  authenticated same-origin request beats a second CORS surface whose allowed
+  origins would then have to agree with the four places the API's already do.
 - **Every card, row and tile is itself a `<button>`, so a second control cannot
   go inside one.** A button nested in a button is invalid HTML that browsers
   resolve by dropping one of them, and which one they drop is not something to
@@ -360,11 +499,23 @@ that breaks every time the pipeline ships.
   ignores anything targeting an INPUT, which is what lets the scrub bar be a
   native `<input type="range">` and answer the arrow keys itself with no
   coordination between the two.
-- **The reel's cursor is an offset, not an S3 continuation token.** Sorting by
-  date means the whole subtree must be listed before any page can be cut from it,
-  so `browse.reel_items` walks (bounded by `STUDIO_MAX_WALK_OBJECTS`), sorts, and
-  presigns *only* the window it returns — which is strictly less signing than the
-  old key-order paging did.
+- **The reel's cursor is still an offset, and the reason changed underneath it.**
+  This bullet used to say "an offset, not an S3 continuation token", and the
+  contrast is retired: there is no S3 listing left to have a continuation token.
+  `reel_items` enumerates *rows* — a `by-recent` query from the library root, a
+  `by-path` `begins_with` from anywhere else (#310) — bounded by
+  `STUDIO_MAX_FOLDER_OBJECTS`, which replaced `STUDIO_MAX_WALK_OBJECTS` and its
+  twenty-thousand-object walk. **It is still fetch-then-sort**, because sorting
+  by date means the whole branch must be known before a page can be cut from it
+  and `name` is not an order either index offers. What improved is what is
+  enumerated, not the complexity. Presigning still happens *after* the slice —
+  one page's worth of URLs, never the branch's. Keep it that way.
+  The enumeration bound **truncates** rather than refusing, and says so in
+  `truncated`: a page of a library may be shorter than the library. The SPA
+  carries it through `useReel` to `ReelView`, which renders the count as
+  `12 of 2000+` — the `+` is the whole of the UI for it, and it is enough,
+  because the alternative is a reel that silently claims the library ends where
+  the cap did.
 - **One picker, two verbs.** `DestinationPicker` serves both move and copy,
   because "browse to a folder and press the button" is the same interaction
   either way and a typed prefix is useless against folder names that are
@@ -413,13 +564,20 @@ that breaks every time the pipeline ships.
   `CopyKeyButton`'s feedback inline — and a dialog in a fixed position trains a
   second click that lands before anyone reads it.
 - **`services/keys.py` is the only thing between a query string and
-  `GetObject`.** Every prefix and key is normalised and confined to
-  `config.media_root_prefix()`. That root is empty in prod, so the confinement
-  check passes everything and the traversal rules (`..`, a leading `/`, a
-  backslash — all rejected before normalisation) are what is actually holding
-  the line. Test changes to it directly — `posixpath.normpath` strips a trailing
-  slash, which is why the folder check happens on the raw value, and it is why
-  the tests set a non-empty root to keep the confinement branch covered.
+  `GetObject` — on the routes that still take a key.** `/api/asset`, `/api/text`
+  and the key-addressed write routes normalise and confine every prefix and key
+  to `config.media_root_prefix()`. That root is empty in prod, so the
+  confinement check passes everything and the traversal rules (`..`, a leading
+  `/`, a backslash — all rejected before normalisation) are what is actually
+  holding the line. Test changes to it directly — `posixpath.normpath` strips a
+  trailing slash, which is why the folder check happens on the raw value, and it
+  is why the tests set a non-empty root to keep the confinement branch covered.
+  **Nothing id-addressed goes through it**, and that is not an oversight: a name
+  is looked up as an exact `NAME#` sort key and `clean_name` refuses a slash, a
+  `.`, a `..` and a control character on the way *in*, so `../elsewhere` is a
+  name nothing is called rather than traversal to reject. `keys.kind` and
+  `keys.language` — extension classification — are used by both halves and
+  survive #312; the confinement half does not.
 - **`.heic` is not in `IMAGE_EXTENSIONS`, and a couple of seed photos are
   `.heic`.** They list as ordinary files rather than tiles. That is the current
   behaviour, not a considered decision — but before adding the extension, note
@@ -429,9 +587,15 @@ that breaks every time the pipeline ships.
   `lifecycle { ignore_changes = [environment] }` means the `environment` block
   in `modules/compute` only applies the first time the function is created;
   after that the `jq` block in `studio-prod.yaml`'s `update-lambda` job is the
-  only thing that sets `STUDIO_MEDIA_ROOT_PREFIX`. Change one without the other
-  and the value you read in the code is not the value that is running. It is
-  also legitimately the empty string — do not "fix" it by dropping the line.
+  only thing that sets `STUDIO_MEDIA_ROOT_PREFIX` and `STUDIO_CATALOG_TABLE`.
+  Change one without the other and the value you read in the code is not the
+  value that is running. `--environment` **replaces** the map rather than
+  merging into it, so that document has to be complete: dropping a line unsets
+  the variable on the next deploy. `STUDIO_MEDIA_ROOT_PREFIX` is also
+  legitimately the empty string — do not "fix" it by dropping the line.
+  `STUDIO_CATALOG_TABLE` is the one that changed character: it was inert while
+  listings came from S3, and since #309 an unset value is the difference between
+  a browsable library and an empty one.
 - **Dark-only, and the palette is declared twice.** `src/styles/app.css` sets it
   in `@theme` *and* under `[data-theme='dark']`; `index.html` pins the attribute
   and nothing toggles it. The duplication stops a component that reads a role
@@ -453,19 +617,43 @@ that breaks every time the pipeline ships.
   Ref callbacks are memoised per key in `useReelPlayback.register` — an inline
   arrow in the render loop is a new identity every render, which would detach and
   re-attach every mounted pane's ref on every tick of the scrub bar.
-- **Ties in a date sort are the common case, not the edge.** S3's LastModified
-  has one-second resolution and a run writes its whole output inside one second,
-  so `_sort_files` breaks ties on the full key, always ascending — two passes
-  over a stable sort rather than one `reverse=True` over a composite key, which
-  would hand back `frame_9, frame_8, frame_7` for every run. Breaking on the
-  *basename* would interleave `originals/`, `reference/` and `runs/` in the
-  recursive reel; the key keeps a subject's folders whole.
+- **Ties in a date sort used to be the common case. They are not any more, and
+  the tie-break is gone.** S3's `LastModified` has one-second resolution and a
+  run writes its whole output inside one second, so a date sort tied almost
+  everywhere: `_sort_files` had to sort by full key first and by date second —
+  two passes over a stable sort — or `newest` handed back `frame_9, frame_8,
+  frame_7` for every run. `catalog._now` stamps microseconds, so `_sort_records`
+  is one pass and equal timestamps now mean equal *instants* rather than equal
+  seconds. Python's stable sort leaves those in the order the query returned
+  them. Do not reintroduce a secondary key to "make it deterministic" — the
+  thing it would sort on is `blob_key`, which is opaque and which a rename does
+  not change.
+- **A listing sorts on one date and shows that same date.** `_timestamp` returns
+  `updated_at`, falling back to `created_at` only for a row old enough to predate
+  the pair. A listing ordered by a date it does not display reads as a bug
+  forever, which is the whole reason there is one accessor rather than two
+  fields.
 - Lambda uses `lifecycle { ignore_changes = [image_uri, environment] }`; the
   deploy workflow owns the image tag and the env vars.
 
 ## API
 
 Every route is behind the Cognito authorizer except `GET /api/health`.
+
+**Every other route is about exactly one library, and `before_request` decides
+which — once.** Three cases, in order: the `X-Studio-Library` header if it names
+a library the caller is a member of (403 otherwise); a sole membership if there
+is exactly one; a refusal. No header and no memberships is a **403**, not the
+400 the ambiguous case gets, because there is no header that caller could send
+that would work — the remedy is provisioning, not a retry. No header and several
+memberships is a 400 naming them, so it is answerable from `curl` without a
+second round trip. Nothing downstream re-derives any of this.
+
+`X-Studio-Library` is a custom request header, so it is subject to the same
+four-file agreement the write verbs are (`app_factory`'s `CORS(...)`, the MOCK
+preflight, and both gateway responses in `modules/api_gateway`). Missing from
+any of them, the SPA sees a network error with no status attached — the one
+failure mode in this service that carries no message at all.
 
 **`GET /api/libraries` is the one route that is authenticated without being
 about a library.** It answers "which libraries am I in", which is where the id a
@@ -502,9 +690,17 @@ step (#309). `UnprocessedKeys` comes back on a **200**, so botocore's retries
 never see it — `catalog.records` retries it explicitly and raises rather than
 answering with a short listing.
 
+**Two addressing schemes, and which one a route uses is the fastest thing to
+check about it.** Everything on `/api/nodes*`, `/api/libraries` and
+`/api/resolve` takes a **node id**. `/api/tree` and `/api/reel` take either. The
+rest — `/api/asset`, `/api/text`, and every write under `/api/folder`,
+`/api/object(s)` — takes a **key or prefix**, which is the older surface: the
+SPA still calls it, and #312 and #316-onwards retire it. Nothing new should be
+added to it.
+
 | Route | Returns |
 |---|---|
-| `GET /api/health` | `{"status": "ok"}` — liveness, touches no S3 |
+| `GET /api/health` | `{"status": "ok"}` — liveness, touches neither store |
 | `GET /api/libraries` | `[{id, name, role}]` — the caller's libraries. Authenticated, **not** library-scoped |
 | `GET /api/nodes?parent=` | The children of one folder, name-ascending. 404 unknown parent, 403 another library |
 | `GET /api/nodes/<id>` | One node. 404 unknown id, 403 another library |
@@ -613,20 +809,47 @@ from any of them is a CORS failure no Flask configuration can rescue.
 | Env var | Default | Guards |
 |---|---|---|
 | `STUDIO_MAX_BULK_KEYS` | 1000 | One `DeleteObjects` round trip |
-| `STUDIO_MAX_FOLDER_OBJECTS` | 2000 | A folder rename/delete the Lambda can finish |
-| `STUDIO_MAX_WALK_OBJECTS` | 20000 | The recursive reel's walk |
+| `STUDIO_MAX_FOLDER_OBJECTS` | 2000 | A subtree operation the Lambda can finish — **and the reel's enumeration** |
+| `STUDIO_MAX_TEXT_BYTES` | 1 MiB | What `/api/text` will read and `PATCH /api/text` will write |
+| `STUDIO_MAX_UPLOAD_BYTES` | 5 GiB | S3's single-PUT ceiling, declared at signing time |
+| `STUDIO_PRESIGN_TTL_SECONDS` | 900 | A read URL's requested life |
+| `STUDIO_UPLOAD_TTL_SECONDS` | 300 | An upload URL's — deliberately shorter |
 
-The folder cap is a **refusal**, not a truncation: a rename that stopped halfway
-would leave the same objects under two prefixes with no record of which half
-moved. Renames copy before they delete, in that order and never the reverse — a
-failed delete leaves a duplicate, which is visible and fixable, while the reverse
-order would lose data.
+**`STUDIO_MAX_WALK_OBJECTS` (20,000) is gone.** It bounded a walk over S3
+*objects*; the reel enumerates rows now (#310), so `STUDIO_MAX_FOLDER_OBJECTS`
+bounds both and there is one number for how much of a subtree this service holds
+in memory rather than two that had drifted an order of magnitude apart. Nothing
+in Terraform or the deploy workflow ever set it, so there is no infra drift
+behind it — but if you find it pinned in a shell or an `.env`, delete the line:
+it configures nothing.
+
+The same number means two different things, deliberately. For a **subtree
+operation** it is a **refusal** — a rename that stopped halfway would leave the
+same objects under two prefixes with no record of which half moved. For the
+**reel** it **truncates**, and says so in `truncated`, because a page of a
+library is allowed to be shorter than the library. Renames copy before they
+delete, in that order and never the reverse — a failed delete leaves a
+duplicate, which is visible and fixable, while the reverse order would lose
+data.
 
 ## Local development
 
+**A per-machine dev stack comes first, and `dev-up.sh` refuses to start without
+one.** Studio ran local-against-prod until August 2026; it does not any more.
+The stack is this machine's own Cognito pool, media bucket and catalog table,
+named `studio-dev-<short12>-*` from a persistent UUID in
+`~/.config/andreas-services/studio/machine-id`. Failing early is deliberate: an
+API with no pool 500s on every call, which is a slower way to learn the same
+thing.
+
+```bash
+aws login
+./studio/scripts/dev-aws-setup.sh                    # once per machine
+./studio/scripts/dev-user.sh --generate-password     # its one test account
+```
+
 ```bash
 # Both surfaces together (backend :8000, frontend :5173).
-aws login
 ./studio/scripts/dev-up.sh
 ```
 
@@ -650,17 +873,28 @@ get-caller-identity` succeeding tells you nothing about whether boto3 can see
 credentials — export them. Same split the root `CLAUDE.md` documents for
 Terraform's provider.
 
-`dev-setup.sh` writes `frontend/.env.local` from SSM and installs
-`frontend/node_modules` — do not hand-copy the example or hand-edit the result;
-the generated file says as much in its own header. Without the env file the app
-shows "Auth is not configured"; without node_modules every local binary is
+`dev-setup.sh` writes `frontend/.env.local` **from this machine's dev stack's
+Terraform outputs** and installs `frontend/node_modules` — do not hand-copy the
+example or hand-edit the result; the generated file says as much in its own
+header. It used to read `/studio/prod/*` from SSM and pin the live pool and the
+live bucket, and that sentence stood in this file until #287; SSM holds what the
+deploy workflow wrote, and nothing deploys a dev stack. Without the env file the
+app shows "Auth is not configured"; without node_modules every local binary is
 missing, and the first one you hit is `tsc: not found`.
+
+The script runs from the SessionStart hook and **tolerates a missing stack**,
+warning and carrying on — it still has a toolchain to install. It also warns
+loudly, rather than rewriting, about a `studio/.env` that pins a prod bucket or
+a dead `XHARNESS_S3_*` name. The file is the developer's; silently repointing
+where their commands write is worse than telling them.
 
 ## Testing
 
 **The backend has a suite; the frontend has one test, and that asymmetry is
 deliberate.** `backend/tests/` is moto-backed pytest over a miniature of the
-real bucket and covers the whole read and write surface. `frontend` ran on
+catalog table and the bucket, and covers the whole read and write surface. It is
+moto and not a real stack on purpose: the dev stack costs an apply, and a suite
+that needs AWS is a suite that stops being run. `frontend` ran on
 `lint → typecheck → build` alone until #313, on the reasoning that every failure
 this SPA can have is a blank page somebody sees immediately.
 
@@ -690,14 +924,26 @@ app cannot report on its own.
 
 ## Creating users
 
-There is no sign-up. Accounts are created out of band:
+There is no sign-up. Accounts are created out of band, and **the two pools have
+two scripts** — `create-user.sh` defaults `USER_POOL_ID` from SSM, which is the
+**prod** pool, so it is not the one to reach for while developing:
 
 ```bash
-STUDIO_EMAIL=you@example.com ./studio/scripts/create-user.sh
+STUDIO_EMAIL=you@example.com ./studio/scripts/create-user.sh   # prod pool
+./studio/scripts/dev-user.sh --generate-password               # this machine's dev pool
 ```
 
 Cognito emails a temporary password; signing in with it prompts for a new one.
 Pass `STUDIO_PASSWORD` to set a permanent one directly instead.
+
+**A pool account is not access to anything.** Membership is a catalog row
+(`USER#<sub>` / `LIB#<lib_id>`), and creating the Cognito user does not write
+one — so a freshly created account signs in, renders, and gets a 403 from
+`before_request` with "You are not a member of any library." That is the right
+status: the pool is admin-create-only, so it is a provisioning gap rather than
+anything the caller did wrong, and `GET /api/libraries` returning an empty 200
+is how it gets diagnosed. There is **no script for granting membership yet** —
+#321 is open — so today it is a hand-written row.
 
 ## Deployment
 

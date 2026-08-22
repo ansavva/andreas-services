@@ -161,6 +161,29 @@ EOF
     warn "studio/.env still sets XHARNESS_S3_* — dead since the bucket rename."
     warn "  The variables are STUDIO_S3_* now. Delete the old lines."
   fi
+  # Every other variable that has stopped being read, named individually.
+  #
+  # **Silence is the failure mode this exists to avoid**, and it is the same one
+  # the XHARNESS_S3_* rename was designed around: a pinned line looks like
+  # configuration, so a person reasons from it, and it has no effect. The
+  # variables below were removed by the catalog programme rather than renamed,
+  # so there is no successor name to point at — only a line to delete. Keep this
+  # list appended to whenever a variable retires; the cost of an extra entry is
+  # one grep per session and the cost of a missing one is a wrong diagnosis.
+  for dead in STUDIO_S3_MEDIA_PREFIX STUDIO_MAX_WALK_OBJECTS; do
+    if grep -q "^${dead}=" "$STUDIO_DIR/.env"; then
+      warn "studio/.env sets ${dead} — retired, and read by nothing. Delete the line."
+    fi
+  done
+  # STUDIO_S3_PREFIX gets its own message because "nothing reads it" would be a
+  # lie: `maintenance/migrate_layout.py` still does, and only it. So a pin here
+  # changes nothing about any command a person actually runs while remaining
+  # live enough that a grep finds a reader — the most confusing of the three
+  # states, and the reason it is called out rather than swept in above.
+  if grep -q "^STUDIO_S3_PREFIX=" "$STUDIO_DIR/.env"; then
+    warn "studio/.env sets STUDIO_S3_PREFIX — the CLI has had no bucket prefix"
+    warn "  since #303; only the layout migrator reads it. Delete the line."
+  fi
   # A .env pinned to the PROD bucket predates #287 and now points the CLI at
   # production, which is the thing this change removes. Named loudly rather
   # than rewritten: the file is the developer's, and silently repointing where

@@ -2,9 +2,17 @@
 
 Split from `routes/browse` rather than appended to it so that "what can this
 service change" is answerable by reading one file. Every route here is behind
-the same Cognito authorizer as the read routes — there is no second tier of
-permission, because the pool is admin-create-only and everyone in it is the
-owner of the library.
+the same Cognito authorizer as the read routes.
+
+**This used to say "there is no second tier of permission, because the pool is
+admin-create-only and everyone in it is the owner of the library". Both halves
+are now false.** Being in the pool grants nothing — `GET /api/libraries` can
+answer with an empty list, and `before_request` refuses a caller who is in no
+library — and membership carries a `role`, so "owner" is one value it can hold
+rather than a description of everyone. The authorizer is still the outer gate;
+what decides whether a *particular* node may be changed is the membership check,
+and it happens in the API rather than in IAM. See `routes/libraries.py` and
+`app_factory`'s request hook.
 
 **These routes address the catalog now** (#316, #317, #319). What they take is
 unchanged — `prefix`, `key`, `keys`, `destination` — because it was never an S3
