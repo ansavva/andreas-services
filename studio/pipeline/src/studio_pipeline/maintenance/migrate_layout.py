@@ -74,7 +74,7 @@ def build_plan(s3) -> dict:
     already: list[str] = []
 
     paginator = s3.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=s3c.BUCKET):
+    for page in paginator.paginate(Bucket=s3c.bucket()):
         for obj in page.get("Contents", []):
             k = obj["Key"]
             if not k.startswith(P.LEGACY_PREFIX):
@@ -122,7 +122,7 @@ def report(plan: dict) -> None:
 
 def head(s3, key: str):
     try:
-        return s3.head_object(Bucket=s3c.BUCKET, Key=key)
+        return s3.head_object(Bucket=s3c.bucket(), Key=key)
     except Exception:  # noqa: BLE001 — boto raises ClientError(404) here
         return None
 
@@ -142,8 +142,8 @@ def phase_copy(s3, plan: dict, apply: bool) -> dict:
             skipped.append(new)          # resumable: already there, same size
             continue
         if apply:
-            s3.copy_object(Bucket=s3c.BUCKET, Key=new,
-                           CopySource={"Bucket": s3c.BUCKET, "Key": old},
+            s3.copy_object(Bucket=s3c.bucket(), Key=new,
+                           CopySource={"Bucket": s3c.bucket(), "Key": old},
                            MetadataDirective="COPY")
         copied.append(new)
     return {"copied": copied, "skipped": skipped, "failed": failed}
@@ -280,7 +280,7 @@ def _reference_index(s3, name: str) -> list[dict]:
     for k in keys:
         if k.lower().endswith(".txt"):
             try:
-                body = s3.get_object(Bucket=s3c.BUCKET, Key=k)["Body"].read()
+                body = s3.get_object(Bucket=s3c.bucket(), Key=k)["Body"].read()
                 captions[os.path.splitext(k)[0]] = body.decode("utf-8").strip()
             except Exception:  # noqa: BLE001
                 pass
@@ -309,7 +309,7 @@ def phase_rewrite(s3, plan: dict, apply: bool) -> dict:
         obj = head(s3, new)
         if obj is None:
             die(f"{new} has not been copied yet — run `copy --apply` first")
-        body = s3.get_object(Bucket=s3c.BUCKET, Key=new)["Body"].read()
+        body = s3.get_object(Bucket=s3c.bucket(), Key=new)["Body"].read()
 
         if base == "profile.yaml":
             doc = yaml.safe_load(body.decode("utf-8")) or {}
@@ -336,7 +336,7 @@ def phase_rewrite(s3, plan: dict, apply: bool) -> dict:
             ct = "application/json"
 
         if apply:
-            s3.put_object(Bucket=s3c.BUCKET, Key=new, Body=io.BytesIO(out),
+            s3.put_object(Bucket=s3c.bucket(), Key=new, Body=io.BytesIO(out),
                           ContentType=ct)
         touched.append(new)
 
@@ -347,14 +347,14 @@ def phase_rewrite(s3, plan: dict, apply: bool) -> dict:
             continue
         if head(s3, new) is None:
             die(f"{new} has not been copied yet — run `copy --apply` first")
-        doc = json.loads(s3.get_object(Bucket=s3c.BUCKET, Key=new)["Body"].read())
+        doc = json.loads(s3.get_object(Bucket=s3c.bucket(), Key=new)["Body"].read())
         before = json.dumps(doc, sort_keys=True)
         doc = rewrite_chain_doc(doc)
         if json.dumps(doc, sort_keys=True) == before:
             unchanged.append(new)
             continue
         if apply:
-            s3.put_object(Bucket=s3c.BUCKET, Key=new,
+            s3.put_object(Bucket=s3c.bucket(), Key=new,
                           Body=io.BytesIO((json.dumps(doc, indent=2) + "\n").encode()),
                           ContentType="application/json")
         touched.append(new)
@@ -402,7 +402,7 @@ def phase_verify(s3, plan: dict) -> dict:
             continue
         if head(s3, new) is None:
             continue
-        doc = json.loads(s3.get_object(Bucket=s3c.BUCKET, Key=new)["Body"].read())
+        doc = json.loads(s3.get_object(Bucket=s3c.bucket(), Key=new)["Body"].read())
         for ref in _collect_keys(doc):
             if ref.startswith(P.LEGACY_PREFIX):
                 stale.append(f"{new}: {ref}")
@@ -449,14 +449,14 @@ def phase_delete(s3, plan: dict, apply: bool, journal: dict) -> dict:
         batch.append({"Key": old})
         deleted.append(old)
         if apply and len(batch) == 1000:
-            s3.delete_objects(Bucket=s3c.BUCKET, Delete={"Objects": batch})
+            s3.delete_objects(Bucket=s3c.bucket(), Delete={"Objects": batch})
             batch = []
     # Folder markers carry no data and have no destination; they go too.
     for marker in plan["markers"]:
         batch.append({"Key": marker})
         deleted.append(marker)
     if apply and batch:
-        s3.delete_objects(Bucket=s3c.BUCKET, Delete={"Objects": batch})
+        s3.delete_objects(Bucket=s3c.bucket(), Delete={"Objects": batch})
     return {"deleted": deleted}
 
 
