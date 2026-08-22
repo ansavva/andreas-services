@@ -36,6 +36,7 @@ from studio_pipeline.engine import shoot as _shoot
 from studio_pipeline.maintenance import backfill_replicate as _backfill
 from studio_pipeline.maintenance import catalog_gc as _catalog_gc
 from studio_pipeline.maintenance import catalog_seed as _catalog
+from studio_pipeline.maintenance import dev_seed as _dev_seed
 from studio_pipeline.maintenance import migrate_layout as _migrate
 from studio_pipeline.objects import convert as _convert
 from studio_pipeline.session import commands as _session
@@ -61,7 +62,7 @@ class _Grouped(click.Group):
         ("authoring",   ["prompt", "phrasebook"]),
         ("objects",     ["upload", "download", "presign", "convert"]),
         ("maintenance", ["rewrite", "backfill-replicate", "migrate-layout",
-                         "catalog"]),
+                         "catalog", "dev-seed"]),
     ]
 
     def format_commands(self, ctx, formatter):
@@ -89,6 +90,8 @@ SHORT_HELP = {
     "runs": "query the run store: list, find, show, outputs, adopt",
     # Its docstring's first line wraps mid-sentence, which truncates badly.
     "character": "manage on-model characters: profile, references, pools",
+    # Its first line reads as prose about the fixture, not as what it does.
+    "dev-seed": "promote a dev fixture into the shared seed bucket",
 }
 
 ROOT_HELP = """The studio generation pipeline.
@@ -162,6 +165,7 @@ for _name, _cmd in [
     ("backfill-replicate", _backfill.backfill_replicate),
     ("migrate-layout", _migrate.main),
     ("catalog", _catalog.main),
+    ("dev-seed", _dev_seed.main),
 ]:
     main.add_command(_cmd, _name)
 
