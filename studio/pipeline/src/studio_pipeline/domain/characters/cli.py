@@ -1,7 +1,11 @@
-"""`studio character` — manage on-model characters stored in the
-studio-prod-media-us-east-1 S3 bucket.
+"""`studio character` — manage on-model characters stored in the media library.
 
-A character is DATA, not a skill: each one is an S3 record under
+Named as a library rather than as a bucket on purpose: this docstring said
+`studio-prod-media-us-east-1`, which pointed local work at production and
+described a storage detail nothing in this file reaches for. Every path below
+is resolved through the API.
+
+A character is DATA, not a skill: each one is a record under
 `characters/<name>/` (see the `studio-media-s3` skill), and this one tool manages them all:
 
     characters/<name>/profile.yaml   the bible (SOURCE OF TRUTH), including the

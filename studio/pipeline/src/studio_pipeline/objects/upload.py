@@ -1,12 +1,18 @@
-"""Upload local file(s) into the media tree of the
-studio-prod-media-us-east-1 bucket.
+"""Upload local file(s) into the media tree.
 
   studio upload --folder <name>/output output/<name>/clip.mp4
   studio upload --folder <name>/reference img/*.webp --presign --json
 
-Each file goes to  s3://<bucket>/<folder>/<basename>  (same-named keys are
-overwritten; the bucket is versioned so prior revisions are retained). Prints the
-s3:// URI per file; --presign also prints a temporary HTTPS URL.
+**This names no bucket, deliberately.** It used to say
+`studio-prod-media-us-east-1` in this docstring, which was two things at once: a
+bucket name in prose that would rot, and an instruction pointing local work at
+production. It goes through `adapters/store` and the API now — which mints the
+catalog row and the presigned PUT together — so the bucket is whatever the API
+is configured with, prod or this machine's dev stack.
+
+Each file lands at `<folder>/<basename>` (same-named keys are overwritten; the
+prod bucket is versioned so prior revisions are retained). Prints the path per
+file; --presign also prints a temporary HTTPS URL.
 """
 import json
 import mimetypes

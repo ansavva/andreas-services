@@ -29,9 +29,12 @@ BUCKET = os.environ.get("STUDIO_S3_BUCKET", "studio-prod-media-us-east-1")
 PREFIX = os.environ.get("STUDIO_S3_PREFIX", "")
 if PREFIX:
     PREFIX = PREFIX.strip("/") + "/"
-# LEGACY: the pre-restructure prefix. Used only by the migrator, to recognise
-# what has not been moved yet. It goes away once no bucket holds an old tree.
-MEDIA_PREFIX = os.environ.get("STUDIO_S3_MEDIA_PREFIX", "media/").strip("/") + "/"
+# `MEDIA_PREFIX` / `STUDIO_S3_MEDIA_PREFIX` lived here and is deleted. It was
+# the pre-restructure `media/` wrapper, described as "used only by the
+# migrator" — and by the time it was removed nothing read it at all, migrator
+# included. A variable a reader can find, and set, and get no behaviour from is
+# worse than no variable: it reads as configuration. If a `.env` still pins it,
+# delete the line.
 REGION = (
     os.environ.get("AWS_REGION")
     or os.environ.get("AWS_DEFAULT_REGION")
@@ -100,9 +103,15 @@ def client():
     return session().client("s3")
 
 
-# Re-exported, not redefined: `store.natural_key` is the one definition now, and
-# a dozen callers still import it from here. Two copies of a sort that decides
-# which reference image a model is handed is exactly the drift worth avoiding.
+# Re-exported, not redefined: `store.natural_key` is the one definition, and two
+# copies of a sort that decides which reference image a model is handed is
+# exactly the drift worth avoiding.
+#
+# This comment used to claim "a dozen callers still import it from here". None
+# do — every caller reaches `store.natural_key` directly, and the only use left
+# is `_list` below. The re-export survives on the weaker ground that deleting it
+# would break an import nobody has written yet for no gain; the count was
+# measured, not the claim.
 from studio_pipeline.adapters.store import natural_key  # noqa: E402,F401
 
 

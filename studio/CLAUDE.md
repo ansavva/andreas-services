@@ -12,7 +12,12 @@ Studio is one service with two halves that share one S3 bucket.
 |---|---|---|---|
 | **The pipeline** — makes the media | `pipeline/` (code) + `.claude/skills/` (docs) | Locally, inside Claude, under your own AWS login. **Never deploys.** | [docs/PIPELINE.md](docs/PIPELINE.md) |
 | **The app** — browses the media | `backend/`, `frontend/` | `studio.andreas.services` + `studio-api.andreas.services`, deployed by CI | [docs/WEB_APP.md](docs/WEB_APP.md) |
-| The bucket both use | `infra/modules/media` | `s3://studio-prod-media-us-east-1/` | [infra/README.md](infra/README.md) |
+| The library both read | `infra/modules/catalog` + `infra/modules/media` | prod: `studio-prod-catalog` + `s3://studio-prod-media-us-east-1/`. Locally: this machine's dev stack. | [infra/README.md](infra/README.md) |
+
+**That row used to name the prod bucket flatly, and it is now two corrections
+deep.** The library is a DynamoDB table with an S3 bucket behind it — nothing
+lists the bucket to find out what exists — and the pipeline half runs against
+this machine's `studio-dev-<short12>-*` stack, not against prod.
 
 That split is unusual for this monorepo, where a service directory is normally a
 deployable unit and nothing else. It is deliberate: the tools that produce the

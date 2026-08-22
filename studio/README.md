@@ -18,12 +18,18 @@ Studio is two things sharing one S3 bucket:
 The rest of this file is about the app; the pipeline's own doc covers the other
 half.
 
-The pipeline writes every image and video it generates into
-`s3://studio-prod-media-us-east-1/`, split between `characters/` (who a
+The pipeline records every image and video it generates in the **catalog** — a
+DynamoDB table that holds every folder, name, parent and timestamp — with the
+bytes in an S3 bucket behind it. The tree is split between `characters/` (who a
 subject is — seeds, references, a profile) and `projects/` (what was generated
 of them — runs and scenes). Studio makes that library viewable: the folder
 structure is preserved so a subject's seeds, references and runs stay where you
 expect them, while the images and video themselves get the space.
+
+Which stack that is depends on where you are: the deployed app reads
+`studio-prod-catalog` and `s3://studio-prod-media-us-east-1/`, while local work
+runs against this machine's dev stack. This paragraph named the prod bucket
+alone until August 2026, when both of those stopped being true at once.
 
 ## What it does
 
