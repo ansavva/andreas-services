@@ -203,30 +203,43 @@ EOF
     log "pinned STUDIO_CATALOG_TABLE=$CATALOG_TABLE in studio/.env"
   fi
   # -------------------------------------------------------------------------
-  # 3b. Copy the shared config assets out to the bucket.
+  # 3b. Push the shared material out to the bucket.
   #
-  #     studio/config/ is the SOURCE OF TRUTH for the pose plates a reference
-  #     shoot binds; S3 holds a copy because a model may only be handed a
-  #     presigned URL of an S3 object, never bytes from disk. So the plates have
-  #     to exist in the bucket before `studio character shoot` can use them.
+  #     Shared material is what belongs to no character and no project, has no
+  #     catalog node, and therefore cannot be created through the API: the pose
+  #     plates under `config/`, and `phrasebook/wording.yaml`. Both are put in
+  #     the bucket directly, by `dev-shared-material.sh` — which `dev-aws-seed.sh`
+  #     also sources, so the rules live in one place.
   #
-  #     --size-only because S3 mtimes always differ from local ones, which would
-  #     re-upload every plate on every session — and this script runs from the
-  #     SessionStart hook each time.
+  #     The plates are a SYNC: studio/config/ is the source of truth and S3 holds
+  #     a copy, because a model may only be handed a presigned URL of an S3
+  #     object, never bytes from disk. So they have to exist in the bucket before
+  #     `studio character shoot` can use them.
   #
-  #     NEVER --delete. It would remove anything under config/ that is not in
-  #     this checkout — including whatever the seed put there (#285). This used
-  #     to write to the PROD bucket, which made --delete unthinkable; it now
-  #     writes to this machine's dev bucket, which makes it merely wrong.
+  #     The phrasebook is a COPY-IF-ABSENT, and the asymmetry is deliberate: the
+  #     bucket's copy is the live document the moment anyone runs
+  #     `studio phrasebook add`, so syncing the repo copy over it would delete
+  #     their entries. Putting the first one there is all this does — and it is
+  #     what `add` needs, because `PATCH /api/text` overwrites and never invents
+  #     (#425).
   # -------------------------------------------------------------------------
-  if [ -n "$MEDIA_BUCKET" ] && [ -d "$STUDIO_DIR/config" ]; then
-    if aws s3 sync "$STUDIO_DIR/config/" "s3://$MEDIA_BUCKET/config/" --size-only \
-         --only-show-errors; then
+  # shellcheck source=dev-shared-material.sh
+  source "$STUDIO_DIR/scripts/dev-shared-material.sh"
+  if [ -n "$MEDIA_BUCKET" ]; then
+    if push_pose_plates "$STUDIO_DIR" "$MEDIA_BUCKET"; then
       log "synced studio/config/ -> s3://$MEDIA_BUCKET/config/"
     else
       warn "could not sync studio/config/ to s3://$MEDIA_BUCKET/config/ — the pose"
       warn "  plates a reference shoot needs may be missing from the bucket."
     fi
+
+    seed_phrasebook "$STUDIO_DIR" "$MEDIA_BUCKET" && phrasebook_status=0 || phrasebook_status=$?
+    case "$phrasebook_status" in
+      0) log "seeded phrasebook/wording.yaml -> s3://$MEDIA_BUCKET/" ;;
+      2) : ;;  # already there, and it is the live one. Say nothing.
+      *) warn "could not seed phrasebook/wording.yaml into s3://$MEDIA_BUCKET/ —"
+         warn "  'studio phrasebook add' will fail until one exists at that key." ;;
+    esac
   fi
 else
   # Three distinct causes, one message, and that is deliberate: the remedy for

@@ -1,0 +1,33 @@
+# The starting phrasebook: per-model wording lists, one substitution per entry.
+#
+# THIS FILE IS A SEED, NOT THE SOURCE OF TRUTH. The live document is the object
+# at `phrasebook/wording.yaml` in this machine's media bucket, and
+# `studio phrasebook add` rewrites it there. `dev-setup.sh` copies this file in
+# **only when that key is absent** — which is the whole difference between it
+# and the `studio/config/` sync beside it. A pose plate is repo-owned and
+# re-synced every session; a phrasebook is bucket-owned from the first `add`,
+# so syncing this file over it would delete entries someone recorded.
+#
+# It exists because `PATCH /api/text` can only overwrite. Studio's API has no
+# upload route for a keyed object with no catalog node, so nothing can invent
+# this file, and `studio phrasebook add` failed permanently against a stack that
+# had never held one (#425). Reading always degraded correctly — a missing
+# phrasebook is an empty one — so only `add` was affected.
+#
+# It is empty on purpose. An entry records what a model was observed to do with
+# a phrasing; inventing one to fill the file would ship a guess as knowledge.
+# The shape the first `add` writes:
+#
+#     models:
+#       <model key, as listed by `studio models`>:
+#         replicate: <owner>/<name>
+#         entries:
+#           - avoid: the phrasing to replace
+#             use:   the phrasing to use instead
+#             note:  optional free text — where this came from
+#             added: ISO date
+#
+# These comments do not survive that first write: the document is re-dumped with
+# `yaml.safe_dump`, which keeps the data and drops everything around it.
+version: 1
+models: {}

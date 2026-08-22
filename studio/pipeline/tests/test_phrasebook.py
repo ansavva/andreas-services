@@ -142,8 +142,9 @@ def test_add_reports_the_path_and_not_a_bucket(media_bucket, patched):
 def test_add_to_a_library_with_no_phrasebook_says_what_that_takes(media_bucket, patched):
     """**The behaviour change.** `put_object` could create the file; PATCH cannot.
 
-    The refusal has to name the fix, because the CLI has no way to perform it:
-    `dev-setup.sh` syncs `config/` only and the dev-stack seed is #285.
+    The refusal has to name the fix, because the CLI has no way to perform it —
+    the fix is `dev-setup.sh`, which copies the repo's seed copy in when the key
+    is absent (#425).
     """
     _calls, outcome = patched
     outcome["raises"] = api.NotFound("phrasebook/wording.yaml", 404)

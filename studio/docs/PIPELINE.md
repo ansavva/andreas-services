@@ -268,6 +268,15 @@ presigned URL of an S3 object — a plate that was never synced cannot be used, 
 `shoot` checks for them and says to re-run the script. Editing a plate in the
 bucket rather than the repo is how they diverge.
 
+**`phrasebook/wording.yaml` is seeded from the repo and then owned by the
+bucket**, which is a different rule and lives beside it in
+`scripts/dev-shared-material.sh`. `studio/phrasebook/wording.yaml` is a starting
+copy and `dev-setup.sh` puts it in **only when the key is absent**: from the
+first `studio phrasebook add` the bucket's copy is the live document, so a sync
+would delete recorded entries. It is copied at all because `PATCH /api/text`
+overwrites and never invents, which left `add` permanently broken on a fresh dev
+stack (#425).
+
 It also has to be listed in `KEY_ROOTS` (`domain/runs.py`): a binding outside the
 known roots is refused when the request is recorded, which is what stops a typo
 or a URL from reaching a stored record.
@@ -489,7 +498,7 @@ or projects.
 | `curate.py` | The pool operations that go wrong by hand — dedupe, renumber, regroup, move. Every one is a dry run without `--apply`. Since #306 a renumber and a regroup are **row updates**: one `PATCH` each, no object written, the blob keeps its id and its bytes. `move` is the exception worth knowing — when a byte-identical copy is already in the destination it deletes the source instead, which is the one path here that removes an image. |
 | `rewrite.py` | **When a record's subject moves, the records that name it must follow.** #306 expected this to be deletable — nothing moves under the catalog — and it is not, because a record names a **path**, not a node, so a rename in place still strands it. See #420. `apply_moves()` is what curation and the migrator call; `rename_character()` is its companion for the name a record stores rather than the key, and cannot share the same mapping because a project may be called what a character is; `check` walks every record and confirms what it names still exists. |
 | `prompt.py` | Prompt assembly and validation — the structured object in, the serialized prompt plus engine params out. |
-| `phrasebook.py` | Per-model wording lists, kept as data in S3 like characters. **Shared material, so neither direction uses a node**: `catalog_seed.py` records none for it, so it is read by key over `GET /api/asset` and written by `PATCH /api/text`. That write can only overwrite — `put_object` could invent the file and the API deliberately cannot — so `phrasebook add` against a library that has never held a `wording.yaml` fails and says what putting one there takes. Reading is unchanged: a missing phrasebook is still an empty one. |
+| `phrasebook.py` | Per-model wording lists, kept as data in S3 like characters. **Shared material, so neither direction uses a node**: `catalog_seed.py` records none for it, so it is read by key over `GET /api/asset` and written by `PATCH /api/text`. That write can only overwrite — `put_object` could invent the file and the API deliberately cannot — so `phrasebook add` against a library that has never held a `wording.yaml` fails and says what putting one there takes — which on a dev stack is re-running `dev-setup.sh`, since #425 gave the repo a seed copy it puts there when the key is absent. Reading is unchanged: a missing phrasebook is still an empty one. |
 | `contact_sheet.py` | Labeled thumbnail grids over arbitrary keys. The character-pool half walks the pool **recursively**, like `characters/refs`: `reference` is the default and holds group folders rather than images, so a one-level listing would report the commonest invocation as an empty pool. Each tile's local name carries its group, because `face/<name>_1` and `body/<name>_1` share a basename and collided in one directory. |
 
 **`engine/` — invoking a model.**

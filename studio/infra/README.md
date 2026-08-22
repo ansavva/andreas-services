@@ -294,6 +294,14 @@ any other top-level folder. `config/`, `phrasebook/` and the pose plates have
 **no catalog node** and resolving one by name would 404 — they belong to no
 character and no project, so `catalog_seed.py` records neither of them.
 
+`phrasebook/` is repo-**seeded** rather than repo-owned, and the distinction is
+the reason the two pushes sit in one file (`scripts/dev-shared-material.sh`).
+`studio/phrasebook/wording.yaml` is copied in only when the key is absent,
+because the bucket's copy becomes the live document at the first
+`studio phrasebook add` and a sync would delete its entries. Without that first
+copy `add` is permanently unavailable — `PATCH /api/text` overwrites and never
+invents (#425).
+
 A project's material may involve several characters, so a character name is
 never part of a production key; each run records which characters it used. See
 [../docs/PIPELINE.md](../docs/PIPELINE.md) for what lives in a run, a scene and
@@ -432,14 +440,16 @@ lines in `studio/.env`. It runs from the SessionStart hook and tolerates a
 missing stack, warning and carrying on. `dev-up.sh` does not: an API with no
 Cognito pool 500s on every call, so failing early is the faster way to find out.
 
-> **What you get today is an EMPTY stack.** The bucket, the table and the pool
-> are provisioned and nothing has been put in them: `dev-aws-seed.sh` is #285
-> and does not exist, and the seed bucket it would read is #284 and has not been
-> created. `dev-aws-reset.sh` says so on every run, and it is not a re-seed —
-> it empties. #425 tracks the narrower version of the same gap:
-> `phrasebook/wording.yaml` is not seeded either, so anything reading the
-> phrasebook fails against a fresh stack. `dev-setup.sh` does sync
-> `studio/config/` out, so the pose plates are the one thing that is there.
+> **What you get today is a stack with only the shared material in it.** The
+> bucket, the table and the pool are provisioned; the media fixture that would
+> fill them is #284, has not been published, and the bucket it would live in
+> does not exist yet. `dev-aws-reset.sh` empties a stack and does not re-seed.
+>
+> What *is* there is what `dev-setup.sh` pushes: the pose plates under
+> `config/`, and — since #425 — a starting `phrasebook/wording.yaml`, copied
+> from the repo when the key is absent so `studio phrasebook add` works on a
+> fresh stack. Neither has a catalog node, so neither shows the library
+> populated; the table is still empty.
 
 ## The seed bucket
 

@@ -25,12 +25,15 @@ Both directions go through the API's **key-addressed** routes instead:
 `put_object` was happy to invent an object; `PATCH /api/text` requires the key
 to name one that already exists, because studio's API has no upload and this is
 the one write in it a person authors. So `studio phrasebook add` against a
-library that has never held a `wording.yaml` now fails instead of quietly
-starting one, and `save` says what that takes. Nothing in the repo puts the file
-there: `dev-setup.sh` syncs `config/` only, and the dev-stack seed is #285 and
-does not exist yet — so on a fresh dev stack `add` fails until the file is
-copied in out of band. Reading is unaffected; a missing phrasebook still reads
-as an empty one.
+library that has never held a `wording.yaml` fails instead of quietly starting
+one, and `save` says what that takes.
+
+**A fresh dev stack gets its first one from the repo (#425.)**
+`studio/phrasebook/wording.yaml` is a seed copy, and `dev-setup.sh` puts it in
+the bucket **only when the key is absent** — unlike the `config/` sync beside
+it, because from the first `add` the bucket's copy is the live document and a
+sync would delete its entries. Reading was never affected either way: a missing
+phrasebook still reads as an empty one.
 
 SHAPE
 -----
@@ -107,10 +110,9 @@ def save(doc: dict) -> str:
         api.patch("/api/text", {"key": KEY, "content": content})
     except api.NotFound:
         die(f"there is no {KEY} in this library, and the API cannot create one — "
-            "it overwrites an existing file and never invents one. Put a "
-            "wording.yaml in the bucket at that key first; nothing in the repo "
-            "syncs it (dev-setup.sh syncs config/ only, and the dev-stack seed "
-            "is #285).")
+            "it overwrites an existing file and never invents one. The repo "
+            "ships a seed copy and dev-setup.sh puts it there when the key is "
+            "absent, so re-run ./studio/scripts/dev-setup.sh.")
     return KEY
 
 
