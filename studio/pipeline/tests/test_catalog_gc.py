@@ -291,3 +291,33 @@ def test_it_refuses_when_the_table_does_not_exist(media_bucket, journalled):
     result = _run()
     assert result.exit_code == 1
     assert ddbc.TABLE in result.output
+
+
+def test_gc_refuses_when_the_bucket_is_unset(monkeypatch):
+    """**`STUDIO_S3_BUCKET` used to default to the production bucket.**
+
+    Three maintenance commands read it and one of them deletes objects, so a
+    shell that had not loaded `studio/.env` would dry-run against prod, list
+    prod's orphans, and let an `--apply` remove them. There is no default now,
+    and unset is a refusal rather than a redirection.
+    """
+    import importlib
+
+    from studio_pipeline.adapters import s3 as s3c
+
+    # Reloaded with the variable ABSENT, which is the only way to see the
+    # default. Patching `BUCKET` to "" tests the refusal and not the fallback —
+    # the first version of this test did exactly that, and restoring the prod
+    # default left it green.
+    monkeypatch.delenv("STUDIO_S3_BUCKET", raising=False)
+    reloaded = importlib.reload(s3c)
+    try:
+        assert not reloaded.BUCKET, (
+            f"STUDIO_S3_BUCKET fell back to {reloaded.BUCKET!r}. There is no default "
+            "on purpose — three maintenance commands read it and one deletes."
+        )
+        with pytest.raises(SystemExit):
+            reloaded.bucket()
+    finally:
+        monkeypatch.setenv("STUDIO_S3_BUCKET", "studio-prod-media-us-east-1")
+        importlib.reload(s3c)

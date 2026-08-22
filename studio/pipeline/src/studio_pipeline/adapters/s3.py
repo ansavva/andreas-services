@@ -21,7 +21,31 @@ from studio_pipeline.errors import die
 # `XHARNESS_S3_BUCKET=xharness-...` that would have quietly kept the pipeline
 # writing to the archive after the cutover. Renaming the variable makes that
 # stale line inert instead of silently wrong.
-BUCKET = os.environ.get("STUDIO_S3_BUCKET", "studio-prod-media-us-east-1")
+# **No default, and the absence is the point.** This read
+# `os.environ.get("STUDIO_S3_BUCKET", "studio-prod-media-us-east-1")`, so a
+# maintenance command run in a shell that had not loaded `studio/.env` addressed
+# PRODUCTION. Three commands read this and one of them is `catalog gc`, which
+# deletes objects — a dry run against the wrong bucket lists prod's orphans, and
+# the `--apply` that follows removes them.
+#
+# The same reasoning as the `XHARNESS_S3_*` rename directly above: a value that
+# quietly points somewhere plausible is worse than no value. Unset is now a
+# refusal at the point of use rather than a silent redirection.
+BUCKET = os.environ.get("STUDIO_S3_BUCKET", "")
+
+
+def bucket() -> str:
+    """The media bucket, or a refusal naming what to do about it.
+
+    Every AWS-touching command asks for it through here rather than reading
+    `BUCKET`, so "unset" cannot be discovered halfway through a paginate.
+    """
+    if not BUCKET:
+        die("STUDIO_S3_BUCKET is not set.\n"
+            "       Run studio/scripts/dev-setup.sh, or export it for the stack you\n"
+            "       mean. There is deliberately no default: this used to fall back to\n"
+            "       the production bucket, which is not a thing to guess at.")
+    return BUCKET
 # The tree lives at the bucket ROOT. `media/` was a leftover from mirroring
 # Google Drive 1:1 and bought nothing — the bucket is the media store. This
 # stays as the single place a global prefix could be reintroduced (a shared

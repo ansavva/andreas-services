@@ -101,12 +101,12 @@ _NAMESPACE = uuid.NAMESPACE_URL
 
 def library_id() -> str:
     """One bucket, one library. The bucket names it."""
-    return "lib-" + str(uuid.uuid5(_NAMESPACE, f"s3://{s3c.BUCKET}"))
+    return "lib-" + str(uuid.uuid5(_NAMESPACE, f"s3://{s3c.bucket()}"))
 
 
 def node_id(path: str) -> str:
     """The id for the node at `path`; `""` is the library root."""
-    return "node-" + str(uuid.uuid5(_NAMESPACE, f"s3://{s3c.BUCKET}/{path}"))
+    return "node-" + str(uuid.uuid5(_NAMESPACE, f"s3://{s3c.bucket()}/{path}"))
 
 
 def materialised(prefix: str) -> str:
@@ -155,7 +155,7 @@ def _list_bucket(s3) -> dict:
     """
     files, markers, shared = [], [], []
     paginator = s3.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=s3c.BUCKET):
+    for page in paginator.paginate(Bucket=s3c.bucket()):
         for obj in page.get("Contents", []):
             key = obj["Key"]
             if key.startswith(SHARED_PREFIXES):

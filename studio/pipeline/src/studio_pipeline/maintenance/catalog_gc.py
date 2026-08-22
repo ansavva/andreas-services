@@ -96,7 +96,7 @@ def survey(s3, referenced: set[str]) -> dict:
     found = {"orphans": [], "referenced": [], "shared": [], "outside": [],
              "markers": [], "sizes": {}}
     paginator = s3.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=s3c.BUCKET):
+    for page in paginator.paginate(Bucket=s3c.bucket()):
         for obj in page.get("Contents", []):
             key = obj["Key"]
             found["sizes"][key] = obj.get("Size", 0)
@@ -149,7 +149,7 @@ def collect(s3, keys: list[str]) -> dict:
     deleted, failed = [], []
     for start in range(0, len(keys), BATCH):
         answer = s3.delete_objects(
-            Bucket=s3c.BUCKET,
+            Bucket=s3c.bucket(),
             Delete={"Objects": [{"Key": key} for key in keys[start:start + BATCH]]},
         )
         deleted += [entry["Key"] for entry in answer.get("Deleted", [])]
@@ -181,7 +181,7 @@ def cmd_gc(apply, journal):
 
     s3 = s3c.client()
     found = survey(s3, referenced)
-    print(f"[{'APPLY' if apply else 'dry run'}] bucket {s3c.BUCKET}, "
+    print(f"[{'APPLY' if apply else 'dry run'}] bucket {s3c.bucket()}, "
           f"table {ddbc.TABLE}, {len(referenced)} referenced key(s)\n")
     report(found)
 
@@ -189,7 +189,7 @@ def cmd_gc(apply, journal):
     doc = load_journal(jpath)
 
     if not apply:
-        doc["gc"] = {"bucket": s3c.BUCKET, "table": ddbc.TABLE,
+        doc["gc"] = {"bucket": s3c.bucket(), "table": ddbc.TABLE,
                      "referenced": len(referenced), "bytes": orphan_bytes(found),
                      "orphans": found["orphans"]}
         save_journal(jpath, doc)
@@ -218,7 +218,7 @@ def cmd_gc(apply, journal):
     for entry in res["failed"]:
         print(f"FAILED       {entry}")
 
-    doc["gc_applied"] = {"bucket": s3c.BUCKET, "table": ddbc.TABLE,
+    doc["gc_applied"] = {"bucket": s3c.bucket(), "table": ddbc.TABLE,
                          "deleted": res["deleted"], "failed": res["failed"],
                          "unconfirmed": unconfirmed, "withdrawn": withdrawn}
     save_journal(jpath, doc)
