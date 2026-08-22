@@ -400,6 +400,18 @@ What `dev_storage` changes, and only this:
 Private, ACLs off (`BucketOwnerEnforced`) and SSE-S3 are identical in both,
 because matching prod costs nothing there.
 
+**So is the CORS rule, and there it costs something to get wrong.** Both buckets
+carry an `aws_s3_bucket_cors_configuration` allowing `PUT` with `content-type`
+and `content-length` — exactly the two headers `s3.presign_put` puts in
+`X-Amz-SignedHeaders` — because the app's upload is a presigned PUT the browser
+sends straight to the bucket and therefore preflights. Only the origin differs:
+`https://studio.andreas.services` against `dev-up.sh`'s `http://localhost:5173`.
+A rule on one bucket and not the other is an upload that works in prod and fails
+on every machine, which is the worst shape a prod/dev difference can take;
+`backend/tests/test_cors_agreement.py` asserts both out of the Terraform. No
+`GET` in either, and no `*` origin in either — a wildcard would let any page a
+signed-in user visits complete a PUT whose URL it had obtained.
+
 **`force_destroy` is set at creation and must never be retrofitted.** Terraform
 applies the destroy half of a replacement against *prior state*, so the provider
 reads the flag recorded in state and never sees a `true` added in the same
