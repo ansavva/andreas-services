@@ -647,10 +647,13 @@ that breaks every time the pipeline ships.
   `keys.kind` and `keys.language` — extension classification — are used
   everywhere and were never in question.
 - **`.heic` is not in `IMAGE_EXTENSIONS`, and a couple of seed photos are
-  `.heic`.** They list as ordinary files rather than tiles. That is the current
-  behaviour, not a considered decision — but before adding the extension, note
-  that Chrome cannot decode HEIC, so a tile would render as a broken image
-  rather than a photo.
+  `.heic`.** They list as ordinary files rather than tiles. That was the current
+  behaviour rather than a considered decision, and the upload made it one: an
+  iPhone photographs to HEIC by default, so the uploader now **refuses** a
+  `.heic` outright rather than storing a file the library cannot show. Before
+  adding the extension instead, note that Chrome cannot decode HEIC, so a tile
+  would render as a broken image rather than a photo — and that the seed photos
+  above would start rendering as broken tiles the same day.
 - **The Lambda's env vars come from the deploy workflow, not from Terraform.**
   `lifecycle { ignore_changes = [environment] }` means the `environment` block
   in `modules/compute` only applies the first time the function is created;
