@@ -58,6 +58,24 @@ of something already in the bucket, so nothing arrives from outside; what studio
 still cannot do is put bytes in that were not there already. Every write it accepts either copies, moves, overwrites or removes
 something the pipeline produced.
 
+**And the SPA can now drive that upload**, which #294 built the routes for and
+left unreached. There is an Upload button on the folder toolbar; it takes any
+number of files, puts them into the folder on screen, and does nothing
+character-aware or project-aware — a folder is a folder. **An uploaded file keeps
+the name it arrived with**, and a name the folder already holds is *numbered*
+(`clip.mp4` → `clip (2).mp4`) rather than refused or overwritten, which is the
+form `POST /api/objects/copy` has produced since #317. The `<project>_in_<n>` and
+`<name>_<group>_<n>` conventions the pipeline once implied are **not** applied
+and nothing depended on them — `refs.py`: "Slot N is position N in the resolved
+selection, not a trailing file number".
+
+Where the numbering happens is a decision worth stating: **in the API**
+(`catalog.create_numbered`), not in the browser. A client-side version would be a
+second implementation of a convention that has to agree with copy's, disagreeing
+only in a folder that had been through both; and it would have to pick a name
+from a listing that is already stale by the next file, where the conditional put
+on the `NAME#` item is the only authority on whether a name is free.
+
 ## Stack
 
 | Layer | Choice |
@@ -177,6 +195,19 @@ The parts of the old rule that still hold, and should keep holding:
   **Still no multipart grant**, and `max_upload_bytes` is S3's single-PUT
   ceiling rather than a policy number — past it a single `PutObject` is
   impossible, which is a separate decision again.
+  **A failure between the row and the bytes leaves a placeholder, and it is not
+  invisible.** The node is minted first, because its id is what names the key, so
+  anything that goes wrong after that leaves a row naming `blobs/<id>` with
+  nothing behind it. `browse._file_entry` presigns *any* row carrying a
+  `blob_key`, so the grid draws that row as a tile that will not load — this file
+  and two docstrings used to describe it as a row nobody sees, and it is not.
+  **`studio catalog gc` (#318) does not collect it.** That command deletes blobs
+  no row names; a placeholder is a row no blob answers, the opposite direction,
+  and nothing collects it. So the SPA's uploader deletes the node itself when a
+  PUT fails, and the broken tile is what is left when that cleanup fails too —
+  one press in the row's `⋯` menu. A failure at the *confirm* is left alone
+  deliberately: the bytes are there and the row names them, so only `size` reads
+  0, and destroying a completed upload to tidy a number is the wrong trade.
 - **`copy_objects` is the only `CopyObject` left.** It used to be one of four:
   a rename, a folder rename and a move were each a copy per key followed by a
   delete. #316 made all three catalog transactions that move no bytes at all, so
@@ -396,9 +427,35 @@ that breaks every time the pipeline ships.
 - **Text is served through `/api/text`, not fetched from the presigned URL.** A
   cross-origin `fetch` to S3 would need a CORS configuration on the media
   bucket. Studio does own that bucket now (`infra/modules/media`), so this is a
-  decision rather than an impossibility — and the decision is no: one
-  authenticated same-origin request beats a second CORS surface whose allowed
-  origins would then have to agree with the four places the API's already do.
+  decision rather than an impossibility — and the decision is still no: one
+  authenticated same-origin request beats widening a rule whose allowed origins
+  would then have to agree with the four places the API's already do.
+  **The bucket does have a CORS rule now**, which this bullet used to say it did
+  not, and the rule is one line: `PUT`, `content-type` + `content-length`, no
+  exposed headers. It exists because the *upload* is a cross-origin PUT the
+  browser preflights, and without it every upload fails with no status attached.
+  `GET` is deliberately not in it — adding one would make this bullet's trade a
+  live question again. Reads need nothing either way: the app draws media with
+  `<img src>` and `<video src>`, and plain media loading is not subject to CORS.
+- **The upload PUT is `XMLHttpRequest`, and it is the only request in the SPA
+  that is not `fetch`.** `fetch` cannot report upload progress — its `Response`
+  is the *download*, and streaming a request body to count it yourself needs
+  `duplex: "half"` over HTTP/2, which Safari does not do. A 300 MB clip going out
+  over a phone connection behind an indeterminate bar is indistinguishable from a
+  frozen tab, so `upload.onprogress` is the feature rather than a nicety. See
+  `frontend/src/apis/upload.ts`.
+- **`Content-Length` is signed and the browser will not let script send it.** It
+  is a forbidden header name: `setRequestHeader` for it is a silent no-op, and
+  the browser computes the value from the body. The signature validates because
+  that computed value *is* `file.size`, which is the number `upload-url` was
+  asked to sign — agreement, not transmission. The uploader skips it explicitly
+  rather than calling a no-op a reader would take for a working line.
+- **iOS hands over HEIC, and studio refuses it with a message.** `.heic` is not
+  in `keys.IMAGE_EXTENSIONS`, so an accepted one would be classified `other`,
+  drawn as a file row rather than a tile, and displayable in no browser but
+  Safari — an upload that appears to succeed and produces a file the library
+  cannot show. The refusal happens before the node is created and names the fix
+  (Settings › Camera › Formats › Most Compatible).
 - **Every card, row and tile is itself a `<button>`, so a second control cannot
   go inside one.** A button nested in a button is invalid HTML that browsers
   resolve by dropping one of them, and which one they drop is not something to
@@ -590,10 +647,13 @@ that breaks every time the pipeline ships.
   `keys.kind` and `keys.language` — extension classification — are used
   everywhere and were never in question.
 - **`.heic` is not in `IMAGE_EXTENSIONS`, and a couple of seed photos are
-  `.heic`.** They list as ordinary files rather than tiles. That is the current
-  behaviour, not a considered decision — but before adding the extension, note
-  that Chrome cannot decode HEIC, so a tile would render as a broken image
-  rather than a photo.
+  `.heic`.** They list as ordinary files rather than tiles. That was the current
+  behaviour rather than a considered decision, and the upload made it one: an
+  iPhone photographs to HEIC by default, so the uploader now **refuses** a
+  `.heic` outright rather than storing a file the library cannot show. Before
+  adding the extension instead, note that Chrome cannot decode HEIC, so a tile
+  would render as a broken image rather than a photo — and that the seed photos
+  above would start rendering as broken tiles the same day.
 - **The Lambda's env vars come from the deploy workflow, not from Terraform.**
   `lifecycle { ignore_changes = [environment] }` means the `environment` block
   in `modules/compute` only applies the first time the function is created;
@@ -718,7 +778,7 @@ key, because the pipeline reads shared material with no node through it.
 | `GET /api/nodes?parent=` | The children of one folder, name-ascending. 404 unknown parent, 403 another library |
 | `GET /api/nodes/<id>` | One node. 404 unknown id, 403 another library |
 | `GET /api/resolve?path=` | A slash-joined name path → the node it names. An empty path is the library root |
-| `POST /api/nodes` | `{parent, name, kind, blob_key?}` → creates a folder or a file. **201.** 409 if the name is taken |
+| `POST /api/nodes` | `{parent, name, kind, blob_key?, on_conflict?}` → creates a folder or a file. **201.** 409 if the name is taken, unless `on_conflict: "number"` |
 | `PATCH /api/nodes/<id>` | `{name}` to rename **or** `{parent}` to move — both at once is a 400, not a guess |
 | `DELETE /api/nodes/<id>` | Node and subtree. Rows first, then blobs |
 | `GET /api/nodes/<id>/download-url` | A fresh presigned GET for the node's blob. `disposition=attachment` to download |

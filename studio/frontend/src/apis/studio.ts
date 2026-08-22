@@ -7,6 +7,7 @@ import type {
   Library,
   MovedFolder,
   MovedObjects,
+  NodeKind,
   NodeRecord,
   ReelResponse,
   RenamedFolder,
@@ -15,6 +16,7 @@ import type {
   SortOrder,
   TextResponse,
   TreeResponse,
+  UploadGrant,
 } from "../types";
 import { apiGet, apiSend } from "./client";
 
@@ -173,4 +175,80 @@ export function deleteObjects(keys: string[]) {
 /** Delete a folder and everything beneath it. */
 export function deleteFolder(prefix: string) {
   return apiSend<DeletedFolder>("DELETE", "/api/folder", { prefix });
+}
+
+// ---------------------------------------------------------------------------
+// Upload
+//
+// Three calls here and one — the PUT — deliberately not here: it goes to S3
+// rather than to the API, carries no token, and is the only request in this app
+// that is not `fetch`. See `apis/upload.ts`, which sequences all four.
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a node under `parent`.
+ *
+ * `onConflict` is `"fail"` on the API's side when it is not sent, which is what
+ * every other caller wants: a name already taken is a 409 that keeps a rename
+ * field open. The uploader sends `"number"` — dropping `clip.mp4` into a folder
+ * that already holds one means "this too", not "stop".
+ *
+ * **Read the `name` off the response rather than assuming the one you sent.**
+ * That is where a numbering caller learns it landed as `clip (2).mp4`; the
+ * numbering happens in `catalog.create_numbered` so that it agrees with copy's,
+ * and it is not re-derivable here.
+ */
+export function createNode(
+  parent: string,
+  name: string,
+  kind: NodeKind,
+  { onConflict }: { onConflict?: "fail" | "number" } = {},
+) {
+  return apiSend<NodeRecord>("POST", "/api/nodes", {
+    parent,
+    name,
+    kind,
+    ...(onConflict ? { on_conflict: onConflict } : {}),
+  });
+}
+
+/**
+ * Sign a PUT for one node's blob.
+ *
+ * `size` and `contentType` are signed into the URL, so they are a declaration
+ * rather than a hint: send `file.size` and `file.type` and then send exactly
+ * that file. The grant is one key, one length, one type, once.
+ */
+export function getUploadUrl(id: string, size: number, contentType: string) {
+  return apiSend<UploadGrant>("POST", `/api/nodes/${encodeURIComponent(id)}/upload-url`, {
+    size,
+    content_type: contentType,
+  });
+}
+
+/**
+ * Finalise a placeholder once its bytes have landed.
+ *
+ * The row learns its size here, from `HeadObject` rather than from anything this
+ * client says — it already declared one when it asked for the URL, and checking
+ * beats trusting the same claim twice. Until this runs the node is a placeholder
+ * a folder listing draws as a tile that will not load.
+ */
+export function confirmUpload(id: string) {
+  return apiSend<NodeRecord>("POST", `/api/nodes/${encodeURIComponent(id)}/confirm-upload`, {});
+}
+
+/**
+ * Delete one node by id.
+ *
+ * Here for the uploader's cleanup only: a PUT that failed leaves a row naming a
+ * key with nothing behind it, and that row is what the grid draws as a broken
+ * tile. Everything a person deletes goes through `deleteObjects` /
+ * `deleteFolder`, which are name-path-addressed and take a selection.
+ */
+export function deleteNode(id: string) {
+  return apiSend<{ id: string; deleted: number }>(
+    "DELETE",
+    `/api/nodes/${encodeURIComponent(id)}`,
+  );
 }

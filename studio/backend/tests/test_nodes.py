@@ -574,6 +574,77 @@ def test_creating_a_duplicate_name_is_409(catalog_table, signed_in):
     assert resp.status_code == 409
 
 
+def test_a_numbering_create_takes_the_next_free_name(catalog_table, signed_in):
+    """`clip.mp4` beside a `clip.mp4` is `clip (2).mp4`, exactly as a copy is.
+
+    The uploader's case (#294). It is asserted on the *form* of the name rather
+    than on "it did not 409", because the form is the thing that has to agree
+    with `manage.copy_objects` — a folder that has been through both must not
+    hold two spellings of the same idea.
+    """
+    _post("/api/nodes", {"parent": CATALOG_ROOT, "name": "clip.mp4", "kind": "file"})
+
+    resp = _post(
+        "/api/nodes",
+        {"parent": CATALOG_ROOT, "name": "clip.mp4", "kind": "file", "on_conflict": "number"},
+    )
+
+    assert resp.status_code == 201
+    assert resp.get_json()["name"] == "clip (2).mp4"
+
+
+def test_numbering_keeps_counting_past_the_second(catalog_table, signed_in):
+    """Three of one name, and the third is `(3)` — the loop advances, not retries."""
+    for _ in range(3):
+        _post(
+            "/api/nodes",
+            {"parent": CATALOG_ROOT, "name": "clip.mp4", "kind": "file", "on_conflict": "number"},
+        )
+
+    assert sorted(entry["name"] for entry in catalog.children(CATALOG_ROOT)) == [
+        "clip (2).mp4",
+        "clip (3).mp4",
+        "clip.mp4",
+    ]
+
+
+def test_numbering_is_opt_in(catalog_table, signed_in):
+    """The default is still the 409, and every existing caller sends no field.
+
+    `record_run` and the CLI both create through this route; a route that quietly
+    started numbering would turn a run recorded twice into two run folders that
+    look like one.
+    """
+    _post("/api/nodes", {"parent": CATALOG_ROOT, "name": "clip.mp4", "kind": "file"})
+
+    resp = _post("/api/nodes", {"parent": CATALOG_ROOT, "name": "clip.mp4", "kind": "file"})
+
+    assert resp.status_code == 409
+
+
+def test_an_unknown_conflict_policy_is_400(catalog_table, signed_in):
+    """Refused rather than read as `fail`: "overwrite" must not silently not."""
+    resp = _post(
+        "/api/nodes",
+        {"parent": CATALOG_ROOT, "name": "clip.mp4", "kind": "file", "on_conflict": "overwrite"},
+    )
+
+    assert resp.status_code == 400
+
+
+def test_a_numbered_placeholder_still_gets_the_api_key(catalog_table, signed_in):
+    """The numbered row is uploadable — `upload-url` refuses any other key."""
+    _post("/api/nodes", {"parent": CATALOG_ROOT, "name": "clip.mp4", "kind": "file"})
+
+    body = _post(
+        "/api/nodes",
+        {"parent": CATALOG_ROOT, "name": "clip.mp4", "kind": "file", "on_conflict": "number"},
+    ).get_json()
+
+    created = catalog.node(body["id"])
+    assert created["blob_key"] == catalog.blob_key_for(created["node_id"])
+
+
 def test_creating_in_another_callers_library_is_403(catalog_table, signed_in):
     """The parent authorises the create — the new node has no `lib` of its own yet."""
     _second_library(catalog_table)

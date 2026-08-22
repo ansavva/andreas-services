@@ -74,6 +74,29 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "media" {
   }
 }
 
+# CORS, and this one IS a copy of prod's rather than a relaxation of it.
+#
+# The upload is a presigned PUT sent by the browser straight to the bucket, so it
+# preflights, and a dev bucket without this rule fails every upload locally while
+# prod works — the worst shape a difference between the two can take. The rule is
+# the same three lines as `modules/media`, which documents each of them; only the
+# origin differs, and it is Vite's rather than the deployed SPA's.
+#
+# It agrees with `dev-up.sh`, which exports `STUDIO_ALLOWED_ORIGIN` as
+# `http://localhost:5173` — one spelling, not also `127.0.0.1`. Allowing a second
+# loopback spelling here would mean an origin S3 accepts and the API rejects,
+# which turns one legible CORS failure into two halves of one.
+resource "aws_s3_bucket_cors_configuration" "media" {
+  bucket = aws_s3_bucket.media.id
+
+  cors_rule {
+    allowed_methods = ["PUT"]
+    allowed_origins = var.cors_allowed_origins
+    allowed_headers = ["content-type", "content-length"]
+    max_age_seconds = 3600
+  }
+}
+
 # No `aws_s3_bucket_versioning` here, deliberately. On the prod bucket
 # versioning is load-bearing: curate rewrites objects in place and tidy-up
 # deletes them, and a role without `s3:DeleteObjectVersion` is what makes both

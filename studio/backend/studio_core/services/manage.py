@@ -79,12 +79,6 @@ from studio_core.services import catalog, keys
 
 logger = logging.getLogger(__name__)
 
-# How many `name (n).ext` variants one name may spawn in a destination before the
-# request is refused. Generous — copying the same clip into one folder twice is
-# ordinary — but finite, so a script cannot fill a folder with numbered copies.
-MAX_COPY_VARIANTS = 100
-
-
 # ─────────────────────────── name paths to nodes ───────────────────────────
 
 
@@ -427,13 +421,13 @@ def _free_copy_name(name: str, taken: set[str]) -> str:
     if name not in taken:
         return name
 
-    for attempt in range(2, MAX_COPY_VARIANTS + 1):
+    for attempt in range(2, keys.MAX_NAME_VARIANTS + 1):
         candidate = keys.numbered_name(name, attempt)
         if candidate not in taken:
             return candidate
 
     raise ConflictError(
-        f"'{name}' already names {MAX_COPY_VARIANTS} files there — "
+        f"'{name}' already names {keys.MAX_NAME_VARIANTS} files there — "
         "rename some of them first"
     )
 

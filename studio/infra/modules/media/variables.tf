@@ -39,3 +39,24 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "cors_allowed_origins" {
+  description = <<-EOT
+    Origins allowed to send the presigned PUT that uploads a file. The SPA's
+    origin and nothing else — this is not the API's CORS list and does not need
+    to hold the API's own hostname, because the bytes go browser → S3 directly
+    and never through the API.
+
+    The default is prod's SPA. It is a default rather than a required argument
+    so a `terraform validate` or a scratch instance of this module does not have
+    to invent one, and it is still passed explicitly from `envs/prod` so the
+    origin is visible next to the domain it is built from.
+  EOT
+  type        = list(string)
+  default     = ["https://studio.andreas.services"]
+
+  validation {
+    condition     = !contains(var.cors_allowed_origins, "*")
+    error_message = "A wildcard origin would let any page complete an upload PUT. Name the SPA's origin."
+  }
+}

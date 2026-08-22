@@ -24,6 +24,8 @@ which no unit test can do.
 import re
 from pathlib import Path
 
+import pytest
+
 from studio_core import app_factory
 from studio_core.app_factory import create_app
 
@@ -76,3 +78,80 @@ def test_the_backend_and_the_gateway_allow_the_same_headers():
 def test_options_is_allowed_even_though_no_route_declares_it():
     """The preflight verb itself, which is answered before any route is reached."""
     assert "OPTIONS" in app_factory.CORS_METHODS
+
+
+# ─────────────── the media bucket's CORS, which is a fifth place ───────────────
+#
+# Everything above is about the API. The upload added a CORS surface that has
+# nothing to do with it: the bytes go browser → S3 directly, so the *bucket*
+# answers that preflight and the API never sees the request at all.
+#
+# What can drift here is narrower than the API's four-way agreement and just as
+# invisible. `s3.presign_put` puts `content-length` and `content-type` in
+# `X-Amz-SignedHeaders`; the browser will not send a header the bucket's rule
+# does not allow; so a rule missing one of them is an upload that fails the
+# preflight with no status attached, in a service whose own tests all pass.
+#
+# Read out of the Terraform, as above, and for the same reason: a comment saying
+# the two agree is a comment.
+
+
+def _bucket_cors_headers(module: str) -> list[str]:
+    """The `allowed_headers` of one storage module's CORS rule, lowercased.
+
+    Regex rather than HCL parsing, matching `_terraform_local` — each module has
+    exactly one `cors_rule`.
+    """
+    source = (
+        Path(__file__).resolve().parents[2] / "infra" / "modules" / module / "main.tf"
+    ).read_text()
+    match = re.search(r"allowed_headers\s*=\s*\[([^\]]*)\]", source)
+    assert match, f"no cors_rule allowed_headers in modules/{module}/main.tf"
+    return [value.strip().strip('"').lower() for value in match.group(1).split(",") if value.strip()]
+
+
+@pytest.mark.parametrize("module", ["media", "dev_storage"])
+def test_the_bucket_allows_every_header_the_upload_signature_requires(module):
+    """Both buckets, because a rule on one of them is the worse failure.
+
+    An upload that works in prod and fails locally — or the reverse — is a bug
+    that only exists on one machine, and `modules/dev_storage` is a hand copy of
+    `modules/media` by construction.
+    """
+    allowed = _bucket_cors_headers(module)
+
+    assert "content-type" in allowed
+    assert "content-length" in allowed
+
+
+@pytest.mark.parametrize("module", ["media", "dev_storage"])
+def test_the_bucket_allows_put_and_nothing_wider(module):
+    """PUT is the whole grant. GET is not here on purpose — see `modules/media`.
+
+    This fails the day somebody adds a method, which is the point: reads are
+    served through the API precisely so this rule stays one line long, and
+    widening it is a decision rather than a tidy-up.
+    """
+    source = (
+        Path(__file__).resolve().parents[2] / "infra" / "modules" / module / "main.tf"
+    ).read_text()
+    match = re.search(r"allowed_methods\s*=\s*\[([^\]]*)\]", source)
+    assert match, f"no cors_rule allowed_methods in modules/{module}/main.tf"
+
+    assert [value.strip().strip('"') for value in match.group(1).split(",")] == ["PUT"]
+
+
+@pytest.mark.parametrize("module", ["media", "dev_storage"])
+def test_no_bucket_allows_a_wildcard_origin(module):
+    """A `*` would let any page a signed-in user visits complete an upload PUT.
+
+    Terraform's own `validation` block refuses one passed in as a variable; this
+    refuses one written into the resource, which that block cannot see.
+    """
+    source = (
+        Path(__file__).resolve().parents[2] / "infra" / "modules" / module / "main.tf"
+    ).read_text()
+    match = re.search(r"allowed_origins\s*=\s*(.+)", source)
+    assert match, f"no cors_rule allowed_origins in modules/{module}/main.tf"
+
+    assert "*" not in match.group(1)

@@ -201,3 +201,23 @@ export interface DeletedFolder {
   prefix: string;
   deleted: number;
 }
+
+/**
+ * What `POST /api/nodes/<id>/upload-url` hands back.
+ *
+ * `headers` is not advisory and not a suggestion of good practice: both entries
+ * are in the URL's `X-Amz-SignedHeaders`, so a PUT carrying a different length
+ * or a different type fails signature validation at S3 and writes nothing. They
+ * are echoed by the API rather than rebuilt by the client for exactly that
+ * reason — a client that composed its own would be guessing at what was signed.
+ *
+ * `Content-Length` is the odd one, and the oddity is the browser's rather than
+ * this API's: it is a forbidden header name, so script cannot set it and the
+ * browser supplies it from the body. See `apis/upload.ts`.
+ */
+export interface UploadGrant {
+  id: string;
+  url: string;
+  expires_in: number;
+  headers: Record<string, string>;
+}

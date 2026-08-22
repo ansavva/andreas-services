@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { Alert, Breadcrumbs, Button, Input, Spinner, Text } from "@ansavva/design-system";
@@ -18,6 +18,8 @@ import { FolderCard } from "../components/browse/FolderCard";
 import { MediaTile } from "../components/browse/MediaTile";
 import { DestinationPicker } from "../components/browse/DestinationPicker";
 import { SortControl } from "../components/browse/SortControl";
+import { UploadButton } from "../components/browse/UploadButton";
+import { UploadStatus } from "../components/browse/UploadStatus";
 import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
 import { CopyKeyButton } from "../components/common/CopyKeyButton";
 import { LibrarySwitcher } from "../components/common/LibrarySwitcher";
@@ -27,6 +29,7 @@ import { useAuth } from "../context/AuthContext";
 import { useFolder, type FolderPin } from "../hooks/useFolder";
 import { useReel } from "../hooks/useReel";
 import { useSelection } from "../hooks/useSelection";
+import { useUploads } from "../hooks/useUploads";
 import { DEFAULT_SORT, isSortOrder, type FileEntry, type SortOrder } from "../types";
 import { folderPath, objectPath, targetFromPath, type FolderId } from "../utils/location";
 
@@ -210,6 +213,18 @@ export function BrowsePage() {
 
   const selection = useSelection(media, folderId ?? null);
 
+  /**
+   * Where an upload lands: the folder on screen, by its own node id.
+   *
+   * The **last breadcrumb**, not `folderId`. `folderId` is `null` at the library
+   * root — the URL has nothing to name there — and `POST /api/nodes` needs a
+   * parent node. The root has one; the crumbs carry it. So this is `null` only
+   * while the listing has not landed, exactly like `prefix`, and every control
+   * that writes is disabled in that state.
+   */
+  const uploadInto = crumbs.at(-1)?.id ?? null;
+  const uploads = useUploads(uploadInto, reload);
+
   /** "3 files", "1 key" — the count and its noun, agreeing about plurality. */
   const selectedNoun = useCallback(
     (one: string, many: string) => `${selection.count} ${selection.count === 1 ? one : many}`,
@@ -372,10 +387,53 @@ export function BrowsePage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [overlayOpen, selection]);
 
+  /**
+   * Drag-and-drop, which is the desktop convenience and never the mechanism.
+   *
+   * The file input is what has to work — it is the only picker a phone has — and
+   * this is twelve lines on top of it. The counter is the whole subtlety:
+   * `dragleave` fires every time the pointer crosses from one child element to
+   * another, so a boolean toggled on it flickers the highlight off over every
+   * tile on the page. Counting enter against leave is the standard fix.
+   *
+   * `onDragOver` must call `preventDefault` on *every* event, not just the first,
+   * or the browser keeps its default handling and opens the dropped file as a
+   * page — which navigates away from the app with no warning.
+   */
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+      dragDepth.current = 0;
+      setDragging(false);
+      const dropped = Array.from(event.dataTransfer.files ?? []);
+      if (dropped.length > 0) void uploads.start(dropped);
+    },
+    [uploads],
+  );
+
   const isEmpty =
     !loading && !error && data && data.folders.length === 0 && data.files.length === 0;
   return (
-    <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-6 p-4 sm:p-6">
+    <div
+      onDragEnter={(event) => {
+        // A drag of selected text or a link carries no files; highlighting for
+        // one would promise an upload that then does nothing.
+        if (!event.dataTransfer.types.includes("Files")) return;
+        dragDepth.current += 1;
+        setDragging(true);
+      }}
+      onDragOver={(event) => event.preventDefault()}
+      onDragLeave={() => {
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (dragDepth.current === 0) setDragging(false);
+      }}
+      onDrop={onDrop}
+      className={`mx-auto flex min-h-full w-full max-w-7xl flex-col gap-6 p-4 sm:p-6 ${
+        dragging ? "outline-2 outline-offset-[-8px] outline-dashed outline-primary" : ""
+      }`}
+    >
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <Text variant="display">Studio</Text>
@@ -539,6 +597,21 @@ export function BrowsePage() {
 
         <div aria-hidden="true" className="mx-1 h-6 w-px shrink-0 bg-line" />
 
+        {/*
+          Upload, on the other side of the divider from the destructive cluster
+          and beside the primary rather than in it.
+
+          It is labelled where its three neighbours are icons, because there is no
+          icon everyone reads as "put a file here" — the tray-with-an-arrow means
+          upload, download and share depending on the platform — and this is the
+          one control on the page a person arrives *looking* for.
+
+          Disabled until the listing lands, like every other write here: without
+          the crumbs there is no parent node to create under. It is not disabled
+          while a queue is running — adding to one is ordinary.
+        */}
+        <UploadButton onFiles={uploads.start} disabled={uploadInto === null} />
+
         {/* Disabled while the folder is unsettled — a cold `/o/<id>` link has
             not learned its parent yet, and `?? null` would play the root. */}
         <Button
@@ -576,6 +649,11 @@ export function BrowsePage() {
           </Button>
         </form>
       )}
+
+      {/* Above the listing rather than over it: an upload is something you
+          started and then keep browsing through, and a floating panel would
+          cover the grid it is filling. */}
+      <UploadStatus items={uploads.items} onClearFinished={uploads.clearFinished} />
 
       {actionError && (
         <Alert.Root intent="danger">

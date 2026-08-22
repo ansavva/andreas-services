@@ -141,14 +141,32 @@ def clean_name(raw: str | None) -> str:
     return name
 
 
+# How many `name (n).ext` variants one name may spawn in one folder before the
+# request is refused. Generous — copying the same clip into one folder twice is
+# ordinary, and so is uploading the same phone photo twice — but finite, so a
+# script cannot fill a folder with numbered variants.
+#
+# It lives here rather than beside either caller because there are now two of
+# them: `manage.copy_objects` and `catalog.create_numbered`. Two constants of the
+# same value would let `clip (100).mp4` be legal from one entry point and refused
+# from the other, which is a difference nobody would ever go looking for.
+MAX_NAME_VARIANTS = 100
+
+
 def numbered_name(name: str, index: int) -> str:
     """`shot-01.mp4` at 2 → `shot-01 (2).mp4`.
 
     The convention the bucket already holds, from folders filled by hand out of a
     Finder window — there is a ` (3).mp4` and a ` copy.mp4` in there. Worth
-    matching rather than inventing a third form. Reached whenever a copy's name
-    is already taken at its destination, which is ordinary rather than rare:
-    `shot-01.mp4` is what *every* scene calls its first shot.
+    matching rather than inventing a third form. Reached whenever a name is
+    already taken where it is landing, which is ordinary rather than rare:
+    `shot-01.mp4` is what *every* scene calls its first shot, and a phone hands
+    out `IMG_0001.HEIC` more than once in a lifetime.
+
+    **The one place this form is decided.** An uploader that produced its own
+    numbering client-side would be a second implementation of a convention that
+    has to agree with copy's, and the disagreement would only ever be seen in a
+    folder that had been through both.
     """
     stem, ext = posixpath.splitext(name)
     return f"{stem} ({index}){ext}"

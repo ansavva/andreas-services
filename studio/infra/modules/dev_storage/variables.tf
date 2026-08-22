@@ -33,3 +33,21 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "cors_allowed_origins" {
+  description = <<-EOT
+    Origins allowed to send the presigned upload PUT — the local SPA's, which is
+    Vite on `http://localhost:5173`. Same shape and same reasoning as
+    `modules/media`'s; see the resource comment there.
+
+    A list rather than a string because the module argument in `modules/media`
+    is one, and the two rules are meant to be diffable against each other.
+  EOT
+  type        = list(string)
+  default     = ["http://localhost:5173"]
+
+  validation {
+    condition     = !contains(var.cors_allowed_origins, "*")
+    error_message = "A wildcard origin would let any page complete an upload PUT. Name the SPA's origin."
+  }
+}

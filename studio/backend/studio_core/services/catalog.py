@@ -751,10 +751,15 @@ def create_node(
     routes: a client cannot name `blobs/<node_id>` at create time because it does
     not know the id yet, so the only way to have an id-derived key is for this
     function to mint both together. Until the bytes land the node has a key and
-    no object behind it — a row the reel skips and nothing can download. Note
-    there is **no collector for abandoned placeholders yet**; #294 assumes a
-    `catalog gc` that does not exist, so today they accumulate and are removed by
-    hand.
+    no object behind it — nothing can download it (`browse._blob_at` 404s) and
+    the reel skips it, but **a folder listing does not**: `_file_entry` presigns
+    any row carrying a `blob_key`, so an abandoned placeholder is a tile that
+    will not load rather than a row nobody sees.
+
+    **There is still no collector for one.** `studio catalog gc` (#318) exists —
+    this docstring used to say it did not — and it deletes blobs no row names,
+    which is the other direction entirely. A placeholder is a row no blob
+    answers, and removing it means deleting the node.
 
     An explicit `blob_key` is still stored exactly as given, because prod holds
     keys written long before this table did.
@@ -812,6 +817,45 @@ def create_node(
 
     logger.info("Created %s %s under %s", kind, record["node_id"], parent_id)
     return {key: value for key, value in record.items() if value is not None}
+
+
+def create_numbered(parent_id: str, raw_name: str | None, kind: str) -> dict:
+    """`create_node`, but a taken name is numbered instead of refused.
+
+    `clip.mp4` arriving beside a `clip.mp4` becomes `clip (2).mp4` — the form
+    `keys.numbered_name` owns and `manage.copy_objects` has produced since #317.
+    Nothing is overwritten in any branch, and nothing is refused for a clash.
+
+    **Retry-on-conflict, not list-then-choose, and the difference is the whole
+    reason this is a function rather than two lines at a call site.** Reading the
+    destination's names first and picking a free one describes a folder as it was
+    a moment ago: the pipeline records runs into the same table, and a browser
+    uploading five files is five round trips during which that snapshot ages. The
+    conditional put on the `NAME#` item is the only authority on whether a name is
+    free, so this asks *it*, and a loser of a race simply takes the next number.
+    It also costs nothing in the ordinary case — one write, no query — where a
+    listing would cost a query per file.
+
+    **Numbering consults names and nothing else.** Not sizes, not checksums: an
+    upload of the same bytes twice is two files, the same bargain
+    `manage.copy_objects` documents at length. "Has this been done already" is
+    not a question this service answers.
+
+    The bound is `keys.MAX_NAME_VARIANTS`, shared with copy so one folder cannot
+    accept `(100)` from one entry point and refuse it from the other.
+    """
+    name = keys.clean_name(raw_name)
+    for attempt in range(1, keys.MAX_NAME_VARIANTS + 1):
+        candidate = name if attempt == 1 else keys.numbered_name(name, attempt)
+        try:
+            return create_node(parent_id, candidate, kind)
+        except ConflictError:
+            continue
+
+    raise ConflictError(
+        f"'{name}' already names {keys.MAX_NAME_VARIANTS} files here — "
+        "rename some of them first"
+    )
 
 
 def rename_node(node_id: str, raw_name: str | None) -> dict:
