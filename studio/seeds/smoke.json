@@ -1,0 +1,47 @@
+{
+  "//": [
+    "Who the post-deploy smoke run signs in as, and the ONE library it may",
+    "reach. Loaded by scripts/prod-seed-smoke.py from studio-prod.yaml before",
+    "the smoke suite runs, idempotently, on every deploy — so a pool or a table",
+    "recreated tomorrow is restored by the next run rather than found later as",
+    "a mystery smoke failure.",
+    "",
+    "EXACTLY ONE MEMBERSHIP, AND THAT IS THE POINT. The API resolves a",
+    "request's library from the caller's own membership rows: a caller with one",
+    "membership can only ever address that library, and every route then checks",
+    "the node's own `lib` against those same rows. So one membership is not a",
+    "convention this file follows — it is the mechanism that makes the smoke",
+    "account structurally unable to see, list, write or delete anything in",
+    "anyone else's library. The seeder writes this membership and no other, and",
+    "refuses to hand the account to the suite if it finds a second one; the",
+    "suite's first assertion is that GET /api/libraries returns this library",
+    "and nothing else.",
+    "",
+    "THE ADDRESS IS COMMITTED AND THAT IS DELIBERATE. `.test` is a reserved",
+    "TLD (RFC 2606) and can never be a real mailbox, so this address cannot",
+    "reach a person however it leaks. Nothing is mailed to it either — the",
+    "seeder passes MessageAction SUPPRESS and sets the password itself.",
+    "Committing it is what lets the seeder and the suite agree on who exists by",
+    "reading one file instead of drifting through two sets of secrets.",
+    "",
+    "THE PASSWORD IS THE ONLY SECRET AND HAS NO DEFAULT. It is expanded from",
+    "the environment at seed time; `${SMOKE_TEST_USER_PASSWORD}` is a",
+    "placeholder and the seeder refuses to run if it resolves empty. A default",
+    "here would be a credential in the repository.",
+    "",
+    "THE IDS ARE FIXED, NOT GENERATED. A fresh library id per run would leave",
+    "the account holding a new membership every deploy, which breaks the one",
+    "property above within a week. They are readable rather than UUIDs so that",
+    "a row seen by hand in the table says what it is."
+  ],
+  "library": {
+    "id": "lib-smoke",
+    "name": "Smoke test",
+    "root_node": "node-smoke-root"
+  },
+  "user": {
+    "email": "smoke@studio.test",
+    "password": "${SMOKE_TEST_USER_PASSWORD}",
+    "role": "owner"
+  }
+}
