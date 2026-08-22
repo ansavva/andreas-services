@@ -34,10 +34,41 @@ class ApiPathMiddleware:
         return self.app(environ, start_response)
 
 
+class BodyLengthMiddleware:
+    """Set ``CONTENT_LENGTH`` from the body when the request carries no header.
+
+    API Gateway's proxy event does not reliably put ``Content-Length`` in
+    ``headers``. Mangum forwards the event's headers verbatim and never
+    synthesises the length, and ``asgiref.wsgi`` derives ``CONTENT_LENGTH``
+    only from a ``content-length`` header — so Werkzeug is told the body is
+    zero bytes and reads none of it. Every write then answers 400 naming its
+    own fields as missing, for a request that did send them.
+
+    ``wsgi.input`` is a ``BytesIO`` holding the whole body by then, so the
+    length is already known here. The seekable check keeps this a no-op under
+    a server that streams the request instead of buffering it.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        if not environ.get("CONTENT_LENGTH"):
+            stream = environ.get("wsgi.input")
+            if stream is not None and getattr(stream, "seekable", lambda: False)():
+                start = stream.tell()
+                length = stream.seek(0, 2) - start
+                stream.seek(start)
+                if length:
+                    environ["CONTENT_LENGTH"] = str(length)
+        return self.app(environ, start_response)
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
     app.json = DecimalJSONProvider(app)
     app.wsgi_app = ApiPathMiddleware(app.wsgi_app)
+    app.wsgi_app = BodyLengthMiddleware(app.wsgi_app)
 
     CORS(
         app,

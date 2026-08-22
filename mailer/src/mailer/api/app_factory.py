@@ -18,8 +18,39 @@ from mailer.core.errors import (
 logger = logging.getLogger(__name__)
 
 
+class BodyLengthMiddleware:
+    """Set ``CONTENT_LENGTH`` from the body when the request carries no header.
+
+    API Gateway's proxy event does not reliably put ``Content-Length`` in
+    ``headers``. Mangum forwards the event's headers verbatim and never
+    synthesises the length, and ``asgiref.wsgi`` derives ``CONTENT_LENGTH``
+    only from a ``content-length`` header — so Werkzeug is told the body is
+    zero bytes and reads none of it. ``json_body`` then rejects the request as
+    "must be a JSON object" for a caller that did send one.
+
+    ``wsgi.input`` is a ``BytesIO`` holding the whole body by then, so the
+    length is already known here. The seekable check keeps this a no-op under
+    gunicorn, which streams the request instead of buffering it.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        if not environ.get("CONTENT_LENGTH"):
+            stream = environ.get("wsgi.input")
+            if stream is not None and getattr(stream, "seekable", lambda: False)():
+                start = stream.tell()
+                length = stream.seek(0, 2) - start
+                stream.seek(start)
+                if length:
+                    environ["CONTENT_LENGTH"] = str(length)
+        return self.app(environ, start_response)
+
+
 def create_app(dependencies: ApiDependencies) -> Flask:
     app = Flask(__name__)
+    app.wsgi_app = BodyLengthMiddleware(app.wsgi_app)
     app.extensions["mailer_dependencies"] = dependencies
     app.register_blueprint(attachments_blueprint)
     app.register_blueprint(messages_blueprint)
