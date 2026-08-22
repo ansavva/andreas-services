@@ -44,6 +44,12 @@ node id is a v4 UUID, so this is not a guard against enumeration; it is the
 guard against a *shared* id, which is the realistic case once a library has more
 than one member and someone pastes a link.
 
+`POST /api/nodes/<id>/transfer` is the one route that touches two libraries, and
+it does not weaken that rule — it applies it twice, to the node's own `lib` and
+to the library the body names, and demands `owner` in each. Both checks are
+spelled out at the call site rather than folded into a helper that takes two
+ids, because which library a check is about is the thing a reader needs to see.
+
 **A missing node is 404 before the membership check can run**, because the
 record is what names the library. Deliberate, and cheap: an id nobody was given
 cannot be guessed, so the difference between "no such node" and "not yours" is
@@ -112,20 +118,47 @@ def _view(record: dict) -> dict:
     return view
 
 
-def _memberships() -> list[str]:
-    """The libraries the caller is in, by id.
+def _memberships() -> dict[str, str]:
+    """The libraries the caller is in, and the role each membership carries.
 
     `g.caller_sub` is `before_request`'s, which raises `AuthError` — 401 — on a
     missing, malformed or unverifiable token, so there is no unauthenticated
     path past this line and the token is verified once per request.
+
+    A mapping rather than the list of ids it used to be, because `transfer`
+    needs the role and every other route needs only the key — `lib in
+    memberships` reads the same either way. One read answers both questions, and
+    a second helper that queried again for the role would be a second
+    description of who the caller is.
     """
-    return [membership["lib"] for membership in catalog.libraries_for(g.caller_sub)]
+    return {
+        membership["lib"]: membership["role"]
+        for membership in catalog.libraries_for(g.caller_sub)
+    }
 
 
-def _member_of(lib: str, memberships: list[str]) -> None:
+def _member_of(lib: str, memberships: dict[str, str]) -> None:
     """Refuse unless the caller is in the library the node says it belongs to."""
     if lib not in memberships:
         raise ForbiddenError(f"You are not a member of {lib}.")
+
+
+def _owner_of(lib: str, memberships: dict[str, str]) -> None:
+    """Refuse unless the caller *owns* this library.
+
+    The only place in the API where a role is read at all. Everywhere else
+    membership is the whole of authorisation, because a library is a shared
+    workspace and its members are its editors. A transfer is the exception on
+    purpose: it changes who can reach a subtree, so it is not something one
+    library's member gets to do to another library.
+
+    Two messages, because they are two situations. A non-member is told what
+    every other route tells them; a member who is not an owner is told the thing
+    they could not otherwise work out.
+    """
+    _member_of(lib, memberships)
+    if memberships[lib] != catalog.ROLE_OWNER:
+        raise ForbiddenError(f"You must be an owner of {lib} to transfer in or out of it.")
 
 
 @bp.get("/nodes")
@@ -322,8 +355,62 @@ def update_node(node_id: str):
     # would be a second description of it, and the one that drifts.
     #
     # Moving a node to another library is a transfer (#325), not a move: it
-    # carries blob keys, share links and membership implications with it.
+    # carries blob keys, share links and membership implications with it. That
+    # is `POST /api/nodes/<id>/transfer` below, and it takes a library id rather
+    # than a parent for exactly that reason.
     return jsonify(_view(catalog.move_node(node_id, parent_id))), 200
+
+
+@bp.post("/nodes/<node_id>/transfer")
+def transfer_node(node_id: str):
+    """Hand a subtree to another library. Owner in both, or 403.
+
+    **Its own route rather than a `parent` in the patch above**, because
+    `catalog.move_node` refuses a destination in another library on purpose and
+    that refusal is worth keeping: a transfer changes who can reach the branch,
+    and the check that makes it safe is one a move has no reason to make.
+
+    **Two libraries, two checks, and which is which is the point of writing them
+    on separate lines.** The first is against the node's own `lib` — read off the
+    record, never off `g.library` or anything the request asserted, which is the
+    rule every route in this file follows. The second is against the library
+    named in the body. The caller needs `owner` in both: in the source because
+    the subtree is leaving it, and in the destination because everyone there is
+    about to be able to read it.
+
+    **`g.library` is unused here and the header is still required.** The hook
+    scopes every path that is not `/api/libraries`, so a caller in more than one
+    library must send `X-Studio-Library` or get the 400 it raises — and a caller
+    in more than one library is the only caller who can reach this route at all.
+    The header plays no part in the decision; the node and the body name both
+    libraries.
+
+    **The order of the two checks is also what the 403 says.** A caller who owns
+    neither is told about the source and learns nothing about whether the
+    destination id exists — the destination is not read until both checks have
+    passed.
+
+    **The node keeps its id, so every share link to it survives** — and now
+    resolves only for members of the destination. That is the membership
+    implication the comment above names, and it is the reason this is 403-gated
+    rather than an ordinary write.
+    """
+    body = _body()
+    lib = body.get("lib")
+    if not isinstance(lib, str) or not lib:
+        raise ValidationError("lib is required")
+
+    memberships = _memberships()
+    record = catalog.node(node_id)
+    _owner_of(record["lib"], memberships)  # the source: the node's own library
+    _owner_of(lib, memberships)  # the destination: the library the body names
+
+    # 200 and not 201: nothing new exists, and the response is the node it has
+    # always been with a different `lib`. `_view` is the same allowlist as
+    # everywhere else, so the descendant count `catalog.transfer_node` returns
+    # does not leave — it is a number for the log, and a client that wanted it
+    # would be a client tempted to check it.
+    return jsonify(_view(catalog.transfer_node(node_id, lib))), 200
 
 
 @bp.delete("/nodes/<node_id>")

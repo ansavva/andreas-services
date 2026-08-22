@@ -47,7 +47,9 @@ either cannot be listed or cannot be opened.
   can be read with one `begins_with` query instead of a walk. A move rewrites it
   across every descendant. If a move were interrupted, `path` would be stale and
   could be rebuilt from `parent_id`; nothing can rebuild `parent_id`, which is
-  why it is written first — see `move_node`.
+  why it is written first — see `move_node`. **`lib` is derived in the same
+  sense** — a node is in the library its parent is in — and `transfer_node`
+  rewrites it across a branch under the same ordering rule.
 * **`blob_key` is opaque.** Nothing here parses it, derives it, or assumes a
   shape. Prod holds `characters/<slug>/…` and `projects/<slug>/…` keys written
   years before this table existed alongside `blobs/<node_id>` keys written after
@@ -95,6 +97,15 @@ logger = logging.getLogger(__name__)
 KIND_FOLDER = "folder"
 KIND_FILE = "file"
 KINDS = frozenset({KIND_FOLDER, KIND_FILE})
+
+# The role a membership row carries. `owner` is named here because a route
+# compares against it — `transfer_node`'s caller must hold it in both libraries —
+# and the string is written by `scripts/add-member.sh`, which is the only thing
+# that creates a membership. Nothing in this module reads or enforces a role:
+# membership is authorisation and it is checked above, against the node's own
+# `lib`. The other value is `member`, and it is not named because no code
+# branches on it.
+ROLE_OWNER = "owner"
 
 # `by-sk` inverts the table so an sk can be asked who points at it; the only
 # question this module asks it is "who is in library X". `by-path` is the
@@ -858,8 +869,12 @@ def move_node(node_id: str, parent_id: str) -> dict:
     reasons: a node cannot be moved inside itself (there the copy loop would
     feed itself; here the subtree would contain its own ancestor), and a name
     already taken at the destination refuses the whole request rather than
-    merging two trees. Crossing libraries is refused as well — a transfer
-    rewrites `lib` across the branch and is a different operation.
+    merging two trees. Crossing libraries is refused as well — that is
+    `transfer_node` below, which rewrites `lib` across the branch and carries
+    membership implications a move does not. **Do not relax this refusal to make
+    a transfer easier**: the two operations differ in who is allowed to ask for
+    them, and a move that could change `lib` would be a transfer that skipped the
+    ownership check in the destination library.
     """
     record = node(node_id)
     if not record.get("parent_id"):
@@ -894,26 +909,140 @@ def move_node(node_id: str, parent_id: str) -> dict:
         ]
     )
 
-    _rewrite_paths(descendants, old=branch, new=child_path(moved))
+    _rewrite_branch(descendants, old=branch, new=child_path(moved))
 
     logger.info("Moved %s under %s (%d descendants)", node_id, parent_id, len(descendants))
     return {**moved, "moved": True, "descendants": len(descendants)}
 
 
-def _rewrite_paths(descendants: list[dict], *, old: str, new: str) -> None:
-    """Re-materialise `path` on a moved branch, both halves of every node.
+def transfer_node(node_id: str, lib: str) -> dict:
+    """Carry a node, and everything beneath it, into another library.
 
-    The by-parent item carries `path` too, so each descendant costs two writes —
-    which is what fixes the batch at fifty nodes. Only the prefix changes: the
-    part of a descendant's path below the moved node describes ancestors that
-    moved with it and is copied across untouched.
+    **Zero objects move, and if an implementation here ever reaches for
+    `CopyObject` the model is wrong rather than the code.** A blob is addressed
+    by a key nothing parses, and which library a node belongs to is an attribute
+    on a row. Rewriting the attribute is the entire operation; the bytes are not
+    involved and are not even read. `tests/integration/test_transfer.py` asserts
+    that against a real bucket, because a mock's call log would pass on any code
+    that copied through some other path.
+
+    **A whole subtree or nothing.** The unit is a node — a project, a character,
+    a run — and everything under it, never a scattering of files chosen
+    individually. Run records name their inputs by node, so a branch stays
+    internally consistent when it moves as one batch and stops being consistent
+    the moment half of it is somewhere else. `subtree` bounds it at
+    `STUDIO_MAX_FOLDER_OBJECTS` and refuses rather than truncating, for the
+    reason stated there.
+
+    **It lands on the destination library's root**, not on a folder inside it.
+    One library id is the whole request, and where it goes next is an ordinary
+    `move_node` the caller can now make, because the node is in their library.
+    Taking a destination folder as well would be a second thing to authorise and
+    a second way to name the wrong library.
+
+    **Two writes, target first, and the order is `move_node`'s for `move_node`'s
+    reason.** `parent_id` is the one attribute nothing can reconstruct; `lib` and
+    `path` are both derivable from it by walking parents, so they are the safe
+    half to leave half-written. That order also puts the name collision — a
+    conditional put — before anything else is touched, so a 409 here has written
+    nothing at all, which is what "a refusal rather than a partial transfer"
+    requires.
+
+    **The cost of that order, stated rather than hidden:** an interruption
+    between the two writes leaves the node in its new library with descendants
+    still in the old one, and re-running does *not* repair it — the second run
+    sees a node already where it was asked to go. The subtree is still reachable
+    by `parent_id` the whole time, and `lib` can be rebuilt from it, but nothing
+    here does that today. Unlike `delete_node`, this one does not finish itself.
+    """
+    record = node(node_id)
+    if not record.get("parent_id"):
+        raise ValidationError("the library root cannot be transferred")
+    if lib == record["lib"]:
+        # Already where it was asked to go. Not an error, and not a write: the
+        # same reading `move_node` gives a destination that is the current
+        # parent.
+        return {**record, "transferred": False, "descendants": 0}
+
+    # `library` raises `NotFoundError` for an id naming no row, which is what a
+    # membership pointing at nothing looks like — see `routes/libraries.py`.
+    # `_folder_node` then reads the root it names, so a library whose root is
+    # missing fails here rather than after the subtree has been rewritten.
+    destination = _folder_node(library(lib)["root_node"])
+    branch = child_path(record)
+    # Read before the first write. Afterwards the node's own `path` and `lib`
+    # name the destination while its descendants still name the source, so this
+    # query has one answer only while it is asked first.
+    descendants = subtree(record["lib"], branch)
+
+    now = _now()
+    transferred = {
+        **record,
+        "parent_id": destination["node_id"],
+        "lib": lib,
+        "path": child_path(destination),
+        "updated_at": now,
+    }
+
+    _write(
+        [
+            (_delete_name(parent_id=record["parent_id"], name=record["name"]), None),
+            (
+                _put_name(transferred, parent_id=destination["node_id"], name=record["name"]),
+                ConflictError(f"'{record['name']}' already exists there"),
+            ),
+            (
+                _update_meta(
+                    node_id,
+                    {
+                        "parent_id": destination["node_id"],
+                        "lib": lib,
+                        "path": transferred["path"],
+                        "updated_at": now,
+                    },
+                ),
+                NotFoundError(node_id),
+            ),
+        ]
+    )
+
+    _rewrite_branch(descendants, old=branch, new=child_path(transferred), lib=lib)
+
+    logger.info(
+        "Transferred %s from %s to %s (%d descendants)",
+        node_id,
+        record["lib"],
+        lib,
+        len(descendants),
+    )
+    return {**transferred, "transferred": True, "descendants": len(descendants)}
+
+
+def _rewrite_branch(
+    descendants: list[dict], *, old: str, new: str, lib: str | None = None
+) -> None:
+    """Re-materialise `path` — and, for a transfer, `lib` — on a moved branch.
+
+    Both halves of every node, because the by-parent item carries `path` and
+    `lib` too and `by-path` is hashed on the one and ranged on the other: a
+    descendant rewritten on the record half alone would be indexed under a
+    library it is no longer in. Two writes per descendant is what fixes the batch
+    at fifty nodes.
+
+    Only the prefix of `path` changes. The part below the moved node describes
+    ancestors that moved with it and is copied across untouched.
+
+    `lib` is optional because a move never changes it — the destination is in the
+    same library or `move_node` refused — and assigning it there would be a
+    second writer of the attribute every GSI partitions on, for no change.
     """
     steps: list[tuple[dict, Exception | None]] = []
     for record in descendants:
         path = new + record["path"][len(old):]
+        assignments = {"path": path} if lib is None else {"path": path, "lib": lib}
         steps.append(
             (
-                _update_meta(record["node_id"], {"path": path, "updated_at": _now()}),
+                _update_meta(record["node_id"], {**assignments, "updated_at": _now()}),
                 NotFoundError(record["node_id"]),
             )
         )
@@ -922,7 +1051,7 @@ def _rewrite_paths(descendants: list[dict], *, old: str, new: str) -> None:
                 _update_name(
                     parent_id=record["parent_id"],
                     name=record["name"],
-                    assignments={"path": path},
+                    assignments=assignments,
                 ),
                 NotFoundError(record["node_id"]),
             )

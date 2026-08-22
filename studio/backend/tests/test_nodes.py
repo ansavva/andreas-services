@@ -102,6 +102,55 @@ def _file(name, parent=CATALOG_ROOT, **kwargs):
     return catalog.create_node(parent, name, catalog.KIND_FILE, blob_key=BLOB_KEY, **kwargs)
 
 
+def _grant(client, lib, role):
+    """A membership row putting the signed-in caller in a library, with a role.
+
+    Literal, like the library beside it, and for the same reason: nothing in
+    `services.catalog` writes a membership — `scripts/add-member.sh` does, and it
+    is a script rather than a route precisely so the deployed surface cannot
+    grant itself access. This is the test's stand-in for running it.
+
+    Note what a second row does to every request the test then makes: the caller
+    is a member of more than one library, so `before_request` stops resolving one
+    for them and starts refusing to guess. Use `_transfer` or
+    `_patch_with_library`, which name one.
+    """
+    client.put_item(
+        TableName=config.catalog_table(),
+        Item={
+            "pk": {"S": f"USER#{CATALOG_OWNER}"},
+            "sk": {"S": f"LIB#{lib}"},
+            "role": {"S": role},
+            "created_at": {"S": _SEED_TIME},
+        },
+    )
+
+
+def _with_library(library):
+    """Request headers naming which library the request is about."""
+    headers = {"Authorization": "Bearer t"}
+    if library is not None:
+        headers["X-Studio-Library"] = library
+    return headers
+
+
+def _patch_with_library(path, body, library=CATALOG_LIBRARY):
+    return _client().patch(path, json=body, headers=_with_library(library))
+
+
+def _transfer(node_id, body, library=CATALOG_LIBRARY):
+    """`POST /api/nodes/<id>/transfer`, with a library header by default.
+
+    The header authorises nothing here — the node's own `lib` and the body's are
+    the two the route checks — but the hook scopes every path that is not
+    `/api/libraries`, and the only caller who can transfer at all is one with
+    two memberships. Passing `library=None` is how the test below asserts that.
+    """
+    return _client().post(
+        f"/api/nodes/{node_id}/transfer", json=body, headers=_with_library(library)
+    )
+
+
 def _second_library(client):
     """A library the caller is not in, holding a root and one node.
 
@@ -607,20 +656,18 @@ def test_sending_neither_name_nor_parent_is_400(catalog_table, signed_in):
 def test_moving_into_another_library_is_400(catalog_table, signed_in):
     """`catalog.move_node` owns this rule; the route does not restate it."""
     _second_library(catalog_table)
-    catalog_table.put_item(
-        TableName=config.catalog_table(),
-        Item={
-            "pk": {"S": f"USER#{CATALOG_OWNER}"},
-            "sk": {"S": f"LIB#{OTHER_LIBRARY}"},
-            "role": {"S": "member"},
-            "created_at": {"S": _SEED_TIME},
-        },
-    )
+    _grant(catalog_table, OTHER_LIBRARY, "member")
     source = _folder("characters")
 
-    resp = _patch(f"/api/nodes/{source['node_id']}", {"parent": OTHER_ROOT})
+    # **The header is what makes this test about the move.** Granting a second
+    # membership above makes the caller one `before_request` refuses to guess
+    # for, so without it the 400 is the hook's "name one" and `move_node` is
+    # never reached — the same status for a different reason, which is the way a
+    # test passes while the rule it names is gone.
+    resp = _patch_with_library(f"/api/nodes/{source['node_id']}", {"parent": OTHER_ROOT})
 
     assert resp.status_code == 400
+    assert "another library" in resp.get_json()["error"]
 
 
 def test_patching_a_node_in_another_library_is_403(catalog_table, signed_in):
@@ -629,6 +676,138 @@ def test_patching_a_node_in_another_library_is_403(catalog_table, signed_in):
     resp = _patch(f"/api/nodes/{OTHER_NODE}", {"name": "mine.jpeg"})
 
     assert resp.status_code == 403
+
+
+# ─────────────── POST /api/nodes/<id>/transfer ───────────────
+#
+# The one route that touches two libraries. What these assert is the pair of
+# checks and which library each is about — the rewriting itself is
+# `test_catalog.py`'s, and the claim that no object moves is `test_manage.py`'s
+# and the integration suite's.
+
+
+def test_transferring_a_subtree_to_a_library_the_caller_owns(catalog_table, signed_in):
+    _second_library(catalog_table)
+    _grant(catalog_table, OTHER_LIBRARY, "owner")
+    source = _folder("projects")
+    _file("clip.mp4", parent=source["node_id"])
+
+    resp = _transfer(source["node_id"], {"lib": OTHER_LIBRARY})
+
+    assert resp.status_code == 200
+    assert resp.get_json()["lib"] == OTHER_LIBRARY
+    assert resp.get_json()["parent_id"] == OTHER_ROOT
+    # The node keeps its id, which is what keeps a share link to it working.
+    assert resp.get_json()["id"] == source["node_id"]
+
+
+def test_a_transfer_never_returns_blob_key(catalog_table, signed_in):
+    """The allowlist holds on the route that changes which library owns a key."""
+    _second_library(catalog_table)
+    _grant(catalog_table, OTHER_LIBRARY, "owner")
+    created = _file("clip.mp4")
+
+    resp = _transfer(created["node_id"], {"lib": OTHER_LIBRARY})
+
+    assert "blob_key" not in resp.get_json()
+    assert BLOB_KEY not in resp.get_data(as_text=True)
+
+
+def test_a_transfer_out_of_a_library_the_caller_only_belongs_to_is_403(
+    catalog_table, signed_in
+):
+    """Member of the source, owner of the destination. The source check refuses."""
+    _second_library(catalog_table)
+    _grant(catalog_table, OTHER_LIBRARY, "owner")
+    source = _folder("projects")
+    # Demote the caller in the seeded library, which they own by default.
+    _grant(catalog_table, CATALOG_LIBRARY, "member")
+
+    resp = _transfer(source["node_id"], {"lib": OTHER_LIBRARY})
+
+    assert resp.status_code == 403
+    assert CATALOG_LIBRARY in resp.get_json()["error"]
+
+
+def test_a_transfer_into_a_library_the_caller_only_belongs_to_is_403(
+    catalog_table, signed_in
+):
+    """Owner of the source, member of the destination. The destination check refuses."""
+    _second_library(catalog_table)
+    _grant(catalog_table, OTHER_LIBRARY, "member")
+    source = _folder("projects")
+
+    resp = _transfer(source["node_id"], {"lib": OTHER_LIBRARY})
+
+    assert resp.status_code == 403
+    assert OTHER_LIBRARY in resp.get_json()["error"]
+
+
+def test_a_transfer_into_a_library_the_caller_is_not_in_is_403(catalog_table, signed_in):
+    """No membership row at all, so the caller is not told whether it exists."""
+    _second_library(catalog_table)
+    source = _folder("projects")
+
+    resp = _transfer(source["node_id"], {"lib": OTHER_LIBRARY}, library=None)
+
+    assert resp.status_code == 403
+    assert "not a member" in resp.get_json()["error"]
+
+
+def test_a_transfer_of_a_node_in_another_library_is_403(catalog_table, signed_in):
+    """Checked against the node's own `lib`, as everywhere else in this file.
+
+    The destination here is a library the caller genuinely owns, so nothing but
+    the source check can refuse it — which is the point: owning where a subtree
+    is going is not permission to take it from where it is.
+    """
+    _second_library(catalog_table)
+
+    resp = _transfer(OTHER_NODE, {"lib": CATALOG_LIBRARY}, library=None)
+
+    assert resp.status_code == 403
+    assert OTHER_LIBRARY in resp.get_json()["error"]
+
+
+def test_a_transfer_without_a_lib_is_400(catalog_table, signed_in):
+    _second_library(catalog_table)
+    _grant(catalog_table, OTHER_LIBRARY, "owner")
+    source = _folder("projects")
+
+    assert _transfer(source["node_id"], {}).status_code == 400
+
+
+def test_a_transfer_to_a_library_that_does_not_exist_is_404(catalog_table, signed_in):
+    """A membership pointing at no library record — the dangling row #291 reports.
+
+    Reached only because the caller "owns" it: the checks pass on the membership
+    and the read fails on the library. That order is why a stranger cannot use
+    this route to find out which library ids exist.
+    """
+    _grant(catalog_table, "lib-gone", "owner")
+    source = _folder("projects")
+
+    resp = _transfer(source["node_id"], {"lib": "lib-gone"})
+
+    assert resp.status_code == 404
+
+
+def test_a_transfer_with_no_library_header_is_400(catalog_table, signed_in):
+    """The hook still scopes this route, and a two-library caller must name one.
+
+    Documented in the route rather than worked around: every caller who can
+    transfer is a member of two libraries, which is exactly the caller
+    `_resolve_library` refuses to guess for. The switcher in the SPA is what
+    sends it.
+    """
+    _second_library(catalog_table)
+    _grant(catalog_table, OTHER_LIBRARY, "owner")
+    source = _folder("projects")
+
+    resp = _transfer(source["node_id"], {"lib": OTHER_LIBRARY}, library=None)
+
+    assert resp.status_code == 400
+    assert "more than one library" in resp.get_json()["error"]
 
 
 # ──────────────────── DELETE /api/nodes/<id> ────────────────────

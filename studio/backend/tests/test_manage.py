@@ -20,7 +20,7 @@ from studio_core import config
 from studio_core.clients.aws import s3
 from studio_core.errors import ConflictError, NotFoundError, UpstreamError, ValidationError
 from studio_core.services import catalog, manage
-from tests.conftest import CATALOG_LIBRARY
+from tests.conftest import CATALOG_LIBRARY, CATALOG_ROOT
 
 LIB = CATALOG_LIBRARY
 
@@ -1028,3 +1028,64 @@ def test_copy_refuses_a_folder_as_a_source(input_pool):
     """
     with pytest.raises(ValidationError):
         manage.copy_objects(LIB, [SEED], INPUT_POOL)
+
+
+# ── transfer (#322, #324) ────────────────────────────────────────────────────
+
+TRANSFER_LIBRARY = "lib-0002"
+TRANSFER_ROOT = "node-transfer-root"
+
+
+def _bucket_state(client):
+    """Every object in the bucket, with enough of each to notice a rewrite."""
+    paginator = client.get_paginator("list_objects_v2")
+    return {
+        item["Key"]: (item["ETag"], item["Size"], item["LastModified"])
+        for page in paginator.paginate(Bucket=config.media_bucket())
+        for item in page.get("Contents", [])
+    }
+
+
+def test_a_transfer_writes_no_s3_objects(catalog_tree):
+    """The programme's central claim, at the unit level.
+
+    `catalog_tree` is the fixture bucket *and* the rows that describe it, so the
+    subtree being transferred is one whose nodes point at objects that really
+    exist — a transfer over rows with no bytes behind them would prove nothing
+    about the bytes.
+    """
+    bucket, table = catalog_tree
+    for item in (
+        {
+            "pk": {"S": f"LIB#{TRANSFER_LIBRARY}"},
+            "sk": {"S": "META"},
+            "name": {"S": "Archive"},
+            "root_node": {"S": TRANSFER_ROOT},
+            "created_at": {"S": "2026-08-19T12:00:00.000000+00:00"},
+        },
+        {
+            "pk": {"S": f"NODE#{TRANSFER_ROOT}"},
+            "sk": {"S": "META"},
+            "node_id": {"S": TRANSFER_ROOT},
+            "lib": {"S": TRANSFER_LIBRARY},
+            "name": {"S": "Archive"},
+            "kind": {"S": "folder"},
+            "path": {"S": "/"},
+            "created_at": {"S": "2026-08-19T12:00:00.000000+00:00"},
+            "updated_at": {"S": "2026-08-19T12:00:00.000000+00:00"},
+        },
+    ):
+        table.put_item(TableName=config.catalog_table(), Item=item)
+
+    projects = catalog.child_by_name(CATALOG_ROOT, "projects")["node_id"]
+
+    before = _bucket_state(bucket)
+    result = catalog.transfer_node(projects, TRANSFER_LIBRARY)
+
+    # The transfer has to have happened, or the assertion below is a tautology
+    # about a bucket nothing touched.
+    assert result["transferred"] is True
+    assert result["descendants"] > 0
+    assert catalog.node(projects)["lib"] == TRANSFER_LIBRARY
+
+    assert _bucket_state(bucket) == before
