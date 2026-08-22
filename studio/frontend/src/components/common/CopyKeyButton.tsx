@@ -6,9 +6,11 @@ interface Props {
   /**
    * The slash-joined *name* path — a file's, or a folder's. Copied verbatim.
    *
-   * Not the S3 key, which this used to say it was: an uploaded blob lives at
-   * `blobs/<node-id>`, so the two have not matched since the catalog. What lands
-   * on the clipboard is what a `studio` command takes. See `types/index.ts`.
+   * Not the S3 key, which this used to say it was: a blob lives under its
+   * owning entity's id, so the two have not matched since the catalog. What
+   * lands on the clipboard is what a `studio` command takes, and the CLI
+   * resolves it through `GET /api/resolve` — an **address**, not a key and no
+   * longer anything a write is aimed at. See `types/index.ts`.
    */
   value: string;
   /**

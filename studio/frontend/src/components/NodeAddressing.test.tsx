@@ -7,32 +7,32 @@ import type { FileEntry } from "../types";
  * The three call sites that ask the API for one file's bytes or text.
  *
  * **Every one of them takes a `string`, and the wrong string typechecks.** A row
- * carries both `id` and `key`; `getAsset` and `getText` want the id, and passing
- * `key` instead compiles, renders, and fails only against material uploaded
- * through the app — whose bytes live at `blobs/<id>` and whose name path
- * therefore names no object at all (#432). `apis/studio.test.ts` pins the
- * *parameter*; this pins the *argument*, which is the half a type cannot.
+ * carries both `id` and `key`; these want the id, and passing `key` instead
+ * compiles, renders, and fails only against material uploaded through the app —
+ * whose bytes live under an entity-prefixed key that the name path does not
+ * resemble (#432). `apis/studio.test.ts` pins the *parameter*; this pins the
+ * *argument*, which is the half a type cannot.
  */
 vi.mock("../apis/studio", () => ({
   getAsset: vi.fn().mockResolvedValue({ url: "https://signed.example/fresh" }),
-  getText: vi.fn().mockResolvedValue({
+  getNodeText: vi.fn().mockResolvedValue({
     content: "# hello\n",
     language: "markdown",
     truncated: false,
-    key: "characters/subject-a/notes.md",
+    id: "node-0042",
     name: "notes.md",
   }),
-  saveText: vi.fn(),
+  saveNodeText: vi.fn(),
 }));
 
-import { getAsset, getText } from "../apis/studio";
+import { getAsset, getNodeText } from "../apis/studio";
 import { MediaTile } from "./browse/MediaTile";
 import { MediaSurface } from "./viewer/MediaSurface";
 import { TextPage } from "./text/TextPage";
 import { ViewerChrome } from "./viewer/ViewerChrome";
 
 const signed = vi.mocked(getAsset);
-const fetched = vi.mocked(getText);
+const fetched = vi.mocked(getNodeText);
 
 // The two strings differ in every case here on purpose. A fixture whose `id`
 // and `key` looked alike would let the swap this file exists for pass.
@@ -124,8 +124,8 @@ describe("opening a text file", () => {
     render(<TextPage file={FILE} onClose={() => {}} />);
 
     await waitFor(() => expect(fetched).toHaveBeenCalledWith(FILE.id));
-    // The path is what a person copies and what `saveText` sends; reading by id
-    // must not have taken it off the screen.
+    // The path is what a person copies into a `studio` command. Nothing
+    // addresses a write with it any more, and it must still be on the screen.
     expect(screen.getByText(FILE.key)).toBeDefined();
   });
 });

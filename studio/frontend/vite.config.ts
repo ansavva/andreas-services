@@ -36,18 +36,25 @@ export default defineConfig({
   },
   server: { port: 5173 },
 
-  // There is one thing under test and it is the legacy-URL resolver. A share
-  // link that quietly stops working is invisible until somebody reports it,
-  // which is the opposite of every other failure in this app — a broken listing
-  // is a blank page. The rest of the frontend is covered by typecheck and the
-  // build, and that is stated in `docs/WEB_APP.md` rather than implied.
+  // What is tested here is addressing, in both directions.
   //
-  // `jsdom` because the resolver is a component: what is being asserted is that
-  // it navigates, once, to the right place, and there is no smaller unit that
-  // says that. `clearMocks` and `restoreMocks` together so neither a stubbed
-  // `apis/studio` call *count* nor its stubbed answer leaks into the next case —
-  // "the resolver was not called" is one of the assertions, and it is worthless
-  // against a shared tally.
+  // The route table (`src/routes.test.tsx`) and the URL helpers
+  // (`src/utils/location.test.ts`) pin which screen a URL reaches; the API
+  // wrappers (`src/apis/studio.test.ts`) and `NodeAddressing.test.tsx` pin which
+  // *string* a call site sends. Both are the same class of failure and it is the
+  // opposite of every other failure in this app: a broken listing is a blank
+  // page and somebody reports it, while a wrong route renders the wrong screen
+  // confidently and a wrong address signs the wrong object. A row carries both
+  // an `id` and a `key` and both are `string`, so a type cannot catch the swap.
+  //
+  // The rest of the frontend is covered by typecheck and the build, and that is
+  // stated in `docs/WEB_APP.md` rather than implied.
+  //
+  // `jsdom` because two of those are components: what is being asserted is that
+  // they navigate, or fetch, to the right place, and there is no smaller unit
+  // that says so. `clearMocks` and `restoreMocks` together so neither a stubbed
+  // call *count* nor its stubbed answer leaks into the next case — "it was not
+  // called" is one of the assertions, and it is worthless against a shared tally.
   //
   // `setupFiles` fills in two browser APIs this jsdom does not have —
   // `localStorage` and `CSS.escape` — which are the environment's gaps rather

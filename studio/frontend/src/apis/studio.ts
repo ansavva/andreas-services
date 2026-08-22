@@ -1,18 +1,29 @@
 import type {
   AssetResponse,
-  CopiedObjects,
-  CreatedFolder,
-  DeletedFolder,
-  DeletedObjects,
+  CharacterRecord,
+  CharacterProfile,
+  CharacterSummary,
+  CopiedNodes,
+  DeletedNodes,
   Library,
-  MovedFolder,
-  MovedObjects,
+  MovedNodes,
+  MovieRecord,
+  MovieSummary,
   NodeKind,
+  NodeOwner,
   NodeRecord,
+  ProjectInput,
+  ProjectRecord,
+  ProjectSummary,
+  ReferenceEntry,
+  ReferenceIndex,
   ReelResponse,
-  RenamedFolder,
-  RenamedObject,
+  RunPage,
+  RunRecord,
   SavedText,
+  SceneRecord,
+  SceneSummary,
+  SelectionResponse,
   SortOrder,
   TextResponse,
   TreeResponse,
@@ -21,18 +32,15 @@ import type {
 import { apiGet, apiSend } from "./client";
 
 /**
- * Which folder a listing is about — one address or the other, never both.
+ * Which folder a listing is about.
  *
- * `node` is the cheap one and the one the SPA routes on: a listing is a query on
- * the parent id, so an id is the argument the query already wants, while a path
- * costs a read per segment to walk down from the library root first. `prefix`
- * stays because the destination picker is choosing a *prefix* for a write route
- * that takes one, and because every share link ever handed out is a path.
- *
- * Neither is the library root, which is why both are optional. Sending both is a
- * 400 — the API refuses to guess which one meant it.
+ * A node id, or nothing at all for the library root — whose id is not knowable
+ * before the first request answers. **`prefix=` is gone**, and with it the last
+ * read route that took a name path: a listing is a query on the parent id, so an
+ * id is the argument the query already wants, while a path cost a read per
+ * segment to walk down from the root first.
  */
-export type FolderRef = { node?: string; prefix?: string };
+export type FolderRef = { node?: string };
 
 /**
  * The libraries the signed-in caller is in.
@@ -62,17 +70,6 @@ export function getNode(id: string) {
 }
 
 /**
- * The node a slash-joined name path names, walked from the library root.
- *
- * The one call the legacy-URL resolver makes, and the reason old `/projects/…`
- * share links keep working: it turns the address they carry into the id the app
- * now routes on. An empty path is the root.
- */
-export function resolvePath(path: string) {
-  return apiGet<NodeRecord>("/api/resolve", { path });
-}
-
-/**
  * A fresh presigned URL for one node's bytes.
  *
  * Two callers: the download button (`attachment`, which is the only way a
@@ -93,66 +90,88 @@ export function getAsset(node: string, disposition: "inline" | "attachment" = "i
 /**
  * A JSON/markdown/text object's contents, for the text page.
  *
- * By node id for `getAsset`'s reason, minus the trap: `GET /api/text?key=` is a
- * *name path* and agrees with `saveText` exactly (#432). The id is simply the
- * cheaper address — a path costs the API a read per segment — and every row has
- * carried one since #313.
+ * On the node's own route in both directions (`GET` here, `PATCH` in
+ * `saveNodeText`), which is what closed the last gap #432 left open: the read
+ * took a node id and the write took a name path, so the two addressed the same
+ * file through two resolvers that could disagree. One address, one resolver.
  */
-export function getText(node: string) {
-  return apiGet<TextResponse>("/api/text", { node });
+export function getNodeText(id: string) {
+  return apiGet<TextResponse>(`/api/nodes/${encodeURIComponent(id)}/text`);
+}
+
+/**
+ * Which entity a node belongs to, walked up its ancestry.
+ *
+ * The listing routes already carry `owner` on every row, so this is for the one
+ * caller that has a node and no listing around it.
+ */
+export function getNodeOwner(id: string) {
+  return apiGet<NodeOwner | null>(`/api/nodes/${encodeURIComponent(id)}/owner`);
 }
 
 // ---------------------------------------------------------------------------
-// Writes
+// File-layer writes — node ids, and nothing else
 //
-// Studio spent most of its life unable to do any of this. See the header of
-// `backend/studio_core/clients/aws/s3.py` for why that changed and what still
-// bounds it.
+// Every one of these used to take a slash-joined *name* path, and there were
+// nine of them because a folder's address and a file's address were different
+// strings that counted different things. An id is an id, so `move`, `copy` and
+// `delete` are one route each and take a mixed selection.
+//
+// What that bought is the same thing ids bought the URL: a rename cannot strand
+// a request in flight, and nothing has to translate between an address and a
+// key. See ENTITY_MODEL.md, "one addressing scheme: the node id".
 // ---------------------------------------------------------------------------
 
-/** Create an empty folder inside `prefix`. */
-export function createFolder(prefix: string, name: string) {
-  return apiSend<CreatedFolder>("POST", "/api/folder", { prefix, name });
-}
-
-/** Rename one object in place. Returns its new key. */
-export function renameObject(key: string, name: string) {
-  return apiSend<RenamedObject>("PATCH", "/api/object", { key, name });
-}
-
-/** Rename a folder and everything beneath it. */
-export function renameFolder(prefix: string, name: string) {
-  return apiSend<RenamedFolder>("PATCH", "/api/folder", { prefix, name });
+/**
+ * Rename one node in place.
+ *
+ * `{name}` and `{parent}` are both accepted by this route and sending both is a
+ * 400 — a rename changes the name and keeps the folder, a move changes the
+ * folder and keeps the name, and the API refuses to guess which was meant. The
+ * app therefore never sends `{parent}` here; a move goes through `moveNodes`,
+ * which takes a selection.
+ */
+export function renameNode(id: string, name: string) {
+  return apiSend<NodeRecord>("PATCH", `/api/nodes/${encodeURIComponent(id)}`, { name });
 }
 
 /**
- * Move objects into another folder, keeping their names.
+ * Move nodes into another folder, keeping their names.
  *
- * The other half of the pair `renameObject` starts: rename changes the name and
- * keeps the folder, move changes the folder and keeps the name. `destination`
- * is a prefix, never a key — a name in it would be read as a folder to create,
- * not as a rename, which is what keeps the two operations from blurring.
+ * Folders and files in one call, and a folder brings its subtree. The one
+ * refusal worth knowing about before the round trip is a folder into itself or
+ * into its own descendant, which the destination picker greys out rather than
+ * letting the request come back with.
  */
-export function moveObjects(keys: string[], destination: string) {
-  return apiSend<MovedObjects>("POST", "/api/objects/move", { keys, destination });
-}
-
-/** Move a folder and everything beneath it under a different parent. */
-export function moveFolder(prefix: string, destination: string) {
-  return apiSend<MovedFolder>("POST", "/api/folder/move", { prefix, destination });
+export function moveNodes(ids: string[], destination: string) {
+  return apiSend<MovedNodes>("POST", "/api/nodes/move", { ids, destination });
 }
 
 /**
- * Copy objects into another folder, leaving the sources where they are.
+ * Copy nodes into another folder, leaving the sources where they are.
  *
- * Same arguments as `moveObjects`, and it differs in two ways that both matter
- * to the caller. Nothing is deleted. And a name the destination already holds is
- * *numbered* — `clip.mp4` lands as `clip (2).mp4` — rather than refusing the
- * whole request the way a move does, because copying a file into a folder that
- * already has one by that name is ordinary rather than a mistake.
+ * Same arguments as `moveNodes`, differing in the two ways a caller feels:
+ * nothing is deleted, and a name the destination already holds is numbered
+ * rather than refused.
  */
-export function copyObjects(keys: string[], destination: string) {
-  return apiSend<CopiedObjects>("POST", "/api/objects/copy", { keys, destination });
+export function copyNodes(ids: string[], destination: string) {
+  return apiSend<CopiedNodes>("POST", "/api/nodes/copy", { ids, destination });
+}
+
+/**
+ * Delete nodes — one, many, files, folders, the same call either way.
+ *
+ * A JSON body on a `DELETE` is unusual and deliberate: a grid selection is a few
+ * hundred ids, which as repeated query parameters is a URL-length limit waiting
+ * to be hit on exactly the case bulk delete exists for.
+ *
+ * **A folder that is some entity's `root` is refused**, and the message names
+ * the entity to delete instead. That is the one hard rule the "layout is
+ * convention" model leaves: every other folder in the library, including the
+ * four a character starts with, is ordinary and may go.
+ */
+export function deleteNodes(ids: string[]) {
+  return apiSend<DeletedNodes>("DELETE", "/api/nodes", { ids });
 }
 
 /**
@@ -160,21 +179,10 @@ export function copyObjects(keys: string[], destination: string) {
  *
  * `PATCH` rather than `PUT` on purpose: the browser's preflight is answered by
  * API Gateway rather than by Flask, so the allowed-method list lives in four
- * places that have to agree, and PATCH is already in all four. See the header of
- * `backend/studio_core/routes/manage.py`.
+ * places that have to agree, and PATCH is already in all four.
  */
-export function saveText(key: string, content: string) {
-  return apiSend<SavedText>("PATCH", "/api/text", { key, content });
-}
-
-/** Delete one or many objects — the same call either way. */
-export function deleteObjects(keys: string[]) {
-  return apiSend<DeletedObjects>("DELETE", "/api/objects", { keys });
-}
-
-/** Delete a folder and everything beneath it. */
-export function deleteFolder(prefix: string) {
-  return apiSend<DeletedFolder>("DELETE", "/api/folder", { prefix });
+export function saveNodeText(id: string, content: string) {
+  return apiSend<SavedText>("PATCH", `/api/nodes/${encodeURIComponent(id)}/text`, { content });
 }
 
 // ---------------------------------------------------------------------------
@@ -243,12 +251,286 @@ export function confirmUpload(id: string) {
  *
  * Here for the uploader's cleanup only: a PUT that failed leaves a row naming a
  * key with nothing behind it, and that row is what the grid draws as a broken
- * tile. Everything a person deletes goes through `deleteObjects` /
- * `deleteFolder`, which are name-path-addressed and take a selection.
+ * tile. Everything a person deletes goes through `deleteNodes`, which takes a
+ * selection — and which this is the one-id case of, kept separate because the
+ * uploader is undoing its own half-finished write rather than acting on a choice
+ * somebody made.
  */
 export function deleteNode(id: string) {
   return apiSend<{ id: string; deleted: number }>(
     "DELETE",
     `/api/nodes/${encodeURIComponent(id)}`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Entities
+//
+// Characters, projects, runs, scenes and movies — rows with ids, queried rather
+// than walked. Three things hold for every call below:
+//
+// * **Ids, never slugs.** The API accepts `slug:<slug>` on the read routes for
+//   the CLI, where a person types a name; the SPA always holds an id and never
+//   sends one, so a rename cannot invalidate anything it is holding.
+// * **`rev` on every record write.** The caller sends the `rev` it read and a
+//   stale one comes back 409. That is a compare-and-swap, not a check followed
+//   by a write with a window in it.
+// * **Library scope is the header.** `X-Studio-Library` is set once in
+//   `apis/client`; nothing here threads a library through.
+// ---------------------------------------------------------------------------
+
+/** Every character in the library, with a signed hero URL per card. */
+export function getCharacters(q?: string) {
+  return apiGet<CharacterSummary[]>("/api/characters", { q });
+}
+
+/** One character's whole record, `profile` inline. */
+export function getCharacter(id: string) {
+  return apiGet<CharacterRecord>(`/api/characters/${encodeURIComponent(id)}`);
+}
+
+export function createCharacter(body: {
+  slug: string;
+  display_name: string;
+  fictional: boolean;
+  profile?: CharacterProfile;
+}) {
+  return apiSend<CharacterRecord>("POST", "/api/characters", body);
+}
+
+/**
+ * Rename, retitle, or re-hero a character.
+ *
+ * **A rename here moves nothing.** No object is copied, no run document is
+ * rewritten, and every reference, binding and default-set entry keeps pointing
+ * at the same node ids — the slug is a label on one row and the root folder's
+ * name changes in the same transaction. It used to be a `PATCH` per slugged
+ * basename across four pools plus a rewrite pass over every run that cited the
+ * old path.
+ */
+export function patchCharacter(
+  id: string,
+  body: { rev: number; slug?: string; display_name?: string; fictional?: boolean; hero?: string },
+) {
+  return apiSend<CharacterRecord>("PATCH", `/api/characters/${encodeURIComponent(id)}`, body);
+}
+
+/**
+ * Replace the whole bible.
+ *
+ * A whole-document write rather than a merge because that is what the profile
+ * editor produces: it renders every section it was given and hands the same
+ * shape back, so a field it removed was removed on purpose. `patchCharacterProfile`
+ * is the merge, for a caller changing one section.
+ */
+export function putCharacterProfile(id: string, profile: CharacterProfile, rev: number) {
+  return apiSend<CharacterRecord>("PUT", `/api/characters/${encodeURIComponent(id)}/profile`, {
+    profile,
+    rev,
+  });
+}
+
+/** Merge one section of the bible, leaving the rest alone. */
+export function patchCharacterProfile(id: string, patch: CharacterProfile, rev: number) {
+  return apiSend<CharacterRecord>("PATCH", `/api/characters/${encodeURIComponent(id)}/profile`, {
+    patch,
+    rev,
+  });
+}
+
+/**
+ * Delete a character.
+ *
+ * `files` defaults to keeping them — the folder is orphaned into the library
+ * root rather than destroyed. The reverse default loses media to a typo, and
+ * these are the only copies.
+ */
+export function deleteCharacter(id: string, files: "keep" | "delete" = "keep") {
+  return apiSend<{ id: string; deleted: number }>(
+    "DELETE",
+    `/api/characters/${encodeURIComponent(id)}?files=${files}`,
+  );
+}
+
+/** The reference index, grouped and in `order` within each group. */
+export function getReferences(id: string, group?: string) {
+  return apiGet<ReferenceIndex>(`/api/characters/${encodeURIComponent(id)}/references`, { group });
+}
+
+/**
+ * Attach an existing node as a reference.
+ *
+ * Two steps, and always has been: the bytes arrive, then a person decides the
+ * image is identity. `after` places the entry between two existing ones by
+ * taking the midpoint of their `order` values — one write, neither neighbour
+ * touched.
+ */
+export function addReference(
+  id: string,
+  body: { node: string; group: string; description?: string; tags?: string[]; after?: string },
+) {
+  return apiSend<ReferenceEntry>("POST", `/api/characters/${encodeURIComponent(id)}/references`, body);
+}
+
+/**
+ * Change one entry's group, description, tags or position.
+ *
+ * Each of those used to be something else entirely: the group was the folder the
+ * file sat in, the position was a number in its filename, and the description
+ * was a key in the bible that every write rewrote whole. All three are one row's
+ * write now, so two people describing two references stop fighting over one
+ * document.
+ */
+export function patchReference(
+  id: string,
+  node: string,
+  body: { group?: string; description?: string; tags?: string[]; after?: string },
+) {
+  return apiSend<ReferenceEntry>(
+    "PATCH",
+    `/api/characters/${encodeURIComponent(id)}/references/${encodeURIComponent(node)}`,
+    body,
+  );
+}
+
+/** Bulk describe or regroup, in one transaction. */
+export function putReferences(
+  id: string,
+  entries: Array<{ node: string; group: string; description?: string; tags?: string[] }>,
+) {
+  return apiSend<ReferenceIndex>("PUT", `/api/characters/${encodeURIComponent(id)}/references`, {
+    entries,
+  });
+}
+
+/** Detach an entry. The file stays exactly where it is. */
+export function deleteReference(id: string, node: string) {
+  return apiSend<{ node: string }>(
+    "DELETE",
+    `/api/characters/${encodeURIComponent(id)}/references/${encodeURIComponent(node)}`,
+  );
+}
+
+export function putDefaultSet(id: string, nodes: string[]) {
+  return apiSend<CharacterRecord>("PUT", `/api/characters/${encodeURIComponent(id)}/default-set`, {
+    nodes,
+  });
+}
+
+/**
+ * What a model would actually be shown, in order, with URLs.
+ *
+ * The one route both halves of studio must agree on, which is why it is a route.
+ * An over-cap selection comes back **409** carrying the index rather than
+ * truncated — the refusal is the point, and it arrives before any money is spent.
+ */
+export function getSelection(
+  id: string,
+  params: { pick?: string; tag?: string; limit?: string } = {},
+) {
+  return apiGet<SelectionResponse>(`/api/characters/${encodeURIComponent(id)}/selection`, params);
+}
+
+/** Runs that used this character — one query, where it used to be a full walk. */
+export function getCharacterRuns(id: string, cursor?: string) {
+  return apiGet<RunPage>(`/api/characters/${encodeURIComponent(id)}/runs`, { cursor });
+}
+
+/** Projects this character is involved in — a question with no answer before. */
+export function getCharacterProjects(id: string) {
+  return apiGet<ProjectSummary[]>(`/api/characters/${encodeURIComponent(id)}/projects`);
+}
+
+export function getProjects() {
+  return apiGet<ProjectSummary[]>("/api/projects");
+}
+
+export function getProject(id: string) {
+  return apiGet<ProjectRecord>(`/api/projects/${encodeURIComponent(id)}`);
+}
+
+export function createProject(body: {
+  slug: string;
+  title?: string;
+  description?: string;
+  characters?: string[];
+}) {
+  return apiSend<ProjectRecord>("POST", "/api/projects", body);
+}
+
+export function patchProject(
+  id: string,
+  body: { rev: number; slug?: string; title?: string; description?: string; hero?: string },
+) {
+  return apiSend<ProjectRecord>("PATCH", `/api/projects/${encodeURIComponent(id)}`, body);
+}
+
+export function deleteProject(id: string, files: "keep" | "delete" = "keep") {
+  return apiSend<{ id: string; deleted: number }>(
+    "DELETE",
+    `/api/projects/${encodeURIComponent(id)}?files=${files}`,
+  );
+}
+
+/** Replace the involvement links wholesale — this is `projects link` / `unlink`. */
+export function putProjectCharacters(id: string, characters: string[]) {
+  return apiSend<ProjectRecord>("PUT", `/api/projects/${encodeURIComponent(id)}/characters`, {
+    characters,
+  });
+}
+
+/** The working pool, name-ascending. Position in this list is `--input N`. */
+export function getProjectInputs(id: string) {
+  return apiGet<ProjectInput[]>(`/api/projects/${encodeURIComponent(id)}/inputs`);
+}
+
+export function getProjectScenes(id: string) {
+  return apiGet<SceneSummary[]>(`/api/projects/${encodeURIComponent(id)}/scenes`);
+}
+
+export function getProjectMovies(id: string) {
+  return apiGet<MovieSummary[]>(`/api/projects/${encodeURIComponent(id)}/movies`);
+}
+
+/**
+ * The runs query — the route that replaced a walk over every project's every run
+ * folder reading three JSON documents each.
+ *
+ * Every filter is a field on the row, so combining them costs nothing. `cursor`
+ * is real pagination: the listing rows are ranged on the creation timestamp
+ * under the project's partition, so a page is a query rather than an offset into
+ * a result that had to be built first.
+ */
+export function getRuns(
+  params: {
+    project?: string;
+    character?: string;
+    model?: string;
+    status?: string;
+    since?: string;
+    limit?: string;
+    cursor?: string;
+  } = {},
+) {
+  return apiGet<RunPage>("/api/runs", params);
+}
+
+/**
+ * One run's envelope, with `outputs` and `bindings` expanded to nodes and signed
+ * URLs — and `payload` left as three node ids.
+ *
+ * That last part is the rule surviving its move: studio stores the request and
+ * response bodies and decodes neither. Read them with `getNodeText` and show
+ * them as text.
+ */
+export function getRun(id: string) {
+  return apiGet<RunRecord>(`/api/runs/${encodeURIComponent(id)}`);
+}
+
+export function getScene(id: string) {
+  return apiGet<SceneRecord>(`/api/scenes/${encodeURIComponent(id)}`);
+}
+
+export function getMovie(id: string) {
+  return apiGet<MovieRecord>(`/api/movies/${encodeURIComponent(id)}`);
 }

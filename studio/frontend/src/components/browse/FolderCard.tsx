@@ -12,9 +12,11 @@ interface Props {
    * The folder's full slash-joined *name* path.
    *
    * It used to be described as the S3 prefix, and both halves of that were
-   * wrong: it is not a key, and no blob key beneath it starts with it — the
-   * catalog puts every uploaded blob at `blobs/<node-id>`. Named `prefix`
-   * because that is what the write routes still call this address.
+   * wrong: it is not a key, and no blob key beneath it starts with it. **It is
+   * also no longer an address anything writes with** — every write takes node
+   * ids — so the one job left to it is the one a path was always better at:
+   * it is what a person types at the CLI, and it is what "Copy prefix" puts on
+   * the clipboard.
    */
   prefix: string;
   onOpen: () => void;

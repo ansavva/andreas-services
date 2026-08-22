@@ -1,52 +1,58 @@
 /**
- * The URL names a node, by id.
+ * Every URL in this app names an entity or a node, by id.
  *
- * `/f/<node_id>` is a folder and `/o/<node_id>` is one file, open. Nothing about
- * where the node sits appears in the address — that is the point of #313. Two
- * things follow, and both were the reasons the URL used to be the S3 key:
+ * | URL | What it is |
+ * |---|---|
+ * | `/` | Home — characters, projects, and what was made most recently |
+ * | `/c/<char_id>` · `/p/<proj_id>` | a character, a project |
+ * | `/p/<proj_id>/r/<run_id>` | one run, inside the project that owns it |
+ * | `/s/<scene_id>` · `/m/<movie_id>` | a scene, a movie |
+ * | `/f/<node_id>` · `/o/<node_id>` | the folder browser, one open file |
  *
- * * **A share link survives a rename and a move.** Renaming a clip used to
- *   invalidate every link to it, because the link *was* its key. A node id is
- *   the one thing about a node that never changes, so the link outlives both.
- * * **There is nothing left to encode.** A node id is a v4 UUID, so the
- *   per-segment encoding this file used to carry — there to keep the spaces and
- *   `#` in real filenames from eating the separators — has nothing to protect
- *   any more. `legacyPath` still decodes, because the paths *it* reads are the
- *   old key-shaped links and those still contain both.
+ * **Ids everywhere, so every link survives every rename.** That was already true
+ * of `/f/` and `/o/` (#313) and it is now true of the entities too, which is the
+ * whole reason a character is a row with a UUID rather than a folder called by
+ * its slug: renaming one used to invalidate every address anybody held.
  *
- * **`/f/` and `/o/` are reserved.** An old share link is matched by exclusion —
- * anything that is neither is handed to the resolver — so a library holding a
- * top-level folder named `f` or `o` would shadow one of these. The root holds
- * `projects/` and `characters/`, and the resolver is a bridge that comes out
- * once no old link is in circulation, so this is stated rather than defended.
+ * **The legacy resolver is gone.** Studio used to hand out the S3 key as the URL
+ * — `/projects/<project>/runs/…/output/clip.mp4` — and `LegacyRedirect` matched
+ * those by exclusion and asked the API what they named. It was always a bridge
+ * with a lifetime, and the entity rework is where it ends: no back-compat is
+ * carried, so an unrecognised path lands on home rather than being resolved.
+ * That also frees the top-level namespace the bridge was occupying, which is how
+ * `/c/`, `/p/`, `/s/` and `/m/` became available at all.
  *
- * **CloudFront still has to agree, and still needs no change.** Its
- * viewer-request function routes by *location* — `/assets/…` and `/index.html`
- * pass through, everything else rewrites to `index.html` — rather than by "does
- * this look like a file". The new ids are extensionless and the old links end in
- * `.mp4`; a location rule serves both, and an extension rule would break the
- * second. See `infra/modules/hosting/main.tf`.
+ * **CloudFront still needs no change.** Its viewer-request function routes by
+ * *location* — `/assets/…` and `/index.html` pass through, everything else
+ * rewrites to `index.html` — rather than by "does this look like a file". See
+ * `infra/modules/hosting/main.tf`.
  */
 
 /**
- * The library root, and the one folder addressed by something other than an id.
+ * Home, and where sign-out lands.
  *
- * Its id is not knowable before the first request — `/api/libraries` returns the
- * library, not its root node — so an app that insisted on `/f/<id>` everywhere
- * would have to resolve before it could draw anything. `GET /api/tree` with
- * neither `?node=` nor `?prefix=` is already the root, so `/` costs no lookup.
- * It is also where sign-out lands.
+ * It is the entity index rather than the library's file listing, which is the
+ * one visible reversal in the new shell: the file browser is still one click
+ * away at `/f`, but what studio opens on is characters and projects.
  */
-export const ROOT_PATH = "/";
+export const HOME_PATH = "/";
 
 /** A folder node id, or `null` for the library root. */
 export type FolderId = string | null;
 
 export type Target = { kind: "folder"; id: FolderId } | { kind: "object"; id: string };
 
-/** The in-app path for a folder. */
+/**
+ * The in-app path for a folder.
+ *
+ * The library root is `/f` with no id, and that is not an inconsistency worth
+ * fixing: its id is not knowable before the first request — `/api/libraries`
+ * returns the library, not its root node — so an app that insisted on
+ * `/f/<id>` would have to resolve before it could draw anything, and
+ * `GET /api/tree` with no address is already that folder.
+ */
 export function folderPath(id: FolderId): string {
-  return id === null ? ROOT_PATH : `/f/${id}`;
+  return id === null ? "/f" : `/f/${id}`;
 }
 
 /** The in-app path for one open file — this is the share link. */
@@ -54,14 +60,41 @@ export function objectPath(id: string): string {
   return `/o/${id}`;
 }
 
+export function characterPath(id: string): string {
+  return `/c/${id}`;
+}
+
+export function projectPath(id: string): string {
+  return `/p/${id}`;
+}
+
 /**
- * Read a pathname back into what it points at.
+ * A run's path, which carries its project as well as its own id.
  *
- * Anything unrecognised resolves to the root rather than erroring, which is the
- * same bargain the key-shaped version made: a stale bookmark should land
- * somewhere usable instead of on a crash. In practice the router has already
- * sent the old shapes to the resolver, so what reaches here unrecognised is a
- * hand-edited URL.
+ * The run id alone would be enough to fetch it — the envelope names its project
+ * — but the URL is also a breadcrumb, and a person who lands on a run from a
+ * pasted link should be one click from the project it belongs to without waiting
+ * for a request to tell them there is one.
+ */
+export function runPath(projectId: string, runId: string): string {
+  return `/p/${projectId}/r/${runId}`;
+}
+
+export function scenePath(id: string): string {
+  return `/s/${id}`;
+}
+
+export function moviePath(id: string): string {
+  return `/m/${id}`;
+}
+
+/**
+ * Read a pathname back into what the browser is showing.
+ *
+ * Only the two browser shapes, because only the browser reads its address this
+ * way — the entity pages take their id from the router's own params. Anything
+ * unrecognised resolves to the library root rather than erroring: a stale
+ * bookmark should land somewhere usable instead of on a crash.
  */
 export function targetFromPath(pathname: string): Target {
   const segments = pathname.split("/").filter(Boolean);
@@ -73,30 +106,4 @@ export function targetFromPath(pathname: string): Target {
   }
 
   return { kind: "folder", id: null };
-}
-
-/**
- * An old key-shaped URL as the name path `GET /api/resolve` takes.
- *
- * Every segment is decoded individually — encoding was applied that way, and the
- * separators would be eaten by decoding the whole string at once. The trailing
- * slash that used to mean "folder" is dropped rather than read: `/api/resolve`
- * returns the node's `kind`, so the distinction the slash carried is now
- * answered by the thing being resolved instead of guessed from its address.
- */
-export function legacyPath(pathname: string): string {
-  return pathname
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => {
-      try {
-        return decodeURIComponent(segment);
-      } catch {
-        // A hand-edited URL can carry a stray `%`. Better to resolve a name
-        // that does not exist — which is a 404 the resolver reports — than to
-        // throw on the way to rendering.
-        return segment;
-      }
-    })
-    .join("/");
 }

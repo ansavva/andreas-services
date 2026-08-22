@@ -92,13 +92,12 @@ function LibraryGate() {
 /**
  * The gate wraps the routes rather than sitting inside one.
  *
- * `LegacyRedirect` makes an authenticated call — every `/api` route is behind
- * the Cognito authorizer — so a resolver rendered before sign-in would 401 on a
- * share link that is perfectly good. Signing in leaves the URL where it was, and
- * the redirect happens on the far side of it.
+ * Every screen behind it makes an authenticated call on mount — every `/api`
+ * route is behind the Cognito authorizer — so a page rendered before sign-in
+ * would 401 on a link that is perfectly good. Signing in leaves the URL where it
+ * was, and the screen it names renders on the far side of it.
  *
- * The route table itself is in `routes.tsx`. See there for what the three shapes
- * mean.
+ * The route table itself is in `routes.tsx`. See there for what each shape means.
  */
 export function App() {
   return (

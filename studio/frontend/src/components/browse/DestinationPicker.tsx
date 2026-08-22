@@ -4,6 +4,7 @@ import { Alert, Breadcrumbs, Button, Dialog, Spinner, Text } from "@ansavva/desi
 
 import { getTree } from "../../apis/studio";
 import type { Crumb, FolderEntry } from "../../types";
+import type { FolderId } from "../../utils/location";
 
 interface Props {
   /** Which operation this is picking a destination for. */
@@ -11,13 +12,7 @@ interface Props {
   /** What is being moved or copied, written into the title — "3 files", "seed". */
   noun: string;
   /** Where the picker opens. Normally the folder being moved out of. */
-  startPrefix: string;
-  /**
-   * A subtree the destination may not be inside — set when moving a *folder*, to
-   * its own prefix. The API refuses this too; disabling it here is so the button
-   * explains itself instead of the request coming back as an error.
-   */
-  forbiddenPrefix?: string;
+  startId: FolderId;
   /**
    * The folder the items are already in.
    *
@@ -25,7 +20,17 @@ interface Props {
    * folder you are looking at is a real operation — it is how a file is
    * duplicated, and the server numbers the second one — so it stays enabled.
    */
-  currentPrefix: string;
+  currentId: FolderId;
+  /**
+   * A folder the destination may not be — set when moving a *folder*, to its own
+   * id.
+   *
+   * Fencing the folder itself fences its whole subtree, because it is the only
+   * way into one: the picker descends by clicking, and this row cannot be
+   * clicked. The API refuses the move too; disabling it here is so the row
+   * explains itself instead of the request coming back as an error.
+   */
+  forbiddenId?: string;
   onSubmit: (destination: string) => Promise<unknown>;
   onClose: () => void;
 }
@@ -33,29 +38,33 @@ interface Props {
 /**
  * Pick a destination folder by browsing to it, for a move or for a copy.
  *
- * A typed prefix was the obvious alternative and is worse: the whole point of a
+ * A typed address was the obvious alternative and is worse: the whole point of a
  * move is that you are looking at a library whose folder names are timestamps,
- * and nobody types `projects/<project>/scenes/2026-08-16_07-40-22_stadium-encounter/`
- * correctly. So this walks the same `/api/tree` the page behind it does, showing
- * folders only — the files in a destination are not a thing you are choosing
- * between.
+ * and nobody types a run folder's name correctly. So this walks the same
+ * `/api/tree` the page behind it does, showing folders only — the files in a
+ * destination are not a thing you are choosing between.
+ *
+ * **It browses and submits node ids**, which is the one thing that changed here
+ * in the entity rework. It used to hand back a *prefix*, because the write routes
+ * took a name path; `POST /api/nodes/move` and `/copy` take an id, and browsing
+ * by the same address they accept means nothing has to translate between the two.
  *
  * It is a `Dialog`, which portals to `<body>`, and that is safe *here*
- * specifically: both are browse-page actions and the browse page is never
- * inside a fullscreen element. The reel's controls stay inline for the reason
+ * specifically: both are browse actions and the browser is never inside a
+ * fullscreen element. The reel's controls stay inline for the reason
  * `ConfirmDeleteButton` documents, and that is why there is no move or copy
  * button in `ViewerChrome`.
  */
 export function DestinationPicker({
   verb,
   noun,
-  startPrefix,
-  forbiddenPrefix,
-  currentPrefix,
+  startId,
+  currentId,
+  forbiddenId,
   onSubmit,
   onClose,
 }: Props) {
-  const [prefix, setPrefix] = useState(startPrefix);
+  const [folderId, setFolderId] = useState<FolderId>(startId);
   const [folders, setFolders] = useState<FolderEntry[]>([]);
   const [crumbs, setCrumbs] = useState<Crumb[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,12 +78,7 @@ export function DestinationPicker({
 
     // Always by name: this is a folder chooser, and "newest first" is an answer
     // to a question nobody asks while looking for somewhere to put something.
-    // By prefix, not by node id: what this picker produces is a *destination*,
-    // and every write route that takes one still names its address `prefix` —
-    // #316 turned those routes into catalog writes but left the parameter, so
-    // what they take is a name path. Browsing by the same address it hands back
-    // keeps the two from having to agree through a translation.
-    getTree({ prefix }, "name")
+    getTree(folderId === null ? {} : { node: folderId }, "name")
       .then((result) => {
         if (cancelled) return;
         setFolders(result.folders);
@@ -90,28 +94,31 @@ export function DestinationPicker({
     return () => {
       cancelled = true;
     };
-  }, [prefix]);
+  }, [folderId]);
 
-  // Up, and whether there is an up, come from the trail the listing returned
-  // rather than from cutting `prefix` on its last slash. The server built that
-  // trail by walking `parent_id`, so it is the tree's own answer; the string
-  // version was a second, guessing implementation of it.
-  const parent = crumbs.at(-2)?.prefix;
+  // Up, and whether there is an up, come from the trail the listing returned.
+  // The server built that trail by walking `parent_id`, so it is the tree's own
+  // answer rather than a second, guessing implementation of it.
+  const parent = crumbs.at(-2)?.id;
+  /** The chosen folder as a real node — the root has one, and `folderId` is null there. */
+  const destination = crumbs.at(-1)?.id ?? null;
+  const shownPath = crumbs.at(-1)?.prefix ?? "";
 
-  const inForbidden = forbiddenPrefix !== undefined && prefix.startsWith(forbiddenPrefix);
+  const inForbidden = forbiddenId !== undefined && crumbs.some((crumb) => crumb.id === forbiddenId);
   // A move into the folder the items are already in does nothing; a copy into it
   // duplicates them, which is a thing people want.
-  const isNoOp = verb === "move" && prefix === currentPrefix;
-  const canSubmit = !loading && !inForbidden && !isNoOp;
+  const isNoOp = verb === "move" && destination !== null && destination === currentId;
+  const canSubmit = !loading && !inForbidden && !isNoOp && destination !== null;
 
   const submit = useCallback(() => {
+    if (destination === null) return;
     setBusy(true);
     setError(null);
-    onSubmit(prefix)
+    onSubmit(destination)
       .then(() => onClose())
       .catch((err: Error) => setError(err.message))
       .finally(() => setBusy(false));
-  }, [onClose, onSubmit, prefix]);
+  }, [destination, onClose, onSubmit]);
 
   return (
     <Dialog.Root open onOpenChange={(next: boolean) => !next && onClose()}>
@@ -129,7 +136,7 @@ export function DestinationPicker({
               href="#"
               onClick={(event: React.MouseEvent) => {
                 event.preventDefault();
-                setPrefix(crumb.prefix);
+                setFolderId(crumb.id);
               }}
             >
               {crumb.name}
@@ -147,7 +154,7 @@ export function DestinationPicker({
           {!loading && (
             <div className="flex flex-col">
               {parent !== undefined && (
-                <PickerRow up onSelect={() => setPrefix(parent)}>
+                <PickerRow up onSelect={() => setFolderId(parent)}>
                   Up one folder
                 </PickerRow>
               )}
@@ -157,8 +164,8 @@ export function DestinationPicker({
                   key={folder.id}
                   // The folder being moved cannot be its own destination, and
                   // showing it greyed says why better than hiding it does.
-                  disabled={folder.prefix === forbiddenPrefix}
-                  onSelect={() => setPrefix(folder.prefix)}
+                  disabled={folder.id === forbiddenId}
+                  onSelect={() => setFolderId(folder.id)}
                 >
                   {folder.name}
                 </PickerRow>
@@ -174,8 +181,10 @@ export function DestinationPicker({
           )}
         </div>
 
+        {/* The *path* is what is shown, because a node id names nothing a person
+            recognises. What is submitted is the id beside it. */}
         <Text variant="caption" tone="muted" className="truncate">
-          Destination: {prefix || "/"}
+          Destination: {shownPath || "/"}
         </Text>
 
         {error && (
@@ -189,9 +198,9 @@ export function DestinationPicker({
           <Button intent="ghost" size="sm" onClick={onClose}>
             Cancel
           </Button>
-          {/* Disabled rather than absent, with the reason beside it: a button
-              that vanishes when you navigate somewhere it cannot be used reads
-              as a bug, not as an explanation. */}
+          {/* Disabled rather than absent, with the reason on the label: a button
+              that vanishes when you navigate somewhere it cannot be used reads as
+              a bug, not as an explanation. */}
           <Button size="sm" disabled={!canSubmit || busy} onClick={submit}>
             {busy
               ? verb === "move"
