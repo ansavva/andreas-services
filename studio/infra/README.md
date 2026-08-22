@@ -424,9 +424,15 @@ eval "$(aws configure export-credentials --format env)"   # the provider needs t
 ./studio/scripts/dev-aws-setup.sh                    # provision this machine's stack
 ./studio/scripts/dev-user.sh --generate-password     # its one test account
 ./studio/scripts/dev-token.sh                        # prove sign-in works; prints a token
+./studio/scripts/dev-aws-seed.sh                     # load the fixture — see below
 ./studio/scripts/dev-setup.sh                        # write the env files, install toolchains
 ./studio/scripts/dev-up.sh                           # backend :8000, frontend :5173
 ```
+
+`dev-aws-seed.sh` is in the list because that is where it belongs, not because
+it works: it stops on its first read until #284 publishes a fixture. It is
+listed after `dev-user.sh` because the library it writes needs a member, and the
+`sub` comes from the dev pool.
 
 ```bash
 ./studio/scripts/dev-aws-reset.sh --dry-run          # what a reset would remove
@@ -441,9 +447,11 @@ missing stack, warning and carrying on. `dev-up.sh` does not: an API with no
 Cognito pool 500s on every call, so failing early is the faster way to find out.
 
 > **What you get today is a stack with only the shared material in it.** The
-> bucket, the table and the pool are provisioned; the media fixture that would
-> fill them is #284, has not been published, and the bucket it would live in
-> does not exist yet. `dev-aws-reset.sh` empties a stack and does not re-seed.
+> bucket, the table and the pool are provisioned; `dev-aws-seed.sh` exists
+> (#285) and stops on its first read, because the fixture it loads is #284 and
+> **has never been published** — there is nothing to download and nothing that
+> script has ever loaded end to end. `dev-aws-reset.sh` empties a stack and does
+> not re-seed.
 >
 > What *is* there is what `dev-setup.sh` pushes: the pose plates under
 > `config/`, and — since #425 — a starting `phrasebook/wording.yaml`, copied
@@ -453,12 +461,20 @@ Cognito pool 500s on every call, so failing early is the faster way to find out.
 
 ## The seed bucket
 
-**Design recorded, not yet built.** `studio-dev-seed-us-east-1` is named in one
-comment in `modules/dev_storage/main.tf` and nowhere else — no Terraform
-declares it, and nothing writes or reads it. It is documented here because
-`dev_storage`'s decisions already lean on it (versioning off in dev is justified
-by "recovery is re-seeding"), and a justification whose subject does not exist
-is exactly the thing that rots quietly.
+**Design recorded, not yet built.** `studio-dev-seed-us-east-1` is not declared
+by any Terraform and has never held anything. What names it now is a comment in
+`modules/dev_storage/main.tf` and one reader, `scripts/dev-aws-seed.sh`, written
+against the contract below and against #284's — a reader that has therefore
+never successfully read. It is documented here because `dev_storage`'s decisions
+already lean on it (versioning off in dev is justified by "recovery is
+re-seeding"), and a justification whose subject does not exist is exactly the
+thing that rots quietly.
+
+The reader also fixes the shape of two documents `#284` only sketched:
+`v1/catalog.json` and `v1/manifest.json`. Both are authoritative in git, both
+are validated before a byte is written, and the header of `dev-aws-seed.sh`
+spells them out field by field. Publishing something the loader rejects is the
+expected way to discover a disagreement between them.
 
 What it is for: **one shared fixture, published once, downloaded per machine**
 (#284, #285). Real model output chosen to exercise the shapes the app cares

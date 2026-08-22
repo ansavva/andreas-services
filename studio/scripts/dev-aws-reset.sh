@@ -11,9 +11,11 @@
 # `--dry-run` names everything it would remove and removes nothing.
 # `--skip-cognito` keeps the accounts, so a reset does not mean signing in again.
 #
-# **It does not re-seed.** `dev-aws-seed.sh` is #285 and does not exist yet, so
-# what you get back is an empty stack. Said plainly at the end rather than
-# calling a script that is not there.
+# **It does not re-seed.** `dev-aws-seed.sh` now exists and is the way back, but
+# the fixture it loads is #284 and has not been published — so what you get back
+# today is an empty stack either way. Named at the end rather than called: a
+# reset and a seed are separate decisions, and chaining them would make
+# `--skip-cognito` the only way to reset without re-downloading.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -117,7 +119,9 @@ log "Recreating the empty table through Terraform ..."
 terraform -chdir="$TF_DIR" apply -input=false -auto-approve "${TF_VARS[@]}"
 
 ok "This machine's studio development data has been reset."
-printf '\nThe stack is EMPTY. Nothing seeds it yet — that is #285.\n'
+printf '\nThe stack is EMPTY. Refill it with:\n  ./studio/scripts/dev-aws-seed.sh\n'
+printf 'That will report that there is no fixture to load — publishing one is\n'
+printf '#284 and has not happened. Until it does, empty is as full as it gets.\n'
 if [[ "$SKIP_COGNITO" -eq 0 ]]; then
   printf 'The dev account went with the users; recreate it with:\n'
   printf '  ./studio/scripts/dev-user.sh\n'

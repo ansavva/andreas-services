@@ -57,6 +57,12 @@ jobs:
               # The skills describe this CLI, and the pipeline suite is what
               # checks that they still describe it accurately.
               - 'studio/.claude/skills/**'
+              # The dev-stack scripts have no suite of their own, so
+              # tests/test_dev_scripts.py is theirs — including the grep that
+              # pins dev-aws-seed.sh out of ever spending money. Without this
+              # line the change most likely to break that pin is the one change
+              # that never runs it.
+              - 'studio/scripts/**'
               - '.github/workflows/studio-pr.yml'
 
   backend:

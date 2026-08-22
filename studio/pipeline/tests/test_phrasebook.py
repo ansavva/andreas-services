@@ -168,3 +168,22 @@ def test_reading_commands_write_nothing(media_bucket, patched):
         assert _run(*argv).exit_code == 0, argv
 
     assert calls == []
+
+
+def test_the_repo_seed_is_a_document_this_module_can_extend():
+    """`studio/phrasebook/wording.yaml`, the copy `dev-setup.sh` puts in an empty
+    stack (#425).
+
+    It only has to be loadable and extendable — it is deliberately empty of
+    entries, because an entry records what a model was observed to do with a
+    phrasing and an invented one would ship a guess as knowledge. What this
+    catches is the seed being unparseable or the wrong shape, which would leave
+    `phrasebook add` broken in a way that looks like the bug #425 fixed.
+    """
+    from studio_pipeline import STUDIO_DIR
+
+    seed = STUDIO_DIR / "phrasebook" / "wording.yaml"
+    doc = yaml.safe_load(seed.read_text())
+
+    assert doc == {"version": 1, "models": {}}
+    assert doc.setdefault("models", {}) == {}  # what `_open()` does to it

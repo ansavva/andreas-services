@@ -127,6 +127,14 @@ render comes back plausible and wrongly framed. If a shoot reports a missing
 plate, the plates live in the repo under `studio/config/` and reach the store via
 `studio/scripts/dev-setup.sh` — re-run it rather than uploading one by hand.
 
+**`studio phrasebook add` fails the same way and is fixed by the same script.**
+Recording a substitution overwrites the wording list and cannot create one, so
+against a store that has never held a `wording.yaml` it refuses. The repo ships
+a starting copy and `dev-setup.sh` puts it there when the key is absent — and
+only then, because after the first `add` the store's copy is the one with the
+entries in it. Reading is unaffected either way: no wording list reads as an
+empty one, so `terms` and `check` keep working.
+
 ## The commands
 
 Every command below is a subcommand of `studio` — `studio --help` for the whole
