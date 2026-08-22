@@ -131,6 +131,20 @@ admin-create-only; accounts are provisioned with:
 STUDIO_EMAIL=you@example.com ./studio/scripts/create-user.sh
 ```
 
+An account on its own reaches nothing: what a caller can see is the libraries
+they are a member of, and membership is granted out of band for the same reason
+the account is.
+
+```bash
+STUDIO_EMAIL=you@example.com STUDIO_LIBRARY=lib-… ./studio/scripts/add-member.sh
+STUDIO_LIBRARY=lib-… ./studio/scripts/add-member.sh --list
+```
+
+**There is no API route that grants membership, deliberately** — one would be a
+route that could grant itself access to somebody else's library. `STUDIO_ROLE`
+is `member` by default; `owner` is the wider grant and the one a transfer
+between libraries requires in both.
+
 ## Development
 
 ```bash
