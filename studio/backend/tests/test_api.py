@@ -129,6 +129,18 @@ def test_asset_rejects_bad_disposition(media_bucket):
     assert resp.status_code == 400
 
 
+def test_asset_refuses_a_traversing_key(media_bucket):
+    """`keys.clean_key` is still wired to this parameter, not merely still present.
+
+    It is the last raw S3 key the API accepts, so the guard on it has to be
+    asserted at the route rather than only as a unit — `tests/test_keys.py`
+    passes just as happily if nothing calls the function.
+    """
+    for raw in ("../etc/passwd", "characters/../etc/passwd", "/characters/x.png", ""):
+        resp = _client().get(f"/api/asset?key={raw}")
+        assert resp.status_code == 400, raw
+
+
 def test_asset_takes_a_node_id(catalog_tree):
     node_id = _client().get("/api/tree?prefix=characters/subject-a/").get_json()["files"][0]["id"]
     body = _client().get(f"/api/asset?node={node_id}").get_json()
