@@ -31,7 +31,7 @@ prevents a bad deploy from reaching anyone.**
 It fails the workflow because red is the signal. What it buys is the difference
 between a broken deploy announcing itself in minutes with a named cause and
 being found weeks later by whoever opened the site — which is exactly how a
-missing `dynamodb:BatchGetItem` grant was found, behind 1,298 green tests.
+missing `dynamodb:BatchGetItem` grant was found, behind a fully green suite.
 
 ## The library it can reach, and the one it cannot
 

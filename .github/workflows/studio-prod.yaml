@@ -490,7 +490,7 @@ jobs:
   # ROLE. The unit suite runs against moto, which enforces no IAM at all; the
   # opt-in integration suite runs Flask in-process under a developer's far wider
   # credentials. A missing `dynamodb:BatchGetItem` grant reached production
-  # through exactly that gap, behind 1,298 green tests, and was found by a
+  # through exactly that gap, behind a fully green suite, and was found by a
   # person opening the site.
   #
   # `environment: studio-production` is load-bearing twice over: it is where

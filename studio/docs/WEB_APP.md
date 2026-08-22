@@ -1020,7 +1020,7 @@ is far narrower than a developer's. The smoke suite is the one that does: it
 signs in to the real pool and drives the deployed API over HTTPS, which is the
 only way to find out whether the deployed function may make the calls the code
 makes. `dynamodb:BatchGetItem` missing from the API role shipped through that
-gap behind 1,298 green tests.
+gap behind a fully green suite.
 
 The smoke suite runs in `studio-prod.yaml` **after** the deploy, so it is a
 detector and not a gate — studio has no staging. Its account is a member of

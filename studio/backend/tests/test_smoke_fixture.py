@@ -100,3 +100,38 @@ def test_the_ids_are_fixed_rather_than_generated():
 
     assert library["id"] and not library["id"].startswith("$")
     assert library["root_node"] and not library["root_node"].startswith("$")
+
+
+# The ids are pinned to their literal values, not merely asserted to be literal.
+#
+# `test_the_ids_are_fixed_rather_than_generated` above checks the shape and not
+# the value, and that is not enough for the one rule this fixture exists to
+# hold. Repointing `library.id` at another library's id is a one-line edit, it
+# is still a fixed literal, and it passes every other check here — while the
+# seeder would then put the smoke account in THAT library and both remaining
+# guards would agree, because the seed check and the runtime check both compare
+# against this file. The fixture is the thing they trust, so the fixture is
+# where the value has to be nailed down.
+#
+# Measured, not assumed: pointing `library.id` at `lib-0001` passed all five
+# tests before this one existed.
+SMOKE_LIBRARY_ID = "lib-smoke"
+SMOKE_ROOT_NODE_ID = "node-smoke-root"
+
+
+def test_the_library_id_is_the_smoke_library_and_no_other():
+    """**The owner's library is private. This is what keeps it that way.**
+
+    Changing the fixture's library id must require changing this line too — a
+    deliberate edit in two places rather than a typo in one.
+    """
+    library = _fixture()["library"]
+
+    assert library["id"] == SMOKE_LIBRARY_ID, (
+        f"the smoke fixture names library {library['id']!r}, not "
+        f"{SMOKE_LIBRARY_ID!r}. The seeder puts the smoke account in whatever "
+        f"this file names, and every other guard compares against this file — "
+        f"so pointing it at a real library would seed an account into it and "
+        f"report success. If this change is intended, change this test too."
+    )
+    assert library["root_node"] == SMOKE_ROOT_NODE_ID

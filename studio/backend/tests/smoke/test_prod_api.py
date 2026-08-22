@@ -8,8 +8,7 @@ which are far wider than the function's. So the one thing neither can settle is
 whether the role the deployed function actually assumes may make the calls the
 code actually makes. That gap shipped: `dynamodb:BatchGetItem` was missing from
 the API role, sign-in kept working because membership resolves with a `Query`,
-and every folder listing returned "Could not read the catalog" — behind 1,298
-green tests. It was found by a person opening the site.
+and every folder listing returned "Could not read the catalog" — behind a fully green suite. It was found by a person opening the site.
 
 **Which is why the listing here is done twice.** An empty folder short-circuits
 `catalog.records([])` and issues no `BatchGetItem` at all, so a smoke test that
