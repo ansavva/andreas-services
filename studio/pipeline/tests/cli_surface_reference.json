@@ -138,6 +138,21 @@
                 "nargs": 1,
                 "required": false,
                 "type": "str"
+              },
+              "library": {
+                "choices": null,
+                "default": null,
+                "dest": "library",
+                "flag": false,
+                "flags": [
+                  "--library"
+                ],
+                "help": "Which library to migrate. Required only when the table holds more than one, which prod always does — `lib-smoke` is seeded by the post-deploy smoke test.",
+                "hidden": false,
+                "multiple": false,
+                "nargs": 1,
+                "required": false,
+                "type": "str"
               }
             }
           },
@@ -159,6 +174,21 @@
                 "nargs": 1,
                 "required": false,
                 "type": "str"
+              },
+              "library": {
+                "choices": null,
+                "default": null,
+                "dest": "library",
+                "flag": false,
+                "flags": [
+                  "--library"
+                ],
+                "help": "Which library to migrate. Required only when the table holds more than one, which prod always does — `lib-smoke` is seeded by the post-deploy smoke test.",
+                "hidden": false,
+                "multiple": false,
+                "nargs": 1,
+                "required": false,
+                "type": "str"
               }
             }
           },
@@ -175,6 +205,21 @@
                   "--journal"
                 ],
                 "help": "journal file name (default: the newest)",
+                "hidden": false,
+                "multiple": false,
+                "nargs": 1,
+                "required": false,
+                "type": "str"
+              },
+              "library": {
+                "choices": null,
+                "default": null,
+                "dest": "library",
+                "flag": false,
+                "flags": [
+                  "--library"
+                ],
+                "help": "Which library to migrate. Required only when the table holds more than one, which prod always does — `lib-smoke` is seeded by the post-deploy smoke test.",
                 "hidden": false,
                 "multiple": false,
                 "nargs": 1,
@@ -214,6 +259,21 @@
               "--journal"
             ],
             "help": "journal file name (default: the newest)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "library": {
+            "choices": null,
+            "default": null,
+            "dest": "library",
+            "flag": false,
+            "flags": [
+              "--library"
+            ],
+            "help": "Which library to migrate. Required only when the table holds more than one, which prod always does — `lib-smoke` is seeded by the post-deploy smoke test.",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
