@@ -15,8 +15,9 @@ import {
 
 import { getReferences, getTree, patchReference } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
-import { AutoTextarea } from "../common/AutoTextarea";
 import { ENGINE_CAPS, type FileEntry, type ReferenceEntry } from "../../types";
+import { AutoTextarea } from "../common/AutoTextarea";
+import { ChipRow } from "../common/ChipRow";
 
 interface Props {
   characterId: string;
@@ -68,6 +69,14 @@ const REFERENCE_FOLDER = "reference";
  * drawn here is the same arithmetic done early, so the refusal is visible while
  * the set is being built rather than at the point of a shoot. If an engine's cap
  * moves this warns slightly early or slightly late; it can never let one through.
+ *
+ * **It used to say so three times.** One badge per engine — `Kling 5/7`,
+ * `Seedance 5/9`, `Nano Banana 5/14` — is one number and three comparisons, and
+ * on a 390px screen the four of them plus the count wrapped to two rows that
+ * said nothing actionable while the set was legal. So it is the *binding*
+ * constraint at rest, which is the smallest cap, and the engines actually
+ * exceeded once it is not. Nothing is lost: under the smallest cap you are under
+ * all of them, and over one, the only thing worth reading is which.
  */
 export function ReferencesGrid({ characterId, rootId, defaultSet }: Props) {
   const load = useCallback(() => getReferences(characterId), [characterId]);
@@ -106,6 +115,22 @@ export function ReferencesGrid({ characterId, rootId, defaultSet }: Props) {
     }
     return defaultSet.length;
   }, [defaultSet.length, groups, matches, tag]);
+
+  /**
+   * The engines this selection is too big for, and the one that binds first.
+   *
+   * `ENGINE_CAPS` is ordered smallest-first today and this does not rely on it —
+   * a cap added out of order would otherwise change what "the tightest" means
+   * without anybody noticing.
+   */
+  const exceeded = useMemo(
+    () => ENGINE_CAPS.filter(({ cap }) => selectionSize > cap),
+    [selectionSize],
+  );
+  const tightest = useMemo(
+    () => ENGINE_CAPS.reduce((a, b) => (a.cap <= b.cap ? a : b)),
+    [],
+  );
 
   const write = useCallback(
     async (work: Promise<unknown>) => {
@@ -189,44 +214,60 @@ export function ReferencesGrid({ characterId, rootId, defaultSet }: Props) {
   return (
     <div className="flex flex-col gap-6">
       {/*
-        The count, the caps and the tag filter.
+        The count, the binding cap, and the tag filter — two rows where there
+        were four.
 
-        Not a bordered card any more — it is the first thing on the panel and had
-        a rule under it and a border around it, which on a phone is two lines of
-        chrome above the content.
+        Not a bordered card any more either: it is the first thing on the panel
+        and had a rule under it *and* a border around it, which on a phone is two
+        more lines of chrome above the content.
       */}
       <div className="flex flex-col gap-2 border-b border-line pb-3">
         <div className="flex flex-wrap items-center gap-2">
           <Text variant="caption" tone="muted">
-            {tag === null ? "Default set" : `Tagged “${tag}”`}:{" "}
+            {tag === null ? "Default set" : `Tagged “${tag}”`} ·{" "}
             <span className="tabular-nums">{selectionSize}</span>
           </Text>
 
-          {/* One badge per engine, so an over-cap set is a colour rather than a
-              number somebody has to compare in their head. */}
-          {ENGINE_CAPS.map(({ engine, cap }) => (
-            <Badge key={engine} intent={selectionSize > cap ? "danger" : "neutral"}>
-              {engine} {selectionSize}/{cap}
+          {exceeded.length === 0 ? (
+            // The tightest cap, with the headroom left against it. One badge, and
+            // it is the only one that can turn.
+            <Badge intent="neutral">
+              {tightest.engine} {selectionSize}/{tightest.cap}
             </Badge>
-          ))}
+          ) : (
+            exceeded.map(({ engine, cap }) => (
+              <Badge key={engine} intent="danger">
+                over {engine} ({cap})
+              </Badge>
+            ))
+          )}
         </div>
 
         {tags.length > 0 && (
           // Single-select, and unpressing the pressed one is "no filter" — which
-          // is why there is no `All` button beside it any more. The caption above
-          // says which of the two states is showing.
-          <ToggleGroup.Root
-            aria-label="Filter by tag"
-            value={tag === null ? [] : [tag]}
-            onValueChange={(next: string[]) => setTag(next[0] ?? null)}
-            className="flex-wrap"
-          >
-            {tags.map((each) => (
-              <Toggle key={each} value={each}>
-                {each}
-              </Toggle>
-            ))}
-          </ToggleGroup.Root>
+          // is why there is no `All` button beside it. The caption above says
+          // which of the two states is showing.
+          //
+          // Scrolls rather than wraps, in the same row component the folder
+          // shortcuts use: a wrapping filter changes the header's *height* as
+          // tags come and go, so the grid moves down the screen for reasons that
+          // have nothing to do with the grid.
+          <ChipRow>
+            <ToggleGroup.Root
+              aria-label="Filter by tag"
+              value={tag === null ? [] : [tag]}
+              onValueChange={(next: string[]) => setTag(next[0] ?? null)}
+            >
+              {tags.map((each) => (
+                // `rounded-full` merges cleanly over the package's `rounded-md`;
+                // its `px-md py-sm` is left alone, being a t-shirt key that
+                // `tailwind-merge` would keep alongside anything written here.
+                <Toggle key={each} value={each} className="shrink-0 rounded-full">
+                  {each}
+                </Toggle>
+              ))}
+            </ToggleGroup.Root>
+          </ChipRow>
         )}
       </div>
 
