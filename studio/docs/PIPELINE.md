@@ -462,7 +462,7 @@ timings, cost, bindings, outputs, lineage — is `RUN#<id>`/`META`, and it is
 studio's to validate and query. The provider's own documents stay bytes:
 
 ```
-<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/      the folder the record names
+<project>/runs/<run id>/                          the folder the record names
     request.json    what we sent, verbatim        ─┐  payload blobs.
     prompt.json     the prompt source, when used   ├─ studio stores these
     result.json     what came back, verbatim      ─┘  and decodes none of them

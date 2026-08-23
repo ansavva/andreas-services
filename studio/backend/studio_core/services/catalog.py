@@ -863,6 +863,16 @@ def _folder_node(node_id: str) -> dict:
 OWNER_PREFIXES = {ENTITY_CHARACTER: "characters", ENTITY_PROJECT: "projects"}
 LIBRARY_PREFIX = "libraries"
 
+# The second segment of every key this API has ever stamped: an entity or
+# library id. No legacy key had one — those were `characters/<slug>/…`, where a
+# slug is a name a person chose.
+#
+# Matched by PREFIX rather than by a uuid pattern, which is how an id is
+# recognised everywhere else here (`startswith("proj-")` in the CLI resolvers,
+# `entity_kind` on the same split). Pinning a uuid length would make this the
+# one place that disagrees about what an id looks like.
+_ID_PREFIXES = ("char-", "proj-", "lib-")
+
 
 def blob_key_for(node_id: str, name: str, owner_kind: str | None, owner_id: str) -> str:
     """Where a node's bytes live: `<owner_kind>/<owner_id>/<node_id>.<ext>`.
@@ -889,22 +899,37 @@ def blob_key_for(node_id: str, name: str, owner_kind: str | None, owner_id: str)
 def is_api_blob(record: dict) -> bool:
     """Whether this node's bytes were written through this API.
 
-    **The tail is what is read, never the prefix**, and the difference is the
-    whole point. The prefix says who owned the node when it was created and
-    drifts the moment the node moves, so a check against it would start refusing
-    uploads to a file somebody dragged into another folder. The tail is
-    `<node_id>.<ext>` and the node id cannot change.
+    **It reads the SHAPE of the first two segments, and this used to read the
+    tail.** That was `/<node_id>.<ext>`, which was every key this API had ever
+    written — until the key became descriptive and its last segment became the
+    file's own name. `reseat --apply` then rewrote production to the new shape
+    and every one of its 186 file nodes stopped matching, so both upload routes
+    refused to overwrite anything in the library. Measured, not theorised.
+
+    So the test is `<owner_prefix>/<entity-or-library id>/…`: one of the three
+    prefixes, then an id. That holds for the flat keys this API still stamps at
+    creation AND for the descriptive ones `reseat` produces, which is what makes
+    it correct while the two coexist.
+
+    **It is still not a check on WHICH owner.** The prefix says who owned the
+    node when the key was stamped and drifts the moment the node moves, so
+    reading the id itself would start refusing uploads to a file somebody
+    dragged into another folder. Only the shape is read; the values are not.
 
     The two upload routes share this so they cannot disagree about which objects
     are writable through a signature — a distinction a signed URL makes permanent
-    the moment it is handed out. A node whose key ends any other way predates the
-    catalog (#309), and overwriting bytes written before this table existed is
-    not what those routes are for.
+    the moment it is handed out. A key of any other shape predates the catalog
+    (#309) — `characters/<slug>/…`, `blobs/<node_id>`, `config/pose/…` — and
+    overwriting bytes written before this table existed is not what those routes
+    are for.
     """
     blob_key = record.get("blob_key")
     if not blob_key:
         return False
-    return blob_key.endswith(f"/{record['node_id']}{keys.extension(record['name'])}")
+    segments = blob_key.split("/")
+    return (len(segments) >= 3
+            and segments[0] in set(OWNER_PREFIXES.values()) | {LIBRARY_PREFIX}
+            and segments[1].startswith(_ID_PREFIXES))
 
 
 def entity_chain(record: dict) -> list[str]:
