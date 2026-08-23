@@ -921,6 +921,23 @@ def adopt(node_id: str, entity: str) -> dict:
     }}
 
 
+# **`id` IS AN ATTRIBUTE, NOT ONLY A KEY, AND LEAVING IT OUT BROKE PROD.**
+#
+# Every record below spells its own id twice — once inside `pk`, once as `id` —
+# and the redundancy is the contract rather than an oversight. The API's
+# unmarshaller (`services/catalog.py::_entity`) *drops* `pk` and `sk` on the way
+# out and never derives an id from either, so a row carrying the id only in its
+# key reads back as a record with no id. `entities_in` then does
+# `found[record["id"]]` and every listing 500s.
+#
+# That is not hypothetical: the first prod migration wrote 32 entity rows this
+# way, `verify` passed on all of them, and `GET /api/characters` and
+# `GET /api/projects` returned 500 until the rows were backfilled. `verify` now
+# checks the attribute for that reason — see `phase_verify`.
+#
+# The same applies to the three listing rows, which additionally need `created`:
+# `routes/runs.py` sorts and `--since`-filters on it, so a listing row without
+# one sorts as the empty string and disappears from every filtered view.
 def character_groups(char: dict) -> list[list[dict]]:
     """The record, the slug claim, the root pointer, then the reference rows.
 
@@ -930,7 +947,8 @@ def character_groups(char: dict) -> list[list[dict]]:
     of it does.
     """
     record = {
-        "pk": f"CHAR#{char['id']}", "sk": "META", "lib": char["lib"],
+        "pk": f"CHAR#{char['id']}", "sk": "META", "id": char["id"],
+        "lib": char["lib"],
         "slug": char["slug"], "display_name": char["display_name"],
         "fictional": char["fictional"], "schema_version": char["schema_version"],
         "rev": 1, "created": char["created"], "updated": char["updated"],
@@ -951,7 +969,8 @@ def character_groups(char: dict) -> list[list[dict]]:
 
 def project_groups(proj: dict) -> list[list[dict]]:
     record = {
-        "pk": f"PROJ#{proj['id']}", "sk": "META", "lib": proj["lib"],
+        "pk": f"PROJ#{proj['id']}", "sk": "META", "id": proj["id"],
+        "lib": proj["lib"],
         "slug": proj["slug"], "title": proj["title"],
         "description": proj["description"], "rev": 1,
         "created": proj["created"], "updated": proj["updated"],
@@ -970,6 +989,18 @@ def project_groups(proj: dict) -> list[list[dict]]:
              adopt(proj["root"], proj["id"])] + links]
 
 
+def run_updated(run: dict) -> str:
+    """A run's `updated`, read off the run rather than off a clock.
+
+    The API stamps `updated` at creation and moves it forward on each
+    transition; a run being migrated has already made all of its, so the last
+    timestamp its document carries IS its `updated`. Falling back through
+    completed -> submitted -> created keeps a run that never finished honest
+    instead of dating it to the migration.
+    """
+    return run["completed"] or run["submitted"] or run["created"]
+
+
 def run_groups(run: dict) -> list[list[dict]]:
     """The envelope, the project listing row, and one usage link per character.
 
@@ -979,10 +1010,12 @@ def run_groups(run: dict) -> list[list[dict]]:
     `BatchGetItem` over hundreds of envelopes to draw a grid.
     """
     record = {
-        "pk": f"RUN#{run['id']}", "sk": "META", "lib": run["lib"],
+        "pk": f"RUN#{run['id']}", "sk": "META", "id": run["id"],
+        "lib": run["lib"],
         "project": run["project"], "slug": run["slug"], "status": run["status"],
         "kind": run["run_kind"], "engine": run["engine"], "model": run["model"],
-        "prediction_id": run["prediction_id"], "created": run["created"],
+        "prediction_id": run["prediction_id"], "rev": 1,
+        "created": run["created"], "updated": run_updated(run),
         "submitted": run["submitted"], "completed": run["completed"],
         "bindings": run["bindings"], "characters": run["characters"],
         "folder": run["folder"], "outputs": run["outputs"],
@@ -990,7 +1023,8 @@ def run_groups(run: dict) -> list[list[dict]]:
         "payload": run["payload"],
     }
     listing = {"pk": f"PROJ#{run['project']}",
-               "sk": f"RUN#{run['created']}#{run['id']}", "lib": run["lib"],
+               "sk": f"RUN#{run['created']}#{run['id']}", "id": run["id"],
+               "lib": run["lib"], "created": run["created"],
                "status": run["status"], "model": run["model"],
                "kind": run["run_kind"],
                "thumb": run["outputs"][0] if run["outputs"] else None}
@@ -1005,15 +1039,17 @@ def run_groups(run: dict) -> list[list[dict]]:
 
 def scene_groups(scene: dict) -> list[list[dict]]:
     record = {
-        "pk": f"SCENE#{scene['id']}", "sk": "META", "lib": scene["lib"],
+        "pk": f"SCENE#{scene['id']}", "sk": "META", "id": scene["id"],
+        "lib": scene["lib"],
         "project": scene["project"], "slug": scene["slug"],
         "title": scene["title"], "status": scene["status"],
         "folder": scene["folder"], "output": scene["output"],
-        "payload": {"document": scene["document"]},
+        "payload": {"document": scene["document"]}, "rev": 1,
         "created": scene["created"], "updated": scene["updated"],
     }
     listing = {"pk": f"PROJ#{scene['project']}",
                "sk": f"SCENE#{scene['created']}#{scene['id']}",
+               "id": scene["id"], "created": scene["created"],
                "lib": scene["lib"], "status": scene["status"],
                "title": scene["title"], "thumb": scene["output"]}
     shots = [ddbc.put({"pk": f"SCENE#{scene['id']}", "sk": f"SHOT#{shot['shot_id']}",
@@ -1030,15 +1066,18 @@ def scene_groups(scene: dict) -> list[list[dict]]:
 
 def movie_groups(movie: dict) -> list[list[dict]]:
     record = {
-        "pk": f"MOVIE#{movie['id']}", "sk": "META", "lib": movie["lib"],
+        "pk": f"MOVIE#{movie['id']}", "sk": "META", "id": movie["id"],
+        "lib": movie["lib"],
         "project": movie["project"], "slug": movie["slug"],
         "title": movie["title"], "status": movie["status"],
         "folder": movie["folder"], "output": movie["output"],
         "scenes": movie["scenes"], "payload": {"document": movie["document"]},
+        "rev": 1,
         "created": movie["created"], "updated": movie["updated"],
     }
     listing = {"pk": f"PROJ#{movie['project']}",
                "sk": f"MOVIE#{movie['created']}#{movie['id']}",
+               "id": movie["id"], "created": movie["created"],
                "lib": movie["lib"], "status": movie["status"],
                "title": movie["title"], "thumb": movie["output"]}
     return [[ddbc.put(record), ddbc.put(listing),
@@ -1074,6 +1113,49 @@ def stamp_reel(ddb, node_id: str, lib: str) -> bool:
     return True
 
 
+def backfill(ddb, doc: dict, apply: bool) -> list[str]:
+    """Add the attributes `doc` carries and the stored row lacks. Names them.
+
+    **Strictly additive, and that is what makes it safe to run over a library
+    somebody has been using.** A row already there may have been edited through
+    the app since the migration — a renamed slug, a new hero, a bumped `rev` —
+    so this never overwrites a value that is present. Every attribute it does
+    write is guarded by its own `attribute_not_exists`, so the whole update is
+    refused rather than half-applied if a concurrent write got there first.
+
+    It exists because `apply` skipped an entity whose head row was present,
+    which is right when the row is complete and wrong when an older version of
+    this file wrote an incomplete one. The first prod migration wrote 32 of
+    those; re-running `apply` counted them "already there" and repaired nothing.
+    """
+    got = ddb.get_item(TableName=ddbc.table(),
+                       Key=ddbc.to_item({"pk": doc["pk"], "sk": doc["sk"]}))
+    if "Item" not in got:
+        return []
+    have = ddbc.from_item(got["Item"])
+    # `None` is dropped by `to_item`, so an absent attribute whose value would
+    # be `None` is already what the schema means and is not a gap to close.
+    names = sorted(key for key, value in doc.items()
+                   if key not in ("pk", "sk") and key not in have
+                   and value is not None)
+    if not names or not apply:
+        return names
+
+    ddb.update_item(
+        TableName=ddbc.table(),
+        Key=ddbc.to_item({"pk": doc["pk"], "sk": doc["sk"]}),
+        UpdateExpression="SET " + ", ".join(f"#a{i} = :a{i}"
+                                            for i in range(len(names))),
+        ExpressionAttributeNames={f"#a{i}": key for i, key in enumerate(names)},
+        ExpressionAttributeValues=ddbc.to_item(
+            {f":a{i}": doc[key] for i, key in enumerate(names)}),
+        ConditionExpression=" AND ".join(
+            ["attribute_exists(pk)"]
+            + [f"attribute_not_exists(#a{i})" for i in range(len(names))]),
+    )
+    return names
+
+
 def phase_apply(ddb, plan: dict, apply: bool) -> dict:
     """Write every entity row, then stamp the reel.
 
@@ -1082,15 +1164,31 @@ def phase_apply(ddb, plan: dict, apply: bool) -> dict:
     and movies, because each of those names its project. An interrupted `apply`
     therefore always leaves a prefix of the layer, never a row pointing at one
     that does not exist yet.
+
+    An entity whose head row is already there is REPAIRED rather than skipped:
+    every row it would have written is checked for attributes the stored one
+    lacks, and only those are added. See `backfill` for why that is not a
+    rewrite.
     """
     existing = plan["catalog"]["entities"]
     created, skipped = collections.Counter(), collections.Counter()
+    repaired, added = collections.Counter(), collections.Counter()
 
     for kind in ("character", "project", "run", "scene", "movie"):
         for entity in plan[kind + "s"]:
             head = (f"{PARTITION[kind]}#{entity['id']}", "META")
             if head in existing:
+                gaps = 0
+                for group in GROUPS[kind](entity):
+                    for action in group:
+                        doc = action.get("Put", {}).get("Item")
+                        if doc is None:
+                            continue
+                        names = backfill(ddb, ddbc.from_item(doc), apply)
+                        gaps += len(names)
+                        added.update(names)
                 skipped[kind] += 1
+                repaired[kind] += 1 if gaps else 0
                 continue
             if not apply:
                 created[kind] += 1
@@ -1108,7 +1206,8 @@ def phase_apply(ddb, plan: dict, apply: bool) -> dict:
     else:
         stamped = len(plan["reel"])
 
-    return {"created": dict(created), "skipped": dict(skipped), "reel": stamped}
+    return {"created": dict(created), "skipped": dict(skipped),
+            "repaired": dict(repaired), "added": dict(added), "reel": stamped}
 
 
 # ── verify ──────────────────────────────────────────────────────────────────
@@ -1206,6 +1305,37 @@ def phase_verify(s3, ddb, plan: dict) -> dict:
         for name, node_id in (run["payload"] or {}).items():
             if node_id and not node_exists(node_id):
                 problems["dead_payload"].append(f"{run['where']}: {name}")
+
+    # **EVERY ROW MUST CARRY EVERY ATTRIBUTE IT WAS SUPPOSED TO CARRY.**
+    #
+    # The checks above ask whether a row EXISTS and whether the ids in it
+    # resolve. All of them passed over the first prod migration, whose 32 entity
+    # rows were each missing `id` — an attribute the API reads and the key alone
+    # does not supply — so `VERIFY: PASS` was printed over a library whose
+    # every listing returned 500. Existence was never the property worth
+    # checking on its own.
+    #
+    # Rebuilt from `GROUPS` rather than from a list of required names, so this
+    # cannot drift from what `apply` writes: the two read the same builders, and
+    # an attribute added to a record is checked here the moment it is added
+    # there. Same predicate as `backfill`, for the same reason.
+    for kind in ("character", "project", "run", "scene", "movie"):
+        for entity in plan[kind + "s"]:
+            for group in GROUPS[kind](entity):
+                for action in group:
+                    doc = action.get("Put", {}).get("Item")
+                    if doc is None:
+                        continue
+                    doc = ddbc.from_item(doc)
+                    stored = rows.get((doc["pk"], doc["sk"]))
+                    if stored is None:
+                        continue  # already reported by the existence checks
+                    thin = sorted(key for key, value in doc.items()
+                                  if key not in stored and value is not None)
+                    if thin:
+                        problems["incomplete_row"].append(
+                            f"{entity['where']}: {doc['pk']}/{doc['sk']} "
+                            f"lacks {', '.join(thin)}")
 
     # D5, both directions. A qualifying file with no key is invisible in the
     # reel; a folder, a document or an entity row WITH one is the pollution the
@@ -1480,12 +1610,21 @@ def do_apply(apply, library, journal):
         verb = "created" if apply else "would create"
         for kind in ("character", "project", "run", "scene", "movie"):
             print(f"{kind + 's':<12} {res['created'].get(kind, 0):>6} {verb}"
-                  f"   {res['skipped'].get(kind, 0):>6} already there")
+                  f"   {res['skipped'].get(kind, 0):>6} already there"
+                  f"   {res['repaired'].get(kind, 0):>6} repaired")
         print(f"{'reel':<12} {res['reel']:>6} {verb.replace('create', 'stamp')}"
               "   (image/video file nodes only)")
+        # Named rather than counted: an attribute an older version of this file
+        # forgot is the thing worth reading off the console, and there are only
+        # ever a handful of distinct names.
+        for name, count in sorted(res["added"].items()):
+            print(f"{'':<12} {count:>6} row(s) "
+                  f"{'given' if apply else 'would be given'} {name}")
         if apply:
             jrn["migrate_apply"] = {"lib": plan["lib"], "created": res["created"],
-                                    "skipped": res["skipped"], "reel": res["reel"]}
+                                    "skipped": res["skipped"],
+                                    "repaired": res["repaired"],
+                                    "added": res["added"], "reel": res["reel"]}
 
 
 @cmd_migrate.command("verify")
