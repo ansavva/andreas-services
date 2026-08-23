@@ -260,3 +260,123 @@ def test_backfill_reports_without_writing_when_not_applying(catalog_table):
         TableName=ddbc.table(),
         Key=ddbc.to_item({"pk": "CHAR#char-0000", "sk": "META"}))["Item"])
     assert "id" not in stored, "a dry run must not write"
+
+
+# ── reseat: copy, repoint, delete ───────────────────────────────────────────
+#
+# **`reseat_one` shipped with two bugs in four lines and no test that ran it.**
+# `ExpressionAttributeValues2=None` is not a boto3 parameter, and the condition
+# referenced a `:old` nothing defined — so every entry raised
+# `ParamValidationError` *after* its copy had already landed. Against prod that
+# was 257 copies, 0 rows repointed, 0 old objects removed.
+#
+# The only reseat test before these asserted that `--library` was a flag. So
+# these exercise the function against moto: the happy path, the condition that
+# makes the copy and the repoint describe one object, and the ordering the
+# docstring rests on.
+
+def _file_node(ddb, node_id: str, blob_key: str) -> None:
+    ddb.put_item(TableName=ddbc.table(), Item=ddbc.to_item(
+        {"pk": f"NODE#{node_id}", "sk": "META", "node_id": node_id, "lib": REAL,
+         "kind": "file", "name": "x.png", "blob_key": blob_key}))
+
+
+def _blob_key(ddb, node_id: str) -> str:
+    return ddbc.from_item(ddb.get_item(
+        TableName=ddbc.table(),
+        Key=ddbc.to_item({"pk": f"NODE#{node_id}", "sk": "META"}))["Item"])["blob_key"]
+
+
+def _keys(s3) -> list[str]:
+    from studio_pipeline.adapters import s3 as s3c
+    return sorted(o["Key"] for o in
+                  s3.list_objects_v2(Bucket=s3c.BUCKET).get("Contents", []))
+
+
+def _entry(node="node-1", frm="characters/subject-a/reference/face/x.png",
+           to="characters/char-1/node-1.png") -> dict:
+    return {"node": node, "from": frm, "to": to}
+
+
+def _seed(bucket, catalog_table, entry):
+    from studio_pipeline.adapters import s3 as s3c
+    bucket.put_object(Bucket=s3c.BUCKET, Key=entry["from"], Body=b"png-bytes")
+    _file_node(catalog_table, entry["node"], entry["from"])
+
+
+def test_reseat_copies_repoints_and_deletes(bucket, catalog_table):
+    """The whole point, and the regression test for both shipped bugs."""
+    entry = _entry()
+    _seed(bucket, catalog_table, entry)
+
+    assert cm.reseat_one(bucket, catalog_table, entry) is None
+
+    assert _keys(bucket) == [entry["to"]], "old object must be gone, new one there"
+    assert _blob_key(catalog_table, entry["node"]) == entry["to"]
+    from studio_pipeline.adapters import s3 as s3c
+    assert bucket.get_object(Bucket=s3c.BUCKET, Key=entry["to"])["Body"].read() \
+        == b"png-bytes", "the bytes must survive the move"
+
+
+def test_reseat_refuses_a_row_that_moved_under_it(bucket, catalog_table):
+    """`blob_key = :old` is what ties the copy and the repoint to one object.
+
+    Without the condition this would point the row at bytes copied from where
+    it used to be — the failure the condition exists to make impossible, and
+    the one the undefined `:old` meant was never actually guarded.
+    """
+    entry = _entry()
+    _seed(bucket, catalog_table, entry)
+    _file_node(catalog_table, entry["node"], "blobs/somewhere-else")  # a concurrent writer
+
+    problem = cm.reseat_one(bucket, catalog_table, entry)
+
+    assert problem is not None and "ConditionalCheckFailed" in problem
+    assert _blob_key(catalog_table, entry["node"]) == "blobs/somewhere-else", \
+        "the row another writer set must not be overwritten"
+    assert entry["from"] in _keys(bucket), \
+        "a failed repoint must not reach the delete"
+
+
+def test_reseat_leaves_the_bytes_when_the_repoint_fails(bucket, catalog_table):
+    """Copy, then repoint, then delete — a break anywhere loses no bytes."""
+    entry = _entry(node="node-missing")
+    from studio_pipeline.adapters import s3 as s3c
+    bucket.put_object(Bucket=s3c.BUCKET, Key=entry["from"], Body=b"png-bytes")
+    # No row at all: the conditional update cannot match, so the delete is
+    # never reached and both copies of the bytes are still there.
+    assert cm.reseat_one(bucket, catalog_table, entry) is not None
+    assert entry["from"] in _keys(bucket)
+    assert entry["to"] in _keys(bucket)
+
+
+def test_reseat_is_idempotent_after_an_interrupted_copy(bucket, catalog_table):
+    """Interrupted after the copy: the row still names the old key, so a re-run
+    repeats the copy onto the same key and finishes the job."""
+    entry = _entry()
+    _seed(bucket, catalog_table, entry)
+    from studio_pipeline.adapters import s3 as s3c
+    bucket.copy_object(Bucket=s3c.BUCKET, Key=entry["to"],
+                       CopySource={"Bucket": s3c.BUCKET, "Key": entry["from"]})
+
+    assert cm.reseat_one(bucket, catalog_table, entry) is None
+    assert _keys(bucket) == [entry["to"]]
+    assert _blob_key(catalog_table, entry["node"]) == entry["to"]
+
+
+def test_reseat_never_names_a_version(bucket, catalog_table, monkeypatch):
+    """A `VersionId` on the delete is what turns a tombstone into a removal.
+
+    The grant is deliberately not held, so this cannot be caught in production
+    — only here.
+    """
+    entry = _entry()
+    _seed(bucket, catalog_table, entry)
+    seen = {}
+    real = bucket.delete_object
+    monkeypatch.setattr(bucket, "delete_object",
+                        lambda **kw: (seen.update(kw), real(**kw))[1])
+
+    cm.reseat_one(bucket, catalog_table, entry)
+
+    assert "VersionId" not in seen
