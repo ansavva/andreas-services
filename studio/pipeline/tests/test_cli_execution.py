@@ -1,13 +1,20 @@
-"""Commands that actually run, against the moto bucket.
+"""Commands that actually run, against the in-memory library.
 
 The surface tests inspect the parser and never dispatch, so they passed while
 `args.func` — which argparse attached through `set_defaults` and Click has no
 equivalent for — was undefined on every subcommand of `character`, `curate` and
 `run`. `--help` passed too. Only invoking a command finds that class of bug,
-which is what this file is for.
+which is what this file is for, and a restructure is exactly the change that
+produces it.
 
-Read-only commands, deliberately: the point is proving the dispatch path
-reaches real logic, not re-testing what each command does.
+**These now go through the real adapter stack.** Under the old fixture `store`
+was monkeypatched onto a moto bucket in which a node's id was its key, so a
+command could send a route or a body the API would refuse and still pass here.
+`tests/fake_api.py` answers `api.request` instead, so what is exercised is what
+the CLI actually puts on the wire.
+
+Read-only commands where possible, deliberately: the point is proving the
+dispatch path reaches real logic, not re-testing what each command does.
 """
 
 import pytest
@@ -18,24 +25,22 @@ from studio_pipeline import cli
 # (argv, a fragment that must appear in the output)
 READ_ONLY = [
     (["character", "list"], "subject-a"),
-    (["character", "show", "subject-a"], "Subject A"),
-    (["character", "refs", "subject-a", "--keys"], "reference/face/subject-a_1.webp"),
-    (["character", "pool", "subject-a", "seed"], "seed/subject-a_1.webp"),
+    (["character", "show", "subject-a"], "subject-a"),
+    (["character", "refs", "subject-a"], "front-neutral.webp"),
+    (["character", "textblock", "subject-a"], "placeholder identity"),
     (["curate", "groups", "subject-a"], "face"),
-    (["projects", "list"], "subject-a"),
-    (["projects", "show", "subject-a"], "subject-a"),
-    (["runs", "list", "subject-a"], "wave-porch"),
-    (["scenes", "list", "subject-a"], "board-test"),
-    (["scenes", "plan", "subject-a/board-test"], "shot-01"),
-    (["scenes", "show", "subject-a/board-test"], "storyboard"),
-    (["phrasebook", "terms", "--model", "kling"], "bare chest"),
-    (["phrasebook", "models"], "kling"),
+    (["projects", "list"], "porch-teaser"),
+    (["projects", "show", "porch-teaser"], "porch-teaser"),
+    (["projects", "inputs", "porch-teaser"], "street-plate.webp"),
+    (["runs", "list", "porch-teaser"], "porch-portrait"),
+    (["runs", "find", "--character", "subject-a"], "porch-portrait"),
     (["models"], "seedance"),
 ]
 
 
-@pytest.mark.parametrize("argv,expected", READ_ONLY, ids=lambda v: " ".join(v) if isinstance(v, list) else "")
-def test_command_runs(media_bucket, argv, expected):
+@pytest.mark.parametrize("argv,expected", READ_ONLY,
+                         ids=lambda v: " ".join(v) if isinstance(v, list) else "")
+def test_command_runs(library, argv, expected):
     result = CliRunner().invoke(cli.main, argv)
     assert result.exit_code == 0, (
         f"`studio {' '.join(argv)}` exited {result.exit_code}\n"
@@ -46,13 +51,13 @@ def test_command_runs(media_bucket, argv, expected):
     )
 
 
-def test_every_subcommand_dispatches(media_bucket):
+def test_every_subcommand_dispatches(library):
     """No subcommand may fail on a missing handler.
 
-    Walks the whole tree and invokes each leaf with no arguments. A command
-    that needs arguments exits 2 (usage) — that is fine, it proves Click routed
-    to it. What must never happen is an AttributeError or a KeyError, which is
-    what a missing dispatch entry raises.
+    Walks the whole tree and invokes each leaf with no arguments. A command that
+    needs arguments exits 2 (usage) — that is fine, it proves Click routed to
+    it. What must never happen is an AttributeError or a KeyError, which is what
+    a missing dispatch entry raises.
     """
     import click
 
@@ -72,23 +77,25 @@ def test_every_subcommand_dispatches(media_bucket):
     assert not broken, "commands that cannot dispatch:\n" + "\n".join(broken)
 
 
-def test_repeatable_option_collects_every_value(media_bucket):
-    """`--pick` twice must keep both, not the last.
+def test_a_comma_list_collects_every_value(library):
+    """`--pick a,b` must keep both, not the last.
 
-    Ten options used `action="append"`. Click spells that `multiple=True`, and
-    getting it wrong silently keeps only the final value — the kind of thing
-    that shows up as a generation quietly using one reference image.
+    Ten options used argparse's `action="append"`; Click spells repeatability
+    `multiple=True`, and getting it wrong silently keeps only the final value —
+    the kind of thing that shows up as a generation quietly using one reference
+    image. `--pick` is the comma-separated half of the same hazard, and the
+    consequence is identical.
     """
     result = CliRunner().invoke(cli.main, [
-        "character", "refs", "subject-a", "--keys",
-        "--pick", "face/subject-a_1.webp,body/subject-a_1.webp",
+        "character", "selection", "subject-a",
+        "--pick", "front-neutral.webp,full-length.webp",
     ])
-    assert result.exit_code == 0, result.output
-    assert "face/subject-a_1.webp" in result.output
-    assert "body/subject-a_1.webp" in result.output
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    assert library.face_1 in result.output
+    assert library.body_1 in result.output
 
 
-def test_usage_error_exits_two(media_bucket):
+def test_usage_error_exits_two(library):
     """A mutually exclusive pair still refuses, with argparse's exit code."""
     result = CliRunner().invoke(cli.main, ["contact-sheet", "--out", "/tmp/x.png"])
     assert result.exit_code == 2, result.output
@@ -98,8 +105,8 @@ def test_usage_error_exits_two(media_bucket):
 # --------------------------------------------------------------------------
 # Exit codes
 # --------------------------------------------------------------------------
-# Click's standalone mode DISCARDS a command's return value — it only honours
-# it when invoked with standalone_mode=False. The argparse->Click port kept
+# Click's standalone mode DISCARDS a command's return value — it only honours it
+# when invoked with standalone_mode=False. The argparse->Click port kept
 # `return 1` from the old dispatch functions, so every non-zero exit silently
 # became 0. `--strict` that never fails is worse than no `--strict` at all.
 EXIT_CODES = [
@@ -115,7 +122,14 @@ EXIT_CODES = [
 
 @pytest.mark.parametrize("argv,expected", EXIT_CODES,
                          ids=lambda v: " ".join(v) if isinstance(v, list) else str(v))
-def test_exit_code_is_honoured(media_bucket, argv, expected):
+def test_exit_code_is_honoured(library, argv, expected):
+    if argv[0] == "phrasebook":
+        # A term has to exist for `check` to hit. It is one row now, and adding
+        # it needs no document to be there first — which is the failure that
+        # disappeared with the YAML file.
+        from studio_pipeline.adapters import entities
+
+        entities.add_phrasebook_term("kling", "bare chest", "chest")
     result = CliRunner().invoke(cli.main, argv)
     assert result.exit_code == expected, (
         f"`studio {' '.join(argv)}` exited {result.exit_code}, expected {expected}\n"
@@ -123,34 +137,38 @@ def test_exit_code_is_honoured(media_bucket, argv, expected):
     )
 
 
-def test_character_refs_downloads(media_bucket, tmp_path):
+def test_character_selection_downloads(library, tmp_path):
     """**The path ruff found and 517 tests did not.**
 
     Splitting `characters.py` into a package left `tempfile` unimported in the
-    module that took `refs`' download branch, so `studio character refs <name>`
-    with no `--keys` and no `--presign` raised `NameError`. Nothing caught it:
+    module that took the download branch, so `studio character refs <name>` with
+    no selector raised `NameError`. Nothing caught it:
     `test_every_subcommand_dispatches` invokes each leaf with no arguments and
     stops at the usage error, which never reaches a body.
 
-    That is the same shape as the two failures `--help is not a test` was
-    written for. The download branch is the default one — no flag selects it —
-    so it is the branch a person gets by typing the obvious thing.
+    That branch lives on `selection` now — `refs` prints the index and
+    `selection` resolves it, which is the split the entity model made real by
+    moving resolution into the API. The hazard did not move: a branch nothing
+    invokes is a branch nothing checks.
     """
     result = CliRunner().invoke(
-        cli.main, ["character", "refs", "subject-a", "--dest", str(tmp_path)]
+        cli.main, ["character", "selection", "subject-a", "--dest", str(tmp_path)]
     )
 
     assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
     assert list(tmp_path.iterdir()), "nothing was written to --dest"
 
 
-def test_character_refs_keys_still_prints_keys(media_bucket):
-    """The other half of the same fix: `--keys` must still print them.
+def test_character_selection_prints_node_ids_by_default(library):
+    """The other half of the same fix: the printing branch must still print.
 
-    The bug was that BOTH branches printed keys, so a test of `--keys` alone
-    would have passed against the broken code.
+    The original bug was that BOTH branches printed keys, so a test of the flag
+    alone would have passed against the broken code. What is printed is a NODE
+    ID now — what a record holds and what a binding names — beside its slot, so
+    `[Image1]` in a prompt and slot 1 here are the same image.
     """
-    result = CliRunner().invoke(cli.main, ["character", "refs", "subject-a", "--keys"])
+    result = CliRunner().invoke(cli.main, ["character", "selection", "subject-a"])
 
-    assert result.exit_code == 0, result.output
-    assert "characters/subject-a/reference/" in result.output
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    assert "slot 1" in result.output
+    assert library.face_1 in result.output

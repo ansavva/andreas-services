@@ -1,51 +1,47 @@
 """`studio phrasebook` — per-model wording lists: what to say instead of what.
 
 A **wording list** is a small set of substitutions for one model: a phrase, and
-the phrase to use in its place. Different models read the same idea differently,
-so the phrasing that produces the intended result varies between them, and that
-knowledge is tedious to rediscover.
+the phrase to use in its place. Different models read the same idea
+differently, so the phrasing that produces the intended result varies between
+them, and that knowledge is tedious to rediscover.
 
-It is kept **as data in S3, not in this repository**:
+IT WAS A YAML DOCUMENT AND IT IS NOW ROWS
+-----------------------------------------
+`phrasebook/wording.yaml` is gone. Each substitution is one row —
+`LIB#<lib>` / `TERM#<model>#<avoid>` — which is what it always was: a per-model
+list of avoid/use pairs is a table wearing a document.
 
-    phrasebook/wording.yaml
+**The concrete win is a failure that disappears.** The document was written
+through `PATCH /api/text`, a route that overwrites an existing key and cannot
+invent one, because studio's API has no upload and this was the one write in it
+a person authors. So `studio phrasebook add` against a library that had never
+held a `wording.yaml` was *refused* — the first entry anybody tried to record
+was the one that could not be. The workaround was a seed copy in the repo and a
+line in `dev-setup.sh` that pushed it only when the key was absent (#425),
+carefully, because from the first `add` the bucket's copy was the live document
+and a plain sync would have deleted its entries.
 
-Same split the repo uses for characters — the tooling is code, the specifics are
-data. This file holds only the machinery.
+None of that exists any more. A row has no precondition: `add` on an empty
+library writes one row and succeeds, and there is nothing for a sync to
+clobber. Reading was never the broken half — a missing phrasebook read as an
+empty one — and it still is not.
 
-SHARED MATERIAL, SO NEITHER HALF USES A NODE (#305)
----------------------------------------------------
-The phrasebook belongs to no character and no project, `catalog_seed.py`
-deliberately records no node for it, and `store.resolve` therefore 404s on it.
-Both directions go through the API's **key-addressed** routes instead:
-
-    read    store.shared_read(KEY)          GET   /api/asset
-    write   api.patch("/api/text", …)       PATCH /api/text
-
-**The write cannot create the file, and the read used to be able to.**
-`put_object` was happy to invent an object; `PATCH /api/text` requires the key
-to name one that already exists, because studio's API has no upload and this is
-the one write in it a person authors. So `studio phrasebook add` against a
-library that has never held a `wording.yaml` fails instead of quietly starting
-one, and `save` says what that takes.
-
-**A fresh dev stack gets its first one from the repo (#425.)**
-`studio/phrasebook/wording.yaml` is a seed copy, and `dev-setup.sh` puts it in
-the bucket **only when the key is absent** — unlike the `config/` sync beside
-it, because from the first `add` the bucket's copy is the live document and a
-sync would delete its entries. Reading was never affected either way: a missing
-phrasebook still reads as an empty one.
+Two smaller things went with it. Uniqueness is now the key's: a duplicate
+avoid-phrase for one model is a **409** rather than a second entry silently
+appended beside the first, which is how the same phrase ended up recorded twice
+with different replacements. And `rm` is possible at all — removing an entry
+from a document meant rewriting the whole document, so nothing offered it.
 
 SHAPE
 -----
-    version: 1
-    models:
-      <model key from the studio registry>:
-        replicate: <owner>/<name>
-        entries:
-          - avoid: the phrasing to replace
-            use:   the phrasing to use instead
-            note:  optional free text — where this came from
-            added: ISO date
+One row per pair::
+
+    model      the model key from the studio registry
+    avoid      the phrasing to replace
+    use        the phrasing to use instead
+    note       optional free text — where this came from
+    replicate  <owner>/<name>, carried for display
+    added      ISO date
 
 CLI
 ---
@@ -53,88 +49,55 @@ CLI
     studio phrasebook terms --model <key>              # JSON, for tooling
     studio phrasebook check --model <key> --text "…"   # scan a draft
     studio phrasebook add   --model <key> --avoid "…" --use "…"
+    studio phrasebook rm    --model <key> --avoid "…"
     studio phrasebook models
 """
 from __future__ import annotations
 
-import datetime as dt
 import json
 
 import click
 import yaml
 
-from studio_pipeline.adapters import api, store  # noqa: E402
-from studio_pipeline.domain import paths as P  # noqa: E402
-from studio_pipeline.errors import die  # noqa: E402
-
-KEY = P.phrasebook_key()
+from studio_pipeline.adapters import api, entities
+from studio_pipeline.errors import die
 
 
-def _empty() -> dict:
-    """A fresh empty document.
+def by_model(model: str | None = None) -> dict[str, list[dict]]:
+    """Every term, grouped by model key, in the order the API returned them.
 
-    A function rather than a constant: every caller goes on to mutate what it
-    is given, and a shared `{"models": {}}` would collect the first `add`'s
-    section and hand it to the next reader.
+    Grouped here rather than by the API because the grouping is a presentation
+    fact — `show` and `models` want sections, `terms` and `check` want a flat
+    list for one model, and only one of those shapes can be the wire's.
     """
-    return {"version": 1, "models": {}}
-
-
-def load() -> dict:
-    """The wording lists, or an empty document when there are none yet.
-
-    **Only a 404 is "no phrasebook".** This used to catch every exception and
-    grep the message for `NoSuchKey`, because a missing key surfaced differently
-    across botocore versions — which made a refusal indistinguishable from an
-    absent file, and the phrasebook then reports "no substitutions apply" for a
-    draft it never checked. `api.Forbidden` is a different fact and is left to
-    surface.
-    """
-    try:
-        body = store.shared_read(KEY)
-    except api.NotFound:
-        return _empty()
-    return yaml.safe_load(body) or _empty()
-
-
-def save(doc: dict) -> str:
-    """Write the wording list back through `PATCH /api/text`.
-
-    **It can only overwrite.** The route refuses a key that names nothing, so
-    this is where the one behaviour `put_object` had and the API does not gets
-    reported rather than swallowed. See the module docstring.
-    """
-    doc["updated"] = dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    content = yaml.safe_dump(doc, sort_keys=False, allow_unicode=True)
-    try:
-        api.patch("/api/text", {"key": KEY, "content": content})
-    except api.NotFound:
-        die(f"there is no {KEY} in this library, and the API cannot create one — "
-            "it overwrites an existing file and never invents one. The repo "
-            "ships a seed copy and dev-setup.sh puts it there when the key is "
-            "absent, so re-run ./studio/scripts/dev-setup.sh.")
-    return KEY
+    grouped: dict[str, list[dict]] = {}
+    for term in entities.phrasebook(model=model):
+        grouped.setdefault(term["model"], []).append(term)
+    return grouped
 
 
 def terms(model_key: str) -> list[dict]:
     """The avoid/use pairs for one model.
 
     One fetch, so a caller can check many fields locally and keep per-field
-    attribution instead of making a round trip each time.
+    attribution instead of making a round trip each time. The shape is pinned:
+    `domain/prompt.py` and the engine both read exactly these two keys.
     """
-    section = (load().get("models") or {}).get(model_key) or {}
-    return [{"avoid": e["avoid"], "use": e["use"]}
-            for e in (section.get("entries") or []) if e.get("avoid")]
+    return [{"avoid": term["avoid"], "use": term["use"]}
+            for term in entities.phrasebook(model=model_key) if term.get("avoid")]
 
 
-def _open():
-    """The document and its model sections, loaded once.
+def _section(rows: list[dict]) -> dict:
+    """One model's rows as the block `show` prints.
 
-    Every command needs both, and they were shared by living in one `_run`. A
-    helper keeps that sharing without the dispatch.
+    Deliberately the same shape the YAML document had — `replicate` plus
+    `entries` — because that is what every `SKILL.md` example shows and what a
+    person reading the output expects. The storage changed; the reading did not.
     """
-    doc = load()
-    return doc, doc.setdefault("models", {})
+    replicate = next((r["replicate"] for r in rows if r.get("replicate")), None)
+    return {"replicate": replicate,
+            "entries": [{k: r[k] for k in ("avoid", "use", "note", "added")
+                         if r.get(k)} for r in rows]}
 
 
 @click.group(help=__doc__)
@@ -145,10 +108,9 @@ def main():
 @main.command("models")
 def do_models():
     """List the models covered."""
-    _doc, models = _open()
-    for k, v in models.items():
-        print(f"{k:20} {v.get('replicate','?'):40} "
-              f"entries={len(v.get('entries') or [])}")
+    for model, rows in sorted(by_model().items()):
+        replicate = next((r["replicate"] for r in rows if r.get("replicate")), "?")
+        print(f"{model:20} {replicate or '?':40} entries={len(rows)}")
 
 
 @main.command("terms")
@@ -162,11 +124,11 @@ def do_terms(model):
 @click.option("--model", help="limit to one model key")
 def do_show(model):
     """Print the phrasebook."""
-    _doc, models = _open()
-    if model and model not in models:
+    grouped = by_model(model)
+    if model and not grouped:
         die(f"no phrasebook section for {model!r}")
-    out = {model: models[model]} if model else models
-    print(yaml.safe_dump(out, sort_keys=False, allow_unicode=True))
+    print(yaml.safe_dump({k: _section(v) for k, v in sorted(grouped.items())},
+                         sort_keys=False, allow_unicode=True))
 
 
 @main.command("check")
@@ -174,22 +136,21 @@ def do_show(model):
 @click.option("--text", required=True)
 def do_check(model, text):
     """Scan text against this model's wording list. Exits 1 on a hit."""
-    _doc, models = _open()
-    section = models.get(model)
-    if not section:
+    rows = entities.phrasebook(model=model)
+    if not rows:
         print(f"no wording list for {model}")
         return
     low = text.lower()
-    # An entry may carry an empty `avoid` — a placeholder section. Skipping
-    # it matters: "" is a substring of everything.
-    hits = [e for e in (section.get("entries") or [])
-            if e.get("avoid") and e["avoid"].lower() in low]
+    # A row may carry an empty `avoid` only if something wrote one; skipping it
+    # matters because "" is a substring of everything, and the check would then
+    # refuse every draft it was ever shown.
+    hits = [r for r in rows if r.get("avoid") and r["avoid"].lower() in low]
     if not hits:
-        print(f"no substitutions apply ({len(section.get('entries') or [])} entries)")
+        print(f"no substitutions apply ({len(rows)} entries)")
         return
-    for e in hits:
-        print(f"AVOID  {e['avoid']!r}\n  USE  {e['use']!r}"
-              + (f"\n  note {e['note']}" if e.get("note") else ""))
+    for row in hits:
+        print(f"AVOID  {row['avoid']!r}\n  USE  {row['use']!r}"
+              + (f"\n  note {row['note']}" if row.get("note") else ""))
     raise SystemExit(1)
 
 
@@ -200,17 +161,30 @@ def do_check(model, text):
 @click.option("--replicate", help="owner/name, when first creating the section")
 @click.option("--use", required=True)
 def do_add(avoid, model, note, replicate, use):
-    """Record a substitution."""
-    doc, models = _open()
-    section = models.setdefault(model, {"replicate": None, "entries": []})
-    if replicate:
-        section["replicate"] = replicate
-    section.setdefault("entries", []).append({
-        "avoid": avoid,
-        "use": use,
-        "note": note,
-        "added": dt.datetime.now(dt.UTC).strftime("%Y-%m-%d"),
-    })
-    # The path, not an `s3://` URI: the CLI knows no bucket name any more, and
-    # printing one it guessed would be worse than printing none.
-    print(f"recorded -> {save(doc)}")
+    """Record a substitution.
+
+    **This can no longer fail on a library that has never held a phrasebook.**
+    See the module docstring: the write used to require a document to already
+    exist, so the first entry anybody recorded was the one that was refused.
+    """
+    try:
+        entities.add_phrasebook_term(model, avoid, use, note=note or None,
+                                     replicate=replicate)
+    except api.Conflict:
+        die(f"{model} already records a substitution for {avoid!r} — "
+            f"remove it first: studio phrasebook rm --model {model} "
+            f"--avoid {avoid!r}")
+    print(f"recorded {avoid!r} -> {use!r} for {model}")
+
+
+@main.command("rm")
+@click.option("--avoid", required=True)
+@click.option("--model", required=True)
+def do_rm(avoid, model):
+    """Remove a substitution. **New — a document had to be rewritten whole.**"""
+    try:
+        entities.delete_phrasebook_term(model, avoid)
+    except api.NotFound:
+        die(f"{model} records no substitution for {avoid!r} "
+            f"(see `studio phrasebook show --model {model}`)")
+    print(f"removed {avoid!r} from {model}")

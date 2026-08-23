@@ -92,9 +92,13 @@ import click
 from studio_pipeline import STUDIO_DIR
 from studio_pipeline.adapters import ddb as ddbc
 from studio_pipeline.adapters import s3 as s3c
-from studio_pipeline.domain import paths as P
 from studio_pipeline.errors import die
-from studio_pipeline.maintenance import catalog_seed as cs
+from studio_pipeline.maintenance import catalog_migrate as CM
+
+#: The one "tree" `name_positions` reports under. An entity root is a child of
+#: the library root now, so there is no `characters/` or `projects/` folder to
+#: name the group after — every top-level folder is somebody's slug.
+ENTITY_ROOTS = "entity roots"
 
 #: Where the authoritative copies live. The bucket gets a copy; git holds the
 #: original, because a fixture is reviewed in a diff.
@@ -278,19 +282,30 @@ def stem(name: str) -> str:
 
 
 def name_positions(paths: dict[str, str]) -> dict[str, list[str]]:
-    """Every segment sitting where the layout says a NAME goes, by tree.
+    """Every segment sitting where the layout says a NAME goes.
 
-    `paths.py` is the one module that knows the bucket's shape and it says a
-    character's name is the segment under `characters/` and a project's slug is
-    the segment under `projects/`. Those are the two positions where a name is
-    provably a name rather than a guess, which is what makes the check on them
-    a refusal and everything else a report.
+    **This moved up one level with the entity model, and the guard got
+    stronger.** It used to look for the segment under `characters/` and the
+    segment under `projects/`, because those two folders were the whole layout
+    and `paths.py` built them. There is no `characters/` folder any more: an
+    entity's root folder is a child of the LIBRARY root, and its name is its
+    slug.
+
+    So the position where a name is provably a name is now the FIRST segment of
+    every path, and every one of them is checked. Nothing is skipped for being
+    in an unrecognised tree — which is what the old shape did, silently, for any
+    folder a person had made by hand at the top level.
+
+    Grouped under one key rather than two, because there is no longer a folder
+    name that tells a character apart from a project. That distinction lives in
+    the entity rows, and a fixture carries none — see the module docstring on
+    why no ids are published.
     """
     found = collections.defaultdict(set)
     for path in paths.values():
         parts = path.split("/") if path else []
-        if len(parts) >= 2 and parts[0] in (P.CHARACTERS, P.PROJECTS):
-            found[parts[0]].add(parts[1])
+        if parts and parts[0]:
+            found[ENTITY_ROOTS].add(parts[0])
     return {tree: sorted(names) for tree, names in found.items()}
 
 
@@ -405,7 +420,7 @@ def build(library: dict, paths: dict[str, str], selected: set[str],
             body = blobs[node_id]
             node["source"] = key
             node["content_type"] = (row.get("content_type")
-                                    or cs.content_type(path))
+                                    or CM.content_type(path))
             objects[key] = {"size": len(body),
                             "sha256": hashlib.sha256(body).hexdigest()}
         nodes.append(node)

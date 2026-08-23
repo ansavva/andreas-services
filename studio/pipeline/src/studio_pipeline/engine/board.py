@@ -129,10 +129,15 @@ def panel_slug(manifest: dict, shot: dict, panel: dict) -> str:
     return f"{manifest['slug']}-{shot['id']}-p{panel['n']}"
 
 
-def panel_storyboard_key(manifest: dict, shot: dict, panel: dict, ext: str) -> str:
-    project, _, scene_id = manifest["scene"].partition("/")
-    return SC.scene_key(project, scene_id, "storyboard",
-                        f"{shot['id']}-p{panel['n']}{ext}")
+def panel_storyboard_name(shot: dict, panel: dict, ext: str) -> str:
+    """A panel's FILE NAME inside the scene's `storyboard/` folder.
+
+    A name, not a key. It used to build `projects/<p>/scenes/<s>/storyboard/…`,
+    which asserted where the folder was; the scene record names its own folder
+    node and `SC.scene_folder` resolves the child by name, so the only thing
+    left to decide here is what to call the file.
+    """
+    return f"{shot['id']}-p{panel['n']}{ext}"
 
 
 def earlier_panel_keys(manifest: dict, shot: dict, panel: dict) -> list[str]:
@@ -141,8 +146,8 @@ def earlier_panel_keys(manifest: dict, shot: dict, panel: dict) -> list[str]:
     for a_shot, a_panel in SB.board_order(manifest):
         if a_shot is shot and a_panel is panel:
             break
-        if a_panel.get("key"):
-            out.append(a_panel["key"])
+        if a_panel.get("node"):
+            out.append(a_panel["node"])
     return out
 
 
@@ -191,7 +196,7 @@ def panel_args(manifest: dict, shot: dict, panel: dict, entry: dict, opts) -> Si
     refs = panel.get("references") or {}
     d = SUB.defaults(entry["kind"])
     extra = dict(panel.get("extra") or {})
-    project, _, _ = manifest["scene"].partition("/")
+    project = manifest["project_slug"]
 
     video = (shot.get("motion") or {}).get("model")
     if "output_format" not in extra and video:
@@ -212,7 +217,7 @@ def panel_args(manifest: dict, shot: dict, panel: dict, entry: dict, opts) -> Si
         # appended as explicit keys after it.
         key=[], character=tuple(refs.get("characters") or ()),
         record_characters=tuple(manifest.get("characters") or ()),
-        record_extra={"scene": manifest["scene"], "scene_shot": shot["id"],
+        record_extra={"scene": manifest["label"], "scene_shot": shot["id"],
                       "scene_panel": panel["n"]},
         pick=refs.get("pick"), pick_tag=refs.get("pick_tag"), slots=None,
         image_run=None, ref_run=(), input_=(), input=(),
@@ -280,11 +285,11 @@ def shot_bindings(manifest: dict, shot: dict, entry: dict) -> tuple[str | None, 
 
     def key_of(i: int) -> str:
         panel = panels[i]
-        if not panel.get("key"):
+        if not panel.get("node"):
             raise BoardError(
                 f"{shot['id']} panel {panel['n']} has not been rendered yet — "
-                f"studio scenes board {manifest['scene']} --shot {shot['id']}")
-        return panel["key"]
+                f"studio scenes board {manifest['label']} --shot {shot['id']}")
+        return panel["node"]
 
     start = roles["handoff"]
     if start is None:
@@ -294,7 +299,7 @@ def shot_bindings(manifest: dict, shot: dict, entry: dict) -> tuple[str | None, 
         # exactly the cut that turns out to jump, so it is said out loud even
         # though the render proceeds.
         if shot.get("continues"):
-            fix = f"studio scenes handoff {manifest['scene']} --shot {shot['n']}"
+            fix = f"studio scenes handoff {manifest['label']} --shot {shot['n']}"
             if roles["start_panel"] is None:
                 # No handoff and no opening panel: the shot has nothing to start
                 # from at all and would compose itself from references. That is
@@ -359,7 +364,7 @@ def shot_args(manifest: dict, shot: dict, entry: dict, opts) -> SimpleNamespace:
     extra = dict(motion.get("extra") or {})
     if motion.get("duration") is not None:
         extra.setdefault("duration", motion["duration"])
-    project, _, _ = manifest["scene"].partition("/")
+    project = manifest["project_slug"]
     return SimpleNamespace(
         model=entry["key"],
         project=project,
@@ -380,7 +385,7 @@ def shot_args(manifest: dict, shot: dict, entry: dict, opts) -> SimpleNamespace:
         # you the wardrobe and set particulars of the start frame.
         character=tuple(refs.get("characters") or ()),
         record_characters=tuple(manifest.get("characters") or ()),
-        record_extra={"scene": manifest["scene"], "scene_shot": shot["id"]},
+        record_extra={"scene": manifest["label"], "scene_shot": shot["id"]},
         pick=refs.get("pick"), pick_tag=refs.get("pick_tag"), slots=None,
         image_run=None, ref_run=(), input_=(), input=(),
         start_run=None, start_key=None, end_run=None, end_key=None,
@@ -446,40 +451,61 @@ def review_sheet(manifest: dict, label: str, items: list[tuple[str, str]],
     tmp = out_dir or tempfile.mkdtemp(prefix="review-")
     os.makedirs(tmp, exist_ok=True)
     paths, captions = [], []
-    for key, caption in items:
-        local = cache.get(key)
+    for node, caption in items:
+        local = cache.get(node)
         if local is None:
-            local = os.path.join(tmp, f"src-{len(cache)}-{os.path.basename(key)}")
-            store.download(key, pathlib.Path(local))
-            cache[key] = local
+            # The node's own name in the local filename, because a uuid tells
+            # nobody which image failed if the download does. The cache is keyed
+            # on the id, which is the thing that is actually unique.
+            name = store.node(node).get("name") or node
+            local = os.path.join(tmp, f"src-{len(cache)}-{name}")
+            store.download_node(node, pathlib.Path(local))
+            cache[node] = local
         paths.append(local)
         captions.append(caption)
     out = SHEET.build(paths, os.path.join(tmp, f"{label}.png"),
                       cols=min(len(paths), 5), cell=320, captions=captions, quiet=True)
 
-    project, _, scene_id = manifest["scene"].partition("/")
-    key = SC.scene_key(project, scene_id, "review", f"{label}.png")
-    store.upload(key, pathlib.Path(out), content_type="image/png")
-    return key if out_dir is None else f"{key}\n       (local copy: {out})"
+    review = SC.scene_folder(manifest, "review")
+    node = store.upload_into(review, f"{label}.png", pathlib.Path(out),
+                             content_type="image/png")
+    return node["id"] if out_dir is None else \
+        f"{node['id']}\n       (local copy: {out})"
 
 
 def _sheet_items(entry: dict, bindings: dict) -> list[tuple[str, str]]:
+    """(node id, caption) for every image one payload binds.
+
+    The caption carries the image's ROLE and its NAME. A binding is a node id
+    and a uuid in a caption is unreadable, so the name is looked up — one read
+    per image, on a sheet that already downloads each of them.
+    """
     images = entry.get("images") or {}
     items = []
+
+    def named(node: str) -> str:
+        return store.node(node).get("name") or node
+
     for field, role in ((images.get("start"), "start frame"), (images.get("end"), "end frame")):
         if field and bindings.get(field):
-            items.append((bindings[field], f"[{role}] {os.path.basename(bindings[field])}"))
-    for i, key in enumerate(bindings.get(images.get("refs")) or [], 1):
-        items.append((key, f"[Image{i}] {os.path.basename(key)}"))
+            items.append((bindings[field], f"[{role}] {named(bindings[field])}"))
+    for i, node in enumerate(bindings.get(images.get("refs")) or [], 1):
+        items.append((node, f"[Image{i}] {named(node)}"))
     return items
 
 
-def _resolve(ref: str, project: str | None):
-    owner, sid = SC.resolve_scene(ref, project)
-    manifest = SC.read_manifest(owner, sid)
-    if not manifest:
-        raise BoardError(f"no scene.json for {owner}/{sid}")
-    return owner, sid, manifest
+def _resolve(ref: str, project: str | None) -> dict:
+    """A sceneref -> the scene RECORD.
+
+    One value where this returned three. `resolve_scene` used to hand back
+    `(project, scene_id)` and every caller immediately read the manifest back
+    out of the bucket; the record carries its own project, its own folder node
+    and its shots, so there is nothing left to pair it with.
+    """
+    try:
+        return SC.resolve_scene(ref, project)
+    except SystemExit as exc:
+        raise BoardError(f"no scene {ref!r}") from exc
 
 
 # --------------------------------------------------------------------------
@@ -493,7 +519,7 @@ def run_check(ref: str, opts) -> int:
     between two paid renders, and a whole board can be planned wrong in one way —
     so the refusals are collected rather than raised one at a time.
     """
-    _owner, _sid, manifest = _resolve(ref, opts.project)
+    manifest = _resolve(ref, opts.project)
     shots = select_shots(manifest, tuple(opts.shot or ()))
     token = RA.load_token()
     problems: list[str] = []
@@ -502,7 +528,7 @@ def run_check(ref: str, opts) -> int:
 
     for shot in shots:
         for panel in shot.get("panels") or []:
-            if SB.is_supplied(panel) or (panel.get("key") and not panel.get("stale")):
+            if SB.is_supplied(panel) or (panel.get("node") and not panel.get("stale")):
                 continue
             try:
                 entry, _args, payload, bindings = prepare_panel(manifest, shot, panel, opts)
@@ -534,7 +560,8 @@ def run_check(ref: str, opts) -> int:
 # --------------------------------------------------------------------------
 
 def run_board(ref: str, opts) -> int:
-    owner, sid, manifest = _resolve(ref, opts.project)
+    manifest = _resolve(ref, opts.project)
+    owner = manifest['project_slug']
     shots = select_shots(manifest, tuple(opts.shot or ()))
 
     wanted = []
@@ -546,11 +573,11 @@ def run_board(ref: str, opts) -> int:
             # render — there is nothing to make, and --redo cannot make it.
             if SB.is_supplied(panel):
                 continue
-            if panel.get("key") and not (opts.redo or panel.get("stale")):
+            if panel.get("node") and not (opts.redo or panel.get("stale")):
                 continue
             wanted.append((shot, panel))
     if not wanted:
-        print(f"{manifest['scene']} is already boarded — pass --redo to render a "
+        print(f"{manifest['label']} is already boarded — pass --redo to render a "
               f"panel again.", file=sys.stderr)
         return 0
 
@@ -560,7 +587,7 @@ def run_board(ref: str, opts) -> int:
     # include the panels before it — which for a fresh board do not exist yet.
     # The whole-batch preflight `shoot` can do is not available here; each panel
     # is checked immediately before its own submit instead.
-    print(f"{manifest['scene']}: {len(wanted)} panel(s) to render", file=sys.stderr)
+    print(f"{manifest['label']}: {len(wanted)} panel(s) to render", file=sys.stderr)
     sheet_cache: dict[str, str] = {}
     prepared = []
     for shot, panel in wanted:
@@ -573,7 +600,9 @@ def run_board(ref: str, opts) -> int:
         prepared.append((shot, panel, entry, args, payload, bindings))
 
         # GATE 1 — the payload, in full, before anything bills.
-        run = f"{owner}/{R.new_run_id(args.slug)}"
+        # A LABEL, not an id: the run does not exist yet and must not, because
+        # hard rule #2 approves the payload before anything is recorded.
+        run = f"{owner}/{R.slugify(args.slug)}"
         print(f"\n===== {shot['id']} panel {panel['n']}  ->  a storyboard panel =====")
         print(SUB.render(entry, run, payload, bindings, False))
         sheet = review_sheet(manifest, f"{shot['id']}-p{panel['n']}",
@@ -589,7 +618,7 @@ def run_board(ref: str, opts) -> int:
     # is submitted: an approval flag is the door an agent walks through while
     # believing some earlier exchange counted as consent.
     if not click.confirm(f"\nsubmit {len(prepared)} panel generation(s) for "
-                         f"{manifest['scene']}?", default=False):
+                         f"{manifest['label']}?", default=False):
         print("nothing submitted.", file=sys.stderr)
         return 1
 
@@ -606,26 +635,33 @@ def run_board(ref: str, opts) -> int:
             print(f"  FAILED — {exc}", file=sys.stderr)
             failed.append((label, str(exc)))
             continue
-        _p, run_id = R.resolve_run(f"{owner}/latest", owner)
-        outs = R.run_outputs(owner, run_id)
+        record = R.resolve_run(f"{owner}/latest", owner)
+        outs = record.get("outputs") or []
         if not outs:
             failed.append((label, "the run recorded no output"))
             continue
-        src = outs[0]
-        dest = panel_storyboard_key(manifest, shot, panel, os.path.splitext(src)[1])
+        src = outs[0]["node"]
+        dest_name = panel_storyboard_name(shot, panel,
+                                          os.path.splitext(outs[0]["name"] or "")[1])
         # The run keeps its own output; the board holds a copy of the panel as it
-        # was when approved. This was a server-side CopyObject and is now a read
-        # and a write through the API, so the bytes travel through this process —
-        # see `store.copy`. A shared blob would have been cheaper and is #334's
-        # hazard, not this one's.
-        store.copy(src, dest, content_type="image/png")
-        panel.update(run=f"{owner}/{run_id}", source_key=src, key=dest,
+        # was when approved. A real copy — two blobs, two lifetimes — because a
+        # second row on one blob is copy-on-write (#334) and the delete route
+        # destroys the shared bytes when either row goes.
+        storyboard = SC.scene_folder(manifest, "storyboard")
+        copied = store.copy_nodes([src], storyboard)["nodes"][0]
+        if copied["name"] != dest_name:
+            store.rename_node(copied["id"], dest_name)
+        # NODE IDS on every field, under the names the plan schema uses:
+        # `node` is the boarded image and `source_node` the run output it was
+        # copied from. They were `key` and `source_key` and held paths, which a
+        # rename of either file invalidated.
+        panel.update(run=record["id"], source_node=src, node=copied["id"],
                      boarded=R._now(), stale=False)
-        SC.write_manifest(manifest)
-        boarded[label] = dest
+        manifest = SC.save_shots(manifest, SC.scene_shots(manifest))
+        boarded[label] = copied["id"]
 
     # GATE 2 — the board exists; nothing is animated yet.
-    print(json.dumps({"scene": manifest["scene"], "boarded": boarded,
+    print(json.dumps({"scene": manifest["label"], "boarded": boarded,
                       "failed": dict(failed), "rendered": None}, indent=2))
     if failed:
         print(f"\n{len(failed)} panel(s) FAILED:", file=sys.stderr)
@@ -633,8 +669,8 @@ def run_board(ref: str, opts) -> int:
             print(f"  {label}: {why}", file=sys.stderr)
     if boarded:
         print(f"\nlook at the board, then render a shot:\n"
-              f"  studio scenes sheet {manifest['scene']}\n"
-              f"  studio scenes render {manifest['scene']} --shot 1", file=sys.stderr)
+              f"  studio scenes sheet {manifest['label']}\n"
+              f"  studio scenes render {manifest['label']} --shot 1", file=sys.stderr)
     return 1 if failed else 0
 
 
@@ -643,7 +679,8 @@ def run_board(ref: str, opts) -> int:
 # --------------------------------------------------------------------------
 
 def run_render(ref: str, opts) -> int:
-    owner, sid, manifest = _resolve(ref, opts.project)
+    manifest = _resolve(ref, opts.project)
+    owner = manifest['project_slug']
     shots = select_shots(manifest, tuple(opts.shot))
     token = RA.load_token()
 
@@ -663,8 +700,8 @@ def run_render(ref: str, opts) -> int:
     # GATE 1
     sheet_cache: dict[str, str] = {}
     for shot, entry, args, payload, bindings in prepared:
-        run = f"{owner}/{R.new_run_id(args.slug)}"
-        print(f"\n===== {shot['id']}  ->  a shot of {manifest['scene']} =====")
+        run = f"{owner}/{R.slugify(args.slug)}"
+        print(f"\n===== {shot['id']}  ->  a shot of {manifest['label']} =====")
         print(SUB.render(entry, run, payload, bindings, False))
         sheet = review_sheet(manifest, shot["id"], _sheet_items(entry, bindings),
                              opts.review_sheet, sheet_cache)
@@ -676,7 +713,7 @@ def run_render(ref: str, opts) -> int:
         return 0
 
     if not click.confirm(f"\nsubmit {len(prepared)} shot generation(s) for "
-                         f"{manifest['scene']}?", default=False):
+                         f"{manifest['label']}?", default=False):
         print("nothing submitted.", file=sys.stderr)
         return 1
 
@@ -692,16 +729,20 @@ def run_render(ref: str, opts) -> int:
             print(f"  FAILED — {exc}", file=sys.stderr)
             failed.append((shot["id"], str(exc)))
             continue
-        _p, run_id = R.resolve_run(f"{owner}/latest", owner)
-        shot.update(run=f"{owner}/{run_id}", runref=f"{owner}/{run_id}#1",
+        # The run by ID on both fields. `run` used to be `<project>/<run_id>`
+        # and `runref` the same with `#1` — two strings that a project rename
+        # invalidated. An id needs no project and survives every rename, which
+        # is the property `PUT /api/scenes/<id>/shots` is storing.
+        record = R.resolve_run(f"{owner}/latest", owner)
+        shot.update(run=record["id"], runref=f"{record['id']}#1",
                     rendered=R._now())
-        SC.write_manifest(manifest)
-        rendered[shot["id"]] = f"{owner}/{run_id}#1"
+        manifest = SC.save_shots(manifest, SC.scene_shots(manifest))
+        rendered[shot["id"]] = f"{record['id']}#1"
 
     # GATE 2 — never assemble on its own. Cutting is a decision about the whole
     # scene, and it is made after looking at the shot, not as a side effect of
     # having rendered one.
-    print(json.dumps({"scene": manifest["scene"], "rendered": rendered,
+    print(json.dumps({"scene": manifest["label"], "rendered": rendered,
                       "failed": dict(failed), "assembled": None}, indent=2))
     if failed:
         print(f"\n{len(failed)} shot(s) FAILED:", file=sys.stderr)
@@ -711,7 +752,7 @@ def run_render(ref: str, opts) -> int:
         n = next(s["n"] for s in shots if s["id"] == shot_id)
         print(f"\n{shot_id}: look at it, then carry it forward:\n"
               f"  studio frames grid {runref.split('#')[0]}\n"
-              f"  studio scenes handoff {manifest['scene']} --shot {n + 1}",
+              f"  studio scenes handoff {manifest['label']} --shot {n + 1}",
               file=sys.stderr)
     return 1 if failed else 0
 

@@ -33,26 +33,23 @@ out of the Lambda's 6 MB request limit, and it is also **hard rule #3 intact**:
 anything handed to a model is an S3 object reached by a short-lived presigned
 URL, never an upload from disk.
 
-## Two ways in, because two kinds of thing live in the bucket
+## One way in, and there used to be two
 
-Most of the tree is **owned** — a character, a project, everything under them —
-and is addressed by name path through the catalog. A little of it is **shared**:
-`phrasebook/wording.yaml` and the `config/pose/` plates, which belong to no
-character and no project, which `catalog_seed.py` deliberately does not record,
-and which `dev-setup.sh` syncs straight into the bucket. Those have no node, so
-`resolve` 404s on them.
+Everything in the bucket is now addressed the same way: a node id, or a name
+path the API resolves to one. There is no second scheme and no exception.
 
-`shared_read` and `shared_presign` reach them through the API's key-addressed
-route (`GET /api/asset`) instead. Still the API, still no credentials here — a
-different route to the same authority, not an exception to it. Keeping the two
-names apart is the point: a call site reaching for `shared_*` is saying "this
-is owned by nobody", which is exactly the fact that makes it correct.
+**There was, and it is worth knowing what closed it.** `phrasebook/wording.yaml`
+and the `config/pose/` plates belonged to no character and no project, had no
+catalog node, and were reached by raw key through `GET /api/asset?key=` by a
+pair of `shared_*` functions here. That parameter was the last raw S3 key in the
+service and the sole reason `keys.clean_key` survived on the API side.
 
-**These two are the only reason `?key=` on that route is still a raw S3 key.**
-#432 moved the rest of the API onto node ids and name paths and #312 deleted the
-confinement that guarded them; `keys.clean_key` survives for this one parameter.
-Give shared material catalog nodes and both go together — until then, deleting
-either breaks `phrasebook` and every pose plate a shoot binds.
+Both halves went with the entity model rather than one of them: the phrasebook
+is `TERM#` rows, so there is no document to address, and the plates are ordinary
+nodes in a `config/` folder the library is created with. So `shared_read`,
+`shared_presign` and the `shared:<key>` marker `submit` carried them under are
+all deleted, and a plate is now *recorded* in a run's bindings like every other
+image — which the marker could not do, and said so.
 
 ## What is deliberately not here
 
@@ -329,22 +326,6 @@ def upload(path: str, source: Path, *, content_type: str) -> dict:
     return write(path, source.read_bytes(), content_type=content_type)
 
 
-def shared_presign(key: str, *, disposition: str = "inline") -> str:
-    """A short-lived URL for shared material, addressed by key.
-
-    For the phrasebook and the pose plates only. Anything a character or a
-    project owns has a node, and reaching it this way would bypass the
-    permission check that node carries.
-    """
-    signed = api.get("/api/asset", key=key.strip("/"), disposition=disposition)
-    return signed["url"]
-
-
-def shared_read(key: str) -> bytes:
-    """The bytes of one shared file. See `shared_presign`."""
-    return _fetch(shared_presign(key))
-
-
 def _fetch(url: str) -> bytes:
     try:
         with urllib.request.urlopen(url, timeout=TIMEOUT_SECONDS) as response:  # noqa: S310
@@ -368,3 +349,197 @@ def _put(url: str, body: bytes, headers: dict) -> None:
             return
     except urllib.error.URLError as error:
         raise StoreError(f"Could not upload the object ({error.reason}).") from error
+
+
+# ── the tree, addressed by node id ──────────────────────────────────────────
+#
+# **The half of this module that survives the entity model.** Everything above
+# takes a name path, which is what a person types and what `GET /api/resolve`
+# turns into a node. Everything below takes a node id, which is what a *record*
+# holds — a run names its folder, a reference names its image, a character names
+# its root — and a record that named a path would be stranded by the first
+# rename, which is the whole disease `docs/ENTITY_MODEL.md` sets out to cure.
+#
+# So the two halves are not duplicates and neither is scaffolding. A path is an
+# address a human uses once; an id is an identity a row keeps forever.
+
+
+def node(node_id: str) -> dict:
+    """One node's record by id. Raises `api.NotFound` if it is gone."""
+    return api.get(f"/api/nodes/{node_id}")
+
+
+def children_of(node_id: str) -> list[dict]:
+    """The direct children of a folder node, name-ascending as DynamoDB sorts.
+
+    Not natural order. `files_of` imposes that, for the reason `files` gives —
+    positional `[Image1]..[ImageN]` mapping — and a caller wanting folders
+    usually wants them alphabetically.
+    """
+    listed = api.get("/api/nodes", parent=node_id)
+    return listed if isinstance(listed, list) else []
+
+
+def files_of(node_id: str) -> list[dict]:
+    """The file children of a folder node, natural-sorted by name.
+
+    The id-addressed twin of `files`, and the sort is load-bearing for the same
+    reason: these become `[Image1]..[ImageN]` positionally, and a lexical sort
+    puts `_10` before `_2` and hands a model the wrong image under the right
+    name.
+    """
+    return sorted(
+        (entry for entry in children_of(node_id)
+         if entry.get("kind") == "file" and entry.get("name")),
+        key=lambda entry: natural_key(entry["name"]),
+    )
+
+
+def child(parent_id: str, name: str) -> dict | None:
+    """The child of a folder with this name, or None.
+
+    One listing rather than a resolve, because the caller almost always wants
+    several children of the same parent — a character's four pools, a run's
+    `output/` — and a listing is one request where four resolves are four.
+
+    **A missing folder is None, not an error**, and that is the self-healing
+    property the layout section of the spec describes: the conventional folders
+    are convention, so anything that cannot find one is entitled to make one
+    (`ensure_child_folder`) rather than to fail.
+    """
+    for entry in children_of(parent_id):
+        if entry.get("name") == name:
+            return entry
+    return None
+
+
+def ensure_child_folder(parent_id: str, name: str) -> dict:
+    """The named child folder, created if it is absent.
+
+    Idempotent by construction: a `Conflict` means something else created it
+    between the listing and the create, and the node it made is the right
+    answer. Refuses to hand back a file, because a caller asking for a folder is
+    about to write children into it.
+    """
+    found = child(parent_id, name)
+    if found is not None:
+        if found.get("kind") != "folder":
+            raise StoreError(f"{name!r} is a file, not a folder.")
+        return found
+    try:
+        return api.post("/api/nodes", {"parent": parent_id, "name": name,
+                                       "kind": "folder"})
+    except api.Conflict:
+        return child(parent_id, name) or {}
+
+
+def folder_path(root_id: str, *names: str) -> dict:
+    """Walk (and create) a chain of folders below a node. Returns the last one."""
+    current = {"id": root_id}
+    for name in names:
+        current = ensure_child_folder(current["id"], name)
+    return current
+
+
+def read_node(node_id: str) -> bytes:
+    """The bytes of one file, by id."""
+    return _fetch(api.get(f"/api/nodes/{node_id}/download-url")["url"])
+
+
+def presign_node(node_id: str, *, disposition: str = "inline") -> str:
+    """A short-lived HTTPS URL for one file, by id. **How anything reaches Replicate.**"""
+    return api.get(f"/api/nodes/{node_id}/download-url", disposition=disposition)["url"]
+
+
+def download_node(node_id: str, destination: Path) -> Path:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(read_node(node_id))
+    return destination
+
+
+def write_into(parent_id: str, name: str, body: bytes, *, content_type: str) -> dict:
+    """Create or replace a file inside a folder node, and return its node.
+
+    Three calls in the recoverable order, exactly as `write`: placeholder, PUT,
+    confirm. A failure before the confirm leaves a row nobody sees; a failure
+    after it would leave a row promising bytes that are not there.
+
+    A `Conflict` is a replace, and the node **keeps its identity** — which is
+    the property every record naming it depends on.
+    """
+    try:
+        node_record = api.post("/api/nodes", {"parent": parent_id, "name": name,
+                                              "kind": "file"})
+    except api.Conflict:
+        node_record = child(parent_id, name)
+        if node_record is None:
+            raise
+    signed = api.post(f"/api/nodes/{node_record['id']}/upload-url",
+                      {"size": len(body), "content_type": content_type})
+    _put(signed["url"], body, signed["headers"])
+    return api.post(f"/api/nodes/{node_record['id']}/confirm-upload")
+
+
+def upload_into(parent_id: str, name: str, source: Path, *, content_type: str) -> dict:
+    return write_into(parent_id, name, Path(source).read_bytes(), content_type=content_type)
+
+
+def upload_to_url(signed: dict, source: Path) -> None:
+    """PUT a local file at a URL some entity route already signed.
+
+    `POST /api/runs/<id>/outputs` and `POST /api/scenes/<id>/output` mint the
+    node and the URL together, so the placeholder dance `write_into` performs
+    has already happened server-side and repeating it would make a second node.
+    """
+    _put(signed["url"], Path(source).read_bytes(), signed.get("headers") or {})
+
+
+def rename_node(node_id: str, name: str) -> dict:
+    """Rename in place. **No object is written** — a name is a column."""
+    return api.patch(f"/api/nodes/{node_id}", {"name": name})
+
+
+def reparent_node(node_id: str, parent_id: str) -> dict:
+    """Reparent in place. **No object is written**, and the id survives."""
+    return api.patch(f"/api/nodes/{node_id}", {"parent": parent_id})
+
+
+def move_nodes(ids: list[str], destination: str) -> dict:
+    """Move many nodes into a folder. Rows only; the blobs never budge."""
+    return api.post("/api/nodes/move", {"ids": list(ids), "destination": destination})
+
+
+def copy_nodes(ids: list[str], destination: str) -> dict:
+    """Copy many nodes into a folder.
+
+    A real copy — two blobs, two independent lifetimes — for the reason `copy`
+    gives: a second row pointing at one blob is copy-on-write (#334), and the
+    delete route destroys the shared bytes when either row goes.
+    """
+    return api.post("/api/nodes/copy", {"ids": list(ids), "destination": destination})
+
+
+def delete_nodes(ids: list[str]) -> dict:
+    """Delete nodes and their blobs. The one operation here that destroys bytes."""
+    return api.request("DELETE", "/api/nodes", {"ids": list(ids)})
+
+
+def node_owner(node_id: str) -> dict | None:
+    """Which entity a node belongs to, derived from its ancestry.
+
+    `{kind, id, slug}` or None. Derived rather than stored, so a move that
+    changes the owner is visible immediately even though the blob key it was
+    stamped with is not rewritten — see the spec's note on key drift and
+    `catalog reseat`.
+    """
+    found = api.get(f"/api/nodes/{node_id}/owner")
+    return found or None
+
+
+def node_text(node_id: str) -> str:
+    """A text node's content. Used for run payload documents, which are NEVER parsed."""
+    return api.get(f"/api/nodes/{node_id}/text").get("content", "")
+
+
+def set_node_text(node_id: str, content: str) -> dict:
+    return api.patch(f"/api/nodes/{node_id}/text", {"content": content})

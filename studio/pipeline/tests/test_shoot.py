@@ -33,7 +33,6 @@ from studio_pipeline.domain import runs as R
 from studio_pipeline.engine import registry as REG
 from studio_pipeline.engine import shoot as SHOOT
 from studio_pipeline.engine import submit as SUB
-from tests.conftest import BUCKET
 
 REPO_CONFIG = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "config"
@@ -411,13 +410,32 @@ def test_identity_citations_read_as_a_list(positions, expected):
 
 # --- the invariant the feature rests on ------------------------------------
 
-def test_config_is_a_legal_binding_root():
-    key = P.pose_key("body", "front.png")
-    assert R.check_bindings({"input_images": [key]}) == {"input_images": [key]}
+def test_a_plate_binds_as_a_node_like_every_other_image(library, spec):
+    """A pose plate is recorded now, and that is the point of the change.
+
+    It used to be the one image a run could be shown and not remember: plates
+    had no node, so they travelled under a `shared:<key>` marker that was
+    stripped before the record was written. Both halves are gone — the plate is
+    an ordinary node under `config/`, so it binds and records like anything
+    else.
+    """
+    _seed_plates(library.fake, spec)
+    plate = library.fake._resolve(SHOOT.plate_key(spec["slots"][0]))["id"]
+    assert R.check_bindings({"input_images": [plate]}) == {"input_images": [plate]}
 
 
-def test_a_key_outside_the_known_roots_is_still_refused():
-    with pytest.raises(R.RunError):
+def test_a_plates_path_is_refused_like_any_other_path(library, spec):
+    """`KEY_ROOTS` is gone with the keys it allow-listed.
+
+    The old rule was "a binding must sit under a known root", which let a
+    `config/` path through and rejected `elsewhere/`. The rule is now simply
+    that a binding is a node id — a path is invalidated by any rename, which is
+    what left records dangling before — so being under `config/` earns nothing.
+    """
+    _seed_plates(library.fake, spec)
+    with pytest.raises(R.RunError, match="not a node id"):
+        R.check_bindings({"input_images": [SHOOT.plate_key(spec["slots"][0])]})
+    with pytest.raises(R.RunError, match="not a node id"):
         R.check_bindings({"input_images": ["elsewhere/front.png"]})
 
 
@@ -496,40 +514,69 @@ def test_an_unknown_slot_lists_the_real_ones(spec):
 
 # --- against the bucket ----------------------------------------------------
 
-def _seed_plates(s3, spec):
-    for slot in spec["slots"]:
-        s3.put_object(Bucket=os.environ["STUDIO_S3_BUCKET"],
-                      Key=slot["pose_image"], Body=b"png-bytes")
+def _seed_plates(fake, spec):
+    """Every plate the spec names, as a node under the library's `config/`.
+
+    Plates were shared material with no node and were seeded straight into the
+    bucket; they are ordinary nodes now, which is what lets `check_plates` ask
+    the catalog like everything else. `put_shared` still carries the name
+    because they belong to the library rather than to any entity.
+    """
+    # Deduped: a torso guide is shared by several face slots, and `put_shared`
+    # would otherwise make a second node with the same name in the same folder.
+    for key in dict.fromkeys(k for slot in spec["slots"] for k in SHOOT.plate_keys(slot)):
+        fake.put_shared(key, b"png-bytes")
 
 
-def test_missing_plates_point_at_dev_setup(media_bucket, spec):
+def _seed_pool(fake, library, *names: str):
+    """Put image nodes in subject-a's `seed/` pool and return their ids.
+
+    The `library` fixture seeds references and an input pool but no seed
+    photographs, because most of the suite has no use for them. A shoot does:
+    seed material is what it prefers, precisely so a shoot is not driven by
+    earlier model output.
+    """
+    seed = fake._child(library.character_root, "seed")
+    return [fake.put_file(seed["id"], name, b"webp-" + name.encode())["id"]
+            for name in names]
+
+
+def test_missing_plates_point_at_dev_setup(library, spec):
     with pytest.raises(SHOOT.ShootError, match="dev-setup"):
         SHOOT.check_plates(spec["slots"])
 
 
-def test_plates_present_pass_the_check(media_bucket, spec):
-    _seed_plates(media_bucket, spec)
+def test_plates_present_pass_the_check(library, spec):
+    """The check asks the catalog, so a plate has to be a node to be found.
+
+    It asked `store.exists` on a name path while plates had none, which answered
+    False for every plate that was actually there — a refusal naming a script
+    the user had already run. That is why this test seeds nodes rather than
+    objects.
+    """
+    _seed_plates(library.fake, spec)
     SHOOT.check_plates(spec["slots"])  # no raise
 
 
-def test_identity_prefers_seed_over_generated_references(media_bucket):
-    keys, source = SHOOT.identity_keys("subject-a", "auto", None, None)
+def test_identity_prefers_seed_over_generated_references(library):
+    seeded = _seed_pool(library.fake, library, "subject-a_1.webp")
+    nodes, source = SHOOT.identity_nodes("subject-a", "auto", None, None)
     assert source == "seed"
-    assert all("/seed/" in k for k in keys)
+    assert nodes == seeded
 
 
-def test_identity_falls_back_to_references_when_seed_is_empty(media_bucket):
-    keys, source = SHOOT.identity_keys("subject-b", "auto", None, None)
+def test_identity_falls_back_to_references_when_seed_is_empty(library):
+    nodes, source = SHOOT.identity_nodes("subject-b", "auto", None, None)
     assert source == "reference"
-    assert keys
+    assert nodes == [library.b_face_1]
 
 
-def test_identity_seed_explicitly_refuses_to_substitute(media_bucket):
+def test_identity_seed_explicitly_refuses_to_substitute(library):
     with pytest.raises(SHOOT.ShootError, match="seed/"):
-        SHOOT.identity_keys("subject-b", "seed", None, None)
+        SHOOT.identity_nodes("subject-b", "seed", None, None)
 
 
-def test_an_oversized_identity_pool_is_refused_not_truncated(media_bucket):
+def test_an_oversized_identity_pool_is_refused_not_truncated(library):
     """Sorted order is not quality order, and `[:limit]` hides that.
 
     One character's seed pool opens with a poster, a launch graphic, a collage
@@ -539,25 +586,32 @@ def test_an_oversized_identity_pool_is_refused_not_truncated(media_bucket):
     does too.
     """
     with pytest.raises(SHOOT.ShootError) as exc:
-        SHOOT.identity_keys("subject-a", "refs", None, None, limit=1)
+        SHOOT.identity_nodes("subject-a", "refs", None, None, limit=1)
     assert "holds" in str(exc.value)          # says how many it found
-    assert "subject-a_1.webp" in str(exc.value)  # and lists them to choose from
+    # And lists them BY FILENAME. A refusal that printed node ids would be
+    # asking a person to choose between images they cannot tell apart, which is
+    # why `_label` prefers `name` over any id.
+    assert "front-neutral.webp" in str(exc.value)
+    assert "three-quarter.webp" in str(exc.value)
 
 
-def test_seed_pick_names_the_identity_images(media_bucket):
-    keys, source = SHOOT.identity_keys("subject-a", "seed", None, None,
-                                       limit=4, seed_pick="subject-a_1.webp")
+def test_seed_pick_names_the_identity_images(library):
+    first, _second = _seed_pool(library.fake, library,
+                                "subject-a_1.webp", "subject-a_2.webp")
+    nodes, source = SHOOT.identity_nodes("subject-a", "seed", None, None,
+                                         limit=4, seed_pick="subject-a_1.webp")
     assert source == "seed"
-    assert keys == ["characters/subject-a/seed/subject-a_1.webp"]
+    assert nodes == [first]
 
 
-def test_seed_pick_rejects_a_file_that_is_not_there(media_bucket):
+def test_seed_pick_rejects_a_file_that_is_not_there(library):
+    _seed_pool(library.fake, library, "subject-a_1.webp")
     with pytest.raises(SHOOT.ShootError, match="not in"):
-        SHOOT.identity_keys("subject-a", "seed", None, None,
-                            seed_pick="nope.webp")
+        SHOOT.identity_nodes("subject-a", "seed", None, None,
+                             seed_pick="nope.webp")
 
 
-def test_citations_match_where_the_plate_actually_lands(media_bucket, spec):
+def test_citations_match_where_the_plate_actually_lands(library, spec):
     """`{pose_slot}` must come from the RESOLVED order, never be assumed.
 
     `gather` de-dupes, filters by what the model accepts and orders by category,
@@ -565,31 +619,33 @@ def test_citations_match_where_the_plate_actually_lands(media_bucket, spec):
     that fails if someone hard-codes a number into a prompt.
     """
     from types import SimpleNamespace
-    _seed_plates(media_bucket, spec)
+    _seed_plates(library.fake, spec)
+    seed, = _seed_pool(library.fake, library, "subject-a_1.webp")
     slot = next(s for s in spec["slots"] if s["id"] == "face_front")
     entry = REG.get(spec["defaults"]["model"])
-    opts = SimpleNamespace(model=None, project="subject-a", extra=None, aspect_ratio=None,
-                           dry_run=True, yes=False, dest=None, expires=3600,
-                           identity=["characters/subject-a/seed/subject-a_1.webp"])
+    opts = SimpleNamespace(model=None, project=library.project, extra=None,
+                           aspect_ratio=None, dry_run=True, yes=False, dest=None,
+                           expires=3600, identity=[seed])
     args = SHOOT.slot_args(slot, spec, entry, "subject-a", opts)
     args.key = [SHOOT.plate_key(slot), *opts.identity]
     bindings = SUB.gather(entry, args)
     ordered = bindings[entry["images"]["refs"]]
+    plate = library.fake._resolve(SHOOT.plate_key(slot))["id"]
 
     assert len(ordered) == 2, ordered
-    plate_position = ordered.index(SHOOT.plate_key(slot)) + 1
+    plate_position = ordered.index(plate) + 1
     # The shoot passes the plate as its first explicit key, so it comes out
     # first — an outcome of how the keys are ordered, which is exactly why the
     # citation is read back from `ordered` rather than written into the prompt.
     assert plate_position == 1
-    identity_positions = [i + 1 for i, k in enumerate(ordered) if k != SHOOT.plate_key(slot)]
+    identity_positions = [i + 1 for i, k in enumerate(ordered) if k != plate]
     text = SHOOT.build_prompt(slot, spec, PROFILE, plate_position, identity_positions)
     assert f"[Image{plate_position}] is a POSE GUIDE" in text
     for n in identity_positions:
         assert f"[Image{n}]" in text.split("show the person")[0]
 
 
-def test_the_run_records_the_character_it_is_of(media_bucket, spec):
+def test_the_run_records_the_character_it_is_of(library, spec):
     """The shoot resolves its own keys, so it passes no --character.
 
     `record_characters` is what keeps `runs find --character` working; without it
@@ -597,16 +653,17 @@ def test_the_run_records_the_character_it_is_of(media_bucket, spec):
     """
     from types import SimpleNamespace
     slot = spec["slots"][0]
-    opts = SimpleNamespace(model=None, project="p", extra=None, aspect_ratio=None,
-                           dry_run=True, yes=False, dest=None, expires=3600)
+    opts = SimpleNamespace(model=None, project=library.project, extra=None,
+                           aspect_ratio=None, dry_run=True, yes=False, dest=None,
+                           expires=3600)
     args = SHOOT.slot_args(slot, spec, REG.get(spec["defaults"]["model"]), "subject-a", opts)
     assert args.character == ()
     assert args.record_characters == ("subject-a",)
 
 
-def test_shoot_dry_run_renders_every_slot_and_submits_nothing(media_bucket, spec, monkeypatch):
+def test_shoot_dry_run_renders_every_slot_and_submits_nothing(library, spec, monkeypatch):
     """The approval gate: nine payloads on screen, no prediction created."""
-    _seed_plates(media_bucket, spec)
+    _seed_plates(library.fake, spec)
     entry = REG.get(spec["defaults"]["model"])
     props = {f: {} for f in ("prompt", "aspect_ratio", "output_format", "quality",
                              "moderation", entry["images"]["refs"])}
@@ -618,39 +675,39 @@ def test_shoot_dry_run_renders_every_slot_and_submits_nothing(media_bucket, spec
     monkeypatch.setattr("studio_pipeline.adapters.replicate.create_prediction", refuse)
 
     result = CliRunner().invoke(cli.main, [
-        "character", "shoot", "subject-a", "--project", "subject-a", "--dry-run"])
+        "character", "shoot", "subject-a", "--project", "porch-teaser", "--dry-run"])
     assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
     for slot in spec["slots"]:
         assert f"slot {slot['id']}" in result.output
     assert "nothing billed" in result.output
 
 
-def test_shoot_needs_a_project(media_bucket, spec):
+def test_shoot_needs_a_project(library, spec):
     result = CliRunner().invoke(cli.main, ["character", "shoot", "subject-a", "--dry-run"])
     assert result.exit_code != 0
     assert "project" in result.output.lower()
 
 
-def test_shoot_refuses_an_unregistered_model(media_bucket, spec):
-    _seed_plates(media_bucket, spec)
+def test_shoot_refuses_an_unregistered_model(library, spec):
+    _seed_plates(library.fake, spec)
     result = CliRunner().invoke(cli.main, [
-        "character", "shoot", "subject-a", "--project", "subject-a",
+        "character", "shoot", "subject-a", "--project", "porch-teaser",
         "--model", "not-a-model", "--dry-run"])
     assert result.exit_code != 0
 
 
-def test_shoot_refuses_a_video_model(media_bucket, spec):
-    _seed_plates(media_bucket, spec)
+def test_shoot_refuses_a_video_model(library, spec):
+    _seed_plates(library.fake, spec)
     result = CliRunner().invoke(cli.main, [
-        "character", "shoot", "subject-a", "--project", "subject-a",
+        "character", "shoot", "subject-a", "--project", "porch-teaser",
         "--model", "kling", "--dry-run"])
     assert result.exit_code != 0
     assert "still" in result.output
 
 
-def test_create_shoot_refuses_the_blank_template(media_bucket):
+def test_create_shoot_refuses_the_blank_template(library):
     result = CliRunner().invoke(cli.main, [
-        "character", "create", "subject-c", "--shoot", "--project", "subject-a"])
+        "character", "create", "subject-c", "--shoot", "--project", "porch-teaser"])
     assert result.exit_code != 0
     assert "--from-profile" in result.output
 
@@ -699,50 +756,52 @@ def test_there_is_no_flag_that_approves_spending():
         assert not any(isinstance(p, click.Option) and "approve" in p.name for p in command.params)
 
 
-def test_a_shoot_never_writes_into_the_character(media_bucket, spec, monkeypatch):
+def test_a_shoot_never_writes_into_the_character(library, spec, monkeypatch):
     """Rendering is not the same decision as changing who a character IS.
 
     The shoot leaves results in their runs. Whatever it does, the character's
     reference folder and its index must look exactly as they did before.
     """
-    _seed_plates(media_bucket, spec)
+    _seed_plates(library.fake, spec)
     entry = REG.get(spec["defaults"]["model"])
     props = {f: {} for f in ("prompt", "aspect_ratio", "output_format", "quality",
                              "moderation", entry["images"]["refs"])}
     monkeypatch.setattr("studio_pipeline.engine.schema.fetch", lambda *a, **k: (props, {}))
 
-    from studio_pipeline.domain import characters as CHARACTER
-    before_index = CHARACTER.load_profile("subject-a")
-    before_files = CHARACTER.ref_files("subject-a")
+    from studio_pipeline.adapters import entities as E
+    before_entries = E.reference_entries(library.character)
+    before_profile = E.get_character(library.character)["profile"]
 
     CliRunner().invoke(cli.main, [
-        "character", "shoot", "subject-a", "--project", "subject-a", "--dry-run"])
+        "character", "shoot", "subject-a", "--project", "porch-teaser", "--dry-run"])
 
-    assert CHARACTER.ref_files("subject-a") == before_files
-    assert CHARACTER.load_profile("subject-a") == before_index
+    assert E.reference_entries(library.character) == before_entries
+    assert E.get_character(library.character)["profile"] == before_profile
     # And the module must not be able to: the filing helpers were removed
     # outright rather than left behind a flag.
     assert not hasattr(SHOOT, "file_output")
     assert not hasattr(SHOOT, "set_default_set")
 
 
-def test_promoting_a_run_output_is_a_separate_command(media_bucket):
+def test_promoting_a_run_output_is_a_separate_command(library):
     """`add-refs --from-run` is the second gate, and it copies rather than moves."""
-    from studio_pipeline.domain import characters as CHARACTER
+    from studio_pipeline.adapters import entities as E
 
-    run_output = "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch/output/wave-porch.jpeg"
+    before = {e["node"] for e in E.reference_entries(library.character)}
     result = CliRunner().invoke(cli.main, [
         "character", "add-refs", "subject-a", "--to", "face",
-        "--from-run", "subject-a/2026-08-04_21-30-54_wave-porch#1"])
+        "--from-run", "porch-teaser/latest#1"])
     assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
 
-    files = CHARACTER.ref_files("subject-a")
-    assert any(f.startswith("face/subject-a_face_") for f in files), files
-    # the run keeps its own output
-    media_bucket.head_object(Bucket=BUCKET, Key=run_output)
+    added = {e["node"] for e in E.reference_entries(library.character)} - before
+    assert len(added) == 1, added
+    # A copy, not a move: the run still owns its output, and the promoted node
+    # is a different one. Every record that cited the run's output still does.
+    assert added != {library.run_output}
+    assert E.get_run(library.run)["outputs"][0]["node"] == library.run_output
 
 
-def test_pick_and_seed_pick_combine_into_one_identity_set(media_bucket):
+def test_pick_and_seed_pick_combine_into_one_identity_set(library):
     """Naming references used to silence --seed-pick outright.
 
     That made the safer choice inexpressible: curated reference frames give
@@ -750,24 +809,27 @@ def test_pick_and_seed_pick_combine_into_one_identity_set(media_bucket):
     the real source so a shoot is not driven purely by earlier model output.
     The two pools now concatenate, references first, in the order named.
     """
-    keys, source = SHOOT.identity_keys(
+    seed, = _seed_pool(library.fake, library, "subject-a_1.webp")
+    nodes, source = SHOOT.identity_nodes(
         "subject-a", "auto",
-        "face/subject-a_1.webp", None, limit=4, seed_pick="subject-a_1")
+        "front-neutral.webp", None, limit=4, seed_pick="subject-a_1")
     assert source == "reference+seed"
-    assert len(keys) == 2
-    assert "/reference/" in keys[0] and "/seed/" in keys[1]
+    # References first, in the order named, then the seed picks — the ordering
+    # is what the prompt's `[ImageN]` citations are read against.
+    assert nodes == [library.face_1, seed]
 
 
-def test_combining_pools_still_respects_the_cap(media_bucket):
+def test_combining_pools_still_respects_the_cap(library):
     """The combined set is what is checked, not each pool separately."""
+    _seed_pool(library.fake, library, "subject-a_1.webp")
     with pytest.raises(SHOOT.ShootError) as exc:
-        SHOOT.identity_keys(
+        SHOOT.identity_nodes(
             "subject-a", "auto",
-            "face/subject-a_1.webp", None, limit=1, seed_pick="subject-a_1")
+            "front-neutral.webp", None, limit=1, seed_pick="subject-a_1")
     assert "--identity-max" in str(exc.value)
 
 
-def test_promoting_a_shot_run_carries_the_specs_description_and_tags(media_bucket, spec):
+def test_promoting_a_shot_run_carries_the_specs_description_and_tags(library, spec):
     """The spec's `description`/`tags` were dead data for a while.
 
     `shoot` stopped filing its own output once promotion became a separate human
@@ -776,37 +838,36 @@ def test_promoting_a_shot_run_carries_the_specs_description_and_tags(media_bucke
     descriptions were copied out of this file twice before it was noticed. The
     slot id now rides in the run record and is read back here.
     """
-    from studio_pipeline.domain import characters as CHARACTER
+    from studio_pipeline.adapters import entities as E
 
     slot = next(s for s in spec["slots"] if s["id"] == "face_front")
-    run = "2026-08-04_21-30-54_wave-porch"
-    req = R.read_json(R.run_key("subject-a", run, "request.json"))
-    req["reference_slot"] = "face_front"
-    R.write_json(R.run_key("subject-a", run, "request.json"), req)
+    # The slot rides on the run record, which is where `shoot` puts it.
+    library.fake.runs[library.run].setdefault("extra", {})["reference_slot"] = "face_front"
 
+    before = {e["node"] for e in E.reference_entries(library.character)}
     result = CliRunner().invoke(cli.main, [
         "character", "add-refs", "subject-a", "--to", "face",
-        "--from-run", f"subject-a/{run}#1"])
+        "--from-run", "porch-teaser/latest#1"])
     assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
 
-    _data, entries = CHARACTER.read_index("subject-a")
-    added = [e for e in entries if e.get("file", "").startswith("face/subject-a_face_")]
+    entries = E.reference_entries(library.character)
+    added = [e for e in entries if e["node"] not in before]
     assert added, entries
     assert added[-1]["description"] == " ".join(slot["description"].split())
     assert added[-1]["tags"] == list(slot["tags"])
 
 
-def test_promoting_a_run_that_was_not_shot_leaves_it_undescribed(media_bucket):
+def test_promoting_a_run_that_was_not_shot_leaves_it_undescribed(library):
     """Provenance is a bonus, never a requirement: a run with no slot recorded
     must still promote, and must not borrow some other slot's description."""
-    from studio_pipeline.domain import characters as CHARACTER
+    from studio_pipeline.adapters import entities as E
 
+    before = {e["node"] for e in E.reference_entries(library.character)}
     result = CliRunner().invoke(cli.main, [
         "character", "add-refs", "subject-a", "--to", "face",
-        "--from-run", "subject-a/2026-08-04_21-30-54_wave-porch#1"])
+        "--from-run", "porch-teaser/latest#1"])
     assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
-    _data, entries = CHARACTER.read_index("subject-a")
-    added = [e for e in entries if e.get("file", "").startswith("face/subject-a_face_")]
+    added = [e for e in E.reference_entries(library.character) if e["node"] not in before]
     assert added and not (added[-1].get("description") or "").strip()
 
 
@@ -819,7 +880,7 @@ def test_a_shoot_records_the_slot_each_run_came_from(spec):
     assert args.record_extra == {"reference_slot": spec["slots"][0]["id"]}
 
 
-def test_add_refs_with_nothing_to_add_says_so(media_bucket):
+def test_add_refs_with_nothing_to_add_says_so(library):
     result = CliRunner().invoke(cli.main, ["character", "add-refs", "subject-a", "--to", "face"])
     assert result.exit_code != 0
     assert "--from-run" in result.output
@@ -855,7 +916,7 @@ def test_style_falls_back_when_a_bible_names_none(spec):
 
 # --- seeing what is sent ---------------------------------------------------
 
-def test_review_sheet_labels_images_in_the_order_the_model_gets_them(media_bucket, spec, tmp_path):
+def test_review_sheet_labels_images_in_the_order_the_model_gets_them(library, spec, tmp_path):
     """A payload names its images; a name is not a look.
 
     Captions must be `[ImageN]` in binding order, so the sheet and the prompt's
@@ -863,31 +924,30 @@ def test_review_sheet_labels_images_in_the_order_the_model_gets_them(media_bucke
     natural-sorts the tiles the way a pool listing would.
     """
     from PIL import Image
-    _seed_plates(media_bucket, spec)
-    keys = [
-        "config/pose/face/front.png",
-        "characters/subject-a/seed/subject-a_1.webp",
-    ]
-    for key in keys:
-        Image.new("RGB", (40, 60), "grey").save(tmp_path / "src.png")
-        media_bucket.upload_file(str(tmp_path / "src.png"), BUCKET, key)
+    Image.new("RGB", (40, 60), "grey").save(tmp_path / "src.png")
+    png = (tmp_path / "src.png").read_bytes()
 
-    out = SHOOT.review_sheet("face_front", keys, str(tmp_path / "sheet"), {})
+    plate = library.fake.put_shared("config/pose/face/front.png", png)["id"]
+    seed = library.fake._child(library.character_root, "seed")
+    photo = library.fake.put_file(seed["id"], "subject-a_1.png", png)["id"]
+
+    out = SHOOT.review_sheet("face_front", [plate, photo], str(tmp_path / "sheet"), {})
     assert os.path.isfile(out)
     assert out.endswith("face_front.png")
 
 
-def test_review_sheet_downloads_each_image_once(media_bucket, spec, tmp_path):
+def test_review_sheet_downloads_each_image_once(library, spec, tmp_path):
     """Identity images repeat across slots; the cache is what stops re-fetching."""
     from PIL import Image
-    key = "characters/subject-a/seed/subject-a_1.webp"
     Image.new("RGB", (40, 60), "grey").save(tmp_path / "src.png")
-    media_bucket.upload_file(str(tmp_path / "src.png"), BUCKET, key)
+    seed = library.fake._child(library.character_root, "seed")
+    node = library.fake.put_file(seed["id"], "subject-a_1.png",
+                                 (tmp_path / "src.png").read_bytes())["id"]
 
     cache: dict = {}
-    SHOOT.review_sheet("a", [key], str(tmp_path / "s"), cache)
+    SHOOT.review_sheet("a", [node], str(tmp_path / "s"), cache)
     first = dict(cache)
-    SHOOT.review_sheet("b", [key], str(tmp_path / "s"), cache)
+    SHOOT.review_sheet("b", [node], str(tmp_path / "s"), cache)
     assert cache == first, "the second slot re-downloaded an image it already had"
 
 
@@ -941,7 +1001,7 @@ def test_models_without_the_flag_are_unaffected():
     SUB._check_image_budget(entry, {field: [f"k{i}" for i in range(12)]})
 
 
-def test_a_start_frame_is_format_checked_like_every_other_image(monkeypatch):
+def test_a_start_frame_is_format_checked_like_every_other_image(library, monkeypatch):
     """The rule used to live inside the reference-list branch, so a `.webp`
     start frame reached a model that rejects `.webp` and failed at the provider
     — after the submit, and in the provider's words rather than ones that name
@@ -955,18 +1015,19 @@ def test_a_start_frame_is_format_checked_like_every_other_image(monkeypatch):
     # not because it may not run, but because it is a different subject and has
     # its own tests in `test_board`. This used to be a `None` s3 client passed
     # positionally, which turned a test's need into a production parameter.
-    monkeypatch.setattr("studio_pipeline.adapters.store.size", lambda _key: 0)
+    monkeypatch.setattr("studio_pipeline.adapters.store.size", lambda _node: 0)
     args = SimpleNamespace(
-        start_key="projects/p/input/p_in_1.webp", start_run=None,
+        start_key=library.input_1, start_run=None,
         end_key=None, end_run=None, image_run=None, character=(), ref_run=(),
         input_=(), input=(), key=[], pick=None, pick_tag=None, slots=None,
-        project="p", no_refs=True,
+        project=library.project, no_refs=True,
     )
     with pytest.raises(SUB.SubmitError) as exc:
         SUB.gather(entry, args)
     assert ".webp" in str(exc.value)
     assert "studio convert" in str(exc.value), "the error must name the fix"
 
-    # A legal start frame, with no references at all, still passes.
-    args.start_key = "projects/p/input/p_in_1.png"
-    assert SUB.gather(entry, args)[images["start"]].endswith(".png")
+    # A legal start frame, with no references at all, still passes. The pool
+    # holds a `.png` for exactly this: the video engines reject `.webp`.
+    args.start_key = library.input_3
+    assert SUB.gather(entry, args)[images["start"]] == library.input_3

@@ -350,7 +350,13 @@ def _plate_key(slot: dict, field: str) -> str:
 
 
 def check_plates(slots: list[dict]) -> None:
-    """Every plate must already be in the bucket. Fail once, listing all of them."""
+    """Every plate must already be there. Fail once, listing all of them.
+
+    An ordinary `exists` on an ordinary name path, because a plate is an
+    ordinary node under the library's `config/` folder. It was shared material
+    with no node until the entity model, which is why this used to be the one
+    check that could not ask the catalog.
+    """
     missing = []
     for slot in slots:
         for key in plate_keys(slot):
@@ -365,7 +371,7 @@ def check_plates(slots: list[dict]) -> None:
         )
 
 
-def _too_many(name: str, pool: str, keys: list[str], limit: int, how: str) -> ShootError:
+def _too_many(name: str, pool: str, entries: list[dict], limit: int, how: str) -> ShootError:
     """Refuse an oversized pool rather than taking the first few.
 
     `reference/` already refuses an over-cap selection rather than truncating,
@@ -376,23 +382,35 @@ def _too_many(name: str, pool: str, keys: list[str], limit: int, how: str) -> Sh
     worst images in it for carrying a face, and exactly the four a silent
     `[:limit]` would have sent.
     """
-    listing = "".join(f"       {os.path.basename(k)}\n" for k in keys[:20])
-    more = f"       … and {len(keys) - 20} more\n" if len(keys) > 20 else ""
+    listing = "".join(f"       {_label(e)}\n" for e in entries[:20])
+    more = f"       … and {len(entries) - 20} more\n" if len(entries) > 20 else ""
     return ShootError(
-        f"{name}'s {pool}/ holds {len(keys)} images and a slot sends {limit}.\n"
+        f"{name}'s {pool}/ holds {len(entries)} images and a slot sends {limit}.\n"
         f"       Name the ones that carry identity best — a clear, unobstructed "
         f"view of the face and build:\n{listing}{more}"
         f"       {how}"
     )
 
 
-def _seed_picked(name: str, seed_pick: str) -> list[str]:
+def _seed_nodes(name: str) -> list[dict]:
+    """The image NODES in a character's seed pool.
+
+    Node records rather than ids, because everything this module does with a
+    seed image afterwards is either bind it (which wants the id) or name it to a
+    person (which wants the filename). A pool listing that returned only ids
+    would make every refusal below print uuids at somebody trying to choose
+    between four photographs.
+    """
+    return [n for n in REFS.character_pool_nodes(name, "seed")
+            if os.path.splitext(n.get("name") or "")[1].lower() in R.IMG_EXTS]
+
+
+def _seed_picked(name: str, seed_pick: str) -> list[dict]:
     """Resolve `--seed-pick` names, by basename or bare stem, in the order given."""
-    seed = [k for k in REFS.character_pool_keys(name, "seed")
-            if os.path.splitext(k)[1].lower() in R.IMG_EXTS]
+    seed = _seed_nodes(name)
     want = [x.strip() for x in seed_pick.split(",") if x.strip()]
-    by_base = {os.path.basename(k): k for k in seed}
-    by_stem = {os.path.splitext(b)[0]: k for b, k in by_base.items()}
+    by_base = {n["name"]: n for n in seed}
+    by_stem = {os.path.splitext(b)[0]: n for b, n in by_base.items()}
     missing = [w for w in want if w not in by_base and w not in by_stem]
     if missing:
         raise ShootError(
@@ -401,10 +419,36 @@ def _seed_picked(name: str, seed_pick: str) -> list[str]:
     return [by_base.get(w) or by_stem[w] for w in want]
 
 
-def identity_keys(name: str, source: str, pick: str | None, tags: str | None,
-                  limit: int = IDENTITY_MAX,
-                  seed_pick: str | None = None) -> tuple[list[str], str]:
-    """The images that say WHO this is, and where they came from.
+def _ids(entries: list[dict]) -> list[str]:
+    """Node ids out of selection entries or node records, whichever arrived.
+
+    `character_selection` keys the node on `node` and `character_pool_nodes`
+    keys it on `id`, because the first is a `REF#` row wearing its file and the
+    second is a plain node. One place knows both spellings rather than four.
+    """
+    return [e.get("node") or e["id"] for e in entries]
+
+
+def _label(entry: dict) -> str:
+    """What to call an image when asking a person to choose between them.
+
+    Its filename, which is the only thing they can recognise. A node id is the
+    right thing to BIND and the wrong thing to print in a refusal — the
+    distinction the entity model makes everywhere, applied to one message.
+    """
+    return entry.get("name") or entry.get("node") or entry.get("id") or "?"
+
+
+def identity_nodes(name: str, source: str, pick: str | None, tags: str | None,
+                   limit: int = IDENTITY_MAX,
+                   seed_pick: str | None = None) -> tuple[list[str], str]:
+    """The NODE IDS of the images that say WHO this is, and where they came from.
+
+    Node ids, where this returned S3 keys. A binding names a node now, so a
+    shoot that resolved a path would be stranded the first time one of these
+    images was renamed — which is the whole of what the entity model fixes and
+    is exactly the case that matters here, because a seed photograph is renamed
+    by hand more often than anything else in a character.
 
     Seed material is preferred: it is the founding source, and driving a shoot
     off already-generated references feeds model output back in as identity,
@@ -414,7 +458,7 @@ def identity_keys(name: str, source: str, pick: str | None, tags: str | None,
     the caller is asked which — see `_too_many`.
     """
     if pick or tags:
-        keys = REFS.character_ref_keys(
+        chosen = REFS.character_selection(
             name, None, [x.strip() for x in pick.split(",")] if pick else None,
             [t.strip() for t in tags.split(",")] if tags else None)
         # The two pools MIX. Naming references used to silence --seed-pick
@@ -424,25 +468,24 @@ def identity_keys(name: str, source: str, pick: str | None, tags: str | None,
         # purely by earlier model output. Refusing the combination made the
         # safer choice the one you could not express.
         if seed_pick:
-            keys = keys + _seed_picked(name, seed_pick)
+            chosen = chosen + _seed_picked(name, seed_pick)
             source = "reference+seed"
         else:
             source = "reference"
-        if len(keys) > limit:
-            raise _too_many(name, source, keys, limit,
+        if len(chosen) > limit:
+            raise _too_many(name, source, chosen, limit,
                             "Narrow --pick / --pick-tag / --seed-pick, or raise "
                             "--identity-max.")
-        return keys, source
+        return _ids(chosen), source
 
     if source in ("auto", "seed"):
-        seed = REFS.character_pool_keys(name, "seed")
-        seed = [k for k in seed if os.path.splitext(k)[1].lower() in R.IMG_EXTS]
+        seed = _seed_nodes(name)
         if seed_pick:
-            chosen = _seed_picked(name, seed_pick)
-            if len(chosen) > limit:
-                raise _too_many(name, "seed", chosen, limit,
+            picked = _seed_picked(name, seed_pick)
+            if len(picked) > limit:
+                raise _too_many(name, "seed", picked, limit,
                                 "Pick fewer, or raise --identity-max.")
-            return chosen, "seed"
+            return _ids(picked), "seed"
         if seed:
             if len(seed) > limit:
                 raise _too_many(
@@ -451,32 +494,32 @@ def identity_keys(name: str, source: str, pick: str | None, tags: str | None,
                     f"       --identity refs --pick …        # use the reference index instead\n"
                     f"       studio contact-sheet --character {name} --folder seed --out "
                     f"/tmp/{name}-seed.png   # look first")
-            return seed, "seed"
+            return _ids(seed), "seed"
         if source == "seed":
             raise ShootError(
                 f"{name} has no images in seed/, and --identity seed was asked for.\n"
                 f"       Add the founding material: studio character add-to {name} seed <files…>"
             )
 
-    keys = REFS.character_ref_keys(name, None, None, None)
-    if not keys:
+    chosen = REFS.character_selection(name, None, None, None)
+    if not chosen:
         raise ShootError(
             f"{name} has nothing to carry identity — seed/ is empty and reference/ has "
             f"no selection.\n"
             f"       Add source material first: studio character add-to {name} seed <files…>"
         )
-    if len(keys) > limit:
-        raise _too_many(name, "reference", keys, limit,
+    if len(chosen) > limit:
+        raise _too_many(name, "reference", chosen, limit,
                         f"Narrow it with --pick / --pick-tag, or set a default_set:\n"
                         f"       studio character refs {name} --describe")
-    return keys, "reference"
+    return _ids(chosen), "reference"
 
 
 # --------------------------------------------------------------------------
 # seeing what is actually being sent
 # --------------------------------------------------------------------------
 
-def review_sheet(slot_id: str, keys: list[str], out_dir: str, cache: dict) -> str:
+def review_sheet(slot_id: str, nodes: list[str], out_dir: str, cache: dict) -> str:
     """A labelled contact sheet of the images one payload binds, in slot order.
 
     The payload review names its images (`<presigned: characters/…>`) but a name
@@ -487,19 +530,25 @@ def review_sheet(slot_id: str, keys: list[str], out_dir: str, cache: dict) -> st
 
     Tiles are captioned `[ImageN]` in the order the model receives them, so the
     sheet and the prompt's citations read against each other.
+
+    **Takes node ids and captions them by their `name`.** It took S3 keys and
+    captioned them with `os.path.basename`, which under the entity model would
+    have written a uuid under every tile — the sheet exists to be recognised,
+    and a caption nobody can match to a file is worse than none.
     """
     from studio_pipeline.domain import contact_sheet as SHEET
 
     os.makedirs(out_dir, exist_ok=True)
     paths, captions = [], []
-    for i, key in enumerate(keys, start=1):
-        local = cache.get(key)
+    for i, node in enumerate(nodes, start=1):
+        name = store.node(node).get("name") or node
+        local = cache.get(node)
         if local is None:
-            local = os.path.join(out_dir, f"src-{len(cache)}-{os.path.basename(key)}")
-            store.download(key, pathlib.Path(local))
-            cache[key] = local
+            local = os.path.join(out_dir, f"src-{len(cache)}-{name}")
+            store.download_node(node, pathlib.Path(local))
+            cache[node] = local
         paths.append(local)
-        captions.append(f"[Image{i}] {os.path.basename(key)}")
+        captions.append(f"[Image{i}] {name}")
     out = os.path.join(out_dir, f"{slot_id}.png")
     return SHEET.build(paths, out, cols=min(len(paths), 5), cell=320,
                        captions=captions, quiet=True)
@@ -588,9 +637,13 @@ def prepare(slot: dict, spec: dict, profile: dict, name: str, opts):
     ordered = bindings.get(field) or []
     if not ordered:
         raise ShootError(f"slot {slot['id']!r} resolved no image inputs.")
-    plates = plate_keys(slot)
-    torso = torso_plate_key(slot)
-    pose_pos = ordered.index(plate_key(slot)) + 1
+    # `ordered` holds NODE IDS — `gather` resolved every one of them — so the
+    # plates have to be resolved to ids before their positions can be found in
+    # it. Looking up the name path returned a `ValueError` from `list.index`
+    # for every slot with a plate, which is all of them.
+    plates = [SUB.as_node(key) for key in plate_keys(slot)]
+    torso = SUB.as_node(torso_plate_key(slot)) if torso_plate_key(slot) else None
+    pose_pos = ordered.index(plates[0]) + 1
     torso_pos = ordered.index(torso) + 1 if torso else None
     identity_pos = [i + 1 for i, k in enumerate(ordered) if k not in plates]
 
@@ -614,7 +667,12 @@ def prepare(slot: dict, spec: dict, profile: dict, name: str, opts):
 def run_shoot(name: str, opts) -> int:
     """The whole shoot. Shared with `character create --shoot`."""
     CHARACTER.check_name(name)
-    opts.project = PROJ.require_project(opts.project)
+    # `require_project` returns the RECORD now, not the slug it was handed. Both
+    # are needed and they are kept apart deliberately: the record is what a run
+    # is filed against (an id, which survives a rename), the slug is what gets
+    # printed back to a person and pasted into the follow-up commands below.
+    project = PROJ.require_project(opts.project)
+    opts.project = project["slug"]
 
     spec = load_spec()
     slots = select_slots(spec, opts.group, tuple(opts.slot or ()))
@@ -630,12 +688,14 @@ def run_shoot(name: str, opts) -> int:
               f"less to hold the render on-model.", file=sys.stderr)
     check_plates(slots)
 
-    ident, source = identity_keys(name, opts.identity, opts.pick, opts.pick_tag,
-                                  opts.identity_max, getattr(opts, "seed_pick", None))
+    ident, source = identity_nodes(name, opts.identity, opts.pick, opts.pick_tag,
+                                   opts.identity_max, getattr(opts, "seed_pick", None))
     opts.identity = ident
     print(f"identity from {source}/ — {len(ident)} image(s):", file=sys.stderr)
-    for k in ident:
-        print(f"  {k}", file=sys.stderr)
+    for node in ident:
+        # The id AND the name. The id is what the run records and what a reader
+        # can look up afterwards; the name is the only half a person recognises.
+        print(f"  {node}  {store.node(node).get('name', '')}", file=sys.stderr)
 
     token = RA.load_token()
     prepared = []
@@ -650,7 +710,10 @@ def run_shoot(name: str, opts) -> int:
     # GATE 1 — every payload, in full, before anything bills.
     sheet_cache: dict[str, str] = {}
     for slot, entry, args, payload, bindings in prepared:
-        run = f"{opts.project}/{R.new_run_id(args.slug)}"
+        # A LABEL for the approval block, not an id. A run id is minted by the
+        # API when the run is recorded, which has not happened yet and must not:
+        # hard rule #2 says the payload is approved before anything exists.
+        run = f"{opts.project}/{R.slugify(args.slug)}"
         print(f"\n===== slot {slot['id']}  ->  run output (NOT yet a reference) =====")
         print(SUB.render(entry, run, payload, bindings, False))
         if opts.review_sheet:
@@ -689,8 +752,12 @@ def run_shoot(name: str, opts) -> int:
             print(f"  FAILED — {exc}", file=sys.stderr)
             failed.append((slot["id"], str(exc)))
             continue
-        _project, run_id = R.resolve_run(f"{opts.project}/latest", opts.project)
-        runrefs[slot["id"]] = f"{opts.project}/{run_id}#1"
+        # The run the submit just recorded, by id. `latest` is resolved once and
+        # immediately reduced to an id, because the follow-up `add-refs` line
+        # printed below may be pasted an hour later — by which time `latest`
+        # means a different run.
+        record = R.resolve_run(f"{opts.project}/latest", opts.project)
+        runrefs[slot["id"]] = f"{record['id']}#1"
 
     # GATE 2 — the results stay in their runs. Putting a generated image into
     # `characters/<name>/reference/` changes who that character IS, and that is a

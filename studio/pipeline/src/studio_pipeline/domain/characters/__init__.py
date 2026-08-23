@@ -1,16 +1,21 @@
-"""The character record — `characters/<name>/` and the `studio character` tree.
+"""The character record — a row with a UUID, and the `studio character` tree.
 
-One 1,235-line module until #305. It is now five: `base` (names, pools, paths),
-`profile` (the bible and its local round trip), `refs` (the described reference
-index), `pools` (corpus/seed/archive) and `rename`. `cli` assembles the command
-group.
+One 1,235-line module until #305, then five, and now four: `base` (the record,
+its pools, its node helpers), `profile` (the bible and its local round trip),
+`refs` (the `REF#` index) and `pools` (corpus/seed/archive). `cli` assembles the
+command group.
 
-**This file re-exports what the rest of the package already imports**, so
-`CHARACTER.load_profile` and the nine other names `engine/` and `curate` reach
-for keep working. That is deliberate and not permanent scaffolding: the split
-was made reviewable by keeping every call site outside this package unchanged,
-and moving those imports onto the submodule that owns each name is a separate,
-mechanical pass.
+**`rename.py` is gone.** It listed four pools, `PATCH`ed every basename carrying
+the slug, rewrote the bible's index to match, and then swept every run document
+in every project rewriting the paths they had recorded. A rename is one
+`PATCH /api/characters/<id>` now, and the module has nothing left to do.
+
+**This file re-exports what the rest of the pipeline imports**, so
+`CHARACTER.load_profile` and its neighbours keep working from `engine/` and
+`domain/curate.py`. Two names are new and are the seam those modules are written
+against: `resolve(slug_or_id)` returns the record — the thing every command
+starts from — and `selection_nodes` returns the entries a model would be shown,
+resolved by the API rather than here.
 """
 
 from studio_pipeline.domain.characters.base import (
@@ -18,52 +23,46 @@ from studio_pipeline.domain.characters.base import (
     LOCAL_DIR,
     NAME_RE,
     POOLS,
-    PROFILE_CT,
-    PROFILE_FILE,
     TEMPLATE,
     check_name,
     die,
-    group_prefix,
     pool_folder,
-    pool_max_index,
-    profile_key,
-    put_file,
+    pool_nodes,
     read_text,
+    resolve,
+    upload_file,
+    warn_ignored_expiry,
     write_text,
 )
 from studio_pipeline.domain.characters.cli import main
 from studio_pipeline.domain.characters.profile import (
+    PROFILE_KEYS,
     check_profile,
     do_pull,
     do_push,
+    document,
     fetch_profile,
     load_profile,
     local_paths,
     parse_profile,
-    remote_version,
+    remote_rev,
+    save_profile,
+    split_document,
     unified,
-    write_profile,
 )
 from studio_pipeline.domain.characters.refs import (
-    read_index,
-    ref_files,
-    ref_root,
-    resolve_selection,
-    sync_index,
-)
-from studio_pipeline.domain.characters.rename import (
-    default_display_name,
-    rename_in_profile,
-    rename_moves,
-    renamed_file,
+    REFERENCE_POOL,
+    UNSORTED,
+    entry_node,
+    reference_entries,
+    selection_nodes,
 )
 
 __all__ = [
-    "IMG_EXTS", "LOCAL_DIR", "NAME_RE", "POOLS", "PROFILE_CT", "PROFILE_FILE",
-    "TEMPLATE", "check_name", "check_profile", "default_display_name", "die",
-    "do_pull", "do_push", "fetch_profile", "group_prefix", "load_profile",
-    "local_paths", "main", "parse_profile", "pool_folder", "pool_max_index",
-    "profile_key", "put_file", "read_index", "read_text", "ref_files", "ref_root",
-    "remote_version", "rename_in_profile", "rename_moves", "renamed_file",
-    "resolve_selection", "sync_index", "unified", "write_profile", "write_text",
+    "IMG_EXTS", "LOCAL_DIR", "NAME_RE", "POOLS", "PROFILE_KEYS", "REFERENCE_POOL",
+    "TEMPLATE", "UNSORTED", "check_name", "check_profile", "die", "do_pull", "do_push",
+    "document", "entry_node", "fetch_profile", "load_profile", "local_paths", "main",
+    "parse_profile", "pool_folder", "pool_nodes", "read_text", "reference_entries",
+    "remote_rev", "resolve", "save_profile", "selection_nodes", "split_document",
+    "unified", "upload_file", "warn_ignored_expiry", "write_text",
 ]

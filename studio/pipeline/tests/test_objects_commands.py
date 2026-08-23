@@ -22,7 +22,6 @@ from click.testing import CliRunner
 
 from studio_pipeline import cli
 from studio_pipeline.adapters import api, store
-from tests.conftest import BUCKET
 
 
 @pytest.fixture
@@ -207,48 +206,57 @@ def test_upload_refuses_a_missing_file(fake_store, tmp_path):
 
 # ─────────────────────────────── convert ───────────────────────────────
 #
-# `media_bucket`, not `fake_store`: PIL has to open the source, so the bytes
-# have to be a real image rather than a marker.
+# `library`, not `fake_store`: PIL has to open the source, so the bytes have to
+# be a real image rather than a marker — and the destination is the project's
+# input pool, which is a real API call.
 
 
 @pytest.fixture
-def source_png(media_bucket):
-    """A real PNG in the tree, since the fixture's images are markers."""
+def source_png(library):
+    """A real PNG in the tree, since the fixture's images are markers.
+
+    Returns its NODE ID. `--key` still takes a name path too, and one of the
+    tests below uses one; a runref resolves to an id, which is the shape that
+    matters now.
+    """
     from PIL import Image
 
     buffer = io.BytesIO()
     Image.new("RGB", (4, 4), "white").save(buffer, "PNG")
-    key = "characters/<name>/corpus/photo.png"
-    media_bucket.put_object(Bucket=BUCKET, Key=key, Body=buffer.getvalue())
-    return key
+    corpus = library.fake._child(library.character_root, "corpus")
+    return library.fake.put_file(corpus["id"], "photo.png",
+                                 buffer.getvalue())["id"]
 
 
-def test_convert_numbers_on_from_the_input_pool(source_png, media_bucket):
-    """`projects.add_inputs` owns the numbering, and this proves it is asked.
+def test_convert_lands_in_the_input_pool_as_a_node(source_png, library):
+    """`projects.add_inputs` owns the destination, and this proves it is asked.
 
-    The pool already holds `<project>_in_3`, so the converted file is `_in_4`.
-    A second implementation of that rule is what this module used to carry, and
-    a stale one overwrites an existing input rather than failing.
+    **The numbering it used to own is gone.** This test asserted that a pool
+    holding `<project>_in_3` produced `<project>_in_4`, because `--input N`
+    meant "the file whose name ends `_N`" and a second implementation of that
+    rule would overwrite an existing input. `--input N` is a POSITION in the
+    API's listing now, so a converted file keeps whatever basename it arrived
+    with and the pool has no numbering left to get wrong.
 
-    Only `<project>_in_<n>` counts, which is why the fixture's `<project>_1..3`
-    do not move the number: those names predate the convention.
+    What is still worth pinning is that the command prints a node id and that
+    the bytes reach the pool — because the destination is the one thing about a
+    convert that cannot be undone by running it again.
     """
-    media_bucket.put_object(
-        Bucket=BUCKET, Key="projects/subject-a/input/subject-a_in_3.png", Body=b"png"
-    )
+    from studio_pipeline.domain import projects as PROJECTS
 
     result = _run("convert", "--key", source_png, "--to", "jpg",
-                  "--add-input", "subject-a")
+                  "--add-input", "porch-teaser")
 
     assert result.exit_code == 0, result.output
-    assert result.output.splitlines()[0] == "projects/subject-a/input/subject-a_in_4.jpg"
-    written = media_bucket.head_object(
-        Bucket=BUCKET, Key="projects/subject-a/input/subject-a_in_4.jpg"
-    )
-    assert written["ContentType"] == "image/jpeg"
+    node_id = result.output.splitlines()[0]
+    assert node_id.startswith("node-")
+    pool = PROJECTS.input_pool(PROJECTS.resolve("porch-teaser"))
+    landed = next(e for e in pool if e["id"] == node_id)
+    assert landed["content_type"] == "image/jpeg"
 
 
-def test_convert_to_an_explicit_destination_ensures_the_parent(source_png, monkeypatch):
+def test_convert_to_an_explicit_destination_ensures_the_parent(
+        source_png, library, monkeypatch):
     """Folders were free in S3 and are catalog rows now.
 
     `--dest-key` is the flag most likely to name a folder nothing has written
@@ -256,20 +264,35 @@ def test_convert_to_an_explicit_destination_ensures_the_parent(source_png, monke
     inventing it.
     """
     made = []
-    monkeypatch.setattr(store, "folder",
-                        lambda path: made.append(path) or {"id": f"node:{path}"})
+    real = store.folder
+
+    def spy(path):
+        made.append(path)
+        return real(path)
+
+    monkeypatch.setattr(store, "folder", spy)
 
     result = _run("convert", "--key", source_png, "--to", "webp",
-                  "--dest-key", "projects/subject-a/derived/frame.webp")
+                  "--dest-key", "porch-teaser/derived/frame.webp")
 
     assert result.exit_code == 0, result.output
-    assert made == ["projects/subject-a/derived"]
+    # A spy that DELEGATES, not one that answers. A stub returning a fake node
+    # would prove the call was made and hide whether the folder it named could
+    # actually be created — and `store.write` resolves the parent immediately
+    # afterwards, so a lie here fails one line later.
+    # `store.folder` recurses to make any missing ancestor, so the deepest path
+    # is asked for first and its parents follow. That the WHOLE chain is walked
+    # is the property — a project that has never had a `derived/` is the case
+    # this flag most often meets.
+    assert made[0] == "porch-teaser/derived"
+    assert store.resolve("porch-teaser/derived/frame.webp")["kind"] == "file"
 
 
-def test_convert_names_a_source_that_is_not_there(media_bucket):
-    """A runref can resolve to a key nothing wrote; a traceback does not say which."""
-    result = _run("convert", "--key", "projects/subject-a/input/nothing.png",
-                  "--to", "jpg", "--add-input", "subject-a")
+def test_convert_names_a_source_that_is_not_there(library):
+    """A runref can resolve to something nothing wrote; a traceback does not say
+    which. Named for a NAME PATH here, which is still what a person types."""
+    result = _run("convert", "--key", "porch-teaser/input/nothing.png",
+                  "--to", "jpg", "--add-input", "porch-teaser")
 
     assert result.exit_code == 1
-    assert "no such object: projects/subject-a/input/nothing.png" in result.output
+    assert "porch-teaser/input/nothing.png" in result.output

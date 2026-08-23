@@ -1,37 +1,59 @@
-"""Resolve a character's or a project's images to S3 KEYS.
+"""Resolve a character's or a project's images to NODE IDS.
 
 Lifted from the two identical copies in the image and video submitters. Three
 pools are addressed here, and the distinction between them is the point:
 
-  characters/<name>/reference/  generated character imagery — body positions,
+  a character's reference index   generated identity imagery — body positions,
               face angles, wardrobe. Far more than a model accepts at once, so
-              a SUBSET is chosen from the bible's described index rather than
-              the folder being sent whole.
-  characters/<name>/corpus/…    material about the character, not identity.
-              Addressed by explicit key, never pulled in automatically.
-  projects/<p>/input/           the project's working pool — uploads and frames
-              to drive a specific generation from. Picked from by number.
+              a SUBSET is chosen from the described index rather than the folder
+              being sent whole. Reference-ness is a `REF#` row now, not a
+              location, so this asks the record and not the tree.
+  a character's corpus/seed/archive pools   material about the character, not
+              identity. Named explicitly, never pulled in automatically.
+  a project's input pool          uploads and frames to drive a specific
+              generation from. Picked from by POSITION.
 
-Everything returned is an S3 key. Keys, never URLs: a signed URL expires, is
-~2 KB of noise, and carries time-limited bucket access that must not outlive
-the request. Presigning happens at submit time and is never stored.
+Everything returned is a node id — the identity a record keeps forever. Not a
+key and not a URL: a signed URL expires, is ~2 KB of noise and carries
+time-limited bucket access that must not outlive the request, and a key or a
+path is invalidated by the first rename. Presigning happens at submit time and
+is never stored.
+
+WHAT THIS MODULE STOPPED DOING, AND WHY THAT IS THE WHOLE POINT
+---------------------------------------------------------------
+It used to walk `characters/<slug>/reference/` itself, read the bible's index,
+resolve `--pick` against basenames, apply `default_set`, and then check the
+result against the engine's cap. Every one of those steps also existed in the
+SPA, written separately, and the two could disagree about which images a
+generation actually saw — a disagreement nobody can audit after the fact,
+because the run recorded the outcome and not the reasoning.
+
+Resolution is now `GET /api/characters/<id>/selection` and both halves of studio
+call it. What is left here is the translation: the API refuses an over-cap
+selection with `api.Conflict`, and a person needs to be told how to narrow it.
+That message is this module's remaining job and it is worth keeping — a refusal
+that only says "too many" leaves you guessing which four to drop.
 
 WHY THERE IS NO "SEND EVERYTHING" MODE
 --------------------------------------
 `--character` used to mean "send the whole reference folder", which worked only
 while the folder was kept small enough to fit the smallest engine cap. It is not
 kept small any more — it is a library. So a selection is either named
-(`--pick` / `--pick-tag`) or comes from the bible's `default_set`, and if the
+(`--pick` / `--pick-tag`) or comes from the character's `default_set`, and if the
 result still exceeds the model's cap the caller REFUSES rather than silently
 dropping images. Which images a generation saw is not something to leave to
-whatever the folder listing happened to return.
+whatever a listing happened to return.
+
+That rule is now enforced in ONE place instead of two. It used to be checked
+here *and* implied by whatever `resolve_selection` returned; passing `limit=cap`
+to the route makes the API the only thing that decides, so the CLI cannot be
+lenient where the SPA is strict.
 """
 
 import contextlib
 import io
-import os
 
-from studio_pipeline.adapters import store
+from studio_pipeline.adapters import api
 from studio_pipeline.domain import characters as CHARACTER
 from studio_pipeline.domain import projects as PROJECTS
 
@@ -44,11 +66,17 @@ class RefError(Exception):
 def _reason(what: str):
     """Turn a `die()` in the layer below into a RefError that says why.
 
-    The store reports failure by printing to stderr and exiting, so a bare
-    `SystemExit` carries only the status code — `str(SystemExit(1))` is "1".
-    The message is the entire value, so it is captured and re-raised. The old
-    subprocess version got this for free from `capture_output`; doing it by
+    The domain layer reports failure by printing to stderr and exiting, so a
+    bare `SystemExit` carries only the status code — `str(SystemExit(1))` is
+    "1". The message is the entire value, so it is captured and re-raised. The
+    old subprocess version got this for free from `capture_output`; doing it by
     hand is the cost of the call being in-process.
+
+    `api.NotFound` joins it because resolution is a route now: a character that
+    does not exist arrives as a 404 rather than as a listing that came back
+    empty, and a caller catching `RefError` should not have to catch both.
+    `api.Conflict` deliberately passes straight through — it is the over-cap
+    refusal, and it has a message of its own worth writing.
     """
     err = io.StringIO()
     try:
@@ -57,6 +85,8 @@ def _reason(what: str):
     except SystemExit as exc:
         detail = err.getvalue().strip() or f"exited {exc.code}"
         raise RefError(f"could not read {what}:\n{detail}") from exc
+    except api.NotFound as exc:
+        raise RefError(f"could not read {what}: {exc}") from exc
     finally:
         # Anything not part of a failure still belongs on the real stderr.
         rest = err.getvalue()
@@ -65,60 +95,97 @@ def _reason(what: str):
             sys.stderr.write(rest)
 
 
-def _numbered(keys: list[str]) -> dict[int, str]:
-    """Map the trailing _<n> of each filename to its key."""
-    by_n: dict[int, str] = {}
-    for key in keys:
-        stem = os.path.splitext(os.path.basename(key))[0]
-        try:
-            by_n[int(stem.rsplit("_", 1)[-1])] = key
-        except ValueError:
-            continue
-    return by_n
+def character_record(character: str) -> dict:
+    """A character slug (or id) -> its record, with `die`/404 turned into RefError."""
+    with _reason(f"character {character}"):
+        return CHARACTER.resolve(character)
 
 
-def character_ref_keys(character: str, slots: list[int] | None = None,
-                       pick: list[str] | None = None, tags: list[str] | None = None,
-                       cap: int | None = None, cap_name: str = "this model") -> list[str]:
-    """The reference images this generation should send, as S3 keys, in slot order.
+def character_ids(names) -> list[str]:
+    """Slugs a person typed -> the ids a run record stores.
 
-    Slot N is position N in THIS list — not a trailing file number. With
-    subfolders inside `reference/`, filename numbers are only unique within a
-    group, so the resolved selection is what defines the order a model sees.
+    A run's `characters` are ids, so the association survives a rename — which
+    is exactly what `runs find --character` used to lose. Resolved here rather
+    than in `submit.py` because "what does this name refer to" is this module's
+    subject and nothing else's.
     """
-    with _reason(f"{character}'s reference set"):
-        keys = CHARACTER.resolve_selection(character, pick, tags, slots)
+    return [character_record(name)["id"] for name in names]
 
-    if cap is not None and len(keys) > cap:
+
+def character_selection(character: str, slots: list[int] | None = None,
+                        pick: list[str] | None = None,
+                        tags: list[str] | None = None,
+                        cap: int | None = None,
+                        cap_name: str = "this model") -> list[dict]:
+    """The resolved selection as entries — `{slot, node, group, description, …}`.
+
+    Slot N is position N in THIS list. It is not a trailing file number and has
+    not been one since references became rows: an image may be called anything,
+    and `order` on the row is what decides where it lands.
+
+    The entries carry `name` because a person reviewing a payload needs to know
+    which picture is `[Image3]`, and a node id does not say. Callers that only
+    bind images want `character_ref_nodes`.
+    """
+    record = character_record(character)
+    try:
+        with _reason(f"{character}'s reference set"):
+            return CHARACTER.selection_nodes(record, pick=pick, tags=tags,
+                                             slots=slots, limit=cap)
+    except api.Conflict as exc:
+        # The API refuses rather than truncating and says how many matched
+        # against how many the model takes; what it cannot know is which
+        # commands narrow the set, so that half is added here.
         raise RefError(
-            f"{character}'s selection is {len(keys)} image(s) but {cap_name} takes {cap}.\n"
-            f"  reference/ is a library, not a set to send whole. Narrow it:\n"
+            f"{exc}\n"
+            f"  a character's references are a library, not a set to send whole. "
+            f"Narrow it:\n"
             f"    studio character refs {character} --describe        # what each image shows\n"
             f"    --pick-tag face            # everything tagged face\n"
             f"    --pick <file>,<file>       # exactly these\n"
             f"    studio character default-set {character} --set …    # make a choice the default"
-        )
-    return keys
+        ) from exc
 
 
-def character_pool_keys(character: str, pool: str) -> list[str]:
-    """Keys in a character's corpus/, seed/ or archive/ pool.
+def character_ref_nodes(character: str, slots: list[int] | None = None,
+                        pick: list[str] | None = None,
+                        tags: list[str] | None = None,
+                        cap: int | None = None,
+                        cap_name: str = "this model") -> list[str]:
+    """The reference images this generation should send, as node ids, in slot order."""
+    return [entry["node"] for entry in
+            character_selection(character, slots, pick, tags, cap, cap_name)]
+
+
+def character_pool_nodes(character: str, pool: str) -> list[dict]:
+    """The file nodes in a character's corpus/, seed/ or archive/ pool.
+
+    Node **records**, not bare ids, because every caller picks out of this pool
+    by name: `--seed-pick` names a file, and the refusal that lists an oversized
+    pool has to print something a person recognises. A uuid is neither.
 
     `archive/` is retired material: resolve it only when the user asked for
     those images specifically.
     """
+    record = character_record(character)
     with _reason(f"{character}'s {pool} pool"):
-        folder = CHARACTER.pool_folder(character, pool)
-        return [f"{folder}/{e['name']}" for e in store.files(folder)]
+        return CHARACTER.pool_nodes(record, pool)
 
 
-def project_input_keys(project: str, numbers: list[int]) -> list[str]:
-    """Resolve input-pool numbers to S3 keys, in the order asked for."""
-    with _reason(f"project {project}'s input pool"):
-        keys = PROJECTS.input_keys(project)
-    by_n = _numbered(keys)
-    missing = [n for n in numbers if n not in by_n]
-    if missing:
-        raise RefError(f"not in project {project}'s input pool: {missing} "
-                       f"(have: {sorted(by_n)})")
-    return [by_n[n] for n in numbers]
+def project_input_nodes(project: dict, numbers: list[int]) -> list[str]:
+    """Resolve input-pool POSITIONS to node ids, in the order asked for.
+
+    `project` is the project record, not a slug: every caller has already
+    resolved one (`--project` is required and never inferred), and re-resolving
+    it here would be a second round trip to learn something the caller holds.
+
+    Position, not a filename number. The pool was numbered into basenames
+    (`<project>_in_<n>.png`) and a deletion either renumbered every file or left
+    a hole that silently changed what `--input 3` meant. The API orders the
+    pool; nothing here re-sorts it.
+    """
+    try:
+        return PROJECTS.input_nodes(project, numbers)
+    except KeyError as exc:
+        # `KeyError`'s str() is the repr of its argument, quotes included.
+        raise RefError(str(exc.args[0]) if exc.args else str(exc)) from exc

@@ -1,97 +1,63 @@
-"""The ONE module that knows the bucket's shape.
+"""Slug rules, the starting folder conventions, and the shared-material keys.
 
-Before this file the layout lived as ~20 inline f-strings spread across eight
-scripts (`f"{owner}/{RUNS}/{run_id}"`, `f"{owner}/scenes/{scene_id}"`,
-`f"{name}/{cfg['folder']}"` …). Moving a folder meant finding all of them. Now
-every path in the pipeline is built here.
+**This module was 334 lines of key construction and is now a name checker.**
+That is the single clearest measure of what the entity model changed, so the
+history is worth stating rather than quietly deleting.
 
-THE TWO TREES
+WHAT WAS HERE
 -------------
-A **character** is an identity record. A **project** is a unit of production.
-They were the same folder once; they are not the same thing:
+`character_prefix`, `character_key`, `profile_key`, `char_pool_prefix`,
+`character_of`, `project_prefix`, `project_key`, `project_json_key`,
+`project_dir_prefix`, `runs_prefix`, `run_prefix`, `run_key`, `scenes_prefix`,
+`scene_prefix`, `scene_key`, `movies_prefix`, `movie_prefix`, `movie_key`,
+`chains_prefix`, `chain_key`, `input_prefix`, `input_basename`, `input_key`,
+`phrasebook_key`, `list_characters`, `list_projects`, `list_ids`.
 
-    characters/<name>/
-        profile.yaml     the bible, including the described reference index
-        reference/       generated character imagery, in purpose subfolders
-        corpus/          collected images/videos of/for the character
-        seed/            the founding real-world source photos
-        archive/         retired material — never referenced unless asked for
+Every one of them built `characters/<slug>/…` or `projects/<slug>/…`, and every
+one of them existed for the same reason: the slug WAS the primary key, so twelve
+modules had to spell it identically or the tree forked. The module's own
+docstring called that out — "moving a folder meant finding all of them" — and
+solved the wrong half of the problem. The right half is that a folder should not
+be an identity at all.
 
-    projects/<project>/
-        project.json     name, description, the characters involved
-        runs/            <run_id>/{request,prompt,result}.json + output/
-        chains/          <slug>.json
-        scenes/          <scene_id>/{scene.json, shots/, output/}
-        movies/          <movie_id>/{movie.json, scenes/, output/}
-        input/           the project working pool
+They are gone because **an entity record names its own nodes**. A character
+holds one node id (`root`); a run holds `folder`, `outputs` and `payload`. A
+caller that wants a character's `reference/` folder asks the record for `root`
+and the tree for the child called `reference` — one listing, no construction,
+and nothing that a rename can invalidate. `domain/rewrite.py` existed solely to
+patch the documents these builders had scattered paths through, and it is gone
+with them.
 
-    phrasebook/wording.yaml
+WHAT SURVIVES, AND WHY EACH ONE EARNS IT
+----------------------------------------
+**The slug rule.** A slug is still a real thing — a mutable, library-unique
+label a person types — and it still has to be checkable before it is sent. It is
+no longer a path segment, so the rule is about legibility rather than about S3.
 
-    config/pose/{body,face}/*.png   shared pose + face-angle plates
+**`join`.** The CLI still types addresses: `<slug>/reference/face/<file>` is what
+a person writes and what `GET /api/resolve?path=` turns into a node. That is an
+**address**, not a key, and the difference is the point of the whole change —
+resolving one is a lookup against the tree as it is now, where building a key
+asserted where something must be.
 
-`config/` is neither tree. It holds material that belongs to no character and no
-project — the pose and head-angle plates a reference shoot passes to a model as a
-framing guide. Its source of truth is the REPO (`studio/config/`), and
-`dev-setup.sh` copies it out; S3 holds a copy because a model may only be handed
-a presigned URL of an S3 object, never bytes from disk.
+**The starting layout names.** `CHAR_POOLS` and `PROJECT_DIRS` are what the API
+creates with a new entity and what the CLI prints back. They are convention:
+nothing afterwards requires them, a person may rename or delete any of them, and
+an image is a reference because a `REF#` row says so rather than because of the
+folder it sits in.
 
-A project's material may involve several characters, so a character name is
-never part of a production key — the run records which characters it used
-(`request.json: characters[]`), and `character_of()` reads one back out of a
-binding.
+**The pose plates.** `config/pose/{body,face}/*.png` belong to no character and
+no project, have no catalog node, and are read through the API's key-addressed
+route. They are the last raw key in the pipeline and they go when shared
+material gets nodes (spec phase 7). Until then they are here, named and isolated,
+which is the only way a raw key stays visible.
 
-WHAT THESE STRINGS ARE, SINCE #303
-----------------------------------
-**Name paths, not S3 keys.** Every builder here returns a path the API resolves
-through `GET /api/resolve` — the same string a person types and the same one
-`adapters/store` takes. Nothing in this module knows a bucket name, a prefix or
-a credential.
-
-The bucket prefix is gone from the CLI entirely, and that is a removal rather
-than a default: `STUDIO_S3_PREFIX` let this half of studio disagree with the
-API about where the tree starts, and the API already owns that decision
-(`STUDIO_MEDIA_ROOT_PREFIX`). One authority, not two that happen to agree.
-
-CONVENTION — `*_prefix()` vs `*_key()`
---------------------------------------
-Both return the same kind of string now, and the pair survives only because
-twelve modules and every `SKILL.md` are written in these terms. Read `*_key()`
-as "addresses one file" and `*_prefix()` as "addresses a folder"; the old
-meaning — full key versus prefix-relative — died with the prefix. The bug the
-split was invented for (`runs.py` and `scenes.py` disagreeing, producing
-`media/media/…`) cannot recur, because there is no prefix to apply twice.
-
-SHARED MATERIAL IS NOT IN THE CATALOG
--------------------------------------
-`phrasebook_key`, `config_key` and `pose_key` are shared, not owned — they
-belong to no character and no project, `catalog_seed.py` records neither of
-them, and `dev-setup.sh` syncs the pose plates straight into the bucket. They
-therefore have **no catalog node**, and resolving one would 404.
-
-They are still not read with boto3. They go through the API's key-addressed
-routes — `store.shared_presign` / `store.shared_read` over `GET /api/asset` —
-which is the same authority reached a different way. See `adapters/store`.
-
-NO LEGACY MAP LIVES HERE ANY MORE
----------------------------------
-`LEGACY_PREFIX`, `LEGACY_MAP`, `classify()` and `relocate()` mapped a key from
-the pre-restructure layout (`media/<owner>/…`) to its new home, for
-`migrate-layout`. That command is gone and so are they: the migration finished,
-the source bucket was deleted in August 2026, and no `media/`-layout tree
-survives. What the old tree looked like and how each folder was reinterpreted
-is recorded in `docs/PIPELINE.md`, under the historical heading in
-"The two trees".
+The phrasebook used to be listed beside them and is not: it is `TERM#` rows now,
+so there is no `phrasebook/wording.yaml` to address.
 """
 from __future__ import annotations
 
 import re
-
-from studio_pipeline.adapters import api, store
-
-# ── names ───────────────────────────────────────────────────────────────────
-
-CHARACTERS = "characters"
-PROJECTS = "projects"
 
 # Neither a character nor a project: shared, generic material kept in the repo
 # and copied out to S3. `POSE_GROUPS` mirrors the character reference groups it
@@ -99,22 +65,24 @@ PROJECTS = "projects"
 CONFIG = "config"
 POSE_GROUPS = ("body", "face")
 
-# Also neither tree: the per-model wording lists. Named beside `CONFIG` because
-# the two share the property a caller cares about — they belong to no character
-# and no project, which is why `catalog_seed.py` records neither of them.
-PHRASEBOOK = "phrasebook"
-
-# The four character pools. `reference` is the only one with structure inside
-# it (purpose subfolders + the profile index); the rest keep arbitrary
-# basenames, because renaming a source photo loses information for nothing.
+# The four folders a new character starts with. `reference` is no longer
+# structural — reference-ness is a `REF#` row, not a location — so these are a
+# starting layout and nothing more. See the spec's "the folder layout is
+# convention, not schema".
 CHAR_POOLS = ("reference", "corpus", "seed", "archive")
 
-# The project subtrees the tools write to. `runs` is append-only history;
-# `scenes` and `movies` are derived from it; `input` is the working pool. A
-# project may hold other folders a person made — `favorites/` is one, left over
-# from a feature that derived that destination rather than asking for it — and
-# they are ordinary folders, browsable and copyable like any other.
+# The five a new project starts with, on the same footing. `runs`, `scenes`,
+# `movies` and `input` are resolved by name at write time and created if absent,
+# so renaming one strands nothing: every existing run names its own folder node.
 PROJECT_DIRS = ("runs", "scenes", "movies", "chains", "input")
+
+# Where a new run, scene or movie's folder is put, and where the input pool is
+# read from. Named once because the API applies the same convention, and two
+# copies of a convention drift.
+RUN_PARENT = "runs"
+SCENE_PARENT = "scenes"
+MOVIE_PARENT = "movies"
+INPUT_FOLDER = "input"
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
@@ -124,153 +92,41 @@ class PathError(Exception):
 
 
 def check_slug(s: str, what: str = "name") -> str:
-    """Character and project names share one rule — both become path segments."""
+    """Characters, projects and scenes share one slug rule.
+
+    **It is a legibility rule now, not a filesystem one.** A slug used to become
+    a path segment, so the character set was about what S3 and a shell would
+    tolerate. A slug is an attribute on a row today and could be anything; the
+    rule is kept because a name that a person types, greps and pastes into a
+    command still wants to be lowercase, unambiguous and free of spaces.
+    """
     if not s or not NAME_RE.match(s):
         raise PathError(f"invalid {what} {s!r}; use lowercase [a-z0-9_-] starting alphanumeric")
     return s
 
 
-def _join(*parts: str) -> str:
+def join(*parts: str) -> str:
+    """Join address segments, dropping the empty ones.
+
+    An **address**, resolved by `GET /api/resolve?path=` against the tree as it
+    actually is. Not a key: nothing here asserts where an object lives, and the
+    result is thrown away the moment the node behind it is known.
+    """
     return "/".join(p.strip("/") for p in parts if p not in (None, ""))
 
 
-# ── characters ──────────────────────────────────────────────────────────────
-
-def character_prefix(name: str) -> str:
-    return _join(CHARACTERS, check_slug(name, "character name"))
-
-
-def character_key(name: str, *parts: str) -> str:
-    return _join(character_prefix(name), *parts)
-
-
-def profile_key(name: str) -> str:
-    return character_key(name, "profile.yaml")
-
-
-def char_pool_prefix(name: str, pool: str) -> str:
-    if pool not in CHAR_POOLS:
-        raise PathError(f"unknown character pool {pool!r}; expected one of {list(CHAR_POOLS)}")
-    return _join(character_prefix(name), pool)
-
-
-def character_of(key: str) -> str | None:
-    """'characters/<c>/reference/…' -> '<c>'. Anything else -> None."""
-    parts = key.strip("/").split("/")
-    if len(parts) >= 2 and parts[0] == CHARACTERS:
-        return parts[1] or None
-    return None
-
-
-# ── projects ────────────────────────────────────────────────────────────────
-
-def project_prefix(p: str) -> str:
-    return _join(PROJECTS, check_slug(p, "project name"))
-
-
-def project_key(p: str, *parts: str) -> str:
-    return _join(project_prefix(p), *parts)
-
-
-def project_json_key(p: str) -> str:
-    return project_key(p, "project.json")
-
-
-def project_dir_prefix(p: str, kind: str) -> str:
-    if kind not in PROJECT_DIRS:
-        raise PathError(f"unknown project dir {kind!r}; expected one of {list(PROJECT_DIRS)}")
-    return _join(project_prefix(p), kind)
-
-
-# runs ----------------------------------------------------------------------
-
-def runs_prefix(p: str) -> str:
-    return project_dir_prefix(p, "runs")
-
-
-def run_prefix(p: str, run_id: str) -> str:
-    return _join(runs_prefix(p), run_id)
-
-
-def run_key(p: str, run_id: str, *parts: str) -> str:
-    return _join(run_prefix(p, run_id), *parts)
-
-
-# scenes --------------------------------------------------------------------
-
-def scenes_prefix(p: str) -> str:
-    return project_dir_prefix(p, "scenes")
-
-
-def scene_prefix(p: str, scene_id: str) -> str:
-    return _join(scenes_prefix(p), scene_id)
-
-
-def scene_key(p: str, scene_id: str, *parts: str) -> str:
-    return _join(scene_prefix(p, scene_id), *parts)
-
-
-# movies --------------------------------------------------------------------
-
-def movies_prefix(p: str) -> str:
-    return project_dir_prefix(p, "movies")
-
-
-def movie_prefix(p: str, movie_id: str) -> str:
-    return _join(movies_prefix(p), movie_id)
-
-
-def movie_key(p: str, movie_id: str, *parts: str) -> str:
-    return _join(movie_prefix(p, movie_id), *parts)
-
-
-# chains and the input pool --------------------------------------------------
-
-def chains_prefix(p: str) -> str:
-    return project_dir_prefix(p, "chains")
-
-
-def chain_key(p: str, slug: str) -> str:
-    return _join(chains_prefix(p), f"{slug}.json")
-
-
-def input_prefix(p: str) -> str:
-    return project_dir_prefix(p, "input")
-
-
-def input_basename(p: str, n: int, ext: str) -> str:
-    """`<project>_in_<n><ext>` — derived from the PROJECT, never a character.
-
-    The first projects happen to be named after characters, so these agreed by
-    coincidence; the first project named independently would have produced
-    mismatched basenames if the prefix kept coming from the character.
-    """
-    return f"{p}_in_{n}{ext if ext.startswith('.') or not ext else '.' + ext}"
-
-
-def input_key(p: str, n: int, ext: str) -> str:
-    return _join(input_prefix(p), input_basename(p, n, ext))
-
-
-# ── the phrasebook ──────────────────────────────────────────────────────────
-
-def phrasebook_key() -> str:
-    """SHARED. Read it with `store.shared_read` — it has no catalog node."""
-    return _join(PHRASEBOOK, "wording.yaml")
-
-
-# ── config ──────────────────────────────────────────────────────────────────
+# ── shared material: the last raw keys ──────────────────────────────────────
 
 def config_root() -> str:
     return CONFIG + "/"
 
 
 def config_prefix(*parts: str) -> str:
-    return _join(CONFIG, *parts)
+    return join(CONFIG, *parts)
 
 
 def config_key(*parts: str) -> str:
-    """SHARED. See the module docstring — not resolvable, key-addressed."""
+    """SHARED. Key-addressed, because it has no catalog node. See the docstring."""
     return config_prefix(*parts)
 
 
@@ -288,47 +144,4 @@ def pose_key(group: str, basename: str) -> str:
     row is ever written for them; resolving one would 404 and a reference shoot
     would silently lose its framing guide.
     """
-    return _join(pose_prefix(group), basename)
-
-
-# ── listing ─────────────────────────────────────────────────────────────────
-
-def _folder_names(path: str) -> list[str]:
-    """The immediate folder names under a path, natural-sorted.
-
-    **A missing path is an empty list, not an error.** `GET /api/resolve` 404s
-    on a library with no `characters/` yet, and the paginator this replaces
-    answered the same question with zero `CommonPrefixes`. Callers ask "what is
-    there" and none of them distinguish empty from absent, so neither does this.
-    Only a 404 means empty — a 403 is a different fact and is left to surface.
-
-    Folders only. The catalog returns files and folders together, where
-    `list_objects_v2` with a delimiter returned them in separate fields — so the
-    filter is now explicit where it used to be structural, and dropping it would
-    list `project.json` as a project.
-    """
-    try:
-        entries = store.children(path)
-    except api.NotFound:
-        return []
-    names = [e["name"] for e in entries if e.get("kind") == "folder" and e.get("name")]
-    return sorted(names, key=store.natural_key)
-
-
-def list_characters() -> list[str]:
-    return _folder_names(CHARACTERS)
-
-
-def list_projects() -> list[str]:
-    return _folder_names(PROJECTS)
-
-
-def list_ids(prefix: str) -> list[str]:
-    """Ids directly under a path — runs, scenes, movies.
-
-    Ids sort chronologically because they start with a timestamp, so the plain
-    sort is also 'oldest first'. Deliberately NOT the natural sort the folder
-    listings use: a natural sort orders digit runs by numeric value, which for
-    a timestamp is not the same question.
-    """
-    return sorted(_folder_names(prefix))
+    return join(pose_prefix(group), basename)

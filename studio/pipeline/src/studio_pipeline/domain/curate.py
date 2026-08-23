@@ -1,69 +1,60 @@
-"""`studio curate` — maintain a character's image pools: dedupe, renumber, move.
+"""`studio curate` — maintain a character's image pools: dedupe, move, groups.
 
 Curating by hand goes wrong the same ways every time: duplicates creep in under
-different names, numbering develops holes, and "replacing" an image quietly
-destroys the only copy. This does those operations safely, and keeps the bible's
-reference index in step so a written description survives them.
+different names, and "replacing" an image quietly destroys the only copy. This
+does those operations safely.
 
 Four pools, per `studio-media-character`:
 
-    reference/   generated character imagery, in purpose subfolders
-                 (face/, body/, wardrobe/ …), numbered within each group and
-                 DESCRIBED in the bible's `references:` index.
+    reference/   images the character's `REF#` rows point at — who they ARE.
     corpus/      collected material — uploads, keeper clips.
     seed/        the founding real-world source photos.
     archive/     retired material; never referenced unless asked for by name.
 
-Only `reference/` is numbered, because only `reference/` is cited by slot.
-Everywhere else the basename is kept, since renaming a source photo throws away
-whatever its filename recorded.
+Nothing is deleted outright: an image leaving a pool is moved, and destroyed
+only when a byte-identical copy is already waiting where it was going. Every
+command is a DRY RUN unless you pass --apply.
 
-WHAT IS NO LONGER HERE
-----------------------
+  studio curate dedupe <name> --pool reference --group face
+  studio curate move <name> face/front-neutral.webp --from reference --to archive
+  studio curate groups <name>
+
+MOVING AN IMAGE NO LONGER MOVES ANYTHING ELSE
+---------------------------------------------
+**This section used to be headed "MOVING AN IMAGE STILL MOVES ITS RECORDS", and
+it was the largest unfinished thing in the pipeline.** It said, correctly at the
+time, that a record did not name a node — it named a **path** — so renaming
+`face/<slug>_3.png` left every run that cited it pointing at a path that no
+longer resolved. `domain/rewrite.py` existed to sweep those documents, every
+command here called `rewrite.apply_moves`, and skipping that step is what once
+left 69 records pointing at reference images that no longer existed.
+
+Records name **node ids** now. A node id survives a rename, a reparent, a
+regroup and a move of the character it belongs to, because none of those touch
+it. So there is nothing to sweep: `rewrite.py` is deleted, `rewrite check` is
+deleted, and every call to `apply_moves` in this module is deleted. It is the
+single largest simplification in the entity model, and this module is where it
+shows most — three commands that each ended in a document-rewriting pass now
+end after the operation itself.
+
+WHAT ELSE IS NO LONGER HERE
+---------------------------
+`renumber` closed holes in a reference group's numbering, because ORDER WAS THE
+TRAILING NUMBER IN A FILENAME. Order is `order` on the `REF#` row, gapped by
+1000, so there are no holes to close and nothing to renumber — the command has
+no work left to do at all. Explicit ordering is `studio character order`.
+
+`regroup` moved reference images into a purpose subfolder and rewrote every
+record citing them. A group is an attribute of a row, so it moved to
+`studio character regroup`, where it is one `PATCH` and writes no object.
+
 `set-refs` rebuilt `reference/` from chosen numbers, because the folder WAS the
-set that got sent. It is not any more: the bible's `default_set:` names what is
-sent, so choosing is `studio character default-set`, and demoting an image is
-`studio curate move … --to archive`. Choosing no longer means moving objects.
-
-Nothing is deleted outright: an image leaving a pool is preserved into the
-destination first, and skipped only when a byte-identical copy is already there.
-Every command is a DRY RUN unless you pass --apply.
-
-  studio curate dedupe <name> --pool reference
-  studio curate renumber <name> --group face
-  studio curate move face/<name>_face_3.png <name> --from reference --to archive
-  studio curate regroup <name> face <name>_3.jpg <name>_4.jpg --apply
-
-NOTHING HERE MOVES BYTES ANY MORE
----------------------------------
-Every operation in this module used to be a `CopyObject` plus a
-`DeleteObject`, because S3 has no rename: the key IS the location, so renumbering
-`<name>_3.png` to `<name>_1.png` meant writing a new object and destroying the
-old one. Under the catalog a name is a column. `renumber` and `regroup` are now
-`PATCH /api/nodes/<id>` — a row update each, **zero objects written**, and the
-blob keeps its key, its bytes and its node id.
+set that got sent. The `default_set` names what is sent; choosing is
+`studio character default-set`.
 
 `dedupe` still reads bytes, because comparing them is the point. It reads fewer
 than it did: the catalog records each file's size, so only same-size files can
 be identical and only those are hashed.
-
-MOVING AN IMAGE STILL MOVES ITS RECORDS
----------------------------------------
-**And this is the half of #306 that could not be done.** The plan was that
-`rewrite.py`'s move path would go: if nothing moves, nothing dangles.
-
-It does not go, because a record does not name a node — it names a **path**.
-`runs.check_bindings` validates against `characters/`, `projects/`,
-`phrasebook/` and `config/`, and `resolve_output_keys` builds a path from a
-folder and a name. So renaming `face/<name>_3.png` to `face/<name>_1.png` leaves
-every run that cited the first one pointing at a path that no longer resolves —
-exactly as a `CopyObject` did, for a different reason.
-
-What retires this is records naming **node ids**, which survive a rename by
-construction. That is #420, open, and it is not small: it moves the binding
-invariant, `resolve_output_keys`, and the vocabulary every `SKILL.md` is written
-in. Until it is decided, `regroup`, `renumber` and `move` carry the records
-along, and skipping that step is still what left 69 records dangling.
 """
 from __future__ import annotations
 
@@ -73,55 +64,30 @@ import sys
 
 import click
 
-from studio_pipeline.adapters import api, store
-from studio_pipeline.domain import rewrite
+from studio_pipeline.adapters import api, entities, store
 from studio_pipeline.domain.characters import (
-    check_name,
-    group_prefix,
+    IMG_EXTS,
     pool_folder,
-    ref_root,
-    sync_index,
+    pool_nodes,
+    resolve,
 )
 from studio_pipeline.errors import die
 
-IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp"}
+POOL_CHOICES = ["archive", "corpus", "reference", "seed"]
 # The caps are prose-only in every model's schema (maxItems is null), so they are
 # maintained here by hand. The lowest one binds a set that is sent in full.
 ENGINE_CAPS = {"kling": 7, "seedance": 9, "nano-banana": 14}
 
 
-def folder(name: str, pool: str, group: str | None = None) -> str:
-    return pool_folder(name, pool) + (f"/{group}" if group else "")
+def images(record: dict, pool: str, group: str | None = None) -> list[dict]:
+    """The image nodes in a pool, or in one of its subfolders."""
+    return [entry for entry in pool_nodes(record, pool, group)
+            if os.path.splitext(entry["name"])[1].lower() in IMG_EXTS]
 
 
-def pool_entries(name: str, pool: str, group: str | None = None) -> list[dict]:
-    """Image entries in a pool (optionally one reference subfolder), in order.
-
-    The "a subfolder is its own group" filter is gone with the recursive listing
-    that made it necessary — `store.files` is one level deep, so the images in
-    `reference/face/` are simply not among `reference/`'s children.
-    """
-    base = folder(name, pool, group)
-    return [{**e, "path": f"{base}/{e['name']}"} for e in store.files(base)
-            if os.path.splitext(e["name"])[1].lower() in IMG_EXTS]
-
-
-def pool_keys(name: str, pool: str, group: str | None = None) -> list[str]:
-    """Just the paths — what the callers that only print them want."""
-    return [e["path"] for e in pool_entries(name, pool, group)]
-
-
-def groups(name: str) -> list[str]:
-    """The purpose subfolders that exist inside reference/."""
-    return sorted(
-        e["name"] for e in store.children_or_empty(pool_folder(name, "reference"))
-        if e.get("kind") == "folder" and e.get("name")
-    )
-
-
-def digest(path: str) -> str:
+def digest(node_id: str) -> str:
     """Content hash of one image. Only ever called on same-size candidates."""
-    return hashlib.md5(store.read(path)).hexdigest()
+    return hashlib.md5(store.read_node(node_id)).hexdigest()
 
 
 def duplicate_pairs(entries: list[dict]) -> list[tuple[dict, dict]]:
@@ -144,7 +110,7 @@ def duplicate_pairs(entries: list[dict]) -> list[tuple[dict, dict]]:
             continue
         seen: dict[str, dict] = {}
         for entry in candidates:
-            found = digest(entry["path"])
+            found = digest(entry["id"])
             if found in seen:
                 dupes.append((entry, seen[found]))
             else:
@@ -152,62 +118,49 @@ def duplicate_pairs(entries: list[dict]) -> list[tuple[dict, dict]]:
     return dupes
 
 
-def rename_node(entry: dict, new_name: str) -> None:
-    """Rename one node in place. **No object is written.**"""
-    api.patch(f"/api/nodes/{entry['id']}", {"name": new_name})
+def reference_nodes(record: dict) -> set[str]:
+    """The node ids this character's `REF#` rows point at.
 
-
-def move_node(entry: dict, parent_id: str) -> None:
-    """Reparent one node. **No object is written.**"""
-    api.patch(f"/api/nodes/{entry['id']}", {"parent": parent_id})
-
-
-def delete_node(entry: dict) -> None:
-    """Remove a node and its blob. The one operation here that destroys bytes."""
-    api.delete(f"/api/nodes/{entry['id']}")
-
-
-def rel_to_reference(name: str, key: str) -> str | None:
-    """A reference key as the index records it, or None if it is elsewhere."""
-    root = ref_root(name)
-    return key[len(root):] if key.startswith(root) else None
-
-
-def apply_index(name: str, moves: list[tuple[str, str]], apply: bool) -> None:
-    """Carry descriptions across a set of reference renames.
-
-    The rename map is passed rather than letting the index re-derive itself,
-    because a re-derived index cannot tell a renamed image from a new one and
-    would silently blank the description it had.
+    Read before anything is deleted, so `dedupe` can detach the row of an image
+    it is about to destroy. A row naming a node that no longer exists is the one
+    dangling this model can still produce, and it is produced by deleting bytes
+    rather than by moving them.
     """
-    rename = {}
-    for src, dst in moves:
-        a, b = rel_to_reference(name, src), rel_to_reference(name, dst)
-        if a and b:
-            rename[a] = b
-    if apply:
-        report = sync_index(name, rename_map=rename, apply=True)
-        if report["missing"]:
-            print(f"  index: {len(report['missing'])} entry(ies) now point at a missing "
-                  f"file and are flagged, not dropped: {', '.join(report['missing'][:4])}")
+    return {entry["node"] for entry in entities.reference_entries(record["id"])}
 
 
-def ordered_moves(moves: list[tuple[str, str]]) -> list[tuple[str, str]]:
-    """Order renames so a destination never clobbers a source not yet moved."""
-    pending, plan = list(moves), []
-    while pending:
-        srcs = {s for s, _ in pending}
-        safe = [m for m in pending if m[1] not in srcs]
-        if not safe:  # cycle — break it through a temp key
-            s, d = pending[0]
-            tmp = s + ".tmp-curate"
-            plan.append((s, tmp))
-            pending[0] = (tmp, d)
-            continue
-        for m in safe:
-            plan.append(m)
-            pending.remove(m)
-    return plan
+def find_in_pool(record: dict, pool: str, token: str) -> dict:
+    """A node in one pool, from a node id or a name a person typed.
+
+    `<group>/<name>` reaches one level down, which is how `reference/face/…` is
+    addressed; a bare name is looked for in the pool root and then in each
+    subfolder. An id skips all of it and is what a script should pass.
+    """
+    if token.startswith("node-"):
+        try:
+            return store.node(token)
+        except api.NotFound:
+            die(f"no such node: {token}")
+    token = token.strip().lstrip("/")
+    folder, _, name = token.rpartition("/")
+    if folder:
+        found = next((e for e in images(record, pool, folder) if e["name"] == name), None)
+        if found is None:
+            die(f"{token!r} is not in {record['slug']}/{pool}/")
+        return found
+
+    hits = [e for e in images(record, pool) if e["name"] == name]
+    root = pool_folder(record, pool)
+    for child in store.children_of(root["id"]):
+        if child.get("kind") == "folder":
+            hits += [e for e in images(record, pool, child["name"]) if e["name"] == name]
+    if not hits:
+        have = [e["name"] for e in images(record, pool)]
+        die(f"{token!r} is not in {pool}/ (have: {', '.join(have[:12]) or 'nothing'})")
+    if len(hits) > 1:
+        die(f"{token!r} matches {len(hits)} files in {pool}/ — name the node id or "
+            "the <group>/<name> path")
+    return hits[0]
 
 
 # --- commands -------------------------------------------------------------
@@ -220,219 +173,115 @@ def main():
 @main.command("dedupe")
 @click.argument("name", required=True)
 @click.option("--apply", is_flag=True, help="Actually make the changes.")
-@click.option("--group", help="A reference subfolder (default: the root of the pool).")
-@click.option("--pool", type=click.Choice(["archive", "corpus", "reference", "seed"]), default='reference')
+@click.option("--group", help="A subfolder of the pool (default: the root of the pool).")
+@click.option("--pool", type=click.Choice(POOL_CHOICES), default='reference')
 def cmd_dedupe(name, apply, group, pool):
-    check_name(name)
-    entries = pool_entries(name, pool, group)
+    """Delete byte-identical copies, keeping the first of each.
+
+    **The one command here that destroys bytes**, which is why it is also the
+    one that touches the reference index: a `REF#` row naming a node that has
+    been deleted is the only dangling this model can still produce, so the row
+    is detached in the same act. A move cannot produce one — the row names the
+    node, and the node survives the move.
+    """
+    record = resolve(name)
+    entries = images(record, pool, group)
     dupes = duplicate_pairs(entries)
     if not dupes:
         print(f"no exact duplicates in {pool}/ ({len(entries)} image(s))")
         return
+    attached = reference_nodes(record)
     print(f"DELETE {len(dupes)} exact duplicate(s) from {pool}/:")
     for entry, keeper in dupes:
-        print(f"    {entry['name']:<40} (identical to {keeper['name']})")
-    if apply:
-        for entry, _ in dupes:
-            delete_node(entry)
-        if pool == "reference":
-            sync_index(name, apply=True)
-        print("\nAPPLIED")
-    else:
+        mark = "  [is a reference — its row is detached too]" if entry["id"] in attached else ""
+        print(f"    {entry['name']:<40} (identical to {keeper['name']}){mark}")
+    if not apply:
         print("\nDRY RUN — nothing changed")
-
-
-@main.command("renumber")
-@click.argument("name", required=True)
-@click.option("--apply", is_flag=True)
-@click.option("--group", help="A reference subfolder (default: the root of reference/).")
-def cmd_renumber(name, apply, group):
-    """Close holes in one reference group's numbering.
-
-    **A row update per image, and no object written.** This was a copy and a
-    delete per file, because an S3 key is a location; here the name is a column
-    and the blob does not know it changed. `ordered_moves` still applies — a
-    catalog folder refuses a duplicate name exactly as a bucket would overwrite
-    one, so `1->2, 2->1` still has to go through a temporary.
-    """
-    check_name(name)
-    entries = pool_entries(name, "reference", group)
-    ordered = sorted(entries, key=lambda e: store.natural_key(e["name"]))
-    prefix = group_prefix(name, group)
-    dest = folder(name, "reference", group)
-    by_path = {e["path"]: e for e in ordered}
-    moves = []
-    for i, entry in enumerate(ordered, start=1):
-        ext = os.path.splitext(entry["name"])[1].lower()
-        target = f"{dest}/{prefix}{i}{ext}"
-        if entry["path"] != target:
-            moves.append((entry["path"], target))
-    if not moves:
-        print(f"{dest}/ is already contiguous ({len(ordered)} image(s))")
         return
-    plan = ordered_moves(moves)
-    print(f"RENAME {len(plan)} file(s) in {dest}/:")
-    for src, dst in plan:
-        print(f"    {os.path.basename(src):<44} -> {os.path.basename(dst)}")
-    print(f"\nresult: {len(ordered)} image(s), 1..{len(ordered)}")
-    if apply:
-        for src, dst in plan:
-            entry = by_path[src]
-            rename_node(entry, os.path.basename(dst))
-            # The plan renames in sequence and a temporary is renamed again, so
-            # the node has to be findable under the name it now carries.
-            entry["path"] = dst
-            by_path[dst] = entry
-        apply_index(name, moves, True)
-        print("APPLIED")
-    else:
-        print("DRY RUN — nothing changed")
+    for entry, _keeper in dupes:
+        if entry["id"] in attached:
+            entities.delete_reference(record["id"], entry["id"])
+    store.delete_nodes([entry["id"] for entry, _ in dupes])
+    print("\nAPPLIED")
 
 
-@main.command("move", epilog="\n\nArguments:\n  FILE  Path inside the source pool, e.g. face/<name>_face_3.png")
-@click.argument("file", required=True)
+@main.command("move", epilog=("\n\nArguments:\n  FILE  A node id, or a name inside the source "
+                              "pool (e.g. face/front-neutral.webp)."))
 @click.argument("name", required=True)
+@click.argument("file", required=True)
 @click.option("--apply", is_flag=True)
 # The parameter names are what Click passes to the callback, so they must match
 # the signature below — `--from`/`--to` alone would arrive as `from_`/`to` and the
 # call would fail with a TypeError. Nothing catches that until the command is run
 # WITH arguments: invoking it bare exits on usage first, which is why this
 # survived the argparse port.
-@click.option("--from", "src_pool", type=click.Choice(["archive", "corpus", "reference", "seed"]), default='reference')
-@click.option("--to", "dst_pool", type=click.Choice(["archive", "corpus", "reference", "seed"]), default='archive')
-def cmd_move(file, name, apply, src_pool, dst_pool):
-    """Move one image between pools, by its path inside the source pool.
+@click.option("--from", "src_pool", type=click.Choice(POOL_CHOICES), default='reference')
+@click.option("--to", "dst_pool", type=click.Choice(POOL_CHOICES), default='archive')
+def cmd_move(name, file, apply, src_pool, dst_pool):
+    """Move one image between pools. **A reparent: no object is written.**
 
-    **A reparent, not a copy and a delete** — unless a byte-identical copy is
-    already waiting in the destination, in which case the source is deleted and
-    nothing arrives. That second case is the only one that destroys bytes, and
-    it is the one whose records cannot follow anywhere.
+    Unless a byte-identical copy is already waiting in the destination, in which
+    case the source is deleted and nothing arrives. That second case is the only
+    one that destroys bytes.
+
+    **Moving out of `reference/` does not stop an image being a reference.** It
+    used to, because reference-ness was a location; it is a `REF#` row now, and
+    a row that names this node keeps naming it wherever the file goes. Demoting
+    is `studio character detach`, which is a statement about identity rather
+    than about a folder — and keeping the two apart is the whole point of the
+    change.
     """
-    check_name(name)
-    src_folder = folder(name, src_pool)
-    path = f"{src_folder}/{file.strip().lstrip('/')}"
-    try:
-        entry = store.resolve(path)
-    except api.NotFound:
-        have = [e["name"] for e in pool_entries(name, src_pool)]
-        die(f"{file!r} is not in {src_pool}/ (have: {', '.join(have[:12]) or 'nothing'})")
-
-    dst_folder = folder(name, dst_pool)
-    dst = f"{dst_folder}/{os.path.basename(file)}"
-    print(f"MOVE {src_pool}/{file} -> {dst_pool}/{os.path.basename(file)}")
+    record = resolve(name)
+    entry = find_in_pool(record, src_pool, file)
+    destination = pool_folder(record, dst_pool)
+    print(f"MOVE {src_pool}/{entry['name']} -> {dst_pool}/{entry['name']}")
 
     # Same size first, for the reason `duplicate_pairs` gives.
     size = int(entry.get("size") or 0)
-    candidates = [e for e in pool_entries(name, dst_pool) if int(e.get("size") or 0) == size]
-    if candidates and digest(path) in {digest(e["path"]) for e in candidates}:
+    candidates = [e for e in images(record, dst_pool) if int(e.get("size") or 0) == size]
+    duplicate = bool(candidates) and digest(entry["id"]) in {digest(e["id"]) for e in candidates}
+    if duplicate:
         print(f"    a byte-identical copy is already in {dst_pool}/ — only removing the source")
-        dst = None
 
-    # The records that cite this image follow it, or they are left naming a
-    # path that is about to stop resolving. See the module docstring — a rename
-    # does not save them, because a record names a path and not a node.
-    touched = rewrite.apply_moves({path: dst} if dst else {}, apply=apply)
-    if touched:
-        print(f"  {'rewrote' if apply else 'would rewrite'} {len(touched)} record(s) "
-              f"citing it")
-    elif not dst:
-        print("  NOTE: the source is only being removed, so any record citing it will "
-              "dangle — check with `studio runs find` first if that matters")
-
-    if apply:
-        if dst:
-            move_node(entry, store.folder(dst_folder)["id"])
+    if entry["id"] in reference_nodes(record):
+        if duplicate:
+            print("    NOTE: it is a reference and its bytes are about to go. Its REF# row "
+                  f"would name a missing node — detach it first:\n"
+                  f"      studio character detach {record['slug']} {entry['id']}")
         else:
-            delete_node(entry)
-        if "reference" in (src_pool, dst_pool):
-            sync_index(name, apply=True)
-        if src_pool == "reference":
-            print("APPLIED — the index entry is flagged missing; check `default_set` "
-                  "still names only images that exist")
-        else:
-            print("APPLIED")
-    else:
-        print("DRY RUN — nothing changed")
+            print("    it is a reference; the REF# row names the node and follows it")
 
-
-@main.command("regroup", epilog="\n\nArguments:\n  FILES  Paths inside reference/.\n  GROUP  face, body, wardrobe, frame, …")
-@click.argument("files", nargs=-1, required=True)
-@click.argument("group", required=True)
-@click.argument("name", required=True)
-@click.option("--apply", is_flag=True)
-def cmd_regroup(files, group, name, apply):
-    """Move reference images into a purpose subfolder, records and all.
-
-    Basenames are kept: only the parent changes. Renaming as well would churn
-    every recorded path for no gain, and the group is already in the path.
-    """
-    check_name(name)
-    root = ref_root(name)
-    moves: list[tuple[str, str]] = []
-    nodes: dict[str, dict] = {}
-    for f in files:
-        f = f.strip().lstrip("/")
-        src = root + f
-        try:
-            nodes[src] = store.resolve(src)
-        except api.NotFound:
-            die(f"{f!r} is not in {name}'s reference/")
-        dst = root + f"{group}/{os.path.basename(f)}"
-        if src != dst:
-            moves.append((src, dst))
-
-    if not moves:
-        print(f"nothing to move — all {len(files)} already in {group}/")
-        return
-
-    print(f"MOVE {len(moves)} image(s) into reference/{group}/:")
-    for s, d in moves:
-        print(f"    {s[len(root):]:<28} -> {d[len(root):]}")
-
-    # Every run, scene and chain that cited these keys is rewritten in the same
-    # operation. Moving reference images without this is what left 69 records
-    # pointing at keys that no longer existed.
-    mapping = dict(moves)
-    touched = rewrite.apply_moves(mapping, apply=apply)
-    if touched:
-        print(f"\n{'REWROTE' if apply else 'would rewrite'} {len(touched)} record(s) "
-              f"that cite these images:")
-        for k, n in list(touched.items())[:8]:
-            print(f"    {k}  ({n} reference(s))")
-        if len(touched) > 8:
-            print(f"    … and {len(touched) - 8} more")
-    else:
-        print("\nno run, scene or chain cites these images")
-
-    if apply:
-        parent = store.folder(f"{root}{group}")["id"]
-        for src, _dst in moves:
-            move_node(nodes[src], parent)
-        apply_index(name, moves, True)
-        print("\nAPPLIED")
-    else:
+    if not apply:
         print("\nDRY RUN — nothing changed")
+        return
+    if duplicate:
+        store.delete_nodes([entry["id"]])
+    else:
+        store.reparent_node(entry["id"], destination["id"])
+    print("\nAPPLIED")
 
 
 @main.command("groups")
 @click.argument("name", required=True)
 def cmd_groups(name):
-    """What is in reference/, group by group, against the engine caps."""
-    check_name(name)
-    root = ref_root(name)
-    loose = pool_keys(name, "reference")
-    rows = [("(root)", len(loose))] + [(g, len(pool_keys(name, "reference", g)))
-                                       for g in groups(name)]
-    total = sum(n for _g, n in rows)
-    for g, n in rows:
-        if n:
-            print(f"{g:<16} {n:>4}")
+    """What the reference index holds, group by group, against the engine caps.
+
+    **Off `GET /api/characters/<id>/references`'s `counts`, not off the tree.**
+    It used to list the subfolders of `reference/` and count the files in each,
+    which made a group a folder and a folder a group — so an image filed in the
+    wrong place was in the wrong group, and one filed loose was in no group at
+    all. A group is an attribute of a row; the folders are just folders.
+    """
+    record = resolve(name)
+    counts = entities.references(record["id"]).get("counts") or {}
+    for group, number in sorted(counts.items()):
+        print(f"{group:<16} {number:>4}")
+    total = sum(counts.values())
     print(f"{'TOTAL':<16} {total:>4}")
     lowest = min(ENGINE_CAPS.values())
     if total > lowest:
-        print(f"\nreference/ holds more than any model takes at once "
+        print(f"\nthis character has more references than any model takes at once "
               f"({', '.join(f'{e} {c}' for e, c in sorted(ENGINE_CAPS.items()))}).\n"
               f"That is expected — pick a subset:\n"
-              f"  studio character refs {name} --describe\n"
-              f"  studio character default-set {name} --set <file> <file> …", file=sys.stderr)
-    _ = root
+              f"  studio character refs {record['slug']}\n"
+              f"  studio character default-set {record['slug']} <node> <node> …", file=sys.stderr)

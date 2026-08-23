@@ -343,3 +343,155 @@ def test_a_folder_that_is_not_there_lists_as_empty(apis, monkeypatch):
     monkeypatch.setattr(api, "get", _get)
 
     assert store.files("projects/<project>/input") == []
+
+
+# ── the tree, addressed by node id ──────────────────────────────────────────
+#
+# The half of this module the entity model added. These go through the
+# in-memory API rather than the scripted stub above, because the interesting
+# question about an id-addressed operation is what the *catalog* ends up
+# holding, and a stub that echoes the request cannot answer it.
+
+
+def test_a_child_that_is_not_there_is_none_not_an_error(library):
+    """The self-healing property the layout section describes.
+
+    The conventional folders are convention: a route that cannot find one is
+    entitled to make one rather than to fail, and `child` returning None is what
+    lets `ensure_child_folder` do that without a try/except at every call site.
+    """
+    assert store.child(library.character_root, "reference") is not None
+    assert store.child(library.character_root, "wardrobe-refs") is None
+
+
+def test_ensuring_a_folder_twice_returns_the_same_node(library):
+    first = store.ensure_child_folder(library.character_root, "wardrobe-refs")
+    second = store.ensure_child_folder(library.character_root, "wardrobe-refs")
+    assert first["id"] == second["id"]
+
+
+def test_ensuring_a_folder_over_a_file_is_refused(library):
+    """A caller asking for a folder is about to write children into it."""
+    with pytest.raises(store.StoreError, match="not a folder"):
+        store.ensure_child_folder(library.face_folder, "front-neutral.webp")
+
+
+def test_folder_path_walks_and_creates_the_whole_chain(library):
+    leaf = store.folder_path(library.project_root, "runs", "made-up", "output")
+    assert store.node(leaf["id"])["name"] == "output"
+    assert store.child(store.child(library.project_root, "runs")["id"],
+                       "made-up") is not None
+
+
+def test_files_of_is_natural_sorted_and_drops_folders(library):
+    """`_10` before `_2` is lexical order, and these map positionally.
+
+    The catalog returns files and folders in one list keyed by `kind`, where
+    `list_objects_v2` with a delimiter put folders in a separate field — so the
+    filter is explicit where it used to be structural.
+    """
+    reference = store.node(library.reference)
+    assert store.files_of(reference["id"]) == []          # face/ and body/ are folders
+    for name in ("shot_10.webp", "shot_2.webp"):
+        library.fake.put_file(library.face_folder, name, b"x")
+    assert [entry["name"] for entry in store.files_of(library.face_folder)] == [
+        "front-neutral.webp", "shot_2.webp", "shot_10.webp", "three-quarter.webp"]
+
+
+def test_writing_into_a_folder_by_id_confirms_the_size(library):
+    """Placeholder, PUT, confirm — the recoverable order.
+
+    A failure before the confirm leaves a row nobody sees; a failure after it
+    would leave a row promising bytes that are not there.
+    """
+    node = store.write_into(library.face_folder, "made.txt", b"hello",
+                            content_type="text/plain")
+    assert node["size"] == 5
+    assert store.read_node(node["id"]) == b"hello"
+
+
+def test_rewriting_a_file_keeps_its_node_id(library):
+    """**The property every record naming it depends on.**"""
+    first = store.write_into(library.face_folder, "made.txt", b"one",
+                             content_type="text/plain")
+    second = store.write_into(library.face_folder, "made.txt", b"two",
+                              content_type="text/plain")
+    assert first["id"] == second["id"]
+    assert store.read_node(first["id"]) == b"two"
+
+
+def test_renaming_a_node_writes_no_object(library):
+    """A name is a column. The blob does not know it changed.
+
+    Under S3 this was a `CopyObject` plus a `DeleteObject`, because a key IS the
+    location — which is why renumbering a reference pool destroyed and recreated
+    every file in it.
+    """
+    before = library.fake.nodes[library.face_1]["blob_key"]
+    store.rename_node(library.face_1, "renamed.webp")
+    assert library.fake.nodes[library.face_1]["blob_key"] == before
+    assert store.node(library.face_1)["name"] == "renamed.webp"
+
+
+def test_copying_a_node_makes_a_second_blob(library):
+    """A real copy — two blobs, two independent lifetimes.
+
+    Not a second row on one blob: that is copy-on-write (#334), and the delete
+    route destroys the shared bytes when either row goes.
+    """
+    made = store.copy_nodes([library.face_1], library.body_folder)["nodes"][0]
+    assert made["id"] != library.face_1
+    assert (library.fake.nodes[made["id"]]["blob_key"]
+            != library.fake.nodes[library.face_1]["blob_key"])
+    assert store.read_node(made["id"]) == store.read_node(library.face_1)
+
+
+def test_a_nodes_owner_is_derived_from_its_ancestry(library):
+    """Derived, not stored — so a move that changes the owner is visible at once.
+
+    The blob key it was stamped with is not rewritten, which is the drift
+    `catalog reseat` exists to clean up out of band.
+    """
+    assert store.node_owner(library.face_1) == {
+        "kind": "character", "id": library.character, "slug": "subject-a"}
+    assert store.node_owner(library.run_output)["kind"] == "project"
+
+
+def test_a_blob_key_carries_the_owner_and_the_node_and_no_name(library):
+    """**A bucket listing stops leaking hard rule #1.**
+
+    `<owner_kind>/<owner_id>/<node_id>.<ext>`, stamped once at creation from the
+    owner the parent already resolves to. Never parsed, never re-derived.
+    """
+    key = library.fake.nodes[library.face_1]["blob_key"]
+    assert key == f"characters/{library.character}/{library.face_1}.webp"
+    assert "subject-a" not in key
+
+
+def test_moving_a_node_out_of_a_character_leaves_its_key_alone(library):
+    """The honest cost of entity-prefixed keys, asserted rather than assumed.
+
+    The key is still a correct pointer — it is never parsed — but it now *looks*
+    like it means something it does not. `catalog verify` reports the drift and
+    `catalog reseat --apply` rewrites it, out of band and never automatically.
+    """
+    before = library.fake.nodes[library.face_1]["blob_key"]
+    store.move_nodes([library.face_1], library.input_pool)
+    assert library.fake.nodes[library.face_1]["blob_key"] == before
+    assert store.node_owner(library.face_1)["kind"] == "project"
+
+
+def test_deleting_an_entitys_root_folder_is_refused(library):
+    """The one hard rule the convention-not-schema layout leaves.
+
+    Everything else under a character may be renamed, moved or deleted. Its root
+    may not, while the character exists — the delete route says which entity to
+    delete instead.
+    """
+    with pytest.raises(api.Conflict, match="root folder"):
+        store.delete_nodes([library.character_root])
+
+
+def test_node_text_reads_a_payload_document_without_decoding_it(library):
+    record = api.get(f"/api/runs/{library.run}")
+    assert '"prompt"' in store.node_text(record["payload"]["request"])

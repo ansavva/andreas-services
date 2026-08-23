@@ -5,12 +5,13 @@ registry key; the entry decides which image fields exist, what the caps are,
 and which values the model will refuse. There is deliberately no default model:
 the engines are peers, chosen per shot.
 
-Every submission is recorded as a run under
-`projects/<project>/runs/<run_id>/` — the prompt, the inputs as S3 KEYS, the
-result, and the artifact. `--project` is REQUIRED and never inferred: where
-output lands is the one thing rerunning a command cannot undo. Nothing is ever
-uploaded to Replicate: assets reach it only as short-lived presigned URLs minted
-at submit time.
+Every submission is recorded as a RUN ROW — its project, model, status,
+timings, the characters it used and the node ids it bound — with the provider's
+own request and response kept beside it as documents studio stores and never
+decodes. The bytes land in the run's own folder. `--project` is REQUIRED and
+never inferred: where output lands is the one thing rerunning a command cannot
+undo. Nothing is ever uploaded to Replicate: assets reach it only as short-lived
+presigned URLs minted at submit time.
 
   studio models                          # the registry
   studio models show gpt-image-2         # entry + LIVE schema
@@ -197,7 +198,7 @@ def build_payload(entry: dict, args) -> dict:
               "can involve several."))
 @click.option("--dest", help="Also keep a local copy in this directory.")
 @click.option("--dry-run", is_flag=True, help="Show the payload for approval; submit nothing, bill nothing.")
-@click.option("--end-key", help="Explicit S3 key as the last frame (video).")
+@click.option("--end-key", help="Node id (or name path) of the last frame (video).")
 @click.option("--end-run", help="An earlier run's output as the last frame (video).")
 @click.option("--expires", type=int, default=3600, help="Presign expiry (default 3600).")
 @click.option("--extra", help="JSON object of model-specific inputs.")
@@ -206,7 +207,7 @@ def build_payload(entry: dict, args) -> dict:
 @click.option("--input-file", help="JSON: the Replicate `input` object WITHOUT image fields.")
 @click.option("--interval", type=int, help="Poll interval seconds.")
 @click.option("--json", "json_", is_flag=True, help="With --dry-run, emit raw JSON instead of the readable review.")
-@click.option("--key", multiple=True, help="Explicit S3 key. Repeatable.")
+@click.option("--key", multiple=True, help="Explicit node id (or name path). Repeatable.")
 @click.option("--model", required=True, help="REQUIRED registry key. See `models` — the engines are peers.")
 @click.option("--no-refs", is_flag=True, help="Deliberately generate with no image inputs.")
 @click.option("--pick", help=("Comma-separated reference files (or stems) from the "
@@ -221,7 +222,7 @@ def build_payload(entry: dict, args) -> dict:
 @click.option("--ref-run", multiple=True, help="An earlier run's output as reference material. Repeatable.")
 @click.option("--slots", help="Comma-separated positions WITHIN the resolved selection.")
 @click.option("--slug", help="Short slug for the run id and filename.")
-@click.option("--start-key", help="Explicit S3 key as the first frame (video).")
+@click.option("--start-key", help="Node id (or name path) of the first frame (video).")
 @click.option("--start-run", help="An earlier run's output as the first frame (video).")
 @click.option("--timeout", type=int, help="Give up after N seconds.")
 def cmd_run(**options):
@@ -243,6 +244,12 @@ def cmd_run(**options):
     # Where a run lands is never guessed. It used to fall back to the character
     # name and then to a pseudo-character called `misc`, which is how output
     # ended up in three different places for one piece of work. Ask instead.
+    #
+    # `args.project` is the project RECORD from here down, not the slug a person
+    # typed. Everything below wants the id — a runref defaults against it and the
+    # run row stores it — and resolving the slug once here is what stops four
+    # call sites doing it four times and disagreeing about which of two projects
+    # sharing a name they meant.
     args.project = PROJ.require_project(args.project)
 
     payload = build_payload(entry, args)
@@ -266,7 +273,12 @@ def cmd_run(**options):
     except MS.SchemaError as e:
         die(str(e))
 
-    run = f"{args.project}/{R.new_run_id(args.slug)}"
+    # A LABEL for the approval render, not an id: nothing has been created yet,
+    # and a run's id is minted by `POST /api/runs` at the moment the record is
+    # written. It used to be a locally generated timestamp-slug that then became
+    # the folder name, which is precisely the identity-in-a-string this model
+    # removes.
+    run = f"{args.project['slug']}/{R.slugify(args.slug)}"
     if args.dry_run:
         # `json_`, not `json` — `--json` cannot be a Python attribute name, so
         # Click was given the safe spelling and this line read the unsafe one.
@@ -276,9 +288,12 @@ def cmd_run(**options):
         return 0
 
     try:
-        return SUB.execute(entry, payload, bindings, token, args)
+        # `execute` returns the run record; a single generation has nothing left
+        # to do with it, and the exit code a caller reads is success or `die`.
+        SUB.execute(entry, payload, bindings, token, args)
     except (SUB.SubmitError, RA.ReplicateError) as e:
         die(str(e))
+    return 0
 
 
 # --------------------------------------------------------------------------

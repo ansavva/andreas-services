@@ -49,21 +49,26 @@ RESULT = json.dumps({"status": "succeeded"})
 # three deep, an uppercase extension, and an empty folder — which is what #284's
 # "zero-byte folder marker" becomes once a folder is a row rather than an object.
 #
+# **The project's folder is a child of the library root.** There is no
+# `projects/` wrapper: an entity root is a top-level folder named by its slug,
+# which is why `name_positions` reports under `ENTITY_ROOTS` and why a tree
+# shaped the old way is refused — `projects` is not a placeholder-shaped slug,
+# and the publisher is right to say so.
+#
 # (path, kind, body). A folder's body is None.
 TREE = [
-    ("projects", "folder", None),
-    ("projects/subject-a", "folder", None),
-    ("projects/subject-a/runs", "folder", None),
-    ("projects/subject-a/runs/2026-08-19_09-12-44_wave-porch", "folder", None),
-    ("projects/subject-a/runs/2026-08-19_09-12-44_wave-porch/request.json",
+    ("subject-a", "folder", None),
+    ("subject-a/runs", "folder", None),
+    ("subject-a/runs/2026-08-19_09-12-44_wave-porch", "folder", None),
+    ("subject-a/runs/2026-08-19_09-12-44_wave-porch/request.json",
      "file", REQUEST.encode()),
-    ("projects/subject-a/runs/2026-08-19_09-12-44_wave-porch/result.json",
+    ("subject-a/runs/2026-08-19_09-12-44_wave-porch/result.json",
      "file", RESULT.encode()),
-    ("projects/subject-a/runs/2026-08-19_09-12-44_wave-porch/output",
+    ("subject-a/runs/2026-08-19_09-12-44_wave-porch/output",
      "folder", None),
-    ("projects/subject-a/runs/2026-08-19_09-12-44_wave-porch/output/wave-porch.JPEG",
+    ("subject-a/runs/2026-08-19_09-12-44_wave-porch/output/wave-porch.JPEG",
      "file", b"jpeg-bytes-of-a-still"),
-    ("projects/subject-a/input", "folder", None),
+    ("subject-a/input", "folder", None),
 ]
 
 CONTENT_TYPES = {"request.json": "application/json",
@@ -147,7 +152,7 @@ def _publish(*argv):
     return CliRunner().invoke(cli.main, ["dev-seed", "publish", *argv])
 
 
-RUN = "projects/subject-a/runs/2026-08-19_09-12-44_wave-porch"
+RUN = "subject-a/runs/2026-08-19_09-12-44_wave-porch"
 
 
 # ── the money pin ───────────────────────────────────────────────────────────
@@ -241,7 +246,7 @@ def test_the_documents_pass_the_loaders_own_validator(dev_stack):
     and this module ever disagree about a field name, a required key or the
     cross-check between the two documents, it fails here.
     """
-    result = _apply("--path", RUN, "--path", "projects/subject-a/input")
+    result = _apply("--path", RUN, "--path", "subject-a/input")
     assert result.exit_code == 0, result.output
 
     catalog, manifest = _documents(dev_stack)
@@ -364,10 +369,12 @@ def test_a_folder_brings_its_subtree_and_its_ancestors(dev_stack):
     catalog, _ = _documents(dev_stack)
     published = {n["path"] for n in catalog["nodes"]}
 
-    assert "projects" in published and "projects/subject-a" in published
+    # The project's own root and the `runs/` folder between it and the run —
+    # ancestors are structural and the loader will not invent one.
+    assert "subject-a" in published and "subject-a/runs" in published
     assert f"{RUN}/output/wave-porch.JPEG" in published
     # Not selected, not under the selection.
-    assert "projects/subject-a/input" not in published
+    assert "subject-a/input" not in published
 
 
 def test_an_empty_folder_can_be_promoted_on_its_own(dev_stack):
@@ -377,11 +384,10 @@ def test_an_empty_folder_can_be_promoted_on_its_own(dev_stack):
     marker object — a folder node may not carry a `source`. A childless folder
     node is what the app sees either way.
     """
-    assert _apply("--path", "projects/subject-a/input").exit_code == 0
+    assert _apply("--path", "subject-a/input").exit_code == 0
     catalog, manifest = _documents(dev_stack)
 
-    assert {n["path"] for n in catalog["nodes"]} == {
-        "projects", "projects/subject-a", "projects/subject-a/input"}
+    assert {n["path"] for n in catalog["nodes"]} == {"subject-a", "subject-a/input"}
     assert manifest["object_count"] == 0
     assert loader._problems(catalog, manifest) == ""
 
@@ -394,7 +400,7 @@ def test_a_selection_over_the_cap_is_refused(dev_stack):
 
 
 def test_a_path_that_is_not_in_the_stack_is_named(dev_stack):
-    result = _publish("--path", "projects/subject-a/nope")
+    result = _publish("--path", "subject-a/nope")
     assert result.exit_code == 1
     assert "no such path" in result.output
 
@@ -412,26 +418,27 @@ def test_a_real_looking_name_anywhere_in_the_stack_refuses_the_publish(dev_stack
     it.
     """
     ddb = dev_stack["ddb"]
-    for item in _rows(tree=[("characters", "folder", None),
-                            ("characters/rosalind", "folder", None)]):
+    for item in _rows(tree=[("rosalind", "folder", None)]):
         if item["sk"] == "META" and item["pk"].startswith("NODE#"):
             ddb.put_item(TableName=DEV_TABLE, Item=ddbc.to_item(item))
 
     result = _publish("--path", RUN)
     assert result.exit_code == 1
-    assert "characters/ holds 'rosalind'" in result.output
+    # Reported under `entity roots`, because that is the only name position
+    # left: a top-level folder is somebody's slug, and there is no
+    # `characters/` folder to name the group after.
+    assert "entity roots/ holds 'rosalind'" in result.output
     assert "DRIVEN with placeholders" in result.output
 
 
 def test_a_segment_shaped_like_a_personal_name_is_refused(dev_stack):
     ddb = dev_stack["ddb"]
-    for item in _rows(tree=[("projects", "folder", None),
-                            ("projects/subject-a", "folder", None),
-                            ("projects/subject-a/Amelia-Hart", "folder", None)]):
+    for item in _rows(tree=[("subject-a", "folder", None),
+                            ("subject-a/Amelia-Hart", "folder", None)]):
         if item["sk"] == "META" and item["pk"].startswith("NODE#"):
             ddb.put_item(TableName=DEV_TABLE, Item=ddbc.to_item(item))
 
-    result = _publish("--path", "projects/subject-a/Amelia-Hart")
+    result = _publish("--path", "subject-a/Amelia-Hart")
     assert result.exit_code == 1
     assert "shape of a personal name" in result.output
 

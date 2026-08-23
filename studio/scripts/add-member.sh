@@ -107,6 +107,16 @@ fi
 # partition, which leaves "who else is in here" with nothing to query but the
 # inverted index — `by-sk`, the same one `catalog.members_of` reads. A scan
 # would work and is the wrong habit to leave in a script somebody copies.
+#
+# **Re-checked against the entity model and unchanged.** That model puts new
+# items in the `LIB#<lib>` partition — `CHARSLUG#<slug>` and `PROJSLUG#<slug>`
+# claims, and `TERM#<model>#<avoid>` phrasebook rows — which is the kind of
+# widening that quietly breaks a listing. It does not break this one: `by-sk`
+# is hashed on the SORT key, the query asks for `sk = LIB#<lib>`, and a slug
+# claim's sort key is `CHARSLUG#…`. Only a membership row has `LIB#<lib>` in
+# that position, so this still returns members and nothing else. The entity
+# rows did make `by-sk` earn its keep twice over: read the other way it answers
+# "which projects involve this character".
 
 if [ "$LIST_ONLY" = true ]; then
   echo "Members of ${STUDIO_LIBRARY}:"
