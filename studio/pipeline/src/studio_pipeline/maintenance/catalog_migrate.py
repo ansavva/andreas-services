@@ -316,9 +316,60 @@ def read_catalog(ddb, chosen: str | None = None) -> dict:
     by_blob = {row["blob_key"]: row["node_id"]
                for row in nodes.values() if row.get("blob_key")}
 
+    # `name path -> node_id`, and it is the FALLBACK for a key `by_blob` cannot
+    # answer — see `resolve_key`. Composed by walking down from the root rather
+    # than read off a row, because `path` names ancestors by id.
+    by_path: dict[str, str] = {}
+    stack = [(root, "")]
+    while stack:
+        node_id, prefix = stack.pop()
+        for name, row in children.get(node_id, {}).items():
+            here = f"{prefix}{name}"
+            by_path[here] = row["node_id"]
+            stack.append((row["node_id"], here + "/"))
+
     return {"lib": lib, "root": root, "nodes": nodes, "children": children,
-            "by_blob": by_blob, "entities": entities,
+            "by_blob": by_blob, "by_path": by_path, "entities": entities,
             "name": libraries[lib].get("name") or "Studio"}
+
+
+def resolve_key(cat: dict, value: str, by_path_hits: list[str]) -> str | None:
+    """A key recorded in a legacy document -> the node id that holds it today.
+
+    **Two lookups, and the second is the one that earns its keep.**
+
+    `by_blob` is exact: the string in the document IS some node's `blob_key`,
+    which is true of everything the catalog seed recorded. That is the answer
+    wherever there is one.
+
+    `by_path` is the fallback, and it is correct for the same reason the exact
+    lookup usually works: before the catalog a name path and an S3 key were the
+    same string. So a document naming `config/pose/face/<file>.png` is naming a
+    *place in the tree*, and the node at that place today is the best available
+    answer — often the only one, because a blob written since is keyed on ids
+    and can never match the string a document recorded years ago.
+
+    This is what the pose plates need. Every historical reference shoot bound a
+    plate, the seed deliberately recorded no node for `config/`, and so every
+    one of those bindings resolved to nothing — 28 of them, one per run, in the
+    first real migration. Give the plates nodes (`studio config sync`) and the
+    path lookup finds them.
+
+    **It resolves by a MUTABLE handle and is therefore reported, never silent.**
+    A name path is where something is now; a rename since the document was
+    written would point this at a different file with the same name. That is
+    still better than dropping the binding — the alternative is an envelope that
+    claims a run was shown fewer images than it was — but it is an assumption,
+    so every hit is counted and printed under `by path` rather than folded into
+    the exact ones.
+    """
+    found = cat["by_blob"].get(value)
+    if found is not None:
+        return found
+    found = cat["by_path"].get(value.strip("/"))
+    if found is not None:
+        by_path_hits.append(value)
+    return found
 
 
 def child(cat: dict, parent: str | None, name: str) -> dict | None:
@@ -412,11 +463,14 @@ def build_plan(s3, ddb, chosen: str | None = None) -> dict:
     #                 record that the reference was ever made.
     unparseable: list[str] = []
     unresolved: list[str] = []
+    # Keys the exact lookup missed and the path lookup answered. Reported
+    # separately, because a name path is a mutable handle — `resolve_key`.
+    by_path_hits: list[str] = []
 
-    characters = _plan_characters(s3, cat, unparseable, unresolved)
+    characters = _plan_characters(s3, cat, unparseable, unresolved, by_path_hits)
     by_slug = {c["slug"]: c["id"] for c in characters}
     projects, runs, scenes, movies = _plan_projects(
-        s3, cat, by_slug, unparseable, unresolved)
+        s3, cat, by_slug, unparseable, unresolved, by_path_hits)
 
     # D5. Every file node that qualifies and does not already carry the key.
     # A node that has one is skipped rather than rewritten: the API stamps it on
@@ -433,10 +487,10 @@ def build_plan(s3, ddb, chosen: str | None = None) -> dict:
             "characters": characters, "projects": projects, "runs": runs,
             "scenes": scenes, "movies": movies, "reel": reel,
             "polluted": polluted, "unparseable": unparseable,
-            "unresolved": unresolved}
+            "unresolved": unresolved, "by_path": by_path_hits}
 
 
-def _plan_characters(s3, cat, unparseable, unresolved) -> list[dict]:
+def _plan_characters(s3, cat, unparseable, unresolved, by_path_hits) -> list[dict]:
     """One record per folder under `characters/`, plus its reference rows."""
     out = []
     tree = child(cat, cat["root"], LEGACY_CHARACTERS)
@@ -467,7 +521,7 @@ def _plan_characters(s3, cat, unparseable, unresolved) -> list[dict]:
         refs, seen = [], set()
         for position, entry in enumerate(doc.get("references") or []):
             ref = _plan_reference(cat, root, where, position, entry,
-                                  seen, unparseable, unresolved)
+                                  seen, unparseable, unresolved, by_path_hits)
             if ref is not None:
                 refs.append(ref)
 
@@ -500,7 +554,7 @@ def _plan_characters(s3, cat, unparseable, unresolved) -> list[dict]:
 
 
 def _plan_reference(cat, root, where, position, entry, seen,
-                    unparseable, unresolved) -> dict | None:
+                    unparseable, unresolved, by_path_hits) -> dict | None:
     """One `REF#` row out of one `references:` entry.
 
     **This is the row that kills filename magic.** `<slug>_<group>_<n>.png`
@@ -539,7 +593,7 @@ def _plan_reference(cat, root, where, position, entry, seen,
             "created": node.get("created_at")}
 
 
-def _plan_projects(s3, cat, by_slug, unparseable, unresolved):
+def _plan_projects(s3, cat, by_slug, unparseable, unresolved, by_path_hits):
     """A record per folder under `projects/`, and the three tiers inside each."""
     projects, runs, scenes, movies = [], [], [], []
     tree = child(cat, cat["root"], LEGACY_PROJECTS)
@@ -565,13 +619,13 @@ def _plan_projects(s3, cat, by_slug, unparseable, unresolved):
                                   "has no folder under characters/")
 
         mine_runs = _plan_runs(s3, cat, proj, root, where, by_slug,
-                               unparseable, unresolved)
+                               unparseable, unresolved, by_path_hits)
         by_run_slug = {r["slug"]: r["id"] for r in mine_runs}
         mine_scenes = _plan_scenes(s3, cat, proj, root, where, by_run_slug,
-                                   unparseable, unresolved)
+                                   unparseable, unresolved, by_path_hits)
         by_scene_slug = {s["slug"]: s["id"] for s in mine_scenes}
         mine_movies = _plan_movies(s3, cat, proj, root, where, by_scene_slug,
-                                   unparseable, unresolved)
+                                   unparseable, unresolved, by_path_hits)
         runs += mine_runs
         scenes += mine_scenes
         movies += mine_movies
@@ -601,7 +655,7 @@ def _plan_projects(s3, cat, by_slug, unparseable, unresolved):
 
 
 def _plan_runs(s3, cat, proj, project_root, project_where, by_slug,
-               unparseable, unresolved) -> list[dict]:
+               unparseable, unresolved, by_path_hits) -> list[dict]:
     """One envelope per folder under a project's `runs/`.
 
     **The envelope is studio's; the payload is the provider's.** `request.json`
@@ -635,7 +689,7 @@ def _plan_runs(s3, cat, proj, project_root, project_where, by_slug,
             listed = values if isinstance(values, list) else [values]
             ids = []
             for value in listed:
-                found = cat["by_blob"].get(str(value))
+                found = resolve_key(cat, str(value), by_path_hits)
                 if found is None:
                     unresolved.append(f"{where}: binding {name!r} names "
                                       f"{value!r}, which no node claims")
@@ -727,7 +781,7 @@ def _status(result: dict, outputs: list[str]) -> str:
 
 
 def _plan_scenes(s3, cat, proj, project_root, project_where, by_run_slug,
-                 unparseable, unresolved) -> list[dict]:
+                 unparseable, unresolved, by_path_hits) -> list[dict]:
     """One envelope per folder under `scenes/`, with a `SHOT#` row per shot.
 
     **A scene document's shape is the least settled thing this command reads** —
@@ -783,7 +837,7 @@ def _plan_scenes(s3, cat, proj, project_root, project_where, by_run_slug,
 
 
 def _plan_movies(s3, cat, proj, project_root, project_where, by_scene_slug,
-                 unparseable, unresolved) -> list[dict]:
+                 unparseable, unresolved, by_path_hits) -> list[dict]:
     """One envelope per folder under `movies/` — the tier above a scene."""
     out = []
     tree = child(cat, project_root, LEGACY_MOVIES)
@@ -1301,6 +1355,13 @@ def report(plan: dict) -> None:
           "(D5: sparse by-recent)")
     print(f"{'polluted':<12} {plan['polluted']:>6}  rows carrying `reel` that "
           "should not — folders and documents")
+    if plan["by_path"]:
+        print(f"{'by path':<12} {len(plan['by_path']):>6}  resolved by NAME PATH, "
+              "not by blob key — an assumption, see `resolve_key`")
+        for entry in sorted(set(plan["by_path"]))[:SHOWN]:
+            print(f"             {entry}")
+        if len(set(plan["by_path"])) > SHOWN:
+            print(f"             … and {len(set(plan['by_path'])) - SHOWN} more distinct")
     print(f"{'UNRESOLVED':<12} {len(plan['unresolved']):>6}  reported, does NOT "
           "block: a document names something the tree lost")
     for entry in plan["unresolved"][:SHOWN]:
@@ -1380,6 +1441,7 @@ def do_plan(library, journal):
             "reel": len(plan["reel"]), "polluted": plan["polluted"],
             "unparseable": plan["unparseable"],
             "unresolved": plan["unresolved"],
+            "by_path": sorted(set(plan["by_path"])),
             # A sample, not the map. Every id here is a pure function of the
             # catalog, so the mapping is re-derivable and a copy of it in the
             # journal would only rot — the same call the catalog seed made.

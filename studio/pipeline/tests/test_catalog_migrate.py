@@ -89,3 +89,68 @@ def test_every_phase_takes_the_flag(catalog_table):
         assert "--library" in flags, f"studio catalog migrate {name}"
     reseat = cli.main.get_command(None, "catalog").get_command(None, "reseat")
     assert "--library" in {f for p in reseat.params for f in getattr(p, "opts", [])}
+
+
+# ── the keys a legacy document names ────────────────────────────────────────
+
+def _file(ddb, node_id: str, parent: str, name: str, blob_key: str) -> None:
+    ddb.put_item(TableName=ddbc.table(), Item=ddbc.to_item(
+        {"pk": f"NODE#{node_id}", "sk": "META", "node_id": node_id,
+         "parent_id": parent, "lib": REAL, "kind": "file", "name": name,
+         "blob_key": blob_key, "size": 9, "content_type": "image/png"}))
+
+
+def _folder(ddb, node_id: str, parent: str, name: str) -> None:
+    ddb.put_item(TableName=ddbc.table(), Item=ddbc.to_item(
+        {"pk": f"NODE#{node_id}", "sk": "META", "node_id": node_id,
+         "parent_id": parent, "lib": REAL, "kind": "folder", "name": name}))
+
+
+def _tree(ddb):
+    """Root, `config/pose/face/`, and one plate whose blob key is NOT its path.
+
+    That mismatch is the whole point. `studio config sync` uploads a plate
+    through the API, so its bytes land under the id scheme — the name path and
+    the blob key have not been the same string since.
+    """
+    _library(ddb, REAL, "Studio", "node-root")
+    _folder(ddb, "node-config", "node-root", "config")
+    _folder(ddb, "node-pose", "node-config", "pose")
+    _folder(ddb, "node-face", "node-pose", "face")
+    _file(ddb, "node-plate", "node-face", "three-quarter.png",
+          f"libraries/{REAL}/node-plate.png")
+
+
+def test_a_key_that_is_a_blob_key_resolves_exactly(catalog_table):
+    _tree(catalog_table)
+    cat = cm.read_catalog(catalog_table, REAL)
+    hits: list[str] = []
+    assert cm.resolve_key(cat, f"libraries/{REAL}/node-plate.png", hits) == "node-plate"
+    assert hits == [], "an exact hit must not be reported as an assumption"
+
+
+def test_a_legacy_key_resolves_by_name_path_and_is_reported(catalog_table):
+    """**The 28 bindings the first real migration lost, one per run.**
+
+    Every historical reference shoot bound a pose plate, recorded as
+    `config/pose/face/<file>.png` — which was the S3 key and the name path at
+    once, because before the catalog they were the same string. The seed
+    deliberately recorded no node for `config/`, so the exact lookup answered
+    nothing and every one of those bindings was dropped from its envelope.
+    """
+    _tree(catalog_table)
+    cat = cm.read_catalog(catalog_table, REAL)
+    hits: list[str] = []
+
+    assert cm.resolve_key(cat, "config/pose/face/three-quarter.png", hits) == "node-plate"
+    assert hits == ["config/pose/face/three-quarter.png"], \
+        "a path hit is an assumption and must be counted for reporting"
+
+
+def test_a_key_that_is_neither_still_resolves_to_nothing(catalog_table):
+    """The fallback must not turn a genuinely missing object into a false hit."""
+    _tree(catalog_table)
+    cat = cm.read_catalog(catalog_table, REAL)
+    hits: list[str] = []
+    assert cm.resolve_key(cat, "config/pose/face/deleted.png", hits) is None
+    assert hits == []
