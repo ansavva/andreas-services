@@ -247,7 +247,7 @@ def in_the_reel(row: dict) -> bool:
 
 # ── reading the catalog ─────────────────────────────────────────────────────
 
-def read_catalog(ddb) -> dict:
+def read_catalog(ddb, chosen: str | None = None) -> dict:
     """The whole table, indexed the four ways every phase below needs it.
 
     One scan, for the reason every maintenance command in this package scans: a
@@ -273,13 +273,30 @@ def read_catalog(ddb) -> dict:
     if not libraries:
         die(f"no library in '{ddbc.table()}'. This migrates a library that is "
             "already recorded; there is nothing above an empty table to raise.")
-    if len(libraries) > 1:
-        die("this table holds more than one library, and this command migrates "
-            "the one the bucket names:\n"
-            + "\n".join(f"       {lib}  ({row.get('name')})"
-                        for lib, row in sorted(libraries.items())))
 
-    lib = next(iter(libraries))
+    # **A table holds more than one library and always will.** Prod carries the
+    # real one and `lib-smoke`, which `scripts/prod-seed-smoke.py` writes so the
+    # post-deploy smoke test can sign in as an account that is a member of
+    # exactly one library — that is the mechanism rather than a courtesy, so the
+    # second library is permanent.
+    #
+    # This used to refuse outright while its own message claimed it migrated
+    # "the one the bucket names". Nothing named a library: a bucket holds bytes,
+    # and the table is the only thing that knows a library exists. So the choice
+    # is the caller's, and it is demanded only when there is a choice to make.
+    if chosen:
+        if chosen not in libraries:
+            die(f"no library {chosen!r} in '{ddbc.table()}'. It holds:\n"
+                + "\n".join(f"       {lib}  ({row.get('name')})"
+                            for lib, row in sorted(libraries.items())))
+        lib = chosen
+    elif len(libraries) > 1:
+        die("this table holds more than one library — name the one to migrate "
+            "with --library:\n"
+            + "\n".join(f"       --library {lib}  ({row.get('name')})"
+                        for lib, row in sorted(libraries.items())))
+    else:
+        lib = next(iter(libraries))
     root = libraries[lib].get("root_node")
     if root not in nodes:
         die(f"library {lib} names root node {root}, which has no row. The tree "
@@ -369,7 +386,7 @@ def _yaml(body: bytes):
 
 # ── the plan ────────────────────────────────────────────────────────────────
 
-def build_plan(s3, ddb) -> dict:
+def build_plan(s3, ddb, chosen: str | None = None) -> dict:
     """Every entity row this migration would write, parents before children.
 
     Read top-down, this is the legacy layout stated once: `characters/<slug>/`
@@ -378,7 +395,7 @@ def build_plan(s3, ddb) -> dict:
     describe one submission to a model. That is the whole of what the old shape
     said, and after this command it is said by rows instead.
     """
-    cat = read_catalog(ddb)
+    cat = read_catalog(ddb, chosen)
     lib, root = cat["lib"], cat["root"]
 
     # Two lists, and the split is deliberate.
@@ -1305,7 +1322,7 @@ def report(plan: dict) -> None:
 # ── CLI ─────────────────────────────────────────────────────────────────────
 
 @contextlib.contextmanager
-def _session(journal_name, phase, apply=None):
+def _session(journal_name, phase, apply=None, library=None):
     """The setup and teardown every phase shares.
 
     **Every phase takes a DynamoDB client, including `plan`.** The catalog
@@ -1322,7 +1339,7 @@ def _session(journal_name, phase, apply=None):
             "Apply the infra first, or set STUDIO_CATALOG_TABLE.")
     jpath = journal_path(journal_name)
     journal = load_journal(jpath)
-    plan = build_plan(s3, ddb)
+    plan = build_plan(s3, ddb, library)
     if phase != "plan":
         if plan["unparseable"]:
             die(f"{len(plan['unparseable'])} unparseable document(s) — run "
@@ -1350,10 +1367,11 @@ def cmd_migrate():
 
 
 @cmd_migrate.command("plan")
+@click.option("--library", help="Which library to migrate. Required only when the table holds more than one, which prod always does — `lib-smoke` is seeded by the post-deploy smoke test.")
 @click.option("--journal", help="journal file name (default: the newest)")
-def do_plan(journal):
+def do_plan(library, journal):
     """Show the entity rows that would be created, and what cannot be read."""
-    with _session(journal, "plan") as (_s3, _ddb, plan, jrn):
+    with _session(journal, "plan", library=library) as (_s3, _ddb, plan, jrn):
         report(plan)
         jrn["migrate_plan"] = {
             "lib": plan["lib"], "root": plan["root"],
@@ -1375,10 +1393,11 @@ def do_plan(journal):
 
 @cmd_migrate.command("apply")
 @click.option("--apply", is_flag=True, help="actually do it (default is a dry run)")
+@click.option("--library", help="Which library to migrate. Required only when the table holds more than one, which prod always does — `lib-smoke` is seeded by the post-deploy smoke test.")
 @click.option("--journal", help="journal file name (default: the newest)")
-def do_apply(apply, journal):
+def do_apply(apply, library, journal):
     """Create the entity rows. Adopts folders; copies no bytes; deletes nothing."""
-    with _session(journal, "apply", apply) as (_s3, ddb, plan, jrn):
+    with _session(journal, "apply", apply, library=library) as (_s3, ddb, plan, jrn):
         res = phase_apply(ddb, plan, apply)
         verb = "created" if apply else "would create"
         for kind in ("character", "project", "run", "scene", "movie"):
@@ -1392,10 +1411,11 @@ def do_apply(apply, journal):
 
 
 @cmd_migrate.command("verify")
+@click.option("--library", help="Which library to migrate. Required only when the table holds more than one, which prod always does — `lib-smoke` is seeded by the post-deploy smoke test.")
 @click.option("--journal", help="journal file name (default: the newest)")
-def do_verify(journal):
+def do_verify(library, journal):
     """Check every entity resolves, every folder exists, every output is there."""
-    with _session(journal, "verify") as (s3, ddb, plan, jrn):
+    with _session(journal, "verify", library=library) as (s3, ddb, plan, jrn):
         res = phase_verify(s3, ddb, plan)
         for kind, count in sorted(res["entities"].items()):
             print(f"{kind + 's':<22} {count}")
@@ -1421,15 +1441,16 @@ def do_verify(journal):
 @main.command("reseat", help=__doc__,
               short_help="rewrite blob keys whose owner prefix has drifted")
 @click.option("--apply", is_flag=True, help="actually do it (default is a dry run)")
+@click.option("--library", help="Which library to migrate. Required only when the table holds more than one, which prod always does — `lib-smoke` is seeded by the post-deploy smoke test.")
 @click.option("--journal", help="journal file name (default: the newest)")
-def cmd_reseat(apply, journal):
+def cmd_reseat(apply, library, journal):
     """Move drifted blobs to `<owner_kind>/<owner_id>/<node_id>.<ext>`.
 
     Optional, separate and never automatic. It refuses until the journal records
     a passing `verify`, because it is the only command in this file that deletes
     an object and the check that says the rows are right has to have run first.
     """
-    with _session(journal, "reseat", apply) as (s3, ddb, plan, jrn):
+    with _session(journal, "reseat", apply, library=library) as (s3, ddb, plan, jrn):
         if not (jrn.get("migrate_verify") or {}).get("ok"):
             die("this journal records no passing `verify`. Run "
                 "`studio catalog migrate verify` first — reseat deletes objects "
