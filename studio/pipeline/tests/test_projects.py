@@ -210,11 +210,24 @@ def test_projects_inputs_says_expires_is_ignored(library):
     assert "--expires 60 is ignored" in result.output
 
 
-def test_deleting_a_project_that_holds_runs_is_refused_without_force(library):
-    """The default keeps files, because the reverse default loses media to a typo."""
+def test_deleting_a_project_that_holds_runs_is_refused_and_names_cascade(library):
+    """The refusal points at the flag that does the right thing, not `--force`.
+
+    `--force` deletes the project and leaves its runs naming a project id that
+    is gone. `--cascade` takes them with it.
+    """
     result = CliRunner().invoke(cli.main, ["projects", "delete", "porch-teaser"])
     assert result.exit_code == 1
-    assert "--force" in result.output
+    assert "--cascade" in result.output
+
+
+def test_cascade_deletes_the_runs_with_the_project(library):
+    """One command, and nothing is left naming the project afterwards."""
+    result = CliRunner().invoke(cli.main, ["projects", "delete", "porch-teaser",
+                                           "--cascade"])
+    assert result.exit_code == 0, result.output
+    assert "run(s)" in result.output
+    assert library.run not in library.fake.runs
 
 
 def test_deleting_with_force_keeps_the_folder_by_default(library):

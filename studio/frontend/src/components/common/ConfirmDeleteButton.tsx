@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { buttonClass } from "@ansavva/design-system";
 
-type Tone = "row" | "chrome" | "bar";
+type Tone = "row" | "chrome" | "bar" | "page";
 type Phase = "idle" | "armed" | "busy";
 
 interface Props {
@@ -109,7 +109,7 @@ export function ConfirmDeleteButton({
    * button expands leftward under a cursor already resting on the can, so the
    * second click lands on the armed control rather than somewhere it used to be.
    */
-  const showsText = tone === "bar" && phase !== "idle";
+  const showsText = (tone === "bar" && phase !== "idle") || tone === "page";
 
   return (
     <button
@@ -207,6 +207,12 @@ export function ConfirmDeleteButton({
 const toneStyles: Record<Tone, string> = {
   row: "p-2 text-muted hover:bg-surface-alt hover:text-danger",
   chrome: "p-2 text-white/80 hover:bg-white/15 hover:text-white",
+  // Text at rest AND armed, unlike `bar`. This is a page-level destroy — a
+  // project with its runs, a character with its references — and a trash can in
+  // a page header reads as "delete something on this page" rather than "delete
+  // this page's subject". The `noun` carries the weight: armed, it says exactly
+  // what is about to go.
+  page: "",
   // Idle only — the armed and busy states of this tone render as text, not as an
   // icon, so `armedStyles.bar` is never reached. It matches `row` because it is
   // literally the same trash can on a different surface.
@@ -216,5 +222,8 @@ const toneStyles: Record<Tone, string> = {
 const armedStyles: Record<Tone, string> = {
   row: "p-2 bg-danger/15 text-danger",
   chrome: "p-2 bg-danger/80 text-white",
+  // Never reached: `page` always renders as text, so it takes the same inline
+  // danger fill `bar` does when armed.
+  page: "",
   bar: "p-2 bg-danger/15 text-danger",
 };

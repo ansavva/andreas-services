@@ -108,6 +108,7 @@ for _command in (
     profile.cmd_create,
     profile.cmd_edit,
     profile.cmd_set_profile,
+    profile.cmd_delete,
     profile.cmd_rename,
     profile.cmd_textblock,
     refs.cmd_refs,

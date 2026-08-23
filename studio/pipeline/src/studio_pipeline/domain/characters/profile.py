@@ -347,6 +347,35 @@ def cmd_create(name, display_name, dry_run, from_profile, model, project, shoot)
         die(str(exc))
 
 
+@click.command("delete")
+@click.argument("name", required=True)
+@click.option("--files", type=click.Choice(["keep", "delete"]), default="keep",
+              help="What to do with the character's folder (default: keep it).")
+@click.option("--force", is_flag=True,
+              help="Delete even while projects or runs still name it.")
+def cmd_delete(name, files, force):
+    """Delete a character.
+
+    **`--files keep` is the default deliberately.** The reverse default loses a
+    reference library to a typo, and an orphaned folder in the library root is
+    visible and recoverable; nothing this service does to S3 is undoable.
+
+    **The refusal is the interesting half, and `--force` is right here** — which
+    is not true of `projects delete --force`. A project or a run that names this
+    character holds a link row, and those rows are what make "every run of this
+    subject" answerable. But a run is HISTORY: it really did use this character,
+    and deleting the character is not a reason to delete the work. So force
+    drops the links and leaves the runs, where the same flag on a project would
+    leave children naming a parent that is gone.
+    """
+    record = _require(name)
+    try:
+        entities.delete_character(record["id"], files=files, force=force)
+    except api.Conflict as exc:
+        die(f"{exc}\n       pass --force to drop those links and delete it anyway")
+    print(f"deleted character {record['slug']} (files: {files})")
+
+
 @click.command("rename")
 @click.argument("name", required=True)
 @click.argument("new", required=True)

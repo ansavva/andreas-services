@@ -594,6 +594,58 @@
         "commands": {},
         "options": {}
       },
+      "delete": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "files": {
+            "choices": [
+              "delete",
+              "keep"
+            ],
+            "default": "keep",
+            "dest": "files",
+            "flag": false,
+            "flags": [
+              "--files"
+            ],
+            "help": "What to do with the character's folder (default: keep it).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "force": {
+            "choices": null,
+            "default": false,
+            "dest": "force",
+            "flag": true,
+            "flags": [
+              "--force"
+            ],
+            "help": "Delete even while projects or runs still name it.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
       "describe-refs": {
         "arguments": {
           "name": {
@@ -3132,6 +3184,21 @@
         },
         "commands": {},
         "options": {
+          "cascade": {
+            "choices": null,
+            "default": false,
+            "dest": "cascade",
+            "flag": true,
+            "flags": [
+              "--cascade"
+            ],
+            "help": "Delete the runs, scenes and movies it holds, then the project.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
           "files": {
             "choices": [
               "delete",
@@ -3158,8 +3225,8 @@
             "flags": [
               "--force"
             ],
-            "help": "Delete even while it still holds runs.",
-            "hidden": false,
+            "help": "Delete the project and ORPHAN its children. Prefer --cascade.",
+            "hidden": true,
             "multiple": false,
             "nargs": 0,
             "required": false,

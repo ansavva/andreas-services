@@ -281,8 +281,15 @@ def patch_project(proj_id: str, rev: int, *, slug: str | None = None,
     return api.patch(f"/api/projects/{proj_id}", body)
 
 
-def delete_project(proj_id: str, *, files: str = "keep", force: bool = False) -> dict:
-    return api.delete(f"/api/projects/{proj_id}", files=files, force=1 if force else None)
+def delete_project(proj_id: str, *, files: str = "keep", cascade: bool = False,
+                   force: bool = False) -> dict:
+    """`cascade` takes the runs, scenes and movies with it. `force` orphans them.
+
+    Both exist because `force` shipped first and does the wrong thing: it leaves
+    every child naming a project id that is gone. Prefer `cascade`.
+    """
+    return api.delete(f"/api/projects/{proj_id}", files=files,
+                      cascade=1 if cascade else None, force=1 if force else None)
 
 
 def put_project_characters(proj_id: str, characters: list[str]) -> dict:

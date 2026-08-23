@@ -166,8 +166,14 @@ def delete_project(addressed: str):
 
     The refusal is about the rows rather than the folder: a run's envelope names
     its project, and deleting the project leaves every one of them pointing at
-    nothing. `?force=1` says to do it anyway, which is a reasonable thing to want
-    for a project of failed experiments.
+    nothing.
+
+    **`?cascade=1` is the answer to that, and `?force=1` never was.** Cascade
+    deletes the movies, then the scenes, then the runs, then the project — see
+    `delete_project_cascade` for why the order is the safety and why it cannot
+    be one transaction. Force still means "delete the project and leave its
+    children naming a project that is gone", which is a broken catalog and is
+    kept only because something may already depend on it; prefer cascade.
     """
     held = support.memberships()
     record = project_at(addressed, held)
@@ -176,21 +182,26 @@ def delete_project(addressed: str):
     if files not in ("keep", "delete"):
         raise ValidationError("files must be 'keep' or 'delete'")
 
+    cascade = request.args.get("cascade") in ("1", "true")
     counts = record.get("counts") or {}
     held_entities = sum(int(counts.get(field) or 0) for field in ("runs", "scenes", "movies"))
-    if held_entities and request.args.get("force") not in ("1", "true"):
+    if held_entities and not cascade and request.args.get("force") not in ("1", "true"):
         return support.structured(
             "conflict",
             f"this project holds {held_entities} run(s), scene(s) and movie(s) — "
-            "pass ?force=1 to delete it anyway",
+            "pass ?cascade=1 to delete them with it",
             409,
             counts=counts,
         )
 
-    result = catalog.delete_entity(KIND, record, delete_files=files == "delete")
+    if cascade:
+        result = catalog.delete_project_cascade(record, delete_files=files == "delete")
+    else:
+        result = catalog.delete_entity(KIND, record, delete_files=files == "delete")
     if result["blob_keys"]:
         s3.delete(result["blob_keys"])
-    return jsonify({"id": record["id"], "files": files}), 200
+    return jsonify({"id": record["id"], "files": files,
+                    "removed": result.get("removed") or {}}), 200
 
 
 @bp.patch("/projects/<addressed>/characters")

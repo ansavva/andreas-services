@@ -107,6 +107,7 @@ point at one key — a copy in this model copies a row, not bytes — so whether
 blob is now unreferenced is not a question a single delete can answer.
 """
 
+import collections
 import logging
 import time
 import uuid
@@ -2124,6 +2125,40 @@ def _entity_rows(kind: str, entity_id: str) -> list[dict]:
         KeyConditionExpression="pk = :pk",
         ExpressionAttributeValues={":pk": {"S": _entity_pk(kind, entity_id)}},
     )
+
+
+def delete_project_cascade(record: dict, *, delete_files: bool) -> dict:
+    """A project and everything it holds. **Movies, then scenes, then runs.**
+
+    **THIS CANNOT BE ONE TRANSACTION AND MUST NOT PRETEND TO BE.** A project of
+    29 runs is ~377 items — 87 entity rows plus two per node — and
+    `TRANSACTION_ITEMS` caps a `TransactWriteItems` at 100. So this is a
+    sequence, and the ORDER is what makes an interruption survivable: every
+    child is gone before the project that lists it, exactly as `delete_node`
+    deletes a subtree deepest-first. What a crash leaves is a project holding
+    fewer children — visible, and finished by running this again.
+
+    The kind order matters for the same reason one level down: a movie names
+    scenes and a scene names runs, so taking them in that order never leaves a
+    record pointing at something already deleted.
+
+    The alternative this replaces was `?force=1`, which deleted the project and
+    left every run's envelope naming a project id that no longer existed. That
+    is the one state the model cannot repair from, and it was the only thing on
+    offer for "delete this project and its work".
+    """
+    blob_keys: list[str] = []
+    removed = collections.Counter()
+    for kind in (ENTITY_MOVIE, ENTITY_SCENE, ENTITY_RUN):
+        for row in project_entities(record["id"], kind):
+            child = entity(kind, row["id"])
+            result = delete_entity(kind, child, delete_files=delete_files)
+            blob_keys.extend(result["blob_keys"])
+            removed[kind] += 1
+    result = delete_entity(ENTITY_PROJECT, record, delete_files=delete_files)
+    blob_keys.extend(result["blob_keys"])
+    logger.info("Cascade-deleted project %s (%s)", record["id"], dict(removed))
+    return {"id": record["id"], "blob_keys": blob_keys, "removed": dict(removed)}
 
 
 def delete_entity(kind: str, record: dict, *, delete_files: bool) -> dict:

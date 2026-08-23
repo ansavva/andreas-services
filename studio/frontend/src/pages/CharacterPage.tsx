@@ -4,11 +4,18 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Alert, Badge, Button, Field, Input, Spinner, Switch, Tabs, Text } from "@ansavva/design-system";
 
 import { ApiError } from "../apis/client";
-import { getCharacter, getTree, patchCharacter, putCharacterProfile } from "../apis/studio";
+import {
+  deleteCharacter,
+  getCharacter,
+  getTree,
+  patchCharacter,
+  putCharacterProfile,
+} from "../apis/studio";
 import { FolderTab } from "../components/browse/FolderBrowser";
 import { ProfileForm } from "../components/character/ProfileForm";
 import { ReferencesGrid } from "../components/character/ReferencesGrid";
 import { AppHeader } from "../components/common/AppHeader";
+import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
 import { useResource } from "../hooks/useResource";
 import type { CharacterProfile } from "../types";
 
@@ -114,6 +121,23 @@ export function CharacterPage() {
         <Badge intent={record.fictional ? "neutral" : "warning"}>
           {record.fictional ? "fictional" : "real person"}
         </Badge>
+
+        {/* **No cascade here, and the noun says so.** Projects and runs that
+            name this character hold link rows, and `force` drops those — but
+            the runs themselves stay, because a run really did use this subject
+            and deleting the character is not a reason to delete the work. The
+            API refuses without `force`; the button always sends it, since a
+            person who has read the armed label has answered that question. */}
+        <span className="ms-auto">
+          <ConfirmDeleteButton
+            tone="page"
+            noun={`character ${record.slug} and its reference library`}
+            onConfirm={async () => {
+              await deleteCharacter(record.id, "delete", true);
+              navigate("/");
+            }}
+          />
+        </span>
       </div>
 
       <Tabs.Root defaultValue="profile">

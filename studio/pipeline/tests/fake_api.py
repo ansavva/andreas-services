@@ -714,15 +714,29 @@ class FakeApi:
                     record[field] = body[field]
             return self._project_view(record)
         if method == "DELETE":
+            # `cascade` takes the children with it; `force` deletes the project
+            # and ORPHANS them. Both are modelled because the API offers both,
+            # and a fake that knew only one would make a test pass over the
+            # behaviour it did not know about.
             holds = [r for r in self.runs.values() if r["project"] == record["id"]]
-            if holds and not params.get("force"):
-                raise FakeError(409, f"{record['slug']} holds {len(holds)} run(s)")
+            cascade = params.get("cascade") in ("1", 1, "true", True)
+            if holds and not cascade and not params.get("force"):
+                raise FakeError(409, f"{record['slug']} holds {len(holds)} run(s) — "
+                                     "pass ?cascade=1 to delete them with it")
+            removed = {}
+            if cascade:
+                for run in holds:
+                    self.runs.pop(run["id"], None)
+                    if params.get("files") == "delete":
+                        self._delete_node(run["folder"])
+                if holds:
+                    removed["run"] = len(holds)
             self.projects.pop(record["id"])
             if params.get("files") == "delete":
                 self._delete_node(record["root"])
             else:
                 self.nodes[record["root"]].pop("entity", None)
-            return {"deleted": record["id"]}
+            return {"deleted": record["id"], "id": record["id"], "removed": removed}
         raise FakeError(405, method)
 
     def _r_project_characters(self, method, body, params, ref):
