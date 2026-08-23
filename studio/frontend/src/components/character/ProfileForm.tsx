@@ -10,10 +10,10 @@ import {
   Separator,
   Switch,
   Text,
-  Textarea,
 } from "@ansavva/design-system";
 
 import type { CharacterIdentity, CharacterProfile, ProfileValue } from "../../types";
+import { AutoTextarea } from "../common/AutoTextarea";
 
 interface Props {
   /** Slug, display name and the consent flag — saved by a different route from the bible. */
@@ -564,7 +564,7 @@ function ProfileNode({ label, path, value, multiline, onChange, headless = false
       <Field.Root name={name}>
         <Field.Label>{title}</Field.Label>
         {multiline.has(name) ? (
-          <Textarea value={text} rows={4} onValueChange={(next: string) => onChange(path, next)} />
+          <AutoTextarea value={text} onValueChange={(next: string) => onChange(path, next)} />
         ) : (
           <Input value={text} onValueChange={(next: string) => onChange(path, next)} />
         )}
@@ -597,9 +597,9 @@ function ProfileNode({ label, path, value, multiline, onChange, headless = false
             holds — signature features, accent cues, the never/must lists — and a
             row of inputs with add and remove buttons is more chrome than the
             content it wraps. */}
-        <Textarea
+        <AutoTextarea
           value={value.map((item) => String(item ?? "")).join("\n")}
-          rows={Math.min(8, Math.max(2, value.length + 1))}
+          minRows={2}
           onValueChange={(next: string) =>
             onChange(
               path,
@@ -761,12 +761,23 @@ function humanise(key: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-/** Dotted paths whose string value wants a box rather than a line. */
+/**
+ * Dotted paths whose string value wants a box rather than a line.
+ *
+ * **The threshold was 100 characters, which is a desktop answer.** A single-line
+ * `Input` shows about 40 characters on a phone, so everything from 40 to 100 was
+ * a value you had to scroll sideways through a one-line box to read. 48 is a
+ * little over one phone line: past that, a box that grows is strictly better,
+ * and `AutoTextarea` means a box is never taller than it needs to be on a wide
+ * screen either.
+ */
+const WANTS_A_BOX = 48;
+
 function collectLongPaths(value: ProfileValue, path: string[]): Set<string> {
   const found = new Set<string>();
 
   if (typeof value === "string") {
-    if (value.includes("\n") || value.length > 100) found.add(path.join("."));
+    if (value.includes("\n") || value.length > WANTS_A_BOX) found.add(path.join("."));
     return found;
   }
   if (Array.isArray(value)) {

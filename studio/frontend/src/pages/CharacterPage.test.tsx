@@ -43,7 +43,13 @@ function record(over: Partial<CharacterRecord> = {}): CharacterRecord {
     root: "node-root",
     hero: null,
     default_set: [],
-    profile: { appearance: { hair: "short" }, voice: { accent: "flat" } },
+    profile: {
+      // `hair` is short and stays a line. `build` is 63 characters — over the
+      // old 100-char threshold it was a single-line input you had to scroll
+      // sideways through on a phone, which shows about 40.
+      appearance: { hair: "short", build: "a" .repeat(63) },
+      voice: { accent: "flat" },
+    },
     ...over,
   };
 }
@@ -174,6 +180,16 @@ describe("the sections", () => {
 
     expect((screen.getByLabelText("Hair") as HTMLInputElement).value).toBe("long");
     expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();
+  });
+
+  it("gives a value that wraps a box, not a one-line input", async () => {
+    // The threshold used to be 100 characters, which is a desktop answer: a
+    // single-line input shows about 40 on a phone, so everything between was
+    // read by scrolling sideways through a one-line box.
+    await open();
+
+    expect(screen.getByLabelText("Build").tagName).toBe("TEXTAREA");
+    expect(screen.getByLabelText("Hair").tagName).toBe("INPUT");
   });
 
   it("resets the card's own padding, which a class cannot be trusted to do", async () => {

@@ -9,13 +9,13 @@ import {
   Separator,
   Spinner,
   Text,
-  Textarea,
   Toggle,
   ToggleGroup,
 } from "@ansavva/design-system";
 
 import { getReferences, getTree, patchReference } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
+import { AutoTextarea } from "../common/AutoTextarea";
 import { ENGINE_CAPS, type FileEntry, type ReferenceEntry } from "../../types";
 
 interface Props {
@@ -500,9 +500,8 @@ function ReferenceSheet({
           <Text variant="caption" tone="muted">
             Description
           </Text>
-          <Textarea
+          <AutoTextarea
             value={draft}
-            rows={4}
             aria-label={`Description of ${entry.file.name}`}
             placeholder="What this reference shows"
             onValueChange={setDraft}
