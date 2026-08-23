@@ -57,7 +57,6 @@ def _create(api, project, **body):
         json={
             **{
                 "project": project["id"],
-                "slug": "rooftop-portrait",
                 "kind": "image",
                 "engine": "nano-banana-pro",
                 "model": "google/nano-banana-pro",
@@ -97,10 +96,13 @@ def test_creating_a_run_writes_envelope_listing_row_folder_and_output(empty_api,
     assert [row["id"] for row in listing] == [run["id"]]
     assert listing[0]["status"] == "pending"
 
-    # The folder is named for the slug and the record names the folder's node id,
-    # which is what stops a rename above it stranding anything.
+    # **A run has no slug, so its folder is named for its id.** The record names
+    # the folder's node id either way, which is what stops a rename above it
+    # stranding anything. The label it used to carry was `<timestamp>_<hint>` —
+    # unique only by embedding `created`, a column the row already has.
+    assert "slug" not in envelope, "a run envelope carries no slug"
     folder = catalog.node(run["folder"])
-    assert folder["name"] == "rooftop-portrait"
+    assert folder["name"] == run["id"]
     assert folder["entity"] == run["id"]
     assert _child(run["folder"], layout.OUTPUT_FOLDER)["kind"] == "folder"
 
@@ -120,6 +122,41 @@ def test_the_listing_row_is_the_one_deliberate_projection(empty_api):
     assert set(row) >= {"id", "status", "model", "kind", "created", "lib"}
     # Not the whole envelope: no bindings, no payload, no lineage.
     assert "bindings" not in row and "payload" not in row
+
+
+# The fields the SPA's `RunSummary` declares required, in
+# `studio/frontend/src/types/index.ts`. Kept here as a literal on purpose: the
+# two halves cannot import from each other, so the contract is asserted rather
+# than shared, and a field added to one without the other fails right here.
+RUN_SUMMARY_REQUIRED = {"id", "project", "status", "kind", "model", "created"}
+
+
+def test_the_listing_row_carries_every_field_the_spa_declares(empty_api):
+    """**The row and `RunSummary` must not drift. They did, and it reached prod.**
+
+    `RunSummary` declared `slug` and the projection never wrote one, so
+    `studio runs list` raised `KeyError: 'slug'` against the real API and the
+    web runs grid rendered an empty label column. Nothing failed, because the
+    only thing exercising a listing row in tests was a fake that projected off
+    the full record — more generous than the API it stood in for.
+
+    So this asserts against the API's own output, over a run driven through its
+    real transitions, and it is the check that was missing.
+    """
+    project = _project(empty_api)
+    run = _create(empty_api, project)
+    empty_api.patch(f"/api/runs/{run['id']}", json={"status": "succeeded",
+                                                    "cost": {"currency": "USD",
+                                                             "amount": 0.032}})
+
+    rows = empty_api.get(f"/api/runs?project={project['id']}").get_json()["runs"]
+
+    assert len(rows) == 1
+    missing = RUN_SUMMARY_REQUIRED - set(rows[0])
+    assert not missing, (
+        f"the runs listing row is missing {sorted(missing)}, which RunSummary "
+        "declares required — the SPA renders them and the CLI indexes them")
+    assert "slug" not in rows[0], "a run has no slug; nothing may render one"
 
 
 def test_the_character_usage_rows_are_written_in_the_same_transaction(empty_api, catalog_table):

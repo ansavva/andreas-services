@@ -318,7 +318,7 @@ def project_movies(proj_id: str) -> list[dict]:
 
 # ── runs ────────────────────────────────────────────────────────────────────
 
-def create_run(*, project: str, kind: str, engine: str, model: str, slug: str,
+def create_run(*, project: str, kind: str, engine: str, model: str,
                input: dict, bindings: dict | None = None,
                characters: list[str] | None = None,
                prompt: dict | None = None) -> dict:
@@ -335,7 +335,7 @@ def create_run(*, project: str, kind: str, engine: str, model: str, slug: str,
     in `runs.py` where only one caller went through it.
     """
     body = {"project": project, "kind": kind, "engine": engine, "model": model,
-            "slug": slug, "input": input, "bindings": bindings or {}}
+            "input": input, "bindings": bindings or {}}
     body.update(_clean(characters=characters, prompt=prompt))
     return api.post("/api/runs", body)
 

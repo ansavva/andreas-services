@@ -51,12 +51,13 @@ export function RunPage() {
   }
 
   return (
-    <Shell subtitle={data.slug}>
+    <Shell subtitle={formatDate(data.created)}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Button intent="ghost" size="sm" onClick={() => navigate(projectPath(projectId))}>
           <span aria-hidden="true">←</span> Project
         </Button>
-        <Text variant="display">{data.slug}</Text>
+        {/* A run has no name — the date is what a person recognises it by. */}
+        <Text variant="display">{formatDate(data.created)}</Text>
         <Badge intent={data.status === "failed" ? "danger" : "neutral"}>{data.status}</Badge>
         <Badge intent="neutral">{data.kind}</Badge>
       </div>

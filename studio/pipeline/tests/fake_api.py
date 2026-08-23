@@ -762,11 +762,19 @@ class FakeApi:
         return sorted(self.runs.values(), key=lambda r: r["created"], reverse=True)
 
     def _run_row(self, record: dict) -> dict:
+        """**Exactly the fields the real listing row carries. No more.**
+
+        This used to project `slug` and `cost` straight off the full record, so
+        the suite was green over a contract the API does not honour: a listing
+        row is `{lib, id, created, status, model, kind, thumb}` and never held
+        either. `studio runs list` raised `KeyError: 'slug'` against production
+        while passing here. A fake more generous than the thing it fakes hides
+        the bug it exists to catch.
+        """
         outputs = record.get("outputs") or []
         return {"id": record["id"], "project": record["project"],
-                "slug": record["slug"], "status": record["status"],
-                "kind": record["kind"], "model": record["model"],
-                "created": record["created"], "cost": record.get("cost"),
+                "status": record["status"], "kind": record["kind"],
+                "model": record["model"], "created": record["created"],
                 "thumb": {"node": outputs[0]} if outputs else None}
 
     def _run_view(self, record: dict) -> dict:
@@ -810,8 +818,9 @@ class FakeApi:
 
         runs_folder = self._folder_under(project["root"], "runs")
         run_id = "run-" + str(uuid.uuid4())
-        folder = self._create_node(runs_folder["id"], _unique(
-            self, runs_folder["id"], body["slug"]), "folder")
+        # A run has no slug; its folder is named for its id, which cannot
+        # collide — so no `_unique` dance here, unlike a scene or a movie.
+        folder = self._create_node(runs_folder["id"], run_id, "folder")
         self._create_node(folder["id"], "output", "folder")
         payload = {"request": self._document(folder["id"], "request.json",
                                              json.dumps(body.get("input") or {})),
@@ -820,7 +829,7 @@ class FakeApi:
             payload["prompt"] = self._document(folder["id"], "prompt.json",
                                                json.dumps(body["prompt"]))
         record = {"id": run_id, "lib": self.lib, "project": project["id"],
-                  "slug": body["slug"], "status": "pending", "kind": body["kind"],
+                  "status": "pending", "kind": body["kind"],
                   "engine": body["engine"], "model": body["model"],
                   "prediction_id": None, "created": _now(), "submitted": None,
                   "completed": None, "bindings": bindings,
@@ -1102,10 +1111,11 @@ def _natural(name: str):
 def _unique(fake: FakeApi, parent_id: str, name: str) -> str:
     """A folder name free in this parent.
 
-    Run slugs are human labels now rather than ids, so two runs may legitimately
-    want the same folder name — where a `<timestamp>_<slug>` id made a
-    collision mean "the CLI re-sent a run". The API disambiguates; the record
-    names the folder either way, so nothing downstream notices.
+    A scene or a movie is named for its slug, which is a human label and need
+    not be unique, so two may legitimately want the same folder name. The API
+    disambiguates; the record names the folder either way, so nothing downstream
+    notices. A RUN does not come through here — it has no slug and its folder is
+    named for its id.
     """
     if not fake._child(parent_id, name):
         return name

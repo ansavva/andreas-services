@@ -42,7 +42,7 @@ from studio_core.clients.aws import s3
 from studio_core.errors import ValidationError
 from studio_core.routes import projects as project_routes
 from studio_core.routes import support
-from studio_core.services import catalog, keys, layout
+from studio_core.services import catalog, layout
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +155,6 @@ def create_run():
     held = support.memberships()
 
     project = project_routes.project_at(body.get("project") or "", held)
-    slug = keys.clean_slug(body.get("slug"))
 
     kind = body.get("kind")
     if kind not in RUN_KINDS:
@@ -181,7 +180,10 @@ def create_run():
         project["lib"],
         project["id"],
         parent["node_id"],
-        slug=slug,
+        # A run has no slug. Its folder is named for its id — see
+        # `create_project_entity`, which spells out why the old
+        # `<timestamp>_<hint>` label was a worse copy of `created`.
+        slug=None,
         attributes={
             "status": "pending",
             "kind": kind,

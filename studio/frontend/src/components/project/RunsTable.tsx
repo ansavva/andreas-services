@@ -210,11 +210,14 @@ export function RunsTable({ projectId, characters, onOpen }: Props) {
             </span>
 
             <span className="min-w-0 flex-1">
+              {/* A run has no label. The date is what identifies one to a
+                  person, which is what the old slug was imitating by carrying a
+                  timestamp; the model is the next most useful thing about it. */}
               <Text variant="body" className="truncate">
-                {run.slug}
+                {formatDate(run.created)}
               </Text>
               <Text variant="caption" tone="muted" className="truncate">
-                {run.model} · {formatDate(run.created)}
+                {run.model}
               </Text>
               {/* Lineage is what makes a chain readable at a glance: this run was
                   built off another's output, and that is usually the reason it

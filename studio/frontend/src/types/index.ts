@@ -84,11 +84,16 @@ export interface NodeRecord {
  * types at the CLI and the two must read as the same thing. It is mutable — a
  * rename moves it — which is exactly why nothing here stores it: it is re-read
  * with the node every time.
+ *
+ * **The owner is the DEEPEST entity, which is often a run**, and a run has no
+ * slug — so `slug` is null there and the id is all there is to show. This
+ * declared only `character | project` while the API has always answered with
+ * whichever entity is nearest; the union now says what is actually returned.
  */
 export interface NodeOwner {
-  kind: "character" | "project";
+  kind: "character" | "project" | "run" | "scene" | "movie";
   id: string;
-  slug: string;
+  slug: string | null;
 }
 
 export interface FileEntry {
@@ -470,15 +475,18 @@ export interface RunCost {
 /**
  * One row of the runs list — the projection the listing row carries.
  *
- * This is a *deliberate* exception to the rule the slug claims follow, and the
- * reason is that a run is immutable once it completes: there is nothing to keep
- * in step. Without it the runs screen would be a batch read over hundreds of
- * envelopes to draw a grid of thumbnails.
+ * A projection rather than the envelope because a run is immutable once it
+ * completes, so there is nothing to keep in step, and drawing a grid from
+ * envelopes would be a batch read over hundreds of payloads.
+ *
+ * **Every field here must be one the API actually writes into the listing row.**
+ * This declared `slug` and the row never carried one — the CLI's equivalent
+ * formatter crashed on it and this table rendered an empty column. A run has no
+ * slug at all now: it is a machine event, addressed by its id or by `latest`.
  */
 export interface RunSummary {
   id: string;
   project: string;
-  slug: string;
   status: RunStatus;
   kind: RunKind;
   model: string;
@@ -524,7 +532,6 @@ export interface RunRecord {
   id: string;
   lib: string;
   project: string;
-  slug: string;
   status: RunStatus;
   kind: RunKind;
   engine: string;

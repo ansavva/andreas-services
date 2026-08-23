@@ -18,10 +18,10 @@ presigned URLs minted at submit time.
   studio models refresh                  # re-snapshot enums
 
   studio run --model gpt-image-2 --project <project> \
-      --prompt "..." --character <name> --pick-tag face --slug <slug> --dry-run
+      --prompt "..." --character <name> --pick-tag face --name <file> --dry-run
 
   studio run --model kling --project <project> --input-file input.json \
-      --character <name> --start-run <project>/latest#1 --slug <slug> --poll
+      --character <name> --start-run <project>/latest#1 --name <file> --poll
 
 `--dry-run` renders the payload for approval and submits nothing. Nothing bills
 without it having been shown first.
@@ -221,7 +221,8 @@ def build_payload(entry: dict, args) -> dict:
 @click.option("--prompt-json", help="studio-media-prompt source, stored as prompt.json.")
 @click.option("--ref-run", multiple=True, help="An earlier run's output as reference material. Repeatable.")
 @click.option("--slots", help="Comma-separated positions WITHIN the resolved selection.")
-@click.option("--slug", help="Short slug for the run id and filename.")
+@click.option("--name", help="What the output file is called. Not an identity: "
+                                     "a run is addressed by its id or by `latest`.")
 @click.option("--start-key", help="Node id (or name path) of the first frame (video).")
 @click.option("--start-run", help="An earlier run's output as the first frame (video).")
 @click.option("--timeout", type=int, help="Give up after N seconds.")
@@ -232,8 +233,8 @@ def cmd_run(**options):
     except REG.RegistryError as e:
         die(str(e))
     d = SUB.defaults(entry["kind"])
-    if args.slug is None:
-        args.slug = d["slug"]
+    if getattr(args, "name", None) is None:
+        args.name = d["slug"]
     if args.interval is None:
         args.interval = d["interval"]
     if args.timeout is None:
@@ -278,7 +279,7 @@ def cmd_run(**options):
     # written. It used to be a locally generated timestamp-slug that then became
     # the folder name, which is precisely the identity-in-a-string this model
     # removes.
-    run = f"{args.project['slug']}/{R.slugify(args.slug)}"
+    run = f"{args.project['slug']}/{R.slugify(args.name)}"
     if args.dry_run:
         # `json_`, not `json` — `--json` cannot be a Python attribute name, so
         # Click was given the safe spelling and this line read the unsafe one.

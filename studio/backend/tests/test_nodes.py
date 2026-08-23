@@ -1354,7 +1354,6 @@ def test_the_deepest_entity_wins(catalog_table, signed_in):
         "/api/runs",
         {
             "project": project["id"],
-            "slug": "rooftop-portrait",
             "kind": "image",
             "model": "google/nano-banana-pro",
         },
@@ -1364,7 +1363,7 @@ def test_the_deepest_entity_wins(catalog_table, signed_in):
     assert _get(f"/api/nodes/{output_folder['node_id']}/owner").get_json()["owner"] == {
         "kind": "run",
         "id": run["id"],
-        "slug": "rooftop-portrait",
+        "slug": None,
     }
 
 

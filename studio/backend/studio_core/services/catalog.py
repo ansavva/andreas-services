@@ -2480,7 +2480,7 @@ def create_project_entity(
     project_id: str,
     parent_id: str,
     *,
-    slug: str,
+    slug: str | None,
     attributes: dict,
     listing: dict,
     subfolders: tuple = (),
@@ -2493,6 +2493,15 @@ def create_project_entity(
     not keep: a run that recorded a path was stranded by the first rename above
     it, and `domain/rewrite.py` existed for exactly that.
 
+    **`slug=None` means the entity has no label, and its folder is named for its
+    id.** That is a RUN. A scene and a movie are things a person plans and comes
+    back to, so both keep a slug and a title; a run is a machine event and has
+    neither. Its old slug was `<timestamp>_<hint>`, which made it unique only by
+    embedding `created` — a column already on the row and already what sorting
+    and `--since` read — while the hint alone collided across runs. Nothing keyed
+    on it, no claim row enforced it, and resolving one needed an exact match, a
+    substring fallback and an ambiguity error to prop it up.
+
     The character usage rows go in the same transaction, because "which runs used
     this character" has to be true the moment the run exists — a link written
     afterwards is a link a crash can lose.
@@ -2501,7 +2510,7 @@ def create_project_entity(
     entity_id = _mint(kind)
     now = _now()
 
-    folder = _new_node(parent, slug, KIND_FOLDER, entity=entity_id)
+    folder = _new_node(parent, slug or entity_id, KIND_FOLDER, entity=entity_id)
     steps = _node_steps(folder)
     for name in subfolders:
         steps += _node_steps(_new_node(folder, name, KIND_FOLDER))
@@ -2510,7 +2519,7 @@ def create_project_entity(
         "id": entity_id,
         "lib": lib,
         "project": project_id,
-        "slug": slug,
+        **({"slug": slug} if slug else {}),
         "rev": 1,
         "created": now,
         "updated": now,

@@ -97,7 +97,7 @@ the preferred alternative where one is recorded; see
 #   (studio-media-prompt: studio prompt prompt.json --emit input  → the .input object)
 studio run \
   --model seedance --project <project> --input-file input.json \
-  --character <name> --slots 1,2,3,6 --slug <slug> --poll
+  --character <name> --slots 1,2,3,6 --name <file> --poll
 ```
 
 The runner serves every registered model, image and video. It records the run
@@ -126,7 +126,7 @@ predictions that all bill**. The runner creates and then polls, which is what
 ```bash
 studio run \
   --model seedance --project <project> --input-file input.json \
-  --start-run <project>/latest#1 --slug <slug> --poll
+  --start-run <project>/latest#1 --name <file> --poll
 ```
 
 `--start-run` / `--end-run` bind an earlier run's output to `image` /
