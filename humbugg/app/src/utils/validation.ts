@@ -51,7 +51,7 @@ export function validateAddressForm(values: AddressFormValues): string | null {
 }
 
 export function validatePassword(password: string): string | null {
-  if (password.length < 8) return 'Use at least 8 characters.';
+  if (password.length < 12) return 'Use at least 12 characters.';
   if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password))
     return 'Include an uppercase letter, a lowercase letter, and a number.';
   return null;

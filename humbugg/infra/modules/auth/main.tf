@@ -18,8 +18,13 @@ resource "aws_cognito_user_pool" "main" {
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
 
+  # Cognito applies this when a password is *set*, so raising the floor stops new
+  # weak passwords and changes nothing retroactively: anyone already under 12
+  # characters stays there until their next reset. Length beats charset
+  # composition, so `require_symbols` stays false — forcing symbols mostly
+  # forces `Password1!`.
   password_policy {
-    minimum_length                   = 8
+    minimum_length                   = 12
     require_lowercase                = true
     require_numbers                  = true
     require_symbols                  = false
@@ -83,7 +88,16 @@ resource "aws_cognito_user_pool" "main" {
     )
   }
 
-  mfa_configuration = "OFF"
+  # OPTIONAL, never ON. ON forces enrolment at the next sign-in for every existing
+  # account and strands anyone who cannot complete it; OPTIONAL is inert until a
+  # user enrols. There is nowhere to enrol yet — that arrives with either a
+  # settings-screen TOTP flow or Managed Login (#365) — so this is dormant
+  # capability, not a live second factor.
+  mfa_configuration = "OPTIONAL"
+
+  software_token_mfa_configuration {
+    enabled = true
+  }
 
   user_pool_add_ons {
     advanced_security_mode = "OFF"

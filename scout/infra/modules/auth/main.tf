@@ -10,12 +10,28 @@ resource "aws_cognito_user_pool" "main" {
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
 
+  # Cognito applies this when a password is *set*, so raising the floor stops new
+  # weak passwords and changes nothing retroactively: an account already under 12
+  # characters stays there until its next reset. Length beats charset composition,
+  # so `require_symbols` stays false — forcing symbols mostly forces `Password1!`.
   password_policy {
-    minimum_length    = 8
+    minimum_length    = 12
     require_lowercase = true
     require_numbers   = true
     require_symbols   = false
     require_uppercase = true
+  }
+
+  # OPTIONAL, never ON. ON forces enrolment at the next sign-in for every existing
+  # account and strands anyone who cannot complete it; OPTIONAL is inert until a
+  # user enrols. Scout's in-app sign-in form has no enrolment screen and this PR
+  # does not add one, so the setting is dormant — it becomes reachable for free
+  # when Managed Login lands (#466), which renders both enrolment and challenge.
+  # No SMS MFA: it needs an SNS setup and is the weaker factor.
+  mfa_configuration = "OPTIONAL"
+
+  software_token_mfa_configuration {
+    enabled = true
   }
 
   account_recovery_setting {
@@ -64,4 +80,22 @@ resource "aws_cognito_user_pool_client" "main" {
   ]
 
   prevent_user_existence_errors = "ENABLED"
+
+  # Without this a refresh token outlives sign-out and stays usable until it
+  # expires. It matters most once there is a `/logout` leg to call (#466) — but
+  # set after the fact that leg would have nothing to revoke.
+  enable_token_revocation = true
+
+  # Pinned to the values scout was already taking implicitly, so no session
+  # changes and nobody is signed out. Unpinned they are Cognito's defaults, which
+  # a provider or service default change could move without ever showing a diff.
+  access_token_validity  = 1
+  id_token_validity      = 1
+  refresh_token_validity = 30
+
+  token_validity_units {
+    access_token  = "hours"
+    id_token      = "hours"
+    refresh_token = "days"
+  }
 }
