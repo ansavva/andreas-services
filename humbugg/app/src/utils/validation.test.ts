@@ -35,8 +35,9 @@ describe('address and account validation', () => {
   });
 
   it('matches the Cognito password policy', () => {
-    expect(validatePassword('password')).toContain('uppercase');
-    expect(validatePassword('Password1')).toBeNull();
+    expect(validatePassword('passwordpassword')).toContain('uppercase');
+    expect(validatePassword('Password123')).toContain('12 characters');
+    expect(validatePassword('Password1234')).toBeNull();
   });
 
   it('formats local dates for date-input minimums', () => {

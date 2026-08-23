@@ -237,7 +237,7 @@ function PasswordField({
   return (
     <FieldLabel
       label={label}
-      help={enforcePolicy ? 'At least 8 characters with uppercase, lowercase, and a number.' : undefined}
+      help={enforcePolicy ? 'At least 12 characters with uppercase, lowercase, and a number.' : undefined}
     >
       <View>
         <Input

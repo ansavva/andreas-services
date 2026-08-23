@@ -40,8 +40,8 @@ import { sessionKeys, sessionStore } from '../utils/session-store';
 
 function fillCredentials({ confirm = true }: { confirm?: boolean } = {}) {
   fireEvent.changeText(screen.getByLabelText('Email address'), 'alex@example.com');
-  fireEvent.changeText(screen.getByLabelText('Password'), 'Password1');
-  if (confirm) fireEvent.changeText(screen.getByLabelText('Confirm password'), 'Password1');
+  fireEvent.changeText(screen.getByLabelText('Password'), 'Password1234');
+  if (confirm) fireEvent.changeText(screen.getByLabelText('Confirm password'), 'Password1234');
 }
 
 beforeEach(() => {
@@ -77,7 +77,7 @@ describe('signup consent', () => {
     fireEvent.press(screen.getByLabelText('Agree to the Terms of Service and Privacy Policy'));
     fireEvent.press(screen.getByText('Create account'));
 
-    await waitFor(() => expect(mocks.register).toHaveBeenCalledWith('alex@example.com', 'Password1'));
+    await waitFor(() => expect(mocks.register).toHaveBeenCalledWith('alex@example.com', 'Password1234'));
     const stashed = JSON.parse(sessionStore.get(sessionKeys.consent) ?? '{}');
     expect(stashed.version).toBeTruthy();
     // A valid UTC ISO-8601 timestamp round-trips through Date unchanged.
@@ -88,7 +88,7 @@ describe('signup consent', () => {
   it('requires matching password confirmation before registering', async () => {
     render(<AuthScreen mode="signup" />);
     fillCredentials({ confirm: false });
-    fireEvent.changeText(screen.getByLabelText('Confirm password'), 'Different1');
+    fireEvent.changeText(screen.getByLabelText('Confirm password'), 'Different1234');
     fireEvent.press(screen.getByLabelText('Agree to the Terms of Service and Privacy Policy'));
     fireEvent.press(screen.getByText('Create account'));
 
@@ -121,7 +121,7 @@ describe('login routing', () => {
 
     fireEvent.press(screen.getByText('Sign in'));
 
-    await waitFor(() => expect(mocks.login).toHaveBeenCalledWith('alex@example.com', 'Password1'));
+    await waitFor(() => expect(mocks.login).toHaveBeenCalledWith('alex@example.com', 'Password1234'));
     expect(mocks.replace).toHaveBeenCalledWith('/');
     expect(sessionStore.get(sessionKeys.returnTo)).toBeNull();
   });
