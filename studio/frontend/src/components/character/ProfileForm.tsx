@@ -347,9 +347,32 @@ function ProfileSection({
   return (
     // `scroll-mt-16` keeps the heading clear of the sticky save bar when the rail
     // scrolls to it.
-    <Card.Root ref={innerRef} data-section={id} className="scroll-mt-16 gap-0 p-0">
+    //
+    // **The padding reset is an inline style, and it has to be.** `Card.Root`
+    // carries `p-lg`, and the package merges a caller's classes with
+    // `tailwind-merge` — which does not recognise this design system's t-shirt
+    // spacing keys as spacing at all. `twMerge('… p-lg …', 'p-0')` returns
+    // *both*, so which one applies is decided by their order in the generated
+    // stylesheet, and `.p-lg` is emitted after `.p-0`. The className reset
+    // silently lost: the card kept its 24px and the panel below added 24px more,
+    // for 48px a side on a 390px screen. Same trap for `gap-sm` vs `gap-0`.
+    // An inline style is not a preference here, it is the only deterministic
+    // answer — the same reasoning `ConfirmDeleteButton` records for its fill.
+    <Card.Root
+      ref={innerRef}
+      data-section={id}
+      style={{ padding: 0, gap: 0 }}
+      className="scroll-mt-16"
+    >
       <Collapsible.Root open={open} onOpenChange={onOpenChange}>
-        <Collapsible.Trigger className="w-full justify-between px-lg py-md text-base">
+        {/* `py` inline for the same reason — the trigger's own `py-sm` beat the
+            `py-md` written here, which quietly made the tap target shorter than
+            intended on the control this page is used through most. `px` is safe
+            as a class: the trigger sets none of its own. */}
+        <Collapsible.Trigger
+          style={{ paddingBlock: "0.75rem" }}
+          className="w-full justify-between px-4 text-base sm:px-6"
+        >
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate">{title}</span>
             {/* A dot, not a word: it sits beside a heading that can already be
@@ -372,8 +395,12 @@ function ProfileSection({
               passed to `Collapsible.Panel` as a class for it to merge: the
               cascade settles it from a child no matter what the panel's own
               wrapper is, and 0.15.0 is a release that changed that wrapper on
-              one platform. */}
-          <div className="flex flex-col gap-4 px-lg pb-lg text-ink">{children}</div>
+              one platform.
+
+              This div is mine, so its padding is plain classes with nothing to
+              conflict with — 16px on a phone, 24px from `sm` up. A phone is
+              where the width is worth something. */}
+          <div className="flex flex-col gap-4 px-4 pb-4 text-ink sm:px-6 sm:pb-6">{children}</div>
         </Collapsible.Panel>
       </Collapsible.Root>
     </Card.Root>

@@ -422,6 +422,12 @@ function ReferenceSheet({
     <Drawer.Root open onOpenChange={(next) => !next && onClose()} side="bottom">
       <Drawer.Backdrop />
       <Drawer.Panel
+        // 16px, inline. The panel carries `p-lg`, and `tailwind-merge` does not
+        // read this package's t-shirt spacing keys as spacing — it keeps both
+        // classes and the stylesheet picks, which is not a thing to leave to
+        // chance on the surface a thumb works. `max-h` merges correctly, being
+        // an arbitrary value it does recognise.
+        style={{ padding: "1rem" }}
         className="max-h-[85vh] rounded-t-lg
                    lg:inset-y-0 lg:left-auto lg:right-0 lg:h-full lg:max-h-none lg:w-full
                    lg:max-w-md lg:rounded-none lg:border-l lg:border-t-0"
