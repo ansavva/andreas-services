@@ -350,10 +350,26 @@ def resolve_key(cat: dict, value: str, by_path_hits: list[str]) -> str | None:
     and can never match the string a document recorded years ago.
 
     This is what the pose plates need. Every historical reference shoot bound a
-    plate, the seed deliberately recorded no node for `config/`, and so every
-    one of those bindings resolved to nothing — 28 of them, one per run, in the
-    first real migration. Give the plates nodes (`studio config sync`) and the
-    path lookup finds them.
+    plate, the seed deliberately recorded no node for `config/`, and so every one
+    of those bindings resolved to nothing — 28 of them across 29 runs in the
+    first real migration, naming 16 distinct plates.
+
+    **`studio config sync` recovers 26 of the 28, and 2 are unrecoverable.**
+    That floor is worth stating, because the obvious reading of the sentence
+    above is that the fallback fixes all of them and it does not. `config sync`
+    uploads what is in `studio/config/` today, so a plate deleted from the repo
+    can never get a node: `face/profile.png` and `body/three-quarter-right.png`
+    went in the August 2026 plate rebuild, after the two runs that bound them,
+    and neither survives in the bucket in any version — the rename that month
+    was a copy, and a copy does not carry version history.
+
+    Those two stay UNRESOLVED and their bindings are dropped, which is the right
+    outcome rather than a gap to close. Re-pointing them at the plausible
+    successor plate would put an unverifiable assertion into an envelope, where
+    it would be indistinguishable from a binding that was really made. The run's
+    `request.json` keeps the true key verbatim — `apply` rewrites no payload —
+    so the answer to "what was this run shown" survives exactly where studio
+    does not get to invent it.
 
     **It resolves by a MUTABLE handle and is therefore reported, never silent.**
     A name path is where something is now; a rename since the document was
