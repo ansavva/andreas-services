@@ -17,9 +17,14 @@ from studio_core.errors import (
     ValidationError,
 )
 from studio_core.routes.browse import bp as browse_bp
+from studio_core.routes.characters import bp as characters_bp
 from studio_core.routes.libraries import bp as libraries_bp
-from studio_core.routes.manage import bp as manage_bp
+from studio_core.routes.movies import bp as movies_bp
 from studio_core.routes.nodes import bp as nodes_bp
+from studio_core.routes.phrasebook import bp as phrasebook_bp
+from studio_core.routes.projects import bp as projects_bp
+from studio_core.routes.runs import bp as runs_bp
+from studio_core.routes.scenes import bp as scenes_bp
 from studio_core.services import catalog, identity
 
 logger = logging.getLogger(__name__)
@@ -70,6 +75,23 @@ LIBRARY_UNSCOPED_PATHS = frozenset({"/api/libraries"})
 # Named constants rather than literals in the `CORS(...)` call below because
 # `tests/test_cors_agreement.py` asserts them against both the registered routes
 # and the Terraform local — the convention is now a check (#297).
+# **PUT is still allowed nowhere, and six entity routes wanted it.**
+#
+# `docs/ENTITY_MODEL.md` spells them as PUT — a profile, a reference index, a
+# default set, a project's characters, a scene's shots, a movie's scenes — and
+# every one of them replaces a *collection* rather than merging into one, which
+# is exactly what PUT is for. They are PATCH here, for the reason this file
+# already gave about saving a text file: adding a verb means changing four
+# places at once (this list, the MOCK integration response, and the `UNAUTHORIZED`
+# and `ACCESS_DENIED` gateway responses in `modules/api_gateway`), and a verb
+# missing from any of them is a CORS failure no Flask configuration can rescue —
+# the SPA sees a network error with no status.
+#
+# **Nothing about the routes changed except the verb.** Same paths, same bodies,
+# same status codes, same whole-collection replace semantics. Adopting PUT is a
+# one-line change to `local.cors_methods` plus this list, and the routes can move
+# the day that lands; until then a verb that works everywhere beats a verb that
+# is correct in the abstract and fails in a browser.
 CORS_METHODS = ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
 CORS_HEADERS = ["Content-Type", "Authorization", LIBRARY_HEADER]
 
@@ -212,13 +234,23 @@ def create_app() -> Flask:
     # route that is authenticated without being about a library's contents, and
     # `routes/libraries.py` explains what that costs the request hook.
     app.register_blueprint(libraries_bp)
-    # The catalog's read surface, kept apart from `browse` for the reason
-    # `routes/nodes.py` gives: one returns node records, the other returns a
-    # folder ready to draw. All three blueprints read and write the catalog
-    # since #316; what separates `manage` from `nodes` is that it takes a name
-    # path where `nodes` takes an id, and #313 retires the first.
+    # The file layer, kept apart from `browse` for the reason `routes/nodes.py`
+    # gives: one returns node records, the other returns a folder ready to draw.
+    # `routes/manage.py` used to sit beside it holding the same verbs addressed
+    # by name path; the entity model retired the second addressing scheme and the
+    # file with it.
     app.register_blueprint(nodes_bp)
-    app.register_blueprint(manage_bp)
+    # The five entity kinds and the phrasebook, one blueprint each. Split by
+    # entity rather than by verb because that is how they are read: everything
+    # about a character is in one file, and a route that has to know about two
+    # entities (a run naming its project) imports the other module's resolver
+    # rather than growing a second copy of it.
+    app.register_blueprint(characters_bp)
+    app.register_blueprint(projects_bp)
+    app.register_blueprint(runs_bp)
+    app.register_blueprint(scenes_bp)
+    app.register_blueprint(movies_bp)
+    app.register_blueprint(phrasebook_bp)
 
     @app.before_request
     def handle_preflight():

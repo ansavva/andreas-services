@@ -1,11 +1,40 @@
+"""The API as a client sees it: real requests through `create_app()`.
+
+**Every address here is a node id.** `?prefix=`, `?key=` and the whole of the
+name-path write surface (`/api/folder`, `/api/object`, `/api/objects/*`,
+`PATCH /api/text?key=`) are gone with the entity model — two live addressing
+schemes was one more than the service could keep honest, and the exception that
+held the second one open (shared material with no catalog node) closed when the
+phrasebook became rows and the pose plates became nodes.
+
+`GET /api/resolve?path=` is the one thing that still takes a slash-joined name
+path, and it is the reason the CLI's spelling keeps working: it turns an
+*address* into an id once, so `<slug>/reference/face/<file>` never has to be a
+key anywhere.
+
+The write tests run on `catalog_tree` because they write rows; the bucket is
+still there because a copy and a text save move real bytes.
+"""
+
 import json
 
 from studio_core.app_factory import create_app
 from studio_core.handlers.aws.api.api_handler import handler
+from tests.conftest import node_id_at
 
 
 def _client():
     return create_app().test_client()
+
+
+def _id(path):
+    """The fixture node id at one name path.
+
+    Every request below used to carry the path itself. It carries the id now, and
+    the readable name lives here — which is also the honest picture of what the
+    SPA does: it holds ids and renders names.
+    """
+    return node_id_at(path)
 
 
 def _unsigned(value):
@@ -31,16 +60,17 @@ def test_options_preflight():
 
 def test_stage_prefixed_path_still_routes(catalog_tree):
     """A direct stage invoke arrives as /prod/api/... — the middleware strips it."""
-    resp = _client().get("/prod/api/tree?prefix=characters/")
+    resp = _client().get(f"/prod/api/tree?node={_id('characters')}")
     assert resp.status_code == 200
 
 
-def test_tree_with_no_prefix_opens_on_the_library_root(catalog_tree):
-    """What the app requests first, and what broke when `media/` went away.
+def test_tree_with_no_node_opens_on_the_library_root(catalog_tree):
+    """What the app requests first, and the one node a client cannot hold first.
 
-    The empty prefix used to mean the bucket root and now means the library's
-    root node. Both answer to the same request, which is why the SPA needed no
-    change for #309.
+    `/api/libraries` deliberately reports id, name and role and **not** the root
+    node, so "open the library" has to be answerable without one. That is why
+    dropping `?prefix=` did not also drop "no address at all" — the empty prefix
+    meant the root, and no `node` still does.
     """
     resp = _client().get("/api/tree")
     assert resp.status_code == 200
@@ -52,138 +82,123 @@ def test_tree_with_no_prefix_opens_on_the_library_root(catalog_tree):
 
 
 def test_tree(catalog_tree):
-    resp = _client().get("/api/tree?prefix=characters/subject-a/seed/")
+    resp = _client().get(f"/api/tree?node={_id('characters/subject-a/seed')}")
     assert resp.status_code == 200
     assert len(resp.get_json()["files"]) == 2
 
 
-def test_tree_takes_a_node_id_instead_of_a_prefix(catalog_tree):
-    """The cold-load address: a share link carries an id and no path (#313).
+def test_tree_reports_the_prefix_it_composed_not_one_it_was_sent(catalog_tree):
+    """**The `prefix` in a response is a rendering, never an echo.**
 
-    Same folder, same body — including `prefix`, which is read back off the
-    breadcrumb walk rather than echoed from the request.
+    It used to be read back off the breadcrumb walk rather than echoed so that
+    two spellings of one folder could not answer with two different values.
+    There is no spelling to echo any more, and the walk still has to produce the
+    same string — that is what every crumb in the SPA is drawn from.
     """
-    by_prefix = _client().get("/api/tree?prefix=characters/subject-a/seed/").get_json()
-    node_id = next(
-        crumb["id"] for crumb in by_prefix["breadcrumbs"] if crumb["name"] == "seed"
-    )
+    body = _client().get(f"/api/tree?node={_id('characters/subject-a/seed')}").get_json()
 
-    by_node = _client().get(f"/api/tree?node={node_id}").get_json()
-
-    assert _unsigned(by_node) == _unsigned(by_prefix)
-    assert by_node["prefix"] == "characters/subject-a/seed/"
-
-
-def test_tree_refuses_a_prefix_and_a_node_together(catalog_tree):
-    """Two addresses that can disagree. Refused rather than resolved by rule."""
-    node_id = _client().get("/api/tree").get_json()["folders"][0]["id"]
-    resp = _client().get(f"/api/tree?prefix=characters/&node={node_id}")
-
-    assert resp.status_code == 400
-    assert "error" in resp.get_json()
+    assert body["prefix"] == "characters/subject-a/seed/"
+    assert [crumb["name"] for crumb in body["breadcrumbs"]] == [
+        "/",
+        "characters",
+        "subject-a",
+        "seed",
+    ]
 
 
 def test_reel_takes_a_node_id_too(catalog_tree):
-    by_prefix = _client().get("/api/reel?prefix=characters/subject-a/").get_json()
-    node_id = next(
-        crumb["id"] for crumb in _client()
-        .get("/api/tree?prefix=characters/subject-a/")
-        .get_json()["breadcrumbs"]
-        if crumb["name"] == "subject-a"
-    )
+    resp = _client().get(f"/api/reel?node={_id('characters/subject-a')}")
 
-    assert _unsigned(_client().get(f"/api/reel?node={node_id}").get_json()) == _unsigned(by_prefix)
-
-
-def test_tree_on_a_path_that_names_nothing_is_404(catalog_tree):
-    """`..` used to be refused as a string before it could be looked up.
-
-    `keys.clean_prefix` rejected it, and did so as a 400. It is now looked up
-    like any other name and found to be nothing — which it always was, since
-    `keys.clean_name` refuses a `..` on the way in.
-    """
-    resp = _client().get("/api/tree?prefix=../elsewhere")
-    assert resp.status_code == 404
-    assert "error" in resp.get_json()
-
-
-def test_reel(catalog_tree):
-    resp = _client().get("/api/reel?prefix=characters/subject-a/")
     assert resp.status_code == 200
     assert all(item["kind"] in ("image", "video") for item in resp.get_json()["items"])
 
 
-def test_asset_missing_key_is_404(media_bucket):
-    """No `catalog_tree`, on purpose: `?key=` reads the bucket and nothing else.
+def test_tree_on_a_node_that_names_nothing_is_404(catalog_tree):
+    """An id that names no row, which is the only way to miss now.
 
-    That is the one raw S3 key the API still takes, and this and the test below
-    are what say so — they would 502 on a missing catalog if the route had been
-    moved onto it wholesale.
+    `?prefix=../elsewhere` used to be the interesting case: `keys.clean_prefix`
+    refused it as a 400, then #312 made it an ordinary lookup that found nothing.
+    There is no path parameter left to traverse with — the walk survives only on
+    `/api/resolve`, where `keys.clean_name` has already made `..` a name nothing
+    is called.
     """
-    resp = _client().get("/api/asset?key=characters/subject-a/seed/nope.webp")
+    resp = _client().get("/api/tree?node=node-nowhere")
     assert resp.status_code == 404
+    assert "error" in resp.get_json()
 
 
-def test_asset_rejects_bad_disposition(media_bucket):
-    resp = _client().get("/api/asset?key=characters/subject-a/profile.yaml&disposition=evil")
-    assert resp.status_code == 400
+def test_resolve_turns_a_name_path_into_an_id(catalog_tree):
+    """The one route that still takes a path, and why it is allowed to.
 
-
-def test_asset_refuses_a_traversing_key(media_bucket):
-    """`keys.clean_key` is still wired to this parameter, not merely still present.
-
-    It is the last raw S3 key the API accepts, so the guard on it has to be
-    asserted at the route rather than only as a unit — `tests/test_keys.py`
-    passes just as happily if nothing calls the function.
+    Every command the pipeline runs names a subject and a project rather than an
+    id, and every `SKILL.md` is written that way. They ask here and get an id —
+    an *address*, resolved once, never a key. The S3 object behind whatever comes
+    back is `<owner_kind>/<owner_id>/<node_id>.<ext>`, which nothing outside
+    `services.catalog` ever sees.
     """
-    for raw in ("../etc/passwd", "characters/../etc/passwd", "/characters/x.png", ""):
-        resp = _client().get(f"/api/asset?key={raw}")
-        assert resp.status_code == 400, raw
+    resp = _client().get("/api/resolve?path=characters/subject-a/seed")
+
+    assert resp.status_code == 200
+    assert resp.get_json()["id"] == _id("characters/subject-a/seed")
+
+
+def test_resolve_names_the_first_segment_that_is_missing(catalog_tree):
+    """"No such object: characters/subject-a/nope" beats "no such object: nope".
+
+    The difference is between a message that points at the folder the typo is in
+    and one that only repeats the typo.
+    """
+    resp = _client().get("/api/resolve?path=characters/subject-a/nope/deeper")
+
+    assert resp.status_code == 404
+    assert "characters/subject-a/nope" in resp.get_json()["error"]
 
 
 def test_asset_takes_a_node_id(catalog_tree):
-    node_id = _client().get("/api/tree?prefix=characters/subject-a/").get_json()["files"][0]["id"]
+    node_id = _client().get(
+        f"/api/tree?node={_id('characters/subject-a')}"
+    ).get_json()["files"][0]["id"]
+
     body = _client().get(f"/api/asset?node={node_id}").get_json()
 
     assert body["key"] == "characters/subject-a/profile.yaml"
     assert "X-Amz-Signature" in body["url"]
 
 
-def test_asset_refuses_a_key_and_a_node_together(catalog_tree):
-    node_id = _client().get("/api/tree?prefix=characters/subject-a/").get_json()["files"][0]["id"]
-    resp = _client().get(f"/api/asset?key=phrasebook/wording.yaml&node={node_id}")
+def test_asset_without_a_node_is_400(catalog_tree):
+    """**The raw S3 key is gone, and this is what says so at the route.**
+
+    `?key=` was the last query string in the service that became an S3 key, kept
+    alive by shared material with no catalog node. `tests/test_keys.py` passes
+    just as happily whether or not anything still calls the deleted validator, so
+    the assertion that the parameter is not accepted has to be made here.
+    """
+    resp = _client().get("/api/asset?key=characters/subject-a/profile.yaml")
 
     assert resp.status_code == 400
     assert "error" in resp.get_json()
 
 
-def test_text_takes_a_node_id(catalog_tree):
-    node_id = _client().get("/api/tree?prefix=characters/subject-a/").get_json()["files"][0]["id"]
-    by_node = _client().get(f"/api/text?node={node_id}").get_json()
-    by_path = _client().get("/api/text?key=characters/subject-a/profile.yaml").get_json()
-
-    assert by_node == by_path
-
-
-def test_text_refuses_a_key_and_a_node_together(catalog_tree):
-    node_id = _client().get("/api/tree?prefix=characters/subject-a/").get_json()["files"][0]["id"]
-    resp = _client().get(f"/api/text?key=characters/subject-a/profile.yaml&node={node_id}")
-
+def test_asset_rejects_bad_disposition(catalog_tree):
+    node_id = _id("characters/subject-a/profile.yaml")
+    resp = _client().get(f"/api/asset?node={node_id}&disposition=evil")
     assert resp.status_code == 400
 
 
-def test_text_rejects_binary(catalog_tree):
-    resp = _client().get("/api/text?key=characters/subject-a/seed/subject-a_1.webp")
-    assert resp.status_code == 400
+def test_text_lives_on_the_node_now(catalog_tree):
+    """`GET /api/text?key=` became `GET /api/nodes/<id>/text`, paired with its save.
 
-
-def test_text_on_a_path_that_names_nothing_is_404(catalog_tree):
-    """`GET /api/text?key=` is a name path now, so a bad one is a 404, not a 400.
-
-    It used to be `keys.clean_key` refusing a string. The read and
-    `PATCH /api/text` answer the same way about the same address (#432).
+    That pairing is the whole of #432: the read used to `GetObject` the string it
+    was handed while the save walked a name path, so the two agreed only for
+    material written before the catalog — a file the editor could save was a file
+    the editor could not re-open.
     """
-    assert _client().get("/api/text?key=characters/subject-a/nowhere.md").status_code == 404
+    node_id = _id("characters/subject-a/profile.yaml")
+
+    assert _client().get("/api/text?key=characters/subject-a/profile.yaml").status_code == 404
+    assert _client().get(f"/api/nodes/{node_id}/text").get_json()["content"] == (
+        "name: Subject A\n"
+    )
 
 
 def test_unknown_route_is_404():
@@ -192,7 +207,7 @@ def test_unknown_route_is_404():
 
 
 def test_tree_accepts_a_sort(catalog_tree):
-    resp = _client().get("/api/tree?prefix=characters/subject-a/seed/&sort=name_desc")
+    resp = _client().get(f"/api/tree?node={_id('characters/subject-a/seed')}&sort=name_desc")
     assert resp.status_code == 200
     assert [f["name"] for f in resp.get_json()["files"]] == ["subject-a_2.webp", "subject-a_1.webp"]
 
@@ -204,143 +219,175 @@ def test_tree_rejects_an_unknown_sort(catalog_tree):
 # ---------------------------------------------------------------------------
 # Writes
 #
-# **On `catalog_tree` rather than `media_bucket` since #316.** These routes write
-# rows now, so the fixture has to hold the rows; the bucket is still there
-# because a copy and a text save move real bytes.
+# **All of them are `/api/nodes*` now.** `POST /api/nodes` replaces
+# `POST /api/folder`, `PATCH /api/nodes/<id>` replaces both `PATCH /api/object`
+# and `PATCH /api/folder`, `POST /api/nodes/move` replaces `/api/objects/move`
+# *and* `/api/folder/move`, and `DELETE /api/nodes` replaces `/api/objects` and
+# `/api/folder`.
 #
-# What they send is unchanged. `prefix`, `key` and `destination` were always the
-# slash-joined name path a listing hands back — for material written before the
-# catalog it happened to equal the S3 key, and these requests are the proof that
-# the SPA needed no change.
+# The file/folder split in those pairs was an artefact of S3: moving a prefix
+# meant a `CopyObject` per key underneath it and moving an object meant one.
+# Neither copies anything now, so the only difference left was the shape of the
+# request — and one shape is what the SPA's grid selection actually is.
+#
+# `tests/test_nodes.py` covers the semantics of each. What is covered here is
+# that they are reachable, that a body reaches them, and the statuses.
 # ---------------------------------------------------------------------------
 
-RUN = "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/"
+RUN = "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1"
 
 
 def test_create_folder(catalog_tree):
-    resp = _client().post("/api/folder", json={"prefix": "characters/subject-a/", "name": "keepers"})
+    resp = _client().post(
+        "/api/nodes",
+        json={"parent": _id("characters/subject-a"), "name": "keepers", "kind": "folder"},
+    )
     assert resp.status_code == 201
-    assert resp.get_json()["prefix"] == "characters/subject-a/keepers/"
+    assert resp.get_json()["name"] == "keepers"
 
 
 def test_create_folder_conflict_is_409(catalog_tree):
     """A transaction condition failure, not a listing this route did first."""
-    resp = _client().post("/api/folder", json={"prefix": "characters/subject-a/", "name": "seed"})
+    resp = _client().post(
+        "/api/nodes",
+        json={"parent": _id("characters/subject-a"), "name": "seed", "kind": "folder"},
+    )
     assert resp.status_code == 409
     assert "error" in resp.get_json()
 
 
-def test_rename_object(catalog_tree):
+def test_rename_a_file(catalog_tree):
     resp = _client().patch(
-        "/api/object",
-        json={"key": f"{RUN}output/wave-porch.jpeg", "name": "keeper.jpeg"},
+        f"/api/nodes/{_id(f'{RUN}/output/wave-porch.jpeg')}", json={"name": "keeper.jpeg"}
     )
     assert resp.status_code == 200
-    assert resp.get_json()["key"] == f"{RUN}output/keeper.jpeg"
+    assert resp.get_json()["name"] == "keeper.jpeg"
 
 
-def test_rename_object_rejects_a_slash(catalog_tree):
+def test_rename_rejects_a_slash(catalog_tree):
+    """A rename must not become a move by punctuation.
+
+    `keys.clean_name` refuses the slash rather than escaping it, which is what
+    keeps "rename" and "move" two requests all the way down — the destination of
+    a move is a folder id, and there is no spelling of a name that can reach one.
+    """
     resp = _client().patch(
-        "/api/object", json={"key": f"{RUN}output/wave-porch.jpeg", "name": "a/b.jpeg"}
+        f"/api/nodes/{_id(f'{RUN}/output/wave-porch.jpeg')}", json={"name": "a/b.jpeg"}
     )
     assert resp.status_code == 400
 
 
-def test_rename_folder(catalog_tree):
-    resp = _client().patch("/api/folder", json={"prefix": RUN, "name": "wave-porch-final"})
+def test_rename_a_folder_moves_nothing_beneath_it(catalog_tree):
+    """One row changes. `path` names ancestors by id, and a rename changes none.
+
+    This used to report an `objects` count because a prefix rename was a copy and
+    a delete per key. There is nothing to count.
+    """
+    resp = _client().patch(f"/api/nodes/{_id(RUN)}", json={"name": "wave-porch-final"})
+
     assert resp.status_code == 200
-    # No `objects` count: a rename changes one name and moves nothing beneath it.
-    assert resp.get_json() == {
-        "prefix": "projects/subject-a/runs/wave-porch-final/",
-        "name": "wave-porch-final",
-        "renamed": True,
-    }
+    assert resp.get_json()["name"] == "wave-porch-final"
+    listing = _client().get(f"/api/tree?node={_id(f'{RUN}/output')}").get_json()
+    assert [f["name"] for f in listing["files"]] == ["wave-porch.jpeg"]
 
 
-def test_move_objects(catalog_tree):
+def test_move_nodes(catalog_tree):
     resp = _client().post(
-        "/api/objects/move",
-        json={"keys": [f"{RUN}output/wave-porch.jpeg"], "destination": "characters/subject-a/"},
+        "/api/nodes/move",
+        json={
+            "ids": [_id(f"{RUN}/output/wave-porch.jpeg")],
+            "destination": _id("characters/subject-a"),
+        },
     )
     assert resp.status_code == 200
-    assert resp.get_json()["keys"] == ["characters/subject-a/wave-porch.jpeg"]
+    assert resp.get_json()["moved"] == 1
 
 
-def test_move_objects_conflict_is_409(catalog_tree):
+def test_move_conflict_is_409(catalog_tree):
     resp = _client().post(
-        "/api/objects/move",
+        "/api/nodes/move",
         json={
-            "keys": ["characters/subject-a/reference/subject-a_1.webp"],
-            "destination": "characters/subject-a/seed/",
+            "ids": [_id("characters/subject-a/reference/subject-a_1.webp")],
+            "destination": _id("characters/subject-a/seed"),
         },
     )
     assert resp.status_code == 409
 
 
-def test_move_folder(catalog_tree):
+def test_move_takes_a_folder_through_the_same_door(catalog_tree):
+    """`/api/folder/move` and `/api/objects/move` were one operation in two routes.
+
+    `descendants` is what the old `objects` count became, and it counts a
+    different thing: no object moves, and what the operation touched is the
+    `path` on every row beneath the one that did.
+    """
     resp = _client().post(
-        "/api/folder/move", json={"prefix": RUN, "destination": "projects/misc/runs/"}
+        "/api/nodes/move",
+        json={"ids": [_id(RUN)], "destination": _id("projects/misc/runs")},
     )
     assert resp.status_code == 200
-    # `descendants` replaces `objects`, and counts a different thing: no object
-    # moved, and what the move touched is the `path` on every row beneath it.
     assert resp.get_json()["descendants"] == 4
 
 
-def test_move_folder_into_itself_is_400(catalog_tree):
-    resp = _client().post("/api/folder/move", json={"prefix": RUN, "destination": RUN})
+def test_moving_a_folder_into_itself_is_400(catalog_tree):
+    resp = _client().post(
+        "/api/nodes/move", json={"ids": [_id(RUN)], "destination": _id(RUN)}
+    )
     assert resp.status_code == 400
 
 
 def test_update_text(catalog_tree):
+    node_id = _id("characters/subject-a/profile.yaml")
     resp = _client().patch(
-        "/api/text",
-        json={"key": "characters/subject-a/profile.yaml", "content": "name: Subject Alt\n"},
+        f"/api/nodes/{node_id}/text", json={"content": "name: Subject Alt\n"}
     )
     assert resp.status_code == 200
     assert resp.get_json()["bytes"] == len(b"name: Subject Alt\n")
 
-    reread = _client().get("/api/text?key=characters/subject-a/profile.yaml")
+    reread = _client().get(f"/api/nodes/{node_id}/text")
     assert reread.get_json()["content"] == "name: Subject Alt\n"
 
 
-def test_update_text_on_a_binary_key_is_400(catalog_tree):
+def test_update_text_on_a_binary_node_is_400(catalog_tree):
     resp = _client().patch(
-        "/api/text", json={"key": f"{RUN}output/wave-porch.jpeg", "content": "nope"}
+        f"/api/nodes/{_id(f'{RUN}/output/wave-porch.jpeg')}/text", json={"content": "nope"}
     )
     assert resp.status_code == 400
 
 
-def test_update_text_on_a_missing_key_is_404(catalog_tree):
-    resp = _client().patch(
-        "/api/text", json={"key": "characters/subject-a/nowhere.md", "content": "# new"}
-    )
+def test_update_text_on_a_node_that_does_not_exist_is_404(catalog_tree):
+    resp = _client().patch("/api/nodes/node-nowhere/text", json={"content": "# new"})
     assert resp.status_code == 404
 
 
-def test_delete_objects_takes_a_body(catalog_tree):
+def test_delete_nodes_takes_a_body(catalog_tree):
     resp = _client().delete(
-        "/api/objects", json={"keys": [f"{RUN}output/wave-porch.jpeg"]}
+        "/api/nodes", json={"ids": [_id(f"{RUN}/output/wave-porch.jpeg")]}
     )
     assert resp.status_code == 200
     assert resp.get_json()["deleted"] == 1
 
 
-def test_delete_objects_without_a_body_is_400(catalog_tree):
-    assert _client().delete("/api/objects").status_code == 400
+def test_delete_nodes_without_a_body_is_400(catalog_tree):
+    assert _client().delete("/api/nodes").status_code == 400
 
 
-def test_delete_folder(catalog_tree):
-    resp = _client().delete("/api/folder", json={"prefix": RUN})
+def test_delete_a_folder_counts_rows(catalog_tree):
+    """Rows, not objects: the run folder, its `output` folder and its three files."""
+    resp = _client().delete(f"/api/nodes/{_id(RUN)}")
     assert resp.status_code == 200
-    # Rows, not objects: the run folder, its `output` folder and its three files.
     assert resp.get_json()["deleted"] == 5
 
 
-def test_delete_folder_refuses_the_root(catalog_tree):
-    assert _client().delete("/api/folder", json={"prefix": ""}).status_code == 400
-    # And with no prefix at all, which resolves *to* the root.
-    assert _client().delete("/api/folder", json={}).status_code == 400
+def test_delete_refuses_the_library_root(catalog_tree):
+    """The root has no `parent_id`, so there is no by-parent item to remove.
+
+    That missing pointer is what makes "rename the library root", "move it" and
+    "delete it" all refuse, arrived at from the data rather than from a string
+    comparison against a configured prefix.
+    """
+    root = _client().get("/api/resolve").get_json()["id"]
+    assert _client().delete(f"/api/nodes/{root}").status_code == 400
 
 
 def test_preflight_advertises_the_write_verbs():
@@ -351,7 +398,7 @@ def test_preflight_advertises_the_write_verbs():
     a browser always sends and a bare `client.options()` never does.
     """
     resp = _client().options(
-        "/api/objects",
+        "/api/nodes",
         headers={
             "Origin": "https://studio.andreas.services",
             "Access-Control-Request-Method": "DELETE",
@@ -362,32 +409,40 @@ def test_preflight_advertises_the_write_verbs():
     assert {"PATCH", "DELETE", "POST"} <= {m.strip() for m in allowed.split(",")}
 
 
-def test_copy_objects(catalog_tree):
-    _client().post("/api/folder", json={"prefix": "projects/subject-a/", "name": "input"})
+def test_copy_nodes(catalog_tree):
+    created = _client().post(
+        "/api/nodes",
+        json={"parent": _id("projects/subject-a"), "name": "input", "kind": "folder"},
+    ).get_json()
+
     resp = _client().post(
-        "/api/objects/copy",
-        json={"keys": [f"{RUN}output/wave-porch.jpeg"], "destination": "projects/subject-a/input/"},
+        "/api/nodes/copy",
+        json={"ids": [_id(f"{RUN}/output/wave-porch.jpeg")], "destination": created["id"]},
     )
 
     assert resp.status_code == 201
-    assert resp.get_json()["keys"] == ["projects/subject-a/input/wave-porch.jpeg"]
+    assert [node["name"] for node in resp.get_json()["nodes"]] == ["wave-porch.jpeg"]
 
 
-def test_copy_objects_takes_anything_in_the_library(catalog_tree):
+def test_copy_takes_anything_in_the_library(catalog_tree):
     """Unlike favouriting, which was images and video inside a project only."""
-    _client().post("/api/folder", json={"prefix": "projects/subject-a/", "name": "input"})
+    created = _client().post(
+        "/api/nodes",
+        json={"parent": _id("projects/subject-a"), "name": "input", "kind": "folder"},
+    ).get_json()
+
     resp = _client().post(
-        "/api/objects/copy",
+        "/api/nodes/copy",
         json={
-            "keys": ["characters/subject-a/seed/subject-a_1.webp"],
-            "destination": "projects/subject-a/input/",
+            "ids": [_id("characters/subject-a/seed/subject-a_1.webp")],
+            "destination": created["id"],
         },
     )
     assert resp.status_code == 201
 
 
-def test_copy_objects_without_a_body_is_400(catalog_tree):
-    assert _client().post("/api/objects/copy").status_code == 400
+def test_copy_without_a_body_is_400(catalog_tree):
+    assert _client().post("/api/nodes/copy").status_code == 400
 
 
 # ---------------------------------------------------------------------------
@@ -445,51 +500,85 @@ def test_lambda_reads_a_json_body_without_a_content_length_header(catalog_tree):
     """The move from the bug report: a good body must not read as a missing one."""
     status, body = _invoke(
         "POST",
-        "/api/objects/move",
+        "/api/nodes/move",
         {
-            "keys": ["characters/subject-a/seed/subject-a_1.webp"],
-            "destination": "characters/subject-b/corpus/",
+            "ids": [_id("characters/subject-a/seed/subject-a_1.webp")],
+            "destination": _id("characters/subject-b/corpus"),
         },
     )
 
     assert status == 200, body
     assert body["moved"] == 1
-    assert body["keys"] == ["characters/subject-b/corpus/subject-a_1.webp"]
 
 
 def test_lambda_body_reaches_every_write_verb(catalog_tree):
     """POST, PATCH and DELETE all carry bodies, and all three were broken."""
-    assert _invoke("POST", "/api/folder", {"prefix": "projects/", "name": "fresh"})[0] == 201
+    assert _invoke(
+        "POST", "/api/nodes", {"parent": _id("projects"), "name": "fresh", "kind": "folder"}
+    )[0] == 201
     assert _invoke(
         "POST",
-        "/api/objects/copy",
+        "/api/nodes/copy",
         {
-            "keys": ["characters/subject-a/seed/subject-a_1.webp"],
-            "destination": "characters/subject-a/reference/",
+            "ids": [_id("characters/subject-a/seed/subject-a_1.webp")],
+            "destination": _id("characters/subject-a/reference"),
         },
     )[0] == 201
     assert _invoke(
         "PATCH",
-        "/api/object",
-        {"key": "characters/subject-a/profile.yaml", "name": "bible.yaml"},
+        f"/api/nodes/{_id('characters/subject-a/profile.yaml')}",
+        {"name": "bible.yaml"},
     )[0] == 200
     assert _invoke(
         "PATCH",
-        "/api/text",
-        {"key": "phrasebook/wording.yaml", "content": "greeting: hi\n"},
+        f"/api/nodes/{_id('phrasebook/wording.yaml')}/text",
+        {"content": "greeting: hi\n"},
     )[0] == 200
     assert _invoke(
+        "POST", "/api/characters", {"slug": "subject-c", "fictional": True}
+    )[0] == 201
+    assert _invoke(
         "DELETE",
-        "/api/objects",
-        {"keys": ["characters/subject-a/seed/subject-a_2.webp"]},
+        "/api/nodes",
+        {"ids": [_id("characters/subject-a/seed/subject-a_2.webp")]},
     )[0] == 200
+
+
+def test_the_entity_replace_routes_are_reachable_as_patch(catalog_tree):
+    """**The six routes `docs/ENTITY_MODEL.md` spells as PUT, and why they are not.**
+
+    A profile, a reference index, a default set, a project's characters, a
+    scene's shots and a movie's scenes all replace a *collection*, which is what
+    PUT is for. Adding the verb means changing four places at once — Flask's
+    list, the MOCK integration response, and both authorizer gateway responses in
+    `modules/api_gateway` — and a verb missing from any of them fails as an
+    opaque CORS error with no status, which is the one failure in this service
+    that carries no message at all.
+
+    So they are PATCH, exactly as `PATCH /api/text` has been since it was written
+    for the same reason. Nothing else changed: same paths, same bodies, same
+    whole-collection replace. This pins that a body reaches one of them through
+    the real Lambda path, which is the half that was broken before.
+    """
+    created = _invoke("POST", "/api/characters", {"slug": "subject-d", "fictional": True})[1]
+
+    status, body = _invoke(
+        "PATCH",
+        f"/api/characters/{created['id']}/default-set",
+        {"nodes": [], "rev": created["rev"]},
+    )
+
+    assert status == 200, body
+    assert body["default_set"] == []
 
 
 def test_lambda_still_reports_a_genuinely_empty_body(catalog_tree):
     """The validation the bug was impersonating must survive the fix."""
-    status, body = _invoke("POST", "/api/objects/move", {"keys": [], "destination": "projects/"})
+    status, body = _invoke(
+        "POST", "/api/nodes/move", {"ids": [], "destination": _id("projects")}
+    )
     assert status == 400
-    assert body["error"] == "keys must be a non-empty list"
+    assert body["error"] == "ids must be a non-empty list"
 
 
 def test_lambda_get_needs_no_body(catalog_tree):

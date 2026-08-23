@@ -1,28 +1,26 @@
 """The rendering read surface: a folder ready to draw, and the reel over it.
 
 Distinct from `routes/nodes.py`, which is the catalog's *record* surface. Both
-read the same rows since #309; the difference is what they hand back.
-`GET /api/nodes` returns bare records — no URLs, no sort, no breadcrumbs, no
-counts — because it answers "what is this node". These two answer "draw this
-folder", which needs all four.
+read the same rows; the difference is what they hand back. `GET /api/nodes`
+returns bare records — no URLs, no sort, no breadcrumbs, no counts — because it
+answers "what is this node". These answer "draw this folder", which needs all
+four.
 
-**All four routes accept `?node=<id>` and a path, and exactly one of them.** The
-id is the cheaper address and the one the SPA sends: a listing is a query on the
-parent id, so `?node=` is the argument the query already wants, while a path
-costs a `GetItem` per segment to walk down from the library root first. The path
-address stays because every share link ever handed out is one. Sending both is a
-400 rather than a guess — `services.browse` refuses it, for the reason
-`PATCH /api/nodes/<id>` refuses `name` with `parent`.
+**Every route here takes `?node=<id>` and nothing else.** `?prefix=` is gone,
+and so is the raw S3 key `/api/asset` used to accept. The name path survived
+this long because share links were made of names and because the pipeline's
+shared material — the phrasebook, the pose plates — had no node to be addressed
+by. Ids in URLs everywhere answered the first; making the phrasebook rows and
+the plates nodes answered the second. One addressing scheme, no exceptions.
 
-`/api/asset` and `/api/text` joined that shape in #432; before it they took a raw
-S3 key and read the object at it, which could not reach a blob written since the
-catalog. **`/api/asset?key=` is still a raw S3 key** — the one place in the API
-where that parameter is not a name path — because it is also how the pipeline
-reads shared material, which has no node to address.
+`GET /api/text` is not here any more either: reading a text file is
+`GET /api/nodes/<id>/text`, paired with the `PATCH` beside it, so the two
+directions of one operation sit on one address.
 """
 
 from flask import Blueprint, g, jsonify, request
 
+from studio_core.routes import support
 from studio_core.services import browse
 
 bp = Blueprint("browse", __name__, url_prefix="/api")
@@ -37,12 +35,7 @@ def health():
 def tree():
     """Immediate contents of one folder."""
     return jsonify(
-        browse.list_folder(
-            g.library,
-            request.args.get("prefix"),
-            request.args.get("sort"),
-            node_id=request.args.get("node"),
-        )
+        browse.list_folder(g.library, request.args.get("node"), request.args.get("sort"))
     ), 200
 
 
@@ -52,42 +45,24 @@ def reel():
     return jsonify(
         browse.reel_items(
             g.library,
-            request.args.get("prefix"),
+            request.args.get("node"),
             request.args.get("cursor"),
             request.args.get("page_size"),
             request.args.get("sort"),
-            node_id=request.args.get("node"),
         )
     ), 200
 
 
 @bp.get("/asset")
 def asset():
-    """A fresh presigned URL for one object — refreshes and downloads.
+    """A fresh presigned URL for one node's bytes — refreshes and downloads.
 
-    `?key=` here is a **raw S3 key**, unlike everywhere else in the API, and is
-    the pipeline's only way to reach shared material that has no node. `?node=`
-    is what the SPA sends. See `services.browse`'s section comment.
+    Kept beside `GET /api/nodes/<id>/download-url` rather than merged into it,
+    because the two answer different questions with the same signature: this one
+    reports what a *listing* reports (`key`, `kind`, `language`-adjacent fields)
+    for a viewer that already has the row, and that one reports a download. The
+    merge is owed and is not free — the SPA calls this one on every expired tile.
     """
-    return jsonify(
-        browse.asset_url(
-            g.library,
-            request.args.get("key"),
-            request.args.get("disposition"),
-            node_id=request.args.get("node"),
-        )
-    ), 200
-
-
-@bp.get("/text")
-def text():
-    """A JSON/markdown/text object's contents, for the viewer and its editor.
-
-    The read half of `PATCH /api/text`, and it takes the same two addresses the
-    save does since #432 — `?key=` is a name path, not an S3 key.
-    """
-    return jsonify(
-        browse.text_object(
-            g.library, request.args.get("key"), node_id=request.args.get("node")
-        )
-    ), 200
+    held = support.memberships()
+    record = support.node_at(request.args.get("node"), held)
+    return jsonify(browse.asset_url(record, request.args.get("disposition"))), 200

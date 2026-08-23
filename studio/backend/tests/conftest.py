@@ -17,6 +17,7 @@ os.environ["STUDIO_MEDIA_ROOT_PREFIX"] = ""
 from moto import mock_dynamodb, mock_s3  # noqa: E402
 
 from studio_core import app_factory, config  # noqa: E402
+from studio_core.services import keys as _keys  # noqa: E402
 from studio_core.clients.aws import dynamodb, s3  # noqa: E402
 from studio_core.errors import AuthError  # noqa: E402
 
@@ -140,6 +141,7 @@ def catalog_table():
                 {"AttributeName": "lib", "AttributeType": "S"},
                 {"AttributeName": "path", "AttributeType": "S"},
                 {"AttributeName": "created_at", "AttributeType": "S"},
+                {"AttributeName": "reel", "AttributeType": "S"},
             ],
             GlobalSecondaryIndexes=[
                 {
@@ -158,13 +160,19 @@ def catalog_table():
                     ],
                     "Projection": {"ProjectionType": "ALL"},
                 },
-                # Unused by `services.catalog` today — the reel is what will
-                # query it. Created anyway, so the fixture is the table rather
-                # than the subset one module happens to need.
+                # **Hashed on `reel`, not on `lib`**, and the two hold the same
+                # string — which is exactly why the distinction has to be in the
+                # fixture rather than assumed. A DynamoDB item enters a GSI only
+                # when it carries both key attributes, so what the attribute is
+                # *named* decides who is in the index: `reel` is written onto
+                # image and video file nodes and onto nothing else, so folders,
+                # entity records, slug claims and reference rows stay out. A
+                # fixture keyed on `lib` would let the sparse-index tests pass
+                # against a dense index.
                 {
                     "IndexName": "by-recent",
                     "KeySchema": [
-                        {"AttributeName": "lib", "KeyType": "HASH"},
+                        {"AttributeName": "reel", "KeyType": "HASH"},
                         {"AttributeName": "created_at", "KeyType": "RANGE"},
                     ],
                     "Projection": {"ProjectionType": "ALL"},
@@ -198,8 +206,23 @@ def catalog_table():
 #   Sub-second resolution is the point: it is what retires the key tie-break in
 #   `browse._sort_records`, and a fixture stamped to the second would let the
 #   retired workaround pass unnoticed.
+# * **`reel` is written only onto image and video files**, from the extension,
+#   exactly as `catalog._reel_value` does. It is the sparse `by-recent` key, so a
+#   fixture that put it on every row would make the reel tests pass against a
+#   dense index — the thing the entity model changed.
 
 CATALOG_TREE_START = "2026-08-19T12:30:00.{:06d}+00:00"
+
+
+# Every node in the fixture tree, keyed by the slash-joined name path that used
+# to be its address. **Filled in by `_tree_items` rather than written out**, for
+# the reason the tree itself is derived: a hand-kept second list drifts.
+#
+# It exists because the API stopped taking name paths. A test that wants "the
+# `seed` folder" used to say `?prefix=characters/subject-a/seed/` and now says
+# `?node=<id>`, and the id is a UUID minted by the fixture — so the readable
+# name has to live somewhere, and here is the one place that knows both.
+CATALOG_NODE_IDS: dict[str, str] = {}
 
 
 def _tree_items(objects: dict) -> list[dict]:
@@ -232,6 +255,9 @@ def _tree_items(objects: dict) -> list[dict]:
             record["blob_key"] = {"S": key}
             record["size"] = {"N": str(len(objects[key]))}
             record["content_type"] = {"S": "application/octet-stream"}
+            if _keys.kind(name) in ("image", "video"):
+                record["reel"] = {"S": CATALOG_LIBRARY}
+        CATALOG_NODE_IDS["/".join([*parent, name])] = node_id
         items.append({"pk": {"S": f"NODE#{node_id}"}, "sk": {"S": "META"}, **record})
         items.append(
             {
@@ -331,3 +357,37 @@ def signed_in(monkeypatch):
     monkeypatch.setattr(app_factory, "identity", caller)
     monkeypatch.setattr(app_factory, "catalog", caller)
     return caller
+
+
+def node_id_at(path: str) -> str:
+    """The fixture node id at one name path, for a test that wants to read well.
+
+    `node_id_at("characters/subject-a/seed")` rather than a UUID literal. Raises
+    a `KeyError` naming the path, which is a better failure than a request
+    against `None` that comes back 400.
+    """
+    return CATALOG_NODE_IDS[path.strip("/")]
+
+
+@pytest.fixture
+def api(catalog_tree):
+    """A signed-in test client over the fixture bucket and its catalog rows.
+
+    The two fixtures are almost always wanted together — the rows say what
+    exists and the objects are what `presign` signs for — and every route test
+    then opens with the same two lines. This is those two lines.
+    """
+    return app_factory.create_app().test_client()
+
+
+@pytest.fixture
+def empty_api(catalog_table, media_bucket):
+    """A signed-in client over a library holding nothing but its root.
+
+    The entity tests want this rather than `api`: the fixture tree is a
+    *pre-catalog* library — folders named `characters/` and `projects/` with no
+    entity rows behind them — and creating a character called `subject-a` in it
+    would collide with a folder of that name for reasons that have nothing to do
+    with what is being tested.
+    """
+    return app_factory.create_app().test_client()

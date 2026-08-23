@@ -1,52 +1,30 @@
-"""Classification, naming, and the one raw key left — tested directly.
+"""Classification, naming and slugs — tested directly.
 
-**Most of this file went with #312**, and what it covered is worth knowing was
-deleted rather than forgotten. `clean_prefix`, `assert_inside_root`, `is_within`,
-`parent_prefix`, `with_name`, `renamed_prefix` and `moved_prefix` had no caller
-left once the writes moved onto the catalog: a name path is walked one exact
-`NAME#` lookup per segment from the library root, so there is no string to
-confine and the operations three of them described are transactions now. Their
-tests are gone with them, in the same change, because a test asserting behaviour
+**This file keeps shrinking, and each round of it is worth knowing was deleted
+rather than forgotten.** #312 took `clean_prefix`, `assert_inside_root`,
+`is_within`, `parent_prefix`, `with_name`, `renamed_prefix` and `moved_prefix`
+once the writes moved onto the catalog. The entity model took the last three:
+`clean_key`, `_normalise` and `_reject_traversal`.
+
+What kept `clean_key` alive through #312 was *shared* material —
+`phrasebook/wording.yaml` and the `config/pose/` plates belonged to no character
+and no project, had no catalog node, and so had no id to be addressed by, which
+is why `GET /api/asset?key=` took a raw S3 key. The entity model closed that: the
+phrasebook is `TERM#` rows and the plates are ordinary nodes in a `config/`
+folder. One addressing scheme, no exceptions, and no string in this service that
+becomes an S3 key.
+
+Its tests go with it in the same change, because a test asserting behaviour
 nothing calls is how a deleted rule looks like a live one.
 
-`clean_key` and the traversal rules under it are still here, still tested, and
-still reachable — `GET /api/asset?key=` is a raw S3 key, because that is how the
-pipeline reads shared material that deliberately has no node.
+`clean_name` kept every refusal it has — none of them was ever about S3 — and
+`clean_slug` is the same argument one level up.
 """
 
 import pytest
 
 from studio_core.errors import ValidationError
 from studio_core.services import keys
-
-
-@pytest.fixture
-def confined_root(monkeypatch):
-    """Run a test against a non-empty browsable root.
-
-    Prod browses the whole bucket, so the confinement passes everything there and
-    would go untested. The knob is still real — point it at a prefix and the API
-    narrows to it — so the test that covers it sets one.
-    """
-    monkeypatch.setattr(keys.config, "media_root_prefix", lambda: "characters/")
-
-
-def test_clean_key_accepts():
-    assert keys.clean_key("characters/subject-a/seed/subject-a_1.webp") == "characters/subject-a/seed/subject-a_1.webp"
-
-
-@pytest.mark.parametrize(
-    "raw",
-    [None, "", "characters/subject-a/", "../etc/passwd", "characters/../etc/passwd", "/characters/x.png"],
-)
-def test_clean_key_rejects(raw):
-    with pytest.raises(ValidationError):
-        keys.clean_key(raw)
-
-
-def test_clean_key_confines_to_a_configured_root(confined_root):
-    with pytest.raises(ValidationError):
-        keys.clean_key("projects/subject-a/runs/x/output/a.jpeg")
 
 
 @pytest.mark.parametrize(
@@ -143,3 +121,62 @@ def test_content_type_covers_every_text_extension():
 )
 def test_numbered_name(name, index, expected):
     assert keys.numbered_name(name, index) == expected
+
+
+# ---------------------------------------------------------------------------
+# Slugs — the label a person types, claimed by a conditional write.
+#
+# Narrower than a name because a slug is three things at once: a segment of a
+# URL, a word on a command line, and the folder name an entity's root takes.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "slug", ["subject-a", "subject_b", "rooftop-teaser", "shot01", "a", "9-lives"]
+)
+def test_clean_slug_accepts(slug):
+    assert keys.clean_slug(slug) == slug
+
+
+@pytest.mark.parametrize(
+    "slug",
+    [
+        None,
+        "",
+        "   ",
+        "Subject-A",  # uppercase
+        "subject a",  # space
+        "subject/a",  # a slug is not a path
+        "subject.a",  # a slug is not a filename
+        "subject!",
+        "café",
+        "x" * (keys.MAX_SLUG_LENGTH + 1),
+    ],
+)
+def test_clean_slug_rejects(slug):
+    with pytest.raises(ValidationError):
+        keys.clean_slug(slug)
+
+
+def test_clean_slug_refuses_rather_than_repairs():
+    """**It never lowercases for you, and that is the whole point.**
+
+    A slug is claimed by a conditional put on `LIB#<lib>` / `CHARSLUG#<slug>`, so
+    the string that is validated is the string that becomes half a primary key.
+    Quietly folding `Subject-A` to `subject-a` would let two people believe they
+    hold two different names for one claim, and the second would then find their
+    character under a name they never typed.
+    """
+    with pytest.raises(ValidationError):
+        keys.clean_slug("Subject-A")
+
+
+def test_clean_slug_names_the_field_it_was_given():
+    """The message has to say which field, because two of them are slugs.
+
+    `POST /api/runs` validates a run slug and resolves a project by one in the
+    same request; a refusal reading "slug may only hold..." would leave the
+    caller guessing which.
+    """
+    with pytest.raises(ValidationError, match="title"):
+        keys.clean_slug("Not A Slug", "title")

@@ -49,7 +49,7 @@ def test_root_lists_the_top_level(catalog_tree):
 
 
 def test_subject_folder_lists_its_profile_and_subfolders(catalog_tree):
-    result = browse.list_folder(CATALOG_LIBRARY, "characters/subject-a/")
+    result = browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/"))
     assert [f["name"] for f in result["files"]] == ["profile.yaml"]
     # **`reference` first, where the old listing put `seed` first.** A folder used
     # to have no date at all, so `newest` fell back to the name descending; the
@@ -65,10 +65,10 @@ def test_a_folder_marker_is_a_folder_and_never_a_file(catalog_tree):
     out by size. In the catalog there is nothing for it to be but the folder it
     was faking, so the filter — and `keys.is_folder_marker` with it — is gone.
     """
-    parent = browse.list_folder(CATALOG_LIBRARY, "characters/subject-a/")
+    parent = browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/"))
     assert "seed" in [f["name"] for f in parent["folders"]]
 
-    result = browse.list_folder(CATALOG_LIBRARY, "characters/subject-a/seed/", "name")
+    result = browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"), "name")
     assert [f["name"] for f in result["files"]] == ["subject-a_1.webp", "subject-a_2.webp"]
 
 
@@ -90,7 +90,7 @@ def test_a_listing_carries_the_size_off_the_record(catalog_tree):
 
 
 def test_listing_presigns_every_file(catalog_tree):
-    result = browse.list_folder(CATALOG_LIBRARY, "characters/subject-a/seed/")
+    result = browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"))
     assert all(f["kind"] == "image" for f in result["files"])
     assert all("X-Amz-Signature" in f["url"] for f in result["files"])
 
@@ -125,7 +125,7 @@ def test_a_file_row_with_no_blob_lists_without_a_url(catalog_tree, catalog_table
 
     entry = next(
         f
-        for f in browse.list_folder(CATALOG_LIBRARY, "characters/subject-a/seed/")["files"]
+        for f in browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"))["files"]
         if f["name"] == "keyless.webp"
     )
     assert "url" not in entry
@@ -134,7 +134,8 @@ def test_a_file_row_with_no_blob_lists_without_a_url(catalog_tree, catalog_table
 
 def test_run_folder_mixes_media_and_metadata(catalog_tree):
     result = browse.list_folder(
-        CATALOG_LIBRARY, "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/"
+        CATALOG_LIBRARY,
+        _node_id("projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/"),
     )
     kinds = {f["name"]: f["kind"] for f in result["files"]}
     assert kinds == {"request.json": "text", "result.json": "text"}
@@ -144,7 +145,7 @@ def test_run_folder_mixes_media_and_metadata(catalog_tree):
 
 
 def test_breadcrumbs_and_counts(catalog_tree):
-    result = browse.list_folder(CATALOG_LIBRARY, "projects/subject-b/")
+    result = browse.list_folder(CATALOG_LIBRARY, _node_id("projects/subject-b/"))
     assert [b["name"] for b in result["breadcrumbs"]] == ["/", "projects", "subject-b"]
     assert [b["prefix"] for b in result["breadcrumbs"]] == [
         "",
@@ -162,8 +163,8 @@ def test_breadcrumbs_are_walked_from_the_node_not_the_request(catalog_tree):
     there is no string to split.
     """
     scene = "projects/subject-b/scenes/2026-08-16_07-40-22_stadium-encounter/"
-    by_path = browse.list_folder(CATALOG_LIBRARY, scene)
-    by_id = browse.list_folder(CATALOG_LIBRARY, node_id=_node_id(scene))
+    by_path = browse.list_folder(CATALOG_LIBRARY, _node_id(scene))
+    by_id = browse.list_folder(CATALOG_LIBRARY, _node_id(scene))
 
     # The whole body, not just the crumbs: `?node=` and `?prefix=` are two
     # addresses for one folder and must not be two answers.
@@ -180,14 +181,14 @@ def test_breadcrumbs_are_walked_from_the_node_not_the_request(catalog_tree):
 
 def test_the_reel_answers_to_either_address_too(catalog_tree):
     prefix = "characters/subject-a/"
-    assert _unsigned(browse.reel_items(CATALOG_LIBRARY, prefix)) == _unsigned(
-        browse.reel_items(CATALOG_LIBRARY, node_id=_node_id(prefix))
+    assert _unsigned(browse.reel_items(CATALOG_LIBRARY, _node_id(prefix))) == _unsigned(
+        browse.reel_items(CATALOG_LIBRARY, _node_id(prefix))
     )
 
 
 def test_an_unknown_path_segment_is_a_404(catalog_tree):
     with pytest.raises(NotFoundError):
-        browse.list_folder(CATALOG_LIBRARY, "characters/nobody/")
+        browse.list_folder(CATALOG_LIBRARY, _node_id("characters/nobody/"))
 
 
 def test_a_traversal_segment_is_just_a_name_nothing_is_called(catalog_tree):
@@ -198,7 +199,7 @@ def test_a_traversal_segment_is_just_a_name_nothing_is_called(catalog_tree):
     rule to the data.
     """
     with pytest.raises(NotFoundError):
-        browse.list_folder(CATALOG_LIBRARY, "../elsewhere")
+        browse.list_folder(CATALOG_LIBRARY, _node_id("../elsewhere"))
 
 
 def test_a_node_in_another_library_is_refused(catalog_tree, catalog_table):
@@ -225,21 +226,28 @@ def test_a_node_in_another_library_is_refused(catalog_tree, catalog_table):
     )
 
     with pytest.raises(ForbiddenError):
-        browse.list_folder(CATALOG_LIBRARY, node_id="node-elsewhere")
+        browse.list_folder(CATALOG_LIBRARY, "node-elsewhere")
 
 
-def test_prefix_and_node_together_is_refused(catalog_tree):
-    """Two addresses that can disagree, so neither is guessed at."""
-    with pytest.raises(ValidationError):
-        browse.list_folder(
-            CATALOG_LIBRARY,
-            "characters/subject-a/",
-            node_id=_node_id("characters/subject-a/"),
-        )
+def test_no_node_at_all_is_the_library_root(catalog_tree):
+    """**Replaces the "prefix and node together is refused" test, which had no
+    two addresses left to refuse.**
+
+    That refusal existed because `?prefix=` and `?node=` could disagree and
+    picking one silently is how a listing shows a folder nobody asked for. There
+    is one address now, so the ambiguity is gone rather than guarded — and what
+    is left worth pinning is the one thing "no address" still means: the library
+    root, which is the request the app makes first and the one node a client
+    cannot hold in advance, since `/api/libraries` reports id, name and role and
+    deliberately not the root.
+    """
+    assert _unsigned(browse.list_folder(CATALOG_LIBRARY)) == _unsigned(
+        browse.list_folder(CATALOG_LIBRARY, catalog.library(CATALOG_LIBRARY)["root_node"])
+    )
 
 
 def test_reel_walks_recursively(catalog_tree):
-    result = browse.reel_items(CATALOG_LIBRARY, "characters/subject-a/")
+    result = browse.reel_items(CATALOG_LIBRARY, _node_id("characters/subject-a/"))
     # One reference image and two seeds — the .txt caption, the profile YAML and
     # the folder marker's row are all excluded. Newest first, and the fixture
     # creates the seeds before the reference image, so the reference leads.
@@ -262,6 +270,46 @@ def test_reel_from_root_spans_characters_and_projects(catalog_tree):
     assert any(item["name"] == "shot-01.mp4" for item in result["items"])
 
 
+def test_the_root_reel_spends_its_budget_on_media_and_not_on_folders(
+    catalog_tree, monkeypatch
+):
+    """**The sparse index, asserted where it is paid for.**
+
+    `by-recent` used to be hashed on `lib`, so every folder in the library
+    entered this enumeration and was filtered out in memory — after it had
+    already been counted against `config.max_folder_objects`. The fixture tree
+    holds far more folders than media, so a cap of five under the old index would
+    return almost nothing and under the new one returns five images.
+
+    Written as a cap rather than as a count because that is the failure it
+    prevents: an unbounded reel looks identical either way, and the bug only
+    shows up as a library that goes half-empty when it grows.
+    """
+    monkeypatch.setenv("STUDIO_MAX_FOLDER_OBJECTS", "5")
+
+    result = browse.reel_items(CATALOG_LIBRARY)
+
+    assert len(result["items"]) == 5
+    assert all(item["kind"] in ("image", "video") for item in result["items"])
+
+
+def test_the_root_reel_never_enumerates_an_entity_row(catalog_tree, empty_api):
+    """Entity records carry `lib` and a timestamp and must stay out of the reel.
+
+    That is the reason the index is keyed on an attribute called `reel` whose
+    value *is* the library id rather than on `lib` itself: a DynamoDB item enters
+    a GSI only when it carries both key attributes, so the attribute's **name**
+    is what decides membership. A character record in the reel would be a tile
+    the grid cannot draw, consuming a slot that a picture wanted.
+    """
+    empty_api.post(
+        "/api/characters", json={"slug": "subject-a", "fictional": True}
+    )
+
+    for item in browse.reel_items(CATALOG_LIBRARY)["items"]:
+        assert item["kind"] in ("image", "video")
+
+
 def test_reel_items_carry_their_full_name_path(catalog_tree):
     """A reel row's `key` names where it lives, composed from the rows read.
 
@@ -281,109 +329,121 @@ def test_reel_items_carry_their_full_name_path(catalog_tree):
 # ---------------------------------------------------------------------------
 # The two file-at-a-time reads
 #
-# `/api/asset` and `/api/text` took `?node=` in #432 and stopped being the last
-# path between a query string and `GetObject` — with one exception these tests
-# pin down deliberately, because it is the reason `keys.clean_key` survived
-# #312: `/api/asset?key=` is still a raw S3 key, and shared material with no
-# catalog node is why.
+# Both take a **node record** now — the route resolves the id and checks it
+# against the caller's memberships, and neither function takes a string of any
+# kind. The last raw S3 key in this service was `/api/asset?key=`, kept alive by
+# *shared* material: the phrasebook and the `config/pose/` plates belonged to no
+# character and no project, had no catalog node, and so had no id to address.
+# The entity model closed that — the phrasebook is `TERM#` rows and the plates are
+# ordinary nodes in a `config/` folder — so the exception closed with it, and
+# `keys.clean_key` went too.
+#
+# `GET /api/text` is gone as a route as well: reading a text node is
+# `GET /api/nodes/<id>/text`, paired with the `PATCH` beside it, which is what
+# #432 was actually asking for. `tests/test_nodes.py` covers the routes; these
+# cover the service.
 # ---------------------------------------------------------------------------
 
 
 def _minted(media_bucket, parent, name, body, *, content_type=None):
-    """A file written the way #294 writes one: a `blobs/<node-id>` key.
+    """A file written the way an upload writes one: an entity-stamped key.
 
-    The shape the whole of #432 is about. Everything in `catalog_tree` carries a
-    pre-catalog `blob_key` that happens to equal its name path, so a route
-    reading the name path off the wire agrees with it by accident — a fixture
-    that could not tell the bug from correct behaviour.
+    Everything in `catalog_tree` carries a **pre-catalog** `blob_key` that
+    happens to equal its name path, so a reader that confused the two would agree
+    with the fixture by accident — a fixture that could not tell the bug from
+    correct behaviour. This one is stamped by `create_node`, which is what every
+    row written since the catalog looks like.
     """
     record = catalog.create_node(_node_id(parent), name, catalog.KIND_FILE)
     media_bucket.put_object(
         Bucket=config.media_bucket(), Key=record["blob_key"], Body=body
     )
-    catalog.set_blob(
+    stamped = catalog.set_blob(
         record["node_id"], record["blob_key"], size=len(body), content_type=content_type
     )
-    assert record["blob_key"].startswith("blobs/")
-    return record
+    # The prefix is the owner's, and the fixture tree is owned by nobody — these
+    # `characters/` and `projects/` folders are ordinary folders with no entity
+    # record behind them, which is exactly the pre-entity library.
+    assert record["blob_key"].startswith("libraries/")
+    return stamped
 
 
-def test_asset_url_by_node_inline_and_attachment(catalog_tree):
-    node_id = _node_id(
+def _record(prefix):
+    return catalog.node(_node_id(prefix))
+
+
+def test_asset_url_signs_inline_and_attachment(catalog_tree):
+    record = _record(
         "projects/subject-b/runs/2026-08-14_21-47-05_standing-flex/output/standing-flex.mp4"
     )
 
-    inline = browse.asset_url(CATALOG_LIBRARY, None, "inline", node_id=node_id)
+    inline = browse.asset_url(record, "inline")
     assert inline["kind"] == "video"
     assert inline["size"] == len(b"mp4-bytes")
     assert "response-content-disposition" not in inline["url"]
-    # The name path, never `blob_key`, and never the id it was addressed by.
+    # The name path, never `blob_key` — a rendering of the tree for a person to
+    # read, and nothing accepts one back.
     assert inline["key"] == (
         "projects/subject-b/runs/2026-08-14_21-47-05_standing-flex/output/standing-flex.mp4"
     )
     assert inline["name"] == "standing-flex.mp4"
+    assert inline["id"] == record["node_id"]
 
-    attachment = browse.asset_url(CATALOG_LIBRARY, None, "attachment", node_id=node_id)
+    attachment = browse.asset_url(record, "attachment")
     assert "response-content-disposition" in attachment["url"]
     assert "standing-flex.mp4" in attachment["url"]
 
 
-def test_asset_url_by_node_reaches_a_blob_a_name_path_cannot(catalog_tree):
-    """#432, stated as the thing that was broken.
+def test_asset_url_reaches_a_blob_no_name_path_could(catalog_tree):
+    """#432, stated as the thing that was broken, and now unbreakable by shape.
 
-    A row minted by the upload routes keeps its bytes at `blobs/<node-id>`. The
-    old `?key=` read signed the string a listing called `key`, which for this row
-    names no object at all — so the download button on anything uploaded since
-    #294 signed a URL onto nothing.
+    A row minted by the upload routes keeps its bytes under an id-derived key.
+    The old `?key=` read signed the string a listing called `key`, which for such
+    a row names no object at all — so the download button on anything uploaded
+    since #294 signed a URL onto nothing. There is no longer an address that can
+    make that mistake: the function takes the record.
     """
     media_bucket, _ = catalog_tree
     record = _minted(media_bucket, "characters/subject-a/seed/", "minted.webp", b"webp")
 
-    signed = browse.asset_url(CATALOG_LIBRARY, None, None, node_id=record["node_id"])
+    signed = browse.asset_url(record, None)
+
     assert signed["key"] == "characters/subject-a/seed/minted.webp"
     assert signed["size"] == len(b"webp")
     # The blob key is what got signed, and it never appears in the answer.
-    assert "blobs/" in signed["url"]
-    assert "blobs/" not in signed["key"]
-
-    # The same request addressed the old way finds nothing, which is the bug.
-    with pytest.raises(NotFoundError):
-        browse.asset_url(CATALOG_LIBRARY, "characters/subject-a/seed/minted.webp", None)
+    assert record["blob_key"] in signed["url"]
+    assert record["blob_key"] not in signed["key"]
 
 
-def test_asset_url_by_key_signs_material_that_has_no_node(catalog_tree, media_bucket):
-    """The one raw S3 key left, and the reason it is left.
+def test_shared_material_is_reached_by_id_like_everything_else(catalog_tree, media_bucket):
+    """**The exception that closed, asserted as the rule that replaced it.**
 
-    `phrasebook/wording.yaml` and the `config/pose/` plates belong to no character
-    and no project, `catalog_seed` records no node for them, and the pipeline
-    reads them over this route. An object with no row is exactly that case, and
-    it must still sign — which is what keeps `keys.clean_key` alive.
+    The pose plates used to have no catalog node, which is the sole reason
+    `GET /api/asset?key=` took a raw S3 key and the sole reason
+    `keys.clean_key` outlived #312. They are ordinary nodes in a `config/` folder
+    now, pushed through `POST /api/nodes` by the deploy, so they sign through the
+    same path as every other file and there is no second addressing scheme left
+    to keep working.
     """
-    media_bucket.put_object(
-        Bucket=config.media_bucket(), Key="config/pose/body/stand.png", Body=b"plate"
+    media_bucket_client, _ = catalog_tree
+    config_folder = catalog.create_node(
+        catalog.library(CATALOG_LIBRARY)["root_node"], "config", catalog.KIND_FOLDER
     )
-    signed = browse.asset_url(CATALOG_LIBRARY, "config/pose/body/stand.png", None)
+    plate = _minted(media_bucket_client, "config", "stand.png", b"plate")
 
-    assert signed["key"] == "config/pose/body/stand.png"
+    signed = browse.asset_url(plate, None)
+
+    assert signed["key"] == "config/stand.png"
     assert signed["name"] == "stand.png"
     assert signed["kind"] == "image"
     assert signed["size"] == len(b"plate")
-
-
-def test_asset_url_refuses_a_key_and_a_node_together(catalog_tree):
-    with pytest.raises(ValidationError):
-        browse.asset_url(
-            CATALOG_LIBRARY,
-            "characters/subject-a/profile.yaml",
-            None,
-            node_id=_node_id("characters/subject-a/profile.yaml"),
-        )
+    assert catalog.node(config_folder["node_id"])["kind"] == "folder"
 
 
 def test_asset_url_rejects_a_bad_disposition_before_it_reads_anything(catalog_tree):
-    """Checked first, so a bad disposition is a 400 even on a key that is a 404."""
+    """Checked first, so a bad disposition is a 400 even on a node that is a 404."""
     with pytest.raises(ValidationError):
-        browse.asset_url(CATALOG_LIBRARY, "nothing/at/all.png", "evil")
+        browse.asset_url(_record("characters/subject-a/profile.yaml"), "evil")
 
 
 def test_asset_url_on_a_folder_is_a_validation_error(catalog_tree):
@@ -393,13 +453,11 @@ def test_asset_url_on_a_folder_is_a_validation_error(catalog_tree):
     routes signing one node's bytes must not disagree about what a folder is.
     """
     with pytest.raises(ValidationError):
-        browse.asset_url(
-            CATALOG_LIBRARY, None, None, node_id=_node_id("characters/subject-a/seed/")
-        )
+        browse.asset_url(_record("characters/subject-a/seed/"), None)
 
 
 def test_asset_url_on_a_placeholder_is_not_found(catalog_tree, catalog_table):
-    """A row #294 minted whose upload never landed. There is nothing to sign."""
+    """A row minted before its bytes landed. There is nothing to sign."""
     parent = _node_id("characters/subject-a/seed/")
     record = catalog.create_node(parent, "pending.webp", catalog.KIND_FILE)
     catalog_table.update_item(
@@ -409,74 +467,58 @@ def test_asset_url_on_a_placeholder_is_not_found(catalog_tree, catalog_table):
     )
 
     with pytest.raises(NotFoundError):
-        browse.asset_url(CATALOG_LIBRARY, None, None, node_id=record["node_id"])
+        browse.asset_url(catalog.node(record["node_id"]), None)
 
 
-def test_asset_url_on_another_librarys_node_is_forbidden(catalog_tree):
-    """The node's own `lib` is the guard, because a node id is shareable."""
-    node_id = _node_id("characters/subject-a/profile.yaml")
-    with pytest.raises(ForbiddenError):
-        browse.asset_url("lib-someone-else", None, None, node_id=node_id)
+def test_text_object_reads_a_run_document_without_decoding_it(catalog_tree):
+    """The rule that survived the entity model by being moved to where it is true.
 
-
-def test_text_object_by_name_path(catalog_tree):
+    The envelope of a run is studio's and is validated; `request.json` is the
+    provider's and is bytes. This route is how a person sees one, and the
+    assertion is that what comes back is the document verbatim — no parse, no
+    re-encode, no key read out of it.
+    """
     result = browse.text_object(
-        CATALOG_LIBRARY,
-        "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/request.json",
+        _record("projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/request.json")
     )
+
     assert result["language"] == "json"
     assert result["content"] == '{"model": "x"}'
     assert result["truncated"] is False
 
 
-def test_text_object_by_node_answers_identically(catalog_tree):
-    """Same body either way, which is the contract `?node=` was added under."""
-    path = "projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/request.json"
-    assert browse.text_object(CATALOG_LIBRARY, path) == browse.text_object(
-        CATALOG_LIBRARY, None, node_id=_node_id(path)
-    )
-
-
 def test_text_object_reads_yaml(catalog_tree):
-    """Profiles and the phrasebook are YAML now, where they used to be markdown."""
-    result = browse.text_object(CATALOG_LIBRARY, "phrasebook/wording.yaml")
+    result = browse.text_object(_record("phrasebook/wording.yaml"))
     assert result["language"] == "yaml"
     assert result["content"] == "greeting: hello\n"
 
 
 def test_text_object_truncates(catalog_tree, monkeypatch):
     monkeypatch.setattr("studio_core.config.max_text_bytes", lambda: 4)
-    result = browse.text_object(CATALOG_LIBRARY, "characters/subject-a/profile.yaml")
+    result = browse.text_object(_record("characters/subject-a/profile.yaml"))
     assert result["truncated"] is True
     assert len(result["content"]) == 4
 
 
-def test_text_object_refuses_a_key_and_a_node_together(catalog_tree):
-    with pytest.raises(ValidationError):
-        browse.text_object(
-            CATALOG_LIBRARY,
-            "characters/subject-a/profile.yaml",
-            node_id=_node_id("characters/subject-a/profile.yaml"),
-        )
-
-
 def test_text_object_refuses_a_binary_file(catalog_tree):
     with pytest.raises(ValidationError):
-        browse.text_object(CATALOG_LIBRARY, "characters/subject-a/seed/subject-a_1.webp")
+        browse.text_object(_record("characters/subject-a/seed/subject-a_1.webp"))
 
 
 def test_text_object_refuses_a_folder(catalog_tree):
     with pytest.raises(ValidationError):
-        browse.text_object(CATALOG_LIBRARY, "characters/subject-a/seed/")
+        browse.text_object(_record("characters/subject-a/seed/"))
 
 
 def test_reading_text_finds_what_saving_text_wrote(catalog_tree):
-    """#432 in one assertion: the read and the write address the same node.
+    """#432 in one assertion, and now true by construction.
 
-    Both take a name path; before this the save resolved it against the catalog
-    and the read `GetObject`d it, so on a `blobs/<node-id>` file the editor could
-    save a file it could not then re-open. Reaching into `manage` is the point —
-    the pair is what was broken, so the test has to exercise the pair.
+    Before it, the save resolved a name path against the catalog and the read
+    `GetObject`d the string it was handed — so on an id-keyed file the editor
+    could save a file it could not then re-open. Both halves take the same record
+    now, so a rename cannot separate them and there is no second address for one
+    of them to drift onto. Reaching into `manage` is the point: the *pair* is
+    what was broken.
     """
     media_bucket, _ = catalog_tree
     record = _minted(
@@ -487,15 +529,13 @@ def test_reading_text_finds_what_saving_text_wrote(catalog_tree):
         content_type="text/markdown",
     )
 
-    manage.update_text(CATALOG_LIBRARY, "characters/subject-a/notes.md", "# after\n")
-    reread = browse.text_object(CATALOG_LIBRARY, "characters/subject-a/notes.md")
+    manage.update_text(record, "# after\n")
+    reread = browse.text_object(catalog.node(record["node_id"]))
 
     assert reread["content"] == "# after\n"
     assert reread["key"] == "characters/subject-a/notes.md"
     assert reread["name"] == "notes.md"
-    assert browse.text_object(
-        CATALOG_LIBRARY, None, node_id=record["node_id"]
-    ) == reread
+    assert reread["id"] == record["node_id"]
 
 
 # ---------------------------------------------------------------------------
@@ -510,8 +550,8 @@ def test_reading_text_finds_what_saving_text_wrote(catalog_tree):
 
 
 def test_sort_by_name_and_name_desc(catalog_tree):
-    ascending = browse.list_folder(CATALOG_LIBRARY, "characters/subject-a/seed/", "name")
-    descending = browse.list_folder(CATALOG_LIBRARY, "characters/subject-a/seed/", "name_desc")
+    ascending = browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"), "name")
+    descending = browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"), "name_desc")
 
     assert [f["name"] for f in ascending["files"]] == ["subject-a_1.webp", "subject-a_2.webp"]
     assert [f["name"] for f in descending["files"]] == ["subject-a_2.webp", "subject-a_1.webp"]
@@ -566,7 +606,7 @@ def test_newest_first_puts_a_later_write_first(catalog_tree):
     second was indistinguishable from the first. `catalog._now` stamps
     microseconds.
     """
-    seed = browse.list_folder(CATALOG_LIBRARY, "characters/subject-a/", "name")
+    seed = browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/"), "name")
     seed_id = next(f["id"] for f in seed["folders"] if f["name"] == "seed")
     # Confirmed, not just created. `create_node` alone leaves a row naming bytes
     # that never arrived, which listings now hide (#442) — and this test is about
@@ -576,11 +616,11 @@ def test_newest_first_puts_a_later_write_first(catalog_tree):
 
     newest = [
         f["name"]
-        for f in browse.list_folder(CATALOG_LIBRARY, "characters/subject-a/seed/", "newest")["files"]
+        for f in browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"), "newest")["files"]
     ]
     oldest = [
         f["name"]
-        for f in browse.list_folder(CATALOG_LIBRARY, "characters/subject-a/seed/", "oldest")["files"]
+        for f in browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"), "oldest")["files"]
     ]
 
     # Name-ascending would have put it first anyway, so the assertion that
@@ -597,7 +637,7 @@ def test_the_reel_orders_by_the_timestamp_it_reports(catalog_tree):
     the case that told a key from a basename. There are no ties now: every row
     is a distinct instant, and the order is the one the entries display.
     """
-    items = browse.reel_items(CATALOG_LIBRARY, "characters/")["items"]
+    items = browse.reel_items(CATALOG_LIBRARY, _node_id("characters/"))["items"]
 
     stamps = [item["last_modified"] for item in items]
     assert stamps == sorted(stamps, reverse=True)
@@ -670,7 +710,7 @@ def test_a_truncated_reel_still_names_its_folders(catalog_tree, monkeypatch):
 
 def _entry(prefix, name):
     return next(
-        f for f in browse.list_folder(CATALOG_LIBRARY, prefix)["files"] if f["name"] == name
+        f for f in browse.list_folder(CATALOG_LIBRARY, _node_id(prefix))["files"] if f["name"] == name
     )
 
 
@@ -692,7 +732,7 @@ def test_the_reel_carries_no_favourites_fields_either(catalog_tree):
     A page is 200 items across however many projects, so that was one extra S3
     listing per project per page, spent on a question nothing asks any more.
     """
-    items = browse.reel_items(CATALOG_LIBRARY, "projects/subject-a/")["items"]
+    items = browse.reel_items(CATALOG_LIBRARY, _node_id("projects/subject-a/"))["items"]
 
     assert items, "the reel still lists the media"
     assert all("favorites_prefix" not in item and "favorited" not in item for item in items)
@@ -704,7 +744,7 @@ def test_every_row_carries_its_node_id(catalog_tree):
     Files, folders and reel items alike — a listing that carried ids for two of
     the three would send the SPA back to `/api/resolve` for the third.
     """
-    listing = browse.list_folder(CATALOG_LIBRARY, "characters/subject-a/")
+    listing = browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/"))
     reel = browse.reel_items(CATALOG_LIBRARY)
 
     rows = listing["files"] + listing["folders"] + reel["items"]
@@ -737,10 +777,10 @@ def test_no_browse_response_carries_a_blob_key_or_a_path(catalog_tree):
     """
     responses = [
         browse.list_folder(CATALOG_LIBRARY),
-        browse.list_folder(CATALOG_LIBRARY, "characters/subject-a/seed/"),
-        browse.list_folder(CATALOG_LIBRARY, node_id=_node_id("projects/subject-b/")),
+        browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/")),
+        browse.list_folder(CATALOG_LIBRARY, _node_id("projects/subject-b/")),
         browse.reel_items(CATALOG_LIBRARY),
-        browse.reel_items(CATALOG_LIBRARY, "characters/"),
+        browse.reel_items(CATALOG_LIBRARY, _node_id("characters/")),
     ]
 
     for response in responses:
@@ -777,7 +817,7 @@ def test_an_upload_that_never_confirmed_is_not_listed(catalog_tree, media_bucket
 
     names = [
         f["name"]
-        for f in browse.list_folder(CATALOG_LIBRARY, "characters/subject-a/seed/")["files"]
+        for f in browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"))["files"]
     ]
 
     assert "never-arrived.webp" not in names
@@ -791,18 +831,14 @@ def test_a_confirmed_empty_file_is_listed(catalog_tree, media_bucket):
     and membership can — so a falsy check would hide a legitimately empty file
     the user uploaded on purpose.
     """
+    empty = _uploaded("characters/subject-a/seed/", "genuinely-empty.webp", confirm_size=0)
     media_bucket.put_object(
-        Bucket=config.media_bucket(),
-        Key=catalog.blob_key_for(
-            _uploaded("characters/subject-a/seed/", "genuinely-empty.webp",
-                      confirm_size=0)["node_id"]
-        ),
-        Body=b"",
+        Bucket=config.media_bucket(), Key=empty["blob_key"], Body=b""
     )
 
     names = [
         f["name"]
-        for f in browse.list_folder(CATALOG_LIBRARY, "characters/subject-a/seed/")["files"]
+        for f in browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"))["files"]
     ]
 
     assert "genuinely-empty.webp" in names
@@ -812,6 +848,6 @@ def test_an_abandoned_upload_is_kept_out_of_the_reel_too(catalog_tree, media_buc
     """The reel signs its own window, so it needs the same filter as the listing."""
     _uploaded("characters/subject-a/seed/", "never-arrived-reel.webp")
 
-    names = [item["name"] for item in browse.reel_items(CATALOG_LIBRARY, "", None, None)["items"]]
+    names = [item["name"] for item in browse.reel_items(CATALOG_LIBRARY, None, None, None)["items"]]
 
     assert "never-arrived-reel.webp" not in names
