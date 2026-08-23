@@ -10,6 +10,7 @@ import { useSelection } from "../../hooks/useSelection";
 import { useUploads } from "../../hooks/useUploads";
 import type { FileEntry, SortOrder } from "../../types";
 import type { FolderId, Target } from "../../utils/location";
+import { ChipRow } from "../common/ChipRow";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
 import { TextPage } from "../text/TextPage";
@@ -927,9 +928,8 @@ export function FolderTab({ rootId }: { rootId: string }) {
  * has no subfolders — a character whose starting folders were deleted gets no
  * empty rail.
  *
- * **Scrolls rather than wraps.** A row that grows to three lines on a phone is
- * the failure this replaced, and it would come back the moment somebody made a
- * seventh folder.
+ * Scrolls rather than wraps — see `ChipRow`, which the reference tag filter uses
+ * too, so the two rows cannot drift apart.
  */
 function FolderShortcuts({ rootId, nav }: { rootId: string; nav: BrowserNav }) {
   const load = useCallback(() => getTree({ node: rootId }, "name"), [rootId]);
@@ -943,13 +943,7 @@ function FolderShortcuts({ rootId, nav }: { rootId: string; nav: BrowserNav }) {
   const here = nav.target.kind === "folder" ? nav.target.id : null;
 
   return (
-    <div
-      role="group"
-      aria-label="Folder shortcuts"
-      // `-mx-1 px-1` so the focus ring on the first and last chip is not clipped
-      // by the scroll container's own edge.
-      className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1"
-    >
+    <ChipRow role="group" aria-label="Folder shortcuts">
       <FolderChip label="Top" active={here === rootId} onClick={() => nav.goToFolder(rootId)} />
       {folders.map((folder) => (
         <FolderChip
@@ -959,7 +953,7 @@ function FolderShortcuts({ rootId, nav }: { rootId: string; nav: BrowserNav }) {
           onClick={() => nav.goToFolder(folder.id)}
         />
       ))}
-    </div>
+    </ChipRow>
   );
 }
 

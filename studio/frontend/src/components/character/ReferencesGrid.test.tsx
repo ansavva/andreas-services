@@ -151,6 +151,45 @@ describe("moving a reference without a drag", () => {
   });
 });
 
+describe("the cap readout", () => {
+  /** `ENGINE_CAPS` is Kling 7, Seedance 9, Nano Banana 14. */
+  function withDefaultSet(size: number) {
+    const nodes = Array.from({ length: size }, (_, i) => `node-d${i}`);
+    return render(
+      <ReferencesGrid characterId={CHARACTER} rootId={ROOT} defaultSet={nodes} />,
+    );
+  }
+
+  it("shows the binding cap only, while the set is legal", async () => {
+    // Three badges for one number is what this replaced. Under the smallest cap
+    // you are under all of them, so the smallest is the only one that can turn.
+    withDefaultSet(5);
+    await screen.findByTitle("node-a.png");
+
+    expect(screen.getByText("Kling 5/7")).toBeTruthy();
+    expect(screen.queryByText(/Seedance/)).toBeNull();
+    expect(screen.queryByText(/Nano Banana/)).toBeNull();
+  });
+
+  it("names every engine the set is too big for, and only those", async () => {
+    withDefaultSet(10);
+    await screen.findByTitle("node-a.png");
+
+    expect(screen.getByText("over Kling (7)")).toBeTruthy();
+    expect(screen.getByText("over Seedance (9)")).toBeTruthy();
+    // 10 still fits Nano Banana's 14, so it is not a warning.
+    expect(screen.queryByText(/Nano Banana/)).toBeNull();
+  });
+
+  it("stops showing headroom once anything is exceeded", async () => {
+    withDefaultSet(8);
+    await screen.findByTitle("node-a.png");
+
+    expect(screen.getByText("over Kling (7)")).toBeTruthy();
+    expect(screen.queryByText("Kling 8/7")).toBeNull();
+  });
+});
+
 describe("the images in reference/ that no row claims", () => {
   /** Root holds `reference/`; that folder holds one attached image and one loose. */
   function withReferenceFolder(files: FileEntry[]) {
