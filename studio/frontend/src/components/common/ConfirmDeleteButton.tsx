@@ -142,7 +142,22 @@ export function ConfirmDeleteButton({
       // rather than a literal, which is the rule that actually matters.
       style={
         phase === "armed" && showsText
-          ? { backgroundColor: "var(--color-danger)", color: "var(--color-bg)" }
+          ? {
+              backgroundColor: "var(--color-danger)",
+              color: "var(--color-bg)",
+              // `buttonClass` is `whitespace-nowrap` at a fixed `h-8`, which is
+              // right for a word and wrong for a sentence. The armed label is
+              // the consequence spelled out, and on a phone a long noun ran off
+              // the side and took the page's horizontal scroll with it. Inline
+              // for the same reason the fill is: two utilities setting one
+              // property are resolved by stylesheet order, not by the order
+              // they are written here.
+              height: "auto",
+              minHeight: "2rem",
+              whiteSpace: "normal",
+              textAlign: "start",
+              paddingBlock: "0.25rem",
+            }
           : undefined
       }
       className={`${
@@ -160,9 +175,20 @@ export function ConfirmDeleteButton({
         {phase === "armed" ? `Press again to delete ${noun}` : ""}
       </span>
 
+      {/* **This said `Confirm — delete …` in every phase**, including at rest,
+          which made a page-level destroy render as though it were already armed
+          the moment the page loaded. It also put the visible text at odds with
+          `aria-label`, which was reading the correct `label` all along. The
+          arming is the whole mechanism — "a button that changes what it says
+          where your finger already is" — and it cannot change into what it
+          already said. */}
       {showsText ? (
         <span aria-hidden="true">
-          {phase === "busy" ? "Deleting…" : `Confirm — delete ${noun}`}
+          {phase === "busy"
+            ? "Deleting…"
+            : phase === "armed"
+              ? `Confirm — delete ${noun}`
+              : "Delete"}
         </span>
       ) : (
         <svg
@@ -207,11 +233,13 @@ export function ConfirmDeleteButton({
 const toneStyles: Record<Tone, string> = {
   row: "p-2 text-muted hover:bg-surface-alt hover:text-danger",
   chrome: "p-2 text-white/80 hover:bg-white/15 hover:text-white",
-  // Text at rest AND armed, unlike `bar`. This is a page-level destroy — a
-  // project with its runs, a character with its references — and a trash can in
-  // a page header reads as "delete something on this page" rather than "delete
-  // this page's subject". The `noun` carries the weight: armed, it says exactly
-  // what is about to go.
+  // Text at rest AND armed, unlike `bar` — but not the *same* text. This is a
+  // page-level destroy — a project with its runs, a character with its
+  // references — and a trash can in a page header reads as "delete something on
+  // this page" rather than "delete this page's subject". So at rest it is the
+  // bare word, which also keeps it a small control beside a title on a phone;
+  // armed, the `noun` carries the weight and it says exactly what is about to
+  // go.
   page: "",
   // Idle only — the armed and busy states of this tone render as text, not as an
   // icon, so `armedStyles.bar` is never reached. It matches `row` because it is

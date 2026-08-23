@@ -43,7 +43,13 @@ function record(over: Partial<CharacterRecord> = {}): CharacterRecord {
     root: "node-root",
     hero: null,
     default_set: [],
-    profile: { appearance: { hair: "short" }, voice: { accent: "flat" } },
+    profile: {
+      // `hair` is short and stays a line. `build` is 63 characters — over the
+      // old 100-char threshold it was a single-line input you had to scroll
+      // sideways through on a phone, which shows about 40.
+      appearance: { hair: "short", build: "a" .repeat(63) },
+      voice: { accent: "flat" },
+    },
     ...over,
   };
 }
@@ -174,6 +180,35 @@ describe("the sections", () => {
 
     expect((screen.getByLabelText("Hair") as HTMLInputElement).value).toBe("long");
     expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();
+  });
+
+  it("gives a value that wraps a box, not a one-line input", async () => {
+    // The threshold used to be 100 characters, which is a desktop answer: a
+    // single-line input shows about 40 on a phone, so everything between was
+    // read by scrolling sideways through a one-line box.
+    await open();
+
+    expect(screen.getByLabelText("Build").tagName).toBe("TEXTAREA");
+    expect(screen.getByLabelText("Hair").tagName).toBe("INPUT");
+  });
+
+  it("resets the card's own padding, which a class cannot be trusted to do", async () => {
+    // `Card.Root` carries `p-lg`, and the package merges caller classes with
+    // `tailwind-merge`, which does not recognise this design system's t-shirt
+    // spacing keys — `twMerge('… p-lg …', 'p-0')` returns BOTH, and `.p-lg` is
+    // emitted after `.p-0` in the stylesheet, so the reset lost. The card kept
+    // 24px and the panel added 24px more: 48px a side on a 390px screen.
+    //
+    // Asserting the inline style is the point. A className assertion would have
+    // passed the whole time this was broken.
+    await open();
+
+    const card = document.querySelector<HTMLElement>('[data-section=" identity"]');
+    expect(card).toBeTruthy();
+    // Parsed, not string-compared: jsdom serialises these two zeroes
+    // differently — `padding` as "0px" and `gap` as "0".
+    expect(parseFloat(card!.style.padding)).toBe(0);
+    expect(parseFloat(card!.style.gap)).toBe(0);
   });
 
   it("marks the section that moved, and only that one", async () => {
