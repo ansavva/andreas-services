@@ -310,9 +310,14 @@ again. `--project` takes a slug or a project id and is never inferred.
   regenerating it deliberately — never editing it to make a test pass.
 - **`terraform destroy` on `studio/prod` fails by design.** The media bucket
   carries `prevent_destroy`; see [infra/README.md](infra/README.md).
-- **Moving an object means rewriting the records that name it.** Skipping that
-  step is what once left 69 records pointing at reference images that no longer
-  existed — `rewrite.py` exists for this.
+- **Moving an object no longer means rewriting the records that name it.**
+  Skipping that step is what once left 69 records pointing at reference images
+  that no longer existed, and `domain/rewrite.py` existed to patch them. Both
+  the hazard and the tool are gone: a record names a **node id**, so a move
+  changes a node's parent and every record pointing at it stays correct. What
+  can still drift is a blob's `<owner_kind>/<owner_id>/` key prefix, which is a
+  pointer rather than a name — `verify` reports it and `studio catalog reseat`
+  rewrites it, out of band and never automatically.
 - The app's API takes the **ID token**, not the access token; the run JSON is
   deliberately served as text and never parsed. More in
   [docs/WEB_APP.md](docs/WEB_APP.md#conventions--gotchas).
