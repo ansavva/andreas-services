@@ -287,7 +287,7 @@ and hand it to the runner, which records the run, submits without
 ```bash
 studio prompt prompt.json --emit input > input.json
 studio run --model seedance --project <project> --input-file input.json \
-  --character <name> --slug <slug> --poll
+  --character <name> --name <file> --poll
 ```
 
 - **Seedance** → **`studio-media-seedance`** (`--model seedance`). Bind identity

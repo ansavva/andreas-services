@@ -492,15 +492,19 @@ def execute(entry: dict, payload: dict, bindings: dict, token: str, args) -> dic
 
     It returned an exit code, and every batch caller then went back for
     `<project>/latest` to find out which run it had just made — a lookup that is
-    wrong the moment two runs land in one project close together, and that could
-    not be right at all now that a run slug is a label rather than an id.
+    wrong the moment two runs land in one project close together, and that
+    could not be right at all: a run has no name to be looked up by.
     Returning the record removes the question. Failure is still an exception, so
     the callers that only wanted "did it work" are unchanged.
     """
     kind = entry["kind"]
     d = defaults(kind)
     project = args.project          # the project record, resolved by the caller
-    slug = R.slugify(args.slug)
+    # **A FILENAME, NOT AN IDENTITY.** This used to be the run's slug, which
+    # named the run, named its folder and named its outputs all at once. The run
+    # and its folder are named by id now; what survives here is the only part
+    # that was ever worth having — what the downloaded file is called.
+    name = R.slugify(getattr(args, "name", None) or d["slug"])
 
     prompt_source = json.load(open(args.prompt_json)) if getattr(args, "prompt_json", None) else None
     # `--character` doubles as "resolve refs from" and "this run is of", which is
@@ -511,7 +515,7 @@ def execute(entry: dict, payload: dict, bindings: dict, token: str, args) -> dic
     characters = list(getattr(args, "record_characters", None) or args.character or [])
     try:
         record = R.record_request(
-            project["id"], slug, kind=kind, engine=entry["skill"],
+            project["id"], kind=kind, engine=entry["skill"],
             model=entry["model"], input=payload,
             # Node ids only. A pose plate is dropped here rather than stored as
             # a raw key, because a record that mixes the two addressing schemes
@@ -525,7 +529,7 @@ def execute(entry: dict, payload: dict, bindings: dict, token: str, args) -> dic
     except REFS.RefError as e:
         raise SubmitError(f"refusing to record a run against an unknown character: {e}")
     run_id = record["id"]
-    print(f"run {run_id}  ({project['slug']}/{record['slug']})", file=sys.stderr)
+    print(f"run {run_id}  (in {project['slug']})", file=sys.stderr)
 
     # Mint presigned URLs at the last possible moment; they are never stored.
     for f, val in bindings.items():
@@ -579,7 +583,7 @@ def execute(entry: dict, payload: dict, bindings: dict, token: str, args) -> dic
     out_nodes = []
     for i, u in enumerate(urls, start=1):
         ext = os.path.splitext(u.split("?")[0])[1] or d["default_ext"]
-        base = f"{slug}{'' if len(urls) == 1 else f'-{i}'}{ext}"
+        base = f"{name}{'' if len(urls) == 1 else f'-{i}'}{ext}"
         local = RA.download(u, os.path.join(staged, base))
         out_nodes.append(R.upload_output(run_id, local, base))
         if getattr(args, "dest", None):

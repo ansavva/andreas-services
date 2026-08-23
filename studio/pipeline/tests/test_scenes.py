@@ -249,7 +249,7 @@ def test_the_cut_is_made_locally_and_only_the_record_goes_to_the_api(
     clips = []
     for n in (1, 2):
         run = E.create_run(project=library.project, kind="video", engine="kling",
-                           model="kwaivgi/kling", slug=f"shot-{n}", input={},
+                           model="kwaivgi/kling", input={},
                            bindings={})
         signed = E.add_run_output(run["id"], f"shot-{n}.mp4", 9, "video/mp4")
         library.fake.s3.put_object(

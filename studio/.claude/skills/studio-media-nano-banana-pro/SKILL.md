@@ -51,7 +51,7 @@ first, references after, and name the roles in the prompt rather than trusting
 inference.
 
 ```bash
-studio run --model nano-banana-pro --project <project> --slug <slug> \
+studio run --model nano-banana-pro --project <project> --name <file> \
   --key <name>/reference/face/<file>.png \
   --key <name>/reference/face/<other>.png \
   --aspect-ratio match_input_image \

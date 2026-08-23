@@ -32,8 +32,11 @@ READ_ONLY = [
     (["projects", "list"], "porch-teaser"),
     (["projects", "show", "porch-teaser"], "porch-teaser"),
     (["projects", "inputs", "porch-teaser"], "street-plate.webp"),
-    (["runs", "list", "porch-teaser"], "porch-portrait"),
-    (["runs", "find", "--character", "subject-a"], "porch-portrait"),
+    # A run has no label — a listing row carries id, created, model, kind,
+    # status and nothing else. Asserting on the model is asserting on a field
+    # the projection really holds, which is the whole lesson of `_row`.
+    (["runs", "list", "porch-teaser"], "google/nano-banana-pro"),
+    (["runs", "find", "--character", "subject-a"], "google/nano-banana-pro"),
     (["models"], "seedance"),
 ]
 

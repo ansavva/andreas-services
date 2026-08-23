@@ -74,7 +74,7 @@ To add a model, use [`studio-media-add-model`](../studio-media-add-model/SKILL.m
 
 ```bash
 studio run --model nano-banana-pro --project <project> \
-  --prompt "..." --character <name> --slug <slug>
+  --prompt "..." --character <name> --name <file>
 ```
 
 One runner serves every model, image and video — see
@@ -148,12 +148,12 @@ slug fragment, or a bare run id when the project is supplied out of band
 ```bash
 # refine a frame using the previous frame plus part of the curated set
 studio run --model nano-banana-pro --project <project> --prompt "..." \
-  --character <name> --slots 1,2 --ref-run <project>/latest#1 --slug <slug>
+  --character <name> --slots 1,2 --ref-run <project>/latest#1 --name <file>
 
 # then animate it — the payoff
 studio run \
   --model kling --project <project> --input-file input.json --character <name> \
-  --start-run <project>/latest#1 --slug <slug> --poll
+  --start-run <project>/latest#1 --name <file> --poll
 ```
 
 Inputs are de-duplicated and order is preserved: `--image-run` first, then the
@@ -235,7 +235,7 @@ base image goes first, references after. Name the roles in the prompt to match
 model to infer them.
 
 ```bash
-studio run --model nano-banana-pro --project <project> --slug <slug> \
+studio run --model nano-banana-pro --project <project> --name <file> \
   --key <project>/input/<file>.png \
   --character <name> --pick-tag face \
   --aspect-ratio match_input_image --prompt "Use the FIRST image as the base…"

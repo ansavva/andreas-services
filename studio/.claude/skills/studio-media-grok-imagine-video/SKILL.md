@@ -80,7 +80,7 @@ studio run \
   --prompt "the subject slowly turns to camera and smiles, gentle push-in" \
   --start-run <runref> \
   --extra '{"duration": 8, "resolution": "720p", "aspect_ratio": "auto"}' \
-  --slug <slug> --poll
+  --name <file> --poll
 ```
 
 Bind the still with `--start-run` / `--start-key` (→ `image`). `--ref-run` and
@@ -106,7 +106,7 @@ studio presign --key <path>       # temporary HTTPS URL for that exact object
 studio run --model grok-imagine-video --project <project> \
   --prompt "Add a silver necklace to the woman." \
   --extra '{"video": "<the presigned URL>"}' \
-  --slug <slug> --poll
+  --name <file> --poll
 ```
 
 That still satisfies S3-only origin — the clip originates in the bucket and

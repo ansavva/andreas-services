@@ -4164,15 +4164,15 @@
         "required": false,
         "type": "str"
       },
-      "slug": {
+      "name": {
         "choices": null,
         "default": null,
-        "dest": "slug",
+        "dest": "name",
         "flag": false,
         "flags": [
-          "--slug"
+          "--name"
         ],
-        "help": "Short slug for the run id and filename.",
+        "help": "What the output file is called. Not an identity: a run is addressed by its id or by `latest`.",
         "hidden": false,
         "multiple": false,
         "nargs": 1,

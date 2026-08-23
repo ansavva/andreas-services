@@ -148,7 +148,7 @@ frame already fixes background, lighting, and wardrobe, so:
 ```bash
 studio run --model kling --project {project} \
   --input-file input.json --prompt-json prompt.json \
-  --start-run {project}/latest#1 --slug {slug} --poll
+  --start-run {project}/latest#1 --name {file} --poll
 ```
 
 A runref is `<project>/<run_id>` — the project, never a character. `latest#1` is

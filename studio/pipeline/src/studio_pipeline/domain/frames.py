@@ -274,7 +274,7 @@ def main():
     pass
 
 
-@main.command("last", epilog="\n\nArguments:\n  REF  runref: <project>/<slug>, <project>/latest, a run id, #N")
+@main.command("last", epilog="\n\nArguments:\n  REF  runref: <project>/latest, a run id, #N")
 @click.argument("ref", required=True)
 @click.option("--add-input", is_flag=True, help=("upload into the PROJECT's input pool (never a character's "
               "reference/)"))
@@ -289,7 +289,7 @@ def do_last(ref, add_input, chain, dest, project):
     _emit(run, out, add_input, chain)
 
 
-@main.command("at", epilog="\n\nArguments:\n  REF  runref: <project>/<slug>, <project>/latest, a run id, #N")
+@main.command("at", epilog="\n\nArguments:\n  REF  runref: <project>/latest, a run id, #N")
 @click.argument("ref", required=True)
 @click.option("--add-input", is_flag=True, help=("upload into the PROJECT's input pool (never a character's "
               "reference/)"))
@@ -305,7 +305,7 @@ def do_at(ref, add_input, chain, dest, project, time):
     _emit(run, out, add_input, chain)
 
 
-@main.command("grid", epilog="\n\nArguments:\n  REF  runref: <project>/<slug>, <project>/latest, a run id, #N")
+@main.command("grid", epilog="\n\nArguments:\n  REF  runref: <project>/latest, a run id, #N")
 @click.argument("ref", required=True)
 @click.option("--count", type=int, default=4, help="frames to sample (default 4)")
 @click.option("--dest", help="directory to write the image into")

@@ -58,7 +58,7 @@ def test_recording_a_run_creates_the_envelope_before_the_submission(library):
     submission has not happened. A store that recorded nothing until success
     would lose exactly the runs worth investigating.
     """
-    record = R.record_request(library.project, "porch-two", kind="image",
+    record = R.record_request(library.project, kind="image",
                               engine="nano-banana-pro",
                               model="google/nano-banana-pro",
                               input={"prompt": "a porch"},
@@ -73,14 +73,14 @@ def test_recording_a_run_creates_the_envelope_before_the_submission(library):
 
 def test_a_structured_prompt_is_recorded_beside_the_request(library):
     """`prompt.json` exists so the authored source survives, not just the string."""
-    record = R.record_request(library.project, "porch-three", kind="image",
+    record = R.record_request(library.project, kind="image",
                               engine="e", model="m", input={"prompt": "x"},
                               bindings={}, prompt_source={"subject": "a porch"})
     assert record["payload"]["prompt"].startswith("node-")
 
 
 def test_the_bindings_land_on_the_row_as_node_ids(library):
-    record = R.record_request(library.project, "porch-four", kind="image",
+    record = R.record_request(library.project, kind="image",
                               engine="e", model="m", input={},
                               bindings={"image_input": [library.face_1, library.face_2]})
     assert E.get_run(record["id"])["bindings"] == {
@@ -98,22 +98,26 @@ def test_the_api_refuses_a_binding_that_names_no_node(library):
 
     with pytest.raises(api.ApiError):
         E.create_run(project=library.project, kind="image", engine="e", model="m",
-                     slug="bad", input={},
+                     input={},
                      bindings={"image_input": ["node-00000000-0000-0000-0000-000000000000"]})
 
 
-def test_two_runs_may_share_a_slug(library):
-    """**A slug is a label now, and this is what that costs and buys.**
+def test_a_run_has_no_slug_and_its_folder_is_named_for_its_id(library):
+    """**A run is a machine event, so it carries no label at all.**
 
-    A run id used to be `<timestamp>_<slug>`, so a collision meant the CLI had
-    re-sent a run and a 409 was the right answer. An id is a UUID now, so the
-    same label twice is an ordinary thing a person does — the API disambiguates
-    the folder and both runs are real.
+    The slug it used to carry read `<timestamp>_<hint>`: unique only because it
+    embedded `created`, which is already a column and already what sorting and
+    `--since` read. Strip the timestamp and production's 29 runs collapsed to 19
+    labels. Nothing keyed on it and no claim row enforced it.
+
+    Two runs a second apart used to need the API to disambiguate their folder
+    names. Named for the id, they cannot collide.
     """
-    first = R.record_request(library.project, "same", kind="image", engine="e",
+    first = R.record_request(library.project, kind="image", engine="e",
                              model="m", input={}, bindings={})
-    second = R.record_request(library.project, "same", kind="image", engine="e",
+    second = R.record_request(library.project, kind="image", engine="e",
                               model="m", input={}, bindings={})
+    assert "slug" not in first, "a run record carries no slug"
     assert first["id"] != second["id"]
     assert first["folder"] != second["folder"]
 
@@ -153,7 +157,7 @@ def test_outputs_come_back_in_the_order_the_run_recorded(library, tmp_path):
 
 def test_a_run_that_never_produced_output_has_none(library):
     """A failure or a timeout legitimately has none, and that is not an error."""
-    record = R.record_request(library.project, "doomed", kind="image", engine="e",
+    record = R.record_request(library.project, kind="image", engine="e",
                               model="m", input={}, bindings={})
     assert R.run_outputs(record["id"]) == []
 
@@ -161,7 +165,7 @@ def test_a_run_that_never_produced_output_has_none(library):
 # ── completion ──────────────────────────────────────────────────────────────
 
 def test_recording_a_result_patches_the_row_and_stores_the_response(library):
-    record = R.record_request(library.project, "closes", kind="image", engine="e",
+    record = R.record_request(library.project, kind="image", engine="e",
                               model="m", input={}, bindings={})
     R.record_result(record["id"], prediction_id="pred-1", status="succeeded",
                     outputs=[], source_urls=["https://replicate.test/x"])
@@ -174,7 +178,7 @@ def test_recording_a_result_patches_the_row_and_stores_the_response(library):
 def test_an_exception_is_recorded_rather_than_raising_on_the_way_in(library):
     """`json.dumps` refuses an exception, which turned a failed prediction into
     a `TypeError` on the way to recording that it failed."""
-    record = R.record_request(library.project, "fails", kind="image", engine="e",
+    record = R.record_request(library.project, kind="image", engine="e",
                               model="m", input={}, bindings={})
     R.record_result(record["id"], prediction_id=None, status="failed",
                     error=RuntimeError("the provider said no"))
@@ -183,7 +187,7 @@ def test_an_exception_is_recorded_rather_than_raising_on_the_way_in(library):
 
 def test_the_payload_documents_read_back_verbatim(library):
     """Studio stores these and does not decode them. This reads text, not JSON."""
-    record = R.record_request(library.project, "verbatim", kind="image", engine="e",
+    record = R.record_request(library.project, kind="image", engine="e",
                               model="m", input={"prompt": "a porch"}, bindings={})
     documents = R.payload_documents(E.get_run(record["id"]))
     assert "request" in documents
@@ -222,7 +226,7 @@ def test_listing_accepts_a_slug_a_person_typed(library):
 # ── runrefs ─────────────────────────────────────────────────────────────────
 
 def test_latest_resolves_to_the_newest_run(library):
-    newest = R.record_request(library.project, "newest", kind="image", engine="e",
+    newest = R.record_request(library.project, kind="image", engine="e",
                               model="m", input={}, bindings={})
     assert R.resolve_run("porch-teaser/latest")["id"] == newest["id"]
 
@@ -237,11 +241,16 @@ def test_a_run_id_resolves_with_no_project_at_all(library):
     assert R.resolve_run(library.run)["id"] == library.run
 
 
-def test_an_ambiguous_slug_names_the_ids_rather_than_picking(library):
+def test_a_runref_that_is_not_latest_or_an_id_is_refused_with_the_options(library):
+    """There is no name to guess at, so it says so and lists what is there.
+
+    This replaces the exact-match, substring-fallback, ambiguity-error ladder
+    that existed only to prop up a label that was never unique.
+    """
     for _ in range(2):
-        R.record_request(library.project, "twice", kind="image", engine="e",
+        R.record_request(library.project, kind="image", engine="e",
                          model="m", input={}, bindings={})
-    with pytest.raises(R.RunError, match="ambiguous"):
+    with pytest.raises(R.RunError, match="not a runref"):
         R.resolve_run("porch-teaser/twice")
 
 
@@ -293,7 +302,7 @@ def test_adopting_something_that_is_not_there_is_refused(library):
 def test_runs_list_prints_the_envelope(library):
     result = CliRunner().invoke(cli.main, ["runs", "list", "porch-teaser"])
     assert result.exit_code == 0, result.output
-    assert "porch-portrait" in result.output
+    assert "google/nano-banana-pro" in result.output
     assert "succeeded" in result.output
 
 

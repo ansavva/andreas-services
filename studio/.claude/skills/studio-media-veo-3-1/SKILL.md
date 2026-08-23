@@ -97,7 +97,7 @@ studio run \
   --prompt "…" \
   --extra '{"duration": 8, "resolution": "1080p", "aspect_ratio": "16:9",
             "negative_prompt": "on-screen text, watermarks", "seed": 42}' \
-  --slug <slug> --poll
+  --name <file> --poll
 ```
 
 Bind images with `--start-run` / `--start-key` (→ `image`), `--end-run` /

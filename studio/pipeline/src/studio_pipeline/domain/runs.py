@@ -3,7 +3,7 @@
 A **run** is one submission to a model and everything about it. What changed is
 where "everything about it" lives:
 
-    the row   id, project, slug, status, kind, engine, model, prediction id,
+    the row   id, project, status, kind, engine, model, prediction id,
               timings, bindings (NODE IDS), characters, folder, outputs,
               lineage, cost, error                    — studio owns and validates
     the blobs request.json, prompt.json, result.json  — the provider owns, and
@@ -39,16 +39,26 @@ SPA goes through the API too, and it never went through this function.
 
 ADDRESSING A RUN
 ----------------
-    <project>/<slug>     the run called <slug> in that project
     <project>/latest     the newest run there
-    <slug>               when the project is supplied out of band (--project)
-    <runref>#2           its 2nd output (1-based); default is every output
+    <project>/latest#2   its 2nd output (1-based); default is every output
+    latest               when the project is supplied out of band (--project)
     run-<uuid>           the id, which is what a record holds
 
-A slug is a **human label** now and no longer has to be unique — two runs may
-share one, and an ambiguous runref says so and lists the ids rather than picking.
-The timestamp prefix is gone from the slug because sorting is `created` on the
-row, which is what a timestamp in a folder name was imitating.
+**A RUN HAS NO SLUG, AND THAT IS THE WHOLE OF ITS ADDRESSING.** It used to, and
+the label was a worse copy of a column the row already had: every slug in
+production read `<timestamp>_<hint>`, so it was unique only by embedding
+`created` — which is what sorting reads, what `--since` filters on, and what a
+timestamp in a folder name was imitating in the first place. Strip the timestamp
+and 29 runs collapsed to 19 labels.
+
+Nothing keyed on it and no claim row enforced it, so resolving one needed an
+exact match, then a substring fallback, then an ambiguity error to prop it up.
+All three are gone with it. A run is a machine event: it is found by `latest`,
+by its id, or by the filters below — `--character`, `--model`, `--status`,
+`--since` — which is how it was actually being found already.
+
+A scene and a movie keep their slug and title. Those are things a person plans
+and comes back to; a run is not.
 
 CLI
 ---
@@ -197,7 +207,7 @@ def render_payload(run: str, model: str, endpoint: str, payload: dict,
 # --- writing a run --------------------------------------------------------
 
 def record_request(
-    project: str, slug: str, *, kind: str, engine: str, model: str,
+    project: str, *, kind: str, engine: str, model: str,
     input: dict, bindings: dict | None = None, prompt_source: dict | None = None,
     characters: list[str] | None = None,
 ) -> dict:
@@ -211,12 +221,17 @@ def record_request(
     `project` and each entry in `characters` are ids. Resolving a slug is the
     caller's job, done once, because a caller that has resolved a project
     usually needs the record for something else too.
+
+    **No slug is sent.** A run has none; the API names its folder for its id.
+    What the caller used to pass here as `slug` was doing two jobs, and only one
+    of them was any good — see `--name` on `studio run`, which keeps the good
+    one: what the output FILE is called.
     """
     clean = check_bindings(bindings or {})
     try:
         return entities.create_run(
             project=project, kind=kind, engine=engine, model=model,
-            slug=slugify(slug), input=input, bindings=clean,
+            input=input, bindings=clean,
             characters=characters or [], prompt=prompt_source)
     except api.ApiError as exc:
         raise RunError(str(exc)) from exc
@@ -350,7 +365,7 @@ def parse_runref(ref: str, default_project: str | None = None) -> tuple[str, str
     if not project and not run_ref.startswith("run-"):
         raise RunError(
             f"runref {ref!r} has no project and none was supplied "
-            "(use <project>/<slug>, a run id, or pass --project)"
+            "(use <project>/latest, a run id, or pass --project)"
         )
     return project, run_ref, index
 
@@ -378,17 +393,13 @@ def resolve_run(ref: str, default_project: str | None = None) -> dict:
         raise RunError(f"no runs in project {project!r}")
     if run_ref in ("latest", "last"):
         return entities.get_run(found[0]["id"])
-    matches = [r for r in found if r["slug"] == run_ref]
-    if not matches:
-        matches = [r for r in found if run_ref in r["slug"]]
-    if len(matches) == 1:
-        return entities.get_run(matches[0]["id"])
-    if not matches:
-        raise RunError(f"no run matching {run_ref!r} in project {project!r}")
     raise RunError(
-        f"runref {run_ref!r} is ambiguous in {project!r}: "
-        + ", ".join(f"{r['id']} ({r['created'][:19]})" for r in matches[:5])
-        + "\n  a run slug is a label and need not be unique — name the id")
+        f"{run_ref!r} is not a runref. A run has no name to address it by — "
+        f"use 'latest', or its id.\n"
+        + "".join(f"       {r['id']}  {r['created'][:19]}  {r.get('model','')}\n"
+                  for r in found[:5])
+        + (f"       … and {len(found) - 5} more\n" if len(found) > 5 else "")
+        + "       studio runs list <project> for the rest.")
 
 
 def _address(project: str) -> str:
@@ -446,7 +457,7 @@ def adopt(project: str, node_id: str) -> dict:
     except api.NotFound as exc:
         raise RunError(f"no such node: {node_id}") from exc
     ext = os.path.splitext(node.get("name") or "")[1].lower()
-    record = record_request(project, os.path.splitext(node["name"])[0],
+    record = record_request(project,
                             kind="video" if ext in VID_EXTS else "image",
                             engine="(pre-scheme)", model="(unrecorded)",
                             input={}, bindings={})
@@ -482,9 +493,19 @@ def _warn_ignored_expiry(expires: int) -> None:
 
 
 def _row(record: dict) -> str:
+    """One listing row. **Every field here is one the projection actually carries.**
+
+    It used to render `record['slug']`, which no listing row has ever held — the
+    projection is `{lib, id, created, status, model, kind, thumb}` — so
+    `runs list` raised `KeyError` against the real API while passing against a
+    test fake that projected off the full record. Reading with `.get` where a
+    field is optional, and reading nothing that is not projected, is the rule
+    here.
+    """
     cost = (record.get("cost") or {}).get("amount")
-    return (f"{record['created'][:16]}  {record['id']}  {record['slug']:<20} "
-            f"{record['kind']:<6} {record['status']:<10}"
+    return (f"{record['created'][:16]}  {record['id']}  "
+            f"{(record.get('model') or ''):<28} {(record.get('kind') or ''):<6} "
+            f"{(record.get('status') or ''):<10}"
             + (f"  ${cost}" if cost is not None else ""))
 
 
@@ -590,7 +611,7 @@ def do_adopt(project, key):
     """
     node_id = key if key.startswith("node-") else store.resolve(key)["id"]
     record = adopt(_project_id(project), node_id)
-    print(json.dumps({k: record[k] for k in ("id", "slug", "status", "outputs")},
+    print(json.dumps({k: record[k] for k in ("id", "status", "outputs")},
                      indent=2))
 
 

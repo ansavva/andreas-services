@@ -222,7 +222,7 @@ def library(fake_api):
     lib.input_3 = fake_api.put_file(pool["id"], "porch-plate.png", b"png-in-3")["id"]
 
     run = E.create_run(project=lib.project, kind="image", engine="nano-banana-pro",
-                       model="google/nano-banana-pro", slug="porch-portrait",
+                       model="google/nano-banana-pro",
                        input={"prompt": "a porch"},
                        bindings={"image_input": [lib.face_1, lib.face_2]},
                        characters=[lib.character])

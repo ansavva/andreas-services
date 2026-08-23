@@ -41,7 +41,7 @@ studio models show gpt-image-2   # entry + LIVE input schema + caveats
 studio models refresh            # re-snapshot schema enums into models.json
 
 studio run --model <key> --project <project> --prompt "..." --character <name> \
-  --slug <slug> --dry-run
+  --name <file> --dry-run
 ```
 
 `--model` takes any registry key, image or video; the entry decides which image

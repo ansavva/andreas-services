@@ -135,7 +135,7 @@ studio prompt shot.json \
 #    and archives the finished video into the run.
 studio run \
   --model kling --project <project> --input-file input.json \
-  --character <name> --slug <slug> --poll
+  --character <name> --name <file> --poll
 ```
 
 Bind images with `--start-run` / `--end-run` (→ `start_image` / `end_image`),
