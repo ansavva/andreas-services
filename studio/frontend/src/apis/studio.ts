@@ -345,10 +345,24 @@ export function patchCharacterProfile(id: string, patch: CharacterProfile, rev: 
  * root rather than destroyed. The reverse default loses media to a typo, and
  * these are the only copies.
  */
-export function deleteCharacter(id: string, files: "keep" | "delete" = "keep") {
+/**
+ * Delete a character. `force` drops the links projects and runs hold on it.
+ *
+ * **The links are the reason this refuses by default.** They are what makes
+ * "every run of this subject" answerable, so dropping them is a real loss and
+ * has to be asked for. A run itself is untouched either way: it really did use
+ * this character, and deleting the character is not a reason to delete the work
+ * — which is exactly why a project deletes with `cascade` and a character does
+ * not have one.
+ */
+export function deleteCharacter(
+  id: string,
+  files: "keep" | "delete" = "keep",
+  force = false,
+) {
   return apiSend<{ id: string; deleted: number }>(
     "DELETE",
-    `/api/characters/${encodeURIComponent(id)}?files=${files}`,
+    `/api/characters/${encodeURIComponent(id)}?files=${files}` + (force ? "&force=1" : ""),
   );
 }
 
@@ -465,10 +479,22 @@ export function patchProject(
   return apiSend<ProjectRecord>("PATCH", `/api/projects/${encodeURIComponent(id)}`, body);
 }
 
-export function deleteProject(id: string, files: "keep" | "delete" = "keep") {
-  return apiSend<{ id: string; deleted: number }>(
+/**
+ * Delete a project. `cascade` takes its runs, scenes and movies with it.
+ *
+ * **Without `cascade` this refuses while the project holds anything**, because
+ * a run's envelope names its project and deleting the project alone leaves
+ * every one of them pointing at nothing. The API also has `?force=1`, which
+ * does precisely that; it is not exposed here on purpose.
+ */
+export function deleteProject(
+  id: string,
+  files: "keep" | "delete" = "keep",
+  cascade = false,
+) {
+  return apiSend<{ id: string; files: string; removed: Record<string, number> }>(
     "DELETE",
-    `/api/projects/${encodeURIComponent(id)}?files=${files}`,
+    `/api/projects/${encodeURIComponent(id)}?files=${files}` + (cascade ? "&cascade=1" : ""),
   );
 }
 

@@ -306,20 +306,34 @@ def do_unlink(project, character):
 @click.argument("project", required=True)
 @click.option("--files", type=click.Choice(["keep", "delete"]), default="keep",
               help="What to do with the project's folder (default: keep it).")
-@click.option("--force", is_flag=True, help="Delete even while it still holds runs.")
-def do_delete(project, files, force):
-    """Delete a project record.
+@click.option("--cascade", is_flag=True,
+              help="Delete the runs, scenes and movies it holds, then the project.")
+@click.option("--force", is_flag=True, hidden=True,
+              help="Delete the project and ORPHAN its children. Prefer --cascade.")
+def do_delete(project, files, cascade, force):
+    """Delete a project, and with --cascade everything it holds.
 
     **`--files keep` is the default deliberately.** The reverse default loses
     media to a typo; an orphaned folder in the library root is visible and
-    recoverable. Refuses while the project holds runs unless `--force`.
+    recoverable.
+
+    **Refuses while the project holds runs, and `--cascade` is the way through.**
+    It deletes the movies, then the scenes, then the runs, then the project —
+    children before the record that lists them, so an interruption leaves a
+    project holding fewer of them rather than runs naming a project that is
+    gone. `--force` is the old escape hatch and produces exactly that broken
+    state; it is hidden and kept only for anything already using it.
     """
     record = require_project(project)
     try:
-        entities.delete_project(record["id"], files=files, force=force)
+        result = entities.delete_project(record["id"], files=files,
+                                         cascade=cascade, force=force)
     except api.Conflict as exc:
-        die(f"{exc}\n       pass --force to delete it anyway")
-    print(f"deleted project {record['slug']} (files: {files})")
+        die(f"{exc}\n       pass --cascade to delete them with it")
+    removed = (result or {}).get("removed") or {}
+    detail = ", ".join(f"{n} {k}(s)" for k, n in sorted(removed.items()))
+    print(f"deleted project {record['slug']} (files: {files})"
+          + (f" and {detail}" if detail else ""))
 
 
 @main.command("add-inputs")

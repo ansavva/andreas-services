@@ -279,3 +279,36 @@ def test_deleting_an_empty_project_keeps_its_files_by_default(empty_api, catalog
     assert _item(catalog_table, f"PROJ#{project['id']}", "META") is None
     assert "entity" not in catalog.node(project["root"])
     assert [entry["name"] for entry in catalog.children(CATALOG_ROOT)] == ["rooftop-teaser"]
+
+
+def test_cascade_deletes_the_children_before_the_project(empty_api, catalog_table):
+    """**The answer `?force=1` never gave.**
+
+    Force deleted the project and left every run's envelope naming a project id
+    that no longer existed — the one state the model cannot repair from. Cascade
+    takes the children first, so what an interruption leaves is a project
+    holding fewer of them: visible, and finished by running it again.
+    """
+    project = _project(empty_api)
+    runs = [_run(empty_api, project) for _ in range(3)]
+
+    resp = empty_api.delete(f"/api/projects/{project['id']}?cascade=1&files=delete")
+
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    assert resp.get_json()["removed"] == {"run": 3}
+    # Neither the project nor a single run survives it.
+    assert empty_api.get(f"/api/projects/{project['id']}").status_code == 404
+    for run in runs:
+        assert empty_api.get(f"/api/runs/{run['id']}").status_code == 404
+
+
+def test_a_project_holding_runs_still_refuses_without_cascade(empty_api):
+    """The refusal stays the default; the message now names the flag that works."""
+    project = _project(empty_api)
+    _run(empty_api, project)
+
+    resp = empty_api.delete(f"/api/projects/{project['id']}")
+
+    assert resp.status_code == 409
+    assert "cascade=1" in resp.get_data(as_text=True)
+    assert empty_api.get(f"/api/projects/{project['id']}").status_code == 200

@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Alert, Badge, Button, Spinner, Tabs, Text } from "@ansavva/design-system";
 
 import {
+  deleteProject,
   getProject,
   getProjectInputs,
   getProjectMovies,
@@ -11,6 +12,7 @@ import {
 } from "../apis/studio";
 import { FolderTab } from "../components/browse/FolderBrowser";
 import { AppHeader } from "../components/common/AppHeader";
+import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
 import { RunsTable } from "../components/project/RunsTable";
 import { useResource } from "../hooks/useResource";
 import { formatBytes, formatDate } from "../utils/format";
@@ -62,6 +64,9 @@ export function ProjectPage() {
 
   const record = project.data;
 
+  const counts = record.counts;
+  const held = counts.runs + counts.scenes + counts.movies;
+
   return (
     <Shell subtitle={record.slug}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -69,6 +74,23 @@ export function ProjectPage() {
         <Text variant="caption" tone="muted">
           {record.slug}
         </Text>
+
+        {/* **The noun spells out the cascade, because the button IS the
+            confirmation.** `ConfirmDeleteButton` arms in place rather than
+            opening a modal — the reasoning is in that file — so the armed label
+            is the only thing standing between a click and 29 runs. It says the
+            count for that reason, and the count comes off the record rather
+            than a second fetch. */}
+        <span className="ms-auto">
+          <ConfirmDeleteButton
+            tone="page"
+            noun={deleteNoun(record.slug, held)}
+            onConfirm={async () => {
+              await deleteProject(record.id, "delete", held > 0);
+              navigate("/");
+            }}
+          />
+        </span>
       </div>
 
       <Tabs.Root defaultValue="overview">
@@ -319,4 +341,16 @@ function Shell({ children, subtitle }: { children: React.ReactNode; subtitle?: s
       {children}
     </div>
   );
+}
+
+
+/**
+ * What the delete button says it is about to destroy.
+ *
+ * Spelled out rather than "this project", because the cascade is the part a
+ * person cannot see from the header: the runs, scenes and movies go with it,
+ * and the armed press is the last chance to notice that.
+ */
+function deleteNoun(slug: string, held: number): string {
+  return held === 0 ? `project ${slug}` : `project ${slug} and its ${held} run(s), scene(s) and movie(s)`;
 }
