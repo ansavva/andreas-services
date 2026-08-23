@@ -1375,41 +1375,79 @@ def owners(plan: dict) -> dict[str, tuple[str, str]]:
 
 
 def desired_key(plan: dict, nodes: dict, node: dict) -> str:
-    """Where a file node's bytes belong under `<owner_kind>/<owner_id>/<node_id>.<ext>`.
+    """Where a file node's bytes belong:
+    `<owner_kind>/<owner_id>/<folders below the owner>/<name>`.
+
+    **THE KEY IS DESCRIPTIVE, AND IT IS STILL NOT AUTHORITATIVE.** Those are
+    separate properties and D2 originally conflated them. What made the legacy
+    `characters/<slug>/…` keys dangerous was never that they read well — it was
+    that they were LOAD-BEARING: `paths.py` built them, callers parsed them, and
+    records named paths instead of ids. That is what stranded 69 records and what
+    `domain/rewrite.py` existed to patch.
+
+    A record names a node id now, so nothing reads this string. Nothing may
+    start. `test_no_caller_splits_a_blob_key` is the guard, because the moment
+    something derives truth from a key, a rename becomes a data migration again
+    and the whole entity model is back where it started.
+
+    Given that, the structure costs nothing and buys two things a flat
+    `<node_id>.<ext>` cannot:
+
+    - **A bucket you can read.** One listing tells you which entity owns an
+      object, where it sat in the tree, and what it is called. Under the flat
+      scheme a listing is 379 MB of UUIDs and the catalog is the only thing that
+      can say what any of them are.
+    - **A rebuild path.** The catalog has PITR and deletion protection, so this
+      is a second line rather than the only one — but the second line is the
+      difference between "restore the table" and "restore the table or lose the
+      meaning of every byte".
 
     The owner is DERIVED, from the node's `path` — the materialised list of
     ancestor ids the tree already maintains — by finding the nearest ancestor
-    that some entity adopted. Nothing new is stored and nothing can drift; a
-    move that changes the owner is visible here immediately, which is the whole
-    reason `verify` can report drift at all.
+    some entity adopted. Nothing new is stored.
 
-    The extension is decoration for a human reading the console. `content_type`
-    on the row is authoritative and the API sets it on every presigned response,
-    so a node whose key has no suffix and whose type is unguessable simply gets
-    none.
+    **The leaf is the node's `name`, verbatim.** A file is a file: whatever it
+    was uploaded as is what it is called, here and in the app. Nothing mints a
+    name any more (`curate renumber` and `regroup` are gone, group and order are
+    row attributes), so there is no convention for this to encode and none for
+    it to drift from. The extension comes with the name, which is why this no
+    longer guesses one from `content_type`.
     """
     known = owners(plan)
     ancestors = [i for i in (node.get("path") or "").split("/") if i]
-    kind, owner = None, None
-    for ancestor in reversed(ancestors):
+    kind, owner, below = None, None, []
+    for index, ancestor in enumerate(reversed(ancestors)):
         if ancestor in known:
             kind, owner = known[ancestor]
+            # The folders between the owner's root and this node, in tree order.
+            below = [nodes[i]["name"] for i in ancestors[len(ancestors) - index:]
+                     if i in nodes and nodes[i].get("name")]
             break
+    if kind is None:
+        # Not inside any entity — loose material under the library root. Its
+        # whole path below the root is the structure worth keeping.
+        below = [nodes[i]["name"] for i in ancestors
+                 if i in nodes and nodes[i].get("name") and nodes[i].get("parent_id")]
     prefix = OWNER_PREFIX[kind] if kind else LIBRARY_PREFIX
     owner = owner or plan["lib"]
-    _, extension = os.path.splitext(node.get("blob_key") or "")
-    if not extension:
-        extension = mimetypes.guess_extension(node.get("content_type") or "") or ""
-    return f"{prefix}/{owner}/{node['node_id']}{extension}"
+    return "/".join([prefix, owner, *below, node["name"]])
 
 
 def key_drift(plan: dict, nodes: dict) -> list[dict]:
     """Every file node whose key no longer describes its owner.
 
-    Reported by `verify`, rewritten by `reseat`. **A drifted key is not broken.**
-    It is a pointer, it resolves, and the bytes are exactly where the row says.
-    What it has stopped being is legible — which is the trap the legacy keys set
-    and the reason this is worth a command rather than a shrug.
+    Reported by `verify`, rewritten by `reseat`. **A drifted key is not broken,
+    and since the key became descriptive it is not even unusual.**
+
+    It is a pointer. It resolves, the bytes are where the row says, and nothing
+    reads the string. What drift means now is only that the key describes where
+    the file USED to sit — because a key is stamped once at creation and a
+    rename or a move is a row write that deliberately does not touch it.
+
+    So this is a tidiness report, not a defect report. Any library anyone
+    actually works in will show some, `reseat` is how you clear it when the
+    listing has drifted far enough to annoy you, and a library showing drift is
+    not a library with a problem. Read the count that way.
     """
     drift = []
     for node in nodes.values():
@@ -1655,7 +1693,8 @@ def do_verify(library, journal):
             print(f"{kind + 's':<22} {count}")
         print(f"{'objects in the bucket':<22} {res['objects']}")
         print(f"{'keys that have drifted':<22} {len(res['drift'])}   "
-              "(not broken — `reseat` rewrites them)")
+              "(cosmetic — the key describes where a file was created; "
+              "`reseat` re-tidies)")
         for label, entries in sorted(res["problems"].items()):
             print(f"\n{label.upper()}  {len(entries)}")
             for entry in entries[:SHOWN]:

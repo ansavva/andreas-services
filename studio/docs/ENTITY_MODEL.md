@@ -55,7 +55,8 @@ messages, and then writes every one of them into an S3 key.
 
 **The fix in one line:** characters, projects, runs, scenes and movies become
 rows with UUIDs; the folder tree stays exactly what it is and hangs off them;
-S3 keys carry ids and never names.
+an S3 key opens with the owner's id instead of its slug, and nothing reads a key
+to decide anything.
 
 ---
 
@@ -64,8 +65,12 @@ S3 keys carry ids and never names.
 1. **An id is the identity. A slug is a label.** Every entity has a `v4` UUID
    that never changes. The slug is a mutable, library-unique attribute. Renaming
    is one conditional write and touches nothing else, ever.
-2. **No name in any S3 key.** Keys are built from ids and are opaque —
-   stamped once at creation, never parsed, never re-derived.
+2. **No SLUG in any S3 key, and no key is ever parsed.** A key opens with
+   `<owner_kind>/<owner_id>/`, so a listing names no character and no project.
+   Below that it carries the folder path and the file's own name, because a key
+   is decoration for a human and a rebuild path — never an input to code. It is
+   stamped once at creation and never re-derived. See
+   [D2 was revised](#d2-was-revised-the-key-is-descriptive-again).
 3. **Every mutation is an API route.** The CLI holds no AWS credentials and
    composes no writes of its own; it calls the same routes the SPA calls. This
    was already true for bytes ([#308](#), #302) and is now true for records.
@@ -91,17 +96,59 @@ the git history of this file; the consequences are the rest of this document.
 | | Question | Settled on | Where it lives now |
 |---|---|---|---|
 | **D1** | One table or three? | **One.** `studio-<env>-catalog` gained `CHAR#`, `PROJ#`, `RUN#`, `SCENE#`, `MOVIE#` partitions beside `LIB#`, `USER#` and `NODE#`. | [Item table](#item-table) |
-| **D2** | What an S3 key looks like | **`<owner_kind>/<owner_id>/<node_id>.<ext>`** — carries the owner's id, carries no name. Stamped once at creation, never parsed, never re-derived. | [S3 layout](#s3-layout) |
+| **D2** | What an S3 key looks like | **`<owner_kind>/<owner_id>/<folders>/<filename>`** — owner id, then the tree below it, then the file's own name. Stamped once at creation, never parsed, never re-derived. **Revised — see below.** | [S3 layout](#s3-layout) |
 | **D3** | How far it goes | **All five entity types**, not characters and projects alone. | [Entities](#entities) |
 | **D4** | Prod data | **Migrated**, by a forward migrator: `plan` / `apply` / `verify` as separate invocations, journalled under `local/migrations/`. | `maintenance/catalog_migrate.py` |
 | **D5** | Entities in the reel | **Sparse `by-recent`**, re-keyed on a `reel` attribute written only onto image and video file nodes. Fixed the pre-existing folder pollution on the way past. | [Item table](#item-table) |
 
-**D2's honest cost is still live and is not a defect.** Moving a file between
-entities leaves the old prefix on its key. The key stays correct — it is a
-pointer, not a name — it just stops looking like it means anything.
-`studio catalog verify` reports the drift and `studio catalog reseat --apply`
-rewrites it: server-side copy, row update, delete of the old object. Optional,
-out of band, never automatic, and it refuses until a `verify` has passed.
+### D2 was revised: the key is descriptive again
+
+**As first decided, D2 made the key meaningless** — `<owner_kind>/<owner_id>/<node_id>.<ext>`
+— on the reasoning that a readable key is what stranded 69 records and made
+`domain/rewrite.py` necessary.
+
+**That conflated two properties.** The danger was never that the old keys read
+well. It was that they were **load-bearing**: `paths.py` built them, callers
+parsed them, and records named paths instead of ids. Making the key *unreadable*
+was one way to stop that, and it was not the necessary one — the entity model
+had already stopped it outright by making a record name a node id.
+
+So the key is `<owner_kind>/<owner_id>/<folders below the owner>/<filename>`:
+
+```
+characters/char-45f4c2b4-…/reference/face/IMG_4580.png
+projects/proj-a8091a40-…/runs/2026-08-04_21-30-54_wave-porch-1x1/output/…mp4
+libraries/lib-bf3b86ef-…/config/pose/face/front.png
+```
+
+The slug is gone from the key, which is what D2's hard-rule-#1 half was for, and
+that half stands. What comes back is everything below it.
+
+**Two things a flat key cannot do:**
+
+- **A bucket a person can read.** One listing says which entity owns an object,
+  where it sat, and what it is called. Flat, a listing is UUIDs and the catalog
+  is the only thing that can say what any byte is.
+- **A second line of defence.** The catalog has PITR and deletion protection, so
+  this is not the only one — but it is the difference between "restore the
+  table" and "restore the table or lose the meaning of everything".
+
+**The filename is whatever the file was uploaded as, verbatim.** Nothing mints a
+name any more — `curate renumber` and `regroup` are gone, group and order are row
+attributes — so there is no convention for a key to encode and none to drift
+from. Files are files.
+
+**THE PROPERTY THIS RESTS ON: nothing parses a `blob_key`.** It is a pointer, it
+is passed whole to `presign`, and the moment something derives truth from one, a
+rename becomes a data migration again and this is all back where it started.
+`test_no_caller_splits_a_blob_key` is the guard, over both halves of the service.
+
+**Drift is now expected, and cosmetic.** A key is stamped at creation; a rename
+or move is a row write that deliberately does not touch it, so any library
+someone works in will show some. `verify` counts it and `reseat --apply` clears
+it — server-side copy, row update, delete of the old object; optional, out of
+band, never automatic, and refusing until a `verify` has passed. A library
+showing drift is not a library with a problem.
 
 **D4 is done and the migrator is not.** `plan`, `apply` and `verify` ran against
 production; `reseat` has not, so prod's keys are the legacy ones D2 replaced and
@@ -382,16 +429,30 @@ stitched output as a node id.
 
 ## S3 layout
 
-Assumes D2 = entity-prefixed keys.
+Entity-prefixed keys (D2), descriptive below the prefix
+([revised](#d2-was-revised-the-key-is-descriptive-again)).
 
 ```
-characters/<char_id>/<node_id>.<ext>     bytes owned by a character
-projects/<proj_id>/<node_id>.<ext>       bytes owned by a project (runs, scenes, movies, inputs)
-libraries/<lib_id>/<node_id>.<ext>       bytes under the library root, owned by neither
+characters/<char_id>/<folders>/<filename>   bytes owned by a character
+projects/<proj_id>/<folders>/<filename>     bytes owned by a project (runs, scenes, movies, inputs)
+libraries/<lib_id>/<folders>/<filename>     bytes under the library root, owned by neither
 ```
 
-Three prefixes and nothing else. No `blobs/`, no `phrasebook/`, no `config/`, no
-slug anywhere.
+Three prefixes and nothing else. No `blobs/`, no `phrasebook/`, no top-level
+`config/`, **no slug anywhere** — and, below the prefix, the same folder path and
+the same filename the tree shows a person:
+
+```
+characters/char-45f4c2b4-…/reference/face/IMG_4580.png
+projects/proj-a8091a40-…/runs/2026-08-04_21-30-54_wave-porch-1x1/request.json
+libraries/lib-bf3b86ef-…/config/pose/face/front.png
+```
+
+The structure below the prefix is a **copy** of the tree, not the source of it.
+The catalog remains the only thing that says what exists: S3 has no directories,
+so an empty folder is a node and nothing else, a listing is a paginated prefix
+scan where a query on `NODE#<parent>` is one call, and a rename is a row write
+rather than a mass copy. Read the key, never parse it.
 
 **The owner is derived, not stored.** A node's `path` is already the
 materialised list of ancestor ids; each library keeps a small map of

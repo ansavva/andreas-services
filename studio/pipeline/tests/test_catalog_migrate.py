@@ -380,3 +380,116 @@ def test_reseat_never_names_a_version(bucket, catalog_table, monkeypatch):
     cm.reseat_one(bucket, catalog_table, entry)
 
     assert "VersionId" not in seen
+
+
+# ── the key is descriptive, and still not authoritative ─────────────────────
+#
+# D2 originally made the key meaningless — `<owner_kind>/<owner_id>/<node_id>`
+# — on the reasoning that a readable key is what stranded 69 records and made
+# `domain/rewrite.py` necessary. That conflated two things. The danger was that
+# the key was LOAD-BEARING: `paths.py` built it, callers parsed it, records
+# named paths. A record names a node id now, so structure in the key costs
+# nothing and buys a bucket a person can read and a library a person could
+# reconstruct.
+#
+# The whole safety of that rests on one property, which is what the last test
+# here guards: **nothing parses a blob_key.**
+
+def _tree_for_key(ddb):
+    """A character with a nested pool, and one file at the bottom of it."""
+    _library(ddb, REAL, "Studio", "node-root")
+    _folder(ddb, "node-chars", "node-root", "characters")
+    _folder(ddb, "node-a", "node-chars", "subject-a")
+    _folder(ddb, "node-ref", "node-a", "reference")
+    _folder(ddb, "node-face", "node-ref", "face")
+    ddb.put_item(TableName=ddbc.table(), Item=ddbc.to_item(
+        {"pk": "NODE#node-img", "sk": "META", "node_id": "node-img",
+         "parent_id": "node-face", "lib": REAL, "kind": "file",
+         "name": "IMG_4580.png", "blob_key": "blobs/node-img",
+         "content_type": "image/png",
+         "path": "node-root/node-chars/node-a/node-ref/node-face"}))
+
+
+def _plan_with_one_character(ddb):
+    cat = cm.read_catalog(ddb, REAL)
+    return {"lib": REAL, "catalog": cat, "characters": [
+        {"id": "char-1", "root": "node-a", "slug": "subject-a"}], "projects": []}
+
+
+def test_the_key_carries_the_folders_below_the_owner(catalog_table):
+    """`reference/face/` is context a flat `<node_id>.png` throws away."""
+    _tree_for_key(catalog_table)
+    plan = _plan_with_one_character(catalog_table)
+    nodes = plan["catalog"]["nodes"]
+
+    assert cm.desired_key(plan, nodes, nodes["node-img"]) == \
+        "characters/char-1/reference/face/IMG_4580.png"
+
+
+def test_the_leaf_is_the_uploaded_filename_verbatim(catalog_table):
+    """A file is a file. Whatever it was uploaded as is what it is called.
+
+    Nothing mints a name any more — `curate renumber` and `regroup` are gone,
+    group and order are row attributes — so there is no convention here to
+    encode and none to drift from. The extension arrives with the name, which
+    is why this no longer guesses one off `content_type`.
+    """
+    _tree_for_key(catalog_table)
+    plan = _plan_with_one_character(catalog_table)
+    nodes = plan["catalog"]["nodes"]
+
+    assert cm.desired_key(plan, nodes, nodes["node-img"]).endswith("/IMG_4580.png")
+
+
+def test_material_outside_any_entity_keeps_its_path_under_the_library(catalog_table):
+    """The pose plates. Owned by nobody, and `config/pose/face/` is the point."""
+    _library(catalog_table, REAL, "Studio", "node-root")
+    _folder(catalog_table, "node-config", "node-root", "config")
+    _folder(catalog_table, "node-pose", "node-config", "pose")
+    catalog_table.put_item(TableName=ddbc.table(), Item=ddbc.to_item(
+        {"pk": "NODE#node-plate", "sk": "META", "node_id": "node-plate",
+         "parent_id": "node-pose", "lib": REAL, "kind": "file",
+         "name": "front.png", "blob_key": f"libraries/{REAL}/node-plate.png",
+         "path": "node-root/node-config/node-pose"}))
+    cat = cm.read_catalog(catalog_table, REAL)
+    plan = {"lib": REAL, "catalog": cat, "characters": [], "projects": []}
+
+    assert cm.desired_key(plan, cat["nodes"], cat["nodes"]["node-plate"]) == \
+        f"libraries/{REAL}/config/pose/front.png"
+
+
+def test_no_caller_splits_a_blob_key():
+    """**The property the whole scheme rests on.**
+
+    A descriptive key is safe only while it is decoration. The moment anything
+    derives truth from one, a rename is a data migration again and the entity
+    model is back where it started — which is exactly the bug class that cost
+    69 stranded records and `domain/rewrite.py`.
+
+    So: no module may take a `blob_key` apart. `desired_key` BUILDS one and is
+    not exempt by kindness — it is exempt because it never reads an existing key
+    to decide anything, and this asserts that by name.
+    """
+    import pathlib
+    import re
+
+    roots = [pathlib.Path(cm.__file__).parents[1],                      # pipeline
+             pathlib.Path(cm.__file__).parents[4] / "backend" / "studio_core"]
+    taking_apart = re.compile(
+        r"blob_key[^\n]*?\.(?:split|rsplit|partition|removeprefix|removesuffix)\(|"
+        r"(?:splitext|dirname|basename)\([^)]*blob_key")
+
+    offenders = []
+    for root in roots:
+        if not root.exists():
+            continue
+        for path in root.rglob("*.py"):
+            for number, line in enumerate(path.read_text().splitlines(), 1):
+                if line.lstrip().startswith("#"):
+                    continue
+                if taking_apart.search(line):
+                    offenders.append(f"{path.name}:{number}: {line.strip()}")
+
+    assert not offenders, (
+        "a blob_key is a pointer, not a path — nothing may parse one:\n  "
+        + "\n  ".join(offenders))
