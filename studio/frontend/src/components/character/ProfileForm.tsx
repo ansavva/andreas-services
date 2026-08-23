@@ -274,7 +274,10 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
           {/* The rail's twin for narrow screens: one control rather than a column
               of them, because down there the sections themselves are the list. */}
           <div className="flex lg:hidden">
-            <Button intent="ghost" size="sm" onClick={toggleAll}>
+            {/* `-ms-3` cancels the button's own `px-3` so its text starts on the
+                same line as the section titles below it. Left indented, it read
+                as belonging to nothing. */}
+            <Button intent="ghost" size="sm" className="-ms-3" onClick={toggleAll}>
               {allOpen ? "Collapse all" : "Expand all"}
             </Button>
           </div>
