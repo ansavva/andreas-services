@@ -1543,6 +1543,48 @@
     },
     "options": {}
   },
+  "config": {
+    "arguments": {},
+    "commands": {
+      "sync": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply_",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "Actually upload. Without it this only reports what is missing.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "quiet": {
+            "choices": null,
+            "default": false,
+            "dest": "quiet",
+            "flag": true,
+            "flags": [
+              "--quiet"
+            ],
+            "help": "Say nothing when there is nothing to do.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      }
+    },
+    "options": {}
+  },
   "contact-sheet": {
     "arguments": {},
     "commands": {},

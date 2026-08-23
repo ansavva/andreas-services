@@ -75,13 +75,17 @@ INPUT_FOLDER = "input"
 # outputs` has somewhere to land without resolving anything.
 OUTPUT_FOLDER = "output"
 
-# Shared material that belongs to the library rather than to any entity: the
-# pose plates. It is a folder of ordinary nodes, pushed through `POST /api/nodes`
-# by `scripts/dev-setup.sh` and by the deploy, with the repo as its source of
-# truth. Before the entity model these plates had no node at all, which is the
-# whole reason `GET /api/asset?key=` took a raw S3 key; giving them one is what
-# retired it.
-CONFIG_FOLDER = "config"
+# There is deliberately no `CONFIG_FOLDER` constant here, and it is worth saying
+# why rather than leaving the absence to be read as an oversight.
+#
+# The pose plates are shared material that belongs to the library rather than to
+# any entity, and they are ordinary nodes now — which is what retired
+# `GET /api/asset?key=`. But nothing in this service creates or resolves that
+# folder: the plates come from the repo, so the push is `studio config sync`,
+# and the folder is made by the same `POST /api/nodes` calls any other client
+# would use. A constant here would be a name the API knows and never applies,
+# which is what the first version of this was — it sat unused while a shoot
+# refused every plate for want of a row.
 
 
 def folder_under(parent_id: str, name: str) -> dict:

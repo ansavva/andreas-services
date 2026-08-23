@@ -542,48 +542,49 @@ def test_a_malformed_fixture_is_reported_before_anything_is_written(mutate, expe
 # ── the shared material, with a stub in place of the AWS CLI ────────────────
 
 
-def _shared_material(head_exit: int) -> tuple[int, list[str]]:
-    """Run `seed_phrasebook` against a fake `aws` that reports the HEAD's result.
-
-    The functions take their AWS command as an overridable array precisely so
-    this is possible without credentials.
-    """
+def _push_plates(has_studio: bool) -> tuple[int, list[str]]:
+    """Run `push_pose_plates` with a fake `studio` on PATH, and report its calls."""
+    presence = "" if has_studio else "command() { return 1; }\n    "
     script = f"""
-    calls=()
-    fake_aws() {{
+    set -euo pipefail
+    fake_studio() {{
       printf '%s\\n' "$*" >&2
-      if [ "$1 $2" = "s3api head-object" ]; then return {head_exit}; fi
       return 0
     }}
-    SHARED_MATERIAL_AWS=(fake_aws)
+    {presence}SHARED_MATERIAL_STUDIO=(fake_studio)
     source "{SHARED}"
-    seed_phrasebook "{STUDIO_DIR}" a-dev-bucket
+    push_pose_plates "{STUDIO_DIR}" a-dev-bucket
     """
     result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
     return result.returncode, result.stderr.splitlines()
 
 
-def test_the_phrasebook_is_copied_when_the_key_is_absent():
-    """#425: `PATCH /api/text` overwrites and never invents, so something has to
-    put the first `wording.yaml` there or `phrasebook add` is unavailable."""
-    code, calls = _shared_material(head_exit=1)
+def test_the_plates_are_pushed_through_the_cli_not_the_bucket():
+    """**The push writes rows, so it cannot be an `aws s3 sync`.**
+
+    `check_plates` resolves each plate as a name path, so a plate needs a node,
+    and only the API writes one. This script pushed objects with `aws s3 sync`
+    for as long as the plates were addressed by raw key; a stack provisioned
+    that way after the entity model refused every shoot for want of a row, and
+    named this script while doing it.
+    """
+    code, calls = _push_plates(has_studio=True)
 
     assert code == 0
-    assert any(c.startswith("s3 cp") and c.endswith(
-        "s3://a-dev-bucket/phrasebook/wording.yaml --only-show-errors") for c in calls), calls
+    assert calls == ["config sync --apply --quiet"], calls
+    assert not any("s3" in c for c in calls), calls
 
 
-def test_the_phrasebook_is_left_alone_when_one_already_exists():
-    """**The difference from the `config/` sync beside it.**
+def test_a_missing_cli_is_not_a_failure():
+    """`dev-setup.sh` runs from the SessionStart hook and must not fail a session.
 
-    From the first `studio phrasebook add` the bucket's copy is the live
-    document. Re-syncing the repo's seed over it would delete recorded entries,
-    and `dev-setup.sh` runs on every session.
+    The same reasoning `config sync` applies to a missing sign-in: report and
+    carry on, and let the first shoot name the real problem.
     """
-    code, calls = _shared_material(head_exit=0)
+    code, calls = _push_plates(has_studio=False)
 
-    assert code == 2
-    assert not any(c.startswith("s3 cp") for c in calls), calls
+    assert code == 0
+    assert calls == [], calls
 
 
 def test_a_folder_row_survives_the_tab_collapse_trap():

@@ -193,7 +193,6 @@ source "$SCRIPT_DIR/dev-aws-common.sh"
 
 # The shared-material pushes run through the same `--profile` decision every
 # other call here does, rather than a bare `aws`.
-SHARED_MATERIAL_AWS=(aws_dev)
 # shellcheck source=dev-shared-material.sh
 source "$SCRIPT_DIR/dev-shared-material.sh"
 
@@ -819,21 +818,15 @@ main() {
 
   # ── 2. the shared material ───────────────────────────────────────────────
   #
-  # Pose plates and the phrasebook. Repo-sourced, owned by no library and
-  # recorded by no node, so they are not part of the fixture and are pushed the
-  # same way `dev-setup.sh` pushes them — one definition, in
-  # dev-shared-material.sh.
+  # The pose plates. Repo-sourced and owned by no entity, so they are not part
+  # of the fixture and are pushed the same way `dev-setup.sh` pushes them — one
+  # definition, in dev-shared-material.sh. They are nodes now, so this goes
+  # through the API and needs a sign-in; the phrasebook is `TERM#` rows and is
+  # not seeded at all.
   local studio_dir="$SCRIPT_DIR/.."
   push_pose_plates "$studio_dir" "$bucket" &&
-    ok "Synced studio/config/ -> s3://$bucket/config/" ||
-    warn "Could not sync studio/config/; a reference shoot will report missing plates."
-  local phrasebook_status=0
-  seed_phrasebook "$studio_dir" "$bucket" || phrasebook_status=$?
-  case "$phrasebook_status" in
-    0) ok "Seeded phrasebook/wording.yaml." ;;
-    2) log "phrasebook/wording.yaml is already there; left alone." ;;
-    *) warn "Could not seed phrasebook/wording.yaml; 'studio phrasebook add' will fail." ;;
-  esac
+    ok "Pose plates are in the library." ||
+    warn "Could not push studio/config/; a reference shoot will report missing plates."
 
   # ── 3. the catalog ───────────────────────────────────────────────────────
   log "Writing the catalog to $table ..."

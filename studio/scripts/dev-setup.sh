@@ -223,19 +223,11 @@ EOF
   source "$STUDIO_DIR/scripts/dev-shared-material.sh"
   if [ -n "$MEDIA_BUCKET" ]; then
     if push_pose_plates "$STUDIO_DIR" "$MEDIA_BUCKET"; then
-      log "synced studio/config/ -> s3://$MEDIA_BUCKET/config/"
+      log "pose plates are in the library (or you are not signed in yet)"
     else
-      warn "could not sync studio/config/ to s3://$MEDIA_BUCKET/config/ — the pose"
-      warn "  plates a reference shoot needs may be missing from the bucket."
+      warn "could not push studio/config/ into the library — a reference shoot"
+      warn "  will report missing plates. Try: studio login && studio config sync --apply"
     fi
-
-    seed_phrasebook "$STUDIO_DIR" "$MEDIA_BUCKET" && phrasebook_status=0 || phrasebook_status=$?
-    case "$phrasebook_status" in
-      0) log "seeded phrasebook/wording.yaml -> s3://$MEDIA_BUCKET/" ;;
-      2) : ;;  # already there, and it is the live one. Say nothing.
-      *) warn "could not seed phrasebook/wording.yaml into s3://$MEDIA_BUCKET/ —"
-         warn "  'studio phrasebook add' will fail until one exists at that key." ;;
-    esac
   fi
 else
   # Three distinct causes, one message, and that is deliberate: the remedy for

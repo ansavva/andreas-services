@@ -35,6 +35,7 @@ from studio_pipeline.engine import shoot as _shoot
 from studio_pipeline.maintenance import catalog_gc as _catalog_gc
 from studio_pipeline.maintenance import catalog_migrate as _catalog
 from studio_pipeline.maintenance import dev_seed as _dev_seed
+from studio_pipeline.objects import config_sync as _config_sync
 from studio_pipeline.objects import convert as _convert
 from studio_pipeline.session import commands as _session
 from studio_pipeline.objects import download as _download
@@ -57,7 +58,7 @@ class _Grouped(click.Group):
         ("records",     ["runs", "scenes", "movies", "frames", "projects"]),
         ("characters",  ["character", "curate", "contact-sheet"]),
         ("authoring",   ["prompt", "phrasebook"]),
-        ("objects",     ["upload", "download", "presign", "convert"]),
+        ("objects",     ["upload", "download", "presign", "convert", "config"]),
         ("maintenance", ["catalog", "dev-seed"]),
     ]
 
@@ -157,6 +158,7 @@ for _name, _cmd in [
     ("download", _download.download),
     ("presign", _presign.presign),
     ("convert", _convert.convert),
+    ("config", _config_sync.main),
     ("catalog", _catalog.main),
     ("dev-seed", _dev_seed.main),
 ]:

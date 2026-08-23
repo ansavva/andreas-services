@@ -1031,3 +1031,48 @@ def test_a_start_frame_is_format_checked_like_every_other_image(library, monkeyp
     # holds a `.png` for exactly this: the video engines reject `.webp`.
     args.start_key = library.input_3
     assert SUB.gather(entry, args)[images["start"]] == library.input_3
+
+
+# --- the plates, as provisioning actually creates them ----------------------
+
+def test_a_shoot_finds_the_plates_that_config_sync_pushed(library, spec, monkeypatch):
+    """**The gap between the check and the thing that fills the library.**
+
+    `check_plates` resolves each plate as a name path, so a plate needs a node.
+    Nothing gave it one: `dev-shared-material.sh` pushed the plates in with
+    `aws s3 sync` — correct while they were addressed by raw key — and the
+    backend named a `config` folder constant that no route ever called. So a
+    freshly provisioned stack refused every shoot with "pose plate(s) missing",
+    naming the script that had just run.
+
+    It went unnoticed because this suite's own fixture creates plates as nodes,
+    which made the fake more correct than provisioning. This test closes that by
+    filling the library the way `studio config sync` does and then asking the
+    shoot, rather than seeding nodes by hand.
+    """
+    from studio_pipeline.objects import config_sync
+
+    monkeypatch.setattr(config_sync, "local_plates",
+                        lambda: [(SHOOT.plate_key(slot), "/dev/null")
+                                 for slot in spec["slots"]])
+    monkeypatch.setattr(config_sync.store, "upload",
+                        lambda path, _src, **kw: library.fake.put_shared(path, b"png-bytes"))
+
+    assert config_sync.missing(config_sync.local_plates()), "nothing to push — the test is hollow"
+    result = CliRunner().invoke(cli.main, ["config", "sync", "--apply"])
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+
+    SHOOT.check_plates(spec["slots"])          # the refusal this existed to stop
+    assert not config_sync.missing(config_sync.local_plates())
+
+
+def test_config_sync_is_a_dry_run_without_apply(library, spec, monkeypatch):
+    from studio_pipeline.objects import config_sync
+
+    monkeypatch.setattr(config_sync, "local_plates",
+                        lambda: [(SHOOT.plate_key(spec["slots"][0]), "/dev/null")])
+    result = CliRunner().invoke(cli.main, ["config", "sync"])
+    assert result.exit_code == 0
+    assert "--apply" in result.output
+    with pytest.raises(SHOOT.ShootError, match="dev-setup"):
+        SHOOT.check_plates(spec["slots"])

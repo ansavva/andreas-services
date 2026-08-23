@@ -775,6 +775,58 @@ Slugs are read off the existing folder names and become the entity's `slug`
 attribute — so the strings a person types do not change on migration day even
 though nothing is addressed by them any more.
 
+### Running it, per environment
+
+**Prod — migrate BEFORE deploying.** `apply` only adds rows, and every one of
+them is invisible to the code currently running: entity rows carry
+`created`/`updated` rather than `created_at`, so they do not enter the present
+`by-recent` index, and their `pk` prefixes keep them out of every node listing.
+The `reel` stamps sit inert until the GSI is re-keyed. So there is no window in
+which prod is half-migrated and visibly wrong.
+
+```bash
+studio catalog migrate plan       # UNPARSEABLE must be 0, or apply refuses
+studio catalog migrate apply
+studio catalog migrate verify
+studio config sync --apply        # the pose plates, which have no node in prod
+# then merge: studio-prod.yaml applies the GSI and ships the new image
+studio catalog reseat --apply     # optional, later, never automatic
+```
+
+Deploying first also works and costs a **degraded window**: from the moment
+`deploy-infra` re-keys `by-recent`, the reel is blank — no row carries `reel`
+yet — and the entity pages are empty until `apply` runs. File browsing is
+unaffected, because nodes do not change.
+
+**`studio config sync` is not optional in prod.** The plates have been objects
+with no node since before the catalog, and `catalog_seed` deliberately recorded
+none for them. Every shoot refuses until they have rows. The old objects are
+left where they are and become collectable by `catalog gc`.
+
+**How the CLI is pointed at prod is an open question, not a step.** The migrator
+is one of the maintenance commands that opens AWS clients directly rather than
+going through the API, so running it against prod means naming the prod table
+and bucket under a real `aws login` — which is exactly the mechanism
+[studio/CLAUDE.md](../CLAUDE.md) records as wanted and undecided. Decide it
+before migration day; do not improvise it on the night.
+
+**Dev stacks — no migration.** A stack holds the pose plates and nothing else,
+so there is no character, project or run to raise a row over. What each needs is
+the re-keyed GSI and the plates as nodes:
+
+```bash
+./studio/scripts/dev-aws-setup.sh     # applies the GSI change
+./studio/scripts/dev-setup.sh         # pushes the plates through the API
+```
+
+Given there is nothing to preserve, `dev-aws-destroy.sh` and re-provision is
+cheaper and has fewer states to reason about. Either way this is **per machine**:
+a stack is keyed to a persistent machine id, so it cannot be done centrally, and
+a stack whose id is lost keeps billing while being unreachable.
+
+**The seed fixture** — `publish` has still never been run, so there is nothing
+there to migrate.
+
 ---
 
 ## Build order
