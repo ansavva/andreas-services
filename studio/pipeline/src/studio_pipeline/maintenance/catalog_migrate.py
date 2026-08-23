@@ -135,6 +135,7 @@ import mimetypes
 import os
 import uuid
 
+import botocore.exceptions
 import click
 import yaml
 
@@ -1429,6 +1430,20 @@ def reseat_one(s3, ddb, entry: dict) -> str | None:
     same key is idempotent. Interrupted after the row update: the old object is
     referenced by nothing, which is precisely what `catalog gc` collects. There
     is no ordering here that loses bytes, and every other ordering has one.
+
+    **The update is conditional on the key it is replacing.** `blob_key = :old`
+    is what makes the copy and the repoint describe the same object: a row some
+    other writer has moved since `key_drift` read it fails the condition and is
+    reported, rather than being pointed at bytes copied from where it used to
+    be.
+
+    A `ParamValidationError` is NOT caught. It is raised by botocore before any
+    call leaves the process, so it can only mean this function is malformed —
+    and the copy runs first, so swallowing it per entry means copying the whole
+    library before reporting that nothing was repointed. That is not
+    hypothetical: this function shipped with `ExpressionAttributeValues2=None`
+    and an undefined `:old`, and had no test that ran it. Letting it propagate
+    stops the run on the first entry, one orphan in.
     """
     bucket = s3c.bucket()
     try:
@@ -1438,10 +1453,12 @@ def reseat_one(s3, ddb, entry: dict) -> str | None:
             TableName=ddbc.table(),
             Key=ddbc.to_item({"pk": f"NODE#{entry['node']}", "sk": "META"}),
             UpdateExpression="SET blob_key = :key",
-            ExpressionAttributeValues=ddbc.to_item({":key": entry["to"]}),
+            ExpressionAttributeValues=ddbc.to_item({":key": entry["to"],
+                                                    ":old": entry["from"]}),
             ConditionExpression="blob_key = :old",
-            ExpressionAttributeValues2=None,
         )
+    except botocore.exceptions.ParamValidationError:
+        raise
     except Exception as error:  # noqa: BLE001 — boto3 raises generated classes
         return f"{entry['from']}: {type(error).__name__}: {error}"
     # No `VersionId`, ever. Naming a version is what turns a recoverable
