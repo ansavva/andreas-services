@@ -28,7 +28,7 @@
     "react-router": "^7.18.1"
   },
   "devDependencies": {
-    "@ansavva/design-system": "0.14.1",
+    "@ansavva/design-system": "0.15.0",
     "@eslint/js": "^9.17.0",
     "@react-router/dev": "^7.18.1",
     "@react-router/fs-routes": "^7.18.1",

@@ -128,12 +128,24 @@ anonymous install. The committed `.npmrc` reads `${NODE_AUTH_TOKEN}`; get one wi
 `eval "$(./scripts/github-packages-auth.sh --export)"`. A `401`/`404` on the `@ansavva` scope almost
 always means unauthenticated, not missing.
 
-This is a `0.x` package, and npm's caret rules for `0.x` are narrower than most people expect:
-`^0.13.0` means `>=0.13.0 <0.14.0`. **A minor release does not reach you until you widen the range
-yourself.** Read `node_modules/@ansavva/design-system/CHANGELOG.md` before widening — it ships in the
-tarball, so it needs no network. A struck-through prop in your editor is a deprecation with a
-deadline, not a suggestion; fix it before widening again, because under `0.x` caret rules you take
-every removal since your last move in one step.
+**All four consumers pin an exact version**, so no release of any kind reaches you on its own.
+Upgrading is a deliberate edit to four `package.json` files plus four `npm install`s — do all four
+together, because a single package version across the monorepo is what makes the workbench and the
+CI leaf assertion mean the same thing everywhere:
+
+```
+studio/frontend  website/frontend  humbugg/marketing  humbugg/app
+```
+
+Read `node_modules/@ansavva/design-system/CHANGELOG.md` before bumping — it ships in the tarball, so
+it needs no network. A struck-through prop in your editor is a deprecation with a deadline, not a
+suggestion; fix it before the next bump, because you take every removal since your last move in one
+step. Note that this is a `0.x` package, so if you ever loosen a pin, npm's caret rules are narrower
+than most people expect: `^0.14.0` means `>=0.14.0 <0.15.0` and will not resolve a minor.
+
+**A minor can be breaking on one platform only.** 0.15.0 changed nothing on web and broke every
+native `Accordion.Panel` / `Collapsible.Panel` that held bare text. So `humbugg/app` is the surface
+to re-check on any bump, and a green Vite build proves nothing about it.
 
 → `design-system-setup` for the `.npmrc`, the Tailwind `@source` line the package needs, and the
 failure table.
