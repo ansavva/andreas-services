@@ -154,3 +154,109 @@ def test_a_key_that_is_neither_still_resolves_to_nothing(catalog_table):
     hits: list[str] = []
     assert cm.resolve_key(cat, "config/pose/face/deleted.png", hits) is None
     assert hits == []
+
+
+# ── the row shape the API reads ─────────────────────────────────────────────
+#
+# **`verify` passed over 32 rows the app could not read, so these test the
+# ATTRIBUTES rather than the existence of a row.**
+#
+# The API's unmarshaller drops `pk` and `sk` and derives nothing from either, so
+# an entity id living only in the key reads back as a record without one and
+# every listing 500s on `record["id"]`. That is what the first prod migration
+# wrote. A listing row additionally needs `created`, which is what the runs
+# screen sorts and `--since`-filters on.
+
+def _entity(kind: str, **over) -> dict:
+    """One entity dict of `kind`, with every field its builder reads."""
+    common = {"id": f"{kind[:4]}-0000", "lib": REAL, "slug": "subject-a",
+              "created": "2026-01-01T00:00:00+00:00",
+              "updated": "2026-01-02T00:00:00+00:00"}
+    shapes = {
+        "character": {**common, "display_name": "Subject A", "fictional": True,
+                      "schema_version": 3, "root": "node-root-a", "hero": None,
+                      "default_set": [], "profile": {}, "refs": []},
+        "project": {**common, "title": "Subject A", "description": "",
+                    "root": "node-root-a", "hero": None, "characters": [],
+                    "counts": {"runs": 0, "scenes": 0, "movies": 0}},
+        "run": {**common, "project": "proj-0000", "status": "succeeded",
+                "run_kind": "image", "engine": "replicate", "model": "m",
+                "prediction_id": "p", "submitted": None, "completed": None,
+                "bindings": {}, "characters": [], "folder": "node-folder-a",
+                "outputs": [], "lineage": [], "cost": None, "error": None,
+                "payload": {}},
+        "scene": {**common, "project": "proj-0000", "title": "Scene",
+                  "status": "cut", "folder": "node-folder-a", "output": None,
+                  "document": {}, "shots": []},
+        "movie": {**common, "project": "proj-0000", "title": "Movie",
+                  "status": "cut", "folder": "node-folder-a", "output": None,
+                  "document": {}, "scenes": []},
+    }
+    return {**shapes[kind], **over}
+
+
+def _written(kind: str) -> list[dict]:
+    """Every document `kind`'s builder would put, unmarshalled."""
+    return [ddbc.from_item(action["Put"]["Item"])
+            for group in cm.GROUPS[kind](_entity(kind))
+            for action in group if "Put" in action]
+
+
+@pytest.mark.parametrize("kind", ["character", "project", "run", "scene", "movie"])
+def test_the_entity_record_carries_its_id_as_an_attribute(kind):
+    """`pk` is not enough — `_entity` drops it and the API reads `record["id"]`."""
+    meta = [doc for doc in _written(kind) if doc["sk"] == "META"]
+    assert len(meta) == 1, f"{kind} must write exactly one META row"
+    assert meta[0].get("id") == _entity(kind)["id"], \
+        f"a {kind} record without `id` makes every listing 500"
+
+
+@pytest.mark.parametrize("kind", ["run", "scene", "movie"])
+def test_the_listing_row_carries_id_and_created(kind):
+    """The runs screen sorts on `created` and links on `id`; it reads neither key."""
+    entity = _entity(kind)
+    listing = [doc for doc in _written(kind)
+               if doc["pk"].startswith("PROJ#") and doc["sk"].startswith(
+                   f"{cm.PARTITION[kind]}#")]
+    assert len(listing) == 1, f"{kind} must write exactly one listing row"
+    assert listing[0].get("id") == entity["id"]
+    assert listing[0].get("created") == entity["created"], \
+        "a listing row with no `created` sorts as '' and vanishes under --since"
+
+
+def test_a_runs_updated_comes_off_the_document_not_a_clock():
+    """Latest timestamp the run carries, falling back rather than dating to now."""
+    assert cm.run_updated(_entity("run", completed="C", submitted="S")) == "C"
+    assert cm.run_updated(_entity("run", completed=None, submitted="S")) == "S"
+    assert cm.run_updated(_entity("run", completed=None, submitted=None)) == \
+        _entity("run")["created"]
+
+
+def test_backfill_adds_only_what_is_missing_and_overwrites_nothing(catalog_table):
+    """The repair path: a row an older version of this file wrote incompletely."""
+    catalog_table.put_item(TableName=ddbc.table(), Item=ddbc.to_item(
+        {"pk": "CHAR#char-0000", "sk": "META", "lib": REAL, "slug": "renamed"}))
+
+    added = cm.backfill(catalog_table, {"pk": "CHAR#char-0000", "sk": "META",
+                                        "id": "char-0000", "slug": "subject-a",
+                                        "lib": REAL}, apply=True)
+
+    assert added == ["id"], "only the absent attribute is written"
+    stored = ddbc.from_item(catalog_table.get_item(
+        TableName=ddbc.table(),
+        Key=ddbc.to_item({"pk": "CHAR#char-0000", "sk": "META"}))["Item"])
+    assert stored["id"] == "char-0000"
+    assert stored["slug"] == "renamed", \
+        "a slug edited through the app since the migration must survive repair"
+
+
+def test_backfill_reports_without_writing_when_not_applying(catalog_table):
+    catalog_table.put_item(TableName=ddbc.table(), Item=ddbc.to_item(
+        {"pk": "CHAR#char-0000", "sk": "META", "lib": REAL}))
+
+    assert cm.backfill(catalog_table, {"pk": "CHAR#char-0000", "sk": "META",
+                                       "id": "char-0000"}, apply=False) == ["id"]
+    stored = ddbc.from_item(catalog_table.get_item(
+        TableName=ddbc.table(),
+        Key=ddbc.to_item({"pk": "CHAR#char-0000", "sk": "META"}))["Item"])
+    assert "id" not in stored, "a dry run must not write"
