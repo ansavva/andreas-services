@@ -363,10 +363,14 @@ function ProfileSection({
           <Chevron open={open} />
         </Collapsible.Trigger>
 
-        {/* The panel's own leaf paints its content `text-muted`; these are form
-            fields, not prose about them. */}
-        <Collapsible.Panel className="text-ink">
-          <div className="flex flex-col gap-4 px-lg pb-lg">{children}</div>
+        <Collapsible.Panel>
+          {/* The panel's leaf paints its content `text-muted` — these are form
+              fields, not prose about them. Set on this element rather than
+              passed to `Collapsible.Panel` as a class for it to merge: the
+              cascade settles it from a child no matter what the panel's own
+              wrapper is, and 0.15.0 is a release that changed that wrapper on
+              one platform. */}
+          <div className="flex flex-col gap-4 px-lg pb-lg text-ink">{children}</div>
         </Collapsible.Panel>
       </Collapsible.Root>
     </Card.Root>
