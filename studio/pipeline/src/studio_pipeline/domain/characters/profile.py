@@ -540,7 +540,13 @@ def do_push(name: str, force: bool, local: str, base: str, revf: str) -> None:
 @click.option("--diff", is_flag=True, help="Show local-vs-stored differences and exit.")
 @click.option("--discard", is_flag=True, help="Throw away local edits and re-pull.")
 @click.option("--force", is_flag=True, help="Proceed despite unsaved edits or a changed record.")
-@click.option("--path", help=f"Working-copy path (default: {LOCAL_DIR}/<name>.yaml).")
+# **Relative, not `LOCAL_DIR`.** Interpolating the absolute path put the
+# author's home directory into the help string, and from there into
+# `cli_surface_reference.json` — a contract that then only matched on the
+# machine it was captured on, and failed in CI with a diff of two absolute
+# paths. Help text is documentation; it should read the same everywhere.
+@click.option("--path",
+              help="Working-copy path (default: studio/local/characters/<name>.yaml).")
 @click.option("--pull", is_flag=True, help="Force the download direction.")
 @click.option("--push", is_flag=True, help="Force the upload direction.")
 def cmd_edit(name, diff, discard, force, path, pull, push):

@@ -668,7 +668,7 @@
             "flags": [
               "--path"
             ],
-            "help": "Working-copy path (default: /Users/andreassavva/repos/andreas-services/studio/local/characters/<name>.yaml).",
+            "help": "Working-copy path (default: studio/local/characters/<name>.yaml).",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
