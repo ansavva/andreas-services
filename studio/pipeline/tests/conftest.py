@@ -26,7 +26,6 @@ be a name collision in the tree; the old fixture had `characters/subject-a` and
 """
 
 import copy
-import json
 import os
 import pathlib
 
@@ -287,18 +286,6 @@ def shared_bucket(bucket):
     return bucket
 
 
-@pytest.fixture
-def shared_objects(fake_api):
-    """The pose plates: shared material with no node, reached by key.
-
-    The phrasebook used to be here too and is not — it is `TERM#` rows now, so
-    there is no document to seed.
-    """
-    for key in ("config/pose/body/standing.png", "config/pose/face/three-quarter.png"):
-        fake_api.put_shared(key, b"png-bytes")
-    return fake_api
-
-
 # ── the catalog table, shared by every suite that needs one ──────────────────
 #
 # These lived in `test_catalog_seed.py` and `test_catalog_gc.py` imported them,
@@ -340,79 +327,6 @@ def catalog_table():
                                 _index("by-recent", "reel", "created_at")],
     )
     return ddb
-
-
-@pytest.fixture
-def legacy_bucket():
-    """The pre-entity tree, as `catalog migrate` finds it in production.
-
-    Name paths with a slug in every key, `profile.yaml` as a document, and run
-    metadata as three JSON files per run. It exists in exactly one place now —
-    here — because the migrator is the only code left that may read it.
-    """
-    with mock_s3():
-        s3 = boto3.client("s3", region_name="us-east-1")
-        s3.create_bucket(Bucket=s3c.BUCKET)
-        for key, payload in _LEGACY.items():
-            s3.put_object(Bucket=s3c.BUCKET, Key=key,
-                          Body=payload if isinstance(payload, bytes)
-                          else json.dumps(payload).encode())
-        yield s3
-
-
-_LEGACY = {
-    "characters/subject-a/profile.yaml": (
-        b"schema_version: 2\n"
-        b"name: subject-a\n"
-        b"display_name: Subject A\n"
-        b"fictional: true\n"
-        b"identity: {build: '<one line>'}\n"
-        b"face: {eyes: '<...>'}\n"
-        b"body: {posture: '<...>'}\n"
-        b"wardrobe: {always_dressed: true}\n"
-        b"voice: {language: '<...>'}\n"
-        b"rendering: {default_style: Realistic}\n"
-        b"consistency: {must: ['<...>'], never: []}\n"
-        b"text_identity_block: A neutral placeholder identity paragraph.\n"
-        b"references:\n"
-        b"  - file: face/subject-a_face_1.webp\n"
-        b"    description: front, neutral\n"
-        b"    tags: [face]\n"
-        b"  - file: body/subject-a_body_1.webp\n"
-        b"    description: full length\n"
-        b"    tags: [body]\n"
-        b"default_set: [face/subject-a_face_1.webp]\n"
-    ),
-    "characters/subject-a/reference/face/subject-a_face_1.webp": b"webp-bytes",
-    "characters/subject-a/reference/body/subject-a_body_1.webp": b"webp-bytes",
-    "characters/subject-a/seed/source.jpg": b"jpg-bytes",
-    "projects/porch-teaser/project.json": {
-        "name": "porch-teaser", "description": "a teaser",
-        "characters": ["subject-a"], "created": "2026-07-11T08:15:02+00:00"},
-    "projects/porch-teaser/runs/2026-08-04_21-30-54_wave-porch/request.json": {
-        "run_id": "2026-08-04_21-30-54_wave-porch", "project": "porch-teaser",
-        "characters": ["subject-a"], "kind": "image", "engine": "nano-banana-pro",
-        "model": "google/nano-banana-pro", "created_at": "2026-08-04T21:30:54+00:00",
-        "input": {"prompt": "a porch"},
-        "bindings": {"image_input":
-                     ["characters/subject-a/reference/face/subject-a_face_1.webp"]}},
-    "projects/porch-teaser/runs/2026-08-04_21-30-54_wave-porch/result.json": {
-        "run_id": "2026-08-04_21-30-54_wave-porch", "status": "succeeded",
-        "prediction_id": "s7k2m9x4qwe1",
-        "outputs": ["projects/porch-teaser/runs/2026-08-04_21-30-54_wave-porch"
-                    "/output/wave-porch.jpeg"]},
-    "projects/porch-teaser/runs/2026-08-04_21-30-54_wave-porch/output/wave-porch.jpeg":
-        b"jpeg-bytes",
-    "projects/porch-teaser/input/porch-teaser_in_1.webp": b"webp-bytes",
-    "phrasebook/wording.yaml": (
-        b"models:\n"
-        b"  kling:\n"
-        b"    replicate: kwaivgi/kling-v3-omni-video\n"
-        b"    entries:\n"
-        b"      - avoid: bare chest\n"
-        b"        use: chest\n"
-    ),
-}
 
 
 @pytest.fixture

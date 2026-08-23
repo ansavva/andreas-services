@@ -1,23 +1,25 @@
 # studio — the entity model
 
-> **STATUS: PROPOSED. Nothing here is built.** This document is the spec to
-> approve before any code moves. When it is built, this file becomes the
-> reference and the sections it replaces come out of `PIPELINE.md` and
-> `WEB_APP.md`.
+> **STATUS: BUILT. This is the reference.** It was a proposal, and its own
+> header said so until the last of it shipped; that line is replaced rather than
+> kept, because a spec that says "nothing here is built" over a model the whole
+> service now runs on is worse than no status at all.
 
-Read [What is wrong today](#what-is-wrong-today) first, then
-[Decisions that need a yes](#decisions-that-need-a-yes). Everything after that
-is detail conditional on those answers.
+Read [What was wrong](#what-was-wrong-and-what-this-replaced) for the shape
+this replaced, then go to [The data model](#the-data-model). The five decisions
+it turned on are settled and recorded in
+[Decisions](#decisions--all-five-settled-all-five-built); nothing below is
+conditional on anything any more.
 
 ---
 
-## What is wrong today
+## What was wrong, and what this replaced
 
-The catalog models **files**. Studio's users are not files — they are
-**characters** and **projects**, and both are currently expressed as a folder
-name plus a document inside it.
+The catalog modelled **files**. Studio's users are not files — they are
+**characters** and **projects**, and both were expressed as a folder name plus
+a document inside it.
 
-Four consequences, and every one of them costs something now:
+Four consequences, and every one of them cost something:
 
 1. **Identity is a magic string in a path.** `characters/<slug>/…` and
    `projects/<slug>/…` make the slug the primary key. So a rename is a tree
@@ -66,7 +68,7 @@ S3 keys carry ids and never names.
    stamped once at creation, never parsed, never re-derived.
 3. **Every mutation is an API route.** The CLI holds no AWS credentials and
    composes no writes of its own; it calls the same routes the SPA calls. This
-   is already true for bytes ([#308](#), #302) and becomes true for records.
+   was already true for bytes ([#308](#), #302) and is now true for records.
 4. **Structured data belongs in the row; opaque payloads belong in a blob.**
    Studio owns the envelope of a run and validates it; the model provider owns
    the request and response bodies, which studio stores and never parses. The
@@ -79,148 +81,47 @@ S3 keys carry ids and never names.
 
 ---
 
-## Decisions that need a yes
+## Decisions — all five settled, all five built
 
-These change the shape of everything below. Answers first, then I build.
+This section asked for five answers before any code moved. Every one was
+answered **as recommended** and every one has shipped, so what stood here as a
+choice is recorded here as an outcome. The reasoning that produced each is in
+the git history of this file; the consequences are the rest of this document.
 
-### D1 — One table or three?
+| | Question | Settled on | Where it lives now |
+|---|---|---|---|
+| **D1** | One table or three? | **One.** `studio-<env>-catalog` gained `CHAR#`, `PROJ#`, `RUN#`, `SCENE#`, `MOVIE#` partitions beside `LIB#`, `USER#` and `NODE#`. | [Item table](#item-table) |
+| **D2** | What an S3 key looks like | **`<owner_kind>/<owner_id>/<node_id>.<ext>`** — carries the owner's id, carries no name. Stamped once at creation, never parsed, never re-derived. | [S3 layout](#s3-layout) |
+| **D3** | How far it goes | **All five entity types**, not characters and projects alone. | [Entities](#entities) |
+| **D4** | Prod data | **Migrated**, by a forward migrator: `plan` / `apply` / `verify` as separate invocations, journalled under `local/migrations/`. | `maintenance/catalog_migrate.py` |
+| **D5** | Entities in the reel | **Sparse `by-recent`**, re-keyed on a `reel` attribute written only onto image and video file nodes. Fixed the pre-existing folder pollution on the way past. | [Item table](#item-table) |
 
-You said "tables for projects and characters". Two readings.
+**D2's honest cost is still live and is not a defect.** Moving a file between
+entities leaves the old prefix on its key. The key stays correct — it is a
+pointer, not a name — it just stops looking like it means anything.
+`studio catalog verify` reports the drift and `studio catalog reseat --apply`
+rewrites it: server-side copy, row update, delete of the old object. Optional,
+out of band, never automatic, and it refuses until a `verify` has passed.
 
-**Recommended: one table, new item types.** `studio-<env>-catalog` gains
-`CHAR#…`, `PROJ#…`, `RUN#…`, `SCENE#…`, `MOVIE#…` partitions beside the existing
-`LIB#`, `USER#` and `NODE#` ones.
-
-Why: creating a character must create its entity row, its slug claim, its root
-folder node **and** four pool folder nodes as one atomic act. In one table that
-is a single `TransactWriteItems` and is already how every node write in this
-service works. It also needs no new PITR configuration, no new IAM statement, no
-new backup story, and no new module to own a second client.
-
-The cost is that item shapes multiply inside one module. That module already
-exists, is already the only thing that knows a `pk` from an `sk`, and its
-docstring is already the table's schema.
-
-**Alternative: `studio-<env>-characters` and `studio-<env>-projects` as their
-own tables.** `TransactWriteItems` does span tables in one region and account,
-so atomicity survives — but everything else multiplies: three Terraform modules,
-three sets of PITR and deletion-protection variables, three IAM grants, a wider
-smoke test. It buys separation that a `pk` prefix already gives.
-
-> **Answer needed: one table (recommended) or separate tables per entity?**
-
-### D2 — What the S3 key looks like
-
-Today: legacy `characters/<slug>/…` keys, plus `blobs/<node_id>` for anything
-written through the API.
-
-**Recommended: `<owner_kind>/<owner_id>/<node_id>.<ext>`.**
-
-```
-characters/9f3c…-…/1b7e…-….png       an image in a character's reference pool
-projects/4a10…-…/77c2…-….mp4         a run output inside a project
-libraries/ab88…-…/0d51…-….yaml       loose material under the library root
-```
-
-- Carries the owning entity's id, which is what you asked for: per-entity cost
-  attribution in S3 Storage Lens, per-entity lifecycle rules, a bulk delete that
-  is one prefix, and a `gc` that can scope itself.
-- Carries **no name**, so a bucket listing stops leaking hard rule #1.
-- The extension is decoration for humans reading the console — `content_type` on
-  the row is authoritative and the API sets it on every presigned response.
-
-The rule that makes this safe: **the prefix is stamped once, at creation, from
-the owner the node's parent already resolves to. It is never parsed, never
-re-derived, and never rewritten.** `services/catalog.py` remains the only module
-that may touch a `blob_key`, and it still may not split one.
-
-**The honest cost.** Move a file from a character to a project and its key keeps
-the old prefix. The key is still correct — it is a pointer — but it now *looks*
-like it means something it does not, which is exactly the trap the current
-legacy keys set. Mitigation: `studio catalog verify` reports drift, and
-`studio catalog reseat --apply` rewrites drifted keys (server-side copy, row
-update, delete of the old object). Optional, out of band, never automatic.
-
-**Alternative: keep `blobs/<node_id>` flat for everything.** Zero structure,
-zero drift, zero temptation — and zero per-entity operability in the bucket.
-
-> **Answer needed: entity-prefixed keys (recommended) or flat `blobs/`?**
-
-### D3 — How far does this go? Characters and projects only, or runs too?
-
-Runs, scenes and movies have the identical problem — a timestamp-slug folder
-name as the primary key, and metadata in JSON documents nobody may parse.
-
-**Recommended: all five entity types, built in phases.** Characters and projects
-first (phases 1–3), runs, scenes and movies after (phases 4–5). Stopping after
-characters and projects leaves `runs find --character` still grepping documents
-and leaves the app unable to show a run as anything but a folder — which is half
-the presentation problem you want solved.
-
-Making a run typed does **not** mean parsing the model payload. The split:
-
-| Studio owns (row, validated, queryable) | The provider owns (blob, stored verbatim, never parsed) |
-|---|---|
-| run id, project, status, model, engine, kind, characters used, bindings (node ids), timings, prediction id, error, output node ids, lineage | the exact `input` object sent, the exact response body returned |
-
-That preserves the reason the current rule exists — the pipeline changes the
-payload shape freely — while giving the app a run it can render.
-
-> **Answer needed: all five entity types (recommended), or characters and
-> projects only for now?**
-
-### D4 — Prod data: migrate or start clean?
-
-There are no users, but there is a real library — roughly 700 MB and a few
-thousand rows, with no second copy.
-
-**Recommended: a forward migrator**, built to the shape `catalog_seed` already
-established: `plan | apply | verify` as separate invocations, `--dry-run` unless
-`--apply`, a journal under `local/migrations/`, and a `verify` that must pass
-before anything is deleted. It derives characters from `characters/<slug>/`
-folders, parses each `profile.yaml` into a row, turns each `references:` entry
-into a reference row, derives projects from `projects/<slug>/`, and parses every
-`request.json` / `result.json` / `scene.json` / `movie.json` into an envelope,
-keeping the raw documents as payload blobs.
-
-The alternative is to wipe and start over, which is cheaper to build and throws
-away the library.
-
-> **Answer needed: migrate prod (recommended), or start clean?**
-
-### D5 — Minor: keeping entities out of the reel
-
-`by-recent` is hashed on `lib` and ranged on `created_at`. Any item carrying
-both attributes lands in that index — so entity rows would appear in the reel's
-enumeration and be filtered out in memory, consuming the `max_folder_objects`
-cap on the way. Folder nodes already do this today.
-
-**Recommended:** make `by-recent` **sparse** — re-key it on a `reel` attribute
-written only onto file nodes whose content type is an image or a video. Fixes
-the existing folder pollution at the same time. A GSI can be replaced online; no
-data is lost.
-
-Cheaper alternative: name the entity timestamps `created` / `updated` so they
-never enter the index, and leave the folder pollution alone.
-
-> **Answer needed: sparse reel index (recommended), or attribute renaming?**
-
----
+**D4 is done and the migrator is not.** `plan`, `apply` and `verify` ran against
+production; `reseat` has not, so prod's keys are the legacy ones D2 replaced and
+`verify` reports them as drifted rather than broken. The module stays for
+`reseat`, and because `verify` is what gates it.
 
 ## The data model
 
-Assumes D1 = one table, D3 = all five entity types.
+One table (D1), all five entity types (D3).
 
 ### Entities
 
 ```
-Library    lib-…      the sharing unit; has members            (exists)
- ├ Node    node-…     a folder or a file, with a parent        (exists)
- ├ Character char-…   who a subject is                         (new)
- ├ Project  proj-…    a unit of production                     (new)
- ├ Run      run-…     one submission to a model                (new)
- ├ Scene    scene-…   shots stitched into one continuous take  (new)
- └ Movie    movie-…   scenes cut into one piece                (new)
+Library    lib-…      the sharing unit; has members
+ ├ Node    node-…     a folder or a file, with a parent
+ ├ Character char-…   who a subject is
+ ├ Project  proj-…    a unit of production
+ ├ Run      run-…     one submission to a model
+ ├ Scene    scene-…   shots stitched into one continuous take
+ └ Movie    movie-…   scenes cut into one piece
 ```
 
 Ids are `<kind>-<uuid4>`. The prefix is for a human reading a log; nothing
@@ -680,8 +581,8 @@ maintenance catalog (plan · migrate · verify · gc · reseat) · dev-seed
 | `rewrite check` | **deleted** — the class of bug is gone |
 | `phrasebook add` | `POST /api/phrasebook`; no document to be missing |
 | `upload` / `download` / `presign` | take a node id or a `<entity>/<path>` address that the API resolves |
-| `catalog migrate` | **new** — the one-shot in D4 |
-| `catalog reseat` | **new** — rewrite blob keys whose owner prefix has drifted |
+| `catalog migrate` | the D4 migrator — `plan` / `apply` / `verify`, run against prod |
+| `catalog reseat` | rewrite blob keys whose owner prefix has drifted — not yet run against prod |
 
 **Addressing on the command line.** A slug is still what a person types.
 `<slug>/reference/face/<file>` resolves through
