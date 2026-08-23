@@ -83,7 +83,7 @@ One runner serves every model, image and video — see
 `--character` does two things: it supplies that character's chosen reference
 subset as identity, and it records the character on the run so
 `studio runs find --character <name>` can answer later. It does **not** decide
-where the run lands — every run goes under `projects/<project>/`, which is why
+where the run lands — every run belongs to a project, which is why
 `--project` is required and never inferred. It is repeatable: one piece of work
 can involve several characters.
 
@@ -115,7 +115,7 @@ The full mechanism — `denied`, cross-field rules, the live schema pass — liv
 Writes through the shared run store:
 
 ```
-projects/<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/
+<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/
     request.json    what we sent — references as S3 KEYS
     prompt.json     the studio-media-prompt source, when one was used
     result.json     prediction id, status, media types, output keys
@@ -180,7 +180,7 @@ prompt inside the payload double-escapes it into one unreadable line:
   "input": {
     "aspect_ratio": "match_input_image",
     "prompt": "<< see document 1/2 — PROMPT >>",
-    "image_input": ["<presigned: characters/<name>/reference/<name>_11.png>", …]
+    "image_input": ["<presigned: <name>/reference/face/<file>.png>", …]
   }
 }
 ```
@@ -219,7 +219,7 @@ is copied, never re-encoded in place:
 ```bash
 studio convert \
   --run <project>/latest#1 --for kling --add-input <project>
-# -> projects/<project>/input/<project>_in_<n>.png   (prints the new path)
+# -> <project>/input/<file>.png   (prints the new node)
 ```
 
 `--for` converts only when the target engine would reject the current format and
@@ -236,7 +236,7 @@ model to infer them.
 
 ```bash
 studio run --model nano-banana-pro --project <project> --slug <slug> \
-  --key projects/<project>/input/<project>_in_3.png \
+  --key <project>/input/<file>.png \
   --character <name> --pick-tag face \
   --aspect-ratio match_input_image --prompt "Use the FIRST image as the base…"
 ```

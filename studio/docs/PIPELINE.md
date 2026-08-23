@@ -29,7 +29,7 @@ and in anything written back to it.
 `SKILL.md` files, examples, comments, tests, fixtures, commit messages, branch
 names, or pull request titles and bodies.
 
-Characters are **data, not code**: they live only in S3 under `characters/<name>/`
+Characters are **data, not code**: a row in the catalog and a folder of nodes
 (see `studio-media-character`). The repo describes the *machinery* that operates on any
 character, so it never needs to know one by name.
 
@@ -97,12 +97,12 @@ earlier exchange counted as consent. If one reappears, it is a bug.
 
 ### 2b. NEVER put an image into a character without approval
 
-Runs are append-only history and descriptions can be rewritten, but
-`characters/<name>/reference/` is **who the character is** — every later render is
-verified against it, and every future generation may be driven by it. Adding,
-replacing, renumbering or archiving anything there, or in `default_set` or the
-bible's `references:` index, is a decision that belongs to the user and is
-**separate** from having agreed to spend money on a render.
+Runs are append-only history and descriptions can be rewritten, but a
+character's **references** are who the character is — every later render is
+verified against them, and every future generation may be driven by them.
+Attaching, describing, regrouping or detaching one, or changing `default_set`,
+is a decision that belongs to the user and is **separate** from having agreed to
+spend money on a render.
 
 So a successful generation does not become identity by itself.
 `studio character shoot` leaves every result in its run and prints the promotion
@@ -167,7 +167,7 @@ studio/pipeline/
         │   ├── projects.py
         │   ├── characters/       base.py profile.py refs.py pools.py rename.py cli.py
         │   ├── curate.py  contact_sheet.py
-        │   ├── phrasebook.py  rewrite.py  prompt.py
+        │   ├── phrasebook.py  prompt.py
         │   └── templates/profile.yaml  reference_shots.yaml
         │
         ├── engine/                MODEL INVOCATION
@@ -181,7 +181,7 @@ studio/pipeline/
         │   └── upload.py  download.py  presign.py  convert.py
         │
         └── maintenance/           one-shots, quarantined
-            └── catalog_seed.py  catalog_gc.py  dev_seed.py
+            └── catalog_migrate.py  catalog_gc.py  dev_seed.py
 ```
 
 **Why the directories are named after what things ARE.** They used to be one
@@ -236,7 +236,7 @@ External tools:
   export-credentials` into boto3, because boto3's own chain does not understand
   an `aws login` session. It has four importers left: `adapters/ddb.py` for the
   catalog table, and the three `maintenance/` modules that enumerate the raw
-  bucket — `catalog_gc.py`, `catalog_seed.py` and `dev_seed.py`. Sign in with
+  bucket — `catalog_gc.py`, `catalog_migrate.py` and `dev_seed.py`. Sign in with
   `aws login` before running one of those.
   Everything else needs **no AWS account at all** — that is the point of #308,
   and this bullet said "required" flatly until it landed.
@@ -271,32 +271,54 @@ A **character** is an identity record. A **project** is a piece of work. They
 used to be one folder, which left work involving two characters with nowhere to
 live and work involving none borrowing a fake character called `misc`.
 
+**A character and a project are ROWS, and each owns a folder.** The folder is
+where their material lives; the record is what they are. Both folders sit
+directly under the library root — there is no `characters/` or `projects/`
+wrapper, because there is nothing left for one to group: an entity is found by
+querying the table, not by listing a folder.
+
 ```
-characters/<name>/
-    profile.yaml    the bible — identity, plus the DESCRIBED reference index
-    reference/      generated character imagery, in purpose subfolders
+<character>/        a folder node the character's `root` names
+    reference/      the images its REF# rows point at, in purpose subfolders
         face/  body/  wardrobe/  frame/ …
-    corpus/         collected material about the character — uploads, keeper clips
+    corpus/         collected material — uploads, keeper clips
     seed/           the founding real-world source photos
     archive/        retired material — NEVER used unless the user names it
 
-projects/<project>/
-    project.json    name, description, the characters involved
-    runs/           one directory per submission
+<project>/          a folder node the project's `root` names
+    runs/           one folder per submission
     chains/         an ad-hoc sequence's frames (a planned scene derives its own)
     scenes/         runs cut into one continuous take
     movies/         scenes cut into one piece
-    favorites/      an ordinary folder someone made — the tools do not write here
-    input/          the project working pool (<project>_in_<n>.<ext>)
+    input/          the project working pool
 
-phrasebook/wording.yaml
-
-config/pose/body/*.png       pose plates — how to stand, for a reference shoot
-config/pose/face/*.png       head-angle plates
+config/             the pose plates, shared by the library and owned by no entity
+    pose/body/*.png     how to stand, for a reference shoot
+    pose/face/*.png     head-angle plates
 ```
 
-There is **no `media/` prefix** — the tree is at the bucket root. (There was one,
-inherited from mirroring Google Drive 1:1; it bought nothing.)
+**`profile.yaml` and `project.json` are gone.** The bible is a validated map on
+the character's row and the project's description is a field on its own; neither
+was ever a document anyone edited as a file, and keeping them as files is what
+made "who is this character" unanswerable without reading S3.
+
+**The phrasebook is gone from this tree too** — it is `TERM#` rows, which is what
+a per-model list of avoid/use pairs always was.
+
+**The five folder names under a project and the four under a character are
+convention, not schema.** The API creates them with the entity and resolves them
+by name when it needs one, making it if it is absent. Rename `runs/` and the next
+run makes a new one; every existing run is still reachable, because a run record
+names its own folder node. Nothing breaks, and a folder someone makes by hand is
+as real as the ones that came with the entity.
+
+There is **no `media/` prefix** either — that went earlier, inherited from
+mirroring Google Drive 1:1.
+
+**None of these names appears in an S3 key.** A key is
+`<characters|projects|libraries>/<entity id>/<node id>.<ext>`, stamped once when
+the node is created and never parsed. The tree above is the catalog's; the
+bucket holds bytes under ids.
 
 ### HISTORICAL — the `media/<owner>/` tree, and the move off it
 
@@ -376,7 +398,9 @@ Two details are worth keeping:
   patching the records would have left every recorded run pointing at keys that
   no longer existed, and chaining from history would have broken. This is the
   same rule stated elsewhere as *moving an object means rewriting the records
-  that name it*; `domain/rewrite.py` still exists for it.
+  that name it* — which was true for as long as a record named a path.
+  `domain/rewrite.py` existed for it and is deleted: a record names a node id,
+  so nothing a move touches can be stranded.
 - **`verify` separated breakage it had caused from breakage it had inherited.**
   Curation had renumbered and removed reference images after the runs that
   cited them, so some records already pointed at keys that were gone. A
@@ -433,35 +457,51 @@ usually one shot in this sense.)
 Every submission to Replicate, from any `studio-*` engine, is recorded as a
 **run**:
 
+**A run is a row with a folder.** The envelope — status, model, prediction id,
+timings, cost, bindings, outputs, lineage — is `RUN#<id>`/`META`, and it is
+studio's to validate and query. The provider's own documents stay bytes:
+
 ```
-projects/<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/
-    request.json    what we sent — references as S3 KEYS, plus `characters[]`
-    prompt.json     the studio-media-prompt source, when one was used
-    result.json     prediction id, status, media types, output keys
+<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/      the folder the record names
+    request.json    what we sent, verbatim        ─┐  payload blobs.
+    prompt.json     the prompt source, when used   ├─ studio stores these
+    result.json     what came back, verbatim      ─┘  and decodes none of them
     output/         the artifact(s) — .mp4, .jpg, however many
 ```
 
+That split is the point. The pipeline changes the payload's shape freely, so
+nothing may parse it; but "which runs used this character, on which model, and
+what did they cost" is a question about studio's own bookkeeping, and it now has
+an answer. **`bindings` are node ids**, so a run that consumed an image still
+resolves it after that image is renamed or moved.
+
 A run belongs to a project and **names the characters it used**, inferred from
-its bindings rather than trusted from the flags. That list is what makes "every
-run using this character" answerable now that the folder no longer says it:
-`runs.py find --character <name>`.
+its bindings rather than trusted from the flags — written as `RUN#`/`CHAR#` rows,
+which is what makes `studio runs find --character <name>` one query rather than
+a walk over every project's every run folder.
+
+The folder name still starts with a timestamp, which is convenient when browsing
+and is not an id: the run's id is a UUID and nothing derives one from the other.
 
 A **scene is keyed by its slug** and created before anything renders — it is
 the plan as much as the record. A **movie** still takes the run id shape,
 because a movie is only ever a finished cut:
 
 ```
-projects/<project>/scenes/<slug>/
-    scene.json      the plan AND the record — shots, panels, runs, the cut
+<project>/scenes/<slug>/
     storyboard/     the panels: shot-<NN>-p<M>.png
     shots/          each source clip, copied in, numbered in cut order
     output/         the stitched scene — <slug>.mp4
 
-projects/<project>/movies/<YYYY-MM-DD_HH-MM-SS>_<slug>/
-    movie.json      the manifest — scenes in cut order, as SCENEREFS and S3 KEYS
+<project>/movies/<YYYY-MM-DD_HH-MM-SS>_<slug>/
     scenes/         each scene's output, copied in, numbered in cut order
     output/         the finished movie — <slug>.mp4
 ```
+
+`scene.json` and `movie.json` are gone the way `profile.yaml` went: a scene is
+`SCENE#<id>`/`META` with one `SHOT#` row per planned shot, and a movie is its
+own record naming scenes in cut order. A shot's `order` is an attribute, so
+revising a plan moves rows rather than rewriting a document.
 
 Both are **derived, never a source of truth**: the runs they name remain the
 history, so either can always be rebuilt. Sources are copied in server-side so a
@@ -474,15 +514,17 @@ re-encodes (recording that it did) when they don't.
 
 ### Identity vs working material — never conflate them
 
-`characters/<name>/reference/` is a **library** of generated character imagery,
-organised in purpose subfolders and **described in the bible** (`references:`).
+A character's **reference set** is a library of generated character imagery,
+grouped by purpose and described one `REF#` row at a time.
 The engines cap what they accept (Kling 7, Seedance 9, Nano Banana 14) and send
 it in full, so a *subset* is chosen deliberately — `--pick`, `--pick-tag`, or
 the character's `default_set`. An over-cap selection is **refused**, with the
 index printed, rather than truncated: which images a generation saw should not be
-decided by whatever a folder listing returned.
+decided by whatever a folder listing returned. The API resolves the selection
+(`GET /api/characters/<id>/selection`), so the CLI and the app cannot disagree
+about what a model was shown.
 
-`projects/<project>/input/` is the **working pool** — uploads and frames pulled
+A project's `input/` pool is the **working pool** — uploads and frames pulled
 off clips to drive the next generation. Uncapped, picked from by number
 (`--input N`), never identity.
 
@@ -493,8 +535,10 @@ happens.
 
 **Moving an object means rewriting the records that name it.** Run records,
 scene and movie manifests and chains all store S3 keys, so a move invalidates
-every document that cited it. `curate.py` does that rewrite in the same
-operation; `rewrite.py check` reports anything left dangling. Curating without
+every document that cited it — **and this is the paragraph the entity model
+retired.** Records name node ids, so a move invalidates nothing and there is
+nothing to carry along. It is kept because the failure it describes is the one
+this whole change exists to make impossible. Curating without
 that step is what left 69 records pointing at reference images that no longer
 existed.
 
@@ -540,8 +584,8 @@ about before.
 | `studio-media-veo-3-1`   | `google/veo-3.1` — the control-oriented engine, and the only one with a repeatable **seed** and a real `negative_prompt`. Reference images work only at 16:9 and 8 seconds; durations are a 4/6/8s enum |
 | `studio-media-grok-imagine-video` | `xai/grok-imagine-video` — animates one approved still, any integer 1–15s, and is the only registered model that **edits an existing clip**. No reference images, so not for holding a character on-model |
 | `studio-media-prompt`    | Author prompts as structured JSON for either engine (`--engine seedance\|kling-replicate`); validates rules and routes technical fields + the negative prompt where each engine takes them |
-| `studio-media-character` | Manage on-model characters (create/update/list/curate/load) whose bible + described reference library live in S3 (`characters/<name>/`); characters are data, not skills |
-| `studio-media-s3`               | Address the media store through the API by name path (list, upload, download, presign) — the asset store holding **characters** and **projects**, plus the shared **run store** (`runs.py`), **scene store** (`scenes.py`) and **movie store** (`movies.py`), the project registry (`projects.py`), the layout module (`paths.py`) and the record rewriter (`rewrite.py`). Storage only; model invocation lives in `studio-media-core` |
+| `studio-media-character` | Manage on-model characters (create/update/list/curate/load) whose bible is a field on the character's row and whose reference library is `REF#` rows; characters are data, not skills |
+| `studio-media-s3`               | Address the media store through the API by name path (list, upload, download, presign) — the asset store holding **characters** and **projects**, plus the shared **run store** (`runs.py`), **scene store** (`scenes.py`) and **movie store** (`movies.py`), the project registry (`projects.py`) and the slug/address helper (`paths.py`). Storage only; model invocation lives in `studio-media-core` |
 | `studio-code-pipeline` | **The other family, and the only member of it.** Changing the pipeline's own code — a subcommand, a module move, the registry's machinery, a wiring failure, a test. Not for making media |
 
 ---
@@ -613,7 +657,7 @@ or projects.
 | `store.py` | **The media store, addressed by path and reached through the API.** Resolve a name path to a node, list its files in natural order, read, write, upload, copy, presign, and ensure a folder exists. No bucket name, no credentials — bytes travel to S3 directly on presigned URLs the API signs, which is what keeps a video out of the Lambda's request limit. `s3.py` is being retired into this. |
 | `api.py` | One transport for every call the CLI makes: bearer token, refresh-on-401, library header, error mapping. Decided once so no caller re-decides it. |
 | `auth.py` | The Cognito sign-in behind `studio login`, and the token cache it writes. |
-| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. One auth path for the whole package — `session()` is what everything else asks for. **Almost gone**: nothing in `domain/`, `engine/` or `objects/` imports it any more. The four that still do are `adapters/ddb.py`, which needs `session()` for the catalog table, and all three one-shots in `maintenance/` — `catalog_gc.py`, `catalog_seed.py` and `dev_seed.py` — which enumerate the raw bucket deliberately. Its listing helpers and its bucket-prefix knob went with `migrate-layout`, the only caller of either. |
+| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. One auth path for the whole package — `session()` is what everything else asks for. **Almost gone**: nothing in `domain/`, `engine/` or `objects/` imports it any more. The four that still do are `adapters/ddb.py`, which needs `session()` for the catalog table, and all three one-shots in `maintenance/` — `catalog_gc.py`, `catalog_migrate.py` and `dev_seed.py` — which reconcile the bucket against the table and so have to see both. Its listing helpers and its bucket-prefix knob went with `migrate-layout`, the only caller of either. |
 | `ddb.py` | The catalog table's client and the typed-attribute marshalling every write needs. Takes its credentials from `s3.py`, because the bridge resolves a session and not an S3 session. Knows nothing about libraries or nodes. |
 | `replicate.py` | Token, HTTP, download, poll. |
 | `ffmpeg.py` | Probe, stitch, frame grab, contact grid. A scene and a movie join their inputs by identical rules because they call the same function. ffmpeg ships in the wheel; no system install. |
@@ -630,18 +674,17 @@ fail first.
 
 | Module | Purpose |
 |---|---|
-| `paths.py` | **The one module that knows the tree's shape.** Every key is built here, which is what keeps a global prefix applied in exactly one place. Library, not a command. |
-| `projects.py` | Project CRUD and the project **input pool**. `require_project()` turns a missing `--project` into an error that lists the real options. Creating a project creates its **folder** as well as its `project.json` — S3 invented the folder out of the key's slashes and the catalog does not, so without it the file has no parent and neither does any run recorded afterwards. |
-| `runs.py` | The shared **run store** every engine records into: request/prompt/result, output archiving, runref resolution for chaining, `find --character` across projects. It refuses a URL-shaped binding — this is where "S3 is the only origin" is enforced in code, and it has to be, because the API stores these documents as bytes and never decodes one. A run is created by `POST /api/runs`, which makes the folder and writes its documents together and answers 409 to a re-send; `result.json` and the outputs are ordinary writes into that folder afterwards, because they do not exist until the prediction comes back. |
+| `paths.py` | **Slug rules, the starting layout names, and address joining — and nothing else.** It was 334 lines of key construction whose only job was making twelve modules spell `characters/<slug>/…` identically, and it is a name checker now. An entity record names its own nodes, so nothing builds a path to assert where something must be. |
+| `projects.py` | Project CRUD through the entity routes, plus the **input pool**. `require_project()` turns a missing `--project` into an error that lists the real options. Creating a project is one call: the API writes the record, the slug claim, the root folder and the starting subfolders in one transaction, so there is no half-made project to recover from. |
+| `runs.py` | The shared **run store** every engine records into: the envelope, output uploads, runref resolution for chaining, `find --character` across projects — which is one API query now rather than a walk over every project's every run folder. It refuses a URL-shaped binding, and so does the API; keeping the check here as well is what makes a `--dry-run` refuse before anything is sent. |
 | `scenes.py` | The **scene store**: a piece planned, shot and cut, under `projects/<p>/scenes/<slug>/`. Owns the manifest, `assemble`, `handoff`, and the read-only half of the CLI. Writing a manifest ensures the scene's folder — `new_scene` writes one for a scene that has never existed, and the catalog has no folder until something asks for it. |
 | `storyboard.py` | **The plan document**, pure data: what a shot's panels mean, which one is the start frame once the chain has spoken, how a revision merges onto work already paid for. No S3, no models — so the rules that decide what a shot sends are testable on their own. |
 | `movies.py` | The **movie store**: scenes cut into one piece. The same shape one tier up, including the folders a cut needs. Copying a scene in is a read plus a write rather than a server-side `CopyObject`; see `store.copy` for why one blob under two rows is not on offer. |
 | `frames.py` | Stills out of a run's video — the handoff frame, and the contact grid that lets a clip be looked at before more money is spent on it. Its `chain` store is for a sequence with no scene behind it; a planned scene derives its own frames from `scene.json`. |
-| `characters/` | The character record, in five modules since it passed 1,200 lines. `base` — names, the four pools, paths, and `TEMPLATE`. `profile` — the bible: schema, load/write, and the `edit` local round trip whose conflict check is what stops two people overwriting each other. That check compared the S3 **ETag** and now compares the node's **`updated_at`**: the catalog exposes no ETag by design, `updated_at` has microsecond resolution so two writes cannot share one, and its only weakness is a false refusal after a rename — which errs the safe way. It is check-then-write, not compare-and-swap; closing that window needs an `If-Match` on the API. `refs` — the described reference index and `resolve_selection`, which decides what a model is actually shown. `pools` — corpus/seed/archive, material rather than identity. `rename` — a new slug across nodes, bible and records at once. It held an S3 client until #306 and holds none now: renaming the character is **one `PATCH` per slugged basename plus one for the folder**, no bytes move, and every node keeps its id. What survived is the RECORD half — a run names this character by path, so `rewrite` still carries every document that cited one. `cli` assembles the group; commands are `@click.command` and registered there, which is what keeps the package acyclic. `__init__` re-exports the names the rest of the package already imports. |
-| `curate.py` | The pool operations that go wrong by hand — dedupe, renumber, regroup, move. Every one is a dry run without `--apply`. Since #306 a renumber and a regroup are **row updates**: one `PATCH` each, no object written, the blob keeps its id and its bytes. `move` is the exception worth knowing — when a byte-identical copy is already in the destination it deletes the source instead, which is the one path here that removes an image. |
-| `rewrite.py` | **When a record's subject moves, the records that name it must follow.** #306 expected this to be deletable — nothing moves under the catalog — and it is not, because a record names a **path**, not a node, so a rename in place still strands it. See #420. `apply_moves()` is what curation and the migrator call; `rename_character()` is its companion for the name a record stores rather than the key, and cannot share the same mapping because a project may be called what a character is; `check` walks every record and confirms what it names still exists. |
+| `characters/` | The character record, in four modules. `base` — names, pools, node helpers. `profile` — the bible: schema, and the `edit` local round trip whose conflict check is a `rev` sent with the write, so the API refuses a stale push itself. That was the S3 ETag, then the node's `updated_at`, and both were check-then-write with a gap; `rev` is compare-and-swap and closes it. `refs` — the `REF#` rows: attach, describe, order, regroup, detach, and the selection the API resolves. `pools` — corpus/seed/archive, material rather than identity. `cli` assembles the group; commands are `@click.command` and registered there, which is what keeps the package acyclic. **`rename.py` is gone** — a rename is one `PATCH`, because the slug is an attribute rather than a path segment. |
+| `curate.py` | The pool operations that go wrong by hand — `dedupe`, `groups`, `move`. **`renumber` and `regroup` are deleted**: order and group are attributes on a `REF#` row, so there are no holes to close and regrouping writes no object. `move` is the one worth knowing — when a byte-identical copy is already in the destination it deletes the source instead, which is the one path here that removes an image. |
 | `prompt.py` | Prompt assembly and validation — the structured object in, the serialized prompt plus engine params out. |
-| `phrasebook.py` | Per-model wording lists, kept as data in S3 like characters. **Shared material, so neither direction uses a node**: `catalog_seed.py` records none for it, so it is read by key over `GET /api/asset` and written by `PATCH /api/text`. That write can only overwrite — `put_object` could invent the file and the API deliberately cannot — so `phrasebook add` against a library that has never held a `wording.yaml` fails and says what putting one there takes — which on a dev stack is re-running `dev-setup.sh`, since #425 gave the repo a seed copy it puts there when the key is absent. Reading is unchanged: a missing phrasebook is still an empty one. |
+| `phrasebook.py` | Per-model wording lists, as `LIB#`/`TERM#` rows. It was a YAML document in the bucket with no catalog node, which is why it was read by raw key and written by an overwrite that could not invent the file — so `phrasebook add` failed outright on a library that had never held one. A row has no such state: the first `add` writes the first term. |
 | `contact_sheet.py` | Labeled thumbnail grids over arbitrary keys. The character-pool half walks the pool **recursively**, like `characters/refs`: `reference` is the default and holds group folders rather than images, so a one-level listing would report the commonest invocation as an empty pool. Each tile's local name carries its group, because `face/<name>_1` and `body/<name>_1` share a basename and collided in one directory. |
 
 **`engine/` — invoking a model.**
@@ -672,20 +715,27 @@ which nothing records ever running, and whose target population only shrank as
 Replicate purged old prediction inputs and outputs) and `migrate_layout.py`
 (the move off the pre-restructure `media/<owner>/` tree — see the historical
 section under [The two trees](#the-two-trees--characters-and-projects)).
-`catalog_seed.py` (`studio catalog plan | seed | verify`) records the bucket as
-it already stands into the DynamoDB catalog, copying and deleting nothing;
-`catalog_gc.py` (`studio catalog gc`) is the fourth catalog phase and the only
-one that **deletes** — blobs no row names, decided by the table and never by the
-shape of a key, over an allowlist of the three prefixes a blob has ever been
-written under; `dev_seed.py` (`studio dev-seed tree | publish`) **promotes** a
-handful of nodes out of a dev stack into the shared seed fixture — it calls no
-model and costs nothing, and its gate is hard rule #1 rather than money.
+`catalog_seed.py` is deleted with the model it seeded — it inventoried a bucket
+whose keys carried the tree, into a catalog that had just been introduced.
+`catalog_migrate.py` (`studio catalog migrate plan | apply | verify`, plus
+`reseat`) replaces it: it derives characters, projects, runs, scenes and movies
+from the tree as it stands, parses each `profile.yaml` and `project.json` into a
+row, and adopts each existing folder as the entity's `root`. It copies no bytes,
+moves no objects and deletes nothing; `reseat` is the separate, later phase that
+rewrites blob keys onto the id scheme.
 
-`catalog_seed.py` has the shape `migrate_layout.py` had — phases as separate
+`catalog_gc.py` (`studio catalog gc`) is still the only one that **deletes** —
+blobs no row names, decided by the table and never by the shape of a key.
+`dev_seed.py` (`studio dev-seed tree | publish`) **promotes** a handful of nodes
+out of a dev stack into the shared seed fixture — it calls no model and costs
+nothing, and its gate is hard rule #1 rather than money.
+
+`catalog_migrate.py` has the shape `migrate_layout.py` had — phases as separate
 invocations, `--dry-run` unless `--apply`, a journal under `local/migrations/` —
-because the ordering between phases is the safety property. What it never had is
-a rewrite phase: a rewrite patches the keys recorded *inside* run and scene
-documents when objects move, and the catalog seed moves nothing.
+because the ordering between phases is the safety property. Unlike that command
+it needs no rewrite phase, and for a better reason than "nothing moves": a
+record names a node id, so there is no key recorded inside a document for a move
+to invalidate.
 
 ---
 

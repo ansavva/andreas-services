@@ -4,6 +4,13 @@
 are not preferences, and two of them are about spending money and leaking
 identity. Everything else in this file is an index.
 
+**The data model is [docs/ENTITY_MODEL.md](docs/ENTITY_MODEL.md)**, worked
+through one character and one project in
+[docs/ENTITY_MODEL_EXAMPLE.md](docs/ENTITY_MODEL_EXAMPLE.md). Characters,
+projects, runs, scenes and movies are rows with UUIDs; the folder tree hangs off
+them; S3 keys carry ids and never names. Read it before assuming a slug is a
+path or that a document defines anything.
+
 ## What studio is
 
 Studio is one service with two halves that share one library.
@@ -50,9 +57,15 @@ back to it. Full statements and reasoning in
 
 No character name appears in this repository — ever. Not in code, docstrings,
 `SKILL.md` files, examples, comments, tests, fixtures, commit messages, branch
-names, or PR titles and bodies. Characters are **data**, living in S3 under
-`characters/<name>/`. The repo describes the machinery that operates on any
-character; use the `<name>` / `<project>` / `<slug>` placeholders.
+names, or PR titles and bodies. Characters are **data**: a row in the catalog
+whose `slug` is the name, and a folder of nodes hanging off it. The repo
+describes the machinery that operates on any character; use the `<name>` /
+`<project>` / `<slug>` placeholders.
+
+The entity model made this cheaper to keep. A slug is an attribute rather than
+a path segment and an S3 key is built from ids, so a bucket listing no longer
+spells out every character in the library — which it did, for as long as the
+key was `characters/<name>/…`.
 
 ### 2. NEVER submit without approval of the FULL payload
 
@@ -68,9 +81,9 @@ answer this for a person, and if one appears, that is a bug.
 
 ### 2b. NEVER put an image into a character without approval
 
-`characters/<name>/reference/` is who the character IS, and every later render is
-checked against it. Adding, replacing, renumbering or archiving anything there —
-or in `default_set` or the bible's `references:` index — is a **separate**
+A character's **references** are who it IS, and every later render is checked
+against them. A reference is a `REF#` row naming a node, so adding, describing,
+regrouping or detaching one — or changing `default_set` — is a **separate**
 decision from having agreed to spend money rendering something. Show the result,
 wait for a yes, then promote it:
 
@@ -241,8 +254,9 @@ when you are unsure a command exists.
 | Pick a video engine | `studio-media-seedance` · `studio-media-kling` · `studio-media-veo-3-1` · `studio-media-grok-imagine-video` |
 | Pick an image engine | `studio-media-nano-banana-pro` · `studio-media-nano-banana-2` · `studio-media-gpt-image-2` · `studio-media-gpt-image-1-5` |
 
-**Ask which project before generating anything.** Work is addressed as
-`projects/<project>/`, and guessing puts runs somewhere nobody looks again.
+**Ask which project before generating anything.** A run belongs to a project and
+records which characters it used; guessing puts runs somewhere nobody looks
+again. `--project` takes a slug or a project id and is never inferred.
 
 ---
 

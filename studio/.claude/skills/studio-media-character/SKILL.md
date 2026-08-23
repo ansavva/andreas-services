@@ -1,6 +1,6 @@
 ---
 name: studio-media-character
-description: Manage on-model characters — create, update, list, curate, and load a character whose profile bible and reference library live in studio's media library. Use whenever a request names a known/recurring character, or the user wants to add, edit, describe, curate, or inspect one. A character is DATA (an S3 record under characters/<name>/), not a per-character skill: this one skill manages them all, and its described reference index is how a SUBSET of a large reference library is chosen for a generation instead of sending the folder whole.
+description: Manage on-model characters — create, update, list, curate, and load a character whose profile bible and reference library live in studio's media library. Use whenever a request names a known/recurring character, or the user wants to add, edit, describe, curate, or inspect one. A character is DATA (a catalog record with a folder of images), not a per-character skill: this one skill manages them all, and its described reference index is how a SUBSET of a large reference library is chosen for a generation instead of sending the folder whole.
 ---
 
 # studio-media-character
@@ -26,26 +26,35 @@ character is an S3 record managed by this one skill, used by the video pipeline
 
 ## Where a character lives (S3)
 
-Each character is a record under `characters/<name>/` — a name path in the
-media library, reached through the API. The generic **`studio-media-s3`** skill
-is the storage layer; `studio login` is the auth.
+**A character is a record, not a folder.** It has an id that never changes, a
+`slug` you type, a bible held as structured fields, and a set of described
+references — all of it queryable. It also owns a folder, `<name>/`, where its
+images actually live. The generic **`studio-media-s3`** skill is the storage
+layer; `studio login` is the auth.
 
 ```
-characters/<name>/profile.yaml   the bible — SOURCE OF TRUTH, one schema,
-                                 including the DESCRIBED reference index
-characters/<name>/reference/     generated character imagery, in purpose
-                                 subfolders: face/ body/ wardrobe/ frame/ …
-characters/<name>/corpus/        collected material about the character —
-                                 uploads, keeper clips. Material, not identity.
-characters/<name>/seed/          the founding real-world source photos
-characters/<name>/archive/       retired material
+<name>/reference/     the images its references point at, in purpose
+                      subfolders: face/ body/ wardrobe/ frame/ …
+<name>/corpus/        collected material — uploads, keeper clips.
+                      Material, not identity.
+<name>/seed/          the founding real-world source photos
+<name>/archive/       retired material
 ```
 
-A character record holds **no production history**. Runs, chains, scenes and
-movies live under `projects/<project>/` (see the **`studio-media-s3`** skill), because one
-piece of work can involve several characters and a project can outlive any of
-them. A run records which characters it used, so the association survives the
-split: `studio runs find --character <name>`.
+**The bible is not a file.** There is no `profile.yaml` to fetch: identity is a
+validated map on the record, which is why `studio character show` prints it
+without touching S3 and why the web app can render it as a form rather than as
+a textarea full of YAML.
+
+**These four folders are a starting layout, not a schema.** Rename one, delete
+one, add your own — an image is a reference because a row says so, never because
+of the folder it sits in.
+
+A character holds **no production history**. Runs, chains, scenes and movies
+belong to a project (see the **`studio-media-s3`** skill), because one piece of
+work can involve several characters and a project can outlive any of them. A run
+records which characters it used, so the association survives the split:
+`studio runs find --character <name>`.
 
 ### The four pools, and what each is for
 
@@ -55,18 +64,18 @@ split: `studio runs find --character <name>`.
 | Holds | generated imagery — face angles, body turnarounds, wardrobe, in-world frames | uploads, keeper clips | the founding photographs | rejects, superseded takes |
 | Sent to a model | a **chosen subset** | only by explicit key | rarely, by explicit key | **never**, unless the user names it |
 | Indexed | yes — every image described in the bible | no | no | no |
-| Numbered | yes, within a group | basenames kept | basenames kept | basenames kept |
+| Numbered | no — `order` is an attribute | basenames kept | basenames kept | basenames kept |
 
-Only `reference/` is numbered, because only `reference/` is cited by slot.
-Renaming a source photo throws away whatever its filename recorded.
+**Nothing is numbered any more, and no filename means anything.** A reference is
+a row that carries its own `group`, `order`, description and tags, so an image
+may be called whatever it was called when it arrived. Slot N is position N in
+the resolved selection, exactly as before — but it is `order` on the row that
+decides where an image lands, not a trailing digit in its name.
 
-**The numbering is what `add-refs` produces, not a rule you have to obey.** It
-names new images `<name>_<group>_<n>` continuing after that group's highest
-index, and `curate renumber` closes holes in it. Nothing reads a filename to
-decide anything: the bible's index says which image is which, and slot N is
-position N in the resolved selection. Naming conventions for folder contents
-were deliberately dropped everywhere else, and this is the residue of the one
-place a tool still generates them.
+That is what retired `curate renumber` and `curate regroup`: there are no holes
+to close, and moving an image between groups writes one row and no object. Use
+`studio character order` to move an entry and `studio character regroup` to
+change its group.
 
 The project's `input/` pool is a **separate thing entirely** — working material
 for a piece of work, not anything about a character. Frames pulled off a clip
@@ -112,12 +121,18 @@ sent, which is what `[ImageN]` refers to).
 and is invisible to whoever chooses the set — so it may as well not be there.
 
 ```bash
-studio character add-refs /tmp/new/*.png <name> --to face   # numbered within face/
-studio character set-ref-desc face/<name>_5.png <name> \
-  --description "Three-quarter right, looking off camera." --tags face,three-quarter
+studio character add-refs <name> /tmp/new/*.png --to face    # NAME first, then files
+studio character set-ref-desc <name> <node> \
+  "Three-quarter right, looking off camera." --tags face,three-quarter
 studio character describe-refs <name> --from-json batch.json   # a whole pass, atomically
-studio character sync-refs <name> --apply                      # reconcile index vs folder
+studio character order <name> <node> --after <node>            # move it in the group
+studio character selection <name> --tag face --limit 7         # what a model would see
 ```
+
+**`sync-refs` is gone and cannot come back.** It reconciled the bible's index
+against what was actually in the folder, which was a job only because the two
+were separate things that could disagree. A reference *is* a row about a node:
+there is no folder listing to drift from.
 
 ### Curating the pools
 
@@ -125,19 +140,18 @@ studio character sync-refs <name> --apply                      # reconcile index
 RUN unless you pass `--apply`, and nothing is ever deleted outright:
 
 ```bash
-studio curate groups   <name>                       # what reference/ holds, by group
-studio curate regroup  <name>_3.jpg face <name>     # move into a purpose subfolder
-studio curate dedupe   <name> --pool reference      # remove byte-identical copies
-studio curate renumber <name> --group face          # close holes -> contiguous 1..N
-studio curate move     face/<name>_3.jpg <name> --from reference --to archive
+studio curate groups <name>                         # what reference/ holds, by group
+studio curate dedupe <name> --pool reference        # remove byte-identical copies
+studio curate move   <name> <file> --from reference --to archive
 ```
 
-**Moving an image moves its records too.** Run records, scene manifests and
-chains all store S3 keys, so moving an object invalidates every document that
-cited it — `regroup` and `move` rewrite those documents in the same operation.
-This is not hypothetical: curating without that step is what left 69 records
-pointing at reference images that no longer existed. `studio rewrite check` reports
-any that remain.
+**Moving an image no longer moves anything else, and that is the change worth
+knowing.** Run records, scene manifests and chains stored S3 keys, so moving an
+object invalidated every document that cited it — which is what once left 69
+records pointing at reference images that no longer existed, and why a `rewrite`
+command existed to find them. Every record names a **node id** now. A rename or
+a move is a row write; nothing that cited the image stops resolving, so there is
+nothing to reconcile and no `rewrite` command to run.
 
 `set-refs` is gone. It physically rebuilt `reference/` because the folder *was*
 the set being sent; `default_set` is now, so choosing is a description change,
@@ -145,7 +159,7 @@ not a file move.
 
 ## The bible is structured YAML — one schema, every character
 
-`profile.yaml` is canonical in the library (edit it via this skill). One schema,
+The bible is a field on the character's record (edit it via this skill). One schema,
 and **every character carries the same top-level keys**, so a prompt or a check
 reads a path
 (`consistency.must`, `identity.signature_features`) instead of pattern-matching
@@ -191,22 +205,22 @@ silently stops being checked against. For a **worked example**, read a live one
 ## The management tool
 
 `studio character` is the CRUD + load layer. It goes through the same storage
-layer as everything else in **`studio-media-s3`** — one API session, one set of
-path builders, one natural sort — so there is one auth path and no bytes in the
+layer as everything else in **`studio-media-s3`** — one API session, one natural
+sort — so there is one auth path and no bytes in the
 agent context. Requires `studio login` (see the `studio-media-s3` skill).
 
 ```bash
 studio character list                                  # every character
-studio character show <name>                           # print a character's profile.yaml (from S3)
+studio character show <name>                           # the record: bible, refs, folders
 studio character create <name> --from-profile /tmp/<name>.yaml   # new character record
-studio character set-profile /tmp/<name>.yaml <name>     # replace the bible
+studio character set-profile <name> /tmp/<name>.yaml     # replace the bible
 studio character edit <name>                           # pull the bible to edit locally; re-run to upload
-studio character add-refs /tmp/*.png <name> --to face  # add refs into a purpose group
+studio character add-refs <name> /tmp/*.png --to face  # add refs into a purpose group
 studio character refs <name> --describe                # what every image shows
 studio character refs <name> --presign --json          # generation-time: ordered signed URLs
 studio character refs <name> --pick-tag body --keys    # a named selection, as keys
 studio character pool <name> corpus                    # material, not identity
-studio character add-to photo.jpg <name> seed          # founding source photos
+studio character add-to <name> seed photo.jpg          # founding source photos
 studio character rename <old> <new>                    # a new slug, records and all
 ```
 
@@ -222,24 +236,27 @@ studio character rename <old> <new> --apply
 studio character rename <old> <new> --display-name "Some Name" --apply
 ```
 
-One command, because three things have to move together — the objects (whose
-basenames carry the slug), the bible (`name`, `display_name`, and every path in
-`references` and `default_set`), and every run, scene, movie and project record
-that cites one of those keys or records the character by name. Descriptions
-follow their images: the index is carried across, never re-derived, so nothing
-in it is blanked and nothing undescribed is quietly added — `sync-refs` stays a
-separate decision.
+**One conditional write, and nothing moves.** The slug is an attribute on the
+character's row, not a path segment, so a rename swaps the slug claim, updates
+the record and renames the character's root folder — four operations in one
+transaction. No object is copied, no record is rewritten, and every reference,
+run and binding still resolves, because all of them name node ids.
+
+That is the whole of what this used to be. It moved objects whose basenames
+carried the slug, rewrote the bible's paths, and patched every run, scene,
+movie and project record that cited one of those keys — and a `--dry-run` was
+worth having because the plan was large enough to want reading first.
 
 Two things it deliberately leaves alone. A **project** that happens to share the
 character's name is not renamed, and neither is a slug written into prose — a
-prompt that names the character still says the old one. Check afterwards with
-`studio rewrite check`.
+prompt that names the character still says the old one — text is text, and
+nothing rewrites prose.
 
 It refuses a destination that already exists rather than merging into it.
 
 ### Editing a bible by hand (`edit`)
 
-`edit` round-trips `profile.yaml` so you can change it in a real editor. The first
+`edit` round-trips the bible as YAML so you can change it in a real editor. The first
 run **pulls** it to `local/characters/<name>.yaml` (git-ignored) and prints the
 path; once that working copy exists, the next run **pushes** it back — so the
 loop is *run, edit, run again*. It prints a diff before uploading.
@@ -257,17 +274,15 @@ pulled, the upload is **refused** rather than silently clobbering the change.
 `--force` overrides, `--pull` / `--push` pin the direction, `--path` moves the
 working copy.
 
-**It is not an ETag, despite the filename.** The guard used to be the S3 ETag
-and is now the record's `updated_at`, because the catalog exposes no ETag and
-deliberately never will — nothing content-addressed leaves the API. The sidecar
-kept its old name, which is why the ETag reading survives; say `updated_at` when
-describing what is compared. Two consequences of the substitute: it has
-microsecond resolution, so two writes cannot share a value; and it moves on a
-rename or a move, which touch no bytes, so the check can refuse when it need not
-have. It errs toward refusing and tells you to re-run, which loses nothing.
+**It is `rev`, and it is compare-and-swap rather than check-then-write.** The
+guard was the S3 ETag, then the record's `updated_at` — both read first and
+written second, with a gap in which someone else's write lands and is lost. The
+bible is a field on a row now, so the push sends the `rev` it was pulled at and
+the API refuses the write itself. There is no gap. A stale push fails with the
+two revisions named, and re-pulling is the whole recovery.
 
 The same guard covers the index commands (`add-refs`, `describe-refs`,
-`set-ref-desc`, `default-set`, `sync-refs`), because a bible is edited by a
+`set-ref-desc`, `default-set`), because a bible is edited by a
 person and by those commands at once.
 
 `add-refs --to <group>` numbers new images `<name>_<group>_<n>` continuing after
@@ -284,7 +299,7 @@ position N in the resolved selection, which is what a model actually receives.
    ```bash
    studio character refs <name> --describe
    studio character refs <name> --pick-tag face --presign --json > refs.json
-   # -> [{ "key": "characters/<name>/reference/face/<name>_4.jpg", "url": "https://..." }, ...]
+   # -> [{ "node": "node-…", "name": "<file>.jpg", "url": "https://..." }, ...]
    ```
    Pass the `.url` values as `reference_images` (Seedance accepts up to 9) and
    cite them as `[Image1]…[ImageN]` — **slot N is position N in this list**.
@@ -299,7 +314,7 @@ position N in the resolved selection, which is what a model actually receives.
 4. **Render + save** via an engine skill — **`studio-media-image`** for a still,
    **`studio-media-seedance`** or **`studio-media-kling`** for video. Ask which **project**
    first; each records the run and archives the artifact into
-   `projects/<project>/runs/<run_id>/output/` automatically.
+   the run's own `output/` folder automatically.
    Consider rendering a **still first** and animating it: a start frame carries
    identity *and* composition, which `reference_images` alone cannot on Seedance.
 5. **Verify against `consistency`** — every `must` present, every `never` absent;
@@ -352,7 +367,7 @@ may be inferred:
    `INPUT` — and wait for a yes to **that payload**. Not to a plan, not to a
    menu option, not to "shall I shoot?". A payload approved earlier in the
    conversation is not an approval of the one about to be sent; re-show it.
-2. **Identity.** A generated image does **not** go into `characters/<name>/`
+2. **Identity.** A generated image does **not** become a reference
    because it rendered successfully. Show it, and wait for a yes before it is
    added, replaced, renumbered or archived. This includes `reference/`,
    `default_set`, and anything in the bible's `references:` index.
