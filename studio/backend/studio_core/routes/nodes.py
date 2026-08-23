@@ -1,79 +1,48 @@
-"""The catalog's read surface: list a folder, fetch a node, resolve a name path.
+"""The file layer: list, read, create, rename, move, copy, delete, upload, edit.
 
-Its own blueprint rather than three more routes in `routes/browse.py`, and the
-distinction is not tidiness. **Both address the catalog** — a node has an id, a
-name and a parent, and an S3 key is an opaque attribute nothing outside
-`services.catalog` ever sees. The original split was storage: `browse` addressed
-the bucket, every route there took an S3 key or prefix, and what it returned was
-assembled by listing objects. Since #309 it reads the catalog too, so what
-separates them is the answer rather than the storage: these routes return a
-node's *record*, and
-`browse` returns a folder ready to draw — presigned, sorted, with breadcrumbs
-and counts. Keeping the files apart is what stops a reader having to work out
-which of the two a handler is.
+**Ids only.** Every route here takes a node id, and the name-path routes that
+used to sit beside them in `routes/manage.py` are gone — `/api/folder`,
+`/api/object`, `/api/objects/*` and `PATCH /api/text?key=`. What kept them alive
+was that every share link this service had ever issued was a path of names; ids
+in URLs everywhere is what retired them, and the whole of `manage.py` went with
+the second addressing scheme rather than staying as a file a reader had to work
+out the address convention of.
 
-## Why the writes are here and not in `routes/manage.py`
+`GET /api/resolve?path=` survives that and is the reason it can: it turns a name
+path into an id **once**, so `<slug>/reference/face/<file>` keeps working as an
+*address* on a command line while ceasing to be a key anywhere.
 
-#293 named `manage.py`, and that would have put two different addressing schemes
-in one file: every route there took an S3 key or a prefix, and every route here
-takes a node id.
+## Three rules hold across every route in this file
 
-**Since #316 both write the same table, and the split survived it on a narrower
-argument.** What `manage` takes is a slash-joined *name path* — the address every
-share link and every `GET /api/tree` response is made of — and what these take is
-a node id. A name path costs a `GetItem` per segment and can be made ambiguous by
-a rename; an id cannot.
+**`blob_key` never leaves.** `support.view` is an allowlist, not a `pop` — a
+denylist would leak the next internal attribute anybody adds, on the day it was
+added rather than on the day somebody noticed. Hand a client a blob key and
+somebody will split it on `/`, and the coupling the catalog was built to remove
+comes straight back.
 
-**This used to say the files merge when #313 moves the SPA onto ids. #313 shipped
-and they did not.** What kept them apart is that `manage`'s routes still serve the
-name paths in share links issued before it, so both addressing schemes are live
-and a reader must not have to work out which one a handler takes — the same reason
-the read routes were split out in the first place. The merge is owed once the
-name-path routes go, and nothing else blocks it.
+**Every response is membership-checked against the node's own `lib`**, never
+against the library the request asserted. A node id is a v4 UUID, so this is not
+a guard against enumeration; it is the guard against a *shared* id.
 
-## Three rules hold across all three read routes
+**A missing node is 404 before the membership check can run**, because the record
+is what names the library. An id nobody was given cannot be guessed, so the
+difference between "no such node" and "not yours" is unreachable anyway.
 
-**`blob_key` never leaves.** `_view` is an **allowlist**, not a `pop`. That
-choice is the mechanism: a denylist would leak the next internal attribute
-anybody adds to a record, and it would leak it on the day it was added rather
-than on the day someone noticed. The reason it matters is in `services.catalog`
-— prod holds keys written years before the table existed alongside
-`blobs/<node_id>` keys written after it, and both stay correct forever precisely
-because no client can parse them. Hand a client one and someone will split it on
-`/`, and the coupling the catalog was built to remove comes straight back.
+## The one refusal that is new
 
-**Every response is membership-checked against the node's `lib`.** Not against
-the id the caller named, and not against a library the request asserted — the
-node itself says which library it belongs to, and that is the value checked. A
-node id is a v4 UUID, so this is not a guard against enumeration; it is the
-guard against a *shared* id, which is the realistic case once a library has more
-than one member and someone pastes a link.
-
-`POST /api/nodes/<id>/transfer` is the one route that touches two libraries, and
-it does not weaken that rule — it applies it twice, to the node's own `lib` and
-to the library the body names, and demands `owner` in each. Both checks are
-spelled out at the call site rather than folded into a helper that takes two
-ids, because which library a check is about is the thing a reader needs to see.
-
-**A missing node is 404 before the membership check can run**, because the
-record is what names the library. Deliberate, and cheap: an id nobody was given
-cannot be guessed, so the difference between "no such node" and "not yours" is
-information an attacker has no way to reach.
+**A folder that is some entity's root cannot be deleted while the entity
+exists.** `services.layout` explains why that is the *only* structural rule left:
+every other folder in a character or a project may be renamed, moved or deleted
+freely, because reference-ness and run-ness are row attributes rather than
+locations. The root is different only because a record names it.
 
 ## What comes from `before_request` (#351)
 
 `g.caller_sub` and `g.library` are set on every request before any route here
 runs, so nothing in this file verifies a token or reads a header to decide which
-library a request is about. `/api/resolve` — the one route with no node to take
-a library from — reads `g.library`, which is the hook's three cases resolved:
-the `X-Studio-Library` header, a sole membership, or a refusal. Having a second
-description of that rule here is how the two would drift apart.
-
-`_memberships` is still a read per request, because the hook keeps only the
-library it resolved and not the rows it resolved it from. That is one query on
-one partition (`USER#<sub>`), and it is the check the *node* is authorised
-against — `g.library` answers a different question, and is not a substitute for
-it.
+library a request is about. `/api/resolve` — the one route with no node to take a
+library from — reads `g.library`, which is the hook's three cases already
+resolved.
 """
 
 import logging
@@ -82,120 +51,47 @@ from flask import Blueprint, g, jsonify, request
 
 from studio_core import config
 from studio_core.clients.aws import s3
-from studio_core.errors import ForbiddenError, NotFoundError, ValidationError
-from studio_core.services import catalog
+from studio_core.errors import NotFoundError, ValidationError
+from studio_core.routes import support
+from studio_core.services import browse, catalog, manage
 
 logger = logging.getLogger(__name__)
 
 bp = Blueprint("nodes", __name__, url_prefix="/api")
 
-# What a node looks like to a client, and the entire list of it.
-#
-# `blob_key` is absent for the reason in the module docstring. `path` is absent
-# for a different one: it is a materialised list of ancestor ids that exists so a
-# subtree can be read with one query, it is rebuilt by a move, and a client that
-# consumed it would be depending on an index this service reserves the right to
-# rebuild. `parent_id` is the authoritative answer to the same question and is
-# here.
-VIEW_FIELDS = (
-    "lib",
-    "parent_id",
-    "name",
-    "kind",
-    "size",
-    "content_type",
-    "created_at",
-    "updated_at",
-)
-
-
-def _view(record: dict) -> dict:
-    """One node record as this API reports it.
-
-    `id` rather than `node_id`, matching `/api/libraries`: outside
-    `services.catalog` a node is a thing with an id. Absent attributes are
-    dropped rather than sent as null — a folder has no `size` and no
-    `content_type`, and "the key is not there" is the same thing the catalog
-    stores and one fewer state for a client to handle.
-    """
-    view = {"id": record["node_id"]}
-    view.update({field: record[field] for field in VIEW_FIELDS if record.get(field) is not None})
-    return view
-
-
-def _memberships() -> dict[str, str]:
-    """The libraries the caller is in, and the role each membership carries.
-
-    `g.caller_sub` is `before_request`'s, which raises `AuthError` — 401 — on a
-    missing, malformed or unverifiable token, so there is no unauthenticated
-    path past this line and the token is verified once per request.
-
-    A mapping rather than the list of ids it used to be, because `transfer`
-    needs the role and every other route needs only the key — `lib in
-    memberships` reads the same either way. One read answers both questions, and
-    a second helper that queried again for the role would be a second
-    description of who the caller is.
-    """
-    return {
-        membership["lib"]: membership["role"]
-        for membership in catalog.libraries_for(g.caller_sub)
-    }
-
-
-def _member_of(lib: str, memberships: dict[str, str]) -> None:
-    """Refuse unless the caller is in the library the node says it belongs to."""
-    if lib not in memberships:
-        raise ForbiddenError(f"You are not a member of {lib}.")
-
-
-def _owner_of(lib: str, memberships: dict[str, str]) -> None:
-    """Refuse unless the caller *owns* this library.
-
-    The only place in the API where a role is read at all. Everywhere else
-    membership is the whole of authorisation, because a library is a shared
-    workspace and its members are its editors. A transfer is the exception on
-    purpose: it changes who can reach a subtree, so it is not something one
-    library's member gets to do to another library.
-
-    Two messages, because they are two situations. A non-member is told what
-    every other route tells them; a member who is not an owner is told the thing
-    they could not otherwise work out.
-    """
-    _member_of(lib, memberships)
-    if memberships[lib] != catalog.ROLE_OWNER:
-        raise ForbiddenError(f"You must be an owner of {lib} to transfer in or out of it.")
-
 
 @bp.get("/nodes")
 def list_nodes():
-    """The children of one folder, name-ascending.
+    """The children of one folder, name-ascending, each with its owner.
 
-    **One query plus a batched read, and the batch is the interesting part.**
-    `catalog.children` reads the by-parent items, whose projection is
-    `node_id, lib, kind, path, created_at` — no `size`, no `content_type`. Those
-    are fetched with `catalog.records`, which is `ceil(n / 100)` more round
+    **One query, a batched read, and one owner resolution for the whole
+    listing.** `catalog.children` reads the by-parent items, whose projection is
+    `node_id, lib, kind, path, created_at` — no `size`, no `content_type` — so
+    the records come from `catalog.records`, which is `ceil(n / 100)` more round
     trips. Widening the projection instead would make this one query and put a
     mutable copy of every file's metadata on a second item, which every rename
     and every text edit would then have to keep in step (#309).
 
-    A bare array, like `/api/libraries`, and folders and files interleaved
-    rather than split: `kind` already distinguishes them, and a client that wants
-    folders first is sorting a list it has, not asking for a different shape. The
-    order is free — DynamoDB returns a partition sorted by sort key, and the sort
-    key is the name.
+    **`owner` is resolved once, from the parent**, and that is what keeps it
+    affordable. Every child of one folder sits in the same entity as the folder
+    does — the only exception is a child that is an entity root *itself*, and
+    such a child carries `entity` and answers for itself. Deriving it per row
+    would be a batched read of the same ancestry per thumbnail.
+
+    A bare array, like `/api/libraries`, and folders and files interleaved rather
+    than split: `kind` already distinguishes them.
     """
     parent_id = request.args.get("parent")
     if not parent_id:
         raise ValidationError("parent is required")
 
-    memberships = _memberships()
-    # Read before the listing rather than after, because the parent is what
-    # names the library: an empty folder's children carry no `lib` to check, so
-    # a listing authorised from its own results would authorise nothing at all
-    # for exactly the folders that have nothing in them. This also turns a
-    # parent that does not exist into the 404 it should be.
-    parent = catalog.node(parent_id)
-    _member_of(parent["lib"], memberships)
+    held = support.memberships()
+    # Read before the listing rather than after, because the parent is what names
+    # the library: an empty folder's children carry no `lib` to check, so a
+    # listing authorised from its own results would authorise nothing at all for
+    # exactly the folders that have nothing in them.
+    parent = support.node_at(parent_id, held)
+    owner = catalog.owner_of(parent)
 
     entries = catalog.children(parent_id)
     full = catalog.records([entry["node_id"] for entry in entries])
@@ -215,47 +111,67 @@ def list_nodes():
                 "Folder %s lists a child with no record: %s", parent_id, entry["node_id"]
             )
             record = entry
-        views.append(_view(record))
+        views.append(support.view(record, _child_owner(record, owner)))
     return jsonify(views), 200
+
+
+def _child_owner(record: dict, parent_owner: dict | None) -> dict | None:
+    """A child's owner, which is its parent's unless the child is an entity root."""
+    if record.get("entity"):
+        return catalog.entity_summary(record["entity"])
+    return parent_owner
 
 
 @bp.get("/nodes/<node_id>")
 def get_node(node_id: str):
-    """One node's record, by id."""
-    memberships = _memberships()
-    record = catalog.node(node_id)
-    _member_of(record["lib"], memberships)
-    return jsonify(_view(record)), 200
+    """One node's record, by id, with the entity it belongs to."""
+    held = support.memberships()
+    record = support.node_at(node_id, held)
+    return jsonify(support.view(record, catalog.owner_of(record))), 200
+
+
+@bp.get("/nodes/<node_id>/owner")
+def node_owner(node_id: str):
+    """Which entity a node belongs to, derived from its ancestry.
+
+    **Derived, never stored on the node**, which is what makes it correct after a
+    move: the answer changes the moment the file does, without a rewrite of
+    anything. A node under the library root belongs to nobody in particular and
+    answers `null` — that is a real answer, and it is what folders somebody made
+    by hand are supposed to be.
+
+    Its own route rather than only a field on the node view because the SPA asks
+    it for a *file it is already showing* — "in <project>", with a link — and a
+    second full record for that is a wasted round trip in the other direction.
+    """
+    held = support.memberships()
+    record = support.node_at(node_id, held)
+    return jsonify({"id": node_id, "owner": catalog.owner_of(record)}), 200
 
 
 @bp.get("/resolve")
 def resolve():
     """A slash-joined name path to the node it names, walked from the library root.
 
-    **This is what keeps the CLI and the old share links name-addressed.** Every
-    URL this service has ever handed out is a path of names, and every command
-    the pipeline runs names a subject and a project rather than an id. Neither
-    has to learn ids to keep working; they ask here.
+    **This is the one thing that keeps a person's spelling of a location
+    working.** Every command the pipeline runs names a subject and a project
+    rather than an id, and every `SKILL.md` is written that way; they ask here
+    and get an id. The string is an *address* and never a key — the S3 object
+    behind whatever comes back is `characters/<char_id>/<node_id>.<ext>`, which
+    nothing outside `services.catalog` ever sees.
 
-    **Splitting on `/` is unambiguous, and by construction rather than by
+    **Splitting on `/` is unambiguous by construction rather than by
     convention.** `keys.clean_name` refuses a slash in a name, so no stored name
     can contain a separator and no escaping is needed on either side.
 
     **An absent or empty path is the library root**, which is the one node a
     client cannot otherwise reach: `/api/libraries` deliberately returns id, name
-    and role and not the root node, so "where do I start" has to be answerable
-    somewhere and this is the route whose whole job is turning a location into an
-    id.
+    and role and not the root node.
 
     No membership check on the result, because there is nothing left to check:
     the walk starts at a library resolved from the caller's own memberships, and
-    every step is a child of the step before it. A node reached this way is in
-    that library or the walk would not have reached it.
+    every step is a child of the step before it.
     """
-    # `g.library` and not a membership read: this is the one route with no node
-    # to take a library from, so the library is the one `before_request`
-    # resolved — the header, a sole membership, or the refusal it already
-    # raised. Nothing is checked again here because nothing new was named.
     root_id = catalog.library(g.library)["root_node"]
 
     path = request.args.get("path") or ""
@@ -267,57 +183,37 @@ def resolve():
             node_id = catalog.child_by_name(node_id, name)["node_id"]
         except NotFoundError as error:
             # Re-raised with everything walked so far, so the 404 says which
-            # segment was the first one missing rather than only naming it — the
-            # difference between "no such object: output" and a message that
-            # points at the folder the typo is in.
+            # segment was the first one missing rather than only naming it.
             raise NotFoundError("/".join(walked)) from error
 
-    return jsonify(_view(catalog.node(node_id))), 200
-
-
-def _body() -> dict:
-    """The JSON body, or an empty dict.
-
-    `silent=True` so a malformed body surfaces as the missing-field
-    `ValidationError` below rather than Flask's generic parse failure — a 400
-    naming the field beats a 400 naming nothing. Same helper, same reason, as
-    `routes/manage.py`.
-    """
-    payload = request.get_json(silent=True)
-    return payload if isinstance(payload, dict) else {}
+    record = catalog.node(node_id)
+    return jsonify(support.view(record, catalog.owner_of(record))), 200
 
 
 @bp.post("/nodes")
 def create_node():
-    """Create a folder, or a file pointing at a blob that already exists.
+    """Create a folder, or a file whose bytes are about to be uploaded.
 
-    **The parent is what authorises this**, not the library the request
-    resolved: the node being created has no `lib` yet, and the parent's is the
-    one it will inherit — `catalog.create_node` reads it off the parent rather
-    than taking it as an argument, so that a node cannot be listed in one
-    library's subtree and owned by another.
+    **The parent is what authorises this**, not the library the request resolved:
+    the node being created has no `lib` yet, and the parent's is the one it will
+    inherit — `catalog.create_node` reads it off the parent rather than taking it
+    as an argument, so a node cannot be listed in one library's subtree and owned
+    by another.
 
-    `kind` is `folder` or `file`, and a file needs `blob_key`. That asymmetry is
-    the whole definition of a folder (#280: a node with no blob), and it is
-    enforced in `services.catalog` rather than here so the CLI gets the same
-    refusal when it writes through the API (#309).
+    **The blob key is stamped here and never again.** It is
+    `<owner_kind>/<owner_id>/<node_id>.<ext>`, built from the entity the parent
+    resolves to, and after this it is a pointer nothing splits or recomputes.
 
     **`on_conflict` is `fail` unless a caller asks otherwise, and that default is
-    the point of having the field at all.** A taken name is a 409 for the CLI, for
-    `record_run` and for every existing caller — a run that finds its folder
-    already there has hit something worth stopping on. `number` is the uploader's
-    (#294): a person dragging `clip.mp4` into a folder that already holds one
-    means "put this here too", the same reading `POST /api/objects/copy` has made
-    since #317, and refusing it would make uploading a phone camera roll an
-    exercise in renaming. The numbering itself is `catalog.create_numbered`, so
-    the two entry points cannot produce different forms of the same name.
+    the point of having the field at all.** A taken name is a 409 for the CLI and
+    for every existing caller. `number` is the uploader's: a person dragging
+    `clip.mp4` into a folder that already holds one means "put this here too", and
+    refusing it would make uploading a phone camera roll an exercise in renaming.
 
     **The response carries the name that was actually taken**, which is how a
-    numbering caller learns it landed as `clip (2).mp4`. There is no second
-    round trip and no field saying whether it was renamed: `_view` already
-    reports `name`, and a client that compares it to what it sent has its answer.
+    numbering caller learns it landed as `clip (2).mp4`.
     """
-    body = _body()
+    body = support.body()
     parent_id = body.get("parent")
     if not parent_id:
         raise ValidationError("parent is required")
@@ -326,9 +222,8 @@ def create_node():
     if on_conflict not in ("fail", "number"):
         raise ValidationError("on_conflict must be 'fail' or 'number'")
 
-    memberships = _memberships()
-    parent = catalog.node(parent_id)
-    _member_of(parent["lib"], memberships)
+    held = support.memberships()
+    parent = support.node_at(parent_id, held)
 
     if on_conflict == "number":
         # No `blob_key`, `size` or `content_type` here, and that is not an
@@ -346,26 +241,29 @@ def create_node():
             size=body.get("size"),
             content_type=body.get("content_type"),
         )
-    return jsonify(_view(record)), 201
+    return jsonify(support.view(record, catalog.owner_of(parent))), 201
 
 
 @bp.patch("/nodes/<node_id>")
 def update_node(node_id: str):
     """Rename a node (`name`) or move it (`parent`) — one or the other.
 
-    **Sending both is a 400 rather than a guess**, and refusing is the point.
-    On the S3 side the two are different routes, and `keys.clean_name` refuses a
-    slash so a rename cannot become a move by punctuation. Here they are two
-    fields on one verb, so the separation has to be stated: a request that asks
-    for both has two plausible orderings with different outcomes when the
-    destination already holds that name, and picking one silently is how a file
-    ends up somewhere nobody looked.
+    **Sending both is a 400 rather than a guess**, and refusing is the point: a
+    request that asks for both has two plausible orderings with different
+    outcomes when the destination already holds that name, and picking one
+    silently is how a file ends up somewhere nobody looked.
 
     A name collision is a transaction condition failure and comes back **409**,
     which is what tells the UI to keep the rename field open rather than closing
     it and reporting success.
+
+    **Renaming an entity's root folder here does not rename the entity.** The
+    folder is a display name and the entity's slug is a claim; changing the slug
+    is `PATCH /api/characters/<id>`, which renames both in one transaction. This
+    route is deliberately not made to refuse the divergence — somebody may want a
+    folder called something else — but it is the reason the entity route exists.
     """
-    body = _body()
+    body = support.body()
     name = body.get("name")
     parent_id = body.get("parent")
     if name is not None and parent_id is not None:
@@ -373,24 +271,140 @@ def update_node(node_id: str):
     if name is None and parent_id is None:
         raise ValidationError("send name to rename, or parent to move")
 
-    memberships = _memberships()
-    record = catalog.node(node_id)
-    _member_of(record["lib"], memberships)
+    held = support.memberships()
+    # Read for the membership check and nothing else — `catalog.rename_node` and
+    # `catalog.move_node` both re-read the record they are about, and a copy held
+    # here would be the stale one.
+    support.node_at(node_id, held)
 
     if name is not None:
-        return jsonify(_view(catalog.rename_node(node_id, name))), 200
+        return jsonify(support.view(catalog.rename_node(node_id, name))), 200
 
     # **The destination is not re-checked here**, and that is deliberate rather
     # than an omission. `catalog.move_node` already refuses a destination in a
     # different library, so a destination that survives it is in the same one as
     # the node — which was membership-checked above. Repeating the rule here
     # would be a second description of it, and the one that drifts.
-    #
-    # Moving a node to another library is a transfer (#325), not a move: it
-    # carries blob keys, share links and membership implications with it. That
-    # is `POST /api/nodes/<id>/transfer` below, and it takes a library id rather
-    # than a parent for exactly that reason.
-    return jsonify(_view(catalog.move_node(node_id, parent_id))), 200
+    return jsonify(support.view(catalog.move_node(node_id, parent_id))), 200
+
+
+def _selection(held: dict[str, str]) -> tuple[list[dict], dict]:
+    """The `{ids, destination}` body both bulk verbs take, resolved and checked.
+
+    **Everything is resolved before anything is written.** A request naming one
+    bad id does nothing at all rather than moving the good ones first and then
+    failing — the same ordering `manage.move_nodes` then repeats for the name
+    collisions it can see, and for the same reason.
+    """
+    body = support.body()
+    ids = manage.bulk(body.get("ids"), "move")
+    destination_id = body.get("destination")
+    if not destination_id:
+        raise ValidationError("destination is required")
+
+    destination = support.node_at(destination_id, held)
+    return [support.node_at(node_id, held) for node_id in ids], destination
+
+
+@bp.post("/nodes/move")
+def move_nodes():
+    """Move files and folders into another folder. One route for both kinds."""
+    held = support.memberships()
+    records, destination = _selection(held)
+    return jsonify(manage.move_nodes(records, destination)), 200
+
+
+@bp.post("/nodes/copy")
+def copy_nodes():
+    """Copy files into another folder, leaving the sources alone.
+
+    201 rather than 200 because something new exists afterwards, which is the one
+    thing that distinguishes it from the move beside it. The copies' bytes are
+    filed under the **destination's** owner, so a run output copied into a
+    character's reference pool becomes the character's.
+    """
+    held = support.memberships()
+    records, destination = _selection(held)
+    owner = catalog.owner_of(destination)
+
+    result = manage.copy_nodes(records, destination)
+    # The service hands back full records because it is the thing that wrote
+    # them; the allowlist is applied here, once, so `blob_key` does not leave on
+    # the one response that has a freshly minted one for every entry.
+    result["nodes"] = [support.view(record, owner) for record in result["nodes"]]
+    return jsonify(result), 201
+
+
+@bp.delete("/nodes")
+def delete_nodes():
+    """Delete files and folders, by id, in bulk.
+
+    A body on a DELETE, which is unusual but well-defined and passed through
+    intact by API Gateway's Lambda proxy integration. The alternative — repeated
+    `?id=` parameters — runs into URL length limits on exactly the case this
+    exists for, which is a grid selection of a few hundred files.
+    """
+    held = support.memberships()
+    ids = manage.bulk(support.body().get("ids"), "delete")
+    records = [support.node_at(node_id, held) for node_id in ids]
+    return jsonify(manage.delete_nodes(records)), 200
+
+
+@bp.delete("/nodes/<node_id>")
+def delete_node(node_id: str):
+    """Delete one node and everything beneath it, rows first and then blobs.
+
+    Kept beside the bulk verb rather than folded into it because a single delete
+    is a REST-shaped request the smoke suite and every share-link client already
+    make, and because the two report different things — this one reports how many
+    *nodes* went, which for a folder is the subtree.
+
+    **That order is the recoverable one.** An orphan blob is invisible to every
+    reader and collectable later; a row pointing at a blob that is gone is a
+    broken tile in the grid, which is the failure a user sees.
+    """
+    held = support.memberships()
+    # The authorisation, and the 404 for an id naming nothing. `delete_node` reads
+    # the record it is about, so nothing is kept from this call.
+    support.node_at(node_id, held)
+
+    result = catalog.delete_node(node_id)
+    if result["blob_keys"]:
+        s3.delete(result["blob_keys"])
+    # `blob_keys` is not returned. It is the internal half of a record for the
+    # reason `support.view` exists, and a client that received one would
+    # eventually parse it.
+    return jsonify({"id": result["node_id"], "deleted": result["deleted"]}), 200
+
+
+@bp.get("/nodes/<node_id>/text")
+def read_text(node_id: str):
+    """A JSON/markdown/text node's contents, for the viewer and its editor.
+
+    Paired with the `PATCH` below on one address, which is the whole of what this
+    replaces: `GET /api/text?key=` read an S3 key and `PATCH /api/text?key=`
+    walked a name path, so the two agreed only for material written before the
+    catalog — a file the editor could save was a file the editor could not
+    re-open.
+    """
+    held = support.memberships()
+    record = support.node_at(node_id, held)
+    return jsonify(browse.text_object(record)), 200
+
+
+@bp.patch("/nodes/<node_id>/text")
+def write_text(node_id: str):
+    """Overwrite a text node's contents.
+
+    PATCH rather than PUT, and it is worth knowing this is a CORS decision rather
+    than a REST one: the browser's preflight is answered by API Gateway's MOCK
+    integration and not by Flask, so a verb this service starts accepting has to
+    be added in four places at once or it fails as an opaque CORS error with no
+    status at all.
+    """
+    held = support.memberships()
+    record = support.node_at(node_id, held)
+    return jsonify(manage.update_text(record, support.body().get("content"))), 200
 
 
 @bp.post("/nodes/<node_id>/transfer")
@@ -404,110 +418,50 @@ def transfer_node(node_id: str):
 
     **Two libraries, two checks, and which is which is the point of writing them
     on separate lines.** The first is against the node's own `lib` — read off the
-    record, never off `g.library` or anything the request asserted, which is the
-    rule every route in this file follows. The second is against the library
-    named in the body. The caller needs `owner` in both: in the source because
-    the subtree is leaving it, and in the destination because everyone there is
-    about to be able to read it.
-
-    **`g.library` is unused here and the header is still required.** The hook
-    scopes every path that is not `/api/libraries`, so a caller in more than one
-    library must send `X-Studio-Library` or get the 400 it raises — and a caller
-    in more than one library is the only caller who can reach this route at all.
-    The header plays no part in the decision; the node and the body name both
-    libraries.
-
-    **The order of the two checks is also what the 403 says.** A caller who owns
-    neither is told about the source and learns nothing about whether the
-    destination id exists — the destination is not read until both checks have
-    passed.
+    record, never off `g.library`. The second is against the library named in the
+    body. The caller needs `owner` in both: in the source because the subtree is
+    leaving it, and in the destination because everyone there is about to be able
+    to read it.
 
     **The node keeps its id, so every share link to it survives** — and now
-    resolves only for members of the destination. That is the membership
-    implication the comment above names, and it is the reason this is 403-gated
-    rather than an ordinary write.
+    resolves only for members of the destination.
     """
-    body = _body()
+    body = support.body()
     lib = body.get("lib")
     if not isinstance(lib, str) or not lib:
         raise ValidationError("lib is required")
 
-    memberships = _memberships()
+    held = support.memberships()
     record = catalog.node(node_id)
-    _owner_of(record["lib"], memberships)  # the source: the node's own library
-    _owner_of(lib, memberships)  # the destination: the library the body names
+    support.owner_of(record["lib"], held)  # the source: the node's own library
+    support.owner_of(lib, held)  # the destination: the library the body names
 
     # 200 and not 201: nothing new exists, and the response is the node it has
-    # always been with a different `lib`. `_view` is the same allowlist as
-    # everywhere else, so the descendant count `catalog.transfer_node` returns
-    # does not leave — it is a number for the log, and a client that wanted it
-    # would be a client tempted to check it.
-    return jsonify(_view(catalog.transfer_node(node_id, lib))), 200
-
-
-@bp.delete("/nodes/<node_id>")
-def delete_node(node_id: str):
-    """Delete a node and everything beneath it, rows first and then blobs.
-
-    **That order is the recoverable one.** An orphan blob is invisible to every
-    reader and collectable later; a row pointing at a blob that is gone is a
-    broken tile in the grid, which is the failure a user sees. So if the second
-    half fails, what is left is the harmless kind of inconsistent.
-
-    **This is safe only while no two rows share a `blob_key`.**
-    `catalog.delete_node` says so itself and declines to answer whether a blob
-    is still referenced — there is no index on `blob_key` and the question is
-    not cheap. Nothing creates a shared key today: copy-on-write copies are
-    #334, in the Deferred milestone. **#334 has to revisit this**, because the
-    day a copy shares a key, deleting one row here deletes the other's bytes.
-
-    The subtree bound is `catalog.subtree`'s and it refuses rather than
-    truncates — a half-finished delete reporting success is precisely what a
-    limit would produce.
-    """
-    memberships = _memberships()
-    record = catalog.node(node_id)
-    _member_of(record["lib"], memberships)
-
-    result = catalog.delete_node(node_id)
-    if result["blob_keys"]:
-        s3.delete(result["blob_keys"])
-    # `blob_keys` is not returned. It is the internal half of a record for the
-    # reason `_view` exists, and a client that received one would eventually
-    # parse it.
-    return jsonify({"id": result["node_id"], "deleted": result["deleted"]}), 200
+    # always been with a different `lib`.
+    return jsonify(support.view(catalog.transfer_node(node_id, lib))), 200
 
 
 @bp.get("/nodes/<node_id>/download-url")
 def download_url(node_id: str):
     """A fresh presigned GET for one node's blob.
 
-    **The id-addressed twin of `/api/asset`**, and it exists separately for the
-    same reason the rest of this file does: `/api/asset` takes a key and this
-    takes a node id, and a client that has an id should never have to learn a
-    key to fetch bytes — that coupling is what the catalog was built to remove.
-
-    **Signed fresh on every call rather than returned by the listing routes.**
-    A presigned URL dies with the credentials that signed it, not with the
+    **Signed fresh on every call rather than returned by the listing routes.** A
+    presigned URL dies with the credentials that signed it, not with the
     `ExpiresIn` it was asked for: the Lambda's role credentials rotate, and a URL
-    outlives them by nothing. So `list_nodes` deliberately hands out no URLs at
-    all, and a client re-signs here when one stops working — the behaviour
-    `config.presign_ttl_seconds` documents and the frontend already relies on
-    for `/api/asset`.
+    outlives them by nothing.
 
     `disposition=attachment` is what makes a download download. The URL points at
     S3, so it is cross-origin to the app, and a cross-origin `<a download>` is
     ignored by browsers — signing `response-content-disposition` into the URL is
-    the only thing that works. The filename comes from the node's `name`, which
-    is the one a person recognises; `blob_key` is meaningless to them and, for
-    everything written before the catalog, does not resemble the name at all.
+    the only thing that works. The filename comes from the node's `name`, which is
+    the one a person recognises; `blob_key` carries an entity id and a node id and
+    would mean nothing to them.
 
     A folder has no blob and is a **400** rather than a 404: the node is there,
     the request does not apply to it.
     """
-    memberships = _memberships()
-    record = catalog.node(node_id)
-    _member_of(record["lib"], memberships)
+    held = support.memberships()
+    record = support.node_at(node_id, held)
 
     blob_key = record.get("blob_key")
     if not blob_key:
@@ -517,9 +471,9 @@ def download_url(node_id: str):
     if disposition not in ("inline", "attachment"):
         raise ValidationError("disposition must be 'inline' or 'attachment'")
 
-    # `head` before signing, so a record pointing at a blob that is not there is
-    # a clean 404 here rather than a URL that only fails once the browser follows
-    # it. The same order `browse.asset_url` uses, for the same reason.
+    # `head` before signing, so a record pointing at a blob that is not there is a
+    # clean 404 here rather than a URL that only fails once the browser follows
+    # it.
     metadata = s3.head(blob_key)
     url = s3.presign(blob_key, disposition=disposition, filename=record["name"])
 
@@ -542,35 +496,24 @@ def download_url(node_id: str):
 def upload_url(node_id: str):
     """Sign a PUT for one node's blob. Call `confirm-upload` once it lands.
 
-    **This is the reversal `docs/WEB_APP.md` and `modules/compute/main.tf` both
-    said would have to be argued separately (#294), and this is the argument.**
-    Until now no path in this service could create an object out of bytes a
-    caller supplied: `PutObject` wrote zero-byte folder markers and overwrote
-    text files that already existed, and `CopyObject` did the rest — every write
-    was either something already in the bucket or nothing at all. That property
-    is now gone, deliberately, and these are the bounds that replace it.
-
     **The bytes never transit the Lambda**, which is what makes this possible at
     all: an upload through the API would blow the 6 MB request limit on any
     video. It also means the API never sees what is stored.
 
     **The grant is one object, one length, one type, once.** `content-length` and
     `content-type` are signed headers, so a client sending different values fails
-    signature validation and writes nothing — an oversized body is refused by S3
-    rather than discovered afterwards, which is the constraint #294 asks for. The
-    key is signed too, so a URL issued for this node cannot be redirected at
-    another object. The TTL is `config.upload_ttl_seconds`, shorter than a read
-    URL's and well under the Lambda credential lifetime.
+    signature validation and writes nothing. The key is signed too, so a URL
+    issued for this node cannot be redirected at another object. The TTL is
+    `config.upload_ttl_seconds`, shorter than a read URL's and well under the
+    Lambda credential lifetime.
 
     **Still no multipart grant.** `max_upload_bytes` is S3's single-PUT ceiling
-    rather than a policy number: past it a single `PutObject` is impossible, and
-    multipart is a separate decision again.
+    rather than a policy number.
 
     The row is not touched here. The node stays a placeholder — a key with no
-    object behind it — until `confirm-upload` runs. A client that signs a URL and
-    never uses it has changed nothing.
+    object behind it — until `confirm-upload` runs.
     """
-    body = _body()
+    body = support.body()
     size = body.get("size")
     content_type = body.get("content_type")
     # `isinstance(size, bool)` because `True` is an `int` in Python and a body of
@@ -585,9 +528,8 @@ def upload_url(node_id: str):
     if not isinstance(content_type, str) or not content_type:
         raise ValidationError("content_type is required")
 
-    memberships = _memberships()
-    record = catalog.node(node_id)
-    _member_of(record["lib"], memberships)
+    held = support.memberships()
+    record = support.node_at(node_id, held)
     blob_key = _api_blob_key(record)
 
     return jsonify(
@@ -607,29 +549,16 @@ def confirm_upload(node_id: str):
     """Finalise a placeholder once its bytes have landed.
 
     **`HeadObject` first, and the row is written from what it returns** rather
-    than from anything the client says. The client already declared a size when
-    it asked for the URL; repeating it here would trust the same claim twice
-    instead of checking it once. S3 knows what it stored.
+    than from anything the client says. The client already declared a size when it
+    asked for the URL; repeating it here would trust the same claim twice instead
+    of checking it once. S3 knows what it stored.
 
-    Until this runs the node is a placeholder, and there are two of them. A
-    client that PUT its bytes and never confirmed leaves an object whose row does
-    not know its size — harmless, since the row names the object and the listing
-    presigns it; only `size` reads 0. A client that never got the bytes there
-    leaves the damaging one: **a row naming a key with nothing behind it**, which
-    `browse._file_entry` presigns like any other and the grid draws as a tile
-    that will not load.
-
-    **`studio catalog gc` (#318) does not collect either of them, and this
-    docstring used to imply otherwise by saying no such command existed.** It
-    does exist now — and it deletes *blobs no row names*, which is the opposite
-    direction. A placeholder is a row no blob answers. Nothing collects that
-    today; the SPA's uploader deletes the node itself when a PUT fails
-    (`frontend/src/apis/upload.ts`), which is why the broken tile is rare rather
-    than why it is impossible.
+    Until this runs the node is a placeholder, and `browse.is_abandoned_upload`
+    keeps it out of a listing — a row naming a key with nothing behind it draws a
+    tile that will not load, which is the state #442 reported.
     """
-    memberships = _memberships()
-    record = catalog.node(node_id)
-    _member_of(record["lib"], memberships)
+    held = support.memberships()
+    record = support.node_at(node_id, held)
     blob_key = _api_blob_key(record)
 
     # 404 when the object is not there — the upload did not happen, or did not
@@ -642,7 +571,7 @@ def confirm_upload(node_id: str):
         size=metadata.get("ContentLength", 0),
         content_type=metadata.get("ContentType"),
     )
-    return jsonify(_view(updated)), 200
+    return jsonify(support.view(updated)), 200
 
 
 def _api_blob_key(record: dict) -> str:
@@ -652,144 +581,15 @@ def _api_blob_key(record: dict) -> str:
     signature — a distinction a signed URL makes permanent the moment it is
     handed out.
 
-    The key is the node's own, never one the caller named: a caller-supplied key
-    would turn this into a signature for an arbitrary object in the bucket, which
-    is the entire thing being avoided. A node whose `blob_key` is anything else
-    predates the catalog (#309), and overwriting bytes that were written before
-    this table existed is not what these routes are for.
+    **The recorded key is used, never a re-derived one**, which is the rule the
+    entity model made load-bearing: the key carries the owner the node had when
+    it was created, and a node that has since moved between owners would
+    otherwise be signed for a key nothing is stored at. `catalog.is_api_blob`
+    checks the *tail* — `<node_id>.<ext>`, which cannot change — so a node whose
+    bytes predate the catalog is still refused.
     """
     if record["kind"] != catalog.KIND_FILE:
         raise ValidationError("only a file can carry a blob")
-    blob_key = catalog.blob_key_for(record["node_id"])
-    if record.get("blob_key") != blob_key:
+    if not catalog.is_api_blob(record):
         raise ValidationError("this node's blob was not written through the API")
-    return blob_key
-
-
-# ──────────────────────────── recording a run ────────────────────────────
-#
-# `POST /api/runs` is the CLI's entry point (#309), not the app's. The pipeline
-# produces a run folder, two small JSON documents and some number of large
-# outputs; this records the shape of that in the catalog so the browser can see
-# it, and hands back an upload URL per output so the bytes go straight to S3.
-
-
-@bp.post("/runs")
-def record_run():
-    """Record a run: its folder, its documents, and placeholders for its outputs.
-
-    **The documents are stored as bytes and never decoded**, which is the rule
-    `docs/WEB_APP.md` has held since before the catalog: the pipeline owns the
-    shape of `request.json` and changes it freely, so the moment this parsed one
-    into typed fields it would become a liar. They arrive as strings, they are
-    encoded to UTF-8, and they are written verbatim. Nothing here reads a key
-    inside them, and `GET /api/text` hands them back byte-identical.
-
-    **Documents inline, outputs by presigned PUT**, and the split is by size
-    rather than by kind. A `result.json` is a few hundred bytes and travels fine
-    in this request; a video would blow the Lambda's 6 MB limit, so each output
-    gets a placeholder node and a URL from #294 that the caller PUTs to directly.
-    The response carries those URLs so recording a run is one round trip rather
-    than one per file.
-
-    **The run folder keeps its `<ts>_<slug>` name.** It sorts chronologically as
-    a string and the UI depends on that; this route does not parse it either, and
-    deliberately does not derive a timestamp from it.
-
-    Not transactional across the whole run, and it cannot be: the documents are
-    S3 writes and the nodes are DynamoDB writes. A failure part-way leaves a run
-    folder holding fewer children than it should, which is a visible,
-    re-runnable state — the same trade `catalog.delete_node` makes deliberately.
-    """
-    body = _body()
-    parent_id = body.get("parent")
-    name = body.get("name")
-    documents = body.get("documents") or {}
-    outputs = body.get("outputs") or []
-
-    if not parent_id:
-        raise ValidationError("parent is required")
-    if not isinstance(documents, dict):
-        raise ValidationError("documents must be an object of name -> contents")
-    if not isinstance(outputs, list):
-        raise ValidationError("outputs must be a list")
-
-    total = sum(len(text.encode()) for text in documents.values() if isinstance(text, str))
-    if total > config.max_text_bytes():
-        raise ValidationError(
-            f"documents must total at most {config.max_text_bytes()} bytes — "
-            "upload anything larger as an output"
-        )
-
-    memberships = _memberships()
-    parent = catalog.node(parent_id)
-    _member_of(parent["lib"], memberships)
-
-    run = catalog.create_node(parent_id, name, catalog.KIND_FOLDER)
-
-    written = []
-    for document_name, text in documents.items():
-        if not isinstance(text, str):
-            raise ValidationError(f"'{document_name}' must be a string")
-        written.append(_write_document(run["node_id"], document_name, text))
-
-    placeholders = []
-    for entry in outputs:
-        if not isinstance(entry, dict):
-            raise ValidationError("each output must be an object")
-        placeholders.append(_placeholder_for(run["node_id"], entry))
-
-    return jsonify(
-        {"run": _view(run), "documents": written, "outputs": placeholders}
-    ), 201
-
-
-def _write_document(run_id: str, name: str, text: str) -> dict:
-    """One document: a node, its bytes, and the size read back off the write.
-
-    The node is created first because its id is what names the key — the same
-    ordering the upload routes use, for the same reason. `set_blob` then records
-    the length that was actually encoded rather than `len(text)`, which counts
-    characters and would be wrong for anything non-ASCII.
-    """
-    node = catalog.create_node(run_id, name, catalog.KIND_FILE)
-    blob_key = catalog.blob_key_for(node["node_id"])
-    payload = text.encode()
-    # `text/plain` and not `application/json`, deliberately: the frontend shows
-    # these as text and never decodes them, and a JSON content type is an
-    # invitation to a browser — or a future contributor — to do exactly that.
-    s3.put_text(blob_key, payload, "text/plain; charset=utf-8")
-    return _view(
-        catalog.set_blob(
-            node["node_id"],
-            blob_key,
-            size=len(payload),
-            content_type="text/plain; charset=utf-8",
-        )
-    )
-
-
-def _placeholder_for(run_id: str, entry: dict) -> dict:
-    """One output: a placeholder node and the URL its bytes go to.
-
-    Signed here rather than left to a second call, so recording a run is one
-    round trip. The same bounds as `upload-url` apply because it is the same
-    signature: one key, one exact length, one content type.
-    """
-    size = entry.get("size")
-    content_type = entry.get("content_type")
-    if not isinstance(size, int) or isinstance(size, bool) or size < 0:
-        raise ValidationError("each output needs a non-negative integer size")
-    if size > config.max_upload_bytes():
-        raise ValidationError(f"an output must be at most {config.max_upload_bytes()} bytes")
-    if not isinstance(content_type, str) or not content_type:
-        raise ValidationError("each output needs a content_type")
-
-    node = catalog.create_node(run_id, entry.get("name"), catalog.KIND_FILE)
-    blob_key = catalog.blob_key_for(node["node_id"])
-    return {
-        **_view(node),
-        "upload_url": s3.presign_put(blob_key, content_length=size, content_type=content_type),
-        "expires_in": config.upload_ttl_seconds(),
-        "headers": {"Content-Length": str(size), "Content-Type": content_type},
-    }
+    return record["blob_key"]

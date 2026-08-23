@@ -72,4 +72,4 @@ studio convert \
 ```
 
 `--add-input` takes a **PROJECT** — the destination is that project's input
-pool, `projects/<project>/input/<project>_in_<n>.png`.
+pool, `<project>/input/`.

@@ -64,21 +64,46 @@ export interface NodeRecord {
   content_type?: string;
   created_at: string;
   updated_at?: string;
+  /**
+   * Which entity this node sits inside, or `null` for loose material under the
+   * library root.
+   *
+   * **Derived from the node's ancestry on every read, never stored on the row.**
+   * That is what makes it correct after a move: the blob key stamped at creation
+   * still carries the old owner's prefix — it is a pointer and stays valid — but
+   * the ownership a person is shown follows the tree. See
+   * `GET /api/nodes/<id>/owner`, which is this same walk asked for on its own.
+   */
+  owner?: NodeOwner | null;
+}
+
+/**
+ * The entity a node belongs to: what the app renders as "in <slug>".
+ *
+ * A `slug` and not a display name, because the slug is the address a person
+ * types at the CLI and the two must read as the same thing. It is mutable — a
+ * rename moves it — which is exactly why nothing here stores it: it is re-read
+ * with the node every time.
+ */
+export interface NodeOwner {
+  kind: "character" | "project";
+  id: string;
+  slug: string;
 }
 
 export interface FileEntry {
   /** The node id. This is what the URL names and what a selection holds. */
   id: string;
   /**
-   * The slash-joined *name* path — never the S3 key it is stored under. For
-   * anything uploaded through the app the two do not resemble each other at
-   * all: the blob sits at `blobs/<node-id>`.
+   * The slash-joined *name* path — never the S3 key it is stored under, which
+   * carries the owning entity's id and this node's (`characters/<char_id>/
+   * <node_id>.png`) and is a string nothing outside the API may split.
    *
-   * Still called `key` because the write routes still call their address that.
-   * #316 is closed and did not retire them — it made them catalog writes, which
-   * take a name path under the old parameter name. It is also what
-   * `CopyKeyButton` puts on the clipboard, which is what a `studio` command
-   * takes.
+   * **Nothing addresses a write with it any more.** Every write route takes node
+   * ids, so what survives here is the one job a path was always better at: it is
+   * an *address a person types*, and it is what `CopyKeyButton` puts on the
+   * clipboard for a `studio` command to resolve through `GET /api/resolve`.
+   * Still called `key` because that is the word the listing route answers with.
    */
   key: string;
   name: string;
@@ -137,73 +162,58 @@ export interface AssetResponse {
 }
 
 export interface TextResponse {
-  key: string;
+  id: string;
   name: string;
   language: string;
   truncated: boolean;
   content: string;
 }
 
-export interface CreatedFolder {
-  prefix: string;
-  name: string;
-}
-
-export interface RenamedObject {
-  key: string;
-  name: string;
-  renamed: boolean;
-}
-
-export interface RenamedFolder {
-  prefix: string;
-  name: string;
-  renamed: boolean;
-}
-
-export interface MovedObjects {
+/**
+ * What a bulk move reports.
+ *
+ * One shape for folders and files alike, which is the whole of what
+ * `POST /api/nodes/move` bought: a folder used to have its own endpoint because
+ * its address was a prefix and a file's was a key, and the two counted different
+ * things. An id is an id, so a mixed selection is one call.
+ *
+ * `skipped` is not an error — a node already sitting in the destination is
+ * nothing to do, and refusing the whole request over one would make a
+ * re-submitted move fail where the first one half-succeeded.
+ */
+export interface MovedNodes {
   destination: string;
   moved: number;
-  /** Objects already sitting in the destination — not an error, just nothing to do. */
   skipped: number;
-  /** The objects' new keys. */
-  keys: string[];
+  ids: string[];
 }
 
-export interface MovedFolder {
-  prefix: string;
-  name: string;
-  moved: boolean;
-  /**
-   * Rows whose `path` the move rewrote. Not an object count — a move copies no
-   * bytes since #316, so a folder rename reports nothing at all and this reports
-   * how much of the tree came along.
-   */
-  descendants: number;
-}
-
-export interface CopiedObjects {
+/**
+ * What a bulk copy reports.
+ *
+ * Differs from a move in the one way that matters to the caller: a name the
+ * destination already holds is *numbered* — `clip.mp4` lands as `clip (2).mp4` —
+ * rather than refusing, because copying a file next to one of the same name is
+ * ordinary rather than a mistake.
+ */
+export interface CopiedNodes {
   destination: string;
   copied: number;
-  /** The new keys, numbered where the destination already held the name. */
-  keys: string[];
+  /** The new nodes, in the order the ids were sent. */
+  ids: string[];
+}
+
+export interface DeletedNodes {
+  /** Rows removed, which for a folder is its whole subtree rather than one. */
+  deleted: number;
+  ids: string[];
 }
 
 export interface SavedText {
-  key: string;
+  id: string;
   name: string;
   language: string;
   bytes: number;
-}
-
-export interface DeletedObjects {
-  deleted: number;
-  keys: string[];
-}
-
-export interface DeletedFolder {
-  prefix: string;
-  deleted: number;
 }
 
 /**
@@ -224,4 +234,366 @@ export interface UploadGrant {
   url: string;
   expires_in: number;
   headers: Record<string, string>;
+}
+
+// ---------------------------------------------------------------------------
+// Entities
+//
+// A character, a project, a run, a scene and a movie are rows with ids now, not
+// a folder name plus a document inside it. Two consequences shape every type
+// below and neither is cosmetic:
+//
+// * **The id is the identity and the slug is a label.** Nothing here is keyed
+//   on a slug, so a rename is one write and no link, binding or reference goes
+//   stale. `slug` is present because it is what a person types at the CLI.
+// * **Studio owns the envelope; the provider owns the payload.** A run's status,
+//   model, bindings and outputs are fields because studio validates them. The
+//   request and response bodies are *node ids* — the app fetches them as text
+//   and shows them verbatim. See `RunRecord.payload`.
+// ---------------------------------------------------------------------------
+
+/**
+ * A hero image as a listing hands it back: the node, and a URL already signed.
+ *
+ * Expanded on the *list* responses and left as a bare node id on the full
+ * record, which is the asymmetry a caller has to know about. A list is drawing
+ * forty cards and would otherwise need forty follow-up signings; a record is
+ * being edited, and what an edit sets is the id.
+ */
+export interface HeroImage {
+  node: string;
+  url: string;
+}
+
+/** One row of `GET /api/characters`. */
+export interface CharacterSummary {
+  id: string;
+  slug: string;
+  display_name: string;
+  hero: HeroImage | null;
+  counts: { references: number; files: number };
+  updated: string;
+}
+
+/**
+ * The bible, as studio now owns it.
+ *
+ * **Deliberately not a closed schema in this app.** The sections the API
+ * validates — `identity`, `face`, `body`, `wardrobe`, `voice`, `rendering`,
+ * `consistency`, `text_identity_block` — are the pipeline's to change, and a
+ * frontend that spelled every leaf out would have to be redeployed to show a
+ * field somebody added. So the editor walks the value it is given and renders a
+ * control per leaf type, and an unknown section appears the moment the API
+ * returns one.
+ *
+ * `ProfileValue` is what a leaf can be; anything the walker does not recognise
+ * is shown read-only rather than dropped, because dropping it would delete it on
+ * the next save.
+ */
+export type ProfileValue =
+  | string
+  | number
+  | boolean
+  | null
+  | ProfileValue[]
+  | { [key: string]: ProfileValue };
+
+export type CharacterProfile = Record<string, ProfileValue>;
+
+/**
+ * One character's whole record.
+ *
+ * `rev` is the reason an edit here is safe. Every write that changes the record
+ * sends the `rev` it read, and the API refuses a stale one with a 409 — a
+ * compare-and-swap rather than the read-then-write the old `profile.yaml` path
+ * did, which had a window between the check and the write.
+ *
+ * `root` is the **one** pointer into the file tree. There is no map of
+ * `reference/`, `corpus/`, `seed/` and `archive/`: those are children of `root`,
+ * found by listing it, and a person may rename or delete any of them without
+ * breaking anything. See ENTITY_MODEL.md, "the folder layout is convention, not
+ * schema" — it is why this app builds the character's folder tabs from the
+ * listing rather than from a constant.
+ */
+export interface CharacterRecord {
+  id: string;
+  lib: string;
+  slug: string;
+  display_name: string;
+  fictional: boolean;
+  rev: number;
+  created: string;
+  updated: string;
+  root: string;
+  /** A node id, not a signed URL — see `HeroImage`. */
+  hero: string | null;
+  default_set: string[];
+  profile: CharacterProfile;
+  schema_version?: number;
+}
+
+/**
+ * One reference image's entry — the row that replaced filename magic.
+ *
+ * `order` is an attribute gapped by 1000, so inserting between two entries is
+ * one write and touches neither neighbour. `group` is an attribute, so
+ * regrouping copies no bytes. Both used to be encoded in the filename
+ * (`<slug>_<group>_<n>.png`), which is why the file this names can now be called
+ * anything and renamed freely: the row names its **node id**.
+ */
+export interface ReferenceEntry {
+  node: string;
+  /** Absent inside a grouped listing, where the key already says it. */
+  group?: string;
+  order: number;
+  description: string;
+  tags: string[];
+  /** True when the node is in the character's `default_set`. */
+  default?: boolean;
+  file: {
+    name: string;
+    size?: number;
+    content_type?: string | null;
+    /** Presigned inline GET, short-lived like every other URL in this app. */
+    url: string;
+  };
+}
+
+/** `GET /api/characters/<id>/references`, grouped and in `order` within a group. */
+export interface ReferenceIndex {
+  groups: Record<string, ReferenceEntry[]>;
+  counts: Record<string, number>;
+}
+
+/**
+ * What a model would actually be shown, resolved by the API rather than by each
+ * caller.
+ *
+ * It is a route and not a function in each half of studio for one reason: the
+ * CLI and the app must not be able to disagree about what slot 3 was. Over-cap
+ * is a 409 carrying the index rather than a silent truncation, so the refusal
+ * arrives before the money is spent.
+ */
+export interface SelectionResponse {
+  selection: Array<{
+    slot: number;
+    node: string;
+    group: string;
+    description: string;
+    url: string;
+  }>;
+  cap: number;
+  source: string;
+}
+
+/**
+ * How many reference images each engine will accept.
+ *
+ * Held here rather than fetched because it is the *refusal* that has to be
+ * authoritative and that lives in the API — this is only what lets the
+ * References grid say "18 of 14" before a shoot is attempted. If an engine's cap
+ * moves, the worst this does is warn slightly early or slightly late; it can
+ * never let an over-cap set through, because it is not the check.
+ */
+export const ENGINE_CAPS: ReadonlyArray<{ engine: string; cap: number }> = [
+  { engine: "Kling", cap: 7 },
+  { engine: "Seedance", cap: 9 },
+  { engine: "Nano Banana", cap: 14 },
+];
+
+/** One row of `GET /api/projects`. */
+export interface ProjectSummary {
+  id: string;
+  slug: string;
+  title: string;
+  hero: HeroImage | null;
+  counts: ProjectCounts;
+  updated: string;
+}
+
+/** Maintained on the record as runs land — never a scan over the runs folder. */
+export interface ProjectCounts {
+  runs: number;
+  scenes: number;
+  movies: number;
+}
+
+/**
+ * One project's record.
+ *
+ * `characters` is expanded from the `PROJ#…/CHAR#…` involvement rows rather than
+ * being a list on the record, which is what makes the reverse question — "which
+ * projects involve this character" — answerable at all.
+ */
+export interface ProjectRecord {
+  id: string;
+  lib: string;
+  slug: string;
+  title: string;
+  description: string;
+  rev: number;
+  created: string;
+  updated: string;
+  root: string;
+  hero: string | null;
+  counts: ProjectCounts;
+  characters: Array<{ id: string; slug: string; display_name: string }>;
+}
+
+/**
+ * One file in a project's input pool.
+ *
+ * **Position in this list is what `--input N` means**, which is why the app
+ * numbers the rows: the pool is sorted name-ascending by the API and the number
+ * a person passes on the command line is an index into that order, not anything
+ * stored. Renaming a file therefore renumbers the pool, and showing the numbers
+ * is how that stops being a surprise.
+ */
+export interface ProjectInput {
+  node: string;
+  name: string;
+  size?: number;
+  content_type?: string | null;
+  url: string;
+}
+
+export type RunStatus = "pending" | "running" | "succeeded" | "failed" | "cancelled";
+
+export type RunKind = "image" | "video";
+
+/** What a model charged, when the provider reported it. Never computed here. */
+export interface RunCost {
+  currency: string;
+  amount: number;
+}
+
+/**
+ * One row of the runs list — the projection the listing row carries.
+ *
+ * This is a *deliberate* exception to the rule the slug claims follow, and the
+ * reason is that a run is immutable once it completes: there is nothing to keep
+ * in step. Without it the runs screen would be a batch read over hundreds of
+ * envelopes to draw a grid of thumbnails.
+ */
+export interface RunSummary {
+  id: string;
+  project: string;
+  slug: string;
+  status: RunStatus;
+  kind: RunKind;
+  model: string;
+  created: string;
+  cost: RunCost | null;
+  thumb: HeroImage | null;
+  /** Present when the run was chained off another's output. */
+  lineage?: RunLineage;
+  characters?: string[];
+}
+
+export interface RunLineage {
+  from_run: string | null;
+  from_output: string | null;
+}
+
+/**
+ * A node a run points at, expanded with a signed URL so the page can draw it.
+ *
+ * Used for outputs and for bindings alike, which is the point: a binding names a
+ * **node**, never a URL and never a path. A URL-shaped binding is refused by the
+ * API — that is hard rule #3, enforced for both halves of studio rather than
+ * only for the CLI.
+ */
+export interface RunAsset {
+  node: string;
+  name: string;
+  size?: number;
+  content_type?: string | null;
+  url: string;
+}
+
+/**
+ * One run's envelope.
+ *
+ * **`payload` names three nodes and studio decodes none of them.** The rule that
+ * `request.json` is never parsed has not gone away; it has moved to where it is
+ * actually true. The provider owns the exact body sent and the exact body
+ * returned, the pipeline changes their shape freely, and this app shows them as
+ * text. Everything above `payload` is studio's own and is validated.
+ */
+export interface RunRecord {
+  id: string;
+  lib: string;
+  project: string;
+  slug: string;
+  status: RunStatus;
+  kind: RunKind;
+  engine: string;
+  model: string;
+  prediction_id: string | null;
+  created: string;
+  submitted: string | null;
+  completed: string | null;
+  /** Role → the nodes bound to it, e.g. `image_input`. */
+  bindings: Record<string, RunAsset[]>;
+  characters: string[];
+  folder: string;
+  outputs: RunAsset[];
+  lineage: RunLineage;
+  cost: RunCost | null;
+  error: string | null;
+  payload: { request: string | null; response: string | null; prompt: string | null };
+}
+
+/** A page of runs. `cursor` is `null` when there is nothing after this page. */
+export interface RunPage {
+  runs: RunSummary[];
+  cursor: string | null;
+}
+
+/**
+ * One planned shot inside a scene.
+ *
+ * `run` is how a shot knows what rendered it, and it is a run id rather than a
+ * path — which is what lets a plan be revised without stranding the work already
+ * done against it.
+ */
+export interface Shot {
+  id: string;
+  order: number;
+  prompt: string;
+  run: string | null;
+  panel: string | null;
+}
+
+export interface SceneSummary {
+  id: string;
+  project: string;
+  slug: string;
+  title: string;
+  status: string;
+  created: string;
+  thumb?: HeroImage | null;
+}
+
+export interface SceneRecord extends SceneSummary {
+  folder: string;
+  shots: Shot[];
+  /** The stitched take, once `assemble` has uploaded it. */
+  output: RunAsset | null;
+}
+
+export interface MovieSummary {
+  id: string;
+  project: string;
+  slug: string;
+  title: string;
+  status: string;
+  created: string;
+  thumb?: HeroImage | null;
+}
+
+export interface MovieRecord extends MovieSummary {
+  folder: string;
+  scenes: SceneSummary[];
+  output: RunAsset | null;
 }

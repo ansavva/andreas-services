@@ -28,13 +28,17 @@ import click
 from PIL import Image, ImageDraw, ImageFont
 
 from studio_pipeline.adapters import store
-from studio_pipeline.domain import paths as P
+from studio_pipeline.domain import characters as CHARACTER
 
 IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp"}
 
 
-def _pool_images(root: str) -> list[str]:
-    """Every image under a pool, as paths relative to it, natural-sorted.
+def _pool_images(root: str) -> list[dict]:
+    """Every image under a pool, as `{"rel": …, "node": …}`, natural-sorted.
+
+    The relative path is what the caption is built from; the node id is what the
+    download goes through. Both, because the tree still has a shape a person
+    reads (`face/front.webp`) and a node still has the identity a record holds.
 
     **Recursive, and it has to be** — the same call `characters.refs.ref_files`
     makes and for the same reason. `reference` is this command's DEFAULT pool
@@ -42,22 +46,27 @@ def _pool_images(root: str) -> list[str]:
     reports the commonest invocation as an empty pool. `list_keys` was
     recursive by default and hid the decision; walking is now explicit.
 
-    `children_or_empty` is what makes a missing pool empty rather than an
-    error, and it distinguishes a 404 from a 403 — a refused pool must not read
-    as a character with no images.
+    **A missing pool cannot arise here any more, and that is why this listing
+    is unforgiving.** It used to go through `children_or_empty`, which swallowed
+    a 404 so that a character with no `seed/` read as empty rather than raising
+    — and it swallowed only a 404, because a refused pool must not read as a
+    character with no images. `pool_folder` resolves the pool off the character
+    record and creates it if somebody deleted it, so by the time this runs the
+    folder exists. Anything raising from here is a real failure and is left to
+    surface.
     """
-    found: list[str] = []
+    found: list[dict] = []
 
-    def walk(prefix: str) -> None:
-        for entry in store.children_or_empty(prefix):
-            path = f"{prefix}/{entry['name']}"
+    def walk(node_id: str, prefix: str) -> None:
+        for entry in store.children_of(node_id):
+            rel = f"{prefix}{entry['name']}"
             if entry.get("kind") == "folder":
-                walk(path)
+                walk(entry["id"], f"{rel}/")
             elif os.path.splitext(entry["name"])[1].lower() in IMG_EXTS:
-                found.append(path[len(root) + 1:])
+                found.append({"rel": rel, "node": entry["id"]})
 
-    walk(root)
-    return sorted(found, key=store.natural_key)
+    walk(root, "")
+    return sorted(found, key=lambda e: store.natural_key(e["rel"]))
 
 
 def _gather_from_store(character: str, folder: str, dest: str) -> list[str]:
@@ -69,15 +78,16 @@ def _gather_from_store(character: str, folder: str, dest: str) -> list[str]:
     in one directory — the second download overwrote the first and the sheet
     showed one image twice under one label.
     """
-    root = P.char_pool_prefix(character, folder)
-    relative = _pool_images(root)
-    if not relative:
-        sys.exit(f"no images under {root}/")
+    record = CHARACTER.resolve(character)
+    root = CHARACTER.pool_folder(record, folder)
+    images = _pool_images(root["id"])
+    if not images:
+        sys.exit(f"no images under {character}/{folder}")
     os.makedirs(dest, exist_ok=True)
     paths = []
-    for rel in relative:
-        local = os.path.join(dest, rel.replace("/", "_"))
-        store.download(f"{root}/{rel}", pathlib.Path(local))
+    for image in images:
+        local = os.path.join(dest, image["rel"].replace("/", "_"))
+        store.download_node(image["node"], pathlib.Path(local))
         paths.append(local)
     return paths
 

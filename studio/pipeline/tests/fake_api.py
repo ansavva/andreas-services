@@ -1,0 +1,1116 @@
+"""An in-memory studio API: entities, nodes, and presigned bytes onto moto.
+
+**This replaces a shim that pretended a node's id was its S3 key.** That fiction
+was cheap and it was load-bearing in the wrong direction: the suite monkeypatched
+`adapters/store` operation by operation, so every test asserted what the *store*
+was asked for and none asserted what the *CLI actually sends*. A route name, a
+body field or a query parameter could be wrong in every domain module at once and
+the suite would stay green — which is precisely the failure mode a restructure
+produces, and precisely what `pipeline/tests/` exists to catch.
+
+So this fake sits one layer lower, at `adapters.api.request`. Everything above it
+runs for real: `adapters/entities.py` builds the route and the body, `store.py`
+walks the tree by id, and the domain modules go through both. The seam is HTTP,
+which is the seam the backend is on the other side of, and the shapes here are
+`docs/ENTITY_MODEL_EXAMPLE.md` §2 read literally.
+
+## What is real and what is not
+
+**Real.** Node ids are `node-<uuid4>`, entity ids are `<kind>-<uuid4>`, and
+nothing derives one from anything. A name is unique among a folder's children and
+a duplicate is a 409. A slug is unique per entity kind per library and a duplicate
+is a 409. `rev` is compare-and-swap and a stale one is a 409. Reference `order`
+is gapped by 1000 and `after` takes the midpoint. Deleting a node that is an
+entity's `root` is refused.
+
+**Not real.** There is no authorisation, no library membership check, no
+pagination and no cursor. Every one of those is the backend's to enforce and the
+smoke suite's to exercise; imitating them here would test this file.
+
+## The bytes
+
+`store` PUTs and GETs presigned URLs with `urllib`, which has nothing to talk to
+in-process. So the signed URL is `memory://<blob_key>` and `store._put` /
+`store._fetch` are pointed at the same moto bucket the old fixture used. Bytes
+stay real — `curate dedupe` hashes them, `frames` runs ffmpeg over them — and only
+the transport is short-circuited.
+
+## Blob keys
+
+`<owner_kind>/<owner_id>/<node_id>.<ext>`, stamped once at creation from the
+owner the parent already resolves to, never parsed and never re-derived. It is
+here rather than left as an unmodelled detail because `catalog reseat` exists to
+fix drift in exactly this string, and a fake that ignored the scheme would let
+the reseat tests assert against nothing.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import itertools
+import json
+import mimetypes
+import re
+import urllib.parse
+import uuid
+
+from studio_pipeline.adapters import api
+
+BUCKET = "studio-prod-media-us-east-1"
+
+#: Content types that earn the sparse reel key (D5). Folders, entity rows and
+#: documents stay out of `by-recent` entirely, which is the pollution the
+#: attribute was introduced to end.
+REEL_TYPES = ("image/", "video/")
+
+ORDER_GAP = 1000
+
+
+class FakeError(Exception):
+    """Raised with an HTTP status so `_dispatch` can turn it into an api error."""
+
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+def _now(counter=itertools.count()) -> str:
+    """A monotonic ISO timestamp with microsecond resolution.
+
+    Monotonic rather than `datetime.now()`, and this is not cosmetic: `rev` and
+    `updated` are what optimistic concurrency is checked on, and two writes in
+    the same microsecond would make a stale-write test pass by accident. The
+    counter guarantees strict ordering without a sleep.
+    """
+    return (dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
+            + dt.timedelta(microseconds=next(counter))).isoformat()
+
+
+def _ext(name: str) -> str:
+    _, _, tail = name.rpartition(".")
+    return f".{tail}" if tail and tail != name else ""
+
+
+class FakeApi:
+    """One library, its tree, and its entity records."""
+
+    def __init__(self, s3) -> None:
+        self.s3 = s3
+        self.lib = "lib-" + str(uuid.uuid4())
+        self.nodes: dict[str, dict] = {}
+        self.characters: dict[str, dict] = {}
+        self.projects: dict[str, dict] = {}
+        self.runs: dict[str, dict] = {}
+        self.scenes: dict[str, dict] = {}
+        self.movies: dict[str, dict] = {}
+        #: char_id -> [entry], each naming a node id. The `REF#` rows.
+        self.refs: dict[str, list[dict]] = {}
+        #: scene_id -> [shot]. The `SHOT#` rows.
+        self.shots: dict[str, list[dict]] = {}
+        self.terms: list[dict] = []
+        #: Raw keys with no node, reached by `GET /api/asset` — the pose plates.
+        self.root = self._node(None, "", "folder")
+        self.root["path"] = "/"
+
+    # ── the tree ────────────────────────────────────────────────────────────
+
+    def _node(self, parent_id: str | None, name: str, kind: str, **extra) -> dict:
+        node_id = "node-" + str(uuid.uuid4())
+        parent = self.nodes.get(parent_id) if parent_id else None
+        record = {
+            "id": node_id, "node_id": node_id, "parent_id": parent_id,
+            "lib": self.lib, "name": name, "kind": kind,
+            "path": (parent["path"] + parent_id + "/") if parent else "/",
+            "created_at": _now(), "updated_at": _now(), **extra,
+        }
+        self.nodes[node_id] = record
+        return record
+
+    def _children(self, node_id: str) -> list[dict]:
+        return sorted((n for n in self.nodes.values() if n["parent_id"] == node_id),
+                      key=lambda n: n["name"])
+
+    def _child(self, node_id: str, name: str) -> dict | None:
+        return next((n for n in self._children(node_id) if n["name"] == name), None)
+
+    def _owner(self, node_id: str | None) -> dict | None:
+        """Walk up to the nearest entity root. Derived, never stored on the file."""
+        while node_id:
+            node = self.nodes.get(node_id)
+            if node is None:
+                return None
+            entity = node.get("entity")
+            if entity:
+                for kind, table in (("character", self.characters),
+                                    ("project", self.projects)):
+                    if entity in table:
+                        return {"kind": kind, "id": entity,
+                                "slug": table[entity]["slug"]}
+            node_id = node["parent_id"]
+        return None
+
+    def _blob_key(self, node: dict) -> str:
+        owner = self._owner(node["parent_id"])
+        if owner is None:
+            prefix = f"libraries/{self.lib}"
+        else:
+            prefix = f"{'characters' if owner['kind'] == 'character' else 'projects'}/{owner['id']}"
+        return f"{prefix}/{node['id']}{_ext(node['name'])}"
+
+    def _view(self, node: dict) -> dict:
+        """What a node route returns. **No `blob_key`, no `path`** — as today."""
+        view = {"id": node["id"], "name": node["name"], "kind": node["kind"],
+                "created_at": node["created_at"], "updated_at": node["updated_at"]}
+        for field in ("size", "content_type"):
+            if node.get(field) is not None:
+                view[field] = node[field]
+        owner = self._owner(node["id"])
+        if owner:
+            view["owner"] = owner
+        return view
+
+    def _create_node(self, parent_id: str, name: str, kind: str) -> dict:
+        if parent_id not in self.nodes:
+            raise FakeError(404, f"no such parent: {parent_id}")
+        if self._child(parent_id, name):
+            raise FakeError(409, f"{name!r} already exists here")
+        node = self._node(parent_id, name, kind)
+        if kind == "file":
+            node["blob_key"] = self._blob_key(node)
+        return node
+
+    def _resolve(self, path: str) -> dict:
+        node = self.root
+        for segment in [p for p in (path or "").strip("/").split("/") if p]:
+            found = self._child(node["id"], segment)
+            if found is None:
+                raise FakeError(404, f"no such path: {path}")
+            node = found
+        return node
+
+    def _delete_node(self, node_id: str) -> int:
+        node = self.nodes.get(node_id)
+        if node is None:
+            return 0
+        for entity_table in (self.characters, self.projects):
+            for entity in entity_table.values():
+                if entity.get("root") == node_id:
+                    raise FakeError(
+                        409,
+                        f"{node['name']!r} is {entity['slug']}'s root folder; "
+                        "delete the entity instead")
+        removed = 0
+        for child in list(self._children(node_id)):
+            removed += self._delete_node(child["id"])
+        if node.get("blob_key"):
+            self.s3.delete_object(Bucket=BUCKET, Key=node["blob_key"])
+        del self.nodes[node_id]
+        return removed + 1
+
+    # ── entity helpers ──────────────────────────────────────────────────────
+
+    def _entity(self, table: dict, ref: str, what: str) -> dict:
+        if ref.startswith("slug:"):
+            slug = ref[len("slug:"):]
+            found = next((e for e in table.values() if e["slug"] == slug), None)
+        else:
+            found = table.get(ref)
+        if found is None:
+            raise FakeError(404, f"no such {what}: {ref}")
+        return found
+
+    def _claim(self, table: dict, slug: str, what: str) -> None:
+        if any(e["slug"] == slug for e in table.values()):
+            raise FakeError(409, f"a {what} called {slug!r} already exists")
+
+    def _bump(self, record: dict, rev: int | None) -> None:
+        """Compare-and-swap on `rev`, which is what closed the `updated_at` window."""
+        if rev is not None and int(rev) != int(record["rev"]):
+            raise FakeError(409, f"the record was changed by someone else "
+                                 f"(rev {rev} → {record['rev']}); re-read and retry")
+        record["rev"] += 1
+        record["updated"] = _now()
+
+    def _layout(self, root_id: str, names) -> None:
+        for name in names:
+            self._create_node(root_id, name, "folder")
+
+    def _folder_under(self, root_id: str, name: str) -> dict:
+        """The conventional folder, made if someone renamed or deleted it.
+
+        Self-healing on purpose: a route that cannot find its conventional
+        folder makes one and never guesses, and every record that already
+        exists still names its own folder node id.
+        """
+        return self._child(root_id, name) or self._create_node(root_id, name, "folder")
+
+    # ── dispatch ────────────────────────────────────────────────────────────
+
+    def request(self, method: str, route: str, payload=None, **params):
+        params = {k: v for k, v in params.items() if v is not None}
+        try:
+            return self._dispatch(method, route, payload or {}, params)
+        except FakeError as error:
+            status = error.status
+            message = str(error)
+            if status == 404:
+                raise api.NotFound(message, status) from error
+            if status == 409:
+                raise api.Conflict(message, status) from error
+            if status == 403:
+                raise api.Forbidden(message, status) from error
+            raise api.ApiError(message, status) from error
+
+    def _dispatch(self, method, route, body, params):
+        for pattern, handler in self._routes():
+            match = re.fullmatch(pattern, route)
+            if match:
+                return handler(method, body, params, *match.groups())
+        raise FakeError(404, f"no route {method} {route}")
+
+    def _routes(self):
+        return [
+            (r"/api/libraries", self._r_libraries),
+            (r"/api/resolve", self._r_resolve),
+            (r"/api/asset", self._r_asset),
+            (r"/api/nodes", self._r_nodes),
+            (r"/api/nodes/move", self._r_node_move),
+            (r"/api/nodes/copy", self._r_node_copy),
+            (r"/api/nodes/([^/]+)/download-url", self._r_download_url),
+            (r"/api/nodes/([^/]+)/upload-url", self._r_upload_url),
+            (r"/api/nodes/([^/]+)/confirm-upload", self._r_confirm),
+            (r"/api/nodes/([^/]+)/text", self._r_text),
+            (r"/api/nodes/([^/]+)/owner", self._r_node_owner),
+            (r"/api/nodes/([^/]+)", self._r_node),
+            (r"/api/characters", self._r_characters),
+            (r"/api/characters/([^/]+)/references", self._r_references),
+            (r"/api/characters/([^/]+)/references/([^/]+)", self._r_reference),
+            (r"/api/characters/([^/]+)/default-set", self._r_default_set),
+            (r"/api/characters/([^/]+)/selection", self._r_selection),
+            (r"/api/characters/([^/]+)/textblock", self._r_textblock),
+            (r"/api/characters/([^/]+)/profile", self._r_profile),
+            (r"/api/characters/([^/]+)/runs", self._r_character_runs),
+            (r"/api/characters/([^/]+)/projects", self._r_character_projects),
+            (r"/api/characters/([^/]+)", self._r_character),
+            (r"/api/projects", self._r_projects),
+            (r"/api/projects/([^/]+)/characters", self._r_project_characters),
+            (r"/api/projects/([^/]+)/inputs", self._r_project_inputs),
+            (r"/api/projects/([^/]+)/runs", self._r_project_runs),
+            (r"/api/projects/([^/]+)/scenes", self._r_project_scenes),
+            (r"/api/projects/([^/]+)/movies", self._r_project_movies),
+            (r"/api/projects/([^/]+)", self._r_project),
+            (r"/api/runs", self._r_runs),
+            (r"/api/runs/([^/]+)/outputs", self._r_run_outputs),
+            (r"/api/runs/([^/]+)/response", self._r_run_response),
+            (r"/api/runs/([^/]+)", self._r_run),
+            (r"/api/scenes", self._r_scenes),
+            (r"/api/scenes/([^/]+)/shots", self._r_shots),
+            (r"/api/scenes/([^/]+)/shots/([^/]+)", self._r_shot),
+            (r"/api/scenes/([^/]+)/output", self._r_scene_output),
+            (r"/api/scenes/([^/]+)", self._r_scene),
+            (r"/api/movies", self._r_movies),
+            (r"/api/movies/([^/]+)/scenes", self._r_movie_scenes),
+            (r"/api/movies/([^/]+)/output", self._r_movie_output),
+            (r"/api/movies/([^/]+)", self._r_movie),
+            (r"/api/phrasebook", self._r_phrasebook),
+            (r"/api/phrasebook/([^/]+)/([^/]+)", self._r_phrasebook_term),
+        ]
+
+    # ── node routes ─────────────────────────────────────────────────────────
+
+    def _r_libraries(self, method, body, params):
+        return [{"id": self.lib, "name": "Studio", "root": self.root["id"]}]
+
+    def _r_resolve(self, method, body, params):
+        return self._view(self._resolve(params.get("path", "")))
+
+    def _r_asset(self, method, body, params):
+        """`?node=` only. `?key=` went with shared material getting nodes."""
+        node = self.nodes.get(params.get("node"))
+        if node is None or not node.get("blob_key"):
+            raise FakeError(404, f"no such asset: {params.get('node')}")
+        return {"url": f"memory://{node['blob_key']}"}
+
+    def _r_nodes(self, method, body, params):
+        if method == "GET":
+            parent = params.get("parent") or self.root["id"]
+            if parent not in self.nodes:
+                raise FakeError(404, f"no such node: {parent}")
+            return [self._view(n) for n in self._children(parent)]
+        if method == "POST":
+            return self._view(self._create_node(body["parent"], body["name"],
+                                                body.get("kind", "file")))
+        if method == "DELETE":
+            return {"deleted": sum(self._delete_node(i) for i in body.get("ids", []))}
+        raise FakeError(405, method)
+
+    def _r_node(self, method, body, params, node_id):
+        node = self.nodes.get(node_id)
+        if node is None:
+            raise FakeError(404, f"no such node: {node_id}")
+        if method == "GET":
+            return self._view(node)
+        if method == "DELETE":
+            return {"deleted": self._delete_node(node_id)}
+        if method == "PATCH":
+            if "name" in body and "parent" in body:
+                raise FakeError(400, "rename or move, not both")
+            if "name" in body:
+                if self._child(node["parent_id"], body["name"]) not in (None, node):
+                    raise FakeError(409, f"{body['name']!r} already exists here")
+                node["name"] = body["name"]
+            elif "parent" in body:
+                if self._child(body["parent"], node["name"]):
+                    raise FakeError(409, f"{node['name']!r} already exists there")
+                node["parent_id"] = body["parent"]
+                self._repath(node)
+            node["updated_at"] = _now()
+            return self._view(node)
+        raise FakeError(405, method)
+
+    def _repath(self, node: dict) -> None:
+        parent = self.nodes.get(node["parent_id"])
+        node["path"] = (parent["path"] + parent["id"] + "/") if parent else "/"
+        for child in self._children(node["id"]):
+            self._repath(child)
+
+    def _r_node_move(self, method, body, params):
+        for node_id in body["ids"]:
+            self._r_node("PATCH", {"parent": body["destination"]}, {}, node_id)
+        return {"moved": len(body["ids"])}
+
+    def _r_node_copy(self, method, body, params):
+        made = []
+        for node_id in body["ids"]:
+            source = self.nodes[node_id]
+            copy = self._create_node(body["destination"], source["name"], source["kind"])
+            if source.get("blob_key"):
+                copy["size"] = source.get("size")
+                copy["content_type"] = source.get("content_type")
+                copy["reel"] = source.get("reel")
+                self.s3.put_object(
+                    Bucket=BUCKET, Key=copy["blob_key"],
+                    Body=self.s3.get_object(Bucket=BUCKET,
+                                            Key=source["blob_key"])["Body"].read())
+            made.append(self._view(copy))
+        return {"nodes": made}
+
+    def _r_download_url(self, method, body, params, node_id):
+        node = self.nodes.get(node_id)
+        if node is None or not node.get("blob_key"):
+            raise FakeError(404, f"no bytes for {node_id}")
+        return {"url": f"memory://{node['blob_key']}"}
+
+    def _r_upload_url(self, method, body, params, node_id):
+        node = self.nodes[node_id]
+        node["pending"] = {"size": body["size"], "content_type": body["content_type"]}
+        return {"url": f"memory://{node['blob_key']}",
+                "headers": {"Content-Type": body["content_type"],
+                            "Content-Length": str(body["size"])}}
+
+    def _r_confirm(self, method, body, params, node_id):
+        node = self.nodes[node_id]
+        pending = node.pop("pending", None) or {}
+        node["size"] = pending.get("size")
+        node["content_type"] = pending.get("content_type")
+        # The sparse reel key (D5): images and videos only, so folders, entity
+        # rows and run documents stop consuming the reel's enumeration.
+        if str(node["content_type"] or "").startswith(REEL_TYPES):
+            node["reel"] = self.lib
+        else:
+            node.pop("reel", None)
+        node["updated_at"] = _now()
+        return self._view(node)
+
+    def _r_text(self, method, body, params, node_id):
+        node = self.nodes[node_id]
+        if method == "GET":
+            return {"content": self.s3.get_object(
+                Bucket=BUCKET, Key=node["blob_key"])["Body"].read().decode()}
+        self.s3.put_object(Bucket=BUCKET, Key=node["blob_key"],
+                           Body=body["content"].encode())
+        node["size"] = len(body["content"].encode())
+        node["updated_at"] = _now()
+        return self._view(node)
+
+    def _r_node_owner(self, method, body, params, node_id):
+        return self._owner(node_id) or {}
+
+    # ── characters ──────────────────────────────────────────────────────────
+
+    def _char_view(self, record: dict) -> dict:
+        counts = {"references": len(self.refs.get(record["id"], [])),
+                  "files": sum(1 for n in self.nodes.values()
+                               if n["kind"] == "file"
+                               and (self._owner(n["id"]) or {}).get("id") == record["id"])}
+        return {**{k: v for k, v in record.items() if k != "_"}, "counts": counts}
+
+    def _r_characters(self, method, body, params):
+        if method == "GET":
+            query = params.get("q")
+            return [self._char_view(c) for c in self.characters.values()
+                    if not query or query in c["slug"]]
+        if method != "POST":
+            raise FakeError(405, method)
+        slug = body["slug"]
+        self._claim(self.characters, slug, "character")
+        root = self._create_node(self.root["id"], slug, "folder")
+        char_id = "char-" + str(uuid.uuid4())
+        root["entity"] = char_id
+        self._layout(root["id"], ("reference", "corpus", "seed", "archive"))
+        record = {"id": char_id, "lib": self.lib, "slug": slug,
+                  "display_name": body.get("display_name") or slug,
+                  "fictional": bool(body.get("fictional", True)),
+                  "schema_version": 2, "rev": 1,
+                  "created": _now(), "updated": _now(),
+                  "root": root["id"], "hero": None, "default_set": [],
+                  "profile": body.get("profile") or {}}
+        self.characters[char_id] = record
+        self.refs[char_id] = []
+        return self._char_view(record)
+
+    def _r_character(self, method, body, params, ref):
+        record = self._entity(self.characters, ref, "character")
+        if method == "GET":
+            return self._char_view(record)
+        if method == "PATCH":
+            if "slug" in body and body["slug"] != record["slug"]:
+                self._claim(self.characters, body["slug"], "character")
+                self.nodes[record["root"]]["name"] = body["slug"]
+            self._bump(record, body.get("rev"))
+            for field in ("slug", "display_name", "fictional", "hero"):
+                if field in body:
+                    record[field] = body[field]
+            return self._char_view(record)
+        if method == "DELETE":
+            if params.get("files") == "delete":
+                self.characters.pop(record["id"])
+                self._delete_node(record["root"])
+            else:
+                self.characters.pop(record["id"])
+                self.nodes[record["root"]].pop("entity", None)
+            self.refs.pop(record["id"], None)
+            return {"deleted": record["id"]}
+        raise FakeError(405, method)
+
+    def _r_profile(self, method, body, params, ref):
+        record = self._entity(self.characters, ref, "character")
+        if method == "PUT":
+            self._bump(record, body.get("rev"))
+            record["profile"] = body["profile"]
+        elif method == "PATCH":
+            self._bump(record, body.get("rev"))
+            record["profile"] = {**record["profile"], **body["patch"]}
+        else:
+            raise FakeError(405, method)
+        return self._char_view(record)
+
+    def _ref_file(self, entry: dict) -> dict:
+        node = self.nodes.get(entry["node"])
+        if node is None:
+            return {}
+        return {"name": node["name"], "size": node.get("size"),
+                "content_type": node.get("content_type"),
+                "url": f"memory://{node.get('blob_key')}"}
+
+    def _ref_entry(self, record: dict, entry: dict) -> dict:
+        return {**entry, "default": entry["node"] in (record.get("default_set") or []),
+                "file": self._ref_file(entry)}
+
+    def _r_references(self, method, body, params, ref):
+        record = self._entity(self.characters, ref, "character")
+        entries = self.refs.setdefault(record["id"], [])
+        if method == "GET":
+            wanted = params.get("group")
+            groups: dict[str, list] = {}
+            for entry in sorted(entries, key=lambda e: (e["group"], e["order"])):
+                if wanted and entry["group"] != wanted:
+                    continue
+                groups.setdefault(entry["group"], []).append(
+                    self._ref_entry(record, entry))
+            counts: dict[str, int] = {}
+            for entry in entries:
+                counts[entry["group"]] = counts.get(entry["group"], 0) + 1
+            return {"groups": groups, "counts": counts}
+        if method == "POST":
+            if body["node"] not in self.nodes:
+                raise FakeError(404, f"no such node: {body['node']}")
+            if any(e["node"] == body["node"] for e in entries):
+                raise FakeError(409, "already a reference")
+            entry = {"node": body["node"], "group": body["group"],
+                     "order": self._order(entries, body["group"], body.get("after")),
+                     "description": body.get("description") or "",
+                     "tags": list(body.get("tags") or []), "created": _now()}
+            entries.append(entry)
+            return self._ref_entry(record, entry)
+        if method == "PUT":
+            by_node = {e["node"]: e for e in entries}
+            unknown = [e["node"] for e in body["entries"] if e["node"] not in by_node]
+            if unknown:
+                raise FakeError(404, f"not references: {', '.join(unknown[:8])}")
+            for spec in body["entries"]:
+                entry = by_node[spec["node"]]
+                for field in ("group", "description", "tags"):
+                    if field in spec:
+                        entry[field] = spec[field]
+            return {"described": len(body["entries"])}
+        raise FakeError(405, method)
+
+    def _order(self, entries: list[dict], group: str, after: str | None) -> int:
+        """Gapped by 1000; `after` takes the midpoint. One write, no neighbours."""
+        in_group = sorted((e for e in entries if e["group"] == group),
+                          key=lambda e: e["order"])
+        if after:
+            for index, entry in enumerate(in_group):
+                if entry["node"] == after:
+                    following = in_group[index + 1]["order"] if index + 1 < len(in_group) \
+                        else entry["order"] + 2 * ORDER_GAP
+                    return (entry["order"] + following) // 2
+            raise FakeError(404, f"no reference {after}")
+        return (in_group[-1]["order"] + ORDER_GAP) if in_group else ORDER_GAP
+
+    def _r_reference(self, method, body, params, ref, node_id):
+        record = self._entity(self.characters, ref, "character")
+        entries = self.refs.setdefault(record["id"], [])
+        entry = next((e for e in entries if e["node"] == node_id), None)
+        if entry is None:
+            raise FakeError(404, f"{node_id} is not a reference of {record['slug']}")
+        if method == "DELETE":
+            entries.remove(entry)
+            return {"detached": node_id}
+        if method != "PATCH":
+            raise FakeError(405, method)
+        if "group" in body:
+            entry["group"] = body["group"]
+            entry["order"] = self._order([e for e in entries if e is not entry],
+                                         body["group"], None)
+        for field in ("description", "tags"):
+            if field in body:
+                entry[field] = body[field]
+        if body.get("after"):
+            entry["order"] = self._order([e for e in entries if e is not entry],
+                                         entry["group"], body["after"])
+        return self._ref_entry(record, entry)
+
+    def _r_default_set(self, method, body, params, ref):
+        record = self._entity(self.characters, ref, "character")
+        known = {e["node"] for e in self.refs.get(record["id"], [])}
+        unknown = [n for n in body["nodes"] if n not in known]
+        if unknown:
+            raise FakeError(404, f"not references: {', '.join(unknown)}")
+        record["default_set"] = list(body["nodes"])
+        return {"default_set": record["default_set"]}
+
+    def _r_selection(self, method, body, params, ref):
+        """Resolution order: pick > tag > default_set > everything.
+
+        The refusal is the interesting half: over-cap comes back 409 with the
+        index in the body rather than truncated, because which images a
+        generation saw must not be decided by whatever a listing returned.
+        """
+        record = self._entity(self.characters, ref, "character")
+        entries = sorted(self.refs.get(record["id"], []),
+                         key=lambda e: (e["group"], e["order"]))
+        by_node = {e["node"]: e for e in entries}
+        pick = [p for p in (params.get("pick") or "").split(",") if p]
+        tags = [t for t in (params.get("tag") or "").split(",") if t]
+        if pick:
+            chosen, source = [], "pick"
+            for want in pick:
+                hit = by_node.get(want) or next(
+                    (e for e in entries
+                     if self.nodes.get(e["node"], {}).get("name") == want), None)
+                if hit is None:
+                    raise FakeError(404, f"{record['slug']} has no reference {want!r}")
+                chosen.append(hit)
+        elif tags:
+            wanted = set(tags)
+            chosen = [e for e in entries if wanted <= set(e["tags"])]
+            source = "tag"
+            if not chosen:
+                have = sorted({t for e in entries for t in e["tags"]})
+                raise FakeError(404, f"no reference of {record['slug']} carries all of "
+                                     f"{sorted(wanted)}. Tags in use: {have or '(none)'}")
+        elif record.get("default_set"):
+            chosen = [by_node[n] for n in record["default_set"] if n in by_node]
+            source = "default_set"
+        else:
+            chosen, source = list(entries), "all"
+
+        limit = params.get("limit")
+        if limit is not None and len(chosen) > int(limit):
+            raise FakeError(409,
+                            f"{len(chosen)} references match; this model accepts {limit}")
+        return {"selection": [
+            {"slot": n, "node": e["node"], "group": e["group"],
+             "description": e["description"], "tags": e["tags"],
+             "name": self.nodes.get(e["node"], {}).get("name"),
+             "url": f"memory://{self.nodes.get(e['node'], {}).get('blob_key')}"}
+            for n, e in enumerate(chosen, 1)],
+            "cap": limit, "source": source}
+
+    def _r_textblock(self, method, body, params, ref):
+        record = self._entity(self.characters, ref, "character")
+        profile = record.get("profile") or {}
+        return {"text": (profile.get("text_identity_block") or "").strip(),
+                "raw": {k: profile[k] for k in
+                        ("identity", "face", "body", "wardrobe", "consistency")
+                        if profile.get(k)}}
+
+    def _r_character_runs(self, method, body, params, ref):
+        record = self._entity(self.characters, ref, "character")
+        return {"runs": [self._run_row(r) for r in self._sorted_runs()
+                         if record["id"] in (r.get("characters") or [])],
+                "cursor": None}
+
+    def _r_character_projects(self, method, body, params, ref):
+        record = self._entity(self.characters, ref, "character")
+        return [self._project_view(p) for p in self.projects.values()
+                if record["id"] in (p.get("characters") or [])]
+
+    # ── projects ────────────────────────────────────────────────────────────
+
+    def _project_view(self, record: dict) -> dict:
+        counts = {
+            "runs": sum(1 for r in self.runs.values() if r["project"] == record["id"]),
+            "scenes": sum(1 for s in self.scenes.values() if s["project"] == record["id"]),
+            "movies": sum(1 for m in self.movies.values() if m["project"] == record["id"]),
+        }
+        return {**record, "counts": counts,
+                "character_slugs": [self.characters[c]["slug"]
+                                    for c in record.get("characters") or []
+                                    if c in self.characters]}
+
+    def _r_projects(self, method, body, params):
+        if method == "GET":
+            return [self._project_view(p) for p in self.projects.values()]
+        if method != "POST":
+            raise FakeError(405, method)
+        slug = body["slug"]
+        self._claim(self.projects, slug, "project")
+        root = self._create_node(self.root["id"], slug, "folder")
+        proj_id = "proj-" + str(uuid.uuid4())
+        root["entity"] = proj_id
+        self._layout(root["id"], ("runs", "scenes", "movies", "chains", "input"))
+        record = {"id": proj_id, "lib": self.lib, "slug": slug,
+                  "title": body.get("title") or "", "rev": 1,
+                  "description": body.get("description") or "",
+                  "created": _now(), "updated": _now(), "root": root["id"],
+                  "hero": None, "characters": list(body.get("characters") or [])}
+        self.projects[proj_id] = record
+        return self._project_view(record)
+
+    def _r_project(self, method, body, params, ref):
+        record = self._entity(self.projects, ref, "project")
+        if method == "GET":
+            return self._project_view(record)
+        if method == "PATCH":
+            if "slug" in body and body["slug"] != record["slug"]:
+                self._claim(self.projects, body["slug"], "project")
+                self.nodes[record["root"]]["name"] = body["slug"]
+            self._bump(record, body.get("rev"))
+            for field in ("slug", "title", "description", "hero"):
+                if field in body:
+                    record[field] = body[field]
+            return self._project_view(record)
+        if method == "DELETE":
+            holds = [r for r in self.runs.values() if r["project"] == record["id"]]
+            if holds and not params.get("force"):
+                raise FakeError(409, f"{record['slug']} holds {len(holds)} run(s)")
+            self.projects.pop(record["id"])
+            if params.get("files") == "delete":
+                self._delete_node(record["root"])
+            else:
+                self.nodes[record["root"]].pop("entity", None)
+            return {"deleted": record["id"]}
+        raise FakeError(405, method)
+
+    def _r_project_characters(self, method, body, params, ref):
+        record = self._entity(self.projects, ref, "project")
+        unknown = [c for c in body["characters"] if c not in self.characters]
+        if unknown:
+            raise FakeError(404, f"no such character(s): {', '.join(unknown)}")
+        record["characters"] = list(body["characters"])
+        return self._project_view(record)
+
+    def _r_project_inputs(self, method, body, params, ref):
+        record = self._entity(self.projects, ref, "project")
+        pool = self._folder_under(record["root"], "input")
+        return [{**self._view(n), "position": i}
+                for i, n in enumerate(
+                    sorted((c for c in self._children(pool["id"])
+                            if c["kind"] == "file"),
+                           key=lambda n: _natural(n["name"])), 1)]
+
+    def _r_project_runs(self, method, body, params, ref):
+        record = self._entity(self.projects, ref, "project")
+        return self._r_runs("GET", {}, {**params, "project": record["id"]})
+
+    def _r_project_scenes(self, method, body, params, ref):
+        record = self._entity(self.projects, ref, "project")
+        return [self._scene_view(s) for s in self.scenes.values()
+                if s["project"] == record["id"]]
+
+    def _r_project_movies(self, method, body, params, ref):
+        record = self._entity(self.projects, ref, "project")
+        return [self._movie_view(m) for m in self.movies.values()
+                if m["project"] == record["id"]]
+
+    # ── runs ────────────────────────────────────────────────────────────────
+
+    def _sorted_runs(self) -> list[dict]:
+        return sorted(self.runs.values(), key=lambda r: r["created"], reverse=True)
+
+    def _run_row(self, record: dict) -> dict:
+        outputs = record.get("outputs") or []
+        return {"id": record["id"], "project": record["project"],
+                "slug": record["slug"], "status": record["status"],
+                "kind": record["kind"], "model": record["model"],
+                "created": record["created"], "cost": record.get("cost"),
+                "thumb": {"node": outputs[0]} if outputs else None}
+
+    def _run_view(self, record: dict) -> dict:
+        return {**record,
+                "outputs": [{"node": n, "name": self.nodes.get(n, {}).get("name"),
+                             "size": self.nodes.get(n, {}).get("size"),
+                             "url": f"memory://{self.nodes.get(n, {}).get('blob_key')}"}
+                            for n in record.get("outputs") or []],
+                "output_nodes": list(record.get("outputs") or [])}
+
+    def _r_runs(self, method, body, params):
+        if method == "GET":
+            found = self._sorted_runs()
+            if params.get("project"):
+                project = self._entity(self.projects, params["project"], "project")
+                found = [r for r in found if r["project"] == project["id"]]
+            if params.get("character"):
+                char = self._entity(self.characters, params["character"], "character")
+                found = [r for r in found
+                         if char["id"] in (r.get("characters") or [])]
+            for field in ("model", "status"):
+                if params.get(field):
+                    found = [r for r in found if r.get(field) == params[field]]
+            if params.get("since"):
+                found = [r for r in found if r["created"] >= params["since"]]
+            if params.get("limit"):
+                found = found[:int(params["limit"])]
+            return {"runs": [self._run_row(r) for r in found], "cursor": None}
+        if method != "POST":
+            raise FakeError(405, method)
+
+        project = self._entity(self.projects, body["project"], "project")
+        bindings = body.get("bindings") or {}
+        for field, value in bindings.items():
+            for one in (value if isinstance(value, list) else [value]):
+                if not isinstance(one, str) or "://" in one:
+                    raise FakeError(400, f"bindings.{field} is a URL; bindings name "
+                                         "nodes. S3 is the only origin.")
+                if one not in self.nodes:
+                    raise FakeError(404, f"bindings.{field} names no node: {one}")
+
+        runs_folder = self._folder_under(project["root"], "runs")
+        run_id = "run-" + str(uuid.uuid4())
+        folder = self._create_node(runs_folder["id"], _unique(
+            self, runs_folder["id"], body["slug"]), "folder")
+        self._create_node(folder["id"], "output", "folder")
+        payload = {"request": self._document(folder["id"], "request.json",
+                                             json.dumps(body.get("input") or {})),
+                   "response": None, "prompt": None}
+        if body.get("prompt") is not None:
+            payload["prompt"] = self._document(folder["id"], "prompt.json",
+                                               json.dumps(body["prompt"]))
+        record = {"id": run_id, "lib": self.lib, "project": project["id"],
+                  "slug": body["slug"], "status": "pending", "kind": body["kind"],
+                  "engine": body["engine"], "model": body["model"],
+                  "prediction_id": None, "created": _now(), "submitted": None,
+                  "completed": None, "bindings": bindings,
+                  "characters": list(body.get("characters") or []),
+                  "folder": folder["id"], "outputs": [],
+                  "lineage": {"from_run": None, "from_output": None},
+                  "cost": None, "error": None, "payload": payload,
+                  "input": body.get("input") or {}}
+        self.runs[run_id] = record
+        return self._run_view(record)
+
+    def _document(self, parent_id: str, name: str, text: str) -> str:
+        """A payload blob. **Stored as text and never decoded by studio.**"""
+        node = self._create_node(parent_id, name, "file")
+        self.s3.put_object(Bucket=BUCKET, Key=node["blob_key"], Body=text.encode())
+        node["size"] = len(text.encode())
+        node["content_type"] = "text/plain; charset=utf-8"
+        return node["id"]
+
+    def _r_run(self, method, body, params, run_id):
+        record = self.runs.get(run_id)
+        if record is None:
+            raise FakeError(404, f"no such run: {run_id}")
+        if method == "GET":
+            return self._run_view(record)
+        if method == "PATCH":
+            for field in ("status", "prediction_id", "error", "cost", "completed",
+                          "submitted", "lineage", "outputs"):
+                if field in body:
+                    record[field] = body[field]
+            return self._run_view(record)
+        if method == "DELETE":
+            self.runs.pop(run_id)
+            if params.get("files") == "delete":
+                self._delete_node(record["folder"])
+            return {"deleted": run_id}
+        raise FakeError(405, method)
+
+    def _r_run_outputs(self, method, body, params, run_id):
+        record = self.runs[run_id]
+        folder = self._folder_under(record["folder"], "output")
+        node = self._create_node(folder["id"], body["name"], "file")
+        node["pending"] = {"size": body["size"], "content_type": body["content_type"]}
+        record["outputs"].append(node["id"])
+        return {"node": node["id"], "url": f"memory://{node['blob_key']}",
+                "headers": {"Content-Type": body["content_type"],
+                            "Content-Length": str(body["size"])}}
+
+    def _r_run_response(self, method, body, params, run_id):
+        record = self.runs[run_id]
+        text = body["body"] if isinstance(body["body"], str) else json.dumps(body["body"])
+        record["payload"]["response"] = self._document(record["folder"],
+                                                       "result.json", text)
+        return {"response": record["payload"]["response"]}
+
+    # ── scenes and movies ───────────────────────────────────────────────────
+
+    def _scene_view(self, record: dict) -> dict:
+        return {**record, "shots": sorted(self.shots.get(record["id"], []),
+                                          key=lambda s: s["order"])}
+
+    def _r_scenes(self, method, body, params):
+        if method == "GET":
+            found = list(self.scenes.values())
+            if params.get("project"):
+                project = self._entity(self.projects, params["project"], "project")
+                found = [s for s in found if s["project"] == project["id"]]
+            return {"scenes": [self._scene_view(s) for s in
+                               sorted(found, key=lambda s: s["created"])],
+                    "cursor": None}
+        if method != "POST":
+            raise FakeError(405, method)
+        project = self._entity(self.projects, body["project"], "project")
+        if any(s["project"] == project["id"] and s["slug"] == body["slug"]
+               for s in self.scenes.values()):
+            raise FakeError(409, f"scene {body['slug']!r} already exists")
+        scenes_folder = self._folder_under(project["root"], "scenes")
+        folder = self._create_node(scenes_folder["id"], body["slug"], "folder")
+        scene_id = "scene-" + str(uuid.uuid4())
+        record = {"id": scene_id, "lib": self.lib, "project": project["id"],
+                  "slug": body["slug"], "title": body.get("title") or "",
+                  "setting": body.get("setting") or "",
+                  "defaults": body.get("defaults") or {},
+                  "status": "planned", "created": _now(), "updated": _now(),
+                  "folder": folder["id"], "characters": [], "output": None,
+                  "stitch": None, "assembled": None}
+        self.scenes[scene_id] = record
+        self.shots[scene_id] = []
+        if body.get("shots"):
+            self._merge_shots(scene_id, body["shots"])
+        return self._scene_view(record)
+
+    def _merge_shots(self, scene_id: str, shots: list[dict]) -> None:
+        """Merge by shot id, so a revision never orphans rendered work."""
+        existing = {s["id"]: s for s in self.shots.setdefault(scene_id, [])}
+        merged = []
+        for order, spec in enumerate(shots, 1):
+            shot_id = spec.get("id") or f"shot-{order:02d}"
+            row = {**existing.get(shot_id, {}), **spec,
+                   "id": shot_id, "order": spec.get("order") or order * ORDER_GAP}
+            row.setdefault("run", None)
+            row.setdefault("panel", None)
+            merged.append(row)
+        self.shots[scene_id] = merged
+
+    def _r_scene(self, method, body, params, scene_id):
+        record = self.scenes.get(scene_id)
+        if record is None:
+            raise FakeError(404, f"no such scene: {scene_id}")
+        if method == "GET":
+            return self._scene_view(record)
+        if method == "PATCH":
+            record.update(body)
+            record["updated"] = _now()
+            return self._scene_view(record)
+        if method == "DELETE":
+            self.scenes.pop(scene_id)
+            self.shots.pop(scene_id, None)
+            if params.get("files") == "delete":
+                self._delete_node(record["folder"])
+            return {"deleted": scene_id}
+        raise FakeError(405, method)
+
+    def _r_shots(self, method, body, params, scene_id):
+        if scene_id not in self.scenes:
+            raise FakeError(404, f"no such scene: {scene_id}")
+        if method == "GET":
+            return {"shots": sorted(self.shots.get(scene_id, []),
+                                    key=lambda s: s["order"])}
+        if method != "PUT":
+            raise FakeError(405, method)
+        self._merge_shots(scene_id, body["shots"])
+        return self._scene_view(self.scenes[scene_id])
+
+    def _r_shot(self, method, body, params, scene_id, shot_id):
+        shot = next((s for s in self.shots.get(scene_id, []) if s["id"] == shot_id), None)
+        if shot is None:
+            raise FakeError(404, f"no shot {shot_id} in {scene_id}")
+        shot.update(body)
+        return shot
+
+    def _r_scene_output(self, method, body, params, scene_id):
+        record = self.scenes[scene_id]
+        folder = self._folder_under(record["folder"], "output")
+        node = self._child(folder["id"], body["name"]) or \
+            self._create_node(folder["id"], body["name"], "file")
+        node["pending"] = {"size": body["size"], "content_type": body["content_type"]}
+        return {"node": node["id"], "url": f"memory://{node['blob_key']}",
+                "headers": {"Content-Type": body["content_type"],
+                            "Content-Length": str(body["size"])}}
+
+    def _movie_view(self, record: dict) -> dict:
+        return dict(record)
+
+    def _r_movies(self, method, body, params):
+        if method == "GET":
+            found = list(self.movies.values())
+            if params.get("project"):
+                project = self._entity(self.projects, params["project"], "project")
+                found = [m for m in found if m["project"] == project["id"]]
+            return {"movies": [self._movie_view(m) for m in
+                               sorted(found, key=lambda m: m["created"])],
+                    "cursor": None}
+        if method != "POST":
+            raise FakeError(405, method)
+        project = self._entity(self.projects, body["project"], "project")
+        movies_folder = self._folder_under(project["root"], "movies")
+        folder = self._create_node(movies_folder["id"], _unique(
+            self, movies_folder["id"], body["slug"]), "folder")
+        movie_id = "movie-" + str(uuid.uuid4())
+        record = {"id": movie_id, "lib": self.lib, "project": project["id"],
+                  "slug": body["slug"], "title": body.get("title") or "",
+                  "status": "planned", "created": _now(), "updated": _now(),
+                  "folder": folder["id"], "scenes": list(body.get("scenes") or []),
+                  "characters": [], "output": None, "stitch": None}
+        self.movies[movie_id] = record
+        return self._movie_view(record)
+
+    def _r_movie(self, method, body, params, movie_id):
+        record = self.movies.get(movie_id)
+        if record is None:
+            raise FakeError(404, f"no such movie: {movie_id}")
+        if method == "GET":
+            return self._movie_view(record)
+        if method == "PATCH":
+            record.update(body)
+            record["updated"] = _now()
+            return self._movie_view(record)
+        if method == "DELETE":
+            self.movies.pop(movie_id)
+            if params.get("files") == "delete":
+                self._delete_node(record["folder"])
+            return {"deleted": movie_id}
+        raise FakeError(405, method)
+
+    def _r_movie_scenes(self, method, body, params, movie_id):
+        record = self.movies[movie_id]
+        record["scenes"] = list(body["scenes"])
+        return self._movie_view(record)
+
+    def _r_movie_output(self, method, body, params, movie_id):
+        record = self.movies[movie_id]
+        folder = self._folder_under(record["folder"], "output")
+        node = self._child(folder["id"], body["name"]) or \
+            self._create_node(folder["id"], body["name"], "file")
+        node["pending"] = {"size": body["size"], "content_type": body["content_type"]}
+        return {"node": node["id"], "url": f"memory://{node['blob_key']}",
+                "headers": {"Content-Type": body["content_type"],
+                            "Content-Length": str(body["size"])}}
+
+    # ── phrasebook ──────────────────────────────────────────────────────────
+
+    def _r_phrasebook(self, method, body, params):
+        if method == "GET":
+            model = params.get("model")
+            return [t for t in self.terms if not model or t["model"] == model]
+        if method != "POST":
+            raise FakeError(405, method)
+        if any(t["model"] == body["model"] and t["avoid"] == body["avoid"]
+               for t in self.terms):
+            raise FakeError(409, f"{body['avoid']!r} is already recorded for "
+                                 f"{body['model']}")
+        term = {"model": body["model"], "avoid": body["avoid"], "use": body["use"],
+                "note": body.get("note") or "", "replicate": body.get("replicate"),
+                "added": _now()[:10]}
+        self.terms.append(term)
+        return term
+
+    def _r_phrasebook_term(self, method, body, params, model, avoid):
+        model = urllib.parse.unquote(model)
+        avoid = urllib.parse.unquote(avoid)
+        term = next((t for t in self.terms
+                     if t["model"] == model and t["avoid"] == avoid), None)
+        if term is None:
+            raise FakeError(404, f"no phrasebook term {avoid!r} for {model}")
+        self.terms.remove(term)
+        return {"deleted": avoid}
+
+    # ── seeding ─────────────────────────────────────────────────────────────
+
+    def put_file(self, parent_id: str, name: str, body: bytes,
+                 content_type: str | None = None) -> dict:
+        """Create a confirmed file node with bytes. For fixtures only."""
+        node = self._create_node(parent_id, name, "file")
+        node["size"] = len(body)
+        node["content_type"] = (content_type
+                                or mimetypes.guess_type(name)[0]
+                                or "application/octet-stream")
+        if node["content_type"].startswith(REEL_TYPES):
+            node["reel"] = self.lib
+        self.s3.put_object(Bucket=BUCKET, Key=node["blob_key"], Body=body)
+        return node
+
+    def put_shared(self, key: str, body: bytes) -> dict:
+        """A pose plate, as the ordinary node it now is.
+
+        Named `put_shared` still because "shared" is what these are — they
+        belong to the library rather than to any character or project — but
+        there is nothing special about how they are stored. The key is a name
+        path under `config/`, every folder in it is created, and the result is a
+        node like any other. It used to write a side dict the fake served from
+        `GET /api/asset?key=`, which is the parameter the entity model deleted.
+        """
+        parts = [p for p in key.strip("/").split("/") if p]
+        parent = self.root["id"]
+        for segment in parts[:-1]:
+            existing = self._child(parent, segment)
+            parent = (existing or self._create_node(parent, segment, "folder"))["id"]
+        return self.put_file(parent, parts[-1], body)
+
+
+_NUM_RE = re.compile(r"(\d+)")
+
+
+def _natural(name: str):
+    return [int(p) if p.isdigit() else p.lower() for p in _NUM_RE.split(name)]
+
+
+def _unique(fake: FakeApi, parent_id: str, name: str) -> str:
+    """A folder name free in this parent.
+
+    Run slugs are human labels now rather than ids, so two runs may legitimately
+    want the same folder name — where a `<timestamp>_<slug>` id made a
+    collision mean "the CLI re-sent a run". The API disambiguates; the record
+    names the folder either way, so nothing downstream notices.
+    """
+    if not fake._child(parent_id, name):
+        return name
+    for n in itertools.count(2):
+        candidate = f"{name}-{n}"
+        if not fake._child(parent_id, candidate):
+            return candidate
+    raise AssertionError("unreachable")

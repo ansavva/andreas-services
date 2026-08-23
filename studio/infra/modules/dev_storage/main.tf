@@ -157,6 +157,13 @@ resource "aws_dynamodb_table" "catalog" {
     type = "S"
   }
 
+  # The reel's partition key. Its value is the library id, but the *name* is
+  # what makes `by-recent` sparse — see `modules/catalog`, which explains why.
+  attribute {
+    name = "reel"
+    type = "S"
+  }
+
   # Reverse lookup — "who is in library X".
   global_secondary_index {
     name            = "by-sk"
@@ -173,10 +180,10 @@ resource "aws_dynamodb_table" "catalog" {
     projection_type = "ALL"
   }
 
-  # Newest/oldest across a library, genuinely paginated.
+  # Newest/oldest across a library, genuinely paginated. Sparse on `reel`.
   global_secondary_index {
     name            = "by-recent"
-    hash_key        = "lib"
+    hash_key        = "reel"
     range_key       = "created_at"
     projection_type = "ALL"
   }

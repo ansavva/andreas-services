@@ -57,13 +57,22 @@ export async function apiGet<T>(path: string, params?: Record<string, string | u
  * A write against the studio API.
  *
  * Split from `apiGet` only by what it sends — same token, same error shape.
- * `DELETE /api/objects` carries a JSON body, which is unusual but well-defined:
- * the alternative for a grid selection is a few hundred repeated `?key=`
+ * `DELETE /api/nodes` carries a JSON body, which is unusual but well-defined:
+ * the alternative for a grid selection is a few hundred repeated `?ids=`
  * parameters, which is a URL length limit waiting to be hit on exactly the case
  * bulk delete exists for.
+ *
+ * **Every method here has to be in API Gateway's allowed-method list**, which
+ * answers the browser's preflight instead of Flask — a method missing from it
+ * fails as a network error with no status, which reads as the API being down.
+ * `PUT` is on this list because the entity routes use it for a whole-document
+ * replace (`PUT /api/characters/<id>/profile`, the reference bulk write, the
+ * default set, a project's character links), where the distinction from `PATCH`
+ * is load-bearing: one replaces the document, the other merges into it. See
+ * `app_factory.CORS_HEADERS` and `modules/api_gateway`.
  */
 export async function apiSend<T>(
-  method: "POST" | "PATCH" | "DELETE",
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
   body?: unknown,
 ): Promise<T> {

@@ -1,4 +1,4 @@
-"""The catalog: libraries, nodes, and every write that changes one.
+"""The catalog: libraries, nodes, entities, and every write that changes one.
 
 **This is the only module that knows the table's item shapes.** Everything above
 it — routes, and the services that will grow beside them — deals in node records
@@ -11,18 +11,43 @@ rewritten if the layout ever changed.
 ## What is in the table
 
 ```
-Library   lib-<uuid>     the sharing unit; has members
- └ Node   node-<uuid>    a folder or a file, with a parent pointer
+Library     lib-<uuid>     the sharing unit; has members
+ ├ Node     node-<uuid>    a folder or a file, with a parent pointer
+ ├ Character char-<uuid>   who a subject is
+ ├ Project  proj-<uuid>    a unit of production
+ ├ Run      run-<uuid>     one submission to a model
+ ├ Scene    scene-<uuid>   shots stitched into one continuous take
+ └ Movie    movie-<uuid>   scenes cut into one piece
 ```
 
 One node type. A folder is a node with no blob; a file is a node with one.
 
-| Item | `pk` | `sk` |
-|---|---|---|
-| Library | `LIB#<lib_id>` | `META` |
-| Membership | `USER#<sub>` | `LIB#<lib_id>` |
-| Node — by parent | `NODE#<parent_id>` | `NAME#<name>` |
-| Node — by id | `NODE#<node_id>` | `META` |
+| Item | `pk` | `sk` | Why |
+|---|---|---|---|
+| Library | `LIB#<lib_id>` | `META` | |
+| Membership | `USER#<sub>` | `LIB#<lib_id>` | |
+| Node — by parent | `NODE#<parent_id>` | `NAME#<name>` | list-by-parent, unique names |
+| Node — by id | `NODE#<node_id>` | `META` | the record |
+| Character | `CHAR#<char_id>` | `META` | the record |
+| Character slug claim | `LIB#<lib>` | `CHARSLUG#<slug>` | uniqueness, and the listing |
+| Reference entry | `CHAR#<char_id>` | `REF#<node_id>` | one row per reference image |
+| Project | `PROJ#<proj_id>` | `META` | the record |
+| Project slug claim | `LIB#<lib>` | `PROJSLUG#<slug>` | uniqueness, and the listing |
+| Project ↔ character | `PROJ#<proj_id>` | `CHAR#<char_id>` | involvement; reverse-queryable |
+| Run | `RUN#<run_id>` | `META` | the envelope |
+| Run in project | `PROJ#<proj_id>` | `RUN#<created>#<run_id>` | newest first, paginated |
+| Run ↔ character | `RUN#<run_id>` | `CHAR#<char_id>` | which characters a run used |
+| Scene / Movie | `SCENE#…` / `MOVIE#…` | `META` | |
+| Scene / Movie in project | `PROJ#<proj_id>` | `SCENE#<created>#<id>` | |
+| Shot | `SCENE#<scene_id>` | `SHOT#<shot_id>` | one row per planned shot |
+| Phrasebook term | `LIB#<lib>` | `TERM#<model>#<avoid>` | the wording lists |
+
+**An id is the identity; a slug is a label.** Every entity has a `v4` UUID that
+never changes, and the slug is a mutable, library-unique attribute. A rename is
+one conditional write plus a folder rename and touches nothing else, ever — no
+object is copied, no record anywhere is rewritten, and every node keeps its id.
+That is the single largest simplification the entity model buys, and it is why
+`domain/rewrite.py` and the whole class of stranded-path bug stop existing.
 
 **A node is two items, so every write here is a `TransactWriteItems`.** The
 by-parent item is what makes a folder listable and what makes a name unique
@@ -50,12 +75,14 @@ either cannot be listed or cannot be opened.
   why it is written first — see `move_node`. **`lib` is derived in the same
   sense** — a node is in the library its parent is in — and `transfer_node`
   rewrites it across a branch under the same ordering rule.
-* **`blob_key` is opaque.** Nothing here parses it, derives it, or assumes a
-  shape. Prod holds `characters/<slug>/…` and `projects/<slug>/…` keys written
-  years before this table existed alongside `blobs/<node_id>` keys written after
-  it, and both are correct forever precisely because the text carries no
-  meaning. A function here that split a `blob_key` on `/` would re-create the
-  coupling the catalog was built to remove.
+* **`blob_key` is stamped once and never re-derived.** It is built by
+  `blob_key_for` at creation, from the owner the parent already resolves to, and
+  after that it is a pointer that nothing splits, rewrites or recomputes. Prod
+  also holds `characters/<slug>/…` keys written years before this table existed,
+  and they stay correct forever precisely because the text carries no meaning to
+  any reader. The one thing that reads a key is `is_api_blob`, which looks at the
+  **tail** — `<node_id>.<ext>`, which cannot change — and never at the prefix,
+  which drifts the moment a node moves between owners.
 
 ## The library root is an ordinary node
 
@@ -84,6 +111,7 @@ import logging
 import time
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from boto3.dynamodb.types import TypeDeserializer, TypeSerializer
 from botocore.exceptions import ClientError
@@ -109,18 +137,89 @@ KINDS = frozenset({KIND_FOLDER, KIND_FILE})
 ROLE_OWNER = "owner"
 
 # `by-path` is the subtree index: hashed on `lib`, ranged on `path`, so one
-# `begins_with` reads a whole branch. `by-recent` is hashed on `lib` and ranged
-# on `created_at`, and is the only index that returns rows in an order a caller
-# did not sort for — `browse.reel_items` reads it (#310).
+# `begins_with` reads a whole branch.
 #
-# The table carries a third index and this module does not name it. `by-sk`
-# inverts the table so an sk can be asked who points at it, which answers "who is
-# in library X"; the only thing that asks is `scripts/add-member.sh`, and the
-# `members_of` that used to read it here was deleted for having no route.
+# **`by-recent` is hashed on `reel`, which holds the library id and is not
+# `lib`.** The two carry the same string and that is exactly why the distinction
+# has to be spelled out: a DynamoDB item enters a GSI only when it carries both
+# of that index's key attributes, so what the attribute is *named* decides who is
+# in the index. `reel` is written onto file nodes whose extension reads as an
+# image or a video and onto nothing else — so folder nodes, entity records,
+# membership rows, slug claims and reference rows all carry `lib`, all carry a
+# timestamp, and all stay out.
+#
+# That is a fix rather than accommodation for the entity rows. Hashed on `lib`,
+# every folder in the library entered the reel's enumeration and was filtered out
+# in memory by `browse.reel_items` — after it had already been counted against
+# `config.max_folder_objects`. A sparse index spends the cap on rows the reel can
+# actually show.
+#
+# `by-sk` inverts the table so a sort key can be asked who points at it. It used
+# to have `scripts/add-member.sh` as its only consumer; the entity model made it
+# load-bearing — "every project involving this character" is
+# `sk = CHAR#<id> AND begins_with(pk, "PROJ#")`, and "every run that used it" is
+# the same query one prefix over.
 BY_PATH_INDEX = "by-path"
 BY_RECENT_INDEX = "by-recent"
+BY_SK_INDEX = "by-sk"
 
-# The sort key of the record half of a node, and of a library.
+# The attribute `by-recent` is hashed on. Its value is the library id.
+REEL_ATTRIBUTE = "reel"
+
+# What a node has to look like to be in the reel. Classified from the *name*
+# rather than from `content_type`, for `browse._file_entry`'s reason: the header
+# is what an uploader claimed and the extension is what a browser will actually
+# try to decode. A file created before its bytes land has no content type at all,
+# and it still has to be in the reel the moment they do.
+REEL_KINDS = frozenset({"image", "video"})
+
+# The five entity kinds. Ids are `<prefix>-<uuid4>`; the prefix is for a human
+# reading a log, and the one thing in this service that reads it back is
+# `entity_kind` — see there for why that one exception has to exist.
+ENTITY_CHARACTER = "character"
+ENTITY_PROJECT = "project"
+ENTITY_RUN = "run"
+ENTITY_SCENE = "scene"
+ENTITY_MOVIE = "movie"
+
+# kind -> (id prefix, partition prefix). The partition prefix is also the sort
+# key prefix of the listing row a project keeps for its runs, scenes and movies,
+# and of the link rows that point at a character — one string per kind rather
+# than three that have to agree.
+ENTITY_KEYS = {
+    ENTITY_CHARACTER: ("char", "CHAR#"),
+    ENTITY_PROJECT: ("proj", "PROJ#"),
+    ENTITY_RUN: ("run", "RUN#"),
+    ENTITY_SCENE: ("scene", "SCENE#"),
+    ENTITY_MOVIE: ("movie", "MOVIE#"),
+}
+_KIND_BY_ID_PREFIX = {prefix: kind for kind, (prefix, _) in ENTITY_KEYS.items()}
+
+# The two kinds whose slug is unique in a library, and the claim that makes it
+# so. A run, a scene and a movie have a slug too — it is a human label, several
+# of them may read the same, and nothing addresses one by it.
+CLAIM_PREFIX = {ENTITY_CHARACTER: "CHARSLUG#", ENTITY_PROJECT: "PROJSLUG#"}
+
+# The three kinds a project lists, and the folder each one's tree hangs under.
+# `services.layout` owns the folder *names*; this is only the set.
+PROJECT_ENTITIES = (ENTITY_RUN, ENTITY_SCENE, ENTITY_MOVIE)
+
+# What `counts` on a project record holds, keyed by the entity kind that moves
+# it. Maintained inside the transaction that creates or deletes the entity, so a
+# count is never a scan and never drifts by one.
+COUNT_FIELD = {ENTITY_RUN: "runs", ENTITY_SCENE: "scenes", ENTITY_MOVIE: "movies"}
+
+# The version of the character profile shape this API validates against. On the
+# record rather than inside `profile`, because it describes the map rather than
+# being part of it.
+PROFILE_SCHEMA_VERSION = 2
+
+# What a run's `status` may be. Studio owns this word — it is the one thing about
+# a submission this service is willing to have an opinion on — while the
+# provider's own response stays an undecoded blob beside it.
+RUN_STATUSES = frozenset({"pending", "running", "succeeded", "failed", "cancelled"})
+
+# The sort key of the record half of a node, of a library, and of every entity.
 META = "META"
 
 # DynamoDB's hard ceiling on one `TransactWriteItems`. A subtree rewrite is two
@@ -141,8 +240,34 @@ BATCH_GET_ATTEMPTS = 4
 # partition throttle, and this runs inside a request a person is waiting on.
 BATCH_GET_BACKOFF = 0.05
 
-_serialize = TypeSerializer().serialize
+_marshal = TypeSerializer().serialize
 _deserialize = TypeDeserializer().deserialize
+
+
+def _decimals(value):
+    """Turn every `float` on the way *in* into a `Decimal`.
+
+    **`TypeSerializer` refuses a float outright** — DynamoDB's N is a decimal
+    type and boto3 will not guess a binary-float rounding for you. Nothing in
+    this table held one until a run started recording what a prediction cost,
+    and `{"amount": 0.032}` arriving from a JSON body is a float every time.
+
+    The conversion goes through `str` rather than `Decimal(value)` so that 0.032
+    is stored as 0.032 and not as the seventeen digits its binary
+    representation actually is. `_numbers` does the reverse on the way out.
+    """
+    if isinstance(value, float):
+        return Decimal(str(value))
+    if isinstance(value, dict):
+        return {key: _decimals(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_decimals(item) for item in value]
+    return value
+
+
+def _serialize(value):
+    """Marshal one Python value, floats included."""
+    return _marshal(_decimals(value))
 
 
 def _now() -> str:
@@ -506,12 +631,18 @@ def branch(lib: str, path: str, limit: int) -> tuple[list[dict], bool]:
 
 
 def recent(lib: str, limit: int) -> tuple[list[dict], bool]:
-    """Every node in a library, newest first, stopping at `limit`.
+    """Every image and video in a library, newest first, stopping at `limit`.
 
     The only read here that returns rows in an order the *table* chose rather
     than one the caller sorted for. `browse.reel_items` is the caller: a reel
     over a whole library wants the newest of it, and `by-path` cannot answer
     that — its range key is an ancestor list, so its order is the tree's.
+
+    **Every row this returns is already something the reel can show**, which it
+    was not before. `by-recent` is hashed on the sparse `reel` attribute, so a
+    folder, an entity record and a slug claim are absent from the index rather
+    than read and discarded — and the `limit` above is therefore spent on media
+    instead of on whatever the tree happened to hold.
 
     **Descending, and that is what makes truncating safe.** What a cut drops is
     the oldest rows, which is the tail a reel was never going to reach; cutting
@@ -521,7 +652,8 @@ def recent(lib: str, limit: int) -> tuple[list[dict], bool]:
         limit,
         TableName=config.catalog_table(),
         IndexName=BY_RECENT_INDEX,
-        KeyConditionExpression="lib = :lib",
+        KeyConditionExpression="#reel = :lib",
+        ExpressionAttributeNames={"#reel": REEL_ATTRIBUTE},
         ExpressionAttributeValues={":lib": {"S": lib}},
         ScanIndexForward=False,
     )
@@ -643,17 +775,35 @@ def _update(key: dict, assignments: dict) -> dict:
     it.
     """
     names = {f"#{index}": attribute for index, attribute in enumerate(assignments)}
-    values = {f":{index}": _serialize(value) for index, value in enumerate(assignments.values())}
-    return {
-        "Update": {
-            "TableName": config.catalog_table(),
-            "Key": key,
-            "UpdateExpression": "SET " + ", ".join(f"{k} = :{k[1:]}" for k in names),
-            "ExpressionAttributeNames": names,
-            "ExpressionAttributeValues": values,
-            "ConditionExpression": "attribute_exists(pk)",
-        }
+    values = {
+        f":{index}": _serialize(value)
+        for index, value in enumerate(assignments.values())
+        if value is not None
     }
+
+    # **A `None` is a REMOVE, not a NULL**, and it is the same rule `_item`
+    # follows on the way in: an absent attribute is what `attribute_not_exists`
+    # and every reader here already understand. It became load-bearing with the
+    # sparse `reel` key — renaming `clip.png` to `clip.txt` has to take the row
+    # *out* of `by-recent`, and writing NULL would leave it in the index
+    # advertising a file the reel cannot draw.
+    clauses = []
+    if values:
+        clauses.append("SET " + ", ".join(f"{k} = :{k[1:]}" for k in names if f":{k[1:]}" in values))
+    removed = [k for k in names if f":{k[1:]}" not in values]
+    if removed:
+        clauses.append("REMOVE " + ", ".join(removed))
+
+    update = {
+        "TableName": config.catalog_table(),
+        "Key": key,
+        "UpdateExpression": " ".join(clauses),
+        "ExpressionAttributeNames": names,
+        "ConditionExpression": "attribute_exists(pk)",
+    }
+    if values:
+        update["ExpressionAttributeValues"] = values
+    return {"Update": update}
 
 
 def _update_meta(node_id: str, assignments: dict) -> dict:
@@ -685,18 +835,211 @@ def _folder_node(node_id: str) -> dict:
     return record
 
 
-def blob_key_for(node_id: str) -> str:
-    """Where a node uploaded through the API keeps its bytes.
+# ─────────────────────── who owns a node, and its key ───────────────────────
+#
+# **The owner is derived, never stored on the node.** A node's `path` is already
+# the materialised list of ancestor ids, and an entity's root folder carries
+# `entity: "<entity_id>"` — so the owner of any node is the deepest ancestor
+# carrying that attribute, found in one `BatchGetItem` over a path this table
+# already holds. Nothing new is written, nothing drifts, and a move that changes
+# the owner is visible immediately.
+#
+# **The blob key is the opposite: stamped once, at creation, and never
+# re-derived.** It carries the owner's id so a bucket listing is per-entity —
+# Storage Lens cost, lifecycle rules, a bulk delete that is one prefix — and
+# carries no name, so a listing of the bucket stops leaking hard rule #1.
+#
+# The honest cost, stated where somebody would be tempted to fix it: move a file
+# from a character to a project and its key keeps the old prefix. The key is
+# still correct — it is a pointer — but it now *looks* like it means something it
+# does not. `studio catalog reseat` rewrites drifted keys out of band. **Nothing
+# in this module may re-derive a key for a node that has one**, because a
+# presigned URL, a copy and a delete all name the recorded string and a second
+# opinion about it is a lost object.
 
-    One function so the answer is stated once: the upload route signs for this
-    key, `create_node` records it, and the confirm route heads it. Three callers
-    computing `f"blobs/{node_id}"` independently is three chances to disagree
+# What a character's and a project's bytes are filed under. Three prefixes in the
+# bucket and nothing else; anything owned by neither is the library's.
+OWNER_PREFIXES = {ENTITY_CHARACTER: "characters", ENTITY_PROJECT: "projects"}
+LIBRARY_PREFIX = "libraries"
+
+
+def blob_key_for(node_id: str, name: str, owner_kind: str | None, owner_id: str) -> str:
+    """Where a node's bytes live: `<owner_kind>/<owner_id>/<node_id>.<ext>`.
+
+    **The single definition, and the only place this string is ever built.** The
+    upload route signs for it, `create_node` records it, `confirm-upload` heads
+    it; three callers computing it independently is three chances to disagree
     about a value a signature is scoped to.
 
-    Deliberately opaque and deliberately not derived from the name: a rename must
-    not move bytes, and #309's legacy keys must stay parseable by nobody.
+    The extension is decoration for a human reading the S3 console. `content_type`
+    on the row is authoritative and the API sets it on every presigned response —
+    so a node with no extension gets a key with none, and nothing anywhere reads
+    one back off a key.
+
+    `owner_kind` is a run, a scene or a movie for plenty of nodes, and none of
+    those gets a prefix of its own: they live inside a project and their bytes
+    are the project's. Only the two entity kinds in `OWNER_PREFIXES` own bytes,
+    and everything else falls through to the library.
     """
-    return f"blobs/{node_id}"
+    prefix = OWNER_PREFIXES.get(owner_kind, LIBRARY_PREFIX)
+    return f"{prefix}/{owner_id}/{node_id}{keys.extension(name)}"
+
+
+def is_api_blob(record: dict) -> bool:
+    """Whether this node's bytes were written through this API.
+
+    **The tail is what is read, never the prefix**, and the difference is the
+    whole point. The prefix says who owned the node when it was created and
+    drifts the moment the node moves, so a check against it would start refusing
+    uploads to a file somebody dragged into another folder. The tail is
+    `<node_id>.<ext>` and the node id cannot change.
+
+    The two upload routes share this so they cannot disagree about which objects
+    are writable through a signature — a distinction a signed URL makes permanent
+    the moment it is handed out. A node whose key ends any other way predates the
+    catalog (#309), and overwriting bytes written before this table existed is
+    not what those routes are for.
+    """
+    blob_key = record.get("blob_key")
+    if not blob_key:
+        return False
+    return blob_key.endswith(f"/{record['node_id']}{keys.extension(record['name'])}")
+
+
+def entity_chain(record: dict) -> list[str]:
+    """Every entity this node sits inside, deepest first, itself included.
+
+    One `BatchGetItem` over the ids in `path`, which is why the materialised
+    index earns its keep a second time: the alternative is a `GetItem` per level,
+    sequentially, because each parent's id is only known once its child has been
+    read.
+
+    Deepest first because both callers want the nearest answer and differ only in
+    which kinds they will accept — `owner_of` takes the first of any kind, and
+    `_blob_owner` takes the first that is a character or a project.
+    """
+    ancestors = [node_id for node_id in record.get("path", "").split("/") if node_id]
+    chain = [record["entity"]] if record.get("entity") else []
+    if not ancestors:
+        return chain
+
+    found = records(ancestors)
+    for node_id in reversed(ancestors):
+        ancestor = found.get(node_id)
+        if ancestor and ancestor.get("entity"):
+            chain.append(ancestor["entity"])
+    return chain
+
+
+def owner_of(record: dict) -> dict | None:
+    """The entity a node belongs to, as `{kind, id, slug}`, or `None`.
+
+    What the SPA shows as "in <project>", and what `GET /api/nodes/<id>/owner`
+    answers. A node directly under the library root belongs to nobody in
+    particular, which is a real answer and not a missing one — folders a person
+    makes by hand are meant to be reachable without becoming somebody's.
+
+    The deepest entity wins, so a run's output reports the run rather than the
+    project it sits in. That is the answer a person wants from a file, and the
+    project is one hop up its `path` for anyone who wants that instead.
+    """
+    for entity_id in entity_chain(record):
+        try:
+            return entity_summary(entity_id)
+        except (NotFoundError, ValidationError):
+            # A reverse pointer naming a record that is gone. Skipped rather than
+            # raised: the node is fine, and a listing that 500s because one
+            # ancestor was half-deleted is a worse answer than "owned by nobody".
+            logger.warning("Node %s names a missing entity: %s", record["node_id"], entity_id)
+    return None
+
+
+def _blob_owner(record: dict) -> tuple[str | None, str]:
+    """The kind and id a new node's blob key is stamped from.
+
+    Only a character or a project owns bytes. A run, a scene and a movie all live
+    inside a project and their outputs are the project's — which is what keeps
+    the bucket at three prefixes rather than six.
+    """
+    for entity_id in entity_chain(record):
+        kind = entity_kind(entity_id)
+        if kind in OWNER_PREFIXES:
+            return kind, entity_id
+    return None, record["lib"]
+
+
+def _reel_value(name: str, lib: str) -> str | None:
+    """The sparse index key, or nothing.
+
+    Returning `None` rather than omitting the call at each site is what makes
+    `_item`'s "drop the nulls" rule do the work: an attribute that is absent
+    keeps the row out of `by-recent`, and there is one expression of that rule
+    instead of one per writer.
+    """
+    return lib if keys.kind(name) in REEL_KINDS else None
+
+
+def _new_node(
+    parent: dict,
+    name: str,
+    kind: str,
+    *,
+    node_id: str | None = None,
+    entity: str | None = None,
+    blob_key: str | None = None,
+    size: int | None = None,
+    content_type: str | None = None,
+) -> dict:
+    """One node record, ready to be written as its two items.
+
+    Factored out because the entity creates below build five, six or ten node
+    records inside one transaction and must build them exactly the way
+    `create_node` does. A second spelling of this dict is a character whose pool
+    folders are subtly not folders.
+
+    `node_id` is passed in only by those creates, which need the id before the
+    transaction is composed — a character's root has to be named by the character
+    record in the same write that creates it.
+    """
+    now = _now()
+    node_id = node_id or f"node-{uuid.uuid4()}"
+    return {
+        "node_id": node_id,
+        "parent_id": parent["node_id"],
+        "lib": parent["lib"],
+        "name": name,
+        "kind": kind,
+        "entity": entity,
+        "blob_key": blob_key,
+        "size": size,
+        "content_type": content_type,
+        "reel": _reel_value(name, parent["lib"]) if kind == KIND_FILE else None,
+        "path": child_path(parent),
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def _node_steps(record: dict) -> list[tuple[dict, Exception | None]]:
+    """The two writes that are one node, both conditional on nothing existing."""
+    taken = ConflictError(f"'{record['name']}' already exists here")
+    return [
+        (_put_name(record, parent_id=record["parent_id"], name=record["name"]), taken),
+        (
+            {
+                "Put": {
+                    "TableName": config.catalog_table(),
+                    "Item": _item({"pk": _node_pk(record["node_id"]), "sk": META, **record}),
+                    # A v4 UUID cannot realistically collide, so this guard never
+                    # fires — it is here so that no put in this module is capable
+                    # of overwriting a record, which is the property worth being
+                    # able to state without exceptions.
+                    "ConditionExpression": "attribute_not_exists(pk)",
+                }
+            },
+            taken,
+        ),
+    ]
 
 
 def create_node(
@@ -707,6 +1050,7 @@ def create_node(
     blob_key: str | None = None,
     size: int | None = None,
     content_type: str | None = None,
+    owner: tuple[str | None, str] | None = None,
 ) -> dict:
     """Add a folder or a file under an existing parent.
 
@@ -721,20 +1065,21 @@ def create_node(
     optional because the caller writing the object may not know either yet —
     `set_blob` fills them in later.
 
-    **A file may omit `blob_key`, and then it is a placeholder** whose key is
-    derived as `blobs/<node_id>`. That changed in #294, which added the upload
-    routes: a client cannot name `blobs/<node_id>` at create time because it does
-    not know the id yet, so the only way to have an id-derived key is for this
-    function to mint both together. Until the bytes land the node has a key and
-    no object behind it — nothing can download it (`browse._blob_at` 404s) and
-    the reel skips it, but **a folder listing does not**: `_file_entry` presigns
-    any row carrying a `blob_key`, so an abandoned placeholder is a tile that
-    will not load rather than a row nobody sees.
+    **A file may omit `blob_key`, and then one is stamped from the owner the
+    parent resolves to** — `<owner_kind>/<owner_id>/<node_id>.<ext>`. A client
+    cannot name that key itself because it does not know the node id yet, so the
+    only way to have an id-derived key is for this function to mint both
+    together. Until the bytes land the node has a key and no object behind it —
+    nothing can download it (`browse._blob_at` 404s) and the reel skips it, and
+    `browse.is_abandoned_upload` keeps it out of a listing rather than drawing a
+    tile that will not load.
 
-    **There is still no collector for one.** `studio catalog gc` (#318) exists —
-    this docstring used to say it did not — and it deletes blobs no row names,
-    which is the other direction entirely. A placeholder is a row no blob
-    answers, and removing it means deleting the node.
+    **`owner` is a cache and never a second opinion.** Resolving it costs one
+    batched read of the parent's ancestors, which is nothing for one node and is
+    a read per file for a bulk copy of forty — so `manage.copy_objects` resolves
+    the destination once and hands it in. A caller that passes a *different*
+    owner is filing bytes under an entity that does not hold the node, so the
+    only thing that may compute one is `_blob_owner`.
 
     An explicit `blob_key` is still stored exactly as given, because prod holds
     keys written long before this table did.
@@ -746,52 +1091,30 @@ def create_node(
 
     name = keys.clean_name(raw_name)
     parent = _folder_node(parent_id)
-    now = _now()
-    node_id = f"node-{uuid.uuid4()}"
-    if kind == KIND_FILE and not blob_key:
-        blob_key = blob_key_for(node_id)
+    record = _new_node(parent, name, kind, size=size, content_type=content_type)
 
-    record = {
-        "node_id": node_id,
-        "parent_id": parent_id,
-        "lib": parent["lib"],
-        "name": name,
-        "kind": kind,
-        "blob_key": blob_key,
-        "size": size,
-        "content_type": content_type,
-        "path": child_path(parent),
-        "created_at": now,
-        "updated_at": now,
-    }
+    if kind == KIND_FILE:
+        owner_kind, owner_id = owner if owner is not None else _blob_owner(parent)
+        record["blob_key"] = blob_key or blob_key_for(
+            record["node_id"], name, owner_kind, owner_id
+        )
+    else:
+        record["blob_key"] = None
 
-    _write(
-        [
-            (
-                _put_name(record, parent_id=parent_id, name=name),
-                ConflictError(f"'{name}' already exists here"),
-            ),
-            (
-                {
-                    "Put": {
-                        "TableName": config.catalog_table(),
-                        "Item": _item(
-                            {"pk": _node_pk(record["node_id"]), "sk": META, **record}
-                        ),
-                        # A v4 UUID cannot realistically collide, so this guard
-                        # never fires — it is here so that no put in this module
-                        # is capable of overwriting a record, which is the
-                        # property worth being able to state without exceptions.
-                        "ConditionExpression": "attribute_not_exists(pk)",
-                    }
-                },
-                ConflictError(f"'{name}' already exists here"),
-            ),
-        ]
-    )
+    _write(_node_steps(record))
 
     logger.info("Created %s %s under %s", kind, record["node_id"], parent_id)
     return {key: value for key, value in record.items() if value is not None}
+
+
+def blob_owner_for(parent_id: str) -> tuple[str | None, str]:
+    """The owner a file created under this folder would be stamped from.
+
+    Public so a bulk write can resolve it once. `manage.copy_objects` copies
+    forty files into one folder; without this every one of them pays a batched
+    read of the same ancestry to reach the same answer.
+    """
+    return _blob_owner(node(parent_id))
 
 
 def create_numbered(parent_id: str, raw_name: str | None, kind: str) -> dict:
@@ -854,6 +1177,15 @@ def rename_node(node_id: str, raw_name: str | None) -> dict:
     now = _now()
     updated = {**record, "name": name, "updated_at": now}
 
+    # **A rename can change what a file *is*.** `reel` is written from the
+    # extension, so `clip.png` renamed to `clip.txt` has to leave `by-recent` and
+    # the reverse has to join it. Only for a file: a folder is never in that
+    # index and assigning the attribute to it would put it there.
+    assignments = {"name": name, "updated_at": now}
+    if record["kind"] == KIND_FILE:
+        assignments["reel"] = _reel_value(name, record["lib"])
+        updated["reel"] = assignments["reel"]
+
     _write(
         [
             (_delete_name(parent_id=parent_id, name=record["name"]), None),
@@ -861,7 +1193,7 @@ def rename_node(node_id: str, raw_name: str | None) -> dict:
                 _put_name(updated, parent_id=parent_id, name=name),
                 ConflictError(f"'{name}' already exists here"),
             ),
-            (_update_meta(node_id, {"name": name, "updated_at": now}), NotFoundError(node_id)),
+            (_update_meta(node_id, assignments), NotFoundError(node_id)),
         ]
     )
 
@@ -1004,6 +1336,16 @@ def transfer_node(node_id: str, lib: str) -> dict:
         "updated_at": now,
     }
 
+    assignments = {
+        "parent_id": destination["node_id"],
+        "lib": lib,
+        "path": transferred["path"],
+        "updated_at": now,
+    }
+    if record["kind"] == KIND_FILE:
+        assignments["reel"] = _reel_value(record["name"], lib)
+        transferred["reel"] = assignments["reel"]
+
     _write(
         [
             (_delete_name(parent_id=record["parent_id"], name=record["name"]), None),
@@ -1011,18 +1353,7 @@ def transfer_node(node_id: str, lib: str) -> dict:
                 _put_name(transferred, parent_id=destination["node_id"], name=record["name"]),
                 ConflictError(f"'{record['name']}' already exists there"),
             ),
-            (
-                _update_meta(
-                    node_id,
-                    {
-                        "parent_id": destination["node_id"],
-                        "lib": lib,
-                        "path": transferred["path"],
-                        "updated_at": now,
-                    },
-                ),
-                NotFoundError(node_id),
-            ),
+            (_update_meta(node_id, assignments), NotFoundError(node_id)),
         ]
     )
 
@@ -1055,14 +1386,25 @@ def _rewrite_branch(
     `lib` is optional because a move never changes it — the destination is in the
     same library or `move_node` refused — and assigning it there would be a
     second writer of the attribute every GSI partitions on, for no change.
+
+    **A transfer also has to carry `reel`, because its value *is* the library
+    id.** Miss it and every image in the branch stays in the source library's
+    reel while its row says it belongs to another — a leak of exactly the kind
+    the membership checks exist to prevent, and one that no folder listing would
+    show. Only on the record half: `by-recent` reads `reel` and `created_at`, and
+    the by-parent item carries neither, so writing it there would put a second
+    copy of every file in the index.
     """
     steps: list[tuple[dict, Exception | None]] = []
     for record in descendants:
         path = new + record["path"][len(old):]
         assignments = {"path": path} if lib is None else {"path": path, "lib": lib}
+        meta_assignments = dict(assignments)
+        if lib is not None and record["kind"] == KIND_FILE:
+            meta_assignments["reel"] = _reel_value(record["name"], lib)
         steps.append(
             (
-                _update_meta(record["node_id"], {**assignments, "updated_at": _now()}),
+                _update_meta(record["node_id"], {**meta_assignments, "updated_at": _now()}),
                 NotFoundError(record["node_id"]),
             )
         )
@@ -1081,7 +1423,35 @@ def _rewrite_branch(
         _write(steps[start : start + TRANSACTION_ITEMS])
 
 
-def delete_node(node_id: str) -> dict:
+def _assert_no_entities(candidates: list[dict]) -> None:
+    for victim in candidates:
+        if victim.get("entity"):
+            raise ValidationError(
+                f"'{victim['name']}' is the folder of {victim['entity']} — "
+                "delete the entity instead"
+            )
+
+
+def assert_deletable(record: dict) -> None:
+    """Refuse now what `delete_node` would refuse later.
+
+    **A bulk delete has to know before it starts.** `delete_node` makes this
+    check from the subtree it is about to remove, which is the right place for
+    it and the wrong time for a selection of forty: the eighth entry refusing
+    leaves seven already gone. So `manage.delete_nodes` asks here first, for
+    every record, and only then deletes any of them.
+
+    A file cannot hold a descendant, so it is checked from the record in hand and
+    costs nothing. A folder pays one `by-path` query, which is the same query the
+    delete itself is about to make.
+    """
+    candidates = [record]
+    if record["kind"] == KIND_FOLDER:
+        candidates += subtree(record["lib"], child_path(record))
+    _assert_no_entities(candidates)
+
+
+def delete_node(node_id: str, *, allow_entities: bool = False) -> dict:
     """Remove a node and everything beneath it, and report the blobs it held.
 
     **Deepest first, the node itself last.** Batching means a subtree bigger
@@ -1089,6 +1459,18 @@ def delete_node(node_id: str) -> dict:
     deleting upwards means what survives is still a tree hanging off a parent
     that lists it, rather than a set of rows nothing can reach. Re-running the
     delete finishes the job.
+
+    **A folder that is some entity's root is refused, and so is a folder holding
+    one.** That is the single hard rule the "layout is convention" reading leaves
+    (see `services.layout`): every other folder in a character or a project may
+    be renamed, moved or deleted freely, because reference-ness and run-ness are
+    row attributes now. The root is different only because a record names it, and
+    a record naming a node that is gone is the one broken state this model cannot
+    repair from the tree. The refusal says which entity to delete instead.
+
+    `allow_entities` is for the entity deletes themselves, which have already
+    removed the record and its links and are finishing the job. It is not a
+    force flag for a caller who finds the refusal inconvenient.
 
     Nothing in S3 is touched. The `blob_key` values come back so the caller can
     decide what to do about the bytes — two nodes may point at one key, since a
@@ -1100,6 +1482,8 @@ def delete_node(node_id: str) -> dict:
         raise ValidationError("the library root cannot be deleted")
 
     descendants = subtree(record["lib"], child_path(record))
+    if not allow_entities:
+        _assert_no_entities([record, *descendants])
     descendants.sort(key=lambda entry: len(entry["path"]), reverse=True)
     doomed = descendants + [record]
 
@@ -1158,3 +1542,1214 @@ def set_blob(
 
     logger.info("Set blob on %s", node_id)
     return {**record, **assignments}
+
+
+# ═══════════════════════════════ entities ═══════════════════════════════
+#
+# Characters, projects, runs, scenes and movies. Everything above this line is
+# the file tree; everything below is what the tree hangs off.
+#
+# ## Why an entity is two items
+#
+# The same two reasons a node is two items, and it is worth stating rather than
+# inheriting silently. DynamoDB enforces uniqueness on **one thing only: the
+# primary key**, and the two properties an entity needs pull in opposite
+# directions:
+#
+# * The record must be keyed on the **id**, because the id is what every other
+#   row points at and it must never change. `CHAR#<char_id>` / `META`.
+# * The slug must be **unique in the library**, and the only way to say that to
+#   DynamoDB is to make the slug part of a key. `LIB#<lib>` / `CHARSLUG#<slug>`,
+#   written under `attribute_not_exists(pk)`.
+#
+# One item cannot be keyed both ways, so there are two — and the claim item then
+# earns its keep a second time as the **list index**: "every character in this
+# library" is one query on `LIB#<lib>` rather than the `Scan` this table must
+# never have.
+#
+# **A GSI does not substitute for it.** An index hashed on `lib` and ranged on
+# `slug` would give the listing and enforce nothing: two records with the same
+# slug both land in it, silently. Uniqueness has to be a condition expression on
+# a real key.
+#
+# **Keying the character on its slug instead** — `LIB#<lib>` / `CHAR#<slug>` —
+# collapses it to one item and reintroduces the disease the whole model removes:
+# a rename becomes delete-and-recreate, and every `REF#` row, run link and
+# binding pointing at it is pointing at a key that no longer exists.
+#
+# ## The claim is a pointer, never a projection
+#
+# It carries the entity id and a timestamp and nothing else. Putting
+# `display_name` on it would put a mutable copy on a second item that every
+# rename has to keep in step — the trap `GET /api/nodes` already avoids by
+# pairing a query with a `BatchGetItem`, and the listing here is the same shape
+# for the same reason.
+#
+# **The run listing row is the one deliberate exception**, and it is deliberate
+# because a run is immutable once it completes: there is nothing left to keep in
+# step, and the runs screen would otherwise need a `BatchGetItem` over hundreds
+# of envelopes to draw a grid of thumbnails.
+#
+# ## `rev` is compare-and-swap, not check-then-write
+#
+# Every mutation of a record carries the `rev` the caller last read and fails the
+# transaction if it moved. That closes a window that was open: the old
+# `write_profile` re-read a node's `updated_at` and refused if it had changed,
+# which is a check and a write with a gap between them. A `ConditionExpression`
+# has no gap.
+
+
+def entity_kind(entity_id: str) -> str:
+    """Which kind an entity id names, read off its prefix.
+
+    **The one place in this service that parses an id**, and the exception is
+    forced rather than chosen: the reverse pointer a root folder carries is a
+    bare `entity: "char-…"`, and a `GetItem` needs a partition. Storing the kind
+    beside it would be a second copy of something the id already says, on a row
+    that is written once and never revisited.
+
+    It is a closed set of five, and an unrecognised prefix is a refusal rather
+    than a guess — the alternative is composing `SOMETHING#<id>` and getting a
+    404 that names nothing.
+    """
+    prefix = entity_id.split("-", 1)[0] if entity_id else ""
+    if prefix not in _KIND_BY_ID_PREFIX:
+        raise ValidationError(f"'{entity_id}' does not name an entity")
+    return _KIND_BY_ID_PREFIX[prefix]
+
+
+def _entity_pk(kind: str, entity_id: str) -> str:
+    return f"{ENTITY_KEYS[kind][1]}{entity_id}"
+
+
+def _mint(kind: str) -> str:
+    return f"{ENTITY_KEYS[kind][0]}-{uuid.uuid4()}"
+
+
+def _claim_sk(kind: str, slug: str) -> str:
+    return f"{CLAIM_PREFIX[kind]}{slug}"
+
+
+def _numbers(value):
+    """Turn every `Decimal` a read hands back into an int or a float.
+
+    The deserialiser returns `Decimal` for every N, which is right for money and
+    wrong for everything about to be JSON-encoded into a response — `jsonify`
+    refuses one outright. `_record` does this for `size` alone because a node has
+    exactly one number on it; an entity record has `rev`, three `counts`, a
+    reference `order` and a `cost.amount` nested two deep, so this walks.
+
+    Integral values come back as `int` so a `rev` reads as `7` rather than `7.0`
+    — a client comparing the two would be right to be confused.
+    """
+    if isinstance(value, Decimal):
+        return int(value) if value == value.to_integral_value() else float(value)
+    if isinstance(value, dict):
+        return {key: _numbers(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_numbers(item) for item in value]
+    return value
+
+
+def _entity(item: dict) -> dict:
+    """Unmarshal one entity item, keys dropped and numbers made plain."""
+    record = _attributes(item)
+    record.pop("pk", None)
+    record.pop("sk", None)
+    return _numbers(record)
+
+
+# ──────────────────────────── entity reads ────────────────────────────
+
+
+def entity(kind: str, entity_id: str) -> dict:
+    """One entity's record, by id.
+
+    The `kind` is passed rather than derived so a caller cannot ask
+    `GET /api/characters/<a project id>` and be answered. That is a 404 naming
+    the id, which is what a client that followed a stale link deserves — and it
+    is checked here rather than in six route modules.
+    """
+    if kind not in ENTITY_KEYS:
+        raise ValidationError(f"'{kind}' is not an entity kind")
+    if entity_kind(entity_id) != kind:
+        raise NotFoundError(entity_id)
+
+    try:
+        response = dynamodb.client().get_item(
+            TableName=config.catalog_table(),
+            Key={"pk": {"S": _entity_pk(kind, entity_id)}, "sk": {"S": META}},
+        )
+    except ClientError as exc:
+        logger.warning("GetItem failed for %s: %s", entity_id, exc)
+        raise UpstreamError("Could not read the catalog") from exc
+
+    item = response.get("Item")
+    if not item:
+        raise NotFoundError(entity_id)
+    return _entity(item)
+
+
+def entity_summary(entity_id: str) -> dict:
+    """`{kind, id, slug}` for one entity — what a node's `owner` reports.
+
+    Deliberately three fields. A listing that drew the whole record per file
+    would fetch a profile per thumbnail, and the SPA needs exactly enough to
+    write "in <slug>" and link it.
+    """
+    kind = entity_kind(entity_id)
+    record = entity(kind, entity_id)
+    return {"kind": kind, "id": record["id"], "slug": record.get("slug")}
+
+
+def _claims(lib: str, kind: str) -> list[dict]:
+    items = _query(
+        TableName=config.catalog_table(),
+        KeyConditionExpression="pk = :pk AND begins_with(sk, :claim)",
+        ExpressionAttributeValues={
+            ":pk": {"S": _lib_pk(lib)},
+            ":claim": {"S": CLAIM_PREFIX[kind]},
+        },
+    )
+    return [_entity(item) for item in items]
+
+
+def entities_by_id(kind: str, entity_ids: list[str]) -> dict[str, dict]:
+    """Full records for many entities at once, keyed by id.
+
+    Public because the reverse-link routes all end the same way: `by-sk` hands
+    back a list of ids and the caller needs the records behind them.
+
+    `records` for nodes, one partition prefix over. Kept separate rather than
+    generalised because the two differ in the one thing that matters — which
+    partition a key is built in — and a shared helper taking a prefix would be a
+    place to pass the wrong one.
+    """
+    wanted = list(dict.fromkeys(entity_ids))
+    found: dict[str, dict] = {}
+    for start in range(0, len(wanted), BATCH_GET_KEYS):
+        batch = wanted[start : start + BATCH_GET_KEYS]
+        batch_keys = [
+            {"pk": {"S": _entity_pk(kind, entity_id)}, "sk": {"S": META}}
+            for entity_id in batch
+        ]
+        for item in _batch_get(batch_keys):
+            record = _entity(item)
+            found[record["id"]] = record
+    return found
+
+
+def entities_in(lib: str, kind: str) -> list[dict]:
+    """Every character, or every project, in one library.
+
+    **One query plus a batched read** — the claim rows say which ids exist and
+    `BatchGetItem` fetches the records. The same shape `GET /api/nodes` uses, for
+    the same reason: the claim stays a pointer rather than a projection somebody
+    has to keep in step.
+
+    A claim naming a record that is not there is logged and dropped rather than
+    raised. Every create and delete here is one transaction over both items, so
+    one without the other means a row was written by hand — and a listing that
+    500s over it is a library nobody can open.
+    """
+    claims = _claims(lib, kind)
+    found = entities_by_id(kind, [claim["entity"] for claim in claims])
+
+    listed = []
+    for claim in claims:
+        record = found.get(claim["entity"])
+        if record is None:
+            logger.warning("Library %s claims a missing %s: %s", lib, kind, claim["entity"])
+            continue
+        listed.append(record)
+    return listed
+
+
+def entity_by_slug(lib: str, kind: str, slug: str) -> dict:
+    """One entity by the label a person types. Two reads, no scan."""
+    try:
+        response = dynamodb.client().get_item(
+            TableName=config.catalog_table(),
+            Key={"pk": {"S": _lib_pk(lib)}, "sk": {"S": _claim_sk(kind, slug)}},
+        )
+    except ClientError as exc:
+        logger.warning("GetItem failed for %s '%s': %s", kind, slug, exc)
+        raise UpstreamError("Could not read the catalog") from exc
+
+    item = response.get("Item")
+    if not item:
+        raise NotFoundError(slug)
+    return entity(kind, _entity(item)["entity"])
+
+
+def linked(entity_id: str, holder_kind: str) -> list[str]:
+    """Everything of one kind that points at this entity, read backwards.
+
+    `by-sk` inverts the table, so `sk = CHAR#<id> AND begins_with(pk, "PROJ#")`
+    is "which projects involve this character" and the same query one prefix over
+    is "which runs used it". Both are questions that have no answer at all in the
+    document-shaped model this replaces — the second one is `runs find
+    --character`, which lists every project, lists every run in each, reads
+    `request.json` for each, and greps.
+    """
+    prefix = ENTITY_KEYS[holder_kind][1]
+    items = _query(
+        TableName=config.catalog_table(),
+        IndexName=BY_SK_INDEX,
+        KeyConditionExpression="sk = :sk AND begins_with(pk, :holder)",
+        ExpressionAttributeValues={
+            ":sk": {"S": f"{ENTITY_KEYS[entity_kind(entity_id)][1]}{entity_id}"},
+            ":holder": {"S": prefix},
+        },
+    )
+    return [_attributes(item)["pk"][len(prefix) :] for item in items]
+
+
+def links(entity_id: str, target_kind: str) -> list[str]:
+    """Everything of one kind this entity points at, read forwards."""
+    kind = entity_kind(entity_id)
+    prefix = ENTITY_KEYS[target_kind][1]
+    items = _query(
+        TableName=config.catalog_table(),
+        KeyConditionExpression="pk = :pk AND begins_with(sk, :target)",
+        ExpressionAttributeValues={
+            ":pk": {"S": _entity_pk(kind, entity_id)},
+            ":target": {"S": prefix},
+        },
+    )
+    return [_attributes(item)["sk"][len(prefix) :] for item in items]
+
+
+# ──────────────────────────── entity writes ────────────────────────────
+
+
+def _put(pk: str, sk: str, attributes: dict, *, unique: bool = False) -> dict:
+    item = {
+        "TableName": config.catalog_table(),
+        "Item": _item({"pk": pk, "sk": sk, **attributes}),
+    }
+    if unique:
+        item["ConditionExpression"] = "attribute_not_exists(pk)"
+    return {"Put": item}
+
+
+def _delete(pk: str, sk: str) -> dict:
+    return {"Delete": {"TableName": config.catalog_table(), "Key": {"pk": {"S": pk}, "sk": {"S": sk}}}}
+
+
+def _revised(kind: str, entity_id: str, assignments: dict, rev: int) -> dict:
+    """Update an entity record only if its `rev` is still the one that was read.
+
+    Compare-and-swap in one operation. `rev` appears twice in the expression —
+    once as the attribute being incremented and once in the condition — under two
+    aliases for the same name, which DynamoDB allows and which keeps the
+    assignment arithmetic identical to every other update here.
+    """
+    names = {f"#a{index}": attribute for index, attribute in enumerate(assignments)}
+    values = {
+        f":a{index}": _serialize(value)
+        for index, value in enumerate(assignments.values())
+        if value is not None
+    }
+    sets = [f"{alias} = :a{alias[2:]}" for alias in names if f":a{alias[2:]}" in values]
+    removes = [alias for alias in names if f":a{alias[2:]}" not in values]
+
+    clauses = []
+    if sets:
+        clauses.append("SET " + ", ".join(sets))
+    if removes:
+        clauses.append("REMOVE " + ", ".join(removes))
+
+    names["#rev"] = "rev"
+    values[":rev"] = {"N": str(rev)}
+    return {
+        "Update": {
+            "TableName": config.catalog_table(),
+            "Key": {"pk": {"S": _entity_pk(kind, entity_id)}, "sk": {"S": META}},
+            "UpdateExpression": " ".join(clauses),
+            "ExpressionAttributeNames": names,
+            "ExpressionAttributeValues": values,
+            "ConditionExpression": "attribute_exists(pk) AND #rev = :rev",
+        }
+    }
+
+
+def _stale(kind: str, rev: int) -> ConflictError:
+    return ConflictError(
+        f"the {kind} was changed by someone else; re-read and retry "
+        f"(rev {rev} → {rev + 1})"
+    )
+
+
+def _bump_counts(project_id: str, field: str, delta: int) -> dict:
+    """Move one of a project's three counters inside somebody else's transaction.
+
+    Maintained rather than scanned, which is the whole reason it is a step here
+    and not a query on the read path: "how many runs does this project have" is a
+    number on the record, and a screen that had to count them would page through
+    every listing row to draw a card.
+    """
+    return {
+        "Update": {
+            "TableName": config.catalog_table(),
+            "Key": {"pk": {"S": _entity_pk(ENTITY_PROJECT, project_id)}, "sk": {"S": META}},
+            "UpdateExpression": "SET #counts.#field = #counts.#field + :delta",
+            "ExpressionAttributeNames": {"#counts": "counts", "#field": field},
+            "ExpressionAttributeValues": {":delta": {"N": str(delta)}},
+            "ConditionExpression": "attribute_exists(pk)",
+        }
+    }
+
+
+def _tree_steps(parent: dict, slug: str, entity_id: str, layout: tuple) -> tuple[dict, list]:
+    """The root folder an entity owns, plus its starting layout, as one write.
+
+    Returns the root record and the steps that create it and its children. The
+    root carries `entity` — one attribute, written once, never changed — and it
+    is what lets a listing draw a character card instead of a folder icon and
+    what `GET /api/nodes/<id>/owner` walks up to. The forward pointer is `root`
+    on the record. One field in each direction, and no map of folder names in
+    either.
+    """
+    root = _new_node(parent, slug, KIND_FOLDER, entity=entity_id)
+    steps = _node_steps(root)
+    for name in layout:
+        steps += _node_steps(_new_node(root, name, KIND_FOLDER))
+    return root, steps
+
+
+def create_character(
+    lib: str,
+    parent_id: str,
+    *,
+    slug: str,
+    display_name: str | None,
+    fictional: bool,
+    profile: dict,
+    layout: tuple,
+) -> dict:
+    """A character, its slug claim, its root folder and its pools — one write.
+
+    **Twelve items in one `TransactWriteItems`**: the record, the claim, and two
+    each for the root and the four starting pools. Either all of it exists or
+    none of it does, which is the property that makes "creating a character"
+    something a person can retry after a timeout without inspecting what
+    survived.
+
+    **The four pools are a starting layout, not a schema.** They exist because an
+    empty character is unhelpful; nothing afterwards requires them. Rename
+    `reference/`, delete `archive/`, add one of your own — all ordinary file
+    operations, and none of them breaks anything, because an image is a reference
+    when a `REF#` row says so and not because of the folder it sits in.
+
+    A slug already claimed and a folder name already taken are two different
+    condition failures with two different messages, and `_write` is what keeps
+    them apart — the claim says "a character called X already exists", the folder
+    says "X already exists here", and the second can happen without the first
+    when somebody made an ordinary folder by that name.
+    """
+    parent = _folder_node(parent_id)
+    if parent["lib"] != lib:
+        raise ValidationError("a character is created in its own library")
+
+    char_id = _mint(ENTITY_CHARACTER)
+    now = _now()
+    root, tree = _tree_steps(parent, slug, char_id, layout)
+
+    record = {
+        "id": char_id,
+        "lib": lib,
+        "slug": slug,
+        "display_name": display_name or slug,
+        "fictional": fictional,
+        "schema_version": PROFILE_SCHEMA_VERSION,
+        "rev": 1,
+        "created": now,
+        "updated": now,
+        "root": root["node_id"],
+        "hero": None,
+        "default_set": [],
+        "profile": profile,
+    }
+
+    _write(
+        [
+            (
+                _put(_lib_pk(lib), _claim_sk(ENTITY_CHARACTER, slug),
+                     {"entity": char_id, "created": now}, unique=True),
+                ConflictError(f"a character called '{slug}' already exists"),
+            ),
+            (
+                _put(_entity_pk(ENTITY_CHARACTER, char_id), META, record, unique=True),
+                ConflictError(f"a character called '{slug}' already exists"),
+            ),
+            *tree,
+        ]
+    )
+
+    logger.info("Created character %s in %s", char_id, lib)
+    return record
+
+
+def create_project(
+    lib: str,
+    parent_id: str,
+    *,
+    slug: str,
+    title: str | None,
+    description: str | None,
+    characters: list[str],
+    layout: tuple,
+) -> dict:
+    """A project, its claim, its root, its five subfolders and its involvements.
+
+    `characters` are written as `PROJ#<id>` / `CHAR#<id>` rows rather than as a
+    list on the record, which is what makes the reverse question answerable: read
+    forwards it is "who is in this project", and read backwards on `by-sk` it is
+    "which projects involve this character" — a question with no answer today at
+    any price.
+    """
+    parent = _folder_node(parent_id)
+    if parent["lib"] != lib:
+        raise ValidationError("a project is created in its own library")
+
+    proj_id = _mint(ENTITY_PROJECT)
+    now = _now()
+    root, tree = _tree_steps(parent, slug, proj_id, layout)
+
+    record = {
+        "id": proj_id,
+        "lib": lib,
+        "slug": slug,
+        "title": title or slug,
+        "description": description or "",
+        "rev": 1,
+        "created": now,
+        "updated": now,
+        "root": root["node_id"],
+        "hero": None,
+        "counts": {"runs": 0, "scenes": 0, "movies": 0},
+    }
+
+    taken = ConflictError(f"a project called '{slug}' already exists")
+    _write(
+        [
+            (
+                _put(_lib_pk(lib), _claim_sk(ENTITY_PROJECT, slug),
+                     {"entity": proj_id, "created": now}, unique=True),
+                taken,
+            ),
+            (_put(_entity_pk(ENTITY_PROJECT, proj_id), META, record, unique=True), taken),
+            *tree,
+            *[
+                (
+                    _put(_entity_pk(ENTITY_PROJECT, proj_id),
+                         f"{ENTITY_KEYS[ENTITY_CHARACTER][1]}{char_id}",
+                         {"lib": lib, "created": now}),
+                    None,
+                )
+                for char_id in characters
+            ],
+        ]
+    )
+
+    logger.info("Created project %s in %s", proj_id, lib)
+    return record
+
+
+def rename_steps(kind: str, record: dict, slug: str, now: str) -> list:
+    """Drop the old claim, take the new one, and rename the root folder.
+
+    **Four writes and zero objects.** No record anywhere is rewritten, every node
+    keeps its id, and the `REF#` rows, the run bindings and the `default_set` that
+    all name node ids are untouched — which is the single largest simplification
+    the entity model buys and the reason `domain/rewrite.py` stops existing.
+
+    The root folder is renamed too, because a person browsing the tree should see
+    the name they just chose. That it is *only* a display name is the point: the
+    character is `char-…` and always was.
+    """
+    root = node(record["root"])
+    renamed = {**root, "name": slug, "updated_at": now}
+    return [
+        (_delete(_lib_pk(record["lib"]), _claim_sk(kind, record["slug"])), None),
+        (
+            _put(_lib_pk(record["lib"]), _claim_sk(kind, slug),
+                 {"entity": record["id"], "created": now}, unique=True),
+            ConflictError(f"a {kind} called '{slug}' already exists"),
+        ),
+        (_delete_name(parent_id=root["parent_id"], name=root["name"]), None),
+        (
+            _put_name(renamed, parent_id=root["parent_id"], name=slug),
+            ConflictError(f"'{slug}' already exists here"),
+        ),
+        (
+            _update_meta(root["node_id"], {"name": slug, "updated_at": now}),
+            NotFoundError(root["node_id"]),
+        ),
+    ]
+
+
+def update_entity(
+    kind: str, record: dict, rev: int, assignments: dict, *, slug: str | None = None
+) -> dict:
+    """Change an entity's attributes, and its slug, under one `rev`.
+
+    **A stale `rev` is a 409 and never a silent overwrite.** Two people editing
+    one profile is the case this exists for: the second save is refused with the
+    numbers in the message, and the client re-reads rather than losing the
+    first's work.
+
+    A slug change rides in the same transaction as the attribute change, so a
+    rename that collides leaves the display name unchanged too — the request
+    either happened or did not.
+    """
+    now = _now()
+    assignments = {**assignments, "rev": rev + 1, "updated": now}
+    if slug is not None and slug != record["slug"]:
+        assignments["slug"] = slug
+
+    steps = [(_revised(kind, record["id"], assignments, rev), _stale(kind, rev))]
+    if slug is not None and slug != record["slug"]:
+        steps += rename_steps(kind, record, slug, now)
+
+    _write(steps)
+    return {**record, **{k: v for k, v in assignments.items() if v is not None}}
+
+
+def _entity_rows(kind: str, entity_id: str) -> list[dict]:
+    """Every row in one entity's own partition, records and links alike."""
+    return _query(
+        TableName=config.catalog_table(),
+        KeyConditionExpression="pk = :pk",
+        ExpressionAttributeValues={":pk": {"S": _entity_pk(kind, entity_id)}},
+    )
+
+
+def delete_entity(kind: str, record: dict, *, delete_files: bool) -> dict:
+    """Remove an entity, its claim, its links and — if asked — its folder.
+
+    **Files are kept by default and the folder is orphaned into the library
+    root.** The reverse default loses media to a typo, and there is no undo for
+    an S3 delete this service can perform. `?files=delete` is the explicit
+    request, and it is the only path that passes `allow_entities` to
+    `delete_node`.
+
+    **The record goes before the tree, and that order is the recoverable one.**
+    What survives an interruption is a folder nothing claims — visible, movable,
+    deletable by hand — rather than a record naming a node that is gone, which is
+    the one broken state the tree cannot repair.
+
+    Everything that *points at* this entity is the caller's problem and is
+    checked there: `DELETE /api/characters/<id>` refuses while a project or a run
+    still links it. Here the links deleted are the ones this entity's own
+    partition holds.
+    """
+    rows = _entity_rows(kind, record["id"])
+    steps: list[tuple[dict, Exception | None]] = [
+        (_delete(_attributes(row)["pk"], _attributes(row)["sk"]), None) for row in rows
+    ]
+    if kind in CLAIM_PREFIX:
+        steps.append((_delete(_lib_pk(record["lib"]), _claim_sk(kind, record["slug"])), None))
+    for holder in (ENTITY_PROJECT, ENTITY_RUN):
+        for holder_id in linked(record["id"], holder):
+            steps.append(
+                (
+                    _delete(
+                        _entity_pk(holder, holder_id),
+                        f"{ENTITY_KEYS[kind][1]}{record['id']}",
+                    ),
+                    None,
+                )
+            )
+    if kind in COUNT_FIELD and record.get("project"):
+        steps.append((_bump_counts(record["project"], COUNT_FIELD[kind], -1), None))
+        steps.append(
+            (
+                _delete(
+                    _entity_pk(ENTITY_PROJECT, record["project"]),
+                    f"{ENTITY_KEYS[kind][1]}{record['created']}#{record['id']}",
+                ),
+                None,
+            )
+        )
+
+    for start in range(0, len(steps), TRANSACTION_ITEMS):
+        _write(steps[start : start + TRANSACTION_ITEMS])
+
+    root_id = record.get("root") or record.get("folder")
+    blob_keys: list[str] = []
+    if root_id:
+        if delete_files:
+            blob_keys = delete_node(root_id, allow_entities=True)["blob_keys"]
+        else:
+            _orphan(root_id, record["lib"])
+
+    logger.info("Deleted %s %s (files %s)", kind, record["id"],
+                "deleted" if delete_files else "kept")
+    return {"id": record["id"], "blob_keys": blob_keys}
+
+
+def _orphan(node_id: str, lib: str) -> None:
+    """Cut a folder loose from the entity that owned it.
+
+    The reverse pointer goes first, because a folder still carrying `entity`
+    after its record is gone is what `delete_node` refuses and what `owner_of`
+    logs about. Then it is moved to the library root, where it is an ordinary
+    folder somebody can browse, rename or delete by hand.
+
+    A name already taken there is not an error worth failing the delete over —
+    the entity is already gone — so it takes the next number, the same form
+    `catalog.create_numbered` and `manage.copy_objects` produce.
+    """
+    record = node(node_id)
+    _write([(_update_meta(node_id, {"entity": None}), NotFoundError(node_id))])
+
+    root_id = library(lib)["root_node"]
+    if record["parent_id"] == root_id:
+        return
+    for attempt in range(1, keys.MAX_NAME_VARIANTS + 1):
+        try:
+            move_node(node_id, root_id)
+            return
+        except ConflictError:
+            rename_node(node_id, keys.numbered_name(record["name"], attempt + 1))
+
+    logger.warning("Could not orphan %s into the library root", node_id)
+
+
+# ─────────────────────────── reference entries ───────────────────────────
+#
+# **This is what kills filename magic.** Order is an attribute, not a trailing
+# number in a basename, so `curate renumber` has nothing left to maintain. Group
+# is an attribute, so `curate regroup` is one write and moves no objects. A
+# description is one row, so two descriptions written at once stop fighting over
+# one YAML document. A reference image can be called anything, and renaming it
+# changes nothing here, because the row names its **node id**.
+
+# `order` is gapped so that inserting between two entries is one write and a
+# reorder never touches its neighbours. A thousand leaves ten insertions between
+# any adjacent pair before the midpoints run out, and the arithmetic below falls
+# back to appending when they do.
+ORDER_GAP = 1000
+
+REFERENCE_PREFIX = "REF#"
+
+
+def references(char_id: str) -> list[dict]:
+    """Every reference entry for one character, in `(group, order)` order.
+
+    One query on `CHAR#<id>` — the whole reference index, which used to be a
+    listing of four folders plus a parse of the bible's `references:` map, and
+    which went out of step with itself whenever the two were written apart.
+    """
+    items = _query(
+        TableName=config.catalog_table(),
+        KeyConditionExpression="pk = :pk AND begins_with(sk, :ref)",
+        ExpressionAttributeValues={
+            ":pk": {"S": _entity_pk(ENTITY_CHARACTER, char_id)},
+            ":ref": {"S": REFERENCE_PREFIX},
+        },
+    )
+    entries = []
+    for item in items:
+        entry = _entity(item)
+        entry["node"] = _deserialize(item["sk"])[len(REFERENCE_PREFIX) :]
+        entries.append(entry)
+    entries.sort(key=lambda entry: (entry.get("group") or "", entry.get("order") or 0))
+    return entries
+
+
+def _order_after(entries: list[dict], group: str, after: str | None) -> int:
+    """Where a new entry lands: after one neighbour, or at the end of its group.
+
+    `after` picks the midpoint between the named entry and the one following it
+    in the same group, so one write places an image between two others and the
+    neighbours are not touched. With no room left between them — ten insertions
+    into one gap — it falls through to appending, which is a visible reordering
+    rather than a silent collision on one `order` value.
+    """
+    in_group = [entry for entry in entries if entry.get("group") == group]
+    orders = [entry.get("order") or 0 for entry in in_group]
+
+    if after:
+        for index, entry in enumerate(in_group):
+            if entry["node"] != after:
+                continue
+            low = entry.get("order") or 0
+            high = orders[index + 1] if index + 1 < len(orders) else low + 2 * ORDER_GAP
+            midpoint = (low + high) // 2
+            if midpoint > low:
+                return midpoint
+            break
+
+    return (max(orders) if orders else 0) + ORDER_GAP
+
+
+def _reference_item(char_id: str, lib: str, node_id: str, entry: dict, now: str) -> dict:
+    return _put(
+        _entity_pk(ENTITY_CHARACTER, char_id),
+        f"{REFERENCE_PREFIX}{node_id}",
+        {
+            "lib": lib,
+            "group": entry.get("group"),
+            "order": entry.get("order"),
+            "description": entry.get("description"),
+            "tags": entry.get("tags"),
+            "created": entry.get("created") or now,
+        },
+    )
+
+
+def attach_reference(
+    char_id: str,
+    lib: str,
+    node_id: str,
+    *,
+    group: str,
+    description: str | None,
+    tags: list | None,
+    after: str | None,
+) -> dict:
+    """Mark one existing node as identity. One row, no bytes, no move.
+
+    **The node is not copied and is not required to live anywhere in
+    particular.** Reference-ness is this row and nothing else — which is the
+    coupling the whole entity model removes, and the reason `reference/` stopped
+    being load-bearing.
+
+    Already-attached is a 409 rather than an overwrite, because "attach" and
+    "describe" are different requests: the second is `PATCH` on the same address
+    and does not reset a group somebody has already chosen.
+    """
+    existing = references(char_id)
+    if any(entry["node"] == node_id for entry in existing):
+        raise ConflictError(f"{node_id} is already a reference")
+
+    now = _now()
+    entry = {
+        "node": node_id,
+        "group": group,
+        "order": _order_after(existing, group, after),
+        "description": description,
+        "tags": tags,
+        "created": now,
+    }
+    _write([(_reference_item(char_id, lib, node_id, entry, now), None)])
+    return entry
+
+
+def update_reference(char_id: str, lib: str, node_id: str, changes: dict) -> dict:
+    """Regroup, redescribe, retag or reorder one entry. One write, no objects.
+
+    Read-then-write rather than a bare update, because `after` is a position
+    relative to entries this row does not know about — and because the merge has
+    to preserve the fields the request left out. The read is one query the caller
+    would have made anyway to render the result.
+    """
+    existing = references(char_id)
+    entry = next((item for item in existing if item["node"] == node_id), None)
+    if entry is None:
+        raise NotFoundError(node_id)
+
+    merged = {**entry}
+    for field in ("group", "description", "tags"):
+        if field in changes:
+            merged[field] = changes[field]
+    if "order" in changes:
+        merged["order"] = changes["order"]
+    if changes.get("after") is not None or ("group" in changes and "order" not in changes):
+        merged["order"] = _order_after(
+            [item for item in existing if item["node"] != node_id],
+            merged.get("group"),
+            changes.get("after"),
+        )
+
+    _write([(_reference_item(char_id, lib, node_id, merged, _now()), None)])
+    return merged
+
+
+def put_references(char_id: str, lib: str, entries: list[dict]) -> list[dict]:
+    """Describe or reorder many entries in one transaction.
+
+    This is `describe-refs` and `sync-refs`, and the transaction is the point:
+    twelve descriptions used to be twelve rewrites of one YAML document, each
+    reading an `updated_at` and refusing if it had moved, so writing them
+    concurrently was a conflict dance rather than a write.
+
+    Order defaults to declaration order within a group, gapped, so a caller that
+    sends a list gets that list back in that order without computing anything.
+    """
+    now = _now()
+    counters: dict[str, int] = {}
+    written = []
+    steps = []
+    for entry in entries:
+        group = entry.get("group")
+        counters[group] = counters.get(group, 0) + ORDER_GAP
+        merged = {**entry, "order": entry.get("order") or counters[group], "created": now}
+        written.append({**merged, "node": entry["node"]})
+        steps.append((_reference_item(char_id, lib, entry["node"], merged, now), None))
+
+    for start in range(0, len(steps), TRANSACTION_ITEMS):
+        _write(steps[start : start + TRANSACTION_ITEMS])
+    return written
+
+
+def detach_reference(char_id: str, node_id: str) -> None:
+    """Stop calling a node identity. **The file stays exactly where it is.**"""
+    _write(
+        [(_delete(_entity_pk(ENTITY_CHARACTER, char_id), f"{REFERENCE_PREFIX}{node_id}"), None)]
+    )
+
+
+def set_project_characters(project_id: str, lib: str, characters: list[str]) -> list[str]:
+    """Replace a project's involvement links.
+
+    A replace rather than an add, because the SPA edits a set and the CLI's
+    `projects link` reads the set first — an add-only endpoint would need a
+    remove beside it and a client that got the difference wrong would accumulate
+    links nothing removes.
+    """
+    now = _now()
+    current = set(links(project_id, ENTITY_CHARACTER))
+    wanted = list(dict.fromkeys(characters))
+
+    steps = [
+        (
+            _put(_entity_pk(ENTITY_PROJECT, project_id),
+                 f"{ENTITY_KEYS[ENTITY_CHARACTER][1]}{char_id}",
+                 {"lib": lib, "created": now}),
+            None,
+        )
+        for char_id in wanted
+    ]
+    steps += [
+        (
+            _delete(_entity_pk(ENTITY_PROJECT, project_id),
+                    f"{ENTITY_KEYS[ENTITY_CHARACTER][1]}{char_id}"),
+            None,
+        )
+        for char_id in current - set(wanted)
+    ]
+
+    for start in range(0, len(steps), TRANSACTION_ITEMS):
+        _write(steps[start : start + TRANSACTION_ITEMS])
+    return wanted
+
+
+# ──────────────────── runs, scenes and movies ────────────────────
+#
+# The three kinds a project holds. All of them are an **envelope**: the fields
+# studio owns, validates and queries, beside a payload it stores and never
+# decodes.
+#
+# | Studio owns (row, validated, queryable) | The provider owns (blob, verbatim) |
+# |---|---|
+# | id, project, status, model, engine, kind, characters, bindings (node ids), timings, prediction id, error, outputs, lineage | the exact `input` sent, the exact response returned |
+#
+# That split preserves the reason the old rule existed — the pipeline changes the
+# payload's shape freely, so a service that parsed one would become a liar — while
+# giving the app a run it can render. `docs/WEB_APP.md`'s "never decode
+# request.json" survives, moved to where it is actually true.
+#
+# **The listing row is a projection and the only one in this module.** A project's
+# runs are `pk = PROJ#<id>, begins_with(sk, "RUN#"), ScanIndexForward=false` —
+# real pagination, newest first — and the row carries status, model, kind and a
+# thumbnail so the grid draws without a `BatchGetItem` over hundreds of
+# envelopes. It is safe to project *because a run is immutable once it
+# completes*: there is nothing left to keep in step. Do not copy this reasoning
+# onto a slug claim, where the opposite is true.
+
+
+def _listing_sk(kind: str, created: str, entity_id: str) -> str:
+    """`RUN#<created>#<run_id>` — sortable, unique, and newest-last by string.
+
+    The timestamp comes first so the range is chronological, and the id follows
+    so two entities created in the same microsecond are still two rows. The
+    reverse order a listing wants is `ScanIndexForward=False` rather than an
+    inverted key, because the same rows are also read oldest-first by anything
+    replaying a project.
+    """
+    return f"{ENTITY_KEYS[kind][1]}{created}#{entity_id}"
+
+
+def create_project_entity(
+    kind: str,
+    lib: str,
+    project_id: str,
+    parent_id: str,
+    *,
+    slug: str,
+    attributes: dict,
+    listing: dict,
+    subfolders: tuple = (),
+) -> dict:
+    """A run, a scene or a movie: envelope, listing row, folder — one write.
+
+    **Its folder is named for the slug and its record names the folder's node
+    id**, which is why renaming or moving that folder afterwards strands nothing.
+    That is the property the timestamp-slug folder name used to carry and could
+    not keep: a run that recorded a path was stranded by the first rename above
+    it, and `domain/rewrite.py` existed for exactly that.
+
+    The character usage rows go in the same transaction, because "which runs used
+    this character" has to be true the moment the run exists — a link written
+    afterwards is a link a crash can lose.
+    """
+    parent = _folder_node(parent_id)
+    entity_id = _mint(kind)
+    now = _now()
+
+    folder = _new_node(parent, slug, KIND_FOLDER, entity=entity_id)
+    steps = _node_steps(folder)
+    for name in subfolders:
+        steps += _node_steps(_new_node(folder, name, KIND_FOLDER))
+
+    record = {
+        "id": entity_id,
+        "lib": lib,
+        "project": project_id,
+        "slug": slug,
+        "rev": 1,
+        "created": now,
+        "updated": now,
+        "folder": folder["node_id"],
+        **attributes,
+    }
+
+    steps = [
+        (
+            _put(_entity_pk(kind, entity_id), META, record, unique=True),
+            ConflictError(f"{entity_id} already exists"),
+        ),
+        (
+            _put(_entity_pk(ENTITY_PROJECT, project_id), _listing_sk(kind, now, entity_id),
+                 {"lib": lib, "id": entity_id, "created": now, **listing}),
+            None,
+        ),
+        (_bump_counts(project_id, COUNT_FIELD[kind], 1), NotFoundError(project_id)),
+        *steps,
+        *[
+            (
+                _put(_entity_pk(kind, entity_id),
+                     f"{ENTITY_KEYS[ENTITY_CHARACTER][1]}{char_id}",
+                     {"lib": lib, "created": now}),
+                None,
+            )
+            for char_id in attributes.get("characters") or []
+        ],
+    ]
+
+    _write(steps)
+    logger.info("Created %s %s in project %s", kind, entity_id, project_id)
+    return record
+
+
+def project_entities(project_id: str, kind: str) -> list[dict]:
+    """One project's runs, scenes or movies as listing rows, newest first.
+
+    Rows rather than records, deliberately: this is what draws the grid, and
+    fetching the envelopes would be the `BatchGetItem` the projection exists to
+    avoid. `GET /api/runs/<id>` is where the envelope lives.
+    """
+    items = _query(
+        TableName=config.catalog_table(),
+        KeyConditionExpression="pk = :pk AND begins_with(sk, :kind)",
+        ExpressionAttributeValues={
+            ":pk": {"S": _entity_pk(ENTITY_PROJECT, project_id)},
+            ":kind": {"S": ENTITY_KEYS[kind][1]},
+        },
+        ScanIndexForward=False,
+    )
+    return [{**_entity(item), "project": project_id} for item in items]
+
+
+def update_project_entity(
+    kind: str, record: dict, assignments: dict, listing: dict | None = None
+) -> dict:
+    """Move a run, scene or movie forward. **No `rev`, and that is deliberate.**
+
+    A character or a project is edited by a person, twice at once, and losing
+    somebody's paragraph is the failure `rev` exists to prevent. A run is written
+    by the machine that submitted it, in a fixed sequence — pending, submitted,
+    succeeded — and the only concurrent writer is a second attempt at the same
+    transition. Demanding a `rev` there would make the CLI re-read a record to
+    report that a prediction finished.
+
+    The listing row is updated in the same transaction when its projection
+    changes, so a grid never shows `pending` for a run whose envelope says
+    `succeeded`.
+    """
+    now = _now()
+    assignments = {**assignments, "updated": now}
+    steps = [
+        (
+            _update({"pk": {"S": _entity_pk(kind, record["id"])}, "sk": {"S": META}}, assignments),
+            NotFoundError(record["id"]),
+        )
+    ]
+    if listing:
+        steps.append(
+            (
+                _update(
+                    {
+                        "pk": {"S": _entity_pk(ENTITY_PROJECT, record["project"])},
+                        "sk": {"S": _listing_sk(kind, record["created"], record["id"])},
+                    },
+                    listing,
+                ),
+                NotFoundError(record["id"]),
+            )
+        )
+    _write(steps)
+    return {**record, **{k: v for k, v in assignments.items() if v is not None}}
+
+
+def runs_for_character(char_id: str) -> list[dict]:
+    """Every run that used one character, as envelopes.
+
+    `runs find --character` was a walk over every project, every run folder and
+    three JSON documents each. It is `by-sk` now: one query for the ids, one
+    batched read for the records.
+    """
+    run_ids = linked(char_id, ENTITY_RUN)
+    found = entities_by_id(ENTITY_RUN, run_ids)
+    return sorted(found.values(), key=lambda record: record.get("created") or "", reverse=True)
+
+
+# ───────────────────────────── shots ─────────────────────────────
+
+
+SHOT_PREFIX = "SHOT#"
+
+
+def shots(scene_id: str) -> list[dict]:
+    """One scene's planned shots, in `order`."""
+    items = _query(
+        TableName=config.catalog_table(),
+        KeyConditionExpression="pk = :pk AND begins_with(sk, :shot)",
+        ExpressionAttributeValues={
+            ":pk": {"S": _entity_pk(ENTITY_SCENE, scene_id)},
+            ":shot": {"S": SHOT_PREFIX},
+        },
+    )
+    entries = []
+    for item in items:
+        entry = _entity(item)
+        entry["id"] = _deserialize(item["sk"])[len(SHOT_PREFIX) :]
+        entries.append(entry)
+    entries.sort(key=lambda entry: entry.get("order") or 0)
+    return entries
+
+
+def _shot_item(scene_id: str, shot_id: str, entry: dict) -> dict:
+    return _put(
+        _entity_pk(ENTITY_SCENE, scene_id),
+        f"{SHOT_PREFIX}{shot_id}",
+        {
+            "order": entry.get("order"),
+            "prompt": entry.get("prompt"),
+            "run": entry.get("run"),
+            "panel": entry.get("panel"),
+            "created": entry.get("created") or _now(),
+        },
+    )
+
+
+def put_shots(scene_id: str, entries: list[dict]) -> list[dict]:
+    """Revise a scene's plan **onto** the work already rendered, not over it.
+
+    A plan revision is a person rewriting prompts. `run` and `panel` are what a
+    render put there, and a plain replace would throw them away — so a shot
+    matched by id keeps both unless the request names them. Shots the revision
+    drops are deleted; new ones are appended.
+    """
+    existing = {entry["id"]: entry for entry in shots(scene_id)}
+    now = _now()
+
+    written = []
+    steps = []
+    for index, entry in enumerate(entries):
+        shot_id = entry.get("id") or f"shot-{uuid.uuid4()}"
+        previous = existing.pop(shot_id, {})
+        merged = {
+            "order": entry.get("order") if entry.get("order") is not None else (index + 1) * 10,
+            "prompt": entry.get("prompt", previous.get("prompt")),
+            "run": entry.get("run", previous.get("run")),
+            "panel": entry.get("panel", previous.get("panel")),
+            "created": previous.get("created") or now,
+        }
+        written.append({**merged, "id": shot_id})
+        steps.append((_shot_item(scene_id, shot_id, merged), None))
+
+    steps += [
+        (_delete(_entity_pk(ENTITY_SCENE, scene_id), f"{SHOT_PREFIX}{shot_id}"), None)
+        for shot_id in existing
+    ]
+
+    for start in range(0, len(steps), TRANSACTION_ITEMS):
+        _write(steps[start : start + TRANSACTION_ITEMS])
+    written.sort(key=lambda entry: entry.get("order") or 0)
+    return written
+
+
+def update_shot(scene_id: str, shot_id: str, changes: dict) -> dict:
+    """One shot: which run rendered it, which panel it came from, its wording."""
+    entry = next((item for item in shots(scene_id) if item["id"] == shot_id), None)
+    if entry is None:
+        raise NotFoundError(shot_id)
+
+    merged = {**entry, **{k: v for k, v in changes.items() if k in
+                          ("order", "prompt", "run", "panel")}}
+    _write([(_shot_item(scene_id, shot_id, merged), None)])
+    return merged
+
+
+# ─────────────────────────── the phrasebook ───────────────────────────
+#
+# A per-model list of avoid/use pairs — a table wearing a YAML file, and it is a
+# table now. `phrasebook add` stops being able to fail on a library that has
+# never held the document, because there is no document.
+
+
+TERM_PREFIX = "TERM#"
+
+
+def terms(lib: str, model: str | None = None) -> list[dict]:
+    """The wording list, optionally for one model.
+
+    `TERM#<model>#<avoid>` sorts by model and then by the word, so a single-model
+    read is a `begins_with` rather than a filter — which is why the model comes
+    first in the key even though the pair is what makes a term unique.
+    """
+    prefix = f"{TERM_PREFIX}{model}#" if model else TERM_PREFIX
+    items = _query(
+        TableName=config.catalog_table(),
+        KeyConditionExpression="pk = :pk AND begins_with(sk, :term)",
+        ExpressionAttributeValues={":pk": {"S": _lib_pk(lib)}, ":term": {"S": prefix}},
+    )
+    return [_entity(item) for item in items]
+
+
+def add_term(lib: str, model: str, avoid: str, use: str, note: str | None = None) -> dict:
+    """Claim one avoid/use pair. A duplicate is a 409, not an overwrite.
+
+    Conditional, for the reason every claim here is: the pair *is* the key, so
+    "already there" is a condition failure rather than a read somebody raced.
+    """
+    now = _now()
+    record = {"model": model, "avoid": avoid, "use": use, "note": note, "created": now}
+    _write(
+        [
+            (
+                _put(_lib_pk(lib), f"{TERM_PREFIX}{model}#{avoid}", record, unique=True),
+                ConflictError(f"'{avoid}' is already listed for {model}"),
+            )
+        ]
+    )
+    return record
+
+
+def delete_term(lib: str, model: str, avoid: str) -> None:
+    _write([(_delete(_lib_pk(lib), f"{TERM_PREFIX}{model}#{avoid}"), None)])

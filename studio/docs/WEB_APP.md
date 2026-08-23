@@ -64,7 +64,7 @@ number of files, puts them into the folder on screen, and does nothing
 character-aware or project-aware — a folder is a folder. **An uploaded file keeps
 the name it arrived with**, and a name the folder already holds is *numbered*
 (`clip.mp4` → `clip (2).mp4`) rather than refused or overwritten, which is the
-form `POST /api/objects/copy` has produced since #317. The `<project>_in_<n>` and
+form `POST /api/nodes/copy` has produced since #317. The `<project>_in_<n>` and
 `<name>_<group>_<n>` conventions are **not** applied here and nothing on this
 side depended on them — `refs.py`: "Slot N is position N in the resolved
 selection, not a trailing file number". They are **not retired**: the pipeline
@@ -181,8 +181,8 @@ The parts of the old rule that still hold, and should keep holding:
   once every route took a node id or a name path. "Delete the library" is not
   expressible because the root node has no `parent_id` and so no `NAME#` item to
   rewrite — the same refusal, arrived at from the data instead of from a string
-  comparison. `clean_key` stayed, for the one parameter below that is still an
-  S3 key.
+  comparison. `clean_key` stayed for one parameter and has since gone with it —
+  shared material has nodes now, so nothing is addressed by key.
 - **Upload exists as of #294; multipart still does not.** This bullet used to
   read "No upload, and no multipart grant", and it asked for the reversal to be
   argued separately rather than arriving as a side effect. It was.
@@ -318,18 +318,25 @@ catalog was seeded — which is what let the read path move onto rows without th
 SPA noticing (#309) — and they have been diverging ever since. Read the diagram
 as the folder tree a person sees.
 
-**Two kinds of `blob_key` exist, and both are correct forever.** Anything
-written before the catalog keeps the key it was written under
-(`characters/<slug>/…`, `projects/<slug>/…`); anything written through
-`POST /api/nodes/<id>/upload-url` since gets `blobs/<node_id>`, which
-`catalog.blob_key_for` is the single definition of. **A legacy key is a pointer
-with no meaning left in it.** It reads like a path and is not one — a rename
-does not touch it, a move does not touch it, and nothing outside
-`services/catalog.py` may split it on `/`. The moment something does, the
-coupling the catalog was built to remove is back, and it is back only for the
-half of the library that is old enough to look tempting. #335 is open on
-normalising the legacy keys; until then, `blobs/` sitting alongside
-`characters/` in the bucket is the expected state and not a mess to tidy.
+**A `blob_key` is `<characters|projects|libraries>/<entity id>/<node id>.<ext>`**,
+stamped once when the node is created from the owner its parent already resolves
+to, and `catalog.blob_key_for` is the single definition. It carries an id and
+never a name, so a bucket listing no longer spells out every character in the
+library — which is hard rule #1 applied to the one place that had been quietly
+breaking it.
+
+**It is still a pointer with no meaning in it.** A rename does not touch it, a
+move does not touch it, and nothing outside `services/catalog.py` may split it
+on `/`. The prefix is an operational convenience — per-entity cost in Storage
+Lens, a lifecycle rule, a bulk delete that is one prefix — not an address. Move
+a file between entities and the prefix goes stale while the key stays correct;
+`studio catalog verify` reports that drift and `reseat` fixes it, out of band and
+never automatically.
+
+Three older shapes survive in prod and all of them are correct forever:
+`characters/<slug>/…` and `projects/<slug>/…` from before the catalog, and
+`blobs/<node_id>` from between the catalog and the entity model. Nothing parses
+any of them, which is exactly why they can be left alone.
 
 Because a row and a blob are deleted separately, a blob can outlive every row
 that pointed at it. That is what `studio catalog gc` is for (#318) — it is the
@@ -346,25 +353,32 @@ a prefix that matches nothing is not an error to S3. The browsable root is now
 the bucket itself (`media_root_prefix = ""`).
 
 ```
-characters/<subject>/           # who a subject is
-├── profile.yaml
+<subject>/                      # a character's folder; its record names it `root`
 ├── seed/                       # source photos (.webp, .jpg, .jpeg, .JPG, .heic)
 ├── corpus/                     # the wider photo set
-├── reference/                  # reference images + .txt captions,
-│   └── <face|body|frame|wardrobe>/   #   sometimes split by category
+├── reference/                  # the images its REF# rows point at,
+│   └── <face|body|frame|wardrobe>/   #   grouped by purpose
 └── archive/                    # superseded output kept around
-projects/<subject>/             # what was generated of them
+<project>/                      # a project's folder
 ├── runs/<ts>_<slug>/           # request.json, result.json, sometimes prompt.json
 │   └── output/                 # the generated .jpeg / .webp / .mp4
-├── scenes/<ts>_<slug>/         # scene.json + shots/ + output/, a stitched sequence
+├── scenes/<slug>/              # storyboard/ + shots/ + output/
 ├── chains/<name>.json          # a scene's shot-to-shot plan
-└── favorites/                  # an ordinary folder someone made, from before
-                               # copying let you choose a destination
-projects/misc/runs/<ts>_<slug>/ # unattributed runs, mostly seedance/kling video
-phrasebook/wording.yaml         # shared prompt wording
-config/pose/                    # shared pose plates; source of truth is the repo
-blobs/<node_id>                 # bytes uploaded through the API — no tree, by design
+└── input/                      # the working pool
+config/pose/                    # the pose plates; source of truth is the repo
 ```
+
+**No `characters/` or `projects/` wrapper**, and no `profile.yaml`,
+`project.json`, `scene.json` or `movie.json`. Each of those was a document that
+had to be read to answer a question the catalog can now be asked, and each is a
+row. An entity's folder is a top-level node its record names, so the two are
+found in opposite directions: the record names `root`, and the root node carries
+`entity` back.
+
+The bible, the project's description, a scene's shot list and a run's envelope
+are all rows. What stays a file is what studio does not own: a run's
+`request.json` and `result.json` are the provider's bytes, served as text and
+never parsed — the rule below, now true of a much smaller set of things.
 
 Three things about this shape drive the UI: run and scene folders sort
 chronologically because their names start with a timestamp; a run's output lives
@@ -631,23 +645,20 @@ that breaks every time the pipeline ships.
   while a `<video>` is in native fullscreen — the same constraint that keeps
   `CopyKeyButton`'s feedback inline — and a dialog in a fixed position trains a
   second click that lands before anyone reads it.
-- **`GET /api/asset?key=` is the last query string in the service that becomes
-  an S3 key, and it is not going away.** Everything else — every listing, every
-  write, `GET /api/text` — is a node id or a name path resolved against the
-  catalog, so `keys.clean_prefix` and `assert_inside_root` went with #312. This
-  one parameter survives because that route is also how the **pipeline** reads
-  *shared* material: `phrasebook/wording.yaml` and the `config/pose/` plates
-  belong to no character and no project, `catalog_seed` deliberately records no
-  node for them, and `GET /api/resolve` 404s on them by design. A name path
-  cannot address a thing with no node.
+- **There is no query string left that becomes an S3 key.** `GET /api/asset`
+  takes `?node=` and nothing else. It was the last one, and it survived because
+  that route was also how the **pipeline** read *shared* material: the
+  phrasebook and the `config/pose/` plates belonged to no character and no
+  project, nothing recorded a node for them, and `GET /api/resolve` 404s on a
+  thing with no node.
 
-  So `keys.clean_key` still runs, on one parameter, and what it is doing is
-  worth knowing: `config.media_root_prefix()` is empty in prod, so the
-  confinement check passes everything and the traversal rules (`..`, a leading
-  `/`, a backslash — all rejected *before* normalisation) are the whole of it.
-  Test changes to it directly — `posixpath.normpath` strips a trailing slash,
-  which is why the folder check happens on the raw value, and it is why the
-  tests set a non-empty root to keep the confinement branch covered.
+  Both halves closed rather than one. The phrasebook is `TERM#` rows, so there
+  is no document to address; the plates are ordinary nodes in a `config/` folder
+  the library is created with. So `keys.clean_key`, `_normalise` and
+  `_reject_traversal` are deleted along with `clean_prefix` and
+  `assert_inside_root` before them, and `keys.py` is `clean_name` and the
+  extension tables. One addressing scheme, no exceptions — which is what the
+  confinement machinery was standing in for.
 
   **Nothing id-addressed or name-addressed goes through it**, and that is not an
   oversight: a name is looked up as an exact `NAME#` sort key and `clean_name`
@@ -775,14 +786,16 @@ never see it — `catalog.records` retries it explicitly and raises rather than
 answering with a short listing.
 
 **Two addressing schemes, and which one a route uses is the fastest thing to
-check about it.** Everything on `/api/nodes*`, `/api/libraries` and
-`/api/resolve` takes a **node id**. `/api/tree`, `/api/reel`, `/api/asset` and
-`/api/text` take either, and both together is a 400 rather than a guess. The
-writes under `/api/folder` and `/api/object(s)` take a **name path** — the same
-slash-joined string a listing hands back as `key`, walked against the catalog
-(#316, #317, #319). Nothing but the catalog is addressed any more, with one
-exception stated in the conventions below: `GET /api/asset?key=` is a raw S3
-key, because the pipeline reads shared material with no node through it.
+check about it — and there is only one left.** Every route takes a **node id**,
+or an entity id where the resource is an entity. `GET /api/resolve?path=` is the
+single translation from the slash-joined name path a person types into the id
+everything else wants, and `slug:<slug>` addressing on an entity route is the
+same courtesy for a name a person types.
+
+The name-path *writes* are gone with `routes/manage.py`, and so is the raw-key
+read: `?prefix=`, `?key=`, `/api/folder`, `/api/object(s)` and `/api/text?key=`
+were all deleted. A name path is a rendering of the tree for a person to read;
+nothing accepts one back.
 
 | Route | Returns |
 |---|---|
@@ -799,30 +812,48 @@ key, because the pipeline reads shared material with no node through it.
 | `POST /api/nodes/<id>/upload-url` | `{size, content_type}` → a presigned PUT for `blobs/<id>`. Signed length and type |
 | `POST /api/nodes/<id>/confirm-upload` | `HeadObject`s the blob and writes `size`/`content_type` onto the row |
 | `POST /api/runs` | Records a run: folder, documents inline, and an upload URL per output |
-| `GET /api/tree?node=\|prefix=&sort=` | One folder ready to draw: `folders`, `files` (each presigned), `breadcrumbs`, `counts`. One address or the other — both is a 400 |
-| `GET /api/reel?node=\|prefix=&cursor=&page_size=&sort=` | Images and video beneath a folder, recursively, paginated. Same two addresses |
-| `GET /api/asset?node=\|key=&disposition=` | A fresh presigned URL for one object. **`key` here is a raw S3 key**, the only one left — see below |
-| `GET /api/text?node=\|key=` | A `.json` / `.md` / `.txt` object's contents, capped at 1 MB. Same two addresses `PATCH /api/text` takes |
-| `POST /api/folder` | `{prefix, name}` → creates an empty folder. One row, no object. 409 if taken |
-| `PATCH /api/object` | `{key, name}` → renames one file in place. 409 if taken |
-| `PATCH /api/folder` | `{prefix, name}` → renames a folder. Its subtree does not move |
-| `POST /api/objects/move` | `{keys: [...], destination}` → moves 1..N files, names kept. 409 if taken |
-| `POST /api/folder/move` | `{prefix, destination}` → moves a folder; descendants' `path` is rewritten |
-| `POST /api/objects/copy` | `{keys: [...], destination}` → copies 1..N files, sources kept. Names numbered if taken |
-| `PATCH /api/text` | `{key, content}` → overwrites a text file's bytes and restamps its row |
-| `DELETE /api/objects` | `{keys: [...]}` → deletes 1..N files. Rows first, then blobs |
-| `DELETE /api/folder` | `{prefix}` → deletes a folder and its subtree. Rows first, then blobs |
+| `GET /api/nodes/<id>/owner` | Which entity a node belongs to, derived from its ancestry — `{kind, id, slug}` or null |
+| `POST /api/nodes/move` | `{ids: [...], destination}` → moves 1..N nodes, names kept. 409 if taken |
+| `POST /api/nodes/copy` | `{ids: [...], destination}` → copies 1..N nodes, sources kept. Names numbered if taken |
+| `DELETE /api/nodes` | `{ids: [...]}` → deletes 1..N nodes and their subtrees. Rows first, then blobs |
+| `GET /api/nodes/<id>/text` | A `.json` / `.md` / `.txt` node's contents, capped at 1 MB |
+| `PATCH /api/nodes/<id>/text` | `{content}` → overwrites a text node's bytes and restamps its row |
+| `GET /api/tree?node=&sort=` | One folder ready to draw: `folders`, `files` (each presigned), `breadcrumbs`, `counts` |
+| `GET /api/reel?node=&cursor=&page_size=&sort=` | Images and video beneath a folder, recursively, paginated |
+| `GET /api/asset?node=&disposition=` | A fresh presigned URL for one node's bytes — what the SPA calls on an expired tile |
 
-**The eight write routes above take a name path, not an S3 key** (#316, #317,
-#319), and so does `GET /api/text?key=` (#432). `prefix`, `key` and
-`destination` are the slash-joined names `GET /api/tree` hands back and every
-share link is made of; the service walks them against the catalog one `NAME#`
-lookup per segment, starting at the library's root. Nothing changed on the wire,
-which is why the SPA needed no change. For material written before the catalog a
-name path and a blob key are the same string; for anything written since they
-are not, and nothing may assume they are.
+### The entity routes
 
-**`GET /api/text` was the exception until #432 and it was a visible one.** The
+| Route | Returns |
+|---|---|
+| `GET \| POST /api/characters` | List, or create — record, slug claim, root folder and the starting pools in one transaction. **409** on a taken slug |
+| `GET \| PATCH \| DELETE /api/characters/<id>` | One character. `<id>` may be `slug:<slug>`. `PATCH` carries `rev` and **409**s if it has moved |
+| `PATCH /api/characters/<id>/profile` | `{profile, rev}` — the bible, validated |
+| `GET \| POST \| PATCH /api/characters/<id>/references` | The `REF#` rows: read grouped and ordered, attach one, or describe/reorder many in one transaction |
+| `PATCH \| DELETE /api/characters/<id>/references/<node>` | Change one entry's group, description, tags or order; or detach it, leaving the file |
+| `PATCH /api/characters/<id>/default-set` | `{nodes: [...]}` |
+| `GET /api/characters/<id>/selection` | `?pick=&tag=&limit=` → the ordered nodes a model would be shown. **Refuses** an over-cap selection with the index in the body |
+| `GET /api/characters/<id>/textblock` · `/runs` · `/projects` | The identity paragraph; the runs that used it; the projects that involve it |
+| `GET \| POST /api/projects` | List, or create |
+| `GET \| PATCH \| DELETE /api/projects/<id>` | One project, `rev`-guarded like a character |
+| `PATCH /api/projects/<id>/characters` | `{characters: [...]}` → replaces the involvement links |
+| `GET /api/projects/<id>/inputs` · `/runs` · `/scenes` · `/movies` | The working pool, and the three tiers |
+| `GET \| POST /api/runs` | Query by project, character, model, status, date; or record one. **Refuses a URL-shaped binding** |
+| `GET \| PATCH \| DELETE /api/runs/<id>` | The envelope, with outputs and bindings expanded |
+| `POST /api/runs/<id>/outputs` · `/response` | An upload URL per output; the provider's response stored as a payload blob |
+| `GET \| POST /api/scenes` · `GET \| PATCH \| DELETE /api/scenes/<id>` | The scene record |
+| `PATCH /api/scenes/<id>/shots` · `/shots/<shot_id>` | The plan: revise it, or change one shot |
+| `POST /api/scenes/<id>/output` · `POST /api/movies/<id>/output` | Upload URL for the stitched file. **ffmpeg is not here** — the CLI stitches and uploads |
+| `GET \| POST /api/movies` · `GET \| PATCH \| DELETE /api/movies/<id>` · `PATCH /api/movies/<id>/scenes` | The tier above |
+| `GET \| POST /api/phrasebook` · `DELETE /api/phrasebook/<model>/<avoid>` | The wording lists, as `TERM#` rows |
+
+**Everything above is `PATCH` where a REST habit would reach for `PUT`**, including
+the whole-document writes (`/profile`, `/references`, `/default-set`, `/shots`).
+`PUT` is not in the CORS method list, that list lives in four files that have to
+agree, and `PATCH` is already in all four — the same trade `PATCH /api/text` made
+before it. Adding `PUT` properly is a four-file change nobody has needed yet.
+
+**`GET /api/text` was an exception twice, and is a node route now.** The
 save resolved a name path to a node and wrote that node's `blob_key`; the read
 did a `GetObject` on the string it was handed. So on anything uploaded through
 the app — a row minted by #294, bytes at `blobs/<node-id>` — the editor could
@@ -854,7 +885,7 @@ because each file is its own transaction and a conflict found on the eighth woul
 leave seven already moved — that read is a courtesy, and the condition expression
 is the guarantee.
 
-**`POST /api/objects/copy` is `move` minus the delete, plus numbering.** Same
+**`POST /api/nodes/copy` is `move` minus the delete, plus numbering.** Same
 body, same confinement at both ends, same bulk cap. Two differences, both
 deliberate:
 
@@ -877,7 +908,7 @@ one verb, the separation has to be stated instead: the two orderings give
 different answers when the destination already holds that name, and choosing one
 silently is how a file ends up somewhere nobody looks for it.
 
-There is no `POST /api/folder/copy`: a subtree copy can be arbitrarily large with
+A folder copies as one of the `ids` like anything else, but a *deep* copy is not on offer: a subtree copy can be arbitrarily large with
 no progress to report, and nothing has wanted one yet. Argue for it separately.
 
 **`PATCH /api/text` is a PATCH because PUT is not in the CORS method list.** The
@@ -887,7 +918,7 @@ PUT properly if a route ever genuinely needs it.
 
 `sort` is one of `newest` (default), `oldest`, `name`, `name_desc`.
 
-The write routes carry a JSON body, `DELETE /api/objects` included. That is
+The write routes carry a JSON body, `DELETE /api/nodes` included. That is
 unusual but well-defined, and API Gateway's Lambda proxy passes it through
 intact; the alternative for a grid selection is a few hundred repeated `?key=`
 parameters, which is a URL length limit waiting to happen on exactly the case

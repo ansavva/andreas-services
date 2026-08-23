@@ -126,7 +126,7 @@ the setting to autumn"*.
 ### Output — the run owns it
 
 Every submission is a run under
-`projects/<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/`, holding `request.json`
+`<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/`, holding `request.json`
 (inputs as S3 **keys**), `result.json`, and `output/` with the video. `--poll`
 archives it automatically. Replicate output URLs are not permanent.
 

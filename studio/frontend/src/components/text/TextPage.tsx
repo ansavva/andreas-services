@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Alert, Badge, Button, Spinner, Text, Textarea } from "@ansavva/design-system";
 
-import { getText, saveText } from "../../apis/studio";
+import { getNodeText, saveNodeText } from "../../apis/studio";
 import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { formatTextContent } from "../../utils/format";
 import type { FileEntry, TextResponse } from "../../types";
@@ -68,7 +68,7 @@ export function TextPage({ file, onClose, onSaved }: Props) {
     setError(null);
     setDraft(null);
 
-    getText(file.id)
+    getNodeText(file.id)
       .then((result) => {
         if (!cancelled) setData(result);
       })
@@ -125,7 +125,10 @@ export function TextPage({ file, onClose, onSaved }: Props) {
     setSaving(true);
     setSaveError(null);
 
-    saveText(file.key, draft)
+    // By node id in both directions now. The read and the write used to address
+    // the same file through two different resolvers — an id here, a name path
+    // there — which is the last of what #432 left open.
+    saveNodeText(file.id, draft)
       .then(() => {
         // The saved draft becomes the file: staying in the editor is what you
         // want after a save, and re-fetching to prove it would only be a chance
@@ -137,7 +140,7 @@ export function TextPage({ file, onClose, onSaved }: Props) {
       })
       .catch((err: Error) => setSaveError(err.message))
       .finally(() => setSaving(false));
-  }, [draft, file.key, onSaved]);
+  }, [draft, file.id, onSaved]);
 
   const isMarkdown = data?.language === "markdown";
   const editable = data !== null && !data.truncated;

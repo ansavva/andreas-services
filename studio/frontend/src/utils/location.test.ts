@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { folderPath, legacyPath, objectPath, targetFromPath } from "./location";
+import {
+  characterPath,
+  folderPath,
+  moviePath,
+  objectPath,
+  projectPath,
+  runPath,
+  scenePath,
+  targetFromPath,
+} from "./location";
 
-const NODE = "0f2a1c9e-4b7d-4c11-9a3e-2d5b6f8c0a41";
+const NODE = "node-0f2a1c9e-4b7d-4c11-9a3e-2d5b6f8c0a41";
 
 describe("id URLs round-trip", () => {
   it("maps a folder and an object to their own routes", () => {
@@ -12,34 +21,30 @@ describe("id URLs round-trip", () => {
     expect(targetFromPath(objectPath(NODE))).toEqual({ kind: "object", id: NODE });
   });
 
-  it("addresses the library root as `/`, which needs no id", () => {
-    expect(folderPath(null)).toBe("/");
-    expect(targetFromPath("/")).toEqual({ kind: "folder", id: null });
+  it("addresses the library root as `/f`, which needs no id", () => {
+    expect(folderPath(null)).toBe("/f");
+    expect(targetFromPath("/f")).toEqual({ kind: "folder", id: null });
   });
 
   it("lands a hand-edited URL on the root rather than throwing", () => {
-    expect(targetFromPath("/f")).toEqual({ kind: "folder", id: null });
+    // Home is `/` now, so the browser reading it as the library root is what
+    // keeps an unrecognised address from reaching a listing with no folder.
+    expect(targetFromPath("/")).toEqual({ kind: "folder", id: null });
     expect(targetFromPath(`/f/${NODE}/extra`)).toEqual({ kind: "folder", id: null });
   });
 });
 
-describe("legacyPath", () => {
-  it("decodes each segment, so spaces and # in real filenames survive", () => {
-    // Both appear in this library, and encoding the whole path instead of its
-    // segments is what used to eat the separators.
-    expect(legacyPath("/projects/a%20b/output/clip%20%232.mp4")).toBe(
-      "projects/a b/output/clip #2.mp4",
-    );
+describe("entity URLs carry ids, so they survive a rename", () => {
+  it("addresses each entity by its own id", () => {
+    expect(characterPath("char-1")).toBe("/c/char-1");
+    expect(projectPath("proj-1")).toBe("/p/proj-1");
+    expect(scenePath("scene-1")).toBe("/s/scene-1");
+    expect(moviePath("movie-1")).toBe("/m/movie-1");
   });
 
-  it("drops the trailing slash that used to mean `folder`", () => {
-    // `/api/resolve` returns the node's `kind`, so the slash is not read any
-    // more — a link that lost it in a chat client still lands on the right page.
-    expect(legacyPath("/projects/a/runs/")).toBe("projects/a/runs");
-    expect(legacyPath("/")).toBe("");
-  });
-
-  it("passes a stray % through instead of throwing on the way to a render", () => {
-    expect(legacyPath("/projects/100%")).toBe("projects/100%");
+  it("nests a run under the project that owns it", () => {
+    // The run id alone would fetch it; the project in the path is what lets the
+    // page draw a breadcrumb before any request comes back.
+    expect(runPath("proj-1", "run-1")).toBe("/p/proj-1/r/run-1");
   });
 });

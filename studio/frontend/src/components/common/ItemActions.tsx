@@ -7,8 +7,9 @@ import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 interface Props {
   /** What is being acted on, written into every label. */
   name: string;
-  /** A file's or folder's name path — what "Copy" puts on the clipboard. Not an
-   *  S3 key; see `CopyKeyButton`, which this hands it to. */
+  /** A file's or folder's name path — what "Copy" puts on the clipboard, for a
+   *  `studio` command to resolve. Not an S3 key, and not what the actions beside
+   *  it write with: rename, move, copy and delete all take node ids. */
   copyValue: string;
   /** What `copyValue` names, which is all that differs between the two labels. */
   copyNoun?: "key" | "prefix";

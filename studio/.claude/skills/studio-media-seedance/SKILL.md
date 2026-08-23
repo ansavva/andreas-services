@@ -143,7 +143,7 @@ Generated videos are stored in the media library, never in git, and every
 submission is a **run** under the **project**:
 
 ```
-projects/<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/
+<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/
     request.json    what we sent — references as paths, never signed URLs
     prompt.json     the studio-media-prompt source, when one was used
     result.json     prediction id, status, media types, output keys
@@ -209,7 +209,7 @@ the selection and presigns it. To look at what a selection resolves to first:
 ```bash
 studio character refs <name> --describe
 studio character refs <name> --pick-tag face --presign --json > refs.json
-# -> [{ "key": "characters/<name>/reference/face/<name>_face_4.jpg", "url": "…" }, …]
+# -> [{ "node": "node-…", "name": "<file>.jpg", "url": "…" }, …]
 ```
 
 `refs` resolves the **bible's index** — which is why the index exists. Do not
@@ -219,7 +219,7 @@ does not say what any image shows. `studio presign --folder` is for a folder of
 files you already know, e.g.:
 
 ```bash
-studio presign --folder characters/<name>/reference/face --json
+studio presign --folder <name>/reference/face --json
 ```
 
 ### THE RULE — the store is the only origin
@@ -231,7 +231,7 @@ library first — `studio upload` mints the catalog record and the presigned PUT
 together, so no cloud credential is involved:
 
 ```bash
-studio upload --folder characters/<name>/corpus <img>
+studio upload --folder <name>/corpus <img>
 ```
 
 A character has four pools — `reference/`, `corpus/`, `seed/`, `archive/` — and
@@ -259,8 +259,8 @@ accepted and ignored — it is comfortably longer than a render job. See the
 ## Characters
 
 Characters are **data, not skills** — a single **`studio-media-character`** skill
-manages them all, and each one is a record under `characters/<name>/` with a
-`profile.yaml` bible and a described `reference/` library. To generate an
+manages them all, and each one is a row carrying its bible and a described set
+of references. To generate an
 on-model character video, load **`studio-media-character`**: it reads the bible
 and resolves the reference selection; this engine skill is character-agnostic. A
 character's rendering style is chosen per video (realistic by default, or an

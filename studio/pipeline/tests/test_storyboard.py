@@ -42,7 +42,7 @@ def plan(**over):
         ],
     }
     base.update(over)
-    return SB.normalise(base, "proj", "my-scene")
+    return SB.normalise(base, "my-scene")
 
 
 # --- roles -----------------------------------------------------------------
@@ -72,10 +72,10 @@ def test_a_handoff_takes_the_start_slot_and_demotes_the_panel():
     """
     m = plan()
     shot = m["shots"][1]
-    shot["opens_on"]["key"] = "projects/proj/input/proj_in_9.png"
+    shot["opens_on"]["node"] = "node-handoff"
 
     r = SB.resolve_roles(shot)
-    assert r["handoff"] == "projects/proj/input/proj_in_9.png"
+    assert r["handoff"] == "node-handoff"
     assert r["start_panel"] is None, "the handoff owns the start slot"
     assert r["demoted"] is True
     assert r["reference_panels"] == [0, 1], "the demoted start comes first, in panel order"
@@ -94,7 +94,7 @@ def test_continues_false_forces_the_panel_back():
     """The right answer when a shot deliberately opens on a new composition."""
     m = plan()
     shot = m["shots"][1]
-    shot["opens_on"]["key"] = "projects/proj/input/proj_in_9.png"
+    shot["opens_on"]["node"] = "node-handoff"
     shot["continues"] = False
 
     r = SB.resolve_roles(shot)
@@ -117,7 +117,7 @@ def test_a_shot_overrides_one_default_without_restating_the_rest():
         "shots": [{"panels": [{"prompt": "a"}],
                    "motion": {"prompt": "m", "duration": 12,
                               "extra": {"generate_audio": True}}}],
-    }, "proj", "my-scene")
+    }, "my-scene")
     motion = m["shots"][0]["motion"]
     assert motion["duration"] == 12, "the override wins"
     assert motion["model"] == "kling", "everything else still inherits"
@@ -136,7 +136,7 @@ def test_a_panel_never_inherits_the_video_models_settings():
         "defaults": {"model": "kling", "extra": {"mode": "standard", "generate_audio": False},
                      "panel_model": "nano-banana-pro", "panel_extra": {"output_format": "png"}},
         "shots": [{"panels": [{"prompt": "a"}], "motion": {"prompt": "m"}}],
-    }, "proj", "my-scene")
+    }, "my-scene")
     panel = m["shots"][0]["panels"][0]
     assert panel["model"] == "nano-banana-pro"
     assert panel["extra"] == {"output_format": "png"}
@@ -187,23 +187,32 @@ def test_an_unknown_role_is_refused_naming_the_real_ones():
 
 
 def test_a_shot_with_no_panel_and_no_motion_is_refused():
-    m = SB.normalise({"shots": [{"beat": "nothing"}]}, "proj", "my-scene")
+    m = SB.normalise({"shots": [{"beat": "nothing"}]}, "my-scene")
     with pytest.raises(SB.PlanError):
         SB.validate(m)
 
 
 def test_a_scene_with_no_shots_is_refused():
     with pytest.raises(SB.PlanError):
-        SB.validate(SB.normalise({"shots": []}, "proj", "my-scene"))
+        SB.validate(SB.normalise({"shots": []}, "my-scene"))
 
 
-def test_a_slug_shaped_like_a_run_id_is_refused():
-    """Scene folders used to be `<timestamp>_<slug>` and those still resolve, so
-    such a slug would be indistinguishable from a legacy scene."""
-    with pytest.raises(SB.PlanError) as exc:
-        SB.check_scene_slug("2026-08-16_07-40-22_stadium-encounter")
-    assert "run id" in str(exc.value)
-    assert SB.check_scene_slug("stadium-encounter") == "stadium-encounter"
+def test_a_slug_shaped_like_a_run_id_is_now_allowed():
+    """**This asserted the opposite, and the reason it did has expired.**
+
+    A scene folder was once `<timestamp>_<slug>`, so a scene NAMED that way
+    would have been indistinguishable from one of them and the resolver would
+    have gone to the wrong directory. A scene is a row with a UUID now and its
+    slug is an attribute; there is nothing left for a timestamp-shaped name to
+    collide with, and refusing one would refuse a legal name for a reason that
+    stopped being true.
+
+    The ordinary slug rule still applies — see the test below — so this is a
+    narrowing of the check rather than its removal.
+    """
+    assert SB.check_scene_slug("2026-08-16_07-40-22_the-encounter") == \
+        "2026-08-16_07-40-22_the-encounter"
+    assert SB.check_scene_slug("the-encounter") == "the-encounter"
 
 
 def test_an_ordinary_bad_slug_is_still_refused():
@@ -234,11 +243,11 @@ def test_load_plan_names_the_file_that_is_wrong(tmp_path):
 def test_shot_status_is_derived_from_what_the_shot_has():
     shot = {"panels": [{"n": 1, "prompt": "a"}]}
     assert SB.shot_status(shot) == "planned"
-    shot["panels"][0]["key"] = "projects/p/scenes/s/storyboard/shot-01-p1.png"
+    shot["panels"][0]["node"] = "node-panel-1"
     assert SB.shot_status(shot) == "boarded"
     shot["run"] = "p/2026-08-18_10-00-00_x"
     assert SB.shot_status(shot) == "rendered"
-    shot["shot_key"] = "projects/p/scenes/s/shots/shot-01.mp4"
+    shot["shot_node"] = "node-shot-copy"
     assert SB.shot_status(shot) == "cut"
 
 
@@ -249,9 +258,9 @@ def test_a_reference_only_panel_does_not_hold_a_shot_back_from_boarded():
     perpetually unboarded for an image it can render perfectly well without.
     """
     shot = {"panels": [
-        {"n": 1, "prompt": "a", "key": "k1"},
+        {"n": 1, "prompt": "a", "node": "node-k1"},
         {"n": 2, "prompt": "b", "role": "reference"},
-        {"n": 3, "prompt": "c", "key": "k3"},
+        {"n": 3, "prompt": "c", "node": "node-k3"},
     ]}
     assert SB.shot_status(shot) == "boarded"
 
@@ -259,21 +268,21 @@ def test_a_reference_only_panel_does_not_hold_a_shot_back_from_boarded():
 def test_scene_status_walks_from_planned_to_assembled():
     m = plan()
     assert SB.scene_status(m) == "planned"
-    m["shots"][0]["panels"][0]["key"] = "k"
+    m["shots"][0]["panels"][0]["node"] = "node-k"
     assert SB.scene_status(m) == "boarding", "some boarded, not all"
     for p in m["shots"][1]["panels"]:
-        p["key"] = "k"
+        p["node"] = "node-k"
     assert SB.scene_status(m) == "boarded"
     m["shots"][0]["run"] = "p/2026-08-18_10-00-00_x"
     assert SB.scene_status(m) == "shooting"
-    m["output"] = {"key": "projects/proj/scenes/my-scene/output/my-scene.mp4"}
+    m["output"] = {"node": "node-cut"}
     assert SB.scene_status(m) == "assembled"
 
 
 def test_is_assembled_is_the_planned_versus_cut_discriminator():
     m = plan()
     assert SB.is_assembled(m) is False
-    m["output"] = {"key": "projects/proj/scenes/my-scene/output/my-scene.mp4"}
+    m["output"] = {"node": "node-cut"}
     assert SB.is_assembled(m) is True
 
 
@@ -283,21 +292,21 @@ def test_a_re_ingest_carries_recorded_work_forward():
     """Editing prose must not throw away clips that have already been paid for."""
     old = plan()
     old["shots"][0]["run"] = "proj/2026-08-18_10-00-00_shot-01"
-    old["shots"][0]["key"] = "projects/proj/runs/2026-08-18_10-00-00_shot-01/output/x.mp4"
-    old["shots"][0]["shot_key"] = "projects/proj/scenes/my-scene/shots/shot-01.mp4"
+    old["shots"][0]["node"] = "node-shot-clip"
+    old["shots"][0]["shot_node"] = "node-shot-copy"
     old["shots"][0]["duration"] = 5.04
-    old["shots"][0]["panels"][0]["key"] = "projects/proj/scenes/my-scene/storyboard/shot-01-p1.png"
-    old["shots"][1]["opens_on"]["key"] = "projects/proj/input/proj_in_9.png"
+    old["shots"][0]["panels"][0]["node"] = "node-panel-1"
+    old["shots"][1]["opens_on"]["node"] = "node-handoff"
 
     revised = plan()
     revised["shots"][0]["beat"] = "one, but reworded"
-    merged = SB.merge(old, revised)
+    merged = SB.merge(old["shots"], revised["shots"])
 
-    assert merged["shots"][0]["run"] == "proj/2026-08-18_10-00-00_shot-01"
-    assert merged["shots"][0]["duration"] == 5.04
-    assert merged["shots"][0]["panels"][0]["key"].endswith("shot-01-p1.png")
-    assert merged["shots"][1]["opens_on"]["key"].endswith("proj_in_9.png")
-    assert merged["shots"][0]["status"] == "cut"
+    assert merged[0]["run"] == "proj/2026-08-18_10-00-00_shot-01"
+    assert merged[0]["duration"] == 5.04
+    assert merged[0]["panels"][0]["node"] == "node-panel-1"
+    assert merged[1]["opens_on"]["node"] == "node-handoff"
+    assert merged[0]["status"] == "cut"
 
 
 def test_a_changed_panel_prompt_keeps_its_image_and_marks_it_stale():
@@ -305,33 +314,33 @@ def test_a_changed_panel_prompt_keeps_its_image_and_marks_it_stale():
     warning, not a block — living with an out-of-date panel can be the right
     call, and the point of a board this cheap is that the choice is yours."""
     old = plan()
-    old["shots"][0]["panels"][0]["key"] = "projects/proj/scenes/my-scene/storyboard/shot-01-p1.png"
+    old["shots"][0]["panels"][0]["node"] = "node-panel-1"
 
     revised = plan()
     revised["shots"][0]["panels"][0]["prompt"] = "a, but different"
-    merged = SB.merge(old, revised)
+    merged = SB.merge(old["shots"], revised["shots"])
 
-    panel = merged["shots"][0]["panels"][0]
-    assert panel["key"].endswith("shot-01-p1.png"), "the image is kept"
+    panel = merged[0]["panels"][0]
+    assert panel["node"] == "node-panel-1", "the image is kept"
     assert panel["stale"] is True
 
 
 def test_whitespace_alone_does_not_make_a_panel_stale():
     old = plan()
     old["shots"][0]["panels"][0]["prompt"] = "a  wrapped\n  prompt"
-    old["shots"][0]["panels"][0]["key"] = "k"
+    old["shots"][0]["panels"][0]["node"] = "node-k"
     revised = plan()
     revised["shots"][0]["panels"][0]["prompt"] = "a wrapped prompt"
-    assert SB.merge(old, revised)["shots"][0]["panels"][0]["stale"] is False
+    assert SB.merge(old["shots"], revised["shots"])[0]["panels"][0]["stale"] is False
 
 
 def test_staleness_survives_a_further_revision():
     """Once stale, a panel stays stale until it is re-rendered — a second edit
     that happens to restore the original wording must not clear the flag."""
     old = plan()
-    old["shots"][0]["panels"][0]["key"] = "k"
+    old["shots"][0]["panels"][0]["node"] = "node-k"
     old["shots"][0]["panels"][0]["stale"] = True
-    assert SB.merge(old, plan())["shots"][0]["panels"][0]["stale"] is True
+    assert SB.merge(old["shots"], plan()["shots"])[0]["panels"][0]["stale"] is True
 
 
 def test_a_shot_renamed_between_revisions_starts_clean():
@@ -340,30 +349,39 @@ def test_a_shot_renamed_between_revisions_starts_clean():
     old["shots"][0]["run"] = "proj/2026-08-18_10-00-00_shot-01"
     revised = plan()
     revised["shots"][0]["id"] = "opening"
-    assert SB.merge(old, revised)["shots"][0]["run"] is None
+    assert SB.merge(old["shots"], revised["shots"])[0]["run"] is None
 
 
-def test_a_merge_preserves_the_original_creation_time():
-    old = plan()
-    old["created"] = "2026-01-01T00:00:00+00:00"
-    revised = plan()
-    revised["created"] = None
-    assert SB.merge(old, revised)["created"] == "2026-01-01T00:00:00+00:00"
+def test_scene_level_carry_across_is_the_records_and_not_the_merges():
+    """**This test asserted the opposite and the change is the point.**
+
+    It pinned that a re-ingest preserved the original `created`, because the
+    manifest was the record and losing the timestamp lost it for good. There is
+    no manifest: `created`, `stitch`, `output` and `assembled` live on the scene
+    row, a re-ingest never sends them, and `PUT /api/scenes/<id>/shots` cannot
+    touch them. So the merge is over SHOTS only, and there is nothing
+    scene-level left for it to preserve by hand — which is why it now takes two
+    shot lists rather than two manifests.
+    """
+    old, revised = plan(), plan()
+    merged = SB.merge(old["shots"], revised["shots"])
+    assert isinstance(merged, list)
+    assert [s["id"] for s in merged] == ["shot-01", "shot-02"]
 
 
 # --- reading the board -----------------------------------------------------
 
 def test_sheet_captions_name_the_role_because_position_does_not():
     m = plan()
-    m["shots"][0]["panels"][0]["key"] = "k1"
-    m["shots"][1]["panels"][0]["key"] = "k2"
-    m["shots"][1]["panels"][2]["key"] = "k4"
+    m["shots"][0]["panels"][0]["node"] = "node-k1"
+    m["shots"][1]["panels"][0]["node"] = "node-k2"
+    m["shots"][1]["panels"][2]["node"] = "node-k4"
     m["shots"][1]["panels"][2]["stale"] = True
 
     assert SB.sheet_captions(m) == [
-        ("k1", "shot-01 p1 [start]"),
-        ("k2", "shot-02 p1 [start]"),
-        ("k4", "shot-02 p3 [end] STALE"),
+        ("node-k1", "shot-01 p1 [start]"),
+        ("node-k2", "shot-02 p1 [start]"),
+        ("node-k4", "shot-02 p3 [end] STALE"),
     ]
 
 
@@ -376,44 +394,45 @@ def test_sheet_captions_skip_panels_that_do_not_exist_yet():
 def test_scene_frames_are_derived_from_the_plan():
     """They used to live in a `chains/<slug>.json` written beside the scene and
     kept in sync by hand. Everything the list needs is already in the plan: shot
-    1's opening panel is the seed, and every later shot's `opens_on.key` is the
-    handoff the shot before it produced."""
+    1's opening panel is the seed, and every later shot's `opens_on.node` is the
+    handoff the shot before it produced. Both halves are NODE IDS, so a frame
+    renamed or moved is still the frame the scene opens on."""
     m = plan()
     assert SB.scene_frames(m) == [], "nothing rendered yet"
 
-    m["shots"][0]["panels"][0]["key"] = "seed.png"
-    assert SB.scene_frames(m) == ["seed.png"]
+    m["shots"][0]["panels"][0]["node"] = "node-seed"
+    assert SB.scene_frames(m) == ["node-seed"]
 
-    m["shots"][1]["opens_on"]["key"] = "handoff-1.png"
-    assert SB.scene_frames(m) == ["seed.png", "handoff-1.png"]
+    m["shots"][1]["opens_on"]["node"] = "node-h1"
+    assert SB.scene_frames(m) == ["node-seed", "node-h1"]
 
 
 def test_scene_frames_keep_both_ends_when_a_cap_forces_a_choice():
     """The seed anchors the look the whole scene inherits; the newest frames
     carry the current state. The middle is what gives way."""
     m = plan()
-    m["shots"][0]["panels"][0]["key"] = "seed.png"
-    m["shots"][1]["opens_on"]["key"] = "h1.png"
+    m["shots"][0]["panels"][0]["node"] = "node-seed"
+    m["shots"][1]["opens_on"]["node"] = "node-h1"
     # Stand in for a longer scene by appending shots that already have handoffs.
     for i in range(2, 6):
         m["shots"].append({"n": i + 1, "id": f"shot-{i:02d}", "panels": [],
-                           "opens_on": {"key": f"h{i}.png"}, "continues": True})
+                           "opens_on": {"node": f"node-h{i}"}, "continues": True})
 
-    assert SB.scene_frames(m) == ["seed.png", "h1.png", "h2.png", "h3.png",
-                                  "h4.png", "h5.png"]
-    assert SB.scene_frames(m, 3) == ["seed.png", "h4.png", "h5.png"]
-    assert SB.scene_frames(m, 2) == ["seed.png", "h5.png"]
+    assert SB.scene_frames(m) == ["node-seed", "node-h1", "node-h2", "node-h3",
+                                  "node-h4", "node-h5"]
+    assert SB.scene_frames(m, 3) == ["node-seed", "node-h4", "node-h5"]
+    assert SB.scene_frames(m, 2) == ["node-seed", "node-h5"]
     # A cap of one is the seed alone. Written as one slice this returns the
-    # WHOLE list, because `keys[-0:]` is `keys[0:]` — the cap silently does
+    # WHOLE list, because `nodes[-0:]` is `nodes[0:]` — the cap silently does
     # nothing and every handoff frame is billed into the payload.
-    assert SB.scene_frames(m, 1) == ["seed.png"]
+    assert SB.scene_frames(m, 1) == ["node-seed"]
 
 
 def test_scene_frames_never_repeat_a_key():
     m = plan()
-    m["shots"][0]["panels"][0]["key"] = "seed.png"
-    m["shots"][1]["opens_on"]["key"] = "seed.png"
-    assert SB.scene_frames(m) == ["seed.png"]
+    m["shots"][0]["panels"][0]["node"] = "node-seed"
+    m["shots"][1]["opens_on"]["node"] = "node-seed"
+    assert SB.scene_frames(m) == ["node-seed"]
 
 
 # --- a supplied panel ------------------------------------------------------
@@ -422,9 +441,10 @@ def test_a_panel_given_as_an_image_is_supplied_not_rendered():
     """A plan can pin an image that already exists — the frame a scene opens on,
     or a pose pulled out of an earlier clip that is exactly right and would only
     be degraded by asking a model to reproduce it."""
-    assert SB.is_supplied({"key": "projects/p/input/p_in_9.jpg"}) is True
-    assert SB.is_supplied({"key": "k", "prompt": "   "}) is True, "whitespace is not a prompt"
-    assert SB.is_supplied({"key": "k", "prompt": "render this"}) is False
+    assert SB.is_supplied({"node": "node-supplied"}) is True
+    assert SB.is_supplied({"node": "node-supplied", "prompt": "   "}) is True, \
+        "whitespace is not a prompt"
+    assert SB.is_supplied({"node": "node-supplied", "prompt": "render this"}) is False
     assert SB.is_supplied({"prompt": "render this"}) is False
 
 
@@ -432,16 +452,16 @@ def test_a_supplied_panel_never_goes_stale():
     """It has no prompt to have drifted from, so marking it stale would be a
     permanent warning about nothing."""
     old = plan()
-    old["shots"][0]["panels"][0].update(key="projects/p/input/p_in_9.jpg", prompt="")
+    old["shots"][0]["panels"][0].update(node="node-supplied", prompt="")
     revised = plan()
-    revised["shots"][0]["panels"][0].update(key="projects/p/input/p_in_9.jpg", prompt="")
+    revised["shots"][0]["panels"][0].update(node="node-supplied", prompt="")
     revised["shots"][0]["beat"] = "reworded around it"
 
-    panel = SB.merge(old, revised)["shots"][0]["panels"][0]
+    panel = SB.merge(old["shots"], revised["shots"])[0]["panels"][0]
     assert panel["stale"] is False
-    assert panel["key"].endswith("p_in_9.jpg")
+    assert panel["node"] == "node-supplied"
 
 
 def test_a_supplied_panel_still_counts_as_boarded():
-    shot = {"panels": [{"n": 1, "key": "projects/p/input/p_in_9.jpg", "prompt": ""}]}
+    shot = {"panels": [{"n": 1, "node": "node-supplied", "prompt": ""}]}
     assert SB.shot_status(shot) == "boarded"

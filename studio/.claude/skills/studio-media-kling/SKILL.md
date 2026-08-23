@@ -152,7 +152,7 @@ Parsing note: Replicate's `logs` field can contain raw control characters, so
 
 ### Output — the run owns it
 
-Every submission is a run under `projects/<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/`,
+Every submission is a run under `<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/`,
 holding `request.json` (inputs as S3 **keys**), `result.json`, and `output/` with
 the video. `--poll` archives it automatically — download-then-upload, so bytes
 never pass through the agent context. Replicate output URLs are not permanent.

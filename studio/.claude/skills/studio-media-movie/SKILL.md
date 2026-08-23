@@ -82,8 +82,8 @@ CLAUDE.md.)
 ## What it leaves behind
 
 ```
-projects/<project>/movies/<YYYY-MM-DD_HH-MM-SS>_<slug>/
-    movie.json      scenes in cut order, as scenerefs AND S3 keys, plus the cast
+<project>/movies/<YYYY-MM-DD_HH-MM-SS>_<slug>/
+    scenes/         each scene's output, copied in, numbered in cut order
     scenes/         each scene's output, copied in, numbered in cut order
     output/<slug>.mp4
 ```
@@ -96,10 +96,10 @@ nothing about it is worth protecting except the order.
 
 **Scenes are copied in server-side** for the same reason a scene copies its
 shots: the movie stays playable and re-cuttable while its scenes are rebuilt
-around it, and `movie.json` records the sceneref beside the copied key, so
+around it, and the movie's record names the scene beside the copied node, so
 copying does not lose lineage.
 
-`movie.json` also records `characters` — the union of the cast of every scene,
+The record also carries `characters` — the union of the cast of every scene,
 read back from the runs behind their shots. A movie can name who is in it
 without a scan.
 

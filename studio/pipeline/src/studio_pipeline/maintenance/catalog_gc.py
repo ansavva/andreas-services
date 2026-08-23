@@ -49,7 +49,7 @@ import click
 from studio_pipeline.adapters import ddb as ddbc
 from studio_pipeline.adapters import s3 as s3c
 from studio_pipeline.errors import die
-from studio_pipeline.maintenance.catalog_seed import (
+from studio_pipeline.maintenance.catalog_migrate import (
     SHARED_PREFIXES,
     journal_path,
     load_journal,
@@ -67,7 +67,20 @@ from studio_pipeline.maintenance.catalog_seed import (
 # nothing in the package reads a bucket prefix any more — so the caveat is
 # dropped rather than kept as a warning about a knob that does not exist. The
 # listing below is still of the raw bucket, which is the part that mattered.
-COLLECTABLE_PREFIXES = ("blobs/", "characters/", "projects/")
+#
+# `libraries/` joined the list with the entity model, which also changed what
+# the other three MEAN. `characters/` and `projects/` used to be name paths —
+# `characters/<slug>/reference/face/<file>.png` — and are now id-prefixed blob
+# keys: `characters/<char id>/<node id>.png`. Both shapes are live in prod at
+# once, which is exactly why this list is about the first segment and nothing
+# further: a rule that parsed the second segment would have to know which era a
+# key came from, and `services/catalog.py` is the only module allowed to touch a
+# `blob_key` at all.
+#
+# `blobs/` is now legacy — it is what the API wrote before keys carried an
+# owner — and it stays, because prod holds thousands and a row still names each
+# one.
+COLLECTABLE_PREFIXES = ("blobs/", "characters/", "libraries/", "projects/")
 
 # `DeleteObjects` takes a thousand keys and no more.
 BATCH = 1000
@@ -85,9 +98,12 @@ def referenced_keys(ddb) -> set[str]:
     rather than a reason to ignore it — every ambiguity here resolves towards
     not deleting.
 
-    A scan rather than an index query, for the reason `catalog_seed.verify`
+    A scan rather than an index query, for the reason `catalog_migrate.verify`
     scans: a GSI drops any row missing one of its key attributes, and a dropped
-    row reads here as "nothing references this".
+    row reads here as "nothing references this". That got sharper with the
+    sparse `by-recent` key — an index a row is deliberately absent from is now
+    an ordinary thing rather than a corruption, so "query the index" would
+    quietly skip every folder and every document.
     """
     return {item["blob_key"] for item in ddbc.scan(ddb) if item.get("blob_key")}
 

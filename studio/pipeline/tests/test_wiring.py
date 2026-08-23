@@ -136,18 +136,21 @@ def test_packaged_data_files_exist():
 def test_local_working_dirs_resolve_under_studio():
     """`character edit` and the catalog journal write here; both are git-ignored.
 
-    The journal half of this used to read `migrate_layout.JOURNAL_DIR`. That
-    command is deleted; `catalog_seed` holds the same constant and is what
-    `catalog plan | seed | verify | gc` journal through, so the assertion moved
-    rather than went.
+    The journal half of this has now moved twice. It read
+    `migrate_layout.JOURNAL_DIR`, then `catalog_seed.JOURNAL_DIR`; the seed is
+    replaced by the entity migrator and `catalog_migrate` holds the same
+    constant, which is what `catalog migrate plan | apply | verify | reseat | gc`
+    journal through. The assertion follows the constant rather than going away,
+    because what it protects is unchanged: both directories are git-ignored and
+    both must sit under `studio/`.
     """
     from studio_pipeline.domain import characters
-    from studio_pipeline.maintenance import catalog_seed
+    from studio_pipeline.maintenance import catalog_migrate
 
     root = str(studio_pipeline.STUDIO_DIR)
     assert characters.LOCAL_DIR.startswith(root)
     assert characters.LOCAL_DIR.endswith("local/characters")
-    assert catalog_seed.JOURNAL_DIR.startswith(root)
+    assert catalog_migrate.JOURNAL_DIR.startswith(root)
 
 
 def test_every_callback_accepts_the_parameters_click_will_pass():
@@ -186,7 +189,7 @@ def test_every_callback_accepts_the_parameters_click_will_pass():
     assert not broken, "\n".join(broken)
 
 
-def test_dry_run_actually_renders_a_payload(media_bucket, monkeypatch):
+def test_dry_run_actually_renders_a_payload(library, monkeypatch):
     """`--dry-run` is the approval gate. It has to work.
 
     It read `args.json` while Click had stored the flag as `json_` (`json` is not
@@ -203,15 +206,15 @@ def test_dry_run_actually_renders_a_payload(media_bucket, monkeypatch):
     monkeypatch.setattr("studio_pipeline.engine.schema.fetch", lambda *a, **k: (props, {}))
 
     result = CliRunner().invoke(cli.main, [
-        "run", "--model", "gpt-image-2", "--project", "subject-a", "--dry-run",
-        "--prompt", "a test", "--key", "characters/subject-a/seed/subject-a_1.webp"])
+        "run", "--model", "gpt-image-2", "--project", "porch-teaser", "--dry-run",
+        "--prompt", "a test", "--key", library.face_1])
     assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
     assert "1/2  PROMPT" in result.output
     assert "2/2  INPUT" in result.output
     assert "a test" in result.output
 
 
-def test_input_pool_numbers_actually_bind(media_bucket, monkeypatch):
+def test_input_pool_numbers_actually_bind(library, monkeypatch):
     """`--input N` must reach the payload, not vanish.
 
     Click stores it as `input_` (`input` shadows the builtin), and `gather` read
@@ -227,7 +230,9 @@ def test_input_pool_numbers_actually_bind(media_bucket, monkeypatch):
     monkeypatch.setattr("studio_pipeline.engine.schema.fetch", lambda *a, **k: (props, {}))
 
     result = CliRunner().invoke(cli.main, [
-        "run", "--model", "gpt-image-2", "--project", "subject-a", "--dry-run",
+        "run", "--model", "gpt-image-2", "--project", "porch-teaser", "--dry-run",
         "--prompt", "a test", "--input", "1"])
     assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
-    assert "projects/subject-a/input/subject-a_1.webp" in result.output
+    # Position one in the pool listing, as a NODE ID — `--input N` stopped
+    # meaning "the file whose name ends _N" when the pool stopped being numbered.
+    assert library.input_3 in result.output

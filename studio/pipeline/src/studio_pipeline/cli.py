@@ -26,7 +26,6 @@ from studio_pipeline.domain import movies as _movies
 from studio_pipeline.domain import phrasebook as _phrasebook
 from studio_pipeline.domain import projects as _projects
 from studio_pipeline.domain import prompt as _prompt
-from studio_pipeline.domain import rewrite as _rewrite
 from studio_pipeline.domain import runs as _runs
 from studio_pipeline.domain import scenes as _scenes
 from studio_pipeline.engine import add_model as _add_model
@@ -34,8 +33,9 @@ from studio_pipeline.engine import board as _board
 from studio_pipeline.engine import runner as _runner
 from studio_pipeline.engine import shoot as _shoot
 from studio_pipeline.maintenance import catalog_gc as _catalog_gc
-from studio_pipeline.maintenance import catalog_seed as _catalog
+from studio_pipeline.maintenance import catalog_migrate as _catalog
 from studio_pipeline.maintenance import dev_seed as _dev_seed
+from studio_pipeline.objects import config_sync as _config_sync
 from studio_pipeline.objects import convert as _convert
 from studio_pipeline.session import commands as _session
 from studio_pipeline.objects import download as _download
@@ -58,8 +58,8 @@ class _Grouped(click.Group):
         ("records",     ["runs", "scenes", "movies", "frames", "projects"]),
         ("characters",  ["character", "curate", "contact-sheet"]),
         ("authoring",   ["prompt", "phrasebook"]),
-        ("objects",     ["upload", "download", "presign", "convert"]),
-        ("maintenance", ["rewrite", "catalog", "dev-seed"]),
+        ("objects",     ["upload", "download", "presign", "convert", "config"]),
+        ("maintenance", ["catalog", "dev-seed"]),
     ]
 
     def format_commands(self, ctx, formatter):
@@ -134,11 +134,11 @@ _scenes.main.add_command(_board.cmd_board, "board")
 _scenes.main.add_command(_board.cmd_render, "render")
 _scenes.main.add_command(_board.cmd_check, "check")
 
-# `gc` reads as a fourth catalog phase and is its own module because it is the
+# `gc` reads as a fifth catalog phase and is its own module because it is the
 # only one that deletes. Attaching it here rather than defining it inside
-# `catalog_seed.py` keeps that separation visible: the seed copies nothing,
-# moves nothing and deletes nothing, and nothing in it should have to say so
-# twice.
+# `catalog_migrate.py` keeps that separation visible: the migrator copies no
+# bytes, moves no objects and deletes nothing, and nothing in it should have to
+# say so twice.
 _catalog.main.add_command(_catalog_gc.cmd_gc, "gc")
 
 
@@ -158,7 +158,7 @@ for _name, _cmd in [
     ("download", _download.download),
     ("presign", _presign.presign),
     ("convert", _convert.convert),
-    ("rewrite", _rewrite.main),
+    ("config", _config_sync.main),
     ("catalog", _catalog.main),
     ("dev-seed", _dev_seed.main),
 ]:

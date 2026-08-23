@@ -1,213 +1,200 @@
-"""The calls one part of the pipeline makes into another.
+"""Calls that cross a module boundary — the joins a restructure breaks.
 
-These three used to shell out through `uv run <script> --json` and parse
-stdout, because no two scripts shared an interpreter. They are ordinary
-function calls now, and these tests pin the behaviour that survived the change:
-the same keys, in the same order, with the same refusals.
+Each of these is one module reaching into another: the engine asking the
+character store what a model should be shown, the engine asking the project
+store for a pool position, an author asking the phrasebook what to avoid. They
+are the wiring `--help` never touches and the reason the suite is weighted to
+execution rather than to surface.
+
+The vocabulary they cross with is **node ids** now, where it was S3 keys. That
+is the change with the widest blast radius in this package, so the assertions
+below are on ids deliberately: a test that still compared paths would pass
+against code that had quietly gone back to building them.
 """
 
 import pytest
 
-from studio_pipeline.domain import phrasebook, projects
-from studio_pipeline.engine import refs
-from tests.conftest import BUCKET
+from studio_pipeline.adapters import entities as E
+from studio_pipeline.domain import characters as CHARACTER
+from studio_pipeline.domain import phrasebook as PB
+from studio_pipeline.domain import projects as PROJECTS
+from studio_pipeline.engine import refs as REFS
 
 
-# --------------------------------------------------------------------------
-# refs -> character
-# --------------------------------------------------------------------------
-def test_reference_selection_resolves(media_bucket):
-    """The whole reference set, in index order."""
-    keys = refs.character_ref_keys("subject-a")
-    assert keys == [
-        "characters/subject-a/reference/face/subject-a_1.webp",
-        "characters/subject-a/reference/face/subject-a_2.webp",
-        "characters/subject-a/reference/body/subject-a_1.webp",
-    ]
+# ── the engine reading a character ──────────────────────────────────────────
 
+def test_reference_selection_resolves_to_node_ids(library):
+    """With no selector, the bible's `default_set` decides — not the folder.
 
-def test_reference_selection_by_tag(media_bucket):
-    """`--pick-tag face` is a selection over the described index."""
-    keys = refs.character_ref_keys("subject-a", tags=["face"])
-    assert keys == [
-        "characters/subject-a/reference/face/subject-a_1.webp",
-        "characters/subject-a/reference/face/subject-a_2.webp",
-    ]
-
-
-def test_reference_selection_by_slot_uses_position_not_filename(media_bucket):
-    """Slot N is position N in the resolved list.
-
-    Filename numbers are only unique within a subfolder — `face/subject-a_1`
-    and `body/subject-a_1` both exist — so slots must index the selection.
+    `reference/` is a library, not a set to send whole, and the fallback to
+    everything is a fallback rather than a default worth relying on.
     """
-    keys = refs.character_ref_keys("subject-a", slots=[3])
-    assert keys == ["characters/subject-a/reference/body/subject-a_1.webp"]
+    assert REFS.character_ref_nodes("subject-a") == [library.face_1, library.face_2]
 
 
-def test_reference_cap_is_refused_not_truncated(media_bucket):
-    """Over the model's cap, the caller refuses rather than silently dropping."""
-    with pytest.raises(refs.RefError) as exc:
-        refs.character_ref_keys("subject-a", cap=2, cap_name="kling")
-    assert "3 image(s) but kling takes 2" in str(exc.value)
-    # The message has to say how to narrow it, or it is not actionable.
-    assert "--pick-tag" in str(exc.value)
+def test_reference_selection_by_tag(library):
+    assert REFS.character_ref_nodes("subject-a", tags=["face"]) == [
+        library.face_1, library.face_2]
 
 
-def test_unknown_character_raises_referror(media_bucket):
-    with pytest.raises(refs.RefError):
-        refs.character_ref_keys("no-such-subject")
+def test_reference_selection_by_slot_uses_position_not_a_filename_number(library):
+    """**Slot N is position N in the RESOLVED SELECTION.**
+
+    It used to be the trailing number in a filename, which is unique only within
+    a group once `reference/` has subfolders — so two images could answer to
+    slot 1 and which one a model saw depended on the listing.
+    """
+    assert REFS.character_ref_nodes("subject-a", tags=["face"], slots=[2]) == [
+        library.face_2]
 
 
-def test_character_pool_keys(media_bucket):
-    """corpus/, seed/ and archive/ are material, not identity."""
-    assert refs.character_pool_keys("subject-a", "seed") == [
-        "characters/subject-a/seed/subject-a_1.webp"
-    ]
-    assert refs.character_pool_keys("subject-a", "corpus") == [
-        "characters/subject-a/corpus/IMG_1966_Original.JPG"
-    ]
+def test_reference_cap_is_refused_not_truncated(library):
+    """The refusal moved server-side and its message had to survive the move.
+
+    Truncating would let a folder listing decide which images a generation saw.
+    The message is the useful half — it says how to narrow the set — so it is
+    asserted rather than just the exception type.
+    """
+    with pytest.raises(REFS.RefError) as raised:
+        REFS.character_ref_nodes("subject-a", cap=1, cap_name="this model")
+    assert "--pick-tag" in str(raised.value)
 
 
-# --------------------------------------------------------------------------
-# refs -> projects
-# --------------------------------------------------------------------------
-def test_project_input_keys_resolve_in_the_order_asked_for(media_bucket):
-    assert refs.project_input_keys("subject-a", [2, 1]) == [
-        "projects/subject-a/input/subject-a_2.webp",
-        "projects/subject-a/input/subject-a_1.webp",
-    ]
+def test_unknown_character_raises_referror(library):
+    with pytest.raises(REFS.RefError):
+        REFS.character_ref_nodes("nobody")
 
 
-def test_missing_input_number_names_what_is_available(media_bucket):
-    with pytest.raises(refs.RefError) as exc:
-        refs.project_input_keys("subject-a", [7])
-    assert "[7]" in str(exc.value) and "[1, 2, 3]" in str(exc.value)
+def test_character_pool_nodes(library):
+    """`corpus/`, `seed/` and `archive/` are material, addressed explicitly."""
+    record = CHARACTER.resolve("subject-a")
+    node = library.fake.put_file(
+        CHARACTER.pool_folder(record, "seed")["id"], "source.jpg", b"jpg")
+    # Node RECORDS, not bare ids. Every caller picks out of these pools by name
+    # — `--seed-pick` names a file, and the refusal that lists an oversized pool
+    # has to print something a person recognises. A uuid is neither.
+    found = REFS.character_pool_nodes("subject-a", "seed")
+    assert [(n["id"], n["name"]) for n in found] == [(node["id"], "source.jpg")]
+    assert REFS.character_pool_nodes("subject-a", "corpus") == []
 
 
-# --------------------------------------------------------------------------
-# build -> phrasebook
-# --------------------------------------------------------------------------
-def test_phrasebook_terms(media_bucket):
-    assert phrasebook.terms("kling") == [
+# ── the engine reading a project ────────────────────────────────────────────
+
+def test_project_input_numbers_resolve_in_the_order_asked_for(library):
+    """`--input 3 --input 1` sends the third image first. Order is the caller's.
+
+    It takes the project RECORD, not a slug: every caller has already resolved
+    one — `--project` is required and never inferred — and re-resolving here
+    would be a round trip to learn something the caller is holding.
+    """
+    record = PROJECTS.resolve("porch-teaser")
+    assert REFS.project_input_nodes(record, [3, 1]) == [
+        library.input_1, library.input_3]
+
+
+def test_a_missing_input_number_says_how_big_the_pool_is(library):
+    record = PROJECTS.resolve("porch-teaser")
+    with pytest.raises(REFS.RefError) as raised:
+        REFS.project_input_nodes(record, [9])
+    assert "9" in str(raised.value)
+
+
+# ── an author reading the phrasebook ────────────────────────────────────────
+
+def test_phrasebook_terms(library):
+    E.add_phrasebook_term("kling", "bare chest", "chest")
+    E.add_phrasebook_term("kling", "shirtless", "omit entirely")
+    assert PB.terms("kling") == [
         {"avoid": "bare chest", "use": "chest"},
         {"avoid": "shirtless", "use": "omit entirely"},
     ]
 
 
-def test_phrasebook_terms_for_unknown_model_is_empty_not_an_error(media_bucket):
-    """A model with no section must not break prompt authoring."""
-    assert phrasebook.terms("no-such-model") == []
+def test_phrasebook_terms_for_an_unknown_model_is_empty_not_an_error(library):
+    """A model with no wording list is an ordinary state, not a failure."""
+    assert PB.terms("seedance") == []
 
 
-def test_prompt_authoring_survives_an_unreachable_phrasebook(monkeypatch):
-    """Authoring must keep working when the phrasebook cannot be reached.
+def test_a_library_that_has_never_held_a_phrasebook_still_answers(library):
+    """**The failure that disappeared with the YAML document.**
 
-    A fetch failure degrades to a warning saying the list was not read, which
-    is honest — rather than reporting a draft as checked when it was not.
+    `add` wrote through a route that overwrites and cannot create, so the first
+    entry in a fresh library was refused. Reading was never affected — a missing
+    phrasebook read as an empty one — but writing was, and both halves are rows
+    now.
     """
-    from studio_pipeline.domain import prompt as build
-
-    def boom(*_a, **_k):
-        raise RuntimeError("the API is unreachable")
-
-    monkeypatch.setattr(build.PHRASEBOOK, "terms", boom)
-    terms, reason = build.phrasebook_terms("kling")
-    assert terms == []
-    assert reason and "phrasebook" in reason.lower()
+    assert PB.terms("kling") == []
+    E.add_phrasebook_term("kling", "bare chest", "chest")
+    assert PB.terms("kling") == [{"avoid": "bare chest", "use": "chest"}]
 
 
-# --------------------------------------------------------------------------
-# frames -> projects
-# --------------------------------------------------------------------------
-def test_add_inputs_returns_the_key_it_wrote(media_bucket, tmp_path):
-    """The caller needs the real key back.
+# ── the character store reading the project store ───────────────────────────
 
-    This used to scrape a log line with a regex and rebuild the key by
-    re-appending the extension, which yielded None whenever the message shape
-    changed — and only after the upload had already happened.
+def test_add_inputs_returns_the_node_it_wrote(library, tmp_image):
+    """The caller gets an id, because an id is what a record may hold."""
+    record = PROJECTS.resolve("porch-teaser")
+    added = PROJECTS.add_inputs(record, [str(tmp_image)])
+    assert added[0]["node"].startswith("node-")
+    assert added[0]["node"] in [entry["id"] for entry in PROJECTS.input_pool(record)]
+
+
+# ── the bible round trip ────────────────────────────────────────────────────
+
+def test_editing_a_bible_writes_it_back_onto_the_record(library, tmp_path, monkeypatch):
+    """`edit` pulls to `local/characters/<slug>.yaml` and pushes it back.
+
+    The bible is a record field now, so the push is one `PUT` with a `rev` —
+    there is no `profile.yaml` object anywhere, and the pre-migration bug where
+    a push landed at `<slug>/profile.yaml` in the bucket root and reported
+    success cannot recur, because there is no path to get wrong.
     """
-    src = tmp_path / "frame.jpeg"
-    src.write_bytes(b"jpeg-bytes")
-    added = projects.add_inputs("subject-a", [str(src)])
-    assert len(added) == 1
-    assert added[0]["key"].startswith("projects/subject-a/input/")
-    assert added[0]["key"].endswith(".jpeg")
-    # It is really there.
-    media_bucket.head_object(Bucket="studio-prod-media-us-east-1", Key=added[0]["key"])
+    from click.testing import CliRunner
 
+    from studio_pipeline import cli
 
-def test_editing_a_bible_writes_it_back_where_it_was_read_from(media_bucket, tmp_path, monkeypatch):
-    """`edit --push` must write through `paths`, not a hand-built key.
+    monkeypatch.setattr(CHARACTER, "LOCAL_DIR", str(tmp_path))
+    monkeypatch.setattr("studio_pipeline.domain.characters.profile.LOCAL_DIR",
+                        str(tmp_path))
 
-    It used to build `f"{name}/profile.yaml"` — the pre-migration layout — so a
-    push landed in the bucket ROOT, reported success, and updated the local
-    sidecars as though it had worked. The bible was untouched and nothing said
-    so, which is the worst shape a save bug can take.
-    """
-    from studio_pipeline.domain import characters as CHARACTER
-    from studio_pipeline.domain import paths as P
+    pulled = CliRunner().invoke(cli.main, ["character", "edit", "subject-a"])
+    assert pulled.exit_code == 0, f"{pulled.output}\n{pulled.exception!r}"
 
     local = tmp_path / "subject-a.yaml"
-    base = tmp_path / ".subject-a.base.yaml"
-    etag = tmp_path / ".subject-a.etag"
+    local.write_text(local.read_text().replace("Realistic", "Painterly"))
 
-    original = CHARACTER.load_profile("subject-a")
-    base.write_text("name: Subject A\n")
-    local.write_text("name: Subject A\ndescription: edited\n")
-    etag.write_text(CHARACTER.remote_version("subject-a") or "")
-
-    # The schema check guards writes; this test is about WHERE the bytes land.
-    #
-    # Patched on the module that DEFINES it, not on the package that re-exports
-    # it. `do_push` resolves `check_profile` as its own global, so assigning to
-    # `CHARACTER.check_profile` rebinds a different name and the real check
-    # still runs — which is what this line used to do before `characters`
-    # became a package, and it worked only because both names lived in one
-    # module. Via `monkeypatch` so it is undone: the bare assignment leaked into
-    # every later test in the session.
-    from studio_pipeline.domain.characters import profile as PROFILE
-    monkeypatch.setattr(PROFILE, "check_profile", lambda *a, **k: None)
-    CHARACTER.do_push("subject-a", False, str(local), str(base), str(etag))
-
-    written = CHARACTER.load_profile("subject-a")
-    assert written != original, "the profile the reader loads was not updated"
-    assert written.get("description") == "edited"
-
-    keys = [o["Key"] for o in media_bucket.list_objects_v2(
-        Bucket=BUCKET).get("Contents", [])]
-    assert "subject-a/profile.yaml" not in keys, "wrote to the bucket root"
-    assert P.profile_key("subject-a") in keys
+    pushed = CliRunner().invoke(cli.main, ["character", "edit", "subject-a"])
+    assert pushed.exit_code == 0, f"{pushed.output}\n{pushed.exception!r}"
+    assert E.get_character(library.character)["profile"]["rendering"][
+        "default_style"] == "Painterly"
 
 
-def test_pushing_a_stale_bible_is_refused(media_bucket, tmp_path, monkeypatch):
-    """The local copy can be hours old, and pushing it would revert everything.
+def test_pushing_a_stale_bible_is_refused(library, tmp_path, monkeypatch):
+    """**`rev` closed a window that check-then-write left open.**
 
-    `edit` caches the bible on disk and reports "no local changes" against that
-    cache — which says nothing about whether S3 moved on. A session that adds
-    references, describes them and rewrites `default_set` through the index
-    commands leaves a stale local file that still looks clean, and uploading it
-    would silently undo all of it. The recorded version is what stops that, so
-    the refusal is asserted here rather than assumed.
-
-    **It was an S3 ETag and is the node's `updated_at`** (#305). The check is
-    written `if recorded and current and ...`, so a version that cannot be read
-    disables it rather than failing — which is exactly what happened when the
-    moto shim was first pointed at this and did not report the field.
+    The guard used to re-read the node's `updated_at` and compare — two
+    operations with a gap between them, in which someone else's write lands and
+    is lost. A `ConditionExpression` on `rev` is compare-and-swap, so the
+    refusal is the API's and there is no gap to lose a write in.
     """
-    from studio_pipeline.domain import characters as CHARACTER
+    from click.testing import CliRunner
 
+    from studio_pipeline import cli
+
+    monkeypatch.setattr("studio_pipeline.domain.characters.profile.LOCAL_DIR",
+                        str(tmp_path))
+
+    pulled = CliRunner().invoke(cli.main, ["character", "edit", "subject-a"])
+    assert pulled.exit_code == 0, pulled.output
     local = tmp_path / "subject-a.yaml"
-    base = tmp_path / ".subject-a.base.yaml"
-    etag = tmp_path / ".subject-a.etag"
+    before = local.read_text()
+    local.write_text(before.replace("Realistic", "Painterly"))
+    assert local.read_text() != before, "the working copy did not change"
 
-    etag.write_text("an-etag-from-before-someone-else-wrote")
-    base.write_text("name: Subject A\n")
-    local.write_text("name: Subject A\ndescription: stale edit\n")
+    # Somebody else writes in the meantime, moving the rev on.
+    record = E.get_character(library.character)
+    E.put_profile(record["id"], {**record["profile"], "voice": {"accent": "new"}},
+                  record["rev"])
 
-    original = CHARACTER.load_profile("subject-a")
-    from studio_pipeline.domain.characters import profile as PROFILE
-    monkeypatch.setattr(PROFILE, "check_profile", lambda *a, **k: None)
-    with pytest.raises(SystemExit):
-        CHARACTER.do_push("subject-a", False, str(local), str(base), str(etag))
-    assert CHARACTER.load_profile("subject-a") == original
+    pushed = CliRunner().invoke(cli.main, ["character", "edit", "subject-a"])
+    assert pushed.exit_code == 1, pushed.output
+    assert "changed" in pushed.output

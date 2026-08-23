@@ -18,12 +18,25 @@ WHY THE PLAN IS DATA AND NOT A TEMPLATE
 character's reference set is the same fourteen angles. A storyboard is the
 opposite: it is prose about one particular scene, and prose about a scene names
 what happens in it. That cannot live in this repository (see `studio/CLAUDE.md`,
-hard rule 1), so a plan is authored outside it, ingested with
-`studio scenes new --from-json`, and stored in S3 as `scene.json`.
+hard rule 1), so a plan is authored outside it and ingested with
+`studio scenes new --from-json`.
 
-This module is the document and nothing else — no S3, no models, no Click. It
-loads a plan, fills in what the plan left implicit, refuses a plan that cannot
-mean anything, and answers the one question the rest of the code needs:
+THE PLAN IS NO LONGER A DOCUMENT
+--------------------------------
+It used to be stored as `scene.json` in the bucket, and this module's output was
+that file. It is now a **scene row plus one `SHOT#` row per shot**, so what
+`normalise` returns is the body of `POST /api/scenes` and of
+`PUT /api/scenes/<id>/shots` rather than a file anybody writes.
+
+Everything the record owns has therefore left this module: `scene`, `project`,
+`created`, `updated`, `stitch`, `output` and `assembled` are the API's, and a
+plan carrying its own copies would be a second truth to keep in step — the exact
+failure the entity model exists to end. What is left is what an author writes
+plus what can be derived from it.
+
+This module is the plan and nothing else — no S3, no API, no models, no Click.
+It loads a plan, fills in what the plan left implicit, refuses a plan that
+cannot mean anything, and answers the one question the rest of the code needs:
 
     resolve_roles(shot)  ->  which panel is the start frame, which is the end,
                              and which merely ride along as references
@@ -53,9 +66,18 @@ scene and kept in sync by hand — two records of one sequence, which is the sha
 of every bug this repo has had to write a migrator for.
 
 It is now read off the plan: shot 1's opening panel is the seed, and every later
-shot's `opens_on.key` is the handoff the shot before it produced. See
+shot's `opens_on.node` is the handoff the shot before it produced. See
 `scene_frames`. `studio frames chain` still exists for a sequence with no scene
 behind it, which is the only thing it was ever actually used for.
+
+EVERY IMAGE IN A PLAN IS A NODE ID
+----------------------------------
+Panels, handoffs and cut shots all named S3 keys until the entity model. A key
+is invalidated by any rename or move of the file it names, which is what left
+sixty-nine records pointing at images that no longer existed; a node id survives
+both by construction. So `panel.node`, `shot.node`, `shot.shot_node` and
+`opens_on.node` are ids, and the `_key` spellings they replace are gone rather
+than aliased — an alias is how two spellings of one thing drift.
 
 NOTHING HERE KNOWS ABOUT MODELS
 -------------------------------
@@ -71,17 +93,22 @@ from __future__ import annotations
 import json
 
 from studio_pipeline.domain import paths as P
-from studio_pipeline.domain import runs as R
 
-# The plan shape. Bumped when a field changes meaning, not when one is added —
-# `scene.json` documents predating storyboards carry no version at all and are
-# read as v1: a finished cut with no plan behind it.
-VERSION = 2
+# The plan shape. Bumped when a field changes meaning, not when one is added.
+# v3 is the entity model: every image is a node id, and the fields the scene
+# record owns are gone from here.
+VERSION = 3
 
 ROLES = ("start", "end", "reference")
 
 #: Panel fields recorded by the tools and carried across a re-ingest.
-PANEL_RECORDED = ("run", "source_key", "key", "boarded", "stale")
+#: `node` is the boarded image, `source_node` the run output it was copied
+#: from — both node ids, where both were S3 keys.
+PANEL_RECORDED = ("run", "source_node", "node", "boarded", "stale")
+
+#: Shot fields recorded by `scenes render` / `scenes assemble`, never authored.
+#: `node` is the rendered clip; `shot_node` its copy in the scene's `shots/`.
+SHOT_RECORDED = ("run", "runref", "node", "shot_node", "duration", "rendered")
 
 
 class PlanError(Exception):
@@ -107,24 +134,19 @@ def load_plan(path: str) -> dict:
 
 
 def check_scene_slug(slug: str) -> str:
-    """A scene slug, which is also its directory name.
+    """A scene slug: a label a person types, and the name of the scene's folder.
 
-    Refuses anything shaped like a run id as well as the usual rules. Scene
-    folders used to be `<timestamp>_<slug>`; those still exist and still resolve,
-    so a *new* scene called `2026-08-16_07-40-22_something` would be
-    indistinguishable from one of them.
+    **The timestamp check is gone.** This also refused anything shaped like a
+    run id, because a scene folder was once `<timestamp>_<slug>` and a new scene
+    named that way would have been indistinguishable from one of them. A scene
+    is a row with a UUID now and its slug is an attribute of it, so there is
+    nothing left for a timestamp-shaped name to collide with — the check would
+    only refuse a legal name for a reason that stopped being true.
     """
     try:
-        P.check_slug(slug, "scene slug")
+        return P.check_slug(slug, "scene slug")
     except P.PathError as exc:
         raise PlanError(str(exc)) from exc
-    if R.RUN_ID_RE.match(slug):
-        raise PlanError(
-            f"scene slug {slug!r} is shaped like a run id, which a scene folder "
-            f"used to be.\n"
-            f"       A scene created today is keyed by its slug alone — pick a "
-            f"name, not a timestamp.")
-    return slug
 
 
 # --------------------------------------------------------------------------
@@ -149,12 +171,18 @@ def _inherit(defaults: dict, own: dict | None, *keys: str) -> dict:
     return out
 
 
-def normalise(plan: dict, project: str, slug: str) -> dict:
-    """A plan as authored -> the full `scene.json` shape, with nothing implicit.
+def normalise(plan: dict, slug: str) -> dict:
+    """A plan as authored -> the body `POST /api/scenes` takes, nothing implicit.
 
     Numbering, ids, inherited defaults and derived status are all filled in here
-    so that everything downstream reads one shape. Recorded fields (`run`, `key`,
-    …) are initialised to None and are the tools' to write, never the author's.
+    so that everything downstream reads one shape. Recorded fields (`run`,
+    `node`, …) are initialised to None and are the tools' to write, never the
+    author's.
+
+    **It no longer takes a project and no longer returns a manifest.** A scene's
+    project, id, timings, stitch and output are on the record and the API owns
+    every one of them; returning copies here would be a second truth for a
+    rename or a re-cut to leave behind.
     """
     defaults = dict(plan.get("defaults") or {})
 
@@ -172,20 +200,16 @@ def normalise(plan: dict, project: str, slug: str) -> dict:
             **_normalise_opens(raw, i),
         }
         # Recorded by `scenes render` / `scenes assemble`, never authored.
-        for k in ("run", "runref", "key", "shot_key", "duration", "rendered"):
+        for k in SHOT_RECORDED:
             shot[k] = raw.get(k)
         shot["status"] = shot_status(shot)
         shots.append(shot)
 
-    manifest = {
-        "scene": f"{project}/{slug}",
-        "project": project,
+    plan_doc = {
         "slug": slug,
         "version": VERSION,
         "status": "planned",
         "characters": sorted(plan.get("characters") or []),
-        "created": plan.get("created") or R._now(),
-        "updated": R._now(),
         "title": plan.get("title") or "",
         "logline": plan.get("logline") or "",
         # Prepended byte-identical to every panel prompt. Panels also inherit
@@ -197,12 +221,9 @@ def normalise(plan: dict, project: str, slug: str) -> dict:
         "setting": plan.get("setting") or "",
         "defaults": defaults,
         "shots": shots,
-        "stitch": plan.get("stitch"),
-        "output": plan.get("output"),
-        "assembled": plan.get("assembled"),
     }
-    manifest["status"] = scene_status(manifest)
-    return manifest
+    plan_doc["status"] = scene_status(plan_doc)
+    return plan_doc
 
 
 def _panel_defaults(defaults: dict) -> dict:
@@ -266,64 +287,67 @@ def _normalise_opens(raw: dict, n: int) -> dict:
     default, which is the point of building a scene as a sequence rather than a
     pile of clips.
 
-    `opens_on` is recorded by `scenes handoff`, never authored.
+    `opens_on` is recorded by `scenes handoff`, never authored, and it names a
+    **node id**. It named an S3 key until the entity model, so renaming the
+    frame in the input pool silently detached it from the shot opening on it.
     """
     opens_on = raw.get("opens_on") or {}
     return {
         "continues": bool(raw["continues"]) if "continues" in raw else n > 1,
-        "opens_on": {"key": opens_on.get("key"), "from_run": opens_on.get("from_run")},
+        "opens_on": {"node": opens_on.get("node"),
+                     "from_run": opens_on.get("from_run")},
     }
 
 
-def scene_frames(manifest: dict, max_n: int | None = None) -> list[str]:
-    """The scene's OWN images, in order — what a shot's references are drawn from.
+def scene_frames(record: dict, max_n: int | None = None) -> list[str]:
+    """The scene's OWN images as NODE IDS, in order — a shot's references.
 
     Derived, not stored. It used to live in a separate `chains/<slug>.json`,
     written alongside the scene and kept in sync by hand — which is the shape of
     every bug this repo has had to write a migrator for. A planned scene already
     records both halves: shot 1's opening panel is the seed, and every later
-    shot's `opens_on.key` is the handoff frame produced by the shot before it.
+    shot's `opens_on.node` is the handoff frame produced by the shot before it.
 
     The seed anchors the look the whole scene inherits and the newest frames
     carry the current state, so when a cap forces a choice both ends are kept and
     the middle gives way.
     """
-    shots = manifest.get("shots") or []
-    keys: list[str] = []
+    shots = record.get("shots") or []
+    nodes: list[str] = []
     if shots:
         roles = resolve_roles(shots[0])
         first = roles["start_panel"]
-        if first is not None and roles["panels"][first].get("key"):
-            keys.append(roles["panels"][first]["key"])
-    seeded = bool(keys)
+        if first is not None and roles["panels"][first].get("node"):
+            nodes.append(roles["panels"][first]["node"])
+    seeded = bool(nodes)
     for shot in shots:
-        key = ((shot.get("opens_on") or {}).get("key"))
-        if key and key not in keys:
-            keys.append(key)
+        node = (shot.get("opens_on") or {}).get("node")
+        if node and node not in nodes:
+            nodes.append(node)
 
-    if max_n is None or len(keys) <= max_n:
-        return keys
+    if max_n is None or len(nodes) <= max_n:
+        return nodes
     if not seeded:
-        return keys[-max_n:]
+        return nodes[-max_n:]
     # The seed always survives, and the newest frames fill what is left. Guard
-    # the max_n == 1 case explicitly: `keys[-0:]` is the WHOLE list, not the
+    # the max_n == 1 case explicitly: `nodes[-0:]` is the WHOLE list, not the
     # empty one, so writing this as a single slice silently returns every frame
     # and the cap does nothing.
-    return [keys[0]] + (keys[-(max_n - 1):] if max_n > 1 else [])
+    return [nodes[0]] + (nodes[-(max_n - 1):] if max_n > 1 else [])
 
 
 # --------------------------------------------------------------------------
 # validating
 # --------------------------------------------------------------------------
 
-def validate(manifest: dict) -> None:
+def validate(plan_doc: dict) -> None:
     """Refuse a plan that cannot mean anything. Registry-free by design.
 
     Whether a model takes an end frame, how many images it accepts and which
     formats it rejects are checked where the submit lifecycle already checks
     them; re-implementing those here is how two versions of a cap drift apart.
     """
-    shots = manifest.get("shots")
+    shots = plan_doc.get("shots")
     if not shots:
         raise PlanError("a scene needs at least one shot.")
 
@@ -346,7 +370,7 @@ def validate(manifest: dict) -> None:
                 raise PlanError(
                     f"{where} panel {panel['n']} has role {panel['role']!r}; "
                     f"expected one of {list(ROLES)}.")
-            if not panel.get("prompt") and not panel.get("key"):
+            if not panel.get("prompt") and not panel.get("node"):
                 raise PlanError(
                     f"{where} panel {panel['n']} has no prompt, so there is "
                     f"nothing to render it from.")
@@ -371,11 +395,15 @@ def is_supplied(panel: dict) -> bool:
     A plan can pin an image that already exists into the board — the frame a
     scene is to open on, or a pose pulled out of an earlier clip that is exactly
     right and would only be degraded by asking a model to reproduce it. Such a
-    panel carries a `key` and no `prompt`, and the two commands that render
-    panels must leave it alone: there is nothing to render, and nothing for it to
-    be out of date with respect to.
+    panel carries a `node` and no `prompt`, and the two commands that render
+    panels must leave it alone: there is nothing to render, and nothing for it
+    to be out of date with respect to.
+
+    `node`, where this read `key`. A supplied panel is very often a frame lifted
+    out of an earlier clip, which is exactly the file most likely to be renamed
+    afterwards — and a key would then have stopped naming it.
     """
-    return bool(panel.get("key")) and not (panel.get("prompt") or "").strip()
+    return bool(panel.get("node")) and not (panel.get("prompt") or "").strip()
 
 
 def panel_roles(shot: dict) -> list[str]:
@@ -407,7 +435,8 @@ def resolve_roles(shot: dict) -> dict:
     reportable — the caller knows which panel is missing rather than just that
     something is None.
 
-        handoff           the previous shot's last frame, when this one continues it
+        handoff           node id of the previous shot's last frame, when this
+                          shot continues it
         start_panel       index into `panels`, or None when the handoff took it
         end_panel         index, or None
         reference_panels  indices in panel order, demoted start first
@@ -415,7 +444,7 @@ def resolve_roles(shot: dict) -> dict:
     """
     panels = shot.get("panels") or []
     roles = panel_roles(shot)
-    handoff = ((shot.get("opens_on") or {}).get("key")
+    handoff = ((shot.get("opens_on") or {}).get("node")
                if shot.get("continues") else None)
 
     start = next((i for i, r in enumerate(roles) if r == "start"), None)
@@ -446,21 +475,27 @@ def resolve_roles(shot: dict) -> dict:
 # --------------------------------------------------------------------------
 
 def shot_status(shot: dict) -> str:
-    if shot.get("shot_key"):
+    if shot.get("shot_node"):
         return "cut"
     if shot.get("run"):
         return "rendered"
     panels = shot.get("panels") or []
     binding = [p for p, r in zip(panels, panel_roles(shot)) if r != "reference"]
-    if binding and all(p.get("key") for p in binding):
+    if binding and all(p.get("node") for p in binding):
         return "boarded"
     return "planned"
 
 
-def scene_status(manifest: dict) -> str:
-    if (manifest.get("output") or {}).get("key"):
+def scene_status(record: dict) -> str:
+    """Derived from the record and its shots, and PATCHed on every write.
+
+    Recomputed rather than trusted off the row, which is the discipline the
+    character index follows and for the same reason: a status stored and never
+    recomputed is a claim nobody checks.
+    """
+    if (record.get("output") or {}).get("node"):
         return "assembled"
-    states = [shot_status(s) for s in manifest.get("shots") or []]
+    states = [shot_status(s) for s in record.get("shots") or []]
     if not states:
         return "planned"
     if any(s in ("rendered", "cut") for s in states):
@@ -472,60 +507,66 @@ def scene_status(manifest: dict) -> str:
     return "planned"
 
 
-def is_assembled(manifest: dict) -> bool:
-    return bool((manifest.get("output") or {}).get("key"))
+def is_assembled(record: dict) -> bool:
+    return bool((record.get("output") or {}).get("node"))
 
 
 # --------------------------------------------------------------------------
 # revising — a re-ingest must not orphan work already paid for
 # --------------------------------------------------------------------------
 
-def merge(old: dict, new: dict) -> dict:
-    """Carry recorded work from an existing scene onto a revised plan.
+def merge(old_shots: list[dict], new_shots: list[dict]) -> list[dict]:
+    """Carry recorded work from an existing scene's shots onto a revised plan.
 
-    Revising a scene means re-ingesting the whole document, which would otherwise
+    Revising a scene means re-ingesting the whole plan, which would otherwise
     throw away every run and panel it already has. Shots are matched by their
     stable `id`, panels by number within a shot.
 
+    **`PUT /api/scenes/<id>/shots` merges by shot id too, and this is still
+    needed.** The API's merge is one level deep, so a revised shot's `panels`
+    list replaces the stored one wholesale — a re-ingest sending only the
+    author's panels would drop every `node` and `boarded` on them and orphan a
+    board somebody paid for. The server's merge protects the shot; this protects
+    what is inside it, and the two are not the same write.
+
     A panel whose prompt text changed keeps its image and is marked **stale**:
-    the picture on disk no longer illustrates the words beside it. That is a
-    warning rather than a block — the point of a board this cheap is that living
-    with an out-of-date panel can be the right call.
+    the picture in the library no longer illustrates the words beside it. That
+    is a warning rather than a block — the point of a board this cheap is that
+    living with an out-of-date panel can be the right call.
+
+    Scene-level carry-across went with the manifest. `created`, `stitch`,
+    `output` and `assembled` are the record's and a re-ingest never sends them,
+    so there is nothing left to preserve by hand.
     """
-    by_id = {s["id"]: s for s in old.get("shots") or []}
-    for shot in new.get("shots") or []:
+    by_id = {s["id"]: s for s in old_shots or []}
+    for shot in new_shots or []:
         prev = by_id.get(shot["id"])
         if not prev:
             continue
-        for k in ("run", "runref", "key", "shot_key", "duration", "rendered"):
+        for k in SHOT_RECORDED:
             if shot.get(k) is None:
                 shot[k] = prev.get(k)
         was_opens = prev.get("opens_on") or {}
-        for k in ("key", "from_run"):
+        for k in ("node", "from_run"):
             if (shot.get("opens_on") or {}).get(k) is None:
-                shot["opens_on"][k] = was_opens.get(k)
+                shot.setdefault("opens_on", {})[k] = was_opens.get(k)
 
         prev_panels = {p["n"]: p for p in prev.get("panels") or []}
         for panel in shot.get("panels") or []:
             was = prev_panels.get(panel["n"])
             if not was:
                 continue
-            for k in ("run", "source_key", "key", "boarded"):
+            for k in ("run", "source_node", "node", "boarded"):
                 if panel.get(k) is None:
                     panel[k] = was.get(k)
             # A supplied panel has no prompt to have drifted from.
-            if panel.get("key") and not is_supplied(panel):
+            if panel.get("node") and not is_supplied(panel):
                 panel["stale"] = bool(was.get("stale")) or (
                     _text(panel.get("prompt")) != _text(was.get("prompt")))
             elif is_supplied(panel):
                 panel["stale"] = False
         shot["status"] = shot_status(shot)
-
-    for k in ("created", "stitch", "output", "assembled"):
-        if new.get(k) is None:
-            new[k] = old.get(k)
-    new["status"] = scene_status(new)
-    return new
+    return list(new_shots or [])
 
 
 def _text(s: str | None) -> str:
@@ -533,7 +574,7 @@ def _text(s: str | None) -> str:
     return " ".join((s or "").split())
 
 
-def panel_prompt(manifest: dict, panel: dict) -> str:
+def panel_prompt(record: dict, panel: dict) -> str:
     """A panel's prompt with the scene's setting in front of it.
 
     The setting is repeated byte-identically across the board on purpose: Kling
@@ -541,19 +582,19 @@ def panel_prompt(manifest: dict, panel: dict) -> str:
     reproducibility lever there is, and rewording between panels is how a board
     ends up self-consistent panel by panel and inconsistent overall.
     """
-    setting = (manifest.get("setting") or "").strip()
+    setting = (record.get("setting") or "").strip()
     body = (panel.get("prompt") or "").strip()
     return f"{setting}\n\n{body}".strip() if setting else body
 
 
-def board_order(manifest: dict) -> list[tuple[dict, dict]]:
+def board_order(record: dict) -> list[tuple[dict, dict]]:
     """Every (shot, panel) pair in board order — shot by shot, panel by panel.
 
     Panels are rendered in this order and each one sees the ones before it, so
     the order is not merely presentational: it is what each panel inherits.
     """
     return [(shot, panel)
-            for shot in manifest.get("shots") or []
+            for shot in record.get("shots") or []
             for panel in shot.get("panels") or []]
 
 
@@ -561,8 +602,8 @@ def board_order(manifest: dict) -> list[tuple[dict, dict]]:
 # reading the board
 # --------------------------------------------------------------------------
 
-def sheet_captions(manifest: dict) -> list[tuple[str, str]]:
-    """(key, caption) for every panel that exists, in board order.
+def sheet_captions(record: dict) -> list[tuple[str, str]]:
+    """(node id, caption) for every panel that exists, in board order.
 
     A contact sheet is the only way a board can be *read* — by a person scanning
     it, and by an agent, which otherwise has no way to check its own output. The
@@ -570,11 +611,11 @@ def sheet_captions(manifest: dict) -> list[tuple[str, str]]:
     say whether it is a start frame, an end frame or a reference.
     """
     out = []
-    for shot in manifest.get("shots") or []:
+    for shot in record.get("shots") or []:
         roles = panel_roles(shot)
         for panel, role in zip(shot.get("panels") or [], roles):
-            if not panel.get("key"):
+            if not panel.get("node"):
                 continue
             stale = " STALE" if panel.get("stale") else ""
-            out.append((panel["key"], f"{shot['id']} p{panel['n']} [{role}]{stale}"))
+            out.append((panel["node"], f"{shot['id']} p{panel['n']} [{role}]{stale}"))
     return out

@@ -52,8 +52,8 @@ inference.
 
 ```bash
 studio run --model nano-banana-pro --project <project> --slug <slug> \
-  --key characters/<name>/reference/<name>_11.png \
-  --key characters/<name>/reference/<name>_12.png \
+  --key <name>/reference/face/<file>.png \
+  --key <name>/reference/face/<other>.png \
   --aspect-ratio match_input_image \
   --prompt "Use the FIRST image as the base; take the jacket from the SECOND…"
 ```

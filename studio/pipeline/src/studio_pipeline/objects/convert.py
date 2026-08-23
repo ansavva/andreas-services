@@ -76,7 +76,23 @@ def _into_input_pool(project: str, data: bytes, ext: str) -> str:
         staged = os.path.join(tmp, f"converted{ext}")
         with open(staged, "wb") as fh:
             fh.write(data)
-        return PROJECTS.add_inputs(project, [staged])[0]["key"]
+        return PROJECTS.add_inputs(PROJECTS.require_project(project),
+                                   [staged])[0]["node"]
+
+
+def _source_name(key: str) -> str:
+    """The filename behind `--key`, whether it named a node or a name path.
+
+    Only the EXTENSION is wanted — it decides whether a conversion is needed at
+    all — and a node id carries none, so the id has to be resolved to a record
+    to find it. A name path already is one.
+    """
+    if key.startswith("node-"):
+        try:
+            return store.node(key).get("name") or ""
+        except api.NotFound:
+            die(f"no such node: {key}")
+    return key
 
 
 @click.command(help=__doc__)
@@ -101,15 +117,19 @@ def convert(add_input, dest_key, for_, key, project, quality, run, to):
     # --- resolve the source -------------------------------------------------
     if run:
         try:
-            keys = R.resolve_output_keys(run, project, kinds=R.IMG_EXTS)
+            nodes = R.resolve_output_nodes(run, project, kinds=R.IMG_EXTS)
         except R.RunError as e:
             die(str(e))
-        if len(keys) > 1:
-            die(f"runref matched {len(keys)} images; add #N to pick one: {keys}")
-        key = keys[0]
-    else:
-        key = key
-    ext = os.path.splitext(key)[1].lower()
+        if len(nodes) > 1:
+            die(f"runref matched {len(nodes)} images; add #N to pick one: {nodes}")
+        # A runref resolves to a NODE now, so `key` below holds a node id where
+        # it held a path. The flag is still spelled `--key` and still documented
+        # as an S3 key: `cli_surface_reference.json` is the argparse-era capture
+        # and `test_help_text_survived` compares those strings, so the wording is
+        # a contract change rather than a comment fix. What it accepts widened;
+        # what it is called did not.
+        key = nodes[0]
+    ext = os.path.splitext(_source_name(key))[1].lower()
 
     # --- decide the target format ------------------------------------------
     if for_:
@@ -117,7 +137,7 @@ def convert(add_input, dest_key, for_, key, project, quality, run, to):
         if ext in allowed:
             # Already fine — print the untouched key so callers can chain safely.
             print(key)
-            print(f"{os.path.basename(key)} is already accepted by {for_}; "
+            print(f"{os.path.basename(_source_name(key))} is already accepted by {for_}; "
                   "nothing converted.", file=sys.stderr)
             return 0
         target_ext = ".png"  # lossless, and accepted by every engine here
@@ -133,7 +153,7 @@ def convert(add_input, dest_key, for_, key, project, quality, run, to):
     from PIL import Image
 
     try:
-        body = store.read(key)
+        body = store.read_node(key) if key.startswith("node-") else store.read(key)
     except api.NotFound:
         # Named, because the commonest source of one is a runref that resolved
         # to a key nothing wrote — and a traceback does not say which key.
@@ -161,7 +181,10 @@ def convert(add_input, dest_key, for_, key, project, quality, run, to):
         dst = _into_input_pool(add_input, data, target_ext)
 
     print(dst)
-    print(f"converted {os.path.basename(key)} ({ext}, {len(body)} B) -> "
+    # `_source_name`, not the raw `key`: with a runref the key is a node id, and
+    # `os.path.basename` of a uuid is the uuid — which tells a reader nothing
+    # about which image was converted.
+    print(f"converted {os.path.basename(_source_name(key))} ({ext}, {len(body)} B) -> "
           f"{os.path.basename(dst)} ({target_ext}, {len(data)} B); source untouched",
           file=sys.stderr)
     return 0

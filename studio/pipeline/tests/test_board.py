@@ -26,14 +26,15 @@ import pytest
 from click.testing import CliRunner
 
 from studio_pipeline import cli
-from studio_pipeline.adapters.s3 import BUCKET
+from studio_pipeline.adapters import store
+from studio_pipeline.domain import projects as PROJECTS
 from studio_pipeline.domain import scenes as SC
 from studio_pipeline.domain import storyboard as SB
 from studio_pipeline.engine import board as BOARD
 from studio_pipeline.engine import registry as REG
 
-PLANNED = "board-test"
-SCENE = f"subject-a/{PLANNED}"
+PLANNED = "the-encounter"
+SCENE = f"porch-teaser/{PLANNED}"
 
 
 @pytest.fixture
@@ -58,20 +59,81 @@ def run(*argv):
     return CliRunner().invoke(cli.main, list(argv))
 
 
-def board_ready(s3):
-    """The fixture scene, with every panel landed so a shot can be rendered."""
-    m = SC.read_manifest("subject-a", PLANNED)
-    for shot in m["shots"]:
+def named(node: str) -> str:
+    """The filename behind a node id.
+
+    Every binding, panel and frame in this file is an id now, so an assertion
+    that used to read `start.endswith("shot-01-p1.png")` has to go through the
+    catalog. Kept as a helper rather than inlined because the ALTERNATIVE —
+    asserting on ids — would pin nothing a reader can check by eye.
+    """
+    return store.node(node).get("name") or node
+
+
+PLAN = {
+    "characters": ["subject-a"],
+    "defaults": {"model": "kling", "panel_model": "nano-banana-pro", "duration": 5,
+                 "panel_extra": {"output_format": "png"}},
+    "shots": [
+        {"id": "shot-01", "beat": "opens", "continues": False,
+         "panels": [{"prompt": "the opening frame",
+                     "references": {"characters": ["subject-a"]}}],
+         "motion": {"prompt": "the opening motion"}},
+        {"id": "shot-02", "beat": "continues", "continues": True,
+         "panels": [{"prompt": "he turns"}, {"prompt": "he lands"}],
+         "motion": {"prompt": "the second motion"}},
+    ],
+}
+
+
+@pytest.fixture
+def scene(library, tmp_path):
+    """A part-boarded scene: shot 1's panel is landed, shot 2's two are not.
+
+    Built through `scenes new` rather than hand-written as a manifest, because
+    there is no manifest to hand-write: a scene is a row and its shots are rows,
+    and a fixture that poked them directly could describe a scene the API could
+    not have produced.
+
+    **Shot 1's panel is landed deliberately**, and two things depend on it.
+    `board --dry-run` must SKIP it and re-render it under `--redo`, which is the
+    only way to check the skip. And shot 2's panels bind the board before them —
+    they name no character of their own — so with nothing landed the second
+    shot's payload would bind nothing at all and the review sheet would have no
+    images to lay out. That is a real refusal, not a fixture artifact, and it
+    would make every test below it fail for a reason none of them is about.
+    """
+    path = tmp_path / "plan.json"
+    path.write_text(json.dumps(PLAN))
+    record = SC.new_scene(PROJECTS.resolve("porch-teaser"), PLANNED, str(path))
+    storyboard = SC.scene_folder(record, "storyboard")
+    shots = SC.scene_shots(record)
+    shots[0]["panels"][0]["node"] = library.fake.put_file(
+        storyboard, "shot-01-p1.png", b"png-bytes")["id"]
+    return SC.save_shots(record, shots)
+
+
+def board_ready(library, scene):
+    """The fixture scene with every panel landed, so a shot can be rendered.
+
+    A panel's boarded image is a NODE now, so this makes real nodes in the
+    scene's `storyboard/` folder rather than putting keys in a document.
+    """
+    storyboard = SC.scene_folder(scene, "storyboard")
+    shots = SC.scene_shots(scene)
+    for shot in shots:
         for panel in shot["panels"]:
-            key = f"projects/subject-a/scenes/{PLANNED}/storyboard/{shot['id']}-p{panel['n']}.png"
-            s3.put_object(Bucket=BUCKET, Key=key, Body=b"png-bytes")
-            panel["key"] = key
-    return SC.write_manifest(m)
+            if panel.get("node"):
+                continue      # the fixture already landed shot 1's
+            node = library.fake.put_file(
+                storyboard, f"{shot['id']}-p{panel['n']}.png", b"png-bytes")
+            panel["node"] = node["id"]
+    return SC.save_shots(scene, shots)
 
 
 # --- the gates -------------------------------------------------------------
 
-def test_board_dry_run_shows_every_payload_and_submits_nothing(media_bucket, no_network):
+def test_board_dry_run_shows_every_payload_and_submits_nothing(library, scene, no_network):
     r = run("scenes", "board", SCENE, "--dry-run")
     assert r.exit_code == 0, f"{r.output}\n{r.exception!r}"
     assert "1/2  PROMPT" in r.output and "2/2  INPUT" in r.output
@@ -79,7 +141,7 @@ def test_board_dry_run_shows_every_payload_and_submits_nothing(media_bucket, no_
     assert "nothing billed" in r.output
 
 
-def test_board_skips_a_panel_that_already_exists(media_bucket, no_network):
+def test_board_skips_a_panel_that_already_exists(library, scene, no_network):
     """Shot 1's panel is already on the board in the fixture."""
     r = run("scenes", "board", SCENE, "--dry-run")
     assert "shot-01 panel 1" not in r.output
@@ -87,15 +149,15 @@ def test_board_skips_a_panel_that_already_exists(media_bucket, no_network):
     assert "shot-01 panel 1" in r.output
 
 
-def test_render_dry_run_shows_the_payload_and_submits_nothing(media_bucket, no_network):
-    board_ready(media_bucket)
+def test_render_dry_run_shows_the_payload_and_submits_nothing(library, scene, no_network):
+    board_ready(library, scene)
     r = run("scenes", "render", SCENE, "--shot", "1", "--dry-run")
     assert r.exit_code == 0, f"{r.output}\n{r.exception!r}"
     assert "1/2  PROMPT" in r.output and "2/2  INPUT" in r.output
     assert "nothing billed" in r.output
 
 
-def test_declining_the_confirm_submits_nothing(media_bucket, no_network, monkeypatch):
+def test_declining_the_confirm_submits_nothing(library, scene, no_network, monkeypatch):
     monkeypatch.setattr("click.confirm", lambda *a, **k: False)
     r = run("scenes", "board", SCENE)
     assert r.exit_code == 1
@@ -110,7 +172,7 @@ def test_no_approval_flag_exists(command):
     assert "--dry-run" in help_text
 
 
-def test_render_requires_a_shot(media_bucket, no_network):
+def test_render_requires_a_shot(library, scene, no_network):
     """No whole-scene default: a four-shot scene with audio is real money, and
     a later shot's start frame does not exist until the one before it is cut."""
     r = run("scenes", "render", SCENE, "--dry-run")
@@ -120,20 +182,20 @@ def test_render_requires_a_shot(media_bucket, no_network):
 
 # --- roles, turned into bindings -------------------------------------------
 
-def test_the_first_shot_starts_from_its_own_panel(media_bucket, no_network):
-    m = board_ready(media_bucket)
+def test_the_first_shot_starts_from_its_own_panel(library, scene, no_network):
+    m = board_ready(library, scene)
     entry = REG.get("kling")
     start, end, refs, _notes = BOARD.shot_bindings(m, m["shots"][0], entry)
-    assert start.endswith("shot-01-p1.png")
+    assert named(start) == "shot-01-p1.png"
     assert end is None, "one panel is a start frame, not a pair"
     assert refs == [], "shot 1 IS the seed; there is nothing earlier to send"
 
 
 def test_a_handoff_takes_the_start_slot_and_the_panel_becomes_a_reference(
-        media_bucket, no_network):
-    m = board_ready(media_bucket)
+        library, scene, no_network):
+    m = board_ready(library, scene)
     shot = m["shots"][1]
-    shot["opens_on"]["key"] = "projects/subject-a/input/subject-a_3.png"
+    shot["opens_on"]["node"] = library.input_3
 
     # The demotion itself is a plan-level fact, and it holds regardless of what
     # any one model will accept.
@@ -142,95 +204,100 @@ def test_a_handoff_takes_the_start_slot_and_the_panel_becomes_a_reference(
     assert roles["start_panel"] is None and roles["reference_panels"][0] == 0
 
     start, end, refs, notes = BOARD.shot_bindings(m, shot, REG.get("kling"))
-    assert start == "projects/subject-a/input/subject-a_3.png"
-    assert end.endswith("shot-02-p2.png")
+    assert start == library.input_3
+    assert named(end) == "shot-02-p2.png"
     assert any("seamless" in n for n in notes), "the demotion is reported, not silent"
     # …and on THIS model the end frame then clears the reference list entirely.
     assert refs == []
 
 
-def test_a_shot_that_expects_a_handoff_and_has_none_says_so(media_bucket, no_network):
-    m = board_ready(media_bucket)
+def test_a_shot_that_expects_a_handoff_and_has_none_says_so(library, scene, no_network):
+    m = board_ready(library, scene)
     _s, _e, _r, notes = BOARD.shot_bindings(m, m["shots"][1], REG.get("kling"))
     assert any("scenes handoff" in n for n in notes)
 
 
-def test_an_unrendered_panel_blocks_its_shot_and_names_the_fix(media_bucket, no_network):
+def test_an_unrendered_panel_blocks_its_shot_and_names_the_fix(library, scene, no_network):
     r = run("scenes", "render", SCENE, "--shot", "2", "--dry-run")
     assert r.exit_code != 0
     assert "has not been rendered yet" in r.output
     assert "studio scenes board" in r.output
 
 
-def test_the_scenes_own_frames_ride_along_behind_the_panels(media_bucket, no_network):
+def test_the_scenes_own_frames_ride_along_behind_the_panels(library, scene, no_network):
     """Panels are the instruction for THIS shot; the scene's earlier frames are
     context, and context goes last.
 
     Shown on a shot with no END frame, because an end frame clears the reference
     list on this model — see the test below.
     """
-    m = board_ready(media_bucket)
+    m = board_ready(library, scene)
     shot = m["shots"][1]
     shot["panels"] = shot["panels"][:1]          # drop the end panel
-    shot["opens_on"]["key"] = "projects/subject-a/input/subject-a_3.png"
+    shot["opens_on"]["node"] = library.input_3
 
     _s, end, refs, _n = BOARD.shot_bindings(m, shot, REG.get("kling"))
     assert end is None
-    assert refs[0].endswith("shot-02-p1.png"), "a panel first"
-    assert refs[-1].endswith("shot-01-p1.png"), \
+    assert named(refs[0]) == "shot-02-p1.png", "a panel first"
+    assert named(refs[-1]) == "shot-01-p1.png", \
         "then the scene's own frames — here, shot 1's opening panel"
 
 
 def test_the_scenes_own_frames_come_from_the_plan_not_a_second_document(
-        media_bucket, no_network):
-    """A chain document beside the scene would be a second copy of the same
-    sequence. Nothing reads one any more, so a stale one cannot mislead."""
-    media_bucket.put_object(
-        Bucket=BUCKET, Key=f"projects/subject-a/chains/{PLANNED}.json",
-        Body=json.dumps({
-            "chain": f"subject-a/{PLANNED}", "project": "subject-a", "slug": PLANNED,
-            "seed": "projects/subject-a/input/subject-a_2.webp", "frames": [],
-        }).encode())
-    m = board_ready(media_bucket)
+        library, scene, no_network):
+    """A chain document beside the scene would be a second copy of the sequence.
+
+    It used to be one: `chains/<slug>.json` was written alongside the scene and
+    kept in sync by hand. `storyboard.scene_frames` derives the list from the
+    plan instead — shot 1's opening panel is the seed and every later shot's
+    `opens_on.node` is the handoff before it — so a stale document has nothing
+    to mislead. This plants one and shows it does not reach the payload.
+    """
+    chains = store.ensure_child_folder(library.project_root, "chains")
+    library.fake.put_file(chains["id"], f"{PLANNED}.json", json.dumps({
+        "slug": PLANNED, "seed": library.input_1, "frames": [library.input_2],
+    }).encode())
+
+    m = board_ready(library, scene)
     shot = m["shots"][1]
-    shot["opens_on"]["key"] = "projects/subject-a/input/subject-a_3.png"
+    shot["opens_on"]["node"] = library.input_3
 
     _s, _e, refs, _n = BOARD.shot_bindings(m, shot, REG.get("kling"))
-    assert not any("subject-a_2.webp" in k for k in refs), \
+    assert library.input_2 not in refs, \
         "the stale chain document must not reach the payload"
 
 
 # --- the model rules stay in submit ----------------------------------------
 
-def test_a_start_frame_on_seedance_is_refused_in_submits_own_words(media_bucket, no_network):
+def test_a_start_frame_on_seedance_is_refused_in_submits_own_words(library, scene, no_network):
     """Seedance sets `start_excludes_refs`: a start frame kills the reference
     list. The refusal must come from `gather`, not from a copy of the rule."""
-    m = board_ready(media_bucket)
+    m = board_ready(library, scene)
     m["shots"][1]["motion"]["model"] = "seedance"
-    m["shots"][1]["opens_on"]["key"] = "projects/subject-a/input/subject-a_3.png"
-    SC.write_manifest(m)
+    m["shots"][1]["opens_on"]["node"] = library.input_3
+    SC.save_shots(m, SC.scene_shots(m))
 
     r = run("scenes", "render", SCENE, "--shot", "2", "--dry-run")
     assert r.exit_code != 0
     assert "mutually exclusive" in r.output
 
 
-def test_a_webp_panel_bound_into_kling_is_refused_naming_convert(media_bucket, no_network):
-    m = SC.read_manifest("subject-a", PLANNED)
-    key = f"projects/subject-a/scenes/{PLANNED}/storyboard/shot-01-p1.webp"
-    media_bucket.put_object(Bucket=BUCKET, Key=key, Body=b"webp-bytes")
-    m["shots"][0]["panels"][0]["key"] = key
-    SC.write_manifest(m)
+def test_a_webp_panel_bound_into_kling_is_refused_naming_convert(library, scene, no_network):
+    m = SC.resolve_scene(scene["id"])
+    node = library.fake.put_file(SC.scene_folder(m, "storyboard"),
+                                 "shot-01-p1.webp", b"webp-bytes")
+    m["shots"][0]["panels"][0]["node"] = node["id"]
+    SC.save_shots(m, SC.scene_shots(m))
 
     r = run("scenes", "render", SCENE, "--shot", "1", "--dry-run")
     assert r.exit_code != 0
     assert "studio convert" in r.output
 
 
-def test_a_panel_is_rendered_in_a_format_its_video_model_accepts(media_bucket, no_network):
+def test_a_panel_is_rendered_in_a_format_its_video_model_accepts(library, scene, no_network):
     """Kling rejects `.webp` and GPT Image writes it by default, so a whole
     board can be rendered into a format the shot it exists for cannot read."""
-    m = SC.read_manifest("subject-a", PLANNED)
+    m = SC.resolve_scene(scene["id"])
     shot, panel = m["shots"][1], m["shots"][1]["panels"][0]
     panel["model"] = "gpt-image-2"
     panel["extra"] = {}
@@ -254,14 +321,14 @@ def test_a_panel_takes_the_smallest_format_the_video_model_accepts():
     assert BOARD.panel_format(REG.get("gpt-image-2"), "kling") == "jpeg"
 
 
-def test_a_panel_format_falls_back_rather_than_guessing(media_bucket):
+def test_a_panel_format_falls_back_rather_than_guessing(library, scene):
     """An unregistered video model says nothing about formats, so nothing is
     forced — the plan's own `extra` is left to decide."""
     assert BOARD.panel_format(REG.get("gpt-image-2"), "not-a-model") is None
 
 
-def test_an_explicit_format_in_the_plan_is_left_alone(media_bucket, no_network):
-    m = SC.read_manifest("subject-a", PLANNED)
+def test_an_explicit_format_in_the_plan_is_left_alone(library, scene, no_network):
+    m = SC.resolve_scene(scene["id"])
     shot, panel = m["shots"][1], m["shots"][1]["panels"][0]
     panel["model"] = "gpt-image-2"
     panel["extra"] = {"output_format": "jpg"}
@@ -269,18 +336,18 @@ def test_an_explicit_format_in_the_plan_is_left_alone(media_bucket, no_network):
     assert json.loads(args.extra)["output_format"] == "jpg"
 
 
-def test_a_shot_render_never_drags_in_the_characters_curated_set(media_bucket, no_network):
+def test_a_shot_render_never_drags_in_the_characters_curated_set(library, scene, no_network):
     """Sending a character's reference library mid-scene pulls the render toward
     the context those images were shot in and fights the continuity the chain
     exists to hold."""
-    m = board_ready(media_bucket)
+    m = board_ready(library, scene)
     args = BOARD.shot_args(m, m["shots"][0], REG.get("kling"), _opts(dry_run=True))
     assert args.character == ()
     assert args.record_characters == ("subject-a",)
 
 
-def test_a_run_records_which_scene_and_shot_it_came_from(media_bucket, no_network):
-    m = board_ready(media_bucket)
+def test_a_run_records_which_scene_and_shot_it_came_from(library, scene, no_network):
+    m = board_ready(library, scene)
     shot_args = BOARD.shot_args(m, m["shots"][0], REG.get("kling"), _opts(dry_run=True))
     assert shot_args.record_extra == {"scene": SCENE, "scene_shot": "shot-01"}
 
@@ -292,22 +359,22 @@ def test_a_run_records_which_scene_and_shot_it_came_from(media_bucket, no_networ
 
 # --- chaining the panels ---------------------------------------------------
 
-def test_a_panel_sees_the_panels_before_it(media_bucket, no_network):
-    m = board_ready(media_bucket)
+def test_a_panel_sees_the_panels_before_it(library, scene, no_network):
+    m = board_ready(library, scene)
     shot = m["shots"][1]
     earlier = BOARD.earlier_panel_keys(m, shot, shot["panels"][1])
-    assert [k.rsplit("/", 1)[-1] for k in earlier] == [
+    assert [named(node) for node in earlier] == [
         "shot-01-p1.png", "shot-02-p1.png"]
 
 
-def test_the_first_panel_on_the_board_sees_nothing(media_bucket, no_network):
-    m = SC.read_manifest("subject-a", PLANNED)
-    m["shots"][0]["panels"][0]["key"] = None
+def test_the_first_panel_on_the_board_sees_nothing(library, scene, no_network):
+    m = SC.resolve_scene(scene["id"])
+    m["shots"][0]["panels"][0]["node"] = None
     shot = m["shots"][0]
     assert BOARD.earlier_panel_keys(m, shot, shot["panels"][0]) == []
 
 
-def test_a_long_board_keeps_the_newest_panels_rather_than_refusing(media_bucket):
+def test_a_long_board_keeps_the_newest_panels_rather_than_refusing(library, scene):
     """`gather` would refuse rather than truncate, which is right — but a board
     should not need hand-pruning to keep rendering."""
     keys = [f"panel-{i}" for i in range(20)]
@@ -317,11 +384,11 @@ def test_a_long_board_keeps_the_newest_panels_rather_than_refusing(media_bucket)
 
 # --- check -----------------------------------------------------------------
 
-def test_check_reports_every_problem_at_once(media_bucket, no_network):
-    m = SC.read_manifest("subject-a", PLANNED)
+def test_check_reports_every_problem_at_once(library, scene, no_network):
+    m = SC.resolve_scene(scene["id"])
     m["shots"][0]["motion"]["model"] = "not-a-model"
     m["shots"][1]["panels"][0]["prompt"] = ""
-    SC.write_manifest(m)
+    SC.save_shots(m, SC.scene_shots(m))
 
     r = run("scenes", "check", SCENE)
     assert r.exit_code == 1
@@ -330,8 +397,8 @@ def test_check_reports_every_problem_at_once(media_bucket, no_network):
     assert "problem(s)" in r.output
 
 
-def test_check_passes_a_plan_that_would_fly(media_bucket, no_network):
-    board_ready(media_bucket)
+def test_check_passes_a_plan_that_would_fly(library, scene, no_network):
+    board_ready(library, scene)
     r = run("scenes", "check", SCENE)
     assert r.exit_code == 0, r.output
     assert "would be accepted" in r.output
@@ -345,7 +412,7 @@ def _opts(**kw):
     return SimpleNamespace(**base)
 
 
-def test_an_oversized_payload_warns_and_names_the_fix(media_bucket, no_network, capsys):
+def test_an_oversized_payload_warns_and_names_the_fix(library, scene, no_network, capsys):
     """The failure this warns about does not look like a failure.
 
     Over roughly 6.4 MiB of images the provider accepts the job, sits on it for
@@ -357,12 +424,12 @@ def test_an_oversized_payload_warns_and_names_the_fix(media_bucket, no_network, 
 
     from studio_pipeline.engine import submit as SUB
 
-    big = "projects/subject-a/input/subject-a_9.png"
-    media_bucket.put_object(Bucket=BUCKET, Key=big, Body=b"x" * (7 * 1024 * 1024))
+    big = library.fake.put_file(library.input_pool, "huge.png",
+                                b"x" * (7 * 1024 * 1024))["id"]
     args = SimpleNamespace(
         start_key=big, start_run=None, end_key=None, end_run=None, image_run=None,
         character=(), ref_run=(), input_=(), input=(), key=[], pick=None,
-        pick_tag=None, slots=None, project="subject-a", no_refs=True)
+        pick_tag=None, slots=None, project=PROJECTS.resolve("porch-teaser"), no_refs=True)
 
     SUB.gather(REG.get("kling"), args)
     err = capsys.readouterr().err
@@ -371,22 +438,22 @@ def test_an_oversized_payload_warns_and_names_the_fix(media_bucket, no_network, 
     assert "PA" in err, "the symptom is what makes this worth saying"
 
 
-def test_a_payload_within_the_measured_range_says_nothing(media_bucket, no_network, capsys):
+def test_a_payload_within_the_measured_range_says_nothing(library, scene, no_network, capsys):
     from types import SimpleNamespace
 
     from studio_pipeline.engine import submit as SUB
 
     args = SimpleNamespace(
-        start_key="projects/subject-a/input/subject-a_3.png", start_run=None,
+        start_key=library.input_3, start_run=None,
         end_key=None, end_run=None, image_run=None, character=(), ref_run=(),
         input_=(), input=(), key=[], pick=None, pick_tag=None, slots=None,
-        project="subject-a", no_refs=True)
+        project=PROJECTS.resolve("porch-teaser"), no_refs=True)
 
     SUB.gather(REG.get("kling"), args)
     assert "warning" not in capsys.readouterr().err
 
 
-def test_the_byte_warning_is_video_only(media_bucket, no_network, capsys):
+def test_the_byte_warning_is_video_only(library, scene, no_network, capsys):
     """The image models have taken ~12 MiB of plates repeatedly and without
     complaint, so warning about them would be a false alarm on every reference
     shoot — and a warning that cries wolf is worse than none."""
@@ -394,23 +461,23 @@ def test_the_byte_warning_is_video_only(media_bucket, no_network, capsys):
 
     from studio_pipeline.engine import submit as SUB
 
-    big = "projects/subject-a/input/subject-a_8.png"
-    media_bucket.put_object(Bucket=BUCKET, Key=big, Body=b"x" * (12 * 1024 * 1024))
+    big = library.fake.put_file(library.input_pool, "huge.png",
+                                b"x" * (12 * 1024 * 1024))["id"]
     args = SimpleNamespace(
         start_key=None, start_run=None, end_key=None, end_run=None, image_run=None,
         character=(), ref_run=(), input_=(), input=(), key=[big], pick=None,
-        pick_tag=None, slots=None, project="subject-a", no_refs=False)
+        pick_tag=None, slots=None, project=PROJECTS.resolve("porch-teaser"), no_refs=False)
 
     SUB.gather(REG.get("nano-banana-pro"), args)
     assert "warning" not in capsys.readouterr().err
 
 
-def test_a_supplied_panel_is_never_rendered(media_bucket, no_network):
+def test_a_supplied_panel_is_never_rendered(library, scene, no_network):
     """Not by `board`, not by `--redo`, not by `check`. There is nothing to make."""
-    m = SC.read_manifest("subject-a", PLANNED)
+    m = SC.resolve_scene(scene["id"])
     m["shots"][1]["panels"][0].update(
-        key="projects/subject-a/input/subject-a_3.png", prompt="", stale=True)
-    SC.write_manifest(m)
+        node=library.input_3, prompt="", stale=True)
+    SC.save_shots(m, SC.scene_shots(m))
 
     for argv in (("scenes", "board", SCENE, "--dry-run"),
                  ("scenes", "board", SCENE, "--dry-run", "--redo")):
@@ -420,34 +487,37 @@ def test_a_supplied_panel_is_never_rendered(media_bucket, no_network):
 
 
 def test_a_continuing_shot_with_no_panel_and_no_handoff_says_it_has_nothing(
-        media_bucket, no_network):
+        library, scene, no_network):
     """Different from a shot that merely lacks its handoff. With no opening panel
     either, the shot would compose itself out of references — that is not a rough
     cut, it is a different shot."""
-    m = board_ready(media_bucket)
+    m = board_ready(library, scene)
     m["shots"][1]["panels"] = []
     _s, _e, _r, notes = BOARD.shot_bindings(m, m["shots"][1], REG.get("kling"))
     assert any("start from nothing" in n for n in notes)
     assert not any("open on its own panel" in n for n in notes)
 
 
-def test_a_review_sheet_lands_in_the_scene_not_only_on_disk(media_bucket, no_network, tmp_path):
+def test_a_review_sheet_lands_in_the_scene_not_only_on_disk(library, scene, no_network, tmp_path):
     """A review sheet is what someone looks at to decide whether to spend money.
     A local path is no use to anyone not sitting at the machine that made it —
     which, when the pipeline is driven remotely, is nobody."""
-    m = board_ready(media_bucket)
+    m = board_ready(library, scene)
     entry = REG.get("kling")
     start, end, refs, _n = BOARD.shot_bindings(m, m["shots"][0], entry)
     bindings = {"start_image": start, "reference_images": refs}
 
     out = BOARD.review_sheet(m, "shot-01",
                              BOARD._sheet_items(entry, bindings), None, {})
-    assert out == "projects/subject-a/scenes/board-test/review/shot-01.png"
-    media_bucket.head_object(Bucket=BUCKET, Key=out)
+    # A NODE ID, because that is what is browsable in the app and what outlives
+    # the working directory. It used to be a key nobody but the API could open.
+    assert out.startswith("node-")
+    assert named(out) == "shot-01.png"
+    assert store.node_owner(out)["kind"] == "project"
 
 
-def test_a_review_sheet_still_keeps_a_local_copy_when_asked(media_bucket, no_network, tmp_path):
-    m = board_ready(media_bucket)
+def test_a_review_sheet_still_keeps_a_local_copy_when_asked(library, scene, no_network, tmp_path):
+    m = board_ready(library, scene)
     entry = REG.get("kling")
     start, _e, refs, _n = BOARD.shot_bindings(m, m["shots"][0], entry)
     out = BOARD.review_sheet(m, "shot-01",
@@ -459,7 +529,7 @@ def test_a_review_sheet_still_keeps_a_local_copy_when_asked(media_bucket, no_net
 
 
 def test_an_end_frame_drops_the_references_where_the_model_demands_it(
-        media_bucket, no_network):
+        library, scene, no_network):
     """Kling takes a start frame and references together happily — but the moment
     an end frame joins them the payload is capped at those two and the whole
     request is rejected. Nothing in the live schema says so; it surfaced as an
@@ -470,9 +540,9 @@ def test_an_end_frame_drops_the_references_where_the_model_demands_it(
     because a payload that quietly loses images is not the one that was
     approved.
     """
-    m = board_ready(media_bucket)
+    m = board_ready(library, scene)
     shot = m["shots"][1]
-    shot["opens_on"]["key"] = "projects/subject-a/input/subject-a_3.png"
+    shot["opens_on"]["node"] = library.input_3
 
     start, end, refs, notes = BOARD.shot_bindings(m, shot, REG.get("kling"))
     assert start and end, "this shot is bracketed"
@@ -480,7 +550,7 @@ def test_an_end_frame_drops_the_references_where_the_model_demands_it(
     assert any("dropped" in n for n in notes)
 
 
-def test_submit_refuses_an_end_frame_beside_references(media_bucket, no_network):
+def test_submit_refuses_an_end_frame_beside_references(library, scene, no_network):
     """Defence in depth: the rule lives in the registry and `gather` enforces it,
     so a caller that is not the board cannot spend money finding out."""
     from types import SimpleNamespace
@@ -488,11 +558,11 @@ def test_submit_refuses_an_end_frame_beside_references(media_bucket, no_network)
     from studio_pipeline.engine import submit as SUB
 
     args = SimpleNamespace(
-        start_key="projects/subject-a/input/subject-a_3.png",
-        end_key="projects/subject-a/input/subject-a_3.png",
+        start_key=library.input_3,
+        end_key=library.input_3,
         start_run=None, end_run=None, image_run=None, character=(), ref_run=(),
-        input_=(), input=(), key=["projects/subject-a/input/subject-a_3.png"],
-        pick=None, pick_tag=None, slots=None, project="subject-a", no_refs=False)
+        input_=(), input=(), key=[library.input_3],
+        pick=None, pick_tag=None, slots=None, project=PROJECTS.resolve("porch-teaser"), no_refs=False)
 
     with pytest.raises(SUB.SubmitError) as exc:
         SUB.gather(REG.get("kling"), args)
@@ -500,13 +570,13 @@ def test_submit_refuses_an_end_frame_beside_references(media_bucket, no_network)
     assert "drop the end frame" in str(exc.value).lower()
 
 
-def test_a_shot_can_ask_for_the_characters_references(media_bucket, no_network):
+def test_a_shot_can_ask_for_the_characters_references(library, scene, no_network):
     """Off by default, because a curated set was shot in another context and
     pulls the render toward it. But a scene built only from its own frames
     inherits whatever it has drifted into, and nothing pulls it back — so the
     plan can choose identity stability instead, and that choice has to reach the
     payload rather than being accepted and ignored."""
-    m = board_ready(media_bucket)
+    m = board_ready(library, scene)
     shot = m["shots"][0]
     assert BOARD.shot_args(m, shot, REG.get("kling"), _opts()).character == ()
 

@@ -94,12 +94,35 @@ def _delete(path, **headers):
     return _client().delete(path, headers={"Authorization": "Bearer t", **headers})
 
 
+def _api_key(record):
+    """The key `create_node` stamps for this node, recomputed from the outside.
+
+    Spelled out rather than read back off the record, because a test that
+    asserted `record["blob_key"] == record["blob_key"]` would pass against any
+    key at all. Everything these tests create sits directly under the library
+    root, which is owned by no entity — so the owner is the library and the
+    prefix is `libraries/`.
+    """
+    return catalog.blob_key_for(record["node_id"], record["name"], None, CATALOG_LIBRARY)
+
+
 def _folder(name, parent=CATALOG_ROOT):
     return catalog.create_node(parent, name, catalog.KIND_FOLDER)
 
 
 def _file(name, parent=CATALOG_ROOT, **kwargs):
     return catalog.create_node(parent, name, catalog.KIND_FILE, blob_key=BLOB_KEY, **kwargs)
+
+
+def _minted(name, parent=CATALOG_ROOT):
+    """A file whose key the catalog stamps, rather than one handed a literal.
+
+    `_file` above passes an explicit `blob_key` because most of this module is
+    about routes rather than about keys, and a literal keeps those assertions
+    readable. Anything testing the *stamp* has to let `create_node` derive it
+    from the owner the parent resolves to, which is what this is for.
+    """
+    return catalog.create_node(parent, name, catalog.KIND_FILE)
 
 
 def _grant(client, lib, role):
@@ -525,16 +548,19 @@ def test_creating_a_folder(catalog_table, signed_in):
 def test_creating_a_file_without_a_blob_key_makes_a_placeholder(catalog_table, signed_in):
     """**Reverses what #293 asserted here**, which was a 400, and #294 is why.
 
-    A client cannot name `blobs/<node_id>` at create time because it does not
-    know the id yet, so the only way to have an id-derived key is for
-    `create_node` to mint both together. The node is a placeholder until the
-    bytes land: a key with no object behind it, and no size.
+    A client cannot name the key at create time because it does not know the node
+    id yet, so the only way to have an id-derived key is for `create_node` to
+    mint both together. The node is a placeholder until the bytes land: a key
+    with no object behind it, and no size.
+
+    The entity model changed the *shape* — `blobs/<node_id>` became
+    `<owner_kind>/<owner_id>/<node_id>.<ext>` — without changing that rule.
     """
     resp = _post("/api/nodes", {"parent": CATALOG_ROOT, "name": "clip.mp4", "kind": "file"})
 
     assert resp.status_code == 201
     created = catalog.node(resp.get_json()["id"])
-    assert created["blob_key"] == catalog.blob_key_for(created["node_id"])
+    assert created["blob_key"] == _api_key(created)
     assert "size" not in created
 
 
@@ -642,7 +668,7 @@ def test_a_numbered_placeholder_still_gets_the_api_key(catalog_table, signed_in)
     ).get_json()
 
     created = catalog.node(body["id"])
-    assert created["blob_key"] == catalog.blob_key_for(created["node_id"])
+    assert created["blob_key"] == _api_key(created)
 
 
 def test_creating_in_another_callers_library_is_403(catalog_table, signed_in):
@@ -1055,7 +1081,7 @@ def test_an_upload_url_is_signed_for_the_nodes_own_key(catalog_table, signed_in)
 
     assert resp.status_code == 200
     body = resp.get_json()
-    assert catalog.blob_key_for(created["node_id"]) in body["url"]
+    assert _api_key(created) in body["url"]
     assert body["expires_in"] == config.upload_ttl_seconds()
 
 
@@ -1094,7 +1120,7 @@ def test_an_upload_url_cannot_be_redirected_to_another_key(catalog_table, signed
     ).get_json()
 
     assert "someone-elses" not in body["url"]
-    assert catalog.blob_key_for(created["node_id"]) in body["url"]
+    assert _api_key(created) in body["url"]
 
 
 def test_an_oversized_upload_is_refused_at_signing(catalog_table, signed_in):
@@ -1193,7 +1219,7 @@ def test_confirming_writes_what_s3_stored_not_what_the_client_claimed(
     )
     media_bucket.put_object(
         Bucket=config.media_bucket(),
-        Key=catalog.blob_key_for(created["node_id"]),
+        Key=_api_key(created),
         Body=b"four",
         ContentType="video/mp4",
     )
@@ -1209,14 +1235,14 @@ def test_confirming_never_returns_blob_key(catalog_table, media_bucket, signed_i
     created = _placeholder()
     media_bucket.put_object(
         Bucket=config.media_bucket(),
-        Key=catalog.blob_key_for(created["node_id"]),
+        Key=_api_key(created),
         Body=b"four",
     )
 
     body = _post(f"/api/nodes/{created['node_id']}/confirm-upload", {}).get_data(as_text=True)
 
     assert "blob_key" not in body
-    assert "blobs/" not in body
+    assert created["blob_key"] not in body
 
 
 def test_confirming_in_another_library_is_403(catalog_table, media_bucket, signed_in):
@@ -1227,103 +1253,646 @@ def test_confirming_in_another_library_is_403(catalog_table, media_bucket, signe
     assert resp.status_code == 403
 
 
-# ──────────────────────────── POST /api/runs ────────────────────────────
+# ─────────────────────── owner derivation ───────────────────────
+#
+# `owner` is **derived, never stored on the node**, which is what makes it
+# correct the instant a file moves rather than after a rewrite of anything. The
+# node's `path` is already the materialised list of ancestor ids and an entity's
+# root folder carries `entity`, so the answer is the deepest ancestor holding
+# that attribute — one `BatchGetItem` over a list the table already keeps.
+#
+# The entities here are created through their real routes rather than written by
+# hand. A hand-written `entity` attribute would test the walk and not the thing
+# that puts the attribute there, and those are the two halves that have to agree.
 
-RUN_NAME = "2026-08-04_21-30-54_wave-porch-1x1"
-REQUEST_JSON = '{"model": "x", "prompt": "a porch"}'
+
+def _character(slug="subject-a"):
+    body = _post(
+        "/api/characters", {"slug": slug, "display_name": "Subject", "fictional": True}
+    )
+    assert body.status_code == 201, body.get_data(as_text=True)
+    return body.get_json()
 
 
-def _record_run(**overrides):
-    payload = {
-        "parent": CATALOG_ROOT,
-        "name": RUN_NAME,
-        "documents": {"request.json": REQUEST_JSON},
-        "outputs": [{"name": "wave-porch.jpeg", "size": 4, "content_type": "image/jpeg"}],
+def _project(slug="rooftop-teaser"):
+    body = _post("/api/projects", {"slug": slug})
+    assert body.status_code == 201, body.get_data(as_text=True)
+    return body.get_json()
+
+
+def _child(parent_id, name):
+    """One named child of a folder, as a full record."""
+    return catalog.node(catalog.child_by_name(parent_id, name)["node_id"])
+
+
+def test_a_node_view_carries_the_entity_it_belongs_to(catalog_table, signed_in):
+    """What the SPA draws as "in <slug>", and what stamps the blob prefix.
+
+    On the listing rather than only on the single-node read, because the listing
+    is where it would be tempting to leave it out: resolving it per row would be
+    a batched read per thumbnail. It is resolved once from the parent instead,
+    which is only correct because every child of one folder is in the same entity
+    as the folder — the exception being a child that is an entity root itself,
+    which carries `entity` and answers for itself.
+    """
+    character = _character()
+
+    listing = _get(f"/api/nodes?parent={character['root']}").get_json()
+
+    assert [entry["name"] for entry in listing] == ["archive", "corpus", "reference", "seed"]
+    for entry in listing:
+        assert entry["owner"] == {
+            "kind": "character",
+            "id": character["id"],
+            "slug": "subject-a",
+        }
+
+
+def test_a_node_under_the_library_root_is_owned_by_nobody(catalog_table, signed_in):
+    """**A real answer, not a missing one.**
+
+    Folders a person makes by hand are meant to be reachable without becoming
+    somebody's, and the bucket has a third prefix — `libraries/` — precisely so
+    that material owned by neither a character nor a project still lands
+    somewhere one prefix can scope.
+    """
+    loose = _folder("scratch")
+
+    assert _get(f"/api/nodes/{loose['node_id']}/owner").get_json() == {
+        "id": loose["node_id"],
+        "owner": None,
     }
-    payload.update(overrides)
-    return _post("/api/runs", payload)
 
 
-def test_recording_a_run_creates_the_folder_documents_and_outputs(
-    catalog_table, media_bucket, signed_in
-):
-    resp = _record_run()
+def test_an_entity_root_reports_itself_rather_than_its_parent(catalog_table, signed_in):
+    """The one child of a folder whose owner is not the folder's.
+
+    A character's root sits under the library root, which is owned by nobody, so
+    a listing that handed every child the parent's answer would report `null` for
+    the very row that carries the reverse pointer — and the home screen would
+    draw a folder icon where a character card belongs.
+    """
+    character = _character()
+
+    listing = _get(f"/api/nodes?parent={CATALOG_ROOT}").get_json()
+    root = next(entry for entry in listing if entry["id"] == character["root"])
+
+    assert root["entity"] == character["id"]
+    assert root["owner"]["id"] == character["id"]
+
+
+def test_the_deepest_entity_wins(catalog_table, signed_in):
+    """A run's output reports the run, not the project it sits inside.
+
+    That is the answer a person wants from a file, and the project is one hop up
+    the same `path` for anyone who wants it instead. Worth pinning because the
+    walk is deepest-first and reversing it would be invisible until somebody
+    looked at a run.
+    """
+    project = _project()
+    run = _post(
+        "/api/runs",
+        {
+            "project": project["id"],
+            "slug": "rooftop-portrait",
+            "kind": "image",
+            "model": "google/nano-banana-pro",
+        },
+    ).get_json()
+    output_folder = _child(run["folder"], "output")
+
+    assert _get(f"/api/nodes/{output_folder['node_id']}/owner").get_json()["owner"] == {
+        "kind": "run",
+        "id": run["id"],
+        "slug": "rooftop-portrait",
+    }
+
+
+def test_resolve_reports_the_owner_too(catalog_table, signed_in):
+    """The CLI's address turns into an id *and* the entity holding it in one call.
+
+    `<slug>/reference/face/<file>` is what a person types; the answer has to say
+    which character that resolved inside, or the CLI needs a second round trip to
+    find out what it just addressed.
+    """
+    character = _character()
+
+    resolved = _get("/api/resolve?path=subject-a/reference").get_json()
+
+    assert resolved["owner"]["id"] == character["id"]
+
+
+# ───────────────────── the blob key an owner stamps ─────────────────────
+
+
+def test_a_file_takes_the_prefix_of_the_entity_that_holds_it(catalog_table, signed_in):
+    """Three prefixes in the bucket, and a listing of it leaks no name.
+
+    The old layout wrote the slug into every key, which made a listing of the
+    media bucket a list of character names — hard rule #1 broken in the one place
+    nobody was reading. Each of the three is asserted here rather than only the
+    character's, because the fallback to `libraries/` is the one a reader would
+    assume is unreachable.
+    """
+    character = _character()
+    project = _project()
+    reference = _child(character["root"], "reference")
+    inputs = _child(project["root"], "input")
+
+    in_character = _minted("front.png", reference["node_id"])
+    in_project = _minted("plate.png", inputs["node_id"])
+    in_library = _minted("loose.png")
+
+    assert in_character["blob_key"] == (
+        f"characters/{character['id']}/{in_character['node_id']}.png"
+    )
+    assert in_project["blob_key"] == f"projects/{project['id']}/{in_project['node_id']}.png"
+    assert in_library["blob_key"] == f"libraries/{CATALOG_LIBRARY}/{in_library['node_id']}.png"
+
+
+def test_moving_a_file_between_owners_does_not_rewrite_its_key(catalog_table, signed_in):
+    """**Stamped once, never re-derived, and this is the honest cost of that.**
+
+    The key keeps the prefix of the owner the node had when it was created. It is
+    still correct — it is a pointer — but it now *looks* like it means something
+    it does not, which is exactly the trap the old slug-in-the-key layout set.
+    `studio catalog reseat` rewrites drifted keys out of band; nothing here may
+    do it automatically, because a presigned URL, a copy and a delete all name
+    the recorded string and a second opinion about it is a lost object.
+    """
+    character = _character()
+    project = _project()
+    reference = _child(character["root"], "reference")
+    inputs = _child(project["root"], "input")
+
+    moved = _minted("front.png", reference["node_id"])
+    stamped = moved["blob_key"]
+
+    assert _patch(f"/api/nodes/{moved['node_id']}", {"parent": inputs["node_id"]}).status_code == 200
+
+    assert catalog.node(moved["node_id"])["blob_key"] == stamped
+    assert catalog.node(moved["node_id"])["blob_key"].startswith("characters/")
+
+
+def test_a_drifted_key_is_still_uploadable(catalog_table, signed_in):
+    """The reason `is_api_blob` reads the tail and never the prefix.
+
+    Checked against the prefix instead, a file dragged from a character into a
+    project would stop being uploadable — its key still says `characters/` — and
+    the refusal would read "this node's blob was not written through the API",
+    which is false and unactionable.
+    """
+    character = _character()
+    project = _project()
+    reference = _child(character["root"], "reference")
+    inputs = _child(project["root"], "input")
+
+    moved = _minted("front.png", reference["node_id"])
+    _patch(f"/api/nodes/{moved['node_id']}", {"parent": inputs["node_id"]})
+
+    resp = _post(
+        f"/api/nodes/{moved['node_id']}/upload-url",
+        {"size": 4, "content_type": "image/png"},
+    )
+
+    assert resp.status_code == 200
+    assert moved["blob_key"] in resp.get_json()["url"]
+
+
+# ───────────────── POST /api/nodes/move and /copy ─────────────────
+#
+# **One route for files and folders, where there used to be two of each.** The
+# split was an artefact of S3: moving a prefix meant a `CopyObject` per key
+# underneath it and moving an object meant one. Neither copies anything now, so
+# the only thing the two verbs still differed in was the shape of their request.
+
+
+def test_moving_a_mixed_selection_in_one_request(catalog_table, signed_in):
+    """A grid selection is files and folders together, and always was.
+
+    `/api/objects/move` took files and `/api/folder/move` took exactly one
+    folder, so selecting both meant two requests with no way to report a partial
+    outcome across them.
+    """
+    destination = _folder("archive")
+    branch = _folder("run-01")
+    _file("shot.mp4", parent=branch["node_id"])
+    loose = _file("plate.png")
+
+    resp = _post(
+        "/api/nodes/move",
+        {"ids": [branch["node_id"], loose["node_id"]], "destination": destination["node_id"]},
+    )
+
+    assert resp.status_code == 200
+    assert resp.get_json()["moved"] == 2
+    assert resp.get_json()["descendants"] == 1
+    assert sorted(entry["name"] for entry in catalog.children(destination["node_id"])) == [
+        "plate.png",
+        "run-01",
+    ]
+
+
+def test_a_move_refuses_before_it_has_applied_any_of_itself(catalog_table, signed_in):
+    """**Every destination is checked before any node moves.**
+
+    Each `move_node` is its own transaction, so a conflict found on the second
+    entry would leave the first already moved — a selection split across two
+    folders with nothing to say where the boundary fell. The check is a read and
+    a read is beatable, but that is the rare case it exists to make rare.
+    """
+    destination = _folder("archive")
+    _file("plate.png", parent=destination["node_id"])
+    first = _file("keeper.png")
+    second = _file("plate.png", parent=_folder("staging")["node_id"])
+
+    resp = _post(
+        "/api/nodes/move",
+        {"ids": [first["node_id"], second["node_id"]], "destination": destination["node_id"]},
+    )
+
+    assert resp.status_code == 409
+    # The first entry is still where it was: nothing was applied.
+    assert catalog.node(first["node_id"])["parent_id"] == CATALOG_ROOT
+
+
+def test_a_move_skips_what_is_already_there(catalog_table, signed_in):
+    """"Move these forty there" is reasonable when three of them are there already."""
+    destination = _folder("archive")
+    settled = _file("plate.png", parent=destination["node_id"])
+    moving = _file("keeper.png")
+
+    body = _post(
+        "/api/nodes/move",
+        {"ids": [settled["node_id"], moving["node_id"]], "destination": destination["node_id"]},
+    ).get_json()
+
+    assert (body["moved"], body["skipped"]) == (1, 1)
+
+
+def test_two_sources_of_one_name_refuse_each_other(catalog_table, signed_in):
+    """Otherwise the second is a conflict against the first, found half-way.
+
+    A grid selection lives in one folder so its names are already unique, but the
+    endpoint does not require that and must not depend on it.
+    """
+    destination = _folder("archive")
+    first = _file("plate.png", parent=_folder("a")["node_id"])
+    second = _file("plate.png", parent=_folder("b")["node_id"])
+
+    resp = _post(
+        "/api/nodes/move",
+        {"ids": [first["node_id"], second["node_id"]], "destination": destination["node_id"]},
+    )
+
+    assert resp.status_code == 409
+
+
+def test_a_copy_is_stamped_with_the_destinations_owner(catalog_table, media_bucket, signed_in):
+    """The one place a blob key is chosen rather than inherited.
+
+    Copying a run output into a character's reference pool files the *new* bytes
+    under the character, because the new node is the character's — while the
+    source object keeps its own key untouched, because it is still the run's.
+    Getting this backwards would file every reference a person ever curated under
+    whichever project it happened to come from.
+    """
+    character = _character()
+    project = _project()
+    reference = _child(character["root"], "reference")
+    inputs = _child(project["root"], "input")
+
+    source = _minted("plate.png", inputs["node_id"])
+    media_bucket.put_object(
+        Bucket=config.media_bucket(), Key=source["blob_key"], Body=b"png-bytes"
+    )
+
+    resp = _post(
+        "/api/nodes/copy",
+        {"ids": [source["node_id"]], "destination": reference["node_id"]},
+    )
 
     assert resp.status_code == 201
-    body = resp.get_json()
-    assert body["run"]["name"] == RUN_NAME
-    assert body["run"]["kind"] == "folder"
-    assert [doc["name"] for doc in body["documents"]] == ["request.json"]
-    assert [out["name"] for out in body["outputs"]] == ["wave-porch.jpeg"]
-
-    children = catalog.children(body["run"]["id"])
-    assert sorted(entry["name"] for entry in children) == ["request.json", "wave-porch.jpeg"]
+    copied = catalog.node(resp.get_json()["nodes"][0]["id"])
+    assert copied["blob_key"].startswith(f"characters/{character['id']}/")
+    assert catalog.node(source["node_id"])["blob_key"] == source["blob_key"]
 
 
-def test_a_recorded_document_round_trips_byte_identical(catalog_table, media_bucket, signed_in):
-    """The assertion #296 asks for by name, through the route that serves text."""
-    body = _record_run().get_json()
-    key = catalog.blob_key_for(body["documents"][0]["id"])
+def test_a_copy_gets_its_own_blob(catalog_table, media_bucket, signed_in):
+    """**Load-bearing rather than incidental.**
 
-    stored = media_bucket.get_object(Bucket=config.media_bucket(), Key=key)["Body"].read()
+    A second row on one `blob_key` would be cheaper, and `catalog.delete_node`
+    reports the keys it removed rows for without asking whether anything else
+    still points at them — there is no index on `blob_key` — so a delete would
+    destroy the surviving copy's bytes. Copy-on-write is #334 and has to revisit
+    that; until it does, "no two rows share a key" is held by the `CopyObject`.
+    """
+    destination = _folder("archive")
+    source = _minted("plate.png")
+    media_bucket.put_object(
+        Bucket=config.media_bucket(), Key=source["blob_key"], Body=b"png-bytes"
+    )
 
-    assert stored.decode() == REQUEST_JSON
+    body = _post(
+        "/api/nodes/copy",
+        {"ids": [source["node_id"]], "destination": destination["node_id"]},
+    ).get_json()
+
+    copied = catalog.node(body["nodes"][0]["id"])
+    assert copied["blob_key"] != source["blob_key"]
+    assert media_bucket.get_object(
+        Bucket=config.media_bucket(), Key=copied["blob_key"]
+    )["Body"].read() == b"png-bytes"
 
 
-def test_a_document_is_stored_as_text_and_never_decoded(catalog_table, media_bucket, signed_in):
-    """`text/plain`, not `application/json` — nothing should be tempted to parse it."""
-    body = _record_run().get_json()
-
-    assert body["documents"][0]["content_type"].startswith("text/plain")
-
-
-def test_a_documents_size_counts_bytes_not_characters(catalog_table, media_bucket, signed_in):
-    """`len(text)` would be wrong for anything non-ASCII."""
-    text = '{"prompt": "café"}'
-    body = _record_run(documents={"request.json": text}).get_json()
-
-    assert body["documents"][0]["size"] == len(text.encode()) != len(text)
-
-
-def test_an_output_comes_back_with_an_upload_url_for_its_own_key(
+def test_a_copy_numbers_a_name_the_destination_already_holds(
     catalog_table, media_bucket, signed_in
 ):
-    """One round trip: the placeholder and the URL its bytes go to, together."""
-    body = _record_run().get_json()
-    output = body["outputs"][0]
+    """A copy has no split to leave behind, so it numbers where a move refuses.
 
-    assert catalog.blob_key_for(output["id"]) in output["upload_url"]
-    assert output["headers"] == {"Content-Length": "4", "Content-Type": "image/jpeg"}
-    assert "blob_key" not in output
+    Copying a file into a folder that already holds the name is the ordinary case
+    rather than the edge, and nothing is overwritten in any branch.
+    """
+    destination = _folder("archive")
+    _file("plate.png", parent=destination["node_id"])
+    source = _minted("plate.png")
+    media_bucket.put_object(
+        Bucket=config.media_bucket(), Key=source["blob_key"], Body=b"png-bytes"
+    )
+
+    body = _post(
+        "/api/nodes/copy",
+        {"ids": [source["node_id"]], "destination": destination["node_id"]},
+    ).get_json()
+
+    assert body["nodes"][0]["name"] == "plate (2).png"
 
 
-def test_recording_a_run_needs_a_parent(catalog_table, media_bucket, signed_in):
-    assert _post("/api/runs", {"name": RUN_NAME}).status_code == 400
+def test_a_copy_refuses_a_folder_source(catalog_table, media_bucket, signed_in):
+    """A recursive copy is a different operation with a different cost.
 
+    Every descendant's bytes rather than one selection's — and refusing it is the
+    same refusal `/api/objects/copy` always made, said out loud now that one
+    route takes both kinds.
+    """
+    destination = _folder("archive")
+    branch = _folder("run-01")
 
-def test_an_oversized_document_is_refused(catalog_table, media_bucket, signed_in):
-    resp = _record_run(documents={"request.json": "x" * (config.max_text_bytes() + 1)})
+    resp = _post(
+        "/api/nodes/copy",
+        {"ids": [branch["node_id"]], "destination": destination["node_id"]},
+    )
 
     assert resp.status_code == 400
-    assert "output" in resp.get_json()["error"]
 
 
-def test_an_output_without_a_size_is_refused(catalog_table, media_bucket, signed_in):
-    resp = _record_run(outputs=[{"name": "clip.mp4", "content_type": "video/mp4"}])
+def test_a_copy_never_returns_blob_key(catalog_table, media_bucket, signed_in):
+    """The one response that has a freshly minted key for every entry.
+
+    `manage.copy_nodes` hands back full records because it is the thing that
+    wrote them; the allowlist is applied at the route, once. A `pop` there would
+    leak the next internal attribute anybody adds.
+    """
+    destination = _folder("archive")
+    source = _minted("plate.png")
+    media_bucket.put_object(
+        Bucket=config.media_bucket(), Key=source["blob_key"], Body=b"png-bytes"
+    )
+
+    body = _post(
+        "/api/nodes/copy",
+        {"ids": [source["node_id"]], "destination": destination["node_id"]},
+    ).get_data(as_text=True)
+
+    assert "blob_key" not in body
+    assert "libraries/" not in body
+
+
+# ─────────────────────── DELETE /api/nodes (bulk) ───────────────────────
+
+
+def test_deleting_many_nodes_in_one_request(catalog_table, media_bucket, signed_in):
+    """The grid's selection is the reason delete exists at all.
+
+    A viewer that could only remove one file at a time would not be worth the
+    write permission this endpoint needs.
+    """
+    branch = _folder("run-01")
+    _file("shot.mp4", parent=branch["node_id"])
+    loose = _file("plate.png")
+
+    resp = _client().delete(
+        "/api/nodes", json={"ids": [branch["node_id"], loose["node_id"]]}
+    )
+
+    assert resp.status_code == 200
+    assert resp.get_json()["deleted"] == 2
+    assert catalog.children(CATALOG_ROOT) == []
+
+
+def test_a_bulk_delete_resolves_one_id_named_twice_once(catalog_table, media_bucket, signed_in):
+    """Two spellings of one file used to be two idempotent `DeleteObject`s.
+
+    A row deleted twice is a 404 raised *after* the first half of the request has
+    already applied, so the deduplication is what keeps "resolve everything, then
+    delete" true for a selection that names something twice.
+    """
+    loose = _file("plate.png")
+
+    body = _client().delete(
+        "/api/nodes", json={"ids": [loose["node_id"], loose["node_id"]]}
+    ).get_json()
+
+    assert body["deleted"] == 1
+
+
+def test_a_bulk_delete_of_an_empty_list_is_400(catalog_table, media_bucket, signed_in):
+    assert _client().delete("/api/nodes", json={"ids": []}).status_code == 400
+
+
+def test_a_bulk_delete_past_the_cap_is_refused(catalog_table, media_bucket, signed_in, monkeypatch):
+    """Refused rather than silently split.
+
+    A partially applied bulk delete is the worst possible outcome to report back
+    to a UI, and the cap now bounds a per-node cost rather than the single
+    `DeleteObjects` call it was chosen for.
+    """
+    monkeypatch.setenv("STUDIO_MAX_BULK_KEYS", "2")
+
+    resp = _client().delete("/api/nodes", json={"ids": ["a", "b", "c"]})
 
     assert resp.status_code == 400
 
 
-def test_a_duplicate_run_name_is_409(catalog_table, media_bucket, signed_in):
-    """Run folders are `<ts>_<slug>`, so a collision means the CLI re-sent one."""
-    _record_run()
+# ──────────────── the entity-root delete refusal ────────────────
+#
+# **The one structural rule the layout leaves.** Every other folder in a
+# character or a project may be renamed, moved or deleted freely, because
+# reference-ness and run-ness are row attributes rather than locations. The root
+# is different only because a record names it, and a record naming a node that is
+# gone is the one broken state the tree cannot repair from.
 
-    assert _record_run().status_code == 409
+
+def test_deleting_an_entitys_root_folder_is_refused(catalog_table, media_bucket, signed_in):
+    """And the refusal says which entity to delete instead.
+
+    A message reading "cannot delete" and nothing else would leave a person
+    clicking the same button; the entity id is the thing they need, and it is on
+    the row already.
+    """
+    character = _character()
+
+    resp = _delete(f"/api/nodes/{character['root']}")
+
+    assert resp.status_code == 400
+    assert character["id"] in resp.get_json()["error"]
+    assert catalog.node(character["root"])
 
 
-def test_recording_a_run_in_another_library_is_403(catalog_table, media_bucket, signed_in):
+def test_deleting_a_folder_holding_an_entity_root_is_refused(catalog_table, media_bucket, signed_in):
+    """The nested case, which the named record alone would not catch.
+
+    Deleting the library's `characters/` folder would take every character's root
+    with it and leave every `CHAR#` record naming nothing. The check runs over the
+    subtree the delete is about to remove — the same query the delete makes
+    anyway, so it costs nothing.
+    """
+    character = _character()
+    shelf = _folder("shelf")
+    _patch(f"/api/nodes/{character['root']}", {"parent": shelf["node_id"]})
+
+    resp = _delete(f"/api/nodes/{shelf['node_id']}")
+
+    assert resp.status_code == 400
+    assert character["id"] in resp.get_json()["error"]
+
+
+def test_a_bulk_delete_refuses_every_entity_root_before_deleting_any(
+    catalog_table, media_bucket, signed_in
+):
+    """**The pre-pass, and the reason it exists.**
+
+    The refusal inside `delete_node` comes too late for a selection: the second
+    entry refusing would leave the first already gone. `manage.delete_nodes` asks
+    `catalog.assert_deletable` for every record first, and only then deletes any
+    of them.
+    """
+    loose = _file("plate.png")
+    character = _character()
+
+    resp = _client().delete(
+        "/api/nodes", json={"ids": [loose["node_id"], character["root"]]}
+    )
+
+    assert resp.status_code == 400
+    # The file named first is untouched, which is what the pre-pass buys.
+    assert catalog.node(loose["node_id"])
+
+
+# ──────────────── GET/PATCH /api/nodes/<id>/text ────────────────
+#
+# One address for both directions, which is the whole of what this replaces:
+# `GET /api/text?key=` read an S3 key and `PATCH /api/text?key=` walked a name
+# path, so the pair agreed only for material written before the catalog — a file
+# the editor could save was a file the editor could not re-open (#432).
+
+
+def _text_node(media_bucket, name="notes.md", body=b"# heading\n"):
+    """A text file that has actually been uploaded — bytes *and* a confirmed row.
+
+    Both halves, because a row carrying a `blob_key` and no `size` is a
+    *placeholder* and every read and write here refuses one. Putting the object
+    without stamping the row would make this fixture an abandoned upload, which
+    is a different test's subject and would fail these for the wrong reason.
+    """
+    created = catalog.create_node(CATALOG_ROOT, name, catalog.KIND_FILE)
+    media_bucket.put_object(Bucket=config.media_bucket(), Key=created["blob_key"], Body=body)
+    return catalog.set_blob(
+        created["node_id"], created["blob_key"], size=len(body), content_type="text/markdown"
+    ), body
+
+
+def test_reading_and_writing_a_text_node_round_trips(catalog_table, media_bucket, signed_in):
+    created, _body = _text_node(media_bucket)
+
+    read = _get(f"/api/nodes/{created['node_id']}/text").get_json()
+    assert read["content"] == "# heading\n"
+    assert read["language"] == "markdown"
+
+    saved = _patch(f"/api/nodes/{created['node_id']}/text", {"content": "# rewritten\n"})
+    assert saved.status_code == 200
+
+    assert _get(f"/api/nodes/{created['node_id']}/text").get_json()["content"] == (
+        "# rewritten\n"
+    )
+
+
+def test_saving_restamps_the_row_from_the_bytes_it_wrote(catalog_table, media_bucket, signed_in):
+    """Bytes first, then the row — the reverse of a delete, for the same reason.
+
+    `size` on the row is a claim about an object; writing it before the object
+    exists would be a claim about bytes that were never stored, and a listing
+    reports that number without re-reading S3.
+    """
+    created, _body = _text_node(media_bucket)
+
+    _patch(f"/api/nodes/{created['node_id']}/text", {"content": "é" * 3})
+
+    # Bytes, not characters: three two-byte code points.
+    assert catalog.node(created["node_id"])["size"] == 6
+
+
+def test_editing_cannot_become_uploading(catalog_table, media_bucket, signed_in):
+    """A placeholder whose bytes never landed is refused rather than created into.
+
+    It used to be `s3.exists` on the key; it is now a row that must be a file and
+    must carry a blob. Studio's only upload is the presigned PUT, and this route
+    must not become a second one.
+    """
+    created = catalog.create_node(CATALOG_ROOT, "notes.md", catalog.KIND_FILE)
+
+    assert _patch(f"/api/nodes/{created['node_id']}/text", {"content": "x"}).status_code == 404
+
+
+def test_a_binary_node_is_not_editable_text(catalog_table, media_bucket, signed_in):
+    created = catalog.create_node(CATALOG_ROOT, "clip.mp4", catalog.KIND_FILE)
+    media_bucket.put_object(
+        Bucket=config.media_bucket(), Key=created["blob_key"], Body=b"mp4-bytes"
+    )
+
+    assert _get(f"/api/nodes/{created['node_id']}/text").status_code == 400
+    assert _patch(f"/api/nodes/{created['node_id']}/text", {"content": "x"}).status_code == 400
+
+
+def test_a_folder_has_no_text(catalog_table, media_bucket, signed_in):
+    folder = _folder("archive")
+
+    assert _get(f"/api/nodes/{folder['node_id']}/text").status_code == 400
+
+
+def test_text_over_the_cap_is_truncated_on_read_and_refused_on_save(
+    catalog_table, media_bucket, signed_in, monkeypatch
+):
+    """**Not a formality.** The reader truncates, so the writer has to refuse.
+
+    A client that opened a truncated copy and saved it back would delete the
+    tail. The frontend refuses to open an editor on a truncated file; the cap
+    here means a file that somehow grew past it in between cannot be silently
+    beheaded either.
+    """
+    monkeypatch.setenv("STUDIO_MAX_TEXT_BYTES", "8")
+    created, _body = _text_node(media_bucket, body=b"x" * 32)
+
+    read = _get(f"/api/nodes/{created['node_id']}/text").get_json()
+    assert read["truncated"] is True
+    assert len(read["content"]) == 8
+
+    assert _patch(
+        f"/api/nodes/{created['node_id']}/text", {"content": "y" * 32}
+    ).status_code == 400
+
+
+def test_reading_text_in_another_library_is_403(catalog_table, media_bucket, signed_in):
     _second_library(catalog_table)
 
-    resp = _record_run(parent=OTHER_ROOT)
-
-    assert resp.status_code == 403
+    assert _get(f"/api/nodes/{OTHER_NODE}/text").status_code == 403

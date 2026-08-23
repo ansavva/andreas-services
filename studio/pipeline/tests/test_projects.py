@@ -1,242 +1,224 @@
-"""`domain/projects` — the project record and its input pool, through the API (#305).
+"""`domain/projects` — the project record, and the pool that stopped being numbered.
 
-**Stubbed at `api` for the record and at `store` for the pool.** The record's
-whole change is which requests a `project.json` becomes — a folder now has to be
-created before the file can hang off it — so those tests assert on requests. The
-pool's change is ordering and numbering, which are decisions `projects.py` makes
-about a listing, so those stub the listing.
+Against the in-memory API, so the routes and field names these commands send are
+what is checked rather than a stubbed store's idea of them.
 """
 
 from __future__ import annotations
-
-import json
 
 import pytest
 from click.testing import CliRunner
 
 from studio_pipeline import cli
-from studio_pipeline.adapters import api, store
-from studio_pipeline.domain import projects
-
-PROJECT = "subject-a"
+from studio_pipeline.adapters import api, entities as E
+from studio_pipeline.domain import projects as PROJECTS
 
 
-@pytest.fixture
-def apis(monkeypatch):
-    """Records every call; `/api/resolve` answers a folder unless told otherwise."""
-    calls = []
-    missing = set()
+# ── the record ──────────────────────────────────────────────────────────────
 
-    def _get(_route, **params):
-        calls.append(("GET", _route, params))
-        if _route == "/api/resolve":
-            path = params["path"]
-            if path in missing:
-                raise api.NotFound(f"no such node: {path}", 404)
-            return {"id": f"node:{path}", "name": path.rsplit("/", 1)[-1], "kind": "folder"}
-        raise AssertionError(f"unscripted GET {_route}")
+def test_creating_a_project_makes_its_layout_in_one_act(library):
+    """**All of it or none of it**, where the subfolders used to appear lazily.
 
-    def _post(_route, payload=None, **params):
-        calls.append(("POST", _route, payload))
-        if _route == "/api/nodes":
-            # A created folder stops being missing — otherwise `store.write`'s
-            # own `resolve` of the parent would 404 on the folder `store.folder`
-            # had just made, and the fixture would be asserting a bug.
-            parent = payload["parent"].removeprefix("node:")
-            path = f"{parent}/{payload['name']}" if parent else payload["name"]
-            missing.discard(path)
-            return {"id": f"node:{path}", "kind": payload["kind"]}
-        return {"id": "node:new", "url": "https://s3/signed", "headers": {}}
-
-    monkeypatch.setattr(api, "get", _get)
-    monkeypatch.setattr(api, "post", _post)
-    monkeypatch.setattr(store, "_put", lambda *a, **k: None)
-    return calls, missing
-
-
-def _created_folders(calls):
-    return [payload["name"] for verb, route, payload in calls
-            if verb == "POST" and route == "/api/nodes" and payload.get("kind") == "folder"]
-
-
-# ──────────────────────────── the record ────────────────────────────
-
-
-def test_writing_a_project_creates_its_folder_first(apis):
-    """**The bug this migration would otherwise have shipped.**
-
-    `project.json` was a bare `PutObject` and S3 invented `projects/<p>/` out of
-    the slashes in the key. The catalog does not: a file node needs a parent
-    that exists, so without this `projects new` fails on a folder nobody made —
-    and so does every run recorded into the project afterwards.
+    A project could exist with no `runs/` until whatever write happened to need
+    one first created it. They are part of the create transaction now.
     """
-    calls, missing = apis
-    missing.add(f"projects/{PROJECT}")
-
-    projects.write_project({"name": PROJECT, "characters": []})
-
-    assert _created_folders(calls) == [PROJECT]
-    # And the file goes under it, not under whatever resolved last.
-    created_file = [payload for verb, route, payload in calls
-                    if verb == "POST" and route == "/api/nodes"
-                    and payload.get("kind") == "file"]
-    assert created_file == [{"parent": f"node:projects/{PROJECT}",
-                             "name": "project.json", "kind": "file"}]
+    record = E.create_project("second-teaser", title="Second")
+    children = {c["name"] for c in library.fake._children(record["root"])}
+    assert children == {"runs", "scenes", "movies", "chains", "input"}
 
 
-def test_the_first_project_in_a_fresh_library_creates_projects_too(apis):
-    """`projects/` is not there either until something asks for it."""
-    calls, missing = apis
-    missing.update({"projects", f"projects/{PROJECT}"})
-
-    projects.write_project({"name": PROJECT, "characters": []})
-
-    assert _created_folders(calls) == ["projects", PROJECT]
+def test_a_duplicate_slug_is_refused(library):
+    with pytest.raises(api.Conflict):
+        E.create_project("porch-teaser")
 
 
-def _capture_write(monkeypatch) -> dict:
-    """Stub `store.write` and `store.folder`; return what the write was handed."""
-    written = {}
-    monkeypatch.setattr(store, "folder", lambda path: {"id": f"node:{path}"})
-    monkeypatch.setattr(store, "write", lambda path, body, **kw: written.update(
-        path=path, body=body, **kw) or {"id": "node:doc"})
-    return written
+def test_resolving_a_slug_is_one_call_and_returns_the_whole_record(library):
+    record = PROJECTS.resolve("porch-teaser")
+    assert record["id"] == library.project
+    assert record["root"] == library.project_root
+    assert record["rev"] == 1
 
 
-def test_a_project_record_keeps_its_trailing_newline(monkeypatch):
-    """These are read in a terminal, and every existing one in the tree has one."""
-    written = _capture_write(monkeypatch)
-
-    projects.write_project({"name": PROJECT, "characters": []})
-
-    assert written["body"].endswith(b"\n")
-    assert json.loads(written["body"].decode())["name"] == PROJECT
+def test_resolving_an_id_skips_the_slug_lookup(library):
+    assert PROJECTS.resolve(library.project)["slug"] == "porch-teaser"
 
 
-def test_a_project_record_stays_application_json(monkeypatch):
-    """Unlike a run's documents, which the API stores as `text/plain`.
+def test_a_missing_project_lists_what_exists(library):
+    result = CliRunner().invoke(cli.main, ["projects", "show", "nope"])
+    assert result.exit_code == 1
+    assert "no project 'nope'" in result.output
 
-    The difference is real: a run document is bytes the pipeline reserves the
-    right to reshape and nothing should parse, while this file is parsed by
-    `read_project` on every `projects show`.
+
+# ── rename ──────────────────────────────────────────────────────────────────
+
+def test_renaming_a_project_touches_nothing_else(library):
+    """**New, and trivial — it was impossible before.**
+
+    Every run, scene and movie names the project by id, so the rename is one
+    conditional write plus a folder-node rename. The run recorded before it is
+    still in the project afterwards.
     """
-    written = _capture_write(monkeypatch)
+    from studio_pipeline.domain import runs as R
 
-    projects.write_project({"name": PROJECT, "characters": []})
-
-    assert written["content_type"] == "application/json"
-
-
-def test_a_project_with_no_record_reads_as_none(monkeypatch):
-    """A tree that predates `project.json` — `projects init` exists for it."""
-    def _read(_path):
-        raise api.NotFound("no such node", 404)
-
-    monkeypatch.setattr(store, "read", _read)
-
-    assert projects.read_project(PROJECT) is None
+    result = CliRunner().invoke(cli.main, ["projects", "rename", "porch-teaser",
+                                           "launch-teaser"])
+    assert result.exit_code == 0, result.output
+    assert "0 objects copied" in result.output
+    assert library.fake.nodes[library.project_root]["name"] == "launch-teaser"
+    assert [r["id"] for r in R.list_runs(library.project)] == [library.run]
 
 
-def test_a_refusal_is_not_a_missing_record(monkeypatch):
-    """**This used to swallow every exception**, so a 403 read as "no project".
+def test_renaming_onto_a_taken_slug_is_refused(library):
+    E.create_project("taken")
+    result = CliRunner().invoke(cli.main, ["projects", "rename", "porch-teaser",
+                                           "taken"])
+    assert result.exit_code == 1
+    assert "already exists" in result.output
 
-    `projects show` on a library you are not a member of would have reported an
-    uncreated project rather than a refusal — and the fix for the wrong one of
-    those is to create a duplicate.
+
+def test_a_stale_rev_is_refused(library):
+    """`rev` is compare-and-swap, not check-then-write. There is no window."""
+    record = PROJECTS.resolve("porch-teaser")
+    E.patch_project(record["id"], record["rev"], title="moved on")
+    with pytest.raises(api.Conflict):
+        E.patch_project(record["id"], record["rev"], title="stale")
+
+
+# ── involvement ─────────────────────────────────────────────────────────────
+
+def test_linking_a_character_is_readable_from_both_ends(library):
+    """The reverse question had no answer at any price before this was a row."""
+    result = CliRunner().invoke(cli.main, ["projects", "link", "porch-teaser",
+                                           "subject-b"])
+    assert result.exit_code == 0, result.output
+    assert {p["id"] for p in E.character_projects(library.character_b)} == {
+        library.project}
+
+
+def test_unlinking_leaves_the_files_and_the_runs_alone(library):
+    from studio_pipeline.domain import runs as R
+
+    result = CliRunner().invoke(cli.main, ["projects", "unlink", "porch-teaser",
+                                           "subject-a"])
+    assert result.exit_code == 0, result.output
+    assert E.character_projects(library.character) == []
+    # The run recorded that it USED the character; involvement is a separate
+    # fact about the project, and unlinking one must not rewrite the other.
+    assert R.find_runs(character=E.address("subject-a"))
+
+
+def test_unlinking_something_that_is_not_linked_says_so(library):
+    result = CliRunner().invoke(cli.main, ["projects", "unlink", "porch-teaser",
+                                           "subject-b"])
+    assert result.exit_code == 1
+    assert "not linked" in result.output
+
+
+def test_linking_an_unknown_character_is_refused(library):
+    result = CliRunner().invoke(cli.main, ["projects", "link", "porch-teaser",
+                                           "nobody"])
+    assert result.exit_code == 1
+    assert "no character" in result.output
+
+
+# ── the input pool ──────────────────────────────────────────────────────────
+
+def test_the_pool_is_positional_and_the_names_are_left_alone(library):
+    """**`--input N` is position N in this listing.**
+
+    Basenames used to be `<project>_in_<n>`, so a deletion either renumbered
+    every file — rewriting every record citing one — or left a hole that
+    silently changed what `--input 3` meant.
     """
-    def _read(_path):
-        raise api.Forbidden("not your library", 403)
-
-    monkeypatch.setattr(store, "read", _read)
-
-    with pytest.raises(api.Forbidden):
-        projects.read_project(PROJECT)
+    pool = PROJECTS.input_pool(PROJECTS.resolve("porch-teaser"))
+    assert [entry["name"] for entry in pool] == [
+        "porch-plate.png", "porch-plate.webp", "street-plate.webp"]
+    assert [entry["position"] for entry in pool] == [1, 2, 3]
 
 
-# ──────────────────────────── the input pool ────────────────────────────
+def test_input_numbers_resolve_to_node_ids_in_the_order_asked_for(library):
+    record = PROJECTS.resolve("porch-teaser")
+    assert PROJECTS.input_nodes(record, [3, 1]) == [library.input_1, library.input_3]
 
 
-def _pool(monkeypatch, *names):
-    monkeypatch.setattr(store, "files", lambda _path: [{"name": n, "kind": "file"} for n in names])
+def test_a_position_the_pool_does_not_have_says_how_many_it_holds(library):
+    record = PROJECTS.resolve("porch-teaser")
+    with pytest.raises(KeyError, match="holds 3"):
+        PROJECTS.input_nodes(record, [9])
 
 
-def test_the_pool_does_not_resort_what_the_store_gave_it(monkeypatch):
-    """**`engine/refs.py` hands these to a model positionally.**
-
-    `store.files` already imposes natural order and `test_store_adapter` is where
-    that is proved. What is checked here is that this module does not undo it:
-    the names arrive `_1, _2, _10`, which is not lexical, and a `sorted()` added
-    anywhere below would flip `_10` in front of `_2` and show the model the wrong
-    image under the right name.
-    """
-    _pool(monkeypatch, f"{PROJECT}_in_1.png", f"{PROJECT}_in_2.png", f"{PROJECT}_in_10.png")
-
-    assert [k.rsplit("/", 1)[-1] for k in projects.input_keys(PROJECT)] == [
-        f"{PROJECT}_in_1.png", f"{PROJECT}_in_2.png", f"{PROJECT}_in_10.png",
-    ]
+def test_adding_an_input_keeps_its_own_basename(library, tmp_image):
+    record = PROJECTS.resolve("porch-teaser")
+    added = PROJECTS.add_inputs(record, [str(tmp_image)])
+    assert added[0]["name"] == "plate.png"
+    assert added[0]["node"] in [e["id"] for e in PROJECTS.input_pool(record)]
 
 
-def test_the_pool_holds_images_only(monkeypatch):
-    """A stray document in the pool is not something to hand a model."""
-    _pool(monkeypatch, f"{PROJECT}_in_1.png", "notes.txt")
-
-    assert [k.rsplit("/", 1)[-1] for k in projects.input_keys(PROJECT)] == [
-        f"{PROJECT}_in_1.png"
-    ]
-
-
-def test_the_next_index_is_read_off_the_names_not_counted(monkeypatch):
-    """A pruned pool must not reuse a number.
-
-    Two images answering to one name is unrecoverable by rerunning anything —
-    the records that already point at `_3` would silently mean a different
-    picture.
-    """
-    _pool(monkeypatch, f"{PROJECT}_in_1.png", f"{PROJECT}_in_7.png")
-
-    assert projects.pool_max_index(PROJECT) == 7
+def test_the_pool_folder_is_recreated_if_someone_removed_it(library, tmp_image):
+    """Self-healing, per the layout section: a route that cannot find its
+    conventional folder makes one and never guesses."""
+    record = PROJECTS.resolve("porch-teaser")
+    del library.fake.nodes[library.input_pool]
+    added = PROJECTS.add_inputs(record, [str(tmp_image)])
+    assert added[0]["node"] in [e["id"] for e in PROJECTS.input_pool(record)]
 
 
-def test_a_project_with_no_pool_yet_starts_at_zero(monkeypatch):
-    """`store.files` reports a missing folder as empty; nothing here re-decides it."""
-    _pool(monkeypatch)
-
-    assert projects.pool_max_index(PROJECT) == 0
-
-
-def test_adding_inputs_ensures_the_pool_folder_once(monkeypatch, tmp_path):
-    """A project created before anything was uploaded has no `input/` node."""
-    made, uploaded = [], []
-    monkeypatch.setattr(store, "files", lambda _path: [])
-    monkeypatch.setattr(store, "folder", lambda path: made.append(path) or {"id": "node:pool"})
-    monkeypatch.setattr(store, "upload",
-                        lambda path, source, **kw: uploaded.append(path) or {"id": "n"})
-    for name in ("a.png", "b.png"):
-        (tmp_path / name).write_bytes(b"png-bytes")
-
-    added = projects.add_inputs(PROJECT, [str(tmp_path / "a.png"), str(tmp_path / "b.png")])
-
-    assert made == [f"projects/{PROJECT}/input"], "the folder is ensured once, not per file"
-    assert [a["n"] for a in added] == [1, 2]
-    assert uploaded == [f"projects/{PROJECT}/input/{PROJECT}_in_1.png",
-                        f"projects/{PROJECT}/input/{PROJECT}_in_2.png"]
+def test_a_non_image_is_refused_from_the_pool(library, tmp_path):
+    doc = tmp_path / "notes.txt"
+    doc.write_text("not an image")
+    result = CliRunner().invoke(cli.main, ["projects", "add-inputs", str(doc),
+                                           "porch-teaser"])
+    assert result.exit_code == 1
+    assert "the input pool holds images" in result.output
 
 
-# ──────────────────────────── the CLI ────────────────────────────
+# ── the CLI ─────────────────────────────────────────────────────────────────
+
+def test_projects_list_shows_the_counts_off_the_record(library):
+    result = CliRunner().invoke(cli.main, ["projects", "list"])
+    assert result.exit_code == 0, result.output
+    assert "porch-teaser" in result.output
+    assert "subject-a" in result.output
+    assert "runs 1" in result.output
 
 
-def test_projects_inputs_can_presign(media_bucket):
+def test_projects_show_prints_the_pool_size(library):
+    result = CliRunner().invoke(cli.main, ["projects", "show", "porch-teaser"])
+    assert result.exit_code == 0, result.output
+    assert "input pool  3 image(s)" in result.output
+
+
+def test_projects_inputs_shows_positions(library):
+    result = CliRunner().invoke(cli.main, ["projects", "inputs", "porch-teaser"])
+    assert result.exit_code == 0, result.output
+    assert "  1  " in result.output
+    assert "street-plate.webp" in result.output
+
+
+def test_projects_inputs_can_presign(library):
     """The same shadowing trap `runs outputs --presign` fell into."""
-    result = CliRunner().invoke(cli.main, ["projects", "inputs", PROJECT, "--presign"])
-
+    result = CliRunner().invoke(cli.main, ["projects", "inputs", "porch-teaser",
+                                           "--presign"])
     assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
-    assert "https://" in result.output
+    assert "memory://" in result.output
 
 
-def test_projects_inputs_says_expires_is_ignored(media_bucket):
-    result = CliRunner().invoke(
-        cli.main, ["projects", "inputs", PROJECT, "--presign", "--expires", "60"]
-    )
-
+def test_projects_inputs_says_expires_is_ignored(library):
+    result = CliRunner().invoke(cli.main, ["projects", "inputs", "porch-teaser",
+                                           "--expires", "60"])
     assert result.exit_code == 0, result.output
     assert "--expires 60 is ignored" in result.output
+
+
+def test_deleting_a_project_that_holds_runs_is_refused_without_force(library):
+    """The default keeps files, because the reverse default loses media to a typo."""
+    result = CliRunner().invoke(cli.main, ["projects", "delete", "porch-teaser"])
+    assert result.exit_code == 1
+    assert "--force" in result.output
+
+
+def test_deleting_with_force_keeps_the_folder_by_default(library):
+    result = CliRunner().invoke(cli.main, ["projects", "delete", "porch-teaser",
+                                           "--force"])
+    assert result.exit_code == 0, result.output
+    assert library.project_root in library.fake.nodes

@@ -28,11 +28,11 @@ studio logout
 Sessions refresh themselves; a `401` after that means sign in again.
 
 **There is no bucket name, and never a key you compose.** Material is addressed
-by **name path** — `characters/<name>/reference/face/<name>_3.jpg` — which is
-the same string a person types and the string every record stores. That it looks
-like an object key is a coincidence of how the tree was laid out, and it ends the
-first time something is renamed without its bytes moving. Ask for the path you
-mean; do not build one out of a prefix.
+by **node id**, or by the **name path** that resolves to one —
+`<name>/reference/face/<file>` is the string a person types. It is an *address*,
+resolved against the tree as it is now; it is not a key, and no record stores
+one. The S3 key behind it is built from ids and is meaningless to everything
+outside the API. Ask for the path you mean; do not build one out of a prefix.
 
 Bytes still travel straight to storage, not through the API: a presigned URL is
 handed back and the transfer happens against it. That is what keeps a video out
@@ -40,37 +40,43 @@ of a request-size limit, and it is what makes the rule below hold.
 
 ## The layout
 
-Two trees, because they are two different things. A **character** is an identity
-record; a **project** is a piece of work. They used to be one folder, which left
-work involving two characters with nowhere to live and work involving none
-borrowing a fake character called `misc`.
+**Characters and projects are records, and each owns a folder.** A character is
+an identity; a project is a piece of work. Both folders sit directly under the
+library root — there is no `characters/` or `projects/` wrapper, because an
+entity is found by asking for it, not by listing a folder that groups it.
 
 ```
-characters/<name>/
-    profile.yaml            the bible — identity, plus the described reference index
-    reference/              generated character imagery, in purpose subfolders
-        face/ body/ wardrobe/ …
-    corpus/                 collected material about the character — uploads, keeper clips
+<name>/                     a character's folder
+    reference/              the images its references point at, in purpose
+        face/ body/ wardrobe/ …     subfolders
+    corpus/                 collected material — uploads, keeper clips
     seed/                   the founding real-world source photos
     archive/                retired material; NEVER used unless asked for by name
 
-projects/<project>/
-    project.json            name, description, the characters involved
-    runs/<run_id>/          one submission: request/prompt/result + output/
-    chains/<slug>.json      a scene's own frames, in order — its reference set while building
-    scenes/<scene_id>/      runs cut into one continuous take: scene.json + shots/ + output/
-    movies/<movie_id>/      scenes cut into one piece: movie.json + scenes/ + output/
-    favorites/              an ordinary folder someone made — keepers, copied in
-    input/                  the project working pool (<project>_in_<n>.<ext>)
+<project>/                  a project's folder
+    runs/<run_id>/          one submission: its payload documents + output/
+    chains/<slug>.json      a scene's own frames, in order
+    scenes/<scene_id>/      runs cut into one continuous take: storyboard/ shots/ output/
+    movies/<movie_id>/      scenes cut into one piece: scenes/ + output/
+    input/                  the project working pool
 
-phrasebook/wording.yaml     per-model wording lists     ⟵ SHARED, see below
-config/pose/                the reference shoot's framing plates   ⟵ SHARED
+config/pose/                the reference shoot's framing plates
 ```
 
-`<run_id>` is `YYYY-MM-DD_HH-MM-SS_<slug>`, so runs sort chronologically. The
-**run owns its output** — medium is an attribute (`result.json`, the file
-extension), never a folder name, so one video and ten images take the same shape.
-`<scene_id>` and `<movie_id>` take the same shape for the same reason.
+**The documents that used to define these things are gone.** No `profile.yaml`,
+no `project.json`, no `scene.json`, no `movie.json` — each is a row, so each can
+be queried, and none can drift from the folder it used to sit in. A run keeps
+`request.json` and `result.json`, but as *payload*: the provider's own bytes,
+stored and never decoded.
+
+**Every folder name here is convention.** The API makes them with the entity and
+resolves them by name when it needs one, creating what is absent. Rename `runs/`
+and the next run makes a new one; existing runs stay reachable because each names
+its own folder node.
+
+`<run_id>` is `YYYY-MM-DD_HH-MM-SS_<slug>`, so runs sort chronologically when
+browsed — it is a name, not an id. The **run owns its output** — medium is an
+attribute, never a folder name, so one video and ten images take the same shape.
 
 **Listings are one folder deep.** There is no prefix scan: a folder is a record
 and listing it is a permission-checked read of that record. Walk down to the
@@ -103,29 +109,30 @@ longer says: `studio runs find --character <name>`.
 
 **Assets are never uploaded to Replicate.** Anything sent to a model must already
 be in the store and reaches Replicate only as a short-lived **presigned URL**
-minted at submit time. Signed URLs are never *stored* either: run records hold
-paths, and the run store refuses a URL-shaped binding. Paths are stable, so any
-run replays by re-minting.
+minted at submit time. Signed URLs are never *stored* either: a run's bindings
+are **node ids**, and both the run store and the API refuse a URL-shaped one.
+Ids are stable, so any run replays by re-minting.
 
-## SHARED MATERIAL IS ADDRESSED DIFFERENTLY, AND IT BITES
+## SHARED MATERIAL, AND THE TRAP THAT USED TO BE HERE
 
-`phrasebook/wording.yaml` and the `config/pose/` plates belong to **no character
-and no project**. Nothing owns them, so nothing records them, so they have **no
-catalog record to resolve**. They are reached by key through the API's shared
-route instead — still the API, still no credentials, a different door to the same
-authority.
+The `config/pose/` plates belong to **no character and no project** — they are
+the library's, and the repo is their source of truth.
 
-**A command that resolves a path fails on them.** `studio download`,
-`studio presign` and anything taking `--folder` or `--key` all resolve first and
-answer "not found" for both trees. What reaches them is the command that owns
-them: `studio phrasebook` for the wording lists, and `studio character shoot`
-for the plates.
+**They are ordinary nodes, and that is the change.** They had no catalog record
+for as long as nothing owned them, so they were reached by raw key through a
+separate route, and every command that resolved a path answered "not found" for
+them. That was quiet where it cost most: a reference shoot binds a pose plate as
+its framing guide, and a plate the shoot could not see took the guide with it
+and returned a render that was plausible and wrongly framed. They resolve like
+anything else now, and `studio download`, `studio presign` and `--folder` all
+work on them.
 
-That failure is quiet where it costs most. A reference shoot binds a pose plate
-as its framing guide; a plate that is not there takes the guide with it, and the
-render comes back plausible and wrongly framed. If a shoot reports a missing
-plate, the plates live in the repo under `studio/config/` and reach the store via
-`studio/scripts/dev-setup.sh` — re-run it rather than uploading one by hand.
+If a shoot still reports a missing plate, the plates live in the repo under
+`studio/config/` and reach the store via `studio/scripts/dev-setup.sh` — re-run
+it rather than uploading one by hand.
+
+The phrasebook used to be named here too. It is `TERM#` rows now, so there is no
+document to address and `studio phrasebook` is the whole of its surface.
 
 **`studio phrasebook add` fails the same way and is fixed by the same script.**
 Recording a substitution overwrites the wording list and cannot create one, so
@@ -148,11 +155,11 @@ studio projects new <project> --character <name> --description "…"
 studio projects show <project>
 
 # List / download / upload / presign, by folder path
-studio download --folder characters/<name>/reference --list
-studio download --folder characters/<name>/reference --all --dest /tmp/refs --json
-studio upload photo.jpg --folder characters/<name>/seed
-studio presign --folder characters/<name>/reference/face --json
-studio presign --key projects/<project>/runs/<run_id>/output/clip.mp4
+studio download --folder <name>/reference --list
+studio download --folder <name>/reference --all --dest /tmp/refs --json
+studio upload photo.jpg --folder <name>/seed
+studio presign --folder <name>/reference/face --json
+studio presign --key <project>/runs/<run_id>/output/clip.mp4
 
 # Formats differ between engines: GPT Image writes .webp, Kling takes only
 # .jpg/.jpeg/.png. Convert a still before handing it over as a start frame.
@@ -167,11 +174,11 @@ studio runs find --character <name>               # across every project
 
 # Frames: verify a clip, and take the handoff frame for chaining
 studio frames grid <project>/latest --count 4 --dest /tmp/check
-studio frames last <project>/latest --add-input   # -> projects/<p>/input/
+studio frames last <project>/latest --add-input   # -> <project>/input/
 studio frames at   <project>/latest --time 6.5
 
 # Chains: a scene's own frames, which are its reference set for later shots
-studio frames chain <project>/<slug> --seed projects/<p>/input/<p>_in_<n>.png
+studio frames chain <project>/<slug> --seed <project>/input/<file>.png
 studio frames last  <project>/latest --add-input --chain <slug>
 studio frames chain <project>/<slug> --args --max 7    # -> --key … --key …
 
@@ -191,9 +198,6 @@ studio scenes show <project>/latest
 studio movies new <project> --slug <slug> \
   --scene <project>/<scene_id> --scene <project>/latest
 studio movies show <project>/latest
-
-# Integrity: does every recorded path still resolve?
-studio rewrite check
 ```
 
 `--shot` and `--scene` are repeatable and **order is the cut order**. Each takes
@@ -228,14 +232,16 @@ than a render job. The flag survives because the CLI surface is a contract.
 
 ## Notes
 
-- **Renaming or moving anything is a record update. No bytes move.** A pool move,
-  a regroup, a renumber and a whole character rename are each a handful of row
-  edits; the file keeps its bytes and its identity. Use `studio curate` and
+- **Renaming or moving anything is a record update. No bytes move.** A pool
+  move, a regroup and a whole character rename are each a handful of row edits;
+  the file keeps its bytes and its identity. Use `studio curate` and
   `studio character rename`, which do it.
-- **But the records that NAME it still have to be rewritten**, because a record
-  stores a path, not an identity. `curate` and `rename` carry them along; that is
-  the step whose absence once left 69 records pointing at reference images that
-  no longer existed. `studio rewrite check` reports any that remain.
+- **And nothing that names it has to be rewritten.** A record stores a node id,
+  which is the file's identity rather than its address, so a rename or a move
+  strands nothing. This is the one entry here that reversed: a record used to
+  store a path, and carrying those along was a step whose absence once left 69
+  records pointing at reference images that no longer existed. There is no
+  `rewrite` command any more because there is no longer anything for it to find.
 - **Writing to a path that already holds a file replaces it and keeps the
   record**, so everything naming it stays true. Production keeps prior revisions;
   a local dev stack is not the place to rely on that.

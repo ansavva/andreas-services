@@ -245,7 +245,7 @@ both ends are kept and the middle gives way.
 
 > **A sequence with no scene behind it** — clips you are chaining ad hoc, with no
 > plan — still has `studio frames chain`, which keeps its own list in
-> `projects/<p>/chains/<slug>.json`. Use it only when there is no scene; for
+> `<project>/chains/<slug>.json`. Use it only when there is no scene; for
 > anything planned, the scene already knows.
 
 ## `reference_video` is not continuation — don't reach for it
@@ -271,7 +271,7 @@ studio scenes assemble <project>/<slug>
 ```
 
 Shot order is cut order, taken from the plan. The scene lands at
-`projects/<project>/scenes/<slug>/` with `scene.json`, the source clips copied
+`<project>/scenes/<slug>/` with the source clips copied
 into `shots/`, and the stitched video in `output/`.
 
 Re-cutting **overwrites** `output/<slug>.mp4`: the path keeps its record, so
@@ -292,7 +292,7 @@ Shots that agree on codec, geometry, frame rate and audio layout are
 **stream-copied** — the cut is bit-for-bit the sources joined end to end. Shots
 produced by this loop agree automatically, because each inherits its geometry
 from the previous shot's frame. Mixing in a clip rendered at another `mode` or
-aspect forces a re-encode, which `scene.json` records.
+aspect forces a re-encode, which the scene's record notes.
 
 A scene is one continuous take. When a piece has genuine breaks in it — a change
 of place, of time, of subject — build each stretch as its own scene and cut them

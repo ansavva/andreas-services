@@ -129,15 +129,75 @@ def test_create_node_stores_a_blob_key_verbatim(catalog_table):
 def test_create_node_derives_a_blob_key_for_a_file_that_omits_one(catalog_table):
     """**Reverses this test's own previous assertion**, which was a ValidationError.
 
-    #294 added the upload routes, and a client cannot name `blobs/<node_id>` at
-    create time because it does not know the id yet — so the only way to have an
+    #294 added the upload routes, and a client cannot name the key at create time
+    because it does not know the node id yet — so the only way to have an
     id-derived key is for both to be minted here. The node is a placeholder until
     the bytes land: a key, and nothing behind it.
+
+    The entity model changed the *shape* of what is minted, not the rule.
+    `blobs/<node_id>` became `<owner_kind>/<owner_id>/<node_id>.<ext>`, so a
+    bucket listing is per-entity — Storage Lens cost, lifecycle rules, a bulk
+    delete that is one prefix — and carries no name, which is hard rule #1
+    enforced in the one place nobody was reading it.
     """
     created = catalog.create_node(CATALOG_ROOT, "clip.mp4", catalog.KIND_FILE)
 
-    assert created["blob_key"] == catalog.blob_key_for(created["node_id"])
+    assert created["blob_key"] == catalog.blob_key_for(
+        created["node_id"], "clip.mp4", None, CATALOG_LIBRARY
+    )
     assert "size" not in created
+
+
+def test_a_node_owned_by_nobody_is_filed_under_the_library(catalog_table):
+    """A folder somebody made by hand belongs to no entity, and that is a real answer.
+
+    Three prefixes exist in the bucket and no more: `characters/`, `projects/`
+    and `libraries/`. The third is not a fallback nobody reaches — the library
+    root is where every hand-made folder starts, and material that belongs to
+    neither a character nor a project has to live somewhere that is still one
+    prefix a `gc` can scope itself to.
+    """
+    created = catalog.create_node(CATALOG_ROOT, "plate.png", catalog.KIND_FILE)
+
+    assert created["blob_key"] == (
+        f"libraries/{CATALOG_LIBRARY}/{created['node_id']}.png"
+    )
+
+
+def test_a_blob_key_carries_the_extension_and_nothing_else_of_the_name(catalog_table):
+    """The extension is decoration for a human reading the S3 console.
+
+    `content_type` on the row is authoritative and the API sets it on every
+    presigned response, so nothing reads meaning back out of a key. What the
+    extension must NOT do is bring the rest of the name with it — the old layout
+    wrote `<slug>_face_1.png` into the key, which made a bucket listing a list of
+    character names.
+    """
+    created = catalog.create_node(CATALOG_ROOT, "three quarter left.PNG", catalog.KIND_FILE)
+
+    assert created["blob_key"].endswith(f"/{created['node_id']}.png")
+    assert "three" not in created["blob_key"]
+
+
+def test_is_api_blob_reads_the_tail_and_never_the_prefix(catalog_table):
+    """**The prefix drifts on a move; the node id cannot.**
+
+    This is what the two upload routes ask before they will sign for a node, so
+    getting it wrong in either direction is expensive: read the prefix instead
+    and a file dragged from a character into a project stops being uploadable,
+    because its key still says `characters/`. Read the tail and the answer stays
+    true for the life of the node.
+    """
+    minted = catalog.create_node(CATALOG_ROOT, "clip.mp4", catalog.KIND_FILE)
+    legacy = catalog.create_node(
+        CATALOG_ROOT, "old.webp", catalog.KIND_FILE,
+        blob_key="characters/subject-a/seed/subject-a_1.webp",
+    )
+
+    assert catalog.is_api_blob(minted) is True
+    assert catalog.is_api_blob(legacy) is False
+    # A drifted prefix is still this API's key: the node moved, the bytes did not.
+    assert catalog.is_api_blob({**minted, "blob_key": f"projects/p/{minted['node_id']}.mp4"})
 
 
 def test_create_node_keeps_an_explicit_blob_key_verbatim(catalog_table):
@@ -395,33 +455,108 @@ def test_branch_truncates_where_subtree_refuses(catalog_table, monkeypatch):
     assert truncated is True
 
 
-def test_recent_returns_the_library_newest_first(catalog_table):
-    """`by-recent` is the one read here whose order the table chose."""
-    first = _folder("projects")
-    second = _folder("characters")
-    third = _file("clip.mp4", parent=second["node_id"])
+def test_recent_returns_only_media_newest_first(catalog_table):
+    """`by-recent` is the one read here whose order the table chose — and it is sparse.
+
+    **This test used to expect the folders and the library root back**, and the
+    change is the point rather than a relaxation. The index is hashed on `reel`
+    now, whose value *is* the library id: same string as `lib`, different
+    attribute name, and a DynamoDB item enters a GSI only when it carries both of
+    that index's key attributes. `reel` is written onto file nodes whose
+    extension reads as an image or a video and onto nothing else, so folders,
+    entity records, membership rows and slug claims are absent from the index
+    rather than read and discarded.
+
+    That fixed a real cost as well as making room for the entity rows: hashed on
+    `lib`, every folder in the library entered the reel's enumeration and was
+    filtered out in memory by `browse.reel_items` — **after** it had already been
+    counted against `config.max_folder_objects`.
+    """
+    folder = _folder("characters")
+    picture = _file("front.png", parent=folder["node_id"])
+    clip = _file("clip.mp4", parent=folder["node_id"])
+    _file("notes.txt", parent=folder["node_id"])
 
     records, truncated = catalog.recent(CATALOG_LIBRARY, 10)
 
     assert truncated is False
-    # The root is in the library too, and is the oldest row in it.
-    assert [entry["node_id"] for entry in records] == [
-        third["node_id"],
-        second["node_id"],
-        first["node_id"],
-        CATALOG_ROOT,
-    ]
+    assert [entry["node_id"] for entry in records] == [clip["node_id"], picture["node_id"]]
+
+
+def test_recent_leaves_folders_and_the_library_root_out_of_the_index(catalog_table):
+    """The half of the sparseness that is about the cap rather than the answer.
+
+    Asserted separately from the ordering above because the two would drift: a
+    reader fixing an order assertion would happily add a folder back to the
+    expected list, and this one says the folder must not be in the enumeration at
+    all — which is where the `max_folder_objects` budget goes.
+    """
+    _folder("projects")
+    _folder("characters")
+
+    records, _ = catalog.recent(CATALOG_LIBRARY, 10)
+
+    assert records == []
 
 
 def test_recent_drops_the_oldest_when_it_truncates(catalog_table):
     """What makes cutting this query safe, where cutting `branch` is arbitrary."""
-    _folder("projects")
-    newest = _folder("characters")
+    _file("first.png")
+    newest = _file("second.png")
 
     records, truncated = catalog.recent(CATALOG_LIBRARY, 1)
 
     assert truncated is True
     assert [entry["node_id"] for entry in records] == [newest["node_id"]]
+
+
+def test_renaming_a_file_out_of_a_media_extension_removes_it_from_the_reel(catalog_table):
+    """`reel` is written from the extension, so a rename can change what a file *is*.
+
+    A `SET reel = NULL` would leave the row in the index advertising a file the
+    reel cannot draw, which is why `catalog._update` treats a `None` as a REMOVE
+    rather than as a NULL. That rule has exactly one caller that depends on it,
+    and this is the test of it.
+    """
+    picture = _file("front.png")
+    assert [entry["node_id"] for entry in catalog.recent(CATALOG_LIBRARY, 10)[0]] == [
+        picture["node_id"]
+    ]
+
+    catalog.rename_node(picture["node_id"], "front.txt")
+
+    assert catalog.recent(CATALOG_LIBRARY, 10)[0] == []
+
+
+def test_renaming_a_file_into_a_media_extension_adds_it_to_the_reel(catalog_table):
+    """The other direction, which a REMOVE-only implementation would fail silently.
+
+    A file uploaded as `blob` and renamed to `blob.png` afterwards is ordinary,
+    and a reel that never showed it would look like a caching bug rather than a
+    missing attribute.
+    """
+    note = _file("notes.txt")
+    assert catalog.recent(CATALOG_LIBRARY, 10)[0] == []
+
+    catalog.rename_node(note["node_id"], "notes.png")
+
+    assert [entry["node_id"] for entry in catalog.recent(CATALOG_LIBRARY, 10)[0]] == [
+        note["node_id"]
+    ]
+
+
+def test_renaming_a_folder_never_puts_it_in_the_reel(catalog_table):
+    """A folder called `archive.png` is still a folder.
+
+    The rename path only assigns `reel` for a file, and this is the assertion
+    that keeps it that way — the attribute is derived from the extension, and a
+    folder's name is allowed to look like anything.
+    """
+    folder = _folder("plates")
+
+    catalog.rename_node(folder["node_id"], "plates.png")
+
+    assert catalog.recent(CATALOG_LIBRARY, 10)[0] == []
 
 
 def test_recent_returns_records_not_index_projections(catalog_table):
@@ -716,6 +851,50 @@ def test_transfer_node_leaves_every_blob_key_where_it_was(catalog_table):
     catalog.transfer_node(project["node_id"], OTHER_LIBRARY)
 
     assert catalog.node(clip["node_id"])["blob_key"] == before
+
+
+def test_transfer_node_restamps_reel_across_the_branch(catalog_table):
+    """**`reel` holds the library id, so a transfer has to carry it too.**
+
+    Miss it and every image in the branch stays in the *source* library's reel
+    while its own row says it belongs to another — a member of the source
+    library, browsing Recent, is shown thumbnails of media they are no longer
+    entitled to. That is the leak the membership checks exist to prevent, and no
+    folder listing anywhere would show it: `by-path` and `children` both read
+    `lib`, which the transfer does rewrite.
+
+    Asserted through the index rather than through the record for that reason
+    exactly — a record that agrees with itself proves nothing about the GSI.
+    """
+    _other_library(catalog_table)
+    _projects, _archive, project, _output, clip = _tree(catalog_table)
+
+    catalog.transfer_node(project["node_id"], OTHER_LIBRARY)
+
+    source, _ = catalog.recent(CATALOG_LIBRARY, 10)
+    destination, _ = catalog.recent(OTHER_LIBRARY, 10)
+
+    assert [entry["node_id"] for entry in source] == []
+    assert [entry["node_id"] for entry in destination] == [clip["node_id"]]
+
+
+def test_transfer_node_writes_reel_on_the_record_half_only(catalog_table):
+    """The by-parent item carries neither of `by-recent`'s keys and must not start.
+
+    `_put_name`'s projection is `node_id, lib, kind, path, created_at` — no
+    `reel`, no `created_at` conflict — so a descendant rewritten with `reel` on
+    both halves would put a **second** copy of every image in the reel, and the
+    grid would draw each of them twice. Cheap to state here; expensive to
+    diagnose from a duplicated tile.
+    """
+    _other_library(catalog_table)
+    _projects, _archive, project, output, clip = _tree(catalog_table)
+
+    catalog.transfer_node(project["node_id"], OTHER_LIBRARY)
+
+    by_parent = _item(catalog_table, f"NODE#{output['node_id']}", f"NAME#{clip['name']}")
+    assert "reel" not in by_parent
+    assert by_parent["lib"]["S"] == OTHER_LIBRARY
 
 
 def test_transfer_node_into_a_taken_name_conflicts(catalog_table):
