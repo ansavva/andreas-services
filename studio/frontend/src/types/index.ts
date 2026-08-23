@@ -320,6 +320,19 @@ export type CharacterProfile = Record<string, ProfileValue>;
  * schema" — it is why this app builds the character's folder tabs from the
  * listing rather than from a constant.
  */
+/**
+ * The three fields promoted out of the bible onto the record.
+ *
+ * Grouped as a type because they are saved as a unit and by a different route
+ * from the bible — `PATCH /api/characters/<id>` against
+ * `PUT /api/characters/<id>/profile`. One form edits both; see `ProfileForm`.
+ */
+export interface CharacterIdentity {
+  slug: string;
+  display_name: string;
+  fictional: boolean;
+}
+
 export interface CharacterRecord {
   id: string;
   lib: string;

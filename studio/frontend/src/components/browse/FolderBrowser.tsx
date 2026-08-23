@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Alert, Breadcrumbs, Button, Input, Spinner, Text } from "@ansavva/design-system";
 
-import { copyNodes, createNode, deleteNodes, moveNodes, renameNode } from "../../apis/studio";
+import { copyNodes, createNode, deleteNodes, getTree, moveNodes, renameNode } from "../../apis/studio";
 import { useFolder, type FolderPin } from "../../hooks/useFolder";
 import { useReel } from "../../hooks/useReel";
+import { useResource } from "../../hooks/useResource";
 import { useSelection } from "../../hooks/useSelection";
 import { useUploads } from "../../hooks/useUploads";
 import type { FileEntry, SortOrder } from "../../types";
@@ -891,14 +892,99 @@ export function useLocalBrowserNav(rootId: string): BrowserNav {
 
 /**
  * The browser scoped to one entity's folder — a character's or a project's
- * **Files** tab, and every folder tab beside it.
+ * **Files** tab.
  *
  * A component of its own so that the hook driving it is called at the top of
  * *something*: a tab panel renders nothing while it is inactive, so the state
  * belongs to the tab rather than to the page, and switching away genuinely
  * discards it.
+ *
+ * ## The chip row is where the folder tabs went
+ *
+ * A character's root children each used to get a tab of their own, beside
+ * Profile and References. That made a *listing* into navigation: the strip grew
+ * and shrank as folders were created and deleted, every one of those tabs showed
+ * a folder the browser one tab over already held, and at 390px the seven of them
+ * wrapped into three rows of underline. They are shortcuts now — one scrolling
+ * row of a fixed shape, with the browser still the only place a folder opens.
  */
 export function FolderTab({ rootId }: { rootId: string }) {
   const nav = useLocalBrowserNav(rootId);
-  return <FolderBrowser nav={nav} boundary={rootId} />;
+  return (
+    <div className="flex w-full flex-col gap-4">
+      <FolderShortcuts rootId={rootId} nav={nav} />
+      <FolderBrowser nav={nav} boundary={rootId} />
+    </div>
+  );
+}
+
+/**
+ * The root's immediate children, as jump targets.
+ *
+ * Fetched here rather than handed down because both callers want it and only one
+ * of them ever had the listing to hand. It is the same `GET /api/tree` the
+ * browser itself makes for the root, and it renders nothing at all when the root
+ * has no subfolders — a character whose starting folders were deleted gets no
+ * empty rail.
+ *
+ * **Scrolls rather than wraps.** A row that grows to three lines on a phone is
+ * the failure this replaced, and it would come back the moment somebody made a
+ * seventh folder.
+ */
+function FolderShortcuts({ rootId, nav }: { rootId: string; nav: BrowserNav }) {
+  const load = useCallback(() => getTree({ node: rootId }, "name"), [rootId]);
+  const { data } = useResource(load);
+
+  const folders = data?.folders ?? [];
+  if (folders.length === 0) return null;
+
+  // An open file overlays the page, so the folder behind it is not a place
+  // anybody is standing — only a folder target lights a chip.
+  const here = nav.target.kind === "folder" ? nav.target.id : null;
+
+  return (
+    <div
+      role="group"
+      aria-label="Folder shortcuts"
+      // `-mx-1 px-1` so the focus ring on the first and last chip is not clipped
+      // by the scroll container's own edge.
+      className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1"
+    >
+      <FolderChip label="Top" active={here === rootId} onClick={() => nav.goToFolder(rootId)} />
+      {folders.map((folder) => (
+        <FolderChip
+          key={folder.id}
+          label={folder.name}
+          active={here === folder.id}
+          onClick={() => nav.goToFolder(folder.id)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function FolderChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? "true" : undefined}
+      className={`shrink-0 snap-start rounded-full border px-3 py-1 font-body text-sm transition-colors
+                  focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                    active
+                      ? "border-primary bg-primary text-primary-text"
+                      : "border-line text-muted hover:bg-surface-alt hover:text-ink"
+                  }`}
+    >
+      {label}
+    </button>
+  );
 }
