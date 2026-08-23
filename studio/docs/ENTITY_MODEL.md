@@ -117,7 +117,7 @@ So the key is `<owner_kind>/<owner_id>/<folders below the owner>/<filename>`:
 
 ```
 characters/char-45f4c2b4-…/reference/face/IMG_4580.png
-projects/proj-a8091a40-…/runs/2026-08-04_21-30-54_wave-porch-1x1/output/…mp4
+projects/proj-a8091a40-…/runs/run-a5e5d2b1-…/output/wave-porch-1x1.mp4
 libraries/lib-bf3b86ef-…/config/pose/face/front.png
 ```
 
@@ -150,10 +150,11 @@ it — server-side copy, row update, delete of the old object; optional, out of
 band, never automatic, and refusing until a `verify` has passed. A library
 showing drift is not a library with a problem.
 
-**D4 is done and the migrator is not.** `plan`, `apply` and `verify` ran against
-production; `reseat` has not, so prod's keys are the legacy ones D2 replaced and
-`verify` reports them as drifted rather than broken. The module stays for
-`reseat`, and because `verify` is what gates it.
+**D4 is done, and so is the migrator.** `plan`, `apply`, `verify` and `reseat`
+have all run against production: 273 keys rewritten, drift 0, `VERIFY: PASS`.
+The module stays because `reseat` is not a one-shot — a key is stamped at
+creation and a rename does not touch it, so drift reappears and this is what
+clears it.
 
 ## The data model
 
@@ -444,7 +445,7 @@ the same filename the tree shows a person:
 
 ```
 characters/char-45f4c2b4-…/reference/face/IMG_4580.png
-projects/proj-a8091a40-…/runs/2026-08-04_21-30-54_wave-porch-1x1/request.json
+projects/proj-a8091a40-…/runs/run-a5e5d2b1-…/request.json
 libraries/lib-bf3b86ef-…/config/pose/face/front.png
 ```
 
@@ -467,7 +468,7 @@ catalog's and always was:
 <character>/                 ← a folder node the character record names
 ├── reference/  corpus/  seed/  archive/
 <project>/                   ← a folder node the project record names
-├── runs/<run slug>/         ← the run record names this folder
+├── runs/<run id>/           ← the run record names this folder; a run has no slug
 │   ├── request.json  result.json  prompt.json    ← payload blobs
 │   └── output/
 ├── scenes/  movies/  chains/  input/
@@ -477,21 +478,27 @@ Folders a person makes by hand keep working and belong to nobody in particular.
 
 ### Shared material
 
-`phrasebook/wording.yaml` and `config/pose/` are the two things with no catalog
-node today, and they are the sole reason `GET /api/asset?key=` still takes a raw
-S3 key.
+`phrasebook/wording.yaml` and `config/pose/` were the two things with no catalog
+node, and they were the sole reason `GET /api/asset?key=` took a raw S3 key.
+Both are closed.
 
-- **The phrasebook becomes rows** — `LIB#<lib>` / `TERM#<model>#<avoid>`. It is
-  a per-model list of avoid/use pairs, which is a table wearing a YAML file.
-  `phrasebook add` stops being able to fail on a library that has never held the
+- **The phrasebook is rows** — `LIB#<lib>` / `TERM#<model>#<avoid>`. It was a
+  per-model list of avoid/use pairs, which is a table wearing a YAML file.
+  `phrasebook add` can no longer fail on a library that has never held the
   document, because there is no document.
-- **Pose plates become nodes** in a `config/` folder created with the library and
-  populated through the API by `dev-setup.sh` / the deploy. Their source of
-  truth stays the repo.
+- **Pose plates are nodes** in a `config/` folder the library is created with,
+  populated through the API by `studio config sync`. Their source of truth stays
+  the repo, and the library holds a copy because a model may only be handed a
+  presigned URL of a stored object.
 
-Both then have node ids, `store.shared_read` / `shared_presign` collapse into
-the ordinary calls, and `?key=` is deleted. **One addressing scheme, no
-exceptions.**
+Both have node ids, `store.shared_read` / `shared_presign` are deleted, and
+`?key=` is gone — `GET /api/asset` takes `?node=` and nothing else. **One
+addressing scheme, no exceptions.**
+
+The plates were pushed straight into the bucket as `config/pose/…` for as long
+as nothing owned them, and those nodeless objects outlived the change. They were
+deleted in August 2026 once `config sync` had written the node-backed copies;
+`catalog gc` does not collect them, deliberately, so it was a targeted removal.
 
 ---
 
@@ -643,7 +650,7 @@ maintenance catalog (plan · migrate · verify · gc · reseat) · dev-seed
 | `phrasebook add` | `POST /api/phrasebook`; no document to be missing |
 | `upload` / `download` / `presign` | take a node id or a `<entity>/<path>` address that the API resolves |
 | `catalog migrate` | the D4 migrator — `plan` / `apply` / `verify`, run against prod |
-| `catalog reseat` | rewrite blob keys whose owner prefix has drifted — not yet run against prod |
+| `catalog reseat` | rewrite blob keys that no longer describe where their file sits |
 
 **Addressing on the command line.** A slug is still what a person types.
 `<slug>/reference/face/<file>` resolves through

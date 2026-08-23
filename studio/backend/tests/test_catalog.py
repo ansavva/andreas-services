@@ -179,13 +179,13 @@ def test_a_blob_key_carries_the_extension_and_nothing_else_of_the_name(catalog_t
     assert "three" not in created["blob_key"]
 
 
-def test_is_api_blob_reads_the_tail_and_never_the_prefix(catalog_table):
-    """**The prefix drifts on a move; the node id cannot.**
+def test_is_api_blob_reads_the_key_shape_and_never_its_values(catalog_table):
+    """**`<owner_prefix>/<id>/…` — the shape, not who owns it.**
 
     This is what the two upload routes ask before they will sign for a node, so
-    getting it wrong in either direction is expensive: read the prefix instead
-    and a file dragged from a character into a project stops being uploadable,
-    because its key still says `characters/`. Read the tail and the answer stays
+    getting it wrong in either direction is expensive. Read the owner ID and a
+    file dragged from a character into a project stops being uploadable, because
+    its key still says the old owner. Read only the shape and the answer stays
     true for the life of the node.
     """
     minted = catalog.create_node(CATALOG_ROOT, "clip.mp4", catalog.KIND_FILE)
@@ -197,7 +197,46 @@ def test_is_api_blob_reads_the_tail_and_never_the_prefix(catalog_table):
     assert catalog.is_api_blob(minted) is True
     assert catalog.is_api_blob(legacy) is False
     # A drifted prefix is still this API's key: the node moved, the bytes did not.
-    assert catalog.is_api_blob({**minted, "blob_key": f"projects/p/{minted['node_id']}.mp4"})
+    assert catalog.is_api_blob(
+        {**minted, "blob_key": f"projects/proj-0001/{minted['node_id']}.mp4"})
+
+
+def test_is_api_blob_accepts_a_descriptive_key(catalog_table):
+    """**The regression that took production's whole library out.**
+
+    The check used to read the tail as `/<node_id>.<ext>`, which was every key
+    this API had written — until the key became descriptive and its last segment
+    became the file's own name. `reseat --apply` rewrote prod to the new shape
+    and all 186 of its file nodes stopped matching, so both upload routes
+    refused to overwrite anything in the library.
+
+    Both shapes are live at once — this API still stamps the flat one at
+    creation and `reseat` produces the other — so both have to pass.
+    """
+    node = catalog.create_node(CATALOG_ROOT, "IMG_4580.png", catalog.KIND_FILE)
+
+    flat = f"characters/char-0001/{node['node_id']}.png"
+    descriptive = "characters/char-0001/reference/face/IMG_4580.png"
+
+    assert catalog.is_api_blob({**node, "blob_key": flat}) is True
+    assert catalog.is_api_blob({**node, "blob_key": descriptive}) is True
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "characters/subject-a/reference/face/x.png",   # the legacy slug layout
+        "blobs/node-0001",                             # the flat pre-owner scheme
+        "config/pose/face/front.png",                  # shared material, never ours
+        "phrasebook/wording.yaml",
+        "characters/char-0001",                        # a prefix with no file under it
+    ],
+)
+def test_is_api_blob_still_rejects_everything_that_predates_the_catalog(catalog_table, key):
+    """The half the loosening must not give away — #309 is why this exists."""
+    node = catalog.create_node(CATALOG_ROOT, "x.png", catalog.KIND_FILE)
+
+    assert catalog.is_api_blob({**node, "blob_key": key}) is False
 
 
 def test_create_node_keeps_an_explicit_blob_key_verbatim(catalog_table):

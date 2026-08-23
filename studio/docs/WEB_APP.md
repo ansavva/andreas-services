@@ -360,7 +360,7 @@ the bucket itself (`media_root_prefix = ""`).
 │   └── <face|body|frame|wardrobe>/   #   grouped by purpose
 └── archive/                    # superseded output kept around
 <project>/                      # a project's folder
-├── runs/<ts>_<slug>/           # request.json, result.json, sometimes prompt.json
+├── runs/<run id>/              # request.json, result.json, sometimes prompt.json
 │   └── output/                 # the generated .jpeg / .webp / .mp4
 ├── scenes/<slug>/              # storyboard/ + shots/ + output/
 ├── chains/<name>.json          # a scene's shot-to-shot plan

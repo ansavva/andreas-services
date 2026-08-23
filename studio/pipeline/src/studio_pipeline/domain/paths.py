@@ -139,9 +139,11 @@ def pose_prefix(group: str) -> str:
 def pose_key(group: str, basename: str) -> str:
     """A plate's key. `basename` carries its own extension.
 
-    SHARED, so a shoot hands this to `store.shared_presign` and not to
-    `store.presign`. The plates arrive by `dev-setup.sh`'s sync and no catalog
-    row is ever written for them; resolving one would 404 and a reference shoot
-    would silently lose its framing guide.
+    **A NAME PATH, resolved like any other.** This docstring used to say the
+    plate was SHARED — handed to `store.shared_presign` rather than
+    `store.presign`, because nothing wrote a catalog row for a plate and
+    resolving one would 404. Both halves are gone: `studio config sync` gives
+    every plate a node, and `shared_presign` / `shared_read` were deleted with
+    the exception they existed for.
     """
     return join(pose_prefix(group), basename)

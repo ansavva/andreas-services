@@ -110,7 +110,7 @@ want a set with no third-party lineage, regenerate and keep the filenames:
 
 ```bash
 # one sheet, then split it into plates with the same script
-studio run --model gpt-image-2 --project <project> --slug pose-sheet --no-refs \
+studio run --model gpt-image-2 --project <project> --name pose-sheet --no-refs \
   --prompt-file config/pose/prompts/body-sheet.md --dry-run
 uv run python pipeline/scripts/split_pose_sheet.py <the sheet> --out config/pose/body
 ```

@@ -468,7 +468,19 @@ def test_no_caller_splits_a_blob_key():
 
     So: no module may take a `blob_key` apart. `desired_key` BUILDS one and is
     not exempt by kindness — it is exempt because it never reads an existing key
-    to decide anything, and this asserts that by name.
+    to decide anything.
+
+    **`is_api_blob` is the one exemption, and it is narrow enough to name.** It
+    splits a key to read its SHAPE — is the first segment one of the three owner
+    prefixes, does the second start with an id prefix — and derives no value from
+    it at all: not the owner, not the path, not the filename. A rename does not
+    change that shape and neither does a move, so the hazard this test exists to
+    prevent cannot arise from it. It has to read something, because a signed
+    upload must refuse a key written before this catalog existed (#309), and the
+    shape is the only signal that survives a node moving.
+
+    Exempted BY NAME rather than by loosening the pattern, so the next split
+    still fails here and has to argue for itself.
     """
     import pathlib
     import re
@@ -479,17 +491,35 @@ def test_no_caller_splits_a_blob_key():
         r"blob_key[^\n]*?\.(?:split|rsplit|partition|removeprefix|removesuffix)\(|"
         r"(?:splitext|dirname|basename)\([^)]*blob_key")
 
-    offenders = []
+    # `<file>::<function>` — see the docstring for why this one is safe.
+    exempt = {"catalog.py::is_api_blob"}
+
+    def enclosing(lines: list[str], index: int) -> str:
+        """The `def` this line sits under, for matching against `exempt`."""
+        for candidate in range(index, -1, -1):
+            stripped = lines[candidate].lstrip()
+            if stripped.startswith("def ") and not lines[candidate].startswith(" " * 8):
+                return stripped[4:].split("(")[0]
+        return "?"
+
+    offenders, claimed = [], set()
     for root in roots:
         if not root.exists():
             continue
         for path in root.rglob("*.py"):
-            for number, line in enumerate(path.read_text().splitlines(), 1):
+            lines = path.read_text().splitlines()
+            for number, line in enumerate(lines, 1):
                 if line.lstrip().startswith("#"):
                     continue
                 if taking_apart.search(line):
-                    offenders.append(f"{path.name}:{number}: {line.strip()}")
+                    where = f"{path.name}::{enclosing(lines, number - 1)}"
+                    if where in exempt:
+                        claimed.add(where)
+                        continue
+                    offenders.append(f"{where} (line {number}): {line.strip()}")
 
     assert not offenders, (
         "a blob_key is a pointer, not a path — nothing may parse one:\n  "
         + "\n  ".join(offenders))
+    # An exemption nobody uses is an exemption nobody has re-argued for.
+    assert claimed == exempt, f"stale exemption(s): {sorted(exempt - claimed)}"
