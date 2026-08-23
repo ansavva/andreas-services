@@ -13,7 +13,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@ansavva/design-system": "0.14.1",
+    "@ansavva/design-system": "0.15.0",
     "@ansavva/tokens": "^0.3.2",
     "@aws-amplify/react-native": "^1.1.10",
     "@expo-google-fonts/archivo": "^0.4.2",
