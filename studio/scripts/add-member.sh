@@ -25,7 +25,8 @@
 #   STUDIO_EMAIL     the pool account to add (its username)
 #   STUDIO_LIBRARY   the library id, `lib-<uuid>`
 # Optional:
-#   STUDIO_ROLE      owner | member  (default: member)
+#   STUDIO_ROLE      owner | member  (default: member). A re-run CONVERGES this
+#                    on an existing membership; --no-converge leaves it alone.
 #   USER_POOL_ID     defaults to the value the deploy workflow wrote to SSM
 #   CATALOG_TABLE    same
 #   AWS_REGION       defaults to us-east-1
@@ -34,6 +35,7 @@
 #   STUDIO_EMAIL=you@example.com STUDIO_LIBRARY=lib-… ./studio/scripts/add-member.sh
 #   STUDIO_ROLE=owner STUDIO_EMAIL=… STUDIO_LIBRARY=… ./studio/scripts/add-member.sh
 #   STUDIO_LIBRARY=lib-… ./studio/scripts/add-member.sh --list
+#   STUDIO_ROLE=owner STUDIO_EMAIL=… STUDIO_LIBRARY=… ./studio/scripts/add-member.sh --no-converge
 #
 # The defaults point at **prod**, like `create-user.sh` and unlike everything
 # named `dev-*`. To reach this machine's dev stack, set `USER_POOL_ID` and
@@ -44,10 +46,16 @@ set -euo pipefail
 
 REGION="${AWS_REGION:-us-east-1}"
 LIST_ONLY=false
+# Converging is the default, matching create-user.sh and the two admin scripts.
+# The opt-out exists for the same reason theirs does: so "leave what is there
+# alone" is something you ask for out loud rather than something you get by
+# accident.
+CONVERGE=true
 
 for arg in "$@"; do
   case "$arg" in
     --list) LIST_ONLY=true ;;
+    --no-converge) CONVERGE=false ;;
     # To the first blank line, which is where the header ends. A line range
     # would go stale the next time a paragraph is added above it.
     -h|--help) sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -172,8 +180,41 @@ EXISTING=$(aws dynamodb get-item \
   --key "{\"pk\":{\"S\":\"USER#${SUB}\"},\"sk\":{\"S\":\"LIB#${STUDIO_LIBRARY}\"}}" \
   --query Item.role.S --output text --region "$REGION" 2>/dev/null || true)
 
+# **A re-run converges the ROLE, and that is deliberate.** This used to exit
+# here on any existing row, which made an owner impossible to restore: after a
+# pool replacement `create-user.sh` re-creates the account, grants the default
+# `member`, and this script then refused to correct it — "already a member,
+# leaving it untouched" — so the only route back to `owner` was deleting the row
+# by hand. That is the same silent no-op #468 removed from the create scripts,
+# left behind in the one place a pool replacement makes you walk through.
+#
+# Membership is not a person's own setting the way a password is; it is granted,
+# and the grant is what this script names. So converging it is safe in a way
+# converging a human's password would not be.
 if [ -n "$EXISTING" ] && [ "$EXISTING" != "None" ]; then
-  echo "'${STUDIO_EMAIL}' is already a ${EXISTING} of ${STUDIO_LIBRARY} — leaving it untouched."
+  if [ "$EXISTING" = "$ROLE" ]; then
+    echo "'${STUDIO_EMAIL}' already holds ${EXISTING} on ${STUDIO_LIBRARY} — nothing to change."
+    exit 0
+  fi
+  if [ "$CONVERGE" = false ]; then
+    echo "'${STUDIO_EMAIL}' holds ${EXISTING} on ${STUDIO_LIBRARY}, not ${ROLE}."
+    echo "--no-converge was passed, so the row is unchanged."
+    exit 0
+  fi
+  # `created_at` is left alone: the grant is being corrected, not re-made, and
+  # the date the person first reached this library is still true.
+  if ! aws dynamodb update-item \
+    --table-name "$CATALOG_TABLE" \
+    --key "{\"pk\": {\"S\": \"USER#${SUB}\"}, \"sk\": {\"S\": \"LIB#${STUDIO_LIBRARY}\"}}" \
+    --update-expression "SET #r = :role" \
+    --expression-attribute-names '{"#r": "role"}' \
+    --expression-attribute-values "{\":role\": {\"S\": \"${ROLE}\"}}" \
+    --region "$REGION" >/dev/null; then
+    echo "Could not change the role on the existing membership row." >&2
+    exit 1
+  fi
+  echo "'${STUDIO_EMAIL}' held ${EXISTING} on ${STUDIO_LIBRARY}; now holds ${ROLE}."
+  echo "They see it on their next GET /api/libraries — no sign-out, no token refresh."
   exit 0
 fi
 
@@ -199,5 +240,8 @@ if aws dynamodb put-item \
   echo "Added '${STUDIO_EMAIL}' to ${STUDIO_LIBRARY} as ${ROLE}."
   echo "They see it on their next GET /api/libraries — no sign-out, no token refresh."
 else
-  echo "'${STUDIO_EMAIL}' is already a member of ${STUDIO_LIBRARY} — leaving it untouched."
+  # Reached only when a concurrent run won the conditional put, so the row it
+  # wrote is the one that stands. Naming the race rather than the role, because
+  # this branch never read one.
+  echo "'${STUDIO_EMAIL}' already has a membership on ${STUDIO_LIBRARY}, written by a concurrent run."
 fi
