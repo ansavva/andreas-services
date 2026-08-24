@@ -19,7 +19,24 @@
 #   --check          report what would happen and change nothing
 #   --no-converge    create if missing, but never touch an existing password
 #
+# **The email and password can come from
+# `~/.config/andreas-services/studio/prod.env` instead**, which is where this
+# service already keeps a password that must not be near source control — the
+# dev half has read `dev.env` since it existed, and this is the prod half of the
+# same arrangement. The environment still wins, so a one-off run can override
+# either without editing the file:
+#
+#   STUDIO_PROD_USER_EMAIL=you@example.com
+#   STUDIO_PROD_USER_PASSWORD=…
+#
+# `STUDIO_EMAIL` and `STUDIO_PASSWORD` are accepted as keys in that file too, so
+# it can be written either way round. The `STUDIO_PROD_USER_*` spelling is the
+# one to prefer: it mirrors `STUDIO_DEV_USER_PASSWORD` in `dev.env`, and it says
+# which pool the value belongs to — which matters in a file that sits next to
+# `dev.env` and is one typo away from resetting the wrong account's password.
+#
 # Usage:
+#   ./studio/scripts/create-user.sh                       # both from prod.env
 #   STUDIO_EMAIL=you@example.com ./studio/scripts/create-user.sh
 #   STUDIO_EMAIL=… STUDIO_PASSWORD=… STUDIO_LIBRARY=lib-… ./studio/scripts/create-user.sh
 #
@@ -53,7 +70,29 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-: "${STUDIO_EMAIL:?STUDIO_EMAIL is required}"
+# The prod half of the config-directory arrangement `dev-aws-common.sh` already
+# implements for dev. Spelled out here rather than sourced from that file: this
+# script defaults to PROD and takes no machine id, and pulling in the dev
+# helpers to reach one path would drag a dev stack's assumptions into a prod
+# run. Sourcing the file is how the dev half reads its own, so the mechanism
+# matches even though the code does not.
+PROD_ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/andreas-services/studio/prod.env"
+if [ -f "$PROD_ENV_FILE" ] &&
+  { [ -z "${STUDIO_EMAIL:-}" ] || [ -z "${STUDIO_PASSWORD:-}" ]; }; then
+  # **Held before sourcing, restored after.** The file may spell the keys
+  # `STUDIO_EMAIL` / `STUDIO_PASSWORD`, and sourcing it would then overwrite
+  # what the caller passed — silently addressing a different account than the
+  # command line named, which is the one failure this must not have.
+  _caller_email="${STUDIO_EMAIL:-}"
+  _caller_password="${STUDIO_PASSWORD:-}"
+  # shellcheck source=/dev/null
+  . "$PROD_ENV_FILE"
+  STUDIO_EMAIL="${_caller_email:-${STUDIO_EMAIL:-${STUDIO_PROD_USER_EMAIL:-}}}"
+  STUDIO_PASSWORD="${_caller_password:-${STUDIO_PASSWORD:-${STUDIO_PROD_USER_PASSWORD:-}}}"
+  unset _caller_email _caller_password
+fi
+
+: "${STUDIO_EMAIL:?STUDIO_EMAIL is required (or STUDIO_PROD_USER_EMAIL in $PROD_ENV_FILE)}"
 REGION="${AWS_REGION:-us-east-1}"
 
 if [ -z "${USER_POOL_ID:-}" ]; then

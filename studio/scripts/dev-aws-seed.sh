@@ -722,7 +722,9 @@ main() {
   log "Dev stack:   s3://$bucket/  +  $table"
   log "Fixture:     s3://$SEED_BUCKET/$FIXTURE_VERSION/"
 
-  # The owner of the library. From the DEV pool, never prod.
+  # The owner of the library. From the DEV pool, never prod. The address is no
+  # longer a constant in this repo, so it has to be loaded before it is read.
+  load_dev_user_email
   local owner_sub
   owner_sub="$(aws_dev cognito-idp admin-get-user \
     --user-pool-id "$pool" --username "$STUDIO_DEV_USER_EMAIL" \

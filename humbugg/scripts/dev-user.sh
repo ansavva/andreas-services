@@ -8,7 +8,8 @@
 # differently and no test could rely on. This gives every machine the *same*
 # account with the same password, so a scripted sign-in works anywhere.
 #
-# The account is `dev@humbugg.test` (see `dev-aws-common.sh`). Self-signup still
+# The account is whichever address `HUMBUGG_DEV_USER_EMAIL` names, from the
+# environment or from `dev.env` — no address is committed. Self-signup still
 # works and is untouched — this is a fixture, not a gate.
 #
 # The password comes from HUMBUGG_DEV_USER_PASSWORD if exported, else from
@@ -53,6 +54,7 @@ require_command terraform
 
 load_machine_id false
 load_aws_identity
+load_dev_user_email
 terraform_init
 
 DEV_POOL_ID="$(jq -r '.cognito_user_pool_id.value' <<<"$(terraform_output_json)")"

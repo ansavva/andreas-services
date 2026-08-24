@@ -493,7 +493,8 @@ jobs:
   # person opening the site.
   #
   # `environment: studio-production` is load-bearing twice over: it is where
-  # AWS_ROLE_ARN lives, and where SMOKE_TEST_USER_PASSWORD lives. A job missing
+  # AWS_ROLE_ARN lives, and where SMOKE_TEST_USER_EMAIL and
+  # SMOKE_TEST_USER_PASSWORD live. A job missing
   # that key sees an environment secret as an empty string, silently — the seed
   # step below fails by name rather than trying to sign in as nobody.
   # ---------------------------------------------------------------------------
@@ -584,8 +585,15 @@ jobs:
       # membership is what makes this account structurally unable to address any
       # other library, since `before_request` resolves a request's library from
       # the caller's own rows.
+      #
+      # SMOKE_TEST_USER_EMAIL is a VARIABLE, not a secret: a reserved `.test`
+      # address is unreachable by mail and identifies nobody, so encrypting it
+      # would buy nothing and cost the ability to read back what the deploy
+      # actually seeds. It has no default here or in the fixture — the seeder
+      # refuses on an empty value rather than inventing an identity.
       - name: Seed the smoke account
         env:
+          SMOKE_TEST_USER_EMAIL: ${{ vars.SMOKE_TEST_USER_EMAIL }}
           SMOKE_TEST_USER_PASSWORD: ${{ secrets.SMOKE_TEST_USER_PASSWORD }}
         run: uv run studio/scripts/prod-seed-smoke.py
 
@@ -596,5 +604,6 @@ jobs:
         env:
           STUDIO_SMOKE: '1'
           STUDIO_SMOKE_BASE_URL: https://studio-api.andreas.services
+          SMOKE_TEST_USER_EMAIL: ${{ vars.SMOKE_TEST_USER_EMAIL }}
           SMOKE_TEST_USER_PASSWORD: ${{ secrets.SMOKE_TEST_USER_PASSWORD }}
         run: cd studio/backend && poetry run pytest tests/smoke -q

@@ -27,6 +27,7 @@ STUDIO = Path(__file__).resolve().parents[2]
 FIXTURE_FILE = STUDIO / "seeds" / "smoke.json"
 
 PASSWORD_PLACEHOLDER = "${SMOKE_TEST_USER_PASSWORD}"
+EMAIL_PLACEHOLDER = "${SMOKE_TEST_USER_EMAIL}"
 
 
 def _fixture() -> dict:
@@ -69,15 +70,22 @@ def test_the_fixture_grants_exactly_one_library():
     assert fixture["user"]["role"] in ("owner", "member")
 
 
-def test_the_seeded_address_can_never_be_a_real_mailbox():
-    """`.test` is reserved (RFC 2606) and resolves nowhere.
+def test_the_address_is_never_stored_here_either():
+    """A placeholder, like the password — no account address is committed.
 
-    That is the entire reason the address is safe to commit. A real one here
-    would make every leak of this file reach a person, and would put a live
-    mailbox behind an account the pipeline resets the password of on every
-    deploy.
+    It used to be the literal `smoke@studio.test`, and the argument for that was
+    sound as far as it went: `.test` is reserved (RFC 2606) and resolves
+    nowhere, so a leak of this file could not reach a person. What it left was
+    one account described in two kinds of place — a secret for one half and a
+    repository for the other.
+
+    **The `.test` rule did not go away, it moved to where the value now comes
+    from.** `scripts/prod-seed-smoke.py` refuses any `SMOKE_TEST_USER_EMAIL`
+    outside the reserved TLD, which is the more useful place for the check: a
+    fixture is reviewed once at merge, and an environment variable is set by
+    whoever is holding the console that day.
     """
-    assert _fixture()["user"]["email"].endswith(".test")
+    assert _fixture()["user"]["email"] == EMAIL_PLACEHOLDER
 
 
 def test_the_password_is_never_stored_here():
