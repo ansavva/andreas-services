@@ -125,7 +125,7 @@ The dashboard at `/admin` is a single Cognito user (no self-signup). CI runs
 `scripts/create-admin-user.sh` after infra applies; to do it manually:
 
 ```bash
-USER_POOL_ID=<pool-id> ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='...' \
+USER_POOL_ID=<pool-id> WEBSITE_ADMIN_EMAIL=you@example.com WEBSITE_ADMIN_PASSWORD='...' \
   ./scripts/create-admin-user.sh
 ```
 

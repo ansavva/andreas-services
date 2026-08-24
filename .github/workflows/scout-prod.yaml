@@ -268,14 +268,18 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # Passed under their own names rather than mapped down to bare
+      # `ADMIN_*`. The script reads the prefixed pair first now, so the step no
+      # longer has to rename anything — and the bare names were the ones that
+      # could serve website's script just as well from a shared shell.
       - name: Create admin user
         env:
-          ADMIN_EMAIL: ${{ secrets.SCOUT_ADMIN_EMAIL }}
-          ADMIN_PASSWORD: ${{ secrets.SCOUT_ADMIN_PASSWORD }}
+          SCOUT_ADMIN_EMAIL: ${{ secrets.SCOUT_ADMIN_EMAIL }}
+          SCOUT_ADMIN_PASSWORD: ${{ secrets.SCOUT_ADMIN_PASSWORD }}
           AWS_REGION: ${{ env.AWS_REGION }}
         run: |
           set -euo pipefail
-          if [ -z "${ADMIN_EMAIL}" ] || [ -z "${ADMIN_PASSWORD}" ]; then
+          if [ -z "${SCOUT_ADMIN_EMAIL}" ] || [ -z "${SCOUT_ADMIN_PASSWORD}" ]; then
             echo "SCOUT_ADMIN_EMAIL / SCOUT_ADMIN_PASSWORD not set — skipping admin bootstrap."
             exit 0
           fi

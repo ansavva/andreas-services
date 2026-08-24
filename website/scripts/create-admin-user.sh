@@ -7,9 +7,15 @@
 # runs locally against any environment.
 #
 # Required env:
-#   USER_POOL_ID    Cognito user pool ID
-#   ADMIN_EMAIL     admin login email (used as the username)
-#   ADMIN_PASSWORD  permanent password to converge to
+#   USER_POOL_ID           Cognito user pool ID
+#   WEBSITE_ADMIN_EMAIL   admin login email (used as the username)
+#   WEBSITE_ADMIN_PASSWORDpermanent password to converge to
+#
+# The bare `ADMIN_EMAIL` / `ADMIN_PASSWORD` are still accepted, second, because
+# that is what this took until now. Prefer the prefixed pair: the bare names are
+# the same two in scout's script, so one `export ADMIN_PASSWORD` in a
+# shell serves both and sets a password on whichever pool is run next. The
+# GitHub secrets have always been namespaced; this closes the gap between them.
 # Optional:
 #   AWS_REGION      defaults to us-east-1
 # Flags:
@@ -46,11 +52,24 @@ while [ $# -gt 0 ]; do
 done
 
 : "${USER_POOL_ID:?USER_POOL_ID is required}"
-: "${ADMIN_EMAIL:?ADMIN_EMAIL is required}"
+
+# Prefixed first, bare second. Assigned to the bare names because everything
+# below reads those, and because it keeps the two services' scripts identical
+# apart from the prefix.
+ADMIN_EMAIL="${WEBSITE_ADMIN_EMAIL:-${ADMIN_EMAIL:-}}"
+ADMIN_PASSWORD="${WEBSITE_ADMIN_PASSWORD:-${ADMIN_PASSWORD:-}}"
+# Which name the value actually came from, so the messages below can say so
+# instead of naming the preferred one and being wrong half the time. Whoever is
+# reading the output is about to go and edit whichever variable it names.
+PASSWORD_VAR="WEBSITE_ADMIN_PASSWORD"
+if [ -z "${WEBSITE_ADMIN_PASSWORD:-}" ] && [ -n "${ADMIN_PASSWORD:-}" ]; then
+  PASSWORD_VAR="ADMIN_PASSWORD"
+fi
+: "${ADMIN_EMAIL:?WEBSITE_ADMIN_EMAIL is required}"
 # Not required for --check: reporting whether an account exists needs no
 # password, and demanding one would mean inventing a throwaway value to ask a
 # read-only question.
-[ "$CHECK" = true ] || : "${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}"
+[ "$CHECK" = true ] || : "${ADMIN_PASSWORD:?WEBSITE_ADMIN_PASSWORD is required}"
 REGION="${AWS_REGION:-us-east-1}"
 
 user_exists() {
@@ -70,7 +89,7 @@ if [ "$CHECK" = true ]; then
   if [ "$EXISTS" = true ]; then
     echo "Admin '$ADMIN_EMAIL' exists in $USER_POOL_ID."
     if [ "$CONVERGE" = true ]; then
-      echo "A real run would converge its password to ADMIN_PASSWORD."
+      echo "A real run would converge its password to $PASSWORD_VAR."
     fi
   else
     echo "Admin '$ADMIN_EMAIL' does NOT exist in $USER_POOL_ID; a real run would create it."
@@ -90,7 +109,7 @@ if [ "$EXISTS" = false ]; then
     --region "$REGION" >/dev/null
 elif [ "$CONVERGE" = false ]; then
   echo "Admin '$ADMIN_EMAIL' exists and --no-converge was passed."
-  echo "Its password is NOT being checked or changed, so it may differ from WEBSITE_ADMIN_PASSWORD."
+  echo "Its password is NOT being checked or changed, so it may differ from $PASSWORD_VAR."
   exit 0
 else
   echo "Admin '$ADMIN_EMAIL' exists; converging its password."
@@ -108,4 +127,4 @@ if ! aws cognito-idp admin-set-user-password \
   exit 1
 fi
 
-echo "Admin '$ADMIN_EMAIL' is present with the password from ADMIN_PASSWORD."
+echo "Admin '$ADMIN_EMAIL' is present with the password from $PASSWORD_VAR."
