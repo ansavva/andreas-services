@@ -775,7 +775,7 @@ left where they are and become collectable by `catalog gc`.
 **How the CLI is pointed at prod is an open question, not a step.** The migrator
 is one of the maintenance commands that opens AWS clients directly rather than
 going through the API, so running it against prod means naming the prod table
-and bucket under a real `aws login` — which is exactly the mechanism
+and bucket under real AWS credentials — which is exactly the mechanism
 [studio/CLAUDE.md](../CLAUDE.md) records as wanted and undecided. Decide it
 before migration day; do not improvise it on the night.
 

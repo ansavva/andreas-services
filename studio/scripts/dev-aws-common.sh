@@ -92,7 +92,7 @@ resolve_aws_profile() {
   # `NoCredentials` while a bare `aws sts get-caller-identity` two lines earlier
   # succeeded, because `~/.aws/config` had a `[default]` section holding
   # settings but no keys. The error names credentials, so it reads as an expired
-  # session and invites an `aws login` that cannot fix it.
+  # session and invites a re-authentication that cannot fix it.
   #
   # The fallback is deliberately narrow: it triggers only when the named profile
   # resolves *no* credentials and ambient ones *do* work. A profile that
@@ -211,9 +211,11 @@ export_temporary_aws_credentials() {
   local credentials
   # Make the selected profile resolve its current session before exporting credentials. This lets
   # SSO/credential-process profiles refresh their cached role credentials instead of copying a stale
-  # set into the long-running backend container. It is also what makes `terraform apply` work at
-  # all: `aws login` writes a cache only the AWS CLI reads, so the S3 backend resolves it while the
-  # AWS provider does not. See "Running Terraform locally?" in the root CLAUDE.md.
+  # set into the long-running backend container. It used to be what made `terraform apply` work at
+  # all: `aws login` wrote a cache only the AWS CLI read, so the S3 backend resolved it while the
+  # AWS provider did not. The long-lived access key this repo moved to in August 2026 is read by
+  # both, so this is now redundancy rather than the fix. See "Environment access" in the root
+  # CLAUDE.md.
   resolve_aws_profile
   aws_dev_probe sts get-caller-identity >/dev/null ||
     die "AWS credentials are not currently valid. Sign in to AWS and try again."

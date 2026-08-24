@@ -365,7 +365,7 @@ def validate(obj: dict, engine: str) -> tuple[list[str], list[str]]:
     if unavailable:
         warnings.append(
             f"wording list not read — {unavailable}. It lives in S3, so this needs "
-            "an aws login; the draft was not checked against it."
+            "working AWS credentials; the draft was not checked against it."
         )
     for field, text in fields.items():
         if field == "negative":

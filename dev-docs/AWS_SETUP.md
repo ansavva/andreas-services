@@ -11,7 +11,12 @@ This guide will help you set up AWS infrastructure for deploying projects in the
 
 ## Step 1: Configure AWS CLI
 
-If you haven't already configured AWS CLI, run:
+Credentials are a long-lived IAM access key on the `ansavva` user. There is no
+browser sign-in step: `aws login` was dropped in August 2026 because it cannot
+complete in a cloud session, on a phone driving a remote-control session, or
+over SSH, and its sessions expired in under ~15 minutes.
+
+**On a machine with a home directory of its own**, write the key once:
 
 ```bash
 aws configure
@@ -23,11 +28,40 @@ Enter your:
 - Default region: `us-east-1`
 - Default output format: `json`
 
-Verify your configuration:
+That writes `[default]` into `~/.aws/credentials` and the region into
+`~/.aws/config`. Both the AWS CLI and boto3 read it, and so does the Terraform
+AWS provider — no `aws configure export-credentials` export is needed.
+
+**On a cloud session, container or CI runner**, pass the same key in the
+environment instead:
+
+```bash
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_DEFAULT_REGION=us-east-1
+```
+
+Environment variables outrank every profile, so this works with or without a
+`~/.aws` directory. Do not omit the region — a missing one fails as
+`NoRegionError`, which says nothing about credentials and reads like a code bug.
+
+Verify either path the same way:
 
 ```bash
 aws sts get-caller-identity
 ```
+
+**Rotating the key.** Create the replacement before deleting the old one, so
+there is no window without credentials:
+
+```bash
+aws iam create-access-key --user-name ansavva
+aws iam delete-access-key --user-name ansavva --access-key-id <OLD_KEY_ID>
+```
+
+Never commit the key, paste it into a chat session, or add it to
+`.claude/settings*.json`. None of this touches CI, which assumes a role over
+OIDC (Step 3) and holds no key.
 
 ## Step 2: Create Terraform State S3 Bucket
 

@@ -1,9 +1,10 @@
 # The catalog table's client, plus the item marshalling every caller needs.
 #
-# Credentials come from `s3.py`. boto3's default chain does not understand the
-# AWS CLI's `aws login` session and that module already bridges it, so this one
-# asks it for a session rather than solving the same problem a second time —
-# the bridge resolves a *session*, not an S3 session.
+# Credentials come from `s3.py`. That module resolves a *session*, not an S3
+# session, so this one asks it rather than solving the same problem twice. The
+# indirection mattered more before August 2026, when boto3's own chain could not
+# see the AWS CLI's `aws login` credentials and the bridge there was the only
+# way to get any; with a long-lived access key boto3 would now manage alone.
 #
 # Nothing here knows what a node or a library is. That is `maintenance/
 # catalog_migrate.py`'s subject; this is the outside world, in `adapters/`.

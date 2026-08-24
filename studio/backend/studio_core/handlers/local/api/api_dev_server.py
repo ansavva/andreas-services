@@ -2,9 +2,10 @@
 
 Unlike the other services there is no local emulator to point at: the whole
 point of this API is reading a real S3 bucket, so local dev uses real read-only
-AWS credentials. Export them first — `aws login` alone is not enough for boto3:
-
-    eval "$(aws configure export-credentials --format env)"
+AWS credentials. boto3 reads them from `[default]` in `~/.aws/credentials` or
+from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in the environment; either works
+and neither needs an export. That was not true before August 2026, when
+credentials came from `aws login` and boto3 could not see the CLI's cache.
 """
 
 import os

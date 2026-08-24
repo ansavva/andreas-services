@@ -15,12 +15,18 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
-# `aws login` writes a cache only the AWS CLI reads; boto3 needs the credentials
-# in the environment. Exporting here is what stops the API from failing with
-# "no EC2 IMDS role found" while `aws sts get-caller-identity` happily succeeds.
-# See "Running Terraform locally?" in the root CLAUDE.md — same split.
+# Credentials must resolve before the API starts; an unauthenticated backend
+# fails per-request rather than at boot, which is a slower way to learn the same
+# thing. Since August 2026 they are a long-lived access key in
+# `~/.aws/credentials` or `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` in the
+# environment, and boto3 reads both natively. The export below used to be
+# load-bearing — under `aws login` the CLI read a cache boto3 could not see, so
+# the API failed with "no EC2 IMDS role found" while `aws sts
+# get-caller-identity` happily succeeded. It is kept because it costs nothing
+# and still does the right thing for an SSO or credential_process profile.
 if ! aws sts get-caller-identity >/dev/null 2>&1; then
-  echo "AWS credentials are not valid. Run 'aws login' first." >&2
+  echo "AWS credentials are not valid. Put an access key in ~/.aws/credentials," >&2
+  echo "or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. See the root CLAUDE.md." >&2
   exit 1
 fi
 eval "$(aws configure export-credentials --format env)"
