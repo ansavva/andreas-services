@@ -1098,7 +1098,13 @@ STUDIO_EMAIL=you@example.com ./studio/scripts/create-user.sh   # prod pool
 ```
 
 Cognito emails a temporary password; signing in with it prompts for a new one.
-Pass `STUDIO_PASSWORD` to set a permanent one directly instead.
+Pass `STUDIO_PASSWORD` to set a permanent one directly instead — and note it
+is *converged*: re-running with a new value resets the account's password,
+which is how a studio password is reset. `--no-converge` opts out.
+
+Pass `STUDIO_LIBRARY` and the script grants membership itself, by calling
+`add-member.sh`. Without it the script warns, because an account with no
+membership signs in successfully and sees nothing.
 
 **A pool account is not access to anything.** Membership is a catalog row
 (`USER#<sub>` / `LIB#<lib_id>`), and creating the Cognito user does not write

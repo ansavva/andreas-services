@@ -101,7 +101,7 @@ secrets/vars below need to be added to the environment.
 |--------|---------|
 | `KIT_API_KEY`, `KIT_FORM_ID` | Newsletter (Kit/ConvertKit) — backend env. Use a **v4** API key (Kit → Settings → Developer → API Keys; starts with `kit_`); the adapter calls the v4 API, so a legacy v3 key 401s. `KIT_FORM_ID` is the numeric form id. |
 | `SESSION_SECRET` | A random string **you generate** (`openssl rand -base64 32`) that signs the admin login cookie so it can't be forged — frontend env |
-| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Bootstraps the single Cognito admin user |
+| `WEBSITE_ADMIN_EMAIL`, `WEBSITE_ADMIN_PASSWORD` | Bootstraps the single Cognito admin user. The workflow still falls back to the old bare `ADMIN_EMAIL`/`ADMIN_PASSWORD`, so the rename can happen in either order; drop the fallback once the namespaced pair is set. The password must meet the pool policy: 12+ characters, upper, lower and a digit. |
 
 **Variables**
 

@@ -106,3 +106,52 @@ terraform_init() {
 terraform_output_json() {
   terraform -chdir="$TF_DIR" output -json
 }
+
+# The dev stack's test account, and the file its password lives in. Mirrors
+# studio's `dev-aws-common.sh` deliberately: the two services had no shared
+# convention for this and studio's is the one that already works.
+#
+# **The address is committed and the password never can be.** `.test` is a
+# reserved TLD (RFC 2606), so this can never be a real mailbox and Cognito can
+# never mail a stranger on a typo — which is what makes hard-coding it safe.
+# Humbugg's pool allows self-signup, so this account is a convenience rather
+# than the only way in; what it buys is a *known* account, identical on every
+# machine, that a test or a scripted sign-in can rely on.
+#
+# The password file sits outside the repo on purpose. A default here would be a
+# credential in a git history.
+HUMBUGG_DEV_USER_EMAIL="dev@humbugg.test"
+DEV_ENV_FILE="$CONFIG_DIR/dev.env"
+
+load_dev_user_password() {
+  # Never echoed, and never interpolated into a log line or a command echo.
+  local prompt_allowed="${1:-true}"
+  local generate="${2:-false}"
+  if [[ -z "${HUMBUGG_DEV_USER_PASSWORD:-}" && -f "$DEV_ENV_FILE" ]]; then
+    # shellcheck source=/dev/null
+    source "$DEV_ENV_FILE"
+  fi
+  if [[ -z "${HUMBUGG_DEV_USER_PASSWORD:-}" && "$generate" == "true" ]]; then
+    # 24 hex characters plus a fixed upper/lower/digit tail, because the pool
+    # requires all three classes and `openssl rand -hex` alone can produce a
+    # string with no uppercase. 24 hex + 3 clears the 12-character floor with
+    # room to spare. Written before it is used, so a re-run against an existing
+    # stack converges the same password rather than minting a second one
+    # nothing has recorded.
+    require_command openssl
+    umask 077
+    mkdir -p "$CONFIG_DIR"
+    printf 'HUMBUGG_DEV_USER_PASSWORD=%s\n' "$(openssl rand -hex 12)Aa1" > "$DEV_ENV_FILE"
+    chmod 600 "$DEV_ENV_FILE"
+    # shellcheck source=/dev/null
+    source "$DEV_ENV_FILE"
+    ok "Generated the dev account password into $DEV_ENV_FILE (not printed)."
+  fi
+  if [[ -z "${HUMBUGG_DEV_USER_PASSWORD:-}" ]]; then
+    [[ "$prompt_allowed" == "true" ]] ||
+      die "HUMBUGG_DEV_USER_PASSWORD is not set and $DEV_ENV_FILE provides none."
+    printf 'Password for %s (not echoed): ' "$HUMBUGG_DEV_USER_EMAIL" >&2
+    read -rs HUMBUGG_DEV_USER_PASSWORD
+    printf '\n' >&2
+  fi
+}
