@@ -12,6 +12,7 @@ import { DangerButton } from '../components/danger-button';
 import { FieldLabel } from '../components/field';
 import { Card, LoadingPanel, Shell } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
+import { RecipientWishList, WishListPanel } from '../components/wishlist';
 import { useAuth } from '../context/auth-context';
 import { blends, gap, styles } from '../theme/styles';
 import { brand } from '../theme/theme';
@@ -176,6 +177,8 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
           </View>
         </Card>
 
+        <WishListPanel groupId={groupId} />
+
         <WishListForm
           key={`${me.wishlist ?? ''}|${me.avoidances ?? ''}|${me.address?.line1 ?? ''}`}
           membership={me}
@@ -186,7 +189,7 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
           onClear={() =>
             void action(
               (token) => api.clearMyGroupData(token, groupId),
-              'Your wishlist and mailing address were cleared.',
+              'Your wishlist, preferences and mailing address were cleared.',
             )
           }
         />
@@ -249,8 +252,14 @@ function AssignmentCard({ assignment }: { assignment: RecipientAssignment }) {
       </Text>
       <View style={{ marginTop: 28, gap: 20 }}>
         <View>
-          <Text style={styles.assignmentLabel}>Gift ideas</Text>
-          <Text style={styles.assignmentText}>{assignment.wishlist || 'No ideas added yet.'}</Text>
+          <Text style={styles.assignmentLabel}>Their wishlist</Text>
+          <View style={{ marginTop: 8 }}>
+            <RecipientWishList wishes={assignment.wishes ?? []} />
+          </View>
+        </View>
+        <View>
+          <Text style={styles.assignmentLabel}>Likes, sizes and hobbies</Text>
+          <Text style={styles.assignmentText}>{assignment.wishlist || 'Nothing added.'}</Text>
         </View>
         <View>
           <Text style={styles.assignmentLabel}>Please avoid</Text>
@@ -310,28 +319,29 @@ function WishListForm({
 
   return (
     <Card>
-      <Text style={styles.eyebrow}>Your details</Text>
-      <Text style={[styles.heading, { marginTop: 4 }]}>Help your giver choose well</Text>
+      <Text style={styles.eyebrow}>General preferences</Text>
+      <Text style={[styles.heading, { marginTop: 4 }]}>Sizes, likes and things to avoid</Text>
       <Text style={[styles.smallMuted, { marginTop: 8 }]}>
-        Only your assigned giver can see these details after the draw.
+        The things that apply to any gift, alongside your wishlist above. Only your assigned giver
+        can see these, and only after the draw.
       </Text>
       <View style={{ marginTop: 24, gap: gap.md }}>
-        <FieldLabel label="Gift ideas">
+        <FieldLabel label="Likes, sizes and hobbies">
           <Textarea
-            aria-label="Gift ideas"
+            aria-label="Likes, sizes and hobbies"
             maxLength={2000}
             value={wishlist}
             onValueChange={setWishlist}
-            placeholder="Books, colors, hobbies, links…"
+            placeholder="Medium in tops, size 9 shoes, into cycling and cooking…"
           />
         </FieldLabel>
-        <FieldLabel label="Things to avoid">
+        <FieldLabel label="Allergies and things to avoid">
           <Textarea
-            aria-label="Things to avoid"
+            aria-label="Allergies and things to avoid"
             maxLength={2000}
             value={avoidances}
             onValueChange={setAvoidances}
-            placeholder="Allergies, dislikes, duplicate items…"
+            placeholder="Nut allergy, no scented candles, already own the boxset…"
           />
         </FieldLabel>
         {/*
@@ -368,8 +378,8 @@ function WishListForm({
       </View>
       <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: brand.line, paddingTop: 16, gap: 12 }}>
         <Text style={styles.tiny}>
-          Clear the wishlist, avoidances, and mailing address you have saved for this exchange. This
-          does not remove you from the group.
+          Clear your wishlist, general preferences, and mailing address for this exchange —
+          including every item on the list above. This does not remove you from the group.
         </Text>
         <View style={{ alignSelf: 'flex-start' }}>
           {/*
@@ -386,7 +396,7 @@ function WishListForm({
               onClear();
             }}
           >
-            {confirmingClear ? 'Tap again to confirm' : 'Clear my wishlist & address'}
+            {confirmingClear ? 'Tap again to confirm' : 'Clear everything I saved'}
           </Button>
         </View>
       </View>
