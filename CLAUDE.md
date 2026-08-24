@@ -162,9 +162,15 @@ it calls no model and costs nothing. The gate is hard rule #1 — `catalog.json`
 lands in git, so the publisher requires `--placeholders-only` before `--apply`.
 `studio/CLAUDE.md` has the reasoning.
 
-Running the **CLI** against production is still wanted occasionally and the safe
-mechanism is **undecided**. There is no flag for it, and adding one is a
-decision nobody has made. See `studio/CLAUDE.md`. And:
+Running the **CLI** against production is a **named profile**, decided in August
+2026 and modelled on the AWS CLI's: `studio --profile prod <command>`, or
+`STUDIO_PROFILE=prod`. A profile carries all five values that select a stack —
+API URL, both Cognito ids, media bucket, catalog table — from
+`~/.config/andreas-services/studio/config`, and an explicit `--profile` beats an
+exported `STUDIO_API_URL` rather than losing to it. There is no confirmation
+step on prod: selecting it is the intent. It is also **not** a permission
+boundary — the maintenance commands run under your own IAM key either way. See
+`studio/CLAUDE.md`. And:
 
 **`studio/` is the one service that is not purely a deployable unit.** Half of it
 — `studio/.claude/skills/`, eighteen skills — runs locally inside Claude on a

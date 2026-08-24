@@ -155,29 +155,74 @@ hard-rule-#1 guard.
   on, and neither the API role nor your own commands are granted
   `s3:DeleteObjectVersion`, so every delete there is a recoverable tombstone. Do
   not "tidy up" that grant. It guards the deployed service, which is still real.
-- **`dev-setup.sh` writes `frontend/.env.local` and pins `STUDIO_S3_BUCKET` and
-  `STUDIO_CATALOG_TABLE` in `.env` from the dev stack's Terraform outputs** — not
-  from SSM, which holds what the deploy workflow wrote and knows nothing about a
-  dev stack. Re-run it rather than editing either file.
-- **A `.env` pinned to a prod bucket predates this change.** `dev-setup.sh` names
-  it loudly rather than rewriting it — the file is yours — but it points your
-  commands at production and should be changed.
+- **`dev-setup.sh` writes `frontend/.env.local` and syncs the `dev` profile** from
+  the dev stack's Terraform outputs — not from SSM, which holds what the deploy
+  workflow wrote and knows nothing about a dev stack. Re-run it, or run
+  `studio profile sync dev`, rather than editing either by hand.
+- **It used to pin `STUDIO_S3_BUCKET` and `STUDIO_CATALOG_TABLE` into `.env`
+  instead, and no longer does.** A pin was per-checkout while the stack is
+  per-machine, and it covered two of the five values that select a stack — so a
+  second worktree had none of them, and a `.env` and a `dev-up.sh` shell could
+  name different environments with nothing printing either. The profile carries
+  all five.
+- **A `.env` pinned to a prod bucket predates this change and still wins whenever
+  no profile is selected.** `dev-setup.sh` names it loudly rather than rewriting
+  it — the file is yours — but it points your commands at production. Delete the
+  line; `studio profile show` says what answers instead.
 
-### The one thing that is genuinely unsettled
+### Reaching production: `--profile prod`
 
-**Running the CLI against production is still wanted sometimes, and how to do it
-safely is undecided.** There is no flag, no environment variable and no
-documented procedure, and that is not an oversight — it is an open question.
+**This section used to say the mechanism was undecided. It is decided.** The CLI
+has named environments, modelled on the AWS CLI's:
 
-Do not design one unprompted, and do not reintroduce the old behaviour as a
-convenience. If you need prod data in front of you today, the deployed app at
-`studio.andreas.services` reads it.
+```bash
+studio --profile prod runs list        # one invocation
+STUDIO_PROFILE=prod studio runs list   # the same thing, written the other way
+studio profile list                    # what exists, and which is in force
+studio profile show                    # what each value resolves to, and from where
+```
+
+A profile carries all five values that decide which stack answers — the API URL,
+both Cognito ids, the media bucket and the catalog table. They live in
+`~/.config/andreas-services/studio/config`, beside the machine id and the two
+`<profile>.env` account files that already used that naming. Nothing in it is
+secret: passwords stay in `<profile>.env`, and `REPLICATE_API_TOKEN` is not a
+profile field because it is not environment-scoped.
+
+Four things worth knowing before using it:
+
+- **`dev` is the default, and there is no other default.** `auth.py` used to fall
+  back to `https://studio-api.andreas.services`, so a shell with nothing set
+  talked to production. That is deleted; nothing configured is now a refusal.
+- **An explicit `--profile` beats an exported `STUDIO_API_URL`**, and prints on
+  stderr that it is doing so. It has to be that way round: `dev-up.sh` exports
+  those variables, and if one of them won, `--profile prod` typed in that window
+  would silently keep talking to dev. This is the opposite of the AWS CLI, whose
+  version of the rule `scripts/dev-aws-common.sh` documents as a footgun.
+- **Sessions are per-profile.** Signing in to prod no longer signs you out of
+  dev; a pre-profile `credentials` file is filed under the profile whose pool
+  minted its token.
+- **Selecting `prod` is treated as sufficient intent — there is no confirmation
+  step.** Hard rule #2 is untouched and still applies: a generation shows its
+  full payload and waits for a yes wherever it runs.
+
+**A profile is not a permission boundary.** `catalog gc`, `catalog migrate` and
+`dev-seed` reach S3 and DynamoDB under your own IAM key, which holds
+`s3:DeleteObjectVersion` — a grant the deployed API's role deliberately lacks, and
+the thing that makes every delete through the app a recoverable tombstone.
+`--profile prod` does not narrow that, so `catalog gc --apply` against prod is
+the one path with no safety net. Least-privilege credentials for prod
+maintenance are a separate, unstarted piece of work.
+
+Reading prod without any of this still works, and is still the lightest option:
+the deployed app at `studio.andreas.services` shows the same library.
 
 ### Provisioning one
 
 ```bash
 ./studio/scripts/dev-aws-setup.sh                    # provision this machine's stack
 ./studio/scripts/dev-user.sh --generate-password     # its one test account
+studio profile sync dev                              # point the CLI at it (dev-setup.sh does this)
 ./studio/scripts/dev-token.sh                        # prove sign-in works; prints a token
 ./studio/scripts/dev-aws-seed.sh                     # load the fixture — see below
 studio dev-seed tree                                 # what this stack holds, by path

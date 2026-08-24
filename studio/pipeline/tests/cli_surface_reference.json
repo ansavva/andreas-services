@@ -3118,6 +3118,87 @@
       }
     }
   },
+  "profile": {
+    "arguments": {},
+    "commands": {
+      "list": {
+        "arguments": {},
+        "commands": {},
+        "options": {}
+      },
+      "show": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {}
+      },
+      "sync": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "api_url": {
+            "choices": null,
+            "default": null,
+            "dest": "api_url",
+            "flag": false,
+            "flags": [
+              "--api-url"
+            ],
+            "help": "Override the API this profile points at. Only meaningful for dev, whose API is whatever dev-up.sh is serving.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "use": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {}
+      }
+    },
+    "options": {}
+  },
   "projects": {
     "arguments": {},
     "commands": {
@@ -4081,6 +4162,21 @@
         "required": true,
         "type": "str"
       },
+      "name": {
+        "choices": null,
+        "default": null,
+        "dest": "name",
+        "flag": false,
+        "flags": [
+          "--name"
+        ],
+        "help": "What the output file is called. Not an identity: a run is addressed by its id or by `latest`.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
       "no_refs": {
         "choices": null,
         "default": false,
@@ -4225,21 +4321,6 @@
           "--slots"
         ],
         "help": "Comma-separated positions WITHIN the resolved selection.",
-        "hidden": false,
-        "multiple": false,
-        "nargs": 1,
-        "required": false,
-        "type": "str"
-      },
-      "name": {
-        "choices": null,
-        "default": null,
-        "dest": "name",
-        "flag": false,
-        "flags": [
-          "--name"
-        ],
-        "help": "What the output file is called. Not an identity: a run is addressed by its id or by `latest`.",
         "hidden": false,
         "multiple": false,
         "nargs": 1,

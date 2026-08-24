@@ -147,6 +147,9 @@ studio/pipeline/
         │                          `reports` for a module that raises, `die` for
         │                          one that finds the problem mid-function.
         │                          One `die`, where there were nine.
+        ├── profiles.py            NAMED ENVIRONMENTS — which stack answers.
+        │                          One resolver behind all five targeting
+        │                          values; `--profile` selects, `dev` by default.
         ├── __init__.py            STUDIO_DIR, DEV_ENV_FILE, ENV_FILE, env_value
         │
         ├── adapters/              THE OUTSIDE WORLD — everything with a side effect
@@ -158,8 +161,9 @@ studio/pipeline/
         │   ├── replicate.py       the HTTP client
         │   └── ffmpeg.py          probe / stitch / grab
         │
-        ├── session/               `studio login` / `logout` / `whoami`
-        │   └── commands.py        the three commands, and no more
+        ├── session/               who you are, and where you are pointing
+        │   ├── commands.py        `studio login` / `logout` / `whoami`
+        │   └── profile_commands.py  `studio profile` list / show / use / sync
         │
         ├── domain/                WHAT THINGS ARE — records and the tree's shape
         │   ├── paths.py           the one module that knows the key layout
@@ -219,12 +223,20 @@ It runs automatically at the start of every Claude Code session, from the repo's
 so a fresh session comes up ready to use. That hook is shared with the rest of
 the monorepo — studio's setup is one guarded, non-fatal step inside it.
 
-Then sign in to studio itself — **this is the one credential an ordinary
-session needs**:
+Then pick an environment and sign in to it — **the token is the one credential
+an ordinary session needs**:
 
 ```bash
-studio login
+studio profile list      # what exists; dev is the default and prod is the other
+studio login             # signs in to the profile in force
+studio whoami            # who, where, and which libraries that reaches
 ```
+
+`dev-setup.sh` has already run `studio profile sync dev`, so the dev profile
+names this machine's stack. `studio profile sync prod` writes the other one from
+`/studio/prod/*` in SSM, and then `studio --profile prod <command>` reaches the
+deployed library. That is a real target with real money behind it — read
+[../CLAUDE.md](../CLAUDE.md#reaching-production---profile-prod) first.
 
 `adapters/auth.py` signs in to Cognito, `adapters/api.py` carries the token on
 every call, and `adapters/store.py` addresses the library by path. No bucket
@@ -268,10 +280,18 @@ API keys:
   The reason to prefer the config dir is that `.gitignore` protects a secret
   from `git add` and from nothing else — not from `git add -f`, not from a
   copy of the working tree, not from a backup tool that indexes the repo. A
-  credential outside the tree is out of reach of all three. The two stack pins
-  `dev-setup.sh` writes (`STUDIO_S3_BUCKET`, `STUDIO_CATALOG_TABLE`) stay in
-  `studio/.env`: they are resource names, not secrets, and they describe this
-  checkout.
+  credential outside the tree is out of reach of all three.
+
+  **The token is deliberately not a profile field.** It is the same token
+  wherever you are pointing, so scoping it per environment would be a knob with
+  no meaning behind it.
+
+  This paragraph used to end by saying the two stack pins `dev-setup.sh` writes
+  (`STUDIO_S3_BUCKET`, `STUDIO_CATALOG_TABLE`) stay in `studio/.env` because
+  they describe this checkout. They do not describe this checkout — the stack is
+  per-machine and a second worktree got neither — and they are the profile's
+  job now. An existing line still works and still wins when no profile is
+  selected, which is why `dev-setup.sh` asks you to delete it.
 
 Asset storage needs **neither an AWS login nor a key of its own.** Character
 profiles, reference images and every generated asset live in S3 and never in
@@ -668,7 +688,15 @@ names rotted into references to files that no longer existed. A doc that names a
 module has to be maintained alongside the code — keeping it here, next to this
 paragraph, is what makes that possible.
 
-The package is `studio/pipeline/src/studio_pipeline/`, in six subpackages.
+The package is `studio/pipeline/src/studio_pipeline/`, in six subpackages plus
+three modules at its root.
+
+**At the root.** `cli.py` is wiring and nothing else. `errors.py` turns a domain
+failure into `error: …` and exit 1. **`profiles.py` decides which stack an
+invocation is talking to** — the five targeting values, the file they live in,
+and the order they resolve in. Read its docstring before changing anything that
+reads a bucket, a table, an API URL or a pool id: the resolution order is not
+symmetric, and both directions are deliberate.
 
 **`adapters/` — the outside world.** Nothing here knows about characters, runs
 or projects.
@@ -677,19 +705,26 @@ or projects.
 |---|---|
 | `store.py` | **The media store, addressed by path and reached through the API.** Resolve a name path to a node, list its files in natural order, read, write, upload, copy, presign, and ensure a folder exists. No bucket name, no credentials — bytes travel to S3 directly on presigned URLs the API signs, which is what keeps a video out of the Lambda's request limit. `s3.py` is being retired into this. |
 | `api.py` | One transport for every call the CLI makes: bearer token, refresh-on-401, library header, error mapping. Decided once so no caller re-decides it. |
-| `auth.py` | The Cognito sign-in behind `studio login`, and the token cache it writes. |
-| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. One auth path for the whole package — `session()` is what everything else asks for. **Almost gone**: nothing in `domain/`, `engine/` or `objects/` imports it any more. The four that still do are `adapters/ddb.py`, which needs `session()` for the catalog table, and all three one-shots in `maintenance/` — `catalog_gc.py`, `catalog_migrate.py` and `dev_seed.py` — which reconcile the bucket against the table and so have to see both. Its listing helpers and its bucket-prefix knob went with `migrate-layout`, the only caller of either. |
-| `ddb.py` | The catalog table's client and the typed-attribute marshalling every write needs. Takes its credentials from `s3.py`, because the bridge resolves a session and not an S3 session. Knows nothing about libraries or nodes. |
+| `auth.py` | The Cognito sign-in behind `studio login`, and the token cache it writes — **keyed by profile**, so a prod session and a dev session coexist instead of one overwriting the other for every shell on the machine. Its `DEFAULT_API_URL` is deleted: unset is a refusal, not a silent connection to production. |
+| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. Its `BUCKET` constant is gone — a module constant binds at import, which is before Click has parsed `--profile`, so `bucket()` asks `profiles` on every call. One auth path for the whole package — `session()` is what everything else asks for. **Almost gone**: nothing in `domain/`, `engine/` or `objects/` imports it any more. The four that still do are `adapters/ddb.py`, which needs `session()` for the catalog table, and all three one-shots in `maintenance/` — `catalog_gc.py`, `catalog_migrate.py` and `dev_seed.py` — which reconcile the bucket against the table and so have to see both. Its listing helpers and its bucket-prefix knob went with `migrate-layout`, the only caller of either. |
+| `ddb.py` | The catalog table's client and the typed-attribute marshalling every write needs. `TABLE` is gone for the same reason `s3.BUCKET` is. Takes its credentials from `s3.py`, because the bridge resolves a session and not an S3 session. Knows nothing about libraries or nodes. |
 | `replicate.py` | Token, HTTP, download, poll. |
 | `ffmpeg.py` | Probe, stitch, frame grab, contact grid. A scene and a movie join their inputs by identical rules because they call the same function. ffmpeg ships in the wheel; no system install. |
 
-**`session/` — who you are.** `commands.py` is `studio login` / `logout` /
-`whoami` and nothing else; everything the CLI knows about identity it reads back
-off the stored token. The acceptance test for the whole of #308 is that these
-work on a machine with **no AWS credentials configured at all**, which is why
-`adapters/auth.py` builds an unsigned Cognito client — `InitiateAuth` needs no
-AWS identity, but boto3 resolves the credential chain at construction and would
-fail first.
+**`session/` — who you are, and where you are pointing.** `commands.py` is
+`studio login` / `logout` / `whoami`; everything the CLI knows about identity it
+reads back off the stored token. The acceptance test for the whole of #308 is
+that these work on a machine with **no AWS credentials configured at all**,
+which is why `adapters/auth.py` builds an unsigned Cognito client —
+`InitiateAuth` needs no AWS identity, but boto3 resolves the credential chain at
+construction and would fail first.
+
+`profile_commands.py` is `studio profile list` / `show` / `use` / `sync`. It is
+in the same subpackage because the two questions are one in practice: a session
+belongs to a profile, `login` signs you in to the one in force, and `whoami`
+prints it first. `sync` is the only member that needs AWS — it reads a dev
+stack's Terraform state or prod's SSM parameters, so that no id is ever typed
+into a config file by a person.
 
 **`domain/` — the tree and the records in it.**
 

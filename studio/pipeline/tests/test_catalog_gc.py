@@ -99,7 +99,7 @@ def _survey(s3, ddb):
 
 
 def _put(s3, key, body=b"png-bytes"):
-    s3.put_object(Bucket=s3c.BUCKET, Key=key, Body=body)
+    s3.put_object(Bucket=s3c.bucket(), Key=key, Body=body)
 
 
 # ── what must never be collected ────────────────────────────────────────────
@@ -229,7 +229,7 @@ def test_a_seeded_orphan_is_found(bucket, catalog_table, key):
 def test_a_row_whose_blob_is_gone_is_not_an_orphan(bucket, catalog_table):
     """The other direction is `catalog verify`'s, and this command ignores it."""
     _seeded(bucket, catalog_table)
-    bucket.delete_object(Bucket=s3c.BUCKET, Key=LEGACY_KEY)
+    bucket.delete_object(Bucket=s3c.bucket(), Key=LEGACY_KEY)
 
     assert _survey(bucket, catalog_table)["orphans"] == []
 
@@ -261,7 +261,7 @@ def test_more_keys_than_one_batch_are_all_deleted(bucket, monkeypatch):
     res = cg.collect(bucket, keys)
     assert sorted(res["deleted"]) == sorted(keys)
     assert res["failed"] == []
-    assert "Contents" not in bucket.list_objects_v2(Bucket=s3c.BUCKET,
+    assert "Contents" not in bucket.list_objects_v2(Bucket=s3c.bucket(),
                                                           Prefix="blobs/")
 
 
@@ -293,7 +293,7 @@ def test_a_dry_run_lists_the_orphan_and_deletes_nothing(bucket, catalog_table,
     assert result.exit_code == 0, result.output
     assert ORPHAN_KEY in result.output
     assert "nothing deleted" in result.output
-    assert bucket.head_object(Bucket=s3c.BUCKET, Key=ORPHAN_KEY)
+    assert bucket.head_object(Bucket=s3c.bucket(), Key=ORPHAN_KEY)
 
 
 def test_apply_deletes_what_the_dry_run_journalled(bucket, catalog_table,
@@ -306,9 +306,9 @@ def test_apply_deletes_what_the_dry_run_journalled(bucket, catalog_table,
     assert applied.exit_code == 0, applied.output
 
     with pytest.raises(Exception):
-        bucket.head_object(Bucket=s3c.BUCKET, Key=ORPHAN_KEY)
+        bucket.head_object(Bucket=s3c.bucket(), Key=ORPHAN_KEY)
     # And nothing else went with it.
-    assert bucket.head_object(Bucket=s3c.BUCKET, Key=LEGACY_KEY)
+    assert bucket.head_object(Bucket=s3c.bucket(), Key=LEGACY_KEY)
 
 
 def test_apply_leaves_an_orphan_the_dry_run_never_showed(bucket, catalog_table,
@@ -328,7 +328,7 @@ def test_apply_leaves_an_orphan_the_dry_run_never_showed(bucket, catalog_table,
 
     applied = _run("--apply")
     assert applied.exit_code == 0, applied.output
-    assert bucket.head_object(Bucket=s3c.BUCKET, Key=latecomer)
+    assert bucket.head_object(Bucket=s3c.bucket(), Key=latecomer)
     assert "unconfirmed    1" in " ".join(applied.output.split("  "))
 
 
@@ -340,7 +340,7 @@ def test_apply_refuses_without_a_dry_run(bucket, catalog_table, journalled):
     result = _run("--apply")
     assert result.exit_code == 1
     assert "records no dry run" in result.output
-    assert bucket.head_object(Bucket=s3c.BUCKET, Key=ORPHAN_KEY)
+    assert bucket.head_object(Bucket=s3c.bucket(), Key=ORPHAN_KEY)
 
 
 def test_it_refuses_when_no_row_names_a_blob(bucket, catalog_table, journalled):
@@ -368,24 +368,24 @@ def test_gc_refuses_when_the_bucket_is_unset(monkeypatch):
     shell that had not loaded `studio/.env` would dry-run against prod, list
     prod's orphans, and let an `--apply` remove them. There is no default now,
     and unset is a refusal rather than a redirection.
-    """
-    import importlib
 
+    **This is a test about the fallback, not about the refusal**, which is why
+    it asserts on `resolve` before it asserts on the exit. The first version
+    patched the value to `""` and checked that `bucket()` died — and would have
+    stayed green with the production default fully restored. The bucket is a
+    profile field now, so the check is that with the variable deleted, no
+    profile selected and both dotenv files redirected by the conftest fixture,
+    the resolver reports that literally nothing supplied one.
+    """
+    from studio_pipeline import profiles
     from studio_pipeline.adapters import s3 as s3c
 
-    # Reloaded with the variable ABSENT, which is the only way to see the
-    # default. Patching `BUCKET` to "" tests the refusal and not the fallback —
-    # the first version of this test did exactly that, and restoring the prod
-    # default left it green.
     monkeypatch.delenv("STUDIO_S3_BUCKET", raising=False)
-    reloaded = importlib.reload(s3c)
-    try:
-        assert not reloaded.BUCKET, (
-            f"STUDIO_S3_BUCKET fell back to {reloaded.BUCKET!r}. There is no default "
-            "on purpose — three maintenance commands read it and one deletes."
-        )
-        with pytest.raises(SystemExit):
-            reloaded.bucket()
-    finally:
-        monkeypatch.setenv("STUDIO_S3_BUCKET", "studio-prod-media-us-east-1")
-        importlib.reload(s3c)
+
+    value, source = profiles.resolve("s3_bucket")
+    assert (value, source) == ("", "unset"), (
+        f"STUDIO_S3_BUCKET fell back to {value!r} from {source}. There is no "
+        "default on purpose — three maintenance commands read it and one deletes."
+    )
+    with pytest.raises(SystemExit):
+        s3c.bucket()

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import click
 
+from studio_pipeline import profiles
 from studio_pipeline.domain import characters as _character
 from studio_pipeline.domain import contact_sheet as _contact_sheet
 from studio_pipeline.domain import curate as _curate
@@ -38,6 +39,7 @@ from studio_pipeline.maintenance import dev_seed as _dev_seed
 from studio_pipeline.objects import config_sync as _config_sync
 from studio_pipeline.objects import convert as _convert
 from studio_pipeline.session import commands as _session
+from studio_pipeline.session import profile_commands as _profile
 from studio_pipeline.objects import download as _download
 from studio_pipeline.objects import presign as _presign
 from studio_pipeline.objects import upload as _upload
@@ -52,8 +54,9 @@ class _Grouped(click.Group):
     """
 
     SECTIONS = [
-        # First, because nothing below it works until you have signed in.
-        ("session",     ["login", "logout", "whoami"]),
+        # First, because nothing below it works until you have signed in — and
+        # `profile` is first within it, because signing in signs you in to one.
+        ("session",     ["profile", "login", "logout", "whoami"]),
         ("generate",    ["run", "models", "add-model"]),
         ("records",     ["runs", "scenes", "movies", "frames", "projects"]),
         ("characters",  ["character", "curate", "contact-sheet"]),
@@ -89,6 +92,8 @@ SHORT_HELP = {
     "character": "manage on-model characters: profile, references, pools",
     # Its first line reads as prose about the fixture, not as what it does.
     "dev-seed": "promote a dev fixture into the shared seed bucket",
+    # Its docstring's first line is the group's, which reads as a definition.
+    "profile": "named environments: list, show, use, sync",
 }
 
 ROOT_HELP = """The studio generation pipeline.
@@ -97,15 +102,39 @@ Runs locally and talks to the studio API. Start with `studio login`. Nothing
 here deploys, and nothing here needs an AWS account — that is the point of
 #308. `studio <command> --help` for a command's own options.
 
+Every command talks to one named environment. `studio profile list` shows
+them, `studio whoami` says which one you are in, and `--profile` picks one for
+a single invocation:
+
+    studio --profile prod runs list
+
 Note `run` and `runs` are different: `run` submits a generation, `runs` queries
 the ones already recorded.
 """
 
 
 @click.group(cls=_Grouped, help=ROOT_HELP)
+@click.option(
+    "--profile",
+    "profile_name",
+    envvar="STUDIO_PROFILE",
+    metavar="NAME",
+    help="The environment to talk to (dev, prod, …). Overrides STUDIO_API_URL "
+         "and the other four variables — see `studio profile show`.",
+)
 @click.version_option(package_name="studio-pipeline", prog_name="studio")
-def main() -> None:
-    pass
+def main(profile_name: str | None) -> None:
+    # **Before any subcommand runs, and before any adapter reads a value.** This
+    # is why `adapters/s3.py` and `adapters/ddb.py` no longer bind their bucket
+    # and table at import time: a module constant is bound when Python imports
+    # the module, which is before Click has parsed a single argument, so it
+    # could never reflect what was typed here.
+    #
+    # `envvar` rather than a separate read, so `STUDIO_PROFILE=prod studio …`
+    # and `studio --profile prod …` are the same code path. That matters because
+    # Click puts group options *before* the subcommand, so the environment
+    # variable is the only way to write it the other way round.
+    profiles.select(profile_name)
 
 
 # `run` and `models` are the runner's own two subcommands, lifted to the top
@@ -114,6 +143,7 @@ def main() -> None:
 # The session commands, registered first because nothing else works without
 # them: after #308 the CLI holds no AWS credentials and every store call is an
 # authenticated HTTP request.
+main.add_command(_profile.main, "profile")
 main.add_command(_session.cmd_login, "login")
 main.add_command(_session.cmd_logout, "logout")
 main.add_command(_session.cmd_whoami, "whoami")

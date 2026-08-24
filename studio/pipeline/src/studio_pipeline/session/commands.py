@@ -1,7 +1,9 @@
 """`studio login` / `logout` / `whoami` — the CLI's session (#300).
 
 Three commands and no more. Signing in is the whole of what they do; everything
-else the CLI knows about identity it reads back off the stored token.
+else the CLI knows about identity it reads back off the stored token. Where the
+session points is `profile_commands.py` next door — a session belongs to a
+profile, so both of these name it in their output.
 
 **The acceptance test for the whole epic is that these work on a machine with no
 AWS credentials configured at all.** That is why `adapters/auth` builds an
@@ -16,6 +18,7 @@ import os
 
 import click
 
+from studio_pipeline import profiles
 from studio_pipeline.adapters import api, auth
 
 
@@ -33,7 +36,10 @@ def cmd_login(email: str | None) -> None:
     except auth.AuthError as error:
         raise click.ClickException(str(error)) from error
 
-    click.echo(f"Signed in as {body.get('email', email)}.")
+    # **Naming the profile is not decoration.** There is one credentials store
+    # per machine and `login` writes into whichever profile is in force, so a
+    # sign-in that did not say which one is a sign-in you cannot check.
+    click.echo(f"Signed in as {body.get('email', email)} on profile {profiles.current()}.")
     _show_libraries()
 
 
@@ -54,6 +60,8 @@ def cmd_whoami() -> None:
     except auth.AuthError as error:
         raise click.ClickException(str(error)) from error
 
+    # First, because it is the line that decides what the other four mean.
+    click.echo(f"profile  {who['profile']}")
     click.echo(f"email    {who['email']}")
     click.echo(f"sub      {who['sub']}")
     click.echo(f"pool     {who['pool']}")
