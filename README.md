@@ -32,9 +32,13 @@ Packages. Every read needs a token with the `read:packages` scope exposed as
 `NODE_AUTH_TOKEN`, including for public packages — there is no anonymous install:
 
 ```bash
-export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
 eval "$(./scripts/github-packages-auth.sh --export)"   # sets NODE_AUTH_TOKEN
 ```
+
+That one line is the whole step on a developer machine: the script reads your
+existing `gh` login when it already carries `read:packages`. A PAT is only for
+somewhere `gh` is not signed in — CI, a sandbox, a container — where you export
+`GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>` first and the script picks it up.
 
 Full details (macOS vs. Linux specifics, how the Linux path runs Homebrew as a
 non-root user, per-service scripts) are in [`scripts/README.md`](scripts/README.md).

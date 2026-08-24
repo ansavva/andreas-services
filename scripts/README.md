@@ -95,16 +95,29 @@ does not have it, so `npm ci` fails with `403 ... does not match expected scopes
 `scripts/github-packages-auth.sh` resolves this idempotently:
 
 ```bash
-# CI / sandbox: provide a read:packages PAT, then the script picks it up:
-export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
+# Developer machine with gh: usually the whole story. If your existing gh login
+# already carries read:packages, the script reads that token as-is — no PAT, no
+# browser round trip:
 eval "$(./scripts/github-packages-auth.sh --export)"   # sets NODE_AUTH_TOKEN
 
-# Developer machine with gh: adds the scope to your existing login:
-./scripts/github-packages-auth.sh                       # runs `gh auth refresh -s read:packages`
+# ...and only if that login LACKS the scope does it fall back to an interactive
+# `gh auth refresh -s read:packages`:
+./scripts/github-packages-auth.sh
 
-# Verify only (no changes):
+# CI / sandbox, where gh is not signed in: provide a read:packages PAT and the
+# script picks it up ahead of everything else:
+export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
+eval "$(./scripts/github-packages-auth.sh --export)"
+
+# Verify only (no changes, no refresh):
 ./scripts/github-packages-auth.sh --check
 ```
+
+`--check` consults the environment *and* an existing `gh` login, so it agrees
+with `--export` about whether this machine can install. It used to read only the
+environment, and so reported "no available token" on the common developer setup —
+no `GITHUB_PACKAGES_TOKEN`, a perfectly good `gh` login — while `--export`
+succeeded on the same machine.
 
 The script never writes a token into a committed file — the repo `.npmrc` uses the
 `${NODE_AUTH_TOKEN}` env indirection. The only non-scriptable step is creating a
