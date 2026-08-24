@@ -79,8 +79,9 @@ may therefore use multiple machines without collisions.
 ./humbugg/scripts/dev-setup.sh
 stripe login
 
-# Authenticate npm for the private design system package.
-export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
+# Authenticate npm for the private design system package. This reads your
+# existing gh login when it carries read:packages; export
+# GITHUB_PACKAGES_TOKEN=<pat> first only where gh is not signed in (CI, sandbox).
 eval "$(./scripts/github-packages-auth.sh --export)"
 npm --prefix humbugg/marketing install
 npm --prefix humbugg/app install

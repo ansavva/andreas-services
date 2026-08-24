@@ -46,12 +46,16 @@ needed to override it.
 
    ```bash
    ./humbugg/scripts/dev-setup.sh
-   export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
    eval "$(./scripts/github-packages-auth.sh --export)"   # sets NODE_AUTH_TOKEN
    npm --prefix humbugg/marketing install
    npm --prefix humbugg/app install
    stripe login
    ```
+
+   The `eval` line is the whole authentication step on a developer machine — it
+   reads your existing `gh` login when that already carries `read:packages`.
+   Export `GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>` beforehand only where
+   `gh` is not signed in, such as CI or a container.
 
    See [`../scripts/README.md`](../scripts/README.md) for details.
 

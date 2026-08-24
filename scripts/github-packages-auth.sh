@@ -16,9 +16,12 @@
 # It obtains such a token in this order:
 #   1. A PAT you provide via env (preferred for CI/sandbox): GITHUB_PACKAGES_TOKEN
 #      (also honors NODE_AUTH_TOKEN / NPM_TOKEN if already set).
-#   2. The GitHub CLI on a developer machine: `gh auth refresh --scopes
-#      read:packages` ADDS the scope to your existing `gh` login, then reads the
-#      refreshed token via `gh auth token`.
+#   2. An existing GitHub CLI login that already carries the scope, read as-is
+#      via `gh auth token`. This is the usual developer case and needs no PAT
+#      and no browser round trip.
+#   3. The GitHub CLI on a developer machine whose login lacks the scope:
+#      `gh auth refresh --scopes read:packages` ADDS it, then reads the
+#      refreshed token via `gh auth token`. This step is interactive.
 #
 # IDEMPOTENT: if a reachable token already reads the package, it changes nothing.
 #
@@ -87,6 +90,22 @@ for var in GITHUB_PACKAGES_TOKEN NODE_AUTH_TOKEN NPM_TOKEN GH_TOKEN GITHUB_TOKEN
     [[ "$MODE" == export ]] || warn "\$$var is set but cannot read the package (missing ${SCOPE}?)."
   fi
 done
+
+# 1b) An existing GitHub CLI login that ALREADY carries the scope.
+# This has to sit ahead of both the --check bail and the `gh auth refresh` below.
+# A developer whose `gh` token can already read the package needs no PAT and no
+# interactive browser round trip — and --check must not report failure on a
+# machine that installs perfectly well. Before this existed, --check consulted
+# only the environment, so the common developer setup (no GITHUB_PACKAGES_TOKEN,
+# a working `gh` login) reported "no available token" while --export succeeded.
+if have gh; then
+  gh_token="$(gh auth token 2>/dev/null || true)"
+  if token_can_read "$gh_token"; then
+    [[ "$MODE" == export ]] || ok "Your existing gh login already has ${SCOPE}."
+    emit_result "$gh_token"
+    exit 0
+  fi
+fi
 
 if [[ "$MODE" == "check" ]]; then
   err "No available token can read @ansavva/design-system (need ${SCOPE})."
