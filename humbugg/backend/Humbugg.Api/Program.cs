@@ -180,6 +180,7 @@ builder.Services.AddScoped<ITransactionalEmailService, TransactionalEmailService
 builder.Services.AddScoped<IProfileRepository, ProfileRepository>();
 builder.Services.AddScoped<IGroupRepository, GroupRepository>();
 builder.Services.AddScoped<IMembershipRepository, MembershipRepository>();
+builder.Services.AddScoped<IWishRepository, WishRepository>();
 builder.Services.AddScoped<IAuditRepository, AuditRepository>();
 builder.Services.AddScoped<IAuditActorAnonymizer, AuditActorAnonymizer>();
 builder.Services.AddScoped<IAnalyticsSink, DynamoDbAnalyticsSink>();
@@ -190,6 +191,7 @@ builder.Services.AddScoped<IAuditTrail, AuditTrail>();
 builder.Services.AddScoped<IProductAnalytics, ProductAnalytics>();
 builder.Services.AddScoped<IProfileService, ProfileService>();
 builder.Services.AddScoped<IGroupService, GroupService>();
+builder.Services.AddScoped<IWishService, WishService>();
 builder.Services.AddScoped<IAccountDeletionService, AccountDeletionService>();
 builder.Services.AddScoped<IDataExportService, DataExportService>();
 builder.Services.AddScoped<IBillingService, BillingService>();
@@ -235,7 +237,8 @@ public sealed record HumbuggSettings(
     string AppBucket = "",
     string AvatarBaseUrl = "http://localhost:5173",
     string? S3EndpointUrl = null,
-    string BillingRecordsTable = "humbugg-billing")
+    string BillingRecordsTable = "humbugg-billing",
+    string WishesTable = "humbugg-wishes")
 {
     public static HumbuggSettings FromEnvironment()
     {
@@ -263,7 +266,8 @@ public sealed record HumbuggSettings(
             Environment.GetEnvironmentVariable("HUMBUGG_APP_BUCKET") ?? "",
             (Environment.GetEnvironmentVariable("HUMBUGG_AVATAR_BASE_URL")?.TrimEnd('/')) ?? appBaseUrl,
             Environment.GetEnvironmentVariable("S3_ENDPOINT_URL"),
-            RequiredTable("HUMBUGG_BILLING_TABLE"));
+            RequiredTable("HUMBUGG_BILLING_TABLE"),
+            RequiredTable("HUMBUGG_WISHES_TABLE"));
     }
 
     // Table names are per-environment and carry no safe default: prod, each

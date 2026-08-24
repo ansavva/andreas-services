@@ -33,6 +33,7 @@ internal sealed class GroupService(
     IProfileRepository profiles,
     IGroupRepository groups,
     IMembershipRepository memberships,
+    IWishRepository wishes,
     IMatchingService matching,
     IPlanCatalog plans,
     IAuditTrail audit,
@@ -190,6 +191,9 @@ internal sealed class GroupService(
         // exchange. Allowed at any time (open or drawn) — it is the participant's own data. Clearing
         // already-empty fields is a harmless no-op, so the action is idempotent.
         var (_, membership) = await RequireMembershipAsync(groupId, cancellationToken);
+        // Structured wishes are the same category of data as the free-text list this control was
+        // written for, so "erase my wishlist" has to mean both or the button quietly under-delivers.
+        await wishes.DeleteByMemberAsync(membership.MemberId, cancellationToken);
         var cleared = await memberships.UpdatePrivateAsync(membership.MemberId, "", "", new Address(), cancellationToken);
         await audit.RecordAsync(AuditAction.ParticipantDataCleared, groupId, AuditTarget.Member(membership.MemberId), cancellationToken: cancellationToken);
         return Private(cleared);
@@ -199,6 +203,9 @@ internal sealed class GroupService(
     {
         var (group, membership) = await RequireMembershipAsync(groupId, cancellationToken); RequireOpen(group);
         if (membership.IsOrganizer) throw ApiException.Conflict("The organizer must delete the group instead of leaving it.");
+        // Before the membership row goes: member_id is the only key these rows have, so deleting the
+        // membership first would strand them with nothing able to address them again.
+        await wishes.DeleteByMemberAsync(membership.MemberId, cancellationToken);
         await memberships.DeleteAsync(membership.MemberId, cancellationToken);
         await audit.RecordAsync(AuditAction.ParticipantLeft, groupId, AuditTarget.Member(membership.MemberId), cancellationToken: cancellationToken);
         var remaining = group.Exclusions.Where(pair => !pair.Contains(membership.MemberId, StringComparer.Ordinal)).ToList();
@@ -289,7 +296,7 @@ internal sealed class GroupService(
         // Assignment view milestone — recorded once per member; the assignment itself is never recorded.
         await analytics.TrackAsync(AnalyticsEventType.AssignmentViewed, group.Plan, groupId,
             $"assignment_viewed:{membership.MemberId}", cancellationToken: cancellationToken);
-        return Assignment(recipient);
+        return Assignment(recipient, await wishes.GetByMemberAsync(recipient.MemberId, cancellationToken));
     }
 
     public async Task<RevealResponse> RevealAsync(string groupId, RevealRequest request, CancellationToken cancellationToken = default)
@@ -301,8 +308,16 @@ internal sealed class GroupService(
         await audit.RecordAsync(AuditAction.AssignmentRevealed, groupId, AuditTarget.Group(groupId),
             new Dictionary<string, string> { ["reason"] = reason }, cancellationToken: cancellationToken);
         var members = (await memberships.GetByGroupAsync(groupId, cancellationToken)).ToDictionary(item => item.MemberId, StringComparer.Ordinal);
-        var revealed = draw.Assignments.Where(pair => members.ContainsKey(pair.Key) && members.ContainsKey(pair.Value))
-            .Select(pair => new RevealAssignment(Public(members[pair.Key]), Assignment(members[pair.Value]))).ToList();
+        var pairs = draw.Assignments.Where(pair => members.ContainsKey(pair.Key) && members.ContainsKey(pair.Value))
+            .ToList();
+        var revealed = new List<RevealAssignment>(pairs.Count);
+        foreach (var pair in pairs)
+        {
+            var recipient = members[pair.Value];
+            revealed.Add(new RevealAssignment(
+                Public(members[pair.Key]),
+                Assignment(recipient, await wishes.GetByMemberAsync(recipient.MemberId, cancellationToken))));
+        }
         return new RevealResponse(revealed);
     }
 
@@ -331,7 +346,17 @@ internal sealed class GroupService(
         group.Plan, plans.Get(group.Plan).ParticipantLimit, member.IsOrganizer, group.CreatedAt, group.UpdatedAt);
     private static Membership Public(MembershipRecord member) => new(member.MemberId, member.DisplayName, member.IsOrganizer, member.IsParticipating);
     private static Membership Private(MembershipRecord member) => new(member.MemberId, member.DisplayName, member.IsOrganizer, member.IsParticipating, member.Wishlist, member.Avoidances, member.Address);
-    private static RecipientAssignment Assignment(MembershipRecord member) => new(member.MemberId, member.DisplayName, member.Wishlist, member.Avoidances, member.Address);
+    // The giver's view of their recipient. Projected through RecipientWish rather than Wish so that
+    // owner-only state added later (purchase claims, #130) cannot reach this path by default.
+    private static RecipientAssignment Assignment(MembershipRecord member, IReadOnlyList<WishRecord> wishes) => new(
+        member.MemberId, member.DisplayName, member.Wishlist, member.Avoidances, member.Address,
+        wishes.Select(RecipientWishOf).ToList());
+    private static RecipientWish RecipientWishOf(WishRecord record) => new(
+        record.WishId, record.Kind, record.Title,
+        Empty(record.Url), Empty(record.ImageUrl), record.PriceCents,
+        record.PriceCents is null ? null : Empty(record.Currency),
+        record.Quantity, record.Priority, Empty(record.Details), record.Position);
+    private static string? Empty(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
     private static decimal? Amount(long? cents) => cents is null ? null : cents.Value / 100m;
     private static long DaysSince(string isoTimestamp) =>
         DateTimeOffset.TryParse(isoTimestamp, System.Globalization.CultureInfo.InvariantCulture,

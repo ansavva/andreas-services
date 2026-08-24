@@ -25,6 +25,9 @@ public enum AuditAction
     PaymentEntitlementChanged,
     AssignmentRevealed,
     ParticipantDataCleared,
+    WishCreated,
+    WishUpdated,
+    WishDeleted,
     MembershipAnonymized,
     AccountDeleted,
 }

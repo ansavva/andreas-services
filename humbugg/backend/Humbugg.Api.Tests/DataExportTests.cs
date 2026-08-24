@@ -169,7 +169,8 @@ public sealed class DataExportTests
         public InMemoryMembers Members { get; } = new();
         public DataExportService Service { get; }
 
-        public World() => Service = new DataExportService(User, Profiles, Groups, Members);
+        public FakeWishes Wishes { get; } = new();
+        public World() => Service = new DataExportService(User, Profiles, Groups, Members, Wishes);
     }
 
     private sealed class FakeUser : ICurrentUser

@@ -4,6 +4,7 @@ output "table_names" {
     profiles         = aws_dynamodb_table.profiles.name
     groups           = aws_dynamodb_table.groups.name
     groupmembers     = aws_dynamodb_table.groupmembers.name
+    wishes           = aws_dynamodb_table.wishes.name
     draws            = aws_dynamodb_table.draws.name
     audit_events     = aws_dynamodb_table.audit_events.name
     analytics_events = aws_dynamodb_table.analytics_events.name

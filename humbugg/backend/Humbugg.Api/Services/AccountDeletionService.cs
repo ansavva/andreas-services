@@ -36,6 +36,7 @@ internal sealed class AccountDeletionService(
     IProfileRepository profiles,
     IGroupRepository groups,
     IMembershipRepository memberships,
+    IWishRepository wishes,
     IAuditTrail audit,
     IAuditActorAnonymizer auditAnonymizer) : IAccountDeletionService
 {
@@ -83,6 +84,9 @@ internal sealed class AccountDeletionService(
 
     private async Task DeleteOrganizedGroupAsync(GroupRecord group, string userId, CancellationToken cancellationToken)
     {
+        // Deleting a whole group the caller organized: every member's wishes go with it.
+        foreach (var member in await memberships.GetByGroupAsync(group.GroupId, cancellationToken))
+            await wishes.DeleteByMemberAsync(member.MemberId, cancellationToken);
         await memberships.DeleteByGroupAsync(group.GroupId, cancellationToken);
         await groups.DeleteAsync(group.GroupId, cancellationToken);
         await audit.RecordAsync(AuditAction.GroupDeleted, group.GroupId, AuditTarget.Group(group.GroupId),
@@ -91,6 +95,11 @@ internal sealed class AccountDeletionService(
 
     private async Task RemoveParticipantAsync(GroupRecord group, MembershipRecord membership, string pseudonym, string userId, CancellationToken cancellationToken)
     {
+        // Wishes go on both paths. On the anonymize path especially: the membership row survives
+        // because a draw references it, but the wishes are authored personal data with nothing
+        // referencing them, so leaving them behind would defeat the anonymization.
+        await wishes.DeleteByMemberAsync(membership.MemberId, cancellationToken);
+
         if (group.Status == GroupStatus.Drawn)
         {
             // A draw references member_id, so the row must survive; strip the personal data instead.

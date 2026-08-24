@@ -100,6 +100,7 @@ jobs:
             -e HUMBUGG_PROFILES_TABLE=ci-smoke-profiles \
             -e HUMBUGG_GROUPS_TABLE=ci-smoke-groups \
             -e HUMBUGG_GROUPMEMBERS_TABLE=ci-smoke-groupmembers \
+            -e HUMBUGG_WISHES_TABLE=ci-smoke-wishes \
             -e HUMBUGG_DRAWS_TABLE=ci-smoke-draws \
             -e HUMBUGG_AUDIT_EVENTS_TABLE=ci-smoke-audit-events \
             -e HUMBUGG_ANALYTICS_EVENTS_TABLE=ci-smoke-analytics-events \

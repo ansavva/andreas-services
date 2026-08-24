@@ -200,13 +200,14 @@ public sealed class AccountDeletionTests
         public InMemoryMembers Members { get; } = new();
         public CapturingAudit Audit { get; } = new();
         public FakeAnonymizer Anonymizer { get; } = new();
+        public FakeWishes Wishes { get; } = new();
         public AccountDeletionService Deletion { get; }
         public GroupService GroupService { get; }
 
         public World()
         {
-            Deletion = new AccountDeletionService(User, Profiles, Groups, Members, Audit, Anonymizer);
-            GroupService = new GroupService(User, Profiles, Groups, Members, new MatchingService(), new PlanCatalog(new()), Audit, new NoopAnalytics(),
+            Deletion = new AccountDeletionService(User, Profiles, Groups, Members, Wishes, Audit, Anonymizer);
+            GroupService = new GroupService(User, Profiles, Groups, Members, Wishes, new MatchingService(), new PlanCatalog(new()), Audit, new NoopAnalytics(),
                 new HumbuggSettings("us-east-1", "us-east-1", "pool", "client", ["http://localhost:5173"], "http://localhost:5173", null,
                     "profiles", "groups", "members", "draws", "audit", "analytics"));
         }

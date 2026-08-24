@@ -3,6 +3,15 @@ using System.Text.Json.Serialization;
 namespace Humbugg.Api.Models;
 
 public enum GroupStatus { Open, Drawn }
+
+// A wish is one entry on a participant's list. `Custom` covers anything that is not a purchasable
+// product — "a day out", "learn to bake" — and is the fallback when a URL cannot be resolved into a
+// product (#129), so a failed extraction degrades to a usable wish rather than blocking the user.
+public enum WishKind { Product, Custom, Experience, Charity }
+
+// Ordering hint for the giver, not a sort key: the list's own order is `position`, which the owner
+// controls. Priority says how much the wish is wanted, which is a different question from where it sits.
+public enum WishPriority { Low, Normal, High }
 public enum PlanCode { Free, Plus, Work }
 public enum BillingCadence { Free, OneTime, Annual }
 
@@ -83,12 +92,53 @@ public sealed record GroupDetail(
     IReadOnlyList<Membership> Members,
     string? InviteUrl = null);
 
+// ─── Wishes ─────────────────────────────────────────────────────────────────────────────────────
+//
+// Two projections of the same stored row, and the split is deliberate rather than ceremonial.
+// `Wish` is what an owner sees of their own list. `RecipientWish` is what their assigned giver sees.
+// They carry the same fields today, which is exactly why the seam has to exist now: #130 adds
+// purchase claims, which every gift viewer may see and the owner may never see, and #132 adds gift
+// progress. Projecting both from one record through one type would make that leak a one-line
+// mistake. Neither type is ever the stored record.
+public sealed record Wish(
+    string WishId,
+    WishKind Kind,
+    string Title,
+    string? Url,
+    string? ImageUrl,
+    long? PriceCents,
+    string? Currency,
+    int Quantity,
+    WishPriority Priority,
+    string? Details,
+    int Position,
+    string CreatedAt,
+    string UpdatedAt);
+
+// The giver's view. Deliberately has no CreatedAt/UpdatedAt: when a recipient last edited their list
+// is the recipient's business, and an edit timestamp moving is a signal about their behaviour.
+public sealed record RecipientWish(
+    string WishId,
+    WishKind Kind,
+    string Title,
+    string? Url,
+    string? ImageUrl,
+    long? PriceCents,
+    string? Currency,
+    int Quantity,
+    WishPriority Priority,
+    string? Details,
+    int Position);
+
 public sealed record RecipientAssignment(
     string MemberId,
     string DisplayName,
+    // Free-text general preferences. Structured wishes did not replace this field — see WishRecord —
+    // so a list written before wishes existed still reaches the giver intact.
     string Wishlist,
     string Avoidances,
-    Address Address);
+    Address Address,
+    IReadOnlyList<RecipientWish> Wishes);
 
 public sealed record RevealAssignment(Membership Giver, RecipientAssignment Recipient);
 public sealed record RevealResponse(IReadOnlyList<RevealAssignment> Assignments);
@@ -136,6 +186,8 @@ public sealed record ExportedMembership(
     string? Wishlist,
     string? Avoidances,
     Address? Address,
+    // The caller's own wishes. Personal data they authored, so the export must carry it (#189).
+    IReadOnlyList<Wish> Wishes,
     string JoinedAt,
     string UpdatedAt);
 
@@ -167,6 +219,32 @@ public sealed record UpdateMembershipRequest(string? Wishlist, string? Avoidance
 public sealed record ParticipationRequest(bool? IsParticipating);
 public sealed record ExclusionsRequest(IReadOnlyList<string[]>? Exclusions);
 public sealed record RevealRequest(string? Reason);
+
+public sealed record CreateWishRequest(
+    string? Kind,
+    string? Title,
+    string? Url,
+    string? ImageUrl,
+    long? PriceCents,
+    string? Currency,
+    int? Quantity,
+    string? Priority,
+    string? Details);
+
+// Every field is nullable and absence means "leave alone", so a partial edit cannot blank a field
+// the caller never mentioned. Clearing an optional field is an explicit empty string.
+public sealed record UpdateWishRequest(
+    string? Kind,
+    string? Title,
+    string? Url,
+    string? ImageUrl,
+    long? PriceCents,
+    string? Currency,
+    int? Quantity,
+    string? Priority,
+    string? Details);
+
+public sealed record ReorderWishesRequest(IReadOnlyList<string>? WishIds);
 
 internal sealed record ProfileRecord(
     string UserId,
@@ -205,6 +283,31 @@ internal sealed record MembershipRecord(
     Address Address,
     string CreatedAt,
     string UpdatedAt);
+// Stored row. `MemberId` is the partition key and `WishId` the sort key, so listing one member's
+// wishes is a Query and never a Scan, and every single-item operation must name the owning member —
+// ownership is enforced by the key itself rather than by a check someone can forget.
+//
+// GroupId and UserId are stored although MemberId already implies both. They make ownership and the
+// owning list explicit on the row, which is what the audit trail and the deletion sweep read, and
+// what keeps a row interpretable without joining back to the membership table.
+internal sealed record WishRecord(
+    string MemberId,
+    string WishId,
+    string GroupId,
+    string UserId,
+    WishKind Kind,
+    string Title,
+    string Url,
+    string ImageUrl,
+    long? PriceCents,
+    string Currency,
+    int Quantity,
+    WishPriority Priority,
+    string Details,
+    int Position,
+    string CreatedAt,
+    string UpdatedAt);
+
 internal sealed record DrawRecord(
     string GroupId,
     string DrawId,

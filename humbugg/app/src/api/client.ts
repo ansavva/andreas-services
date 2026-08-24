@@ -3,6 +3,9 @@ import type {
   GroupDetail,
   GroupSummary,
   Membership,
+  Wish,
+  CreateWishInput,
+  UpdateWishInput,
   PolicyConsent,
   PlusPurchaseStatus,
   Profile,
@@ -78,6 +81,15 @@ export const api = {
   updateGroup: (token: string, id: string, data: Record<string, unknown>) => request<GroupDetail>(`/groups/${id}`, token, json('PATCH', data)),
   deleteGroup: (token: string, id: string) => request<void>(`/groups/${id}`, token, json('DELETE')),
   rotateInvite: (token: string, id: string) => request<{ invite_url: string }>(`/groups/${id}/invite`, token, json('POST')),
+  listWishes: (token: string, id: string) => request<Wish[]>(`/groups/${id}/members/me/wishes`, token),
+  createWish: (token: string, id: string, wish: CreateWishInput) =>
+    request<Wish>(`/groups/${id}/members/me/wishes`, token, json('POST', wish)),
+  updateWish: (token: string, id: string, wishId: string, changes: UpdateWishInput) =>
+    request<Wish>(`/groups/${id}/members/me/wishes/${wishId}`, token, json('PATCH', changes)),
+  deleteWish: (token: string, id: string, wishId: string) =>
+    request<void>(`/groups/${id}/members/me/wishes/${wishId}`, token, json('DELETE')),
+  reorderWishes: (token: string, id: string, wish_ids: string[]) =>
+    request<Wish[]>(`/groups/${id}/members/me/wishes/order`, token, json('PUT', { wish_ids })),
   joinGroup: (token: string, id: string, invite_token: string) => request<GroupDetail>(`/groups/${id}/join`, token, json('POST', { invite_token })),
   getMembership: (token: string, id: string) => request<Membership>(`/groups/${id}/members/me`, token),
   updateMembership: (token: string, id: string, data: Record<string, unknown>) => request<Membership>(`/groups/${id}/members/me`, token, json('PATCH', data)),
