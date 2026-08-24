@@ -182,9 +182,18 @@ if [ -n "${STUDIO_LIBRARY:-}" ]; then
   AWS_REGION="$REGION" \
     bash "$SCRIPT_DIR/add-member.sh"
 else
+  # **Says what this run did, not what the account is.** It used to announce
+  # that the account "is not a member of any library" — a fact it had never
+  # checked, because this branch is reached whenever STUDIO_LIBRARY is unset.
+  # Converging an existing owner's password therefore ended in a warning that
+  # their access was gone, which is alarming and was not true. Checking for real
+  # would mean querying the catalog table, and this script has never needed
+  # anything but Cognito and SSM; the honest message costs nothing.
   echo
-  echo "WARNING: '$STUDIO_EMAIL' is not a member of any library, so it can sign in"
-  echo "and will see nothing. Grant one with:"
+  echo "NOTE: STUDIO_LIBRARY was not set, so this run granted no membership."
+  echo "An account with no membership can sign in and will see nothing, because"
+  echo "membership is the whole of authorisation here. If '$STUDIO_EMAIL' is new,"
+  echo "grant one with:"
   echo
   echo "  STUDIO_EMAIL=$STUDIO_EMAIL STUDIO_LIBRARY=lib-… $SCRIPT_DIR/add-member.sh"
   echo
