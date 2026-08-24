@@ -223,7 +223,7 @@ def panel_args(manifest: dict, shot: dict, panel: dict, entry: dict, opts) -> Si
         image_run=None, ref_run=(), input_=(), input=(),
         start_run=None, start_key=None, end_run=None, end_key=None,
         no_refs=False, dry_run=opts.dry_run, json_=False, json=False,
-        poll=True, dest=opts.dest, expires=opts.expires,
+        poll=True, dest=opts.dest,
         interval=d["interval"], timeout=d["timeout"],
     )
 
@@ -390,7 +390,7 @@ def shot_args(manifest: dict, shot: dict, entry: dict, opts) -> SimpleNamespace:
         image_run=None, ref_run=(), input_=(), input=(),
         start_run=None, start_key=None, end_run=None, end_key=None,
         no_refs=False, dry_run=opts.dry_run, json_=False, json=False,
-        poll=True, dest=opts.dest, expires=opts.expires,
+        poll=True, dest=opts.dest,
         interval=d["interval"], timeout=d["timeout"],
     )
 
@@ -765,7 +765,6 @@ SHARED = [
     click.option("--dest", help="also keep a local copy of each result"),
     click.option("--dry-run", is_flag=True,
                  help="show every payload for approval; submit nothing, bill nothing"),
-    click.option("--expires", type=int, default=3600, help="Presign expiry (default 3600)."),
     click.option("--project", help="project, when the sceneref does not carry one"),
     click.option("--review-sheet",
                  help=("also keep a local copy of each payload's contact sheet here. "

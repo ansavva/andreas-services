@@ -509,3 +509,52 @@ A character record is medium-agnostic on purpose:
 - **A bible built from photographs of a real person is a real person's likeness.**
   Generated video of an identifiable person is a consent question before it is a
   technical one — settle it before anything is published.
+
+
+## Seeing what is in a pool, as opposed to what is in the index
+
+**A pool is a folder tree; the reference index is rows. They disagree, and only
+one command shows the difference.**
+
+```bash
+studio character pool <name> reference --group face      # what is IN the folder
+studio character pool <name> reference --unreferenced    # …that no REF# row names
+studio character refs <name>                             # what the INDEX holds
+studio character pool <name> seed --group current        # any pool, any subfolder
+```
+
+`reference` used to be refused here on the grounds that pools are material and
+references are identity — true of the rows, and not of the folder they sit in. A
+file can sit in `reference/body/` with no row naming it, and with `refs` reading
+the index and `pool` refusing the pool, nothing could see it. Twelve such files
+sat unnoticed in one library. `--unreferenced` is the question that finds them,
+and it compares **node ids** rather than filenames.
+
+Those files are inert where they are — never selected, never counted against the
+engine caps, never in the default set — so archiving them is legibility rather
+than a fix.
+
+## Reorganising, and the one command that destroys
+
+```bash
+studio curate move <name> current/<file> --from seed --to seed --to-group earlier
+studio curate move <name> <file> --from seed --to archive --to-group crops
+studio curate drop <name> <node> --pool archive --apply
+```
+
+**`--to-group` puts the file in a subfolder of the destination pool.** Without
+it the destination was always a pool root, so `--from seed --to seed` — the
+shape of every "it is in the wrong subfolder" fix — moved the file *out* of its
+subfolder and in beside the originals. A pool could be organised and never
+reorganised.
+
+**`curate drop` is the only command here that deletes on request**, and it is
+deliberately awkward: every file named explicitly, dry run by default, no
+globbing. It exists because there was previously no way to remove a mistaken
+upload at all — a file could be moved between pools forever and never
+destroyed, so `archive/` slowly became where things went to not be deleted.
+
+**It refuses a reference rather than detaching one.** `dedupe` detaches in the
+same act because it is removing a duplicate of something the character still
+has; dropping removes the thing itself, and whether a character still IS what
+that image shows is hard rule #2b's question. `studio character detach` first.

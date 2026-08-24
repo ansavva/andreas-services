@@ -22,12 +22,10 @@ from studio_pipeline.adapters import api, store
 
 @click.command(help=__doc__, epilog="\n\nArguments:\n  NAMES  With --folder: specific basenames (default: all in the folder).")
 @click.argument("names", nargs=-1)
-@click.option("--expires", type=int, default=3600, help="Expiry in seconds (default 3600).")
 @click.option("--folder", help="Key prefix (e.g. characters/<name>/reference).")
 @click.option("--json", "json_", is_flag=True, help="Emit JSON [{key,url}] instead of one URL per line.")
 @click.option("--key", help="An exact key (e.g. projects/<p>/runs/<id>/output/clip.mp4).")
-def presign(names, expires, folder, json_, key):
-    _warn_ignored_expiry(expires)
+def presign(names, folder, json_, key):
     if not folder and not key:
         raise click.ClickException("pass --folder <path> or --key <path>.")
 
@@ -60,26 +58,3 @@ def presign(names, expires, folder, json_, key):
     else:
         for entry in results:
             print(entry["url"])
-
-
-def _warn_ignored_expiry(expires: int) -> None:
-    """`--expires` is accepted and ignored, loudly.
-
-    **Kept rather than removed** because `cli_surface_reference.json` is a
-    contract: it is the argparse-era capture of the CLI surface, and dropping a
-    parameter from it is a deliberate re-capture rather than a side effect. (It
-    was also outside the scope #308 set, but that epic is closed and the
-    contract argument never needed it.) But the API owns the TTL now — it signs
-    the URL against its own credentials, using `STUDIO_PRESIGN_TTL_SECONDS` — so
-    a number passed here cannot be honoured. A flag that silently does nothing is
-    the failure the `XHARNESS_S3_*` rename was designed to avoid, so it says so.
-    """
-    context = click.get_current_context(silent=True)
-    if context is None:
-        return
-    source = context.get_parameter_source("expires")
-    if source is not None and source.name != "DEFAULT":
-        click.echo(
-            f"warning: --expires {expires} is ignored; the API sets the URL's lifetime.",
-            err=True,
-        )

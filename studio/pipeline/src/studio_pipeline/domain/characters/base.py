@@ -39,7 +39,6 @@ import mimetypes
 import os
 from pathlib import Path
 
-import click
 
 from studio_pipeline import STUDIO_DIR
 from studio_pipeline.adapters import entities, store
@@ -163,25 +162,6 @@ def upload_file(parent_id: str, local: str, name: str | None = None,
     return store.upload_into(parent_id, filename, source, content_type=ct)
 
 
-def warn_ignored_expiry(expires: int) -> None:
-    """`--expires` is accepted and ignored, loudly. See `objects/presign.py`.
-
-    One copy for the whole package. The API signs every URL against its own
-    credentials and owns the TTL, so a number typed on the command line cannot
-    be honoured — and silently ignoring it is how somebody comes to believe a
-    link lasts a day.
-    """
-    context = click.get_current_context(silent=True)
-    if context is None:
-        return
-    source = context.get_parameter_source("expires")
-    if source is not None and source.name != "DEFAULT":
-        click.echo(
-            f"warning: --expires {expires} is ignored; the API sets the URL's lifetime.",
-            err=True,
-        )
-
-
 def read_text(path: str) -> str:
     with open(path, encoding="utf-8") as fh:
         return fh.read()
@@ -196,5 +176,5 @@ def write_text(path: str, text: str) -> None:
 __all__ = [
     "IMG_EXTS", "LOCAL_DIR", "NAME_RE", "POOLS", "TEMPLATE", "check_name", "die",
     "pool_folder", "pool_nodes", "read_text", "resolve", "upload_file",
-    "warn_ignored_expiry", "write_text",
+    "write_text",
 ]

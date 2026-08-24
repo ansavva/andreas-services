@@ -150,15 +150,14 @@ def check_bindings(bindings: dict) -> dict:
     return clean
 
 
-def presign(nodes: list[str], expires: int = 3600) -> list[str]:
+def presign(nodes: list[str]) -> list[str]:
     """Mint fresh presigned URLs — the ONLY way assets reach Replicate.
 
-    `expires` is accepted and ignored. The API signs these against its own
-    credentials and owns the TTL (`STUDIO_PRESIGN_TTL_SECONDS`), so a number
-    passed here cannot be honoured. The parameter survives because `submit.py`
-    threads `--expires` down from a CLI flag `cli_surface_reference.json`
-    records; `objects/presign.py` warns when a person typed one, and this is the
-    library path with no context to warn from.
+    **There is no expiry parameter.** The API signs these against its own
+    credentials and owns the TTL (`STUDIO_PRESIGN_TTL_SECONDS`). This used to
+    take an `expires` it ignored, purely so the CLI's `--expires` had somewhere
+    to go; that flag existed on eleven commands, could not be honoured by any of
+    them, and is gone.
     """
     return [store.presign_node(node) for node in nodes]
 
@@ -479,19 +478,6 @@ def main():
     pass
 
 
-def _warn_ignored_expiry(expires: int) -> None:
-    """`--expires` is accepted and ignored, loudly. See `objects/presign.py`."""
-    context = click.get_current_context(silent=True)
-    if context is None:
-        return
-    source = context.get_parameter_source("expires")
-    if source is not None and source.name != "DEFAULT":
-        click.echo(
-            f"warning: --expires {expires} is ignored; the API sets the URL's lifetime.",
-            err=True,
-        )
-
-
 def _row(record: dict) -> str:
     """One listing row. **Every field here is one the projection actually carries.**
 
@@ -575,12 +561,11 @@ def do_show(runref, payload, project):
 
 @main.command("outputs")
 @click.argument("runref", required=True)
-@click.option("--expires", type=int, default=3600)
 @click.option("--json", "json_", is_flag=True)
 @click.option("--presign", is_flag=True)
 @click.option("--project", help="Default project for a bare run slug.")
 @reports(RunError, api.ApiError)
-def do_outputs(runref, expires, json_, presign, project):
+def do_outputs(runref, json_, presign, project):
     """`--presign` reaches `store` directly, and that is a fix.
 
     The flag is named `presign` and so is this module's function, so inside this
@@ -588,9 +573,10 @@ def do_outputs(runref, expires, json_, presign, project):
     `TypeError: 'bool' object is not callable` for as long as the option
     existed. `--help` printed happily and nothing invoked it. Renaming the
     parameter is not available: `cli_surface_reference.json` records the dest,
-    and it is a contract. Doing the work inline is.
+    and it is a contract. Doing the work inline is. (The shadowing is harmless
+    now that `presign` takes one argument, but the inline call stays: it is the
+    thing that made the bug impossible rather than merely unlikely.)
     """
-    _warn_ignored_expiry(expires)
     nodes = resolve_output_nodes(runref, project)
     vals = [store.presign_node(n) for n in nodes] if presign else nodes
     print(json.dumps(vals, indent=2) if json_ else "\n".join(vals))

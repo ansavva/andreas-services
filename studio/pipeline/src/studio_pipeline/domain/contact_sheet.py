@@ -69,7 +69,8 @@ def _pool_images(root: str) -> list[dict]:
     return sorted(found, key=lambda e: store.natural_key(e["rel"]))
 
 
-def _gather_from_store(character: str, folder: str, dest: str) -> list[str]:
+def _gather_from_store(character: str, folder: str, dest: str,
+                       group: str | None = None) -> list[str]:
     """Download a character pool into `dest`, one local file per image.
 
     **The local name carries the group** (`face_<name>_1.webp`), because it
@@ -80,9 +81,16 @@ def _gather_from_store(character: str, folder: str, dest: str) -> list[str]:
     """
     record = CHARACTER.resolve(character)
     root = CHARACTER.pool_folder(record, folder)
+    # A pool is a tree, so sheeting one branch of it has to be expressible.
+    # Without this the only way to eyeball `seed/current/` was to download the
+    # folder by hand and come back through `--src`, which is the workaround
+    # this command exists to remove.
+    if group:
+        root = store.ensure_child_folder(root["id"], group)
+    where = f"{folder}/{group}" if group else folder
     images = _pool_images(root["id"])
     if not images:
-        sys.exit(f"no images under {character}/{folder}")
+        sys.exit(f"no images under {character}/{where}")
     os.makedirs(dest, exist_ok=True)
     paths = []
     for image in images:
@@ -156,9 +164,10 @@ def build(paths: list[str], out: str, cols: int, cell: int,
 @click.option("--character", help="Character name; pull characters/<name>/<pool>/ from S3.")
 @click.option("--cols", type=int, default=5, help="Grid columns (default: 5).")
 @click.option("--folder", type=click.Choice(["archive", "corpus", "reference", "seed"]), default='reference', help="Which character pool to sheet (default: reference).")
+@click.option("--group", default=None, help="A subfolder of the pool (e.g. seed/current).")
 @click.option("--out", required=True, help="Output PNG path.")
 @click.option("--src", help="Local directory of images (instead of --character).")
-def contact_sheet(cell, character, cols, folder, out, src):
+def contact_sheet(cell, character, cols, folder, group, out, src):
     if bool(character) == bool(src):
         raise click.UsageError("provide exactly one of --character or --src")
 
@@ -166,5 +175,5 @@ def contact_sheet(cell, character, cols, folder, out, src):
         paths = _gather_from_dir(src)
     else:
         tmp = tempfile.mkdtemp(prefix=f"{character}-{folder}-")
-        paths = _gather_from_store(character, folder, tmp)
+        paths = _gather_from_store(character, folder, tmp, group)
     build(paths, out, cols, cell)

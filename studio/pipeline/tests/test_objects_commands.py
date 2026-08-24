@@ -28,7 +28,7 @@ from studio_pipeline.adapters import api, store
 def fake_store(monkeypatch):
     """A store holding one folder of files, in deliberately awkward order."""
     files = ["<name>_10.webp", "<name>_2.webp", "<name>_1.webp"]
-    state = {"files": files, "written": {}, "presigned": []}
+    state = {"files": files, "written": {}, "presigned": [], "ensured": []}
 
     def _children(path):
         if path != "characters/<name>/reference":
@@ -48,10 +48,16 @@ def fake_store(monkeypatch):
         destination.write_bytes(b"bytes-of-" + path.encode())
         return destination
 
+    def _folder(path):
+        """`upload` ensures its destination now, as `convert --dest-key` does."""
+        state["ensured"].append(path)
+        return {"id": f"node-{path}", "kind": "folder"}
+
     monkeypatch.setattr(store, "children", _children)
     monkeypatch.setattr(store, "presign", _presign)
     monkeypatch.setattr(store, "upload", _upload)
     monkeypatch.setattr(store, "download", _download)
+    monkeypatch.setattr(store, "folder", _folder)
     return state
 
 
@@ -107,20 +113,6 @@ def test_presign_names_what_is_missing(fake_store):
 
 def test_presign_needs_a_folder_or_a_key(fake_store):
     assert _run("presign").exit_code != 0
-
-
-def test_expires_is_accepted_and_says_it_is_ignored(fake_store):
-    """A flag that silently does nothing is the failure the rename avoided."""
-    result = _run("presign", "--key", "a/b.mp4", "--expires", "60")
-
-    assert result.exit_code == 0
-    assert "--expires 60 is ignored" in result.output
-
-
-def test_expires_is_silent_when_not_passed(fake_store):
-    result = _run("presign", "--key", "a/b.mp4")
-
-    assert "ignored" not in result.output
 
 
 # ─────────────────────────────── download ──────────────────────────────
@@ -296,3 +288,38 @@ def test_convert_names_a_source_that_is_not_there(library):
 
     assert result.exit_code == 1
     assert "porch-teaser/input/nothing.png" in result.output
+
+
+def test_no_command_offers_an_expiry_it_cannot_honour(fake_store):
+    """**`--expires` is gone from all eleven commands that declared it.**
+
+    The API signs presigned URLs against its own credentials and owns the TTL
+    (`STUDIO_PRESIGN_TTL_SECONDS`), so no number typed at the CLI could ever
+    reach it. Eight of the eleven warned that they were ignoring it; three —
+    `run`, and the `scenes` commands that pass their options down to it — took
+    it silently. A flag that does nothing is the failure the `XHARNESS_S3_*`
+    rename was designed around, and warning about it every time was a
+    workaround for not having removed it.
+    """
+    result = _run("presign", "--key", "a/b.mp4", "--expires", "60")
+
+    assert result.exit_code != 0
+    assert "no such option" in result.output.lower()
+
+
+def test_upload_creates_the_destination_folder(fake_store, tmp_path):
+    """**The gap that made a pool impossible to organise.**
+
+    `store.folder` is idempotent and creates missing ancestors, and
+    `convert --dest-key` has always called it. `upload` went straight to
+    `store.upload`, so the first file into a new subfolder died on the parent
+    that did not exist — and nothing in the CLI created one.
+    """
+    source = tmp_path / "shot.webp"
+    source.write_bytes(b"webp")
+
+    result = _run("upload", "--folder", "characters/<name>/seed/current", str(source))
+
+    assert result.exit_code == 0, result.output
+    assert "characters/<name>/seed/current/shot.webp" in result.output
+    assert fake_store["ensured"] == ["characters/<name>/seed/current"]

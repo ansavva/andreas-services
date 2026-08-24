@@ -137,3 +137,34 @@ actually honours.** `studio-media-add-model` reads both for exactly this reason.
 - **A run records where it lives and who is in it** — `project` and
   `characters[]`, the latter inferred from the bindings rather than trusted from
   the flags, so it cannot disagree with the images actually sent.
+
+
+## Two guards on `studio run`
+
+**`--again` — the same payload is not submitted twice by accident.** Model,
+inputs and bound images are fingerprinted, and a repeat within the same project
+is refused with the earlier run named. It exists because a batch driven by a
+shell script was started twice when the harness reported it finished and it had
+not: ~46 images were generated twice and the results overwrote each other, so
+nothing looked wrong afterwards. Passing `--again` submits anyway — re-rolling a
+generative model with the same prompt is a normal thing to want, and the point
+is that it is a decision somebody makes rather than something a script does in
+silence.
+
+The ledger is local and per profile. It catches the same machine submitting
+twice, which is what happens; it does not catch a second machine.
+
+**An `owner/name` that is not a registry key runs off the live schema.** Trying
+a model before onboarding it had no supported path, so a four-way upscaler
+comparison ran three of them straight against the provider — no validation, no
+approval render, no run records.
+
+```bash
+studio run --model vendor/some-upscaler --project <p> --start-key <node> --no-refs --dry-run
+```
+
+The entry is inferred in memory by the same code `studio add-model` proposes
+from, and **nothing is written to the registry** — onboarding stays a deliberate
+act with a skill page attached. Inferred fields are guesses, `accepts_ext`
+especially, so the run warns. A registry key never contains a slash, so a
+misspelt one still fails here rather than reaching a provider.

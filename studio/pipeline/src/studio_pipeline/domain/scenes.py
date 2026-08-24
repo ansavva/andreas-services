@@ -530,19 +530,6 @@ def plan_table(record: dict) -> list[str]:
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
 
-def _warn_ignored_expiry(expires: int) -> None:
-    """`--expires` is accepted and ignored, loudly. See `objects/presign.py`."""
-    context = click.get_current_context(silent=True)
-    if context is None:
-        return
-    source = context.get_parameter_source("expires")
-    if source is not None and source.name != "DEFAULT":
-        click.echo(
-            f"warning: --expires {expires} is ignored; the API sets the URL's lifetime.",
-            err=True,
-        )
-
-
 @click.group(help=__doc__)
 def main():
     pass
@@ -679,13 +666,11 @@ def do_show(ref, project):
 
 @main.command("outputs")
 @click.argument("ref", required=True)
-@click.option("--expires", type=int, default=3600)
 @click.option("--presign", is_flag=True)
 @click.option("--project")
 @errors.reports(api.ApiError)
-def do_outputs(ref, expires, presign, project):
+def do_outputs(ref, presign, project):
     """The stitched file(s), as node ids or as temporary URLs."""
-    _warn_ignored_expiry(expires)
     record = resolve_scene(ref, project)
     folder = store.child(record["folder"], OUTPUT_FOLDER)
     entries = store.files_of(folder["id"]) if folder else []

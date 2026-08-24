@@ -36,6 +36,8 @@ import click
 from studio_pipeline.adapters import replicate as RA
 from studio_pipeline.domain import projects as PROJ
 from studio_pipeline.domain import runs as R
+from studio_pipeline.engine import add_model as AM
+from studio_pipeline.engine import ledger as LEDGER
 from studio_pipeline.engine import refs as REFS
 from studio_pipeline.engine import registry as REG
 from studio_pipeline.engine import schema as MS
@@ -168,7 +170,15 @@ def build_payload(entry: dict, args) -> dict:
         prompt = args.prompt
     if prompt:
         payload["prompt"] = prompt
-    if not payload.get("prompt"):
+
+    # Not every model has a prompt. An upscaler takes an image and settings and
+    # nothing else, and its registry entry records that as `"prompt": null` —
+    # so demanding one here made it unrunnable: the only payload the CLI would
+    # build was the one the model's own schema rejected.
+    if entry.get("prompt") is None:
+        if payload.get("prompt"):
+            die(f"{entry['key']} takes no prompt — drop --prompt/--prompt-file.")
+    elif not payload.get("prompt"):
         die("a prompt is required — pass --prompt, --prompt-file, "
             "or an --input-file containing one.")
 
@@ -192,15 +202,42 @@ def build_payload(entry: dict, args) -> dict:
     return payload
 
 
+def _ephemeral_entry(model: str) -> dict:
+    """A registry entry for a model that is not in the registry, held in memory.
+
+    Built by the same inference `studio add-model` proposes, off the same live
+    schema, so a trial submission is validated, rendered for approval and
+    recorded exactly like a registered one. Nothing is written to `models.json`
+    — onboarding is still a deliberate act with a skill page attached, and this
+    is the step BEFORE deciding whether that is worth doing.
+
+    The guessed fields are the point of the warning: `accepts_ext` in particular
+    is inferred from prose and is the one most likely to be wrong.
+    """
+    token = RA.load_token()
+    try:
+        props, schemas = MS.fetch(model, token)
+    except MS.SchemaError as e:
+        die(str(e))
+    if not props:
+        die(f"{model} has no published input schema — cannot run it.")
+    entry, _notes = AM.infer(model, props, schemas, AM.readme(model, token))
+    entry["key"] = model
+    print(f"note: {model} is not registered; running it off its live schema. "
+          f"Fields are inferred rather than curated — `studio add-model {model}` "
+          "proposes an entry to check.", file=sys.stderr)
+    return entry
+
+
 @main.command("run")
 @click.option("--aspect-ratio", help="Model-dependent; validated against the live schema.")
 @click.option("--character", multiple=True, help=("A character supplying identity. Repeatable — one piece of work "
               "can involve several."))
 @click.option("--dest", help="Also keep a local copy in this directory.")
+@click.option("--again", is_flag=True, help="Submit even though this exact payload was submitted before.")
 @click.option("--dry-run", is_flag=True, help="Show the payload for approval; submit nothing, bill nothing.")
 @click.option("--end-key", help="Node id (or name path) of the last frame (video).")
 @click.option("--end-run", help="An earlier run's output as the last frame (video).")
-@click.option("--expires", type=int, default=3600, help="Presign expiry (default 3600).")
 @click.option("--extra", help="JSON object of model-specific inputs.")
 @click.option("--image-run", help="An earlier run's output as the image being edited.")
 @click.option("--input", "input_", type=int, multiple=True, help="Image number from the PROJECT's input pool. Repeatable.")
@@ -231,7 +268,16 @@ def cmd_run(**options):
     try:
         entry = REG.get(args.model)
     except REG.RegistryError as e:
-        die(str(e))
+        # **An `owner/name` that is not a registry key is read as a live model.**
+        # Evaluating one before onboarding it had no supported path: the
+        # alternative was calling Replicate outside the harness entirely, which
+        # is how a four-way upscaler comparison ended up with no run records,
+        # no schema validation and no approval render. A registry key never
+        # contains a slash, so the two cannot be confused — and a typo like
+        # `nano-bannana-pro` still fails here rather than reaching a provider.
+        if "/" not in args.model:
+            die(str(e))
+        entry = _ephemeral_entry(args.model)
     d = SUB.defaults(entry["kind"])
     if getattr(args, "name", None) is None:
         args.name = d["slug"]
@@ -280,6 +326,20 @@ def cmd_run(**options):
     # the folder name, which is precisely the identity-in-a-string this model
     # removes.
     run = f"{args.project['slug']}/{R.slugify(args.name)}"
+
+    # **Has this exact submission already been paid for?** See `engine/ledger`
+    # for what happened. Checked after preflight so a payload the model would
+    # reject is reported as a schema fault rather than as a duplicate, and
+    # before the dry run returns so `--dry-run` says it too — a dry run is the
+    # thing people use to check a batch before starting it, and it is the
+    # cheapest possible moment to find out.
+    digest = LEDGER.fingerprint(entry["model"], payload, bindings)
+    earlier = LEDGER.seen(args.project["id"], digest)
+    if earlier and not args.again:
+        die(f"this exact payload was already submitted to {args.project['slug']} "
+            f"as {earlier['name']} ({earlier['run']}).\n"
+            "       Nothing has been sent. To generate it again anyway: --again")
+
     if args.dry_run:
         # `json_`, not `json` — `--json` cannot be a Python attribute name, so
         # Click was given the safe spelling and this line read the unsafe one.
@@ -294,6 +354,10 @@ def cmd_run(**options):
         SUB.execute(entry, payload, bindings, token, args)
     except (SUB.SubmitError, RA.ReplicateError) as e:
         die(str(e))
+    # AFTER the submit, never before: a payload the provider refused was not
+    # paid for, and a ledger entry written ahead of the call would make the
+    # retry look like the duplicate.
+    LEDGER.record(args.project["id"], digest, run=run, name=args.name)
     return 0
 
 

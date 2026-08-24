@@ -605,7 +605,7 @@ def slot_args(slot: dict, spec: dict, entry: dict, name: str, opts) -> SimpleNam
         image_run=None, ref_run=(), input_=(), input=(),
         start_run=None, start_key=None, end_run=None, end_key=None,
         no_refs=False, dry_run=opts.dry_run, json_=False, json=False,
-        poll=True, dest=opts.dest, expires=opts.expires,
+        poll=True, dest=opts.dest,
         interval=d["interval"], timeout=d["timeout"],
     )
 
@@ -795,7 +795,6 @@ SHOOT_OPTIONS = [
     click.option("--dest", help="Also keep a local copy of each plate in this directory."),
     click.option("--dry-run", is_flag=True,
                  help="Render every payload for approval; submit nothing, bill nothing."),
-    click.option("--expires", type=int, default=3600, help="Presign expiry (default 3600)."),
     click.option("--extra", help="JSON object merged into every slot's model inputs."),
     click.option("--group", type=click.Choice(["all", *P.POSE_GROUPS]), default="all",
                  help="Shoot only this group of slots (default: all)."),

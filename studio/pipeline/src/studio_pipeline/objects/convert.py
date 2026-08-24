@@ -102,7 +102,6 @@ def _source_name(key: str) -> str:
 # Both are frozen: `tests/cli_surface_reference.json` is the argparse-era capture
 # of the CLI surface and `test_help_text_survived` compares these strings against
 # it, so correcting the wording here is a contract change and not a comment fix.
-# Same standing as `--expires` in `objects/presign.py`.
 @click.option("--dest-key", help="Explicit destination S3 key instead.")
 @click.option("--for", "for_", type=click.Choice(["gpt-image-1.5", "gpt-image-2", "kling", "nano-banana-2", "nano-banana-pro", "seedance"]), help="Convert only if this engine would reject the current format.")
 @click.option("--key", help="Source S3 key (full).")

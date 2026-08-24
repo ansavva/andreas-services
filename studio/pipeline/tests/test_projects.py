@@ -203,13 +203,6 @@ def test_projects_inputs_can_presign(library):
     assert "memory://" in result.output
 
 
-def test_projects_inputs_says_expires_is_ignored(library):
-    result = CliRunner().invoke(cli.main, ["projects", "inputs", "porch-teaser",
-                                           "--expires", "60"])
-    assert result.exit_code == 0, result.output
-    assert "--expires 60 is ignored" in result.output
-
-
 def test_deleting_a_project_that_holds_runs_is_refused_and_names_cascade(library):
     """The refusal points at the flag that does the right thing, not `--force`.
 

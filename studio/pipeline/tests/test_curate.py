@@ -259,3 +259,88 @@ def test_groups_warns_when_the_set_exceeds_every_engine_cap(library):
     result = _run("groups", "subject-a")
     assert result.exit_code == 0, result.output
     assert "kling 7" in result.output
+
+
+def test_move_into_a_group_lands_in_the_subfolder(library):
+    """**The destination could only ever be a pool root.**
+
+    The FILE argument has always reached into a subfolder — `face/front.webp` —
+    so a pool could be organised one way and never reorganised. `--from seed
+    --to seed`, the shape of every "it is in the wrong subfolder" fix, moved the
+    file OUT of its subfolder and into the root beside the originals.
+    """
+    result = _run("move", "subject-a", library.body_1,
+                  "--from", "reference", "--to", "archive",
+                  "--to-group", "superseded", "--apply")
+
+    assert result.exit_code == 0, result.output
+    record = CHARACTER.resolve("subject-a")
+    archive = CHARACTER.pool_folder(record, "archive")
+    parent = library.fake.nodes[library.body_1]["parent_id"]
+    assert parent != archive["id"], "landed in the pool root, not the group"
+    assert library.fake.nodes[parent]["name"] == "superseded"
+    assert library.fake.nodes[parent]["parent_id"] == archive["id"]
+
+
+def test_the_duplicate_check_looks_inside_the_group(library):
+    """Byte-identical *where it is going* — which is the subfolder now.
+
+    Against the pool root it would compare with the wrong set: a file already in
+    `archive/superseded/` is not a reason to destroy one heading for
+    `archive/crops/`, and a file loose in `archive/` is not a reason to spare it.
+    """
+    record = CHARACTER.resolve("subject-a")
+    archive = CHARACTER.pool_folder(record, "archive")
+    group = store.ensure_child_folder(archive["id"], "superseded")
+    source = library.fake.put_file(library.face_folder, "twin.webp", b"identical")
+    library.fake.put_file(group["id"], "twin.webp", b"identical")
+
+    result = _run("move", "subject-a", source["id"],
+                  "--from", "reference", "--to", "archive",
+                  "--to-group", "superseded", "--apply")
+
+    assert result.exit_code == 0, result.output
+    assert "byte-identical copy is already in archive/superseded/" in result.output
+    assert source["id"] not in library.fake.nodes
+
+
+def test_drop_is_a_dry_run_until_told_otherwise(library):
+    stray = library.fake.put_file(library.face_folder, "spare.webp", b"spare")
+
+    result = _run("drop", "subject-a", stray["id"], "--pool", "reference")
+
+    assert result.exit_code == 0, result.output
+    assert "DRY RUN" in result.output
+    assert stray["id"] in library.fake.nodes
+
+
+def test_drop_refuses_an_image_a_row_still_names(library):
+    """**It refuses rather than detaching, and that is the difference from
+    `dedupe`.**
+
+    `dedupe` detaches in the same act because it is removing a duplicate of
+    something the character still has. Dropping removes the thing itself, and
+    whether a character still IS what that image shows is hard rule #2b's
+    question — a person's, not a command's.
+    """
+    assert library.body_1 in {e["node"] for e in E.reference_entries(library.character)}
+
+    result = _run("drop", "subject-a", library.body_1, "--pool", "reference", "--apply")
+
+    assert result.exit_code != 0
+    assert "REF# row still names" in result.output
+    assert "studio character detach" in result.output
+    assert library.body_1 in library.fake.nodes, "refused, and nothing destroyed"
+
+
+def test_drop_destroys_what_it_named(library):
+    """The gap it closes: a mistaken upload was previously permanent — it could
+    be moved between pools forever and never removed."""
+    stray = library.fake.put_file(library.face_folder, "never-meant-this.webp", b"oops")
+
+    result = _run("drop", "subject-a", stray["id"], "--pool", "reference", "--apply")
+
+    assert result.exit_code == 0, result.output
+    assert "APPLIED" in result.output
+    assert stray["id"] not in library.fake.nodes
+    assert library.face_1 in library.fake.nodes, "took only what it was given"

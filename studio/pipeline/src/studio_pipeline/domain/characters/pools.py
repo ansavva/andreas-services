@@ -23,19 +23,22 @@ import sys
 
 import click
 
-from studio_pipeline.adapters import store
+from studio_pipeline.adapters import entities, store
 from studio_pipeline.domain.characters.base import (
     die,
     pool_folder,
     pool_nodes,
     resolve,
     upload_file,
-    warn_ignored_expiry,
 )
 
 #: The three this module owns. `reference` is deliberately absent — adding to it
 #: is a decision about identity and goes through `add-refs` (hard rule #2b).
 MATERIAL_POOLS = ["archive", "corpus", "seed"]
+#: `add-to` still refuses `reference`: putting a file there is not what makes it
+#: identity, and `character add-refs` is the command that does (hard rule #2b).
+#: LISTING one is a different act and is allowed — see `cmd_pool`.
+LISTABLE_POOLS = ["archive", "corpus", "reference", "seed"]
 
 
 @click.command("add-to")
@@ -62,22 +65,42 @@ def cmd_add_to_pool(name, pool, files):
 
 @click.command("pool")
 @click.argument("name", required=True)
-@click.argument("pool", required=True, type=click.Choice(MATERIAL_POOLS))
-@click.option("--expires", type=int, default=3600)
+@click.argument("pool", required=True, type=click.Choice(LISTABLE_POOLS))
+@click.option("--group", default=None,
+              help="A subfolder of the pool (e.g. seed/current, reference/face).")
 @click.option("--json", "json_", is_flag=True)
 @click.option("--presign", is_flag=True)
-def cmd_pool(name, pool, expires, json_, presign):
-    """List a non-reference pool. These are material, not identity.
+@click.option("--unreferenced", is_flag=True,
+              help="Only files no REF# row names — what is sitting in a folder without being identity.")
+def cmd_pool(name, pool, group, json_, presign, unreferenced):
+    """List what is actually IN a pool folder, which is not the same as the index.
 
     Node ids and names, where this printed S3 keys. A key was never something a
     caller could do anything with — it could not be fetched without credentials
     the CLI does not have — and an id is what every other command here takes.
+
+    **`reference` is listable now.** It used to be excluded on the grounds that
+    the pools are material and references are identity — which is true of the
+    ROWS and not of the folder. A file can sit in `reference/body/` with no
+    `REF#` row naming it, and nothing then listed it: `character refs` reads the
+    index and this command refused the pool. Twelve such files went unnoticed in
+    one library because the only two views of `reference/` both looked at the
+    index. `--unreferenced` is the question that finds them.
+
+    `--group` reaches one level down, because a pool is a tree now — `seed/`
+    with an `original/` and a folder per age, `reference/` with one per group.
     """
     record = resolve(name)
-    warn_ignored_expiry(expires)
-    entries = pool_nodes(record, pool)
+    entries = pool_nodes(record, pool, group)
+    if unreferenced:
+        # The index names NODE IDS, so this is a set difference and not a
+        # filename comparison — which is the whole reason it is reliable.
+        named = {entry["node"] for entry in entities.reference_entries(record["id"])}
+        entries = [e for e in entries if e["id"] not in named]
+    where = f"{pool}/{group}" if group else f"{pool}/"
     if not entries:
-        print(f"({record['slug']} has nothing in {pool}/)", file=sys.stderr)
+        which = "unreferenced files" if unreferenced else "nothing"
+        print(f"({record['slug']} has {which} in {where})", file=sys.stderr)
         return
     if presign:
         urls = [store.presign_node(entry["id"]) for entry in entries]

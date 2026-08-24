@@ -156,19 +156,6 @@ def main():
     pass
 
 
-def _warn_ignored_expiry(expires: int) -> None:
-    """`--expires` is accepted and ignored, loudly. See `objects/presign.py`."""
-    context = click.get_current_context(silent=True)
-    if context is None:
-        return
-    source = context.get_parameter_source("expires")
-    if source is not None and source.name != "DEFAULT":
-        click.echo(
-            f"warning: --expires {expires} is ignored; the API sets the URL's lifetime.",
-            err=True,
-        )
-
-
 def _character_ids(names) -> list[str]:
     ids = []
     for name in names:
@@ -354,10 +341,9 @@ def do_add_inputs(files, project, json_):
 
 @main.command("inputs")
 @click.argument("project", required=True)
-@click.option("--expires", type=int, default=3600)
 @click.option("--json", "json_", is_flag=True)
 @click.option("--presign", is_flag=True)
-def do_inputs(project, expires, json_, presign):
+def do_inputs(project, json_, presign):
     """The input pool, with positions shown — because `--input N` is a position.
 
     `--presign` reaches `store` inline for the reason `runs outputs` does: the
@@ -366,7 +352,6 @@ def do_inputs(project, expires, json_, presign):
     offer.
     """
     record = require_project(project)
-    _warn_ignored_expiry(expires)
     pool = input_pool(record)
     if not pool:
         print(f"(project {record['slug']} has no input pool yet)", file=sys.stderr)

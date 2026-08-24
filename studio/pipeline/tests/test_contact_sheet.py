@@ -20,6 +20,7 @@ from click.testing import CliRunner
 
 from studio_pipeline import cli
 from studio_pipeline.adapters import api, store
+from studio_pipeline.domain import characters as CHARACTER
 from studio_pipeline.domain import contact_sheet as SHEET
 
 NAME = "subject-a"
@@ -86,3 +87,20 @@ def test_a_refused_pool_is_not_an_empty_one(library, monkeypatch, tmp_path):
 
     with pytest.raises(api.Forbidden):
         SHEET._gather_from_store(NAME, "reference", str(tmp_path))
+
+
+def test_contact_sheet_can_sheet_one_group_of_a_pool(library, tmp_path):
+    """Eyeballing `seed/current/` used to mean downloading it by hand and coming
+    back through `--src` — the workaround this command exists to remove."""
+    record = CHARACTER.resolve("subject-a")
+    seed = CHARACTER.pool_folder(record, "seed")
+    group = store.ensure_child_folder(seed["id"], "current")
+    library.fake.put_file(group["id"], "in-the-group.png", b"png-bytes")
+
+    out = tmp_path / "sheet.png"
+    result = _run("contact-sheet", "--character", "subject-a",
+                  "--folder", "seed", "--group", "current", "--out", str(out))
+
+    assert result.exit_code == 0, result.output
+    assert out.exists()
+    assert "1 tiles" in result.output or "(1 tile" in result.output

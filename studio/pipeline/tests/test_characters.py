@@ -30,7 +30,7 @@ import yaml
 from click.testing import CliRunner
 
 from studio_pipeline import cli
-from studio_pipeline.adapters import api, entities as E
+from studio_pipeline.adapters import api, entities as E, store
 from studio_pipeline.domain import characters as CHARACTER
 from studio_pipeline.domain.characters import profile as PROFILE
 
@@ -369,12 +369,6 @@ def test_selection_can_presign(library):
     assert "memory://" in result.output
 
 
-def test_selection_says_expires_is_ignored(library):
-    result = _run("selection", "subject-a", "--expires", "60")
-    assert result.exit_code == 0, result.output
-    assert "--expires 60 is ignored" in result.output
-
-
 # ── the non-reference pools ─────────────────────────────────────────────────
 
 def test_add_to_keeps_the_basename_it_arrived_with(library, tmp_image):
@@ -399,13 +393,6 @@ def test_pool_can_presign(library, tmp_image):
     assert "memory://" in result.output
 
 
-def test_pool_says_expires_is_ignored(library, tmp_image):
-    _run("add-to", "subject-a", "corpus", str(tmp_image))
-    result = _run("pool", "subject-a", "corpus", "--expires", "60")
-    assert result.exit_code == 0, result.output
-    assert "--expires 60 is ignored" in result.output
-
-
 def test_the_archive_pool_warns_that_it_is_retired_material(library, tmp_image):
     """`archive/` is never fed to a model unless it was asked for by name — the
     whole point of it having a name."""
@@ -413,3 +400,48 @@ def test_the_archive_pool_warns_that_it_is_retired_material(library, tmp_image):
     result = _run("pool", "subject-a", "archive")
     assert result.exit_code == 0, result.output
     assert "archive/" in result.output
+
+
+def test_pool_lists_the_reference_folder_it_used_to_refuse(library):
+    """**The folder and the index are different questions.**
+
+    `reference` was excluded from this command because references are identity
+    rather than material — true of the ROWS, and not of the folder they happen
+    to sit in. With `character refs` reading the index and this command refusing
+    the pool, nothing in the CLI could answer "what files are actually in
+    reference/?" — which is how twelve files sat in one library's `reference/`
+    subfolders, named by no row, unnoticed.
+    """
+    result = _run("pool", "subject-a", "reference", "--group", "face")
+
+    assert result.exit_code == 0, result.output
+    assert "front-neutral.webp" in result.output
+
+
+def test_pool_unreferenced_finds_a_file_no_row_names(library, tmp_image):
+    """The set difference is over NODE IDS, not filenames — which is why it is
+    reliable where a name comparison would not be."""
+    stray = library.fake.put_file(library.face_folder, "stray.webp", b"loose")
+
+    listed = _run("pool", "subject-a", "reference", "--group", "face")
+    only = _run("pool", "subject-a", "reference", "--group", "face", "--unreferenced")
+
+    assert "front-neutral.webp" in listed.output
+    assert only.exit_code == 0, only.output
+    assert stray["id"] in only.output
+    assert "front-neutral.webp" not in only.output
+
+
+def test_pool_group_reaches_into_a_subfolder(library, tmp_image):
+    """A pool is a tree now — `seed/` with an `original/` and a folder per age."""
+    _run("add-to", "subject-a", "seed", str(tmp_image))
+    record = CHARACTER.resolve("subject-a")
+    seed = CHARACTER.pool_folder(record, "seed")
+    deep = store.ensure_child_folder(seed["id"], "current")
+    library.fake.put_file(deep["id"], "tucked-away.webp", b"deep")
+
+    root = _run("pool", "subject-a", "seed")
+    grouped = _run("pool", "subject-a", "seed", "--group", "current")
+
+    assert "plate.png" in root.output and "tucked-away" not in root.output
+    assert "tucked-away.webp" in grouped.output and "plate.png" not in grouped.output
