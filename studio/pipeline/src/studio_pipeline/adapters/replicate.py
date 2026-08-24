@@ -27,11 +27,17 @@ class ReplicateError(Exception):
 
 
 def load_token() -> str:
-    """REPLICATE_API_TOKEN from the environment, falling back to the repo .env."""
+    """REPLICATE_API_TOKEN from the environment, the config dir, or the repo .env."""
     tok = env_value("REPLICATE_API_TOKEN")
     if tok:
         return tok
-    raise ReplicateError("REPLICATE_API_TOKEN not set (environment or studio/.env).")
+    # Names the config dir first because that is where it should be put now,
+    # and names `studio/.env` because that is where an older checkout has it.
+    raise ReplicateError(
+        "REPLICATE_API_TOKEN not set. Put it in "
+        "~/.config/andreas-services/studio/dev.env (preferred), export it, or "
+        "leave it in studio/.env."
+    )
 
 
 def api(method: str, url: str, token: str, body: dict | None = None) -> dict:

@@ -54,6 +54,7 @@ for command in aws jq uv; do require_command "$command"; done
 load_machine_id false
 load_aws_identity
 load_dev_stack_outputs
+load_dev_user_email
 load_dev_user_password "$ALLOW_PROMPT"
 
 log "Signing in as $STUDIO_DEV_USER_EMAIL against $DEV_POOL_ID."

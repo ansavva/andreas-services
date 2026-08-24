@@ -147,7 +147,7 @@ studio/pipeline/
         │                          `reports` for a module that raises, `die` for
         │                          one that finds the problem mid-function.
         │                          One `die`, where there were nine.
-        ├── __init__.py            STUDIO_DIR, ENV_FILE, env_value
+        ├── __init__.py            STUDIO_DIR, DEV_ENV_FILE, ENV_FILE, env_value
         │
         ├── adapters/              THE OUTSIDE WORLD — everything with a side effect
         │   ├── store.py           the media store, by path, through the API
@@ -250,7 +250,26 @@ API keys:
   `xai/grok-imagine-video`; image: `google/nano-banana-pro`,
   `google/nano-banana-2`, `openai/gpt-image-2`, `openai/gpt-image-1.5`.
   `engine/models.json` is the list that is actually true.
-  Put it in `studio/.env` (copy `studio/.env.example`; `.env` is git-ignored).
+
+  **Put it in `~/.config/andreas-services/studio/dev.env`**, the file that
+  already holds this machine's dev pool password:
+
+  ```
+  REPLICATE_API_TOKEN=r8_…
+  ```
+
+  `studio/.env` is still read, and second — so a token already there keeps
+  working, and moving it to the config dir takes effect without deleting
+  anything. The order is what makes the move safe: the config dir wins, so a
+  line left behind cannot quietly send the old token to Replicate.
+
+  The reason to prefer the config dir is that `.gitignore` protects a secret
+  from `git add` and from nothing else — not from `git add -f`, not from a
+  copy of the working tree, not from a backup tool that indexes the repo. A
+  credential outside the tree is out of reach of all three. The two stack pins
+  `dev-setup.sh` writes (`STUDIO_S3_BUCKET`, `STUDIO_CATALOG_TABLE`) stay in
+  `studio/.env`: they are resource names, not secrets, and they describe this
+  checkout.
 
 Asset storage needs **neither an AWS login nor a key of its own.** Character
 profiles, reference images and every generated asset live in S3 and never in

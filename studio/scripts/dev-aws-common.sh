@@ -21,20 +21,37 @@ AWS_REGION_VALUE="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
 AWS_PROFILE_ARGS=()
 AWS_PROFILE_RESOLVED=0
 
-# The dev stack's one account, and the file its password lives in.
+# The dev stack's one account. **Neither half of it is committed** — the
+# password never could be, and the address no longer is.
 #
-# **The address is committed and the password never can be.** `.test` is a
-# reserved TLD (RFC 2606), so this can never be a real mailbox and Cognito can
-# never mail a stranger on a typo — which is what makes hard-coding it safe and
-# what makes it worth hard-coding: `dev-user.sh` creates exactly the account
+# It used to be the literal `dev@studio.test`, on the reasoning that a reserved
+# `.test` TLD (RFC 2606) can never be a real mailbox, so the address was safe to
+# hard-code and worth hard-coding: `dev-user.sh` creates exactly the account
 # `dev-token.sh` signs in as, and one constant is how those cannot drift onto
 # two different people.
 #
-# The password file sits outside the repo on purpose. A default here would be a
-# credential in a git history, and there is no value that would be safe to put
-# in one.
-STUDIO_DEV_USER_EMAIL="dev@studio.test"
+# That second half still has to hold, and now it holds through the config file
+# rather than through the repo: both scripts read one value from one place, so
+# they still cannot drift — the place is just no longer inside a checkout.
+# `.test` is still what belongs in it, and nothing here enforces that, because
+# the value is now the developer's to choose.
 DEV_ENV_FILE="$CONFIG_DIR/dev.env"
+
+load_dev_user_email() {
+  # Environment first, then the config file, and no default anywhere. Mirrors
+  # `load_dev_user_password` below, deliberately: the two halves of one account
+  # should not come from two kinds of place.
+  if [[ -z "${STUDIO_DEV_USER_EMAIL:-}" && -f "$DEV_ENV_FILE" ]]; then
+    # shellcheck source=/dev/null
+    source "$DEV_ENV_FILE"
+  fi
+  [[ -n "${STUDIO_DEV_USER_EMAIL:-}" ]] || die \
+    "STUDIO_DEV_USER_EMAIL is not set and $DEV_ENV_FILE provides none. Add a
+  STUDIO_DEV_USER_EMAIL= line to that file. An address in the reserved .test TLD
+  is what belongs there: it can never be a real mailbox, so Cognito cannot mail
+  a stranger on a typo."
+  export STUDIO_DEV_USER_EMAIL
+}
 
 # **Progress goes to stderr, all of it.** `dev-token.sh`'s stdout is a data
 # channel — the whole point of it is `Bearer $(dev-token.sh)` — and `log` used to
@@ -275,7 +292,17 @@ load_dev_user_password() {
     require_command openssl
     umask 077
     mkdir -p "$CONFIG_DIR"
-    printf 'STUDIO_DEV_USER_PASSWORD=%s\n' "$(openssl rand -hex 12)Aa1" > "$DEV_ENV_FILE"
+    # **Rewritten key by key, not overwritten.** This truncated the file
+    # until the address moved into it too, at which point a `--generate-password`
+    # run would have silently deleted the account's own name and left the
+    # next command asking for an email nobody removed.
+    local generated_env
+    generated_env="$(mktemp)"
+    chmod 600 "$generated_env"
+    [[ -f "$DEV_ENV_FILE" ]] &&
+      grep -v '^STUDIO_DEV_USER_PASSWORD=' "$DEV_ENV_FILE" > "$generated_env" || true
+    printf 'STUDIO_DEV_USER_PASSWORD=%s\n' "$(openssl rand -hex 12)Aa1" >> "$generated_env"
+    mv "$generated_env" "$DEV_ENV_FILE"
     chmod 600 "$DEV_ENV_FILE"
     # shellcheck source=/dev/null
     source "$DEV_ENV_FILE"
@@ -284,7 +311,9 @@ load_dev_user_password() {
   if [[ -z "${STUDIO_DEV_USER_PASSWORD:-}" ]]; then
     [[ "$prompt_allowed" == "true" ]] ||
       die "STUDIO_DEV_USER_PASSWORD is not set and $DEV_ENV_FILE provides none."
-    printf 'Password for %s (not echoed): ' "$STUDIO_DEV_USER_EMAIL" >&2
+    # Falls back to a description rather than requiring the email to be loaded:
+    # this function is reachable on its own, and a prompt is not worth a die.
+    printf 'Password for %s (not echoed): ' "${STUDIO_DEV_USER_EMAIL:-the dev account}" >&2
     read -rs STUDIO_DEV_USER_PASSWORD
     printf '\n' >&2
   fi

@@ -57,6 +57,7 @@ for command in aws jq; do require_command "$command"; done
 load_machine_id false
 load_aws_identity
 load_dev_stack_outputs
+load_dev_user_email
 
 log "Cognito user pool: $DEV_POOL_ID"
 log "Account: $STUDIO_DEV_USER_EMAIL"

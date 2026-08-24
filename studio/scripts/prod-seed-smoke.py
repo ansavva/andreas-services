@@ -70,6 +70,8 @@ from botocore.exceptions import ClientError
 FIXTURE = Path(__file__).resolve().parents[1] / "seeds" / "smoke.json"
 PASSWORD_VAR = "SMOKE_TEST_USER_PASSWORD"
 PASSWORD_PLACEHOLDER = f"${{{PASSWORD_VAR}}}"
+EMAIL_VAR = "SMOKE_TEST_USER_EMAIL"
+EMAIL_PLACEHOLDER = f"${{{EMAIL_VAR}}}"
 
 # The two parameters `studio-prod.yaml` writes after every apply. Read rather
 # than hard-coded for the reason the deploy workflow reads them: a pool or a
@@ -116,15 +118,41 @@ def _fixture() -> dict:
     if missing:
         raise SeedError(f"{FIXTURE} is missing: {', '.join(missing)}")
 
-    # A real mailbox in this file would make a leak reach a person. `.test` is
-    # reserved (RFC 2606) and resolves nowhere, which is the whole reason the
-    # address is safe to commit — so it is checked here rather than trusted.
+    user = {**user, "email": _email(user)}
+
+    # A real mailbox would make a leak reach a person. `.test` is reserved
+    # (RFC 2606) and resolves nowhere. The address is no longer committed, so
+    # this now checks what the ENVIRONMENT supplied — which is the more useful
+    # place for the check anyway: a fixture is reviewed once, and a variable is
+    # set by whoever is holding the console that day.
     if not str(user["email"]).endswith(".test"):
         raise SeedError(
-            f"{FIXTURE} names an address outside the reserved .test TLD. "
+            f"{EMAIL_VAR} names an address outside the reserved .test TLD. "
             "Seeded identities must be unreachable by mail."
         )
     return {"library": library, "user": user}
+
+
+def _email(user: dict) -> str:
+    """The address, from the environment, or a refusal naming the variable."""
+    declared = str(user.get("email") or "")
+    if declared != EMAIL_PLACEHOLDER:
+        # Committing it was defensible while `.test` made it harmless, and it
+        # is still gone: one account is described in one place, and that place
+        # is the environment for both halves rather than the environment for
+        # one and the repository for the other.
+        raise SeedError(
+            f"{FIXTURE} must declare the email as {EMAIL_PLACEHOLDER}; "
+            "it is never stored there."
+        )
+    value = os.environ.get(EMAIL_VAR, "").strip()
+    if not value:
+        raise SeedError(
+            f"refusing: fixture references {EMAIL_PLACEHOLDER} and {EMAIL_VAR} "
+            "is unset or empty. Set it in the studio-production environment; "
+            "a reserved .test address is what belongs in it."
+        )
+    return value
 
 
 def _password(user: dict) -> str:

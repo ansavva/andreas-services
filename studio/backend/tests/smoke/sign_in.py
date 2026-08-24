@@ -17,9 +17,12 @@ actually uses. `pycognito` implements SRP client-side, so this signs in against
 the pool exactly as configured and proves the same path Amplify drives in a
 browser.
 
-**It can only ever sign in as the smoke account.** The address is read from
-`seeds/smoke.json` and is not an input — there is no variable, and no flag, that
-would point this at a person's account. That matters because studio has no
+**It can only ever sign in as the smoke account.** The address now arrives in
+`SMOKE_TEST_USER_EMAIL`, because no account address is committed to this
+repository any more; `seeds/smoke.json` names that variable and is checked to
+still name it, so the seeder and this file cannot drift onto two identities.
+There is still no flag that would point this at a person's account, and the
+seeder refuses any address outside the reserved `.test` TLD. That matters because studio has no
 supported way to hold a production token and should not grow one by accident:
 what this mints belongs to an identity that is a member of exactly one library,
 and that library holds nothing but what a smoke run put there.
@@ -44,6 +47,8 @@ import sys
 from pathlib import Path
 
 FIXTURE = Path(__file__).resolve().parents[3] / "seeds" / "smoke.json"
+EMAIL_VAR = "SMOKE_TEST_USER_EMAIL"
+EMAIL_PLACEHOLDER = f"${{{EMAIL_VAR}}}"
 
 
 def main() -> int:
@@ -56,9 +61,26 @@ def main() -> int:
         return 1
 
     try:
-        username = json.loads(FIXTURE.read_text())["user"]["email"]
+        declared = json.loads(FIXTURE.read_text())["user"]["email"]
     except (OSError, ValueError, KeyError) as error:
         print(f"Could not read the smoke identity from {FIXTURE}: {error}", file=sys.stderr)
+        return 1
+
+    # The fixture names the VARIABLE now, not the address. Reading it anyway,
+    # rather than going straight to the environment, is what keeps the seeder
+    # and this file agreeing on one identity: if the fixture ever stopped
+    # carrying the placeholder, this would say so instead of signing in as
+    # whatever a stray variable happened to hold.
+    if declared != EMAIL_PLACEHOLDER:
+        print(
+            f"{FIXTURE} must declare the email as {EMAIL_PLACEHOLDER}; "
+            "it is never stored there.",
+            file=sys.stderr,
+        )
+        return 1
+    username = os.environ.get(EMAIL_VAR, "").strip()
+    if not username:
+        print(f"{EMAIL_VAR} is not set.", file=sys.stderr)
         return 1
 
     try:

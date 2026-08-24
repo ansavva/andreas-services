@@ -12,6 +12,23 @@ resource "aws_cognito_user_pool" "main" {
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
 
+  # **Case-insensitive email usernames — and this argument REPLACES THE POOL.**
+  #
+  # `username_configuration` is accepted only at pool creation, so the provider
+  # marks it ForceNew: applying it destroys the pool and every account in it.
+  # Cheap here for the same reason it is in scout — one admin account, and
+  # nothing in `website/` keys on the Cognito `sub`. The session cookie holds an
+  # ID token used only as a bearer credential; intake submissions are not
+  # user-keyed.
+  #
+  # The account itself is recreated by the `Create admin user` step in
+  # `website-prod.yaml`, but only if `ADMIN_EMAIL` and `ADMIN_PASSWORD` are set.
+  # Unset, that step self-skips and the admin console is locked out until
+  # `create-admin-user.sh` is run by hand.
+  username_configuration {
+    case_sensitive = false
+  }
+
   password_policy {
     minimum_length    = 12
     require_lowercase = true

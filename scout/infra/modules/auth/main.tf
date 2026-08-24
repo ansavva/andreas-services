@@ -10,6 +10,23 @@ resource "aws_cognito_user_pool" "main" {
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
 
+  # **Case-insensitive email usernames — and this argument REPLACES THE POOL.**
+  #
+  # `username_configuration` is accepted only at pool creation, so the provider
+  # marks it ForceNew: applying it destroys the pool and every account in it.
+  # Cheap here because scout's pool holds one admin account and **nothing in
+  # `scout/` keys on the Cognito `sub`** — sources, runs, events and locations
+  # are all keyed on their own ids, so a new pool orphans no data.
+  #
+  # What it does cost is the admin account. `bootstrap-admin` in
+  # `scout-prod.yaml` recreates it on the next deploy, but only if
+  # `SCOUT_ADMIN_PASSWORD` is set in the `scout-production` environment — with
+  # the secret unset that job self-skips and the admin console is locked out
+  # until someone runs `create-admin-user.sh` by hand.
+  username_configuration {
+    case_sensitive = false
+  }
+
   # Cognito applies this when a password is *set*, so raising the floor stops new
   # weak passwords and changes nothing retroactively: an account already under 12
   # characters stays there until its next reset. Length beats charset composition,

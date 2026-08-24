@@ -115,6 +115,7 @@ All commands run from the repository root:
 | `humbugg/scripts/dev-up-app.sh` | Product-app-only startup; defaults to `--web`, pass `--ios`/`--android` for a simulator |
 | `humbugg/scripts/dev-up-stripe.sh` | Stripe-only listener for the billing webhook's exact event allowlist; copy its `whsec_...` value into `backend/.env` and restart the backend when running components separately |
 | `humbugg/scripts/dev-logs-backend.sh` | Follow the backend container logs; accepts Docker Compose log options such as `--tail 200` |
+| `humbugg/scripts/dev-user.sh` | Create or converge the dev-stack test account; `--generate-password` for a non-interactive run, `--check` to report without changing. **Both halves live in `~/.config/andreas-services/humbugg/dev.env`** — `HUMBUGG_DEV_USER_EMAIL` and `HUMBUGG_DEV_USER_PASSWORD`. No address is committed; a reserved `.test` one is what belongs there |
 | `humbugg/scripts/dev-aws-reset.sh` | Destructive data reset scoped to this machine; run with `--dry-run` first; `--skip-cognito` preserves users |
 | `humbugg/scripts/dev-aws-destroy.sh` | Destroy this machine's AWS resources; the persistent UUID is deliberately retained |
 

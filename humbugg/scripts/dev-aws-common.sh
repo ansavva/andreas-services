@@ -106,3 +106,80 @@ terraform_init() {
 terraform_output_json() {
   terraform -chdir="$TF_DIR" output -json
 }
+
+# The dev stack's test account. Mirrors studio's `dev-aws-common.sh`
+# deliberately: the two services had no shared convention for this and studio's
+# is the one that already works.
+#
+# **Neither half is committed.** The address was the literal `dev@humbugg.test`
+# when this landed, on the reasoning that a reserved `.test` TLD (RFC 2606) can
+# never be a real mailbox, so Cognito could never mail a stranger on a typo.
+# What the account is for has not changed — a *known* account, identical on
+# every machine, that a test or a scripted sign-in can rely on — but "identical
+# on every machine" is now a property of the config file rather than of the
+# repo. Humbugg's pool allows self-signup, so this is a convenience and never
+# the only way in.
+#
+# Both values sit outside the repo. A default password here would be a
+# credential in a git history; the address follows it for consistency, so one
+# account is described in one place.
+DEV_ENV_FILE="$CONFIG_DIR/dev.env"
+
+load_dev_user_email() {
+  # Environment first, then the config file, and no default anywhere.
+  if [[ -z "${HUMBUGG_DEV_USER_EMAIL:-}" && -f "$DEV_ENV_FILE" ]]; then
+    # shellcheck source=/dev/null
+    source "$DEV_ENV_FILE"
+  fi
+  [[ -n "${HUMBUGG_DEV_USER_EMAIL:-}" ]] || die \
+    "HUMBUGG_DEV_USER_EMAIL is not set and $DEV_ENV_FILE provides none. Add a
+  HUMBUGG_DEV_USER_EMAIL= line to that file. An address in the reserved .test TLD
+  is what belongs there: it can never be a real mailbox, so Cognito cannot mail
+  a stranger on a typo."
+  export HUMBUGG_DEV_USER_EMAIL
+}
+
+load_dev_user_password() {
+  # Never echoed, and never interpolated into a log line or a command echo.
+  local prompt_allowed="${1:-true}"
+  local generate="${2:-false}"
+  if [[ -z "${HUMBUGG_DEV_USER_PASSWORD:-}" && -f "$DEV_ENV_FILE" ]]; then
+    # shellcheck source=/dev/null
+    source "$DEV_ENV_FILE"
+  fi
+  if [[ -z "${HUMBUGG_DEV_USER_PASSWORD:-}" && "$generate" == "true" ]]; then
+    # 24 hex characters plus a fixed upper/lower/digit tail, because the pool
+    # requires all three classes and `openssl rand -hex` alone can produce a
+    # string with no uppercase. 24 hex + 3 clears the 12-character floor with
+    # room to spare. Written before it is used, so a re-run against an existing
+    # stack converges the same password rather than minting a second one
+    # nothing has recorded.
+    require_command openssl
+    umask 077
+    mkdir -p "$CONFIG_DIR"
+    # **Rewritten key by key, not overwritten.** This truncated the file
+    # until the address moved into it too, at which point a `--generate-password`
+    # run would have silently deleted the account's own name and left the
+    # next command asking for an email nobody removed.
+    local generated_env
+    generated_env="$(mktemp)"
+    chmod 600 "$generated_env"
+    [[ -f "$DEV_ENV_FILE" ]] &&
+      grep -v '^HUMBUGG_DEV_USER_PASSWORD=' "$DEV_ENV_FILE" > "$generated_env" || true
+    printf 'HUMBUGG_DEV_USER_PASSWORD=%s\n' "$(openssl rand -hex 12)Aa1" >> "$generated_env"
+    mv "$generated_env" "$DEV_ENV_FILE"
+    chmod 600 "$DEV_ENV_FILE"
+    # shellcheck source=/dev/null
+    source "$DEV_ENV_FILE"
+    ok "Generated the dev account password into $DEV_ENV_FILE (not printed)."
+  fi
+  if [[ -z "${HUMBUGG_DEV_USER_PASSWORD:-}" ]]; then
+    [[ "$prompt_allowed" == "true" ]] ||
+      die "HUMBUGG_DEV_USER_PASSWORD is not set and $DEV_ENV_FILE provides none."
+    # Falls back to a description rather than requiring the email to be loaded:
+    # this function is reachable on its own, and a prompt is not worth a die.
+    printf 'Password for %s (not echoed): ' "${HUMBUGG_DEV_USER_EMAIL:-the dev account}" >&2
+    read -rs HUMBUGG_DEV_USER_PASSWORD
+    printf '\n' >&2
+  fi
+}
