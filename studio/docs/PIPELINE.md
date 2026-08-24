@@ -232,12 +232,14 @@ name and no AWS credentials anywhere in that path.
 
 External tools:
 - **AWS CLI** (`aws`) — `brew install awscli` — **required only for the
-  maintenance commands.** `adapters/s3.py` bridges `aws configure
-  export-credentials` into boto3, because boto3's own chain does not understand
-  an `aws login` session. It has four importers left: `adapters/ddb.py` for the
-  catalog table, and the three `maintenance/` modules that enumerate the raw
-  bucket — `catalog_gc.py`, `catalog_migrate.py` and `dev_seed.py`. Sign in with
-  `aws login` before running one of those.
+  maintenance commands.** `adapters/s3.py` still falls back to bridging
+  `aws configure export-credentials` into boto3; since the move to a long-lived
+  access key in August 2026 boto3's own chain resolves the same credentials, so
+  the bridge is a leftover that costs a subprocess rather than a necessity. It
+  has four importers left: `adapters/ddb.py` for the catalog table, and the
+  three `maintenance/` modules that enumerate the raw bucket — `catalog_gc.py`,
+  `catalog_migrate.py` and `dev_seed.py`. Those need credentials that resolve
+  (`aws sts get-caller-identity`); everything else does not.
   Everything else needs **no AWS account at all** — that is the point of #308,
   and this bullet said "required" flatly until it landed.
 - **ffmpeg** — `brew install ffmpeg` — optional. The scene and movie code

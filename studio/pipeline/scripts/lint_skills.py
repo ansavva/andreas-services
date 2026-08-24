@@ -135,7 +135,7 @@ def check_commands_exist(text: str) -> list[str]:
 
 
 # Anything that reaches AWS. `aws ` catches the CLI in any casing ("AWS CLI",
-# "run `aws login`"); `boto3` catches the SDK. Both are impossible from a skill
+# "run `aws s3 cp`"); `boto3` catches the SDK. Both are impossible from a skill
 # after #302 — the pipeline holds no AWS credentials — so a page that mentions
 # either is telling a reader to do something that cannot work.
 _AWS_DIRECT = re.compile(r"\baws\s|\bboto3\b", re.I)

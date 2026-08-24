@@ -27,25 +27,60 @@ aws sts get-caller-identity
 ```
 
 `default` is AWS account `704202188703` (`user/ansavva`) — the account that hosts
-all `andreas.services` and `humbugg.com` infrastructure. If a command fails with
-`NoCredentials` or an expired-session error, re-authenticate with `aws login`.
+all `andreas.services` and `humbugg.com` infrastructure.
 
-**Running Terraform locally? Export the credentials first.**
+**Credentials are a long-lived IAM access key, not a browser session.** They
+arrive one of two ways and both resolve to the same key:
+
+| Where you are | Mechanism |
+| --- | --- |
+| A machine with a home directory of its own | `[default]` in `~/.aws/credentials` |
+| A cloud session, container or CI runner | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in the environment |
+
+Set `AWS_DEFAULT_REGION=us-east-1` alongside the environment variables.
+`~/.aws/config` carries the region on a machine that has one, and nothing
+carries it on a machine that does not — a missing region fails as
+`NoRegionError`, which does not mention credentials and reads like a code bug.
+
+**This replaced `aws login` in August 2026, for portability rather than
+convenience.** `aws login` is a browser flow. It cannot complete on a phone
+driving a remote-control session, in a Claude cloud session, or over SSH — so
+half the places this repo actually gets worked on could not authenticate at
+all, and the sessions it did produce expired in under ~15 minutes.
+
+`login_session` is still in `~/.aws/config` and is deliberately left there. It
+cannot shadow the key. Measured from the provider chain in awscli 2.35
+(`awscli/botocore/credentials.py`, `ProfileProviderBuilder.providers`), the
+resolution order is:
+
+```
+env vars → assume-role → web-identity → SSO → ~/.aws/credentials → login_session → process → config
+```
+
+Environment variables beat the credentials file, the credentials file beats
+`login_session`, and `aws login` survives as a fallback that only takes effect
+if the key is removed. Confirmed behaviourally too, not just read off the
+source: with a deliberately invalid key in `~/.aws/credentials` and a live login
+session in the cache, `aws sts get-caller-identity` fails `InvalidClientTokenId`
+rather than falling back to the session.
+
+**Terraform no longer needs a credential export.** It used to:
 
 ```bash
 eval "$(aws configure export-credentials --format env)"
 ```
 
-`aws login` writes its session to a cache only the AWS CLI reads. Terraform's
-S3 **backend** resolves it; the AWS **provider** does not. So Terraform
-half-works, and which half you get depends on the subcommand:
+That line was load-bearing under `aws login`, which wrote its session to a cache
+only the AWS CLI reads: Terraform's S3 **backend** resolved it and the AWS
+**provider** did not, so `init` and `state *` worked while `plan`, `apply`,
+`import` and `destroy` failed. It cost a half-finished state migration in
+August 2026 — a `state rm` succeeded, the `terraform import` on the very next
+line failed, and the error was misread as session expiry three times before the
+split was found. A key in `~/.aws/credentials` is read natively by the AWS
+provider, the S3 backend and boto3 alike, so the split is gone. The export is
+now a no-op, not a fix; running it out of habit is harmless.
 
-| Subcommand | Needs | Without the export |
-| --- | --- | --- |
-| `init`, `state list`, `state show`, `state rm`, `state mv` | backend | works |
-| `import`, `plan`, `apply`, `destroy` | provider | fails |
-
-The failure reads as an environment problem and is not:
+Keep the failure signature, because it now means something different:
 
 ```
 Error: No valid credential sources found
@@ -53,16 +88,18 @@ failed to refresh cached credentials, no EC2 IMDS role found,
 operation error ec2imds: GetMetadata, ... dial tcp 169.254.169.254:80: connect: host is down
 ```
 
-**Do not read that as an expired session and run `aws login` again.** `aws sts
-get-caller-identity` succeeding proves nothing about it — the CLI is the half
-that works. This cost a half-finished state migration in August 2026: a
-`state rm` succeeded, the `terraform import` on the very next line failed, and
-the error was misread as session expiry three times before the split was found.
+Under `aws login` it meant "you forgot the export". Now it means the machine has
+**no credentials at all** — no `~/.aws/credentials`, no environment variables —
+and the fix is to supply them, not to re-run anything. `aws sts
+get-caller-identity` is a trustworthy probe again: it and Terraform read the
+same source, so if the CLI authenticates, Terraform does.
 
-Sessions are also short (under ~15 minutes), so export at the point of use
-rather than once at the start of a long session. In CI none of this applies:
-`aws-actions/configure-aws-credentials` puts real credentials in the
-environment, which is why the pipeline never sees this.
+**The key is long-lived, so treat it as one.** It belongs to the `ansavva` IAM
+user and inherits that user's permissions in full, with no expiry. Rotate it
+with `aws iam create-access-key` followed by `aws iam delete-access-key` on the
+old id. Never commit it, never paste it into a chat session, and never put it in
+`.claude/settings*.json` — that file is committed. None of this touches CI,
+which assumes a role over OIDC and holds no key at all.
 
 Prefer the CLI for read-only investigation of live
 infrastructure (CloudFront, S3, Lambda, DynamoDB, CloudWatch Logs, SSM, etc.) when

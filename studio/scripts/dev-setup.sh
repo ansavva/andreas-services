@@ -258,9 +258,11 @@ else
   # all of them starts with the same command, and a script running from a
   # session hook should not make a person diagnose which of the three it hit.
   warn "no dev stack readable — skipping env files."
-  warn "  Either you are not signed in to AWS, or this machine has never"
-  warn "  provisioned one. Both are fixed by:"
-  warn "    aws login  &&  ./studio/scripts/dev-aws-setup.sh"
+  warn "  Either this machine has no working AWS credentials, or it has never"
+  warn "  provisioned a stack. Check the first with:"
+  warn "    aws sts get-caller-identity"
+  warn "  then provision with:"
+  warn "    ./studio/scripts/dev-aws-setup.sh"
   warn "  Nothing here points at production any more (#287)."
 fi
 

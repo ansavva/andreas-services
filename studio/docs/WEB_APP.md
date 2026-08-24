@@ -969,7 +969,7 @@ API with no pool 500s on every call, which is a slower way to learn the same
 thing.
 
 ```bash
-aws login
+aws sts get-caller-identity                          # confirm the access key resolves
 ./studio/scripts/dev-aws-setup.sh                    # once per machine
 ./studio/scripts/dev-user.sh --generate-password     # its one test account
 ```
@@ -984,7 +984,6 @@ Or separately:
 ```bash
 cd studio/backend
 poetry install --no-root
-eval "$(aws configure export-credentials --format env)"   # boto3 needs real env creds
 poetry run python -m studio_core.handlers.local.api.api_dev_server
 poetry run pytest                                          # moto-backed, no AWS needed
 
@@ -994,10 +993,11 @@ npm ci && npm run dev
 npm test                                                   # vitest, no AWS needed
 ```
 
-`aws login` writes a cache only the AWS CLI reads, so `aws sts
-get-caller-identity` succeeding tells you nothing about whether boto3 can see
-credentials — export them. Same split the root `CLAUDE.md` documents for
-Terraform's provider.
+`aws sts get-caller-identity` is a trustworthy probe here: the CLI, boto3 and
+the Terraform provider all read the same access key. Under the `aws login`
+sessions this replaced it was not — the CLI read a cache the other two could not
+see, and an `aws configure export-credentials` export was the workaround. The
+root `CLAUDE.md` keeps that history.
 
 `dev-setup.sh` writes `frontend/.env.local` **from this machine's dev stack's
 Terraform outputs** and installs `frontend/node_modules` — do not hand-copy the

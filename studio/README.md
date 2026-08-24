@@ -162,7 +162,7 @@ one** — an API with no Cognito pool 500s on every call, so failing early is th
 faster way to find out.
 
 ```bash
-aws login
+aws sts get-caller-identity                          # confirm the access key resolves
 ./studio/scripts/dev-aws-setup.sh                    # once per machine
 ./studio/scripts/dev-user.sh --generate-password     # its one test account
 ```

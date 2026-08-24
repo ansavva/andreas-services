@@ -10,12 +10,14 @@
 # reconcile the two against each other. Everything else goes through
 # `adapters/store.py`.
 #
-# Credentials: the Terraform provider and boto3's default chain do NOT understand
-# the AWS CLI's `aws login` (login_session) credentials. The AWS CLI does, so we
-# bridge them: `aws configure export-credentials` resolves whatever the CLI can
-# (login_session / SSO / credential_process / static) into concrete keys, which
-# we hand to boto3. Explicit AWS_ACCESS_KEY_ID in the environment wins and skips
-# the bridge.
+# Credentials: since August 2026 these are a long-lived access key — `[default]`
+# in `~/.aws/credentials`, or `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` in the
+# environment — and boto3's own chain reads both. The `aws configure
+# export-credentials` bridge below is kept as a fallback rather than deleted:
+# it was mandatory under the `aws login` (login_session) sessions this replaced,
+# which neither boto3 nor the Terraform provider could see, and it still covers
+# an SSO or credential_process profile. Explicit AWS_ACCESS_KEY_ID in the
+# environment wins and skips it entirely.
 import json
 import os
 import subprocess
@@ -90,11 +92,16 @@ def _resolve_credentials():
             check=True,
         )
     except FileNotFoundError:
-        die("aws CLI not found. Install it (brew install awscli) and run 'aws login'.")
+        die(
+            "aws CLI not found, and no AWS_ACCESS_KEY_ID in the environment.\n"
+            "       Either set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or\n"
+            "       install the CLI (brew install awscli) and configure a key."
+        )
     except subprocess.CalledProcessError as exc:
         die(
-            "could not resolve AWS credentials via the aws CLI.\n"
-            "       Run 'aws login' (or 'aws sso login' / 'aws configure') first.\n"
+            "could not resolve AWS credentials.\n"
+            "       Put an access key in ~/.aws/credentials, or set\n"
+            "       AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.\n"
             f"       aws said: {exc.stderr.strip()}"
         )
     data = json.loads(proc.stdout)

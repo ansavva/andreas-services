@@ -26,7 +26,8 @@ deep.** The library is a DynamoDB table with an S3 bucket behind it — nothing
 lists the bucket to find out what exists; the pipeline half runs against this
 machine's `studio-dev-<short12>-*` stack, not against prod; and it reaches it
 through the API rather than through an AWS login of its own. Only the four
-`maintenance/` one-shots and `adapters/ddb.py` still need `aws login`.
+`maintenance/` one-shots and `adapters/ddb.py` still open AWS clients of
+their own.
 
 That split is unusual for this monorepo, where a service directory is normally a
 deployable unit and nothing else. It is deliberate: the tools that produce the
@@ -339,10 +340,9 @@ studio/scripts/dev-up.sh                           # the app half — backend :8
 warning and carrying on; it still has a toolchain to install. `dev-up.sh` does
 not.
 
-All three need a live AWS login (`aws login`). Note the credential split the root
-[CLAUDE.md](../CLAUDE.md) documents: the AWS CLI reads its own login cache,
-boto3 and the Terraform provider do not, so export before running Terraform:
-
-```bash
-eval "$(aws configure export-credentials --format env)"
-```
+All three need working AWS credentials. Since August 2026 those are a long-lived
+IAM access key — `[default]` in `~/.aws/credentials`, or `AWS_ACCESS_KEY_ID` /
+`AWS_SECRET_ACCESS_KEY` in the environment on a machine without a home directory
+of its own. boto3 and the Terraform provider read that natively, so the
+`aws configure export-credentials` export the root [CLAUDE.md](../CLAUDE.md)
+used to require is gone. Running it out of habit is a no-op, not an error.

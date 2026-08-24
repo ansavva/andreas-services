@@ -8,6 +8,8 @@ MACHINE_ID_FILE="$CONFIG_DIR/machine-id"
 
 AWS_PROFILE_VALUE="${AWS_PROFILE:-default}"
 AWS_REGION_VALUE="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
+AWS_PROFILE_ARGS=()
+AWS_PROFILE_RESOLVED=0
 
 log()  { printf '\033[1;34m[dev-aws]\033[0m %s\n' "$*"; }
 ok()   { printf '\033[1;32m[ ok ]\033[0m %s\n' "$*"; }
@@ -19,7 +21,63 @@ require_command() {
 }
 
 aws_dev() {
-  aws --no-cli-pager --profile "$AWS_PROFILE_VALUE" --region "$AWS_REGION_VALUE" "$@"
+  aws --no-cli-pager ${AWS_PROFILE_ARGS[@]+"${AWS_PROFILE_ARGS[@]}"} \
+    --region "$AWS_REGION_VALUE" "$@"
+}
+
+resolve_aws_profile() {
+  # Decide once whether to name a profile at all. Ported from
+  # `studio/scripts/dev-aws-common.sh`, which hit this first.
+  #
+  # **`--profile default` is not a harmless way of saying "the usual
+  # credentials".** Naming a profile makes the CLI resolve *that profile* and
+  # stop; it will not fall back to `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`
+  # in the environment. So on a machine whose credentials arrive as environment
+  # variables — CI, a container, a Claude cloud session — every call here failed
+  # `NoCredentials` while a bare `aws sts get-caller-identity` two lines earlier
+  # succeeded, because `~/.aws/config` had a `[default]` section holding
+  # settings but no keys. The error names credentials, so it reads as an expired
+  # session and invites a sign-in that cannot fix it.
+  #
+  # The fallback is deliberately narrow: it triggers only when the named profile
+  # resolves *no* credentials and ambient ones *do* work. A profile that
+  # authenticates is always used as given, so this can never silently retarget a
+  # working profile at a different account.
+  [[ "$AWS_PROFILE_RESOLVED" -eq 1 ]] && return 0
+  AWS_PROFILE_RESOLVED=1
+
+  if [[ -z "$AWS_PROFILE_VALUE" ]]; then
+    AWS_PROFILE_ARGS=()
+    return 0
+  fi
+
+  AWS_PROFILE_ARGS=(--profile "$AWS_PROFILE_VALUE")
+  aws --no-cli-pager --profile "$AWS_PROFILE_VALUE" --region "$AWS_REGION_VALUE" \
+    sts get-caller-identity >/dev/null 2>&1 && return 0
+
+  # `env -u AWS_PROFILE` because an exported AWS_PROFILE would steer this probe
+  # too, and then it would not be testing ambient credentials at all.
+  env -u AWS_PROFILE aws --no-cli-pager --region "$AWS_REGION_VALUE" \
+    sts get-caller-identity >/dev/null 2>&1 || return 0
+
+  warn "Profile '$AWS_PROFILE_VALUE' resolves no credentials, but the environment does. Using those."
+  AWS_PROFILE_ARGS=()
+  AWS_PROFILE_VALUE=""
+  # Drop it from the environment as well, not just from our own argv. A stale
+  # exported AWS_PROFILE steers every later `aws` call and, more importantly,
+  # the Terraform AWS provider — which would then fail the apply for exactly the
+  # reason we just decided to route around.
+  unset AWS_PROFILE
+  return 0
+}
+
+aws_profile_flag() {
+  # The `--profile X` fragment for user-facing hints, empty when running on
+  # ambient credentials so printed commands stay copy-pasteable.
+  if [[ ${#AWS_PROFILE_ARGS[@]} -gt 0 ]]; then
+    printf -- '--profile %s' "$AWS_PROFILE_VALUE"
+  fi
+  return 0
 }
 
 load_machine_id() {
@@ -52,8 +110,12 @@ load_machine_id() {
 
 load_aws_identity() {
   local identity
+  resolve_aws_profile
   identity="$(aws_dev sts get-caller-identity --output json)" ||
-    die "Could not authenticate with AWS profile '$AWS_PROFILE_VALUE'."
+    die "Could not authenticate with AWS$(
+      [[ -n "$AWS_PROFILE_VALUE" ]] && printf " profile '%s'" "$AWS_PROFILE_VALUE"
+      true
+    ). Put an access key in ~/.aws/credentials or the environment."
   AWS_ACCOUNT_ID="$(jq -r '.Account' <<<"$identity")"
   AWS_PRINCIPAL_ARN="$(jq -r '.Arn' <<<"$identity")"
   [[ "$AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || die "AWS returned an invalid account ID."
@@ -77,17 +139,25 @@ export_temporary_aws_credentials() {
   local credentials
   # Make the selected profile resolve its current session before exporting credentials. This lets
   # SSO/credential-process profiles refresh their cached role credentials instead of copying a stale
-  # set into the long-running backend container.
+  # set into the long-running backend container. With the long-lived access key
+  # this repo moved to in August 2026 it is a straight copy, but the indirection
+  # is kept so an SSO or credential_process profile still works here.
+  resolve_aws_profile
   aws_dev sts get-caller-identity >/dev/null ||
-    die "AWS profile '$AWS_PROFILE_VALUE' does not currently have a valid session. Sign in to AWS and try again."
-  credentials="$(aws configure export-credentials --profile "$AWS_PROFILE_VALUE" --format process)" ||
-    die "AWS CLI could not export temporary credentials for profile '$AWS_PROFILE_VALUE'."
+    die "AWS credentials are not currently valid. Put an access key in ~/.aws/credentials or the environment."
+  if [[ ${#AWS_PROFILE_ARGS[@]} -gt 0 ]]; then
+    credentials="$(aws configure export-credentials \
+      "${AWS_PROFILE_ARGS[@]}" --format process)"
+  else
+    credentials="$(env -u AWS_PROFILE aws configure export-credentials --format process)"
+  fi || die "AWS CLI could not export credentials."
   export AWS_ACCESS_KEY_ID="$(jq -r '.AccessKeyId' <<<"$credentials")"
   export AWS_SECRET_ACCESS_KEY="$(jq -r '.SecretAccessKey' <<<"$credentials")"
   export AWS_SESSION_TOKEN="$(jq -r '.SessionToken // empty' <<<"$credentials")"
   export AWS_CREDENTIAL_EXPIRATION="$(jq -r '.Expiration // empty' <<<"$credentials")"
-  aws --no-cli-pager --region "$AWS_REGION_VALUE" sts get-caller-identity >/dev/null ||
-    die "AWS CLI exported invalid or expired credentials for profile '$AWS_PROFILE_VALUE'. Sign in to AWS and try again."
+  env -u AWS_PROFILE aws --no-cli-pager --region "$AWS_REGION_VALUE" \
+    sts get-caller-identity >/dev/null ||
+    die "AWS CLI exported invalid credentials. Check ~/.aws/credentials or AWS_ACCESS_KEY_ID."
   if [[ -n "$AWS_CREDENTIAL_EXPIRATION" ]]; then
     log "AWS credentials refreshed; they expire at $AWS_CREDENTIAL_EXPIRATION."
   else

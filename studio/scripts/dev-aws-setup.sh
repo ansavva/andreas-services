@@ -76,10 +76,12 @@ if [[ "$CHECK_ONLY" -eq 1 ]]; then
 fi
 
 # terraform_init exports real credentials into the environment before it runs.
-# `aws login` writes a cache only the AWS CLI reads, so without that export
-# `init` and `state list` succeed while `plan` and `apply` fail with an IMDS
-# error that reads like an expired session and is not. See "Running Terraform
-# locally?" in the root CLAUDE.md.
+# Since the move to a long-lived access key in August 2026 the AWS provider
+# resolves them on its own, so this is belt-and-braces rather than the fix it
+# once was: under `aws login` the CLI read a cache the provider could not, and
+# `init` and `state list` succeeded while `plan` and `apply` failed with an IMDS
+# error that reads like an expired session and is not. See "Environment access"
+# in the root CLAUDE.md.
 terraform_init
 # No -auto-approve unless --yes: plain `apply` prints the plan and waits for a
 # typed "yes", which is the plan-then-confirm step. -input=false only silences

@@ -106,8 +106,8 @@ behind. So:
   `prevent_destroy`.** `prevent_destroy` is a Terraform lifecycle guard: it
   errors at plan time, so a `terraform destroy` over this state fails. It says
   nothing about a `-target`ed destroy of this table alone, a console click, or a
-  stray CLI call — and there is a human in this account who signs in with
-  `aws login` to run Terraform, the `maintenance/` one-shots and the `dev-aws-*`
+  stray CLI call — and there is a human in this account whose access key runs
+  Terraform, the `maintenance/` one-shots and the `dev-aws-*`
   scripts, so those are the paths that matter here. (This used to say the
   *pipeline* ran under that login. Since #308 it does not; the risk is unchanged,
   because the human still does.) It is also the
@@ -435,8 +435,7 @@ truth; mirror it back.
 ### Provisioning one
 
 ```bash
-aws login
-eval "$(aws configure export-credentials --format env)"   # the provider needs these
+aws sts get-caller-identity                          # confirm the access key resolves
 ./studio/scripts/dev-aws-setup.sh                    # provision this machine's stack
 ./studio/scripts/dev-user.sh --generate-password     # its one test account
 ./studio/scripts/dev-token.sh                        # prove sign-in works; prints a token
@@ -646,14 +645,13 @@ and the safe mechanism is deliberately undecided; do not invent one here.
 
 ## Running Terraform locally
 
-Rarely needed; CI owns the apply. When you do, export credentials first — the S3
-**backend** resolves an `aws login` session but the AWS **provider** does not,
-so `state list` works while `plan` and `apply` fail with a misleading IMDS
-error. The root [CLAUDE.md](../../CLAUDE.md) documents the split.
-
-```bash
-eval "$(aws configure export-credentials --format env)"
-```
+Rarely needed; CI owns the apply. No credential export is needed: the access key
+in `~/.aws/credentials`, or `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in the
+environment, is read by the AWS **provider** and the S3 **backend** alike. Under
+the `aws login` sessions this replaced in August 2026 only the backend resolved,
+so `state list` worked while `plan` and `apply` failed with a misleading IMDS
+error — the root [CLAUDE.md](../../CLAUDE.md) keeps that history, because the
+error text has not changed and now means something else.
 
 ```bash
 terraform -chdir=studio/infra/envs/prod plan
