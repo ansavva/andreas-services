@@ -149,9 +149,33 @@ EOF
   # The pipeline. Only the bucket and table are derived; REPLICATE_API_TOKEN is
   # a secret that lives nowhere but this file, so an existing one is never
   # overwritten.
+  # Spelled out rather than taken from `dev-aws-common.sh`: that file is sourced
+  # in the subshell above, so nothing it sets survives out here.
+  STUDIO_DEV_ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/andreas-services/studio/dev.env"
+
   if [ ! -f "$STUDIO_DIR/.env" ]; then
     cp "$STUDIO_DIR/.env.example" "$STUDIO_DIR/.env"
-    warn "created studio/.env from the example — add your REPLICATE_API_TOKEN."
+    warn "created studio/.env from the example."
+    warn "  Put REPLICATE_API_TOKEN in $STUDIO_DEV_ENV_FILE, not in that file."
+  fi
+  # A token inside the working tree is one `git add -f`, one copied directory
+  # or one backup tool away from leaving the machine, and `.gitignore` stops
+  # none of those. The config dir already holds this machine's dev pool
+  # password for exactly that reason; the token predates the decision.
+  #
+  # Named rather than moved. The file is the developer's, and a setup script
+  # that silently relocates a credential is a setup script nobody can predict —
+  # the same reasoning as the prod-bucket pin below. `env_value` reads the
+  # config dir FIRST, so copying the line across is enough and deleting the old
+  # one is tidiness rather than a step.
+  #
+  # The example's own placeholder starts `r8_` too, so it is excluded by name:
+  # a checkout that has copied the template and filled in nothing has no secret
+  # to move, and warning about it would train the warning to be ignored.
+  if grep -q "^REPLICATE_API_TOKEN=r8_" "$STUDIO_DIR/.env" &&
+    ! grep -q "^REPLICATE_API_TOKEN=r8_your_token_here$" "$STUDIO_DIR/.env"; then
+    warn "studio/.env holds a REPLICATE_API_TOKEN — a secret inside the repo."
+    warn "  Move it to $STUDIO_DEV_ENV_FILE (read first, so the move takes effect at once)."
   fi
   # A .env written before the bucket rename pins XHARNESS_S3_BUCKET, which
   # nothing reads any more. Say so rather than leaving a line that looks like
