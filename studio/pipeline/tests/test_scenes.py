@@ -307,12 +307,6 @@ def test_scenes_outputs_lists_nothing_before_a_cut(library, scene):
     assert result.exit_code == 0, result.output
 
 
-def test_scenes_outputs_says_expires_is_ignored(library, scene):
-    result = _run("outputs", "porch-teaser/the-encounter", "--expires", "60")
-    assert result.exit_code == 0, result.output
-    assert "--expires 60 is ignored" in result.output
-
-
 # ── movies ──────────────────────────────────────────────────────────────────
 
 def test_movies_reports_every_unassembled_scene_at_once(library, scene, tmp_path):
@@ -335,14 +329,6 @@ def test_a_movie_lists_nothing_in_an_empty_project(library):
     result = CliRunner().invoke(cli.main, ["movies", "list", "porch-teaser"])
     assert result.exit_code == 0, result.output
     assert "no movies" in result.output
-
-
-def test_movies_outputs_says_expires_is_ignored(library):
-    record = E.create_movie(project=library.project, slug="the-cut")
-    result = CliRunner().invoke(cli.main, ["movies", "outputs", record["id"],
-                                           "--expires", "60"])
-    assert result.exit_code == 0, result.output
-    assert "--expires 60 is ignored" in result.output
 
 
 def test_a_movie_resolves_by_id_and_by_slug(library):

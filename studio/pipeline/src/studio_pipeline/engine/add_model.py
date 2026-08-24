@@ -143,11 +143,23 @@ def infer(model: str, props: dict, schemas: dict, text: str) -> tuple[dict, list
         exts = [".jpg", ".jpeg", ".png", ".webp"]
         notes.append(f"accepts_ext={exts} — GUESSED (no formats named in the description); VERIFY against the README")
 
+    # A model with no `prompt` input gets `"prompt": null`, not an empty cap.
+    # The two are different facts and `runner.build_payload` reads them
+    # differently: null means "this model takes no prompt, do not demand one",
+    # while `{"max_chars": null}` means "it takes one and names no limit". An
+    # upscaler is the first model here with no prompt at all, and requiring one
+    # made it unrunnable — the payload was rejected by the model's own schema
+    # for carrying the field the CLI insisted on.
+    takes_prompt = "prompt" in props
     prompt_cap = None
-    m = re.search(r"[Mm]ax(?:imum)?\s+(\d[\d,]{2,})\s+characters", str(props.get("prompt", {}).get("description") or ""))
-    if m:
-        prompt_cap = int(m.group(1).replace(",", ""))
-        notes.append(f"prompt.max_chars={prompt_cap} — parsed from the `prompt` description")
+    if takes_prompt:
+        m = re.search(r"[Mm]ax(?:imum)?\s+(\d[\d,]{2,})\s+characters",
+                      str(props.get("prompt", {}).get("description") or ""))
+        if m:
+            prompt_cap = int(m.group(1).replace(",", ""))
+            notes.append(f"prompt.max_chars={prompt_cap} — parsed from the `prompt` description")
+    else:
+        notes.append("prompt=null — the schema has no `prompt` input; `run` will not ask for one")
 
     for sentence in caveats(text, props, schemas):
         notes.append(sentence)
@@ -167,7 +179,7 @@ def infer(model: str, props: dict, schemas: dict, text: str) -> tuple[dict, list
             "start_excludes_refs": False,
             "accepts_ext": exts,
         },
-        "prompt": {"max_chars": prompt_cap},
+        "prompt": {"max_chars": prompt_cap} if takes_prompt else None,
         "note": "TODO — one line on what this model is for and how it differs from its siblings.",
         "snapshot": {},
     }

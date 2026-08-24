@@ -31,7 +31,6 @@ from studio_pipeline.domain.characters.base import (
     read_text,
     resolve,
     upload_file,
-    warn_ignored_expiry,
     write_text,
 )
 from studio_pipeline.domain.characters.cli import main
@@ -64,5 +63,5 @@ __all__ = [
     "document", "entry_node", "fetch_profile", "load_profile", "local_paths", "main",
     "parse_profile", "pool_folder", "pool_nodes", "read_text", "reference_entries",
     "remote_rev", "resolve", "save_profile", "selection_nodes", "split_document",
-    "unified", "upload_file", "warn_ignored_expiry", "write_text",
+    "unified", "upload_file", "write_text",
 ]

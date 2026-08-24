@@ -342,9 +342,39 @@ def test_runs_outputs_can_presign(library):
     assert "memory://" in result.output
 
 
-def test_runs_outputs_says_expires_is_ignored(library):
-    """A flag that silently does nothing is the failure the rename avoided."""
-    result = CliRunner().invoke(
-        cli.main, ["runs", "outputs", "porch-teaser/latest", "--expires", "60"])
-    assert result.exit_code == 0, result.output
-    assert "--expires 60 is ignored" in result.output
+# ── an unregistered model, for evaluating one before onboarding it ──────────
+
+def test_a_registry_typo_still_fails_rather_than_reaching_a_provider(library):
+    """The guard on the live-model path: a registry key never contains a slash,
+    so a misspelt one cannot be mistaken for `owner/name`."""
+    result = CliRunner().invoke(cli.main, [
+        "run", "--model", "nano-bannana-pro", "--project", "porch-teaser",
+        "--prompt", "x", "--no-refs", "--dry-run"])
+
+    assert result.exit_code != 0
+    assert "nano-bannana-pro" in result.output
+
+
+def test_an_owner_slash_name_is_inferred_from_the_live_schema(library, monkeypatch):
+    """**Evaluating a model used to mean leaving the harness entirely.**
+
+    A four-way upscaler comparison ran three models straight against Replicate
+    off presigned URLs: no schema validation, no approval render, no run
+    records. `owner/name` now takes the ordinary path with an entry inferred in
+    memory — and writes nothing to `models.json`, because onboarding is a
+    separate decision with a skill page attached.
+    """
+    from studio_pipeline.engine import runner as RUNNER
+
+    monkeypatch.setattr(RUNNER.RA, "load_token", lambda: "r8_test")
+    monkeypatch.setattr(RUNNER.MS, "fetch", lambda model, token: (
+        {"image": {"type": "string", "format": "uri"},
+         "upscale_factor": {"type": "string"}}, {}))
+    monkeypatch.setattr(RUNNER.AM, "readme", lambda model, token: "an upscaler")
+
+    entry = RUNNER._ephemeral_entry("vendor/an-upscaler")
+
+    assert entry["key"] == "vendor/an-upscaler"
+    assert entry["model"] == "vendor/an-upscaler"
+    assert entry["prompt"] is None, "no prompt input in the schema"
+    assert entry["images"]["start"] == "image"

@@ -65,7 +65,6 @@ from studio_pipeline.domain.characters.base import (
     pool_folder,
     resolve,
     upload_file,
-    warn_ignored_expiry,
 )
 
 #: Where a promoted or uploaded reference file is put when no group is named. A
@@ -200,14 +199,13 @@ def cmd_refs(name, group, json_):
 @click.command("selection")
 @click.argument("name", required=True)
 @click.option("--dest", help="Download the selection to this dir instead of printing it.")
-@click.option("--expires", type=int, default=3600)
 @click.option("--json", "json_", is_flag=True)
 @click.option("--limit", type=int, help="The model's cap. Over it is REFUSED, never truncated.")
 @click.option("--pick", help="Comma-separated node ids or filenames from the index.")
 @click.option("--presign", is_flag=True, help="Print ordered presigned HTTPS URLs.")
 @click.option("--slots", help="Comma-separated 1-based positions WITHIN the resolved selection.")
 @click.option("--tag", "tags", help="Comma-separated tags; an image must carry ALL of them.")
-def cmd_selection(name, dest, expires, json_, limit, pick, presign, slots, tags):
+def cmd_selection(name, dest, json_, limit, pick, presign, slots, tags):
     """What a model would be shown, in slot order. **Resolved by the API.**
 
     Slot N is position N in THIS list — not a trailing file number and not a
@@ -215,7 +213,6 @@ def cmd_selection(name, dest, expires, json_, limit, pick, presign, slots, tags)
     disagree about what a generation saw.
     """
     record = _record(name)
-    warn_ignored_expiry(expires)
     try:
         chosen = selection_nodes(record, _split(pick), _split(tags),
                                  [int(x) for x in _split(slots) or []] or None, limit)

@@ -11,8 +11,9 @@ catalog row and the presigned PUT together — so the bucket is whatever the API
 is configured with, prod or this machine's dev stack.
 
 Each file lands at `<folder>/<basename>` (same-named keys are overwritten; the
-prod bucket is versioned so prior revisions are retained). Prints the path per
-file; --presign also prints a temporary HTTPS URL.
+prod bucket is versioned so prior revisions are retained). The folder is created
+if it does not exist, missing ancestors included. Prints the path per file;
+--presign also prints a temporary HTTPS URL.
 """
 import json
 import mimetypes
@@ -33,13 +34,20 @@ def content_type(path: str) -> str:
 
 @click.command(help=__doc__, epilog="\n\nArguments:\n  FILES  Local file(s) to upload.")
 @click.argument("files", nargs=-1, required=True)
-@click.option("--expires", type=int, default=3600, help="Presign expiry in seconds (default 3600).")
 @click.option("--folder", required=True, help="Destination key prefix (e.g. characters/<name>/seed).")
 @click.option("--json", "json_", is_flag=True, help="Emit a JSON list instead of text.")
 @click.option("--presign", is_flag=True, help="Also emit a temporary HTTPS URL per file.")
-def upload(files, expires, folder, json_, presign):
-    _warn_ignored_expiry(expires)
+def upload(files, folder, json_, presign):
     folder = folder.strip("/")
+    # **Ensure the destination, as `convert --dest-key` already does.** Folders
+    # were free in S3 — a key with slashes in it produced the appearance of one
+    # — and are catalog rows now, so a write into a folder nothing has created
+    # yet failed on a missing parent with `no such object: <folder>`. Two
+    # commands write into the same tree and only one of them ensured, which made
+    # organising a pool into subfolders a dead end: there was no command that
+    # created one, and the documented workaround was a dry-run `curate dedupe
+    # --group <name>` run purely for the folder it makes on the way past.
+    store.folder(folder)
     results = []
     for path in files:
         source = pathlib.Path(path)
@@ -68,16 +76,3 @@ def upload(files, expires, folder, json_, presign):
             print(entry["key"])
             if "url" in entry:
                 print(f"  {entry['url']}")
-
-
-def _warn_ignored_expiry(expires: int) -> None:
-    """See the note in `objects/presign.py` — the API owns the URL's lifetime."""
-    context = click.get_current_context(silent=True)
-    if context is None:
-        return
-    source = context.get_parameter_source("expires")
-    if source is not None and source.name != "DEFAULT":
-        click.echo(
-            f"warning: --expires {expires} is ignored; the API sets the URL's lifetime.",
-            err=True,
-        )

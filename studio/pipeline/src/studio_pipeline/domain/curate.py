@@ -205,6 +205,59 @@ def cmd_dedupe(name, apply, group, pool):
     print("\nAPPLIED")
 
 
+@main.command("drop", epilog=("\n\nArguments:\n  FILES  Node ids, or names inside the pool "
+                             "(e.g. current/shot.jpg)."))
+@click.argument("name", required=True)
+@click.argument("files", nargs=-1, required=True)
+@click.option("--apply", is_flag=True, help="Actually destroy them.")
+@click.option("--pool", type=click.Choice(POOL_CHOICES), default='archive')
+def cmd_drop(name, files, apply, pool):
+    """Destroy named files. **The only command here that deletes on request.**
+
+    Everything else in this module relocates: an image leaving a pool is moved,
+    and `dedupe` destroys bytes only where a byte-identical copy is already
+    waiting where the source was going. That rule is good and stays — it is why
+    a mis-click cannot lose the only copy of something.
+
+    What it did not cover is a file that should never have been uploaded. There
+    was no way to remove one at all: it could be moved between pools forever and
+    never destroyed, so a mistaken upload was permanent and `archive/` slowly
+    became a place things went to not be deleted. This is the deliberate escape
+    hatch, and it is deliberately awkward — every file named explicitly, a dry
+    run by default, and no globbing.
+
+    **It refuses a reference rather than detaching one.** `dedupe` detaches in
+    the same act because it is removing a duplicate of something the character
+    still has; dropping is removing the thing itself, and whether a character
+    still IS what that image shows is a separate decision that hard rule #2b
+    puts in a person's hands. `studio character detach` first, then drop.
+
+    The prod bucket is versioned and neither the API role nor a developer's own
+    commands hold `s3:DeleteObjectVersion`, so what this destroys there is a
+    recoverable tombstone rather than the bytes. That is a backstop, not a
+    licence: nothing in the catalog points at it afterwards.
+    """
+    record = resolve(name)
+    entries = [find_in_pool(record, pool, token) for token in files]
+    attached = reference_nodes(record)
+    blocked = [e for e in entries if e["id"] in attached]
+    if blocked:
+        die("refusing to destroy image(s) a REF# row still names:\n"
+            + "\n".join(f"      {e['name']}  ({e['id']})" for e in blocked)
+            + f"\n       Detach first: studio character detach {record['slug']} "
+            + " ".join(e["id"] for e in blocked))
+
+    print(f"DESTROY {len(entries)} file(s) from {pool}/:")
+    for entry in entries:
+        size = int(entry.get("size") or 0)
+        print(f"    {entry['name']:<40} {entry['id']}  {size // 1024} KB")
+    if not apply:
+        print("\nDRY RUN — nothing changed")
+        return
+    store.delete_nodes([entry["id"] for entry in entries])
+    print("\nAPPLIED")
+
+
 @main.command("move", epilog=("\n\nArguments:\n  FILE  A node id, or a name inside the source "
                               "pool (e.g. face/front-neutral.webp)."))
 @click.argument("name", required=True)
@@ -217,7 +270,9 @@ def cmd_dedupe(name, apply, group, pool):
 # survived the argparse port.
 @click.option("--from", "src_pool", type=click.Choice(POOL_CHOICES), default='reference')
 @click.option("--to", "dst_pool", type=click.Choice(POOL_CHOICES), default='archive')
-def cmd_move(name, file, apply, src_pool, dst_pool):
+@click.option("--to-group", "dst_group", default=None,
+              help="A subfolder of the destination pool, created if absent.")
+def cmd_move(name, file, apply, src_pool, dst_pool, dst_group):
     """Move one image between pools. **A reparent: no object is written.**
 
     Unless a byte-identical copy is already waiting in the destination, in which
@@ -230,18 +285,33 @@ def cmd_move(name, file, apply, src_pool, dst_pool):
     is `studio character detach`, which is a statement about identity rather
     than about a folder — and keeping the two apart is the whole point of the
     change.
+
+    `--to-group` puts the file in a SUBFOLDER of the destination pool, so a pool
+    a person has organised into subfolders can be reorganised. Without it the
+    destination was always a pool root, and `--from seed --to seed` — the shape
+    of every "it is in the wrong subfolder" fix — moved the file OUT of its
+    subfolder and into the root beside the originals.
     """
     record = resolve(name)
     entry = find_in_pool(record, src_pool, file)
     destination = pool_folder(record, dst_pool)
-    print(f"MOVE {src_pool}/{entry['name']} -> {dst_pool}/{entry['name']}")
+    # The FILE argument has always reached into a subfolder (`face/front.webp`);
+    # the destination could not, so a file in `seed/current/` could only be moved
+    # to the root of some pool. Organising a pool into subfolders was therefore
+    # a one-way trip — the way in existed and the way back did not, and putting
+    # something in the wrong subfolder left it there.
+    if dst_group:
+        destination = store.ensure_child_folder(destination["id"], dst_group)
+    where = f"{dst_pool}/{dst_group}" if dst_group else dst_pool
+    print(f"MOVE {src_pool}/{entry['name']} -> {where}/{entry['name']}")
 
     # Same size first, for the reason `duplicate_pairs` gives.
     size = int(entry.get("size") or 0)
-    candidates = [e for e in images(record, dst_pool) if int(e.get("size") or 0) == size]
+    candidates = [e for e in images(record, dst_pool, dst_group)
+                  if int(e.get("size") or 0) == size]
     duplicate = bool(candidates) and digest(entry["id"]) in {digest(e["id"]) for e in candidates}
     if duplicate:
-        print(f"    a byte-identical copy is already in {dst_pool}/ — only removing the source")
+        print(f"    a byte-identical copy is already in {where}/ — only removing the source")
 
     if entry["id"] in reference_nodes(record):
         if duplicate:

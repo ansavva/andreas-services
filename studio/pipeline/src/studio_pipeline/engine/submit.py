@@ -166,10 +166,9 @@ def recorded(bindings: dict) -> dict:
 def presign(ref: str) -> str:
     """A short-lived URL for one gathered reference. **The only way to Replicate.**
 
-    `--expires` is accepted by the commands above and ignored here: the API
-    signs against its own credentials and owns the TTL
-    (`STUDIO_PRESIGN_TTL_SECONDS`), so a number passed down could not be
-    honoured. See `runs.presign` for the same note.
+    There is no expiry to pass: the API signs against its own credentials and
+    owns the TTL (`STUDIO_PRESIGN_TTL_SECONDS`). The `--expires` flag that used
+    to be threaded down to here is gone. See `runs.presign`.
     """
     return store.presign_node(ref)
 
@@ -269,6 +268,18 @@ def gather(entry: dict, args) -> dict:
             f"{[_label(f) for f in bad_frames]}\n"
             f"       convert with: studio convert "
             f"--for {entry['key']} --key <node> --add-input <project>"
+        )
+
+    if nodes and refs_field is None:
+        # A model with no reference LIST still has an image field, and binding
+        # to `None` produced a dict with a null key that surfaced two calls
+        # later as `TypeError: '<' not supported between NoneType and str`
+        # inside the schema error path — an unreadable crash in the code whose
+        # job is to explain the fault.
+        raise SubmitError(
+            f"{entry['key']} takes no reference list — it has a single image "
+            f"input, `{start_field}`.\n"
+            f"       Bind it with --start-key <node> rather than --key/--character."
         )
 
     if nodes:

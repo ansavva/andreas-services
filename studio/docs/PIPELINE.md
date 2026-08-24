@@ -743,6 +743,18 @@ into a config file by a person.
 | `phrasebook.py` | Per-model wording lists, as `LIB#`/`TERM#` rows. It was a YAML document in the bucket with no catalog node, which is why it was read by raw key and written by an overwrite that could not invent the file — so `phrasebook add` failed outright on a library that had never held one. A row has no such state: the first `add` writes the first term. |
 | `contact_sheet.py` | Labeled thumbnail grids over arbitrary keys. The character-pool half walks the pool **recursively**, like `characters/refs`: `reference` is the default and holds group folders rather than images, so a one-level listing would report the commonest invocation as an empty pool. Each tile's local name carries its group, because `face/<name>_1` and `body/<name>_1` share a basename and collided in one directory. |
 
+**`engine/ledger.py` — what has already been submitted.** A fingerprint of
+model, inputs and bound images, kept per profile beside the credentials file, so
+`run` can refuse a payload it has already paid for. Local rather than a query
+because the run listing rows are a deliberately small projection and do not
+carry the payload: comparing server-side would be one `GET /api/runs/<id>` per
+candidate, ~1800 requests before the first submit of a 72-image batch. The
+server-side answer is to project the fingerprint onto the listing row and filter
+on it, which changes a deployed service and is its own change. It reads
+`auth.CONFIG_DIR` through the module rather than importing the constant, so one
+fixture redirects both files — the suite reaching a developer's real config is a
+failure this directory has had once already.
+
 **`engine/` — invoking a model.**
 
 | Module | Purpose |
@@ -758,12 +770,20 @@ into a config file by a person.
 | `add_model.py` | Onboarding: fetch schema + README, infer an entry, append it to the registry. It writes no documentation — see `studio-media-add-model`. |
 
 **`objects/` — moving bytes.** `upload.py`, `download.py`, `presign.py`
-(how assets reach Replicate) and `convert.py` (re-encode so a target engine
-accepts it). `convert` writes into the project input pool through
-`projects.add_inputs` rather than repeating its numbering, staging the converted
-bytes to a temp file because that function takes local paths; `--dest-key`
-ensures the destination folder first, since the catalog has no folder until
-something asks for one.
+(how assets reach Replicate), `convert.py` (re-encode so a target engine accepts
+it) and `crop.py` (cut a rectangle out of one). `convert` writes into the
+project input pool through `projects.add_inputs` rather than repeating its
+numbering, staging the converted bytes to a temp file because that function
+takes local paths; `--dest-key` ensures the destination folder first, since the
+catalog has no folder until something asks for one. **`upload` ensures its
+`--folder` for the same reason** — it did not, so the first file into a new
+subfolder failed on a missing parent while `convert` in the next command
+succeeded, and nothing in the CLI created a folder at all. `crop.py` reuses
+`convert`'s source resolution, format table and destination handling; what is
+its own is the box parser and the clamp, where every error message names the way
+the box was wrong — `LEFT,TOP,WIDTH,HEIGHT` instead of `LEFT,TOP,RIGHT,BOTTOM`
+being the commonest. It deliberately contains no subject detection: that is
+platform work, and a wrong box is worse than no command.
 
 **`maintenance/` — one-offs.** Two of these have finished and are deleted:
 `backfill_replicate.py` (a one-shot import of historical Replicate predictions,

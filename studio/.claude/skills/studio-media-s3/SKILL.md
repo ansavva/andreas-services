@@ -173,6 +173,9 @@ studio download --folder <name>/reference --list
 studio download --folder <name>/reference --all --dest /tmp/refs --json
 studio upload photo.jpg --folder <name>/seed
 studio presign --folder <name>/reference/face --json
+
+# Cut a rectangle out of an image already in the tree. The source is untouched.
+studio crop --key <node> --box 120,40,880,1400 --add-input <project>
 studio presign --key <project>/runs/<run_id>/output/clip.mp4
 
 # Formats differ between engines: GPT Image writes .webp, Kling takes only
@@ -269,3 +272,40 @@ than a render job. The flag survives because the CLI surface is a contract.
 - Provisioning and teardown live in [`infra/README.md`](../../../infra/README.md).
   Which stack your commands reach — per-machine dev, not production — is in
   [studio/CLAUDE.md](../../../CLAUDE.md).
+
+
+## Framing an image: `studio crop`
+
+**The box is `LEFT,TOP,RIGHT,BOTTOM` in source pixels** — the same order a
+detector reports and Pillow takes, and deliberately not `LEFT,TOP,WIDTH,HEIGHT`.
+A box that runs off an edge is clamped rather than refused, because padding a
+detection produces one routinely; a box that misses the image entirely is
+refused, because that is a mistake rather than a rounding.
+
+```bash
+studio crop --key <node> --box 120,40,880,1400 --add-input <project>
+studio crop --run <project>/latest#1 --box 0,0,1179,2196 --to jpg \
+    --dest-key characters/<name>/seed/current/<file>.jpg
+```
+
+**It does not find the subject, and will not.** Face and body detection are
+platform work and a wrong box is worse than no command — detect however you
+like, then state the box here. What this buys over cropping on a laptop is that
+the cut is recorded, repeatable and applied to the object the library holds
+rather than to a copy that has drifted.
+
+## Two things that used to bite
+
+**`upload` creates its destination.** It did not, so the first file into a new
+subfolder died on a parent that did not exist, and nothing in the CLI created
+one — organising a pool into subfolders was a dead end reached through a
+dry-run `curate dedupe --group <name>` run for its side effect. Missing
+ancestors are created too.
+
+**Prefer node ids in anything scripted.** A name is unique only within one
+folder, and pools are trees: after a library is organised, `IMG_4549__crop.jpg`
+can legitimately exist in `seed/current/`, `seed/earlier/` and `archive/crops/`
+at once. Commands that take a file accept `<group>/<name>` to disambiguate and
+refuse an ambiguous bare name rather than guessing — which is right, and is
+also a batch of 29 moves failing at once if a script assumed basenames were
+unique. `--json` prints ids next to names for exactly this.

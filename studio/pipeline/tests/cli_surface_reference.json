@@ -919,6 +919,7 @@
             "choices": [
               "archive",
               "corpus",
+              "reference",
               "seed"
             ],
             "default": null,
@@ -934,20 +935,20 @@
         },
         "commands": {},
         "options": {
-          "expires": {
+          "group": {
             "choices": null,
-            "default": 3600,
-            "dest": "expires",
+            "default": null,
+            "dest": "group",
             "flag": false,
             "flags": [
-              "--expires"
+              "--group"
             ],
             "help": "",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
             "required": false,
-            "type": "int"
+            "type": "str"
           },
           "json": {
             "choices": null,
@@ -971,6 +972,21 @@
             "flag": true,
             "flags": [
               "--presign"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "unreferenced": {
+            "choices": null,
+            "default": false,
+            "dest": "unreferenced",
+            "flag": true,
+            "flags": [
+              "--unreferenced"
             ],
             "help": "",
             "hidden": false,
@@ -1137,21 +1153,6 @@
             "nargs": 1,
             "required": false,
             "type": "str"
-          },
-          "expires": {
-            "choices": null,
-            "default": 3600,
-            "dest": "expires",
-            "flag": false,
-            "flags": [
-              "--expires"
-            ],
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "int"
           },
           "json": {
             "choices": null,
@@ -1394,21 +1395,6 @@
             "nargs": 0,
             "required": false,
             "type": "bool"
-          },
-          "expires": {
-            "choices": null,
-            "default": 3600,
-            "dest": "expires",
-            "flag": false,
-            "flags": [
-              "--expires"
-            ],
-            "help": "Presign expiry (default 3600).",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "int"
           },
           "extra": {
             "choices": null,
@@ -1766,6 +1752,21 @@
         "required": false,
         "type": "str"
       },
+      "group": {
+        "choices": null,
+        "default": null,
+        "dest": "group",
+        "flag": false,
+        "flags": [
+          "--group"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
       "out": {
         "choices": null,
         "default": null,
@@ -1936,6 +1937,137 @@
       }
     }
   },
+  "crop": {
+    "arguments": {},
+    "commands": {},
+    "options": {
+      "add_input": {
+        "choices": null,
+        "default": null,
+        "dest": "add_input",
+        "flag": false,
+        "flags": [
+          "--add-input"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "box": {
+        "choices": null,
+        "default": null,
+        "dest": "box",
+        "flag": false,
+        "flags": [
+          "--box"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": true,
+        "type": "str"
+      },
+      "dest_key": {
+        "choices": null,
+        "default": null,
+        "dest": "dest_key",
+        "flag": false,
+        "flags": [
+          "--dest-key"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "key": {
+        "choices": null,
+        "default": null,
+        "dest": "key",
+        "flag": false,
+        "flags": [
+          "--key"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "project": {
+        "choices": null,
+        "default": null,
+        "dest": "project",
+        "flag": false,
+        "flags": [
+          "--project"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "quality": {
+        "choices": null,
+        "default": 95,
+        "dest": "quality",
+        "flag": false,
+        "flags": [
+          "--quality"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "int"
+      },
+      "run": {
+        "choices": null,
+        "default": null,
+        "dest": "run",
+        "flag": false,
+        "flags": [
+          "--run"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "to": {
+        "choices": [
+          "jpeg",
+          "jpg",
+          "png",
+          "webp"
+        ],
+        "default": null,
+        "dest": "to",
+        "flag": false,
+        "flags": [
+          "--to"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      }
+    }
+  },
   "curate": {
     "arguments": {},
     "commands": {
@@ -1994,6 +2126,72 @@
               "seed"
             ],
             "default": "reference",
+            "dest": "pool",
+            "flag": false,
+            "flags": [
+              "--pool"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "drop": {
+        "arguments": {
+          "files": {
+            "choices": null,
+            "default": null,
+            "dest": "files",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": "+",
+            "required": true,
+            "type": "str"
+          },
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "pool": {
+            "choices": [
+              "archive",
+              "corpus",
+              "reference",
+              "seed"
+            ],
+            "default": "archive",
             "dest": "pool",
             "flag": false,
             "flags": [
@@ -2102,6 +2300,21 @@
             "flag": false,
             "flags": [
               "--to"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "to_group": {
+            "choices": null,
+            "default": null,
+            "dest": "dst_group",
+            "flag": false,
+            "flags": [
+              "--to-group"
             ],
             "help": "",
             "hidden": false,
@@ -2749,21 +2962,6 @@
         },
         "commands": {},
         "options": {
-          "expires": {
-            "choices": null,
-            "default": 3600,
-            "dest": "expires",
-            "flag": false,
-            "flags": [
-              "--expires"
-            ],
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "int"
-          },
           "presign": {
             "choices": null,
             "default": false,
@@ -3056,21 +3254,6 @@
     },
     "commands": {},
     "options": {
-      "expires": {
-        "choices": null,
-        "default": 3600,
-        "dest": "expires",
-        "flag": false,
-        "flags": [
-          "--expires"
-        ],
-        "help": "Expiry in seconds (default 3600).",
-        "hidden": false,
-        "multiple": false,
-        "nargs": 1,
-        "required": false,
-        "type": "int"
-      },
       "folder": {
         "choices": null,
         "default": null,
@@ -3332,21 +3515,6 @@
         },
         "commands": {},
         "options": {
-          "expires": {
-            "choices": null,
-            "default": 3600,
-            "dest": "expires",
-            "flag": false,
-            "flags": [
-              "--expires"
-            ],
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "int"
-          },
           "json": {
             "choices": null,
             "default": false,
@@ -3937,6 +4105,21 @@
     "arguments": {},
     "commands": {},
     "options": {
+      "again": {
+        "choices": null,
+        "default": false,
+        "dest": "again",
+        "flag": true,
+        "flags": [
+          "--again"
+        ],
+        "help": "",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      },
       "aspect_ratio": {
         "choices": null,
         "default": null,
@@ -4026,21 +4209,6 @@
         "nargs": 1,
         "required": false,
         "type": "str"
-      },
-      "expires": {
-        "choices": null,
-        "default": 3600,
-        "dest": "expires",
-        "flag": false,
-        "flags": [
-          "--expires"
-        ],
-        "help": "Presign expiry (default 3600).",
-        "hidden": false,
-        "multiple": false,
-        "nargs": 1,
-        "required": false,
-        "type": "int"
       },
       "extra": {
         "choices": null,
@@ -4573,21 +4741,6 @@
         },
         "commands": {},
         "options": {
-          "expires": {
-            "choices": null,
-            "default": 3600,
-            "dest": "expires",
-            "flag": false,
-            "flags": [
-              "--expires"
-            ],
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "int"
-          },
           "json": {
             "choices": null,
             "default": false,
@@ -4801,21 +4954,6 @@
             "required": false,
             "type": "bool"
           },
-          "expires": {
-            "choices": null,
-            "default": 3600,
-            "dest": "expires",
-            "flag": false,
-            "flags": [
-              "--expires"
-            ],
-            "help": "Presign expiry (default 3600).",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "int"
-          },
           "panel": {
             "choices": null,
             "default": null,
@@ -4939,21 +5077,6 @@
             "nargs": 0,
             "required": false,
             "type": "bool"
-          },
-          "expires": {
-            "choices": null,
-            "default": 3600,
-            "dest": "expires",
-            "flag": false,
-            "flags": [
-              "--expires"
-            ],
-            "help": "Presign expiry (default 3600).",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "int"
           },
           "project": {
             "choices": null,
@@ -5210,21 +5333,6 @@
         },
         "commands": {},
         "options": {
-          "expires": {
-            "choices": null,
-            "default": 3600,
-            "dest": "expires",
-            "flag": false,
-            "flags": [
-              "--expires"
-            ],
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "int"
-          },
           "presign": {
             "choices": null,
             "default": false,
@@ -5352,21 +5460,6 @@
             "nargs": 0,
             "required": false,
             "type": "bool"
-          },
-          "expires": {
-            "choices": null,
-            "default": 3600,
-            "dest": "expires",
-            "flag": false,
-            "flags": [
-              "--expires"
-            ],
-            "help": "Presign expiry (default 3600).",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "int"
           },
           "project": {
             "choices": null,
@@ -5548,21 +5641,6 @@
     },
     "commands": {},
     "options": {
-      "expires": {
-        "choices": null,
-        "default": 3600,
-        "dest": "expires",
-        "flag": false,
-        "flags": [
-          "--expires"
-        ],
-        "help": "Presign expiry in seconds (default 3600).",
-        "hidden": false,
-        "multiple": false,
-        "nargs": 1,
-        "required": false,
-        "type": "int"
-      },
       "folder": {
         "choices": null,
         "default": null,

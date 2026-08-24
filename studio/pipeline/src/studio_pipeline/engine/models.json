@@ -611,6 +611,76 @@
         "allow_intelligent_duration": false
       },
       "aliases": []
+    },
+    "image-upscale": {
+      "model": "topazlabs/image-upscale",
+      "kind": "image",
+      "skill": "studio-media-image-upscale",
+      "images": {
+        "refs": null,
+        "max_refs": null,
+        "start": "image",
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "prompt": null,
+      "note": "The only model here that RESTORES rather than generates: it enlarges an image that already exists and invents nothing, so it is what seed and reference material goes through. `High Fidelity V2` preserves detail, `Low Resolution V2` is for badly degraded sources, and `face_enhancement_creativity: 0` sharpens a face without redrawing it. Priced on OUTPUT megapixels, not runtime.",
+      "snapshot": {
+        "enhance_model": {
+          "enum": [
+            "Standard V2",
+            "Low Resolution V2",
+            "CGI",
+            "High Fidelity V2",
+            "Text Refine"
+          ],
+          "default": "Standard V2"
+        },
+        "output_format": {
+          "enum": [
+            "jpg",
+            "png"
+          ],
+          "default": "jpg"
+        },
+        "upscale_factor": {
+          "enum": [
+            "None",
+            "2x",
+            "4x",
+            "6x"
+          ],
+          "default": "None"
+        },
+        "face_enhancement": {
+          "default": false
+        },
+        "subject_detection": {
+          "enum": [
+            "None",
+            "All",
+            "Foreground",
+            "Background"
+          ],
+          "default": "None"
+        },
+        "face_enhancement_strength": {
+          "default": 0.8,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "face_enhancement_creativity": {
+          "default": 0,
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
     }
   }
 }
