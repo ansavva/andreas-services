@@ -22,40 +22,47 @@ import json
 import os
 import subprocess
 
+from studio_pipeline import profiles
 from studio_pipeline.errors import die
 
-# STUDIO_S3_*, not XHARNESS_S3_*. The bucket was renamed to
-# `studio-prod-media-us-east-1` and the variables were renamed with it, which is
-# load-bearing rather than tidiness: `dev-setup.sh` only writes the variable
-# when it is absent, so every developer with an older `.env` carried a pinned
-# `XHARNESS_S3_BUCKET=xharness-...` that would have quietly kept the pipeline
-# writing to the archive after the cutover. Renaming the variable makes that
-# stale line inert instead of silently wrong.
-# **No default, and the absence is the point.** This read
-# `os.environ.get("STUDIO_S3_BUCKET", "studio-prod-media-us-east-1")`, so a
-# maintenance command run in a shell that had not loaded `studio/.env` addressed
-# PRODUCTION. Three commands read this and one of them is `catalog gc`, which
-# deletes objects — a dry run against the wrong bucket lists prod's orphans, and
-# the `--apply` that follows removes them.
+# **The bucket is a PROFILE FIELD now** (`profiles.py`), and the two constants
+# that used to decide it here are both gone. Their history is worth keeping,
+# because each removal was paid for:
 #
-# The same reasoning as the `XHARNESS_S3_*` rename directly above: a value that
-# quietly points somewhere plausible is worse than no value. Unset is now a
-# refusal at the point of use rather than a silent redirection.
-BUCKET = os.environ.get("STUDIO_S3_BUCKET", "")
+# `XHARNESS_S3_BUCKET` → `STUDIO_S3_BUCKET`, renamed with the bucket itself.
+# That was load-bearing rather than tidiness: `dev-setup.sh` only ever wrote the
+# variable when it was absent, so every developer with an older `.env` carried a
+# pinned `XHARNESS_S3_BUCKET=xharness-...` that would have quietly kept the
+# pipeline writing to the archive after the cutover. Renaming made the stale
+# line inert instead of silently wrong. The variable is still read — it is the
+# fallback path when no profile is selected — so an old `.env` still works.
+#
+# `STUDIO_S3_BUCKET` then lost its `"studio-prod-media-us-east-1"` default
+# (#434), because a maintenance command run in a shell that had not loaded
+# `studio/.env` addressed PRODUCTION. Three commands read this and one of them
+# is `catalog gc`, which deletes objects — a dry run against the wrong bucket
+# lists prod's orphans, and the `--apply` that follows removes them. A value
+# that quietly points somewhere plausible is worse than no value.
+#
+# Both conclusions survive into the profile: unset is a refusal at the point of
+# use, and the profile that answers is the one the invocation named.
 
 
 def bucket() -> str:
     """The media bucket, or a refusal naming what to do about it.
 
-    Every AWS-touching command asks for it through here rather than reading
-    `BUCKET`, so "unset" cannot be discovered halfway through a paginate.
+    Every AWS-touching command asks for it through here rather than reading a
+    module constant, so "unset" cannot be discovered halfway through a paginate.
+
+    **`BUCKET = os.environ.get(...)` at import time is gone**, and the removal is
+    what makes `--profile` work at all rather than a tidy-up. A module constant
+    is bound when the module is imported, which happens before Click has parsed
+    a single argument — so a value read there can never reflect the profile the
+    invocation chose. `profiles.value` is asked on every call instead.
     """
-    if not BUCKET:
-        die("STUDIO_S3_BUCKET is not set.\n"
-            "       Run studio/scripts/dev-setup.sh, or export it for the stack you\n"
-            "       mean. There is deliberately no default: this used to fall back to\n"
-            "       the production bucket, which is not a thing to guess at.")
-    return BUCKET
+    return profiles.value("s3_bucket")
+
+
 # `PREFIX` / `STUDIO_S3_PREFIX` lived here and is deleted too. The tree is at
 # the bucket ROOT, and this had survived as "the single place a global prefix
 # could be reintroduced" — but the only reader left was the layout migrator,

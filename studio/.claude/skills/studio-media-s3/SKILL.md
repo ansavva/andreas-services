@@ -1,6 +1,6 @@
 ---
 name: studio-media-s3
-description: Address studio's media through the studio API — list a folder, upload local files, download to disk, and mint short-lived presigned HTTPS URLs (how images and videos reach Replicate). The canonical asset store for the studio-* workflow, holding CHARACTERS (identity records) and PROJECTS (runs, chains, scenes, movies, input), addressed by NAME PATH and reached with `studio login`; the CLI holds no cloud credentials and knows no bucket name. Use when a task needs to store, fetch, list or hand out large media, to record or address a run, or to cut runs into a scene and scenes into a movie.
+description: Address studio's media through the studio API — list a folder, upload local files, download to disk, and mint short-lived presigned HTTPS URLs (how images and videos reach Replicate). The canonical asset store for the studio-* workflow, holding CHARACTERS (identity records) and PROJECTS (runs, chains, scenes, movies, input), addressed by NAME PATH and reached with `studio login` against a named profile (dev or prod); the CLI holds no cloud credentials and knows no bucket name. Use when a task needs to store, fetch, list or hand out large media, to record or address a run, or to cut runs into a scene and scenes into a movie.
 ---
 
 # studio-media-s3
@@ -14,18 +14,32 @@ underneath. You do not address it as S3, and nothing here can.
 
 ## Everything goes through the API
 
-`studio` is an API client. It signs in as a user, calls
-`studio-api.andreas.services`, and holds **no cloud credentials at all** — reads,
-writes, listings and presigned URLs are all API calls. A machine with no cloud
-account configured runs the whole pipeline.
+`studio` is an API client. It signs in as a user, calls a studio API, and holds
+**no cloud credentials at all** — reads, writes, listings and presigned URLs are
+all API calls. A machine with no cloud account configured runs the whole
+pipeline.
 
 ```bash
 studio login          # prompts for email + password; stores the session
-studio whoami         # who you are, and which libraries you can reach
+studio whoami         # profile, who you are, and which libraries you can reach
 studio logout
 ```
 
 Sessions refresh themselves; a `401` after that means sign in again.
+
+**Which API, and which library, is the PROFILE.** `dev` is the default and means
+this machine's own stack; `prod` means the deployed library, with real material
+and real money behind it. Sessions are per-profile, so signing in to one does
+not sign you out of the other.
+
+```bash
+studio profile list                  # what exists, and which is in force
+studio profile show                  # what each value resolves to, and from where
+studio --profile prod runs list      # one invocation against the deployed library
+```
+
+**Check `studio whoami` before writing anything you would not want in the live
+library.** It prints the profile first, for that reason.
 
 **There is no bucket name, and never a key you compose.** Material is addressed
 by **node id**, or by the **name path** that resolves to one —

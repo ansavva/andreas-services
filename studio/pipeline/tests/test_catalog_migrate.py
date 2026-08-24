@@ -290,7 +290,7 @@ def _blob_key(ddb, node_id: str) -> str:
 def _keys(s3) -> list[str]:
     from studio_pipeline.adapters import s3 as s3c
     return sorted(o["Key"] for o in
-                  s3.list_objects_v2(Bucket=s3c.BUCKET).get("Contents", []))
+                  s3.list_objects_v2(Bucket=s3c.bucket()).get("Contents", []))
 
 
 def _entry(node="node-1", frm="characters/subject-a/reference/face/x.png",
@@ -300,7 +300,7 @@ def _entry(node="node-1", frm="characters/subject-a/reference/face/x.png",
 
 def _seed(bucket, catalog_table, entry):
     from studio_pipeline.adapters import s3 as s3c
-    bucket.put_object(Bucket=s3c.BUCKET, Key=entry["from"], Body=b"png-bytes")
+    bucket.put_object(Bucket=s3c.bucket(), Key=entry["from"], Body=b"png-bytes")
     _file_node(catalog_table, entry["node"], entry["from"])
 
 
@@ -314,7 +314,7 @@ def test_reseat_copies_repoints_and_deletes(bucket, catalog_table):
     assert _keys(bucket) == [entry["to"]], "old object must be gone, new one there"
     assert _blob_key(catalog_table, entry["node"]) == entry["to"]
     from studio_pipeline.adapters import s3 as s3c
-    assert bucket.get_object(Bucket=s3c.BUCKET, Key=entry["to"])["Body"].read() \
+    assert bucket.get_object(Bucket=s3c.bucket(), Key=entry["to"])["Body"].read() \
         == b"png-bytes", "the bytes must survive the move"
 
 
@@ -342,7 +342,7 @@ def test_reseat_leaves_the_bytes_when_the_repoint_fails(bucket, catalog_table):
     """Copy, then repoint, then delete — a break anywhere loses no bytes."""
     entry = _entry(node="node-missing")
     from studio_pipeline.adapters import s3 as s3c
-    bucket.put_object(Bucket=s3c.BUCKET, Key=entry["from"], Body=b"png-bytes")
+    bucket.put_object(Bucket=s3c.bucket(), Key=entry["from"], Body=b"png-bytes")
     # No row at all: the conditional update cannot match, so the delete is
     # never reached and both copies of the bytes are still there.
     assert cm.reseat_one(bucket, catalog_table, entry) is not None
@@ -356,8 +356,8 @@ def test_reseat_is_idempotent_after_an_interrupted_copy(bucket, catalog_table):
     entry = _entry()
     _seed(bucket, catalog_table, entry)
     from studio_pipeline.adapters import s3 as s3c
-    bucket.copy_object(Bucket=s3c.BUCKET, Key=entry["to"],
-                       CopySource={"Bucket": s3c.BUCKET, "Key": entry["from"]})
+    bucket.copy_object(Bucket=s3c.bucket(), Key=entry["to"],
+                       CopySource={"Bucket": s3c.bucket(), "Key": entry["from"]})
 
     assert cm.reseat_one(bucket, catalog_table, entry) is None
     assert _keys(bucket) == [entry["to"]]

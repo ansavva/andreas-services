@@ -55,9 +55,19 @@ export STUDIO_ALLOWED_ORIGIN="http://localhost:5173"
 # **THIS MACHINE'S DEV STACK, NOT PROD.** studio used to read `/studio/prod/*`
 # here and serve the local API against the live bucket and the live pool. That
 # is over (#287): this repo no longer connects to production, the way every
-# other service in the monorepo already works. Running the CLI against prod is
-# still wanted occasionally and the safe mechanism is undecided — it is not a
-# flag on this script.
+# other service in the monorepo already works.
+#
+# Running the CLI against prod is a `studio --profile prod <command>` now, and
+# it is deliberately not a flag on this script — this one starts a local API
+# server, and there is no version of that which should serve production. The
+# profile mechanism is `pipeline/src/studio_pipeline/profiles.py`.
+#
+# The exports below are what the local Flask process reads, and they also feed
+# the CLI in this shell: nothing here selects a profile, and with no profile
+# selected the environment wins. So `studio` typed in this window drives the
+# local API against this machine's stack, exactly as before. An explicit
+# `--profile` overrides them and says on stderr that it is doing so — which is
+# the case this comment exists for.
 #
 # The values come from the dev stack's Terraform outputs rather than SSM,
 # because SSM holds what the *deploy workflow* wrote and nothing deploys a dev

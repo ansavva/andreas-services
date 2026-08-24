@@ -35,6 +35,8 @@ import os
 import stat
 from pathlib import Path
 
+from studio_pipeline import profiles
+
 CONFIG_DIR = (
     Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
     / "andreas-services"
@@ -44,7 +46,14 @@ CONFIG_DIR = (
 # mode 600, and a developer looking for one finds the other.
 CREDENTIALS_FILE = CONFIG_DIR / "credentials"
 
-DEFAULT_API_URL = "https://studio-api.andreas.services"
+# `DEFAULT_API_URL = "https://studio-api.andreas.services"` lived here and is
+# **deleted**. It meant that a shell with nothing set — no `dev-up.sh`, no
+# `.env` sourced — pointed the CLI at PRODUCTION, which is the exact opposite of
+# what `studio/CLAUDE.md` says the CLI does and the same shape of default #434
+# removed from `adapters/s3.py` and `adapters/ddb.py`. The target is a profile
+# now, it defaults to `dev`, and "nothing is configured" is a refusal that names
+# the two commands that fix it rather than a silent connection to the live
+# library.
 
 
 class AuthError(RuntimeError):
@@ -52,23 +61,24 @@ class AuthError(RuntimeError):
 
 
 def api_url() -> str:
-    """Where the CLI sends its calls.
+    """Where the CLI sends its calls, per the profile in force.
 
-    `dev-up.sh` points this at `http://localhost:8000`, which is how the CLI
-    drives a locally-running API against this machine's dev stack.
+    An `AuthError` rather than `errors.die` when nothing supplies one, because
+    `session/commands.py:_show_libraries` reports a failure here instead of
+    raising: `whoami` answering "who am I" and not "what can I reach" is more
+    useful than a command that exits before printing either.
     """
-    return os.environ.get("STUDIO_API_URL", DEFAULT_API_URL).rstrip("/")
+    resolved = profiles.value("api_url", required=False)
+    if not resolved:
+        raise AuthError(profiles.missing("api_url"))
+    return resolved.rstrip("/")
 
 
 def _pool() -> tuple[str, str, str]:
-    pool_id = os.environ.get("STUDIO_COGNITO_USER_POOL_ID", "")
-    client_id = os.environ.get("STUDIO_COGNITO_CLIENT_ID", "")
+    pool_id = profiles.value("cognito_user_pool_id", required=False)
+    client_id = profiles.value("cognito_client_id", required=False)
     if not pool_id or not client_id:
-        raise AuthError(
-            "STUDIO_COGNITO_USER_POOL_ID and STUDIO_COGNITO_CLIENT_ID are not set. "
-            "Run studio/scripts/dev-setup.sh, which writes them from this machine's "
-            "dev stack."
-        )
+        raise AuthError(profiles.missing("cognito_user_pool_id"))
     region = os.environ.get("AWS_REGION") or pool_id.split("_", 1)[0]
     return pool_id, client_id, region
 
@@ -102,7 +112,7 @@ def claims(token: str) -> dict:
     return json.loads(base64.urlsafe_b64decode(payload))
 
 
-def _write(tokens: dict) -> None:
+def _dump(store: dict) -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     CONFIG_DIR.chmod(stat.S_IRWXU)
     # Written 600 *before* the secret goes in: creating world-readable and
@@ -110,16 +120,77 @@ def _write(tokens: dict) -> None:
     # the machine can read a refresh token.
     fd = os.open(CREDENTIALS_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as handle:
-        json.dump(tokens, handle)
+        json.dump(store, handle)
+
+
+def _load() -> dict:
+    """Every profile's session: `{"profiles": {"<name>": {...}}}`.
+
+    **The file used to be one flat session and that was the bug worth fixing.**
+    There is one credentials file per machine, so signing in to prod overwrote
+    the dev session for every shell on it, indefinitely — the target outlived
+    the shell that chose it, which is precisely what a profile is supposed to
+    prevent. Keyed by profile, the two coexist and neither can shadow the other.
+    """
+    if not CREDENTIALS_FILE.exists():
+        return {"profiles": {}}
+    try:
+        data = json.loads(CREDENTIALS_FILE.read_text())
+    except (OSError, ValueError) as error:
+        raise AuthError(f"{CREDENTIALS_FILE} is unreadable. Run: studio login") from error
+    if isinstance(data.get("profiles"), dict):
+        return data
+    return {"profiles": _migrated(data)}
+
+
+def _migrated(flat: dict) -> dict:
+    """Move a pre-profile session under the profile whose pool minted it.
+
+    Read-time and in memory; it is persisted by the next `_write`. Filing it by
+    the token's own `iss` rather than by whichever profile happens to be current
+    is what stops a first-ever `--profile prod` invocation from inheriting a dev
+    session and reporting itself signed in to production.
+    """
+    token = flat.get("id_token")
+    if not token:
+        return {}
+    try:
+        pool = claims(token).get("iss", "").rsplit("/", 1)[-1]
+    except Exception:  # noqa: BLE001 - a stored token is not a thing to trust
+        # **Every failure mode, not the two that came to mind.** `claims` splits
+        # on "." and indexes [1], so a truncated or hand-edited file raises
+        # IndexError — which was not in the original tuple, and turned `studio
+        # logout` (the command whose whole job is getting rid of a bad session)
+        # into a traceback. Unfilable is not fatal: it falls through to the
+        # profile in force, which is where a session with no readable issuer
+        # belongs.
+        pool = ""
+    for name in profiles.names():
+        if pool and profiles.fields(name).get("cognito_user_pool_id") == pool:
+            return {name: flat}
+    return {profiles.current(): flat}
+
+
+def sessions() -> set[str]:
+    """Which profiles have a stored session. For `studio profile list`."""
+    try:
+        return set(_load()["profiles"])
+    except AuthError:
+        return set()
+
+
+def _write(tokens: dict) -> None:
+    store = _load()
+    store["profiles"][profiles.current()] = tokens
+    _dump(store)
 
 
 def _read() -> dict:
-    if not CREDENTIALS_FILE.exists():
-        raise AuthError("Not signed in. Run: studio login")
-    try:
-        return json.loads(CREDENTIALS_FILE.read_text())
-    except (OSError, ValueError) as error:
-        raise AuthError(f"{CREDENTIALS_FILE} is unreadable. Run: studio login") from error
+    name = profiles.current()
+    stored = _load()["profiles"].get(name)
+    if not stored:
+        raise AuthError(f"Not signed in on profile {name!r}. Run: studio --profile {name} login")
+    return stored
 
 
 def login(username: str, password: str) -> dict:
@@ -151,11 +222,21 @@ def login(username: str, password: str) -> dict:
 
 
 def logout() -> bool:
-    """Forget the stored session. True if there was one."""
-    if CREDENTIALS_FILE.exists():
-        CREDENTIALS_FILE.unlink()
-        return True
-    return False
+    """Forget this profile's session. True if there was one.
+
+    **This profile's, not every profile's.** Signing out of prod must not sign
+    you out of dev — that would put back the coupling `_load` exists to remove.
+    The file goes when the last session in it does, so a machine that has signed
+    out of everything is left as it started.
+    """
+    store = _load()
+    if store["profiles"].pop(profiles.current(), None) is None:
+        return False
+    if store["profiles"]:
+        _dump(store)
+    else:
+        CREDENTIALS_FILE.unlink(missing_ok=True)
+    return True
 
 
 def id_token(*, refresh: bool = False) -> str:
@@ -199,10 +280,18 @@ def whoami() -> dict:
     if not token:
         raise AuthError("No ID token stored. Run: studio login")
     body = claims(token)
+    # `api_url` is resolved defensively: an unconfigured profile is exactly when
+    # someone runs `whoami`, and a stored token still answers the other four
+    # lines. Same reasoning as `_show_libraries` swallowing its own failure.
+    try:
+        where = api_url()
+    except AuthError:
+        where = "(unset)"
     return {
+        "profile": profiles.current(),
         "email": body.get("email") or stored.get("username", ""),
         "sub": body.get("sub", ""),
         "pool": body.get("iss", "").rsplit("/", 1)[-1],
         "expires_at": body.get("exp"),
-        "api_url": api_url(),
+        "api_url": where,
     }

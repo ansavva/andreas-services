@@ -12,43 +12,37 @@
 # it inventoried.)
 from __future__ import annotations
 
-import os
-
+from studio_pipeline import profiles
 from studio_pipeline.adapters import s3 as s3c
-from studio_pipeline.errors import die
 
-# `[project]-[env]-[component]`, the monorepo's naming convention.
+# **The table is a PROFILE FIELD now** (`profiles.py`); `TABLE` is gone.
 #
-# **No default, and the absence is the point.** This read
-# `os.environ.get("STUDIO_CATALOG_TABLE", "studio-prod-catalog")`, justified at
-# the time by studio having exactly one environment that local runs addressed.
-# `studio/CLAUDE.md` says the opposite now — the CLI targets a per-machine dev
-# stack — so the default meant a maintenance command run in a shell that had not
-# loaded `studio/.env` addressed the PRODUCTION catalog. One of the readers is
-# `catalog gc`, which deletes: a dry run against the wrong table calls prod's
-# blobs unreferenced, and the `--apply` that follows removes them.
+# It read `os.environ.get("STUDIO_CATALOG_TABLE", "studio-prod-catalog")`,
+# justified at the time by studio having exactly one environment that local runs
+# addressed. `studio/CLAUDE.md` said the opposite long before this module caught
+# up — the CLI targets a per-machine dev stack — so the default meant a
+# maintenance command run in a shell that had not loaded `studio/.env` addressed
+# the PRODUCTION catalog. One of the readers is `catalog gc`, which deletes: a
+# dry run against the wrong table calls prod's blobs unreferenced, and the
+# `--apply` that follows removes them. That default was removed with the
+# matching one in `adapters/s3.py` (#434), and it was latent only because every
+# command reading both asks `s3c.bucket()` first and dies there — call ordering,
+# not a guard.
 #
-# #434 removed exactly this default from `adapters/s3.py` and this is the same
-# removal, for the reason stated there: a value that quietly points somewhere
-# plausible is worse than no value. It was latent only because every command
-# reading both asks `s3c.bucket()` first and dies there — call ordering, not a
-# guard.
-TABLE = os.environ.get("STUDIO_CATALOG_TABLE", "")
+# The environment variable is still read, as the fallback when no profile is
+# selected. Names still follow `[project]-[env]-[component]`.
 
 
 def table() -> str:
     """The catalog table, or a refusal naming what to do about it.
 
-    Asked for through here rather than read off `TABLE`, exactly as
+    Asked for through here rather than read off a module constant, exactly as
     `s3.bucket()` is, so "unset" cannot be discovered halfway through a
-    paginate.
+    paginate — and so that the profile an invocation selected is what answers.
+    `TABLE = os.environ.get(...)` was bound at import time, which is before
+    Click has parsed `--profile`; see the note in `adapters/s3.py`.
     """
-    if not TABLE:
-        die("STUDIO_CATALOG_TABLE is not set.\n"
-            "       Run studio/scripts/dev-setup.sh, or export it for the stack you\n"
-            "       mean. There is deliberately no default: this used to fall back to\n"
-            "       the production catalog, which is not a thing to guess at.")
-    return TABLE
+    return profiles.value("catalog_table")
 
 
 def client():

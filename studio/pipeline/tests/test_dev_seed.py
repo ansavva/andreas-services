@@ -25,7 +25,6 @@ from moto import mock_s3
 
 from studio_pipeline import cli
 from studio_pipeline.adapters import ddb as ddbc
-from studio_pipeline.adapters import s3 as s3c
 from studio_pipeline.maintenance import dev_seed as ds
 # The loader's own validator, not a second copy of it. `test_dev_scripts`
 # already sources `dev-aws-seed.sh` and exposes `fixture_problems`; reaching for
@@ -123,8 +122,12 @@ def dev_stack(monkeypatch, tmp_path):
     write into the repo — the git copy is the fixture, and a test that produced
     one would be a test that edits the repository.
     """
-    monkeypatch.setattr(s3c, "BUCKET", DEV_BUCKET)
-    monkeypatch.setattr(ddbc, "TABLE", DEV_TABLE)
+    # Environment variables rather than module constants: the bucket and table
+    # are profile fields now, and with no profile selected the environment is
+    # what answers. Patching a constant would have tested nothing after the
+    # constants went away — which is exactly what it did.
+    monkeypatch.setenv("STUDIO_S3_BUCKET", DEV_BUCKET)
+    monkeypatch.setenv("STUDIO_CATALOG_TABLE", DEV_TABLE)
     monkeypatch.setattr(ds, "FIXTURE_DIR", tmp_path / "fixtures")
 
     ddb = boto3.client("dynamodb", region_name="us-east-1")
@@ -487,13 +490,13 @@ def test_promoting_from_production_is_refused(dev_stack, monkeypatch):
     material is not purpose-made for dev, and a fixture every machine downloads
     is the last place it belongs.
     """
-    monkeypatch.setattr(s3c, "BUCKET", "studio-prod-media-us-east-1")
+    monkeypatch.setenv("STUDIO_S3_BUCKET", "studio-prod-media-us-east-1")
     result = _publish("--path", RUN)
     assert result.exit_code == 1
     assert "never from production" in result.output
 
-    monkeypatch.setattr(s3c, "BUCKET", DEV_BUCKET)
-    monkeypatch.setattr(ddbc, "TABLE", "studio-prod-catalog")
+    monkeypatch.setenv("STUDIO_S3_BUCKET", DEV_BUCKET)
+    monkeypatch.setenv("STUDIO_CATALOG_TABLE", "studio-prod-catalog")
     assert "never from production" in _publish("--path", RUN).output
 
 

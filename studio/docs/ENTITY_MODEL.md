@@ -772,12 +772,21 @@ with no node since before the catalog, and `catalog_seed` deliberately recorded
 none for them. Every shoot refuses until they have rows. The old objects are
 left where they are and become collectable by `catalog gc`.
 
-**How the CLI is pointed at prod is an open question, not a step.** The migrator
-is one of the maintenance commands that opens AWS clients directly rather than
-going through the API, so running it against prod means naming the prod table
-and bucket under real AWS credentials — which is exactly the mechanism
-[studio/CLAUDE.md](../CLAUDE.md) records as wanted and undecided. Decide it
-before migration day; do not improvise it on the night.
+**How the CLI is pointed at prod is `--profile prod`.** This paragraph recorded
+it as an open question to decide before migration day; it was decided in August
+2026. The migrator is one of the maintenance commands that opens AWS clients
+directly rather than going through the API, so it needs the prod table and
+bucket under real AWS credentials — which is what the profile supplies:
+
+```bash
+studio profile sync prod          # once, from /studio/prod/* in SSM
+studio --profile prod catalog migrate --dry-run
+```
+
+**The profile decides the target; it does not narrow the credentials.** Those
+are still your own IAM key, which holds `s3:DeleteObjectVersion`. Read
+[studio/CLAUDE.md](../CLAUDE.md#reaching-production---profile-prod) before
+running anything with `--apply`.
 
 **Dev stacks — no migration.** A stack holds the pose plates and nothing else,
 so there is no character, project or run to raise a row over. What each needs is

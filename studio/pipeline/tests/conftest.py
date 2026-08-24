@@ -49,12 +49,56 @@ os.environ["REPLICATE_API_TOKEN"] = "r8_test_token"
 
 from moto import mock_dynamodb, mock_s3  # noqa: E402
 
+import studio_pipeline as _pipeline  # noqa: E402
+from studio_pipeline import profiles as _profiles  # noqa: E402
 from studio_pipeline.adapters import api as _api  # noqa: E402
+from studio_pipeline.adapters import auth as _auth  # noqa: E402
 from studio_pipeline.adapters import ddb as ddbc  # noqa: E402
 from studio_pipeline.adapters import s3 as s3c  # noqa: E402
 from studio_pipeline.adapters import store as _store  # noqa: E402
 
 from tests.fake_api import BUCKET, FakeApi  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _isolated_profiles(tmp_path, monkeypatch):
+    """No test may read — or write — the developer's real profile config.
+
+    Autouse and unconditional. The environment variables set above are what the
+    suite targets, and with no profile selected they win, so this changes
+    nothing about resolution; what it prevents is a `~/.config` on the machine
+    running the tests deciding a bucket name, and a test that calls `save` or
+    `set_current` writing into it.
+    """
+    monkeypatch.setattr(_profiles, "CONFIG_DIR", tmp_path / "config")
+    monkeypatch.setattr(_profiles, "CONFIG_FILE", tmp_path / "config" / "config")
+    # The two dotenv files `env_value` falls back to, for the same reason. The
+    # environment variables above already shadow them, so this changes nothing
+    # in the ordinary case — it is what lets a test assert that a value is
+    # supplied by NOTHING, which is impossible while a developer's own
+    # `studio/.env` is still on the path.
+    monkeypatch.setattr(_pipeline, "ENV_FILE", tmp_path / "dot.env")
+    monkeypatch.setattr(_pipeline, "DEV_ENV_FILE", tmp_path / "dev.env")
+    # **And the stored session, which this suite used to DELETE.**
+    #
+    # Not a theoretical leak: `test_every_subcommand_dispatches` walks the whole
+    # command tree and invokes every leaf with no arguments, and `studio logout`
+    # takes no arguments. It ran for real, against
+    # `~/.config/andreas-services/studio/credentials`, and unlinked the
+    # developer's session on every full run of the suite. It looked like a token
+    # that kept expiring.
+    #
+    # `test_auth_adapter.py` redirects these in its own fixture, which is why
+    # the tests that are ABOUT auth were never the ones that did the damage.
+    # Autouse and unconditional here, so no test — present or future — can
+    # reach the real file by walking into a command that writes it.
+    monkeypatch.setattr(_auth, "CONFIG_DIR", tmp_path / "auth")
+    monkeypatch.setattr(_auth, "CREDENTIALS_FILE", tmp_path / "auth" / "credentials")
+    # Module state, so it survives a test that selected a profile and did not
+    # put it back. `select` also clears the warned-once set.
+    _profiles.select(None)
+    yield
+    _profiles.select(None)
 
 
 @pytest.fixture(autouse=True)
@@ -265,7 +309,7 @@ def bucket():
     """
     with mock_s3() as _:
         client = boto3.client("s3", region_name="us-east-1")
-        client.create_bucket(Bucket=s3c.BUCKET)
+        client.create_bucket(Bucket=s3c.bucket())
         yield client
 
 
@@ -282,7 +326,7 @@ def shared_bucket(bucket):
     for key in ("config/pose/body/standing.png",
                 "config/pose/face/three-quarter.png",
                 "phrasebook/wording.yaml"):
-        bucket.put_object(Bucket=s3c.BUCKET, Key=key, Body=b"png-bytes")
+        bucket.put_object(Bucket=s3c.bucket(), Key=key, Body=b"png-bytes")
     return bucket
 
 

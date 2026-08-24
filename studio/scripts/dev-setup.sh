@@ -108,8 +108,10 @@ fi
 #    seeding the dev stack from a published fixture (#284, #285) rather than by
 #    pointing at prod.
 #
-#    Running the CLI against production is still wanted occasionally. The safe
-#    mechanism is undecided, and it is deliberately not a flag on this script.
+#    Running the CLI against production is a `studio --profile prod <command>`
+#    now, and it is deliberately still not a flag on this script: this one sets
+#    up the LOCAL half, and pointing that at prod is what #287 removed. Step 3a
+#    below syncs the `dev` profile; `studio profile sync prod` writes the other.
 #
 #    Values come from the dev stack's Terraform outputs, not SSM: SSM holds what
 #    the deploy workflow wrote, and nothing deploys a dev stack.
@@ -120,16 +122,21 @@ fi
 # ---------------------------------------------------------------------------
 # A subshell: `dev-aws-common.sh`'s `die` exits, and `set -e` here would take
 # the whole session hook down with it. Its `log` output goes to stderr, so what
-# is captured is exactly the four values.
+# is captured is exactly the three values.
+#
+# Three, not four: the catalog table used to be read here to pin into
+# `studio/.env`, and the `dev` profile carries it now. `load_dev_stack_outputs`
+# still refuses a state missing any of the four, so nothing is unchecked by
+# dropping it — it is simply not this script's to write any more.
 if dev_stack="$(
   # shellcheck source=dev-aws-common.sh
   source "$STUDIO_DIR/scripts/dev-aws-common.sh"
   load_machine_id false
   load_aws_identity
   load_dev_stack_outputs
-  printf '%s\t%s\t%s\t%s\n' "$DEV_POOL_ID" "$DEV_CLIENT_ID" "$DEV_BUCKET" "$DEV_TABLE"
+  printf '%s\t%s\t%s\n' "$DEV_POOL_ID" "$DEV_CLIENT_ID" "$DEV_BUCKET"
 )" 2>/dev/null; then
-  IFS=$'\t' read -r POOL_ID CLIENT_ID MEDIA_BUCKET CATALOG_TABLE <<<"$dev_stack"
+  IFS=$'\t' read -r POOL_ID CLIENT_ID MEDIA_BUCKET <<<"$dev_stack"
 
   # The app. VITE_API_URL stays on localhost: `dev-up.sh` runs the Flask API
   # locally against the same dev stack, which is the point of the setup.
@@ -204,24 +211,55 @@ EOF
       warn "studio/.env sets ${dead} — retired, and read by nothing. Delete the line."
     fi
   done
-  # A .env pinned to the PROD bucket predates #287 and now points the CLI at
-  # production, which is the thing this change removes. Named loudly rather
-  # than rewritten: the file is the developer's, and silently repointing where
-  # their commands write is worse than telling them.
+  # -------------------------------------------------------------------------
+  # 3a. The `dev` PROFILE, which replaces pinning the stack into studio/.env.
+  #
+  #     This block used to append STUDIO_S3_BUCKET and STUDIO_CATALOG_TABLE to
+  #     that file. Two problems with it, and the second is why it is gone.
+  #
+  #     A pin is per-CHECKOUT and the stack is per-MACHINE, so a second worktree
+  #     had no pins at all and a maintenance command run there addressed
+  #     whatever the shell happened to hold. And a pin covers two of the five
+  #     values that select a stack — the other three (the API URL and both
+  #     Cognito ids) were only ever exported by `dev-up.sh`, into its own shell.
+  #     So a `.env` and a shell could name different environments, and
+  #     `catalog gc` read the `.env` half. Nothing printed either.
+  #
+  #     `studio profile sync dev` writes all five into
+  #     `~/.config/andreas-services/studio/config`, beside the machine id they
+  #     belong to. `studio profile show` prints what is in force.
+  #
+  #     Through the CLI rather than written from here on purpose: one writer for
+  #     that file, and it refuses to save a profile missing any of the five
+  #     rather than leaving one that names two stacks at once.
+  # -------------------------------------------------------------------------
+  if uv run --project "$PIPELINE" studio profile sync dev >/dev/null 2>&1; then
+    log "synced the dev profile ($MEDIA_BUCKET)"
+  else
+    warn "could not sync the dev profile. Run it directly to see why:"
+    warn "  uv run --project $PIPELINE studio profile sync dev"
+  fi
+
+  # A .env pinned to the PROD bucket predates #287. It still wins whenever no
+  # profile is selected, so it still points ordinary commands at production —
+  # named loudly rather than rewritten, because the file is the developer's and
+  # silently repointing where their commands write is worse than telling them.
   if grep -qE "^STUDIO_S3_BUCKET=.*prod" "$STUDIO_DIR/.env"; then
     warn "studio/.env pins a PROD bucket: $(grep -E '^STUDIO_S3_BUCKET=' "$STUDIO_DIR/.env")"
-    warn "  studio no longer runs against prod (#287). Replace it with:"
-    warn "    STUDIO_S3_BUCKET=$MEDIA_BUCKET"
-  elif ! grep -q "^STUDIO_S3_BUCKET=" "$STUDIO_DIR/.env"; then
-    printf '\n# This machine'"'"'s dev media bucket, from Terraform via dev-setup.sh.\nSTUDIO_S3_BUCKET=%s\n' \
-      "$MEDIA_BUCKET" >> "$STUDIO_DIR/.env"
-    log "pinned STUDIO_S3_BUCKET=$MEDIA_BUCKET in studio/.env"
+    warn "  That line beats the dev profile whenever --profile is not given."
+    warn "  Delete it — the profile carries the bucket now — or reach prod"
+    warn "  deliberately with: studio --profile prod <command>"
   fi
-  if ! grep -q "^STUDIO_CATALOG_TABLE=" "$STUDIO_DIR/.env"; then
-    printf '# This machine'"'"'s dev catalog table.\nSTUDIO_CATALOG_TABLE=%s\n' \
-      "$CATALOG_TABLE" >> "$STUDIO_DIR/.env"
-    log "pinned STUDIO_CATALOG_TABLE=$CATALOG_TABLE in studio/.env"
-  fi
+  # Both stack pins are now the profile's job, so a line for either is one more
+  # place the answer can come from. Inert while it agrees with the profile and
+  # invisible when it does not, which is the shape of every other entry in the
+  # dead-variable list above.
+  for pinned in STUDIO_S3_BUCKET STUDIO_CATALOG_TABLE; do
+    if grep -q "^${pinned}=" "$STUDIO_DIR/.env"; then
+      warn "studio/.env pins ${pinned} — the dev profile carries it now."
+      warn "  Delete the line; check with: studio profile show"
+    fi
+  done
   # -------------------------------------------------------------------------
   # 3b. Push the shared material out to the bucket.
   #
