@@ -15,6 +15,44 @@ resource "aws_cognito_user_pool" "main" {
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
 
+  # **Case-insensitive email usernames — and this argument REPLACES THE POOL.**
+  #
+  # AWS accepts `username_configuration` only at pool creation, so the provider
+  # marks it ForceNew: the apply that added this destroyed the pool and both
+  # accounts in it. #374 asked for the decision to be recorded next to the pool
+  # either way, so here it is.
+  #
+  # **The case for leaving it alone, which was real.** Unlike humbugg's pool,
+  # this one sets `allow_admin_create_user_only = true` above. #374's harm is
+  # two accounts for one address — reproduced on a scratch pool: same address in
+  # two casings, two accounts, two distinct subs — and producing it needs a
+  # stranger who can register. Here nobody can. A mixed-case sign-in against
+  # this pool could only ever fail to authenticate; the person retyped it. So
+  # the reachable exposure was an admin typo in `create-user.sh`, and the price
+  # of removing it was destroying the only two accounts that exist.
+  #
+  # **It was replaced anyway, deliberately.** What the pool cost to fix only
+  # ever went up, and the thing it would have cost was small and fully
+  # recoverable: nothing in the library is keyed on a Cognito `sub` except
+  # membership. Measured against the real table before the apply — 458 items,
+  # of which 416 nodes, 36 characters and 4 library rows reference no sub at
+  # all, and not one S3 key does. Two rows did:
+  #
+  #     USER#<sub> -> LIB#<lib>   the owner
+  #     USER#<sub> -> LIB#lib-smoke
+  #
+  # The smoke row heals itself on the next deploy — `prod-seed-smoke.py`
+  # converges that account and its membership every time. The owner's is one
+  # `create-user.sh` run with `STUDIO_LIBRARY` set, which is the step that
+  # exists for exactly this. See `docs/POOL_REPLACEMENT.md`.
+  #
+  # **What this does NOT survive.** The old `USER#<sub>` rows are left behind
+  # pointing at subs that no longer exist. They are inert — authorisation reads
+  # the caller's own sub — but they are litter, and the runbook deletes them.
+  username_configuration {
+    case_sensitive = false
+  }
+
   password_policy {
     minimum_length    = 12
     require_lowercase = true
