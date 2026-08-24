@@ -382,21 +382,26 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # Namespaced secret names, with a fallback to the old bare ones so the
-      # rename can happen in either order. `ADMIN_EMAIL`/`ADMIN_PASSWORD` were
-      # the only unnamespaced secrets in the repo — every other service prefixes
-      # (`SCOUT_ADMIN_*`, `STUDIO_*`) — and a bare name is the one that collides
-      # if these ever become organisation-level. Drop the fallback once
-      # `WEBSITE_ADMIN_*` is set.
+      # Namespaced secret names. `ADMIN_EMAIL`/`ADMIN_PASSWORD` were the only
+      # unnamespaced secrets in the repo — every other service prefixes — and a
+      # bare name is the one that collides if these ever become
+      # organisation-level.
+      #
+      # The `|| secrets.ADMIN_*` fallback that carried the rename is gone. It
+      # existed so the rename could happen in either order, and it has done its
+      # job: the deploy that replaced this pool re-created the admin from
+      # `WEBSITE_ADMIN_*`, and the bare pair is not set on the environment. A
+      # fallback to something that does not exist only hides which name is
+      # actually in use.
       - name: Create admin user
         env:
-          ADMIN_EMAIL: ${{ secrets.WEBSITE_ADMIN_EMAIL || secrets.ADMIN_EMAIL }}
-          ADMIN_PASSWORD: ${{ secrets.WEBSITE_ADMIN_PASSWORD || secrets.ADMIN_PASSWORD }}
+          WEBSITE_ADMIN_EMAIL: ${{ secrets.WEBSITE_ADMIN_EMAIL }}
+          WEBSITE_ADMIN_PASSWORD: ${{ secrets.WEBSITE_ADMIN_PASSWORD }}
           AWS_REGION: ${{ env.AWS_REGION }}
         run: |
           set -euo pipefail
-          if [ -z "${ADMIN_EMAIL}" ] || [ -z "${ADMIN_PASSWORD}" ]; then
-            echo "ADMIN_EMAIL / ADMIN_PASSWORD not set — skipping admin bootstrap."
+          if [ -z "${WEBSITE_ADMIN_EMAIL}" ] || [ -z "${WEBSITE_ADMIN_PASSWORD}" ]; then
+            echo "WEBSITE_ADMIN_EMAIL / WEBSITE_ADMIN_PASSWORD not set — skipping admin bootstrap."
             exit 0
           fi
           USER_POOL_ID=$(aws ssm get-parameter --name /website/prod/cognito-user-pool-id \
