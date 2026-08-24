@@ -18,6 +18,27 @@ resource "aws_cognito_user_pool" "main" {
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
 
+  # **Case-insensitive email usernames — and this argument REPLACES THE POOL.**
+  #
+  # AWS accepts `username_configuration` only at pool creation, so the provider
+  # marks it ForceNew: an apply that adds it destroys the pool and every account
+  # in it. That is affordable here for exactly one reason, and it is a fact about
+  # today rather than about this design — the pool held **zero** users when this
+  # landed, so there was nothing to destroy.
+  #
+  # It does not stay affordable. Self-signup is open below
+  # (`allow_admin_create_user_only = false`), and every humbugg row keys on the
+  # Cognito `sub` — profiles, groups, group members, draws, audit events,
+  # billing. The first real signup turns this line from free into a data
+  # migration, because a new pool mints new subs and orphans all of it.
+  #
+  # Without this, `Alice@example.com` and `alice@example.com` are two accounts
+  # with two subs. Measured, not inferred: creating both casings in a pool
+  # configured like this one produced two users.
+  username_configuration {
+    case_sensitive = false
+  }
+
   # Cognito applies this when a password is *set*, so raising the floor stops new
   # weak passwords and changes nothing retroactively: anyone already under 12
   # characters stays there until their next reset. Length beats charset
