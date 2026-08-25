@@ -37,6 +37,19 @@ is the store's business.
 routes live in `adapters/store.py`, beside the path resolution they share. The
 split is by subject: this file is about records, that one is about the tree.
 
+## Every write is POST, PATCH or DELETE. **Never PUT.**
+
+Six routes here replace a whole collection and `docs/ENTITY_MODEL.md` spells all
+six as `PUT`, which is what PUT is for. The API registers none of them: it uses
+`PATCH` throughout, because a verb has to be added to the CORS list, the MOCK
+integration response and two gateway responses at once, and one omission is a
+browser failure with no status attached (`backend/studio_core/app_factory.py`).
+
+Every one of the six sent `PUT` from here anyway, and none of them had ever
+reached the API. `tests/fake_api.py` answered PUT, so the suite agreed with the
+adapter rather than with the service — which is why it refuses the verb outright
+now. If the API adopts PUT, this file changes with it and nothing else does.
+
 ## Errors
 
 Untouched. `api.Conflict` is a taken slug or a stale `rev`, `api.NotFound` is a
@@ -119,8 +132,14 @@ def patch_character(char_id: str, rev: int, *, slug: str | None = None,
 
 
 def put_profile(char_id: str, profile: dict, rev: int) -> dict:
-    """Replace the whole bible. The `edit` round trip's write half."""
-    return api.request("PUT", f"/api/characters/{char_id}/profile",
+    """Replace the whole bible. The `edit` round trip's write half.
+
+    **`PATCH`, despite replacing.** Replace and merge share one address and are
+    told apart by which key the body carries — `{profile}` against `{patch}` —
+    so one verb serves both. This sent `PUT`, which the route does not register,
+    and `edit --push` has therefore never reached the API.
+    """
+    return api.request("PATCH", f"/api/characters/{char_id}/profile",
                        {"profile": profile, "rev": rev})
 
 
@@ -200,7 +219,7 @@ def put_references(char_id: str, entries: list[dict]) -> dict:
     time is forty round trips and forty chances to stop halfway with the index
     half-written; the whole pass lands or none of it does.
     """
-    return api.request("PUT", f"/api/characters/{char_id}/references",
+    return api.request("PATCH", f"/api/characters/{char_id}/references",
                        {"entries": entries})
 
 
@@ -211,7 +230,7 @@ def delete_reference(char_id: str, node: str) -> dict:
 
 def put_default_set(char_id: str, nodes: list[str]) -> dict:
     """Name the nodes sent when `--character` is given with no selector."""
-    return api.request("PUT", f"/api/characters/{char_id}/default-set",
+    return api.request("PATCH", f"/api/characters/{char_id}/default-set",
                        {"nodes": list(nodes)})
 
 
@@ -300,7 +319,7 @@ def put_project_characters(proj_id: str, characters: list[str]) -> dict:
     putting it back is one round trip either way, and a partial verb would need
     its own idempotency story.
     """
-    return api.request("PUT", f"/api/projects/{proj_id}/characters",
+    return api.request("PATCH", f"/api/projects/{proj_id}/characters",
                        {"characters": list(characters)})
 
 
@@ -440,7 +459,7 @@ def put_shots(scene_id: str, shots: list[dict]) -> dict:
     somebody already paid to render — so the API merges by shot id and the
     caller does not have to hand-carry the rendered fields across.
     """
-    return api.request("PUT", f"/api/scenes/{scene_id}/shots", {"shots": shots})
+    return api.request("PATCH", f"/api/scenes/{scene_id}/shots", {"shots": shots})
 
 
 def patch_shot(scene_id: str, shot_id: str, **fields) -> dict:
@@ -483,7 +502,7 @@ def delete_movie(movie_id: str, *, files: str = "keep") -> dict:
 
 
 def put_movie_scenes(movie_id: str, scenes: list[dict]) -> dict:
-    return api.request("PUT", f"/api/movies/{movie_id}/scenes", {"scenes": scenes})
+    return api.request("PATCH", f"/api/movies/{movie_id}/scenes", {"scenes": scenes})
 
 
 def movie_output(movie_id: str, name: str, size: int, content_type: str) -> dict:

@@ -568,7 +568,7 @@ their `order` values. One write, no neighbours touched.
 Bulk describe — one transaction, which is what `describe-refs` needs:
 
 ```http
-PUT /api/characters/char-9f3c1e57-…/references
+PATCH /api/characters/char-9f3c1e57-…/references
 {
   "entries": [
     { "node": "node-9a06d3c5-…", "group": "face", "description": "…" },
@@ -803,7 +803,7 @@ wrote local/characters/subject-a.yaml — edit, then: studio character set-profi
 
 $ studio character set-profile subject-a
 profile updated (rev 1 → 2)
-# PUT /api/characters/<id>/profile  {profile, rev}
+# PATCH /api/characters/<id>/profile  {profile, rev}
 
 $ studio character list
 subject-a   Subject A    refs 41   files 62   updated 2026-08-19
@@ -838,7 +838,7 @@ described 1 reference
 
 $ studio character describe-refs subject-a --from descriptions.json
 described 12 references in one write
-# PUT /api/characters/<id>/references
+# PATCH /api/characters/<id>/references
 
 $ studio character order subject-a --group face node-9a06d3c5-… --after node-a18f2b60-…
 reordered
@@ -850,7 +850,7 @@ moved to group body — no object was written
 
 $ studio character default-set subject-a node-a18f2b60-… node-9a06d3c5-… node-b93e07d1-…
 default set: 3 references
-# PUT /api/characters/<id>/default-set
+# PATCH /api/characters/<id>/default-set
 
 $ studio character selection subject-a --tag face --limit 7
 slot 1  node-a18f2b60-…  face  Front, neutral, flat daylight.
@@ -886,7 +886,7 @@ rooftop-teaser  (proj-4a10b8d2-…)  rev 2
   input pool  4 images
 
 $ studio projects link rooftop-teaser subject-b
-# PUT /api/projects/<id>/characters
+# PATCH /api/projects/<id>/characters
 
 $ studio projects rename rooftop-teaser launch-teaser
 renamed — 0 objects copied

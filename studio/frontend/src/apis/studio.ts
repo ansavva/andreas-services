@@ -322,9 +322,16 @@ export function patchCharacter(
  * editor produces: it renders every section it was given and hands the same
  * shape back, so a field it removed was removed on purpose. `patchCharacterProfile`
  * is the merge, for a caller changing one section.
+ *
+ * **`PATCH`, despite replacing.** The two operations share one address and are
+ * told apart by which key the body carries, so they cannot use different verbs:
+ * `{profile}` replaces and `{patch}` merges. This sent `PUT` from the day the
+ * route was written, and `PUT` is neither registered on it nor in the API's
+ * `CORS_METHODS` — so every profile save from this app failed the preflight,
+ * and nothing caught it because the backend tests call the route directly.
  */
 export function putCharacterProfile(id: string, profile: CharacterProfile, rev: number) {
-  return apiSend<CharacterRecord>("PUT", `/api/characters/${encodeURIComponent(id)}/profile`, {
+  return apiSend<CharacterRecord>("PATCH", `/api/characters/${encodeURIComponent(id)}/profile`, {
     profile,
     rev,
   });
@@ -412,7 +419,7 @@ export function putReferences(
   id: string,
   entries: Array<{ node: string; group: string; description?: string; tags?: string[] }>,
 ) {
-  return apiSend<ReferenceIndex>("PUT", `/api/characters/${encodeURIComponent(id)}/references`, {
+  return apiSend<ReferenceIndex>("PATCH", `/api/characters/${encodeURIComponent(id)}/references`, {
     entries,
   });
 }
@@ -426,7 +433,7 @@ export function deleteReference(id: string, node: string) {
 }
 
 export function putDefaultSet(id: string, nodes: string[]) {
-  return apiSend<CharacterRecord>("PUT", `/api/characters/${encodeURIComponent(id)}/default-set`, {
+  return apiSend<CharacterRecord>("PATCH", `/api/characters/${encodeURIComponent(id)}/default-set`, {
     nodes,
   });
 }
@@ -500,7 +507,7 @@ export function deleteProject(
 
 /** Replace the involvement links wholesale — this is `projects link` / `unlink`. */
 export function putProjectCharacters(id: string, characters: string[]) {
-  return apiSend<ProjectRecord>("PUT", `/api/projects/${encodeURIComponent(id)}/characters`, {
+  return apiSend<ProjectRecord>("PATCH", `/api/projects/${encodeURIComponent(id)}/characters`, {
     characters,
   });
 }

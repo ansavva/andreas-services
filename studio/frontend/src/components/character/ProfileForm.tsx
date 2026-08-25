@@ -31,8 +31,17 @@ interface Props {
   onReload?: () => void;
 }
 
-/** The identity fields' section id. Leading space so no bible key can collide with it. */
-const IDENTITY = " identity";
+/**
+ * The record fields' section id. Leading space so no bible key can collide with it.
+ *
+ * **Titled "Record", not "Identity".** The bible has its own `identity:` key, and
+ * this card sat directly above the section rendered from it — two cards, same
+ * heading, in the rail and in the page. The two are not the same thing: this one
+ * is how the row is addressed and whether a likeness may be published, while
+ * `identity:` is age, build, height read and signature features. So the card that
+ * had no name of its own takes one.
+ */
+const RECORD = " record";
 
 /**
  * The character record, as one form: who they are on top, then the bible.
@@ -118,7 +127,7 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
   /** Per section, so a trigger and its rail entry can each say which one moved. */
   const dirtySections = useMemo(() => {
     const moved = new Set<string>();
-    if (identityDirty) moved.add(IDENTITY);
+    if (identityDirty) moved.add(RECORD);
     for (const key of keys) {
       if (JSON.stringify(profileDraft[key]) !== JSON.stringify(profile[key])) moved.add(key);
     }
@@ -132,7 +141,7 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
   const dirty = identityDirty || profileDirty;
 
   const [open, setOpen] = useState<ReadonlySet<string>>(
-    () => new Set([IDENTITY, ...keys.slice(0, 1)]),
+    () => new Set([RECORD, ...keys.slice(0, 1)]),
   );
 
   const setOpenAt = useCallback((section: string, next: boolean) => {
@@ -146,7 +155,7 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
 
   const allOpen = open.size === keys.length + 1;
   const toggleAll = useCallback(
-    () => setOpen(allOpen ? new Set() : new Set([IDENTITY, ...keys])),
+    () => setOpen(allOpen ? new Set() : new Set([RECORD, ...keys])),
     [allOpen, keys],
   );
 
@@ -258,10 +267,10 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
               {allOpen ? "Collapse all" : "Expand all"}
             </Button>
             <Separator className="my-1" />
-            {[IDENTITY, ...keys].map((section) => (
+            {[RECORD, ...keys].map((section) => (
               <RailLink
                 key={section}
-                title={section === IDENTITY ? "Identity" : humanise(section)}
+                title={section === RECORD ? "Record" : humanise(section)}
                 open={open.has(section)}
                 dirty={dirtySections.has(section)}
                 onClick={() => goToSection(section)}
@@ -283,14 +292,14 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
           </div>
 
           <ProfileSection
-            id={IDENTITY}
-            title="Identity"
+            id={RECORD}
+            title="Record"
             dirty={identityDirty}
-            open={open.has(IDENTITY)}
-            onOpenChange={(next) => setOpenAt(IDENTITY, next)}
-            innerRef={(node) => sectionRefs.current.set(IDENTITY, node)}
+            open={open.has(RECORD)}
+            onOpenChange={(next) => setOpenAt(RECORD, next)}
+            innerRef={(node) => sectionRefs.current.set(RECORD, node)}
           >
-            <IdentityFields value={identityDraft} onChange={setIdentityDraft} />
+            <RecordFields value={identityDraft} onChange={setIdentityDraft} />
           </ProfileSection>
 
           {keys.map((key) => (
@@ -466,7 +475,7 @@ function Chevron({ open }: { open: boolean }) {
  * changes in the same transaction. It was a sweep over four pools plus a rewrite
  * pass over every run that cited the old path.
  */
-function IdentityFields({
+function RecordFields({
   value,
   onChange,
 }: {

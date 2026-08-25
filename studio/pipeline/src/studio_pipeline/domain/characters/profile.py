@@ -34,7 +34,7 @@ exposing an ETag, and admitted in its own docstring that both were
 window in between where somebody else's write lands and is lost. It closed with
 "closing that window needs an `If-Match` on the API".
 
-That is what `rev` is. `PUT /api/characters/<id>/profile` takes `{profile, rev}`
+That is what `rev` is. `PATCH /api/characters/<id>/profile` takes `{profile, rev}`
 and the API refuses a stale one with a `ConditionExpression`, so the comparison
 happens where the write happens and there is no gap at all. A `409` arrives as
 `api.Conflict` and means exactly one thing: somebody wrote since you read.
@@ -422,7 +422,11 @@ def cmd_textblock(name):
     record = _require(name)
     found = entities.textblock(record["id"])
     authored = (found.get("text") or "").strip()
-    if authored and not authored.startswith("<"):  # "<>" is the unfilled template
+    # No `<`-check here any more: the route empties an unfilled `<>` before it
+    # answers, so the branch is `text` or nothing. It used to be tested here and
+    # `raw` used to arrive empty from a route that never sent it, which is how
+    # this printed `{}` and told you to compress it.
+    if authored:
         print(authored)
         print(f"\n(authored block from {record['slug']}'s bible)", file=sys.stderr)
         return
@@ -447,7 +451,7 @@ def cmd_textblock(name):
 def cmd_set_profile(name, file):
     """Replace the bible. With no FILE, pushes the local working copy.
 
-    `PUT /api/characters/<id>/profile` with the `rev` last seen. FILE omitted is
+    `PATCH /api/characters/<id>/profile` with the `rev` last seen. FILE omitted is
     the `edit` round trip's second half and uses the `rev` recorded at pull
     time, so a stale copy is refused; FILE given is an assertion and uses the
     record's current `rev`, which the API still compare-and-swaps against.
@@ -545,7 +549,7 @@ def do_push(name: str, force: bool, local: str, base: str, revf: str) -> None:
         return
 
     # A bible that no longer parses, or has lost a schema key, is worse than no
-    # write at all — every downstream reader breaks on it. Check before the PUT.
+    # write at all — every downstream reader breaks on it. Check before the write.
     data = parse_profile(text, local)
     check_profile(data, local, name)
 
@@ -583,7 +587,7 @@ def cmd_edit(name, diff, discard, force, path, pull, push):
 
     The document is assembled from the record, not downloaded — there is no
     `profile.yaml` in the bucket any more — and pushed back as
-    `PUT …/profile {profile, rev}`.
+    `PATCH …/profile {profile, rev}`.
     """
     check_name(name)
     local, base, revf = local_paths(name, path)

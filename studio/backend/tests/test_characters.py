@@ -24,7 +24,7 @@ a folder for reasons that have nothing to do with what is being tested.
 
 import pytest
 
-from studio_core import config
+from studio_core import app_factory, config
 from studio_core.services import catalog, layout
 from tests.conftest import CATALOG_LIBRARY, CATALOG_ROOT
 
@@ -719,6 +719,77 @@ def test_the_textblock_is_served_on_its_own(empty_api):
     body = empty_api.get(f"/api/characters/{character['id']}/textblock").get_json()
 
     assert body["text"] == "A tall figure in a grey coat."
+    # Nothing to compress from — the paragraph is already written.
+    assert body["raw"] == {}
+
+
+def test_an_unauthored_textblock_answers_with_the_raw_sections(empty_api):
+    """The documented half of this route, which did not exist.
+
+    `studio character textblock` reads `raw` and has since it was written; this
+    route sent `{id, text}` alone, so the command printed `{}` and instructions.
+    Only the authored path above was tested, which is how it survived.
+
+    `rendering` and `voice` stay out: the paragraph exists for an engine with no
+    reference system, and it is spent on what the character LOOKS like.
+    """
+    character = _create(
+        empty_api,
+        profile={
+            "identity": {"apparent_age": "40s"},
+            "face": {"eyes": "green"},
+            "body": {"silhouette": "three heads at the shoulder"},
+            "wardrobe": {"palette": "muted"},
+            "consistency": {"must": ["the scar"]},
+            "voice": {"accent": "flat"},
+            "rendering": {"default_style": "Realistic"},
+        },
+    )
+
+    body = empty_api.get(f"/api/characters/{character['id']}/textblock").get_json()
+
+    assert body["text"] == ""
+    assert set(body["raw"]) == {"identity", "face", "body", "wardrobe", "consistency"}
+    assert body["raw"]["body"] == {"silhouette": "three heads at the shoulder"}
+
+
+def test_the_unfilled_template_block_counts_as_no_block(empty_api):
+    """`<>` is what the blank template leaves, and it must not reach a prompt.
+
+    The CLI made this call itself, so the SPA was free to make the opposite one
+    and paste a literal `<>` into a model. It is the route's decision now.
+    """
+    character = _create(
+        empty_api,
+        profile={"text_identity_block": "<>", "face": {"eyes": "green"}},
+    )
+
+    body = empty_api.get(f"/api/characters/{character['id']}/textblock").get_json()
+
+    assert body["text"] == ""
+    assert body["raw"] == {"face": {"eyes": "green"}}
+
+
+def test_the_profile_route_takes_patch_and_nothing_else(empty_api):
+    """Both clients sent `PUT` here, and neither could ever have been answered.
+
+    Replace and merge share one address and are told apart by the body's key, so
+    `PATCH` is the only verb registered — and `PUT` is not in `CORS_METHODS`
+    either, which is where the SPA's write actually died. Every test in this file
+    calls the route directly with the right verb, so nothing here noticed that
+    the clients did not.
+
+    Asserted against the url map and the CORS list rather than by sending a
+    request: the test client re-raises `MethodNotAllowed` instead of rendering
+    it, so a `405` assertion would be testing Flask's error propagation. These
+    two are the facts a client actually collides with.
+    """
+    app = empty_api.application
+    rule = next(r for r in app.url_map.iter_rules()
+                if str(r) == "/api/characters/<addressed>/profile")
+
+    assert rule.methods & {"PATCH", "PUT"} == {"PATCH"}
+    assert "PUT" not in app_factory.CORS_METHODS
 
 
 # ──────────────────────────── delete ────────────────────────────

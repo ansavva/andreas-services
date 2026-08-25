@@ -262,6 +262,16 @@ class FakeApi:
             raise api.ApiError(message, status) from error
 
     def _dispatch(self, method, route, body, params):
+        # **No `/api` route takes PUT, so the fake refuses it everywhere.**
+        #
+        # `docs/ENTITY_MODEL.md` spells six whole-collection replaces as PUT and
+        # the service registers PATCH for all six — see `app_factory` for why the
+        # verb is not available. The adapter sent PUT to every one of them and
+        # this fake answered, so the suite proved the adapter agreed with itself
+        # rather than with the API. One refusal here is worth more than six
+        # handlers each remembering to make it.
+        if method == "PUT":
+            raise FakeError(405, f"PUT {route}: no /api route takes PUT — use PATCH")
         for pattern, handler in self._routes():
             match = re.fullmatch(pattern, route)
             if match:
@@ -494,15 +504,25 @@ class FakeApi:
         raise FakeError(405, method)
 
     def _r_profile(self, method, body, params, ref):
+        """Replace or merge, told apart by the body's key — never by the verb.
+
+        **This used to accept `PUT` for the replace**, which is how the adapter
+        came to send one: the fake answered it, every test passed, and the real
+        route registers `PATCH` alone. A fake that is more permissive than the
+        API it stands in for cannot fail the one way that matters, so the two
+        refusals below are the point of this handler rather than trimmings.
+        """
         record = self._entity(self.characters, ref, "character")
-        if method == "PUT":
-            self._bump(record, body.get("rev"))
-            record["profile"] = body["profile"]
-        elif method == "PATCH":
-            self._bump(record, body.get("rev"))
-            record["profile"] = {**record["profile"], **body["patch"]}
-        else:
+        if method != "PATCH":
             raise FakeError(405, method)
+        replacing, merging = "profile" in body, "patch" in body
+        if replacing and merging:
+            raise FakeError(400, "send profile to replace, or patch to merge, not both")
+        if not replacing and not merging:
+            raise FakeError(400, "send profile to replace, or patch to merge")
+        self._bump(record, body.get("rev"))
+        record["profile"] = (body["profile"] if replacing
+                             else {**record["profile"], **body["patch"]})
         return self._char_view(record)
 
     def _ref_file(self, entry: dict) -> dict:
@@ -543,7 +563,7 @@ class FakeApi:
                      "tags": list(body.get("tags") or []), "created": _now()}
             entries.append(entry)
             return self._ref_entry(record, entry)
-        if method == "PUT":
+        if method == "PATCH":
             by_node = {e["node"]: e for e in entries}
             unknown = [e["node"] for e in body["entries"] if e["node"] not in by_node]
             if unknown:
@@ -652,8 +672,14 @@ class FakeApi:
     def _r_textblock(self, method, body, params, ref):
         record = self._entity(self.characters, ref, "character")
         profile = record.get("profile") or {}
-        return {"text": (profile.get("text_identity_block") or "").strip(),
-                "raw": {k: profile[k] for k in
+        # `<>` is the blank template's unfilled block, and the route empties it
+        # before answering so that a caller never has to know the placeholder.
+        authored = (profile.get("text_identity_block") or "").strip()
+        if authored.startswith("<"):
+            authored = ""
+        return {"id": record["id"], "text": authored,
+                "raw": {} if authored else
+                       {k: profile[k] for k in
                         ("identity", "face", "body", "wardrobe", "consistency")
                         if profile.get(k)}}
 
@@ -973,7 +999,7 @@ class FakeApi:
         if method == "GET":
             return {"shots": sorted(self.shots.get(scene_id, []),
                                     key=lambda s: s["order"])}
-        if method != "PUT":
+        if method != "PATCH":
             raise FakeError(405, method)
         self._merge_shots(scene_id, body["shots"])
         return self._scene_view(self.scenes[scene_id])

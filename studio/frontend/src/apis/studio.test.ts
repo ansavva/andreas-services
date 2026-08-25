@@ -143,7 +143,10 @@ describe("record writes send `rev`", () => {
     await putCharacterProfile("char-0001", { identity: { register: "…" } }, 4);
 
     expect(urlOf(fetcher).pathname).toBe("/api/characters/char-0001/profile");
-    expect(initOf(fetcher).method).toBe("PUT");
+    // PATCH, not PUT: replace and merge share one address and are told apart by
+    // the body's key. This asserted PUT, which the API neither routes nor allows
+    // through CORS — the assertion agreed with the client and both were wrong.
+    expect(initOf(fetcher).method).toBe("PATCH");
     expect(bodyOf(fetcher)).toEqual({ profile: { identity: { register: "…" } }, rev: 4 });
   });
 });

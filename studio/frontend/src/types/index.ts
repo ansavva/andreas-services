@@ -325,7 +325,8 @@ export type CharacterProfile = Record<string, ProfileValue>;
  *
  * Grouped as a type because they are saved as a unit and by a different route
  * from the bible — `PATCH /api/characters/<id>` against
- * `PUT /api/characters/<id>/profile`. One form edits both; see `ProfileForm`.
+ * `PATCH /api/characters/<id>/profile`, which are told apart by the path and by
+ * the body's key rather than by the verb. One form edits both; see `ProfileForm`.
  */
 export interface CharacterIdentity {
   slug: string;

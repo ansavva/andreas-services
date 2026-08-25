@@ -105,7 +105,7 @@ describe("saving identity and the bible together", () => {
 
     await open();
     await editAndSave("Slug", "<other>");
-    // Identity alone is dirty here, so only the one write goes.
+    // The record fields alone are dirty here, so only the one write goes.
     await waitFor(() => expect(patch).toHaveBeenCalledWith(ID, expect.objectContaining({ rev: 7 })));
     expect(putProfile).not.toHaveBeenCalled();
 
@@ -151,14 +151,16 @@ describe("the sections", () => {
       .getAllByRole("button", { name })
       .find((each) => each.hasAttribute("aria-expanded")) as HTMLElement;
 
-  it("opens identity and the first of the bible, and leaves the rest closed", async () => {
+  it("opens the record card and the first of the bible, and leaves the rest closed", async () => {
     await open();
 
     const expanded = screen
       .getAllByRole("button", { expanded: true })
       .map((each) => each.textContent);
 
-    expect(expanded).toContain("Identity");
+    // "Record", not "Identity": the bible has its own `identity:` section and
+    // the two cards used to carry the same heading.
+    expect(expanded).toContain("Record");
     expect(expanded).toContain("Appearance");
     expect(expanded).not.toContain("Voice");
   });
@@ -203,7 +205,7 @@ describe("the sections", () => {
     // passed the whole time this was broken.
     await open();
 
-    const card = document.querySelector<HTMLElement>('[data-section=" identity"]');
+    const card = document.querySelector<HTMLElement>('[data-section=" record"]');
     expect(card).toBeTruthy();
     // Parsed, not string-compared: jsdom serialises these two zeroes
     // differently — `padding` as "0px" and `gap` as "0".

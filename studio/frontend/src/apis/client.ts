@@ -65,14 +65,23 @@ export async function apiGet<T>(path: string, params?: Record<string, string | u
  * **Every method here has to be in API Gateway's allowed-method list**, which
  * answers the browser's preflight instead of Flask — a method missing from it
  * fails as a network error with no status, which reads as the API being down.
- * `PUT` is on this list because the entity routes use it for a whole-document
- * replace (`PUT /api/characters/<id>/profile`, the reference bulk write, the
- * default set, a project's character links), where the distinction from `PATCH`
- * is load-bearing: one replaces the document, the other merges into it. See
- * `app_factory.CORS_HEADERS` and `modules/api_gateway`.
+ * **`PUT` is not on that list, and this file used to say it was.** Six entity
+ * routes replace a whole collection — the profile, the reference bulk write, the
+ * default set, a project's character links, a scene's shots, a movie's scenes —
+ * and `docs/ENTITY_MODEL.md` spells every one of them `PUT`. The service does
+ * not: adding a verb means changing the CORS list, the MOCK integration response
+ * and two gateway responses together, so all six are `PATCH`, and replace is
+ * told from merge by which key the body carries rather than by the verb. See
+ * `app_factory.CORS_METHODS`.
+ *
+ * Four of those six were sent from here as `PUT` and died in the preflight —
+ * a network error with no status, which is why they read as the API being down
+ * rather than as a wrong verb. `PUT` is off the union below so the next one
+ * fails to compile instead. A presigned upload still PUTs, and does not come
+ * through here: see `apis/upload.ts`.
  */
 export async function apiSend<T>(
-  method: "POST" | "PUT" | "PATCH" | "DELETE",
+  method: "POST" | "PATCH" | "DELETE",
   path: string,
   body?: unknown,
 ): Promise<T> {
