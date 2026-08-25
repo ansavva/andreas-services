@@ -481,6 +481,113 @@ def test_describing_many_references_is_one_transaction(empty_api):
     ] == ["shot 0", "shot 1", "shot 2"]
 
 
+def test_detaching_takes_the_node_out_of_the_default_set(empty_api):
+    """The root cause of a set that names images nothing points at.
+
+    Detaching only deleted the `REF#` row. The id stayed in `default_set`, where
+    the selection route filtered it out without a word — so a re-shot reference
+    left a stale id behind and a default shoot sent fewer images than somebody
+    chose. Production carried four of these on one character.
+    """
+    character = _create(empty_api)
+    pool = _child(character["root"], "reference")["node_id"]
+    kept = _uploaded(empty_api, pool, "kept.webp")
+    dropped = _uploaded(empty_api, pool, "dropped.webp")
+    for node in (kept, dropped):
+        empty_api.post(
+            f"/api/characters/{character['id']}/references",
+            json={"node": node["node_id"], "group": "face"},
+        )
+    empty_api.patch(
+        f"/api/characters/{character['id']}/default-set",
+        json={"nodes": [kept["node_id"], dropped["node_id"]], "rev": 1},
+    )
+
+    resp = empty_api.delete(
+        f"/api/characters/{character['id']}/references/{dropped['node_id']}"
+    )
+
+    assert resp.status_code == 200
+    assert resp.get_json()["default_set"] == [kept["node_id"]]
+    assert catalog.entity(catalog.ENTITY_CHARACTER, character["id"])["default_set"] == [
+        kept["node_id"]
+    ]
+
+
+def test_detaching_something_the_default_set_never_named_says_nothing(empty_api):
+    """The key is present only when it changed, so a client need not diff."""
+    character = _create(empty_api)
+    pool = _child(character["root"], "reference")["node_id"]
+    picture = _uploaded(empty_api, pool, "loose.webp")
+    empty_api.post(
+        f"/api/characters/{character['id']}/references",
+        json={"node": picture["node_id"], "group": "face"},
+    )
+
+    resp = empty_api.delete(
+        f"/api/characters/{character['id']}/references/{picture['node_id']}"
+    )
+
+    assert resp.status_code == 200
+    assert "default_set" not in resp.get_json()
+
+
+def test_the_default_set_refuses_a_node_that_is_not_a_reference(empty_api):
+    """The check that was missing is the one that would have caught the drift.
+
+    The set names what a generation is SHOWN. A member with no `REF#` row is an
+    image the selection route drops, so accepting one here is accepting a set
+    that does not mean what it says.
+    """
+    character = _create(empty_api)
+    pool = _child(character["root"], "reference")["node_id"]
+    loose = _uploaded(empty_api, pool, "loose.webp")
+
+    resp = empty_api.patch(
+        f"/api/characters/{character['id']}/default-set",
+        json={"nodes": [loose["node_id"]], "rev": 1},
+    )
+
+    assert resp.status_code == 400
+    assert "not a reference" in resp.get_data(as_text=True)
+
+
+def test_a_stale_default_set_is_refused_rather_than_quietly_shortened(empty_api):
+    """Same rule as the cap refusal, and the same reason.
+
+    Handing a model three of the seven images somebody chose is a result nobody
+    can explain afterwards. The refusal names which ids went stale so the set can
+    be re-pointed rather than guessed at.
+    """
+    character = _create(empty_api)
+    pool = _child(character["root"], "reference")["node_id"]
+    nodes = [_uploaded(empty_api, pool, f"{index}.webp") for index in range(2)]
+    for node in nodes:
+        empty_api.post(
+            f"/api/characters/{character['id']}/references",
+            json={"node": node["node_id"], "group": "face"},
+        )
+    empty_api.patch(
+        f"/api/characters/{character['id']}/default-set",
+        json={"nodes": [node["node_id"] for node in nodes], "rev": 1},
+    )
+    # Straight to the catalog: the route now refuses to CREATE this state, which
+    # is the point — what is being tested is the read path over a library that
+    # already carries it.
+    record = catalog.entity(catalog.ENTITY_CHARACTER, character["id"])
+    catalog.update_entity(
+        catalog.ENTITY_CHARACTER, record, record["rev"],
+        {"default_set": [nodes[0]["node_id"], "node-vanished"]},
+    )
+
+    resp = empty_api.get(f"/api/characters/{character['id']}/selection")
+
+    assert resp.status_code == 409
+    body = resp.get_json()
+    assert body["error"] == "stale_default_set"
+    assert [entry["node"] for entry in body["stale"]] == ["node-vanished"]
+
+
 def test_a_tag_written_on_the_file_selects_it_as_a_reference(empty_api):
     """One store, two doors.
 

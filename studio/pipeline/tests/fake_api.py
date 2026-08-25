@@ -673,7 +673,17 @@ class FakeApi:
             raise FakeError(404, f"{node_id} is not a reference of {record['slug']}")
         if method == "DELETE":
             entries.remove(entry)
-            return {"detached": node_id}
+            # **And out of the default set, in the same act** — as the service
+            # does. Detaching used to leave the id sitting there, where the
+            # selection route filtered it out silently; production carried four
+            # of those on one character before anyone counted.
+            before = record.get("default_set") or []
+            after = [each for each in before if each != node_id]
+            answer = {"detached": node_id, "node": node_id}
+            if len(after) != len(before):
+                record["default_set"] = after
+                answer["default_set"] = after
+            return answer
         if method != "PATCH":
             raise FakeError(405, method)
         if "group" in body:
@@ -688,6 +698,11 @@ class FakeApi:
 
     def _r_default_set(self, method, body, params, ref):
         record = self._entity(self.characters, ref, "character")
+        if method == "PATCH" and isinstance(body.get("nodes"), list):
+            attached = {e["node"] for e in self.refs.get(record["id"], [])}
+            stray = [n for n in body["nodes"] if n not in attached]
+            if stray:
+                raise FakeError(400, f"{stray[0]} is not a reference of {record['slug']}")
         known = {e["node"] for e in self.refs.get(record["id"], [])}
         unknown = [n for n in body["nodes"] if n not in known]
         if unknown:
@@ -734,7 +749,15 @@ class FakeApi:
                 raise FakeError(404, f"no reference of {record['slug']} carries all of "
                                      f"{sorted(wanted)}. Tags in use: {have or '(none)'}")
         elif record.get("default_set"):
-            chosen = [by_node[n] for n in record["default_set"] if n in by_node]
+            # Refused, never filtered — as the route does. A generation shown
+            # three of the seven images somebody chose is a result nobody can
+            # explain, which is the same rule the cap refusal already follows.
+            stale = [n for n in record["default_set"] if n not in by_node]
+            if stale:
+                raise FakeError(409, f"{len(stale)} of {len(record['default_set'])} in "
+                                     f"{record['slug']}'s default set are not references "
+                                     f"any more: {', '.join(stale[:4])}")
+            chosen = [by_node[n] for n in record["default_set"]]
             source = "default_set"
         else:
             chosen, source = list(entries), "all"

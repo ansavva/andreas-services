@@ -280,14 +280,30 @@ def cmd_show(name, json_, profile_):
     if json_:
         print(json.dumps(record, indent=2))
         return
-    counts = entities.references(record["id"]).get("counts") or {}
+    index = entities.references(record["id"])
+    counts = index.get("counts") or {}
+    # **Drift, named rather than left to be counted.** A `default_set` member
+    # with no `REF#` row is an image a shoot will not send, and the only symptom
+    # used to be a generation that saw fewer references than somebody chose.
+    attached = {entry["node"]
+                for entries in (index.get("groups") or {}).values()
+                for entry in entries}
+    stale = [node for node in (record.get("default_set") or []) if node not in attached]
     folders = [f"{n['name']}/" for n in store.children_of(record["root"])
                if n.get("kind") == "folder"]
     print(f"{record['slug']}  ({record['id']})  rev {record.get('rev')}")
     print(f"  display   {record.get('display_name') or '—'}")
     print(f"  fictional {str(bool(record.get('fictional', True))).lower()}")
     print(f"  refs      {' · '.join(f'{g} {n}' for g, n in sorted(counts.items())) or '—'}"
-          f"      default set: {len(record.get('default_set') or [])}")
+          f"      default set: {len(record.get('default_set') or [])}"
+          f"{f' ({len(stale)} STALE)' if stale else ''}")
+    if stale:
+        print(f"  {len(stale)} of the default set are not references any more — a default "
+              f"shoot is refused until they are re-pointed:", file=sys.stderr)
+        for node in stale:
+            print(f"    {node}", file=sys.stderr)
+        print(f"  fix with: studio character default-set {record['slug']} <node> …",
+              file=sys.stderr)
     print(f"  root      {record['root']}   {' '.join(folders) or '(no folders)'}")
 
 
