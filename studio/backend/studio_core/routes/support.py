@@ -43,6 +43,7 @@ import logging
 
 from flask import g, jsonify, request
 
+from studio_core.clients.aws import s3
 from studio_core.errors import ForbiddenError, ValidationError
 from studio_core.services import catalog
 
@@ -153,6 +154,85 @@ def view(record: dict, owner: dict | None = None) -> dict:
     if owner is not None:
         reported["owner"] = owner
     return reported
+
+
+def assets(node_ids: list[str]) -> list[dict]:
+    """The nodes a record *points at*, expanded into what a page can draw.
+
+    **Not `view`, and the difference is the whole reason this is separate.**
+    `view` reports a node addressed by its own id — `GET /api/nodes/<id>` — so it
+    says `id`. This reports a **pointer** to a node held by some other record: a
+    run's output, a run's binding, a scene's cut. Everything that hands out such
+    a pointer calls it `node` — `thumb`, a character's references, the reply to
+    `POST /api/runs/<id>/outputs` — and both halves of studio read that name.
+
+    They diverged once, in `runs.py`, which said `id`. The cost was not a naming
+    quibble: the SPA read `node`, got `undefined`, and every output tile and
+    every binding tile on a run page navigated to `/o/undefined`. One expansion,
+    here, so there is nothing left to diverge from.
+
+    A node the catalog cannot find is still reported, as its id alone. It is the
+    honest answer — the record does point at it — and it keeps a run whose output
+    was deleted openable instead of 404.
+    """
+    found = catalog.records(node_ids)
+    return [asset(node_id, found.get(node_id)) for node_id in node_ids]
+
+
+def asset(node_id: str, record: dict | None = None) -> dict:
+    """One such pointer. `record` saves a read when the caller already has it."""
+    if record is None:
+        record = catalog.records([node_id]).get(node_id)
+    if record is None:
+        return {"node": node_id}
+    return {
+        "node": node_id,
+        "name": record["name"],
+        "size": record.get("size"),
+        "content_type": record.get("content_type"),
+        "url": s3.presign(record["blob_key"]) if record.get("blob_key") else None,
+    }
+
+
+def output_node(stored) -> str | None:
+    """The node id inside a stored `output`, whichever of the two shapes it is.
+
+    A scene and a movie each have exactly one cut, stored as a pointer —
+    `{"node": <id>}` — plus whatever the encoder recorded about the file.
+    `assemble` writes the probe alongside it; this service stores that and never
+    reads it, because how the video was made is the CLI's business.
+
+    **A bare id is still read**, because that is the shape
+    `POST /api/{scenes,movies}/<id>/output` wrote before it wrote a pointer, and
+    it is what every row created up to then holds. Normalising on the way out
+    beats migrating: there was one writer of the old shape and it now writes the
+    new one.
+    """
+    if isinstance(stored, str):
+        return stored or None
+    if isinstance(stored, dict):
+        return stored.get("node")
+    return None
+
+
+def with_output(record: dict) -> dict:
+    """One record with its `output` expanded from a stored pointer to a drawable one.
+
+    What is stored says which node; what is reported adds the name, size, content
+    type and signed URL, because a page that cannot draw the cut cannot show the
+    scene or the movie.
+
+    The API used to report the pointer unexpanded and both readers broke on it,
+    differently: the SPA drew a `<video>` with no `src`, and the CLI's
+    `scene_output_node` did `(record.get("output") or {}).get("node")` against
+    what was then a bare string.
+    """
+    stored = record.get("output")
+    node_id = output_node(stored)
+    if not node_id:
+        return record
+    stored = {"node": node_id} if isinstance(stored, str) else stored
+    return {**record, "output": {**stored, **asset(node_id)}}
 
 
 def structured(code: str, message: str, status: int, **extra):

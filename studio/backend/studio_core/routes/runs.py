@@ -340,22 +340,7 @@ def get_run(run_id: str):
     nodes = catalog.records(node_ids)
 
     def expand(ids):
-        expanded = []
-        for node_id in ids:
-            node = nodes.get(node_id)
-            if node is None:
-                expanded.append({"id": node_id})
-                continue
-            expanded.append(
-                {
-                    "id": node_id,
-                    "name": node["name"],
-                    "size": node.get("size"),
-                    "content_type": node.get("content_type"),
-                    "url": s3.presign(node["blob_key"]) if node.get("blob_key") else None,
-                }
-            )
-        return expanded
+        return [support.asset(node_id, nodes.get(node_id)) for node_id in ids]
 
     return jsonify(
         {

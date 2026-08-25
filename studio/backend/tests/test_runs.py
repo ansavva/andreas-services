@@ -304,6 +304,32 @@ def test_bindings_are_stored_as_node_ids(empty_api, catalog_table):
     assert fetched["bindings"]["image_input"][0]["name"] == "renamed.webp"
 
 
+def test_an_expanded_binding_and_output_name_their_node_as_node(empty_api):
+    """`node`, because that is what a pointer to a node is called everywhere else.
+
+    This expansion said `id`, and the cost was not a naming quibble: the SPA
+    reads `node`, so every output tile and every binding tile on a run page
+    navigated to `/o/undefined` and the API answered `No such object: undefined`.
+    The pipeline reads `node` too — `test_shoot` asserts it off the fake — so the
+    fake and the thing it fakes disagreed and only the browser could tell.
+    """
+    character = _character(empty_api)
+    project = _project(empty_api)
+    reference = _child(character["root"], "reference")
+    picture = _uploaded(empty_api, reference["node_id"], "front.webp")
+
+    run = _create(empty_api, project, bindings={"image_input": [picture["node_id"]]})
+    output = empty_api.post(
+        f"/api/runs/{run['id']}/outputs",
+        json={"name": "output-1.png", "size": 10, "content_type": "image/png"},
+    ).get_json()
+
+    fetched = empty_api.get(f"/api/runs/{run['id']}").get_json()
+    assert fetched["bindings"]["image_input"][0]["node"] == picture["node_id"]
+    assert fetched["outputs"][0]["node"] == output["node"]
+    assert "id" not in fetched["outputs"][0]
+
+
 # ─────────────────────── the payload, never decoded ───────────────────────
 
 
@@ -463,7 +489,7 @@ def test_the_first_output_becomes_the_listing_rows_thumbnail(empty_api):
 
     row = catalog.project_entities(project["id"], catalog.ENTITY_RUN)[0]
     assert row["thumb"] == first["node"]
-    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["outputs"][0]["id"] == first["node"]
+    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["outputs"][0]["node"] == first["node"]
 
 
 def test_an_oversized_output_is_refused_at_signing(empty_api):

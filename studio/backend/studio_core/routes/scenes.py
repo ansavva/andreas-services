@@ -110,26 +110,56 @@ def get_scene(scene_id: str):
     """The record and its shots, in `order`."""
     held = support.memberships()
     record = _scene(scene_id, held)
-    return jsonify({**record, "shots": catalog.shots(record["id"])}), 200
+    return jsonify({**support.with_output(record),
+                    "shots": catalog.shots(record["id"])}), 200
+
+
+# What a PATCH may write, and it is the list of what actually writes to a scene.
+#
+# It held three names — `title`, `status`, `error` — and `assemble` sends four
+# others: `characters`, `stitch`, `output` and `assembled`. None of them matched,
+# so the request reached `nothing to change` and 400ed *after* the stitched video
+# had been encoded locally and uploaded. The cut was in the bucket and the scene
+# never learned it had one.
+#
+# `stitch` and `output` are the encoder's own report and are stored without being
+# read: `ffmpeg` ships in the CLI's wheel and the Lambda has none, so how the
+# file was made is not this service's to validate. `movies.py` accepted `output`
+# already, which is why a movie assembled and a scene did not.
+SCENE_FIELDS = ("title", "status", "error", "characters", "stitch", "output", "assembled")
+
+# The projection the listing row carries, and the only fields worth a second
+# write. A grid draws a scene from these.
+SCENE_LISTED = ("title", "status")
 
 
 @bp.patch("/scenes/<scene_id>")
 def update_scene(scene_id: str):
-    """Retitle a scene, or move its status on."""
+    """Retitle a scene, move its status on, or record the cut `assemble` made."""
     body = support.body()
     held = support.memberships()
     record = _scene(scene_id, held)
 
     assignments = {}
     listing = {}
-    for field in ("title", "status", "error"):
+    for field in SCENE_FIELDS:
         if field in body:
             assignments[field] = body[field]
-            if field in ("title", "status"):
+            if field in SCENE_LISTED:
                 listing[field] = body[field]
+    if "output" in body:
+        # The cut is what a scene looks like, so recording one re-points the
+        # thumbnail — the same thing `POST /scenes/<id>/output` does, and it has
+        # to happen here too because `assemble` may write a different node than
+        # the one it signed for.
+        node = support.output_node(body["output"])
+        if node:
+            listing["thumb"] = node
     if not assignments:
         raise ValidationError("nothing to change")
-    return jsonify(catalog.update_project_entity(KIND, record, assignments, listing)), 200
+    return jsonify(
+        support.with_output(catalog.update_project_entity(KIND, record, assignments, listing))
+    ), 200
 
 
 @bp.patch("/scenes/<scene_id>/shots")
@@ -183,7 +213,7 @@ def add_output(scene_id: str):
         owner=catalog.blob_owner_for(record["folder"]),
     )
     catalog.update_project_entity(
-        KIND, record, {"output": node["node_id"]}, {"thumb": node["node_id"]}
+        KIND, record, {"output": {"node": node["node_id"]}}, {"thumb": node["node_id"]}
     )
 
     return jsonify(

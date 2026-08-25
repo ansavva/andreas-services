@@ -86,21 +86,53 @@ def get_movie(movie_id: str):
     held = support.memberships()
     record = _movie(movie_id, held)
 
-    found = catalog.entities_by_id(catalog.ENTITY_SCENE, record.get("scenes") or [])
+    ordered = record.get("scenes") or []
+    found = catalog.entities_by_id(catalog.ENTITY_SCENE, ordered)
+
+    # One batched read for every cut in the list, rather than one per row. A
+    # movie names as many scenes as it names.
+    cuts = [support.output_node((found.get(scene_id) or {}).get("output"))
+            for scene_id in ordered]
+    nodes = catalog.records([node for node in cuts if node])
+
     return jsonify(
         {
-            **record,
+            **support.with_output(record),
             "scenes": [
-                {
-                    "id": scene_id,
-                    "slug": found.get(scene_id, {}).get("slug"),
-                    "status": found.get(scene_id, {}).get("status"),
-                    "output": found.get(scene_id, {}).get("output"),
-                }
-                for scene_id in record.get("scenes") or []
+                _scene_row(scene_id, found.get(scene_id) or {}, node, nodes)
+                for scene_id, node in zip(ordered, cuts)
             ],
         }
     ), 200
+
+
+def _scene_row(scene_id: str, scene: dict, node: str | None, nodes: dict) -> dict:
+    """A scene as a movie lists it — enough to draw a row, not the whole record.
+
+    **`title` and `thumb` are here because a row without them cannot be drawn.**
+    They were not, so the SPA's cut list showed every scene by its slug behind an
+    empty square. A scene's thumbnail is its own cut, which is why `thumb` is
+    derived from `output` rather than read off a listing row: the listing row is
+    the project's, and this query goes to the scene records.
+    """
+    drawable = support.asset(node, nodes.get(node)) if node else None
+    return {
+        "id": scene_id,
+        "slug": scene.get("slug"),
+        "title": scene.get("title"),
+        "status": scene.get("status"),
+        "output": drawable,
+        "thumb": drawable,
+    }
+
+
+# What a PATCH may write. `characters`, `stitch` and `assembled` are what
+# `assemble` sends and what this route silently dropped — `output` was accepted,
+# so a movie recorded its cut while losing the report of how it was made.
+MOVIE_FIELDS = ("title", "status", "output", "characters", "stitch", "assembled")
+
+# The projection the listing row carries. A grid draws a movie from these.
+MOVIE_LISTED = ("title", "status")
 
 
 @bp.patch("/movies/<movie_id>")
@@ -111,15 +143,21 @@ def update_movie(movie_id: str):
 
     assignments = {}
     listing = {}
-    for field in ("title", "status"):
+    for field in MOVIE_FIELDS:
         if field in body:
             assignments[field] = body[field]
-            listing[field] = body[field]
+            if field in MOVIE_LISTED:
+                listing[field] = body[field]
     if "output" in body:
-        assignments["output"] = body["output"]
+        # Recording the cut re-points the thumbnail, as `POST .../output` does.
+        node = support.output_node(body["output"])
+        if node:
+            listing["thumb"] = node
     if not assignments:
         raise ValidationError("nothing to change")
-    return jsonify(catalog.update_project_entity(KIND, record, assignments, listing)), 200
+    return jsonify(
+        support.with_output(catalog.update_project_entity(KIND, record, assignments, listing))
+    ), 200
 
 
 @bp.patch("/movies/<movie_id>/scenes")
@@ -168,7 +206,7 @@ def add_output(movie_id: str):
         owner=catalog.blob_owner_for(record["folder"]),
     )
     catalog.update_project_entity(
-        KIND, record, {"output": node["node_id"]}, {"thumb": node["node_id"]}
+        KIND, record, {"output": {"node": node["node_id"]}}, {"thumb": node["node_id"]}
     )
 
     return jsonify(
