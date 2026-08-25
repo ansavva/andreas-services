@@ -131,6 +131,25 @@ export function getNodeOwner(id: string) {
  * app therefore never sends `{parent}` here; a move goes through `moveNodes`,
  * which takes a selection.
  */
+/**
+ * What a file shows, and how it is selected.
+ *
+ * A third operation on the node address, alongside rename and move, and the API
+ * refuses more than one per request — `description` and `tags` count as one,
+ * because a caption editor usually sends both and neither can reorder against
+ * the other.
+ *
+ * Both are optional here and neither is `undefined` on the wire when sent:
+ * omitting a field leaves what is stored, sending `null` clears it. That is why
+ * this takes an object rather than two positional arguments.
+ */
+export function describeNode(
+  id: string,
+  changes: { description?: string | null; tags?: string[] | null },
+) {
+  return apiSend<NodeRecord>("PATCH", `/api/nodes/${encodeURIComponent(id)}`, changes);
+}
+
 export function renameNode(id: string, name: string) {
   return apiSend<NodeRecord>("PATCH", `/api/nodes/${encodeURIComponent(id)}`, { name });
 }
@@ -432,9 +451,21 @@ export function deleteReference(id: string, node: string) {
   );
 }
 
-export function putDefaultSet(id: string, nodes: string[]) {
+/**
+ * The ordered handful a generation reaches for when nothing else is asked.
+ *
+ * **`rev` is required**, and this did not send it — the route compare-and-swaps
+ * the record like every other write on it. Nothing in the app calls this yet, so
+ * the omission had no symptom; the CLI's copy of the same mistake failed with
+ * `rev is required` the moment #479 let the request reach the API at all.
+ *
+ * Every member must already be a reference. The API refuses a node with no
+ * `REF#` row rather than accepting a set that names an image a shoot cannot send.
+ */
+export function putDefaultSet(id: string, nodes: string[], rev: number) {
   return apiSend<CharacterRecord>("PATCH", `/api/characters/${encodeURIComponent(id)}/default-set`, {
     nodes,
+    rev,
   });
 }
 

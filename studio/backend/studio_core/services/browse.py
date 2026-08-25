@@ -236,6 +236,13 @@ def _file_entry(record: dict, prefix: str) -> dict:
         "last_modified": _timestamp(record),
         "kind": keys.kind(name),
     }
+    # Off the row, and only when there is one: the viewer shows a caption where
+    # it used to show a filename and a byte count, and a listing that omitted
+    # them would make the viewer fetch each node again to find out.
+    if record.get("description"):
+        entry["description"] = record["description"]
+    if record.get("tags"):
+        entry["tags"] = record["tags"]
 
     blob_key = record.get("blob_key")
     if blob_key:

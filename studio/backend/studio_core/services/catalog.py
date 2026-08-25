@@ -1015,6 +1015,8 @@ def _new_node(
     blob_key: str | None = None,
     size: int | None = None,
     content_type: str | None = None,
+    description: str | None = None,
+    tags: list | None = None,
 ) -> dict:
     """One node record, ready to be written as its two items.
 
@@ -1039,6 +1041,8 @@ def _new_node(
         "blob_key": blob_key,
         "size": size,
         "content_type": content_type,
+        "description": description,
+        "tags": tags or None,
         "reel": _reel_value(name, parent["lib"]) if kind == KIND_FILE else None,
         "path": child_path(parent),
         "created_at": now,
@@ -1077,6 +1081,8 @@ def create_node(
     size: int | None = None,
     content_type: str | None = None,
     owner: tuple[str | None, str] | None = None,
+    description: str | None = None,
+    tags: list | None = None,
 ) -> dict:
     """Add a folder or a file under an existing parent.
 
@@ -1117,7 +1123,8 @@ def create_node(
 
     name = keys.clean_name(raw_name)
     parent = _folder_node(parent_id)
-    record = _new_node(parent, name, kind, size=size, content_type=content_type)
+    record = _new_node(parent, name, kind, size=size, content_type=content_type,
+                       description=description, tags=clean_tags(tags) or None)
 
     if kind == KIND_FILE:
         owner_kind, owner_id = owner if owner is not None else _blob_owner(parent)
@@ -1180,6 +1187,114 @@ def create_numbered(parent_id: str, raw_name: str | None, kind: str) -> dict:
         f"'{name}' already names {keys.MAX_NAME_VARIANTS} files here — "
         "rename some of them first"
     )
+
+
+#: A description is prose for a person and for a prompt, not a field anything
+#: parses. Capped only so one paste cannot make a listing unreadable.
+MAX_DESCRIPTION = 2000
+#: Free-form on purpose. A per-library vocabulary would make filtering reliable
+#: and would be a second thing to keep correct; references have been free-form
+#: since `--pick-tag` existed, and the tags there converged without one.
+MAX_TAGS = 32
+MAX_TAG = 40
+
+
+def clean_tags(raw) -> list[str]:
+    """A tag list, de-duplicated and order-preserving, or a refusal.
+
+    **Case-folded and trimmed, because a tag is a selector.** `Poolside` and
+    `poolside ` filtering as two different things is a bug a person cannot see —
+    they look identical in a chip. The one place this is felt is the reference
+    index, where `--pick-tag face` already has to match what somebody typed
+    months ago.
+    """
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValidationError("tags must be a list")
+    seen, out = set(), []
+    for entry in raw:
+        if not isinstance(entry, str):
+            raise ValidationError("every tag must be a string")
+        tag = " ".join(entry.split()).lower()
+        if not tag:
+            continue
+        if len(tag) > MAX_TAG:
+            raise ValidationError(f"tag longer than {MAX_TAG} characters: {tag[:20]}…")
+        if tag not in seen:
+            seen.add(tag)
+            out.append(tag)
+    if len(out) > MAX_TAGS:
+        raise ValidationError(f"more than {MAX_TAGS} tags")
+    return out
+
+
+def describe_node(node_id: str, *, description=..., tags=...) -> dict:
+    """What a file SHOWS, on the file — one row, no objects, no bytes.
+
+    **This is on the node rather than on a `REF#` row, and that was a decision
+    rather than an obvious place.** A description used to live on the reference
+    entry, so the same image described as a character's identity carried its
+    description in a row belonging to the character-image *relationship*. That is
+    the right home for `group` and `order`, which are facts about the set. It is
+    the wrong home for "head and shoulders in full profile" — which is a fact
+    about the picture, true whether or not anybody ever made it a reference.
+
+    The cost of the old home was visible in this library: twelve files sat in
+    `reference/` folders with no row and therefore no description anywhere, and a
+    legacy `profile.corpus` list was the only thing holding descriptions for
+    some of them.
+
+    A sentinel default rather than `None` for both arguments, because `None` is
+    a value here: sending `description=None` clears it, and omitting it leaves
+    what is there. `_update` already turns a `None` into a REMOVE.
+    """
+    assignments = describe_assignments(description, tags)
+    if not assignments:
+        raise ValidationError("send description or tags")
+
+    record = node(node_id)
+    assignments["updated_at"] = _now()
+    _write([(_update_meta(node_id, assignments), None)])
+    return {**record, **assignments}
+
+
+def describe_assignments(description=..., tags=...) -> dict:
+    """The validated attributes a describe writes, shared by both writers.
+
+    The reference routes still take `description` and `tags` — a person editing a
+    caption in the reference grid should not have to know that the caption is
+    stored somewhere else — so they compose these onto a node update in the same
+    transaction as the `REF#` row. One validator, so a tag typed in the grid and
+    a tag typed in the file browser are folded the same way.
+    """
+    assignments: dict = {}
+    if description is not ...:
+        if description is not None:
+            if not isinstance(description, str):
+                raise ValidationError("description must be a string")
+            description = description.strip()
+            if len(description) > MAX_DESCRIPTION:
+                raise ValidationError(f"description longer than {MAX_DESCRIPTION} characters")
+        assignments["description"] = description or None
+    if tags is not ...:
+        assignments["tags"] = clean_tags(tags) or None
+    return assignments
+
+
+def _describe_step(node_id: str, entry: dict, now: str):
+    """The node half of a reference write, or nothing if it says nothing.
+
+    Returns `None` when the caller mentioned neither field, so an attach that
+    only sets a group does not touch the node's row at all.
+    """
+    assignments = describe_assignments(
+        entry.get("description", ...), entry.get("tags", ...)
+    )
+    if not assignments:
+        return None
+    assignments["updated_at"] = now
+    return (_update_meta(node_id, assignments), None)
 
 
 def rename_node(node_id: str, raw_name: str | None) -> dict:
@@ -2391,11 +2506,15 @@ def attach_reference(
         "node": node_id,
         "group": group,
         "order": _order_after(existing, group, after),
-        "description": description,
-        "tags": tags,
         "created": now,
     }
-    _write([(_reference_item(char_id, lib, node_id, entry, now), None)])
+    # The row is the relationship; the words are the picture's. Both in one
+    # transaction so an attach that came with a caption never half-lands.
+    steps = [(_reference_item(char_id, lib, node_id, entry, now), None)]
+    described = _describe_step(node_id, {"description": description, "tags": tags}, now)
+    if described:
+        steps.append(described)
+    _write(steps)
     return entry
 
 
@@ -2413,9 +2532,8 @@ def update_reference(char_id: str, lib: str, node_id: str, changes: dict) -> dic
         raise NotFoundError(node_id)
 
     merged = {**entry}
-    for field in ("group", "description", "tags"):
-        if field in changes:
-            merged[field] = changes[field]
+    if "group" in changes:
+        merged["group"] = changes["group"]
     if "order" in changes:
         merged["order"] = changes["order"]
     if changes.get("after") is not None or ("group" in changes and "order" not in changes):
@@ -2425,7 +2543,12 @@ def update_reference(char_id: str, lib: str, node_id: str, changes: dict) -> dic
             changes.get("after"),
         )
 
-    _write([(_reference_item(char_id, lib, node_id, merged, _now()), None)])
+    now = _now()
+    steps = [(_reference_item(char_id, lib, node_id, merged, now), None)]
+    described = _describe_step(node_id, changes, now)
+    if described:
+        steps.append(described)
+    _write(steps)
     return merged
 
 
@@ -2447,20 +2570,56 @@ def put_references(char_id: str, lib: str, entries: list[dict]) -> list[dict]:
     for entry in entries:
         group = entry.get("group")
         counters[group] = counters.get(group, 0) + ORDER_GAP
-        merged = {**entry, "order": entry.get("order") or counters[group], "created": now}
-        written.append({**merged, "node": entry["node"]})
+        merged = {"node": entry["node"], "group": group,
+                  "order": entry.get("order") or counters[group], "created": now}
+        written.append(merged)
         steps.append((_reference_item(char_id, lib, entry["node"], merged, now), None))
+        # Two rows per entry now — the set's half and the picture's — so a
+        # twelve-image describe is 24 items and still one transaction per chunk.
+        described = _describe_step(entry["node"], entry, now)
+        if described:
+            steps.append(described)
 
     for start in range(0, len(steps), TRANSACTION_ITEMS):
         _write(steps[start : start + TRANSACTION_ITEMS])
     return written
 
 
-def detach_reference(char_id: str, node_id: str) -> None:
-    """Stop calling a node identity. **The file stays exactly where it is.**"""
-    _write(
-        [(_delete(_entity_pk(ENTITY_CHARACTER, char_id), f"{REFERENCE_PREFIX}{node_id}"), None)]
-    )
+def detach_reference(char_id: str, node_id: str, record: dict | None = None) -> dict | None:
+    """Stop calling a node identity. **The file stays exactly where it is.**
+
+    **And it leaves the default set, in the same transaction.** That is the whole
+    of this change and it is repairing a real failure: `default_set` is a list of
+    node ids on the record, detaching only deleted the `REF#` row, and the
+    selection route then filtered the survivors — so a re-shot reference left a
+    stale id behind and a default shoot silently sent five images where seven
+    were meant. Measured on the production library: four of one character's seven
+    were ids nothing pointed at any more, and nothing anywhere said so.
+
+    Two writes rather than one, and they have to be atomic: a detach that removed
+    the row and failed to update the record would leave exactly the state this
+    exists to prevent.
+
+    Returns the record with the pruned list when it pruned one, so the caller can
+    report it, and `None` when the set did not mention the node.
+    """
+    steps = [(_delete(_entity_pk(ENTITY_CHARACTER, char_id), f"{REFERENCE_PREFIX}{node_id}"), None)]
+
+    record = record or entity(ENTITY_CHARACTER, char_id)
+    current = record.get("default_set") or []
+    pruned = [each for each in current if each != node_id]
+    if len(pruned) != len(current):
+        # `rev` is deliberately NOT bumped and NOT compared. This is a
+        # consequence of a delete rather than an edit somebody made against a
+        # revision they had read, and refusing the detach because a form was open
+        # elsewhere would leave the row gone and the set stale — the worse half.
+        steps.append((_update(
+            {"pk": {"S": _entity_pk(ENTITY_CHARACTER, char_id)}, "sk": {"S": META}},
+            {"default_set": pruned, "updated": _now()},
+        ), None))
+
+    _write(steps)
+    return {**record, "default_set": pruned} if len(pruned) != len(current) else None
 
 
 def set_project_characters(project_id: str, lib: str, characters: list[str]) -> list[str]:

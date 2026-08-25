@@ -161,7 +161,7 @@ class FakeApi:
         """What a node route returns. **No `blob_key`, no `path`** — as today."""
         view = {"id": node["id"], "name": node["name"], "kind": node["kind"],
                 "created_at": node["created_at"], "updated_at": node["updated_at"]}
-        for field in ("size", "content_type"):
+        for field in ("size", "content_type", "description", "tags"):
             if node.get(field) is not None:
                 view[field] = node[field]
         owner = self._owner(node["id"])
@@ -363,9 +363,26 @@ class FakeApi:
         if method == "DELETE":
             return {"deleted": self._delete_node(node_id)}
         if method == "PATCH":
-            if "name" in body and "parent" in body:
-                raise FakeError(400, "rename or move, not both")
-            if "name" in body:
+            describing = "description" in body or "tags" in body
+            asked = [g for g in ("name" in body, "parent" in body, describing) if g]
+            if len(asked) > 1:
+                raise FakeError(400, "name, or parent, or description/tags — one of the three")
+            if not asked:
+                raise FakeError(400, "send name, parent, or description/tags")
+            if describing:
+                if "description" in body:
+                    text = (body["description"] or "").strip()
+                    if text:
+                        node["description"] = text
+                    else:
+                        node.pop("description", None)
+                if "tags" in body:
+                    folded = self._fold_tags(body["tags"])
+                    if folded:
+                        node["tags"] = folded
+                    else:
+                        node.pop("tags", None)
+            elif "name" in body:
                 if self._child(node["parent_id"], body["name"]) not in (None, node):
                     raise FakeError(409, f"{body['name']!r} already exists here")
                 node["name"] = body["name"]
@@ -377,6 +394,22 @@ class FakeApi:
             node["updated_at"] = _now()
             return self._view(node)
         raise FakeError(405, method)
+
+    @staticmethod
+    def _fold_tags(raw) -> list[str]:
+        """Trimmed, lower-cased, de-duplicated — as `catalog.clean_tags` does.
+
+        Mirrored rather than approximated: a fake that stored `Poolside` while
+        the service stored `poolside` would let a `--pick-tag` test pass here and
+        return nothing in prod.
+        """
+        seen, out = set(), []
+        for entry in raw or []:
+            tag = " ".join(str(entry).split()).lower()
+            if tag and tag not in seen:
+                seen.add(tag)
+                out.append(tag)
+        return out
 
     def _repath(self, node: dict) -> None:
         parent = self.nodes.get(node["parent_id"])
@@ -550,8 +583,34 @@ class FakeApi:
                 "content_type": node.get("content_type"),
                 "url": f"memory://{node.get('blob_key')}"}
 
+    def _describe(self, node_id: str, spec: dict) -> None:
+        """The node half of a reference write, as the service does it.
+
+        A caption sent to a reference route lands on the FILE. The row keeps
+        `group` and `order`, which are facts about this character's set; the
+        words are a fact about the picture and are true of it in `corpus/` too.
+        """
+        node = self.nodes.get(node_id)
+        if node is None:
+            return
+        if "description" in spec:
+            text = (spec["description"] or "").strip()
+            node["description"] = text if text else None
+            if not text:
+                node.pop("description", None)
+        if "tags" in spec:
+            folded = self._fold_tags(spec["tags"])
+            if folded:
+                node["tags"] = folded
+            else:
+                node.pop("tags", None)
+
     def _ref_entry(self, record: dict, entry: dict) -> dict:
-        return {**entry, "default": entry["node"] in (record.get("default_set") or []),
+        node = self.nodes.get(entry["node"]) or {}
+        return {**entry,
+                "description": node.get("description"),
+                "tags": list(node.get("tags") or []),
+                "default": entry["node"] in (record.get("default_set") or []),
                 "file": self._ref_file(entry)}
 
     def _r_references(self, method, body, params, ref):
@@ -576,9 +635,9 @@ class FakeApi:
                 raise FakeError(409, "already a reference")
             entry = {"node": body["node"], "group": body["group"],
                      "order": self._order(entries, body["group"], body.get("after")),
-                     "description": body.get("description") or "",
-                     "tags": list(body.get("tags") or []), "created": _now()}
+                     "created": _now()}
             entries.append(entry)
+            self._describe(body["node"], body)
             return self._ref_entry(record, entry)
         if method == "PATCH":
             by_node = {e["node"]: e for e in entries}
@@ -587,9 +646,9 @@ class FakeApi:
                 raise FakeError(404, f"not references: {', '.join(unknown[:8])}")
             for spec in body["entries"]:
                 entry = by_node[spec["node"]]
-                for field in ("group", "description", "tags"):
-                    if field in spec:
-                        entry[field] = spec[field]
+                if "group" in spec:
+                    entry["group"] = spec["group"]
+                self._describe(spec["node"], spec)
             return {"described": len(body["entries"])}
         raise FakeError(405, method)
 
@@ -614,16 +673,24 @@ class FakeApi:
             raise FakeError(404, f"{node_id} is not a reference of {record['slug']}")
         if method == "DELETE":
             entries.remove(entry)
-            return {"detached": node_id}
+            # **And out of the default set, in the same act** — as the service
+            # does. Detaching used to leave the id sitting there, where the
+            # selection route filtered it out silently; production carried four
+            # of those on one character before anyone counted.
+            before = record.get("default_set") or []
+            after = [each for each in before if each != node_id]
+            answer = {"detached": node_id, "node": node_id}
+            if len(after) != len(before):
+                record["default_set"] = after
+                answer["default_set"] = after
+            return answer
         if method != "PATCH":
             raise FakeError(405, method)
         if "group" in body:
             entry["group"] = body["group"]
             entry["order"] = self._order([e for e in entries if e is not entry],
                                          body["group"], None)
-        for field in ("description", "tags"):
-            if field in body:
-                entry[field] = body[field]
+        self._describe(node_id, body)
         if body.get("after"):
             entry["order"] = self._order([e for e in entries if e is not entry],
                                          entry["group"], body["after"])
@@ -631,16 +698,21 @@ class FakeApi:
 
     def _r_default_set(self, method, body, params, ref):
         record = self._entity(self.characters, ref, "character")
-        rev = body.get("rev")
-        if not isinstance(rev, int) or isinstance(rev, bool):
-            raise FakeError(400, f"rev is required — the record is at rev {record['rev']}")
+        if method == "PATCH" and isinstance(body.get("nodes"), list):
+            # The route compare-and-swaps the record like every other write on
+            # it, and the adapter did not send `rev` — which only became visible
+            # once the verb fix let the request reach the API.
+            self._bump(record, body.get("rev"))
+            attached = {e["node"] for e in self.refs.get(record["id"], [])}
+            stray = [n for n in body["nodes"] if n not in attached]
+            if stray:
+                raise FakeError(400, f"{stray[0]} is not a reference of {record['slug']}")
         known = {e["node"] for e in self.refs.get(record["id"], [])}
         unknown = [n for n in body["nodes"] if n not in known]
         if unknown:
             raise FakeError(404, f"not references: {', '.join(unknown)}")
-        self._bump(record, rev)
         record["default_set"] = list(body["nodes"])
-        return {"default_set": record["default_set"], "rev": record["rev"]}
+        return {"default_set": record["default_set"]}
 
     def _r_selection(self, method, body, params, ref):
         """Resolution order: pick > tag > default_set > everything.
@@ -650,8 +722,16 @@ class FakeApi:
         generation saw must not be decided by whatever a listing returned.
         """
         record = self._entity(self.characters, ref, "character")
-        entries = sorted(self.refs.get(record["id"], []),
-                         key=lambda e: (e["group"], e["order"]))
+        # Folded with the FILE's description and tags before anything filters on
+        # them, exactly as the route does: `?tag=` selects on tags and tags are
+        # the file's, so the files have to be in hand first.
+        entries = [
+            {**entry,
+             "description": (self.nodes.get(entry["node"]) or {}).get("description"),
+             "tags": list((self.nodes.get(entry["node"]) or {}).get("tags") or [])}
+            for entry in sorted(self.refs.get(record["id"], []),
+                                key=lambda e: (e["group"], e["order"]))
+        ]
         by_node = {e["node"]: e for e in entries}
         pick = [p for p in (params.get("pick") or "").split(",") if p]
         tags = [t for t in (params.get("tag") or "").split(",") if t]
@@ -673,7 +753,15 @@ class FakeApi:
                 raise FakeError(404, f"no reference of {record['slug']} carries all of "
                                      f"{sorted(wanted)}. Tags in use: {have or '(none)'}")
         elif record.get("default_set"):
-            chosen = [by_node[n] for n in record["default_set"] if n in by_node]
+            # Refused, never filtered — as the route does. A generation shown
+            # three of the seven images somebody chose is a result nobody can
+            # explain, which is the same rule the cap refusal already follows.
+            stale = [n for n in record["default_set"] if n not in by_node]
+            if stale:
+                raise FakeError(409, f"{len(stale)} of {len(record['default_set'])} in "
+                                     f"{record['slug']}'s default set are not references "
+                                     f"any more: {', '.join(stale[:4])}")
+            chosen = [by_node[n] for n in record["default_set"]]
             source = "default_set"
         else:
             chosen, source = list(entries), "all"

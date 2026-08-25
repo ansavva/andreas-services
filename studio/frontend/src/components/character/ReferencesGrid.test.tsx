@@ -152,9 +152,21 @@ describe("moving a reference without a drag", () => {
 });
 
 describe("the cap readout", () => {
-  /** `ENGINE_CAPS` is Kling 7, Seedance 9, Nano Banana 14. */
+  /**
+   * `ENGINE_CAPS` is Kling 7, Seedance 9, Nano Banana 14.
+   *
+   * **The index is built to match the set**, which it did not have to be until
+   * the count started ignoring members that are not references. A set naming ids
+   * no `REF#` row points at is the exact drift the grid now warns about — see
+   * the describe block below — so a fixture carrying it silently would be
+   * testing the warning rather than the cap.
+   */
   function withDefaultSet(size: number) {
     const nodes = Array.from({ length: size }, (_, i) => `node-d${i}`);
+    references.mockResolvedValue({
+      groups: { face: nodes.map((node, index) => entry(node, (index + 1) * 1000)) },
+      counts: { face: size },
+    });
     return render(
       <ReferencesGrid characterId={CHARACTER} rootId={ROOT} defaultSet={nodes} />,
     );
@@ -164,7 +176,7 @@ describe("the cap readout", () => {
     // Three badges for one number is what this replaced. Under the smallest cap
     // you are under all of them, so the smallest is the only one that can turn.
     withDefaultSet(5);
-    await screen.findByTitle("node-a.png");
+    await screen.findByTitle("node-d0.png");
 
     expect(screen.getByText("Kling 5/7")).toBeTruthy();
     expect(screen.queryByText(/Seedance/)).toBeNull();
@@ -173,7 +185,7 @@ describe("the cap readout", () => {
 
   it("names every engine the set is too big for, and only those", async () => {
     withDefaultSet(10);
-    await screen.findByTitle("node-a.png");
+    await screen.findByTitle("node-d0.png");
 
     expect(screen.getByText("over Kling (7)")).toBeTruthy();
     expect(screen.getByText("over Seedance (9)")).toBeTruthy();
@@ -183,7 +195,7 @@ describe("the cap readout", () => {
 
   it("stops showing headroom once anything is exceeded", async () => {
     withDefaultSet(8);
-    await screen.findByTitle("node-a.png");
+    await screen.findByTitle("node-d0.png");
 
     expect(screen.getByText("over Kling (7)")).toBeTruthy();
     expect(screen.queryByText("Kling 8/7")).toBeNull();
@@ -240,5 +252,55 @@ describe("the images in reference/ that no row claims", () => {
 
     await screen.findByTitle("node-a.png");
     expect(screen.queryByText(/not attached/i)).toBeNull();
+  });
+});
+
+
+describe("a default set that has gone stale", () => {
+  /**
+   * Found in production, not imagined: one character's set named seven nodes and
+   * three of them were still references. The re-shot plates were attached under
+   * new ids and the set was never re-pointed, so a default shoot sent three
+   * images where somebody had chosen seven — and this screen said "7".
+   */
+  function withStaleDefaults() {
+    references.mockResolvedValue({
+      groups: { face: [entry("node-a", 1000, { tags: ["portrait"] })] },
+      counts: { face: 1 },
+    });
+    return render(
+      <ReferencesGrid
+        characterId={CHARACTER}
+        rootId={ROOT}
+        defaultSet={["node-a", "node-gone-1", "node-gone-2"]}
+      />,
+    );
+  }
+
+  it("counts only the members that are still references", async () => {
+    withStaleDefaults();
+    await screen.findByTitle("node-a.png");
+
+    // One of three, not three.
+    expect(screen.getByText("Kling 1/7")).toBeTruthy();
+  });
+
+  it("says how many went stale rather than quietly leaving them out", async () => {
+    withStaleDefaults();
+    await screen.findByTitle("node-a.png");
+
+    expect(screen.getByText("2 no longer a reference")).toBeTruthy();
+    expect(
+      screen.getByText(/2 of 3 in the default set are not references any more/),
+    ).toBeTruthy();
+  });
+
+  it("says nothing when a tag is doing the selecting", async () => {
+    // The warning is about the default set, and a tag does not consult it.
+    withStaleDefaults();
+    await screen.findByTitle("node-a.png");
+    fireEvent.click(screen.getByRole("button", { name: "portrait" }));
+
+    expect(screen.queryByText("2 no longer a reference")).toBeNull();
   });
 });

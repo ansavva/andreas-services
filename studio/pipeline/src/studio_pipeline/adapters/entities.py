@@ -231,10 +231,11 @@ def delete_reference(char_id: str, node: str) -> dict:
 def put_default_set(char_id: str, nodes: list[str], rev: int) -> dict:
     """Name the nodes sent when `--character` is given with no selector.
 
-    **`rev` is required.** The route runs `support.revision`, which refuses a
-    body without one rather than defaulting it — a client that omits it did not
-    read before writing. #479 corrected the verb here and left the body short,
-    so the call went on failing, 400 where it had been 405.
+    **`rev` is required and was not being sent.** The route compare-and-swaps it
+    like every other write on the record, so this failed `rev is required — the
+    record is at rev N`. It never surfaced because the request died one layer
+    earlier on an unregistered verb until #479 — the same way `edit --push`
+    hid a `schema_version` it should not have sent.
     """
     return api.request("PATCH", f"/api/characters/{char_id}/default-set",
                        {"nodes": list(nodes), "rev": rev})

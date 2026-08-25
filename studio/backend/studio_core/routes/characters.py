@@ -385,14 +385,48 @@ def delete_character(addressed: str):
 # ─────────────────────────── references ───────────────────────────
 
 
+def _with_files(entries: list[dict]) -> tuple[list[dict], dict]:
+    """Reference rows with their file's own description and tags folded in.
+
+    **Read before the filtering rather than after it**, which is the one thing
+    that had to move: `?tag=` selects on tags, tags are the file's now, so the
+    files have to be in hand before a subset can be chosen. It costs the same
+    round trip the route already spent on the chosen subset — a `BatchGetItem`
+    over one character's references, tens of items.
+    """
+    nodes = catalog.records([entry["node"] for entry in entries])
+    folded = [
+        {
+            **entry,
+            "description": nodes.get(entry["node"], {}).get("description"),
+            "tags": nodes.get(entry["node"], {}).get("tags") or [],
+        }
+        for entry in entries
+    ]
+    return folded, nodes
+
+
 def _reference_view(entry: dict, nodes: dict[str, dict], default_set: list) -> dict:
-    node = nodes.get(entry["node"])
+    """One entry, with what the set knows about it and what the file knows.
+
+    **`description` and `tags` come off the NODE; `group` and `order` off the
+    row.** The split is the difference between a fact about the picture and a
+    fact about this character's set of them: "head and shoulders in full profile"
+    is true of the file wherever it sits, while "this is a face reference, third"
+    only means anything inside one character's index.
+
+    They were both on the row until now, which cost exactly what it sounds like:
+    an image described as a reference had a description, the same image sitting
+    in `corpus/` had none, and twelve files in this library's `reference/`
+    folders with no row had none either.
+    """
+    node = nodes.get(entry["node"]) or {}
     view = {
         "node": entry["node"],
         "group": entry.get("group"),
         "order": entry.get("order"),
-        "description": entry.get("description"),
-        "tags": entry.get("tags") or [],
+        "description": node.get("description"),
+        "tags": node.get("tags") or [],
         "default": entry["node"] in default_set,
     }
     if node:
@@ -537,11 +571,25 @@ def replace_references(addressed: str):
 
 @bp.delete("/characters/<addressed>/references/<node_id>")
 def detach_reference(addressed: str, node_id: str):
-    """Stop calling a node identity. **The file stays exactly where it is.**"""
+    """Stop calling a node identity. **The file stays exactly where it is.**
+
+    **It leaves the default set too**, and the response says so. A detach that
+    only dropped the `REF#` row left the id sitting in `default_set`, where the
+    selection route filtered it out without a word — which is how a character
+    came to have seven ids in its set and send three.
+    """
     held = support.memberships()
     record = _character(addressed, held)
-    catalog.detach_reference(record["id"], node_id)
-    return jsonify({"node": node_id, "detached": True}), 200
+    pruned = catalog.detach_reference(record["id"], node_id, record)
+    return jsonify(
+        {
+            "node": node_id,
+            "detached": True,
+            # Present only when it changed, so a client can say "and it left the
+            # default set" without diffing anything.
+            **({"default_set": pruned["default_set"]} if pruned else {}),
+        }
+    ), 200
 
 
 @bp.patch("/characters/<addressed>/default-set")
@@ -562,6 +610,18 @@ def set_default_set(addressed: str):
         raise ValidationError("nodes must be a list")
     for node_id in nodes:
         _node_in(record, node_id, "nodes")
+
+    # **Every member has to be a reference**, which this did not check. The set
+    # names what a generation is SHOWN, and a member with no `REF#` row is an
+    # image the selection route silently drops — so the check that was missing
+    # here is the one that would have caught the drift rather than tolerating it.
+    attached = {entry["node"] for entry in catalog.references(record["id"])}
+    stray = [node_id for node_id in nodes if node_id not in attached]
+    if stray:
+        raise ValidationError(
+            f"{stray[0]} is not a reference of {record['slug']} — "
+            "attach it first, or leave it out of the default set"
+        )
 
     try:
         updated = catalog.update_entity(KIND, record, rev, {"default_set": nodes})
@@ -592,7 +652,7 @@ def selection(addressed: str):
     """
     held = support.memberships()
     record = _character(addressed, held)
-    entries = catalog.references(record["id"])
+    entries, nodes = _with_files(catalog.references(record["id"]))
 
     tag = request.args.get("tag")
     pick = request.args.get("pick") or request.args.get("group")
@@ -605,6 +665,26 @@ def selection(addressed: str):
     elif record.get("default_set"):
         source = "default"
         order = {node_id: index for index, node_id in enumerate(record["default_set"])}
+        # **A member with no `REF#` row is refused, never filtered.** This line
+        # used to be the filter alone, and the filter is the same failure as a
+        # silent truncation at the cap: a generation shown three of the seven
+        # images somebody chose is a result nobody can explain afterwards. One
+        # character in production carried four such ids for as long as nobody
+        # counted the images a default shoot actually sent.
+        attached = {entry["node"] for entry in entries}
+        stale = [node_id for node_id in record["default_set"] if node_id not in attached]
+        if stale:
+            names = catalog.records(stale)
+            return support.structured(
+                "stale_default_set",
+                f"{len(stale)} of {len(record['default_set'])} in {record['slug']}'s "
+                "default set are not references any more",
+                409,
+                stale=[
+                    {"node": node_id, "name": names.get(node_id, {}).get("name")}
+                    for node_id in stale
+                ],
+            )
         chosen = sorted(
             [entry for entry in entries if entry["node"] in order],
             key=lambda entry: order[entry["node"]],
@@ -615,7 +695,6 @@ def selection(addressed: str):
 
     cap = _cap(request.args)
     if cap is not None and len(chosen) > cap:
-        nodes = catalog.records([entry["node"] for entry in chosen])
         return support.structured(
             "over_cap",
             f"{len(chosen)} references match; the cap is {cap}",
@@ -631,7 +710,6 @@ def selection(addressed: str):
             ],
         )
 
-    nodes = catalog.records([entry["node"] for entry in chosen])
     return jsonify(
         {
             "selection": [

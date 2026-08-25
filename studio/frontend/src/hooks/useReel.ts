@@ -93,5 +93,21 @@ export function useReel(folderId: FolderId, sort: SortOrder, enabled: boolean) {
     setItems((current) => current.filter((item) => item.id !== id));
   }, []);
 
-  return { items, loading, error, exhausted, truncated, loadMore, dropItem };
+  /**
+   * Patch one item in place, rather than dropping it.
+   *
+   * **The counterpart to `dropItem`, and the difference is which fields moved.**
+   * A rename invalidates the name, the key and the presigned URL, so the pane
+   * cannot be repaired and is dropped. A description and a set of tags invalidate
+   * none of them — the pane stays exactly as it is, with different words on the
+   * chrome — and dropping it would scroll the reel out from under somebody
+   * mid-sentence.
+   */
+  const refreshItem = useCallback((id: string, changes: Partial<FileEntry>) => {
+    setItems((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...changes } : item)),
+    );
+  }, []);
+
+  return { items, loading, error, exhausted, truncated, loadMore, dropItem, refreshItem };
 }

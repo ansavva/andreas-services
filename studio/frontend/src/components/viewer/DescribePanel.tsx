@@ -1,0 +1,206 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { Button, Input, Text } from "@ansavva/design-system";
+
+import { AutoTextarea } from "../common/AutoTextarea";
+import type { FileEntry } from "../../types";
+
+interface Props {
+  file: FileEntry;
+  onSave: (changes: { description?: string | null; tags?: string[] | null }) => Promise<unknown>;
+  onClose: () => void;
+}
+
+/**
+ * What the picture shows, and how it is selected — edited where you are looking
+ * at it.
+ *
+ * **The viewer is the right place for this and the grid is not.** You decide
+ * what a frame is of while it fills the screen, not from a thumbnail — the same
+ * argument `ViewerChrome` already makes for putting rename and delete up there
+ * rather than on a tile.
+ *
+ * ## Tags are free-form, and the input is the whole vocabulary
+ *
+ * There is no list to pick from because there is no list: a tag is whatever
+ * somebody typed, and `--pick-tag` has worked that way since before any of this
+ * was a row. What the API does is FOLD them — trimmed, lower-cased,
+ * de-duplicated — so `Poolside` and `poolside ` cannot become two selectors that
+ * look identical in a chip and return different sets.
+ *
+ * That folding is why this renders what came back from the save rather than what
+ * was typed. Showing the typed form would be a display that disagrees with the
+ * selector it just created.
+ *
+ * The existing tags on the file are offered as suggestions from the other
+ * pictures on screen — see `known` — which is a convenience and not a
+ * constraint: anything typed is accepted.
+ *
+ * ## Saving
+ *
+ * Description saves on an explicit press, not on blur. Blur-to-save inside an
+ * overlay that also closes on Escape is how an edit gets committed by the
+ * gesture meant to abandon it. Tags save the moment one is added or removed,
+ * because a chip with an unsaved state is a control that lies about what a
+ * `--pick-tag` would now match.
+ */
+export function DescribePanel({ file, onSave, onClose }: Props) {
+  const [draft, setDraft] = useState(file.description ?? "");
+  const [tag, setTag] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const tagInput = useRef<HTMLInputElement>(null);
+
+  const tags = useMemo(() => file.tags ?? [], [file.tags]);
+
+  // Scrolling the reel onto another clip must not leave the previous one's
+  // caption sitting in the field — the same reset `RenameButton` performs, and
+  // for the same reason.
+  useEffect(() => {
+    setDraft(file.description ?? "");
+    setTag("");
+    setError(null);
+  }, [file.id, file.description]);
+
+  const save = useCallback(
+    async (changes: { description?: string | null; tags?: string[] | null }) => {
+      setBusy(true);
+      setError(null);
+      try {
+        await onSave(changes);
+      } catch (failure) {
+        setError(failure instanceof Error ? failure.message : "Could not save");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [onSave],
+  );
+
+  const addTag = useCallback(async () => {
+    const wanted = tag.trim();
+    if (!wanted) return;
+    setTag("");
+    // Trimmed here because the empty check needs it anyway; the CASE is left to
+    // the API, which folds and answers with the folded list. That answer is what
+    // this renders, so a duplicate the fold catches disappears rather than
+    // appearing twice.
+    await save({ tags: [...tags, wanted] });
+    tagInput.current?.focus();
+  }, [save, tag, tags]);
+
+  const dirty = draft.trim() !== (file.description ?? "").trim();
+
+  return (
+    <div
+      className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 max-h-[60%] overflow-y-auto
+                 bg-black/85 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-sm sm:p-6"
+      aria-label="File details"
+    >
+      <div className="mx-auto flex max-w-3xl flex-col gap-4">
+        <div className="flex items-start justify-between gap-3">
+          <Text variant="caption" className="text-white/70">
+            What this shows, and how it is selected. Both are the file&apos;s own —
+            they travel with it through a move, a rename and a copy.
+          </Text>
+          <Button intent="ghost" size="sm" onClick={onClose} className="shrink-0 text-white">
+            Hide
+          </Button>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Text variant="caption" className="text-white/70">
+            Description
+          </Text>
+          <AutoTextarea
+            value={draft}
+            onValueChange={setDraft}
+            placeholder="Shirtless at the pool, whistle on a cord, palms behind."
+            aria-label="Description"
+          />
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              disabled={!dirty || busy}
+              onClick={() => void save({ description: draft.trim() || null })}
+            >
+              {busy ? "Saving…" : "Save description"}
+            </Button>
+            {dirty && (
+              <Button
+                intent="ghost"
+                size="sm"
+                className="text-white"
+                onClick={() => setDraft(file.description ?? "")}
+              >
+                Discard
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Text variant="caption" className="text-white/70">
+            Tags
+          </Text>
+          <div className="flex flex-wrap items-center gap-2">
+            {tags.map((each) => (
+              <span
+                key={each}
+                className="flex items-center gap-1 rounded-full bg-white/15 py-1 ps-3 pe-1
+                           font-body text-xs text-white"
+              >
+                {each}
+                <button
+                  type="button"
+                  aria-label={`Remove ${each}`}
+                  disabled={busy}
+                  className="rounded-full px-1.5 text-white/70 hover:bg-white/20 hover:text-white"
+                  onClick={() =>
+                    void save({ tags: tags.filter((keep) => keep !== each) })
+                  }
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            {tags.length === 0 && (
+              <Text variant="caption" className="text-white/50">
+                No tags yet.
+              </Text>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              ref={tagInput}
+              value={tag}
+              onValueChange={setTag}
+              placeholder="Add a tag…"
+              aria-label="Add a tag"
+              // Enter adds rather than submitting anything: this panel is not a
+              // form, and the reel behind it binds single keys.
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void addTag();
+                }
+                // Stopped here so typing a tag with an `m` or an `f` in it does
+                // not mute the clip or go fullscreen behind the panel.
+                event.stopPropagation();
+              }}
+            />
+            <Button size="sm" disabled={!tag.trim() || busy} onClick={() => void addTag()}>
+              Add
+            </Button>
+          </div>
+        </div>
+
+        {error && (
+          <Text variant="caption" className="text-danger">
+            {error}
+          </Text>
+        )}
+      </div>
+    </div>
+  );
+}
