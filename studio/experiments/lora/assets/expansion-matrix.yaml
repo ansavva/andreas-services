@@ -1,0 +1,30 @@
+# Session A variation matrix. {scene} is filled per variation; the base prompt
+# carries what every training image should share (photorealism, one person).
+# ~20 variations x 2 seeds = ~40 candidates for Gate 1. The matrix crosses
+# angle x lighting x expression x distance because that is what the LoRA must
+# generalize over -- 15 near-identical frontals teach a passport photo.
+base_prompt: >-
+  photorealistic photograph of a person, {scene}, natural skin texture,
+  sharp focus on the face, 85mm portrait lens
+per_variation: 2
+variations:
+  - {id: frontal-soft,      prompt: "frontal head-and-shoulders portrait, soft diffused studio light, plain grey background"}
+  - {id: frontal-hard,      prompt: "frontal portrait, hard directional side light, deep shadows, dark background"}
+  - {id: threequarter-left, prompt: "three-quarter view facing left, window light from the left, indoor background"}
+  - {id: threequarter-right,prompt: "three-quarter view facing right, golden hour sunlight, outdoor background"}
+  - {id: profile-left,      prompt: "left profile portrait, overcast daylight, muted street background"}
+  - {id: profile-right,     prompt: "right profile portrait, warm indoor lamp light, blurred living room"}
+  - {id: lookup,            prompt: "portrait looking slightly upward, cool blue evening light"}
+  - {id: lookdown,          prompt: "portrait looking slightly downward, soft top light"}
+  - {id: smile,             prompt: "frontal portrait smiling warmly, bright daylight"}
+  - {id: laugh,             prompt: "candid portrait mid-laugh, golden hour backlight"}
+  - {id: neutral,           prompt: "neutral expression portrait, flat even light, seamless white background"}
+  - {id: serious,           prompt: "serious expression, low-key dramatic lighting"}
+  - {id: waist-up,          prompt: "waist-up shot standing relaxed, overcast outdoor light, city street"}
+  - {id: full-body,         prompt: "full body shot standing, natural daylight, park background"}
+  - {id: seated,            prompt: "seated at a table, warm cafe lighting, shallow depth of field"}
+  - {id: closeup,           prompt: "tight close-up of the face, soft ring light, every pore visible"}
+  - {id: night,             prompt: "portrait at night under neon signage, mixed color light"}
+  - {id: rim,               prompt: "portrait with strong rim light from behind, dark moody background"}
+  - {id: shade,             prompt: "portrait in open shade, bounced warm light, garden background"}
+  - {id: motion,            prompt: "walking toward camera mid-stride, late afternoon sun, shallow focus"}

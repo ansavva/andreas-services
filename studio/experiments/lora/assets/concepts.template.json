@@ -1,0 +1,18 @@
+[
+  {
+    "__version": 2,
+    "name": "{TRIGGER}",
+    "path": "{DATASET_DIR}",
+    "enabled": true,
+    "include_subdirectories": false,
+    "balancing": 1.0,
+    "balancing_strategy": "REPEATS",
+    "loss_weight": 1.0,
+    "text": {"prompt_source": "sample"},
+    "image": {
+      "enable_crop_jitter": false,
+      "enable_random_flip": false,
+      "enable_random_rotate": false
+    }
+  }
+]

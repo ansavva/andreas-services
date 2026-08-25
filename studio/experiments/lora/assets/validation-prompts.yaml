@@ -1,0 +1,20 @@
+# The fixed validation grid: 12 prompts crossing pose x lighting x wardrobe x
+# background. {trigger} becomes ohwx_<slug> for the LoRA renders; for the
+# Gate-2 baseline the same prompts run through studio nano-banana-pro with
+# references, with {trigger} replaced by a plain description ("the person in
+# the reference images"). Fixed seed offsets keep re-runs comparable.
+# None of these scenes appear in the expansion matrix -- overfit bleed from
+# training wardrobe/backgrounds into THESE is one of the rubric's checks.
+prompts:
+  - {id: v01-boardroom,  seed_offset: 101, prompt: "photorealistic photo of {trigger} in a navy suit presenting in a glass boardroom, midday light"}
+  - {id: v02-beach,      seed_offset: 102, prompt: "photo of {trigger} in a linen shirt on a windy beach at sunset, hair moving"}
+  - {id: v03-chef,       seed_offset: 103, prompt: "photo of {trigger} in a chef's apron plating food in a busy kitchen, warm tungsten light"}
+  - {id: v04-rain,       seed_offset: 104, prompt: "photo of {trigger} in a raincoat under an umbrella on a rainy night street, neon reflections"}
+  - {id: v05-hike,       seed_offset: 105, prompt: "photo of {trigger} in a red down jacket on a mountain trail, harsh alpine sun"}
+  - {id: v06-library,    seed_offset: 106, prompt: "photo of {trigger} in a wool sweater reading in a dim library, single desk lamp"}
+  - {id: v07-gym,        seed_offset: 107, prompt: "photo of {trigger} in athletic wear mid-workout in a gym, cool fluorescent light"}
+  - {id: v08-blacktie,   seed_offset: 108, prompt: "photo of {trigger} in black tie at an evening gala, candlelight, shallow depth of field"}
+  - {id: v09-workshop,   seed_offset: 109, prompt: "photo of {trigger} in denim overalls in a wood workshop, dusty side window light"}
+  - {id: v10-snow,       seed_offset: 110, prompt: "photo of {trigger} in a scarf and coat in falling snow, overcast flat light"}
+  - {id: v11-market,     seed_offset: 111, prompt: "photo of {trigger} in a t-shirt at a crowded outdoor market, dappled shade"}
+  - {id: v12-stage,      seed_offset: 112, prompt: "photo of {trigger} speaking on a conference stage, strong spotlight, dark audience"}

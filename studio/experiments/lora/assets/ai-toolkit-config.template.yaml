@@ -1,0 +1,49 @@
+# Fallback trainer: ostris/ai-toolkit (`python run.py this-file.yaml`).
+# Simpler, stabler schema than OneTrainer's; the cost is masked training —
+# ai-toolkit has no loss masking, so the captions carry the whole burden of
+# keeping backgrounds out of the identity.
+job: extension
+config:
+  name: "{TRIGGER}-lora"
+  process:
+    - type: sd_trainer
+      training_folder: "{OUTPUT_DIR}"
+      device: cuda:0
+      trigger_word: "{TRIGGER}"
+      network:
+        type: lora
+        linear: 16
+        linear_alpha: 16
+      save:
+        dtype: float16
+        save_every: 250
+        max_step_saves_to_keep: 10
+      datasets:
+        - folder_path: "{DATASET_DIR}"
+          caption_ext: txt
+          caption_dropout_rate: 0.05
+          resolution: [1024]
+      train:
+        batch_size: 1
+        steps: {STEPS}
+        gradient_accumulation_steps: 1
+        train_unet: true
+        train_text_encoder: false
+        gradient_checkpointing: true
+        noise_scheduler: flowmatch
+        optimizer: adamw8bit
+        lr: 1e-4
+        dtype: bf16
+      model:
+        name_or_path: "/weights/models/FLUX.1-dev"
+        is_flux: true
+        quantize: true
+      sample:
+        sampler: flowmatch
+        sample_every: 250
+        width: 1024
+        height: 1024
+        prompts:
+          - "photo of {TRIGGER}, frontal portrait, soft light"
+        guidance_scale: 3.5
+        sample_steps: 24

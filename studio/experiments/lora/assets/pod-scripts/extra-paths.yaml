@@ -1,0 +1,27 @@
+# Two path groups, and the split is the privacy line:
+#
+# `weights` points every model class at the network volume, which survives
+# Terminate — public weights only. `loras` is deliberately absent: trained
+# checkpoints are subject-derived, so they resolve to ComfyUI's own
+# models/loras on the container disk and die with the pod.
+#
+# `lab` lets LoadImage nodes reach pulled references by relative path
+# ("subject/ref-00.png") without copying them into ComfyUI/input — also
+# container disk, also destroyed at Terminate.
+weights:
+  base_path: /weights/models
+  is_default: false
+  checkpoints: checkpoints
+  unet: unet
+  diffusion_models: diffusion_models
+  vae: vae
+  clip: clip
+  text_encoders: text_encoders
+  model_patches: model_patches
+  pulid: pulid
+  clip_vision: clip_vision
+  insightface: insightface
+lab:
+  base_path: /workspace/dataset
+  is_default: false
+  input: .

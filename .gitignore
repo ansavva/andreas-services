@@ -282,3 +282,12 @@ studio/output/
 # The pipeline package's virtualenv. `uv.lock` IS committed — it is an
 # application, not a library, so a reproducible resolve is the point.
 studio/pipeline/.venv/
+
+# LoRA lab (studio/experiments/lora): code commits, but `local/` holds SUBJECT
+# PHOTOS, datasets and checkpoints that must never enter git (hard rule #1 and
+# basic privacy), and .venv is a machine artifact. These rules are the
+# guardrail that was believed to exist all along and never did.
+studio/experiments/lora/local/
+studio/experiments/lora/.venv/
+studio/experiments/**/__pycache__/
+studio/experiments/**/.DS_Store

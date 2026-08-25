@@ -1,0 +1,9 @@
+[
+  {
+    "enabled": true,
+    "prompt": "photo of {TRIGGER}, frontal portrait, soft light",
+    "width": 1024,
+    "height": 1024,
+    "seed": 42
+  }
+]

@@ -403,4 +403,42 @@ else
   warn "  scripts vendor imageio-ffmpeg, so this is only needed for hand checks."
 fi
 
+# ---------------------------------------------------------------------------
+# 6. RunPod tooling for the GPU-pod experiments (studio/experiments/, local
+#    only, never deployed). Idempotent like everything above; never fatal —
+#    the pipeline itself needs none of this.
+# ---------------------------------------------------------------------------
+if command -v runpodctl >/dev/null 2>&1; then
+  log "runpodctl already installed: $(runpodctl version 2>/dev/null | head -1 || echo present)"
+else
+  # brew tap needs write access to /opt/homebrew/Library/Taps, which a
+  # multi-user Homebrew install does not grant (measured 2026-08-25: the
+  # prefix is owned by another account). The release binary needs nothing.
+  log "installing runpodctl release binary into ~/.local/bin..."
+  mkdir -p "$HOME/.local/bin"
+  RPV=$(curl -s https://api.github.com/repos/runpod/runpodctl/releases/latest \
+        | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')
+  ARCH=$(uname -m); [ "$ARCH" = "x86_64" ] && ARCH=amd64; [ "$ARCH" = "arm64" ] || ARCH=arm64
+  OS=$(uname | tr '[:upper:]' '[:lower:]')
+  if curl -sL "https://github.com/runpod/runpodctl/releases/download/$RPV/runpodctl-$OS-$ARCH" \
+       -o "$HOME/.local/bin/runpodctl" && chmod +x "$HOME/.local/bin/runpodctl"; then
+    log "runpodctl installed: $("$HOME/.local/bin/runpodctl" version 2>/dev/null | head -1)"
+  else
+    warn "runpodctl install failed — see github.com/runpod/runpodctl/releases"
+  fi
+fi
+
+# The RunPod agent skills, installed once per machine into ~/.claude/skills.
+REPO_ROOT="$(cd "$STUDIO_DIR/.." && pwd)"
+if ls "$REPO_ROOT/.agents/skills" "$HOME/.claude/skills" 2>/dev/null | grep -qi runpod; then
+  log "runpod skills already installed"
+elif command -v npx >/dev/null 2>&1; then
+  log "installing runpod skills (npx skills add runpod/runpod-plugins-official)..."
+  npx -y skills add runpod/runpod-plugins-official -y >/dev/null 2>&1 \
+    && log "runpod skills installed" \
+    || warn "runpod skills install failed — npx skills add runpod/runpod-plugins-official"
+else
+  warn "optional: runpod skills not installed (no npx available)"
+fi
+
 log "done."
