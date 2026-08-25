@@ -474,7 +474,7 @@ class FakeApi:
                   "schema_version": 2, "rev": 1,
                   "created": _now(), "updated": _now(),
                   "root": root["id"], "hero": None, "default_set": [],
-                  "profile": body.get("profile") or {}}
+                  "profile": self._clean_profile(body.get("profile"))}
         self.characters[char_id] = record
         self.refs[char_id] = []
         return self._char_view(record)
@@ -503,6 +503,22 @@ class FakeApi:
             return {"deleted": record["id"]}
         raise FakeError(405, method)
 
+    #: What `clean_profile` accepts, mirrored from `backend/studio_core/routes/
+    #: characters.py`. Validated here for the same reason the PUT refusal is: a
+    #: fake looser than the service cannot fail the way the service does, and
+    #: `schema_version` rode back out in the `edit` round trip for exactly as
+    #: long as the verb kept the request from ever being read.
+    PROFILE_SECTIONS = ("identity", "face", "body", "wardrobe", "voice",
+                        "rendering", "consistency", "text_identity_block")
+
+    def _clean_profile(self, raw):
+        if raw is None:
+            return {}
+        unknown = sorted(set(raw) - set(self.PROFILE_SECTIONS))
+        if unknown:
+            raise FakeError(400, f"profile has no section called {unknown[0]!r}")
+        return raw
+
     def _r_profile(self, method, body, params, ref):
         """Replace or merge, told apart by the body's key — never by the verb.
 
@@ -521,8 +537,9 @@ class FakeApi:
         if not replacing and not merging:
             raise FakeError(400, "send profile to replace, or patch to merge")
         self._bump(record, body.get("rev"))
-        record["profile"] = (body["profile"] if replacing
-                             else {**record["profile"], **body["patch"]})
+        record["profile"] = (self._clean_profile(body["profile"]) if replacing
+                             else {**record["profile"],
+                                   **self._clean_profile(body["patch"])})
         return self._char_view(record)
 
     def _ref_file(self, entry: dict) -> dict:

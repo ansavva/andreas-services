@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 
 import {
   Alert,
+  Badge,
   Button,
   Card,
   Collapsible,
@@ -42,6 +43,76 @@ interface Props {
  * had no name of its own takes one.
  */
 const RECORD = " record";
+
+/**
+ * What each section is for, in one line — **and nothing below section level**.
+ *
+ * The form renders every field the same way, which made a nine-character
+ * `rendering.default_style` that every reference shoot depends on look exactly
+ * as important as three thousand characters of `face` prose that no code reads
+ * at all. Both are worth having; they are not the same kind of thing, and the
+ * screen said nothing about which was which.
+ *
+ * **Section level is deliberate, and it is the compromise this file already
+ * argues for elsewhere.** Naming individual fields here would make the frontend
+ * a second copy of a schema the pipeline owns — a field somebody adds would need
+ * a deploy to appear, and a list of "fields a shoot reads" would drift silently
+ * the first time `engine/shoot.py` changed. A sentence about what a section is
+ * for changes about as often as the section does.
+ *
+ * A key that is not here still renders, in the order the record gave it, marked
+ * off-schema. That is what `corpus` was for months: a legacy key from the
+ * pre-catalog migration, sitting in the form as an equal, refused by the API on
+ * every save, and looking like part of the product.
+ */
+const SECTIONS: ReadonlyArray<{ key: string; hint: string }> = [
+  {
+    key: "identity",
+    hint: "The card: age, build, height read, signature features. A reference shoot states apparent age and height read in the prompt, because a reference set spanning years will not agree on either.",
+  },
+  {
+    key: "face",
+    hint: "Structure, skin, eyes, hair, facial hair. No code reads this — it is what a prompt gets written from, and what a finished render is read back against.",
+  },
+  {
+    key: "body",
+    hint: "Proportions. A shoot puts these in the prompt so the pose plate's own build does not decide the figure's.",
+  },
+  {
+    key: "wardrobe",
+    hint: "What the character usually wears. A shoot takes the first tops entry for its plain-top plate; the rest is prompt material.",
+  },
+  {
+    key: "voice",
+    hint: "Language, accent, manner, delivery. Read when a prompt carries a spoken line — Seedance generates the audio in character.",
+  },
+  {
+    key: "rendering",
+    hint: "The medium to render in, which is a per-render choice rather than part of who the character is. Only default_style is read by anything.",
+  },
+  {
+    key: "consistency",
+    hint: "must / never / drift_modes — the checklist a render is verified against, each drift paired with the fix to write into the next prompt. A shoot puts must in the prompt itself.",
+  },
+  {
+    key: "text_identity_block",
+    hint: "A 50-70 word summary of the sections above, for engines that carry no reference images. Written by hand: nothing here can generate it.",
+  },
+];
+
+const SECTION_HINTS = new Map(SECTIONS.map((section) => [section.key, section.hint]));
+
+/**
+ * The record's keys in the manifest's order, with anything unrecognised after.
+ *
+ * Ordered here rather than trusted from the record because a DynamoDB map has no
+ * order worth relying on — the sections arrived in whatever order the item was
+ * serialised in, which is why `voice` used to sit above `face`.
+ */
+function orderSections(keys: readonly string[]): string[] {
+  const known = SECTIONS.map((section) => section.key).filter((key) => keys.includes(key));
+  return [...known, ...keys.filter((key) => !SECTION_HINTS.has(key))];
+}
 
 /**
  * The character record, as one form: who they are on top, then the bible.
@@ -117,7 +188,7 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
    */
   const multiline = useRef<ReadonlySet<string>>(collectLongPaths(profile, []));
 
-  const keys = useMemo(() => Object.keys(profile), [profile]);
+  const keys = useMemo(() => orderSections(Object.keys(profile)), [profile]);
 
   const identityDirty = useMemo(
     () => JSON.stringify(identityDraft) !== JSON.stringify(identity),
@@ -307,6 +378,7 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
               key={key}
               id={key}
               title={humanise(key)}
+              hint={SECTION_HINTS.get(key)}
               dirty={dirtySections.has(key)}
               open={open.has(key)}
               onOpenChange={(next) => setOpenAt(key, next)}
@@ -339,6 +411,7 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
 function ProfileSection({
   id,
   title,
+  hint,
   dirty,
   open,
   onOpenChange,
@@ -347,12 +420,18 @@ function ProfileSection({
 }: {
   id: string;
   title: string;
+  /** One line on what the section is for. Absent means the schema does not name it. */
+  hint?: string;
   dirty: boolean;
   open: boolean;
   onOpenChange: (next: boolean) => void;
   innerRef: (node: HTMLDivElement | null) => void;
   children: React.ReactNode;
 }) {
+  // The `Record` card passes no hint and is not off-schema — it is not a bible
+  // section at all. Only a key that came out of `profile` can be one, and those
+  // are the only sections rendered from the manifest.
+  const offSchema = hint === undefined && id !== RECORD;
   return (
     // `scroll-mt-16` keeps the heading clear of the sticky save bar when the rail
     // scrolls to it.
@@ -384,6 +463,14 @@ function ProfileSection({
         >
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate">{title}</span>
+            {/* Named on the trigger rather than only inside the panel: a section
+                the API will refuse has to be visible while the card is shut, or
+                it is only found by saving and reading the error. */}
+            {offSchema && (
+              <Badge intent="warning" size="sm">
+                Not in the schema
+              </Badge>
+            )}
             {/* A dot, not a word: it sits beside a heading that can already be
                 long, and "unsaved" beside six of them is noise. The label is on
                 the element for anyone not reading colour. */}
@@ -409,7 +496,24 @@ function ProfileSection({
               This div is mine, so its padding is plain classes with nothing to
               conflict with — 16px on a phone, 24px from `sm` up. A phone is
               where the width is worth something. */}
-          <div className="flex flex-col gap-4 px-4 pb-4 text-ink sm:px-6 sm:pb-6">{children}</div>
+          <div className="flex flex-col gap-4 px-4 pb-4 text-ink sm:px-6 sm:pb-6">
+            {hint && (
+              <Text variant="caption" tone="muted">
+                {hint}
+              </Text>
+            )}
+            {offSchema && (
+              <Alert.Root intent="warning">
+                <Alert.Title>The API does not know this section</Alert.Title>
+                <Alert.Description>
+                  The bible is validated by section, so a save carrying this one is
+                  refused whole. It is shown rather than hidden on purpose: dropping
+                  it here would delete it on the next save that did go through.
+                </Alert.Description>
+              </Alert.Root>
+            )}
+            {children}
+          </div>
         </Collapsible.Panel>
       </Collapsible.Root>
     </Card.Root>

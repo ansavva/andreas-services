@@ -47,7 +47,10 @@ function record(over: Partial<CharacterRecord> = {}): CharacterRecord {
       // `hair` is short and stays a line. `build` is 63 characters — over the
       // old 100-char threshold it was a single-line input you had to scroll
       // sideways through on a phone, which shows about 40.
-      appearance: { hair: "short", build: "a" .repeat(63) },
+      // Real section names, because the form orders and annotates by them now: a
+      // made-up key renders after the schema's own and carries the off-schema
+      // warning, which is not what this fixture is here to exercise.
+      face: { hair: "short", build: "a" .repeat(63) },
       voice: { accent: "flat" },
     },
     ...over,
@@ -161,7 +164,7 @@ describe("the sections", () => {
     // "Record", not "Identity": the bible has its own `identity:` section and
     // the two cards used to carry the same heading.
     expect(expanded).toContain("Record");
-    expect(expanded).toContain("Appearance");
+    expect(expanded).toContain("Face");
     expect(expanded).not.toContain("Voice");
   });
 
@@ -176,7 +179,7 @@ describe("the sections", () => {
     // By `expanded`, because the desktop rail carries the same names: it is
     // `hidden` below `lg` and jsdom applies no CSS, so both are in this tree.
     // Only the section trigger has `aria-expanded`.
-    const trigger = section(/Appearance/);
+    const trigger = section(/Face/);
     fireEvent.click(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
 
@@ -218,7 +221,52 @@ describe("the sections", () => {
 
     fireEvent.change(screen.getByLabelText("Hair"), { target: { value: "long" } });
 
-    expect(within(section(/Appearance/)).queryByLabelText("unsaved changes")).toBeTruthy();
+    expect(within(section(/Face/)).queryByLabelText("unsaved changes")).toBeTruthy();
     expect(within(section(/Voice/)).queryByLabelText("unsaved changes")).toBeNull();
+  });
+
+  it("orders sections by the schema, not by the order the record arrived in", async () => {
+    // A DynamoDB map has no order worth relying on: these two came back with
+    // `voice` first, which put the accent above the face on the screen.
+    read.mockResolvedValue(
+      record({ profile: { voice: { accent: "flat" }, face: { hair: "short" } } }),
+    );
+    await open();
+
+    const rendered = [...document.querySelectorAll("[data-section]")].map((each) =>
+      each.getAttribute("data-section"),
+    );
+    expect(rendered).toEqual([" record", "face", "voice"]);
+  });
+
+  it("warns on a section the API does not know, and puts it last", async () => {
+    // `corpus` is the real one: a key the pre-catalog migration carried across
+    // verbatim, which sat in this form looking like part of the schema while
+    // every save that included it was refused whole.
+    read.mockResolvedValue(
+      record({
+        profile: {
+          corpus: [{ file: "<name>_in_7.png", description: "<…>" }],
+          face: { hair: "short" },
+        },
+      }),
+    );
+    await open();
+
+    const rendered = [...document.querySelectorAll("[data-section]")].map((each) =>
+      each.getAttribute("data-section"),
+    );
+    expect(rendered).toEqual([" record", "face", "corpus"]);
+    expect(within(section(/Corpus/)).getByText("Not in the schema")).toBeTruthy();
+    expect(within(section(/Face/)).queryByText("Not in the schema")).toBeNull();
+  });
+
+  it("says what each schema section is for", async () => {
+    await open();
+
+    // The complaint this answers: nine characters of `rendering.default_style`
+    // that every shoot depends on looked exactly as important as three thousand
+    // characters of `face` that no code reads.
+    expect(screen.getByText(/what a prompt gets written from/)).toBeTruthy();
   });
 });
