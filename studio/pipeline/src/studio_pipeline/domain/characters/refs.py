@@ -541,8 +541,13 @@ def cmd_default_set(name, nodes):
     known = reference_entries(record)
     ids = [entry_node(record, token, known) for token in nodes]
     try:
-        found = entities.put_default_set(record["id"], ids)
+        found = entities.put_default_set(record["id"], ids, record["rev"])
     except api.NotFound as exc:
         die(str(exc))
+    except api.Conflict as exc:
+        # Somebody wrote the record between the read above and this write. The
+        # set is small and re-typing it is cheap, so the answer is to say so
+        # rather than to re-read and retry over the top of them.
+        die(f"{exc}\n  re-run: the character was written since this command read it.")
     print(json.dumps(found.get("default_set") or ids, indent=2))
     print(f"default set: {len(ids)} reference(s)", file=sys.stderr)
