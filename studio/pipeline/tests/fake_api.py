@@ -452,7 +452,20 @@ class FakeApi:
                             "Content-Length": str(body["size"])}}
 
     def _r_confirm(self, method, body, params, node_id):
+        """Finalise a placeholder — and 404 if the bytes are not actually there.
+
+        **The head is not decoration.** The real route runs `HeadObject` and
+        writes the row from what S3 reports, so a confirm on a node whose PUT
+        never happened is a 404 rather than a row promising bytes that are
+        absent. This fake used to skip that and take the pending values on
+        trust, which made it agree with a caller that had uploaded nothing —
+        the exact divergence that lets an upload bug pass a green suite.
+        """
         node = self.nodes[node_id]
+        try:
+            self.s3.head_object(Bucket=BUCKET, Key=node["blob_key"])
+        except Exception:
+            raise FakeError(404, f"no object at {node['blob_key']}") from None
         pending = node.pop("pending", None) or {}
         node["size"] = pending.get("size")
         node["content_type"] = pending.get("content_type")

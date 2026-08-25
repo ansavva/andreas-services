@@ -466,6 +466,49 @@ def test_the_first_output_becomes_the_listing_rows_thumbnail(empty_api):
     assert empty_api.get(f"/api/runs/{run['id']}").get_json()["outputs"][0]["id"] == first["node"]
 
 
+def test_an_output_lists_in_its_folder_once_the_upload_is_confirmed(empty_api, media_bucket):
+    """**The whole upload, ending where a person actually looks: the folder.**
+
+    Every other test here stops at the placeholder, and that is exactly how the
+    bug shipped. `POST /outputs` creates a node and signs a PUT; only
+    `confirm-upload` heads the object and records `size`, and
+    `browse.is_abandoned_upload` hides any file row without one. The pipeline PUT
+    the bytes and never confirmed, so all 170 run outputs in prod were in S3,
+    named by their run, drawn on the run page — and absent from the `output/`
+    folder they lived in.
+
+    So this asserts both halves in the order they happen: hidden before the
+    confirm, listed after it. An assertion on only the second would still pass if
+    the filter were deleted, which is the other way to make this folder wrong.
+    """
+    project = _project(empty_api)
+    run = _create(empty_api, project)
+
+    signed = empty_api.post(
+        f"/api/runs/{run['id']}/outputs",
+        json={"name": "output-1.png", "size": 4, "content_type": "image/png"},
+    ).get_json()
+    output_folder = _child(run["folder"], layout.OUTPUT_FOLDER)["node_id"]
+
+    def listed():
+        body = empty_api.get(f"/api/tree?node={output_folder}").get_json()
+        return [entry["name"] for entry in body["files"]]
+
+    # The bytes land — the presigned PUT goes straight to S3, so the test writes
+    # them the same way, without the API in between.
+    media_bucket.put_object(
+        Bucket=config.media_bucket(),
+        Key=catalog.node(signed["node"])["blob_key"],
+        Body=b"png!",
+    )
+    assert listed() == [], "a row with no recorded size is a placeholder and must stay hidden"
+
+    assert empty_api.post(f"/api/nodes/{signed['node']}/confirm-upload").status_code == 200
+
+    assert listed() == ["output-1.png"]
+    assert catalog.node(signed["node"])["size"] == 4
+
+
 def test_an_oversized_output_is_refused_at_signing(empty_api):
     """Refused by the signature rather than discovered after the bytes have moved."""
     project = _project(empty_api)

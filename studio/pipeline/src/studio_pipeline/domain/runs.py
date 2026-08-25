@@ -239,10 +239,17 @@ def record_request(
 def upload_output(run_id: str, local: str, name: str | None = None) -> str:
     """Put one artifact in the run's `output/` and return its NODE ID.
 
-    Two calls: the API mints the node and a presigned PUT together, then the
-    bytes go straight to S3. Deliberately not `store.write_into` — that would
-    create a second node beside the one the route already made, and the run's
-    `outputs` list would name the wrong one.
+    Three calls: the API mints the node and a presigned PUT together, the bytes
+    go straight to S3, and `store.upload_to_url` confirms the node so the row
+    records what landed. Deliberately not `store.write_into` — that would create
+    a second node beside the one the route already made, and the run's `outputs`
+    list would name the wrong one.
+
+    **It was two calls until the confirm was added, and that is what made every
+    `output/` folder look empty.** The bytes were always in S3 and the run page
+    always drew them — it expands `outputs` by id and presigns off `blob_key`,
+    which no listing does — so the only symptom was the folder. See
+    `store.upload_to_url`.
     """
     base = name or os.path.basename(local)
     size = os.path.getsize(local)

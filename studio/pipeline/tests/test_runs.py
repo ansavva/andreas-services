@@ -16,6 +16,7 @@ from click.testing import CliRunner
 
 from studio_pipeline import cli
 from studio_pipeline.adapters import entities as E
+from studio_pipeline.adapters import store
 from studio_pipeline.domain import runs as R
 
 
@@ -138,6 +139,33 @@ def test_an_output_lands_in_the_runs_output_folder_and_on_the_row(library, tmp_p
     assert node in [o["node"] for o in R.run_outputs(library.run)]
     # The row holds it, so the ORDER is the record's rather than a listing's.
     assert R.run_outputs(library.run)[-1]["node"] == node
+
+
+def test_an_output_is_confirmed_so_its_folder_can_list_it(library, tmp_path):
+    """**The call that was missing, and the whole reason `output/` looked empty.**
+
+    An upload is create, PUT, confirm. The entity route does the create and signs
+    the PUT; only the confirm records `size`, and the API hides any file row that
+    has none — a placeholder is a key with nothing proven behind it, so listing
+    one draws a tile that will not load.
+
+    `upload_output` stopped after the PUT. Every output studio had ever produced
+    was therefore invisible in the folder it lived in, while the run page drew it
+    perfectly: that page expands `outputs` by id and presigns off `blob_key`,
+    neither of which consults a listing. 170 outputs in prod were in that state.
+
+    So the assertion is on the node's own record rather than on the run's — the
+    run named the node all along, which is exactly why the run page lied.
+    """
+    local = tmp_path / "frame.png"
+    local.write_bytes(b"png-bytes")
+
+    node = R.upload_output(library.run, str(local))
+
+    record = store.node(node)
+    assert "size" in record, "unconfirmed: the API will hide this from every listing"
+    assert record["size"] == len(b"png-bytes")
+    assert record["content_type"] == "image/png"
 
 
 def test_outputs_come_back_in_the_order_the_run_recorded(library, tmp_path):
