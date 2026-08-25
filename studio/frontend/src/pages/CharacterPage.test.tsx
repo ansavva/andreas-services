@@ -261,6 +261,64 @@ describe("the sections", () => {
     expect(within(section(/Face/)).queryByText("Not in the schema")).toBeNull();
   });
 
+  it("groups the sections, and drops a group the record has nothing for", async () => {
+    // Only appearance keys here, so Direction and Summary have nothing to draw.
+    // A group rendered empty reads as a form with a hole in it.
+    read.mockResolvedValue(
+      record({ profile: { face: { hair: "short" }, identity: { apparent_age: "40s" } } }),
+    );
+    await open();
+
+    // Twice each when present — the rail names a group and so does the column.
+    expect(screen.getAllByText("Appearance")).toHaveLength(2);
+    expect(screen.queryAllByText("Direction")).toHaveLength(0);
+    expect(screen.queryAllByText("Summary")).toHaveLength(0);
+  });
+
+  it("puts an off-schema key in its own group, after every real one", async () => {
+    read.mockResolvedValue(
+      record({ profile: { corpus: [{ file: "<name>_in_7.png" }], voice: { accent: "flat" } } }),
+    );
+    await open();
+
+    const headings = [...document.querySelectorAll("[data-section]")].map((each) =>
+      each.getAttribute("data-section"),
+    );
+    expect(headings).toEqual([" record", "voice", "corpus"]);
+    // The group heading, the rail's copy of it, and the badge on the trigger.
+    expect(screen.getAllByText("Not in the schema")).toHaveLength(3);
+  });
+
+  it("tells you to reread the summary when what it summarises moves", async () => {
+    read.mockResolvedValue(
+      record({
+        profile: { face: { hair: "short" }, text_identity_block: "A tall figure." },
+      }),
+    );
+    await open();
+
+    // Nothing edited yet: the paragraph still matches what it was written from.
+    expect(screen.queryByText(/sections this summarises have changed/)).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Hair"), { target: { value: "long" } });
+
+    expect(screen.getByText(/sections this summarises have changed/)).toBeTruthy();
+  });
+
+  it("gives the summary no way to regenerate itself", async () => {
+    // There is nothing to regenerate it WITH — the paragraph is written by
+    // Claude and studio's API calls no model. A button here would be a lie.
+    read.mockResolvedValue(record({ profile: { text_identity_block: "A tall figure." } }));
+    await open();
+
+    expect(screen.queryByRole("button", { name: /regenerate/i })).toBeNull();
+    // Editable, and not marked read-only: it is the source of truth for what a
+    // start-frame engine is handed, not a cache of the sections above it.
+    const box = screen.getByDisplayValue("A tall figure.");
+    expect(box).toBeTruthy();
+    expect(box.hasAttribute("readonly")).toBe(false);
+  });
+
   it("says what each schema section is for", async () => {
     await open();
 

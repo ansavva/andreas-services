@@ -45,6 +45,27 @@ interface Props {
 const RECORD = " record";
 
 /**
+ * The bible's one derived-looking section, and the reason it is not derived.
+ *
+ * `text_identity_block` restates `identity`, `face`, `body`, `wardrobe` and
+ * `consistency` as ~50-70 words of prose, for an engine driven from a start
+ * frame that carries no reference images. It reads redundant because it *is*
+ * redundant — deliberately.
+ *
+ * **It is a summary, not a derived value, and the difference decides the UI.**
+ * A derived value is recomputed and should not be hand-edited; this one is
+ * written by Claude, is lossy on purpose (only what a text-only engine cannot
+ * infer), and is the source of truth for what actually reaches a prompt. So it
+ * stays fully editable and gets no regenerate button — there is nothing to
+ * regenerate it with. `GET /api/characters/<id>/textblock` returns the stored
+ * paragraph, or the five sections as raw material when none is written yet.
+ */
+const SUMMARY_KEY = "text_identity_block";
+
+/** What the summary restates — the marker below watches these and nothing else. */
+const SUMMARISED = ["identity", "face", "body", "wardrobe", "consistency"] as const;
+
+/**
  * What each section is for, in one line — **and nothing below section level**.
  *
  * The form renders every field the same way, which made a nine-character
@@ -83,10 +104,6 @@ const SECTIONS: ReadonlyArray<{ key: string; hint: string }> = [
     hint: "What the character usually wears. A shoot takes the first tops entry for its plain-top plate; the rest is prompt material.",
   },
   {
-    key: "voice",
-    hint: "Language, accent, manner, delivery. Read when a prompt carries a spoken line — Seedance generates the audio in character.",
-  },
-  {
     key: "rendering",
     hint: "The medium to render in, which is a per-render choice rather than part of who the character is. Only default_style is read by anything.",
   },
@@ -95,23 +112,74 @@ const SECTIONS: ReadonlyArray<{ key: string; hint: string }> = [
     hint: "must / never / drift_modes — the checklist a render is verified against, each drift paired with the fix to write into the next prompt. A shoot puts must in the prompt itself.",
   },
   {
-    key: "text_identity_block",
-    hint: "A 50-70 word summary of the sections above, for engines that carry no reference images. Written by hand: nothing here can generate it.",
+    key: "voice",
+    hint: "Language, accent, manner, delivery. Read when a prompt carries a spoken line — Seedance generates the audio in character.",
+  },
+  {
+    key: SUMMARY_KEY,
+    hint: "A 50-70 word paragraph for engines that carry no reference images, where the character has to survive as prose. It restates the appearance sections; nothing here can write it, because studio's API calls no model.",
   },
 ];
 
 const SECTION_HINTS = new Map(SECTIONS.map((section) => [section.key, section.hint]));
 
 /**
- * The record's keys in the manifest's order, with anything unrecognised after.
+ * The sections in groups, because eight peers is a list and not a shape.
+ *
+ * Every top-level key was drawn identically and in whatever order DynamoDB
+ * serialised the map in, so reading the screen meant holding eight unrelated
+ * headings in your head and working out which mattered. They are not eight
+ * unrelated things: four say what the character IS, three say how to render one
+ * and how to check the result, and the last is a restatement of the first four.
+ *
+ * The group is presentation and only presentation — nothing about the stored
+ * shape changes, and a key the API adds tomorrow lands in `OTHER` rather than
+ * disappearing.
+ */
+const GROUPS: ReadonlyArray<{ label: string; blurb: string; keys: readonly string[] }> = [
+  {
+    label: "Appearance",
+    blurb: "Who the character is. Style-agnostic on purpose — how to render them is the next group.",
+    keys: ["identity", "face", "body", "wardrobe"],
+  },
+  {
+    label: "Direction",
+    blurb: "How to render, and how to tell whether the render is right.",
+    keys: ["rendering", "consistency", "voice"],
+  },
+  {
+    label: "Summary",
+    blurb: "The appearance sections compressed into one pasteable paragraph.",
+    keys: [SUMMARY_KEY],
+  },
+];
+
+/** The group a key nobody planned for falls into, so it is never silently dropped. */
+const OTHER = {
+  label: "Not in the schema",
+  blurb:
+    "Keys the API does not validate. A save carrying one is refused whole, so these are shown rather than hidden.",
+};
+
+/**
+ * The record's keys in the manifest's order, grouped, with the unknown last.
  *
  * Ordered here rather than trusted from the record because a DynamoDB map has no
  * order worth relying on — the sections arrived in whatever order the item was
  * serialised in, which is why `voice` used to sit above `face`.
+ *
+ * A group with nothing in it is dropped rather than drawn empty: a character
+ * written before a section existed should read as a shorter form, not a form
+ * with a hole in it.
  */
-function orderSections(keys: readonly string[]): string[] {
-  const known = SECTIONS.map((section) => section.key).filter((key) => keys.includes(key));
-  return [...known, ...keys.filter((key) => !SECTION_HINTS.has(key))];
+function groupSections(keys: readonly string[]) {
+  const groups = GROUPS.map((group) => ({
+    ...group,
+    keys: group.keys.filter((key) => keys.includes(key)),
+  })).filter((group) => group.keys.length > 0);
+
+  const stray = keys.filter((key) => !SECTION_HINTS.has(key));
+  return stray.length > 0 ? [...groups, { ...OTHER, keys: stray }] : groups;
 }
 
 /**
@@ -188,7 +256,27 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
    */
   const multiline = useRef<ReadonlySet<string>>(collectLongPaths(profile, []));
 
-  const keys = useMemo(() => orderSections(Object.keys(profile)), [profile]);
+  const groups = useMemo(() => groupSections(Object.keys(profile)), [profile]);
+  const keys = useMemo(() => groups.flatMap((group) => group.keys), [groups]);
+
+  /**
+   * Whether the sections the summary restates have moved in this session.
+   *
+   * **Only this session, and that is not a shortcut.** A stale marker that
+   * survived a reload would need the record to remember when the paragraph was
+   * last written against which sections — stored derived state, which is the
+   * thing `docs/ENTITY_MODEL.md` argues out of this table on the grounds that it
+   * goes stale and nobody notices. What is honest without it is the case that
+   * actually bites: rewriting a face and forgetting the paragraph that describes
+   * it, in the same sitting, with both on screen.
+   */
+  const summaryStale = useMemo(
+    () =>
+      SUMMARISED.some(
+        (key) => JSON.stringify(profileDraft[key]) !== JSON.stringify(profile[key]),
+      ),
+    [profile, profileDraft],
+  );
 
   const identityDirty = useMemo(
     () => JSON.stringify(identityDraft) !== JSON.stringify(identity),
@@ -338,14 +426,29 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
               {allOpen ? "Collapse all" : "Expand all"}
             </Button>
             <Separator className="my-1" />
-            {[RECORD, ...keys].map((section) => (
-              <RailLink
-                key={section}
-                title={section === RECORD ? "Record" : humanise(section)}
-                open={open.has(section)}
-                dirty={dirtySections.has(section)}
-                onClick={() => goToSection(section)}
-              />
+            <RailLink
+              title="Record"
+              open={open.has(RECORD)}
+              dirty={dirtySections.has(RECORD)}
+              onClick={() => goToSection(RECORD)}
+            />
+            {groups.map((group) => (
+              <div key={group.label} className="flex flex-col">
+                {/* The group's name is a label, not a link: there is nothing to
+                    scroll to that its first section does not already reach. */}
+                <Text variant="caption" tone="muted" className="px-3 pb-1 pt-3">
+                  {group.label}
+                </Text>
+                {group.keys.map((section) => (
+                  <RailLink
+                    key={section}
+                    title={humanise(section)}
+                    open={open.has(section)}
+                    dirty={dirtySections.has(section)}
+                    onClick={() => goToSection(section)}
+                  />
+                ))}
+              </div>
             ))}
           </div>
         </nav>
@@ -373,26 +476,44 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
             <RecordFields value={identityDraft} onChange={setIdentityDraft} />
           </ProfileSection>
 
-          {keys.map((key) => (
-            <ProfileSection
-              key={key}
-              id={key}
-              title={humanise(key)}
-              hint={SECTION_HINTS.get(key)}
-              dirty={dirtySections.has(key)}
-              open={open.has(key)}
-              onOpenChange={(next) => setOpenAt(key, next)}
-              innerRef={(node) => sectionRefs.current.set(key, node)}
-            >
-              <ProfileNode
-                label={key}
-                path={[key]}
-                value={profileDraft[key] ?? null}
-                multiline={multiline.current}
-                onChange={setAt}
-                headless
-              />
-            </ProfileSection>
+          {groups.map((group) => (
+            <div key={group.label} className="flex flex-col gap-3">
+              {/* A heading and a line, not a box. The sections are already cards
+                  and a card holding cards is the nesting this form spent a
+                  rework getting rid of — see the note above about four borders
+                  drawn with one signal. */}
+              <div className="flex flex-col gap-1 pt-2">
+                <Text variant="title">{group.label}</Text>
+                <Text variant="caption" tone="muted">
+                  {group.blurb}
+                </Text>
+              </div>
+
+              {group.keys.map((key) => (
+                <ProfileSection
+                  key={key}
+                  id={key}
+                  title={humanise(key)}
+                  hint={SECTION_HINTS.get(key)}
+                  // Only the summary carries one, and only while the sections it
+                  // restates are dirty in this session.
+                  stale={key === SUMMARY_KEY && summaryStale}
+                  dirty={dirtySections.has(key)}
+                  open={open.has(key)}
+                  onOpenChange={(next) => setOpenAt(key, next)}
+                  innerRef={(node) => sectionRefs.current.set(key, node)}
+                >
+                  <ProfileNode
+                    label={key}
+                    path={[key]}
+                    value={profileDraft[key] ?? null}
+                    multiline={multiline.current}
+                    onChange={setAt}
+                    headless
+                  />
+                </ProfileSection>
+              ))}
+            </div>
           ))}
         </div>
       </div>
@@ -412,6 +533,7 @@ function ProfileSection({
   id,
   title,
   hint,
+  stale = false,
   dirty,
   open,
   onOpenChange,
@@ -422,6 +544,8 @@ function ProfileSection({
   title: string;
   /** One line on what the section is for. Absent means the schema does not name it. */
   hint?: string;
+  /** The summary's own flag: what it restates has moved since it was written. */
+  stale?: boolean;
   dirty: boolean;
   open: boolean;
   onOpenChange: (next: boolean) => void;
@@ -501,6 +625,17 @@ function ProfileSection({
               <Text variant="caption" tone="muted">
                 {hint}
               </Text>
+            )}
+            {stale && (
+              <Alert.Root intent="warning">
+                <Alert.Title>The sections this summarises have changed</Alert.Title>
+                <Alert.Description>
+                  Reread it — this paragraph is what a start-frame engine is given,
+                  and nothing updates it on its own. It is written by hand, so there
+                  is no regenerate: edit it here, or run{" "}
+                  <code>studio character textblock</code> for the raw material.
+                </Alert.Description>
+              </Alert.Root>
             )}
             {offSchema && (
               <Alert.Root intent="warning">
