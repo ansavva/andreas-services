@@ -327,7 +327,9 @@ def test_a_rename_moves_no_objects_and_rewrites_no_records(empty_api, catalog_ta
 
     entries = catalog.references(character["id"])
     assert [entry["node"] for entry in entries] == [picture["node_id"]]
-    assert entries[0]["description"] == "front"
+    # The caption is the file's now, not the row's — a rename must not disturb
+    # either, which is what this test is about.
+    assert catalog.node(picture["node_id"])["description"] == "front"
 
 
 def test_a_rename_swaps_the_claim_and_the_folder_name_together(empty_api, catalog_table):
@@ -466,11 +468,41 @@ def test_describing_many_references_is_one_transaction(empty_api):
     )
 
     assert resp.status_code == 200
-    assert [entry["description"] for entry in catalog.references(character["id"])] == [
+    # Two rows per entry — the set's `REF#` half and the file's own — written in
+    # the same transaction, so the descriptions land on the nodes.
+    assert [entry["description"] for entry in resp.get_json()["entries"]] == [
         "shot 0",
         "shot 1",
         "shot 2",
     ]
+    assert [
+        catalog.node(entry["node"])["description"]
+        for entry in catalog.references(character["id"])
+    ] == ["shot 0", "shot 1", "shot 2"]
+
+
+def test_a_tag_written_on_the_file_selects_it_as_a_reference(empty_api):
+    """One store, two doors.
+
+    Tags are the file's, so tagging a picture in the browser and tagging it in
+    the reference grid have to be the same act — otherwise `--pick-tag` answers
+    one of them and a person cannot tell which. This writes through the node
+    route and selects through the character route.
+    """
+    character = _create(empty_api)
+    pool = _child(character["root"], "reference")["node_id"]
+    picture = _uploaded(empty_api, pool, "plate.webp")
+    empty_api.post(
+        f"/api/characters/{character['id']}/references",
+        json={"node": picture["node_id"], "group": "face"},
+    )
+
+    empty_api.patch(f"/api/nodes/{picture['node_id']}", json={"tags": ["Poolside"]})
+
+    body = empty_api.get(
+        f"/api/characters/{character['id']}/selection?tag=poolside"
+    ).get_json()
+    assert [entry["node"] for entry in body["selection"]] == [picture["node_id"]]
 
 
 def test_attaching_the_same_node_twice_is_409(empty_api):
@@ -533,8 +565,8 @@ def test_a_reference_survives_renaming_the_file_it_names(empty_api):
     empty_api.patch(f"/api/nodes/{picture['node_id']}", json={"name": "anything-at-all.webp"})
 
     entries = catalog.references(character["id"])
-    assert entries[0]["description"] == "kept"
     assert entries[0]["node"] == picture["node_id"]
+    assert catalog.node(picture["node_id"])["description"] == "kept"
 
 
 # ──────────────────────────── selection ────────────────────────────

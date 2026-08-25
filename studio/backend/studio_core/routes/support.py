@@ -69,6 +69,11 @@ VIEW_FIELDS = (
     "size",
     "content_type",
     "entity",
+    # What the file shows, and how it is selected. On the node rather than on a
+    # `REF#` row: a description is a fact about the picture, true whether or not
+    # anybody made it a character's reference. See `catalog.describe_node`.
+    "description",
+    "tags",
     "created_at",
     "updated_at",
 )

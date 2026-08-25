@@ -7,6 +7,7 @@ import { useKeyboardNav } from "../../hooks/useKeyboardNav";
 import { useReelPlayback } from "../../hooks/useReelPlayback";
 import type { FileEntry } from "../../types";
 import { MediaSurface } from "./MediaSurface";
+import { DescribePanel } from "./DescribePanel";
 import { VideoScrubber } from "./VideoScrubber";
 import { ViewerChrome } from "./ViewerChrome";
 
@@ -23,6 +24,16 @@ interface Props {
   onCurrentChange?: (item: FileEntry) => void;
   onRename?: (file: FileEntry, name: string) => Promise<unknown>;
   onDelete?: (file: FileEntry) => Promise<unknown>;
+  /**
+   * Write a caption or tags onto the file being looked at.
+   *
+   * Optional like the other two: a surface that cannot write does not get the
+   * button, rather than getting one that fails.
+   */
+  onDescribe?: (
+    file: FileEntry,
+    changes: { description?: string | null; tags?: string[] | null },
+  ) => Promise<unknown>;
 }
 
 /** Mount this many panes either side of the snapped one. */
@@ -55,9 +66,18 @@ export function ReelView({
   onCurrentChange,
   onRename,
   onDelete,
+  onDescribe,
 }: Props) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  /**
+   * Closed by default, and remembered while the reel is open.
+   *
+   * Scrolling from one clip to the next with the panel up is the describing
+   * pass — open it once, then work down the column. Resetting it per item would
+   * make that ten presses instead of one.
+   */
+  const [describing, setDescribing] = useState(false);
 
   const [current, setCurrent] = useState(startIndex);
   const hasJumped = useRef(false);
@@ -195,6 +215,8 @@ export function ReelView({
           onClose={onClose}
           onRename={onRename && ((name) => onRename(currentItem, name))}
           onDelete={onDelete && (() => onDelete(currentItem))}
+          describing={describing}
+          onToggleDescribing={onDescribe && (() => setDescribing((open) => !open))}
           // Only a video has sound to toggle, and passing the handler is what
           // decides whether the button exists at all.
           muted={isVideo ? playback.muted : undefined}
@@ -251,6 +273,21 @@ export function ReelView({
             <VideoScrubber playback={playback} />
           </div>
         </div>
+      )}
+
+      {/* Above the transport in the stack, and it covers it: describing a clip
+          and scrubbing it are not things you do in the same second, and a panel
+          that dodged the scrubber would have to be shorter than the caption it
+          is for. */}
+      {describing && currentItem && onDescribe && (
+        <DescribePanel
+          // Remounted per item so a caption typed on one clip cannot be carried
+          // onto the next by a scroll.
+          key={currentItem.id}
+          file={currentItem}
+          onSave={(changes) => onDescribe(currentItem, changes)}
+          onClose={() => setDescribing(false)}
+        />
       )}
 
       {loading && (

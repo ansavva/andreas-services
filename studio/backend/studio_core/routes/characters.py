@@ -385,14 +385,48 @@ def delete_character(addressed: str):
 # ─────────────────────────── references ───────────────────────────
 
 
+def _with_files(entries: list[dict]) -> tuple[list[dict], dict]:
+    """Reference rows with their file's own description and tags folded in.
+
+    **Read before the filtering rather than after it**, which is the one thing
+    that had to move: `?tag=` selects on tags, tags are the file's now, so the
+    files have to be in hand before a subset can be chosen. It costs the same
+    round trip the route already spent on the chosen subset — a `BatchGetItem`
+    over one character's references, tens of items.
+    """
+    nodes = catalog.records([entry["node"] for entry in entries])
+    folded = [
+        {
+            **entry,
+            "description": nodes.get(entry["node"], {}).get("description"),
+            "tags": nodes.get(entry["node"], {}).get("tags") or [],
+        }
+        for entry in entries
+    ]
+    return folded, nodes
+
+
 def _reference_view(entry: dict, nodes: dict[str, dict], default_set: list) -> dict:
-    node = nodes.get(entry["node"])
+    """One entry, with what the set knows about it and what the file knows.
+
+    **`description` and `tags` come off the NODE; `group` and `order` off the
+    row.** The split is the difference between a fact about the picture and a
+    fact about this character's set of them: "head and shoulders in full profile"
+    is true of the file wherever it sits, while "this is a face reference, third"
+    only means anything inside one character's index.
+
+    They were both on the row until now, which cost exactly what it sounds like:
+    an image described as a reference had a description, the same image sitting
+    in `corpus/` had none, and twelve files in this library's `reference/`
+    folders with no row had none either.
+    """
+    node = nodes.get(entry["node"]) or {}
     view = {
         "node": entry["node"],
         "group": entry.get("group"),
         "order": entry.get("order"),
-        "description": entry.get("description"),
-        "tags": entry.get("tags") or [],
+        "description": node.get("description"),
+        "tags": node.get("tags") or [],
         "default": entry["node"] in default_set,
     }
     if node:
@@ -592,7 +626,7 @@ def selection(addressed: str):
     """
     held = support.memberships()
     record = _character(addressed, held)
-    entries = catalog.references(record["id"])
+    entries, nodes = _with_files(catalog.references(record["id"]))
 
     tag = request.args.get("tag")
     pick = request.args.get("pick") or request.args.get("group")
@@ -615,7 +649,6 @@ def selection(addressed: str):
 
     cap = _cap(request.args)
     if cap is not None and len(chosen) > cap:
-        nodes = catalog.records([entry["node"] for entry in chosen])
         return support.structured(
             "over_cap",
             f"{len(chosen)} references match; the cap is {cap}",
@@ -631,7 +664,6 @@ def selection(addressed: str):
             ],
         )
 
-    nodes = catalog.records([entry["node"] for entry in chosen])
     return jsonify(
         {
             "selection": [

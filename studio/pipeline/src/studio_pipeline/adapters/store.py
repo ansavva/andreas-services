@@ -499,6 +499,26 @@ def rename_node(node_id: str, name: str) -> dict:
     return api.patch(f"/api/nodes/{node_id}", {"name": name})
 
 
+def describe_node(node_id: str, *, description=..., tags=...) -> dict:
+    """What a file SHOWS, written onto the file. **No object is written.**
+
+    A sentinel default for both, because `None` is a value: sending
+    `description=None` clears it and omitting it leaves what is there. Sending
+    neither is a 400 from the API rather than a silent no-op.
+
+    This is where a caption lives now, for any image or video in the library.
+    `character set-ref-desc` writes through to the same place — a reference's
+    `group` and `order` are facts about the character's set, its description is
+    a fact about the picture.
+    """
+    body: dict = {}
+    if description is not ...:
+        body["description"] = description
+    if tags is not ...:
+        body["tags"] = list(tags) if tags is not None else None
+    return api.patch(f"/api/nodes/{node_id}", body)
+
+
 def reparent_node(node_id: str, parent_id: str) -> dict:
     """Reparent in place. **No object is written**, and the id survives."""
     return api.patch(f"/api/nodes/{node_id}", {"parent": parent_id})
