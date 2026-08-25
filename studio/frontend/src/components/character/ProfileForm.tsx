@@ -97,7 +97,7 @@ const SECTIONS: ReadonlyArray<{ key: string; hint: string }> = [
   },
   {
     key: "body",
-    hint: "Proportions. A shoot puts these in the prompt so the pose plate's own build does not decide the figure's.",
+    hint: "Proportions. A shoot states them in the prompt so the pose plate's own build does not decide the figure's — a face plate takes what shows above a mid-chest crop, a body plate takes all of it.",
   },
   {
     key: "wardrobe",
@@ -105,7 +105,7 @@ const SECTIONS: ReadonlyArray<{ key: string; hint: string }> = [
   },
   {
     key: "rendering",
-    hint: "The medium to render in, which is a per-render choice rather than part of who the character is. Only default_style is read by anything.",
+    hint: "The medium the character exists in — a per-render choice rather than part of who they are, which is why it is not folded into the face and body prose. A shoot reads default_style; framing and backgrounds are prompt material, like face and voice.",
   },
   {
     key: "consistency",
