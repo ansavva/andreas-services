@@ -109,12 +109,27 @@ export function ReferencesGrid({ characterId, rootId, defaultSet }: Props) {
    * falls back to. Those are the two things `GET /selection` resolves, and
    * mirroring them is what makes the cap number mean anything.
    */
+  /**
+   * The members of the default set that are still references.
+   *
+   * **Counting the ids rather than the entries was a lie this screen told.** A
+   * default-set member whose `REF#` row is gone — a re-shot plate, detached and
+   * never re-pointed — is an image a shoot cannot send. The grid said "7" while
+   * the shoot sent three, and one character in production carried four of them.
+   * Detaching prunes the set now, so this cannot accumulate again; the count
+   * stays honest about a library that already has some.
+   */
+  const staleDefaults = useMemo(() => {
+    const attached = new Set(groups.flatMap(([, entries]) => entries.map((e) => e.node)));
+    return defaultSet.filter((node) => !attached.has(node));
+  }, [defaultSet, groups]);
+
   const selectionSize = useMemo(() => {
     if (tag !== null) {
       return groups.reduce((total, [, entries]) => total + entries.filter(matches).length, 0);
     }
-    return defaultSet.length;
-  }, [defaultSet.length, groups, matches, tag]);
+    return defaultSet.length - staleDefaults.length;
+  }, [defaultSet.length, groups, matches, staleDefaults.length, tag]);
 
   /**
    * The engines this selection is too big for, and the one that binds first.
@@ -241,7 +256,31 @@ export function ReferencesGrid({ characterId, rootId, defaultSet }: Props) {
               </Badge>
             ))
           )}
+
+          {staleDefaults.length > 0 && tag === null && (
+            <Badge intent="warning">
+              {staleDefaults.length} no longer a reference
+            </Badge>
+          )}
         </div>
+
+        {staleDefaults.length > 0 && tag === null && (
+          // Named rather than quietly excluded from the count above. The API
+          // refuses a default shoot while this is true, so a person seeing the
+          // number needs to know why it will not run.
+          <Alert.Root intent="warning">
+            <Alert.Title>
+              {staleDefaults.length} of {defaultSet.length} in the default set are not
+              references any more
+            </Alert.Title>
+            <Alert.Description>
+              A shoot that falls back to the default set is refused until they are
+              re-pointed — most likely they were re-shot and the replacements were
+              never put back in the set. Pick the images that should be in it and
+              set it again.
+            </Alert.Description>
+          </Alert.Root>
+        )}
 
         {tags.length > 0 && (
           // Single-select, and unpressing the pressed one is "no filter" — which

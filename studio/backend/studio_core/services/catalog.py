@@ -2585,11 +2585,41 @@ def put_references(char_id: str, lib: str, entries: list[dict]) -> list[dict]:
     return written
 
 
-def detach_reference(char_id: str, node_id: str) -> None:
-    """Stop calling a node identity. **The file stays exactly where it is.**"""
-    _write(
-        [(_delete(_entity_pk(ENTITY_CHARACTER, char_id), f"{REFERENCE_PREFIX}{node_id}"), None)]
-    )
+def detach_reference(char_id: str, node_id: str, record: dict | None = None) -> dict | None:
+    """Stop calling a node identity. **The file stays exactly where it is.**
+
+    **And it leaves the default set, in the same transaction.** That is the whole
+    of this change and it is repairing a real failure: `default_set` is a list of
+    node ids on the record, detaching only deleted the `REF#` row, and the
+    selection route then filtered the survivors — so a re-shot reference left a
+    stale id behind and a default shoot silently sent five images where seven
+    were meant. Measured on the production library: four of one character's seven
+    were ids nothing pointed at any more, and nothing anywhere said so.
+
+    Two writes rather than one, and they have to be atomic: a detach that removed
+    the row and failed to update the record would leave exactly the state this
+    exists to prevent.
+
+    Returns the record with the pruned list when it pruned one, so the caller can
+    report it, and `None` when the set did not mention the node.
+    """
+    steps = [(_delete(_entity_pk(ENTITY_CHARACTER, char_id), f"{REFERENCE_PREFIX}{node_id}"), None)]
+
+    record = record or entity(ENTITY_CHARACTER, char_id)
+    current = record.get("default_set") or []
+    pruned = [each for each in current if each != node_id]
+    if len(pruned) != len(current):
+        # `rev` is deliberately NOT bumped and NOT compared. This is a
+        # consequence of a delete rather than an edit somebody made against a
+        # revision they had read, and refusing the detach because a form was open
+        # elsewhere would leave the row gone and the set stale — the worse half.
+        steps.append((_update(
+            {"pk": {"S": _entity_pk(ENTITY_CHARACTER, char_id)}, "sk": {"S": META}},
+            {"default_set": pruned, "updated": _now()},
+        ), None))
+
+    _write(steps)
+    return {**record, "default_set": pruned} if len(pruned) != len(current) else None
 
 
 def set_project_characters(project_id: str, lib: str, characters: list[str]) -> list[str]:

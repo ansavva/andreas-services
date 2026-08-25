@@ -571,11 +571,25 @@ def replace_references(addressed: str):
 
 @bp.delete("/characters/<addressed>/references/<node_id>")
 def detach_reference(addressed: str, node_id: str):
-    """Stop calling a node identity. **The file stays exactly where it is.**"""
+    """Stop calling a node identity. **The file stays exactly where it is.**
+
+    **It leaves the default set too**, and the response says so. A detach that
+    only dropped the `REF#` row left the id sitting in `default_set`, where the
+    selection route filtered it out without a word — which is how a character
+    came to have seven ids in its set and send three.
+    """
     held = support.memberships()
     record = _character(addressed, held)
-    catalog.detach_reference(record["id"], node_id)
-    return jsonify({"node": node_id, "detached": True}), 200
+    pruned = catalog.detach_reference(record["id"], node_id, record)
+    return jsonify(
+        {
+            "node": node_id,
+            "detached": True,
+            # Present only when it changed, so a client can say "and it left the
+            # default set" without diffing anything.
+            **({"default_set": pruned["default_set"]} if pruned else {}),
+        }
+    ), 200
 
 
 @bp.patch("/characters/<addressed>/default-set")
@@ -596,6 +610,18 @@ def set_default_set(addressed: str):
         raise ValidationError("nodes must be a list")
     for node_id in nodes:
         _node_in(record, node_id, "nodes")
+
+    # **Every member has to be a reference**, which this did not check. The set
+    # names what a generation is SHOWN, and a member with no `REF#` row is an
+    # image the selection route silently drops — so the check that was missing
+    # here is the one that would have caught the drift rather than tolerating it.
+    attached = {entry["node"] for entry in catalog.references(record["id"])}
+    stray = [node_id for node_id in nodes if node_id not in attached]
+    if stray:
+        raise ValidationError(
+            f"{stray[0]} is not a reference of {record['slug']} — "
+            "attach it first, or leave it out of the default set"
+        )
 
     try:
         updated = catalog.update_entity(KIND, record, rev, {"default_set": nodes})
@@ -639,6 +665,26 @@ def selection(addressed: str):
     elif record.get("default_set"):
         source = "default"
         order = {node_id: index for index, node_id in enumerate(record["default_set"])}
+        # **A member with no `REF#` row is refused, never filtered.** This line
+        # used to be the filter alone, and the filter is the same failure as a
+        # silent truncation at the cap: a generation shown three of the seven
+        # images somebody chose is a result nobody can explain afterwards. One
+        # character in production carried four such ids for as long as nobody
+        # counted the images a default shoot actually sent.
+        attached = {entry["node"] for entry in entries}
+        stale = [node_id for node_id in record["default_set"] if node_id not in attached]
+        if stale:
+            names = catalog.records(stale)
+            return support.structured(
+                "stale_default_set",
+                f"{len(stale)} of {len(record['default_set'])} in {record['slug']}'s "
+                "default set are not references any more",
+                409,
+                stale=[
+                    {"node": node_id, "name": names.get(node_id, {}).get("name")}
+                    for node_id in stale
+                ],
+            )
         chosen = sorted(
             [entry for entry in entries if entry["node"] in order],
             key=lambda entry: order[entry["node"]],

@@ -483,3 +483,36 @@ def test_textblock_treats_the_unfilled_template_as_no_block(library):
     assert result.exit_code == 0, result.output
     assert "<>" not in result.output
     assert "silhouette" in result.output
+
+
+def test_detaching_a_reference_takes_it_out_of_the_default_set(library):
+    """The drift this closes was found in production, not imagined.
+
+    One character's set named seven nodes and three of them were references; the
+    selection route filtered the rest out without a word, so a default shoot sent
+    three images where somebody had chosen seven.
+    """
+    E.put_default_set(library.character, [library.face_1, library.face_2])
+
+    E.delete_reference(library.character, library.face_2)
+
+    record = CHARACTER.resolve("subject-a")
+    assert record["default_set"] == [library.face_1]
+
+
+def test_a_default_shoot_is_refused_while_the_set_names_a_non_reference(library):
+    """Refused, never quietly shortened — the cap refusal's rule.
+
+    Reached by writing the stale state directly, because the routes now refuse to
+    create it: what is under test is the read path over a library that already
+    carries one.
+    """
+    E.put_default_set(library.character, [library.face_1])
+    library.fake.characters[library.character]["default_set"] = [
+        library.face_1, "node-vanished",
+    ]
+
+    with pytest.raises(api.Conflict) as refused:
+        CHARACTER.selection_nodes(CHARACTER.resolve("subject-a"))
+
+    assert "not references any more" in str(refused.value)
