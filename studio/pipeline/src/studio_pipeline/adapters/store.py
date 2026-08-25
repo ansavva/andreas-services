@@ -369,6 +369,20 @@ def node(node_id: str) -> dict:
     return api.get(f"/api/nodes/{node_id}")
 
 
+def node_confirm(node_id: str) -> dict:
+    """Finalise a placeholder whose bytes are already in S3, by id.
+
+    The third call of an upload, on its own. Every writer here reaches it through
+    `write`, `write_into` or `upload_to_url`, which is where it belongs — this is
+    exposed for `catalog confirm-outputs`, which repairs nodes whose bytes landed
+    before `upload_to_url` confirmed anything.
+
+    Raises `api.NotFound` when the object is not in the bucket: the route heads it
+    before writing, so the row never records a length nothing can serve.
+    """
+    return api.post(f"/api/nodes/{node_id}/confirm-upload")
+
+
 def children_of(node_id: str) -> list[dict]:
     """The direct children of a folder node, name-ascending as DynamoDB sorts.
 
@@ -484,14 +498,29 @@ def upload_into(parent_id: str, name: str, source: Path, *, content_type: str) -
     return write_into(parent_id, name, Path(source).read_bytes(), content_type=content_type)
 
 
-def upload_to_url(signed: dict, source: Path) -> None:
-    """PUT a local file at a URL some entity route already signed.
+def upload_to_url(signed: dict, source: Path) -> dict:
+    """PUT a local file at a URL some entity route already signed, then confirm it.
 
-    `POST /api/runs/<id>/outputs` and `POST /api/scenes/<id>/output` mint the
-    node and the URL together, so the placeholder dance `write_into` performs
-    has already happened server-side and repeating it would make a second node.
+    `POST /api/runs/<id>/outputs`, `POST /api/scenes/<id>/output` and
+    `POST /api/movies/<id>/output` mint the node and the URL together, so the
+    *placeholder* half of the dance `write_into` performs has already happened
+    server-side and repeating it would make a second node.
+
+    **The confirm half has not, and skipping it is what emptied every `output/`
+    folder in prod.** An entity route calls `create_node` and stops; only
+    `confirm-upload` runs `HeadObject` and writes `size` and `content_type` onto
+    the row. Without it the node stays a placeholder for ever —
+    `browse.is_abandoned_upload` keys on `size` being absent and keeps it out of
+    every listing and out of the reel, so a run's output was in S3, named by the
+    run's `outputs`, drawn on the run page, and invisible in the folder it lived
+    in. This function is where the two paths rejoin: `write_into` confirms and so
+    does this, so there is no upload in the package that does not.
+
+    The docstring used to say the dance "has already happened server-side" with
+    no such qualification, which is the sentence the bug hid behind.
     """
     _put(signed["url"], Path(source).read_bytes(), signed.get("headers") or {})
+    return node_confirm(signed["node"])
 
 
 def rename_node(node_id: str, name: str) -> dict:

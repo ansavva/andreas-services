@@ -66,6 +66,27 @@
   "catalog": {
     "arguments": {},
     "commands": {
+      "confirm-outputs": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply_",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "Confirm them. Without it, report only.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
       "descriptions": {
         "arguments": {},
         "commands": {},

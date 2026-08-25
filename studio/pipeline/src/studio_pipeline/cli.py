@@ -36,6 +36,7 @@ from studio_pipeline.engine import shoot as _shoot
 from studio_pipeline.maintenance import catalog_gc as _catalog_gc
 from studio_pipeline.maintenance import ref_descriptions as _ref_descriptions
 from studio_pipeline.maintenance import catalog_migrate as _catalog
+from studio_pipeline.maintenance import confirm_outputs as _confirm_outputs
 from studio_pipeline.maintenance import dev_seed as _dev_seed
 from studio_pipeline.objects import config_sync as _config_sync
 from studio_pipeline.objects import convert as _convert
@@ -175,6 +176,10 @@ _scenes.main.add_command(_board.cmd_check, "check")
 # say so twice.
 _catalog.main.add_command(_catalog_gc.cmd_gc, "gc")
 _catalog.main.add_command(_ref_descriptions.cmd_reseat_descriptions, "descriptions")
+# `confirm-outputs` is the only catalog command that needs no AWS client: the
+# rows it repairs are the ones a listing hides, and it finds them by asking the
+# entities that name their outputs rather than by scanning the table.
+_catalog.main.add_command(_confirm_outputs.cmd_confirm_outputs, "confirm-outputs")
 
 
 for _name, _cmd in [

@@ -203,19 +203,29 @@ The parts of the old rule that still hold, and should keep holding:
   **Still no multipart grant**, and `max_upload_bytes` is S3's single-PUT
   ceiling rather than a policy number — past it a single `PutObject` is
   impossible, which is a separate decision again.
-  **A failure between the row and the bytes leaves a placeholder, and it is not
-  invisible.** The node is minted first, because its id is what names the key, so
-  anything that goes wrong after that leaves a row naming `blobs/<id>` with
-  nothing behind it. `browse._file_entry` presigns *any* row carrying a
-  `blob_key`, so the grid draws that row as a tile that will not load — this file
-  and two docstrings used to describe it as a row nobody sees, and it is not.
+  **A failure between the row and the bytes leaves a placeholder, and #442 made
+  it invisible again.** The node is minted first, because its id is what names
+  the key, so anything that goes wrong after that leaves a row naming
+  `blobs/<id>` with nothing behind it. `browse._file_entry` presigns *any* row
+  carrying a `blob_key`, so the grid used to draw that row as a tile that would
+  not load. `browse.is_abandoned_upload` now keeps it out of the listing and out
+  of the reel, keyed on `size` being **absent** — `"size" in record`, not
+  truthiness, because a confirmed empty file has `size` 0 and a placeholder has
+  no `size` at all.
   **`studio catalog gc` (#318) does not collect it.** That command deletes blobs
   no row names; a placeholder is a row no blob answers, the opposite direction,
   and nothing collects it. So the SPA's uploader deletes the node itself when a
-  PUT fails, and the broken tile is what is left when that cleanup fails too —
-  one press in the row's `⋯` menu. A failure at the *confirm* is left alone
-  deliberately: the bytes are there and the row names them, so only `size` reads
-  0, and destroying a completed upload to tidy a number is the wrong trade.
+  PUT fails, and the hidden row is what is left when that cleanup fails too.
+  **A failure at the *confirm* is NOT the harmless case this paragraph used to
+  call it.** It said the bytes are there and the row names them, so "only `size`
+  reads 0" — wrong twice, and expensively. `size` is absent rather than 0, and
+  the consequence is not a cosmetic number: the row is hidden from every listing
+  and from the reel. That reasoning is what made it look safe for
+  `store.upload_to_url` to PUT an entity's output and skip the confirm, which
+  left all 170 run outputs in prod in exactly this state — in S3, named by their
+  run, drawn on the run page, and absent from the `output/` folder they lived in.
+  It confirms now, and `studio catalog confirm-outputs` repairs what shipped
+  before it did.
 - **`copy_objects` is the only `CopyObject` left.** It used to be one of four:
   a rename, a folder rename and a move were each a copy per key followed by a
   delete. #316 made all three catalog transactions that move no bytes at all, so
