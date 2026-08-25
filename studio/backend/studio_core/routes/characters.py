@@ -76,6 +76,18 @@ PROFILE_SECTIONS = (
 )
 TEXT_BLOCK = "text_identity_block"
 
+# What `GET .../textblock` hands back when nobody has authored the paragraph yet.
+#
+# **The raw material, not an apology.** The block is a 50-70 word compression of
+# these five sections, written by hand because nothing in this service can write
+# it — the backend makes no model calls, so there is no compressor to invoke. The
+# route's job is to put the source in front of whoever is doing the compressing.
+#
+# `rendering` and `voice` are absent deliberately: a text-only engine is being
+# told what the character LOOKS like, and a medium or an accent spends words on
+# something the paragraph is not for.
+IDENTITY_BEARING = ("identity", "face", "body", "wardrobe", "consistency")
+
 # The reference caps the engines impose, by engine name. Consulted only when a
 # request names one; `?limit=` is the explicit form and wins.
 #
@@ -670,12 +682,34 @@ def _cap(args) -> int | None:
 
 @bp.get("/characters/<addressed>/textblock")
 def textblock(addressed: str):
-    """The pasteable identity paragraph, on its own so a prompt can fetch it."""
+    """The pasteable identity paragraph, on its own so a prompt can fetch it.
+
+    **`raw` is the half that was documented and never built.** The CLI has always
+    read `found["raw"]` for the un-authored case and this route has always sent
+    `{id, text}` alone, so `studio character textblock` on a character without a
+    block printed `{}` followed by instructions to compress it. Only the authored
+    path had a test.
+
+    Both keys are always present. A caller branches on `text` being empty, which
+    is one rule; `raw` appearing only sometimes would be a second one, and the
+    client that got it wrong is the reason this route now states both.
+
+    **The template's unfilled `<>` counts as absent**, and that decision is made
+    here rather than in each client. The CLI already skipped a block starting
+    `<`; the SPA does not, so a character created from the blank template and
+    never written up would have handed one caller the raw sections and the other
+    a literal `<>` — which is the paragraph landing in a prompt.
+    """
     held = support.memberships()
     record = _character(addressed, held)
-    return jsonify(
-        {"id": record["id"], "text": (record.get("profile") or {}).get(TEXT_BLOCK) or ""}
-    ), 200
+    profile = record.get("profile") or {}
+    authored = (profile.get(TEXT_BLOCK) or "").strip()
+    if authored.startswith("<"):
+        authored = ""
+    raw = {} if authored else {
+        section: profile[section] for section in IDENTITY_BEARING if profile.get(section)
+    }
+    return jsonify({"id": record["id"], "text": authored, "raw": raw}), 200
 
 
 @bp.get("/characters/<addressed>/runs")

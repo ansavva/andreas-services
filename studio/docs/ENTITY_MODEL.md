@@ -508,6 +508,20 @@ Every route is library-scoped by `X-Studio-Library` exactly as today, and every
 entity response is membership-checked against the entity's own `lib`. Slugs are
 accepted only where noted; everything else takes ids.
 
+**Every whole-collection replace is `PATCH`, not `PUT`.** Six routes here
+replace rather than merge — the profile, the reference index, the default set, a
+project's character links, a scene's shots, a movie's scenes — and PUT is the
+verb for that. The service registers none: a verb has to exist in the CORS list,
+the MOCK integration response and two gateway responses at once, and one
+omission is a browser failure carrying no status at all
+(`backend/studio_core/app_factory.py`). Replace is told from merge by the body's
+key instead — `{profile}` against `{patch}`.
+
+This table spelled all six as `PUT` while the service answered `PATCH`, and both
+clients believed the table: every one of those writes failed, the SPA's in the
+preflight. Adopting PUT is still a one-line change in two places, and this table
+moves with it.
+
 ### Characters
 
 | Route | Body / params → result |
@@ -516,15 +530,15 @@ accepted only where noted; everything else takes ids.
 | `POST /api/characters` | `{slug, display_name, fictional, profile?}` → **201** the record. Creates entity + slug claim + root + four pool folders in one transaction. **409** on slug |
 | `GET /api/characters/<id>` | the full record, `profile` included. `<id>` may be `slug:<slug>` |
 | `PATCH /api/characters/<id>` | `{slug?, display_name?, fictional?, hero?, rev}` → **409** on a stale `rev`, **409** on a taken slug |
-| `PUT /api/characters/<id>/profile` | `{profile, rev}` → whole-bible replace, validated. The `edit` round trip |
+| `PATCH /api/characters/<id>/profile` | `{profile, rev}` → whole-bible replace, validated. The `edit` round trip |
 | `PATCH /api/characters/<id>/profile` | `{patch, rev}` → merge one section |
 | `DELETE /api/characters/<id>` | `?files=keep\|delete` — refuses while a project or run still links it, unless `?force=1` |
 | `GET /api/characters/<id>/references` | `?group=` → entries in `(group, order)` order, each with its node and a presigned URL |
 | `POST /api/characters/<id>/references` | `{node, group, description?, tags?, after?}` → attaches an existing node. **409** if already a reference |
 | `PATCH /api/characters/<id>/references/<node>` | `{group?, description?, tags?, after?}` |
-| `PUT /api/characters/<id>/references` | `{entries: [{node, group, description?, tags?}]}` → bulk describe / reorder in one transaction. This is `describe-refs` and `sync-refs` |
+| `PATCH /api/characters/<id>/references` | `{entries: [{node, group, description?, tags?}]}` → bulk describe / reorder in one transaction. This is `describe-refs` and `sync-refs` |
 | `DELETE /api/characters/<id>/references/<node>` | detaches; the file stays where it is |
-| `PUT /api/characters/<id>/default-set` | `{nodes: [...]}` |
+| `PATCH /api/characters/<id>/default-set` | `{nodes: [...]}` |
 | `GET /api/characters/<id>/selection` | `?pick=&tag=&limit=` → the ordered nodes a model would be shown, with presigned URLs. **Refuses** an over-cap selection with the index in the body — the current behaviour, moved to one place |
 | `GET /api/characters/<id>/textblock` | the pasteable identity paragraph |
 | `GET /api/characters/<id>/runs` | `?cursor=` → runs that used this character, newest first |
@@ -539,7 +553,7 @@ accepted only where noted; everything else takes ids.
 | `GET /api/projects/<id>` | record; `<id>` may be `slug:<slug>` |
 | `PATCH /api/projects/<id>` | `{slug?, title?, description?, hero?, rev}` |
 | `DELETE /api/projects/<id>` | `?files=keep\|delete`; refuses while it holds runs unless `?force=1` |
-| `PUT /api/projects/<id>/characters` | `{characters: [id, …]}` → replaces the involvement links |
+| `PATCH /api/projects/<id>/characters` | `{characters: [id, …]}` → replaces the involvement links |
 | `GET /api/projects/<id>/inputs` | the working pool, name-ascending natural sort. **Position in this list is `--input N`** |
 | `GET /api/projects/<id>/runs` | `?status=&model=&character=&cursor=` |
 | `GET /api/projects/<id>/scenes` · `/movies` | listings |
@@ -557,10 +571,10 @@ accepted only where noted; everything else takes ids.
 | `DELETE /api/runs/<id>` | `?files=keep\|delete` |
 | `POST /api/scenes` | `{project, slug, title, shots: [...]}` → **201** |
 | `GET /api/scenes` · `GET /api/scenes/<id>` · `PATCH` · `DELETE` | as above |
-| `PUT /api/scenes/<id>/shots` | `{shots: [...]}` → the plan revision; merges onto rendered work rather than replacing it |
+| `PATCH /api/scenes/<id>/shots` | `{shots: [...]}` → the plan revision; merges onto rendered work rather than replacing it |
 | `PATCH /api/scenes/<id>/shots/<shot_id>` | `{run?, panel?, prompt?, order?}` |
 | `POST /api/scenes/<id>/output` | `{name, size, content_type}` → upload URL for the stitched take |
-| `POST /api/movies` · `GET` · `PATCH` · `DELETE` · `PUT /api/movies/<id>/scenes` | the tier above |
+| `POST /api/movies` · `GET` · `PATCH` · `DELETE` · `PATCH /api/movies/<id>/scenes` | the tier above |
 
 **Stitching stays in the CLI.** `ffmpeg` ships in the pipeline wheel and the
 Lambda has none; `assemble` downloads, stitches locally, uploads the result and

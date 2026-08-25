@@ -445,3 +445,41 @@ def test_pool_group_reaches_into_a_subfolder(library, tmp_image):
 
     assert "plate.png" in root.output and "tucked-away" not in root.output
     assert "tucked-away.webp" in grouped.output and "plate.png" not in grouped.output
+
+
+def test_textblock_prints_the_raw_sections_when_none_is_authored(library):
+    """The half of the command that was documented, coded for, and never worked.
+
+    `cmd_textblock` has always read `found["raw"]` for this case and the route
+    has always answered `{id, text}` alone, so an un-authored character got
+    `{}` and a paragraph of instructions on how to compress it. Only the
+    authored path had a test — on either side of the wire.
+    """
+    record = CHARACTER.resolve("subject-a")
+    PROFILE.save_profile(record, {**PROFILE.document(record), "text_identity_block": ""})
+
+    result = _run("textblock", "subject-a")
+
+    assert result.exit_code == 0, result.output
+    assert "{}" not in result.output
+    # The identity-bearing sections, as raw material to compress.
+    assert "silhouette" in result.output and "structure" in result.output
+    # `rendering` and `voice` are not identity-bearing: a text-only engine is
+    # being told what the character looks like, not what medium or accent.
+    assert "default_style" not in result.output
+
+
+def test_textblock_treats_the_unfilled_template_as_no_block(library):
+    """`<>` is what `create` leaves behind, and it must never reach a prompt.
+
+    The CLI used to make this judgement itself, which left the SPA free to make
+    the opposite one and paste a literal `<>` into a model.
+    """
+    record = CHARACTER.resolve("subject-a")
+    PROFILE.save_profile(record, {**PROFILE.document(record), "text_identity_block": "<>"})
+
+    result = _run("textblock", "subject-a")
+
+    assert result.exit_code == 0, result.output
+    assert "<>" not in result.output
+    assert "silhouette" in result.output
