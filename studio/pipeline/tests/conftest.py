@@ -252,7 +252,8 @@ def library(fake_api):
                     description="three-quarter", tags=["face", "profile"])
     E.add_reference(lib.character, lib.body_1, "body",
                     description="full length", tags=["body"])
-    E.put_default_set(lib.character, [lib.face_1, lib.face_2])
+    E.put_default_set(lib.character, [lib.face_1, lib.face_2],
+                      E.get_character(lib.character)["rev"])
 
     # A second character, so "the wrong one" is a real possibility in any test
     # about selection, linking or listing.

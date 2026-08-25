@@ -91,7 +91,8 @@ JSON; the table stores DynamoDB's typed form).
     },
     "body": {
       "silhouette": "<…>", "arms": "<…>", "chest_and_shoulders": "<…>",
-      "neck": "<…>", "lower_body_and_hands": "<…>", "body_hair": "<…>",
+      "back": "<…>", "hands": "<…>", "neck": "<…>",
+      "midsection": "<…>", "lower_body": "<…>", "body_hair": "<…>",
       "posture": "<…>"
     },
     "wardrobe": {

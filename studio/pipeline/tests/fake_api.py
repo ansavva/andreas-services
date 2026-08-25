@@ -631,12 +631,16 @@ class FakeApi:
 
     def _r_default_set(self, method, body, params, ref):
         record = self._entity(self.characters, ref, "character")
+        rev = body.get("rev")
+        if not isinstance(rev, int) or isinstance(rev, bool):
+            raise FakeError(400, f"rev is required — the record is at rev {record['rev']}")
         known = {e["node"] for e in self.refs.get(record["id"], [])}
         unknown = [n for n in body["nodes"] if n not in known]
         if unknown:
             raise FakeError(404, f"not references: {', '.join(unknown)}")
+        self._bump(record, rev)
         record["default_set"] = list(body["nodes"])
-        return {"default_set": record["default_set"]}
+        return {"default_set": record["default_set"], "rev": record["rev"]}
 
     def _r_selection(self, method, body, params, ref):
         """Resolution order: pick > tag > default_set > everything.

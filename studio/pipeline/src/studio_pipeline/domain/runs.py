@@ -432,8 +432,23 @@ def resolve_output_nodes(ref: str, default_project: str | None = None,
         if index > len(chosen):
             raise RunError(f"run {record['id']} has {len(chosen)} output(s); "
                            f"asked for #{index}")
-        return [chosen[index - 1]["node"]]
-    return [o["node"] for o in chosen]
+        return [_output_node(chosen[index - 1])]
+    return [_output_node(o) for o in chosen]
+
+
+def _output_node(entry: dict) -> str:
+    """An output's node id, under either spelling the record may carry.
+
+    A run record read back from the API keys it `id`; documents written before
+    #420 key it `node`. Reading only `node` made every runref binding
+    (`--ref-run`, `--image-run`, `--start-run`, `--end-run`, and `add-refs
+    --from-run`) die on `KeyError` against a live record. `engine/shoot.py`
+    already carries the same two-spelling read for the same reason.
+    """
+    node = entry.get("node") or entry.get("id")
+    if not node:
+        raise RunError(f"run output carries no node id: {sorted(entry)}")
+    return node
 
 
 # --- legacy import --------------------------------------------------------

@@ -41,16 +41,19 @@ catalog record and the presigned PUT together, so no cloud credential is
 involved (`studio-media-s3` skill). Working material for a piece of work belongs
 in the project's input pool: `studio projects add-inputs <img> <project>`.
 
-## The models — peers, no default, one skill each
+## The models — one skill each, one default
 
-`--model` is **required**. The engines are peers, chosen per shot, not by house
-habit. Each has its own skill with its schema, caveats and levers:
+`--model` is **required** and is never inferred. The engines are otherwise peers,
+chosen per shot rather than by house habit — with one standing exception:
+**a character frame defaults to `gpt-image-2`**, because it holds reference
+images at high fidelity automatically. Each has its own skill with its schema,
+caveats and levers:
 
 | `--model` | Skill | Reach for it when |
 |---|---|---|
-| `nano-banana-pro` | [`studio-media-nano-banana-pro`](../studio-media-nano-banana-pro/SKILL.md) | Default for character frames. Legible text, 4K, ≤14 refs, tunable safety filter |
+| `gpt-image-2` | [`studio-media-gpt-image-2`](../studio-media-gpt-image-2/SKILL.md) | Default for character frames. Newest OpenAI. Dense text, precise edits, pixel-exact sizes, automatic high fidelity |
+| `nano-banana-pro` | [`studio-media-nano-banana-pro`](../studio-media-nano-banana-pro/SKILL.md) | Legible text, 4K, ≤14 refs, tunable safety filter |
 | `nano-banana-2` | [`studio-media-nano-banana-2`](../studio-media-nano-banana-2/SKILL.md) | Fast/cheap iteration; the extreme `1:4`…`8:1` ratios; search grounding |
-| `gpt-image-2` | [`studio-media-gpt-image-2`](../studio-media-gpt-image-2/SKILL.md) | Newest OpenAI. Dense text, precise edits, pixel-exact sizes, automatic high fidelity |
 | `gpt-image-1.5` | [`studio-media-gpt-image-1-5`](../studio-media-gpt-image-1-5/SKILL.md) | Transparent backgrounds, or fidelity dialled **down** |
 
 ```bash
@@ -73,7 +76,7 @@ To add a model, use [`studio-media-add-model`](../studio-media-add-model/SKILL.m
 ## Generating
 
 ```bash
-studio run --model nano-banana-pro --project <project> \
+studio run --model gpt-image-2 --project <project> \
   --prompt "..." --character <name> --name <file>
 ```
 

@@ -67,7 +67,9 @@ def test_resolving_a_slug_returns_the_whole_record(library):
     record = CHARACTER.resolve("subject-a")
     assert record["id"] == library.character
     assert record["root"] == library.character_root
-    assert record["rev"] == 1
+    # 2, not 1: the fixture writes a default set, and that is a real
+    # compare-and-swap write on the record like any other.
+    assert record["rev"] == 2
 
 
 def test_an_unknown_character_is_a_clean_refusal(library):
@@ -148,7 +150,7 @@ def test_no_rev_means_the_records_own_rather_than_no_check(library):
 def test_the_rev_of_a_character_that_is_not_there_is_none(library):
     """None, and only for a 404. A refusal is a different fact."""
     assert PROFILE.remote_rev("nobody") is None
-    assert PROFILE.remote_rev("subject-a") == 1
+    assert PROFILE.remote_rev("subject-a") == 2
 
 
 def test_a_refusal_is_not_a_missing_character(library, monkeypatch):

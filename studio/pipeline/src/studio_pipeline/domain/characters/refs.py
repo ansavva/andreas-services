@@ -541,7 +541,7 @@ def cmd_default_set(name, nodes):
     known = reference_entries(record)
     ids = [entry_node(record, token, known) for token in nodes]
     try:
-        found = entities.put_default_set(record["id"], ids)
+        found = entities.put_default_set(record["id"], ids, record["rev"])
     except api.NotFound as exc:
         die(str(exc))
     print(json.dumps(found.get("default_set") or ids, indent=2))
