@@ -243,6 +243,43 @@ def test_a_body_plate_gets_the_whole_body_block_and_a_face_plate_does_not():
     assert SHOOT._build_text({"body": {"arms": "ARMS."}}, "body") == "ARMS."
 
 
+def test_a_body_field_the_tuple_never_heard_of_still_reaches_the_prompt():
+    """`body:` is a free-form map, so the named tuples cannot be exhaustive.
+
+    They were treated as though they were, and it rotted in the one way that
+    leaves no trace in the payload: `back`, `hands` and `midsection` were
+    written into a bible and read by nothing, while a rename of
+    `lower_body_and_hands` dropped the legs clause out of every body plate
+    without an error. So anything the tuples miss is swept up.
+    """
+    profile = {"body": {"silhouette": "SIL.", "back": "BACK.", "hands": "HANDS.",
+                        "midsection": "MID.", "lower_body": "LEGS.",
+                        "shoulder_freckles": "NOVEL."}}
+    body = SHOOT._build_text(profile, "body")
+    for part in ("SIL.", "BACK.", "HANDS.", "MID.", "LEGS.", "NOVEL."):
+        assert part in body, part
+
+    # The face/body split survives the sweep: a face plate crops at mid-chest,
+    # so what sits below the crop stays out of it even when unnamed.
+    face = SHOOT._build_text(profile, "face")
+    assert "BACK." in face and "HANDS." in face
+    for part in ("MID.", "LEGS."):
+        assert part not in face, f"a face plate must not carry {part}"
+
+
+def test_the_legacy_spelling_is_still_read():
+    """A bible written before the split is still a valid bible."""
+    body = SHOOT._build_text({"body": {"lower_body_and_hands": "LEGS."}}, "body")
+    assert "LEGS." in body
+
+
+def test_posture_is_not_swept_into_the_build_text():
+    """It is a rendering direction with its own clause, not a description of
+    the build; sweeping it in would put it in the prompt twice."""
+    body = SHOOT._build_text({"body": {"arms": "ARMS.", "posture": "POSTURE."}}, "body")
+    assert "ARMS." in body and "POSTURE." not in body
+
+
 def test_the_build_text_comes_from_the_bible_not_the_spec(spec):
     """Hard rule 1: proportions are character specifics, so the spec may only
     name the placeholder. A bible with no `body:` block must still render."""

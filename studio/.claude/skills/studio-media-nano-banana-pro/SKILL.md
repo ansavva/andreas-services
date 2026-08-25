@@ -1,13 +1,15 @@
 ---
 name: studio-media-nano-banana-pro
-description: Render still images with Google's Nano Banana Pro (google/nano-banana-pro, Gemini 3 Pro) on Replicate as a recorded run. Use when a frame needs legible text, 4K output, up to 14 blended reference images, or a tunable safety filter — and when a request names Nano Banana Pro. The strongest all-round image model in the harness and the usual default for character frames. For its faster/cheaper sibling see studio-media-nano-banana-2.
+description: Render still images with Google's Nano Banana Pro (google/nano-banana-pro, Gemini 3 Pro) on Replicate as a recorded run. Use when a frame needs legible text, 4K output, up to 14 blended reference images, or a tunable safety filter — and when a request names Nano Banana Pro. The strongest all-round image model in the harness. For character frames the default is studio-media-gpt-image-2. For its faster/cheaper sibling see studio-media-nano-banana-2.
 ---
 
 # studio-media-nano-banana-pro
 
 `google/nano-banana-pro` — Google DeepMind's image model built on Gemini 3 Pro.
-The strongest all-round choice in the harness, and the usual default for a
-character frame that will be animated.
+The strongest all-round choice in the harness. Not the default for a character
+frame — that is [`gpt-image-2`](../studio-media-gpt-image-2/SKILL.md); reach
+here when a frame needs 4K, more than a handful of blended references, or a
+tunable safety filter.
 
 > Invocation, the approval gate, run recording and validation are shared —
 > see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model nano-banana-pro …`,

@@ -275,6 +275,32 @@ def test_asking_for_a_kind_the_run_has_none_of_says_what_it_holds(library):
         R.resolve_output_nodes(library.run, kinds={".mp4"})
 
 
+def test_an_output_keyed_id_resolves_like_one_keyed_node(library, monkeypatch):
+    """The live API spells it `id`; this module only read `node`.
+
+    Every runref binding — `--ref-run`, `--image-run`, `--start-run`,
+    `--end-run` and `character add-refs --from-run` — died on `KeyError:
+    'node'` against a real record, while this suite stayed green because the
+    in-memory API happens to write `node`. So the double, not the module, was
+    what the old assertions described.
+    """
+    record = dict(R.resolve_run(library.run))
+    record["outputs"] = [{"id": library.run_output, "name": "output-1.jpeg"}]
+    monkeypatch.setattr(R, "resolve_run", lambda *a, **k: record)
+
+    assert R.resolve_output_nodes(library.run) == [library.run_output]
+    assert R.resolve_output_nodes(f"{library.run}#1") == [library.run_output]
+
+
+def test_an_output_carrying_neither_spelling_says_so(library, monkeypatch):
+    record = dict(R.resolve_run(library.run))
+    record["outputs"] = [{"name": "output-1.jpeg"}]
+    monkeypatch.setattr(R, "resolve_run", lambda *a, **k: record)
+
+    with pytest.raises(R.RunError, match="no node id"):
+        R.resolve_output_nodes(library.run)
+
+
 # ── adoption ────────────────────────────────────────────────────────────────
 
 def test_adopting_moves_the_node_and_keeps_its_id(library):

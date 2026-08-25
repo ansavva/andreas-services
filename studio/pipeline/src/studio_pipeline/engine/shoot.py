@@ -226,6 +226,23 @@ def _build_text(profile: dict, group: str = "body") -> str:
     whole figure and takes everything. Same split as `must_intro_face` /
     `must_intro_body`, for the same reason.
 
+    THE LISTS ARE NAMED, NOT EXHAUSTIVE, AND THAT USED TO ROT SILENTLY.
+    `body:` is a free-form map — the API validates the section names and stores
+    what is under them raw — so a bible may carry fields this tuple has never
+    heard of. It has: `back`, `hands` and `midsection` were added to one
+    character's bible and read by nothing, and in the same edit
+    `lower_body_and_hands` was split into `lower_body` + `hands`, which dropped
+    the legs clause out of every body plate without a word. A missing field is
+    the one failure mode that leaves no trace in the payload, so:
+
+    - the tuples below name the fields whose ORDER matters, and
+    - `_extra_body_fields` sweeps up anything else the bible carries, so a new
+      field reaches the prompt the moment it is written rather than the day
+      somebody remembers to edit this file.
+
+    Legacy spellings are accepted alongside the current ones, because a bible
+    written before a rename is still a valid bible.
+
     HEIGHT comes first, and from `identity` rather than `body`. It is the one
     proportion the bible states as a NUMBER, and it was the only one never
     sent: the build clause read the `body:` block alone, so a corrected
@@ -235,11 +252,36 @@ def _build_text(profile: dict, group: str = "body") -> str:
     """
     body = profile.get("body") or {}
     height = str((profile.get("identity") or {}).get("height_read") or "").strip()
-    fields = ("silhouette", "chest_and_shoulders", "neck", "arms")
+    fields = ("silhouette", "chest_and_shoulders", "back", "neck", "arms", "hands")
     if group != "face":
-        fields += ("lower_body_and_hands", "body_hair")
+        fields += ("midsection", "lower_body", "lower_body_and_hands", "body_hair")
+    fields += _extra_body_fields(body, fields)
     parts = [height] + [str(body.get(k) or "").strip() for k in fields]
     return " ".join(" ".join(p.split()) for p in parts if p)
+
+
+#: Read by the shoot only on a body plate, never on a face plate that crops at
+#: mid-chest. Anything below the crop belongs here.
+_BELOW_THE_CROP = frozenset({"midsection", "lower_body", "lower_body_and_hands",
+                             "body_hair", "feet"})
+
+#: Not a description of the character — a rendering direction about him, already
+#: carried into the prompt by its own clause. Sweeping it in would say it twice.
+_NOT_BUILD = frozenset({"posture"})
+
+
+def _extra_body_fields(body: dict, already: tuple[str, ...]) -> tuple[str, ...]:
+    """Body fields the tuples above do not name, in the bible's own order.
+
+    So that writing a new field into a bible is enough to get it rendered. The
+    named tuples still decide ORDER for the fields that have one; this only
+    appends what they missed.
+    """
+    seen = set(already) | _NOT_BUILD
+    below = _BELOW_THE_CROP & set(already)
+    return tuple(k for k in body
+                 if k not in seen
+                 and (below or k not in _BELOW_THE_CROP))
 
 
 def _style_text(profile: dict, defaults: dict) -> str:

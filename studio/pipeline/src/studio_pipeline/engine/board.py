@@ -640,7 +640,7 @@ def run_board(ref: str, opts) -> int:
         if not outs:
             failed.append((label, "the run recorded no output"))
             continue
-        src = outs[0]["node"]
+        src = R._output_node(outs[0])
         dest_name = panel_storyboard_name(shot, panel,
                                           os.path.splitext(outs[0]["name"] or "")[1])
         # The run keeps its own output; the board holds a copy of the panel as it

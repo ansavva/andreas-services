@@ -43,10 +43,15 @@ face:
 
 body:
   silhouette: <proportion — usually the single most reliable on-model cue>
-  arms: <>
   chest_and_shoulders: <>
-  neck: <>
-  lower_body_and_hands: <>
+  back: <taper, lats, blades, spinal furrow — the body plate shot from behind
+         has nothing else to check itself against>
+  arms: <>
+  hands: <palm and finger shape, nails, veins, hair; which wrist wears what>
+  neck: <thickness AND length, the muscles that show, where facial hair stops>
+  midsection: <how defined, honestly — "trim" and "shredded" are not the same>
+  lower_body: <thighs, calves, hips; the shape, not just the size>
+  feet: <>
   body_hair: <state it explicitly if it matters — generators default to smooth>
   posture: <how they sit, stand, gesture>
 
