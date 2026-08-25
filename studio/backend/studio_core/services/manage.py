@@ -223,8 +223,14 @@ def copy_nodes(records: list[dict], destination: dict) -> dict:
         name = _free_copy_name(record["name"], taken)
         taken.add(name)
 
+        # **The copy carries the caption.** A copy is a second print of the same
+        # picture, so a description that was true of one is true of the other —
+        # and a blank copy sitting beside a described original is drift nobody
+        # would go looking for. The name is the only thing that may differ, and
+        # only because the destination might already hold it.
         created = catalog.create_node(
-            destination["node_id"], name, catalog.KIND_FILE, owner=owner
+            destination["node_id"], name, catalog.KIND_FILE, owner=owner,
+            description=record.get("description"), tags=record.get("tags"),
         )
         s3.copy(blob_key, created["blob_key"])
         copied.append(

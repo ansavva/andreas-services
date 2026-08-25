@@ -2,7 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Alert, Breadcrumbs, Button, Input, Spinner, Text } from "@ansavva/design-system";
 
-import { copyNodes, createNode, deleteNodes, getTree, moveNodes, renameNode } from "../../apis/studio";
+import {
+  copyNodes,
+  createNode,
+  deleteNodes,
+  describeNode,
+  getTree,
+  moveNodes,
+  renameNode,
+} from "../../apis/studio";
 import { useFolder, type FolderPin } from "../../hooks/useFolder";
 import { useReel } from "../../hooks/useReel";
 import { useResource } from "../../hooks/useResource";
@@ -298,6 +306,36 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
    * the pane, because its name, its key and its presigned URL all went stale even
    * though its id did not.
    */
+  /**
+   * A caption or a tag, written onto the file being looked at.
+   *
+   * **Unlike a rename this leaves the pane alone.** A rename invalidates the
+   * name, the key and the presigned URL, so the reel drops the pane and picks
+   * the file up again; a description touches none of the three. Dropping the
+   * pane here would scroll the reel out from under somebody mid-sentence.
+   *
+   * `run` re-fetches the listing, which is what puts the new words back on the
+   * chrome and into `file.tags` for the panel's chips.
+   */
+  const describeOpenFile = useCallback(
+    async (
+      file: FileEntry,
+      changes: { description?: string | null; tags?: string[] | null },
+    ) => {
+      const updated = await run(describeNode(file.id, changes));
+      // Patched from what the API answered, not from what was typed: tags are
+      // folded server-side, and rendering the typed form would be a chip that
+      // disagrees with the selector it just created.
+      if (reelFolder !== null && updated) {
+        reel.refreshItem(file.id, {
+          description: updated.description,
+          tags: updated.tags,
+        });
+      }
+    },
+    [reel, reelFolder, run],
+  );
+
   const renameOpenFile = useCallback(
     async (file: FileEntry, name: string) => {
       await run(renameNode(file.id, name));
@@ -788,6 +826,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
           onCurrentChange={nav.setCurrent}
           onRename={renameOpenFile}
           onDelete={deleteOpenFile}
+          onDescribe={describeOpenFile}
         />
       ) : (
         openIndex >= 0 && (
@@ -800,6 +839,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
             onCurrentChange={nav.setCurrent}
             onRename={renameOpenFile}
             onDelete={deleteOpenFile}
+            onDescribe={describeOpenFile}
           />
         )
       )}

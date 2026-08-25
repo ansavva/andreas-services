@@ -246,12 +246,18 @@ def create_node():
 
 @bp.patch("/nodes/<node_id>")
 def update_node(node_id: str):
-    """Rename a node (`name`) or move it (`parent`) — one or the other.
+    """Rename (`name`), move (`parent`), or describe (`description` / `tags`).
 
-    **Sending both is a 400 rather than a guess**, and refusing is the point: a
-    request that asks for both has two plausible orderings with different
-    outcomes when the destination already holds that name, and picking one
-    silently is how a file ends up somewhere nobody looked.
+    **Three operations on one address, and exactly one per request.**
+    `description` and `tags` count as a single one — they are both metadata about
+    what the file shows, a client editing a caption usually sends both, and
+    neither can reorder against the other. Mixing a describe with a rename or a
+    move is refused for the same reason the first two are refused together.
+
+    **Sending name and parent together is a 400 rather than a guess**, and
+    refusing is the point: a request that asks for both has two plausible
+    orderings with different outcomes when the destination already holds that
+    name, and picking one silently is how a file ends up somewhere nobody looked.
 
     A name collision is a transaction condition failure and comes back **409**,
     which is what tells the UI to keep the rename field open rather than closing
@@ -266,16 +272,39 @@ def update_node(node_id: str):
     body = support.body()
     name = body.get("name")
     parent_id = body.get("parent")
-    if name is not None and parent_id is not None:
-        raise ValidationError("send name or parent, not both")
-    if name is None and parent_id is None:
-        raise ValidationError("send name to rename, or parent to move")
+    describing = "description" in body or "tags" in body
+    asked = [
+        given
+        for given in (name is not None, parent_id is not None, describing)
+        if given
+    ]
+    if len(asked) > 1:
+        raise ValidationError("send name, or parent, or description/tags — one of the three")
+    if not asked:
+        raise ValidationError(
+            "send name to rename, parent to move, or description/tags to describe"
+        )
 
     held = support.memberships()
     # Read for the membership check and nothing else — `catalog.rename_node` and
     # `catalog.move_node` both re-read the record they are about, and a copy held
     # here would be the stale one.
     support.node_at(node_id, held)
+
+    if describing:
+        # **A folder may be described too.** Nothing needs it today and nothing
+        # refuses it either: a rule that only files carry prose would be one more
+        # thing to state, and "the reference shoot plates" is a reasonable
+        # sentence to write on a folder.
+        return jsonify(
+            support.view(
+                catalog.describe_node(
+                    node_id,
+                    description=body.get("description", ...),
+                    tags=body.get("tags", ...),
+                )
+            )
+        ), 200
 
     if name is not None:
         return jsonify(support.view(catalog.rename_node(node_id, name))), 200

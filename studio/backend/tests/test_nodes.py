@@ -1604,6 +1604,33 @@ def test_a_copy_gets_its_own_blob(catalog_table, media_bucket, signed_in):
     )["Body"].read() == b"png-bytes"
 
 
+def test_a_copy_carries_the_description_and_the_tags(catalog_table, media_bucket, signed_in):
+    """A copy is a second print of the same picture.
+
+    So the caption is true of both. A blank copy sitting beside a described
+    original is drift nobody would go looking for — the name is the only thing
+    that may differ, and only because the destination might already hold it.
+    """
+    destination = _folder("archive")
+    source = _minted("plate.png")
+    media_bucket.put_object(
+        Bucket=config.media_bucket(), Key=source["blob_key"], Body=b"png-bytes"
+    )
+    _patch(
+        f"/api/nodes/{source['node_id']}",
+        {"description": "the pool at dusk", "tags": ["poolside"]},
+    )
+
+    body = _post(
+        "/api/nodes/copy",
+        {"ids": [source["node_id"]], "destination": destination["node_id"]},
+    ).get_json()
+
+    copied = catalog.node(body["nodes"][0]["id"])
+    assert copied["description"] == "the pool at dusk"
+    assert copied["tags"] == ["poolside"]
+
+
 def test_a_copy_numbers_a_name_the_destination_already_holds(
     catalog_table, media_bucket, signed_in
 ):
@@ -1895,3 +1922,84 @@ def test_reading_text_in_another_library_is_403(catalog_table, media_bucket, sig
     _second_library(catalog_table)
 
     assert _get(f"/api/nodes/{OTHER_NODE}/text").status_code == 403
+
+
+# ──────────────────────────── describing a file ────────────────────────────
+#
+# What a file SHOWS lives on the file. It used to live on the `REF#` row that
+# made one a character's reference, which meant the same picture had a caption
+# inside a reference set and none anywhere else — and twelve files in this
+# library's `reference/` folders had no row, so no caption at all.
+
+
+def test_a_file_takes_a_description_and_tags(catalog_table, media_bucket, signed_in):
+    created = _file("plate.webp")
+
+    resp = _patch(
+        f"/api/nodes/{created['node_id']}",
+        {"description": "Head and shoulders, front on.", "tags": ["face", "neutral"]},
+    )
+
+    assert resp.status_code == 200
+    assert resp.get_json()["description"] == "Head and shoulders, front on."
+    assert resp.get_json()["tags"] == ["face", "neutral"]
+
+
+def test_tags_are_folded_so_a_selector_matches_what_somebody_typed(
+    catalog_table, media_bucket, signed_in
+):
+    """`Poolside` and `poolside ` filtering as two things is a bug you cannot see.
+
+    They render identically in a chip, so the only symptom is a `--pick-tag` that
+    quietly returns half the set.
+    """
+    created = _file("plate.webp")
+
+    resp = _patch(
+        f"/api/nodes/{created['node_id']}",
+        {"tags": ["  Poolside ", "poolside", "SHIRTLESS", ""]},
+    )
+
+    assert resp.get_json()["tags"] == ["poolside", "shirtless"]
+
+
+def test_describing_is_not_renaming_and_the_two_cannot_be_sent_together(
+    catalog_table, media_bucket, signed_in
+):
+    """Three operations on one address, exactly one per request.
+
+    The same refusal `name` and `parent` already make, extended rather than
+    reasoned about again: a request asking for two has orderings with different
+    outcomes, and picking one silently is the failure.
+    """
+    created = _file("plate.webp")
+
+    assert _patch(
+        f"/api/nodes/{created['node_id']}", {"name": "other.webp", "description": "x"}
+    ).status_code == 400
+    assert _patch(f"/api/nodes/{created['node_id']}", {}).status_code == 400
+
+
+def test_clearing_a_description_removes_it_rather_than_writing_an_empty_one(
+    catalog_table, media_bucket, signed_in
+):
+    """`None` is a REMOVE here, the same rule the sparse `reel` key relies on."""
+    created = _file("plate.webp")
+    _patch(f"/api/nodes/{created['node_id']}", {"description": "something"})
+
+    resp = _patch(f"/api/nodes/{created['node_id']}", {"description": ""})
+
+    assert "description" not in resp.get_json()
+    assert catalog.node(created["node_id"]).get("description") is None
+
+
+def test_a_description_survives_a_rename_and_a_move(catalog_table, media_bucket, signed_in):
+    """It describes the picture, not the filename and not the folder."""
+    folder = _folder("elsewhere")
+    created = _file("plate.webp")
+    _patch(f"/api/nodes/{created['node_id']}", {"description": "the pool at dusk"})
+
+    _patch(f"/api/nodes/{created['node_id']}", {"name": "renamed.webp"})
+    _patch(f"/api/nodes/{created['node_id']}", {"parent": folder["node_id"]})
+
+    assert catalog.node(created["node_id"])["description"] == "the pool at dusk"

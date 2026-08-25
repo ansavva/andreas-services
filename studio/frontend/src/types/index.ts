@@ -62,6 +62,9 @@ export interface NodeRecord {
   kind: NodeKind;
   size?: number;
   content_type?: string;
+  /** What the file shows, and how it is selected. See `FileEntry` below. */
+  description?: string;
+  tags?: string[];
   created_at: string;
   updated_at?: string;
   /**
@@ -120,6 +123,18 @@ export interface FileEntry {
   url: string;
   /** Highlighting hint, present on text files only. */
   language?: string;
+  /**
+   * What the file SHOWS, and how it is selected — both on the node.
+   *
+   * Absent, not empty, when nothing has been written: the API drops null
+   * attributes, and "there is no description" is one state rather than two.
+   * These used to live on the `REF#` row that made a file one character's
+   * reference, so the same picture had words inside a reference grid and none
+   * anywhere else. `group` and `order` stayed on that row, because they are
+   * facts about the set rather than about the picture.
+   */
+  description?: string;
+  tags?: string[];
 }
 
 export interface FolderEntry {

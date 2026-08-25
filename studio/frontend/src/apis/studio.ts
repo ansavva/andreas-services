@@ -131,6 +131,25 @@ export function getNodeOwner(id: string) {
  * app therefore never sends `{parent}` here; a move goes through `moveNodes`,
  * which takes a selection.
  */
+/**
+ * What a file shows, and how it is selected.
+ *
+ * A third operation on the node address, alongside rename and move, and the API
+ * refuses more than one per request — `description` and `tags` count as one,
+ * because a caption editor usually sends both and neither can reorder against
+ * the other.
+ *
+ * Both are optional here and neither is `undefined` on the wire when sent:
+ * omitting a field leaves what is stored, sending `null` clears it. That is why
+ * this takes an object rather than two positional arguments.
+ */
+export function describeNode(
+  id: string,
+  changes: { description?: string | null; tags?: string[] | null },
+) {
+  return apiSend<NodeRecord>("PATCH", `/api/nodes/${encodeURIComponent(id)}`, changes);
+}
+
 export function renameNode(id: string, name: string) {
   return apiSend<NodeRecord>("PATCH", `/api/nodes/${encodeURIComponent(id)}`, { name });
 }

@@ -34,6 +34,7 @@ from studio_pipeline.engine import board as _board
 from studio_pipeline.engine import runner as _runner
 from studio_pipeline.engine import shoot as _shoot
 from studio_pipeline.maintenance import catalog_gc as _catalog_gc
+from studio_pipeline.maintenance import ref_descriptions as _ref_descriptions
 from studio_pipeline.maintenance import catalog_migrate as _catalog
 from studio_pipeline.maintenance import dev_seed as _dev_seed
 from studio_pipeline.objects import config_sync as _config_sync
@@ -42,6 +43,7 @@ from studio_pipeline.objects import crop as _crop
 from studio_pipeline.session import commands as _session
 from studio_pipeline.session import profile_commands as _profile
 from studio_pipeline.objects import download as _download
+from studio_pipeline.objects import describe as _describe
 from studio_pipeline.objects import presign as _presign
 from studio_pipeline.objects import upload as _upload
 
@@ -62,7 +64,8 @@ class _Grouped(click.Group):
         ("records",     ["runs", "scenes", "movies", "frames", "projects"]),
         ("characters",  ["character", "curate", "contact-sheet"]),
         ("authoring",   ["prompt", "phrasebook"]),
-        ("objects",     ["upload", "download", "presign", "convert", "crop", "config"]),
+        ("objects",     ["upload", "download", "describe", "presign", "convert", "crop",
+                         "config"]),
         ("maintenance", ["catalog", "dev-seed"]),
     ]
 
@@ -171,6 +174,7 @@ _scenes.main.add_command(_board.cmd_check, "check")
 # bytes, moves no objects and deletes nothing, and nothing in it should have to
 # say so twice.
 _catalog.main.add_command(_catalog_gc.cmd_gc, "gc")
+_catalog.main.add_command(_ref_descriptions.cmd_reseat_descriptions, "descriptions")
 
 
 for _name, _cmd in [
@@ -186,6 +190,7 @@ for _name, _cmd in [
     ("prompt", _prompt.prompt),
     ("phrasebook", _phrasebook.main),
     ("upload", _upload.upload),
+    ("describe", _describe.describe),
     ("download", _download.download),
     ("presign", _presign.presign),
     ("convert", _convert.convert),

@@ -19,6 +19,9 @@ interface Props {
   /** Present only for video. See the note on the sound button below. */
   muted?: boolean;
   onToggleMuted?: () => void;
+  /** Whether the describe panel is up, and the toggle — absent where it cannot write. */
+  describing?: boolean;
+  onToggleDescribing?: () => void;
 }
 
 /**
@@ -45,6 +48,8 @@ export function ViewerChrome({
   onDelete,
   muted,
   onToggleMuted,
+  describing = false,
+  onToggleDescribing,
 }: Props) {
   async function download() {
     // Signed with `response-content-disposition: attachment` server-side. A
@@ -73,6 +78,19 @@ export function ViewerChrome({
           {file.last_modified ? ` · ${formatDate(file.last_modified)}` : ""}
           {position ? ` · ${position}` : ""}
         </Text>
+        {/* The caption, where the byte count used to be the most interesting
+            thing on the bar. Truncated to one line: the whole of it is in the
+            panel, and this is a header rather than a place to read prose. */}
+        {file.description && (
+          <Text variant="caption" className="truncate text-white/90">
+            {file.description}
+          </Text>
+        )}
+        {file.tags && file.tags.length > 0 && (
+          <Text variant="caption" className="truncate text-white/60">
+            {file.tags.join(" · ")}
+          </Text>
+        )}
       </div>
 
       <div className="pointer-events-auto flex shrink-0 items-center gap-1">
@@ -110,6 +128,16 @@ export function ViewerChrome({
         {/* Inline feedback rather than a toast, deliberately: see above. */}
         <CopyKeyButton value={file.key} tone="chrome" />
 
+        {onToggleDescribing && (
+          <ChromeButton
+            label={describing ? "Hide details" : "Describe"}
+            onClick={onToggleDescribing}
+            pressed={describing}
+          >
+            <path d="M4 6h16M4 12h10M4 18h7" />
+          </ChromeButton>
+        )}
+
         {onRename && <RenameButton name={file.name} onRename={onRename} tone="chrome" />}
 
         <ChromeButton label="Download" onClick={() => void download()}>
@@ -145,19 +173,24 @@ function ChromeButton({
   label,
   onClick,
   children,
+  pressed,
 }: {
   label: string;
   onClick: () => void;
   children: React.ReactNode;
+  /** Set on a toggle. Absent on the buttons that only ever do a thing once. */
+  pressed?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={label}
+      aria-pressed={pressed}
       title={label}
-      className="rounded-md p-2 text-white/80 transition-colors hover:bg-white/15 hover:text-white
-                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      className={`rounded-md p-2 transition-colors hover:bg-white/15 hover:text-white
+                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary
+                 ${pressed ? "bg-white/20 text-white" : "text-white/80"}`}
     >
       <svg viewBox="0 0 24 24" aria-hidden="true" className="size-5 fill-none stroke-current stroke-[1.5]">
         {children}
