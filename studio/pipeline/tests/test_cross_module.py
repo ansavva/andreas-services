@@ -143,7 +143,7 @@ def test_add_inputs_returns_the_node_it_wrote(library, tmp_image):
 def test_editing_a_bible_writes_it_back_onto_the_record(library, tmp_path, monkeypatch):
     """`edit` pulls to `local/characters/<slug>.yaml` and pushes it back.
 
-    The bible is a record field now, so the push is one `PUT` with a `rev` —
+    The bible is a record field now, so the push is one `PATCH` with a `rev` —
     there is no `profile.yaml` object anywhere, and the pre-migration bug where
     a push landed at `<slug>/profile.yaml` in the bucket root and reported
     success cannot recur, because there is no path to get wrong.
@@ -166,6 +166,10 @@ def test_editing_a_bible_writes_it_back_onto_the_record(library, tmp_path, monke
     assert pushed.exit_code == 0, f"{pushed.output}\n{pushed.exception!r}"
     assert E.get_character(library.character)["profile"]["rendering"][
         "default_style"] == "Painterly"
+    # The document carries `schema_version` and the record's `profile` must not:
+    # the API stamps the version and refuses a bible holding it. This round trip
+    # sent it straight back until the verb fix made anything read the body.
+    assert "schema_version" not in E.get_character(library.character)["profile"]
 
 
 def test_pushing_a_stale_bible_is_refused(library, tmp_path, monkeypatch):

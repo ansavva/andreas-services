@@ -181,8 +181,13 @@ def _aim_at(fake, monkeypatch):
 #: ran after it. It surfaced as `test_pushing_a_stale_bible_is_refused` failing
 #: in a full run and passing alone, which is the shape of a leak rather than a
 #: bug in the thing under test.
+#: **No `schema_version` here.** This is the record's `profile` map, and the API
+#: stamps the version onto the record itself — `clean_profile` refuses a bible
+#: carrying it, exactly as it refuses any other key that is not a section. It
+#: used to be in this constant, which made the fixture a *document* (the shape a
+#: person edits, version included) posing as a profile, and hid the fact that
+#: `edit --push` sent the key straight back.
 PROFILE = {
-    "schema_version": 2,
     "identity": {"apparent_age": "late 30s", "build": "<one line>",
                  "signature_features": ["<cue>"]},
     "face": {"structure": "<…>", "eyes": "<…>", "hair": "<…>"},

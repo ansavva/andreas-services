@@ -171,9 +171,21 @@ def split_document(data: dict) -> tuple[dict, str, bool]:
     is claimed by a row and a rename is `PATCH /api/characters/<id>`, so a
     bible that disagrees with the record cannot rename anything and must not
     look as though it could.
+
+    **`schema_version` is dropped for a different reason: the API stamps it.**
+    A replace sets it from `catalog.PROFILE_SCHEMA_VERSION`, and `clean_profile`
+    validates the bible by section — so a document that carries the key back is
+    refused with `profile has no section called 'schema_version'`. `document()`
+    merges it in for a reader, this takes it out again for a writer, and neither
+    half is optional: it is in the file a person edits and it is not a section.
+
+    This was invisible until the verb was fixed. Both `edit --push` and
+    `create --from-profile` sent it, and the request died on an unregistered
+    `PUT` before anything looked at the body.
     """
     profile = {k: v for k, v in data.items()
-               if k not in PROMOTED and k not in ("references", "default_set")}
+               if k not in PROMOTED
+               and k not in ("references", "default_set", "schema_version")}
     display = str(data.get("display_name") or "").strip()
     if display.startswith("<"):  # the unfilled template placeholder
         display = ""
