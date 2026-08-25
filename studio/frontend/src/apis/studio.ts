@@ -451,9 +451,21 @@ export function deleteReference(id: string, node: string) {
   );
 }
 
-export function putDefaultSet(id: string, nodes: string[]) {
+/**
+ * The ordered handful a generation reaches for when nothing else is asked.
+ *
+ * **`rev` is required**, and this did not send it — the route compare-and-swaps
+ * the record like every other write on it. Nothing in the app calls this yet, so
+ * the omission had no symptom; the CLI's copy of the same mistake failed with
+ * `rev is required` the moment #479 let the request reach the API at all.
+ *
+ * Every member must already be a reference. The API refuses a node with no
+ * `REF#` row rather than accepting a set that names an image a shoot cannot send.
+ */
+export function putDefaultSet(id: string, nodes: string[], rev: number) {
   return apiSend<CharacterRecord>("PATCH", `/api/characters/${encodeURIComponent(id)}/default-set`, {
     nodes,
+    rev,
   });
 }
 

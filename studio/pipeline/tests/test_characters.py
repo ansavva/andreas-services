@@ -67,7 +67,10 @@ def test_resolving_a_slug_returns_the_whole_record(library):
     record = CHARACTER.resolve("subject-a")
     assert record["id"] == library.character
     assert record["root"] == library.character_root
-    assert record["rev"] == 1
+    # 2, not 1: seeding the library sets a default set, and that is a write on
+    # the record like any other. It only started counting once the adapter began
+    # sending the `rev` the route has always compare-and-swapped.
+    assert record["rev"] == 2
 
 
 def test_an_unknown_character_is_a_clean_refusal(library):
@@ -148,7 +151,7 @@ def test_no_rev_means_the_records_own_rather_than_no_check(library):
 def test_the_rev_of_a_character_that_is_not_there_is_none(library):
     """None, and only for a 404. A refusal is a different fact."""
     assert PROFILE.remote_rev("nobody") is None
-    assert PROFILE.remote_rev("subject-a") == 1
+    assert PROFILE.remote_rev("subject-a") == 2  # the fixture's default-set write
 
 
 def test_a_refusal_is_not_a_missing_character(library, monkeypatch):
@@ -492,7 +495,8 @@ def test_detaching_a_reference_takes_it_out_of_the_default_set(library):
     selection route filtered the rest out without a word, so a default shoot sent
     three images where somebody had chosen seven.
     """
-    E.put_default_set(library.character, [library.face_1, library.face_2])
+    E.put_default_set(library.character, [library.face_1, library.face_2],
+                      CHARACTER.resolve("subject-a")["rev"])
 
     E.delete_reference(library.character, library.face_2)
 
@@ -507,7 +511,8 @@ def test_a_default_shoot_is_refused_while_the_set_names_a_non_reference(library)
     create it: what is under test is the read path over a library that already
     carries one.
     """
-    E.put_default_set(library.character, [library.face_1])
+    E.put_default_set(library.character, [library.face_1],
+                      CHARACTER.resolve("subject-a")["rev"])
     library.fake.characters[library.character]["default_set"] = [
         library.face_1, "node-vanished",
     ]
@@ -516,3 +521,29 @@ def test_a_default_shoot_is_refused_while_the_set_names_a_non_reference(library)
         CHARACTER.selection_nodes(CHARACTER.resolve("subject-a"))
 
     assert "not references any more" in str(refused.value)
+
+
+def test_setting_the_default_set_sends_the_revision_it_read(library):
+    """A write on the record, compare-and-swapped like every other one.
+
+    The adapter did not send `rev` at all, which the API refuses outright. It
+    never surfaced because the request died one layer earlier on an unregistered
+    verb until #479 — the same shape as the `schema_version` that `edit --push`
+    was sending back.
+    """
+    before = CHARACTER.resolve("subject-a")["rev"]
+
+    E.put_default_set(library.character, [library.face_1], before)
+
+    after = CHARACTER.resolve("subject-a")
+    assert after["default_set"] == [library.face_1]
+    assert after["rev"] == before + 1
+
+
+def test_a_default_set_written_against_a_stale_revision_is_refused(library):
+    """Somebody else wrote the record between the read and this write."""
+    stale = CHARACTER.resolve("subject-a")["rev"]
+    E.put_default_set(library.character, [library.face_1], stale)
+
+    with pytest.raises(api.Conflict):
+        E.put_default_set(library.character, [library.face_2], stale)

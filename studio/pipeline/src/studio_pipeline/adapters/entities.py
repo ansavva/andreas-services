@@ -228,10 +228,17 @@ def delete_reference(char_id: str, node: str) -> dict:
     return api.delete(f"/api/characters/{char_id}/references/{node}")
 
 
-def put_default_set(char_id: str, nodes: list[str]) -> dict:
-    """Name the nodes sent when `--character` is given with no selector."""
+def put_default_set(char_id: str, nodes: list[str], rev: int) -> dict:
+    """Name the nodes sent when `--character` is given with no selector.
+
+    **`rev` is required and was not being sent.** The route compare-and-swaps it
+    like every other write on the record, so this failed `rev is required — the
+    record is at rev N`. It never surfaced because the request died one layer
+    earlier on an unregistered verb until #479 — the same way `edit --push`
+    hid a `schema_version` it should not have sent.
+    """
     return api.request("PATCH", f"/api/characters/{char_id}/default-set",
-                       {"nodes": list(nodes)})
+                       {"nodes": list(nodes), "rev": rev})
 
 
 def selection(char_id: str, *, pick: list[str] | None = None,

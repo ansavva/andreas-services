@@ -699,6 +699,10 @@ class FakeApi:
     def _r_default_set(self, method, body, params, ref):
         record = self._entity(self.characters, ref, "character")
         if method == "PATCH" and isinstance(body.get("nodes"), list):
+            # The route compare-and-swaps the record like every other write on
+            # it, and the adapter did not send `rev` — which only became visible
+            # once the verb fix let the request reach the API.
+            self._bump(record, body.get("rev"))
             attached = {e["node"] for e in self.refs.get(record["id"], [])}
             stray = [n for n in body["nodes"] if n not in attached]
             if stray:
