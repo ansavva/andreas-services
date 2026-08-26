@@ -143,9 +143,19 @@ def panel_storyboard_name(shot: dict, panel: dict, ext: str) -> str:
 
 def earlier_panel_keys(manifest: dict, shot: dict, panel: dict) -> list[str]:
     """Every panel already on the board, up to this one, in board order."""
+    # **Matched by id, not by identity.** `select_shots` builds its shots with
+    # `scene_shots`, which copies each shot dict — so `a_shot is shot` was never
+    # true, the loop never broke, and a panel collected every OTHER panel that
+    # had a node, including itself and the ones after it.
+    #
+    # Invisible on a first board, because nothing later has rendered yet. It
+    # bites on a re-board: a stale panel was handed its own superseded image as
+    # a reference, so the render it was supposed to replace pulled it straight
+    # back toward the composition being corrected.
+    here = (shot.get("id"), panel.get("n"))
     out = []
     for a_shot, a_panel in SB.board_order(manifest):
-        if a_shot is shot and a_panel is panel:
+        if (a_shot.get("id"), a_panel.get("n")) == here:
             break
         if a_panel.get("node"):
             out.append(a_panel["node"])
