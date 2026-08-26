@@ -6,6 +6,8 @@ vi.mock("../amplify", () => ({ isAuthConfigured: false }));
 
 import {
   copyNodes,
+  getProjectMovies,
+  getProjectScenes,
   deleteNodes,
   getAsset,
   getNodeText,
@@ -148,5 +150,42 @@ describe("record writes send `rev`", () => {
     // through CORS — the assertion agreed with the client and both were wrong.
     expect(initOf(fetcher).method).toBe("PATCH");
     expect(bodyOf(fetcher)).toEqual({ profile: { identity: { register: "…" } }, rev: 4 });
+  });
+});
+
+describe("project listings", () => {
+  // `/api/projects/<id>/{runs,scenes,movies}` all answer `{ "<kind>s": [...],
+  // "cursor": null }` — one `_listing` builds all three, and none is a bare
+  // array. Scenes and movies were typed as the array and handed the object to a
+  // caller doing `data.length === 0` then `data.map(...)`: the empty check
+  // silently passed on `undefined` and the map threw, so both tabs crashed. The
+  // Scenes tab is the only route to a scene in the app.
+  it("unwraps the scenes page into the rows", async () => {
+    const rows = [{ id: "scene-1", slug: "light-flex" }];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ scenes: rows, cursor: null }) }),
+    );
+
+    await expect(getProjectScenes("proj-1")).resolves.toEqual(rows);
+  });
+
+  it("unwraps the movies page into the rows", async () => {
+    const rows = [{ id: "movie-1", slug: "the-cut" }];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ movies: rows, cursor: null }) }),
+    );
+
+    await expect(getProjectMovies("proj-1")).resolves.toEqual(rows);
+  });
+
+  it("reads a project with no scenes as none, not as a crash", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ scenes: [], cursor: null }) }),
+    );
+
+    await expect(getProjectScenes("proj-1")).resolves.toEqual([]);
   });
 });
