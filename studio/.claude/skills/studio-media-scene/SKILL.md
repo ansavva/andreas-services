@@ -76,8 +76,9 @@ under the scene it plans — never in the repository.
       "id": "shot-01",
       "beat": "one line, for the board caption",
       "panels": [
-        {"prompt": "the still prompt for this panel",
-         "references": {"characters": ["<name>"], "pick_tag": "face"}}
+        {"role": "start", "prompt": "the still prompt for this panel",
+         "references": {"characters": ["<name>"], "pick_tag": "face"}},
+        {"role": "sample", "prompt": "what the peak of this beat looks like"}
       ],
       "motion": {"prompt": "the motion prompt", "duration": 10}
     }
@@ -106,12 +107,69 @@ follow, and both bite if you do not expect them:
 byte-identically in front of every panel prompt, it survives a panel being
 re-rendered alone.
 
-### How many panels a shot wants
+### What a panel is FOR — the four slots
 
-Positional, unless a panel names its `role`: **the first is the start frame, the
-last is the end frame, and anything between them rides along as a reference.**
-One panel is just a start frame. Two bracket the shot, so the model interpolates
-between two compositions you approved rather than inventing where to land.
+A panel declares a `role`, and the role is the same question as **does this reach
+the model at all**. Every one of them is optional; a shot may have none.
+
+| role | sent as | how many | what it is for |
+|---|---|---|---|
+| `start` | the engine's first-frame field | 0–1 | the literal frame the shot opens on |
+| `end` | the engine's last-frame field | 0–1 | the literal frame it lands on |
+| `reference` | the engine's reference list | 0–n | steers the look; fixes no frame |
+| **`sample`** | **nothing** | 0–n | **a picture of the shot, for a person** |
+
+**A sample is never sent.** It exists so a fifteen-second render can be judged
+before it is bought rather than after — a still that says "this is what this beat
+should look like", which the model neither sees nor has to obey. It is a
+storyboard artifact, not an input, and it is optional like everything else: board
+a sample for the two shots you are unsure about and none for the rest.
+
+Left unstated, roles fall back to **position** over the binding panels only —
+first is `start`, last is `end`, the rest are `reference`. Samples are skipped in
+that count, so `[sample, start]` has a start frame rather than a demoted one.
+State the role when it matters; a shot with one panel and no role is a start
+frame.
+
+### Two ways to storyboard, and the choice is per scene
+
+Both are supported and they differ only in **where the start frames come from**.
+
+**Chained — one seed, every later shot inferred.** Shot 1 gets a start frame;
+every later shot opens on the **literal last frame of the shot before it**, taken
+with `scenes handoff`. This is the default and it is what makes a scene read as
+one continuous take: only that exact frame makes the join invisible, and a panel
+composed for the same moment differs from it in a hundred small ways that read as
+a jump. The cost is that the scene must be rendered **in order** — shot N+1 has
+no start frame until shot N exists.
+
+**Bracketed — a start and an end frame per shot.** Every shot is pinned at both
+ends by compositions you approved, and the model only invents the movement
+between them. Use it when a beat has to land somewhere exact. Two costs: the
+shots no longer chain from one another unless you also carry the handoff, and on
+most engines **an end frame excludes the reference list entirely** (see the table
+below), so the two frames have to say everything.
+
+They mix. A scene is chained by default and a single shot can be bracketed by
+giving it an `end` panel; a shot that deliberately opens on a new composition
+sets `use_handoff: false` and keeps its own start panel.
+
+### What each engine will actually accept
+
+Read off the registry rather than restated per skill, because it is what the
+submit path enforces — `studio models show <model>` prints it.
+
+| engine | reference cap | start + references | end frame |
+|---|---|---|---|
+| `kling` | 7 | yes — but **the start frame counts toward the 7** | **excludes all references** |
+| `seedance` | 9 | **no — a start frame excludes references** | allowed |
+| `veo-3.1` | 3 | yes | **excludes all references** |
+| `grok-imagine-video` | none | — | none |
+
+So "start plus six references" is a Kling sentence, not a general one. Author the
+plan in slots and let the engine's own rules decide what survives; `studio scenes
+check` resolves every shot against the model it names and reports what would be
+dropped, before anything bills.
 
 ## The loop
 
