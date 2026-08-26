@@ -565,12 +565,30 @@ export function getProjectInputs(id: string) {
   return apiGet<ProjectInput[]>(`/api/projects/${encodeURIComponent(id)}/inputs`);
 }
 
+/**
+ * A project's scenes, unwrapped from the page the route answers with.
+ *
+ * **`/api/projects/<id>/{runs,scenes,movies}` all answer `{ "<kind>s": [...],
+ * "cursor": null }`**, never a bare array — one `_listing` builds all three.
+ * These two were typed as the array and handed the object straight to a caller
+ * that did `data.length === 0` and then `data.map(...)`: `undefined === 0` is
+ * false, so the empty-state branch was skipped and the map threw. The Scenes and
+ * Movies tabs of a project crashed, and the Scenes tab is the only route to a
+ * scene in the app — so a storyboard was unreachable from the UI.
+ *
+ * `RunsTable` reads `page.runs` and was always fine, which is why this survived:
+ * the one listing anybody had opened was the one that unwrapped.
+ */
 export function getProjectScenes(id: string) {
-  return apiGet<SceneSummary[]>(`/api/projects/${encodeURIComponent(id)}/scenes`);
+  return apiGet<{ scenes: SceneSummary[]; cursor: string | null }>(
+    `/api/projects/${encodeURIComponent(id)}/scenes`,
+  ).then((page) => page.scenes ?? []);
 }
 
 export function getProjectMovies(id: string) {
-  return apiGet<MovieSummary[]>(`/api/projects/${encodeURIComponent(id)}/movies`);
+  return apiGet<{ movies: MovieSummary[]; cursor: string | null }>(
+    `/api/projects/${encodeURIComponent(id)}/movies`,
+  ).then((page) => page.movies ?? []);
 }
 
 /**
