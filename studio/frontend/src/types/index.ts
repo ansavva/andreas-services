@@ -632,6 +632,8 @@ export interface Panel {
   stale?: boolean;
   /** Expanded by the API from `node`, so a board can be drawn without a second call. */
   image?: RunAsset;
+  /** The plates this panel renders FROM, resolved to images by the API. */
+  reference_assets?: RunAsset[];
 }
 
 /**
@@ -674,7 +676,15 @@ export interface Motion {
   model?: string | null;
   aspect_ratio?: string | null;
   extra?: Record<string, unknown> | null;
-  references?: Record<string, unknown> | null;
+  references?: { characters?: string[]; pick?: string; pick_tag?: string; keys?: string[] } | null;
+  /**
+   * The reference block resolved into drawable images, by the API.
+   *
+   * A stored plan NAMES its plates ("this character, these files"); a board has
+   * to draw them. Expanded server-side because resolving which pictures a pick
+   * means is the character module's job, not a second copy in the browser.
+   */
+  reference_assets?: RunAsset[];
 }
 
 /**

@@ -46,7 +46,7 @@ import logging
 from flask import Blueprint, g, jsonify, request
 
 from studio_core.clients.aws import s3
-from studio_core.errors import ConflictError, ValidationError
+from studio_core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from studio_core.routes import support
 from studio_core.services import catalog, keys, layout
 
@@ -696,6 +696,43 @@ def _picked(entries: list[dict], nodes: dict, tokens: list[str], record: dict) -
             raise ValidationError(f"{token!r} names a reference already picked.")
         chosen.append(hits[0])
     return chosen
+
+
+def reference_nodes(refs: dict, held: dict) -> list[str]:
+    """The node ids a plan's `references` block resolves to, for DISPLAY.
+
+    A storyboard names its images the way a person writes them — a character and
+    a picked list of plates — and a board has to draw them. Resolution lives here
+    because this module owns what a character's references are; `scenes.py` may
+    not grow a second copy of the pick rules.
+
+    **Tolerant, unlike the selection route.** That one refuses a filter matching
+    nothing, because a generation must never go out with silently fewer images
+    than were asked for. This one is a picture on a page: a plate that has been
+    renamed since the plan was written should leave a gap on the board, not 500
+    the scene it is part of.
+    """
+    found: list[str] = []
+    for addressed in refs.get("characters") or []:
+        try:
+            record = _character(addressed, held)
+            entries, nodes = _with_files(catalog.references(record["id"]))
+            pick, tags = _csv(refs.get("pick")), _csv(refs.get("pick_tag"))
+            if pick:
+                chosen = _picked(entries, nodes, pick, record)
+            elif tags:
+                chosen = [e for e in entries if set(tags) <= set(e.get("tags") or [])]
+            elif record.get("default_set"):
+                order = {node: i for i, node in enumerate(record["default_set"])}
+                chosen = sorted(
+                    (e for e in entries if e["node"] in order), key=lambda e: order[e["node"]]
+                )
+            else:
+                chosen = entries
+            found += [e["node"] for e in chosen]
+        except (ValidationError, NotFoundError, ForbiddenError):
+            continue
+    return found
 
 
 @bp.get("/characters/<addressed>/selection")

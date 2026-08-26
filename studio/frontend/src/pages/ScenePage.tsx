@@ -125,9 +125,13 @@ export function ScenePage() {
       <section className="flex flex-col gap-2">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <Text variant="title">Storyboard</Text>
+          <Badge intent="neutral">{isBracketed(data.shots) ? "bracketed" : "chained"}</Badge>
           <Text variant="caption" tone="muted">
             {data.shots.length} shot{data.shots.length === 1 ? "" : "s"}
             {plannedRuntime(data.shots) ? ` · ${plannedRuntime(data.shots)}s planned` : ""}
+            {isBracketed(data.shots)
+              ? " · each shot pinned at both ends"
+              : " · each shot opens on the last frame of the one before"}
           </Text>
         </div>
         {data.shots.length === 0 ? (
@@ -143,6 +147,7 @@ export function ScenePage() {
                   key={shot.id}
                   shot={shot}
                   n={index + 1}
+                  bracketed={isBracketed(data.shots)}
                   onOpenRun={(run) => navigate(runPath(data.project, run))}
                   onOpenNode={(node) => navigate(objectPath(node))}
                   onSave={saveShot}
@@ -172,12 +177,14 @@ function plannedRuntime(shots: Shot[]): number {
 function ShotCard({
   shot,
   n,
+  bracketed,
   onOpenRun,
   onOpenNode,
   onSave,
 }: {
   shot: Shot;
   n: number;
+  bracketed: boolean;
   onOpenRun: (run: string) => void;
   onOpenNode: (node: string) => void;
   onSave: (shotId: string, body: Partial<Shot>) => Promise<void>;
@@ -266,7 +273,7 @@ function ShotCard({
         </Text>
       )}
 
-      <Sends shot={shot} onOpenNode={onOpenNode} />
+      <Sends shot={shot} bracketed={bracketed} onOpenNode={onOpenNode} />
 
       {motion?.prompt &&
         (editing ? (
@@ -550,7 +557,15 @@ function MotionEditor({
  * they were both invisible, which is how "why aren't you showing me the images
  * you intend to send" became a fair question.
  */
-function Sends({ shot, onOpenNode }: { shot: Shot; onOpenNode: (node: string) => void }) {
+function Sends({
+  shot,
+  bracketed,
+  onOpenNode,
+}: {
+  shot: Shot;
+  bracketed: boolean;
+  onOpenNode: (node: string) => void;
+}) {
   const panels = shot.panels ?? [];
   const withRole = (role: PanelRole) => panels.filter((p) => p.role === role);
   const handoff = shot.continues !== false && shot.opens_on?.node ? shot.opens_on : null;
@@ -561,105 +576,105 @@ function Sends({ shot, onOpenNode }: { shot: Shot; onOpenNode: (node: string) =>
   const demoted = handoff && startPanel ? [startPanel] : [];
   const references = [...demoted, ...withRole("reference")];
   const samples = withRole("sample");
-  const scene = (shot.motion?.references ?? {}) as { characters?: string[]; keys?: string[] };
-  const carried = [...(scene.characters ?? []), ...(scene.keys ?? [])];
+  const plates = shot.motion?.reference_assets ?? [];
 
   return (
-    <section className="flex flex-col gap-2 rounded-md border border-line p-2">
-      <div className="flex flex-wrap items-baseline gap-x-2">
-        <Text variant="caption">Will be sent</Text>
-        {shot.motion?.model && <Badge intent="neutral">{shot.motion.model}</Badge>}
-        <Text variant="caption" tone="muted">
-          as planned — <code>studio scenes check</code> resolves it against the engine&rsquo;s limits
-        </Text>
-      </div>
-
+    <section className="flex flex-col gap-3 rounded-md border border-line p-2">
       <SendRow label="Start">
         {handoff?.frame ? (
-          <Frame label="start" hint="handoff" asset={handoff.frame} onOpen={onOpenNode} />
+          <Frame hint="handoff" asset={handoff.frame} onOpen={onOpenNode} />
         ) : startPanel ? (
           <Frame
-            label="start"
             hint={panelHint(startPanel, false)}
             title={startPanel.prompt}
             asset={startPanel.image}
             onOpen={onOpenNode}
           />
         ) : (
-          <Nothing>
-            {shot.continues === false
-              ? "no start frame — the engine composes the opening"
-              : "the previous shot's last frame, once it has been rendered"}
-          </Nothing>
+          <Slot note="awaits previous shot" />
         )}
       </SendRow>
 
-      <SendRow label="End">
-        {endPanel ? (
-          <Frame
-            label="end"
-            hint={panelHint(endPanel, false)}
-            title={endPanel.prompt}
-            asset={endPanel.image}
-            onOpen={onOpenNode}
-          />
-        ) : (
-          <Nothing>none — the shot is not bracketed</Nothing>
-        )}
-      </SendRow>
+      {/* **Only when the scene brackets its shots.** A chained scene has no end
+          frames anywhere, so a row saying "none" on all seven cards is seven
+          rows of nothing. The mode is stated once, at the top of the board. */}
+      {bracketed && (
+        <SendRow label="End">
+          {endPanel ? (
+            <Frame
+              hint={panelHint(endPanel, false)}
+              title={endPanel.prompt}
+              asset={endPanel.image}
+              onOpen={onOpenNode}
+            />
+          ) : (
+            <Slot note="not bracketed" />
+          )}
+        </SendRow>
+      )}
 
       <SendRow label="References">
-        {references.length || carried.length ? (
-          <>
-            {references.map((p) => (
-              <Frame
-                key={p.n}
-                label={`panel ${p.n}`}
-                hint={panelHint(p, demoted.includes(p))}
-                title={p.prompt}
-                asset={p.image}
-                onOpen={onOpenNode}
-              />
-            ))}
-            {carried.length > 0 && <Nothing>plus {carried.join(", ")}</Nothing>}
-          </>
-        ) : (
-          <Nothing>the scene&rsquo;s own frames, as they are produced</Nothing>
-        )}
+        {references.map((p) => (
+          <Frame
+            key={`p${p.n}`}
+            hint={panelHint(p, demoted.includes(p))}
+            title={p.prompt}
+            asset={p.image}
+            onOpen={onOpenNode}
+          />
+        ))}
+        {plates.map((a) => (
+          <Frame key={a.node} hint="plate" title={a.name} asset={a} onOpen={onOpenNode} />
+        ))}
+        {references.length === 0 && plates.length === 0 && <Slot note="scene frames" />}
       </SendRow>
 
       {samples.length > 0 && (
         <SendRow label="Samples">
           {samples.map((p) => (
             <Frame
-              key={p.n}
-              label="sample"
+              key={`s${p.n}`}
               hint="not sent"
               title={p.prompt}
               asset={p.image}
               onOpen={onOpenNode}
             />
           ))}
-          <Nothing>a picture of the beat, for a person — the model never sees it</Nothing>
-        </SendRow>
-      )}
-
-      {panels.some((p) => p.references) && (
-        <SendRow label="Panels use">
-          <Nothing>
-            {panels
-              .map((p) => {
-                const r = p.references ?? {};
-                const which = r.pick ?? r.pick_tag ?? (r.characters?.length ? "default set" : null);
-                return which ? `panel ${p.n}: ${which}` : null;
-              })
-              .filter(Boolean)
-              .join(" · ")}
-            {" — these steer the stills, not the clip"}
-          </Nothing>
         </SendRow>
       )}
     </section>
+  );
+}
+
+/**
+ * Whether a scene pins its shots at both ends.
+ *
+ * Chained is the default and the common case: one seed, every later shot opening
+ * on the previous shot's last frame. Bracketed shots carry an `end` panel. The
+ * board states which it is once rather than printing "not bracketed" on every
+ * card of a scene that was never going to be.
+ */
+function isBracketed(shots: Shot[]): boolean {
+  return shots.some((s) => (s.panels ?? []).some((p) => p.role === "end"));
+}
+
+/**
+ * An empty slot — a frame that is planned and not here.
+ *
+ * **Drawn, not described.** A storyboard is read by looking, so an absent frame
+ * is a dashed rectangle the same size as a real one, not a sentence floating
+ * where a picture should be. Two or three words inside it say why it is empty.
+ */
+function Slot({ note }: { note: string }) {
+  return (
+    <span
+      className="flex aspect-[3/4] w-20 shrink-0 items-center justify-center rounded-md
+                 border border-dashed border-line bg-surface-alt p-1 text-center"
+    >
+      <Text variant="caption" tone="muted">
+        {note}
+      </Text>
+    </span>
   );
 }
 
@@ -680,20 +695,12 @@ function panelHint(panel: Panel, demoted: boolean): string | undefined {
 
 function SendRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
-      <Text variant="caption" tone="muted" className="w-24 shrink-0">
+    <div className="flex flex-col gap-1">
+      <Text variant="caption" tone="muted">
         {label}
       </Text>
-      <div className="flex flex-wrap items-center gap-2">{children}</div>
+      <div className="flex flex-wrap items-start gap-2">{children}</div>
     </div>
-  );
-}
-
-function Nothing({ children }: { children: React.ReactNode }) {
-  return (
-    <Text variant="caption" tone="muted" className="max-w-prose">
-      {children}
-    </Text>
   );
 }
 
@@ -713,7 +720,8 @@ function Frame({
   asset,
   onOpen,
 }: {
-  label: string;
+  /** Omitted inside a `SendRow`, whose own label already says what this is. */
+  label?: string;
   hint?: string;
   title?: string;
   asset?: RunAsset;
@@ -758,12 +766,16 @@ function Frame({
       ) : (
         <span title={title}>{shell}</span>
       )}
-      <span className="flex flex-wrap items-center gap-1">
-        <Text variant="caption" tone="muted">
-          {label}
-        </Text>
-        {hint && <Badge intent={hint === "stale" ? "warning" : "neutral"}>{hint}</Badge>}
-      </span>
+      {(label || hint) && (
+        <span className="flex flex-wrap items-center gap-1">
+          {label && (
+            <Text variant="caption" tone="muted">
+              {label}
+            </Text>
+          )}
+          {hint && <Badge intent={hint === "stale" ? "warning" : "neutral"}>{hint}</Badge>}
+        </span>
+      )}
     </span>
   );
 }

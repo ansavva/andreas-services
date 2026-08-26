@@ -118,7 +118,9 @@ it("labels a sample as a sample, because it is the one panel that binds to nothi
   );
 
   await screen.findByText("The whistle comes off");
-  expect(screen.getAllByText("sample").length).toBeGreaterThan(0);
+  expect(screen.getByText("Samples")).toBeTruthy();
+  expect(screen.getByText("not sent")).toBeTruthy();
+  expect(screen.getByText("what the shot should look like")).toBeTruthy();
 });
 
 it("leads the strip with the frame the shot opens on", async () => {
@@ -296,23 +298,26 @@ it("says what the shot will send, and what it will not", async () => {
   );
 
   await screen.findByText("The whistle comes off");
-  expect(screen.getByText("Will be sent")).toBeTruthy();
+  expect(screen.getByText("Start")).toBeTruthy();
+  expect(screen.getByText("References")).toBeTruthy();
   // The handoff takes the start slot and the panel composed for it is demoted.
-  expect(screen.getAllByText("handoff").length).toBeGreaterThan(0);
+  expect(screen.getByText("handoff")).toBeTruthy();
   expect(screen.getByText("demoted")).toBeTruthy();
   // A sample is shown and labelled as never reaching the model.
   expect(screen.getByText("not sent")).toBeTruthy();
   // Not bracketed, so it says so rather than leaving the row blank.
-  expect(screen.getByText(/not bracketed/)).toBeTruthy();
-  // And the panel's own plates are named as steering the still, not the clip.
-  expect(screen.getByText(/these steer the stills, not the clip/)).toBeTruthy();
+  // Chained, so there is no End row at all — the mode is stated once at the top.
+  expect(screen.queryByText("End")).toBeNull();
+  expect(screen.getByText("chained")).toBeTruthy();
+  // Every slot is drawn as a tile, and the sample says it never reaches the model.
+  expect(screen.getByText("Samples")).toBeTruthy();
 });
 
 it("says a start frame is pending rather than showing an empty slot", async () => {
   draw(record({ shots: [shot({ continues: true, opens_on: null, panels: [] })] }));
 
   await screen.findByText("The whistle comes off");
-  expect(screen.getByText(/the previous shot's last frame, once it has been rendered/)).toBeTruthy();
+  expect(screen.getByText("awaits previous shot")).toBeTruthy();
 });
 
 it("shows the setting once, not once per panel", async () => {
@@ -353,4 +358,49 @@ it("still draws a scene assembled from bare runs, which has no storyboard at all
 
   expect(await screen.findByText("wide on the touchline")).toBeTruthy();
   await waitFor(() => expect(screen.getByRole("button", { name: /open its run/i })).toBeTruthy());
+});
+
+it("shows an End row only when the scene brackets its shots", async () => {
+  // A chained scene has no end frames anywhere, so a row reading "none" on every
+  // card is a column of nothing. The mode belongs at the top, once.
+  draw(
+    record({
+      shots: [
+        shot({
+          panels: [
+            { n: 1, role: "start", prompt: "opens here" },
+            { n: 2, role: "end", prompt: "lands here" },
+          ],
+        }),
+      ],
+    }),
+  );
+
+  await screen.findByText("The whistle comes off");
+  expect(screen.getByText("bracketed")).toBeTruthy();
+  expect(screen.getByText("End")).toBeTruthy();
+});
+
+it("draws a plate the plan names as a thumbnail, not as a filename", async () => {
+  // "plus peter" said nothing about which pictures are going, and which pictures
+  // are going is the whole question. The API resolves the block to images.
+  draw(
+    record({
+      shots: [
+        shot({
+          motion: {
+            prompt: "x",
+            references: { characters: ["subject-a"], pick: "front.png" },
+            reference_assets: [
+              { node: "node-plate", name: "front.png", url: "https://example/front.png" },
+            ],
+          },
+        }),
+      ],
+    }),
+  );
+
+  await screen.findByText("The whistle comes off");
+  expect(screen.getByText("plate")).toBeTruthy();
+  expect(screen.getByRole("button", { name: /front\.png/i })).toBeTruthy();
 });

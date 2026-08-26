@@ -61,6 +61,7 @@ from studio_pipeline.domain import contact_sheet as SHEET
 from studio_pipeline.domain import paths as P
 from studio_pipeline.domain import runs as R
 from studio_pipeline.domain import scenes as SC
+from studio_pipeline.domain import projects as PROJECTS
 from studio_pipeline.domain import storyboard as SB
 from studio_pipeline.engine import refs as REFS
 from studio_pipeline.engine import registry as REG
@@ -191,12 +192,29 @@ def panel_format(panel_entry: dict, video_model: str) -> str | None:
     return None
 
 
+def _project(manifest: dict) -> dict:
+    """The project RECORD this scene belongs to.
+
+    **`submit` documents `args.project` as the record and both builders here
+    passed the slug**, which no dry run could catch: `gather` reads `project["id"]`
+    only on a binding path a dry run does not take, and `execute` — which always
+    reads it — is never reached without a submit. So `scenes board` and `scenes
+    render` validated clean and died with `TypeError: string indices must be
+    integers` the moment they were run for real, after the approval prompt and
+    before any spend.
+
+    Resolved from `project` on the scene row rather than from `project_slug`: the
+    id is what the record carries and what cannot go stale under a rename.
+    """
+    return PROJECTS.require_project(manifest["project"])
+
+
 def panel_args(manifest: dict, shot: dict, panel: dict, entry: dict, opts) -> SimpleNamespace:
     """The namespace `runner`/`submit` expect, for one panel."""
     refs = panel.get("references") or {}
     d = SUB.defaults(entry["kind"])
     extra = dict(panel.get("extra") or {})
-    project = manifest["project_slug"]
+    project = _project(manifest)
 
     video = (shot.get("motion") or {}).get("model")
     if "output_format" not in extra and video:
@@ -364,7 +382,7 @@ def shot_args(manifest: dict, shot: dict, entry: dict, opts) -> SimpleNamespace:
     extra = dict(motion.get("extra") or {})
     if motion.get("duration") is not None:
         extra.setdefault("duration", motion["duration"])
-    project = manifest["project_slug"]
+    project = _project(manifest)
     return SimpleNamespace(
         model=entry["key"],
         project=project,
@@ -628,14 +646,18 @@ def run_board(ref: str, opts) -> int:
         label = f"{shot['id']} p{panel['n']}"
         print(f"\n----- {label} -----", file=sys.stderr)
         try:
-            code = SUB.execute(entry, payload, bindings, token, args)
-            if code != 0:
-                raise SUB.SubmitError(f"exited {code}")
+            # **The RECORD, not an exit code.** `submit.execute` returned a code
+            # and every batch caller then went back for `<project>/latest` to
+            # find out which run it had just made — a lookup that is wrong the
+            # moment two runs land in one project close together. It returns the
+            # record now and this was never updated, so `record != 0` was true of
+            # every successful render: all ten panels billed, all ten were
+            # reported as `exited {…}`, and the board recorded none of them.
+            record = SUB.execute(entry, payload, bindings, token, args)
         except (SUB.SubmitError, RA.ReplicateError) as exc:
             print(f"  FAILED — {exc}", file=sys.stderr)
             failed.append((label, str(exc)))
             continue
-        record = R.resolve_run(f"{owner}/latest", owner)
         outs = record.get("outputs") or []
         if not outs:
             failed.append((label, "the run recorded no output"))
@@ -722,9 +744,7 @@ def run_render(ref: str, opts) -> int:
     for shot, entry, args, payload, bindings in prepared:
         print(f"\n----- {shot['id']} -----", file=sys.stderr)
         try:
-            code = SUB.execute(entry, payload, bindings, token, args)
-            if code != 0:
-                raise SUB.SubmitError(f"exited {code}")
+            record = SUB.execute(entry, payload, bindings, token, args)
         except (SUB.SubmitError, RA.ReplicateError) as exc:
             print(f"  FAILED — {exc}", file=sys.stderr)
             failed.append((shot["id"], str(exc)))
@@ -733,7 +753,6 @@ def run_render(ref: str, opts) -> int:
         # and `runref` the same with `#1` — two strings that a project rename
         # invalidated. An id needs no project and survives every rename, which
         # is the property `PUT /api/scenes/<id>/shots` is storing.
-        record = R.resolve_run(f"{owner}/latest", owner)
         shot.update(run=record["id"], runref=f"{record['id']}#1",
                     rendered=R._now())
         manifest = SC.save_shots(manifest, SC.scene_shots(manifest))
