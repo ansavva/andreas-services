@@ -156,9 +156,11 @@ def masks(slug: str) -> None:
 @cli.command()
 @click.argument("slug")
 @click.option("--steps", default=2000, show_default=True)
-def train(slug: str, steps: int) -> None:
+@click.option("--base", default="flux1", show_default=True, type=click.Choice(["flux1", "flux2"]),
+              help="Base model. flux2 = FLUX.2-dev; needs an 80GB pod (--gpu a100).")
+def train(slug: str, steps: int, base: str) -> None:
     """Session B: push the curated dataset and start OneTrainer in tmux."""
-    _train.start(slug, steps)
+    _train.start(slug, steps, base)
 
 
 @cli.command("train-status")
@@ -170,17 +172,19 @@ def train_status(slug: str) -> None:
 
 @cli.command("fetch-checkpoints")
 @click.argument("slug")
-def fetch_checkpoints(slug: str) -> None:
+@click.option("--base", default="flux1", show_default=True, type=click.Choice(["flux1", "flux2"]))
+def fetch_checkpoints(slug: str, base: str) -> None:
     """Pull checkpoints down and link them into ComfyUI for validation."""
-    _train.fetch(slug)
+    _train.fetch(slug, base)
 
 
 @cli.command()
 @click.argument("slug")
 @click.option("--strength", default=0.8, show_default=True)
-def validate(slug: str, strength: float) -> None:
+@click.option("--base", default="flux1", show_default=True, type=click.Choice(["flux1", "flux2"]))
+def validate(slug: str, strength: float, base: str) -> None:
     """Render the fixed validation grid with every fetched checkpoint."""
-    _generate.validate(slug, strength)
+    _generate.validate(slug, strength, base)
 
 
 @cli.command()

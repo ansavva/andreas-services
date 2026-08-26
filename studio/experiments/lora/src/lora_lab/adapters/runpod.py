@@ -24,6 +24,8 @@ API_ROOT = "https://rest.runpod.io/v1"
 # every pod to ITS datacenter, so the fallbacks matter more than they used to.
 GPU_TYPES = {
     "4090": "NVIDIA GeForce RTX 4090",
+    # 80GB tier — FLUX.2-dev training does not fit 24GB even NF4-quantized.
+    "a100": "NVIDIA A100 80GB PCIe",
     "a5000": "NVIDIA RTX A5000",
     "a6000": "NVIDIA RTX A6000",
 }

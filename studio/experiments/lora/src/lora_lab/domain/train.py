@@ -23,7 +23,9 @@ from lora_lab.domain import generate, pod
 # OneTrainer and its ~32GB FLUX.1-dev snapshot are the largest thing the lab
 # installs, and Session B is the only thing that opens them. They land on the
 # /weights volume — once ever, not once per pod.
-TRAIN_ASSETS = ["onetrainer"]
+TRAIN_ASSETS = {"flux1": ["onetrainer"], "flux2": ["onetrainer", "flux2base"]}
+CONFIG_TEMPLATE = {"flux1": "train-config.template.json",
+                   "flux2": "train-config-flux2.template.json"}
 MASK_ASSETS = ["pulid"]  # masks runs insightface, which ships with the PuLID stack
 
 REMOTE_TRAIN = "/workspace/train"
@@ -32,7 +34,9 @@ TMUX_SESSION = "onetrainer"
 
 def _dataset_dir(slug: str):
     d = LOCAL_DIR / slug / "dataset"
-    images = sorted([*d.glob("*.png"), *d.glob("*.jpg"), *d.glob("*.jpeg")])
+    # Case-insensitive: a phone's .JPG files fell out of the count once.
+    images = sorted(f for f in d.iterdir()
+                    if f.suffix.lower() in (".png", ".jpg", ".jpeg"))
     if len(images) < 10:
         raise click.ClickException(
             f"{d} holds {len(images)} images — the recipe wants 15–20 curated ones "
@@ -53,7 +57,7 @@ def scaffold_captions(slug: str) -> None:
         raise click.ClickException(f"{d} does not exist — curate candidates into it first (Gate 1)")
     trigger = f"ohwx_{slug}"
     created = 0
-    for img in sorted([*d.glob("*.png"), *d.glob("*.jpg"), *d.glob("*.jpeg")]):
+    for img in sorted(f for f in d.iterdir() if f.suffix.lower() in (".png", ".jpg", ".jpeg")):
         txt = img.with_suffix(".txt")
         if not txt.is_file():
             txt.write_text(f"photo of {trigger}, FILL IN: wardrobe, pose, lighting, background\n")
@@ -76,13 +80,13 @@ def masks(slug: str) -> None:
     click.echo("masks written next to the dataset on the pod (*-masklabel.png)")
 
 
-def start(slug: str, steps: int) -> None:
+def start(slug: str, steps: int, base: str = "flux1") -> None:
     pod.ready()
     ip, port = pod.endpoint()
     # Install before the confirm, not after: OneTrainer plus the FLUX base is
     # ~40GB and a quarter of an hour, and finding that out *after* saying yes
     # to "start training?" reads as a hang.
-    pod.ensure(TRAIN_ASSETS, generate.ASSET_GB)
+    pod.ensure(TRAIN_ASSETS[base], generate.ASSET_GB)
     dataset, images = _dataset_dir(slug)
     trigger = f"ohwx_{slug}"
 
@@ -108,7 +112,7 @@ def start(slug: str, steps: int) -> None:
         )
 
     for template, remote_name in (
-        ("train-config.template.json", "train-config.json"),
+        (CONFIG_TEMPLATE[base], "train-config.json"),
         ("concepts.template.json", "concepts.json"),
         ("train-samples.template.json", "samples.json"),
     ):
@@ -118,6 +122,9 @@ def start(slug: str, steps: int) -> None:
         local.write_text(filled)
         shell.scp_to(ip, port, local, f"{remote}/{remote_name}")
 
+    # GPU is single-tenant for training: ComfyUI keeps ~16GB resident after
+    # any render and OneTrainer OOMed beside it. Validation restarts ComfyUI.
+    shell.run(ip, port, "tmux kill-session -t comfy 2>/dev/null", check=False)
     shell.run(
         ip, port,
         f"tmux new-session -d -s {TMUX_SESSION} "
@@ -137,7 +144,7 @@ def status(slug: str) -> None:
     # survives — grepping for those declared a healthy run dead at step ~250
     # and tore it down, also 2026-08-25. Both proxies are for humans only.
     log = f"{REMOTE_TRAIN}/{slug}/train.log"
-    proc = shell.run(ip, port, "pgrep -f 'scripts/train.py' >/dev/null && echo yes || echo no",
+    proc = shell.run(ip, port, "pgrep -f '[s]cripts/train.py' >/dev/null && echo yes || echo no",
                      check=False).strip()
     click.echo(f"training session alive: {proc or alive}")
     click.echo(shell.run(
@@ -147,7 +154,7 @@ def status(slug: str) -> None:
         check=False))
 
 
-def fetch(slug: str) -> None:
+def fetch(slug: str, base: str = "flux1") -> None:
     """Pull every checkpoint down and expose them to ComfyUI for validation."""
     ip, port = pod.endpoint()
     # save_every writes into <workspace_dir>/save/ (GenericTrainer), the
@@ -157,7 +164,7 @@ def fetch(slug: str) -> None:
     files = [l.strip() for l in listing.splitlines() if l.strip()]
     if not files:
         raise click.ClickException("no .safetensors in the output dir yet")
-    out_dir = LOCAL_DIR / slug / "checkpoints"
+    out_dir = LOCAL_DIR / slug / ("checkpoints" if base == "flux1" else f"checkpoints-{base}")
     for f in files:
         shell.scp_from(ip, port, f, out_dir / f.rsplit("/", 1)[1])
         shell.run(ip, port, f"ln -sf {f} /opt/ComfyUI/models/loras/", check=False)

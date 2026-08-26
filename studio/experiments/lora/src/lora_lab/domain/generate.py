@@ -59,6 +59,7 @@ VIDEO_ENGINES = {
 ASSET_GB = {
     "encoders": 6, "flux1dev": 13, "flux2dev": 54, "sd35": 17, "ltx098": 16, "ltx23": 43,
     "ltx25": 39, "wan": 19, "wan14b": 30, "pulid": 3, "onetrainer": 40,
+    "flux2base": 115,   # FLUX.2-dev diffusers snapshot, training only
 }
 
 # What each engine needs installed. `encoders` is shared — CLIP-L and T5-XXL
@@ -271,10 +272,10 @@ def expand(slug: str, ref_index: int) -> None:
     )
 
 
-def validate(slug: str, strength: float) -> None:
+def validate(slug: str, strength: float, base: str = "flux1") -> None:
     """Render the fixed validation grid with each fetched checkpoint."""
     pod.ready()
-    pod.ensure(ENGINE_ASSETS["flux1dev"], ASSET_GB)
+    pod.ensure(ENGINE_ASSETS["flux1dev" if base == "flux1" else "flux2dev"], ASSET_GB)
     ip, port = pod.endpoint()
     prompts = yaml.safe_load((ASSETS_DIR / "validation-prompts.yaml").read_text())["prompts"]
     trigger = f"ohwx_{slug}"
@@ -289,11 +290,13 @@ def validate(slug: str, strength: float) -> None:
         raise click.ClickException("no checkpoints in ComfyUI/models/loras — run `lora-lab train` first")
     click.echo(f"validating {len(ckpts)} checkpoint(s) × {len(prompts)} prompts")
 
-    base = graphs.load("validate-lora.json")
+    graph_file = "validate-lora.json" if base == "flux1" else f"validate-lora-{base}.json"
+    base_graph = graphs.load(graph_file)
     with shell.tunnel(ip, port, COMFY_PORT, COMFY_PORT):
         for ckpt in ckpts:
-            out_dir = LOCAL_DIR / slug / "validation" / ckpt.removesuffix(".safetensors")
-            g_lora = graphs.with_lora(base, ckpt, strength)
+            val_dir = "validation" if base == "flux1" else f"validation-{base}"
+            out_dir = LOCAL_DIR / slug / val_dir / ckpt.removesuffix(".safetensors")
+            g_lora = graphs.with_lora(base_graph, ckpt, strength)
             for p in prompts:
                 text = p["prompt"].format(trigger=trigger)
                 g = graphs.with_prompt(g_lora, text, seed=SEED_BASE + p["seed_offset"], prefix=p["id"])
@@ -302,6 +305,6 @@ def validate(slug: str, strength: float) -> None:
                 click.echo(f"{ckpt} · {p['id']}")
             sheet.contact_sheet(
                 list(out_dir.glob("*.png")),
-                LOCAL_DIR / slug / "validation" / f"{ckpt.removesuffix('.safetensors')}-sheet.png",
+                LOCAL_DIR / slug / val_dir / f"{ckpt.removesuffix('.safetensors')}-sheet.png",
             )
-    click.echo(f"grids under {LOCAL_DIR / slug / 'validation'} — score per RUNBOOK phase 3.")
+    click.echo(f"grids under {LOCAL_DIR / slug / val_dir} — score per RUNBOOK phase 3.")

@@ -178,6 +178,28 @@ case "$COMPONENT" in
     fi
     touch /weights/.asset-pulid-done
     ;;
+  flux2base)
+    # FLUX.2-dev TRAINING base — full diffusers snapshot (~115GB), OneTrainer
+    # only; ComfyUI inference uses the separate fp8 `flux2dev` component.
+    # GATED: HF account must have accepted the licence or every file 403s.
+    OT=$T/OneTrainer
+    [ -d $OT ] || { echo "onetrainer component must be installed first" >&2; exit 2; }
+    log "FLUX.2-dev base for training (gated; ~115GB — minutes at DC speed)"
+    HF_TOKEN=$HF_TOKEN $OT/venv/bin/python - <<'PY2'
+from huggingface_hub import snapshot_download
+import os
+snapshot_download(
+    "black-forest-labs/FLUX.2-dev",
+    token=os.environ["HF_TOKEN"],
+    local_dir="/weights/models/FLUX.2-dev",
+    allow_patterns=["*.json", "*.txt", "*.model",
+                    "text_encoder*/*", "tokenizer*/*", "vae/*", "transformer/*",
+                    "scheduler*/*"],
+)
+print("FLUX.2 base present")
+PY2
+    touch /weights/.asset-flux2base-done
+    ;;
   onetrainer)
     # The big one: OneTrainer's own venv plus a ~32GB FLUX.1-dev snapshot in
     # diffusers layout — once ever, now that both live on the volume. The venv
