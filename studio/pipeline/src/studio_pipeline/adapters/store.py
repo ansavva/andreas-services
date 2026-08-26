@@ -66,6 +66,7 @@ looks like.
 from __future__ import annotations
 
 import re
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -326,29 +327,62 @@ def upload(path: str, source: Path, *, content_type: str) -> dict:
     return write(path, source.read_bytes(), content_type=content_type)
 
 
+#: How many times a transfer is attempted before it is called a failure, and how
+#: long it waits between attempts.
+#:
+#: **A dropped connection here can cost real money.** `scenes board` submits a
+#: generation, polls it, then downloads the result and copies it into the scene —
+#: and the panel is recorded only once that copy lands. So a reset socket after a
+#: paid render loses the record of something already billed, and the next attempt
+#: bills the next panel and loses that one too. Three attempts over an unreliable
+#: link turned five successful renders into a board with nothing on it.
+#:
+#: Retried on the transport error alone. An HTTP status is the server's answer
+#: and is not retried here: a 403 on a presigned URL means expiry, and hammering
+#: it would turn one clear failure into three slow ones.
+TRANSFER_ATTEMPTS = 4
+TRANSFER_BACKOFF_SECONDS = 1.5
+
+
+def _with_retries(what: str, attempt) -> bytes | None:
+    """Run a transfer, retrying a dropped connection with a widening pause."""
+    last: Exception | None = None
+    for tries in range(TRANSFER_ATTEMPTS):
+        try:
+            return attempt()
+        except urllib.error.HTTPError:
+            raise
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as error:
+            last = error
+            if tries + 1 < TRANSFER_ATTEMPTS:
+                time.sleep(TRANSFER_BACKOFF_SECONDS * (tries + 1))
+    reason = getattr(last, "reason", last)
+    raise StoreError(f"Could not {what} the object ({reason}).") from last
+
+
 def _fetch(url: str) -> bytes:
-    try:
+    # The URL is presigned and short-lived, so the useful failure is almost
+    # always expiry — say that rather than echoing a signed URL into a terminal,
+    # which would put a working credential in the scrollback.
+    def once() -> bytes:
         with urllib.request.urlopen(url, timeout=TIMEOUT_SECONDS) as response:  # noqa: S310
             return response.read()
-    except urllib.error.URLError as error:
-        # The URL is presigned and short-lived, so the useful failure is almost
-        # always expiry — say that rather than echoing a signed URL into a
-        # terminal, which would put a working credential in the scrollback.
-        raise StoreError(f"Could not fetch the object ({error.reason}).") from error
+
+    return _with_retries("fetch", once)
 
 
 def _put(url: str, body: bytes, headers: dict) -> None:
-    request = urllib.request.Request(url, data=body, method="PUT")  # noqa: S310
-    # Exactly the headers the API signed. `content-length` and `content-type`
-    # are in `X-Amz-SignedHeaders`, so anything else here fails the signature and
-    # writes nothing — which is the bound, not a formality.
-    for name, value in headers.items():
-        request.add_header(name, value)
-    try:
+    def once() -> None:
+        request = urllib.request.Request(url, data=body, method="PUT")  # noqa: S310
+        # Exactly the headers the API signed. `content-length` and `content-type`
+        # are in `X-Amz-SignedHeaders`, so anything else here fails the signature
+        # and writes nothing — which is the bound, not a formality.
+        for name, value in headers.items():
+            request.add_header(name, value)
         with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS):  # noqa: S310
-            return
-    except urllib.error.URLError as error:
-        raise StoreError(f"Could not upload the object ({error.reason}).") from error
+            return None
+
+    _with_retries("upload", once)
 
 
 # ── the tree, addressed by node id ──────────────────────────────────────────

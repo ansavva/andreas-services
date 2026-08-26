@@ -23,6 +23,7 @@ movie are driven by the machine that is rendering them, in sequence — demandin
 `rev` would make the CLI re-read a record to report that a shot finished.
 """
 
+import json
 import logging
 
 from flask import Blueprint, g, jsonify, request
@@ -30,6 +31,7 @@ from flask import Blueprint, g, jsonify, request
 from studio_core import config
 from studio_core.clients.aws import s3
 from studio_core.errors import ValidationError
+from studio_core.routes import characters as character_routes
 from studio_core.routes import projects as project_routes
 from studio_core.routes import support
 from studio_core.services import catalog, keys, layout
@@ -120,31 +122,47 @@ def list_scenes():
     return jsonify({"scenes": rows, "cursor": None}), 200
 
 
-def _drawable(entries: list[dict]) -> list[dict]:
+def _drawable(entries: list[dict], held: dict) -> list[dict]:
     """A scene's shots with every image pointer expanded into something drawable.
 
     A stored shot holds node ids and nothing else — the boarded panel, the
-    handoff frame it opens on, the clip it rendered. That is the right thing to
-    store and the wrong thing to answer with: a page cannot draw an id, and the
-    CLI would otherwise presign each one itself, one round trip per panel.
+    handoff frame it opens on, the clip it rendered — plus `references` blocks
+    that NAME images rather than pointing at them ("this character, these
+    plates"). That is the right thing to store and the wrong thing to answer
+    with: a board cannot draw an id, and it certainly cannot draw a filename.
 
-    **One batched read for the whole scene**, because a seven-shot board is
-    twenty-odd pointers and `support.assets` takes them together. The expansions
-    sit beside the pointers rather than replacing them (`panel.node` stays, and
-    gains `panel.image`), so a reader that only wants the id is unaffected —
-    the same shape `with_output` uses for the cut.
+    **One batched read for the whole scene.** The pointers and the resolved
+    reference nodes are collected across every shot first, then expanded
+    together; a character's index is read once per slug rather than once per
+    shot.
+
+    Expansions sit beside the pointers rather than replacing them (`panel.node`
+    stays and gains `panel.image`), so a reader that only wants the id is
+    unaffected — the same shape `with_output` uses for the cut.
     """
+    resolved: dict[str, list[str]] = {}
+
+    def nodes_for(refs) -> list[str]:
+        """The reference block's nodes, resolved once per distinct block."""
+        if not refs:
+            return []
+        cache_key = json.dumps(refs, sort_keys=True, default=str)
+        if cache_key not in resolved:
+            resolved[cache_key] = character_routes.reference_nodes(refs, held)
+        return resolved[cache_key]
+
     wanted: list[str] = []
     for shot in entries:
         for node in (shot.get("node"), (shot.get("opens_on") or {}).get("node")):
             if node:
                 wanted.append(node)
+        wanted += nodes_for((shot.get("motion") or {}).get("references"))
         for panel in shot.get("panels") or []:
             if panel.get("node"):
                 wanted.append(panel["node"])
+            wanted += nodes_for(panel.get("references"))
 
     found = {a["node"]: a for a in support.assets(list(dict.fromkeys(wanted)))}
-
     drawn = []
     for shot in entries:
         shot = dict(shot)
@@ -153,8 +171,20 @@ def _drawable(entries: list[dict]) -> list[dict]:
         opens_on = shot.get("opens_on") or {}
         if opens_on.get("node") in found:
             shot["opens_on"] = {**opens_on, "frame": found[opens_on["node"]]}
+        motion = dict(shot.get("motion") or {})
+        if motion:
+            motion["reference_assets"] = [
+                found[n] for n in nodes_for(motion.get("references")) if n in found
+            ]
+            shot["motion"] = motion
         shot["panels"] = [
-            {**panel, **({"image": found[panel["node"]]} if panel.get("node") in found else {})}
+            {
+                **panel,
+                **({"image": found[panel["node"]]} if panel.get("node") in found else {}),
+                "reference_assets": [
+                    found[n] for n in nodes_for(panel.get("references")) if n in found
+                ],
+            }
             for panel in shot.get("panels") or []
         ]
         drawn.append(shot)
@@ -167,7 +197,7 @@ def get_scene(scene_id: str):
     held = support.memberships()
     record = _scene(scene_id, held)
     return jsonify({**support.with_output(record),
-                    "shots": _drawable(catalog.shots(record["id"]))}), 200
+                    "shots": _drawable(catalog.shots(record["id"]), held)}), 200
 
 
 # What a PATCH may write, and it is the list of what actually writes to a scene.
