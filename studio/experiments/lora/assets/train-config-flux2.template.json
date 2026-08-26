@@ -1,0 +1,64 @@
+{
+  "_note": [
+    "FLUX.2-dev variant of train-config.template.json \u2014 HEAD-TO-HEAD PARITY:",
+    "everything matches the FLUX.1 run 2 recipe (rank 32, AdamW 1e-4,",
+    "unmasked, 1024, COMFY_LORA, saves every 250 steps) except the base.",
+    "Model-specific parts follow OneTrainer's 'Flux 2' preset: NF4",
+    "transformer, fp8 text encoder (Mistral Small), fp32 VAE. Needs an",
+    "80GB card; the lab rents an A100 for it (--gpu a100).",
+    "Recreated 2026-08-26 after a worktree clean took the uncommitted",
+    "original with it; the flux2 run that VALIDATED this config ran from",
+    "the identical content."
+  ],
+  "__version": 11,
+  "training_method": "LORA",
+  "model_type": "FLUX_2",
+  "base_model_name": "/weights/models/FLUX.2-dev",
+  "train_dtype": "BFLOAT_16",
+  "output_dtype": "BFLOAT_16",
+  "output_model_format": "COMFY_LORA",
+  "output_model_destination": "{OUTPUT_DIR}/{TRIGGER}-lora.safetensors",
+  "concept_file_name": "{OUTPUT_DIR}/../concepts.json",
+  "sample_definition_file_name": "{OUTPUT_DIR}/../samples.json",
+  "workspace_dir": "{OUTPUT_DIR}/../workspace",
+  "cache_dir": "{OUTPUT_DIR}/../cache",
+  "debug_dir": "{OUTPUT_DIR}/../debug",
+  "resolution": "1024",
+  "epochs": {EPOCHS},
+  "batch_size": 1,
+  "gradient_accumulation_steps": 1,
+  "learning_rate": 0.0001,
+  "learning_rate_scheduler": "CONSTANT",
+  "optimizer": {
+    "optimizer": "ADAMW"
+  },
+  "transformer": {
+    "train": true,
+    "weight_dtype": "NFLOAT_4"
+  },
+  "text_encoder": {
+    "train": false,
+    "weight_dtype": "FLOAT_8"
+  },
+  "vae": {
+    "weight_dtype": "FLOAT_32"
+  },
+  "timestep_distribution": "LOGIT_NORMAL",
+  "dynamic_timestep_shifting": true,
+  "masked_training": true,
+  "unmasked_probability": 0.1,
+  "unmasked_weight": 0.1,
+  "peft_type": "LORA",
+  "lora_rank": 16,
+  "lora_alpha": 16.0,
+  "lora_weight_dtype": "BFLOAT_16",
+  "backup_after": 0,
+  "backup_after_unit": "NEVER",
+  "save_every": 250,
+  "save_every_unit": "STEP",
+  "sample_after": 250,
+  "sample_after_unit": "NEVER",
+  "sample_prompt": "photo of {TRIGGER}, frontal portrait, soft light",
+  "latent_caching": true,
+  "clear_cache_before_training": true
+}
