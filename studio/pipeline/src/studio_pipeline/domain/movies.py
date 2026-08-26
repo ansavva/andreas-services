@@ -138,7 +138,7 @@ def resolve_movie(ref: str, default_project: str | None = None) -> dict:
     if not hits:
         die(f"no movie matching {mid!r} in project {record['slug']}")
     die(f"{mid!r} is ambiguous in project {record['slug']}: "
-        + ", ".join(f"{m['id']} ({m['slug']})" for m in hits[:5]))
+        + ", ".join(f"{m['id']} ({m.get('slug') or '-'})" for m in hits[:5]))
 
 
 def movie_folder(record: dict, *names: str) -> str:
@@ -273,7 +273,8 @@ def do_list(project):
     if not found:
         print(f"project {project} has no movies")
     for movie in found:
-        print(f"{movie['id']}  {movie['slug']:<24} {movie.get('status', '?'):<10} "
+        print(f"{movie['id']}  {(movie.get('slug') or '-'):<24} "
+              f"{movie.get('status', '?'):<10} "
               f"{(movie.get('created') or '')[:16]}")
 
 
