@@ -653,11 +653,17 @@ def run_board(ref: str, opts) -> int:
             # record now and this was never updated, so `record != 0` was true of
             # every successful render: all ten panels billed, all ten were
             # reported as `exited {…}`, and the board recorded none of them.
-            record = SUB.execute(entry, payload, bindings, token, args)
+            submitted = SUB.execute(entry, payload, bindings, token, args)
         except (SUB.SubmitError, RA.ReplicateError) as exc:
             print(f"  FAILED — {exc}", file=sys.stderr)
             failed.append((label, str(exc)))
             continue
+        # **Read back by id.** `execute` returns the record as WRITTEN, where
+        # `outputs` is a list of bare node ids; the read route expands each into
+        # an asset, and the copy below needs the name as well as the id. The id
+        # comes from the submission rather than from `<project>/latest`, so two
+        # runs landing close together in one project cannot be confused.
+        record = R.resolve_run(submitted["id"], owner)
         outs = record.get("outputs") or []
         if not outs:
             failed.append((label, "the run recorded no output"))
@@ -670,6 +676,23 @@ def run_board(ref: str, opts) -> int:
         # second row on one blob is copy-on-write (#334) and the delete route
         # destroys the shared bytes when either row goes.
         storyboard = SC.scene_folder(manifest, "storyboard")
+        # **The panel being replaced still holds the name.** A stale panel is
+        # re-rendered under the same `<shot>-p<n>` file name, so the rename
+        # collided with the copy it was superseding and no stale panel could ever
+        # be re-boarded — the render billed, the copy landed, and the rename
+        # refused. The old copy is what the new one replaces, so it goes; the
+        # run that produced it keeps its own output either way.
+        # **Renamed aside, never deleted.** Every panel's bindings are resolved
+        # before the submit loop starts, and a panel's inputs include the panels
+        # before it — so deleting the copy this one supersedes dangles a
+        # reference a later panel is already holding, and the run is refused with
+        # `input_images[n] names no node`. A rename keeps the node id valid for
+        # whatever still points at it and frees the name for the new copy.
+        stamp = R._now().replace(":", "").replace("-", "")[:15]
+        for child in store.children_of(storyboard):
+            if child["name"] == dest_name:
+                stem, ext = os.path.splitext(dest_name)
+                store.rename_node(child["id"], f"{stem}--superseded-{stamp}{ext}")
         copied = store.copy_nodes([src], storyboard)["nodes"][0]
         if copied["name"] != dest_name:
             store.rename_node(copied["id"], dest_name)

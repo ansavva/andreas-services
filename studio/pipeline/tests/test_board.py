@@ -21,6 +21,8 @@ copy and drift from the original.
 from __future__ import annotations
 
 import json
+import pathlib
+from types import SimpleNamespace
 
 import pytest
 from click.testing import CliRunner
@@ -584,3 +586,106 @@ def test_a_shot_can_ask_for_the_characters_references(library, scene, no_network
     args = BOARD.shot_args(m, shot, REG.get("kling"), _opts())
     assert args.character == ("subject-a",)
     assert args.pick_tag == "face"
+
+
+# ── the whole board, end to end ─────────────────────────────────────────────
+#
+# **Every dry run in this file passes on a `scenes board` that cannot work.**
+# Six bugs shipped through this suite, and each was one module handing another a
+# shape it did not expect — a run record where an exit code was read, bare node
+# ids where assets were, a project slug where a record was, a name already taken,
+# a node already deleted. None is reachable without a submit, so none was
+# reachable by a test, and every one was found by paying a model to find it.
+#
+# These drive the real path with the provider stubbed at its three seams:
+# creating a prediction, polling it, and downloading what it made.
+
+
+@pytest.fixture
+def a_model_that_answers(monkeypatch, tmp_path):
+    """Replicate, replaced by three functions that succeed."""
+    monkeypatch.setattr(
+        "studio_pipeline.adapters.replicate.create_prediction",
+        lambda *_a, **_k: {"id": "pred-1", "status": "starting"},
+    )
+    monkeypatch.setattr(
+        "studio_pipeline.adapters.replicate.poll",
+        lambda *_a, **_k: {"id": "pred-1", "status": "succeeded",
+                           "output": ["https://example.invalid/out.png"], "metrics": {}},
+    )
+
+    def download(_url, dest):
+        pathlib.Path(dest).write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 64)
+        return dest
+
+    monkeypatch.setattr("studio_pipeline.adapters.replicate.download", download)
+
+
+def _board(monkeypatch, ref, **kw):
+    """`scenes board` with the approval answered, which is the only thing a test
+    may answer for a person — the payload it approves is the fixture's own."""
+    monkeypatch.setattr("click.confirm", lambda *_a, **_k: True)
+    opts = SimpleNamespace(project=None, dry_run=False, dest=None, review_sheet=None,
+                           shot=(), panel=None, redo=False, **kw)
+    return BOARD.run_board(ref, opts)
+
+
+def test_a_boarded_panel_records_the_run_the_node_and_the_copy(
+    library, scene, no_network, a_model_that_answers, monkeypatch
+):
+    """**The path six bugs lived on.**
+
+    A panel that renders must come back with the run that made it, the node it
+    was copied to, and the run output it came from. Every one of those is written
+    after the submit, so a dry run proves none of it.
+    """
+    _board(monkeypatch, f"porch-teaser/{PLANNED}")
+
+    panel = SC.scene_shots(SC.resolve_scene(f"porch-teaser/{PLANNED}"))[1]["panels"][0]
+    assert panel["run"].startswith("run-")
+    assert panel["node"].startswith("node-")
+    assert panel["source_node"].startswith("node-")
+    assert panel["boarded"]
+    assert not panel["stale"]
+
+
+def test_the_copy_is_named_for_its_shot_and_panel(
+    library, scene, no_network, a_model_that_answers, monkeypatch
+):
+    """The board holds a copy under a predictable name, so a person reading the
+    folder can tell which panel is which."""
+    _board(monkeypatch, f"porch-teaser/{PLANNED}")
+
+    record = SC.resolve_scene(f"porch-teaser/{PLANNED}")
+    names = {c["name"] for c in store.children_of(SC.scene_folder(record, "storyboard"))}
+    assert "shot-02-p1.png" in names
+
+
+def test_a_stale_panel_re_renders_over_the_copy_it_supersedes(
+    library, scene, no_network, a_model_that_answers, monkeypatch
+):
+    """**Revising a prompt and re-boarding that panel never worked.**
+
+    The new copy lands under the same `<shot>-p<n>` name the old one holds, so
+    the rename collided and the render was billed and then discarded. The
+    superseded copy is renamed aside rather than deleted, because a panel's
+    inputs include the panels before it and every binding is resolved before the
+    submit loop starts — deleting one dangles a reference a later panel holds.
+    """
+    ref = f"porch-teaser/{PLANNED}"
+    _board(monkeypatch, ref)
+    record = SC.resolve_scene(ref)
+    first = SC.scene_shots(record)[1]["panels"][0]["node"]
+
+    shots = SC.scene_shots(record)
+    shots[1]["panels"][0]["stale"] = True
+    SC.save_shots(record, shots)
+    _board(monkeypatch, ref)
+
+    after = SC.scene_shots(SC.resolve_scene(ref))[1]["panels"][0]
+    assert after["node"] != first, "the panel points at the new copy"
+    names = [c["name"] for c in store.children_of(SC.scene_folder(record, "storyboard"))]
+    assert "shot-02-p1.png" in names
+    assert any("superseded" in n for n in names), "the old copy is kept, renamed"
+    # And the node a later panel might still be holding is still resolvable.
+    assert store.node(first)["id"] == first
