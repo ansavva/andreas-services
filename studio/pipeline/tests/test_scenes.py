@@ -119,6 +119,26 @@ def test_new_creates_the_record_and_its_shot_rows(library, tmp_path):
     assert record["folder"].startswith("node-")
 
 
+def test_a_shot_read_back_carries_its_position(library, tmp_path):
+    """**`n` is derived on read, never stored.**
+
+    It is the shot's 1-based position, which `order` already decides — storing it
+    would be a second answer to one question and would go stale the first time a
+    plan was reordered. `storyboard.normalise` sets it while building a plan from
+    JSON, so a freshly ingested scene had it and a scene *read back from the API*
+    did not: the rows come off `SHOT#` and had never been through `normalise`.
+    Everything downstream reads it — `--shot 3`, the handoff hint, panel slugs —
+    so `scenes check` on a stored plan died with `KeyError: 'n'`.
+    """
+    project = PROJECTS.resolve("porch-teaser")
+    created = SC.new_scene(project, "the-encounter", _plan(tmp_path))
+
+    reread = SC.scene_shots(SC.resolve_scene(created["id"]))
+
+    assert [s["n"] for s in reread] == [1, 2]
+    assert [s["n"] for s in SC.scene_shots(created)] == [1, 2]
+
+
 def test_a_slug_shaped_like_a_run_id_is_accepted_now(library, tmp_path):
     """**This was refused, and the reason expired.**
 

@@ -186,7 +186,7 @@ def resolve_scene(ref: str, default_project: str | None = None) -> dict:
     if not hits:
         die(f"no scene matching {sid!r} in project {record['slug']}")
     die(f"{sid!r} is ambiguous in project {record['slug']}: "
-        + ", ".join(f"{s['id']} ({s['slug']})" for s in hits[:5]))
+        + ", ".join(f"{s['id']} ({s.get('slug') or '-'})" for s in hits[:5]))
 
 
 def with_project(record: dict) -> dict:
@@ -221,8 +221,18 @@ def list_scenes(project: dict) -> list[dict]:
 
 
 def scene_shots(record: dict) -> list[dict]:
-    """A scene's shots, in `order`. The `SHOT#` rows the API returns with it."""
-    return record.get("shots") or []
+    """A scene's shots, in `order`. The `SHOT#` rows the API returns with it.
+
+    **`n` is derived here, not stored.** It is the shot's 1-based position, which
+    `order` already decides — storing it would be a second answer to one question
+    and would go stale the first time a plan was reordered. `storyboard.normalise`
+    sets it while building a plan from JSON, and everything downstream (`--shot 3`,
+    the handoff hint, panel slugs) reads it; a scene read back from the API had
+    never been through `normalise`, so those rows arrived without it and the
+    first thing to reach for one raised `KeyError: 'n'`.
+    """
+    shots = sorted(record.get("shots") or [], key=lambda s: s.get("order") or 0)
+    return [{**shot, "n": i} for i, shot in enumerate(shots, 1)]
 
 
 def scene_output_node(record: dict) -> str | None:
@@ -655,7 +665,8 @@ def do_list(project):
     if not found:
         print(f"project {project} has no scenes")
     for scene in found:
-        print(f"{scene['id']}  {scene['slug']:<24} {scene.get('status', '?'):<10} "
+        print(f"{scene['id']}  {(scene.get('slug') or '-'):<24} "
+              f"{scene.get('status', '?'):<10} "
               f"{(scene.get('created') or '')[:16]}")
 
 
