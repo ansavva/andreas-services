@@ -107,12 +107,18 @@ def selection_nodes(record, pick: list[str] | None = None, tags: list[str] | Non
                     slots: list[int] | None = None, limit: int | None = None) -> list[dict]:
     """The ordered entries a model would actually be shown.
 
-    **The resolution is the API's.** `?pick=` / `?tag=` / `default_set` /
-    everything, in that order, with the cap enforced server-side — an over-cap
-    selection comes back as `api.Conflict` with the index in the message rather
-    than silently truncated, because which images a generation saw must not be
-    decided by whatever a listing returned. The caller catches that; nothing
-    here converts it.
+    **The resolution is the API's.** `?tag=` / `?pick=` / `?group=` /
+    `default_set` / everything, in that order, with the cap enforced
+    server-side — an over-cap selection comes back as `api.Conflict` with the
+    index in the message rather than silently truncated, because which images a
+    generation saw must not be decided by whatever a listing returned. The
+    caller catches that; nothing here converts it.
+
+    **`pick` names FILES and `tag` names TAGS**, both comma-separated, and a
+    filter matching nothing is refused rather than answered with an empty list.
+    `pick` was matched against a reference's *group* until now — a single value,
+    compared with `==`, while this function's only caller sends a list of
+    filenames — so it selected nothing every time and said so nowhere.
 
     `slots` is applied HERE and only here: it is 1-based positional picking
     *within* the resolved selection ("send me the 1st and 3rd of what you would

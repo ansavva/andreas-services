@@ -77,6 +77,12 @@ def _reason(what: str):
     empty, and a caller catching `RefError` should not have to catch both.
     `api.Conflict` deliberately passes straight through — it is the over-cap
     refusal, and it has a message of its own worth writing.
+
+    **Every other `ApiError` is wrapped too, and that is not tidying.** A filter
+    that matches nothing is a 400 now rather than an empty list, and 400 raises
+    the base class — which no caller of this module catches. Unwrapped, asking
+    for a reference by a name with a typo in it would end a run in a traceback
+    instead of one `error:` line naming the typo.
     """
     err = io.StringIO()
     try:
@@ -87,6 +93,10 @@ def _reason(what: str):
         raise RefError(f"could not read {what}:\n{detail}") from exc
     except api.NotFound as exc:
         raise RefError(f"could not read {what}: {exc}") from exc
+    except api.Conflict:
+        raise
+    except api.ApiError as exc:
+        raise RefError(str(exc)) from exc
     finally:
         # Anything not part of a failure still belongs on the real stderr.
         rest = err.getvalue()
@@ -126,6 +136,12 @@ def character_selection(character: str, slots: list[int] | None = None,
     The entries carry `name` because a person reviewing a payload needs to know
     which picture is `[Image3]`, and a node id does not say. Callers that only
     bind images want `character_ref_nodes`.
+
+    **`pick` names files; `tags` names tags.** The route matched `pick` against
+    a reference's *group* until now, so naming files selected nothing at all and
+    reported it nowhere — `--pick` bound zero images and the generation went out
+    without them. A filter that matches nothing is refused now, so an empty
+    selection cannot reach a model.
     """
     record = character_record(character)
     try:

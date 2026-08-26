@@ -259,6 +259,168 @@ def test_assembling_a_scene_records_everything_it_reports(empty_api):
     assert body["output"]["node"] == node
 
 
+def test_a_scene_stores_the_storyboard_the_cli_authors(empty_api):
+    """**The whole plan survives the round trip, not the four fields it started with.**
+
+    A shot row held `order`, `prompt`, `run` and `panel` — the whole of a shot
+    before storyboards existed — and the CLI has authored `beat`, `panels`,
+    `motion`, `continues` and `opens_on` since. They were accepted, dropped on
+    the way in, and a seven-shot plan came back as seven rows of `{id, order}`.
+    Nothing failed: `scenes new` printed the shot list and exited 0, so the plan
+    looked stored and no board could be rendered from it.
+
+    `panels` is a list of objects and `motion` is an object; both go through
+    DynamoDB nested and come back the same shape.
+    """
+    project = _project(empty_api)
+    scene = _scene(
+        empty_api,
+        project,
+        shots=[{
+            "id": "shot-01",
+            "beat": "The whistle comes off",
+            "continues": False,
+            "panels": [
+                {"n": 1, "role": "start", "prompt": "square to camera",
+                 "model": "gpt-image-2", "references": {"characters": ["subject-a"]}},
+                {"n": 2, "role": "sample", "prompt": "the peak of the move"},
+            ],
+            "motion": {"prompt": "he lifts the lanyard over his head",
+                       "duration": 6, "model": "kling",
+                       "references": {"max_scene_frames": 4}},
+        }],
+    )
+
+    shot = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]
+
+    assert shot["beat"] == "The whistle comes off"
+    assert shot["continues"] is False
+    assert shot["motion"]["duration"] == 6
+    assert shot["motion"]["references"]["max_scene_frames"] == 4
+    assert [panel["role"] for panel in shot["panels"]] == ["start", "sample"]
+    assert shot["panels"][0]["references"]["characters"] == ["subject-a"]
+
+
+def test_a_scene_stores_the_setting_and_defaults_every_shot_inherits(empty_api):
+    """Without these a stored plan can be listed and not re-rendered.
+
+    `setting` is prepended byte-identically to every panel prompt and `defaults`
+    carries the models and the technical block each shot inherits. Both were sent
+    by `POST /api/scenes` and neither was read, so a shot came back naming a
+    `panel_model` nothing had recorded.
+    """
+    project = _project(empty_api)
+    resp = empty_api.post(
+        "/api/scenes",
+        json={
+            "project": project["id"], "slug": "light-flex", "title": "Light flex",
+            "logline": "an inventory, front to back",
+            "setting": "A plain mid-grey seamless studio cyclorama.",
+            "defaults": {"model": "kling", "panel_model": "gpt-image-2",
+                         "extra": {"mode": "pro", "generate_audio": False}},
+            "version": 3,
+            "shots": [],
+        },
+    )
+
+    assert resp.status_code == 201, resp.get_data(as_text=True)
+    body = empty_api.get(f"/api/scenes/{resp.get_json()['id']}").get_json()
+    assert body["setting"] == "A plain mid-grey seamless studio cyclorama."
+    assert body["defaults"]["panel_model"] == "gpt-image-2"
+    assert body["defaults"]["extra"]["generate_audio"] is False
+    assert body["logline"] == "an inventory, front to back"
+    assert body["version"] == 3
+
+
+def test_revising_a_plan_can_move_the_setting(empty_api):
+    """A revision re-ingests the whole plan, envelope included."""
+    project = _project(empty_api)
+    scene = _scene(empty_api, project)
+
+    empty_api.patch(f"/api/scenes/{scene['id']}", json={"setting": "A rooftop at dusk."})
+
+    assert empty_api.get(
+        f"/api/scenes/{scene['id']}"
+    ).get_json()["setting"] == "A rooftop at dusk."
+
+
+def test_a_revision_keeps_the_panels_it_does_not_name(empty_api):
+    """The merge rule, applied to the fields a storyboard actually has.
+
+    Rewriting a beat must not discard the boarded panel underneath it — the same
+    promise `run` and `panel` already had, extended to the rest of the plan when
+    the rest of the plan started being stored.
+    """
+    project = _project(empty_api)
+    scene = _scene(empty_api, project, shots=[{"id": "shot-01", "beat": "first pass"}])
+    empty_api.patch(
+        f"/api/scenes/{scene['id']}/shots/shot-01",
+        json={"panels": [{"n": 1, "node": "node-abc", "boarded": True}]},
+    )
+
+    body = empty_api.patch(
+        f"/api/scenes/{scene['id']}/shots",
+        json={"shots": [{"id": "shot-01", "beat": "second pass"}]},
+    ).get_json()
+
+    assert body["shots"][0]["beat"] == "second pass"
+    assert body["shots"][0]["panels"] == [{"n": 1, "node": "node-abc", "boarded": True}]
+
+
+def test_a_boarded_panel_is_reported_as_something_a_page_can_draw(empty_api):
+    """A stored panel names a node; a drawn panel needs a URL.
+
+    The same expansion the cut already had, for the images a board is made of —
+    batched into one catalog read for the whole scene rather than one per panel.
+    """
+    project = _project(empty_api)
+    run = empty_api.post(
+        "/api/runs",
+        json={"project": project["id"], "kind": "image",
+              "engine": "gpt-image-2", "model": "openai/gpt-image-2"},
+    ).get_json()
+    node = empty_api.post(
+        f"/api/runs/{run['id']}/outputs",
+        json={"name": "panel-01.png", "size": 10, "content_type": "image/png"},
+    ).get_json()["node"]
+
+    scene = _scene(
+        empty_api, project,
+        shots=[{"id": "shot-01", "panels": [{"n": 1, "node": node, "boarded": True}]}],
+    )
+
+    panel = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]["panels"][0]
+    assert panel["node"] == node
+    assert panel["image"]["name"] == "panel-01.png"
+    assert panel["image"]["url"]
+
+
+def test_an_unboarded_panel_is_reported_without_an_image(empty_api):
+    """A placeholder is the normal state of a board and must not 500 it."""
+    project = _project(empty_api)
+    scene = _scene(
+        empty_api, project,
+        shots=[{"id": "shot-01", "panels": [{"n": 1, "prompt": "not rendered yet"}]}],
+    )
+
+    panel = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]["panels"][0]
+    assert "image" not in panel
+    assert panel["prompt"] == "not rendered yet"
+
+
+def test_a_scene_listing_row_carries_its_slug(empty_api):
+    """`<project>/<slug>` is how a person names a scene, so a row without one
+    cannot be resolved. Every scene command in the CLI reads it off this row, and
+    read it as a required key — so its absence was a traceback rather than a miss.
+    """
+    project = _project(empty_api)
+    _scene(empty_api, project, slug="stadium-encounter")
+
+    rows = empty_api.get(f"/api/scenes?project={project['id']}").get_json()["scenes"]
+
+    assert [row["slug"] for row in rows] == ["stadium-encounter"]
+
+
 def test_deleting_a_scene_removes_its_shots(empty_api, catalog_table):
     """A `SHOT#` row outliving its scene is a row nothing can reach."""
     project = _project(empty_api)

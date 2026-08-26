@@ -128,9 +128,11 @@ def resolve_movie(ref: str, default_project: str | None = None) -> dict:
         die(f"project {record['slug']} has no movies")
     if mid in ("latest", "last"):
         return entities.get_movie(found[0]["id"])
-    hits = [m for m in found if m["slug"] == mid]
+    # `.get`, for the reason `scenes.resolve_scene` spells out: rows written
+    # before the listing projection carried `slug` do not have one.
+    hits = [m for m in found if m.get("slug") == mid]
     if not hits:
-        hits = [m for m in found if mid in m["slug"]]
+        hits = [m for m in found if mid in (m.get("slug") or "")]
     if len(hits) == 1:
         return entities.get_movie(hits[0]["id"])
     if not hits:

@@ -59,7 +59,10 @@ def create_movie():
             "scenes": scenes,
             "output": None,
         },
-        listing={"status": "planned", "title": body.get("title") or slug},
+        # `slug` is in the projection because a row without one cannot be
+        # addressed by name, and `<project>/<slug>` is how a person names a
+        # movie. `scenes.py` carries the same field for the same reason.
+        listing={"status": "planned", "title": body.get("title") or slug, "slug": slug},
     )
     return jsonify(record), 201, {"Location": f"/api/movies/{record['id']}"}
 

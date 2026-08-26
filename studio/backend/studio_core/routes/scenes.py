@@ -40,6 +40,16 @@ bp = Blueprint("scenes", __name__, url_prefix="/api")
 
 KIND = catalog.ENTITY_SCENE
 
+# The plan's own fields on the envelope, as opposed to on its shots.
+#
+# `setting` is the paragraph prepended byte-identically to every panel prompt and
+# `defaults` carries the model, panel model, duration and technical block every
+# shot inherits — so without them a stored plan cannot be re-rendered or drawn,
+# only listed. Both were sent by `POST /api/scenes` from the first storyboard
+# release and neither was read here, which is why a scene came back with shots
+# that named a `panel_model` nothing had recorded.
+SCENE_PLAN = ("setting", "defaults", "logline", "version")
+
 
 def _scene(scene_id: str, held: dict) -> dict:
     return support.entity_at(KIND, g.library, scene_id, held)
@@ -78,8 +88,13 @@ def create_scene():
             "status": "planned",
             "output": None,
             "error": None,
+            **{field: body[field] for field in SCENE_PLAN if field in body},
         },
-        listing={"status": "planned", "title": body.get("title") or slug},
+        # `slug` belongs in the projection because a row without one cannot be
+        # addressed by name. `GET /api/scenes` omitted it, so every caller that
+        # resolved `<project>/<slug>` — which is every scene command in the CLI —
+        # raised `KeyError: 'slug'` against a row it had just been handed.
+        listing={"status": "planned", "title": body.get("title") or slug, "slug": slug},
     )
 
     written = catalog.put_shots(record["id"], shots) if shots else []
@@ -105,13 +120,54 @@ def list_scenes():
     return jsonify({"scenes": rows, "cursor": None}), 200
 
 
+def _drawable(entries: list[dict]) -> list[dict]:
+    """A scene's shots with every image pointer expanded into something drawable.
+
+    A stored shot holds node ids and nothing else — the boarded panel, the
+    handoff frame it opens on, the clip it rendered. That is the right thing to
+    store and the wrong thing to answer with: a page cannot draw an id, and the
+    CLI would otherwise presign each one itself, one round trip per panel.
+
+    **One batched read for the whole scene**, because a seven-shot board is
+    twenty-odd pointers and `support.assets` takes them together. The expansions
+    sit beside the pointers rather than replacing them (`panel.node` stays, and
+    gains `panel.image`), so a reader that only wants the id is unaffected —
+    the same shape `with_output` uses for the cut.
+    """
+    wanted: list[str] = []
+    for shot in entries:
+        for node in (shot.get("node"), (shot.get("opens_on") or {}).get("node")):
+            if node:
+                wanted.append(node)
+        for panel in shot.get("panels") or []:
+            if panel.get("node"):
+                wanted.append(panel["node"])
+
+    found = {a["node"]: a for a in support.assets(list(dict.fromkeys(wanted)))}
+
+    drawn = []
+    for shot in entries:
+        shot = dict(shot)
+        if shot.get("node") in found:
+            shot["clip"] = found[shot["node"]]
+        opens_on = shot.get("opens_on") or {}
+        if opens_on.get("node") in found:
+            shot["opens_on"] = {**opens_on, "frame": found[opens_on["node"]]}
+        shot["panels"] = [
+            {**panel, **({"image": found[panel["node"]]} if panel.get("node") in found else {})}
+            for panel in shot.get("panels") or []
+        ]
+        drawn.append(shot)
+    return drawn
+
+
 @bp.get("/scenes/<scene_id>")
 def get_scene(scene_id: str):
-    """The record and its shots, in `order`."""
+    """The record, its plan, and its shots with every image expanded, in `order`."""
     held = support.memberships()
     record = _scene(scene_id, held)
     return jsonify({**support.with_output(record),
-                    "shots": catalog.shots(record["id"])}), 200
+                    "shots": _drawable(catalog.shots(record["id"]))}), 200
 
 
 # What a PATCH may write, and it is the list of what actually writes to a scene.
@@ -126,7 +182,13 @@ def get_scene(scene_id: str):
 # read: `ffmpeg` ships in the CLI's wheel and the Lambda has none, so how the
 # file was made is not this service's to validate. `movies.py` accepted `output`
 # already, which is why a movie assembled and a scene did not.
-SCENE_FIELDS = ("title", "status", "error", "characters", "stitch", "output", "assembled")
+#
+# `SCENE_PLAN` joins it for the same reason it joins the create route: a scene is
+# revised by re-ingesting its plan, and a revision that could not move `setting`
+# or `defaults` would leave the envelope describing the plan before last.
+SCENE_FIELDS = (
+    "title", "status", "error", "characters", "stitch", "output", "assembled", *SCENE_PLAN,
+)
 
 # The projection the listing row carries, and the only fields worth a second
 # write. A grid draws a scene from these.
@@ -173,13 +235,17 @@ def replace_shots(scene_id: str):
 
 @bp.patch("/scenes/<scene_id>/shots/<shot_id>")
 def update_shot(scene_id: str, shot_id: str):
-    """One shot: which run rendered it, which panel it came from, its wording."""
+    """One shot: which run rendered it, which panel it came from, its plan.
+
+    `catalog.SHOT_FIELDS` rather than a list of its own — this route held the
+    third copy of "what a shot is", and the narrowest one, so `scenes board`
+    recording a boarded panel wrote nothing and reported success.
+    """
     body = support.body()
     held = support.memberships()
     record = _scene(scene_id, held)
 
-    changes = {field: body[field] for field in ("run", "panel", "prompt", "order")
-               if field in body}
+    changes = {field: body[field] for field in catalog.SHOT_FIELDS if field in body}
     if not changes:
         raise ValidationError("nothing to change")
     return jsonify(catalog.update_shot(record["id"], shot_id, changes)), 200

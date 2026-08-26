@@ -2871,15 +2871,34 @@ def shots(scene_id: str) -> list[dict]:
     return entries
 
 
+# Everything a shot row holds, and it is the list of what a storyboard IS.
+#
+# It held four names — `order`, `prompt`, `run`, `panel` — which was the whole
+# of a shot before storyboards existed. The CLI has authored `beat`, `panels`,
+# `motion`, `continues` and `opens_on` since, and every one of them was dropped
+# here on the way in: a seven-shot plan ingested clean, reported success, and
+# came back as seven rows of `{id, order, created}`. The plan was never stored,
+# so nothing could draw it and `scenes board` had nothing to render from.
+#
+# `panels` is a list of objects and `motion` is an object; both survive the trip
+# because `_serialize` marshals nested values and `_numbers` walks them back.
+#
+# The two halves are worth keeping distinct in your head even though the merge
+# treats them alike — authored: `order`, `beat`, `prompt`, `panels`, `motion`,
+# `continues`, `status`; recorded by a render: `run`, `runref`, `node`,
+# `shot_node`, `panel`, `duration`, `rendered`, `opens_on`.
+SHOT_FIELDS = (
+    "order", "beat", "prompt", "panels", "motion", "continues", "status",
+    "opens_on", "run", "runref", "node", "shot_node", "panel", "duration", "rendered",
+)
+
+
 def _shot_item(scene_id: str, shot_id: str, entry: dict) -> dict:
     return _put(
         _entity_pk(ENTITY_SCENE, scene_id),
         f"{SHOT_PREFIX}{shot_id}",
         {
-            "order": entry.get("order"),
-            "prompt": entry.get("prompt"),
-            "run": entry.get("run"),
-            "panel": entry.get("panel"),
+            **{field: entry.get(field) for field in SHOT_FIELDS},
             "created": entry.get("created") or _now(),
         },
     )
@@ -2888,10 +2907,15 @@ def _shot_item(scene_id: str, shot_id: str, entry: dict) -> dict:
 def put_shots(scene_id: str, entries: list[dict]) -> list[dict]:
     """Revise a scene's plan **onto** the work already rendered, not over it.
 
-    A plan revision is a person rewriting prompts. `run` and `panel` are what a
-    render put there, and a plain replace would throw them away — so a shot
-    matched by id keeps both unless the request names them. Shots the revision
-    drops are deleted; new ones are appended.
+    A plan revision is a person rewriting prompts. `run`, `node` and `panel` are
+    what a render put there, and a plain replace would throw them away — so a
+    shot matched by id keeps every field the request does not name. Shots the
+    revision drops are deleted; new ones are appended.
+
+    That rule is `entry.get(field, previous.get(field))` and it is per-field
+    rather than per-half on purpose: `--force` re-ingest sends a plan the CLI has
+    already merged, and a route that guessed which half a field belonged to would
+    disagree with it. Naming a field wins; not naming one keeps what was there.
     """
     existing = {entry["id"]: entry for entry in shots(scene_id)}
     now = _now()
@@ -2901,13 +2925,11 @@ def put_shots(scene_id: str, entries: list[dict]) -> list[dict]:
     for index, entry in enumerate(entries):
         shot_id = entry.get("id") or f"shot-{uuid.uuid4()}"
         previous = existing.pop(shot_id, {})
-        merged = {
-            "order": entry.get("order") if entry.get("order") is not None else (index + 1) * 10,
-            "prompt": entry.get("prompt", previous.get("prompt")),
-            "run": entry.get("run", previous.get("run")),
-            "panel": entry.get("panel", previous.get("panel")),
-            "created": previous.get("created") or now,
-        }
+        merged = {field: entry.get(field, previous.get(field)) for field in SHOT_FIELDS}
+        merged["order"] = (
+            merged["order"] if merged.get("order") is not None else (index + 1) * 10
+        )
+        merged["created"] = previous.get("created") or now
         written.append({**merged, "id": shot_id})
         steps.append((_shot_item(scene_id, shot_id, merged), None))
 
@@ -2923,13 +2945,18 @@ def put_shots(scene_id: str, entries: list[dict]) -> list[dict]:
 
 
 def update_shot(scene_id: str, shot_id: str, changes: dict) -> dict:
-    """One shot: which run rendered it, which panel it came from, its wording."""
+    """One shot: which run rendered it, which panel it came from, its plan.
+
+    The same field list as `put_shots`, because a shot patched one field at a
+    time and a shot rewritten by a plan revision are the same row. They held two
+    different lists once, and the narrower one silently discarded whatever the
+    other had just written.
+    """
     entry = next((item for item in shots(scene_id) if item["id"] == shot_id), None)
     if entry is None:
         raise NotFoundError(shot_id)
 
-    merged = {**entry, **{k: v for k, v in changes.items() if k in
-                          ("order", "prompt", "run", "panel")}}
+    merged = {**entry, **{k: v for k, v in changes.items() if k in SHOT_FIELDS}}
     _write([(_shot_item(scene_id, shot_id, merged), None)])
     return merged
 

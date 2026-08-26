@@ -768,6 +768,127 @@ def test_the_default_set_is_the_source_when_nothing_is_filtered(empty_api):
     assert [entry["node"] for entry in body["selection"]] == chosen
 
 
+def test_pick_names_files_and_keeps_the_order_they_were_named_in(empty_api):
+    """**`pick` names FILES.**
+
+    It was matched against `group`, with `==`, against a single value — while its
+    only caller sent a comma-separated list of filenames. So `--pick a,b` matched
+    nothing, silently, and the generation went out with no references at all.
+
+    Order is the caller's, because `--pick` means "send these" and which one is
+    `[Image1]` is part of that.
+    """
+    character = _with_references(empty_api, 3)
+
+    body = empty_api.get(
+        f"/api/characters/{character['id']}/selection?pick=2.webp,0.webp"
+    ).get_json()
+
+    assert body["source"] == "pick"
+    assert [entry["name"] for entry in body["selection"]] == ["2.webp", "0.webp"]
+
+
+def test_pick_accepts_a_stem_or_a_node_id(empty_api):
+    """The three things a person actually has: a name, a name without its
+    extension, and — in a script — the id."""
+    character = _with_references(empty_api, 2)
+    node = catalog.references(character["id"])[1]["node"]
+
+    by_stem = empty_api.get(f"/api/characters/{character['id']}/selection?pick=1").get_json()
+    by_id = empty_api.get(f"/api/characters/{character['id']}/selection?pick={node}").get_json()
+
+    assert [entry["node"] for entry in by_stem["selection"]] == [node]
+    assert [entry["node"] for entry in by_id["selection"]] == [node]
+
+
+def test_pick_refuses_a_name_that_matches_nothing(empty_api):
+    """**The property whose absence cost a debugging session.**
+
+    Asking for images by name and being handed none is not a selection, it is a
+    typo — and the next thing down the pipe spends money on it.
+    """
+    character = _with_references(empty_api, 2)
+
+    resp = empty_api.get(f"/api/characters/{character['id']}/selection?pick=nope.webp")
+
+    assert resp.status_code == 400
+    assert "nope.webp" in resp.get_json()["error"]
+
+
+def test_pick_reports_an_ambiguous_stem_rather_than_choosing(empty_api):
+    """Two files sharing a stem in different groups is a real state, and picking
+    one silently is how a shoot carries a reference nobody chose."""
+    character = _create(empty_api)
+    pool = _child(character["root"], "reference")["node_id"]
+    for group, name in (("face", "plate.webp"), ("body", "plate.png")):
+        node = _uploaded(empty_api, pool, name)
+        empty_api.post(
+            f"/api/characters/{character['id']}/references",
+            json={"node": node["node_id"], "group": group, "tags": [group]},
+        )
+
+    resp = empty_api.get(f"/api/characters/{character['id']}/selection?pick=plate")
+
+    assert resp.status_code == 400
+    assert "matches 2" in resp.get_json()["error"]
+
+
+def test_every_named_tag_has_to_be_present(empty_api):
+    """`--pick-tag` has always promised AND. The route compared the whole
+    comma-joined string against one tag, so one tag worked and two never did."""
+    character = _create(empty_api)
+    pool = _child(character["root"], "reference")["node_id"]
+    for name, tags in (("a.webp", ["face", "front"]), ("b.webp", ["face", "profile"])):
+        node = _uploaded(empty_api, pool, name)
+        empty_api.post(
+            f"/api/characters/{character['id']}/references",
+            json={"node": node["node_id"], "group": "face", "tags": tags},
+        )
+
+    both = empty_api.get(
+        f"/api/characters/{character['id']}/selection?tag=face,front"
+    ).get_json()
+
+    assert [entry["name"] for entry in both["selection"]] == ["a.webp"]
+
+
+def test_a_tag_that_matches_nothing_is_refused(empty_api):
+    character = _with_references(empty_api, 2)
+
+    resp = empty_api.get(f"/api/characters/{character['id']}/selection?tag=face,poolside")
+
+    assert resp.status_code == 400
+
+
+def test_group_is_its_own_filter_now_that_pick_is_not(empty_api):
+    """`pick` used to fall back to `group`, which is what made the two mean the
+    same thing. They are separate parameters, so both can be honest."""
+    character = _create(empty_api)
+    pool = _child(character["root"], "reference")["node_id"]
+    for name, group in (("a.webp", "face"), ("b.webp", "body")):
+        node = _uploaded(empty_api, pool, name)
+        empty_api.post(
+            f"/api/characters/{character['id']}/references",
+            json={"node": node["node_id"], "group": group, "tags": [group]},
+        )
+
+    body = empty_api.get(f"/api/characters/{character['id']}/selection?group=body").get_json()
+
+    assert body["source"] == "group"
+    assert [entry["name"] for entry in body["selection"]] == ["b.webp"]
+
+
+def test_a_selection_says_which_picture_each_slot_is(empty_api):
+    """A person reviewing a payload has to know which image is `[Image3]`, and a
+    node id does not say. The CLI documented this field for as long as the route
+    did not send it."""
+    character = _with_references(empty_api, 2)
+
+    body = empty_api.get(f"/api/characters/{character['id']}/selection?tag=face").get_json()
+
+    assert [entry["name"] for entry in body["selection"]] == ["0.webp", "1.webp"]
+
+
 # ──────────────────────────── the profile ────────────────────────────
 
 

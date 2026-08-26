@@ -174,9 +174,13 @@ def resolve_scene(ref: str, default_project: str | None = None) -> dict:
         die(f"project {record['slug']} has no scenes")
     if sid in ("latest", "last"):
         return with_project(entities.get_scene(found[0]["id"]))
-    hits = [s for s in found if s["slug"] == sid]
+    # `.get`, not `[...]`: the listing projection did not carry `slug` until the
+    # API started writing it, so every row created before then has none. Reading
+    # it as a required key turned "this scene predates the fix" into a traceback
+    # on every command that addresses a scene by name.
+    hits = [s for s in found if s.get("slug") == sid]
     if not hits:
-        hits = [s for s in found if sid in s["slug"]]
+        hits = [s for s in found if sid in (s.get("slug") or "")]
     if len(hits) == 1:
         return with_project(entities.get_scene(hits[0]["id"]))
     if not hits:
@@ -296,7 +300,7 @@ def new_scene(project: dict, slug: str, plan_path: str | None,
     if plan_path:
         SB.validate(doc)
 
-    existing = next((s for s in list_scenes(project) if s["slug"] == slug), None)
+    existing = next((s for s in list_scenes(project) if s.get("slug") == slug), None)
     if existing:
         if not force:
             die(f"{project['slug']}/{slug} already exists "
