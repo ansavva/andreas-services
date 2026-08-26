@@ -1,7 +1,16 @@
 import { useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { Alert, Badge, Button, Field, Input, Spinner, Text } from "@ansavva/design-system";
+import {
+  Alert,
+  Badge,
+  Button,
+  Drawer,
+  Field,
+  Input,
+  Spinner,
+  Text,
+} from "@ansavva/design-system";
 
 import { getScene, patchShot } from "../apis/studio";
 import { AppHeader } from "../components/common/AppHeader";
@@ -32,6 +41,9 @@ export function ScenePage() {
 
   const load = useCallback(() => getScene(sceneId), [sceneId]);
   const { data, loading, error, setData } = useResource(load);
+  // One viewer for the whole board rather than one per tile: a scene holds
+  // twenty-odd frames and twenty mounted drawers is twenty portals.
+  const [viewing, setViewing] = useState<RunAsset | null>(null);
 
   // The route answers with the merged shot, so the page swaps that one row in
   // rather than refetching the scene — a re-GET would re-sign every panel URL
@@ -149,14 +161,51 @@ export function ScenePage() {
                   n={index + 1}
                   bracketed={isBracketed(data.shots)}
                   onOpenRun={(run) => navigate(runPath(data.project, run))}
-                  onOpenNode={(node) => navigate(objectPath(node))}
+                  onView={setViewing}
                   onSave={saveShot}
                 />
               ))}
           </div>
         )}
       </section>
+
+      <FrameViewer asset={viewing} onClose={() => setViewing(null)} />
     </Shell>
+  );
+}
+
+/**
+ * One frame, big.
+ *
+ * A storyboard tile is 80px because a shot has several and a scene has seven of
+ * them; judging whether a pose is right needs the picture at a size you can
+ * actually read. Opening the node page would work and loses your place on the
+ * board — a drawer keeps the board underneath.
+ */
+function FrameViewer({ asset, onClose }: { asset: RunAsset | null; onClose: () => void }) {
+  const isVideo = (asset?.content_type ?? "").startsWith("video/");
+  return (
+    <Drawer.Root
+      open={asset !== null}
+      onOpenChange={(open: boolean) => {
+        if (!open) onClose();
+      }}
+      side="right"
+    >
+      <Drawer.Backdrop />
+      <Drawer.Panel className="flex w-full max-w-2xl flex-col gap-3 p-4">
+        <Drawer.Title>{asset?.name ?? "Frame"}</Drawer.Title>
+        {asset?.url &&
+          (isVideo ? (
+            <video src={asset.url} controls playsInline className="max-h-[75vh] w-full object-contain" />
+          ) : (
+            <img src={asset.url} alt="" className="max-h-[75vh] w-full object-contain" />
+          ))}
+        <div className="flex flex-wrap gap-2">
+          <Drawer.Close>Close</Drawer.Close>
+        </div>
+      </Drawer.Panel>
+    </Drawer.Root>
   );
 }
 
@@ -179,14 +228,14 @@ function ShotCard({
   n,
   bracketed,
   onOpenRun,
-  onOpenNode,
+  onView,
   onSave,
 }: {
   shot: Shot;
   n: number;
   bracketed: boolean;
   onOpenRun: (run: string) => void;
-  onOpenNode: (node: string) => void;
+  onView: (asset: RunAsset) => void;
   onSave: (shotId: string, body: Partial<Shot>) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
@@ -263,7 +312,7 @@ function ShotCard({
           tile and once as the reference it becomes. */}
       {shot.clip && (
         <div className="flex flex-wrap gap-2">
-          <Frame label="clip" asset={shot.clip} onOpen={onOpenNode} />
+          <Frame label="clip" asset={shot.clip} onOpen={onView} />
         </div>
       )}
 
@@ -273,7 +322,7 @@ function ShotCard({
         </Text>
       )}
 
-      <Sends shot={shot} bracketed={bracketed} onOpenNode={onOpenNode} />
+      <Sends shot={shot} bracketed={bracketed} onView={onView} />
 
       {motion?.prompt &&
         (editing ? (
@@ -560,11 +609,11 @@ function MotionEditor({
 function Sends({
   shot,
   bracketed,
-  onOpenNode,
+  onView,
 }: {
   shot: Shot;
   bracketed: boolean;
-  onOpenNode: (node: string) => void;
+  onView: (asset: RunAsset) => void;
 }) {
   const panels = shot.panels ?? [];
   const withRole = (role: PanelRole) => panels.filter((p) => p.role === role);
@@ -582,13 +631,13 @@ function Sends({
     <section className="flex flex-col gap-3 rounded-md border border-line p-2">
       <SendRow label="Start">
         {handoff?.frame ? (
-          <Frame hint="handoff" asset={handoff.frame} onOpen={onOpenNode} />
+          <Frame hint="handoff" asset={handoff.frame} onOpen={onView} />
         ) : startPanel ? (
           <Frame
             hint={panelHint(startPanel, false)}
             title={startPanel.prompt}
             asset={startPanel.image}
-            onOpen={onOpenNode}
+            onOpen={onView}
           />
         ) : (
           <Slot note="awaits previous shot" />
@@ -605,7 +654,7 @@ function Sends({
               hint={panelHint(endPanel, false)}
               title={endPanel.prompt}
               asset={endPanel.image}
-              onOpen={onOpenNode}
+              onOpen={onView}
             />
           ) : (
             <Slot note="not bracketed" />
@@ -620,11 +669,11 @@ function Sends({
             hint={panelHint(p, demoted.includes(p))}
             title={p.prompt}
             asset={p.image}
-            onOpen={onOpenNode}
+            onOpen={onView}
           />
         ))}
         {plates.map((a) => (
-          <Frame key={a.node} hint="plate" title={a.name} asset={a} onOpen={onOpenNode} />
+          <Frame key={a.node} hint="plate" title={a.name} asset={a} onOpen={onView} />
         ))}
         {references.length === 0 && plates.length === 0 && <Slot note="scene frames" />}
       </SendRow>
@@ -637,7 +686,7 @@ function Sends({
               hint="not sent"
               title={p.prompt}
               asset={p.image}
-              onOpen={onOpenNode}
+              onOpen={onView}
             />
           ))}
         </SendRow>
@@ -725,7 +774,9 @@ function Frame({
   hint?: string;
   title?: string;
   asset?: RunAsset;
-  onOpen: (node: string) => void;
+  /** Opens the frame in the board's viewer. The asset, not its id — the tile
+      already holds everything the drawer needs to draw it. */
+  onOpen: (asset: RunAsset) => void;
 }) {
   const isVideo = (asset?.content_type ?? "").startsWith("video/");
   const body = asset?.url ? (
@@ -754,10 +805,10 @@ function Frame({
 
   return (
     <span className="flex w-24 flex-col gap-1">
-      {asset?.node ? (
+      {asset?.url ? (
         <button
           type="button"
-          onClick={() => onOpen(asset.node)}
+          onClick={() => onOpen(asset)}
           title={title ?? asset.name}
           className="text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >

@@ -408,6 +408,58 @@ def test_an_unboarded_panel_is_reported_without_an_image(empty_api):
     assert panel["prompt"] == "not rendered yet"
 
 
+def test_a_plans_reference_block_comes_back_as_images(empty_api):
+    """**A board draws pictures; a plan names them.**
+
+    `references` says "this character, these plates" — a slug and some filenames.
+    Answering with that is answering with a filename, so the route resolves the
+    block into drawable assets.
+
+    The bug this pins: `entity_at` reads a bare string as an ID and resolves a
+    slug only when prefixed `slug:`. A plan holds slugs, so every lookup raised
+    `NotFoundError`, the tolerance swallowed it, and the board asked for its
+    plates and drew none — silently, and only visible in production.
+    """
+    project = _project(empty_api)
+    made = empty_api.post(
+        "/api/characters",
+        json={"slug": "subject-a", "display_name": "Subject A", "fictional": True},
+    )
+    assert made.status_code == 201, made.get_data(as_text=True)
+    character = made.get_json()
+    run = empty_api.post(
+        "/api/runs",
+        json={"project": project["id"], "kind": "image",
+              "engine": "gpt-image-2", "model": "openai/gpt-image-2"},
+    ).get_json()
+    node = empty_api.post(
+        f"/api/runs/{run['id']}/outputs",
+        json={"name": "plate_front.png", "size": 10, "content_type": "image/png"},
+    ).get_json()["node"]
+    empty_api.post(
+        f"/api/characters/{character['id']}/references",
+        json={"node": node, "group": "face", "tags": ["face"]},
+    )
+
+    scene = _scene(
+        empty_api, project,
+        shots=[{
+            "id": "shot-01",
+            "motion": {"prompt": "x",
+                       "references": {"characters": ["subject-a"], "pick": "plate_front.png"}},
+            "panels": [{"n": 1, "role": "start", "prompt": "p",
+                        "references": {"characters": ["subject-a"]}}],
+        }],
+    )
+
+    shot = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]
+    plates = shot["motion"]["reference_assets"]
+    assert [a["name"] for a in plates] == ["plate_front.png"]
+    assert plates[0]["url"]
+    # A panel names its own list, and it is a different list from the shot's.
+    assert [a["name"] for a in shot["panels"][0]["reference_assets"]] == ["plate_front.png"]
+
+
 def test_a_scene_listing_row_carries_its_slug(empty_api):
     """`<project>/<slug>` is how a person names a scene, so a row without one
     cannot be resolved. Every scene command in the CLI reads it off this row, and
