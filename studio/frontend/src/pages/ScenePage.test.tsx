@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -8,12 +8,13 @@ import type { SceneRecord, Shot } from "../types";
 // asserts on. Everything else is the real component.
 vi.mock("../components/common/AppHeader", () => ({ AppHeader: () => <div /> }));
 
-vi.mock("../apis/studio", () => ({ getScene: vi.fn() }));
+vi.mock("../apis/studio", () => ({ getScene: vi.fn(), patchShot: vi.fn() }));
 
-import { getScene } from "../apis/studio";
+import { getScene, patchShot } from "../apis/studio";
 import { ScenePage } from "./ScenePage";
 
 const read = vi.mocked(getScene);
+const save = vi.mocked(patchShot);
 
 const ID = "scene-0001";
 
@@ -194,9 +195,82 @@ it("shows the motion prompt without making anyone click for it", async () => {
   draw(record({ shots: [shot({ motion: { prompt: '{ "subject": "the man, unchanged" }' } })] }));
 
   await screen.findByText("The whistle comes off");
-  expect(screen.getByText(/"subject": "the man, unchanged"/)).toBeTruthy();
+  expect(screen.getByText("the man, unchanged")).toBeTruthy();
   // Nothing to press, so nothing to be stuck closed.
   expect(screen.queryByRole("button", { name: /motion prompt/i })).toBeNull();
+});
+
+const PROMPT = JSON.stringify(
+  {
+    subject: "The man from the source image, unchanged",
+    action: "He lifts the lanyard over his head",
+    camera: { shot: "wide", movement: "static/hold", lens_mm: 50, speed: "locked off" },
+    style: "Photorealistic live-action",
+    avoid: "changing face, cuts",
+    dialogue: ["a key this form does not show"],
+  },
+  null,
+  2,
+);
+
+it("reads the motion prompt as prose, not as JSON", async () => {
+  // It reached the page as 1.4 kB of escaped JSON, which is not showing anyone
+  // their prompt. This is studio's OWN document with a schema `studio prompt`
+  // validates — the run page's "never parsed" rule is about the PROVIDER's
+  // payload, whose shape studio does not own, and applying it here was wrong.
+  draw(record({ shots: [shot({ motion: { prompt: PROMPT, duration: 6 } })] }));
+
+  await screen.findByText("The whistle comes off");
+  expect(screen.getByText("Subject")).toBeTruthy();
+  expect(screen.getByText("The man from the source image, unchanged")).toBeTruthy();
+  expect(screen.getByText("wide · static/hold · 50mm · locked off")).toBeTruthy();
+  expect(screen.queryByText(/^\{$/)).toBeNull();
+});
+
+it("falls back to the raw text when the prompt is prose rather than JSON", async () => {
+  // A plain prose prompt is legal on every engine here.
+  draw(record({ shots: [shot({ motion: { prompt: "he lifts the lanyard, slowly" } })] }));
+
+  await screen.findByText("The whistle comes off");
+  expect(screen.getByText("he lifts the lanyard, slowly")).toBeTruthy();
+});
+
+it("saves an edit as both the document and the string the model is given", async () => {
+  save.mockResolvedValue({} as Shot);
+  draw(record({ shots: [shot({ motion: { prompt: PROMPT, duration: 6 } })] }));
+  await screen.findByText("The whistle comes off");
+
+  fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+  fireEvent.change(screen.getByLabelText("Action"), { target: { value: "He ducks through it" } });
+  fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+  await waitFor(() => expect(save).toHaveBeenCalled());
+  const call = save.mock.calls[0];
+  if (!call) throw new Error("patchShot was not called");
+  const [, shotId, body] = call;
+  expect(shotId).toBe("shot-01");
+  const sent = JSON.parse((body.motion as { prompt: string }).prompt);
+  expect(sent.action).toBe("He ducks through it");
+  // Everything else survives, including a key this form never renders.
+  expect(sent.subject).toBe("The man from the source image, unchanged");
+  expect(sent.camera.lens_mm).toBe(50);
+  expect(sent.dialogue).toEqual(["a key this form does not show"]);
+  // Order is the document's, not the form's.
+  expect(Object.keys(sent)).toEqual(["subject", "action", "camera", "style", "avoid", "dialogue"]);
+  // The parsed document travels alongside the string the model receives.
+  expect((body.motion as { prompt_json: unknown }).prompt_json).toEqual(sent);
+});
+
+it("keeps the edit open and says why when the save fails", async () => {
+  save.mockRejectedValue(new Error("shot-01 is gone"));
+  draw(record({ shots: [shot({ motion: { prompt: PROMPT } })] }));
+  await screen.findByText("The whistle comes off");
+
+  fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+  fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+  expect(await screen.findByText("shot-01 is gone")).toBeTruthy();
+  expect(screen.getByRole("button", { name: /^save$/i })).toBeTruthy();
 });
 
 it("shows the setting once, not once per panel", async () => {

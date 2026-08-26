@@ -22,6 +22,7 @@ import type {
   RunRecord,
   SavedText,
   SceneRecord,
+  Shot,
   SceneSummary,
   SelectionResponse,
   SortOrder,
@@ -481,6 +482,22 @@ export function getSelection(
   params: { pick?: string; tag?: string; limit?: string } = {},
 ) {
   return apiGet<SelectionResponse>(`/api/characters/${encodeURIComponent(id)}/selection`, params);
+}
+
+/**
+ * Revise one shot of a storyboard.
+ *
+ * The route merges per-field onto what a render already put there, so sending a
+ * reworded beat cannot discard the panel underneath it. Scenes carry no `rev`
+ * and that is deliberate — a scene is driven by the machine rendering it, in
+ * sequence, so demanding one would make every write re-read the record first.
+ */
+export function patchShot(sceneId: string, shotId: string, body: Partial<Shot>) {
+  return apiSend<Shot>(
+    "PATCH",
+    `/api/scenes/${encodeURIComponent(sceneId)}/shots/${encodeURIComponent(shotId)}`,
+    body,
+  );
 }
 
 /** Runs that used this character — one query, where it used to be a full walk. */

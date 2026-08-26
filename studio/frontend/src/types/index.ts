@@ -625,9 +625,42 @@ export interface Panel {
   image?: RunAsset;
 }
 
+/**
+ * The motion prompt as the thing it actually is — a document studio authored.
+ *
+ * `motion.prompt` is this object serialized, and it is what the model receives:
+ * every engine's prompt field is a plain string, so "JSON prompting" means
+ * writing a structured object INTO that string. Reading it back apart to show a
+ * person is therefore not parsing somebody else's payload — the run page's rule
+ * about `request.json` is about the PROVIDER's document, whose shape studio does
+ * not own. This one has a schema `studio prompt` validates against.
+ *
+ * Every field is optional because the schema is additive and a prose prompt is
+ * legal too; anything unrecognised is preserved on the way back out.
+ */
+export interface MotionPrompt {
+  subject?: string;
+  action?: string;
+  scene?: string;
+  lighting?: string;
+  style?: string;
+  audio?: string;
+  /** Folded in as `avoid` by the compiler — no engine here has a negative param. */
+  avoid?: string;
+  camera?: {
+    shot?: string;
+    movement?: string;
+    lens_mm?: number;
+    speed?: string;
+  };
+  [key: string]: unknown;
+}
+
 /** The clip half of a shot: what moves, for how long, on which engine. */
 export interface Motion {
   prompt: string;
+  /** The same document unserialized, when the plan carried one. */
+  prompt_json?: MotionPrompt | null;
   duration?: number | null;
   model?: string | null;
   aspect_ratio?: string | null;
