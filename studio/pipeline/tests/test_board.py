@@ -369,6 +369,35 @@ def test_a_panel_sees_the_panels_before_it(library, scene, no_network):
         "shot-01-p1.png", "shot-02-p1.png"]
 
 
+def test_a_re_boarded_panel_is_never_shown_its_own_superseded_image(
+    library, scene, no_network, a_model_that_answers, monkeypatch
+):
+    """**A stale panel used to be handed the picture it was replacing.**
+
+    `earlier_panel_keys` stopped at the panel being rendered by comparing shot
+    dicts with `is`, and `select_shots` copies them — so it never stopped. On a
+    first board that is harmless: nothing later has a node yet. On a re-board it
+    means the panel inherits its own superseded image, and the render pulls back
+    toward the composition the re-board exists to correct.
+    """
+    ref = f"porch-teaser/{PLANNED}"
+    _board(monkeypatch, ref)
+    record = SC.resolve_scene(ref)
+    mine = SC.scene_shots(record)[1]["panels"][0]["node"]
+
+    shots = SC.scene_shots(record)
+    shots[1]["panels"][0]["stale"] = True
+    SC.save_shots(record, shots)
+
+    record = SC.resolve_scene(ref)
+    shot = SC.scene_shots(record)[1]
+    panel = shot["panels"][0]
+    seen = BOARD.earlier_panel_keys(record, shot, panel)
+    assert mine not in seen, "the panel was shown the image it is replacing"
+    later = [p["node"] for s in SC.scene_shots(record)[2:] for p in s["panels"] if p.get("node")]
+    assert not (set(seen) & set(later)), "a panel saw panels that come after it"
+
+
 def test_the_first_panel_on_the_board_sees_nothing(library, scene, no_network):
     m = SC.resolve_scene(scene["id"])
     m["shots"][0]["panels"][0]["node"] = None
