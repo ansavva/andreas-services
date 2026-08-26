@@ -1,12 +1,13 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { Alert, Badge, Button, Collapsible, Spinner, Text } from "@ansavva/design-system";
+import { Alert, Badge, Button, Field, Input, Spinner, Text } from "@ansavva/design-system";
 
-import { getScene } from "../apis/studio";
+import { getScene, patchShot } from "../apis/studio";
 import { AppHeader } from "../components/common/AppHeader";
+import { AutoTextarea } from "../components/common/AutoTextarea";
 import { useResource } from "../hooks/useResource";
-import type { RunAsset, Shot } from "../types";
+import type { Motion, MotionPrompt, RunAsset, Shot } from "../types";
 import { formatDate } from "../utils/format";
 import { objectPath, projectPath, runPath } from "../utils/location";
 
@@ -30,7 +31,27 @@ export function ScenePage() {
   const navigate = useNavigate();
 
   const load = useCallback(() => getScene(sceneId), [sceneId]);
-  const { data, loading, error } = useResource(load);
+  const { data, loading, error, setData } = useResource(load);
+
+  // The route answers with the merged shot, so the page swaps that one row in
+  // rather than refetching the scene — a re-GET would re-sign every panel URL
+  // on the board to show one reworded sentence.
+  const saveShot = useCallback(
+    async (shotId: string, body: Partial<Shot>) => {
+      const updated = await patchShot(sceneId, shotId, body);
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              shots: current.shots.map((s) =>
+                s.id === shotId ? { ...s, ...updated } : s,
+              ),
+            }
+          : current,
+      );
+    },
+    [sceneId, setData],
+  );
 
   if (loading) {
     return (
@@ -124,6 +145,7 @@ export function ScenePage() {
                   n={index + 1}
                   onOpenRun={(run) => navigate(runPath(data.project, run))}
                   onOpenNode={(node) => navigate(objectPath(node))}
+                  onSave={saveShot}
                 />
               ))}
           </div>
@@ -152,16 +174,41 @@ function ShotCard({
   n,
   onOpenRun,
   onOpenNode,
+  onSave,
 }: {
   shot: Shot;
   n: number;
   onOpenRun: (run: string) => void;
   onOpenNode: (node: string) => void;
+  onSave: (shotId: string, body: Partial<Shot>) => Promise<void>;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Draft>(() => draftOf(shot));
+
   const panels = shot.panels ?? [];
   const motion = shot.motion;
   const caption = shot.beat || shot.prompt || shot.id;
   const duration = motion?.duration ?? shot.duration;
+
+  async function save() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      // The edited fields go back out as BOTH halves: `prompt_json` is the
+      // document, `prompt` is that document serialized, and `prompt` is what the
+      // model is actually given. Re-serialized from the parse rather than
+      // hand-built, so every key the plan carried — including ones this form
+      // does not show — survives the round trip in its original order.
+      await onSave(shot.id, draftToShot(shot, draft));
+      setEditing(false);
+    } catch (err) {
+      setSaveError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <article className="flex flex-col gap-3 rounded-md border border-line bg-card p-3">
@@ -188,6 +235,19 @@ function ShotCard({
           </Button>
         ) : (
           !shot.status && <Badge intent="warning">not rendered</Badge>
+        )}
+        {!editing && (
+          <Button
+            intent="ghost"
+            size="sm"
+            onClick={() => {
+              setDraft(draftOf(shot));
+              setSaveError(null);
+              setEditing(true);
+            }}
+          >
+            Edit
+          </Button>
         )}
       </div>
 
@@ -224,24 +284,268 @@ function ShotCard({
         {shot.clip && <Frame label="clip" asset={shot.clip} onOpen={onOpenNode} />}
       </div>
 
-      {motion?.prompt && (
-        <Collapsible.Root>
-          <Collapsible.Trigger>
-            <Text variant="caption" tone="muted">
-              Motion prompt
-            </Text>
-          </Collapsible.Trigger>
-          <Collapsible.Panel>
-            {/* Verbatim, and never parsed. It is a serialized JSON prompt whose
-                shape the pipeline changes freely — the same rule the run page
-                holds for `request.json`. */}
-            <pre className="mt-2 max-h-64 overflow-auto rounded-md bg-surface-alt p-2 text-xs whitespace-pre-wrap">
-              {motion.prompt}
-            </pre>
-          </Collapsible.Panel>
-        </Collapsible.Root>
-      )}
+      {motion?.prompt &&
+        (editing ? (
+          <MotionEditor
+            draft={draft}
+            onChange={setDraft}
+            onSave={save}
+            onCancel={() => setEditing(false)}
+            saving={saving}
+            error={saveError}
+          />
+        ) : (
+          <MotionFields motion={motion} />
+        ))}
     </article>
+  );
+}
+
+
+/**
+ * The motion prompt as the document it is.
+ *
+ * **This is studio's own document, and reading it apart is not the thing the run
+ * page refuses.** That rule is about `request.json` — the PROVIDER's payload,
+ * whose shape studio does not own and must not pick fields out of. This one has
+ * a schema `studio prompt` writes and validates, and it reaches the model as a
+ * string only because every engine's prompt field is a string. Showing a person
+ * 1.4 kB of escaped JSON to read is not showing them the prompt.
+ *
+ * `null` when it does not parse, which is a legitimate state: a plain prose
+ * prompt is valid on every engine here, and the raw text is shown instead.
+ */
+function parsePrompt(text: string | undefined | null): MotionPrompt | null {
+  if (!text) return null;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed as MotionPrompt;
+  } catch {
+    return null;
+  }
+}
+
+/** The blocks worth their own heading, in the order the compiler emits them. */
+const PROMPT_FIELDS: Array<{ key: keyof MotionPrompt & string; label: string }> = [
+  { key: "subject", label: "Subject" },
+  { key: "action", label: "Action" },
+  { key: "scene", label: "Scene" },
+  { key: "lighting", label: "Lighting" },
+  { key: "style", label: "Style" },
+  { key: "audio", label: "Audio" },
+  { key: "avoid", label: "Avoid" },
+];
+
+function cameraLine(camera: MotionPrompt["camera"]): string {
+  if (!camera) return "";
+  return [camera.shot, camera.movement, camera.lens_mm ? `${camera.lens_mm}mm` : null, camera.speed]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** The prompt, read as prose. Falls back to the raw text when it is not JSON. */
+function MotionFields({ motion }: { motion: Motion }) {
+  const doc = parsePrompt(motion.prompt);
+  if (!doc) {
+    return (
+      <div className="flex flex-col gap-1">
+        <Text variant="caption" tone="muted">
+          Motion prompt
+        </Text>
+        <pre className="max-h-56 overflow-auto rounded-md bg-surface-alt p-2 text-xs whitespace-pre-wrap text-muted">
+          {motion.prompt}
+        </pre>
+      </div>
+    );
+  }
+  const camera = cameraLine(doc.camera);
+  return (
+    <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-[7rem_minmax(0,1fr)]">
+      {PROMPT_FIELDS.filter((f) => typeof doc[f.key] === "string" && doc[f.key]).map((f) => (
+        <div key={f.key} className="contents">
+          <dt>
+            <Text variant="caption" tone="muted">
+              {f.label}
+            </Text>
+          </dt>
+          <dd className="m-0">
+            <Text variant="body" className="max-w-prose">
+              {doc[f.key] as string}
+            </Text>
+          </dd>
+        </div>
+      ))}
+      {camera && (
+        <div className="contents">
+          <dt>
+            <Text variant="caption" tone="muted">
+              Camera
+            </Text>
+          </dt>
+          <dd className="m-0">
+            <Text variant="body">{camera}</Text>
+          </dd>
+        </div>
+      )}
+    </dl>
+  );
+}
+
+/** The editable copy of a shot, flat because a form is flat. */
+interface Draft {
+  beat: string;
+  duration: string;
+  fields: Record<string, string>;
+  camera: { shot: string; movement: string; lens_mm: string; speed: string };
+}
+
+function draftOf(shot: Shot): Draft {
+  const doc = parsePrompt(shot.motion?.prompt) ?? {};
+  const fields: Record<string, string> = {};
+  for (const f of PROMPT_FIELDS) {
+    if (typeof doc[f.key] === "string") fields[f.key] = doc[f.key] as string;
+  }
+  return {
+    beat: shot.beat ?? "",
+    duration: String(shot.motion?.duration ?? shot.duration ?? ""),
+    fields,
+    camera: {
+      shot: doc.camera?.shot ?? "",
+      movement: doc.camera?.movement ?? "",
+      lens_mm: doc.camera?.lens_mm ? String(doc.camera.lens_mm) : "",
+      speed: doc.camera?.speed ?? "",
+    },
+  };
+}
+
+/**
+ * The draft, back into the shape the shots route takes.
+ *
+ * **Rebuilt from the parsed original, not from the form alone**, so every key the
+ * plan carried that this form does not show — `dialogue`, anything the schema
+ * grows next — survives an edit in its original position. A form that rewrote
+ * the document from its own fields would silently drop them.
+ */
+function draftToShot(shot: Shot, draft: Draft): Partial<Shot> {
+  const doc: MotionPrompt = { ...(parsePrompt(shot.motion?.prompt) ?? {}) };
+  for (const f of PROMPT_FIELDS) {
+    const next = draft.fields[f.key];
+    if (next !== undefined) {
+      if (next.trim()) doc[f.key] = next;
+      else delete doc[f.key];
+    }
+  }
+  const lens = Number(draft.camera.lens_mm);
+  const camera = {
+    ...(draft.camera.shot ? { shot: draft.camera.shot } : {}),
+    ...(draft.camera.movement ? { movement: draft.camera.movement } : {}),
+    ...(Number.isFinite(lens) && draft.camera.lens_mm ? { lens_mm: lens } : {}),
+    ...(draft.camera.speed ? { speed: draft.camera.speed } : {}),
+  };
+  if (Object.keys(camera).length) doc.camera = camera;
+  else delete doc.camera;
+
+  const duration = Number(draft.duration);
+  return {
+    beat: draft.beat,
+    motion: {
+      ...(shot.motion ?? { prompt: "" }),
+      prompt: JSON.stringify(doc, null, 2),
+      prompt_json: doc,
+      ...(draft.duration && Number.isFinite(duration) ? { duration } : {}),
+    },
+  };
+}
+
+const CAMERA_LABELS = {
+  shot: "Shot",
+  movement: "Movement",
+  lens_mm: "Lens (mm)",
+  speed: "Speed",
+} as const;
+
+function MotionEditor({
+  draft,
+  onChange,
+  onSave,
+  onCancel,
+  saving,
+  error,
+}: {
+  draft: Draft;
+  onChange: (next: Draft) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  saving: boolean;
+  error: string | null;
+}) {
+  const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch });
+  return (
+    <div className="flex flex-col gap-3 rounded-md border border-line bg-surface-alt p-3">
+      {error && (
+        <Alert.Root intent="danger">
+          <Alert.Title>Could not save this shot</Alert.Title>
+          <Alert.Description>{error}</Alert.Description>
+        </Alert.Root>
+      )}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]">
+        <Field.Root name="beat">
+          <Field.Label>Beat</Field.Label>
+          <Input value={draft.beat} onValueChange={(beat) => set({ beat })} />
+        </Field.Root>
+        <Field.Root name="duration">
+          <Field.Label>Duration (s)</Field.Label>
+          <Input
+            value={draft.duration}
+            inputMode="numeric"
+            onValueChange={(duration) => set({ duration })}
+          />
+        </Field.Root>
+      </div>
+
+      {PROMPT_FIELDS.filter((f) => draft.fields[f.key] !== undefined).map((f) => (
+        <Field.Root key={f.key} name={f.key}>
+          <Field.Label>{f.label}</Field.Label>
+          <AutoTextarea
+            value={draft.fields[f.key]}
+            onValueChange={(next: string) =>
+              set({ fields: { ...draft.fields, [f.key]: next } })
+            }
+          />
+        </Field.Root>
+      ))}
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {(["shot", "movement", "lens_mm", "speed"] as const).map((k) => (
+          <Field.Root key={k} name={`camera-${k}`}>
+            <Field.Label>{CAMERA_LABELS[k]}</Field.Label>
+            <Input
+              value={draft.camera[k]}
+              onValueChange={(next) => set({ camera: { ...draft.camera, [k]: next } })}
+            />
+          </Field.Root>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Button intent="primary" size="sm" onClick={onSave} disabled={saving}>
+          {saving ? "Saving…" : "Save"}
+        </Button>
+        <Button intent="ghost" size="sm" onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
+        {/* The wording is what a shot is judged on and what it costs to get
+            wrong, so the gate that spends money re-validates it: `studio scenes
+            check` runs the real validator — one camera move, no bare "fast",
+            the beat budget — before any render. This form does not, and must not
+            pretend to. */}
+        <Text variant="caption" tone="muted" className="self-center">
+          Re-check with <code>studio scenes check</code> before rendering.
+        </Text>
+      </div>
+    </div>
   );
 }
 
