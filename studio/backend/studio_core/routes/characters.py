@@ -630,6 +630,74 @@ def set_default_set(addressed: str):
     return jsonify({"id": record["id"], "default_set": nodes, "rev": updated["rev"]}), 200
 
 
+def _csv(raw: str | None) -> list[str]:
+    """A comma-separated query parameter as a list, blanks dropped.
+
+    Every filter on `GET /selection` takes a list, and each one used to be read
+    with a bare `request.args.get` and then compared whole — so `?tag=a,b` asked
+    for a tag literally named `a,b`.
+    """
+    return [part.strip() for part in (raw or "").split(",") if part.strip()]
+
+
+def _must_match(chosen: list, record: dict, asked: str) -> None:
+    """A filter that selected nothing is a refusal, not an empty selection."""
+    if not chosen:
+        raise ValidationError(
+            f"no reference of {record['slug']} matches {asked}. "
+            f"See what it has: studio character refs {record['slug']} --describe"
+        )
+
+
+def _stem(name: str) -> str:
+    return name.rsplit(".", 1)[0]
+
+
+def _picked(entries: list[dict], nodes: dict, tokens: list[str], record: dict) -> list[dict]:
+    """Exactly the references named, in the order they were named.
+
+    A token is a node id, a file name, or a file's stem — the three things a
+    person has in front of them, since `studio character refs` prints names and
+    a script holds ids. Order is the caller's rather than the index's: `--pick`
+    means "send these", and which one is `[Image1]` is part of that.
+
+    **Ambiguity is reported, never resolved.** Two files sharing a stem in
+    different groups is a real state, and picking one silently is how a shoot
+    ends up carrying a reference nobody chose. The CLI's own `entry_node` has
+    always refused it; this is the same rule, on the side of the wire that now
+    does the resolving.
+    """
+    by_node = {entry["node"]: entry for entry in entries}
+    chosen: list[dict] = []
+    for token in tokens:
+        if token in by_node:
+            hits = [by_node[token]]
+        else:
+            wanted = _stem(token)
+            hits = [
+                entry for entry in entries
+                if (name := (nodes.get(entry["node"]) or {}).get("name"))
+                and (name == token or _stem(name) == wanted)
+            ]
+        if not hits:
+            raise ValidationError(
+                f"{record['slug']} has no reference called {token!r}. "
+                f"See what it has: studio character refs {record['slug']} --describe"
+            )
+        if len(hits) > 1:
+            where = ", ".join(
+                f"{(nodes.get(h['node']) or {}).get('name')} in {h.get('group')}" for h in hits
+            )
+            raise ValidationError(
+                f"{token!r} matches {len(hits)} of {record['slug']}'s references "
+                f"({where}). Name one exactly, or use its node id."
+            )
+        if hits[0] in chosen:
+            raise ValidationError(f"{token!r} names a reference already picked.")
+        chosen.append(hits[0])
+    return chosen
+
+
 @bp.get("/characters/<addressed>/selection")
 def selection(addressed: str):
     """The ordered nodes a model would actually be shown, and the cap they face.
@@ -640,10 +708,23 @@ def selection(addressed: str):
     resolving happens, so the CLI and the SPA cannot disagree about what a model
     was given.
 
-    Three sources, in the order they are asked for: an explicit `tag`, an
-    explicit `pick` (a group), and otherwise the `default_set`. A character with
-    no default set and no filter falls through to every reference it has, which
-    is what makes the cap refusal below reachable rather than theoretical.
+    Four sources, in the order they are asked for: `tag`, `pick`, `group`, and
+    otherwise the `default_set`. A character with no default set and no filter
+    falls through to every reference it has, which is what makes the cap refusal
+    below reachable rather than theoretical.
+
+    **`pick` names FILES; `tag` names tags; `group` names a group.** All three
+    take a comma-separated list. `pick` used to be matched against `group` — a
+    single value, compared with `==` — while its only caller sent it a list of
+    filenames, so `--pick a.png,b.png` selected **nothing** and said so nowhere:
+    the run went out with whatever `--key` had supplied and no references at all.
+    `--pick-tag` looked like the working sibling only because a reference's tags
+    happen to include its group name.
+
+    **A filter that matches nothing is refused, never answered with an empty
+    list.** That is the property whose absence cost a whole debugging session
+    here. Asking for images by name and being handed none is not a selection, it
+    is a typo — and the next thing down the pipe spends money on it.
 
     **Over-cap is refused with the index in the body, never truncated.** Handing a
     model the first seven of eighteen references silently is a shoot whose result
@@ -654,14 +735,24 @@ def selection(addressed: str):
     record = _character(addressed, held)
     entries, nodes = _with_files(catalog.references(record["id"]))
 
-    tag = request.args.get("tag")
-    pick = request.args.get("pick") or request.args.get("group")
-    if tag:
+    tags = _csv(request.args.get("tag"))
+    pick = _csv(request.args.get("pick"))
+    groups = _csv(request.args.get("group"))
+    if tags:
         source = "tag"
-        chosen = [entry for entry in entries if tag in (entry.get("tags") or [])]
+        # ALL of them, which is what `--pick-tag` has always promised. The route
+        # compared the whole comma-joined string against one tag, so a single tag
+        # worked and two never matched anything.
+        chosen = [entry for entry in entries
+                  if set(tags) <= set(entry.get("tags") or [])]
+        _must_match(chosen, record, f"every tag in {', '.join(tags)}")
     elif pick:
+        source = "pick"
+        chosen = _picked(entries, nodes, pick, record)
+    elif groups:
         source = "group"
-        chosen = [entry for entry in entries if entry.get("group") == pick]
+        chosen = [entry for entry in entries if entry.get("group") in groups]
+        _must_match(chosen, record, f"group {', '.join(groups)}")
     elif record.get("default_set"):
         source = "default"
         order = {node_id: index for index, node_id in enumerate(record["default_set"])}
@@ -716,6 +807,11 @@ def selection(addressed: str):
                 {
                     "slot": slot,
                     "node": entry["node"],
+                    # A person reviewing a payload has to know which picture is
+                    # `[Image3]`, and a node id does not say. `character_selection`
+                    # in the CLI documented this field for as long as the route
+                    # did not send it, so anything that read it raised `KeyError`.
+                    "name": nodes.get(entry["node"], {}).get("name"),
                     "group": entry.get("group"),
                     "description": entry.get("description"),
                     "url": (

@@ -593,12 +593,85 @@ export interface RunPage {
  * path — which is what lets a plan be revised without stranding the work already
  * done against it.
  */
+/**
+ * What a panel is FOR, which is the same question as whether it binds.
+ *
+ * `start` and `end` are frames the model is given, `reference` steers the look
+ * without fixing a frame, and a **`sample` binds to nothing** — it is a still
+ * that shows a person what the shot should look like, so a fifteen-second render
+ * can be judged before it is bought rather than after.
+ *
+ * It is `null` when the author left it to position. Resolving that is the
+ * pipeline's job (`storyboard.panel_roles`) and deliberately not this page's:
+ * a shot that opens on a handoff frame has its start panel demoted to a
+ * reference, and a UI that recomputed the rule would be a second copy of it.
+ */
+export type PanelRole = "start" | "end" | "reference" | "sample";
+
+/** One panel of a shot: a prompt, and the image it rendered into once boarded. */
+export interface Panel {
+  n: number;
+  role: PanelRole | null;
+  prompt: string;
+  model?: string | null;
+  aspect_ratio?: string | null;
+  /** The run that rendered it, and the node that run produced. */
+  run?: string | null;
+  node?: string | null;
+  boarded?: string | null;
+  /** The prompt changed after the image was rendered — the picture is behind the words. */
+  stale?: boolean;
+  /** Expanded by the API from `node`, so a board can be drawn without a second call. */
+  image?: RunAsset;
+}
+
+/** The clip half of a shot: what moves, for how long, on which engine. */
+export interface Motion {
+  prompt: string;
+  duration?: number | null;
+  model?: string | null;
+  aspect_ratio?: string | null;
+  extra?: Record<string, unknown> | null;
+  references?: Record<string, unknown> | null;
+}
+
+/**
+ * One planned shot.
+ *
+ * `run` is how a shot knows what rendered it, and it is a run id rather than a
+ * path — which is what lets a plan be revised without stranding the work already
+ * done against it.
+ *
+ * `prompt` and `panel` are the pre-storyboard shape and still arrive on scenes
+ * assembled from bare runs, which is why they are kept alongside `beat`,
+ * `panels` and `motion` rather than replaced by them.
+ */
 export interface Shot {
   id: string;
   order: number;
   prompt: string;
   run: string | null;
-  panel: string | null;
+  panel: string | number | null;
+
+  /** One line, for the board caption. */
+  beat?: string;
+  status?: string;
+  /** Whether this shot picks up the movement of the one before it. */
+  continues?: boolean;
+  panels?: Panel[];
+  motion?: Motion | null;
+  /**
+   * The previous shot's literal last frame — the only image that makes the join
+   * invisible, which is why it outranks a panel composed for the same moment.
+   */
+  opens_on?: { node?: string | null; from_run?: string | null; frame?: RunAsset } | null;
+
+  runref?: string | null;
+  /** The rendered clip, and its expansion. */
+  node?: string | null;
+  clip?: RunAsset;
+  duration?: number | null;
+  rendered?: string | null;
 }
 
 export interface SceneSummary {
@@ -616,6 +689,14 @@ export interface SceneRecord extends SceneSummary {
   shots: Shot[];
   /** The stitched take, once `assemble` has uploaded it. */
   output: RunAsset | null;
+
+  /** Prepended byte-identically to every panel prompt — one look, stated once. */
+  setting?: string;
+  logline?: string;
+  /** Model, panel model, duration and technical block every shot inherits. */
+  defaults?: Record<string, unknown> | null;
+  characters?: string[];
+  version?: number;
 }
 
 export interface MovieSummary {

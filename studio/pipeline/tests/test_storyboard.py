@@ -64,6 +64,39 @@ def test_an_explicit_role_beats_the_positional_default():
     assert SB.panel_roles(shot) == ["reference", "reference", "end"]
 
 
+def test_a_sample_binds_to_nothing():
+    """A sample is a picture of the shot for a person, not a frame for the model.
+
+    It is what makes a fifteen-second render judgeable before it is bought, so
+    it must appear on the board and in no binding list.
+    """
+    shot = {"panels": [{"n": 1}, {"n": 2, "role": "sample"}]}
+
+    r = SB.resolve_roles(shot)
+    assert r["sample_panels"] == [1]
+    assert r["start_panel"] == 0
+    assert r["end_panel"] is None, "a sample is not the shot's last frame"
+    assert r["reference_panels"] == [], "and it is not a reference either"
+
+
+def test_a_sample_does_not_consume_a_positional_slot():
+    """Counting positions over every panel would make the sample the end frame
+    and demote the panel beside it — and an end frame on Kling silently drops
+    every reference sent with it, so the mistake costs a whole render.
+    """
+    shot = {"panels": [{"n": 1, "role": "sample"}, {"n": 2}, {"n": 3}]}
+
+    assert SB.panel_roles(shot) == ["sample", "start", "end"]
+
+
+def test_a_shot_of_nothing_but_samples_has_no_frames():
+    shot = {"panels": [{"n": 1, "role": "sample"}, {"n": 2, "role": "sample"}]}
+
+    r = SB.resolve_roles(shot)
+    assert r["sample_panels"] == [0, 1]
+    assert (r["start_panel"], r["end_panel"], r["reference_panels"]) == (None, None, [])
+
+
 def test_a_handoff_takes_the_start_slot_and_demotes_the_panel():
     """A cut is only seamless from the literal last frame of the shot before it.
 

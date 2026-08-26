@@ -99,7 +99,16 @@ from studio_pipeline.domain import paths as P
 # record owns are gone from here.
 VERSION = 3
 
-ROLES = ("start", "end", "reference")
+#: What a panel is FOR, which is the same question as "does this bind".
+#:
+#: `start` and `end` are frames the model is given; `reference` steers the look
+#: without fixing a frame. `sample` binds to **nothing** — it is a still that
+#: shows a person what the shot should look like, so a fifteen-second render can
+#: be judged before it is bought rather than after. It has to be a role rather
+#: than a convention because the positional rule below would otherwise make the
+#: last panel of every shot an end frame, and an end frame on Kling silently
+#: drops every reference alongside it.
+ROLES = ("start", "end", "reference", "sample")
 
 #: Panel fields recorded by the tools and carried across a re-ingest.
 #: `node` is the boarded image, `source_node` the run output it was copied
@@ -412,14 +421,22 @@ def panel_roles(shot: dict) -> list[str]:
     One panel is a start frame. Two are a start and an end. Three or more put the
     extras between them as references, because the middle of a movement is what
     a reference image is good at pinning.
+
+    **Positions are counted over binding panels only.** A `sample` is not one of
+    the shot's frames — it is a picture of the shot for a person to look at — so
+    it must not consume the first or last position and turn the panel beside it
+    into a reference. A shot boarded as `[sample, start]` has a start frame, not
+    a start frame that got demoted by a picture.
     """
     panels = shot.get("panels") or []
-    last = len(panels) - 1
+    binding = [i for i, panel in enumerate(panels) if panel.get("role") != "sample"]
+    last = binding[-1] if binding else None
+
     out = []
     for i, panel in enumerate(panels):
         if panel.get("role"):
             out.append(panel["role"])
-        elif i == 0:
+        elif i == binding[0]:
             out.append("start")
         elif i == last:
             out.append("end")
@@ -440,6 +457,7 @@ def resolve_roles(shot: dict) -> dict:
         start_panel       index into `panels`, or None when the handoff took it
         end_panel         index, or None
         reference_panels  indices in panel order, demoted start first
+        sample_panels     indices of panels that bind to nothing
         demoted           True when a start panel became a reference
     """
     panels = shot.get("panels") or []
@@ -464,6 +482,8 @@ def resolve_roles(shot: dict) -> dict:
         "start_panel": start,
         "end_panel": end,
         "reference_panels": refs,
+        # Reported so a board can draw them, never so a submit can bind them.
+        "sample_panels": [i for i, r in enumerate(roles) if r == "sample"],
         "demoted": demoted,
         "roles": roles,
         "panels": panels,
