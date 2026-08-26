@@ -713,7 +713,12 @@ def reference_nodes(refs: dict, held: dict) -> list[str]:
     the scene it is part of.
     """
     found: list[str] = []
-    for addressed in refs.get("characters") or []:
+    for named in refs.get("characters") or []:
+        # **A plan names a character by SLUG, and `entity_at` reads a bare string
+        # as an ID.** Without the prefix every lookup raised `NotFoundError`,
+        # which the tolerance below then swallowed — so the board asked for its
+        # plates, was told nothing, and drew nothing, silently.
+        addressed = named if str(named).startswith(f"{KIND}-") else f"slug:{named}"
         try:
             record = _character(addressed, held)
             entries, nodes = _with_files(catalog.references(record["id"]))
@@ -730,7 +735,11 @@ def reference_nodes(refs: dict, held: dict) -> list[str]:
             else:
                 chosen = entries
             found += [e["node"] for e in chosen]
-        except (ValidationError, NotFoundError, ForbiddenError):
+        except (ValidationError, NotFoundError, ForbiddenError) as exc:
+            # Tolerated, but never in silence: a gap on the board is a thing
+            # somebody has to be able to explain, and an empty list that logged
+            # nothing is what made this take a deploy to find.
+            logger.warning("could not resolve references for %s: %s", named, exc)
             continue
     return found
 

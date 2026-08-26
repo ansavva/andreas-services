@@ -404,3 +404,39 @@ it("draws a plate the plan names as a thumbnail, not as a filename", async () =>
   expect(screen.getByText("plate")).toBeTruthy();
   expect(screen.getByRole("button", { name: /front\.png/i })).toBeTruthy();
 });
+
+it("opens a frame large in a drawer instead of leaving the board", async () => {
+  // A tile is 80px because a scene holds twenty-odd of them; judging a pose
+  // needs the picture at a size you can read. Navigating to the node page would
+  // work and would lose your place on the board.
+  draw(
+    record({
+      shots: [
+        shot({
+          panels: [
+            {
+              n: 1,
+              role: "start",
+              prompt: "square to camera",
+              node: "node-a",
+              image: { node: "node-a", name: "shot-01-p1.jpeg", url: "https://example/a.jpeg" },
+            },
+          ],
+        }),
+      ],
+    }),
+  );
+  await screen.findByText("The whistle comes off");
+
+  fireEvent.click(screen.getByRole("button", { name: /square to camera/i }));
+
+  // The frame's own name titles the drawer, and the big image is in it.
+  expect(await screen.findByText("shot-01-p1.jpeg")).toBeTruthy();
+});
+
+it("does not offer a viewer for a frame that has not been rendered", async () => {
+  draw(record({ shots: [shot({ panels: [{ n: 1, role: "start", prompt: "not yet" }] })] }));
+
+  await screen.findByText("The whistle comes off");
+  expect(screen.queryByRole("button", { name: /not yet/i })).toBeNull();
+});
