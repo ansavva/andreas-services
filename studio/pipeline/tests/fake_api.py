@@ -247,9 +247,26 @@ class FakeApi:
     # ── dispatch ────────────────────────────────────────────────────────────
 
     def request(self, method: str, route: str, payload=None, **params):
+        """**Both sides of this boundary are round-tripped through JSON.**
+
+        A real call serializes the request and parses the response, so the caller
+        and the service never share an object: whatever the caller sends is a
+        snapshot, and whatever comes back is new. This fake passed dicts straight
+        through in both directions, so a caller that mutated a dict it had already
+        handed over — or one it got back — saw its change land in the service's
+        own state for free.
+
+        That is not a smaller version of the real behaviour, it is the opposite
+        of it, and it hid a live bug: `scenes board` captured its panels before
+        the submit loop, and after the first write the real API's response had
+        replaced them with fresh dicts, so twelve of thirteen rendered panels
+        were recorded into orphans. Under this fake all thirteen "worked".
+        """
         params = {k: v for k, v in params.items() if v is not None}
         try:
-            return self._dispatch(method, route, payload or {}, params)
+            return json.loads(json.dumps(
+                self._dispatch(method, route, json.loads(json.dumps(payload or {})), params),
+                default=str))
         except FakeError as error:
             status = error.status
             message = str(error)

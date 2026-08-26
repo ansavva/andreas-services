@@ -700,9 +700,23 @@ def run_board(ref: str, opts) -> int:
         # `node` is the boarded image and `source_node` the run output it was
         # copied from. They were `key` and `source_key` and held paths, which a
         # rename of either file invalidated.
-        panel.update(run=record["id"], source_node=src, node=copied["id"],
-                     boarded=R._now(), stale=False)
-        manifest = SC.save_shots(manifest, SC.scene_shots(manifest))
+        made = dict(run=record["id"], source_node=src, node=copied["id"],
+                    boarded=R._now(), stale=False)
+        # **Find the panel in the CURRENT manifest — never mutate the captured
+        # one and save.** `save_shots` returns the API's response merged over the
+        # record, so `manifest["shots"]` is a NEW list of NEW dicts after every
+        # write. `prepared` was built before the loop, so the `panel` in hand
+        # belongs to the manifest as it was at the start: mutating it is visible
+        # to the first save and to nothing afterwards. Thirteen panels rendered,
+        # thirteen node ids reported, and one of them recorded.
+        shots = SC.scene_shots(manifest)
+        for current in shots:
+            if current["id"] == shot["id"]:
+                for slot in current.get("panels") or []:
+                    if slot.get("n") == panel["n"]:
+                        slot.update(made)
+        panel.update(made)   # keep the captured copy honest for the recap below
+        manifest = SC.save_shots(manifest, shots)
         boarded[label] = copied["id"]
 
     # GATE 2 — the board exists; nothing is animated yet.

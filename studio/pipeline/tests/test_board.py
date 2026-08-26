@@ -649,6 +649,29 @@ def test_a_boarded_panel_records_the_run_the_node_and_the_copy(
     assert not panel["stale"]
 
 
+def test_every_panel_boarded_in_one_pass_is_recorded(
+    library, scene, no_network, a_model_that_answers, monkeypatch
+):
+    """**The second panel of a board run was written into an orphan.**
+
+    `save_shots` merges the API's response over the record, so `manifest["shots"]`
+    is a new list of new dicts after every write — while the panels the submit
+    loop holds were captured before it started. Mutating one was visible to the
+    first save and to nothing after it, so a board of N panels rendered N, billed
+    N, printed N node ids and recorded the first.
+
+    Asserting the first panel is what every test here already did, and it is the
+    one case the bug cannot reach. This asserts them all.
+    """
+    _board(monkeypatch, f"porch-teaser/{PLANNED}")
+
+    panels = SC.scene_shots(SC.resolve_scene(f"porch-teaser/{PLANNED}"))[1]["panels"]
+    assert len(panels) > 1, "the fixture must board more than one panel to prove this"
+    for panel in panels:
+        assert panel["node"], f"panel {panel['n']} rendered and recorded nothing"
+        assert panel["run"], f"panel {panel['n']} recorded no run"
+
+
 def test_the_copy_is_named_for_its_shot_and_panel(
     library, scene, no_network, a_model_that_answers, monkeypatch
 ):
