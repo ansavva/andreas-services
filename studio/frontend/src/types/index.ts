@@ -615,6 +615,15 @@ export interface Panel {
   prompt: string;
   model?: string | null;
   aspect_ratio?: string | null;
+  /**
+   * Where this panel's own reference images come from when it renders — a
+   * character's plates, by default set or by name, plus any explicit nodes.
+   *
+   * **Not the same list as the shot's.** These steer the STILL; what the video
+   * engine is sent is the shot's own `motion.references` plus the scene's frames.
+   * Conflating the two is the mistake this field being invisible encouraged.
+   */
+  references?: { characters?: string[]; pick?: string; pick_tag?: string; keys?: string[] };
   /** The run that rendered it, and the node that run produced. */
   run?: string | null;
   node?: string | null;

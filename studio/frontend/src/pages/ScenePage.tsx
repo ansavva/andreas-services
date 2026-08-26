@@ -7,7 +7,7 @@ import { getScene, patchShot } from "../apis/studio";
 import { AppHeader } from "../components/common/AppHeader";
 import { AutoTextarea } from "../components/common/AutoTextarea";
 import { useResource } from "../hooks/useResource";
-import type { Motion, MotionPrompt, RunAsset, Shot } from "../types";
+import type { Motion, MotionPrompt, Panel, PanelRole, RunAsset, Shot } from "../types";
 import { formatDate } from "../utils/format";
 import { objectPath, projectPath, runPath } from "../utils/location";
 
@@ -187,7 +187,6 @@ function ShotCard({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(() => draftOf(shot));
 
-  const panels = shot.panels ?? [];
   const motion = shot.motion;
   const caption = shot.beat || shot.prompt || shot.id;
   const duration = motion?.duration ?? shot.duration;
@@ -251,38 +250,23 @@ function ShotCard({
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {/* The frame this shot opens on. It outranks any panel composed for the
-            same moment, so it leads the strip — a cut is only seamless from the
-            literal last frame of the shot before it. */}
-        {shot.opens_on?.frame && (
-          <Frame
-            label="opens on"
-            hint={shot.continues === false ? "kept its own panel" : "handoff"}
-            asset={shot.opens_on.frame}
-            onOpen={onOpenNode}
-          />
-        )}
+      {/* The clip is OUTPUT and sits on its own; everything else a shot has is
+          an INPUT, and `Sends` groups those by what they are sent as. The two
+          used to be one filmstrip, which drew the same panel twice — once as a
+          tile and once as the reference it becomes. */}
+      {shot.clip && (
+        <div className="flex flex-wrap gap-2">
+          <Frame label="clip" asset={shot.clip} onOpen={onOpenNode} />
+        </div>
+      )}
 
-        {panels.length === 0 && !shot.clip && (
-          <Text variant="caption" tone="muted">
-            No panels — this shot was added straight from a run.
-          </Text>
-        )}
+      {(shot.panels ?? []).length === 0 && !shot.clip && !shot.opens_on?.node && (
+        <Text variant="caption" tone="muted">
+          No panels — this shot was added straight from a run.
+        </Text>
+      )}
 
-        {panels.map((panel) => (
-          <Frame
-            key={panel.n}
-            label={panel.role ?? `panel ${panel.n}`}
-            hint={panel.stale ? "stale" : undefined}
-            title={panel.prompt}
-            asset={panel.image}
-            onOpen={onOpenNode}
-          />
-        ))}
-
-        {shot.clip && <Frame label="clip" asset={shot.clip} onOpen={onOpenNode} />}
-      </div>
+      <Sends shot={shot} onOpenNode={onOpenNode} />
 
       {motion?.prompt &&
         (editing ? (
@@ -546,6 +530,170 @@ function MotionEditor({
         </Text>
       </div>
     </div>
+  );
+}
+
+
+/**
+ * What this shot intends to send, and what it deliberately does not.
+ *
+ * **The plan's declaration, not the resolved payload.** Which images actually
+ * reach the engine is decided by the submit path against that engine's own rules
+ * — Kling counts the start frame toward its cap of 7 and drops every reference
+ * the moment an end frame joins them, Seedance excludes references from a start
+ * frame outright — and those rules live in one place on purpose. This draws what
+ * the storyboard asked for and names the command that resolves it, rather than
+ * reimplementing the arithmetic and drifting from it.
+ *
+ * The distinction it exists to make visible: **a panel's references steer the
+ * STILL, and are not what the video engine receives.** Those are two lists and
+ * they were both invisible, which is how "why aren't you showing me the images
+ * you intend to send" became a fair question.
+ */
+function Sends({ shot, onOpenNode }: { shot: Shot; onOpenNode: (node: string) => void }) {
+  const panels = shot.panels ?? [];
+  const withRole = (role: PanelRole) => panels.filter((p) => p.role === role);
+  const handoff = shot.continues !== false && shot.opens_on?.node ? shot.opens_on : null;
+  const startPanel = withRole("start")[0];
+  const endPanel = withRole("end")[0];
+  // A handoff outranks a start panel and demotes it to a reference — the only
+  // frame that makes a cut seamless is the literal last frame of the shot before.
+  const demoted = handoff && startPanel ? [startPanel] : [];
+  const references = [...demoted, ...withRole("reference")];
+  const samples = withRole("sample");
+  const scene = (shot.motion?.references ?? {}) as { characters?: string[]; keys?: string[] };
+  const carried = [...(scene.characters ?? []), ...(scene.keys ?? [])];
+
+  return (
+    <section className="flex flex-col gap-2 rounded-md border border-line p-2">
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <Text variant="caption">Will be sent</Text>
+        {shot.motion?.model && <Badge intent="neutral">{shot.motion.model}</Badge>}
+        <Text variant="caption" tone="muted">
+          as planned — <code>studio scenes check</code> resolves it against the engine&rsquo;s limits
+        </Text>
+      </div>
+
+      <SendRow label="Start">
+        {handoff?.frame ? (
+          <Frame label="start" hint="handoff" asset={handoff.frame} onOpen={onOpenNode} />
+        ) : startPanel ? (
+          <Frame
+            label="start"
+            hint={panelHint(startPanel, false)}
+            title={startPanel.prompt}
+            asset={startPanel.image}
+            onOpen={onOpenNode}
+          />
+        ) : (
+          <Nothing>
+            {shot.continues === false
+              ? "no start frame — the engine composes the opening"
+              : "the previous shot's last frame, once it has been rendered"}
+          </Nothing>
+        )}
+      </SendRow>
+
+      <SendRow label="End">
+        {endPanel ? (
+          <Frame
+            label="end"
+            hint={panelHint(endPanel, false)}
+            title={endPanel.prompt}
+            asset={endPanel.image}
+            onOpen={onOpenNode}
+          />
+        ) : (
+          <Nothing>none — the shot is not bracketed</Nothing>
+        )}
+      </SendRow>
+
+      <SendRow label="References">
+        {references.length || carried.length ? (
+          <>
+            {references.map((p) => (
+              <Frame
+                key={p.n}
+                label={`panel ${p.n}`}
+                hint={panelHint(p, demoted.includes(p))}
+                title={p.prompt}
+                asset={p.image}
+                onOpen={onOpenNode}
+              />
+            ))}
+            {carried.length > 0 && <Nothing>plus {carried.join(", ")}</Nothing>}
+          </>
+        ) : (
+          <Nothing>the scene&rsquo;s own frames, as they are produced</Nothing>
+        )}
+      </SendRow>
+
+      {samples.length > 0 && (
+        <SendRow label="Samples">
+          {samples.map((p) => (
+            <Frame
+              key={p.n}
+              label="sample"
+              hint="not sent"
+              title={p.prompt}
+              asset={p.image}
+              onOpen={onOpenNode}
+            />
+          ))}
+          <Nothing>a picture of the beat, for a person — the model never sees it</Nothing>
+        </SendRow>
+      )}
+
+      {panels.some((p) => p.references) && (
+        <SendRow label="Panels use">
+          <Nothing>
+            {panels
+              .map((p) => {
+                const r = p.references ?? {};
+                const which = r.pick ?? r.pick_tag ?? (r.characters?.length ? "default set" : null);
+                return which ? `panel ${p.n}: ${which}` : null;
+              })
+              .filter(Boolean)
+              .join(" · ")}
+            {" — these steer the stills, not the clip"}
+          </Nothing>
+        </SendRow>
+      )}
+    </section>
+  );
+}
+
+/**
+ * The one thing most worth saying about a panel, in priority order.
+ *
+ * `stale` outranks the rest because it is the only one that means the picture is
+ * WRONG — the prompt moved on after the image was rendered, so what you are
+ * looking at no longer illustrates the words beside it. Demotion and absence are
+ * both ordinary states of a board.
+ */
+function panelHint(panel: Panel, demoted: boolean): string | undefined {
+  if (panel.stale) return "stale";
+  if (demoted) return "demoted";
+  if (!panel.image) return "not rendered";
+  return undefined;
+}
+
+function SendRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
+      <Text variant="caption" tone="muted" className="w-24 shrink-0">
+        {label}
+      </Text>
+      <div className="flex flex-wrap items-center gap-2">{children}</div>
+    </div>
+  );
+}
+
+function Nothing({ children }: { children: React.ReactNode }) {
+  return (
+    <Text variant="caption" tone="muted" className="max-w-prose">
+      {children}
+    </Text>
   );
 }
 

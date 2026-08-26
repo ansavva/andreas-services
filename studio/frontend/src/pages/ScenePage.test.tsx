@@ -73,7 +73,7 @@ it("draws a shot by its beat rather than its prompt", async () => {
 
   expect(await screen.findByText("The whistle comes off")).toBeTruthy();
   expect(screen.getByText("6s")).toBeTruthy();
-  expect(screen.getByText("kling")).toBeTruthy();
+  expect(screen.getAllByText("kling").length).toBeGreaterThan(0);
 });
 
 it("draws a boarded panel as its image and an unboarded one as a placeholder", async () => {
@@ -100,11 +100,11 @@ it("draws a boarded panel as its image and an unboarded one as a placeholder", a
   );
 
   await screen.findByText("The whistle comes off");
-  const boarded = screen.getByRole("button", { name: /square to camera/i });
+  const boarded = screen.getAllByRole("button", { name: /square to camera/i })[0]!;
   expect(within(boarded).getByRole("presentation", { hidden: true })).toBeTruthy();
   // The unboarded one carries its prompt instead of a picture, and is not a
   // link to a node that does not exist.
-  expect(screen.getByText("the peak of the move")).toBeTruthy();
+  expect(screen.getAllByText("the peak of the move").length).toBeGreaterThan(0);
   expect(screen.queryByRole("button", { name: /the peak of the move/i })).toBeNull();
 });
 
@@ -118,7 +118,7 @@ it("labels a sample as a sample, because it is the one panel that binds to nothi
   );
 
   await screen.findByText("The whistle comes off");
-  expect(screen.getByText("sample")).toBeTruthy();
+  expect(screen.getAllByText("sample").length).toBeGreaterThan(0);
 });
 
 it("leads the strip with the frame the shot opens on", async () => {
@@ -140,7 +140,7 @@ it("leads the strip with the frame the shot opens on", async () => {
   );
 
   await screen.findByText("The whistle comes off");
-  expect(screen.getByText("opens on")).toBeTruthy();
+  expect(screen.getByText("Start")).toBeTruthy();
   expect(screen.getByText("handoff")).toBeTruthy();
 });
 
@@ -271,6 +271,48 @@ it("keeps the edit open and says why when the save fails", async () => {
 
   expect(await screen.findByText("shot-01 is gone")).toBeTruthy();
   expect(screen.getByRole("button", { name: /^save$/i })).toBeTruthy();
+});
+
+it("says what the shot will send, and what it will not", async () => {
+  // The two lists were both invisible: what the video engine receives, and what
+  // a panel pulls to render the still. Conflating them is what made "why aren't
+  // you showing me the images you intend to send" a fair question.
+  draw(
+    record({
+      shots: [
+        shot({
+          continues: true,
+          opens_on: {
+            node: "node-tail",
+            frame: { node: "node-tail", name: "tail.png", url: "https://example/tail.png" },
+          },
+          panels: [
+            { n: 1, role: "start", prompt: "the opening", references: { characters: ["subject-a"] } },
+            { n: 2, role: "sample", prompt: "the peak" },
+          ],
+        }),
+      ],
+    }),
+  );
+
+  await screen.findByText("The whistle comes off");
+  expect(screen.getByText("Will be sent")).toBeTruthy();
+  // The handoff takes the start slot and the panel composed for it is demoted.
+  expect(screen.getAllByText("handoff").length).toBeGreaterThan(0);
+  expect(screen.getByText("demoted")).toBeTruthy();
+  // A sample is shown and labelled as never reaching the model.
+  expect(screen.getByText("not sent")).toBeTruthy();
+  // Not bracketed, so it says so rather than leaving the row blank.
+  expect(screen.getByText(/not bracketed/)).toBeTruthy();
+  // And the panel's own plates are named as steering the still, not the clip.
+  expect(screen.getByText(/these steer the stills, not the clip/)).toBeTruthy();
+});
+
+it("says a start frame is pending rather than showing an empty slot", async () => {
+  draw(record({ shots: [shot({ continues: true, opens_on: null, panels: [] })] }));
+
+  await screen.findByText("The whistle comes off");
+  expect(screen.getByText(/the previous shot's last frame, once it has been rendered/)).toBeTruthy();
 });
 
 it("shows the setting once, not once per panel", async () => {
