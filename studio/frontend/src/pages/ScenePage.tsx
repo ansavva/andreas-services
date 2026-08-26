@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { Alert, Badge, Button, Collapsible, Spinner, Text } from "@ansavva/design-system";
+import { Alert, Badge, Button, Spinner, Text } from "@ansavva/design-system";
 
 import { getScene } from "../apis/studio";
 import { AppHeader } from "../components/common/AppHeader";
@@ -225,21 +225,30 @@ function ShotCard({
       </div>
 
       {motion?.prompt && (
-        <Collapsible.Root>
-          <Collapsible.Trigger>
-            <Text variant="caption" tone="muted">
-              Motion prompt
-            </Text>
-          </Collapsible.Trigger>
-          <Collapsible.Panel>
-            {/* Verbatim, and never parsed. It is a serialized JSON prompt whose
-                shape the pipeline changes freely — the same rule the run page
-                holds for `request.json`. */}
-            <pre className="mt-2 max-h-64 overflow-auto rounded-md bg-surface-alt p-2 text-xs whitespace-pre-wrap">
-              {motion.prompt}
-            </pre>
-          </Collapsible.Panel>
-        </Collapsible.Root>
+        // **Shown, not hidden behind a disclosure.** Reading the prompts is what
+        // this page is FOR — a storyboard is judged on its wording before any
+        // shot is bought — so putting the most important thing on the card
+        // behind a click was the wrong call even before the click stopped
+        // working. `Collapsible.Panel` reveals with a `grid-rows-[0fr]` to
+        // `[1fr]` transition that never progresses in Chrome: the class flips
+        // and `aria-expanded` flips, and the computed row stays `0px`, so the
+        // panel opened to nothing. Reported upstream; not worked around here,
+        // because this page does not want a disclosure in the first place.
+        //
+        // Verbatim, and never parsed. It is a serialized JSON prompt whose shape
+        // the pipeline changes freely — the same rule the run page holds for
+        // `request.json`.
+        <div className="flex flex-col gap-1">
+          <Text variant="caption" tone="muted">
+            Motion prompt
+          </Text>
+          <pre
+            className="max-h-56 overflow-auto rounded-md bg-surface-alt p-2 text-xs
+                       whitespace-pre-wrap text-muted"
+          >
+            {motion.prompt}
+          </pre>
+        </div>
       )}
     </article>
   );

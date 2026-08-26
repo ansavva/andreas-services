@@ -185,6 +185,20 @@ it("still says a shot is unrendered when it has no status to say it", async () =
   expect(screen.getByText("not rendered")).toBeTruthy();
 });
 
+it("shows the motion prompt without making anyone click for it", async () => {
+  // Reading the prompts is what this page is for — a storyboard is judged on its
+  // wording before any shot is bought. It was behind a `Collapsible`, whose
+  // panel reveals with a `grid-rows-[0fr]`-to-`[1fr]` transition that never
+  // progresses: the trigger flipped `aria-expanded` and the panel opened to a
+  // zero-height row, so the prompt read as blank.
+  draw(record({ shots: [shot({ motion: { prompt: '{ "subject": "the man, unchanged" }' } })] }));
+
+  await screen.findByText("The whistle comes off");
+  expect(screen.getByText(/"subject": "the man, unchanged"/)).toBeTruthy();
+  // Nothing to press, so nothing to be stuck closed.
+  expect(screen.queryByRole("button", { name: /motion prompt/i })).toBeNull();
+});
+
 it("shows the setting once, not once per panel", async () => {
   draw(record({ setting: "A plain mid-grey seamless studio cyclorama." }));
 
