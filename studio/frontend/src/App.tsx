@@ -6,6 +6,7 @@ import { Alert, Spinner } from "@ansavva/design-system";
 import { isAuthConfigured } from "./amplify";
 import { LoginForm } from "./components/auth/LoginForm";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { LibraryProvider, useLibrary } from "./context/LibraryContext";
 import { StudioRoutes } from "./routes";
 
@@ -86,7 +87,15 @@ function LibraryGate() {
   // renders no DOM of its own, so remounting it discards every hook's state
   // without putting a `<div>` between `#root` and the page — which would break
   // the `min-h-full` chain the layout hangs off.
-  return <StudioRoutes key={current} />;
+  // **Inside the library gate, around the routes.** A page that throws should
+  // leave the shell and the library it was in intact — and remounting on a
+  // library switch resets the boundary with everything else, so an error from
+  // one library does not survive into another.
+  return (
+    <ErrorBoundary key={current}>
+      <StudioRoutes />
+    </ErrorBoundary>
+  );
 }
 
 /**
