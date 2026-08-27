@@ -12,6 +12,7 @@ output "table_names" {
     billing          = aws_dynamodb_table.billing.name
     invitations      = aws_dynamodb_table.invitations.name
     reminders        = aws_dynamodb_table.reminders.name
+    templates        = aws_dynamodb_table.templates.name
   }
 }
 
