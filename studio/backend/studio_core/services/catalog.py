@@ -3015,8 +3015,33 @@ def _shot_run_edges(scene_id: str, lib: str, written: list[dict],
     from the shots on every write instead of being maintained incrementally:
     a shot can gain, change or lose its run through two different routes, and a
     derived set cannot drift from the thing it is derived from.
+
+    **A shot names a run in three places, not one.** This read `shot["run"]`
+    only, which is the motion render — and in the production library that field
+    is empty on every shot while twenty-five *panels* carry a run, because
+    boarding records the still per panel. So the backlink would have been empty
+    for every boarded scene there: right in the tests, right on a dev stack that
+    had no shots at all, and wrong on the only data that exists.
+
+    | Field | What named the run |
+    |---|---|
+    | `shot["run"]` | the motion render for the whole shot |
+    | `panels[n]["run"]` | the still boarded into panel n |
+    | `opens_on["from_run"]` | the run whose last frame this shot continues from |
+
+    All three are "this scene used that run", which is the question being
+    answered. Duplicates collapse — an edge is set membership.
     """
-    bound = [shot["run"] for shot in written if shot.get("run")]
+    bound = []
+    for shot in written:
+        if shot.get("run"):
+            bound.append(shot["run"])
+        for panel in shot.get("panels") or []:
+            if isinstance(panel, dict) and panel.get("run"):
+                bound.append(panel["run"])
+        opens_on = shot.get("opens_on")
+        if isinstance(opens_on, dict) and opens_on.get("from_run"):
+            bound.append(opens_on["from_run"])
     return edge_steps(ENTITY_SCENE, scene_id, lib, bound,
                       links(scene_id, ENTITY_RUN), now)
 

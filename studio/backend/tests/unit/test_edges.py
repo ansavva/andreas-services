@@ -281,3 +281,44 @@ def test_the_input_pool_is_an_envelope_and_says_so(empty_api):
     assert isinstance(body, dict)
     assert set(body) == {"folder", "inputs"}
     assert body["inputs"] == []
+
+
+def test_a_run_boarded_into_a_panel_is_an_edge_too(empty_api):
+    """The shape the production library actually has.
+
+    `shot["run"]` is the motion render and is empty on every shot there, while
+    boarding writes a run per panel. Deriving from `run` alone left the backlink
+    empty for every boarded scene — correct in these tests, correct on a dev
+    stack with no shots, and wrong on the only real data.
+    """
+    project = _project(empty_api)
+    run = _run(empty_api, project)
+    scene = _scene(empty_api, project, shots=[{"id": "shot-01", "prompt": "wide"}])
+
+    empty_api.patch(f"/api/scenes/{scene['id']}/shots/shot-01",
+                    json={"panels": [{"n": 1, "run": run["id"]}]})
+
+    body = empty_api.get(f"/api/runs/{run['id']}").get_json()
+    assert [entry["id"] for entry in body["scenes"]] == [scene["id"]]
+
+
+def test_a_shot_that_continues_from_a_run_is_an_edge_too(empty_api):
+    project = _project(empty_api)
+    run = _run(empty_api, project)
+    scene = _scene(empty_api, project, shots=[{"id": "shot-01", "prompt": "wide"}])
+
+    empty_api.patch(f"/api/scenes/{scene['id']}/shots/shot-01",
+                    json={"opens_on": {"node": None, "from_run": run["id"]}})
+
+    body = empty_api.get(f"/api/runs/{run['id']}").get_json()
+    assert [entry["id"] for entry in body["scenes"]] == [scene["id"]]
+
+
+def test_a_planned_panel_is_not_a_link_to_nothing(empty_api):
+    project = _project(empty_api)
+    scene = _scene(empty_api, project, shots=[{"id": "shot-01", "prompt": "wide"}])
+
+    empty_api.patch(f"/api/scenes/{scene['id']}/shots/shot-01",
+                    json={"panels": [{"n": 1, "run": None}]})
+
+    assert catalog.links(scene["id"], catalog.ENTITY_RUN) == []

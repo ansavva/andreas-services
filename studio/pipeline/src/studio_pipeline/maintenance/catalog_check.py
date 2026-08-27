@@ -1721,8 +1721,14 @@ def edge_plan_from_rows(rows: dict) -> dict:
     | Source | Edge | Read off |
     |---|---|---|
     | movie | `MOVIE#<id> / SCENE#<id>` | the `scenes` list on the record |
-    | scene | `SCENE#<id> / RUN#<id>` | the `run` on each `SHOT#` row |
+    | scene | `SCENE#<id> / RUN#<id>` | every run a `SHOT#` row names — see below |
     | run | `RUN#<id> / RUN#<parent>` | `lineage.from_run` |
+
+    **A shot names a run in three places.** `run` is the motion render for the
+    whole shot; `panels[n]["run"]` is the still boarded into panel n; and
+    `opens_on["from_run"]` is the run whose last frame it continues from. Read
+    only the first and the production library yields nothing — every shot there
+    has an empty `run` while twenty-five panels carry one.
 
     **An edge row and a listing row are told apart by counting `#`.** A listing
     row is `RUN#<created>#<id>` and an edge is `RUN#<id>`, so one separator
@@ -1761,6 +1767,12 @@ def edge_plan_from_rows(rows: dict) -> dict:
         elif pk.startswith("SCENE#"):
             for shot in shots.get(pk, []):
                 want(pk, shot.get("run"), lib)
+                for panel in shot.get("panels") or []:
+                    if isinstance(panel, dict):
+                        want(pk, panel.get("run"), lib)
+                opens_on = shot.get("opens_on")
+                if isinstance(opens_on, dict):
+                    want(pk, opens_on.get("from_run"), lib)
 
     return {"wanted": wanted, "present": present,
             "missing": {key: lib for key, lib in wanted.items() if key not in present},

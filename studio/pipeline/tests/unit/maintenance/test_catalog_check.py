@@ -794,3 +794,36 @@ def test_involvement_links_are_not_called_stale(catalog_table):
     plan = cm.edge_plan(catalog_table)
     assert plan["stale"] == []
     assert plan["missing"] == {}
+
+
+def test_a_run_boarded_into_a_panel_is_an_edge_too(catalog_table):
+    """The only shape the production library actually has.
+
+    Every shot there has an empty `run` — that field is the motion render —
+    while the boarded stills carry a run per panel. Deriving from `run` alone
+    found nothing in a library holding twenty-five of them.
+    """
+    _record(catalog_table, "SCENE#scene-1")
+    _put(catalog_table, {"pk": "SCENE#scene-1", "sk": "SHOT#shot-01",
+                         "panels": [{"n": 1, "run": "run-1"}, {"n": 2, "run": "run-2"}]})
+
+    assert set(cm.edge_plan(catalog_table)["missing"]) == {
+        ("SCENE#scene-1", "RUN#run-1"), ("SCENE#scene-1", "RUN#run-2")}
+
+
+def test_a_shot_that_continues_from_a_run_is_an_edge_too(catalog_table):
+    _record(catalog_table, "SCENE#scene-1")
+    _put(catalog_table, {"pk": "SCENE#scene-1", "sk": "SHOT#shot-01",
+                         "opens_on": {"node": "node-x", "from_run": "run-9"}})
+
+    assert list(cm.edge_plan(catalog_table)["missing"]) == [("SCENE#scene-1", "RUN#run-9")]
+
+
+def test_a_panel_with_no_run_yet_is_not_an_edge(catalog_table):
+    """A planned panel has `run: null`. It is not a link to nothing."""
+    _record(catalog_table, "SCENE#scene-1")
+    _put(catalog_table, {"pk": "SCENE#scene-1", "sk": "SHOT#shot-01",
+                         "panels": [{"n": 1, "run": None}],
+                         "opens_on": {"node": None, "from_run": None}})
+
+    assert cm.edge_plan(catalog_table)["missing"] == {}
