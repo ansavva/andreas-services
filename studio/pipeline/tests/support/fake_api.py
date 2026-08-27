@@ -841,10 +841,20 @@ class FakeApi:
             "scenes": sum(1 for s in self.scenes.values() if s["project"] == record["id"]),
             "movies": sum(1 for m in self.movies.values() if m["project"] == record["id"]),
         }
+        # `characters` EXPANDED, exactly as `GET /api/projects/<id>` answers —
+        # `{id, slug, display_name}` per link. This used to invent a
+        # `character_slugs` list of bare slugs, which the real API has never
+        # returned; the CLI read it, printed `—` for every project in
+        # production, and the suite passed because the double agreed with the
+        # bug rather than with the service.
         return {**record, "counts": counts,
-                "character_slugs": [self.characters[c]["slug"]
-                                    for c in record.get("characters") or []
-                                    if c in self.characters]}
+                "characters": [
+                    {"id": c,
+                     "slug": self.characters[c]["slug"],
+                     "display_name": self.characters[c].get("display_name")}
+                    for c in record.get("characters") or []
+                    if c in self.characters
+                ]}
 
     def _r_projects(self, method, body, params):
         if method == "GET":

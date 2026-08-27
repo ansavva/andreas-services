@@ -178,8 +178,31 @@ def test_projects_list_shows_the_counts_off_the_record(library):
     result = CliRunner().invoke(cli.main, ["projects", "list"])
     assert result.exit_code == 0, result.output
     assert "porch-teaser" in result.output
-    assert "subject-a" in result.output
     assert "runs 1" in result.output
+
+
+def test_projects_list_does_not_claim_to_know_who_is_involved(library):
+    """`GET /api/projects` does not send involvement, so the listing cannot show it.
+
+    It used to print a `characters:` column read off `character_slugs` — a field
+    no route has ever returned — so the value was `—` for every project in the
+    library. Printing nothing beats printing a falsehood; `show` has the answer.
+    """
+    result = CliRunner().invoke(cli.main, ["projects", "list"])
+    assert "characters" not in result.output
+    assert "subject-a" not in result.output
+
+
+def test_projects_show_names_the_characters_involved(library):
+    """The regression: this printed `—` for every project, forever.
+
+    `GET /api/projects/<id>` resolves involvement to `{id, slug, display_name}`
+    objects. The CLI read a flat `character_slugs` list instead and always found
+    nothing — and the suite passed because the fake API invented that field.
+    """
+    result = CliRunner().invoke(cli.main, ["projects", "show", "porch-teaser"])
+    assert result.exit_code == 0, result.output
+    assert "characters  subject-a" in result.output
 
 
 def test_projects_show_prints_the_pool_size(library):
