@@ -310,7 +310,12 @@ def read_catalog(ddb, chosen: str | None = None) -> dict:
     rather than merely risky.
     """
     libraries, nodes = {}, {}
-    entities: set[tuple[str, str]] = set()
+    # **Keyed by `(pk, sk)` and holding the ROW, where this used to hold only the
+    # key.** `phase_apply` still asks nothing but `head in existing`, which a
+    # dict answers identically — and `_adopted` needs what is in the row, because
+    # on a library that has already been migrated the record IS the answer the
+    # legacy document used to give.
+    entities: dict[tuple[str, str], dict] = {}
     for item in ddbc.scan(ddb):
         pk, sk = item.get("pk", ""), item.get("sk", "")
         partition = pk.split("#", 1)[0]
@@ -319,9 +324,9 @@ def read_catalog(ddb, chosen: str | None = None) -> dict:
         elif sk == "META" and partition == "NODE" and item.get("node_id"):
             nodes[item["node_id"]] = item
         elif partition in ("CHAR", "PROJ", "RUN", "SCENE", "MOVIE"):
-            entities.add((pk, sk))
+            entities[(pk, sk)] = item
         elif partition == "LIB" and sk.startswith(("CHARSLUG#", "PROJSLUG#")):
-            entities.add((pk, sk))
+            entities[(pk, sk)] = item
 
     if not libraries:
         die(f"no library in '{ddbc.table()}'. This migrates a library that is "
@@ -506,6 +511,88 @@ def _yaml(body: bytes):
 
 # ── the plan ────────────────────────────────────────────────────────────────
 
+# The `pk` prefix each entity kind's rows carry, inverted for reading them back.
+_PARTITION_KIND = {value: key for key, value in PARTITION.items()}
+
+# The `sk` prefix a character's reference rows take. Spelled here as well as in
+# `character_groups`, which writes them, because this reads them back.
+_REF_PREFIX = "REF#"
+
+# Likewise for a scene's shots, which `scene_groups` writes and `report` counts.
+_SHOT_PREFIX = "SHOT#"
+
+
+def _adopted(cat: dict) -> dict[str, list[dict]]:
+    """Every entity the table ALREADY holds, as plan entries.
+
+    **This is what makes the command idempotent, and `reseat` runnable at all.**
+    Every phase below reads the *legacy* layout — a folder under `characters/`
+    with a `profile.yaml` in it, a folder under `projects/` with a
+    `project.json`. `apply` consumes that layout: a character's bible becomes
+    the `profile` attribute on its record and the document goes. So on a library
+    that has been migrated the walk finds adopted folders and no documents, and
+    plans nothing.
+
+    That was not merely unhelpful. `owners()` is built from `plan["characters"]`
+    and `plan["projects"]`, and with both empty every file falls through to the
+    library branch of `desired_key` — so a `reseat` would have moved all 1200
+    production objects under `libraries/` instead of the 181 that needed it. The
+    `UNPARSEABLE` gate was the only thing stopping it, which is a safety
+    property nothing had written down and nobody had chosen.
+
+    An adopted entry is built from the RECORD rather than from a document, and
+    carries only what `phase_verify` reads: the id, the folder it adopted, and
+    the pointers whose targets are worth checking. It is marked `adopted` so
+    `phase_apply` writes nothing for it — there is nothing to write, and
+    `GROUPS` would need fields a stored record does not carry, like the `refs`
+    that are `REF#` rows in their own right.
+
+    `where` is `<kind>s/<id>` rather than the slug the legacy walk used. It is
+    printed in reports, and an id says which row to go and look at while a slug
+    is a character's name.
+    """
+    found: dict[str, list[dict]] = {kind: [] for kind in PARTITION}
+    # The two kinds of child row an entity owns, gathered first so each record
+    # can be given its own. Both are counted by `report` and one is checked by
+    # `phase_verify`, so an adopted entry without them is a crash or a silent
+    # zero rather than a missing nicety.
+    references: dict[str, list[dict]] = collections.defaultdict(list)
+    shots: dict[str, list[dict]] = collections.defaultdict(list)
+    for (pk, sk) in cat["entities"]:
+        partition, _, entity_ref = pk.partition("#")
+        if sk.startswith(_REF_PREFIX):
+            references[entity_ref].append({"node": sk[len(_REF_PREFIX):]})
+        elif partition == PARTITION["scene"] and sk.startswith(_SHOT_PREFIX):
+            shots[entity_ref].append({"id": sk[len(_SHOT_PREFIX):]})
+
+    for (pk, sk), row in cat["entities"].items():
+        kind = _PARTITION_KIND.get(pk.split("#", 1)[0])
+        if kind is None or sk != "META" or row.get("lib") != cat["lib"]:
+            continue
+        entity_ref = pk.split("#", 1)[1]
+        entry = {"kind": kind, "id": entity_ref, "lib": cat["lib"],
+                 "where": f"{kind}s/{entity_ref}", "adopted": True,
+                 "created": row.get("created")}
+        if kind in ("character", "project"):
+            entry["root"] = row.get("root")
+            entry["slug"] = row.get("slug")
+        else:
+            entry["folder"] = row.get("folder")
+            entry["project"] = row.get("project")
+        if kind == "character":
+            entry["refs"] = references.get(entity_ref, [])
+            entry["default_set"] = row.get("default_set") or []
+        if kind == "scene":
+            entry["shots"] = shots.get(entity_ref, [])
+        if kind == "run":
+            entry["outputs"] = row.get("outputs") or []
+            entry["payload"] = row.get("payload") or {}
+        found[kind].append(entry)
+    for entries in found.values():
+        entries.sort(key=lambda e: e["id"])
+    return found
+
+
 def build_plan(s3, ddb, chosen: str | None = None) -> dict:
     """Every entity row this migration would write, parents before children.
 
@@ -536,10 +623,21 @@ def build_plan(s3, ddb, chosen: str | None = None) -> dict:
     # separately, because a name path is a mutable handle — `resolve_key`.
     by_path_hits: list[str] = []
 
+    # **What the table already holds comes first, and the legacy walk then skips
+    # what it has adopted.** Without this the walk is the only source of
+    # entities, so a library that has been migrated plans nothing — see
+    # `_adopted` for what that cost.
+    already = _adopted(cat)
+
     characters = _plan_characters(s3, cat, unparseable, unresolved, by_path_hits)
-    by_slug = {c["slug"]: c["id"] for c in characters}
+    characters += already["character"]
+    by_slug = {c["slug"]: c["id"] for c in characters if c.get("slug")}
     projects, runs, scenes, movies = _plan_projects(
         s3, cat, by_slug, unparseable, unresolved, by_path_hits)
+    projects += already["project"]
+    runs += already["run"]
+    scenes += already["scene"]
+    movies += already["movie"]
 
     # D5. Every file node that qualifies and does not already carry the key.
     # A node that has one is skipped rather than rewritten: the API stamps it on
@@ -564,6 +662,12 @@ def _plan_characters(s3, cat, unparseable, unresolved, by_path_hits) -> list[dic
     out = []
     tree = child(cat, cat["root"], LEGACY_CHARACTERS)
     for folder in folders(cat, tree["node_id"] if tree else None):
+        if folder.get("entity"):
+            # Already an entity: `_adopted` planned it from the record. The
+            # document this walk wants was consumed by the `apply` that adopted
+            # it, so looking for one here reports a migration failure that is
+            # actually a migration success.
+            continue
         slug, root = folder["name"], folder["node_id"]
         where = f"{LEGACY_CHARACTERS}/{slug}"
         try:
@@ -667,6 +771,12 @@ def _plan_projects(s3, cat, by_slug, unparseable, unresolved, by_path_hits):
     projects, runs, scenes, movies = [], [], [], []
     tree = child(cat, cat["root"], LEGACY_PROJECTS)
     for folder in folders(cat, tree["node_id"] if tree else None):
+        if folder.get("entity"):
+            # Already an entity: `_adopted` planned it from the record. The
+            # document this walk wants was consumed by the `apply` that adopted
+            # it, so looking for one here reports a migration failure that is
+            # actually a migration success.
+            continue
         slug, root = folder["name"], folder["node_id"]
         where = f"{LEGACY_PROJECTS}/{slug}"
         try:
@@ -738,6 +848,12 @@ def _plan_runs(s3, cat, proj, project_root, project_where, by_slug,
     out = []
     tree = child(cat, project_root, LEGACY_RUNS)
     for folder in folders(cat, tree["node_id"] if tree else None):
+        if folder.get("entity"):
+            # Already an entity: `_adopted` planned it from the record. The
+            # document this walk wants was consumed by the `apply` that adopted
+            # it, so looking for one here reports a migration failure that is
+            # actually a migration success.
+            continue
         slug, node = folder["name"], folder["node_id"]
         where = f"{project_where}/{LEGACY_RUNS}/{slug}"
         request_node = child(cat, node, LEGACY_REQUEST)
@@ -863,6 +979,12 @@ def _plan_scenes(s3, cat, proj, project_root, project_where, by_run_slug,
     out = []
     tree = child(cat, project_root, LEGACY_SCENES)
     for folder in folders(cat, tree["node_id"] if tree else None):
+        if folder.get("entity"):
+            # Already an entity: `_adopted` planned it from the record. The
+            # document this walk wants was consumed by the `apply` that adopted
+            # it, so looking for one here reports a migration failure that is
+            # actually a migration success.
+            continue
         slug, node = folder["name"], folder["node_id"]
         where = f"{project_where}/{LEGACY_SCENES}/{slug}"
         document = child(cat, node, LEGACY_SCENE_DOC)
@@ -911,6 +1033,12 @@ def _plan_movies(s3, cat, proj, project_root, project_where, by_scene_slug,
     out = []
     tree = child(cat, project_root, LEGACY_MOVIES)
     for folder in folders(cat, tree["node_id"] if tree else None):
+        if folder.get("entity"):
+            # Already an entity: `_adopted` planned it from the record. The
+            # document this walk wants was consumed by the `apply` that adopted
+            # it, so looking for one here reports a migration failure that is
+            # actually a migration success.
+            continue
         slug, node = folder["name"], folder["node_id"]
         where = f"{project_where}/{LEGACY_MOVIES}/{slug}"
         document = child(cat, node, LEGACY_MOVIE_DOC)
@@ -1229,6 +1357,14 @@ def phase_apply(ddb, plan: dict, apply: bool) -> dict:
 
     for kind in ("character", "project", "run", "scene", "movie"):
         for entity in plan[kind + "s"]:
+            if entity.get("adopted"):
+                # Read back out of the table by `_adopted`, so there is nothing
+                # to write and nothing to backfill. It is also NOT a candidate
+                # for `GROUPS`, which rebuilds every row an entity owns from
+                # fields a stored record does not carry — a character's `refs`
+                # are `REF#` rows of their own, not an attribute.
+                skipped[kind] += 1
+                continue
             head = (f"{PARTITION[kind]}#{entity['id']}", "META")
             if head in existing:
                 gaps = 0
@@ -1374,6 +1510,8 @@ def phase_verify(s3, ddb, plan: dict) -> dict:
     # there. Same predicate as `backfill`, for the same reason.
     for kind in ("character", "project", "run", "scene", "movie"):
         for entity in plan[kind + "s"]:
+            if entity.get("adopted"):
+                continue  # no document to rebuild a row from — see `phase_apply`
             for group in GROUPS[kind](entity):
                 for action in group:
                     doc = action.get("Put", {}).get("Item")

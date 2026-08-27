@@ -594,3 +594,108 @@ def test_no_caller_splits_a_blob_key():
         + "\n  ".join(offenders))
     # An exemption nobody uses is an exemption nobody has re-argued for.
     assert claimed == exempt, f"stale exemption(s): {sorted(exempt - claimed)}"
+
+
+# ── an already-migrated library is planned from its rows ────────────────────
+#
+# `apply` CONSUMES the legacy layout: a character's bible becomes the `profile`
+# attribute on its record and the document goes. So the walk that reads that
+# layout finds adopted folders and no documents, and plans nothing — which made
+# every phase after `plan` unrunnable, and `reseat` actively dangerous.
+
+def _adopted_character(ddb):
+    """A library whose one character has already been migrated.
+
+    Root folder adopted (it carries `entity`), record written, slug claimed,
+    one reference row — and NO `profile.yaml`, because `apply` consumed it.
+    """
+    _library(ddb, REAL, "Studio", "node-root")
+    _folder(ddb, "node-chars", "node-root", "characters")
+    _folder(ddb, "node-a", "node-chars", "subject-a")
+    _file(ddb, "node-img", "node-a", "IMG_4580.png", "blobs/node-img")
+    # `path` is the materialised ancestor list and `desired_key` walks it to find
+    # the owner. Written explicitly because the shared helpers do not: a node
+    # with no `path` has no ancestors, so every key built from it falls through
+    # to the library and this fixture would pass for the wrong reason.
+    for node_id, path in (("node-chars", "node-root"),
+                          ("node-a", "node-root/node-chars"),
+                          ("node-img", "node-root/node-chars/node-a")):
+        ddb.update_item(TableName=ddbc.table(),
+                        Key=ddbc.to_item({"pk": f"NODE#{node_id}", "sk": "META"}),
+                        UpdateExpression="SET #p = :p",
+                        ExpressionAttributeNames={"#p": "path"},
+                        ExpressionAttributeValues=ddbc.to_item({":p": path}))
+    ddb.update_item(TableName=ddbc.table(),
+                    Key=ddbc.to_item({"pk": "NODE#node-a", "sk": "META"}),
+                    UpdateExpression="SET #e = :e",
+                    ExpressionAttributeNames={"#e": "entity"},
+                    ExpressionAttributeValues=ddbc.to_item({":e": "char-0001"}))
+    ddb.put_item(TableName=ddbc.table(), Item=ddbc.to_item(
+        {"pk": "CHAR#char-0001", "sk": "META", "id": "char-0001", "lib": REAL,
+         "slug": "subject-a", "root": "node-a", "default_set": [],
+         "created": "2026-01-01T00:00:00+00:00"}))
+    ddb.put_item(TableName=ddbc.table(), Item=ddbc.to_item(
+        {"pk": "CHAR#char-0001", "sk": "REF#node-img", "lib": REAL,
+         "group": "face", "order": 1000}))
+
+
+def test_an_adopted_folder_is_not_an_unparseable_document(bucket, catalog_table):
+    """**The gate that made every later phase unrunnable.**
+
+    The walk wants `profile.yaml` under a character's folder. `apply` consumed
+    it. Reporting that as UNPARSEABLE calls a migration success a migration
+    failure — and `_session` dies on a non-zero count for every phase except
+    `plan`, so `verify` and `reseat` could never run again.
+    """
+    _adopted_character(catalog_table)
+    plan = cm.build_plan(bucket, catalog_table, REAL)
+
+    assert plan["unparseable"] == []
+    assert [c["id"] for c in plan["characters"]] == ["char-0001"]
+    assert plan["characters"][0]["adopted"] is True
+    assert plan["characters"][0]["root"] == "node-a"
+    # The child rows the record does not carry as attributes, read back off
+    # their own rows because `report` counts them.
+    assert plan["characters"][0]["refs"] == [{"node": "node-img"}]
+
+
+def test_reseat_files_an_adopted_library_under_its_owner(bucket, catalog_table):
+    """**The reason this is a data-loss bug and not a papercut.**
+
+    `owners()` is built from `plan["characters"]` and `plan["projects"]`. With
+    both empty every file falls through to the library branch of `desired_key`,
+    so a `reseat` re-files the WHOLE library under `libraries/` — 1200 objects
+    in production — instead of the ones that had drifted.
+
+    The empty plan below is exactly what `build_plan` returned before adopted
+    entities were read back, so this asserts the old behaviour as the hazard and
+    the new behaviour as the fix.
+    """
+    _adopted_character(catalog_table)
+    nodes = cm.read_catalog(catalog_table, REAL)["nodes"]
+
+    blind = {"lib": REAL, "characters": [], "projects": []}
+    assert cm.desired_key(blind, nodes, nodes["node-img"]) == \
+        f"libraries/{REAL}/node-img.png"
+
+    plan = cm.build_plan(bucket, catalog_table, REAL)
+    assert cm.desired_key(plan, nodes, nodes["node-img"]) == \
+        "characters/char-0001/node-img.png"
+
+
+def test_apply_writes_nothing_for_an_adopted_entity(bucket, catalog_table):
+    """It is already there, and `GROUPS` could not rebuild it anyway.
+
+    An entity's rows are built from the fields the DOCUMENT carried. A stored
+    record does not carry all of them — a character's `refs` are `REF#` rows in
+    their own right, not an attribute — so an adopted entry is skipped rather
+    than backfilled.
+    """
+    _adopted_character(catalog_table)
+    plan = cm.build_plan(bucket, catalog_table, REAL)
+
+    result = cm.phase_apply(catalog_table, plan, apply=True)
+
+    assert result["created"] == {}
+    assert result["skipped"] == {"character": 1}
+    assert result["added"] == {}
