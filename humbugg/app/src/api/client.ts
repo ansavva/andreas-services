@@ -8,6 +8,8 @@ import type {
   CreateWishInput,
   UpdateWishInput,
   ManagedInvitation,
+  LateParticipantPreview,
+  LateParticipantResult,
   PolicyConsent,
   PlusPurchaseStatus,
   Profile,
@@ -127,6 +129,10 @@ export const api = {
   setExclusions: (token: string, id: string, exclusions: string[][]) => request<GroupDetail>(`/groups/${id}/exclusions`, token, json('PUT', { exclusions })),
   draw: (token: string, id: string) => request<RecipientAssignment>(`/groups/${id}/draw`, token, json('POST')),
   reset: (token: string, id: string) => request<GroupDetail>(`/groups/${id}/reset`, token, json('POST')),
-  getAssignment: (token: string, id: string) => request<RecipientAssignment>(`/groups/${id}/assignment`, token),
+  getAssignment: (token: string, id: string, drawVersion?: string | null) => request<RecipientAssignment>(`/groups/${id}/assignment${drawVersion ? `?draw_version=${encodeURIComponent(drawVersion)}` : ''}`, token),
   reveal: (token: string, id: string, reason: string) => request<{ assignments: RevealAssignment[] }>(`/groups/${id}/assignment/reveal`, token, json('POST', { reason })),
+  previewLateParticipant: (token: string, id: string, memberId: string) =>
+    request<LateParticipantPreview>(`/groups/${id}/late-participants/${memberId}/preview`, token, json('POST')),
+  confirmLateParticipant: (token: string, id: string, proposalId: string) =>
+    request<LateParticipantResult>(`/groups/${id}/late-participants/confirm`, token, json('POST', { proposal_id: proposalId, confirm: true })),
 };
