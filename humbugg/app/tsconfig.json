@@ -25,5 +25,8 @@
   // component in the app: RN code referencing a Node global would then
   // typecheck cleanly and fail at runtime on a device. It is exercised instead
   // by `npm run brand:check`, which executes it on every PR.
-  "exclude": ["node_modules", "dist", ".expo", "tool"]
+  // `e2e/` is excluded for the same reason as `tool/`: Playwright specs run in
+  // Node, and typechecking them here would drag Node globals into scope for
+  // app code. The Playwright suite typechecks itself when it runs.
+  "exclude": ["node_modules", "dist", "dist-e2e", ".expo", "tool", "e2e"]
 }
