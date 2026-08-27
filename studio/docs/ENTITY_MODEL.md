@@ -672,6 +672,7 @@ maintenance catalog (plan · migrate · verify · gc · reseat) · dev-seed
 | `runs find --character <slug>` | one API query instead of a walk over every project |
 | `runs list --model --status --since` | **new** filters, free from the row |
 | `runs show` | prints the envelope; `--payload` prints the untouched provider documents |
+| `runs delete <runref>` | **new** — `DELETE /api/runs/<id>`, keeping the folder unless `--files delete` |
 | `rewrite check` | **deleted** — the class of bug is gone |
 | `phrasebook add` | `POST /api/phrasebook`; no document to be missing |
 | `upload` / `download` / `presign` | take a node id or a `<entity>/<path>` address that the API resolves |

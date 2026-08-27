@@ -66,6 +66,7 @@ CLI
     studio runs find --character <name>
     studio runs show <project>/latest [--payload]
     studio runs outputs <project>/latest --presign
+    studio runs delete <project>/latest [--files delete]
 """
 from __future__ import annotations
 
@@ -602,6 +603,35 @@ def do_outputs(runref, json_, presign, project):
     nodes = resolve_output_nodes(runref, project)
     vals = [store.presign_node(n) for n in nodes] if presign else nodes
     print(json.dumps(vals, indent=2) if json_ else "\n".join(vals))
+
+
+@main.command("delete")
+@click.argument("runref", required=True)
+@click.option("--files", type=click.Choice(["keep", "delete"]), default="keep",
+              help="What to do with the run's folder (default: keep it).")
+@click.option("--project", help="Default project for a bare run slug.")
+@reports(RunError, api.ApiError)
+def do_delete(runref, files, project):
+    """Delete one run: the envelope, and with `--files delete` its folder too.
+
+    **The runref is resolved first and the id is printed back**, because
+    `latest` is the spelling anyone reaching for this will use and it names a
+    different run tomorrow. What was deleted has to be legible after the fact,
+    and a resolved id is the only thing that stays true.
+
+    **`--files keep` is the default, matching `projects delete`.** The reverse
+    default loses generated media to a typo; a folder orphaned into the library
+    root is visible and can still be moved or removed by hand. Against
+    production the delete is a recoverable tombstone — the API's role holds no
+    `s3:DeleteObjectVersion` — but that is the deployed service's protection,
+    not this command's, and it does not apply to a dev stack.
+
+    Nothing cascades. A run holds no entities; a scene shot that names this run
+    keeps the id, and there is no check here that finds one.
+    """
+    record = resolve_run(runref, project)
+    entities.delete_run(record["id"], files=files)
+    print(f"deleted run {record['id']} (files: {files})")
 
 
 @main.command("adopt")

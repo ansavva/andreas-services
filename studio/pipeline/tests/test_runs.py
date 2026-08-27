@@ -396,6 +396,38 @@ def test_runs_outputs_can_presign(library):
     assert "memory://" in result.output
 
 
+def test_runs_delete_resolves_latest_and_prints_the_id_it_removed(library):
+    """`latest` names a different run tomorrow, so the id has to come back."""
+    result = CliRunner().invoke(cli.main, ["runs", "delete", "porch-teaser/latest"])
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    assert library.run in result.output
+    assert library.run not in library.fake.runs
+
+
+def test_runs_delete_keeps_the_folder_by_default(library):
+    """The default that does not lose generated media to a typo."""
+    result = CliRunner().invoke(cli.main, ["runs", "delete", library.run])
+    assert result.exit_code == 0, result.output
+    assert "files: keep" in result.output
+    assert library.run_output in library.fake.nodes
+
+
+def test_runs_delete_with_files_delete_takes_the_output_with_it(library):
+    result = CliRunner().invoke(
+        cli.main, ["runs", "delete", library.run, "--files", "delete"])
+    assert result.exit_code == 0, result.output
+    assert library.run not in library.fake.runs
+    assert library.run_output not in library.fake.nodes
+
+
+def test_runs_delete_reports_a_run_that_is_not_there(library):
+    """A dead id is a message and a non-zero exit, not a traceback."""
+    result = CliRunner().invoke(
+        cli.main, ["runs", "delete", "run-00000000-0000-0000-0000-000000000000"])
+    assert result.exit_code != 0
+    assert "run-00000000" in result.output
+
+
 # ── an unregistered model, for evaluating one before onboarding it ──────────
 
 def test_a_registry_typo_still_fails_rather_than_reaching_a_provider(library):
