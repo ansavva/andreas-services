@@ -132,6 +132,12 @@ jobs:
       - name: Lint
         run: cd studio/frontend && npm run lint
 
+      # The hosted sign-in pages are styled by a committed JSON document rather
+      # than by app.css, so nothing else would notice the two falling out of
+      # step. This is what notices.
+      - name: Cognito branding in sync with app.css
+        run: cd studio/frontend && npm run brand:check
+
       # One suite, and it covers the legacy-URL resolver. Everything else on
       # this surface fails loudly — a broken listing is a blank page — but a
       # share link written before #313 that quietly stops resolving is invisible

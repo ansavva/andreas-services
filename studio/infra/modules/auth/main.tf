@@ -154,12 +154,25 @@ resource "aws_cognito_user_pool_client" "main" {
   }
 }
 
-# Cognito's default branding for the managed login (v2) pages. No exported
-# console JSON yet — colours can come later by swapping this for `settings`.
+# Studio's colours on the hosted pages. A branding record also has to EXIST for
+# a `managed_login_version = 2` domain to serve anything — see the domain
+# below — so this resource is load-bearing twice over.
+#
+# `managed-login-settings.json` IS GENERATED, from `frontend/src/styles/app.css`
+# via `npm run brand` in `studio/frontend`; `npm run brand:check` gates the two
+# against drift on every PR. The stylesheet is the only source — the derived
+# states are live `color-mix()` blends with no hex to copy, so the tool
+# re-implements the blend rather than keeping a second table of colours.
+#
+# NO ASSETS: studio has no logo yet, so `form.logo` stays disabled. When there
+# is one, it lands here as an `asset` block — humbugg's auth module has the
+# shape. Note that adding one is ForceNew on this resource, which briefly leaves
+# the domain without a style.
 resource "aws_cognito_managed_login_branding" "main" {
-  user_pool_id                = aws_cognito_user_pool.main.id
-  client_id                   = aws_cognito_user_pool_client.main.id
-  use_cognito_provided_values = true
+  user_pool_id = aws_cognito_user_pool.main.id
+  client_id    = aws_cognito_user_pool_client.main.id
+
+  settings = file("${path.module}/managed-login-settings.json")
 }
 
 # THE HOSTED SIGN-IN DOMAIN, IN EITHER OF ITS TWO FORMS.
