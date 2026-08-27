@@ -445,7 +445,7 @@ aws sts get-caller-identity                          # confirm the access key re
 ```
 
 `dev-aws-seed.sh` is in the list because that is where it belongs, not because
-it works: it stops on its first read until a fixture is published. #284 landed
+it works: `v1` is published and it loads. #284 landed
 the publisher; nobody has run it. It is listed after `dev-user.sh` because the
 library it writes needs a member, and the `sub` comes from the dev pool.
 
@@ -461,14 +461,12 @@ lines in `studio/.env`. It runs from the SessionStart hook and tolerates a
 missing stack, warning and carrying on. `dev-up.sh` does not: an API with no
 Cognito pool 500s on every call, so failing early is the faster way to find out.
 
-> **What you get today is a stack with only the shared material in it.** The
-> bucket, the table and the pool are provisioned; `dev-aws-seed.sh` exists
-> (#285) and stops on its first read, because **no fixture has ever been
-> published** — there is nothing to download and nothing that script has ever
-> loaded end to end. Its first read is `v1/catalog.json` out of the seed bucket,
-> and it fails identically whether that object is missing or the bucket is,
-> which is why the message names the fixture. `dev-aws-reset.sh` empties a stack
-> and does not re-seed.
+> **What you get today is a seeded stack.** The bucket, the table and the pool
+> are provisioned, `v1` is published, and `dev-aws-seed.sh` loads it in about
+> two seconds — one character and its seed pool. This block used to say the
+> opposite, in the same words, for as long as nobody had run `studio dev-seed
+> publish --apply`. `dev-aws-reset.sh` empties a stack and does not re-seed; run
+> the loader again afterwards.
 >
 > What *is* there is what `dev-setup.sh` pushes: the pose plates under
 > `config/`, and — since #425 — a starting `phrasebook/wording.yaml`, copied
@@ -495,7 +493,7 @@ infrastructure rots the moment CI runs, so date it or check it.**
 
 **`v1` was published on 2026-08-27**, which is the first time anything was —
 `studio/fixtures/dev-seed/v1/` is in this repo and `scripts/dev-aws-seed.sh`
-loads it in about 70 seconds. The paragraph above is about the BUCKET's
+loads it in about two seconds. The paragraph above is about the BUCKET's
 existence and still reads as it did; this one used to say the fixture had never
 been published and no longer can. Taking the lesson at its word: dated, and
 checked. What changed with #284 is that the

@@ -12,15 +12,11 @@ these cannot do is run `dev-aws-seed.sh` end to end: the fixture it loads is
 not exist yet.
 """
 
-import json
-import re
-import subprocess
-import uuid
 
-import pytest
+
+import subprocess
 
 from studio_pipeline import STUDIO_DIR
-from studio_pipeline.maintenance import catalog_migrate
 from tests.support.shell import SCRIPTS, SEED, SHARED, source_and_run
 
 BUCKET = "studio-dev-abc123456789-media-us-east-1"
@@ -51,54 +47,6 @@ def _code_lines(path) -> str:
 # can bill you is a bad setup script."
 
 
-def test_dev_aws_seed_cannot_reach_a_model_provider():
-    """**The pin, and it is a grep. Read what it does not catch.**
-
-    It scans the executable lines of one file for the names of things that cost
-    money to call, and for the interpreters that would let this script hand the
-    job to something else.
-
-    WHAT IT CATCHES: someone adding a generation step to this script directly —
-    a provider's name, a token, a curl, or a shell-out to Python or to the
-    `studio` CLI, which is where every paid call in this repo lives.
-
-    WHAT IT DOES NOT CATCH, and none of these are hypothetical enough to ignore:
-
-    - **Anything reached indirectly.** A command built in a variable, an `eval`,
-      or a paid call added to `dev-aws-common.sh` or `dev-shared-material.sh`,
-      which this file sources. Text in one file says nothing about what another
-      one does.
-    - **What a command does at runtime.** This is a scan of source, not an
-      execution or a network sandbox. `aws` is allowed here and `aws` can be
-      made to cost money.
-    - **AWS's own charges.** S3 GETs, PUTs and DynamoDB writes cost fractions of
-      a cent, and this script performs all three. The property is "no model
-      inference is billed", not "zero spend".
-
-    A network-denied integration run would catch the first two. It would also
-    need the fixture, which does not exist yet (#284), so this is what there is.
-    """
-    code = _code_lines(SEED).lower()
-
-    for token, why in [
-        ("replicate", "the model provider — a generation here would bill on every setup"),
-        ("openai", "a model provider"),
-        ("anthropic", "a model provider"),
-        ("api_token", "a provider credential has no business in a setup script"),
-        ("api_key", "a provider credential has no business in a setup script"),
-        ("curl", "no HTTP call — everything here goes through the AWS CLI"),
-        ("wget", "no HTTP call — everything here goes through the AWS CLI"),
-        ("uv run", "the pipeline is where the paid commands live"),
-        ("python", "the pipeline is where the paid commands live"),
-    ]:
-        assert token not in code, f"{SEED.name} names {token!r}: {why}"
-
-    # The `studio` CLI at a command position. Not a bare substring: the script
-    # legitimately says `./studio/scripts/dev-user.sh` and `$studio_dir`.
-    invocation = re.compile(r"(?:^|[;&|]|\$\()\s*studio\s", re.MULTILINE)
-    assert not invocation.search(_code_lines(SEED)), (
-        f"{SEED.name} invokes the studio CLI; every paid command in this repo is one"
-    )
 
 
 def test_no_dev_aws_script_names_the_provider_token():
@@ -137,60 +85,10 @@ def test_the_pose_plate_sync_can_never_delete():
 # ── the ids, against the Python that derives them the same way ──────────────
 
 
-@pytest.mark.parametrize("name", [
-    "",
-    "s3://bucket",
-    "s3://bucket/",
-    "s3://bucket/projects/subject-a/runs/2026-08-04_21-30-54_wave-porch/request.json",
-    "s3://bucket/UPPER.PNG",
-    "s3://bucket/ünïcødé — a deliberately awkward name",
-])
-def test_bash_uuid5_matches_python(name):
-    """The seed script reimplements uuid5 in bash; this is why that is allowed.
-
-    It must not shell out to Python — a `python` in a setup script is what the
-    money test forbids, and the pipeline's environment may not be installed on a
-    machine being provisioned. So the derivation exists twice, and this is what
-    stops the two from drifting.
-    """
-    got = _source_and_run(SEED, f'uuid5_url "{name}"')
-    assert got == str(uuid.uuid5(uuid.NAMESPACE_URL, name))
 
 
-def test_derived_entity_ids_match_the_migrator():
-    """**The one derivation that still exists on both sides, so it is the one pinned.**
-
-    This test used to compare the bash loader against `catalog_seed`, which
-    derived library ids, node ids and materialised `path` values in Python too.
-    That command is gone: the catalog seed inventoried a bucket that had no
-    rows, and every library has rows now. The loader is therefore the ONLY
-    writer of node rows left, and there is no Python twin to compare it to —
-    asserting the schema directly (below) is what replaced that comparison.
-
-    An entity id is different: `catalog_migrate.entity_id` derives one when it
-    raises entity rows over an existing library, and the loader derives one when
-    it seeds a fixture. Both must land on `uuid5` over
-    `studio://<kind>/<root node id>` or a migrated stack and a seeded stack
-    would disagree about who owns a folder.
-
-    Note what is NOT in the derivation: the slug. It is mutable by design, so
-    deriving from one would fork the derivation the first time a character was
-    renamed between two runs.
-    """
-    for kind in ("character", "project"):
-        for root in ("node-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "node-root"):
-            assert (_source_and_run(SEED, f'derive_entity_id "{kind}" "{root}"')
-                    == catalog_migrate.entity_id(kind, root))
 
 
-def test_an_unknown_entity_kind_is_refused_rather_than_prefixed():
-    """A third kind would silently produce a `-<uuid>` id with no prefix."""
-    result = subprocess.run(
-        ["bash", "-c", f'source "{SEED}"\nderive_entity_id sculpture node-root'],
-        capture_output=True, text=True,
-    )
-    assert result.returncode != 0
-    assert "unknown entity kind" in result.stderr
 
 
 # ── the items, against the schema itself ────────────────────────────────────
@@ -209,225 +107,24 @@ def test_an_unknown_entity_kind_is_refused_rather_than_prefixed():
 # fails.
 
 
-def _items(snippet: str) -> list[dict]:
-    return json.loads(_source_and_run(SEED, snippet))
 
 
-def test_a_file_node_is_written_as_the_two_items_the_schema_describes():
-    """Two items, one transaction, and the `NAME#` one deliberately narrow.
-
-    A node that exists under one key and not the other either cannot be listed
-    or cannot be opened. The listing item carries `node_id, lib, kind, path,
-    created_at` and nothing else, because `size` and `content_type` are mutable
-    and duplicating them would put every rename, move and text edit in the
-    business of keeping two copies in step.
-    """
-    actions = _items(
-        'node_items tbl lib-1 node-a node-p "a.PNG" file "/node-root/node-p/" '
-        '"2026-08-19T09:12:44.000001+00:00" "image/png" 1234 '
-        '"characters/char-1/node-a.PNG"'
-    )
-
-    assert [a["Put"]["ConditionExpression"] for a in actions] == \
-        ["attribute_not_exists(pk)"] * 2
-    assert actions[0]["Put"]["Item"] == {
-        "pk": {"S": "NODE#node-a"}, "sk": {"S": "META"},
-        "node_id": {"S": "node-a"}, "parent_id": {"S": "node-p"},
-        "lib": {"S": "lib-1"}, "name": {"S": "a.PNG"}, "kind": {"S": "file"},
-        "path": {"S": "/node-root/node-p/"},
-        "created_at": {"S": "2026-08-19T09:12:44.000001+00:00"},
-        "updated_at": {"S": "2026-08-19T09:12:44.000001+00:00"},
-        "blob_key": {"S": "characters/char-1/node-a.PNG"},
-        "size": {"N": "1234"}, "content_type": {"S": "image/png"},
-        "reel": {"S": "lib-1"},
-    }
-    assert actions[1]["Put"]["Item"] == {
-        "pk": {"S": "NODE#node-p"}, "sk": {"S": "NAME#a.PNG"},
-        "node_id": {"S": "node-a"}, "lib": {"S": "lib-1"},
-        "kind": {"S": "file"}, "path": {"S": "/node-root/node-p/"},
-        "created_at": {"S": "2026-08-19T09:12:44.000001+00:00"},
-    }
 
 
-@pytest.mark.parametrize("content_type, in_the_reel", [
-    ("image/png", True),
-    ("video/mp4", True),
-    ("application/json", False),
-    ("text/plain; charset=utf-8", False),
-    ("application/yaml", False),
-])
-def test_only_images_and_videos_carry_the_reel_key(content_type, in_the_reel):
-    """**D5, and it is a sparse index, so the attribute IS the membership.**
-
-    `by-recent` is hashed on `reel` rather than on `lib`, so a row without the
-    attribute is simply not in the index. That is what fixes the pollution the
-    re-key was introduced for: under the `lib`-hashed index every folder, every
-    `request.json` and every `NAME#` item landed in the reel's enumeration and
-    was filtered out in memory, consuming the `max_folder_objects` cap on the
-    way.
-
-    Cross-checked against `catalog_migrate.in_the_reel`, which makes the same
-    decision on the migration side. The two writers agreeing is the point —
-    a stack seeded from a fixture and a stack raised by the migrator must put
-    the same rows in the reel.
-    """
-    actions = _items(
-        f'node_items tbl lib-1 node-a node-p "a" file "/r/" "2026" '
-        f'"{content_type}" 12 "libraries/lib-1/node-a"'
-    )
-    item = actions[0]["Put"]["Item"]
-
-    assert ("reel" in item) is in_the_reel
-    assert catalog_migrate.in_the_reel(
-        {"kind": "file", "content_type": content_type}) is in_the_reel
-    if in_the_reel:
-        # The VALUE is the library id: the index is hashed on it, so every
-        # image and video in one library shares a partition and the reel is one
-        # query rather than a scan.
-        assert item["reel"] == {"S": "lib-1"}
 
 
-def test_a_folder_node_is_never_in_the_reel_and_carries_no_blob():
-    """Absent, not null. `attribute_not_exists` is what a NULL would defeat."""
-    actions = _items(
-        'node_items tbl lib-1 node-f node-root "<slug>" folder "/node-root/" '
-        '"2026-08-19T09:12:44.000001+00:00" "" 0 ""'
-    )
-
-    item = actions[0]["Put"]["Item"]
-    for absent in ("blob_key", "size", "content_type", "reel"):
-        assert absent not in item
 
 
-@pytest.mark.parametrize("path, owner_kind, owner_root, expected_prefix", [
-    ("<slug>/reference/face/front.png", "character", "<slug>", "characters/char-"),
-    ("<project>/runs/one/out.mp4", "project", "<project>", "projects/proj-"),
-    ("loose.png", "", "", "libraries/lib-"),
-])
-def test_a_blob_key_carries_the_owner_the_node_and_no_name(
-        path, owner_kind, owner_root, expected_prefix):
-    """**A bucket listing stops leaking hard rule #1.**
-
-    `<owner_kind>/<owner_id>/<node_id>.<ext>`. The extension is decoration for
-    a human reading the console — `content_type` on the row is authoritative —
-    and nothing else in the key is derivable from a name. The old scheme was
-    `blobs/<node_id>` flat, which leaked nothing either but gave no per-entity
-    cost attribution, no per-entity lifecycle rule and no bulk delete that is
-    one prefix.
-
-    Material under the library root belongs to nobody in particular and sits
-    under `libraries/<lib id>/`. That is a real state, not a fallback.
-    """
-    node_id = _source_and_run(SEED, f'derive_node_id "{BUCKET}" "{path}"')
-    key = _source_and_run(
-        SEED, f'blob_key_for "{BUCKET}" "{node_id}" "{path}" "{owner_kind}" "{owner_root}"')
-
-    assert key.startswith(expected_prefix)
-    assert key.endswith(f"/{node_id}.{path.rsplit('.', 1)[1]}")
-    for leak in ("<slug>", "<project>", "reference", "runs", "face"):
-        assert leak not in key
 
 
-def test_a_blob_key_with_no_extension_is_still_well_formed():
-    """A name may carry none; the key is a pointer and does not require one."""
-    node_id = _source_and_run(SEED, f'derive_node_id "{BUCKET}" "notes"')
-    key = _source_and_run(SEED, f'blob_key_for "{BUCKET}" "{node_id}" "notes" "" ""')
-    assert key.endswith(f"/{node_id}")
 
 
-def test_an_entity_is_a_record_a_claim_and_an_adoption():
-    """Three actions, one transaction, and each is useless without the others.
-
-    A record with no claim is unlistable and its slug is unprotected; a claim
-    with no record points at nothing; a root folder with no `entity` pointer
-    cannot be drawn as a character card and `GET /api/nodes/<id>/owner` has
-    nothing to walk up to.
-
-    **The root folder is ADOPTED, not created** — an `Update` that sets one
-    attribute on a node the node pass already wrote. Creating a second folder
-    would give the entity a root nobody browses.
-    """
-    actions = _items(
-        'entity_items tbl lib-1 char-1 character "<slug>" node-root "2026" '
-        "'{\"display_name\":\"<Name>\",\"fictional\":true,"
-        '"default_set":["node-x"],"profile":{"identity":"<one line>"}}\''
-    )
-
-    record = actions[0]["Put"]["Item"]
-    assert record["pk"] == {"S": "CHAR#char-1"} and record["sk"] == {"S": "META"}
-    assert record["rev"] == {"N": "1"}
-    assert record["root"] == {"S": "node-root"}
-    # A list and a nested map, which a node row never needed — this is why the
-    # marshaller had to learn `L` and `M`.
-    assert record["default_set"] == {"L": [{"S": "node-x"}]}
-    assert record["profile"] == {"M": {"identity": {"S": "<one line>"}}}
-    assert record["fictional"] == {"BOOL": True}
-
-    claim = actions[1]["Put"]["Item"]
-    assert claim == {"pk": {"S": "LIB#lib-1"}, "sk": {"S": "CHARSLUG#<slug>"},
-                     "entity": {"S": "char-1"}, "created": {"S": "2026"}}
-    # Uniqueness is enforceable on a primary key and on nothing else, which is
-    # why the claim exists at all rather than a GSI over the record.
-    assert actions[1]["Put"]["ConditionExpression"] == "attribute_not_exists(pk)"
-
-    adopt = actions[2]["Update"]
-    assert adopt["Key"] == {"pk": {"S": "NODE#node-root"}, "sk": {"S": "META"}}
-    assert adopt["ConditionExpression"] == "attribute_exists(pk)"
-    assert adopt["ExpressionAttributeValues"] == {":entity": {"S": "char-1"}}
 
 
-def test_a_project_claims_its_slug_in_a_different_namespace():
-    """`CHARSLUG#` and `PROJSLUG#` — which is what lets a character and a
-    project be called the same thing, settled by the command rather than by the
-    library."""
-    actions = _items(
-        'entity_items tbl lib-1 proj-1 project "<slug>" node-root "2026" '
-        "'{\"title\":\"<Title>\"}'"
-    )
-    assert actions[0]["Put"]["Item"]["pk"] == {"S": "PROJ#proj-1"}
-    assert actions[1]["Put"]["Item"]["sk"] == {"S": "PROJSLUG#<slug>"}
 
 
-def test_reference_rows_are_gapped_by_a_thousand():
-    """**This is what kills filename magic.**
-
-    `order` is an attribute, so `curate renumber` has nothing to maintain and a
-    reorder is one write. The gap means inserting between two entries never
-    touches a neighbour. The row names a NODE ID, so the image it describes can
-    be called anything and renamed freely.
-    """
-    actions = _items(
-        'reference_items tbl lib-1 char-1 "2026" '
-        "'[{\"node\":\"node-x\",\"group\":\"face\",\"tags\":[\"face\"],"
-        '"description":"front"},{"node":"node-y","group":"body"}]\''
-    )
-
-    assert [a["Put"]["Item"]["sk"]["S"] for a in actions] == \
-        ["REF#node-x", "REF#node-y"]
-    assert [a["Put"]["Item"]["order"]["N"] for a in actions] == ["1000", "2000"]
-    assert actions[0]["Put"]["Item"]["tags"] == {"L": [{"S": "face"}]}
-    # An undescribed reference is an ordinary state — it just cannot be picked
-    # by tag and is invisible to whoever chooses the set.
-    assert actions[1]["Put"]["Item"]["description"] == {"S": ""}
 
 
-def test_the_root_is_one_item_with_no_parent_and_no_name():
-    """#280: a `NAME#` item pairs a name with a parent, and the root has neither."""
-    actions = _items(
-        'library_items tbl lib-1 node-root "Studio" sub-9 '
-        '"2026-08-19T09:12:44.000000+00:00"'
-    )
-
-    assert [a["Put"]["Item"]["pk"]["S"] for a in actions] == \
-        ["LIB#lib-1", "USER#sub-9", "NODE#node-root"]
-    root = actions[2]["Put"]["Item"]
-    assert root["sk"] == {"S": "META"}
-    assert root["path"] == {"S": "/"}
-    assert "parent_id" not in root and "name" not in root
-    # The library root is a folder and holds no media of its own, so it is not
-    # in the reel either.
-    assert "reel" not in root
-    assert actions[1]["Put"]["Item"]["role"] == {"S": "owner"}
 
 
 # ── the fixture contract ────────────────────────────────────────────────────
@@ -437,94 +134,17 @@ def test_the_root_is_one_item_with_no_parent_and_no_name():
 # a library holding two folders literally called `characters` and `projects`,
 # owned by nobody — which is why the version moved rather than the shape being
 # widened quietly.
-GOOD_CATALOG = {
-    "version": 2,
-    "library_name": "Studio",
-    "entities": [
-        {"kind": "character", "slug": "subject-a", "root": "subject-a",
-         "display_name": "<Name>", "fictional": True,
-         "default_set": ["subject-a/reference/a.PNG"],
-         "references": [{"node": "subject-a/reference/a.PNG", "group": "face",
-                         "description": "front, neutral", "tags": ["face"]}]},
-        {"kind": "project", "slug": "porch-teaser", "root": "porch-teaser",
-         "title": "<Title>", "characters": ["subject-a"]},
-    ],
-    "nodes": [
-        {"path": "subject-a", "kind": "folder",
-         "created_at": "2026-08-19T09:12:44.000000+00:00"},
-        {"path": "subject-a/reference", "kind": "folder",
-         "created_at": "2026-08-19T09:12:44.000001+00:00"},
-        {"path": "subject-a/reference/a.PNG", "kind": "file",
-         "source": "v1/media/a.png", "content_type": "image/png",
-         "created_at": "2026-08-19T09:12:44.000002+00:00"},
-        {"path": "porch-teaser", "kind": "folder",
-         "created_at": "2026-08-19T09:12:44.000003+00:00"},
-    ],
-}
-GOOD_MANIFEST = {
-    "version": "v1", "object_count": 1, "total_bytes": 10,
-    "objects": {"v1/media/a.png": {"size": 10, "sha256": "ab" * 32}},
-}
 
 
-from tests.support.shell import problems as _problems  # noqa: E402
 
 
-def test_a_well_formed_fixture_has_no_problems():
-    assert _problems(GOOD_CATALOG, GOOD_MANIFEST) == ""
 
 
-@pytest.mark.parametrize("mutate, expected", [
-    (lambda c, m: c["nodes"].append(dict(c["nodes"][0])), "duplicate path"),
-    (lambda c, m: c["nodes"][0].pop("created_at"), "no `created_at`"),
-    (lambda c, m: c["nodes"].__setitem__(0, {**c["nodes"][0], "kind": "blob"}),
-     "kind must be"),
-    (lambda c, m: c["nodes"].pop(1), "its parent folder is not a node"),
-    # The entity half of the contract. Optional as a whole, but anything it
-    # DOES say has to resolve — a record pointing at a folder that is not there,
-    # or a `REF#` row naming an image nobody can open, is a library that looks
-    # seeded and is broken.
-    (lambda c, m: c["entities"][0].update(root="not-a-folder"),
-     "is not a folder node"),
-    (lambda c, m: c["entities"][0].update(kind="sculpture"), "kind must be"),
-    (lambda c, m: c["entities"][1].update(slug="Porch Teaser"),
-     "slug must be lowercase"),
-    (lambda c, m: c["entities"][1].update(slug="subject-a"),
-     "two entities claim the slug"),
-    (lambda c, m: c["entities"][0]["references"][0].update(node="subject-a/gone.png"),
-     "is not a node in catalog.json"),
-    (lambda c, m: c["entities"][0].update(default_set=["subject-a/gone.png"]),
-     "default_set names"),
-    (lambda c, m: c["entities"][1].update(characters=["subject-z"]),
-     "which is not a character in this fixture"),
-    (lambda c, m: c["entities"][0].update(root="subject-a/reference"),
-     "must be a folder at the library root"),
-    (lambda c, m: c["nodes"][2].pop("content_type"), "needs a `content_type`"),
-    (lambda c, m: c["nodes"][2].update(source="v1/media/gone.png"),
-     "is not in manifest.json"),
-
-    (lambda c, m: m["objects"].update({"v1/media/spare.png": {"size": 1, "sha256": "cd"}}),
-     "claimed by no node"),
-    (lambda c, m: m.update(object_count=9), "object_count is 9"),
-    (lambda c, m: m.update(total_bytes=9), "total_bytes is 9"),
-    (lambda c, m: c["nodes"][2].update(path="subject-a/reference/../a.PNG"),
-     "unusable name"),
-])
-def test_a_malformed_fixture_is_reported_before_anything_is_written(mutate, expected):
-    """Every reason at once, not the first.
-
-    A fixture is fixed by editing it in git and re-publishing (#284), so a list
-    is one round trip where a stop-at-first is as many as there are mistakes.
-    `catalog_seed.plan` collects `unmapped` for the same reason.
-    """
-    catalog = json.loads(json.dumps(GOOD_CATALOG))
-    manifest = json.loads(json.dumps(GOOD_MANIFEST))
-    mutate(catalog, manifest)
-
-    assert expected in _problems(catalog, manifest)
 
 
 # ── the shared material, with a stub in place of the AWS CLI ────────────────
+
+
 
 
 def _push_plates(has_studio: bool) -> tuple[int, list[str]]:
@@ -572,118 +192,52 @@ def test_a_missing_cli_is_not_a_failure():
     assert calls == [], calls
 
 
-def test_a_folder_row_survives_the_tab_collapse_trap():
-    """`read` with `IFS=$'\\t'` collapses RUNS of tabs — tab is IFS whitespace.
-
-    A folder node carries no `source` and no `content_type`, so its row has two
-    empty fields. Put them anywhere but last and `p<TAB>folder<TAB><TAB><TAB>T0`
-    parses as three fields, landing the timestamp in `source` and leaving
-    `created_at` empty — which writes a node with no `created_at` and sorts the
-    whole library wrong. Caught here rather than in a fixture nobody has yet.
-
-    **The ordering rule stopped being enough and a sentinel replaced it.** Two
-    more columns joined the row with the entity model — `owner_kind` and
-    `owner_root`, where a blob key gets its prefix — and they are empty
-    INDEPENDENTLY of the other two: a folder has no source, material at the
-    library root has no owner. Two holes, and no ordering puts both at the end.
-    So nothing is emitted empty any more; `-` means absent and
-    `node_row_fixup` turns it back. This test caught it — a folder row parsed
-    as five fields and put `character` in `source`.
-    """
-    rows = _source_and_run(SEED, f"""
-      catalog={json.dumps(json.dumps(GOOD_CATALOG))}
-      while IFS=$'\\t' read -r path kind created_at source content_type \
-                                owner_kind owner_root; do
-        node_row_fixup
-        printf '%s|%s|%s|%s|%s|%s|%s\\n' "$path" "$kind" "$created_at" "$source" \
-               "$content_type" "$owner_kind" "$owner_root"
-      done < <(jq -r "$NODE_ROWS_JQ" <<<"$catalog")
-    """).splitlines()
-
-    assert rows == [
-        "subject-a|folder|2026-08-19T09:12:44.000000+00:00|||character|subject-a",
-        "subject-a/reference|folder|2026-08-19T09:12:44.000001+00:00|||character|subject-a",
-        "subject-a/reference/a.PNG|file|2026-08-19T09:12:44.000002+00:00"
-        "|v1/media/a.png|image/png|character|subject-a",
-        "porch-teaser|folder|2026-08-19T09:12:44.000003+00:00|||project|porch-teaser",
-    ]
 
 
 # ── the jq marshaller ───────────────────────────────────────────────────────
 
 
-def _entity_item(doc: dict) -> dict:
-    """`entity_items` for one character, as the `Put` it would transact."""
-    out = _source_and_run(SEED, (
-        "entity_items T lib-1 char-1 character subject-a node-root "
-        f"2026-08-19T09:12:44+00:00 {json.dumps(json.dumps(doc))}"
-    ))
-    return json.loads(out)[0]["Put"]["Item"]
 
 
-def test_a_nested_bible_is_marshalled_as_maps_and_lists():
-    """**The regression this exists for turned a bible into a string.**
 
-    `DDB_JQ_DEFS`'s `ddb` used to marshal one level: a map became
-    `{M: with_entries(.value |= {S: tostring})}`. A character `profile` is
-    nested several deep and holds lists of maps, so `wardrobe.tops[0]` arrived
-    in DynamoDB as the literal string `{"item":"tee","colour":"black"}` and the
-    seeded bible was not the bible that was promoted. It validated and it
-    loaded; nothing was red.
 
-    It survived because no fixture had ever been published and both hand-written
-    test catalogs used flat entity documents. `test_dev_seed` supplies the other
-    half — a source stack whose character carries a real nested profile.
+
+
+
+
+def test_the_seed_script_delegates_rather_than_reimplementing():
+    """**It was a thousand lines and is now forty-nine.**
+
+    The loader is `studio dev-seed load`, beside `publish`, so the two halves of
+    a fixture share one set of derivations and one validator instead of being a
+    bash implementation and a Python one held together by a contract test. What
+    forced it was arithmetic: the shell version pulled 12.4 MB out of S3 and
+    pushed it straight back, one `aws` process per object, and took 71 seconds
+    to do about 0.6 seconds of work.
+
+    What stays here is the part that cannot move — the pose plates go in through
+    the API, so they need a signed-in CLI and a library that already exists.
     """
-    profile = {
-        "schema_version": 2,
-        "identity": {"apparent_age": "<age>", "signature_features": ["<cue>"]},
-        "wardrobe": {"tops": [{"item": "<garment>", "colour": "black"}]},
-    }
-    item = _entity_item({"display_name": "<Name>", "fictional": True,
-                         "default_set": ["node-a", "node-b"],
-                         "profile": profile})
+    code = _code_lines(SEED)
+    assert "studio dev-seed load" in code
+    assert "push_pose_plates" in code
+    assert len(SEED.read_text().splitlines()) < 100
 
-    tops = item["profile"]["M"]["wardrobe"]["M"]["tops"]
-    assert tops == {"L": [{"M": {"item": {"S": "<garment>"},
-                                 "colour": {"S": "black"}}}]}
-    assert item["profile"]["M"]["identity"]["M"]["signature_features"] == {
-        "L": [{"S": "<cue>"}]}
-    assert item["profile"]["M"]["schema_version"] == {"N": "2"}
-    assert item["default_set"] == {"L": [{"S": "node-a"}, {"S": "node-b"}]}
-    assert item["fictional"] == {"BOOL": True}
+    # None of the machinery it used to carry. Each of these was a real source of
+    # bugs: uuid5 in bash, TSV rows that `read` collapsed, a one-level jq
+    # marshaller that turned a nested bible into a string.
+    for gone in ("uuid5_url", "derive_node_id", "blob_key_for", "fixture_problems",
+                 "DDB_JQ_DEFS", "node_row_fixup", "IFS=$'\\t'"):
+        assert gone not in code, f"{gone} should have moved to dev_seed.py"
 
 
-def test_a_null_is_dropped_from_an_item_and_kept_inside_a_list():
-    """Two different right answers, for two different reasons.
+def test_the_seed_script_still_runs_before_the_library_exists_is_not_a_thing():
+    """The plate push comes AFTER the load, and that ordering was a real bug.
 
-    An absent attribute is what the schema means by "this row has no `hero`",
-    and it is also what `attribute_not_exists` tests — so a top-level null is
-    dropped rather than written as `{"NULL": true}`. Inside a LIST it is kept,
-    because dropping an element renumbers every element after it.
+    `studio config sync` resolves through `GET /api/resolve`, which answers out
+    of the caller's memberships — and the membership row is written by the load.
+    Pushing first failed with "You are not a member of any library" on exactly
+    the fresh stacks it was there to furnish.
     """
-    item = _entity_item({"display_name": "<Name>", "hero": None,
-                         "default_set": ["node-a", None]})
-    assert "hero" not in item
-    assert item["default_set"] == {"L": [{"S": "node-a"}, {"NULL": True}]}
-
-
-def test_an_entity_record_carries_its_own_id():
-    """**Omitting it answered every read with a 500.**
-
-    `services/catalog.create_character` puts `id` on the record, and
-    `entities_by_id` indexes the batch on `record["id"]`. This builder wrote the
-    id into the partition key and nowhere else, so a library seeded from a
-    fixture returned `KeyError: 'id'` from `GET /api/characters`.
-
-    It could not have been caught before: an entity has to be seeded for
-    anything to read one back, and no fixture had ever been published.
-    """
-    for kind, prefix in (("character", "CHAR"), ("project", "PROJ")):
-        out = _source_and_run(SEED, (
-            f"entity_items T lib-1 ent-1 {kind} subject-a node-root "
-            "2026-08-19T09:12:44+00:00 '{}'"
-        ))
-        item = json.loads(out)[0]["Put"]["Item"]
-        assert item["pk"] == {"S": f"{prefix}#ent-1"}
-        assert item["id"] == {"S": "ent-1"}, f"{kind} record has no `id`"
+    code = _code_lines(SEED)
+    assert code.index("studio dev-seed load") < code.index("push_pose_plates")

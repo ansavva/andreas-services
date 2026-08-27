@@ -121,7 +121,7 @@ terraform -chdir="$TF_DIR" apply -input=false -auto-approve "${TF_VARS[@]}"
 ok "This machine's studio development data has been reset."
 printf '\nThe stack is EMPTY. Refill it with:\n  ./studio/scripts/dev-aws-seed.sh\n'
 printf 'That loads the published fixture: one character and its seed pool,\n'
-printf 'about 70 seconds to VERIFY PASS. It does NOT restore anything else this\n'
+printf 'a couple of seconds. It does NOT restore anything else this\n'
 printf 'stack held - the fixture is the only thing that comes back.\n'
 if [[ "$SKIP_COGNITO" -eq 0 ]]; then
   printf 'The dev account went with the users; recreate it with:\n'

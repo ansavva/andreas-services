@@ -155,7 +155,7 @@ over: studio has a per-machine dev stack like every other service, and
 than abandoned — the dev stack is *seeded* from a published fixture, so it is
 not meant to be empty. **Both halves now work end to end.** #284 and #285
 landed as code in August and went unrun for weeks; `v1` was published on
-2026-08-27 and a fresh stack seeds from it in about 70 seconds. It carries one
+2026-08-27 and a fresh stack seeds from it in about two seconds. It carries one
 character and its seed pool — no runs, scenes or movies, because those are model
 output and cost money to make. Publishing is human-gated, but **not** because it
 generates media: `publish` promotes nodes that already exist in a dev stack, so

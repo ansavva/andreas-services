@@ -14,6 +14,7 @@ testing the refusal and nothing else.
 """
 
 import ast
+import copy
 import hashlib
 import json
 import pathlib
@@ -25,11 +26,11 @@ from moto import mock_s3
 
 from studio_pipeline import cli
 from studio_pipeline.adapters import ddb as ddbc
+from studio_pipeline.maintenance import catalog_migrate as CM
 from studio_pipeline.maintenance import dev_seed as ds
 # The loader's own validator, not a second copy of it. `test_dev_scripts`
 # already sources `dev-aws-seed.sh` and exposes `fixture_problems`; reaching for
 # it here is the whole point — a reimplementation would agree with itself.
-from tests.support import shell as loader
 
 SOURCE = pathlib.Path(ds.__file__)
 
@@ -306,7 +307,7 @@ def test_the_documents_pass_the_loaders_own_validator(dev_stack):
     assert result.exit_code == 0, result.output
 
     catalog, manifest = _documents(dev_stack)
-    assert loader.problems(catalog, manifest) == ""
+    assert ds.problems(catalog, manifest) == []
 
 
 def _documents(dev_stack, version="v1"):
@@ -449,7 +450,7 @@ def test_an_empty_folder_can_be_promoted_on_its_own(dev_stack):
 
     assert {n["path"] for n in catalog["nodes"]} == {"subject-a", "subject-a/input"}
     assert manifest["object_count"] == 0
-    assert loader.problems(catalog, manifest) == ""
+    assert ds.problems(catalog, manifest) == []
 
 
 def test_a_selection_over_the_cap_is_refused(dev_stack):
@@ -724,3 +725,272 @@ def test_a_default_set_entry_with_no_reference_row_is_dropped(dev_stack):
     character, = [e for e in ds.entities(library, paths, selected)
                   if e["slug"] == "subject-b"]
     assert character["default_set"] == [FACE]
+
+
+# ── the loader ──────────────────────────────────────────────────────────────
+#
+# These moved out of `contracts/test_dev_scripts.py` with the code they cover.
+# `dev-aws-seed.sh` was a thousand lines of bash and is now a wrapper around
+# `studio dev-seed load`; the tests came across one for one, minus two that
+# stopped meaning anything:
+#
+#   * `test_bash_uuid5_matches_python` — there is one implementation now, so
+#     there is nothing left for it to disagree with.
+#   * `test_a_folder_row_survives_the_tab_collapse_trap` — the shell passed node
+#     rows between passes as TSV, and `IFS=$'\t' read` collapses runs of tabs, so
+#     an absent `source` and an absent `content_type` merged into one field and
+#     shifted every column after them. A whole class of bug that cannot be
+#     expressed once the rows are dicts.
+#
+# What is NOT lost is the agreement between publisher and loader. That used to
+# be a two-sided contract test — publisher output fed through the loader's own
+# jq — and it is structural now: one module, one set of derivations, one
+# validator, nothing to drift.
+
+GOOD_CATALOG = {
+    "version": 2,
+    "library_name": "Studio",
+    "entities": [
+        {"kind": "character", "slug": "subject-a", "root": "subject-a",
+         "display_name": "<Name>", "fictional": True,
+         "default_set": ["subject-a/reference/a.PNG"],
+         "references": [{"node": "subject-a/reference/a.PNG", "group": "face",
+                         "description": "front, neutral", "tags": ["face"]}]},
+        {"kind": "project", "slug": "porch-teaser", "root": "porch-teaser",
+         "title": "<Title>", "characters": ["subject-a"]},
+    ],
+    "nodes": [
+        {"path": "subject-a", "kind": "folder",
+         "created_at": "2026-08-19T09:12:44.000000+00:00"},
+        {"path": "subject-a/reference", "kind": "folder",
+         "created_at": "2026-08-19T09:12:44.000001+00:00"},
+        {"path": "subject-a/reference/a.PNG", "kind": "file",
+         "source": "v1/media/a.png", "content_type": "image/png",
+         "created_at": "2026-08-19T09:12:44.000002+00:00"},
+        {"path": "porch-teaser", "kind": "folder",
+         "created_at": "2026-08-19T09:12:44.000003+00:00"},
+    ],
+}
+GOOD_MANIFEST = {
+    "version": "v1", "object_count": 1, "total_bytes": 10,
+    "objects": {"v1/media/a.png": {"size": 10, "sha256": "ab" * 32}},
+}
+
+
+def _good():
+    """A deep copy of the hand-written pair, because every case below edits one.
+
+    Named apart from `_documents` above, which reads the two documents a
+    PUBLISH actually wrote into the bucket. Two different fixtures for two
+    different halves, and shadowing one with the other quietly broke nine tests.
+    """
+    return copy.deepcopy(GOOD_CATALOG), copy.deepcopy(GOOD_MANIFEST)
+
+
+def test_a_well_formed_fixture_has_no_problems():
+    assert ds.problems(*_good()) == []
+
+
+@pytest.mark.parametrize("mutate, expected", [
+    (lambda c, m: c["nodes"].append(dict(c["nodes"][0])), "duplicate path"),
+    (lambda c, m: c["nodes"][0].pop("created_at"), "no `created_at`"),
+    (lambda c, m: c["nodes"].__setitem__(0, {**c["nodes"][0], "kind": "blob"}),
+     "kind must be"),
+    (lambda c, m: c["nodes"].pop(1), "its parent folder is not a node"),
+    # The entity half of the contract. Optional as a whole, but anything it
+    # DOES say has to resolve — a record pointing at a folder that is not there,
+    # or a `REF#` row naming an image nobody can open, is a library that looks
+    # seeded and is broken.
+    (lambda c, m: c["entities"][0].update(root="not-a-folder"),
+     "is not a folder node"),
+    (lambda c, m: c["entities"][0].update(kind="sculpture"), "kind must be"),
+    (lambda c, m: c["entities"][1].update(slug="Porch Teaser"),
+     "slug must be lowercase"),
+    (lambda c, m: c["entities"][1].update(slug="subject-a"),
+     "two entities claim the slug"),
+    (lambda c, m: c["entities"][0]["references"][0].update(node="subject-a/gone.png"),
+     "is not a node in catalog.json"),
+    (lambda c, m: c["entities"][0].update(default_set=["subject-a/gone.png"]),
+     "default_set names"),
+    (lambda c, m: c["entities"][1].update(characters=["subject-z"]),
+     "which is not a character in this fixture"),
+    (lambda c, m: c["entities"][0].update(root="subject-a/reference"),
+     "must be a folder at the library root"),
+    (lambda c, m: c["nodes"][2].pop("content_type"), "needs a `content_type`"),
+    (lambda c, m: c["nodes"][2].update(source="v1/media/gone.png"),
+     "is not in manifest.json"),
+
+    (lambda c, m: m["objects"].update({"v1/media/spare.png": {"size": 1, "sha256": "cd"}}),
+     "claimed by no node"),
+    (lambda c, m: m.update(object_count=9), "object_count is 9"),
+    (lambda c, m: m.update(total_bytes=9), "total_bytes is 9"),
+    (lambda c, m: c["nodes"][2].update(path="subject-a/reference/../a.PNG"),
+     "unusable name"),
+])
+def test_a_malformed_fixture_is_reported_before_anything_is_written(mutate, expected):
+    """Every reason at once, not the first.
+
+    A fixture is fixed by editing it in git and re-publishing, so a list is one
+    round trip and a first-failure is as many round trips as there are mistakes.
+    """
+    catalog, manifest = _good()
+    mutate(catalog, manifest)
+    found = ds.problems(catalog, manifest)
+    assert any(expected in problem for problem in found), found
+
+
+# ── the derivations ─────────────────────────────────────────────────────────
+
+BUCKET = "studio-dev-abc123456789-media-us-east-1"
+
+
+def test_the_derivations_reproduce_what_the_shell_loader_wrote():
+    """**Pinned against a real stack the bash loader seeded.**
+
+    These four values were read out of `studio-dev-e613612cf0cf-*` after
+    `dev-aws-seed.sh` filled it, before this module existed. They are what makes
+    the port safe to have made: a stack seeded by either implementation is the
+    same stack, id for id, so nobody has to re-seed to cross the change.
+    """
+    live = "studio-dev-e613612cf0cf-media-us-east-1"
+    assert ds.library_id(live) == "lib-160af8b7-bf45-5fd0-b4d1-8bd7e52fac07"
+    assert ds.node_id(live, "") == "node-57ec4a3a-7594-5328-99f1-f9b44e620c45"
+    assert ds.node_id(live, "jason") == "node-43fbd3f9-35f7-540c-b1c7-68b35c15b25d"
+    assert ds.blob_key(live, ds.node_id(live, "jason/seed/seed-01.jpg"),
+                       "jason/seed/seed-01.jpg", "character", "jason") == (
+        "characters/char-57399438-f54b-5b36-8d84-3fd4dcbf34cc/"
+        "node-555df31d-aec4-5a96-aa51-9db30e626fd9.jpg")
+
+
+def test_an_entity_id_comes_from_its_root_node_and_not_its_slug():
+    """A slug is mutable by design; a rename between two loads must not fork the
+    derivation and write a second character beside the first."""
+    root = ds.node_id(BUCKET, "subject-a")
+    assert CM.entity_id("character", root).startswith("char-")
+    assert CM.entity_id("project", root).startswith("proj-")
+    assert CM.entity_id("character", root) != CM.entity_id("project", root)
+
+
+@pytest.mark.parametrize("path, expected", [
+    ("a/b/c.png", ".png"),
+    ("a/b/c.PNG", ".PNG"),
+    ("a/b/noext", ""),
+    ("a/b/.hidden", ""),
+    ("a/b/two.dots.jpg", ".jpg"),
+])
+def test_an_extension_is_decoration_and_optional(path, expected):
+    """`content_type` on the row is authoritative. The extension is on the key
+    only because a bucket of extensionless uuids is unreadable."""
+    assert ds.extension_of(path) == expected
+
+
+def test_material_owned_by_no_entity_sits_under_libraries():
+    """A real state rather than a fallback: material at the library root belongs
+    to nobody in particular."""
+    nid = ds.node_id(BUCKET, "loose.png")
+    assert ds.blob_key(BUCKET, nid, "loose.png", None, None) == (
+        f"libraries/{ds.library_id(BUCKET)}/{nid}.png")
+
+
+# ── the rows a fixture becomes ──────────────────────────────────────────────
+
+
+def _loaded():
+    catalog, manifest = _good()
+    return ds.rows(catalog, manifest, BUCKET, ds.library_id(BUCKET), "sub-owner")
+
+
+def _find(items, pk, sk):
+    return next((i for i in items if i["pk"] == pk and i["sk"] == sk), None)
+
+
+def test_the_root_is_one_item_with_no_parent_and_no_name():
+    """The only node with neither, and both absences say the same thing: a
+    `NAME#` item exists to pair a name with a parent."""
+    meta = _find(_loaded(), f"NODE#{ds.node_id(BUCKET, '')}", "META")
+    assert meta["path"] == "/"
+    assert "parent_id" not in meta and "name" not in meta
+
+
+def test_a_file_node_is_written_as_the_two_items_the_schema_describes():
+    """List-by-parent and unique-name-per-folder out of one table. A node under
+    one key and not the other either cannot be listed or cannot be opened."""
+    items = _loaded()
+    path = "subject-a/reference/a.PNG"
+    nid = ds.node_id(BUCKET, path)
+
+    meta = _find(items, f"NODE#{nid}", "META")
+    assert meta["kind"] == "file" and meta["content_type"] == "image/png"
+    assert meta["size"] == 10
+    assert meta["blob_key"].startswith("characters/")
+
+    name = _find(items, f"NODE#{ds.node_id(BUCKET, 'subject-a/reference')}", "NAME#a.PNG")
+    assert name["node_id"] == nid
+    # Deliberately narrow: `size` and `content_type` are mutable, so a copy here
+    # would put every rename and edit in the business of keeping two in step.
+    assert "size" not in name and "content_type" not in name
+
+
+def test_only_images_and_videos_carry_the_reel_key():
+    """`reel` is the SPARSE key on `by-recent`, hashed on the attribute — so a
+    row without it is simply not in the index. A folder, a `NAME#` item and a
+    request.json have no business in a reel of media."""
+    items = _loaded()
+    image = _find(items, f"NODE#{ds.node_id(BUCKET, 'subject-a/reference/a.PNG')}", "META")
+    folder = _find(items, f"NODE#{ds.node_id(BUCKET, 'subject-a')}", "META")
+    assert image["reel"] == ds.library_id(BUCKET)
+    assert "reel" not in folder
+    assert "blob_key" not in folder and "size" not in folder
+
+
+def test_an_entity_is_a_record_and_a_claim():
+    """Each is useless without the other: a record with no claim is unlistable,
+    a claim with no record points at nothing."""
+    items = _loaded()
+    root = ds.node_id(BUCKET, "subject-a")
+    eid = CM.entity_id("character", root)
+
+    record = _find(items, f"CHAR#{eid}", "META")
+    assert record["slug"] == "subject-a" and record["root"] == root
+    # `id` on the record as well as in the pk. Leaving it out answered every
+    # read with `KeyError: 'id'` — see the shell builder this replaced.
+    assert record["id"] == eid
+    claim = _find(items, f"LIB#{ds.library_id(BUCKET)}", "CHARSLUG#subject-a")
+    assert claim["entity"] == eid
+
+
+def test_a_project_claims_its_slug_in_a_different_namespace():
+    """`CHARSLUG#` and `PROJSLUG#`, so a project and a character may share a slug
+    without either claim refusing the other."""
+    items = _loaded()
+    lib = ds.library_id(BUCKET)
+    assert _find(items, f"LIB#{lib}", "PROJSLUG#porch-teaser") is not None
+    assert _find(items, f"LIB#{lib}", "CHARSLUG#porch-teaser") is None
+
+
+def test_reference_rows_are_gapped_by_a_thousand():
+    """So an insert between two entries is one write and never touches a
+    neighbour."""
+    eid = CM.entity_id("character", ds.node_id(BUCKET, "subject-a"))
+    node = ds.node_id(BUCKET, "subject-a/reference/a.PNG")
+    row = _find(_loaded(), f"CHAR#{eid}", f"REF#{node}")
+    assert row["order"] == 1000
+    assert row["group"] == "face" and row["tags"] == ["face"]
+
+
+def test_a_default_set_is_stored_as_node_ids():
+    """The fixture names it by PATH because it carries no ids; the record names
+    it by the id this stack derived."""
+    eid = CM.entity_id("character", ds.node_id(BUCKET, "subject-a"))
+    record = _find(_loaded(), f"CHAR#{eid}", "META")
+    assert record["default_set"] == [ds.node_id(BUCKET, "subject-a/reference/a.PNG")]
+
+
+def test_every_row_survives_the_dynamodb_marshaller():
+    """The nested `profile` and the lists go through `to_item` unflattened.
+
+    The shell loader marshalled one level deep and turned a bible into a string;
+    boto3's serializer recurses, which is a good part of why this moved.
+    """
+    for item in _loaded():
+        assert ddbc.to_item(item)

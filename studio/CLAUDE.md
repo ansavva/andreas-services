@@ -252,8 +252,9 @@ studio dev-seed publish --path <p>                   # promote a fixture (dry ru
 
 **A fixture exists, and `dev-aws-seed.sh` loads it.** `v1` was published on
 2026-08-27 — the first publish since #284 landed — and holds one character and
-its seed pool: 54 stills, 12.4 MB, `VERIFY PASS` in about 70 seconds on an empty
-stack. Everything above this paragraph used to say the opposite. Publishing is
+its seed pool: 54 stills, 12.4 MB, loaded in about two seconds by `studio
+dev-seed load` — the bytes are copied server-side and never come through this
+machine. Everything above this paragraph used to say the opposite. Publishing is
 human-gated, but **not because it generates media**: `studio dev-seed publish`
 promotes nodes that already exist, calls no model and costs nothing.
 The gate is hard rule #1 — `catalog.json` lands in git, so the publisher refuses

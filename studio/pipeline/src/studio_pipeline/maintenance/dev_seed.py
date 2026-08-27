@@ -85,16 +85,19 @@ off the shape of the name. It is honest about what it still cannot catch.
 from __future__ import annotations
 
 import collections
+import concurrent.futures
 import hashlib
 import json
 import os
 import re
+import uuid
 
 import click
 
 from studio_pipeline import STUDIO_DIR
 from studio_pipeline.adapters import ddb as ddbc
 from studio_pipeline.adapters import s3 as s3c
+from studio_pipeline import profiles
 from studio_pipeline.errors import die
 from studio_pipeline.maintenance import catalog_migrate as CM
 
@@ -102,6 +105,10 @@ from studio_pipeline.maintenance import catalog_migrate as CM
 #: the library root now, so there is no `characters/` or `projects/` folder to
 #: name the group after — every top-level folder is somebody's slug.
 ENTITY_ROOTS = "entity roots"
+
+#: The shared seed bucket. Publisher and loader name it once between them, and
+#: `STUDIO_DEV_SEED_BUCKET` overrides it for an ephemeral environment.
+SEED_BUCKET = os.environ.get("STUDIO_DEV_SEED_BUCKET") or "studio-dev-seed-us-east-1"
 
 #: Where the authoritative copies live. The bucket gets a copy; git holds the
 #: original, because a fixture is reviewed in a diff.
@@ -312,6 +319,11 @@ DEV_SUBJECTS = frozenset({
     # why this one reads nothing like a person.
     "flex-study",
 })
+
+#: A slug the API would accept: lowercase, starting alphanumeric. The same rule
+#: `domain/paths.check_slug` applies, restated here because the loader validates
+#: a document rather than a live record.
+SLUG = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 #: Any capitalised word of three letters or more, for the report. Not a refusal
 #: — see `name_problems` on why.
@@ -558,6 +570,458 @@ def document(doc: dict) -> bytes:
     return (json.dumps(doc, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
 
+# ── loading a fixture into this stack ───────────────────────────────────────
+#
+# The other half of `publish`, and it used to be 1000 lines of bash
+# (`scripts/dev-aws-seed.sh`, #285). It is here now for one measured reason:
+# **the shell version moved 12.4 MB out of S3 and back into it, one `aws`
+# process per object, and took 71 seconds to do 0.6 seconds of work.**
+#
+#     download + upload, per-object CLI     71s      what this replaces
+#     server-side copy, per-object CLI      23s      the CLI startup, alone
+#     server-side copy, one process         0.5s     what this does
+#     59 node writes as transactions        2.5s     what this replaces
+#     59 node writes via batch_write_item   0.1s     what this does
+#
+# Nothing about S3 or DynamoDB was slow. The cost was entirely a shell script
+# paying ~0.4s of Python interpreter startup per object — the irony being that
+# `uuid5_url` was reimplemented in bash specifically so the script would "never
+# need Python".
+#
+# **The bytes never leave S3 now.** `copy_object` is a server-side copy, so the
+# fixture is not pulled through this machine at all. The old script checksummed
+# every object locally before writing anything, on the reasoning that the
+# manifest checksum is the only thing that says the fixture is the fixture. That
+# check is gone: it cost the entire round trip, it duplicated a verify pass that
+# ran immediately afterwards anyway, and the recovery from a bad load into a DEV
+# stack is `dev-aws-reset.sh`. `manifest.json` is still published and still
+# describes the bytes; nothing reads it back on the way in.
+#
+# **A re-seed overwrites rather than skipping.** The shell version put
+# `attribute_not_exists(pk)` on every item and read a refusal as "already
+# seeded", which is what made a second run a no-op. `batch_write_item` takes no
+# conditions, so a second run rewrites the same rows with the same values —
+# idempotent by value instead of by condition. The difference shows only if
+# somebody edited a seeded row and re-ran the loader, and "refill this stack
+# from the fixture" is what the command means.
+
+#: uuid5 over a URL, matching `catalog_migrate` and the shell loader it
+#: replaces. `test_dev_seed` pins the three derivations against the values the
+#: bash implementation produced, so a stack seeded by either is the same stack.
+NAMESPACE = uuid.NAMESPACE_URL
+
+#: How many items `batch_write_item` takes at once. DynamoDB's limit, not ours.
+BATCH = 25
+
+#: Concurrent `copy_object` calls. Server-side copies are latency-bound and
+#: cost nothing locally, so this is about round trips rather than bandwidth.
+COPY_WORKERS = 32
+
+
+def library_id(bucket: str) -> str:
+    """One bucket, one library; the bucket names it."""
+    return f"lib-{uuid.uuid5(NAMESPACE, f's3://{bucket}')}"
+
+
+def node_id(bucket: str, path: str) -> str:
+    """`""` is the library root, which is why the trailing slash is not optional."""
+    return f"node-{uuid.uuid5(NAMESPACE, f's3://{bucket}/{path}')}"
+
+
+def materialised(bucket: str, parent: str) -> str:
+    """The `path` attribute for a node sitting directly inside `parent`.
+
+    Ancestor ids, root first, slash-delimited — the derived index that makes a
+    subtree one `begins_with` query. `parent_id` stays authoritative.
+    """
+    out = f"/{node_id(bucket, '')}/"
+    if parent:
+        walked = ""
+        for part in parent.split("/"):
+            walked = f"{walked}/{part}" if walked else part
+            out += f"{node_id(bucket, walked)}/"
+    return out
+
+
+def extension_of(path: str) -> str:
+    """`.png`, or `""` when the basename carries none.
+
+    Decoration for a human reading the S3 console — `content_type` on the row is
+    authoritative — and on the key only because a bucket of extensionless uuids
+    is unreadable.
+    """
+    base = path.rsplit("/", 1)[-1]
+    stem, dot, ext = base.rpartition(".")
+    return f".{ext}" if dot and stem and ext else ""
+
+
+def blob_key(bucket: str, nid: str, path: str,
+             owner_kind: str | None, owner_root: str | None) -> str:
+    """`<owner_kind>/<owner_id>/<node_id><ext>`, stamped once and never parsed.
+
+    Anything owned by no entity sits under `libraries/<lib id>/`, which is a real
+    state rather than a fallback: material at the library root belongs to nobody
+    in particular.
+    """
+    ext = extension_of(path)
+    if not owner_kind:
+        return f"libraries/{library_id(bucket)}/{nid}{ext}"
+    owner = CM.entity_id(owner_kind, node_id(bucket, owner_root))
+    return f"{owner_kind}s/{owner}/{nid}{ext}"
+
+
+def fixture_documents(s3, seed_bucket: str, version: str) -> tuple[dict, dict]:
+    """`catalog.json` and `manifest.json`, or a refusal that says whose job it is.
+
+    The failure worth wording carefully is a seed bucket with nothing in it: a
+    raw `NoSuchKey` from boto3 reads as a broken dev stack, and it is not one.
+    """
+    def read(name):
+        key = f"{version}/{name}"
+        try:
+            return json.loads(s3.get_object(Bucket=seed_bucket, Key=key)["Body"].read())
+        except s3.exceptions.NoSuchKey:
+            return None
+        except json.JSONDecodeError as exc:
+            die(f"s3://{seed_bucket}/{key} is not valid JSON: {exc}")
+
+    catalog = read("catalog.json")
+    if catalog is None:
+        die(f"no fixture at s3://{seed_bucket}/{version}/catalog.json.\n"
+            "       Nothing is wrong with your stack — there is nothing to load. "
+            "Publish one with `studio dev-seed publish`.")
+    manifest = read("manifest.json")
+    if manifest is None:
+        die(f"s3://{seed_bucket}/{version}/catalog.json exists and manifest.json "
+            "does not. The fixture is incomplete.")
+    return catalog, manifest
+
+
+def problems(catalog: dict, manifest: dict) -> list[str]:
+    """Every reason this fixture cannot be loaded, one per line.
+
+    **The port of `fixture_problems`, and the contract stopped being two-sided
+    when it moved.** The shell validator and this module used to be separate
+    implementations of one schema, with `test_dev_seed` feeding the publisher's
+    output through the loader's own jq to prove they agreed. That test was
+    guarding against drift between two things; there is one thing now, so the
+    agreement is structural rather than asserted. The failure cases it
+    parametrised moved here with it.
+
+    All of them at once rather than the first: a fixture is fixed by editing it
+    in git and re-publishing, so a list is one round trip and a first-failure is
+    as many round trips as there are mistakes.
+    """
+    found: list[str] = []
+    nodes = catalog.get("nodes")
+    objects = manifest.get("objects")
+    if nodes is None:
+        return ["catalog.json has no `nodes`"]
+    if objects is None:
+        return ["manifest.json has no `objects`"]
+    if not nodes:
+        found.append("catalog.json lists no nodes")
+
+    paths = [node.get("path") or "" for node in nodes]
+    folders = {node.get("path") for node in nodes if node.get("kind") == "folder"}
+    for path, count in collections.Counter(paths).items():
+        if count > 1:
+            found.append(f"duplicate path: {path}")
+
+    for node in nodes:
+        path = node.get("path") or ""
+        if not path:
+            found.append("a node has no `path`")
+            continue
+        # The same rejections the API validator makes: an empty segment, `.` or
+        # `..`, a control character, or a name over 255 bytes.
+        for segment in path.split("/"):
+            if (not segment or segment in (".", "..")
+                    or any(ord(ch) < 32 or ord(ch) == 127 for ch in segment)
+                    or len(segment.encode()) > 255):
+                found.append(f"unusable name in path {json.dumps(path)}")
+        if node.get("kind") not in ("file", "folder"):
+            found.append(f"{path}: kind must be `file` or `folder`, "
+                         f"not {json.dumps(node.get('kind'))}")
+        if not node.get("created_at"):
+            found.append(f"{path}: no `created_at` — the fixture carries the ordering")
+        parent = path.rsplit("/", 1)[0] if "/" in path else ""
+        if parent and parent not in folders:
+            found.append(f"{path}: its parent folder is not a node in catalog.json")
+        if node.get("kind") == "file":
+            if not node.get("source"):
+                found.append(f"{path}: a file node needs a `source` key in the seed bucket")
+            elif node["source"] not in objects:
+                found.append(f"{path}: source {node['source']} is not in manifest.json")
+            if not node.get("content_type"):
+                found.append(f"{path}: a file node needs a `content_type`")
+        elif node.get("source") is not None:
+            found.append(f"{path}: a folder node may not carry a `source`")
+
+    sources = [node["source"] for node in nodes
+               if node.get("kind") == "file" and node.get("source")]
+    for source, count in collections.Counter(sources).items():
+        if count > 1:
+            found.append(f"source claimed by more than one node: {source}")
+    for key in objects:
+        if key not in set(sources):
+            found.append(f"manifest object claimed by no node: {key}")
+
+    # `entities` is OPTIONAL — a fixture of loose material under the library
+    # root is a real library — but anything it DOES say has to resolve, or the
+    # loader would write a record pointing at a folder that is not there.
+    entities = catalog.get("entities") or []
+    slugs = [entity.get("slug") for entity in entities]
+    for slug, count in collections.Counter(slugs).items():
+        if count > 1:
+            found.append(f"two entities claim the slug: {slug}")
+    characters = {entity.get("slug") for entity in entities
+                  if entity.get("kind") == "character"}
+    for entity in entities:
+        slug, root = entity.get("slug"), entity.get("root")
+        if entity.get("kind") not in ("character", "project"):
+            found.append(f"entity {json.dumps(slug)}: kind must be `character` or `project`")
+        if not slug or not SLUG.match(slug):
+            found.append(f"entity root {json.dumps(root)}: slug must be lowercase "
+                         "[a-z0-9_-] starting alphanumeric")
+        if not root or root not in folders:
+            found.append(f"entity {json.dumps(slug)}: its root {json.dumps(root)} "
+                         "is not a folder node")
+        elif "/" in root:
+            # A root has to be a TOP-LEVEL folder, because that is where the
+            # owner of a blob key is read from. An entity rooted deeper would
+            # own bytes the key scheme cannot express.
+            found.append(f"entity {json.dumps(slug)}: its root must be a folder at "
+                         f"the library root, not {json.dumps(root)}")
+        if entity.get("kind") == "character":
+            named = {ref.get("node") for ref in entity.get("references") or []}
+            for ref in entity.get("references") or []:
+                if ref.get("node") not in paths:
+                    found.append(f"{slug}: reference {json.dumps(ref.get('node'))} "
+                                 "is not a node in catalog.json")
+            for want in entity.get("default_set") or []:
+                if want not in named:
+                    found.append(f"{slug}: default_set names {json.dumps(want)}, "
+                                 "which is not one of its references")
+        else:
+            for involved in entity.get("characters") or []:
+                if involved not in characters:
+                    found.append(f"{slug}: involves {json.dumps(involved)}, which is "
+                                 "not a character in this fixture")
+
+    declared = manifest.get("object_count", -1)
+    if declared != len(objects):
+        found.append(f"manifest object_count is {declared} but it lists {len(objects)}")
+    total = manifest.get("total_bytes", -1)
+    actual = sum(entry.get("size", 0) for entry in objects.values())
+    if total != actual:
+        found.append(f"manifest total_bytes is {total} but its sizes add to {actual}")
+    return found
+
+
+def owner_of(catalog: dict) -> dict[str, tuple[str, str]]:
+    """`top-level folder name -> (entity kind, that same name)`.
+
+    Which entity owns a node's bytes is read off the FIRST segment of its path,
+    which is why an entity root has to be a top-level folder.
+    """
+    return {entity["root"]: (entity["kind"], entity["root"])
+            for entity in catalog.get("entities") or []
+            if entity.get("root")}
+
+
+def rows(catalog: dict, manifest: dict, bucket: str, lib: str,
+         owner: str) -> list[dict]:
+    """Every DynamoDB item the fixture becomes, in one list.
+
+    Built whole and written in batches rather than a transaction per node. The
+    shell loader did one `TransactWriteItems` per node for the atomicity of its
+    two items — which is real, but it is atomicity between two rows that this
+    function writes from one source in one pass, so nothing can observe the gap
+    on a stack being seeded from empty. It cost 2.5 seconds against 0.1.
+    """
+    born = min(node["created_at"] for node in catalog["nodes"])
+    root = node_id(bucket, "")
+    owners = owner_of(catalog)
+    items = [
+        {"pk": f"LIB#{lib}", "sk": "META", "name": catalog.get("library_name") or "Studio",
+         "root_node": root, "created_at": born},
+        {"pk": f"USER#{owner}", "sk": f"LIB#{lib}", "role": "owner", "created_at": born},
+        {"pk": f"NODE#{root}", "sk": "META", "node_id": root, "lib": lib,
+         "kind": "folder", "path": "/", "created_at": born, "updated_at": born},
+    ]
+
+    # `size` is the manifest's, because the manifest describes the BYTES while
+    # the catalog describes the tree. A node row claiming a size the object does
+    # not have is the one drift the app would show and nothing would explain.
+    sizes = {node["path"]: (manifest.get("objects") or {}).get(node.get("source"), {}).get("size", 0)
+             for node in catalog["nodes"] if node["kind"] == "file"}
+    for node in catalog["nodes"]:
+        path, kind = node["path"], node["kind"]
+        parent, _, name = path.rpartition("/")
+        nid = node_id(bucket, path)
+        pid = node_id(bucket, parent) if parent else root
+        where = materialised(bucket, parent)
+        owner_kind, owner_root = owners.get(path.split("/")[0], (None, None))
+
+        meta = {"pk": f"NODE#{nid}", "sk": "META", "node_id": nid, "parent_id": pid,
+                "lib": lib, "name": name, "kind": kind, "path": where,
+                "created_at": node["created_at"], "updated_at": node["created_at"]}
+        if kind == "file":
+            meta["blob_key"] = blob_key(bucket, nid, path, owner_kind, owner_root)
+            meta["content_type"] = node["content_type"]
+            meta["size"] = sizes.get(path, 0)
+            # `reel` is the SPARSE key on `by-recent` (D5): the index is hashed
+            # on it, so a row without the attribute is simply not in it. Images
+            # and video only — a folder or a request.json has no business in a
+            # reel of media.
+            if CM.in_the_reel(meta):
+                meta["reel"] = lib
+        items.append(meta)
+        items.append({"pk": f"NODE#{pid}", "sk": f"NAME#{name}", "node_id": nid,
+                      "lib": lib, "kind": kind, "path": where,
+                      "created_at": node["created_at"]})
+
+    for entity in catalog.get("entities") or []:
+        kind, slug = entity["kind"], entity["slug"]
+        root_node = node_id(bucket, entity["root"])
+        eid = CM.entity_id(kind, root_node)
+        claim = "CHARSLUG" if kind == "character" else "PROJSLUG"
+        record = {"pk": f"{'CHAR' if kind == 'character' else 'PROJ'}#{eid}",
+                  "sk": "META", "id": eid, "lib": lib, "slug": slug, "rev": 1,
+                  "created": entity.get("created") or "", "updated": entity.get("created") or "",
+                  "root": root_node}
+        stamp = min(node["created_at"] for node in catalog["nodes"])
+        record["created"] = record["updated"] = stamp
+        if kind == "character":
+            record.update(
+                display_name=entity.get("display_name") or slug,
+                fictional=bool(entity.get("fictional", True)),
+                schema_version=entity.get("schema_version") or 2,
+                hero=node_id(bucket, entity["hero"]) if entity.get("hero") else None,
+                default_set=[node_id(bucket, p) for p in entity.get("default_set") or []],
+                profile=entity.get("profile") or {})
+            for index, ref in enumerate(entity.get("references") or []):
+                items.append({"pk": f"CHAR#{eid}", "sk": f"REF#{node_id(bucket, ref['node'])}",
+                              "lib": lib, "group": ref.get("group") or "unsorted",
+                              "order": ref.get("order") or (index + 1) * 1000,
+                              "description": ref.get("description") or "",
+                              "tags": ref.get("tags") or [],
+                              "created": ref.get("created") or stamp})
+        else:
+            record.update(
+                title=entity.get("title") or slug,
+                description=entity.get("description") or "",
+                hero=node_id(bucket, entity["hero"]) if entity.get("hero") else None,
+                counts=entity.get("counts") or {})
+        items.append({k: v for k, v in record.items() if v is not None})
+        items.append({"pk": f"LIB#{lib}", "sk": f"{claim}#{slug}",
+                      "entity": eid, "created": stamp})
+    return items
+
+
+def copy_blobs(s3, seed_bucket: str, bucket: str, catalog: dict) -> int:
+    """Server-side copies, concurrently. Returns how many objects moved.
+
+    **The bytes never touch this machine.** `copy_object` is an S3-to-S3 copy;
+    the old shell loader downloaded each object and uploaded it again, which is
+    24.8 MB of transfer to move 12.4 MB of fixture and the single largest reason
+    seeding took over a minute.
+
+    `ContentType` is set from the ROW rather than left to S3's guess, which is
+    why this is `MetadataDirective=REPLACE` — the catalog is authoritative about
+    what a file is, and five of the fixture's objects arrived with a `.jpg`
+    extension over PNG bytes before they were normalised.
+    """
+    owners = owner_of(catalog)
+    jobs = []
+    for node in catalog["nodes"]:
+        if node["kind"] != "file":
+            continue
+        path = node["path"]
+        owner_kind, owner_root = owners.get(path.split("/")[0], (None, None))
+        nid = node_id(bucket, path)
+        jobs.append((node["source"],
+                     blob_key(bucket, nid, path, owner_kind, owner_root),
+                     node["content_type"]))
+
+    def copy(job):
+        source, key, content_type = job
+        s3.copy_object(Bucket=bucket, Key=key,
+                       CopySource={"Bucket": seed_bucket, "Key": source},
+                       ContentType=content_type, MetadataDirective="REPLACE")
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=COPY_WORKERS) as pool:
+        # `map` is lazy and swallows nothing: consuming it is what re-raises a
+        # failed copy on this thread rather than losing it in the pool.
+        list(pool.map(copy, jobs))
+    return len(jobs)
+
+
+def write_rows(ddb, table: str, items: list[dict]) -> int:
+    """`batch_write_item` in twenty-fives, with the unprocessed ones retried.
+
+    DynamoDB may decline part of a batch under throttling and reports which —
+    dropping that answer on the floor is how a seed ends up half-written and
+    says it succeeded.
+    """
+    written = 0
+    for start in range(0, len(items), BATCH):
+        chunk = items[start:start + BATCH]
+        request = {table: [{"PutRequest": {"Item": ddbc.to_item(item)}} for item in chunk]}
+        for _attempt in range(5):
+            answer = ddb.batch_write_item(RequestItems=request)
+            unprocessed = answer.get("UnprocessedItems") or {}
+            written += len(request[table]) - len(unprocessed.get(table, []))
+            if not unprocessed:
+                break
+            request = unprocessed
+        else:
+            die(f"DynamoDB kept declining writes to {table}; {len(items) - written} "
+                "item(s) were not written. Re-run when the table is not throttled.")
+    return written
+
+
+def adopt_roots(ddb, table: str, catalog: dict, bucket: str) -> None:
+    """Point each entity's root folder back at the entity that owns it.
+
+    An `Update` rather than a `Put`, because the folder is a node the pass above
+    already wrote in full: replacing it here would be a second definition of the
+    same row, and the one thing it needs is one more attribute.
+    """
+    for entity in catalog.get("entities") or []:
+        root = node_id(bucket, entity["root"])
+        ddb.update_item(
+            TableName=table,
+            Key=ddbc.to_item({"pk": f"NODE#{root}", "sk": "META"}),
+            UpdateExpression="SET #entity = :entity",
+            ExpressionAttributeNames={"#entity": "entity"},
+            ExpressionAttributeValues=ddbc.to_item(
+                {":entity": CM.entity_id(entity["kind"], root)}),
+        )
+
+
+def owner_sub(pool_id: str, email: str) -> str:
+    """The `sub` of the dev account that will own the seeded library.
+
+    From the DEV pool, and the failure is worth naming: a library with no
+    membership row is a library nobody can read, and the API answers "you are
+    not a member of any library" rather than anything about seeding.
+    """
+    import boto3
+
+    idp = boto3.client("cognito-idp")
+    try:
+        user = idp.admin_get_user(UserPoolId=pool_id, Username=email)
+    except Exception as exc:  # noqa: BLE001 — any failure here means the same thing
+        die(f"no '{email}' in {pool_id}, so the library would have no member "
+            f"({exc}). Run ./studio/scripts/dev-user.sh first.")
+    for attribute in user.get("UserAttributes", []):
+        if attribute["Name"] == "sub":
+            return attribute["Value"]
+    die(f"'{email}' in {pool_id} has no `sub` attribute.")
+
+
 # ── CLI ─────────────────────────────────────────────────────────────────────
 
 
@@ -609,8 +1073,8 @@ def cmd_tree(library):
 @click.option("--fixture-version", default="v1", show_default=True,
               help="the version prefix in the seed bucket; a fixture change is "
                    "additive, so a new shape is v2 rather than a mutation of v1")
-@click.option("--seed-bucket", default="studio-dev-seed-us-east-1", show_default=True,
-              help="the shared seed bucket (STUDIO_DEV_SEED_BUCKET on the loader)")
+@click.option("--seed-bucket", default=SEED_BUCKET, show_default=True,
+              help="the shared seed bucket")
 @click.option("--library", help="library id, if this stack somehow holds more than one")
 @click.option("--max-objects", default=MAX_OBJECTS, show_default=True,
               help="refuse a selection that expands past this many files. #284 "
@@ -730,3 +1194,60 @@ def cmd_publish(wanted, paths_from, fixture_version, seed_bucket, library,
 
     print("\nCommit the two documents — they are the fixture; the bucket holds a "
           "copy.\nA machine picks it up with ./studio/scripts/dev-aws-seed.sh.")
+
+
+@main.command("load")
+@click.option("--fixture-version", default="v1", show_default=True,
+              help="Which published fixture to load.")
+@click.option("--seed-bucket", default=SEED_BUCKET, show_default=True,
+              help="Where the fixture lives.")
+@click.option("--email", help="The dev account that will own the library. "
+                              "Defaults to $STUDIO_DEV_USER_EMAIL.")
+def cmd_load(fixture_version, seed_bucket, email):
+    """Load the published fixture into this machine's dev stack.
+
+    The other half of `publish`, and it replaces `scripts/dev-aws-seed.sh` —
+    which still works, because it now calls this. See the section comment above
+    on why 71 seconds of shell became about one second of Python: the bytes were
+    being pulled through the machine and every object cost an `aws` process.
+
+    **Not a merge.** A row the fixture describes is written as the fixture
+    describes it, over whatever was there. Refilling a stack is what this is for.
+    """
+    bucket, table = source()
+    ddb = ddbc.client()
+    if not ddbc.table_exists(ddb):
+        die(f"no table '{table}'. Run scripts/dev-aws-setup.sh first.")
+    s3 = s3c.client()
+
+    address = email or os.environ.get("STUDIO_DEV_USER_EMAIL", "").strip()
+    if not address:
+        die("no --email and no STUDIO_DEV_USER_EMAIL, so the library would have "
+            "no member. Run ./studio/scripts/dev-user.sh first.")
+    pool = profiles.value("cognito_user_pool_id")
+
+    catalog, manifest = fixture_documents(s3, seed_bucket, fixture_version)
+    broken = problems(catalog, manifest)
+    if broken:
+        for problem in broken:
+            print(f"  REFUSED  {problem}")
+        die(f"{len(broken)} problem(s) in the fixture. Nothing was written.")
+
+    lib = library_id(bucket)
+    owner = owner_sub(pool, address)
+    items = rows(catalog, manifest, bucket, lib, owner)
+
+    print(f"fixture     s3://{seed_bucket}/{fixture_version}/")
+    print(f"into        s3://{bucket}/  +  {table}")
+    print(f"library     {lib}  ({catalog.get('library_name') or 'Studio'})")
+    print(f"owner       {address}")
+
+    objects = copy_blobs(s3, seed_bucket, bucket, catalog)
+    print(f"\n  objects   {objects:>4}  copied server-side "
+          f"({manifest.get('total_bytes', 0)} bytes, never through this machine)")
+    written = write_rows(ddb, table, items)
+    print(f"  rows      {written:>4}  written")
+    adopt_roots(ddb, table, catalog, bucket)
+    entities = len(catalog.get("entities") or [])
+    print(f"  entities  {entities:>4}  adopted their root folder")
+    print("\nSeeded. Start the app with ./studio/scripts/dev-up.sh")
