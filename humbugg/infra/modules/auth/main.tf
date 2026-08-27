@@ -199,6 +199,28 @@ resource "aws_cognito_managed_login_branding" "main" {
   client_id    = aws_cognito_user_pool_client.main.id
 
   settings = file("${path.module}/managed-login-settings.json")
+
+  # The wordmark, in both colour modes because the document resolves them to the
+  # same palette. Cognito cannot use the webfont-and-CSS the marketing site sets
+  # `.brand-wordmark` with, so the same mark is uploaded as artwork —
+  # `app/tool/render-wordmark.py` renders it and records how.
+  #
+  # Only FORM_LOGO is declared. Undeclared categories are left alone, so Cognito
+  # keeps serving its own illustrations for the MFA and passkey screens rather
+  # than us committing artwork we did not draw.
+  asset {
+    category   = "FORM_LOGO"
+    color_mode = "LIGHT"
+    extension  = "PNG"
+    bytes      = filebase64("${path.module}/assets/humbugg-wordmark.png")
+  }
+
+  asset {
+    category   = "FORM_LOGO"
+    color_mode = "DARK"
+    extension  = "PNG"
+    bytes      = filebase64("${path.module}/assets/humbugg-wordmark.png")
+  }
 }
 
 # Where the hosted pages are served from. Exactly one shape at a time: a custom

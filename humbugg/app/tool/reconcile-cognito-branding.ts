@@ -116,6 +116,28 @@ const SLOTS: ReadonlyArray<readonly [string, string]> = [
   ['components.alert.{mode}.error.borderColor', 'danger'],
 ];
 
+/**
+ * The structural choices that are OURS rather than AWS's defaults.
+ *
+ * Everything else in the document is layout the console editor owns, but these
+ * two decide whether the page looks like Humbugg at all, and both default the
+ * wrong way in a merged export:
+ *
+ * - `pageBackground.image.enabled` ships TRUE, and with no PAGE_BACKGROUND
+ *   asset of our own Cognito fills it with its own pastel gradient — which is
+ *   what covered the brand background on the first branded deploy. The page
+ *   background colour below only shows once this is off.
+ * - `form.logo.enabled` ships FALSE, so the FORM_LOGO asset the Terraform
+ *   uploads would be ignored.
+ *
+ * They are set here, not hand-edited into the JSON, so that a re-export from
+ * the console cannot quietly restore AWS's defaults.
+ */
+const STRUCTURE: ReadonlyArray<readonly [string, boolean]> = [
+  ['components.pageBackground.image.enabled', false],
+  ['components.form.logo.enabled', true],
+];
+
 /** Cognito wants `rrggbbaa`, no leading `#`, lower-cased so diffs are stable. */
 function cognitoColor(hex: string): string {
   const bare = hex.replace('#', '').toLowerCase();
@@ -141,8 +163,25 @@ function setColor(root: Record<string, unknown>, path: readonly string[], value:
   node[leaf] = value;
 }
 
+/** Same walk as `setColor`, for the boolean structure above. */
+function setFlag(root: Record<string, unknown>, path: readonly string[], value: boolean): void {
+  let node = root;
+  for (const segment of path.slice(0, -1)) {
+    const next = node[segment];
+    if (next === undefined || typeof next !== 'object' || next === null) {
+      throw new Error(`${OUT}: no such path segment "${segment}" in ${path.join('.')}`);
+    }
+    node = next as Record<string, unknown>;
+  }
+  const leaf = path[path.length - 1] as string;
+  if (!(leaf in node)) throw new Error(`${OUT}: no such flag "${path.join('.')}"`);
+  node[leaf] = value;
+}
+
 function reconcile(colors: Colors, current: string): string {
   const root = JSON.parse(current) as Record<string, unknown>;
+
+  for (const [path, value] of STRUCTURE) setFlag(root, path.split('.'), value);
 
   // Humbugg has ONE visual scheme. `theme.ts` pins the app to it by resolving
   // `dark` to the light values, and the same reasoning applies here: an OS-dark
