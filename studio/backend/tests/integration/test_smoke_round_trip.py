@@ -353,7 +353,13 @@ def test_a_file_makes_the_whole_round_trip(api, library, debris, bucket):
     assert headers["Content-Disposition"] == f'attachment; filename="{FILENAME}"'
 
     # ── gone, rows and bytes both ───────────────────────────────────────────
-    blob_key = catalog.blob_key_for(node_id)
+    # **Read off the row, not re-derived.** `blob_key_for` takes four arguments
+    # now — the owner is part of the key — and this called it with one, so this
+    # test has been a TypeError since the entity model landed and nothing said
+    # so: the tree is skipped without STUDIO_INTEGRATION=1 and never runs in CI.
+    # Reading the stored key is also the rule the app follows; the key is
+    # stamped once at creation and nothing re-derives it.
+    blob_key = catalog.node(node_id)["blob_key"]
     # Proved present first, or the assertion after the delete is a tautology
     # about a key that was never written.
     assert client.head_object(Bucket=bucket_name, Key=blob_key)["ContentLength"] == len(BODY)

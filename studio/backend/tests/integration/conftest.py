@@ -30,8 +30,26 @@ import re
 import subprocess
 from pathlib import Path
 
-import boto3
-import pytest
+# **Before boto3 builds a client, and that ordering is the whole point.**
+#
+# `tests/conftest.py` — the parent of this directory — does
+# `os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")` so the unit suite has
+# something for moto to accept. On a machine whose real key lives in
+# `~/.aws/credentials`, which is this repo's documented arrangement since August
+# 2026, that is not a no-op: an environment variable BEATS the credentials file,
+# so the sentinel shadows the real key and every call in this tree fails
+# `InvalidClientTokenId` before it reaches a single assertion.
+#
+# So this suite could only ever have run on a machine that exported its key —
+# and it is skipped without `STUDIO_INTEGRATION=1`, so nothing said otherwise.
+# Dropped only when the value is still the sentinel, so a machine that genuinely
+# supplies its key by environment keeps it.
+for _sentinel_var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"):
+    if os.environ.get(_sentinel_var) == "testing":
+        del os.environ[_sentinel_var]
+
+import boto3  # noqa: E402 — after the credential fix above
+import pytest  # noqa: E402
 
 STATE_BUCKET = "andreas-services-terraform-state"
 SCRIPTS = Path(__file__).resolve().parents[3] / "scripts"

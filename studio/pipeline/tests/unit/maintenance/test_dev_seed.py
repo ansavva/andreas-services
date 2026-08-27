@@ -994,3 +994,28 @@ def test_every_row_survives_the_dynamodb_marshaller():
     """
     for item in _loaded():
         assert ddbc.to_item(item)
+
+
+def test_the_repos_own_shared_folders_are_not_name_positions():
+    """**The regression a working loader created.**
+
+    The pose plates are ordinary nodes under `config/`. `dev-aws-seed.sh` pushed
+    them BEFORE it wrote the library, so on a fresh stack the push always failed
+    and `config/` never existed — which is the only reason the name check had
+    never met it. Fixing that ordering made the plates land, and the next
+    `dev-seed publish` refused the stack over a folder the loader had itself
+    just created.
+
+    `config/` is nobody's slug and no entity's root. It is not a name position.
+    """
+    assert ds.name_problems({"n1": "config", "n2": "config/pose/face/front.png"}) == []
+    assert ds.name_problems({"n1": "jason", "n2": "config/pose"}) == []
+    # And the check still bites on an actual top-level folder.
+    assert ds.name_problems({"n1": "config", "n2": "rosalind"})
+
+
+def test_a_shared_root_is_not_a_way_to_smuggle_a_name_through():
+    """The exclusion is on the FIRST segment only. `config` under a character is
+    still that character's folder, and a folder called `config` nested anywhere
+    else has no bearing on what the top level holds."""
+    assert ds.name_problems({"n1": "rosalind", "n2": "rosalind/config"})

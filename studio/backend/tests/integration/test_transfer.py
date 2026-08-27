@@ -86,7 +86,9 @@ def test_a_transfer_writes_no_s3_objects(bucket, library, destination_library):
     library["created"].append(folder["node_id"])
     child = catalog.create_node(folder["node_id"], "output", catalog.KIND_FOLDER)
     clip = catalog.create_node(child["node_id"], "clip.mp4", catalog.KIND_FILE)
-    key = catalog.blob_key_for(clip["node_id"])
+    # Off the row rather than re-derived — see `test_smoke_round_trip.py` on
+    # why this was a TypeError nobody had seen.
+    key = clip["blob_key"]
     client.put_object(Bucket=name, Key=key, Body=b"integration-bytes")
 
     try:

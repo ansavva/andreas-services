@@ -130,6 +130,29 @@ for real. Three guards now, and they fail differently on purpose:
 `studio` by hand bills exactly as it always did and hard rule #2's approval gate
 is untouched.
 
+### The integration tier
+
+```bash
+studio/scripts/dev-up.sh                      # the API the CLI talks to
+studio/scripts/dev-test-integration.sh        # both suites; needs a seeded stack
+studio/scripts/dev-test-integration.sh pipeline   # or just one
+```
+
+`pipeline/tests/integration/` runs the real `studio` binary against the running
+API and this machine's dev stack. It is skipped without `STUDIO_INTEGRATION=1`
+and **never runs in CI** — CI has no dev stack and never writes to AWS.
+
+Two things about it are load-bearing:
+
+- **Every test shells out.** `tests/conftest.py` pins the bucket and table to
+  PRODUCTION names at import, substitutes sentinel credentials and starts moto.
+  All correct for a unit suite; all wrong here. A subprocess with an environment
+  built from scratch sidesteps every one of them, and is what a developer types.
+- **The binary is `sys.prefix/bin/studio`, not `studio` off PATH.** A developer
+  with several worktrees has a `.venv` in each and one of them on PATH, so a run
+  from this tree cheerfully tested the main checkout's binary and reported a
+  pass. Caught only because an error message had been reworded here.
+
 **A test may not write to the repo either.** `conftest.py` redirects
 `registry.PATH` at a per-test copy of `models.json`, because `studio models
 refresh` rewrites it in place and the dispatch test invokes every leaf command

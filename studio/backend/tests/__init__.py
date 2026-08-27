@@ -5,6 +5,7 @@
       paths.py       where studio/ is, counted ONCE
       unit/          moto + the Flask test client        no gate
       integration/   real S3, DynamoDB, Cognito          STUDIO_INTEGRATION=1
+                     (with pipeline/'s, via scripts/dev-test-integration.sh)
       smoke/         the live prod API over HTTPS        STUDIO_SMOKE=1
 
 Route modules are exercised through the `api` / `empty_api` HTTP fixture rather

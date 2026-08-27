@@ -5,7 +5,7 @@
       support/           harnesses, not tests — fake_api.py, shell.py
       unit/              mirrors src/studio_pipeline/, one dir per subpackage
       contracts/         named for the FAILURE they catch, not for a module
-      integration/       the real CLI against a real dev stack (not yet built)
+      integration/       the real CLI against a real dev stack
 
 WHERE DOES MY TEST GO?
 
@@ -20,7 +20,10 @@ Ask what it is about, not what it imports.
     one across four directories and lose the only thing that makes them
     findable.
   * **Something that needs real AWS or the real API.** `integration/`, behind
-    `STUDIO_INTEGRATION=1`. Never in CI.
+    `STUDIO_INTEGRATION=1`, run by `scripts/dev-test-integration.sh`. Never in
+    CI. Every test there shells out to the `studio` binary rather than using
+    `CliRunner`, because this conftest pins the bucket and table to PRODUCTION
+    names at import and starts moto — read `integration/__init__.py` first.
 
 WHAT THE GUARDS DO, AND WHY YOU SHOULD NOT WORK AROUND THEM
 

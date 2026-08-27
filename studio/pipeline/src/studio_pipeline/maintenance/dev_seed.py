@@ -99,6 +99,7 @@ from studio_pipeline.adapters import ddb as ddbc
 from studio_pipeline.adapters import s3 as s3c
 from studio_pipeline import profiles
 from studio_pipeline.errors import die
+from studio_pipeline.domain import paths as P
 from studio_pipeline.maintenance import derive as CM
 
 #: The one "tree" `name_positions` reports under. An entity root is a child of
@@ -309,6 +310,21 @@ def expand(paths: dict[str, str], wanted: list[str]) -> dict:
 #: which refuses to read a bucket or table whose name contains `prod` before
 #: anything else happens — so a fixture is dev-origin by construction and this
 #: list only decides WHICH dev subjects are publishable.
+#: Top-level folders this repo PUTS THERE ITSELF, which are not name positions
+#: at all — nobody's slug, no entity's root, and nothing a person chose.
+#:
+#: **Leaving `config` out of this broke the publisher the moment the loader
+#: started working.** The pose plates are ordinary nodes under `config/`, pushed
+#: by `studio config sync`. `dev-aws-seed.sh` pushed them BEFORE it wrote the
+#: library, so the push failed on every fresh stack and `config/` never existed
+#: — which is the only reason the name check had never seen it. Fixing that
+#: ordering made the plates land, and the very next `dev-seed publish` refused
+#: the stack over a folder the loader had just created.
+#:
+#: `catalog_gc.SHARED_PREFIXES` is the same idea for the same two names, on the
+#: delete side.
+SHARED_ROOTS = frozenset({P.CONFIG, "phrasebook"})
+
 DEV_SUBJECTS = frozenset({
     "jason",                                  # the seed fixture's subject
     "subject-a", "subject-b",                 # what the test fixtures use
@@ -353,7 +369,7 @@ def name_positions(paths: dict[str, str]) -> dict[str, list[str]]:
     found = collections.defaultdict(set)
     for path in paths.values():
         parts = path.split("/") if path else []
-        if parts and parts[0]:
+        if parts and parts[0] and parts[0] not in SHARED_ROOTS:
             found[ENTITY_ROOTS].add(parts[0])
     return {tree: sorted(names) for tree, names in found.items()}
 
