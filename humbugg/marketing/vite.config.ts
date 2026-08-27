@@ -1,6 +1,7 @@
 import { reactRouter } from '@react-router/dev/vite';
 import tailwindcss from '@tailwindcss/vite';
-import { defineConfig } from 'vite';
+// vitest/config, not vite: same defineConfig plus the typed `test` block below.
+import { defineConfig } from 'vitest/config';
 
 // Vitest can't run the React Router dev plugin: it injects an HMR "preamble"
 // that the jsdom test environment never provides, so any rendered component
@@ -37,5 +38,25 @@ export default defineConfig(({ command }) => ({
   server: {
     port: Number(process.env.PORT || 5173),
     open: true,
+  },
+  test: {
+    environment: 'jsdom',
+    // Testing Library registers its between-test cleanup on a global afterEach;
+    // without globals every second render finds the first one still mounted.
+    globals: true,
+    setupFiles: ['./vitest.setup.ts'],
+    // Styles carry no assertions here; parsing Tailwind output in jsdom is pure cost.
+    css: false,
+    include: ['src/**/*.test.{ts,tsx}', 'app/**/*.test.{ts,tsx}'],
+    // "it was not called" is one of the assertions, and it is worthless
+    // against a shared tally.
+    clearMocks: true,
+    restoreMocks: true,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text-summary'],
+      include: ['src/**/*.{ts,tsx}', 'app/**/*.{ts,tsx}'],
+      exclude: ['**/*.test.{ts,tsx}', 'app/assets/**'],
+    },
   },
 }));
