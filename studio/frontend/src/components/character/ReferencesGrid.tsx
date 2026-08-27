@@ -8,7 +8,7 @@ import {
   getReferences,
   getTree,
   patchReference,
-  putDefaultSet,
+  setDefaultSet,
   type DefaultSetAck,
 } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
@@ -216,7 +216,7 @@ export function ReferencesGrid({ characterId, rootId, defaultSet, rev, onSaved }
     setSaving(true);
     setWriteError(null);
     try {
-      const ack = await putDefaultSet(characterId, ordered.filter((node) => picking.has(node)), rev);
+      const ack = await setDefaultSet(characterId, ordered.filter((node) => picking.has(node)), rev);
       onSaved(ack);
       setPicking(null);
       reload();

@@ -301,3 +301,23 @@ def string_list(value, label: str) -> list[str]:
         if not isinstance(entry, str) or not entry:
             raise ValidationError(f"every entry in {label} must be a string")
     return value
+
+
+def holders(entity_id: str, holder_kind: str) -> list[dict]:
+    """Everything of one kind that points at this entity — the way back up.
+
+    One `by-sk` query plus a batched read, which is only possible because the
+    relationship is an edge row keyed on this entity's id. It is the answer to
+    "which scene used this run" and "which movie cuts this scene", and both were
+    unanswerable at any price until those edges existed: the run lived in a
+    shot's attribute and the scenes lived in a JSON list, and no index can see
+    into either.
+
+    Deliberately thin — id, slug and title are what a link needs to be drawn.
+    """
+    found = catalog.entities_by_id(holder_kind, catalog.linked(entity_id, holder_kind))
+    return sorted(
+        ({"id": record["id"], "slug": record.get("slug"), "title": record.get("title")}
+         for record in found.values()),
+        key=lambda entry: entry.get("slug") or "",
+    )

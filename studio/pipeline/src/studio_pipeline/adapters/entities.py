@@ -508,7 +508,12 @@ def delete_movie(movie_id: str, *, files: str = "keep") -> dict:
     return api.delete(f"/api/movies/{movie_id}", files=files)
 
 
-def put_movie_scenes(movie_id: str, scenes: list[dict]) -> dict:
+def put_movie_scenes(movie_id: str, scenes: list[str]) -> dict:
+    """Replace the cut list. **Scene ids** — the route validates every entry.
+
+    Typed `list[dict]` and called with dicts, which the service rejects with a
+    500. The answer is the movie in its read shape, so it can be merged.
+    """
     return api.request("PATCH", f"/api/movies/{movie_id}/scenes", {"scenes": scenes})
 
 

@@ -184,12 +184,20 @@ def test_a_movie_records_the_order_it_was_given(library, cut_scene, tmp_path,
     record = MV.create(PROJECTS.resolve("porch-teaser"), "the-cut",
                        ["porch-teaser/second", "porch-teaser/first"])
 
-    # `scenes` on the finished record is the resolved ENTRIES, not bare ids —
-    # each carries the scene it came from, the copy it made and its duration.
-    # The ids in cut order are what the movie contributes, so assert those.
-    assert [entry["scene"] for entry in record["scenes"]] == [second["id"], first["id"]]
-    assert [entry["n"] for entry in record["scenes"]] == [1, 2]
+    # `scenes` is the cut list in order, as the API sends it: a row per cut.
+    #
+    # This used to assert the resolved ENTRIES the CLI had built — `{scene, n,
+    # node, duration}` — because it PATCHed those straight onto the
+    # relationship and the fake stored them. The service validates every entry
+    # as a scene id and answers 500, so `movies new` had been dying at that call
+    # against the real API, after the whole cut had been stitched and uploaded.
+    assert [row["id"] for row in record["scenes"]] == [second["id"], first["id"]]
     assert record["status"] == "assembled"
+
+    # The per-cut detail did not go away — it moved to the stitch report, next
+    # to the rest of what the encoder recorded.
+    assert [cut["n"] for cut in record["stitch"]["cuts"]] == [1, 2]
+    assert [cut["scene"] for cut in record["stitch"]["cuts"]] == [second["id"], first["id"]]
 
 
 def test_the_cut_is_made_locally_and_only_the_record_goes_to_the_api(

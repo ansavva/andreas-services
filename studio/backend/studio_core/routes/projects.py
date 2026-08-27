@@ -103,7 +103,7 @@ def create_project():
     except ConflictError as conflict:
         return support.structured("conflict", str(conflict), 409)
 
-    return jsonify({**record, "characters": characters}), 201, {
+    return jsonify({**record, "characters": _characters(record)}), 201, {
         "Location": f"/api/projects/{record['id']}"
     }
 
@@ -211,6 +211,13 @@ def set_characters(addressed: str):
     A replace rather than an add, because the SPA edits a set and `projects link`
     reads the set first — an add-only endpoint would need a remove beside it, and
     a client that got the difference wrong would accumulate links nothing removes.
+
+    **The answer is the same shape `GET` sends**, and used to be the bare ids
+    this was handed. A record holds `characters` as expanded objects, so a
+    client merging this response into the record it already had replaced those
+    objects with strings — the write succeeded and every chip downstream read
+    unselected, with no type able to catch it. Returning what `GET` returns is
+    what makes the response mergeable at all.
     """
     body = support.body()
     held = support.memberships()
@@ -222,8 +229,8 @@ def set_characters(addressed: str):
     for char_id in characters:
         support.entity_at(catalog.ENTITY_CHARACTER, g.library, char_id, held)
 
-    linked = catalog.set_project_characters(record["id"], record["lib"], characters)
-    return jsonify({"id": record["id"], "characters": linked}), 200
+    catalog.set_project_characters(record["id"], record["lib"], characters)
+    return jsonify({"id": record["id"], "characters": _characters(record)}), 200
 
 
 @bp.get("/projects/<addressed>/inputs")

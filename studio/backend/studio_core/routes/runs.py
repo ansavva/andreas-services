@@ -326,7 +326,13 @@ def _run(run_id: str, held: dict) -> dict:
 
 @bp.get("/runs/<run_id>")
 def get_run(run_id: str):
-    """The envelope, with bindings and outputs expanded and payload left as ids.
+    """The envelope, bindings and outputs expanded, payload left as ids, and both
+    ways back up.
+
+    `scenes` is which scenes bound this run into a shot; `derived` is what was
+    chained off it. Neither could be asked before the edge rows existed — the
+    first lived in a shot attribute, the second in a `lineage.from_run` scalar,
+    and `by-sk` can see neither.
 
     **`payload` stays three node ids.** They are fetched as text through
     `GET /api/nodes/<id>/text` by whoever wants them, which is where the "never
@@ -345,6 +351,8 @@ def get_run(run_id: str):
     return jsonify(
         {
             **record,
+            "scenes": support.holders(record["id"], catalog.ENTITY_SCENE),
+            "derived": support.holders(record["id"], catalog.ENTITY_RUN),
             "bindings": {
                 name: expand(entries) for name, entries in record.get("bindings", {}).items()
             },
@@ -385,7 +393,20 @@ def update_run(run_id: str):
 
     if not assignments:
         raise ValidationError("nothing to change")
-    return jsonify(catalog.update_project_entity(KIND, record, assignments, listing)), 200
+
+    # A run's parent can be recorded here rather than at create — `chain` writes
+    # the envelope first and learns what it continued from afterwards — so the
+    # lineage edge has to be maintained on this path too. Without it the reverse
+    # ("what was chained off this run") would be right only for runs that knew
+    # their parent at birth, which is the harder half to notice being wrong.
+    edges = None
+    if "lineage" in assignments:
+        parent = (assignments["lineage"] or {}).get("from_run")
+        edges = {catalog.ENTITY_RUN: [parent] if parent else []}
+
+    return jsonify(
+        catalog.update_project_entity(KIND, record, assignments, listing, edges=edges)
+    ), 200
 
 
 @bp.post("/runs/<run_id>/outputs")

@@ -4,7 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Alert, Badge, Button, Spinner, Tabs, Text } from "@ansavva/design-system";
 
 import { ApiError } from "../apis/client";
-import { deleteCharacter, getCharacter, patchCharacter, putCharacterProfile } from "../apis/studio";
+import { deleteCharacter, getCharacter, patchCharacter, setCharacterProfile } from "../apis/studio";
 import { FolderTab } from "../components/browse/FolderTab";
 import { PageBar } from "../components/layout/PageBar";
 import { CharacterProjects, CharacterRuns } from "../components/character/CharacterWork";
@@ -96,7 +96,7 @@ export function CharacterPage() {
           at = patch.rev ?? at;
         }
         if (changes.profile) {
-          patch = { ...patch, ...(await putCharacterProfile(characterId, changes.profile, at)) };
+          patch = { ...patch, ...(await setCharacterProfile(characterId, changes.profile, at)) };
         }
 
         character.setData((current) => (current ? { ...current, ...patch } : current));

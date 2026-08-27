@@ -16,15 +16,15 @@ vi.mock("../apis/studio", () => ({
   getCharacters: vi.fn().mockResolvedValue([]),
   deleteProject: vi.fn(),
   patchProject: vi.fn(),
-  putProjectCharacters: vi.fn(),
+  setProjectCharacters: vi.fn(),
 }));
 
-import { deleteProject, getProject, putProjectCharacters } from "../apis/studio";
+import { deleteProject, getProject, setProjectCharacters } from "../apis/studio";
 import { ProjectPage } from "./ProjectPage";
 
 const read = vi.mocked(getProject);
 const destroy = vi.mocked(deleteProject);
-const setCharacters = vi.mocked(putProjectCharacters);
+const setCharacters = vi.mocked(setProjectCharacters);
 
 const ID = "proj-0001";
 
@@ -109,18 +109,24 @@ it("will not delete until the slug is typed, and says what goes with it", async 
 });
 
 /**
- * Involvement is a set replace, and its answer cannot be merged.
+ * Involvement is a set replace, and its answer is now mergeable.
  *
- * The route reports the links as ids where the record holds expanded objects,
- * so the page refetches instead — merging replaced objects with strings and
- * every chip silently read unselected while the write had succeeded.
+ * It was not: the route echoed the ids it was handed where the record holds
+ * expanded objects, so merging put strings in a field of objects and every chip
+ * read unselected while the write had succeeded. The page refetched the whole
+ * project to work around it. The route answers in its `GET` shape now, so the
+ * merge is the assertion — and the refetch is asserted NOT to happen, because a
+ * refetch that quietly came back would hide the shape regressing again.
  */
-it("refetches the project after changing who is involved", async () => {
+it("merges the involvement answer without refetching the project", async () => {
   const { getCharacters } = await import("../apis/studio");
   vi.mocked(getCharacters).mockResolvedValue([
     { id: "char-1", slug: "someone", display_name: "Someone", hero: null, counts: { references: 0, files: 0 } },
   ] as never);
-  setCharacters.mockResolvedValue({ id: ID, characters: ["char-1"] });
+  setCharacters.mockResolvedValue({
+    id: ID,
+    characters: [{ id: "char-1", slug: "someone", display_name: "Someone" }],
+  });
 
   await open();
   await waitFor(() => expect(screen.getByRole("button", { name: "Someone" })).toBeTruthy());
@@ -129,7 +135,5 @@ it("refetches the project after changing who is involved", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Someone" }));
 
   await waitFor(() => expect(setCharacters).toHaveBeenCalledWith(ID, ["char-1"]));
-  // The refetch is the assertion: without it the page holds ids in a field that
-  // is meant to hold objects.
-  await waitFor(() => expect(read).toHaveBeenCalled());
+  expect(read).not.toHaveBeenCalled();
 });

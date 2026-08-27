@@ -367,8 +367,14 @@ export function patchCharacter(
  * route was written, and `PUT` is neither registered on it nor in the API's
  * `CORS_METHODS` — so every profile save from this app failed the preflight,
  * and nothing caught it because the backend tests call the route directly.
+ *
+ * **Which is why these are named `set*` and not `put*`.** The verb was fixed
+ * and the name was not, so three wrappers went on advertising a method none of
+ * them sends. It is not a cosmetic mismatch: a reader who trusts the name
+ * writes `PUT` into the next route, the preflight fails in the browser and
+ * nowhere else, and the same afternoon gets spent twice.
  */
-export function putCharacterProfile(id: string, profile: CharacterProfile, rev: number) {
+export function setCharacterProfile(id: string, profile: CharacterProfile, rev: number) {
   return apiSend<EntityPatch<CharacterRecord>>(
     "PATCH",
     `/api/characters/${encodeURIComponent(id)}/profile`,
@@ -504,7 +510,7 @@ export interface DefaultSetAck {
   rev: number;
 }
 
-export function putDefaultSet(id: string, nodes: string[], rev: number) {
+export function setDefaultSet(id: string, nodes: string[], rev: number) {
   return apiSend<DefaultSetAck>("PATCH", `/api/characters/${encodeURIComponent(id)}/default-set`, {
     nodes,
     rev,
@@ -587,19 +593,21 @@ export function deleteProject(
 
 /** Replace the involvement links wholesale — this is `projects link` / `unlink`. */
 /**
- * Replace who a project is about.
+ * Replace who a project is about. **The answer is mergeable.**
  *
- * **The answer is `{id, characters}` where `characters` is a list of ID
- * STRINGS** — `catalog.set_project_characters` returns the links it wrote. A
- * `GET` expands the same field into `{id, slug, display_name}` objects, so the
- * two are the same name and different shapes, and merging this one into a
- * record replaces objects with strings. It looks right and reads back wrong:
- * `characters.map(c => c.id)` becomes a list of `undefined`, so every chip goes
- * unselected while the write itself succeeded. Refetch the project instead of
- * merging.
+ * It was not, and the asymmetry cost three bugs: the route answered with the id
+ * strings it had been handed while a `GET` expands the same field into
+ * `{id, slug, display_name}` objects. Merging replaced objects with strings, so
+ * `characters.map(c => c.id)` became a list of `undefined` and every chip read
+ * unselected while the write itself had succeeded — a failure no type could
+ * catch, because the type was an assertion about a shape nobody had checked.
+ *
+ * The route now answers in the shape `GET` sends. The refetch this used to
+ * require is gone, and `ProjectPage` lost the `onReload` prop that existed for
+ * nothing else.
  */
-export function putProjectCharacters(id: string, characters: string[]) {
-  return apiSend<{ id: string; characters: string[] }>(
+export function setProjectCharacters(id: string, characters: string[]) {
+  return apiSend<{ id: string; characters: ProjectRecord["characters"] }>(
     "PATCH",
     `/api/projects/${encodeURIComponent(id)}/characters`,
     { characters },

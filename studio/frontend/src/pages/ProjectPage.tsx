@@ -141,7 +141,6 @@ export function ProjectPage() {
             onSaved={(patch) =>
               project.setData((current) => (current ? { ...current, ...patch } : current))
             }
-            onReload={project.reload}
           />
 
           <Text variant="caption" tone="muted">

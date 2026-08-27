@@ -19,16 +19,16 @@ vi.mock("../apis/studio", () => ({
   deleteCharacter: vi.fn(),
   getCharacter: vi.fn(),
   patchCharacter: vi.fn(),
-  putCharacterProfile: vi.fn(),
+  setCharacterProfile: vi.fn(),
 }));
 
-import { getCharacter, patchCharacter, putCharacterProfile } from "../apis/studio";
+import { getCharacter, patchCharacter, setCharacterProfile } from "../apis/studio";
 import { CharacterPage } from "./CharacterPage";
 import { TestProviders } from "../test-providers";
 
 const read = vi.mocked(getCharacter);
 const patch = vi.mocked(patchCharacter);
-const putProfile = vi.mocked(putCharacterProfile);
+const setProfile = vi.mocked(setCharacterProfile);
 
 const ID = "char-0001";
 
@@ -115,19 +115,19 @@ describe("saving identity and the bible together", () => {
     // same row, so sending them the same `rev` makes the second one 409 against
     // a change the page itself just made.
     patch.mockResolvedValue(record({ slug: "<other>", rev: 8 }));
-    putProfile.mockResolvedValue(record({ slug: "<other>", rev: 9 }));
+    setProfile.mockResolvedValue(record({ slug: "<other>", rev: 9 }));
 
     await open();
     await editAndSave("Slug", "<other>");
     // The record fields alone are dirty here, so only the one write goes.
     await waitFor(() => expect(patch).toHaveBeenCalledWith(ID, expect.objectContaining({ rev: 7 })));
-    expect(putProfile).not.toHaveBeenCalled();
+    expect(setProfile).not.toHaveBeenCalled();
 
     cleanup();
     vi.clearAllMocks();
     read.mockResolvedValue(record());
     patch.mockResolvedValue(record({ rev: 8 }));
-    putProfile.mockResolvedValue(record({ rev: 9 }));
+    setProfile.mockResolvedValue(record({ rev: 9 }));
 
     await open();
     // Both halves dirty: the slug, and a leaf inside the first bible section.
@@ -135,18 +135,18 @@ describe("saving identity and the bible together", () => {
     fireEvent.change(screen.getByLabelText("Hair"), { target: { value: "long" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    await waitFor(() => expect(putProfile).toHaveBeenCalled());
+    await waitFor(() => expect(setProfile).toHaveBeenCalled());
     expect(patch).toHaveBeenCalledWith(ID, expect.objectContaining({ rev: 7 }));
-    expect(putProfile).toHaveBeenCalledWith(ID, expect.anything(), 8);
+    expect(setProfile).toHaveBeenCalledWith(ID, expect.anything(), 8);
   });
 
   it("sends only the bible when only the bible moved", async () => {
-    putProfile.mockResolvedValue(record({ rev: 8 }));
+    setProfile.mockResolvedValue(record({ rev: 8 }));
 
     await open();
     await editAndSave("Hair", "long");
 
-    await waitFor(() => expect(putProfile).toHaveBeenCalledWith(ID, expect.anything(), 7));
+    await waitFor(() => expect(setProfile).toHaveBeenCalledWith(ID, expect.anything(), 7));
     expect(patch).not.toHaveBeenCalled();
   });
 

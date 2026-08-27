@@ -3,7 +3,7 @@ import { useCallback, useState } from "react";
 import { Alert, Button, Field, Input, Text } from "@ansavva/design-system";
 
 import { ApiError } from "../../apis/client";
-import { getCharacters, patchProject, putProjectCharacters } from "../../apis/studio";
+import { getCharacters, patchProject, setProjectCharacters } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import type { ProjectRecord } from "../../types";
 import { AutoTextarea } from "../common/AutoTextarea";
@@ -19,15 +19,6 @@ interface Props {
    * dropped `counts` and crashed this page on `record.counts.runs`.
    */
   onSaved: (patch: Partial<ProjectRecord>) => void;
-  /**
-   * Re-read the project.
-   *
-   * For the involvement write, whose answer cannot be merged at all: it reports
-   * the links as ids where the record holds expanded objects. One refetch after
-   * a change nobody makes often beats a mapping that has to be kept in step
-   * with what a `GET` expands.
-   */
-  onReload: () => void;
 }
 
 /**
@@ -48,7 +39,7 @@ interface Props {
  * fields, so each save sends what is on screen and merges back whatever the
  * route answered with.
  */
-export function ProjectDetails({ record, onSaved, onReload }: Props) {
+export function ProjectDetails({ record, onSaved }: Props) {
   const [title, setTitle] = useState(record.title ?? "");
   const [description, setDescription] = useState(record.description ?? "");
   const [busy, setBusy] = useState(false);
@@ -131,7 +122,7 @@ export function ProjectDetails({ record, onSaved, onReload }: Props) {
         </Text>
       </div>
 
-      <Involvement record={record} onSaved={onSaved} onReload={onReload} />
+      <Involvement record={record} onSaved={onSaved} />
     </div>
   );
 }
@@ -148,7 +139,7 @@ export function ProjectDetails({ record, onSaved, onReload }: Props) {
  * somebody here does not rewrite history: it says who the project is *about*,
  * which is the question "which projects involve this character" reads.
  */
-function Involvement({ record, onReload }: Props) {
+function Involvement({ record, onSaved }: Props) {
   const { data } = useResource(["characters"], useCallback(() => getCharacters(), []));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -161,8 +152,13 @@ function Involvement({ record, onReload }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await putProjectCharacters(record.id, [...next]);
-      onReload();
+      // Merged, not refetched. The route answers in the shape a `GET` sends,
+      // which it did not used to: it echoed the ids it was handed, so merging
+      // put strings where this record holds objects and every chip read
+      // unselected while the write had succeeded. A whole refetch of the
+      // project was the workaround for that, and is no longer needed.
+      const { characters } = await setProjectCharacters(record.id, [...next]);
+      onSaved({ characters });
     } catch (err) {
       setError((err as Error).message);
     } finally {

@@ -12,7 +12,7 @@ import {
   getAsset,
   getNodeText,
   moveNodes,
-  putCharacterProfile,
+  setCharacterProfile,
   renameNode,
   saveNodeText,
 } from "./studio";
@@ -142,7 +142,7 @@ describe("record writes send `rev`", () => {
   it("replaces a profile at the revision it was read at", async () => {
     const fetcher = stubFetch();
 
-    await putCharacterProfile("char-0001", { identity: { register: "…" } }, 4);
+    await setCharacterProfile("char-0001", { identity: { register: "…" } }, 4);
 
     expect(urlOf(fetcher).pathname).toBe("/api/characters/char-0001/profile");
     // PATCH, not PUT: replace and merge share one address and are told apart by
