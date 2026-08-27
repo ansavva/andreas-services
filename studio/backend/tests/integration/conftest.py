@@ -44,9 +44,20 @@ from pathlib import Path
 # and it is skipped without `STUDIO_INTEGRATION=1`, so nothing said otherwise.
 # Dropped only when the value is still the sentinel, so a machine that genuinely
 # supplies its key by environment keeps it.
-for _sentinel_var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"):
-    if os.environ.get(_sentinel_var) == "testing":
-        del os.environ[_sentinel_var]
+# **Only when this suite is actually going to run**, and that guard is the whole
+# fix. pytest imports every conftest during COLLECTION, including this one, on an
+# ordinary `pytest -q` where every test below is skipped. Deleting the sentinel
+# there leaves the unit suite with no credentials at all, botocore falls through
+# its provider chain to the EC2 metadata service at 169.254.169.254, and the
+# socket guard in `tests/conftest.py` refuses it — four failures in
+# `test_clients.py`, on CI only, because a developer machine has
+# `~/.aws/credentials` for boto3 to find instead.
+#
+# Both guards were behaving correctly. It is their interaction that was wrong.
+if os.environ.get("STUDIO_INTEGRATION") == "1":
+    for _sentinel_var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"):
+        if os.environ.get(_sentinel_var) == "testing":
+            del os.environ[_sentinel_var]
 
 import boto3  # noqa: E402 — after the credential fix above
 import pytest  # noqa: E402
