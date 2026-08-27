@@ -143,6 +143,12 @@ public sealed record RecipientAssignment(
 public sealed record RevealAssignment(Membership Giver, RecipientAssignment Recipient);
 public sealed record RevealResponse(IReadOnlyList<RevealAssignment> Assignments);
 public sealed record InviteResponse(string InviteUrl);
+public enum InvitationStatus { Sent, Delivered, Bounced, Accepted, Expired, Revoked }
+public sealed record ManagedInvitation(string InvitationId, string Email, InvitationStatus Status, string ExpiresAt, string? AcceptedAt, string? LastSentAt);
+public sealed record CreateInvitationsRequest(IReadOnlyList<string>? Emails);
+public sealed record CreateInvitationsResponse(IReadOnlyList<ManagedInvitation> Invitations);
+public sealed record AcceptInvitationRequest(string? Token, bool ConfirmAddressMismatch = false);
+public sealed record AcceptInvitationResponse(string GroupId, bool Accepted);
 
 // ─── Self-service data export (GDPR right of access / portability, issue #189) ──────────────────
 //
@@ -314,6 +320,10 @@ internal sealed record DrawRecord(
     IReadOnlyDictionary<string, string> Assignments,
     string CreatedAt,
     string CreatedBy);
+internal sealed record InvitationRecord(
+    string InvitationId, string GroupId, string Email, string TokenHash, string Status,
+    string ExpiresAt, string CreatedAt, string UpdatedAt, string? AcceptedAt = null,
+    string? AcceptedUserId = null, string? LastSentAt = null, string? MessageId = null);
 
 public class ApiException(int statusCode, string code, string message) : Exception(message)
 {

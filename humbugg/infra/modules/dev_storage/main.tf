@@ -159,6 +159,29 @@ resource "aws_dynamodb_table" "billing" {
   tags = var.tags
 }
 
+resource "aws_dynamodb_table" "invitations" {
+  name         = "${var.resource_prefix}-invitations"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "invitation_id"
+  attribute {
+    name = "invitation_id"
+    type = "S"
+  }
+  attribute {
+    name = "group_id"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "group_id-index"
+    hash_key        = "group_id"
+    projection_type = "ALL"
+  }
+
+  server_side_encryption { enabled = true }
+  tags = var.tags
+}
+
 resource "aws_s3_bucket" "app" {
   bucket        = var.app_bucket_name
   force_destroy = true

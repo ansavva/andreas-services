@@ -92,13 +92,14 @@ jobs:
           # table that does not exist. Nothing here touches DynamoDB (the smoke
           # test only calls /health), so these are placeholders that just have
           # to be present.
-          docker run --rm -d \
+          docker run -d \
             --name humbugg-backend-smoke \
             -p 5088:8080 \
             --entrypoint dotnet \
             -e ASPNETCORE_URLS=http://+:8080 \
             -e HUMBUGG_PROFILES_TABLE=ci-smoke-profiles \
             -e HUMBUGG_GROUPS_TABLE=ci-smoke-groups \
+            -e HUMBUGG_INVITATIONS_TABLE=ci-smoke-invitations \
             -e HUMBUGG_GROUPMEMBERS_TABLE=ci-smoke-groupmembers \
             -e HUMBUGG_WISHES_TABLE=ci-smoke-wishes \
             -e HUMBUGG_DRAWS_TABLE=ci-smoke-draws \
