@@ -66,10 +66,18 @@ public sealed class DevStackFixture : IAsyncLifetime
         }
     }
 
-    // Loads humbugg/backend/.env into the process environment — only the configuration the
-    // settings record reads. Credential selection stays with the ambient environment (the
-    // default profile per the repo rule), so AWS_PROFILE and ASPNETCORE_* lines are skipped.
-    private static void ApplyDevEnv()
+    private static void ApplyDevEnv() => DevEnv.Apply();
+}
+
+/// <summary>
+/// Loads <c>humbugg/backend/.env</c> into the process environment — only the configuration the
+/// settings record reads. Credential selection stays with the ambient environment (the
+/// default profile per the repo rule), so AWS_PROFILE and ASPNETCORE_* lines are skipped.
+/// Shared by the Data fixture and the HTTP fixture, which both need the app's own settings.
+/// </summary>
+internal static class DevEnv
+{
+    public static void Apply()
     {
         var envFile = Path.Combine(BackendDirectory(), ".env");
         if (!File.Exists(envFile))

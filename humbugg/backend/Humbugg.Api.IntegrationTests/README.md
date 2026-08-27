@@ -20,7 +20,9 @@ humbugg/scripts/dev-test-integration.sh
   classes are the one layer the unit tier cannot see, because unit tests fake at
   the `I*Repository` interfaces above them.
 - `Http/` — in-process HTTP tests via `WebApplicationFactory<Program>`: the JWT
-  pipeline, CORS, the error-envelope contract, and full-stack flows. (Phase 2.)
+  pipeline (real `OnTokenValidated` checks over a symmetric test key), CORS, the
+  error-envelope contract, and full product flows (create → join → wish → draw →
+  reveal) through real controllers, services, and repositories.
 
 ## Where does my test go?
 
