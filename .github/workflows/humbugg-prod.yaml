@@ -295,6 +295,7 @@ jobs:
           put marketing-ecr-url    "$(tf marketing_ecr_repository_url)"
           put cognito-user-pool-id "$(tf cognito_user_pool_id)"
           put cognito-client-id    "$(tf cognito_client_id)"
+          put cognito-auth-domain  "$(tf cognito_auth_domain)"
           put s3-bucket            "$(tf marketing_bucket)"
           put cf-dist-id           "$(tf cloudfront_distribution_id)"
           put app-s3-bucket        "$(tf app_bucket)"
@@ -690,8 +691,11 @@ jobs:
           put APP_S3_BUCKET                    /humbugg/prod/app-s3-bucket
           put APP_CF_DIST_ID                   /humbugg/prod/app-cf-dist-id
           # Metro inlines these; empty ships an app that cannot sign anyone in.
-          put EXPO_PUBLIC_COGNITO_USER_POOL_ID /humbugg/prod/cognito-user-pool-id
+          # The pool id is not among them: since #365 the app reaches Cognito only
+          # through the Managed Login host, and the client id is the only pool
+          # identifier it still needs.
           put EXPO_PUBLIC_COGNITO_CLIENT_ID    /humbugg/prod/cognito-client-id
+          put EXPO_PUBLIC_COGNITO_DOMAIN       /humbugg/prod/cognito-auth-domain
 
       - name: Install product app dependencies
         env:
@@ -706,7 +710,6 @@ jobs:
       - name: Export product app for web
         env:
           EXPO_PUBLIC_API_BASE_URL: https://api.humbugg.com
-          EXPO_PUBLIC_AWS_REGION: ${{ env.AWS_REGION }}
         run: cd humbugg/app && npx expo export -p web --source-maps
 
       - name: Assert the app build took the native leaf

@@ -1,7 +1,7 @@
-// The web app leans on `sessionStorage` to carry four things across a navigation
-// that crosses an auth boundary: the email being confirmed, the consent captured
-// at the signup checkbox, where to return after signing in, and a freshly-minted
-// invite link that the API will never show again.
+// `sessionStorage` carries the values that have to survive a navigation across
+// an auth boundary: where to return after signing in, the PKCE verifier and CSRF
+// state of an in-flight hosted sign-in, and a freshly-minted invite link that
+// the API will never show again.
 //
 // There is no `sessionStorage` on a device. This is the one seam that hides that:
 // the browser's own store on web (so a real page reload still survives, exactly
@@ -41,9 +41,13 @@ export const sessionStore = {
 
 /** The keys the app stores, named once so a typo cannot silently lose a value. */
 export const sessionKeys = {
-  email: 'humbugg:email',
-  consent: 'humbugg:consent',
   returnTo: 'humbugg:returnTo',
+  // The PKCE verifier and CSRF state, which have to survive the full-page
+  // navigation to the hosted sign-in page and back. Web-only in practice: the
+  // native flow never leaves `promptAsync`, so it keeps them in the request
+  // object instead.
+  oauthVerifier: 'humbugg:oauthVerifier',
+  oauthState: 'humbugg:oauthState',
   invite: (groupId: string) => `humbugg:invite:${groupId}`,
   join: (groupId: string) => `humbugg:join:${groupId}`,
 } as const;

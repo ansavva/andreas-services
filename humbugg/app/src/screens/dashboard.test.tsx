@@ -1,9 +1,9 @@
 // Rewritten from the web app's `DashboardPage.test.tsx` against RN queries.
 //
-// The two behaviours worth pinning are both about the profile-less first run:
-// a brand-new account gets the setup form instead of an empty group list, and
-// the consent stashed at signup is what gets recorded when the profile row is
-// finally created.
+// The behaviours worth pinning are about the profile-less first run: a brand-new
+// account gets the setup form instead of an empty group list, and this form is
+// now where policy consent is captured — it moved here from the signup screen
+// when sign-up became a Cognito hosted page (#365).
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 const mocks = {
@@ -52,12 +52,12 @@ jest.mock('../components/shell', () => {
 });
 
 import DashboardScreen from './dashboard';
-import { sessionKeys, sessionStore } from '../utils/session-store';
+
+const CONSENT_LABEL = 'Agree to the Terms of Service and Privacy Policy';
 
 beforeEach(() => {
   jest.clearAllMocks();
   mocks.listGroups.mockResolvedValue([]);
-  sessionStore.remove(sessionKeys.consent);
 });
 
 describe('profile setup', () => {
@@ -78,19 +78,39 @@ describe('profile setup', () => {
     expect(mocks.saveMe).not.toHaveBeenCalled();
   });
 
-  it('records the consent stashed at signup when the profile row is created', async () => {
-    const consent = { version: '2026.1', accepted_at: '2026-01-01T00:00:00.000Z' };
-    sessionStore.set(sessionKeys.consent, JSON.stringify(consent));
-    mocks.saveMe.mockResolvedValue({ user_id: 'u', display_name: 'Alex' });
+  it('offers the consent checkbox unchecked', async () => {
+    render(<DashboardScreen />);
+    const checkbox = await screen.findByLabelText(CONSENT_LABEL);
+    expect(checkbox.props.accessibilityState.checked).toBe(false);
+  });
 
+  it('blocks the first profile create until consent is given', async () => {
     render(<DashboardScreen />);
     await waitFor(() => screen.getByLabelText('Display name'));
     fireEvent.changeText(screen.getByLabelText('Display name'), 'Alex');
     fireEvent.press(screen.getByText('Continue'));
 
-    await waitFor(() => expect(mocks.saveMe).toHaveBeenCalledWith('token', 'Alex', false, consent));
-    // The stash is one-shot: it must not be replayed onto a later save.
-    await waitFor(() => expect(sessionStore.get(sessionKeys.consent)).toBeNull());
+    await waitFor(() =>
+      expect(screen.getByText(/agree to the Terms of Service and Privacy Policy/i)).toBeOnTheScreen(),
+    );
+    expect(mocks.saveMe).not.toHaveBeenCalled();
+  });
+
+  it('records consent on the first profile create once the box is ticked', async () => {
+    mocks.saveMe.mockResolvedValue({ user_id: 'u', display_name: 'Alex' });
+
+    render(<DashboardScreen />);
+    await waitFor(() => screen.getByLabelText('Display name'));
+    fireEvent.changeText(screen.getByLabelText('Display name'), 'Alex');
+    fireEvent.press(screen.getByLabelText(CONSENT_LABEL));
+    fireEvent.press(screen.getByText('Continue'));
+
+    await waitFor(() => expect(mocks.saveMe).toHaveBeenCalledTimes(1));
+    const [token, displayName, emails, consent] = mocks.saveMe.mock.calls[0];
+    expect([token, displayName, emails]).toEqual(['token', 'Alex', false]);
+    expect(consent.version).toBeTruthy();
+    // A valid UTC ISO-8601 timestamp round-trips through Date unchanged.
+    expect(new Date(consent.accepted_at).toISOString()).toBe(consent.accepted_at);
   });
 });
 

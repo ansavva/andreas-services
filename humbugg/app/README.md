@@ -40,9 +40,9 @@ humbugg/app/
 ├── metro.config.js     the native-leaf resolver described above
 ├── jest-setup.ts       native-module mocks
 └── src/
-    ├── amplify.ts      Amplify's RN wiring — imported FIRST in the root layout
     ├── app/            Expo Router routes ONLY. Nothing else belongs here.
     ├── api/            the API client, ported from the web app
+    ├── auth/           the Cognito Managed Login flow and its token store
     ├── components/     shared UI, composed from the design system
     ├── config/         policies + the marketing-site origin
     ├── context/        auth and profile providers
@@ -59,13 +59,15 @@ Paths are relative to `app.humbugg.com`. `(auth)` and `(protected)` are route
 | File | Path | Was |
 | --- | --- | --- |
 | `src/app/(auth)/login.tsx` | `/login` | `/login` |
-| `src/app/(auth)/signup.tsx` | `/signup` | `/signup` |
-| `src/app/(auth)/confirm.tsx` | `/confirm` | `/confirm` |
-| `src/app/(auth)/forgot-password.tsx` | `/forgot-password` | `/forgot-password` |
+| `src/app/auth/callback.tsx` | `/auth/callback` | — (new with Managed Login) |
 | `src/app/join/[groupId].tsx` | `/join/:groupId` | `/join/:groupId` |
 | `src/app/(protected)/index.tsx` | `/` | `/app` |
 | `src/app/(protected)/groups/[groupId].tsx` | `/groups/:id` | `/app/groups/:id` |
 | `src/app/(protected)/settings.tsx` | `/settings` | `/app/settings` |
+
+`/signup`, `/confirm` and `/forgot-password` are gone: they are Cognito Managed
+Login pages now, and `/login` is a button that launches the hosted flow. See
+[`../docs/auth-managed-login.md`](../docs/auth-managed-login.md).
 
 `src/app/(protected)/_layout.tsx` is the redirect guard that replaced the web
 app's `<ProtectedRoute>` wrapper. `/join/:groupId` sits deliberately outside it:

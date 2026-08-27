@@ -6,12 +6,28 @@
 // (`@testing-library/react-native` ships its matchers by default since v12.4,
 // so there is no `extend-expect` entry point to import.)
 
-// Amplify's RN adapter pulls in native crypto and secure storage.
-jest.mock('@aws-amplify/react-native', () => ({}));
-jest.mock('react-native-get-random-values', () => ({}));
+// Metro inlines EXPO_PUBLIC_* at build time; under jest they are ordinary
+// environment variables, read once when a module is imported. This file runs
+// before the test module does, which is the only window to set them. Fixtures —
+// nothing here reaches a real pool.
+process.env.EXPO_PUBLIC_COGNITO_DOMAIN ??= 'auth.humbugg.test';
+process.env.EXPO_PUBLIC_COGNITO_CLIENT_ID ??= 'test-client-id';
+
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
   default: { getItem: jest.fn(), setItem: jest.fn(), removeItem: jest.fn() },
+}));
+
+// The keychain behind the OAuth token store.
+jest.mock('expo-secure-store', () => ({
+  getItemAsync: jest.fn().mockResolvedValue(null),
+  setItemAsync: jest.fn().mockResolvedValue(undefined),
+  deleteItemAsync: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock('expo-web-browser', () => ({
+  openAuthSessionAsync: jest.fn().mockResolvedValue({ type: 'dismiss' }),
+  maybeCompleteAuthSession: jest.fn(),
 }));
 
 jest.mock('expo-image-picker', () => ({

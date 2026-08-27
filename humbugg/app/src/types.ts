@@ -7,7 +7,7 @@ export interface ApiErrorPayload {
 }
 
 /**
- * Recorded proof that a user actively agreed to the Terms of Service and Privacy Policy at signup
+ * Recorded proof that a user actively agreed to the Terms of Service and Privacy Policy at profile setup
  * (GDPR Art. 7 — demonstrable consent). `version` mirrors POLICY_VERSION in config/policies so the
  * record stays in sync with the published policies; `accepted_at` is a UTC ISO-8601 timestamp.
  */

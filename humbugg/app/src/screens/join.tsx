@@ -74,12 +74,11 @@ export default function JoinScreen({ groupId }: { groupId: string }) {
             </Button>
           </View>
         ) : (
-          <View style={{ marginTop: 28, width: '100%', gap: 12 }}>
-            <Button size="lg" onPress={() => router.push('/signup')}>
-              Create account
-            </Button>
-            <Button size="lg" intent="secondary" onPress={() => router.push('/login')}>
-              Sign in
+          // One button, not two: sign-in and sign-up are the same hosted page
+          // now, and the visitor chooses between them there.
+          <View style={{ marginTop: 28, width: '100%' }}>
+            <Button size="lg" onPress={() => router.push('/login')}>
+              Sign in or create an account
             </Button>
           </View>
         )}

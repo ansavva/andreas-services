@@ -87,9 +87,14 @@ criteria describe. Nothing else is blocked on it, so there is no reason to take 
 
 Two items do not queue behind the critical path.
 
-**#365 — decide the app's sign-in mechanism.** The one with a clock on it. Choosing between Cognito
-Managed Login and in-app SRP **replaces the Cognito pool**, and the trade gets worse every week the
-account list grows. Part of cross-service epic #363.
+**#365 — decide the app's sign-in mechanism. DECIDED: Managed Login, hosted sign-in and sign-up.**
+Implemented August 2026; the record is [`auth-managed-login.md`](auth-managed-login.md).
+
+This entry used to say the choice "replaces the Cognito pool". **It does not, and never did** —
+Managed Login changes the app *client* and adds a branding record and a domain; the pool, its schema
+and every `sub` in it are untouched. The clock on this ticket was real for a different reason: every
+signed-in user is signed out once at cut-over, which at the zero accounts the pool actually held
+cost nothing. Part of cross-service epic #363.
 
 **#373 — an authenticated round trip against this machine's dev pool.** The cheapest real safety win
 available. Humbugg is the only service with a per-machine dev pool and the test user was seeded in

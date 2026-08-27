@@ -62,8 +62,8 @@ const json = (method: string, data?: unknown): RequestInit => ({
 
 export const api = {
   getMe: (token: string) => request<Profile>('/me', token),
-  // `consent` is sent only on first profile creation (captured at the signup checkbox); the backend
-  // records it once, immutably, and ignores it on later saves.
+  // `consent` is sent only on first profile creation (captured by the checkbox on the profile-setup
+  // form); the backend records it once, immutably, and ignores it on later saves.
   saveMe: (
     token: string,
     display_name: string,

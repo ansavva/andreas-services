@@ -205,10 +205,14 @@ jobs:
       # `sources` list. Grepping the bundle for react-native-web is NOT a
       # substitute: it is present in any Expo web build because the app's own
       # primitives use it, so it passes whichever leaf was resolved.
+      # Placeholder Cognito values: the export must not be built with them empty,
+      # because that is a different code path (the app settles into signed-out and
+      # never constructs an authorize request). Nothing here is deployed.
       - name: Export for web
         env:
           EXPO_PUBLIC_API_BASE_URL: https://api.humbugg.com
-          EXPO_PUBLIC_AWS_REGION: us-east-1
+          EXPO_PUBLIC_COGNITO_DOMAIN: auth.humbugg.com
+          EXPO_PUBLIC_COGNITO_CLIENT_ID: pr-build-placeholder
         run: cd humbugg/app && npx expo export -p web --source-maps
 
       # Metro is the bundler that gets this wrong unaided: for platform 'web' its

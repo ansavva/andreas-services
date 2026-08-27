@@ -1,12 +1,12 @@
 // The app's root. Everything global happens here, in this order:
 //
-//   1. Amplify's React Native wiring, which MUST run before anything imports
-//      `aws-amplify` — hence the bare side-effect import on the first line.
-//   2. Humbugg's brand, through the design system's one native theming seam.
-//   3. The fonts, which on this side are real assets rather than a CSS import.
-//   4. The auth and profile providers the SSR app kept in `app/root.tsx`.
-import '../amplify';
-
+//   1. Humbugg's brand, through the design system's one native theming seam.
+//   2. The fonts, which on this side are real assets rather than a CSS import.
+//   3. The auth and profile providers the SSR app kept in `app/root.tsx`.
+//
+// There is no polyfill import at the top any more. Amplify needed three of them
+// before anything could import it; expo-auth-session needs none, because
+// expo-crypto supplies the entropy Hermes has no WebCrypto for.
 import { ThemeProvider } from '@ansavva/design-system';
 // Imported per WEIGHT, not from the family root. `@expo-google-fonts/archivo`
 // re-exports all eighteen weights, and Metro follows the whole barrel into the
