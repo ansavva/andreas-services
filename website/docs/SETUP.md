@@ -116,7 +116,8 @@ with `permissions: packages: read` (no PAT needed in CI).
 The deploy workflow sets each Lambda's runtime env via
 `update-function-configuration` (Terraform only sets minimal values on first
 create). Frontend env: `WEBSITE_API_URL`, `COGNITO_USER_POOL_ID`,
-`COGNITO_CLIENT_ID`, `SESSION_SECRET`. Backend env: `WEBSITE_INTAKE_TABLE`,
+`COGNITO_CLIENT_ID`, `COGNITO_DOMAIN`, `COGNITO_CLIENT_SECRET`,
+`PUBLIC_ORIGIN`, `SESSION_SECRET`. Backend env: `WEBSITE_INTAKE_TABLE`,
 `WEBSITE_ALLOWED_ORIGIN`, `KIT_API_KEY`, `KIT_FORM_ID`.
 
 ## Admin user
