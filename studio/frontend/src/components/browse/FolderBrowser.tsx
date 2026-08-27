@@ -190,7 +190,25 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
     [nav],
   );
 
-  const selection = useSelection(media, folderId ?? null);
+  /**
+   * One selection over BOTH lists.
+   *
+   * The grid could be selected and acted on in bulk and the rows below it could
+   * not, so deleting five `result.json` files was five trips through a per-row
+   * menu — while deleting fifty images was two presses. It is one folder, so it
+   * is one selection.
+   *
+   * Keyed on `files` rather than on either half, because `toggleAt` takes an
+   * index and shift-click means "everything between" — a range that stopped at
+   * the boundary between images and text would be a range that lies.
+   */
+  const selection = useSelection(files, folderId ?? null);
+
+  /** Where each entry sits in the combined list, for the two renders that split it. */
+  const indexOf = useMemo(
+    () => new Map(files.map((file, index) => [file.id, index])),
+    [files],
+  );
 
   /**
    * Where an upload lands: the folder on screen, by its own node id.
@@ -488,6 +506,16 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
         {/* A navigation now, not a piece of state this component holds open.
             It goes to the viewer with `?in=recursive:<folder>`, which is what
             makes a reel a place you can link to and press back out of. */}
+        {files.length > 0 && (
+          <Button
+            intent="ghost"
+            size="sm"
+            onClick={selection.count > 0 ? selection.clear : selection.selectAll}
+          >
+            {selection.count > 0 ? "Select none" : "Select all"}
+          </Button>
+        )}
+
         <Button size="sm" onClick={nav.playReel}>
           Play reel
         </Button>
@@ -557,6 +585,92 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
         </Text>
       )}
 
+      {/* **The selection bar sits over BOTH lists, not inside the grid.**
+          It used to live in the `Photos & video` section, which was right while
+          only images could be selected — a folder holding nothing but
+          `result.json` files then had no bar at all, and "Select all" under a
+          heading that says "Photos" would now also take the text files. */}
+        {selection.count > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-card px-3 py-2">
+            <Text variant="caption" tone="muted" className="tabular-nums">
+              {selection.count} of {files.length} selected
+            </Text>
+
+            <div className="flex-1" />
+
+            {/* One key per line, in grid order rather than the order they were
+                picked: this is going into a shell loop or a `--keys` argument,
+                and the order you happened to click in is not information. */}
+            <CopyKeyButton
+              value={selection.selectedItems.map((item) => item.key).join("\n")}
+              noun={selectedNoun("key", "keys")}
+            />
+
+            {/* Media has no per-tile menu the way a row does — sixty thumbnails
+                with a control each is the crowding this grid exists to avoid —
+                so this bar is where a bulk move and a bulk copy are reached
+                from. */}
+            <button
+              type="button"
+              onClick={() =>
+                setPickerTarget({
+                  verb: "copy",
+                  ids: selection.selectedItems.map((item) => item.id),
+                  noun: selectedNoun("file", "files"),
+                })
+              }
+              aria-label={`Copy ${selectedNoun("file", "files")} to…`}
+              title={`Copy ${selectedNoun("file", "files")} to…`}
+              className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
+                         focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              {/* Two sheets, one behind the other: the source stays, which is
+                  the whole difference from the arrow on the move button. */}
+              <CopyIcon />
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setPickerTarget({
+                  verb: "move",
+                  ids: selection.selectedItems.map((item) => item.id),
+                  noun: selectedNoun("file", "files"),
+                })
+              }
+              aria-label={`Move ${selectedNoun("file", "files")}`}
+              title={`Move ${selectedNoun("file", "files")}`}
+              className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
+                         focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              {/* A folder with something going into it — the destination is
+                  what a move is about, and the arrow says which way. */}
+              <FolderIntoIcon />
+            </button>
+
+            {/* Under five, the armed button — the cost of being wrong is a
+                handful of frames still on screen. Above it, the count has to
+                be typed: a selection is invisible once it is gone, and
+                "select all" then "delete" is two presses from emptying a
+                folder. */}
+            {selection.count < BULK_GATE ? (
+              <ConfirmDeleteButton
+                tone="bar"
+                noun={selectedNoun("file", "files")}
+                onConfirm={deleteSelected}
+              />
+            ) : (
+              <ConfirmDestroyDialog
+                label={`Delete ${selection.count}`}
+                title={`Delete ${selectedNoun("file", "files")}?`}
+                summary="They are removed from this folder and from the library. Nothing else is touched."
+                confirmWord={String(selection.count)}
+                onConfirm={deleteSelected}
+              />
+            )}
+          </div>
+        )}
+
       {folders.length > 0 && (
         <section className="flex flex-col gap-2">
           <Text variant="title">Folders</Text>
@@ -585,120 +699,24 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
 
       {media.length > 0 && (
         <section className="flex flex-col gap-2">
-          {/*
-            The heading keeps one control, and the selection gets its own bar,
-            which only exists while there is a selection — so the heading line has
-            a fixed shape. The counts are out of the button labels because the bar
-            says "3 selected" two inches to the left.
-          */}
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            {/* "Media" was the API's word for it — `kind` is image | video |
-                text | other — and it leaked into the page as a heading that names
-                a type union rather than a thing. */}
-            <Text variant="title">
-              Photos &amp; video{" "}
-              <span className="font-body text-sm text-muted">({media.length})</span>
-            </Text>
+          {/* "Media" was the API's word for it — `kind` is image | video |
+              text | other — and it leaked into the page as a heading that names
+              a type union rather than a thing. */}
+          <Text variant="title">
+            Photos &amp; video{" "}
+            <span className="font-body text-sm text-muted">({media.length})</span>
+          </Text>
 
-            <Button
-              intent="ghost"
-              size="sm"
-              onClick={selection.count > 0 ? selection.clear : selection.selectAll}
-            >
-              {selection.count > 0 ? "Select none" : "Select all"}
-            </Button>
-          </div>
-
-          {selection.count > 0 && (
-            <div className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-card px-3 py-2">
-              <Text variant="caption" tone="muted" className="tabular-nums">
-                {selection.count} of {media.length} selected
-              </Text>
-
-              <div className="flex-1" />
-
-              {/* One key per line, in grid order rather than the order they were
-                  picked: this is going into a shell loop or a `--keys` argument,
-                  and the order you happened to click in is not information. */}
-              <CopyKeyButton
-                value={selection.selectedItems.map((item) => item.key).join("\n")}
-                noun={selectedNoun("key", "keys")}
-              />
-
-              {/* Media has no per-tile menu the way a row does — sixty thumbnails
-                  with a control each is the crowding this grid exists to avoid —
-                  so this bar is where a bulk move and a bulk copy are reached
-                  from. */}
-              <button
-                type="button"
-                onClick={() =>
-                  setPickerTarget({
-                    verb: "copy",
-                    ids: selection.selectedItems.map((item) => item.id),
-                    noun: selectedNoun("file", "files"),
-                  })
-                }
-                aria-label={`Copy ${selectedNoun("file", "files")} to…`}
-                title={`Copy ${selectedNoun("file", "files")} to…`}
-                className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
-                           focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              >
-                {/* Two sheets, one behind the other: the source stays, which is
-                    the whole difference from the arrow on the move button. */}
-                <CopyIcon />
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setPickerTarget({
-                    verb: "move",
-                    ids: selection.selectedItems.map((item) => item.id),
-                    noun: selectedNoun("file", "files"),
-                  })
-                }
-                aria-label={`Move ${selectedNoun("file", "files")}`}
-                title={`Move ${selectedNoun("file", "files")}`}
-                className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
-                           focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              >
-                {/* A folder with something going into it — the destination is
-                    what a move is about, and the arrow says which way. */}
-                <FolderIntoIcon />
-              </button>
-
-              {/* Under five, the armed button — the cost of being wrong is a
-                  handful of frames still on screen. Above it, the count has to
-                  be typed: a selection is invisible once it is gone, and
-                  "select all" then "delete" is two presses from emptying a
-                  folder. */}
-              {selection.count < BULK_GATE ? (
-                <ConfirmDeleteButton
-                  tone="bar"
-                  noun={selectedNoun("file", "files")}
-                  onConfirm={deleteSelected}
-                />
-              ) : (
-                <ConfirmDestroyDialog
-                  label={`Delete ${selection.count}`}
-                  title={`Delete ${selectedNoun("file", "files")}?`}
-                  summary="They are removed from this folder and from the library. Nothing else is touched."
-                  confirmWord={String(selection.count)}
-                  onConfirm={deleteSelected}
-                />
-              )}
-            </div>
-          )}
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-            {media.map((file, index) => (
+            {media.map((file) => (
               <MediaTile
                 key={file.id}
                 file={file}
                 selected={selection.selected.has(file.id)}
                 selectionActive={selection.count > 0}
                 onOpen={() => nav.openFile(file)}
-                onToggleSelect={(extend) => selection.toggleAt(index, extend)}
+                onToggleSelect={(extend) => selection.toggleAt(indexOf.get(file.id) ?? 0, extend)}
               />
             ))}
           </div>
@@ -713,6 +731,9 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
               <FileRow
                 key={file.id}
                 file={file}
+                selected={selection.selected.has(file.id)}
+                selectionActive={selection.count > 0}
+                onToggleSelect={(extend) => selection.toggleAt(indexOf.get(file.id) ?? 0, extend)}
                 onOpen={() => nav.openFile(file)}
                 onRename={(name) => run(renameNode(file.id, name))}
                 onMove={() =>

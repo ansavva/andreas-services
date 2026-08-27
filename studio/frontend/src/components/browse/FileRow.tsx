@@ -6,10 +6,24 @@ import { formatBytes, formatDate } from "../../utils/format";
 import type { FileEntry } from "../../types";
 import { ItemActions } from "../common/ItemActions";
 import { RenameForm } from "../common/RenameForm";
-import { FileIcon } from "../common/icons";
+import { CheckIcon, FileIcon } from "../common/icons";
+import { Checkbox } from "@ansavva/design-system";
 
 interface Props {
   file: FileEntry;
+  /**
+   * Selection, mirroring the media grid's.
+   *
+   * A folder's images could be selected and acted on in bulk and its files
+   * could not, so deleting five `result.json` files was five trips through a
+   * per-row menu. The checkbox is a sibling of the opening button for the same
+   * reason the tile's is: both are `<button>` elements and one cannot contain
+   * the other.
+   */
+  selected: boolean;
+  /** True once anything in the folder is picked — a press then extends rather than opens. */
+  selectionActive: boolean;
+  onToggleSelect: (extend: boolean) => void;
   onOpen: () => void;
   onRename: (name: string) => Promise<unknown>;
   /** Asks the page to open its destination picker on this file, to move it. */
@@ -20,7 +34,17 @@ interface Props {
 }
 
 /** A non-media file — the run metadata JSON, a caption, a subject's profile. */
-export function FileRow({ file, onOpen, onRename, onMove, onCopyTo, onDelete }: Props) {
+export function FileRow({
+  file,
+  selected,
+  selectionActive,
+  onToggleSelect,
+  onOpen,
+  onRename,
+  onMove,
+  onCopyTo,
+  onDelete,
+}: Props) {
   const viewable = file.kind === "text";
   const [renaming, setRenaming] = useState(false);
   const stopRenaming = useCallback(() => setRenaming(false), []);
@@ -37,13 +61,36 @@ export function FileRow({ file, onOpen, onRename, onMove, onCopyTo, onDelete }: 
     // `flex-wrap` gives the rename field below a full line of its own rather than
     // the sliver left over beside the name.
     <div
-      className={`flex w-full flex-wrap items-center gap-2 rounded-md border border-line bg-card pr-2
-                  transition-colors ${viewable ? "hover:bg-surface-alt" : ""}`}
+      className={`group flex w-full flex-wrap items-center gap-2 rounded-md border bg-card pr-2
+                  transition-colors ${viewable && !selectionActive ? "hover:bg-surface-alt" : ""}
+                  ${selected ? "border-primary ring-1 ring-primary" : "border-line"}`}
     >
+      {/* Hidden until wanted, like the tile's — a folder of rows is not a column
+          of checkboxes over the names it exists to show — but always visible
+          once anything is picked, and wherever there is no pointer to hover
+          with. */}
+      <Checkbox.Root
+        checked={selected}
+        onClick={(event) => {
+          event.preventDefault();
+          onToggleSelect(event.shiftKey);
+        }}
+        aria-label={`Select ${file.name}`}
+        className={`ms-3 shrink-0 transition-opacity focus-visible:opacity-100
+                    group-hover:opacity-100 pointer-coarse:opacity-100
+                    ${selectionActive ? "opacity-100" : "opacity-0"}`}
+      >
+        <Checkbox.Indicator>
+          <CheckIcon className="size-3.5 fill-none stroke-current stroke-[3]" />
+        </Checkbox.Indicator>
+      </Checkbox.Root>
+
       <button
         type="button"
-        onClick={onOpen}
-        disabled={!viewable}
+        // Once anything is picked the folder is in selection mode and a press
+        // extends rather than opens — the same bargain the media grid makes.
+        onClick={(event) => (selectionActive ? onToggleSelect(event.shiftKey) : onOpen())}
+        disabled={!viewable && !selectionActive}
         className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-3 py-2.5 text-left
                    disabled:cursor-default disabled:opacity-60
                    focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
