@@ -22,6 +22,14 @@ public sealed class GroupsController(IGroupService groups) : ControllerBase
     public Task<GroupDetail> Update(string groupId, [FromBody] UpdateGroupRequest request, CancellationToken cancellationToken) =>
         groups.UpdateAsync(groupId, request, cancellationToken);
 
+    [HttpPut("{groupId}/customization")]
+    public Task<GroupDetail> Customize(string groupId, [FromBody] UpdateCustomizationRequest request, CancellationToken cancellationToken) =>
+        groups.UpdateCustomizationAsync(groupId, request, cancellationToken);
+
+    [AllowAnonymous, HttpGet("{groupId}/invitation")]
+    public Task<InvitationPreview> Invitation(string groupId, [FromQuery(Name = "invite_token")] string? inviteToken, CancellationToken cancellationToken) =>
+        groups.GetInvitationAsync(groupId, inviteToken, cancellationToken);
+
     [HttpDelete("{groupId}")]
     public async Task<IActionResult> Delete(string groupId, CancellationToken cancellationToken)
     {

@@ -63,6 +63,15 @@ public sealed record Membership(
     bool IsOwner = false,
     bool IsReady = false);
 
+public sealed record ExchangeCustomization(
+    string Greeting = "",
+    string Instructions = "",
+    string PrimaryColor = "#7C2D12",
+    string AccentColor = "#F59E0B",
+    string? ImageDataUrl = null);
+
+public sealed record InvitationPreview(string GroupId, string ExchangeName, ExchangeCustomization Customization);
+
 public sealed record GroupSummary(
     string GroupId,
     string Name,
@@ -94,7 +103,8 @@ public sealed record GroupDetail(
     string? SignupDeadline,
     IReadOnlyList<string[]> Exclusions,
     IReadOnlyList<Membership> Members,
-    string? InviteUrl = null);
+    string? InviteUrl = null,
+    ExchangeCustomization? Customization = null);
 
 // ─── Wishes ─────────────────────────────────────────────────────────────────────────────────────
 //
@@ -251,6 +261,8 @@ public sealed record UpdateGroupRequest(
     string? EventDate,
     string? SignupDeadline,
     decimal? SpendingLimit);
+public sealed record UpdateCustomizationRequest(
+    string? Greeting, string? Instructions, string? PrimaryColor, string? AccentColor, string? Image);
 public sealed record JoinGroupRequest(string? InviteToken);
 public sealed record UpdateMembershipRequest(string? Wishlist, string? Avoidances, Address? Address);
 public sealed record ParticipationRequest(bool? IsParticipating);
@@ -308,7 +320,8 @@ internal sealed record GroupRecord(
     string InviteHash,
     IReadOnlyList<string[]> Exclusions,
     string CreatedAt,
-    string UpdatedAt);
+    string UpdatedAt,
+    ExchangeCustomization? Customization = null);
 internal sealed record MembershipRecord(
     string MemberId,
     string GroupId,
