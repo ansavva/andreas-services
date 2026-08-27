@@ -15,24 +15,10 @@ import { webUrl } from '../config/site';
 import { useAuth } from '../context/auth-context';
 import { useProfile } from '../context/profile-context';
 import { gap, styles } from '../theme/styles';
-import type { GroupSummary, PolicyConsent, Profile } from '../types';
+import type { GroupSummary, Profile } from '../types';
 import { pickAvatar } from '../utils/image-picker';
 import { sessionKeys, sessionStore } from '../utils/session-store';
 import { todayInputValue, validateGroupForm } from '../utils/validation';
-
-// Reads the consent captured at the signup checkbox (stashed until the profile row is created). Falls
-// back to a fresh record for the rare case the stash was lost, since reaching profile setup already
-// required agreeing at signup.
-function consentForProfileCreation(): PolicyConsent {
-  try {
-    const raw = sessionStore.get(sessionKeys.consent);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<PolicyConsent>;
-      if (parsed?.version && parsed?.accepted_at) return { version: parsed.version, accepted_at: parsed.accepted_at };
-    }
-  } catch { /* fall through to a fresh consent record */ }
-  return recordPolicyConsent();
-}
 
 export default function DashboardScreen() {
   const auth = useAuth();
@@ -139,10 +125,20 @@ export default function DashboardScreen() {
   );
 }
 
+// Profile setup is where policy consent is captured now.
+//
+// It used to be a checkbox on the signup form, stashed in sessionStorage and
+// replayed here. That form belongs to Cognito's hosted pages since #365, and a
+// hosted page cannot carry Humbugg's own terms — so the agreement moved to the
+// first screen after sign-up that is still ours. It is the same gate in the same
+// order: nothing exists for a new account until this form is submitted, and the
+// consent rides the very same first `PUT /me` it always did.
 function ProfileSetup({ onSaved }: { onSaved(profile: Profile): void }) {
   const auth = useAuth();
   const [name, setName] = useState('');
   const [emailNotifications, setEmailNotifications] = useState(false);
+  // Explicit, unchecked by default; gates the first profile create.
+  const [consented, setConsented] = useState(false);
   const [avatarDataUrl, setAvatarDataUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -158,14 +154,19 @@ function ProfileSetup({ onSaved }: { onSaved(profile: Profile): void }) {
   async function submit() {
     const displayName = name.trim();
     if (!displayName) { setError('Enter the name your group should see.'); return; }
+    if (!consented) {
+      setError('Please agree to the Terms of Service and Privacy Policy to continue.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       const token = await auth.accessToken();
-      let saved = await api.saveMe(token, displayName, emailNotifications, consentForProfileCreation());
+      // The policy version and the UTC timestamp of the tick, recorded once and
+      // immutably by the backend; later saves omit `consent` and are ignored.
+      let saved = await api.saveMe(token, displayName, emailNotifications, recordPolicyConsent());
       if (avatarDataUrl) saved = await api.uploadAvatar(token, avatarDataUrl);
       onSaved(saved);
-      sessionStore.remove(sessionKeys.consent);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save your profile.');
     } finally {
@@ -218,6 +219,26 @@ function ProfileSetup({ onSaved }: { onSaved(profile: Profile): void }) {
               exchange emails always send.
             </Text>
           </View>
+        </View>
+        <View style={local.consentRow}>
+          <Checkbox.Root
+            checked={consented}
+            onCheckedChange={(checked) => setConsented(checked === true)}
+            aria-label="Agree to the Terms of Service and Privacy Policy"
+          >
+            <Checkbox.Indicator />
+          </Checkbox.Root>
+          <Text style={[styles.smallMuted, { flex: 1 }]}>
+            I agree to Humbugg&apos;s{' '}
+            <Text style={styles.link} onPress={() => void Linking.openURL(webUrl('/terms'))}>
+              Terms of Service
+            </Text>{' '}
+            and{' '}
+            <Text style={styles.link} onPress={() => void Linking.openURL(webUrl('/privacy'))}>
+              Privacy Policy
+            </Text>
+            .
+          </Text>
         </View>
         <StatusMessage message={error} />
         <Button size="lg" disabled={busy} onPress={() => void submit()}>
@@ -335,4 +356,5 @@ function CreateGroup({ onCreated }: { onCreated(id: string): void }) {
 
 const local = StyleSheet.create({
   cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  consentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
 });

@@ -89,5 +89,5 @@ it('remembers the invitation as the return destination for a signed-out visitor'
   mocks.authenticated = false;
   render(<JoinScreen groupId="g1" />);
   await waitFor(() => expect(sessionStore.get(sessionKeys.returnTo)).toBe('/join/g1'));
-  expect(screen.getByText('Create account')).toBeOnTheScreen();
+  expect(screen.getByText('Sign in or create an account')).toBeOnTheScreen();
 });

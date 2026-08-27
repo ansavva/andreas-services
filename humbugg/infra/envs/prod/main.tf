@@ -1,8 +1,9 @@
 locals {
-  project         = "humbugg"
-  environment     = "prod"
-  domain_name     = "humbugg.com"
-  api_domain_name = "api.${local.domain_name}"
+  project          = "humbugg"
+  environment      = "prod"
+  domain_name      = "humbugg.com"
+  api_domain_name  = "api.${local.domain_name}"
+  auth_domain_name = "auth.${local.domain_name}"
 
   # What the backend derives invite URLs and avatar URLs from, and what Cognito
   # redirects to — so it is the product app, not the marketing site. The
@@ -34,10 +35,19 @@ data "aws_ssm_parameter" "mailer_auth_configuration_set" {
 module "auth" {
   source = "../../modules/auth"
 
-  project       = local.project
-  environment   = local.environment
-  callback_urls = [local.app_base_url]
-  logout_urls   = [local.app_base_url]
+  project     = local.project
+  environment = local.environment
+
+  # Two literals per list because the same codebase produces two redirects: the
+  # web export served from app.humbugg.com, and the custom scheme a store build
+  # returns to. Cognito matches exactly, so a bare origin is not a callback and
+  # a missing entry is a hard `redirect_mismatch`.
+  callback_urls = ["${local.app_base_url}/auth/callback", "humbugg://auth/callback"]
+  logout_urls   = ["${local.app_base_url}/login", "humbugg://auth/logout"]
+
+  auth_domain          = local.auth_domain_name
+  auth_certificate_arn = module.certificates.certificate_arn
+  route53_zone_id      = data.aws_route53_zone.humbugg.zone_id
 
   email_sending_account   = "DEVELOPER"
   email_from_address      = module.email.from_address
@@ -88,10 +98,17 @@ module "certificates" {
 
   # Every name Humbugg serves. Adding one later replaces the certificate, so the full
   # set is declared up front rather than grown surface by surface.
+  #
+  # `auth.` was added after the fact anyway, when sign-in moved to Managed Login
+  # (#365) — a replacement, not an update. `create_before_destroy` in
+  # modules/certificates makes that survivable: the new certificate is issued and
+  # every consumer repointed before the old one goes, so www, app and api keep
+  # serving through the swap.
   subject_alternative_names = [
     "www.${local.domain_name}",
     "app.${local.domain_name}",
     local.api_domain_name,
+    local.auth_domain_name,
   ]
 
   route53_zone_id = data.aws_route53_zone.humbugg.zone_id

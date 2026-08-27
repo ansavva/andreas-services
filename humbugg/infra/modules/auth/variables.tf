@@ -8,16 +8,42 @@ variable "environment" {
   type        = string
 }
 
+# Matched character for character by Cognito, so both lists carry every literal
+# redirect the app can produce — the https origin AND the humbugg:// custom scheme.
 variable "callback_urls" {
-  description = "Allowed browser callback URLs if a Cognito hosted flow is enabled"
+  description = "Redirect URIs the Managed Login pages may return an authorization code to"
   type        = list(string)
   default     = []
 }
 
 variable "logout_urls" {
-  description = "Allowed browser logout URLs if a Cognito hosted flow is enabled"
+  description = "URIs the hosted /logout endpoint may return to"
   type        = list(string)
   default     = []
+}
+
+variable "auth_domain" {
+  description = "Fully-qualified custom domain for the Managed Login pages. Mutually exclusive with auth_domain_prefix."
+  type        = string
+  default     = null
+}
+
+variable "auth_certificate_arn" {
+  description = "us-east-1 ACM certificate covering auth_domain. Required with auth_domain."
+  type        = string
+  default     = null
+}
+
+variable "route53_zone_id" {
+  description = "Hosted zone that holds auth_domain's alias records. Required with auth_domain."
+  type        = string
+  default     = null
+}
+
+variable "auth_domain_prefix" {
+  description = "Prefix of a default <prefix>.auth.<region>.amazoncognito.com domain. Globally unique across AWS; mutually exclusive with auth_domain."
+  type        = string
+  default     = null
 }
 
 variable "email_sending_account" {

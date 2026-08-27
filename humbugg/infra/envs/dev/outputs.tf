@@ -10,6 +10,10 @@ output "cognito_client_id" {
   value = module.auth.user_pool_client_id
 }
 
+output "cognito_auth_domain" {
+  value = module.auth.auth_domain
+}
+
 output "table_names" {
   value = module.storage.table_names
 }

@@ -26,7 +26,7 @@ export const SERVICE_CURRENCY = 'USD';
 
 /**
  * Builds the consent record captured when a user actively agrees to the Terms of Service and Privacy
- * Policy at signup. `version` references POLICY_VERSION so the recorded consent stays in sync with the
+ * Policy on the profile-setup form. `version` references POLICY_VERSION so the recorded consent stays in sync with the
  * published policies; `accepted_at` is a UTC ISO-8601 timestamp of the moment of agreement.
  */
 export function recordPolicyConsent(now: Date = new Date()): PolicyConsent {

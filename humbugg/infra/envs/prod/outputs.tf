@@ -38,6 +38,11 @@ output "cognito_client_id" {
   value       = module.auth.user_pool_client_id
 }
 
+output "cognito_auth_domain" {
+  description = "Host serving the Managed Login pages"
+  value       = module.auth.auth_domain
+}
+
 output "marketing_bucket" {
   description = "Marketing hashed-asset S3 bucket name"
   value       = module.storage.marketing_bucket_id
