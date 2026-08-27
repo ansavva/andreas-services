@@ -298,3 +298,7 @@ tmp/
 # and nowhere else. `publish` does not write them locally today; this line is
 # here so that staying true is enforced rather than remembered.
 studio/fixtures/dev-seed/*/media/
+
+# vitest's coverage output. The Python side is already covered by `.coverage`
+# and `htmlcov/` above; this is the one the JS toolchain writes.
+studio/frontend/coverage/

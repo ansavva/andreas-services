@@ -26,7 +26,25 @@ PyJWT = {version = "2.13.0", extras = ["crypto"]}
 # neither service. Dev group only — the Lambda image installs `--only main`.
 moto = {version = "4.2.14", extras = ["s3", "dynamodb"]}
 pytest = "7.4.3"
+# Report-only; CI prints the number and gates on nothing. See [tool.coverage].
+pytest-cov = "^5.0"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.coverage.run]
+source = ["studio_core"]
+branch = true
+# The suite would otherwise measure itself, which inflates the number with the
+# one code in the repo guaranteed to run.
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+skip_covered = true
+show_missing = true

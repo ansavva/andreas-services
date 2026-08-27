@@ -1027,8 +1027,8 @@ where their commands write is worse than telling them.
 
 ## Testing
 
-**The backend has a suite; the frontend has seven test files, and how it got
-from none to seven is the useful part.** `backend/tests/` is moto-backed pytest over a miniature of the
+**The backend has a suite; the frontend has thirteen test files, and how it got
+from none to thirteen is the useful part.** `backend/tests/` is moto-backed pytest over a miniature of the
 catalog table and the bucket, and covers the whole read and write surface. It is
 moto and not a real stack on purpose: the dev stack costs an apply, and a suite
 that needs AWS is a suite that stops being run. `frontend` ran on
@@ -1050,15 +1050,32 @@ a redirect to the root; an id URL reaches `BrowsePage` with no resolve at all.
 Five more have since cleared the same bar — a failure the app cannot report on
 its own:
 
+**`pages/LegacyRedirect.test.tsx` is gone**, with the page it covered: the entity
+model retired the legacy `/projects/…` resolver, so the file that started this
+suite is the one file in it that no longer exists. This table listed it for
+months after.
+
 | File | What it pins |
 |---|---|
-| `pages/LegacyRedirect.test.tsx` | the resolver, above |
+| `routes.test.tsx` | which screen a URL reaches — the successor to the resolver test above |
 | `utils/location.test.ts` | the id↔URL mapping: the root is `/` and needs no id, a legacy path decodes per segment so a `#` or a space in a real filename survives, and a hand-edited URL lands on the root rather than throwing |
 | `apis/client.test.ts` | `X-Studio-Library` is sent once a library is chosen, absent before one is, and follows the **last** choice rather than the first |
 | `apis/studio.test.ts` | `getAsset` and `getText` ask by **node**, never by key, and sign inline unless a download asked otherwise; `saveText` sends the name path `PATCH /api/text` takes |
 | `components/NodeAddressing.test.tsx` | the *argument* rather than the parameter: a row carries both `id` and `key`, both are `string`, and passing `key` typechecks and then fails only on material uploaded through the app (#432) |
 | `apis/upload.test.ts` | create → sign → PUT → confirm; the size declared is the file's; `Content-Length` is deliberately not set; a failed PUT does not confirm and deletes the placeholder it made |
 | `components/common/LibrarySwitcher.test.tsx` | one membership shows no switcher and still sets the header; two show a switcher that reopens on the last choice and ignores a stored library the caller has left |
+| `components/common/ErrorBoundary.test.tsx` | a thrown render shows a boundary rather than a white page (#495) |
+| `components/common/ConfirmDeleteButton.test.tsx` | a destructive action needs a second, deliberate click |
+| `components/character/ReferencesGrid.test.tsx` | the reference index draws in `(group, order)` order |
+| `components/viewer/DescribePanel.test.tsx` | a description is written against the NODE, not the reference row |
+| `pages/CharacterPage.test.tsx` | the selection surface: what a model would actually be shown |
+| `pages/ScenePage.test.tsx` | panel state — the screen rewritten across #491, #493, #494 and #495, and the only board/panel UI coverage there is |
+
+**Coverage is measured and gates on nothing: 36% of statements** (`npm run
+test:coverage`, 2026-08-27). That is low and it is meant to be — the bar this
+suite sets itself is addressing, and the rest is typecheck and the build.
+`vite.config.ts` makes the argument at length. The number is there to show a
+direction of travel, not to be met.
 
 Two things follow for anyone adding to this. The route table lives in
 `routes.tsx` rather than `App.tsx` so it can be exercised without the auth stack

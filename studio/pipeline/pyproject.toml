@@ -51,6 +51,10 @@ dev = [
     "ruff>=0.6",
     "pytest>=8.0",
     "moto[s3]>=4.2,<5",
+    # Report-only. There is no `--cov-fail-under` and CI does not gate on the
+    # number — see `[tool.coverage]` below on why a threshold picked before
+    # anyone has read a real one is worse than none.
+    "pytest-cov>=5.0",
 ]
 
 
@@ -66,3 +70,20 @@ known-first-party = ["studio_pipeline"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["studio_pipeline"]
+branch = true
+# `tests/` measures itself otherwise, which inflates the number with the one
+# code in the repo guaranteed to be executed.
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+# The parts of a file that are not a statement about behaviour.
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+skip_covered = true
+show_missing = true

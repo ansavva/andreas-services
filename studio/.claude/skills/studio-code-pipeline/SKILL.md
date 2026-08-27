@@ -77,7 +77,27 @@ These are the ones that have actually cost time.
 cd studio/pipeline && uv run pytest tests/ -q     # moto-backed, needs no AWS
 uv run ruff check studio/pipeline
 uv run python scripts/lint_skills.py              # the docs guard
+
+# With a number. The config lives in studio/pipeline/pyproject.toml and pytest's
+# rootdir is the REPO root, so coverage has to be pointed at it by hand — run
+# without --cov-config and it measures the test files too and reports ~83%.
+uv run --project studio/pipeline pytest studio/pipeline/tests -q \
+  --cov=studio_pipeline --cov-config=studio/pipeline/pyproject.toml \
+  --cov-report=term-missing:skip-covered
 ```
+
+**Coverage is reported and gates on nothing.** The first honest figures, measured
+2026-08-27 when the tooling went in:
+
+| Suite | Branch coverage | |
+|---|---|---|
+| `backend/` | **88%** | |
+| `pipeline/` | **70%** | `catalog_migrate.py` is 29% of 681 statements — far and away the largest hole, and not one anybody had guessed at |
+| `frontend/` | **36%** | by design; `vite.config.ts` argues for it |
+
+There is no `--cov-fail-under`. A threshold picked before anyone has read a real
+number either sits below it, and means nothing, or fires on unrelated PRs until
+somebody deletes it. Ratchet from these once there is a trend to ratchet.
 
 The suite stands up a miniature of the real library under moto —
 `mock_dynamodb` **and** `mock_s3`, because the library is a catalog table with a

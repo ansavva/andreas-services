@@ -92,8 +92,14 @@ jobs:
       - name: Lint
         run: pipx run ruff check studio/backend
 
+      # COVERAGE IS PRINTED AND GATES ON NOTHING. There is no
+      # `--cov-fail-under`, deliberately: a threshold picked before anyone has
+      # read a real number either sits under it (and means nothing) or fires on
+      # unrelated PRs until somebody deletes it. The first honest figures were
+      # pipeline 70%, backend 88%, frontend 36% — measured 2026-08-27, the day
+      # this was added. Ratchet from those when there is a trend to ratchet.
       - name: Run tests
-        run: cd studio/backend && poetry run pytest -q
+        run: cd studio/backend && poetry run pytest -q --cov --cov-report=term-missing:skip-covered
 
       - name: Docker build (packaging check)
         run: cd studio/backend && docker build -t studio-api:ci .
@@ -131,7 +137,7 @@ jobs:
       # share link written before #313 that quietly stops resolving is invisible
       # until somebody reports it, so that is the piece with tests.
       - name: Run tests
-        run: cd studio/frontend && npm test
+        run: cd studio/frontend && npm run test:coverage
 
       - name: Build
         run: cd studio/frontend && npm run build
@@ -185,8 +191,17 @@ jobs:
       - name: Lint skills against the CLI
         run: uv run --project studio/pipeline python studio/pipeline/scripts/lint_skills.py
 
+      # COVERAGE IS PRINTED AND GATES ON NOTHING. There is no
+      # `--cov-fail-under`, deliberately: a threshold picked before anyone has
+      # read a real number either sits under it (and means nothing) or fires on
+      # unrelated PRs until somebody deletes it. The first honest figures were
+      # pipeline 70%, backend 88%, frontend 36% — measured 2026-08-27, the day
+      # this was added. Ratchet from those when there is a trend to ratchet.
       - name: Run tests
-        run: uv run --project studio/pipeline pytest studio/pipeline/tests -q
+        run: >
+          uv run --project studio/pipeline pytest studio/pipeline/tests -q
+          --cov=studio_pipeline --cov-config=studio/pipeline/pyproject.toml
+          --cov-report=term-missing:skip-covered
 
   infra:
     name: Infra — fmt + validate

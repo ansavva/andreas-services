@@ -59,11 +59,25 @@ export default defineConfig({
   // `setupFiles` fills in two browser APIs this jsdom does not have —
   // `localStorage` and `CSS.escape` — which are the environment's gaps rather
   // than the app's. See `src/test-setup.ts`.
+  //
+  // COVERAGE IS REPORTED AND GATED ON NOTHING, and here that is not a compromise
+  // — it is the paragraph above, expressed as a number. A suite that deliberately
+  // tests addressing and leaves the rest to typecheck and the build SHOULD score
+  // low, and a threshold would either be set below the real figure (meaning
+  // nothing) or push somebody into writing render tests this file argues against.
+  // What the number is for is noticing a direction of travel over months.
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test-setup.ts"],
     clearMocks: true,
     restoreMocks: true,
     include: ["src/**/*.test.{ts,tsx}"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text-summary"],
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/**/*.test.{ts,tsx}", "src/test-setup.ts", "src/main.tsx",
+                "src/vite-env.d.ts", "src/**/*.d.ts"],
+    },
   },
 });
