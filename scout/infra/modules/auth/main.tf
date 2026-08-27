@@ -41,9 +41,8 @@ resource "aws_cognito_user_pool" "main" {
 
   # OPTIONAL, never ON. ON forces enrolment at the next sign-in for every existing
   # account and strands anyone who cannot complete it; OPTIONAL is inert until a
-  # user enrols. Scout's in-app sign-in form has no enrolment screen and this PR
-  # does not add one, so the setting is dormant — it becomes reachable for free
-  # when Managed Login lands (#466), which renders both enrolment and challenge.
+  # user enrols. Managed Login's hosted pages render both enrolment and
+  # challenge, so the setting is reachable — no in-app screens needed.
   # No SMS MFA: it needs an SNS setup and is the weaker factor.
   mfa_configuration = "OPTIONAL"
 
@@ -71,14 +70,11 @@ resource "aws_cognito_user_pool_client" "main" {
 
   # **No `implicit`.** It returns tokens in the URL fragment — browser history,
   # referrers, server logs — with no PKCE and no exchange step, and OAuth 2.1
-  # removes it. It was enabled here and driven by nothing: the SPA signs in with
-  # `amazon-cognito-identity-js`'s `authenticateUser`, which is SRP.
-  #
-  # It was inert only by accident. Scout declares no `aws_cognito_user_pool_domain`,
-  # so `/oauth2/authorize` does not resolve and the grant could not be reached. The
-  # day anyone adds a domain — including the one that comes with adopting Managed
-  # Login, #363 — it would have become live surface on a client whose id ships in a
-  # public bundle. Removing it now costs nothing.
+  # removes it. With the managed-login domain below, `/oauth2/authorize` is live
+  # surface on a client whose id ships in a public bundle, so `code` is the only
+  # grant. Cognito has no server-side "require PKCE" toggle: the SPA's PKCE test
+  # (`frontend/src/auth/oauth.test.ts`) is what keeps the challenge from
+  # silently disappearing.
   allowed_oauth_flows  = ["code"]
   allowed_oauth_scopes = ["openid", "email", "profile"]
 
@@ -91,17 +87,35 @@ resource "aws_cognito_user_pool_client" "main" {
   # call, and it is the flow every credential-stuffing script targets. Nothing in
   # `scout/` ever called it — SRP never puts the password on the wire — so this is
   # deleting attack surface, not a capability.
+  #
+  # **No `ALLOW_REFRESH_TOKEN_AUTH` either.** With `refresh_token_rotation`
+  # enabled below, Cognito rejects the pair at apply time — service-side
+  # validation `terraform validate` cannot see, so never re-add it here.
+  # Refresh still works: the SPA refreshes at the token endpoint, which these
+  # flags do not gate.
+  #
+  # SRP is what is left, and the hosted pages do not use it either — Managed
+  # Login authenticates server-side, not through the client's explicit flows.
+  # It is kept as the one direct-auth flow available to `InitiateAuth` for
+  # admin and bootstrap use. Nothing in `scout/` calls it today.
   explicit_auth_flows = [
     "ALLOW_USER_SRP_AUTH",
-    "ALLOW_REFRESH_TOKEN_AUTH",
   ]
 
   prevent_user_existence_errors = "ENABLED"
 
   # Without this a refresh token outlives sign-out and stays usable until it
-  # expires. It matters most once there is a `/logout` leg to call (#466) — but
-  # set after the fact that leg would have nothing to revoke.
+  # expires. The SPA's sign-out leg calls the hosted `/logout`, which revokes.
   enable_token_revocation = true
+
+  # Every refresh answers with a NEW refresh token and retires the old one, so
+  # a stolen token dies at the next legitimate refresh. The grace window
+  # absorbs two tabs refreshing concurrently — the SPA also single-flights
+  # refreshes (`frontend/src/auth/oauth.ts`), so grace is belt-and-braces.
+  refresh_token_rotation {
+    feature                    = "ENABLED"
+    retry_grace_period_seconds = 30
+  }
 
   # Pinned to the values scout was already taking implicitly, so no session
   # changes and nobody is signed out. Unpinned they are Cognito's defaults, which
@@ -114,5 +128,42 @@ resource "aws_cognito_user_pool_client" "main" {
     access_token  = "hours"
     id_token      = "hours"
     refresh_token = "days"
+  }
+}
+
+# Cognito's default branding for the managed login (v2) pages. No exported
+# console JSON yet — colours can come later by swapping this for `settings`.
+resource "aws_cognito_managed_login_branding" "main" {
+  user_pool_id                = aws_cognito_user_pool.main.id
+  client_id                   = aws_cognito_user_pool_client.main.id
+  use_cognito_provided_values = true
+}
+
+# **Branding must exist before the domain.** A managed-login (v2) domain with
+# no branding style serves "Login pages unavailable. Please contact an
+# administrator." — an outage, not a fallback — so the depends_on edge is
+# load-bearing: never let Terraform order the domain first.
+resource "aws_cognito_user_pool_domain" "main" {
+  domain                = var.auth_domain
+  user_pool_id          = aws_cognito_user_pool.main.id
+  certificate_arn       = var.auth_certificate_arn
+  managed_login_version = 2
+
+  depends_on = [aws_cognito_managed_login_branding.main]
+}
+
+# Cognito fronts the custom domain with its own CloudFront distribution; these
+# alias records point the auth host at it.
+resource "aws_route53_record" "auth" {
+  for_each = toset(["A", "AAAA"])
+
+  zone_id = var.route53_zone_id
+  name    = var.auth_domain
+  type    = each.value
+
+  alias {
+    name                   = aws_cognito_user_pool_domain.main.cloudfront_distribution
+    zone_id                = aws_cognito_user_pool_domain.main.cloudfront_distribution_zone_id
+    evaluate_target_health = false
   }
 }

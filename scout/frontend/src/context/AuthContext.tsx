@@ -1,33 +1,15 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import {
-  AuthenticationDetails,
-  CognitoUser,
-  CognitoUserPool,
-  type CognitoUserSession,
-} from "amazon-cognito-identity-js";
-
-const USER_POOL_ID = import.meta.env.VITE_COGNITO_USER_POOL_ID as string | undefined;
-const CLIENT_ID = import.meta.env.VITE_COGNITO_CLIENT_ID as string | undefined;
-
-const userPool =
-  USER_POOL_ID && CLIENT_ID
-    ? new CognitoUserPool({ UserPoolId: USER_POOL_ID, ClientId: CLIENT_ID })
-    : null;
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import * as oauth from "@/auth/oauth";
 
 interface AuthContextValue {
   user: string | null;
   idToken: string | null;
   loading: boolean;
   configured: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (returnTo?: string) => Promise<void>;
   logout: () => void;
+  /** Re-reads the token store — the callback page calls this after exchange. */
+  syncFromStore: () => void;
 }
 
 export const AuthContext = createContext<AuthContextValue>({
@@ -37,69 +19,44 @@ export const AuthContext = createContext<AuthContextValue>({
   configured: false,
   login: async () => {},
   logout: () => {},
+  syncFromStore: () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<string | null>(null);
-  const [idToken, setIdToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  // The token store is synchronous localStorage, so there is no session to
+  // restore asynchronously and `loading` is only ever true for the first
+  // render. It stays in the surface because ProtectedRoute keys off it.
+  const [idToken, setIdToken] = useState<string | null>(() => oauth.getIdToken());
+  const [user, setUser] = useState<string | null>(() => oauth.getUserEmail());
 
-  // Restore an existing session from Cognito's localStorage on mount.
-  useEffect(() => {
-    if (!userPool) {
-      setLoading(false);
-      return;
-    }
-    const current = userPool.getCurrentUser();
-    if (!current) {
-      setLoading(false);
-      return;
-    }
-    current.getSession((err: Error | null, session: CognitoUserSession | null) => {
-      if (!err && session && session.isValid()) {
-        setIdToken(session.getIdToken().getJwtToken());
-        setUser(current.getUsername());
-      }
-      setLoading(false);
-    });
+  const syncFromStore = useCallback(() => {
+    setIdToken(oauth.getIdToken());
+    setUser(oauth.getUserEmail());
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    if (!userPool) {
-      throw new Error("Cognito is not configured.");
-    }
-    const cognitoUser = new CognitoUser({ Username: email, Pool: userPool });
-    const authDetails = new AuthenticationDetails({
-      Username: email,
-      Password: password,
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      cognitoUser.authenticateUser(authDetails, {
-        onSuccess: (session) => {
-          setIdToken(session.getIdToken().getJwtToken());
-          setUser(cognitoUser.getUsername());
-          resolve();
-        },
-        onFailure: (err: Error) => {
-          reject(err);
-        },
-      });
-    });
+  const login = useCallback(async (returnTo?: string) => {
+    await oauth.login(returnTo);
   }, []);
 
   const logout = useCallback(() => {
-    if (userPool) {
-      const current = userPool.getCurrentUser();
-      current?.signOut();
-    }
+    // Clears the local store and ends the hosted session, so the next visit
+    // prompts for a password rather than silently re-authenticating.
+    oauth.logout();
     setIdToken(null);
     setUser(null);
   }, []);
 
   const value = useMemo(
-    () => ({ user, idToken, loading, configured: !!userPool, login, logout }),
-    [user, idToken, loading, login, logout]
+    () => ({
+      user,
+      idToken,
+      loading: false,
+      configured: oauth.isConfigured(),
+      login,
+      logout,
+      syncFromStore,
+    }),
+    [user, idToken, login, logout, syncFromStore]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

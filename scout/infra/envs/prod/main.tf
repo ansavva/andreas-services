@@ -19,6 +19,14 @@ data "aws_route53_zone" "main" {
   private_zone = false
 }
 
+# Cognito custom domains, like CloudFront, take a us-east-1 certificate.
+data "aws_acm_certificate" "wildcard" {
+  provider    = aws.us_east_1
+  domain      = "*.andreas.services"
+  statuses    = ["ISSUED"]
+  most_recent = true
+}
+
 module "data" {
   source = "../../modules/data"
 
@@ -102,14 +110,21 @@ module "auth" {
   source = "../../modules/auth"
 
   name = local.name_prefix
+  # Exact-match, character for character — no wildcard host, path or port. The
+  # code flow redirects only to /app/auth/callback, so only that is registered
+  # here; the bare origins belong in logout_urls, below.
   callback_urls = [
-    "https://${local.domain_name}/app",
-    "http://localhost:5173/app",
+    "https://${local.domain_name}/app/auth/callback",
+    "http://localhost:5173/app/auth/callback",
   ]
   logout_urls = [
     "https://${local.domain_name}/app",
     "http://localhost:5173/app",
   ]
+
+  auth_domain          = "scout-auth.andreas.services"
+  auth_certificate_arn = data.aws_acm_certificate.wildcard.arn
+  route53_zone_id      = data.aws_route53_zone.main.zone_id
 
   tags = local.common_tags
 }
