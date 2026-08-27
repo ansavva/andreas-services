@@ -463,8 +463,25 @@ export function deleteReference(id: string, node: string) {
  * Every member must already be a reference. The API refuses a node with no
  * `REF#` row rather than accepting a set that names an image a shoot cannot send.
  */
+/**
+ * The acknowledgement this route answers with — **not** a character record.
+ *
+ * It used to be typed `CharacterRecord`, which was simply false: the route
+ * returns `{id, default_set, rev}` and nothing else. Nothing read the result
+ * until the grid learned to write the set, and the first caller to trust the
+ * type fed three fields into the page's record — so the character lost its
+ * name, its slug, its root folder, and rendered as a real person because
+ * `fictional` was suddenly undefined. The data was never touched; only the
+ * screen was wrong, which is the worst way for a type to be a lie.
+ */
+export interface DefaultSetAck {
+  id: string;
+  default_set: string[];
+  rev: number;
+}
+
 export function putDefaultSet(id: string, nodes: string[], rev: number) {
-  return apiSend<CharacterRecord>("PATCH", `/api/characters/${encodeURIComponent(id)}/default-set`, {
+  return apiSend<DefaultSetAck>("PATCH", `/api/characters/${encodeURIComponent(id)}/default-set`, {
     nodes,
     rev,
   });

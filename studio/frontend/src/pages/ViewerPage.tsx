@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { deleteNodes, describeNode, renameNode } from "../apis/studio";
+import { ReferenceFields } from "../components/character/ReferenceFields";
 import { TextPage } from "../components/text/TextPage";
 import { ReelView } from "../components/viewer/ReelView";
 import { useViewerFeed } from "../hooks/useViewerFeed";
@@ -137,6 +138,19 @@ export function ViewerPage() {
       onRename={rename}
       onDelete={remove}
       onDescribe={describe}
+      // Only in a character's reference pool. Elsewhere a node has no group, no
+      // position and no caption, and the panel is the file's own fields alone.
+      panelExtra={
+        source?.in === "refs"
+          ? (file) => (
+              <ReferenceFields
+                characterId={source.id}
+                node={file.id}
+                onChanged={feed.reload}
+              />
+            )
+          : undefined
+      }
     />
   );
 }

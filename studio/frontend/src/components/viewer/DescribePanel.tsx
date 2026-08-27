@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Button, Input, Text } from "@ansavva/design-system";
 
@@ -9,6 +9,16 @@ interface Props {
   file: FileEntry;
   onSave: (changes: { description?: string | null; tags?: string[] | null }) => Promise<unknown>;
   onClose: () => void;
+  /**
+   * Fields about this node in some *other* thing's terms, above the file's own.
+   *
+   * A reference's group, order and caption are facts about the picture's role in
+   * a character, not about the file — the same image is a plain file everywhere
+   * else. They share this panel rather than getting a second one because one
+   * button and one surface is the whole point of the viewer rework; they are
+   * kept above and separated so nothing reads as belonging to the file.
+   */
+  extra?: ReactNode;
 }
 
 /**
@@ -44,7 +54,7 @@ interface Props {
  * because a chip with an unsaved state is a control that lies about what a
  * `--pick-tag` would now match.
  */
-export function DescribePanel({ file, onSave, onClose }: Props) {
+export function DescribePanel({ file, onSave, onClose, extra }: Props) {
   const [draft, setDraft] = useState(file.description ?? "");
   const [tag, setTag] = useState("");
   const [busy, setBusy] = useState(false);
@@ -98,17 +108,24 @@ export function DescribePanel({ file, onSave, onClose }: Props) {
       aria-label="File details"
     >
       <div className="mx-auto flex max-w-3xl flex-col gap-4">
-        <div className="flex items-start justify-between gap-3">
-          <Text variant="caption" className="text-white/70">
-            What this shows, and how it is selected. Both are the file&apos;s own —
-            they travel with it through a move, a rename and a copy.
-          </Text>
+        {/* Only the Hide control at the top. The sentence that used to sit here
+            said "both are the file's own", which stopped being true the moment
+            this panel could carry an entity's fields above them — a reference's
+            group and caption belong to a CHARACTER, not to the file. It moved
+            down to sit directly over the two things it describes. */}
+        <div className="flex items-start justify-end">
           <Button intent="ghost" size="sm" onClick={onClose} className="shrink-0 text-white">
             Hide
           </Button>
         </div>
 
+        {extra}
+
         <div className="flex flex-col gap-2">
+          <Text variant="caption" className="text-white/70">
+            What this shows, and how it is selected. Both are the file&apos;s own —
+            they travel with it through a move, a rename and a copy.
+          </Text>
           <Text variant="caption" className="text-white/70">
             Description
           </Text>

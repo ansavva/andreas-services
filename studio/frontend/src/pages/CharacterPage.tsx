@@ -211,6 +211,16 @@ export function CharacterPage() {
             characterId={record.id}
             rootId={record.root}
             defaultSet={record.default_set}
+            // The set is written against the revision, and the route answers
+            // with `{id, default_set, rev}` — an acknowledgement, not a record.
+            // So it is MERGED. Swapping it in wholesale is what briefly turned
+            // this character into a nameless "real person" on screen.
+            rev={record.rev}
+            onSaved={(ack) =>
+              character.setData((current) =>
+                current ? { ...current, default_set: ack.default_set, rev: ack.rev } : current,
+              )
+            }
           />
         </Tabs.Panel>
 
