@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import urllib.error
 import urllib.parse
@@ -79,6 +80,53 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if HERE in Path(str(item.fspath)).resolve().parents:
             item.add_marker(skip)
+
+
+#: Model providers. Nothing under `studio_core/` can reach one — it has no HTTP
+#: client among its dependencies — and nothing here should introduce one. Every
+#: paid call in this repo is in the pipeline's `adapters/replicate.py`.
+BILLING_HOSTS = (
+    "api.replicate.com",
+    "replicate.delivery",
+    "api.openai.com",
+    "api.anthropic.com",
+)
+
+
+@pytest.fixture(autouse=True)
+def _no_outbound_sockets(monkeypatch):
+    """Let this suite reach the deployed API, and keep it off anything that bills.
+
+    **Without this the suite cannot pass at all.** `tests/conftest.py` autouses a
+    fixture of this name that refuses every socket to anything but loopback,
+    which is right for a moto-and-test-client suite and fatal for one whose whole
+    purpose is HTTPS to `studio-api.andreas.services`. `tests/integration/`
+    overrides the name for the same reason; this tree was added later and never
+    got the override, so all five tests died on the guard before reaching the
+    API and every prod deploy has reported failure since. Overriding the name
+    here rather than per-module means a test added later inherits it.
+
+    **Guarded on `getaddrinfo`, not on `connect`, and that is the load-bearing
+    part.** `socket.create_connection` resolves the name first and calls
+    `connect` with the resolved address, so `connect` sees `('52.72.53.31', 443)`
+    and never a hostname — measurable in three lines, and it is why the unit
+    guard next door reports IPs. A denylist matched against `connect`'s argument
+    therefore cannot fire on a hostname no matter how it is written.
+    `getaddrinfo` is the one call in the path that still has the name.
+    """
+    real_getaddrinfo = socket.getaddrinfo
+
+    def guarded(host, *args, **kwargs):
+        if isinstance(host, str) and any(host == billing or host.endswith("." + billing)
+                                         for billing in BILLING_HOSTS):
+            raise RuntimeError(
+                f"the smoke suite tried to resolve {host!r}, which bills. The "
+                "deployed app has no model-provider client and must not grow "
+                "one; every paid call in this repo is in the pipeline's "
+                "adapters/replicate.py.")
+        return real_getaddrinfo(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", guarded)
 
 
 def _required(name: str) -> str:
