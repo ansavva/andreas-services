@@ -259,57 +259,84 @@ nothing and was removed. When it went, studio's browsable root was hard-coded to
 it in five places and every listing silently came back empty, because a prefix
 that matches nothing is not an error to S3.)
 
-Two trees, because they are two different things:
+Three prefixes, and a key is three segments:
 
 ```
 s3://studio-prod-media-us-east-1/
-  characters/<name>/          an IDENTITY record
-      profile.yaml            the bible, including the described reference index
-      reference/              generated character imagery, in purpose subfolders
-      corpus/  seed/  archive/
-  projects/<project>/         a piece of WORK
-      project.json
-      runs/  chains/  scenes/  movies/  favorites/  input/
-  phrasebook/wording.yaml
-  config/pose/                shared POSE PLATES — generic, no identity
-  blobs/<node_id>             bytes written through the API — flat, by design
+  characters/<char id>/<node id>.<ext>    bytes owned by a character
+  projects/<proj id>/<node id>.<ext>      bytes owned by a project
+                                          (runs, scenes, movies, inputs)
+  libraries/<lib id>/<node id>.<ext>      owned by neither: the pose plates,
+                                          and anything loose under the root
+  phrasebook/wording.yaml                 one legacy object, no row. See below.
 ```
 
-**Since the catalog, this tree is a historical fact rather than an index.**
-Nothing lists it to find out what exists; a key is reached only by following a
-row's `blob_key`. Two shapes of key therefore coexist and both are correct
-forever: everything above `blobs/`, written before the table and keeping the key
-it was written under, and `blobs/<node_id>`, written since. A legacy key *looks*
-like a path and is not one — a rename does not touch it, a move does not touch
-it, and nothing outside the API's `services/catalog.py` may parse one. #335 is
-open on normalising them; until it is decided, `blobs/` sitting beside
-`characters/` is the expected state.
+**This section used to draw a folder tree here** — `characters/<name>/` holding
+`profile.yaml` and `reference/`, `projects/<project>/` holding `runs/` and
+`scenes/`, plus a top-level `config/pose/` and a `blobs/<node id>`. **None of
+that is in the bucket.** It was the pre-catalog layout, where a key was a path
+and the bucket was the index; the entity model made a record name a node id, and
+`catalog migrate` then `reseat` rewrote production out of it. There are no
+slug-shaped keys left, no `blobs/` and no top-level `config/`.
+
+The tree a person browses is real and is the **catalog's**, not the bucket's —
+`../docs/ENTITY_MODEL.md` draws it. S3 has no directories, nothing is ever listed
+to find out what exists, and a key is reached only by following a row's
+`blob_key`.
+
+**A key carries two ids and nothing else, which is hard rule #1 applied to the
+one place that had been quietly breaking it.** No slug, no folder path, no
+filename — a listing of this bucket names no character and no project. The
+extension is decoration for whoever opens the S3 console; `content_type` on the
+row is authoritative.
+
+**It is a pointer, not an address.** A rename does not touch it, a move does not
+touch it, and nothing outside the API's `services/catalog.py` may split one on
+`/`. The prefix is an operational convenience — per-entity cost in Storage Lens,
+a lifecycle rule, a bulk delete that is one prefix.
+
+**One shape is stamped and a second is still in the bucket.** `blob_key_for`
+writes the three-segment key above. Between those and today the key was briefly
+*descriptive* — `<entity>/<id>/<folders>/<filename>` — and a `reseat` wrote 181
+production keys in that shape before it was reverted; the filename put character
+names back into a listing, which is the leak the prefix scheme exists to close.
+They are correct and readable where they sit, and a `reseat` clears them.
+`../docs/ENTITY_MODEL.md` has the whole argument.
+
+**#335 is still open and has been overtaken by events.** It asks for legacy keys
+to be normalised; the migrator did it, and a listing today has none of what it
+was filed about. What is left to normalise is the descriptive 181, which is the
+same command.
 
 Because rows and blobs are deleted separately, a blob can outlive every row that
 named it. `studio catalog gc` (#318) is the only sanctioned way to find one —
 "unreferenced" is a question only the table can answer, so a listing-based sweep
 would be guessing.
 
-`config/` is the only prefix whose source of truth is the repo rather than the
-bucket: it is `studio/config/` in source control, and `dev-setup.sh` syncs it out
-so a model can be handed a presigned URL of it. Nothing in Terraform creates or
-owns it, and because `media_root_prefix` is `""` it is browsable in the app like
-any other top-level folder. `config/`, `phrasebook/` and the pose plates have
-**no catalog node** and resolving one by name would 404 — they belong to no
-character and no project, so `catalog_seed.py` records neither of them.
+**Shared material has rows now, and that is what emptied the raw `config/`
+prefix.** The pose plates are ordinary nodes in a `config/` folder the
+library is created with, so their bytes are `libraries/<lib id>/…` like anything
+else the library owns. `studio/config/` in source control stays their source of
+truth and the library holds a copy, because a model may only be handed a
+presigned URL of a stored object; `scripts/dev-shared-material.sh` pushes them
+through `studio config sync` and no longer writes to the bucket itself. Nothing
+in Terraform creates or owns them. The nodeless `config/pose/…` objects that
+predated this were deleted in August 2026, deliberately and by hand — `catalog
+gc` does not collect them.
 
-`phrasebook/` is repo-**seeded** rather than repo-owned, and the distinction is
-the reason the two pushes sit in one file (`scripts/dev-shared-material.sh`).
-`studio/phrasebook/wording.yaml` is copied in only when the key is absent,
-because the bucket's copy becomes the live document at the first
-`studio phrasebook add` and a sync would delete its entries. Without that first
-copy `add` is permanently unavailable — `PATCH /api/text` overwrites and never
-invents (#425).
+`phrasebook/wording.yaml` is the one object left with no row, and nothing writes
+it any more: the phrasebook is `TERM#<model>#<avoid>` rows, so there is no
+document to seed and `studio phrasebook add` works against a library that has
+never held one. It survives because deleting it buys nothing, and `catalog gc`
+will never propose it: `phrasebook/` is a literal in that command's shared-prefix
+list, so the object is reported as shared and cannot reach a delete list by any
+path through the code.
 
-A project's material may involve several characters, so a character name is
-never part of a production key; each run records which characters it used. See
-[../docs/PIPELINE.md](../docs/PIPELINE.md) for what lives in a run, a scene and
-a movie.
+A project's material may involve several characters, so a character name is never
+part of a production key — and since the key carries ids only, that now holds by
+construction rather than by convention. Each run records which characters it
+used. See [../docs/PIPELINE.md](../docs/PIPELINE.md) for what lives in a run, a
+scene and a movie.
 
 `media_root_prefix` is `""` (the whole bucket) and is the first knob that
 matters if the layout is ever reshaped again. It narrows the API, the Lambda's

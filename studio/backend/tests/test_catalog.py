@@ -210,8 +210,14 @@ def test_is_api_blob_accepts_a_descriptive_key(catalog_table):
     and all 186 of its file nodes stopped matching, so both upload routes
     refused to overwrite anything in the library.
 
-    Both shapes are live at once — this API still stamps the flat one at
-    creation and `reseat` produces the other — so both have to pass.
+    Both shapes are live at once and both have to pass. The flat one is what
+    this API stamps and what `reseat` now rebuilds; the descriptive one is what
+    the reseat of that era left behind, 182 keys of it in production, and it
+    stays readable until a reseat has been run against the library holding it.
+
+    **Do not narrow this to the flat shape when prod is reseated.** The failure
+    it guards is a signed upload refusing a key it should accept, and a
+    signature makes that permanent the moment it is handed out.
     """
     node = catalog.create_node(CATALOG_ROOT, "IMG_4580.png", catalog.KIND_FILE)
 

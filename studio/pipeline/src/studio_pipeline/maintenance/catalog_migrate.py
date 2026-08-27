@@ -113,12 +113,20 @@ many images a library may hold.
 
 RESEAT, AND WHY IT IS NOT PART OF `apply`
 -----------------------------------------
-The key scheme is `<owner_kind>/<owner_id>/<node_id>.<ext>` — it carries the
-owning entity's id, so a bucket listing leaks no names and per-entity cost,
-lifecycle and bulk delete all become one prefix. Prod's keys predate it. The
-prefix is stamped once at creation and never re-derived, so a key that no longer
-matches its node's owner is still perfectly correct — it is a pointer — it just
-stops *looking* like it means anything.
+The key scheme is `<owner_kind>/<owner_id>/<node_id>.<ext>` — three segments and
+no more. It carries the owning entity's id, so a bucket listing leaks no names
+and per-entity cost, lifecycle and bulk delete all become one prefix. Below the
+prefix it carries a node id, so it leaks no names *there* either, which is the
+half a descriptive key gave back: `desired_key` built
+`<owner_kind>/<owner_id>/<folders>/<filename>` for a while, and the filename put
+character names into 182 production keys. See `desired_key` for the whole of
+that argument.
+
+Two kinds of key therefore need reseating and prod holds both: everything
+written before this catalog existed, and everything the descriptive era wrote.
+The prefix is stamped once at creation and never re-derived, so a key that no
+longer matches its node's owner is still perfectly correct — it is a pointer —
+it just stops *looking* like it means anything.
 
 `verify` reports that drift. `reseat --apply` rewrites it: server-side copy, row
 update, delete of the old object. It is a separate invocation because it is the
@@ -133,6 +141,7 @@ import datetime as dt
 import json
 import mimetypes
 import os
+import posixpath
 import uuid
 
 import botocore.exceptions
@@ -1374,80 +1383,104 @@ def owners(plan: dict) -> dict[str, tuple[str, str]]:
     return found
 
 
+def extension(name: str) -> str:
+    """The suffix the API puts on a key, spelled the way the API spells it.
+
+    `posixpath.splitext(...)[1].lower()` — a copy of `services/keys.py::extension`
+    rather than an import, because the pipeline does not depend on the backend
+    package and never has.
+
+    **The copy has to agree exactly, and `test_the_two_key_builders_agree` is
+    what holds it to that.** `desired_key` decides whether a key has drifted by
+    comparing it against what `blob_key_for` stamped at creation; a
+    disagreement about case alone would report every `.PNG` in a library as
+    drift, and `reseat` would rewrite the same objects on every run, forever.
+    """
+    return posixpath.splitext(name)[1].lower()
+
+
 def desired_key(plan: dict, nodes: dict, node: dict) -> str:
-    """Where a file node's bytes belong:
-    `<owner_kind>/<owner_id>/<folders below the owner>/<name>`.
+    """Where a file node's bytes belong: `<owner_kind>/<owner_id>/<node_id><ext>`.
 
-    **THE KEY IS DESCRIPTIVE, AND IT IS STILL NOT AUTHORITATIVE.** Those are
-    separate properties and D2 originally conflated them. What made the legacy
-    `characters/<slug>/…` keys dangerous was never that they read well — it was
-    that they were LOAD-BEARING: `paths.py` built them, callers parsed them, and
-    records named paths instead of ids. That is what stranded 69 records and what
-    `domain/rewrite.py` existed to patch.
+    **THE KEY IS FLAT, AND IT IS THE SAME STRING THE API STAMPS AT CREATION.**
+    Three segments, always: an owner prefix, an id, and a node id. That is
+    `services/catalog.py::blob_key_for` exactly, which is the point — this
+    function's whole job is to say what a key *should* be, and a second opinion
+    about that is what drift is.
 
-    A record names a node id now, so nothing reads this string. Nothing may
-    start. `test_no_caller_splits_a_blob_key` is the guard, because the moment
-    something derives truth from a key, a rename becomes a data migration again
-    and the whole entity model is back where it started.
+    **This used to build a descriptive key** —
+    `<owner_kind>/<owner_id>/<folders below the owner>/<name>` — on the argument
+    that structure in a key is free once nothing parses one, and buys a bucket a
+    person can read plus a rebuild path if the catalog is ever lost. Two things
+    were wrong with it:
 
-    Given that, the structure costs nothing and buys two things a flat
-    `<node_id>.<ext>` cannot:
+    - **It put character names back in the bucket.** The slug was gone from the
+      prefix, which is the half D2 was written for, and then the *filename*
+      carried the name straight back in: `reference/face/<name>_face_1.png`.
+      Hard rule #1 forbids a character's name in code, docstrings, fixtures and
+      commit messages, and this wrote it into 182 production keys. A leak one
+      segment lower is the same leak.
+    - **It made drift permanent and routine.** A key is stamped once and a
+      rename or a move deliberately does not touch it, so under a descriptive
+      scheme every rename drifted and `reseat` became a chore with no end. Flat,
+      a rename changes nothing and a move only changes the key when it changes
+      the *owner* — which is rare, and is the only drift left.
 
-    - **A bucket you can read.** One listing tells you which entity owns an
-      object, where it sat in the tree, and what it is called. Under the flat
-      scheme a listing is 379 MB of UUIDs and the catalog is the only thing that
-      can say what any of them are.
-    - **A rebuild path.** The catalog has PITR and deletion protection, so this
-      is a second line rather than the only one — but the second line is the
-      difference between "restore the table" and "restore the table or lose the
-      meaning of every byte".
+    What that costs is real and was accepted deliberately: a listing is now
+    UUIDs, so the catalog is the only thing that can say what any byte is. The
+    table carries PITR and deletion protection and that is the whole of the
+    safety net. Nothing writes a manifest into the bucket.
+
+    Nothing may parse the string either way. `test_no_caller_splits_a_blob_key`
+    is the guard, and it did not become less necessary by the key becoming
+    boring: the moment something derives truth from a key, a rename is a data
+    migration again and the entity model is back where it started.
 
     The owner is DERIVED, from the node's `path` — the materialised list of
     ancestor ids the tree already maintains — by finding the nearest ancestor
     some entity adopted. Nothing new is stored.
 
-    **The leaf is the node's `name`, verbatim.** A file is a file: whatever it
-    was uploaded as is what it is called, here and in the app. Nothing mints a
-    name any more (`curate renumber` and `regroup` are gone, group and order are
-    row attributes), so there is no convention for this to encode and none for
-    it to drift from. The extension comes with the name, which is why this no
-    longer guesses one from `content_type`.
+    The extension is decoration for a human reading the S3 console, and it comes
+    off the node's `name`. `content_type` on the row is authoritative; a node
+    with no extension gets a key with none, and nothing reads one back.
     """
     known = owners(plan)
     ancestors = [i for i in (node.get("path") or "").split("/") if i]
-    kind, owner, below = None, None, []
-    for index, ancestor in enumerate(reversed(ancestors)):
+    kind = owner = None
+    for ancestor in reversed(ancestors):
         if ancestor in known:
             kind, owner = known[ancestor]
-            # The folders between the owner's root and this node, in tree order.
-            below = [nodes[i]["name"] for i in ancestors[len(ancestors) - index:]
-                     if i in nodes and nodes[i].get("name")]
             break
-    if kind is None:
-        # Not inside any entity — loose material under the library root. Its
-        # whole path below the root is the structure worth keeping.
-        below = [nodes[i]["name"] for i in ancestors
-                 if i in nodes and nodes[i].get("name") and nodes[i].get("parent_id")]
     prefix = OWNER_PREFIX[kind] if kind else LIBRARY_PREFIX
-    owner = owner or plan["lib"]
-    return "/".join([prefix, owner, *below, node["name"]])
+    return f"{prefix}/{owner or plan['lib']}/{node['node_id']}{extension(node['name'])}"
 
 
 def key_drift(plan: dict, nodes: dict) -> list[dict]:
-    """Every file node whose key no longer describes its owner.
+    """Every file node whose key no longer names its owner.
 
-    Reported by `verify`, rewritten by `reseat`. **A drifted key is not broken,
-    and since the key became descriptive it is not even unusual.**
+    Reported by `verify`, rewritten by `reseat`. **A drifted key is not broken.**
+    It is a pointer, it resolves, the bytes are where the row says, and nothing
+    reads the string. Drift means only that the key names the owner the node had
+    when it was stamped.
 
-    It is a pointer. It resolves, the bytes are where the row says, and nothing
-    reads the string. What drift means now is only that the key describes where
-    the file USED to sit — because a key is stamped once at creation and a
-    rename or a move is a row write that deliberately does not touch it.
+    **Three things reach this list, and the middle one is the only ordinary
+    case.** A key is stamped once at creation and a row write never touches it,
+    so:
 
-    So this is a tidiness report, not a defect report. Any library anyone
-    actually works in will show some, `reseat` is how you clear it when the
-    listing has drifted far enough to annoy you, and a library showing drift is
-    not a library with a problem. Read the count that way.
+    - a key written before this catalog existed — `characters/<slug>/…`,
+      `blobs/<node id>`, `config/pose/…` — which has always been here;
+    - a node MOVED between owners: out of one character and into another, or
+      between a character and a project. Its bytes are still filed under the old
+      owner's prefix;
+    - the 182 descriptive keys `reseat` itself wrote while `desired_key` built
+      `<folders>/<name>`. Reseating once clears them and they do not come back.
+
+    **A rename is no longer one of them**, and under the descriptive scheme it
+    was the commonest by far — the leaf was the file's own name, so renaming a
+    file drifted its key. The leaf is the node id now, which no rename changes,
+    so an ordinary session in an ordinary library produces no drift at all. If
+    this count is climbing on its own, something is moving nodes between
+    entities; that is worth looking at rather than tidying away.
     """
     drift = []
     for node in nodes.values():
