@@ -1,8 +1,11 @@
-"""Scenes and movies: the two tiers above a run, and the plan that is rows.
+"""Scenes: the tier above a run, and the plan that is rows.
 
-A scene is shots stitched into one continuous take; a movie is scenes cut into
-one piece. Both are the same envelope-plus-blob split a run is, with one addition
-that is the whole reason a scene is not just a folder of runs: **the plan**.
+A scene is shots stitched into one continuous take. It is the same
+envelope-plus-blob split a run is, with one addition that is the whole reason a
+scene is not just a folder of runs: **the plan**.
+
+**Movies moved to `test_movies.py`.** This file covered two route modules and
+left `routes/movies.py` at 77% with eight of its tests.
 `SCENE#<id>` / `SHOT#<shot_id>` is one row per planned shot, carrying `order`,
 `prompt`, and the `run` and `panel` that rendered it.
 
@@ -500,144 +503,15 @@ def test_creating_a_movie_records_the_cut(empty_api):
     ]
 
 
-def test_a_movie_resolves_the_scenes_it_names(empty_api):
-    """The list is ids; the read is what a person can act on."""
-    project = _project(empty_api)
-    scene = _scene(empty_api, project)
-    movie = _movie(empty_api, project, scenes=[scene["id"]])
-
-    body = empty_api.get(f"/api/movies/{movie['id']}").get_json()
-
-    assert body["scenes"] == [
-        {
-            "id": scene["id"],
-            "slug": "stadium-encounter",
-            "title": "Stadium",
-            "status": "planned",
-            "output": None,
-            "thumb": None,
-        }
-    ]
 
 
-def test_a_movies_scene_rows_carry_what_it_takes_to_draw_one(empty_api):
-    """A row was `{id, slug, status, output}`, and the SPA draws `title` and `thumb`.
-
-    So the cut list showed every scene by its slug behind an empty square. A
-    scene's thumbnail is its own cut, which is why it is derived from `output`
-    rather than read off a listing row — the listing row belongs to the project,
-    and this query goes to the scene records.
-    """
-    project = _project(empty_api)
-    scene = _scene(empty_api, project)
-    node = empty_api.post(
-        f"/api/scenes/{scene['id']}/output",
-        json={"name": "stadium.mp4", "size": 100, "content_type": "video/mp4"},
-    ).get_json()["node"]
-    movie = _movie(empty_api, project, scenes=[scene["id"]])
-
-    row = empty_api.get(f"/api/movies/{movie['id']}").get_json()["scenes"][0]
-
-    assert row["title"] == "Stadium"
-    assert row["thumb"]["node"] == node
-    assert row["thumb"]["url"]
 
 
-def test_replacing_a_movies_scenes_takes_an_ordered_list(empty_api):
-    """A replace rather than an append, for the involvement set's reason.
-
-    An add-only endpoint would need a remove beside it *and* an ordering verb,
-    and a client that got any of the three wrong would produce a cut nobody asked
-    for.
-    """
-    project = _project(empty_api)
-    first = _scene(empty_api, project, "first-scene")
-    second = _scene(empty_api, project, "second-scene")
-    movie = _movie(empty_api, project, scenes=[first["id"], second["id"]])
-
-    resp = empty_api.patch(
-        f"/api/movies/{movie['id']}/scenes", json={"scenes": [second["id"], first["id"]]}
-    )
-
-    assert resp.status_code == 200
-    assert empty_api.get(f"/api/movies/{movie['id']}").get_json()["scenes"][0]["id"] == (
-        second["id"]
-    )
 
 
-def test_a_movie_cannot_name_a_scene_that_does_not_exist(empty_api):
-    """The list is what `assemble` walks.
-
-    A missing id there is a stitch that fails half way through an upload rather
-    than at the request that caused it.
-    """
-    project = _project(empty_api)
-    movie = _movie(empty_api, project)
-
-    assert empty_api.patch(
-        f"/api/movies/{movie['id']}/scenes", json={"scenes": ["scene-nobody"]}
-    ).status_code == 404
 
 
-def test_a_movie_output_is_the_finished_cut(empty_api):
-    project = _project(empty_api)
-    movie = _movie(empty_api, project)
-
-    resp = empty_api.post(
-        f"/api/movies/{movie['id']}/output",
-        json={"name": "launch.mp4", "size": 100, "content_type": "video/mp4"},
-    )
-
-    assert resp.status_code == 201
-    cut = empty_api.get(f"/api/movies/{movie['id']}").get_json()["output"]
-    assert cut["node"] == resp.get_json()["node"]
-    assert cut["name"] == "launch.mp4"
-    assert cut["url"]
 
 
-def test_assembling_a_movie_records_the_report_as_well_as_the_cut(empty_api):
-    """`output` was accepted here and `characters`, `stitch` and `assembled` were not.
-
-    So a movie recorded its cut while silently losing the report of how it was
-    made — the same drop as the scene route, minus the 400 that would have said
-    so.
-    """
-    project = _project(empty_api)
-    movie = _movie(empty_api, project)
-    node = empty_api.post(
-        f"/api/movies/{movie['id']}/output",
-        json={"name": "launch.mp4", "size": 100, "content_type": "video/mp4"},
-    ).get_json()["node"]
-
-    resp = empty_api.patch(
-        f"/api/movies/{movie['id']}",
-        json={
-            "characters": ["char-1"],
-            "stitch": {"tool": "ffmpeg", "scenes": 2},
-            "status": "assembled",
-            "output": {"node": node, "duration": 90.0},
-            "assembled": "2026-08-25T10:00:00Z",
-        },
-    )
-
-    assert resp.status_code == 200
-    body = empty_api.get(f"/api/movies/{movie['id']}").get_json()
-    assert body["characters"] == ["char-1"]
-    assert body["stitch"] == {"tool": "ffmpeg", "scenes": 2}
-    assert body["assembled"] == "2026-08-25T10:00:00Z"
-    assert body["output"]["node"] == node
 
 
-def test_deleting_a_movie_leaves_its_scenes_alone(empty_api):
-    """A movie is a cut of scenes, not an owner of them.
-
-    Deleting the cut must not take the takes with it — they are the expensive
-    half, and each one is its own entity with its own folder.
-    """
-    project = _project(empty_api)
-    scene = _scene(empty_api, project)
-    movie = _movie(empty_api, project, scenes=[scene["id"]])
-
-    assert empty_api.delete(f"/api/movies/{movie['id']}").status_code == 200
-
-    assert empty_api.get(f"/api/scenes/{scene['id']}").status_code == 200

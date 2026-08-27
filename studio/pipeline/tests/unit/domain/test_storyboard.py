@@ -498,3 +498,150 @@ def test_a_supplied_panel_never_goes_stale():
 def test_a_supplied_panel_still_counts_as_boarded():
     shot = {"panels": [{"n": 1, "node": "node-supplied", "prompt": ""}]}
     assert SB.shot_status(shot) == "boarded"
+
+
+# ── the panel state machine ─────────────────────────────────────────────────
+#
+# **#494 was "every panel billed, every panel was thrown away" and #498 was "a
+# re-boarded panel was shown the image it was replacing".** Both are the same
+# shape: not a slip in one function, but the wrong answer from the rule that
+# decides which panels keep the output somebody paid for across a revision.
+#
+# `storyboard.py` was at 95% line coverage when both shipped, which is the point
+# of this block — a line can be executed by a test that asserts nothing about
+# what it decided. What follows is a table over (what was there, what was sent)
+# and the money question: does the render survive?
+
+BOARDED = {"n": 1, "prompt": "a man on a porch", "node": "node-img", "run": "run-1",
+           "boarded": "2026-08-19T09:00:00+00:00"}
+
+
+def _revise(before: dict, after: dict) -> dict:
+    """One shot through `merge`, returning the single panel that comes out."""
+    old = [{"id": "shot-1", "panels": [dict(before)]}]
+    new = [{"id": "shot-1", "panels": [dict(after)]}]
+    return SB.merge(old, new)[0]["panels"][0]
+
+
+def test_a_revision_that_does_not_touch_the_prompt_keeps_the_render_clean():
+    """The ordinary case, and the one #494 got wrong: re-sending a plan must not
+    cost anything."""
+    panel = _revise(BOARDED, {"n": 1, "prompt": "a man on a porch"})
+
+    assert panel["node"] == "node-img"
+    assert panel["run"] == "run-1"
+    assert panel["stale"] is False
+
+
+def test_a_rewritten_prompt_keeps_the_image_and_marks_it_stale():
+    """**Stale is a warning, not a block.** The picture in the library no longer
+    illustrates the words beside it, and living with that can be the right call —
+    the whole point of a board this cheap. Deleting it would spend money to
+    enforce somebody's tidiness."""
+    panel = _revise(BOARDED, {"n": 1, "prompt": "a man on a rooftop"})
+
+    assert panel["node"] == "node-img"
+    assert panel["stale"] is True
+
+
+def test_staleness_is_sticky_once_set():
+    """A second revision back to the original words does not un-stale it: the
+    image was rendered from neither, and only a re-board settles that."""
+    once = _revise({**BOARDED, "stale": True}, {"n": 1, "prompt": "a man on a porch"})
+    assert once["stale"] is True
+
+
+def test_a_panel_the_author_supplied_is_never_stale():
+    """It has no prompt to have drifted from — the image IS the instruction."""
+    supplied = {"n": 1, "image": "local.png", "node": "node-img"}
+    panel = _revise(supplied, {"n": 1, "image": "local.png"})
+
+    assert panel["stale"] is False
+
+
+def test_a_panel_number_that_is_new_carries_nothing():
+    """Panels match by number within a shot. A revision that adds panel 2 must
+    not inherit panel 1's render, which is how one image ends up illustrating two
+    different beats."""
+    old = [{"id": "shot-1", "panels": [dict(BOARDED)]}]
+    new = [{"id": "shot-1", "panels": [{"n": 1, "prompt": "a man on a porch"},
+                                       {"n": 2, "prompt": "the door opens"}]}]
+
+    second = SB.merge(old, new)[0]["panels"][1]
+
+    assert second.get("node") is None and second.get("run") is None
+
+
+def test_a_shot_id_that_is_new_carries_nothing():
+    """Shots match by their stable `id`. A renumbered plan is a new plan."""
+    old = [{"id": "shot-1", "panels": [dict(BOARDED)], "run": "run-1"}]
+    new = [{"id": "shot-2", "panels": [{"n": 1, "prompt": "a man on a porch"}]}]
+
+    carried = SB.merge(old, new)[0]
+
+    assert carried.get("run") is None
+    assert carried["panels"][0].get("node") is None
+
+
+def test_an_explicit_value_in_the_revision_wins_over_the_recorded_one():
+    """Carry-across fills what the revision left ABSENT. A re-board sends the new
+    node deliberately, and #498 is what it looks like when the old one wins."""
+    panel = _revise(BOARDED, {"n": 1, "prompt": "a man on a porch", "node": "node-new"})
+
+    assert panel["node"] == "node-new"
+
+
+def test_the_recorded_shot_fields_survive_a_revision():
+    """`run`, `node`, `shot_node`, `duration` and `rendered` are what a RENDER
+    put there; prompts are what a person edits. A plain replace would discard the
+    first to save the second."""
+    old = [{"id": "shot-1", "run": "run-9", "shot_node": "node-cut",
+            "duration": 5, "rendered": "2026-08-19T09:00:00+00:00", "panels": []}]
+    new = [{"id": "shot-1", "beat": "rewritten", "panels": []}]
+
+    carried = SB.merge(old, new)[0]
+
+    for field in SB.SHOT_RECORDED:
+        if old[0].get(field) is not None:
+            assert carried[field] == old[0][field], field
+    assert carried["beat"] == "rewritten"
+
+
+@pytest.mark.parametrize("shot, expected", [
+    ({"panels": []}, "planned"),
+    ({"panels": [{"n": 1, "prompt": "a"}]}, "planned"),
+    ({"panels": [{"n": 1, "prompt": "a", "node": "node-1"}]}, "boarded"),
+    ({"panels": [{"n": 1, "prompt": "a", "node": "node-1"},
+                 {"n": 2, "prompt": "b"}]}, "planned"),
+    ({"run": "run-1", "panels": [{"n": 1, "prompt": "a"}]}, "rendered"),
+    ({"shot_node": "node-cut", "run": "run-1", "panels": []}, "cut"),
+])
+def test_a_shots_status_is_derived_and_never_stored(shot, expected):
+    """Recomputed on every write, which is the discipline the character index
+    follows: a status stored and never recomputed is a claim nobody checks.
+
+    `cut` beats `rendered` beats the panels — a shot that has been stitched does
+    not stop being cut because somebody edited a prompt underneath it.
+    """
+    assert SB.shot_status(shot) == expected
+
+
+def test_a_reference_panel_does_not_hold_a_shot_back():
+    """`shot_status` counts only the panels that BIND — a reference is an input
+    to the render, not a frame of it, so a shot whose binding panels are all
+    boarded is boarded."""
+    shot = {"panels": [{"n": 1, "prompt": "a", "node": "node-1"},
+                       {"n": 2, "prompt": "b", "node": "node-2"}]}
+    roles = SB.panel_roles(shot)
+
+    assert SB.shot_status(shot) == "boarded"
+    assert len(roles) == len(shot["panels"])
+
+
+def test_merge_recomputes_status_rather_than_carrying_the_old_one():
+    """The status of a revised shot is a fact about the revision. Carrying it
+    would let a shot claim `boarded` while holding a panel nobody rendered."""
+    old = [{"id": "shot-1", "status": "boarded", "panels": [dict(BOARDED)]}]
+    new = [{"id": "shot-1", "panels": [{"n": 1, "prompt": "a"}, {"n": 2, "prompt": "b"}]}]
+
+    assert SB.merge(old, new)[0]["status"] == "planned"

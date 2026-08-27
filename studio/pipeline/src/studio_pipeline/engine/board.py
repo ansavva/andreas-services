@@ -800,9 +800,26 @@ def run_render(ref: str, opts) -> int:
         # and `runref` the same with `#1` — two strings that a project rename
         # invalidated. An id needs no project and survives every rename, which
         # is the property `PUT /api/scenes/<id>/shots` is storing.
-        shot.update(run=record["id"], runref=f"{record['id']}#1",
-                    rendered=R._now())
-        manifest = SC.save_shots(manifest, SC.scene_shots(manifest))
+        made = dict(run=record["id"], runref=f"{record['id']}#1", rendered=R._now())
+        # **Find the shot in the CURRENT manifest — never mutate the captured
+        # one and save.** This is the same rule the board loop above states at
+        # length, and this loop was not following it: `prepared` is built before
+        # the loop from `select_shots`, `scene_shots` copies every dict it
+        # returns, and `save_shots` replaces `manifest["shots"]` wholesale after
+        # every write. So `shot` here belonged to the manifest as it was at the
+        # start, and saving a FRESH read of the manifest wrote back shots that
+        # had never seen the update.
+        #
+        # Every shot billed, printed its run id in the report below, and was
+        # recorded without one — #497 in the neighbouring loop, unfixed in this
+        # one. `scenes handoff` and `scenes assemble` then found nothing to
+        # carry forward from a shot that had definitely been rendered.
+        shots_now = SC.scene_shots(manifest)
+        for current in shots_now:
+            if current["id"] == shot["id"]:
+                current.update(made)
+        shot.update(made)   # keep the captured copy honest for the recap below
+        manifest = SC.save_shots(manifest, shots_now)
         rendered[shot["id"]] = f"{record['id']}#1"
 
     # GATE 2 — never assemble on its own. Cutting is a decision about the whole

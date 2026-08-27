@@ -1,4 +1,4 @@
-"""`studio scenes` and `studio movies` — envelopes, `SHOT#` rows, and a local cut.
+"""`studio scenes` — envelopes, `SHOT#` rows, and a local cut.
 
 **`scene.json` is gone, and most of this file used to be about it.** A scene was
 a document in the bucket: `read_manifest` / `write_manifest`, a manifest that
@@ -328,35 +328,15 @@ def test_scenes_outputs_lists_nothing_before_a_cut(library, scene):
 
 
 # ── movies ──────────────────────────────────────────────────────────────────
-
-def test_movies_reports_every_unassembled_scene_at_once(library, scene, tmp_path):
-    """A scene can exist as a plan, so "not assembled" is an ordinary state.
-
-    Being told one per attempt would be one round trip per missing scene.
-    """
-    project = PROJECTS.resolve("porch-teaser")
-    SC.new_scene(project, "second", _plan(tmp_path))
-
-    result = CliRunner().invoke(cli.main, [
-        "movies", "new", "porch-teaser", "--slug", "the-cut",
-        "--scene", "porch-teaser/the-encounter", "--scene", "porch-teaser/second"])
-
-    assert result.exit_code == 1
-    assert "the-encounter" in result.output and "second" in result.output
+#
+# The movie tier has its own file now — `test_movies.py`, added when coverage put
+# `domain/movies.py` at 56% against `storyboard.py`'s 95%. What is left here is
+# the seam between the two: a scene is what a movie is made OF.
 
 
-def test_a_movie_lists_nothing_in_an_empty_project(library):
-    result = CliRunner().invoke(cli.main, ["movies", "list", "porch-teaser"])
-    assert result.exit_code == 0, result.output
-    assert "no movies" in result.output
 
 
-def test_a_movie_resolves_by_id_and_by_slug(library):
-    from studio_pipeline.domain import movies as MV
 
-    record = E.create_movie(project=library.project, slug="the-cut")
-    assert MV.resolve_movie(record["id"])["id"] == record["id"]
-    assert MV.resolve_movie("porch-teaser/the-cut")["id"] == record["id"]
 
 
 def test_store_reads_a_scene_output_by_node(library, scene):

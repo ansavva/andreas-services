@@ -34,6 +34,7 @@ from studio_pipeline.domain import scenes as SC
 from studio_pipeline.domain import storyboard as SB
 from studio_pipeline.engine import board as BOARD
 from studio_pipeline.engine import registry as REG
+from studio_pipeline.engine import submit as SUB
 
 PLANNED = "the-encounter"
 SCENE = f"porch-teaser/{PLANNED}"
@@ -749,3 +750,131 @@ def test_a_stale_panel_re_renders_over_the_copy_it_supersedes(
     assert any("superseded" in n for n in names), "the old copy is kept, renamed"
     # And the node a later panel might still be holding is still resolvable.
     assert store.node(first)["id"] == first
+
+
+# ── rendering: the half that spends money ───────────────────────────────────
+#
+# #496 was titled "nothing tested the half of scenes board that spends money".
+# `run_render` is the other half of that sentence and the coverage run put it at
+# the largest uncovered block in this module — the submit loop, its failure
+# path, and the save that happens between shots.
+
+
+def _render(monkeypatch, ref, confirm=True, **kw):
+    """`scenes render` with the approval answered.
+
+    Answering the confirm is the only thing a test may decide for a person, and
+    the payload it approves is the fixture's own — see `_board`.
+    """
+    monkeypatch.setattr("click.confirm", lambda *_a, **_k: confirm)
+    opts = SimpleNamespace(project=None, dry_run=False, dest=None, review_sheet=None,
+                           shot=(), **kw)
+    return BOARD.run_render(ref, opts)
+
+
+def _boarded_scene(monkeypatch, library, scene):
+    """A scene whose panels have been rendered, so its shots can be."""
+    _board(monkeypatch, f"porch-teaser/{PLANNED}")
+    return f"porch-teaser/{PLANNED}"
+
+
+def test_declining_the_gate_submits_nothing(
+    library, scene, no_network, a_model_that_answers, monkeypatch
+):
+    """**GATE 1.** A `no` at the confirm is not a slow yes.
+
+    `no_network` has `create_prediction` refuse, and `a_model_that_answers` puts
+    the real (faked) one back — so if anything submitted after the decline, this
+    would come back with a run on the shot.
+    """
+    ref = _boarded_scene(monkeypatch, library, scene)
+
+    code = _render(monkeypatch, ref, confirm=False)
+
+    assert code == 1
+    shots = SC.scene_shots(SC.resolve_scene(ref))
+    assert all(not shot.get("run") for shot in shots)
+
+
+def test_a_rendered_shot_records_the_run_by_id_on_both_fields(
+    library, scene, no_network, a_model_that_answers, monkeypatch
+):
+    """`run` was `<project>/<run_id>` and `runref` the same with `#1` — two
+    strings a project rename invalidated. An id needs no project."""
+    ref = _boarded_scene(monkeypatch, library, scene)
+
+    _render(monkeypatch, ref)
+
+    shot = next(s for s in SC.scene_shots(SC.resolve_scene(ref)) if s.get("run"))
+    assert shot["run"].startswith("run-")
+    assert shot["runref"] == f"{shot['run']}#1"
+    assert "porch-teaser" not in shot["run"]
+    assert shot["rendered"]
+
+
+def test_a_failed_shot_is_collected_rather_than_ending_the_run(
+    library, scene, no_network, a_model_that_answers, monkeypatch
+):
+    """One shot failing must not abandon the ones after it.
+
+    Each render is a separate submission that has already been paid for by the
+    time it fails, so stopping the loop would throw away work that succeeded.
+    """
+    # Board FIRST — boarding submits too, and a failure injected before it
+    # would stop the shot being renderable at all rather than exercising the
+    # render loop's own failure path.
+    ref = _boarded_scene(monkeypatch, library, scene)
+
+    def refuse(*_a, **_k):
+        raise SUB.SubmitError("the model refused this payload")
+
+    monkeypatch.setattr(SUB, "execute", refuse)
+
+    code = _render(monkeypatch, ref)
+
+    assert code == 1
+    assert all(not shot.get("run") for shot in SC.scene_shots(SC.resolve_scene(ref)))
+
+
+def test_each_render_is_saved_before_the_next_one_is_submitted(
+    library, scene, no_network, a_model_that_answers, monkeypatch
+):
+    """**The shots are written after EVERY shot, not once at the end.**
+
+    A later failure would otherwise lose an earlier success — the run happened
+    and billed, and the only record that it did is the one this writes.
+    """
+    saves = []
+    real_save = SC.save_shots
+
+    def counting_save(record, shots):
+        saves.append(len([s for s in shots if s.get("run")]))
+        return real_save(record, shots)
+
+    monkeypatch.setattr(SC, "save_shots", counting_save)
+    monkeypatch.setattr(BOARD.SC, "save_shots", counting_save)
+    ref = _boarded_scene(monkeypatch, library, scene)
+    saves.clear()
+
+    _render(monkeypatch, ref)
+
+    # At least one save carrying a run — i.e. written inside the loop rather
+    # than only after it.
+    assert saves and max(saves) >= 1
+
+
+def test_rendering_never_assembles_on_its_own(
+    library, scene, no_network, a_model_that_answers, monkeypatch, capsys
+):
+    """**GATE 2.** Cutting is a decision about the whole scene, made after
+    looking at the shot — not a side effect of having rendered one."""
+    ref = _boarded_scene(monkeypatch, library, scene)
+    capsys.readouterr()          # drop the board's output; the render is next
+
+    _render(monkeypatch, ref)
+
+    # The property itself, off the record rather than off the report.
+    assert not SC.is_assembled(SC.resolve_scene(ref))
+    assert SC.scene_output_node(SC.resolve_scene(ref)) is None
+    # And the report says so in as many words.
+    assert '"assembled": null' in capsys.readouterr().out
