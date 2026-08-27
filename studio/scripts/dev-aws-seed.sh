@@ -37,11 +37,17 @@
 # change rather than a mutation. Override the bucket with `--seed-bucket` or
 # `STUDIO_DEV_SEED_BUCKET`, and the prefix with `--fixture-version`.
 #
-# **NEITHER THE BUCKET NOR THE FIXTURE EXISTS YET.** The bucket is declared
-# (`infra/modules/dev_seed`, wired into `envs/prod`) and has never been applied;
-# nothing has ever been published into it. Until both happen, every run of this
-# script stops at the first read and says so. That is the expected outcome
-# today, not a fault in your stack.
+# **BOTH EXIST.** The bucket is `infra/modules/dev_seed`, wired into
+# `envs/prod` and applied; `v1` was published on 2026-08-27. A run of this
+# script against an empty stack takes about 70 seconds and ends in VERIFY PASS.
+#
+# This header used to say neither existed and that stopping at the first read
+# was the expected outcome. It was, for as long as nobody had run `studio
+# dev-seed publish --apply` — and three defects in this script survived that
+# whole time precisely because it had never got past that first read: the pose
+# plates were pushed before the library they need existed, an entity record was
+# written without the `id` every read indexes on, and the bytes moved one `aws
+# s3 cp` at a time, which cost 564 seconds for 54 objects.
 #
 # It is gated on a human, but NOT because publishing generates media — #284 was
 # rewritten and `studio dev-seed publish` is a copy out of a dev stack that
@@ -608,6 +614,13 @@ entity_items() {
   #
   # The record, its slug claim, and the `entity` pointer written back onto the
   # root folder — one transaction, because each is useless without the others.
+  #
+  # **`id` is on the record as well as in the pk, and leaving it out broke every
+  # read.** `create_character` writes it, `entities_by_id` indexes on
+  # `record["id"]`, and this builder omitted it — so a seeded library answered
+  # `GET /api/characters` with a 500 and `KeyError: 'id'`. Invisible until a
+  # fixture actually carried an entity, which is to say invisible until the
+  # first successful load.
   # A record with no claim is unlistable and its slug is unprotected; a claim
   # with no record points at nothing; a root folder with no pointer cannot be
   # drawn as a character card and `GET /api/nodes/<id>/owner` cannot walk up to
@@ -634,8 +647,9 @@ entity_items() {
     --arg pk "$pk" --arg claim_sk "$claim_sk" --arg slug "$slug" \
     --arg root "$root" --arg born "$born" --argjson doc "$doc" \
     "$DDB_JQ_DEFS"'
-    [ put(({pk: "\($pk)#\($entity)", sk: "META", lib: $lib, slug: $slug,
-            rev: 1, created: $born, updated: $born, root: $root} + $doc)),
+    [ put(({pk: "\($pk)#\($entity)", sk: "META", id: $entity, lib: $lib,
+            slug: $slug, rev: 1, created: $born, updated: $born,
+            root: $root} + $doc)),
       put({pk: "LIB#\($lib)", sk: "\($claim_sk)#\($slug)",
            entity: $entity, created: $born}),
       {Update: {TableName: $table,
@@ -813,45 +827,66 @@ main() {
 
   # ── 1. the fixture bytes ─────────────────────────────────────────────────
   #
-  # Downloaded, checksummed, then uploaded. A server-side copy would be one
-  # call instead of two, and would put bytes nobody has verified into the dev
-  # bucket — the checksum in the manifest is the only thing that says the
-  # fixture is the fixture, so it is checked before anything is written.
+  # Downloaded, checksummed, then uploaded. **A server-side copy is still not
+  # what happens, and that is the point**: it would be one call instead of two
+  # and would put bytes nobody has verified into the dev bucket, when the
+  # checksum in the manifest is the only thing that says the fixture is the
+  # fixture. Nothing is written until every object has been checked.
+  #
+  # **THREE `aws` INVOCATIONS, NOT TWO PER OBJECT.** This used to `s3 cp` each
+  # object down and each object up, so a 54-object fixture spent 162 AWS CLI
+  # cold starts and took 564 SECONDS — measured, on the first fixture ever
+  # published. Every developer would have paid that on every fresh stack. The
+  # work is identical; `s3 sync` just does it in one process with its own
+  # parallelism instead of one process per object.
+  #
+  # The upload is grouped BY CONTENT TYPE rather than done as one sync, because
+  # `sync` applies `--content-type` to everything it sends and the row's
+  # `content_type` is authoritative — guessing from the extension is what the
+  # catalog exists to stop. That is one invocation per distinct type, which for
+  # a fixture of stills is one or two.
   log "Loading $file_count object(s) into s3://$bucket/ ..."
   local path kind created_at source content_type owner_kind owner_root
   local node_id parent_id parent_prefix blob_key
-  local expected actual size local_file
+  local expected actual size local_file staged
+
+  aws_dev s3 sync "s3://$SEED_BUCKET/$FIXTURE_VERSION/media/" "$workdir/download/" \
+    --only-show-errors ||
+    die "Could not download s3://$SEED_BUCKET/$FIXTURE_VERSION/media/, which manifest.json lists."
+
   while IFS=$'\t' read -r path kind created_at source content_type owner_kind owner_root; do
     node_row_fixup
     [[ "$kind" == "file" ]] || continue
     node_id="$(derive_node_id "$bucket" "$path")"
     blob_key="$(blob_key_for "$bucket" "$node_id" "$path" "$owner_kind" "$owner_root")"
-    local_file="$workdir/$node_id"
-    aws_dev s3 cp "s3://$SEED_BUCKET/$source" "$local_file" --only-show-errors ||
-      die "Could not download s3://$SEED_BUCKET/$source, which manifest.json lists."
+    local_file="$workdir/download/${source#"$FIXTURE_VERSION/media/"}"
+    [[ -f "$local_file" ]] ||
+      die "manifest.json lists $source and the fixture does not contain it."
     expected="$(jq -r --arg k "$source" '.objects[$k].sha256' <<<"$manifest_json")"
     actual="$(sha256_of "$local_file")"
     [[ "$expected" == "$actual" ]] ||
       die "$source does not match its manifest checksum. The fixture is corrupt or has been changed in place; nothing further was written."
-    aws_dev s3 cp "$local_file" "s3://$bucket/$blob_key" \
-      --content-type "$content_type" --only-show-errors ||
-      die "Could not write $blob_key to s3://$bucket/."
+    # Staged under the destination KEY, so the upload is a plain mirror. The
+    # content type names the group directory with its slash escaped — `image/
+    # jpeg` as a path segment would nest a level and `basename` would read back
+    # `image`, which is not a media type and would be sent as one.
+    staged="$workdir/upload/${content_type//\//__}/$blob_key"
+    mkdir -p "$(dirname "$staged")"
+    cp "$local_file" "$staged"
   done < <(jq -r "$NODE_ROWS_JQ" <<<"$catalog_json")
+
+  local type_dir
+  for type_dir in "$workdir"/upload/*/; do
+    [[ -d "$type_dir" ]] || continue
+    content_type="$(basename "$type_dir")"
+    content_type="${content_type//__//}"
+    aws_dev s3 sync "$type_dir" "s3://$bucket/" \
+      --content-type "$content_type" --only-show-errors ||
+      die "Could not write the $content_type objects to s3://$bucket/."
+  done
   ok "Fixture bytes loaded."
 
-  # ── 2. the shared material ───────────────────────────────────────────────
-  #
-  # The pose plates. Repo-sourced and owned by no entity, so they are not part
-  # of the fixture and are pushed the same way `dev-setup.sh` pushes them — one
-  # definition, in dev-shared-material.sh. They are nodes now, so this goes
-  # through the API and needs a sign-in; the phrasebook is `TERM#` rows and is
-  # not seeded at all.
-  local studio_dir="$SCRIPT_DIR/.."
-  push_pose_plates "$studio_dir" "$bucket" &&
-    ok "Pose plates are in the library." ||
-    warn "Could not push studio/config/; a reference shoot will report missing plates."
-
-  # ── 3. the catalog ───────────────────────────────────────────────────────
+  # ── 2. the catalog ───────────────────────────────────────────────────────
   log "Writing the catalog to $table ..."
   local items status created=0 skipped=0 node_id_lookup
   items="$(library_items "$table" "$library_id" "$root_id" "$library_name" \
@@ -953,21 +988,65 @@ main() {
     log "The fixture describes no entities; its nodes are loose under the library root."
   fi
 
+  # ── 3. the shared material ───────────────────────────────────────────────
+  #
+  # The pose plates. Repo-sourced and owned by no entity, so they are not part
+  # of the fixture and are pushed the same way `dev-setup.sh` pushes them — one
+  # definition, in dev-shared-material.sh. They are nodes now, so this goes
+  # through the API and needs a sign-in.
+  #
+  # **AFTER the catalog, and that ordering is the whole point.** This used to be
+  # step 2, before the library existed. `studio config sync` resolves a path
+  # through `GET /api/resolve`, the API answers out of the caller's LIBRARIES,
+  # and on a fresh stack there are none until `library_items` above writes the
+  # membership row — so it failed with "You are not a member of any library"
+  # every time, on exactly the stacks it was there to furnish. Nobody saw it
+  # because no fixture had ever been published, so this script had never run
+  # past its first read. Found on the first successful load.
+  #
+  # Still tolerant of failure: a developer who has not signed in gets a warning
+  # and a seeded stack, not a dead script. `dev-setup.sh` pushes the same plates
+  # at session start and is the other way they arrive.
+  local studio_dir="$SCRIPT_DIR/.."
+  push_pose_plates "$studio_dir" "$bucket" &&
+    ok "Pose plates are in the library." ||
+    warn "Could not push studio/config/; a reference shoot will report missing plates."
+
   # ── 4. verify ────────────────────────────────────────────────────────────
   #
   # Against the manifest, and re-read from the DEV bucket rather than from the
   # copies downloaded in step 1 — checking those would only prove the download
   # worked. Counts what the catalog claims, not what the bucket holds: config/
   # and phrasebook/ are in there too and belong to no library.
+  #
+  # One `sync` restricted to exactly the keys the catalog claims, rather than a
+  # `cp` per object — same reason as step 1, and the `--include` list is built
+  # from the fixture so nothing else in the bucket is pulled down. `--exclude
+  # "*"` first: the rules are applied in order and a bare include would let
+  # `config/` and `phrasebook/` through.
   log "Verifying against manifest.json ..."
   local verified=0 bytes=0 failures=0
+  local -a includes=()
   while IFS=$'\t' read -r path kind created_at source content_type owner_kind owner_root; do
     node_row_fixup
     [[ "$kind" == "file" ]] || continue
     node_id="$(derive_node_id "$bucket" "$path")"
     blob_key="$(blob_key_for "$bucket" "$node_id" "$path" "$owner_kind" "$owner_root")"
-    local_file="$workdir/verify-$node_id"
-    if ! aws_dev s3 cp "s3://$bucket/$blob_key" "$local_file" --only-show-errors; then
+    includes+=(--include "$blob_key")
+  done < <(jq -r "$NODE_ROWS_JQ" <<<"$catalog_json")
+  if [[ "${#includes[@]}" -gt 0 ]]; then
+    aws_dev s3 sync "s3://$bucket/" "$workdir/verify/" \
+      --exclude "*" "${includes[@]}" --only-show-errors ||
+      warn "Could not re-read the fixture objects from s3://$bucket/."
+  fi
+
+  while IFS=$'\t' read -r path kind created_at source content_type owner_kind owner_root; do
+    node_row_fixup
+    [[ "$kind" == "file" ]] || continue
+    node_id="$(derive_node_id "$bucket" "$path")"
+    blob_key="$(blob_key_for "$bucket" "$node_id" "$path" "$owner_kind" "$owner_root")"
+    local_file="$workdir/verify/$blob_key"
+    if [[ ! -f "$local_file" ]]; then
       warn "  missing: $blob_key  ($path)"
       failures=$((failures + 1))
       continue

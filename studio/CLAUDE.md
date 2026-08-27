@@ -250,10 +250,12 @@ studio dev-seed publish --path <p>                   # promote a fixture (dry ru
 ./studio/scripts/dev-aws-destroy.sh                  # tear it down; the machine id is kept
 ```
 
-**`dev-aws-seed.sh` has never loaded anything**, because no fixture has been
-published — so the script stops on its first read and says so. It is
-human-gated, but **not because publishing generates media**: `studio dev-seed
-publish` promotes nodes that already exist, calls no model and costs nothing.
+**A fixture exists, and `dev-aws-seed.sh` loads it.** `v1` was published on
+2026-08-27 — the first publish since #284 landed — and holds one character and
+its seed pool: 54 stills, 12.4 MB, `VERIFY PASS` in about 70 seconds on an empty
+stack. Everything above this paragraph used to say the opposite. Publishing is
+human-gated, but **not because it generates media**: `studio dev-seed publish`
+promotes nodes that already exist, calls no model and costs nothing.
 The gate is hard rule #1 — `catalog.json` lands in git, so the publisher refuses
 a stack holding any name outside `DEV_SUBJECTS` and requires
 `--dev-subjects-only` before `--apply`. What a fresh stack actually holds is the

@@ -493,11 +493,12 @@ that declines to answer its own question makes every reader run the same
 command. The lesson worth keeping is the first one — **an existence claim about
 infrastructure rots the moment CI runs, so date it or check it.**
 
-**What is certain is that nothing has ever been published into it.** No fixture
-exists — `studio/fixtures/dev-seed/` is not in this repo and `studio dev-seed
-publish --apply` has never been run — so `scripts/dev-aws-seed.sh` still stops
-on its first read. That used to be true for two reasons; it is now true for one.
-Nothing below has been executed either way. What changed with #284 is that the
+**`v1` was published on 2026-08-27**, which is the first time anything was —
+`studio/fixtures/dev-seed/v1/` is in this repo and `scripts/dev-aws-seed.sh`
+loads it in about 70 seconds. The paragraph above is about the BUCKET's
+existence and still reads as it did; this one used to say the fixture had never
+been published and no longer can. Taking the lesson at its word: dated, and
+checked. What changed with #284 is that the
 design is code rather than a comment in `modules/dev_storage/main.tf` describing
 a bucket nobody had written.
 
@@ -619,10 +620,22 @@ somebody's machine. Neither side needed changing to make them agree.
 `v1/` is a version **prefix**, not object versioning: a fixture change is
 additive and a machine is re-seeded to a known revision by naming `v2/`.
 
-One thing is worth saying plainly: **nothing has ever been published.** Until a
-human runs `studio dev-seed publish --apply` against a stack they have driven, a
-fresh dev stack holds only the shared material `dev-setup.sh` pushes — whether or
-not the bucket is standing there empty by then.
+One thing is worth saying plainly: **`v1` exists, and everything above was
+written before it did.** It carries one character and its seed pool — 54 stills,
+12.4 MB, 59 nodes and one entity row.
+
+What it does NOT carry is the rest of #284's list: a run folder with
+`request.json` and `result.json`, a short video, a folder three deep. Those are
+model output and cost money to generate, so the shapes the app's run, scene and
+movie surfaces care about are still unexercised by a fresh stack. Adding them is
+a `v2/` prefix, which is additive by design — that is what the version prefix is
+for.
+
+Publishing it also found three defects in `dev-aws-seed.sh` that had survived
+since #285 landed, all for the same reason: the script had never run past its
+first read. The plate push ran before the library it needs existed, an entity
+record went in without the `id` every read indexes on, and the bytes moved one
+`aws s3 cp` per object — 564 seconds for 54 of them, now 71.
 
 ---
 

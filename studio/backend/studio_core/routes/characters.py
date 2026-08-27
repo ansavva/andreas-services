@@ -48,6 +48,7 @@ from flask import Blueprint, g, jsonify, request
 from studio_core.clients.aws import s3
 from studio_core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from studio_core.routes import support
+from studio_core import config
 from studio_core.services import catalog, keys, layout
 
 logger = logging.getLogger(__name__)
@@ -152,13 +153,50 @@ def _hero(record: dict, nodes: dict[str, dict]) -> dict | None:
     return {"node": node["node_id"], "url": s3.presign(node["blob_key"])}
 
 
+def _file_counts(records: list[dict]) -> dict[str, int]:
+    """`entity id -> how many FILE nodes sit under its root`, batched then queried.
+
+    **`counts.files` was in the CLI's listing and in no API response**, so every
+    character has displayed `files 0` since the entity model landed — the client
+    read `counts.get("files", 0)` and the server only ever sent
+    `counts.references`. Nobody noticed because zero is a plausible answer for a
+    character nobody has uploaded to yet.
+
+    One `BatchGetItem` for the roots and then one `branch` query per character,
+    which is the same order of cost the route above already accepts for
+    `counts.references` and is defensible for the same reason: a library holds
+    tens of characters, not thousands, and a stored counter is a second thing
+    for every upload, move and delete to keep in step.
+
+    **A truncated branch is counted as what was read, not refused.** `subtree`
+    turns the cap into a `ValidationError` because both its callers are writes
+    and a half-finished move is worse than none; this is a number next to a name
+    in a list, and refusing to draw the list because one character has a lot of
+    files in it would be the wrong trade.
+    """
+    roots = catalog.records([record["root"] for record in records if record.get("root")])
+    cap = config.max_folder_objects()
+    counts = {}
+    for record in records:
+        root = roots.get(record.get("root"))
+        if not root:
+            counts[record["id"]] = 0
+            continue
+        nodes, _truncated = catalog.branch(
+            g.library, catalog.child_path(root), cap)
+        counts[record["id"]] = sum(
+            1 for node in nodes if node.get("kind") == catalog.KIND_FILE)
+    return counts
+
+
 @bp.get("/characters")
 def list_characters():
     """Every character in the library, newest edit first when `?q=` is absent.
 
     **One query for the claims, one batched read for the records, one batched
-    read for the heroes.** `counts.references` is one query per character, and
-    that is the honest cost of showing it — the alternative is a counter on the
+    read for the heroes and one for the roots.** `counts.references` and
+    `counts.files` are each one query per character, and that is the honest cost
+    of showing them — the alternative is a counter on the
     record that every attach and detach has to keep in step, which is the class of
     drift the claim rows deliberately avoid.
 
@@ -180,6 +218,7 @@ def list_characters():
         ]
 
     heroes = catalog.records([record["hero"] for record in records if record.get("hero")])
+    files = _file_counts(records)
     listed = [
         {
             "id": record["id"],
@@ -187,7 +226,8 @@ def list_characters():
             "display_name": record.get("display_name"),
             "fictional": record.get("fictional"),
             "hero": _hero(record, heroes),
-            "counts": {"references": len(catalog.references(record["id"]))},
+            "counts": {"references": len(catalog.references(record["id"])),
+                       "files": files.get(record["id"], 0)},
             "updated": record.get("updated"),
         }
         for record in records
@@ -247,7 +287,8 @@ def get_character(addressed: str):
         {
             **record,
             "hero_url": _hero(record, heroes),
-            "counts": {"references": len(catalog.references(record["id"]))},
+            "counts": {"references": len(catalog.references(record["id"])),
+                       "files": _file_counts([record]).get(record["id"], 0)},
         }
     ), 200
 

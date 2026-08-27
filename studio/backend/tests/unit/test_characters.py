@@ -1177,6 +1177,36 @@ def test_the_listing_counts_references_without_a_counter_on_the_record(empty_api
     assert listed[0]["counts"]["references"] == 2
 
 
+def test_the_listing_counts_files_under_the_character(empty_api):
+    """**`counts.files` was read by the CLI and sent by nobody.**
+
+    `studio character list` prints `counts.get("files", 0)` and the API only
+    ever returned `counts.references`, so every character in every listing has
+    shown `files 0` since the entity model landed. Zero is a plausible number
+    for a character nobody has uploaded to, which is why it survived.
+
+    Counted across the whole subtree rather than one pool: the number next to a
+    name means "how much material is under this character", and a file in
+    `corpus/` is material as much as one in `reference/`.
+    """
+    character = _with_references(empty_api, 2)
+    corpus = _child(character["root"], "corpus")["node_id"]
+    _uploaded(empty_api, corpus, "extra.webp")
+
+    listed = empty_api.get("/api/characters").get_json()
+    assert listed[0]["counts"]["files"] == 3
+
+    shown = empty_api.get(f"/api/characters/{character['id']}").get_json()
+    assert shown["counts"]["files"] == 3
+
+
+def test_a_character_with_no_files_counts_zero(empty_api):
+    """The reading that made the bug invisible, asserted so it stays honest."""
+    _create(empty_api)
+    listed = empty_api.get("/api/characters").get_json()
+    assert listed[0]["counts"] == {"references": 0, "files": 0}
+
+
 def test_the_listing_filters_on_slug_and_display_name(empty_api):
     _create(empty_api, "subject-a", display_name="Alpha")
     _create(empty_api, "subject-b", display_name="Beta")

@@ -153,10 +153,11 @@ generated media would exercise nothing against an empty second copy. That is
 over: studio has a per-machine dev stack like every other service, and
 `dev-setup.sh` and `dev-up.sh` point at it. The reasoning was answered rather
 than abandoned — the dev stack is *seeded* from a published fixture, so it is
-not meant to be empty. **The loader exists (`dev-aws-seed.sh`, #285) and no
-fixture has ever been published — #284 landed as code and nobody has run `studio
-dev-seed publish --apply` — so today a stack is empty apart from the pose plates
-and a starting phrasebook.** It is human-gated, but **not** because publishing
+not meant to be empty. **Both halves now work end to end.** #284 and #285
+landed as code in August and went unrun for weeks; `v1` was published on
+2026-08-27 and a fresh stack seeds from it in about 70 seconds. It carries one
+character and its seed pool — no runs, scenes or movies, because those are model
+output and cost money to make. Publishing is human-gated, but **not** because it
 generates media: `publish` promotes nodes that already exist in a dev stack, so
 it calls no model and costs nothing. The gate is hard rule #1 — `catalog.json`
 lands in git, so the publisher requires `--dev-subjects-only` before `--apply`

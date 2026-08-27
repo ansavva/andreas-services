@@ -306,6 +306,11 @@ DEV_SUBJECTS = frozenset({
     "jason",                                  # the seed fixture's subject
     "subject-a", "subject-b",                 # what the test fixtures use
     "demo", "sample", "fixture", "example",   # the generic stand-ins
+    # Projects, which land in a name position too — an entity root is a
+    # top-level folder whether a character or a project owns it, so there is one
+    # list rather than two. A project is normally named after the WORK, which is
+    # why this one reads nothing like a person.
+    "flex-study",
 })
 
 #: Any capitalised word of three letters or more, for the report. Not a refusal

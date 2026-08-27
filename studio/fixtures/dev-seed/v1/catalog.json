@@ -1,0 +1,504 @@
+{
+  "version": 2,
+  "library_name": "Studio",
+  "entities": [
+    {
+      "kind": "character",
+      "slug": "jason",
+      "root": "jason",
+      "display_name": "jason",
+      "fictional": true,
+      "schema_version": 2,
+      "default_set": [],
+      "profile": {
+        "voice": {
+          "accent_cues": [
+            "<>"
+          ],
+          "delivery": "<sentence length, pacing, volume>",
+          "language": "<language spoken lines are written in>",
+          "manner": "<how they behave on camera>",
+          "accent": "<>"
+        },
+        "face": {
+          "nose": "<the shape, and what must not drift>",
+          "hair": "<colour, length, how it is worn, finish>",
+          "ears": "<size, set, lobes>",
+          "eyebrows": "<shape, weight, how they sit>",
+          "skin": "<tone, texture, weathering, folds>",
+          "mouth_and_jaw": "<lips, resting expression, jawline, chin>",
+          "eyes": "<set, colour, lids, resting gaze>",
+          "facial_hair": "<default state; what it is never>",
+          "structure": "<overall shape, proportion, dominant planes>"
+        },
+        "identity": {
+          "apparent_age": "<e.g. late 30s to mid 40s>",
+          "home_turf": "<recurring setting / world>",
+          "build": "<body type in one line>",
+          "speech": "<language + accent in a few words>",
+          "height_read": "<how tall they read against people and furniture>",
+          "signature_features": [
+            "<cue>"
+          ],
+          "register": "<demeanour in a few words>"
+        },
+        "rendering": {
+          "default_style": "Realistic",
+          "framing": "<shot sizes that suit them>",
+          "optional_styles": [],
+          "backgrounds": "<default environments>"
+        },
+        "wardrobe": {
+          "tops": [
+            {
+              "item": "<garment>",
+              "colour": "<one plain colour, optional>",
+              "detail": "<colour, cut, any embroidery or graphic>"
+            }
+          ],
+          "always_dressed": true,
+          "lower_body": "<>",
+          "footwear": "<>",
+          "palette": "<the colours the character and their world live in>",
+          "accessories": [
+            "<accessory, and which wrist / how worn>"
+          ]
+        },
+        "body": {
+          "feet": "<>",
+          "hands": "<palm and finger shape, nails, veins, hair; which wrist wears what>",
+          "midsection": "<how defined, honestly — \"trim\" and \"shredded\" are not the same>",
+          "body_hair": "<state it explicitly if it matters — generators default to smooth>",
+          "posture": "<how they sit, stand, gesture>",
+          "silhouette": "<proportion — usually the single most reliable on-model cue>",
+          "back": "<taper, lats, blades, spinal furrow — the body plate shot from behind has nothing else to check itself against>",
+          "arms": "<>",
+          "lower_body": "<thighs, calves, hips; the shape, not just the size>",
+          "chest_and_shoulders": "<>",
+          "neck": "<thickness AND length, the muscles that show, where facial hair stops>"
+        },
+        "consistency": {
+          "drift_modes": [
+            {
+              "fix": "<what to state in the prompt instead>",
+              "failure": "<what the model does>"
+            }
+          ],
+          "never": [
+            "<>"
+          ],
+          "must": [
+            "<>"
+          ]
+        },
+        "text_identity_block": "<>"
+      },
+      "references": []
+    }
+  ],
+  "nodes": [
+    {
+      "path": "jason",
+      "kind": "folder",
+      "created_at": "2026-08-27T02:19:24.255341+00:00"
+    },
+    {
+      "path": "jason/archive",
+      "kind": "folder",
+      "created_at": "2026-08-27T02:19:24.255448+00:00"
+    },
+    {
+      "path": "jason/corpus",
+      "kind": "folder",
+      "created_at": "2026-08-27T02:19:24.255406+00:00"
+    },
+    {
+      "path": "jason/reference",
+      "kind": "folder",
+      "created_at": "2026-08-27T02:19:24.255381+00:00"
+    },
+    {
+      "path": "jason/seed",
+      "kind": "folder",
+      "created_at": "2026-08-27T02:19:24.255428+00:00"
+    },
+    {
+      "path": "jason/seed/seed-01.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:43.725570+00:00",
+      "source": "v1/media/jason/seed/seed-01.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-02.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:44.742318+00:00",
+      "source": "v1/media/jason/seed/seed-02.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-03.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:45.495788+00:00",
+      "source": "v1/media/jason/seed/seed-03.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-04.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:46.278269+00:00",
+      "source": "v1/media/jason/seed/seed-04.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-05.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:47.039039+00:00",
+      "source": "v1/media/jason/seed/seed-05.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-06.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:47.752765+00:00",
+      "source": "v1/media/jason/seed/seed-06.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-07.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:48.516694+00:00",
+      "source": "v1/media/jason/seed/seed-07.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-08.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:49.312396+00:00",
+      "source": "v1/media/jason/seed/seed-08.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-09.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:50.004259+00:00",
+      "source": "v1/media/jason/seed/seed-09.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-10.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:50.762152+00:00",
+      "source": "v1/media/jason/seed/seed-10.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-11.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:51.529794+00:00",
+      "source": "v1/media/jason/seed/seed-11.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-12.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:52.369545+00:00",
+      "source": "v1/media/jason/seed/seed-12.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-13.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:53.169108+00:00",
+      "source": "v1/media/jason/seed/seed-13.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-14.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:53.930659+00:00",
+      "source": "v1/media/jason/seed/seed-14.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-15.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:54.656994+00:00",
+      "source": "v1/media/jason/seed/seed-15.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-16.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:55.360695+00:00",
+      "source": "v1/media/jason/seed/seed-16.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-17.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:56.026605+00:00",
+      "source": "v1/media/jason/seed/seed-17.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-18.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:56.805012+00:00",
+      "source": "v1/media/jason/seed/seed-18.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-19.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:57.514977+00:00",
+      "source": "v1/media/jason/seed/seed-19.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-20.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:58.290665+00:00",
+      "source": "v1/media/jason/seed/seed-20.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-21.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:59.030976+00:00",
+      "source": "v1/media/jason/seed/seed-21.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-22.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:19:59.753907+00:00",
+      "source": "v1/media/jason/seed/seed-22.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-23.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:00.507789+00:00",
+      "source": "v1/media/jason/seed/seed-23.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-24.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:01.370162+00:00",
+      "source": "v1/media/jason/seed/seed-24.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-25.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:02.182514+00:00",
+      "source": "v1/media/jason/seed/seed-25.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-26.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:02.966073+00:00",
+      "source": "v1/media/jason/seed/seed-26.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-27.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:03.708997+00:00",
+      "source": "v1/media/jason/seed/seed-27.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-28.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:04.605190+00:00",
+      "source": "v1/media/jason/seed/seed-28.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-29.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:05.339744+00:00",
+      "source": "v1/media/jason/seed/seed-29.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-30.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:06.011338+00:00",
+      "source": "v1/media/jason/seed/seed-30.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-31.png",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:06.709216+00:00",
+      "source": "v1/media/jason/seed/seed-31.png",
+      "content_type": "image/png"
+    },
+    {
+      "path": "jason/seed/seed-32.png",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:07.772588+00:00",
+      "source": "v1/media/jason/seed/seed-32.png",
+      "content_type": "image/png"
+    },
+    {
+      "path": "jason/seed/seed-33.png",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:08.638434+00:00",
+      "source": "v1/media/jason/seed/seed-33.png",
+      "content_type": "image/png"
+    },
+    {
+      "path": "jason/seed/seed-34.png",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:09.509403+00:00",
+      "source": "v1/media/jason/seed/seed-34.png",
+      "content_type": "image/png"
+    },
+    {
+      "path": "jason/seed/seed-35.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:10.401186+00:00",
+      "source": "v1/media/jason/seed/seed-35.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-36.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:11.187406+00:00",
+      "source": "v1/media/jason/seed/seed-36.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-37.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:11.881198+00:00",
+      "source": "v1/media/jason/seed/seed-37.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-38.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:12.622753+00:00",
+      "source": "v1/media/jason/seed/seed-38.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-39.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:13.342644+00:00",
+      "source": "v1/media/jason/seed/seed-39.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-40.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:14.058040+00:00",
+      "source": "v1/media/jason/seed/seed-40.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-41.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:14.837505+00:00",
+      "source": "v1/media/jason/seed/seed-41.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-42.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:15.534351+00:00",
+      "source": "v1/media/jason/seed/seed-42.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-43.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:16.243028+00:00",
+      "source": "v1/media/jason/seed/seed-43.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-44.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:17.030025+00:00",
+      "source": "v1/media/jason/seed/seed-44.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-45.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:17.725679+00:00",
+      "source": "v1/media/jason/seed/seed-45.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-46.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:18.434413+00:00",
+      "source": "v1/media/jason/seed/seed-46.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-47.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:19.194336+00:00",
+      "source": "v1/media/jason/seed/seed-47.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-48.png",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:19.996931+00:00",
+      "source": "v1/media/jason/seed/seed-48.png",
+      "content_type": "image/png"
+    },
+    {
+      "path": "jason/seed/seed-49.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:21.040468+00:00",
+      "source": "v1/media/jason/seed/seed-49.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-50.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:21.845196+00:00",
+      "source": "v1/media/jason/seed/seed-50.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-51.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:22.585276+00:00",
+      "source": "v1/media/jason/seed/seed-51.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-52.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:23.273530+00:00",
+      "source": "v1/media/jason/seed/seed-52.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-53.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:23.990547+00:00",
+      "source": "v1/media/jason/seed/seed-53.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "path": "jason/seed/seed-54.jpg",
+      "kind": "file",
+      "created_at": "2026-08-27T02:20:24.716144+00:00",
+      "source": "v1/media/jason/seed/seed-54.jpg",
+      "content_type": "image/jpeg"
+    }
+  ]
+}

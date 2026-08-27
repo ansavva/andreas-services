@@ -666,3 +666,24 @@ def test_a_null_is_dropped_from_an_item_and_kept_inside_a_list():
                          "default_set": ["node-a", None]})
     assert "hero" not in item
     assert item["default_set"] == {"L": [{"S": "node-a"}, {"NULL": True}]}
+
+
+def test_an_entity_record_carries_its_own_id():
+    """**Omitting it answered every read with a 500.**
+
+    `services/catalog.create_character` puts `id` on the record, and
+    `entities_by_id` indexes the batch on `record["id"]`. This builder wrote the
+    id into the partition key and nowhere else, so a library seeded from a
+    fixture returned `KeyError: 'id'` from `GET /api/characters`.
+
+    It could not have been caught before: an entity has to be seeded for
+    anything to read one back, and no fixture had ever been published.
+    """
+    for kind, prefix in (("character", "CHAR"), ("project", "PROJ")):
+        out = _source_and_run(SEED, (
+            f"entity_items T lib-1 ent-1 {kind} subject-a node-root "
+            "2026-08-19T09:12:44+00:00 '{}'"
+        ))
+        item = json.loads(out)[0]["Put"]["Item"]
+        assert item["pk"] == {"S": f"{prefix}#ent-1"}
+        assert item["id"] == {"S": "ent-1"}, f"{kind} record has no `id`"
