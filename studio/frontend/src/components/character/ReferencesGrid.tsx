@@ -18,6 +18,7 @@ import { useResource } from "../../hooks/useResource";
 import { ENGINE_CAPS, type FileEntry, type ReferenceEntry } from "../../types";
 import { AutoTextarea } from "../common/AutoTextarea";
 import { ChipRow } from "../common/ChipRow";
+import { MediaThumb } from "../media/MediaThumb";
 
 interface Props {
   characterId: string;
@@ -440,10 +441,11 @@ function ReferenceTile({
         className="block w-full text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px]
                    focus-visible:outline-primary"
       >
-        <img
-          src={entry.file.url}
-          alt={entry.file.name}
-          className="aspect-square w-full bg-surface-alt object-cover"
+        <MediaThumb
+          nodeId={entry.node}
+          url={entry.file.url}
+          name={entry.file.name}
+          className="w-full"
         />
         <span
           className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t
@@ -653,11 +655,13 @@ function Unattached({ rootId, attached }: { rootId: string; attached: ReadonlySe
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
         {loose.map((file) => (
           <div key={file.id} className="overflow-hidden rounded-md border border-dashed border-line">
-            <img
-              src={file.url}
-              alt={file.name}
+            <MediaThumb
+              nodeId={file.id}
+              url={file.url}
+              name={file.name}
               title={file.name}
-              className="aspect-square w-full bg-surface-alt object-cover opacity-70"
+              className="w-full"
+              mediaClassName="opacity-70"
             />
           </div>
         ))}

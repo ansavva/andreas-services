@@ -11,12 +11,14 @@ import {
   getProjectScenes,
 } from "../apis/studio";
 import { FolderTab } from "../components/browse/FolderBrowser";
-import { AppHeader } from "../components/common/AppHeader";
+import { PageBar } from "../components/layout/PageBar";
+import { EntityRow } from "../components/entity/EntityRow";
+import { MediaThumb } from "../components/media/MediaThumb";
 import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
 import { RunsTable } from "../components/project/RunsTable";
 import { useResource } from "../hooks/useResource";
 import { formatBytes, formatDate } from "../utils/format";
-import { characterPath, moviePath, runPath, scenePath } from "../utils/location";
+import { PROJECTS_PATH, characterPath, moviePath, runPath, scenePath } from "../utils/location";
 
 /**
  * One project: what it is, what has been run in it, and everything under it.
@@ -38,17 +40,17 @@ export function ProjectPage() {
 
   if (project.loading) {
     return (
-      <Shell>
+      <>
         <div className="flex justify-center py-16">
           <Spinner size="lg" label="Loading project" />
         </div>
-      </Shell>
+      </>
     );
   }
 
   if (project.error || !project.data) {
     return (
-      <Shell>
+      <>
         <Alert.Root intent="danger">
           <Alert.Title>Could not open this project</Alert.Title>
           <Alert.Description>{project.error ?? "It may have been deleted."}</Alert.Description>
@@ -58,7 +60,7 @@ export function ProjectPage() {
             Back to home
           </Button>
         </div>
-      </Shell>
+      </>
     );
   }
 
@@ -68,30 +70,35 @@ export function ProjectPage() {
   const held = counts.runs + counts.scenes + counts.movies;
 
   return (
-    <Shell subtitle={record.slug}>
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <Text variant="display">{record.title || record.slug}</Text>
-        <Text variant="caption" tone="muted">
-          {record.slug}
-        </Text>
+    <>
+      {/* **The noun spells out the cascade, because the button IS the
+          confirmation.** `ConfirmDeleteButton` arms in place rather than
+          opening a modal — the reasoning is in that file — so the armed label
+          is the only thing standing between a click and 29 runs. It says the
+          count for that reason, and the count comes off the record rather
+          than a second fetch.
 
-        {/* **The noun spells out the cascade, because the button IS the
-            confirmation.** `ConfirmDeleteButton` arms in place rather than
-            opening a modal — the reasoning is in that file — so the armed label
-            is the only thing standing between a click and 29 runs. It says the
-            count for that reason, and the count comes off the record rather
-            than a second fetch. */}
-        <span className="ms-auto">
+          The `ms-auto` this used to hang the button off is gone with the bar:
+          it pinned the control to whichever line the flex run broke at, which
+          on a phone moved a destructive button around under the title. */}
+      <PageBar
+        crumbs={[{ label: "Projects", to: PROJECTS_PATH }]}
+        actions={
           <ConfirmDeleteButton
             tone="page"
             noun={deleteNoun(record.slug, held)}
             onConfirm={async () => {
               await deleteProject(record.id, "delete", held > 0);
-              navigate("/");
+              navigate(PROJECTS_PATH);
             }}
           />
-        </span>
-      </div>
+        }
+      >
+        <Text variant="display">{record.title || record.slug}</Text>
+        <Text variant="caption" tone="muted">
+          {record.slug}
+        </Text>
+      </PageBar>
 
       <Tabs.Root defaultValue="overview">
         <Tabs.List className="flex-wrap border-b border-line">
@@ -168,7 +175,7 @@ export function ProjectPage() {
           <FolderTab rootId={record.root} />
         </Tabs.Panel>
       </Tabs.Root>
-    </Shell>
+    </>
   );
 }
 
@@ -189,12 +196,12 @@ function ScenesTab({ projectId }: { projectId: string }) {
   return (
     <div className="flex flex-col gap-2">
       {data.map((scene) => (
-        <ListRow
+        <EntityRow
           key={scene.id}
           title={scene.title || scene.slug}
           subtitle={`${scene.slug} · ${formatDate(scene.created)}`}
           status={scene.status}
-          thumbUrl={scene.thumb?.url ?? null}
+          thumb={scene.thumb ?? null}
           onOpen={() => navigate(scenePath(scene.id))}
         />
       ))}
@@ -219,12 +226,12 @@ function MoviesTab({ projectId }: { projectId: string }) {
   return (
     <div className="flex flex-col gap-2">
       {data.map((movie) => (
-        <ListRow
+        <EntityRow
           key={movie.id}
           title={movie.title || movie.slug}
           subtitle={`${movie.slug} · ${formatDate(movie.created)}`}
           status={movie.status}
-          thumbUrl={movie.thumb?.url ?? null}
+          thumb={movie.thumb ?? null}
           onOpen={() => navigate(moviePath(movie.id))}
         />
       ))}
@@ -267,10 +274,12 @@ function InputsTab({ projectId }: { projectId: string }) {
           <Text variant="body" className="w-8 shrink-0 text-right tabular-nums">
             {index + 1}
           </Text>
-          <img
-            src={input.url}
-            alt=""
-            className="size-12 shrink-0 rounded-md border border-line object-cover"
+          <MediaThumb
+            nodeId={input.node}
+            url={input.url}
+            name={input.name}
+            aspect="auto"
+            className="size-12 shrink-0 rounded-md border border-line"
           />
           <div className="min-w-0 flex-1">
             <Text variant="body" className="truncate">
@@ -288,42 +297,6 @@ function InputsTab({ projectId }: { projectId: string }) {
   );
 }
 
-function ListRow({
-  title,
-  subtitle,
-  status,
-  thumbUrl,
-  onOpen,
-}: {
-  title: string;
-  subtitle: string;
-  status: string;
-  thumbUrl: string | null;
-  onOpen: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="flex w-full items-center gap-3 rounded-md border border-line bg-card p-2 text-left
-                 transition-colors hover:bg-surface-alt
-                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-    >
-      <span className="size-14 shrink-0 overflow-hidden rounded-md border border-line bg-surface-alt">
-        {thumbUrl && <img src={thumbUrl} alt="" className="h-full w-full object-cover" />}
-      </span>
-      <span className="min-w-0 flex-1">
-        <Text variant="body" className="truncate">
-          {title}
-        </Text>
-        <Text variant="caption" tone="muted" className="truncate">
-          {subtitle}
-        </Text>
-      </span>
-      <Badge intent="neutral">{status}</Badge>
-    </button>
-  );
-}
 
 function LoadError({ what, message }: { what: string; message: string }) {
   return (
@@ -334,14 +307,6 @@ function LoadError({ what, message }: { what: string; message: string }) {
   );
 }
 
-function Shell({ children, subtitle }: { children: React.ReactNode; subtitle?: string }) {
-  return (
-    <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-6 p-4 sm:p-6">
-      <AppHeader subtitle={subtitle ?? "project"} />
-      {children}
-    </div>
-  );
-}
 
 
 /**

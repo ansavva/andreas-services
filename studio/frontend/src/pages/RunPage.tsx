@@ -4,7 +4,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Alert, Badge, Button, Spinner, Text } from "@ansavva/design-system";
 
 import { getNodeText, getRun } from "../apis/studio";
-import { AppHeader } from "../components/common/AppHeader";
+import { PageBar } from "../components/layout/PageBar";
+import { MediaThumb } from "../components/media/MediaThumb";
 import { useResource } from "../hooks/useResource";
 import { formatBytes, formatDate, formatTextContent } from "../utils/format";
 import type { RunAsset } from "../types";
@@ -31,36 +32,36 @@ export function RunPage() {
 
   if (loading) {
     return (
-      <Shell>
+      <>
         <div className="flex justify-center py-16">
           <Spinner size="lg" label="Loading run" />
         </div>
-      </Shell>
+      </>
     );
   }
 
   if (error || !data) {
     return (
-      <Shell>
+      <>
         <Alert.Root intent="danger">
           <Alert.Title>Could not open this run</Alert.Title>
           <Alert.Description>{error ?? "It may have been deleted."}</Alert.Description>
         </Alert.Root>
-      </Shell>
+      </>
     );
   }
 
   return (
-    <Shell subtitle={formatDate(data.created)}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <Button intent="ghost" size="sm" onClick={() => navigate(projectPath(projectId))}>
-          <span aria-hidden="true">←</span> Project
-        </Button>
+    <>
+      {/* The run's project is in its own address — `/p/<id>/r/<id>` — which is
+          what that shape is for: a pasted link is one click from the project
+          without waiting for a request to say there is one. */}
+      <PageBar crumbs={[{ label: "Project", to: projectPath(projectId) }]}>
         {/* A run has no name — the date is what a person recognises it by. */}
         <Text variant="display">{formatDate(data.created)}</Text>
         <Badge intent={data.status === "failed" ? "danger" : "neutral"}>{data.status}</Badge>
         <Badge intent="neutral">{data.kind}</Badge>
-      </div>
+      </PageBar>
 
       {data.error && (
         <Alert.Root intent="danger">
@@ -168,7 +169,7 @@ export function RunPage() {
         <PayloadDocument label="request.json" node={data.payload.request} />
         <PayloadDocument label="response.json" node={data.payload.response} />
       </section>
-    </Shell>
+    </>
   );
 }
 
@@ -252,22 +253,13 @@ function AssetTile({ asset, onOpen }: { asset: RunAsset; onOpen: () => void }) {
                  transition-colors hover:bg-surface-alt
                  focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
     >
-      <span className="aspect-square w-full overflow-hidden rounded-md bg-surface-alt">
-        {isVideo ? (
-          // `preload="metadata"` and no poster: the browser paints the first
-          // decoded frame, which is a free thumbnail for a bucket that ships no
-          // derivatives.
-          <video
-            src={asset.url}
-            muted
-            playsInline
-            preload="metadata"
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <img src={asset.url} alt="" className="h-full w-full object-cover" />
-        )}
-      </span>
+      <MediaThumb
+        nodeId={asset.node}
+        url={asset.url}
+        name={asset.name}
+        isVideo={isVideo}
+        className="w-full rounded-md"
+      />
       <Text variant="caption" tone="muted" className="truncate">
         {asset.name}
       </Text>
@@ -293,11 +285,3 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Shell({ children, subtitle }: { children: React.ReactNode; subtitle?: string }) {
-  return (
-    <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-6 p-4 sm:p-6">
-      <AppHeader subtitle={subtitle ?? "run"} />
-      {children}
-    </div>
-  );
-}

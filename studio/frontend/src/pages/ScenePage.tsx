@@ -13,8 +13,9 @@ import {
 } from "@ansavva/design-system";
 
 import { getScene, patchShot } from "../apis/studio";
-import { AppHeader } from "../components/common/AppHeader";
 import { AutoTextarea } from "../components/common/AutoTextarea";
+import { PageBar } from "../components/layout/PageBar";
+import { MediaThumb } from "../components/media/MediaThumb";
 import { useResource } from "../hooks/useResource";
 import type { Motion, MotionPrompt, Panel, PanelRole, RunAsset, Shot } from "../types";
 import { formatDate } from "../utils/format";
@@ -67,37 +68,34 @@ export function ScenePage() {
 
   if (loading) {
     return (
-      <Shell>
+      <>
         <div className="flex justify-center py-16">
           <Spinner size="lg" label="Loading scene" />
         </div>
-      </Shell>
+      </>
     );
   }
 
   if (error || !data) {
     return (
-      <Shell>
+      <>
         <Alert.Root intent="danger">
           <Alert.Title>Could not open this scene</Alert.Title>
           <Alert.Description>{error ?? "It may have been deleted."}</Alert.Description>
         </Alert.Root>
-      </Shell>
+      </>
     );
   }
 
   return (
-    <Shell subtitle={data.slug}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <Button intent="ghost" size="sm" onClick={() => navigate(projectPath(data.project))}>
-          <span aria-hidden="true">←</span> Project
-        </Button>
+    <>
+      <PageBar crumbs={[{ label: "Project", to: projectPath(data.project) }]}>
         <Text variant="display">{data.title || data.slug}</Text>
         <Badge intent="neutral">{data.status}</Badge>
         <Text variant="caption" tone="muted">
           {formatDate(data.created)}
         </Text>
-      </div>
+      </PageBar>
 
       {data.output && (
         <section className="flex flex-col gap-2">
@@ -108,12 +106,12 @@ export function ScenePage() {
             className="w-full max-w-md overflow-hidden rounded-md border border-line bg-card
                        focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <video
-              src={data.output.url}
-              muted
-              playsInline
-              preload="metadata"
-              className="aspect-video w-full object-cover"
+            <MediaThumb
+              nodeId={data.output.node}
+              url={data.output.url}
+              name={data.output.name}
+              isVideo
+              aspect="video"
             />
             <Text variant="caption" tone="muted" className="truncate px-2 py-1">
               {data.output.name}
@@ -170,7 +168,7 @@ export function ScenePage() {
       </section>
 
       <FrameViewer asset={viewing} onClose={() => setViewing(null)} />
-    </Shell>
+    </>
   );
 }
 
@@ -779,27 +777,26 @@ function Frame({
   onOpen: (asset: RunAsset) => void;
 }) {
   const isVideo = (asset?.content_type ?? "").startsWith("video/");
-  const body = asset?.url ? (
-    isVideo ? (
-      <video src={asset.url} muted playsInline preload="metadata" className="h-full w-full object-cover" />
-    ) : (
-      <img src={asset.url} alt="" className="h-full w-full object-cover" />
-    )
+
+  const shell = asset?.url ? (
+    <MediaThumb
+      nodeId={asset.node}
+      url={asset.url}
+      name={asset.name}
+      isVideo={isVideo}
+      aspect="portrait"
+      className="w-24 rounded-md border border-line"
+    />
   ) : (
-    <span className="flex h-full w-full items-center justify-center p-1 text-center">
+    // A planned-but-unrendered panel is the normal state of a board, not an
+    // error, so it draws as a dashed frame carrying its prompt.
+    <span
+      className="flex aspect-[3/4] w-24 items-center justify-center overflow-hidden rounded-md
+                 border border-dashed border-line bg-surface-alt p-1 text-center"
+    >
       <Text variant="caption" tone="muted" className="line-clamp-4">
         {title || "not rendered"}
       </Text>
-    </span>
-  );
-
-  const shell = (
-    <span
-      className={`block aspect-[3/4] w-24 overflow-hidden rounded-md bg-surface-alt ${
-        asset?.url ? "border border-line" : "border border-dashed border-line"
-      }`}
-    >
-      {body}
     </span>
   );
 
@@ -831,11 +828,3 @@ function Frame({
   );
 }
 
-function Shell({ children, subtitle }: { children: React.ReactNode; subtitle?: string }) {
-  return (
-    <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-6 p-4 sm:p-6">
-      <AppHeader subtitle={subtitle ?? "scene"} />
-      {children}
-    </div>
-  );
-}

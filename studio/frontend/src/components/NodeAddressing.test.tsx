@@ -72,7 +72,15 @@ describe("re-signing a tile whose URL expired", () => {
     );
 
     // The element reports its own failure; that is the whole re-sign trigger.
-    fireEvent.error(screen.getByRole("img"));
+    //
+    // Queried by tag rather than by role: a grid thumbnail carries `alt=""` on
+    // purpose — it sits inside a button that is already labelled, and an alt
+    // there would replace that label rather than add to it — so it is
+    // `role="presentation"` and `getByRole("img")` finds nothing. What this
+    // test is about is the re-sign address, not the accessibility tree.
+    const image = document.querySelector("img");
+    expect(image).not.toBeNull();
+    fireEvent.error(image!);
 
     await waitFor(() => expect(signed).toHaveBeenCalledWith(FILE.id));
   });

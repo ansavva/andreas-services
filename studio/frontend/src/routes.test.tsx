@@ -1,5 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Outlet } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -17,7 +17,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * to lose — `/f` with no id, which is the library root, and `/p/<id>/r/<id>`,
  * which must not be swallowed by the project route above it.
  */
+// The layout is stubbed for the same reason every page is: it renders the
+// header, the header asks `useAuth`, and this file's whole point is to exercise
+// the route table without the auth stack. What it must keep is the `Outlet` —
+// the pages below it render *through* the layout now, so a stub without one
+// would make every assertion here fail for a reason that has nothing to do with
+// routing.
+vi.mock("./components/layout/AppLayout", () => ({ AppLayout: () => <Outlet /> }));
+
 vi.mock("./pages/HomePage", () => ({ HomePage: () => <div>home</div> }));
+vi.mock("./pages/CharactersPage", () => ({ CharactersPage: () => <div>characters</div> }));
+vi.mock("./pages/ProjectsPage", () => ({ ProjectsPage: () => <div>projects</div> }));
 vi.mock("./pages/CharacterPage", () => ({ CharacterPage: () => <div>character</div> }));
 vi.mock("./pages/ProjectPage", () => ({ ProjectPage: () => <div>project</div> }));
 vi.mock("./pages/RunPage", () => ({ RunPage: () => <div>run</div> }));
@@ -42,6 +52,8 @@ function at(path: string) {
 describe("the route table", () => {
   it.each([
     ["/", "home"],
+    ["/characters", "characters"],
+    ["/projects", "projects"],
     ["/c/char-9f3c1e57-2a44-4d81-b6e0-77c21f8a4d15", "character"],
     ["/p/proj-4a10b8d2-5c93-47ae-8f61-0d51e6b7c2a9", "project"],
     [

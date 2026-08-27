@@ -63,6 +63,20 @@ export function useReel(folderId: FolderId, sort: SortOrder, enabled: boolean) {
     const id = query.current.id + 1;
     query.current = { id, folderId, sort };
     cursor.current = null;
+    // **A new query supersedes whatever is in flight, so the flag is cleared
+    // rather than waited on.** It guards `loadMore` against appending the same
+    // page twice; it must not make a *different* query a no-op, because the
+    // response it is holding the door for is one the id check below is about to
+    // discard anyway — so nothing would ever arrive.
+    //
+    // StrictMode is what made this bite. It runs an effect twice on mount, so
+    // the second run bumped the id and then hit `if (inFlight.current) return`
+    // and did nothing, while the first run's page came back stale against the
+    // new id and was dropped. `items` stayed empty for good — and only
+    // sometimes, since a request that resolved before the second run beat the
+    // race. That is the whole of "Recent is empty on this reload and full on
+    // the last one".
+    inFlight.current = false;
     setItems([]);
     setExhausted(false);
     setTruncated(false);

@@ -1,15 +1,18 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
+import { AppLayout } from "./components/layout/AppLayout";
 import { BrowsePage } from "./pages/BrowsePage";
 import { CharacterPage } from "./pages/CharacterPage";
+import { CharactersPage } from "./pages/CharactersPage";
 import { HomePage } from "./pages/HomePage";
 import { MoviePage } from "./pages/MoviePage";
 import { ProjectPage } from "./pages/ProjectPage";
+import { ProjectsPage } from "./pages/ProjectsPage";
 import { RunPage } from "./pages/RunPage";
 import { ScenePage } from "./pages/ScenePage";
 
 /**
- * Eight routes, and every one of them names an id.
+ * Ten routes, and every one that names a thing names it by id.
  *
  * That is the property the whole entity model exists to give the URL: a
  * character, a project, a run, a scene, a movie and a node are all addressed by
@@ -18,6 +21,7 @@ import { ScenePage } from "./pages/ScenePage";
  *
  * ```
  * /                       home — characters, projects, and the recent reel
+ * /characters /projects   one list each, which the header links to
  * /c/<char_id>            character: profile, references, its folders, files
  * /p/<proj_id>            project: overview, runs, scenes, movies, inputs, files
  * /p/<proj_id>/r/<run_id> one run — its envelope, outputs, chain and payloads
@@ -51,19 +55,31 @@ import { ScenePage } from "./pages/ScenePage";
 export function StudioRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
+      {/* A pathless layout route: it contributes no segment, so every address
+          below is unchanged, and it is what puts one header above all of them
+          instead of seven copies inside them. */}
+      <Route element={<AppLayout />}>
+        <Route path="/" element={<HomePage />} />
 
-      <Route path="/c/:characterId" element={<CharacterPage />} />
-      <Route path="/p/:projectId" element={<ProjectPage />} />
-      <Route path="/p/:projectId/r/:runId" element={<RunPage />} />
-      <Route path="/s/:sceneId" element={<ScenePage />} />
-      <Route path="/m/:movieId" element={<MoviePage />} />
+        <Route path="/characters" element={<CharactersPage />} />
+        <Route path="/projects" element={<ProjectsPage />} />
 
-      <Route path="/f" element={<BrowsePage />} />
-      <Route path="/f/:nodeId" element={<BrowsePage />} />
-      <Route path="/o/:nodeId" element={<BrowsePage />} />
+        <Route path="/c/:characterId" element={<CharacterPage />} />
+        <Route path="/p/:projectId" element={<ProjectPage />} />
+        <Route path="/p/:projectId/r/:runId" element={<RunPage />} />
+        <Route path="/s/:sceneId" element={<ScenePage />} />
+        <Route path="/m/:movieId" element={<MoviePage />} />
 
-      {/* `replace`, not a render of home at the wrong address: a bookmark that
+        <Route path="/f" element={<BrowsePage />} />
+        <Route path="/f/:nodeId" element={<BrowsePage />} />
+        <Route path="/o/:nodeId" element={<BrowsePage />} />
+      </Route>
+
+      {/* Outside the layout, deliberately: this renders no page, it only
+          rewrites the address, and mounting a header to do it would paint a
+          shell for the duration of a redirect.
+
+          `replace`, not a render of home at the wrong address: a bookmark that
           has stopped meaning anything should leave the address bar honest, and
           pushing would put the dead URL one back-press away. */}
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -6,7 +6,6 @@ import type { SceneRecord, Shot } from "../types";
 
 // The header pulls in auth and the library context and says nothing this file
 // asserts on. Everything else is the real component.
-vi.mock("../components/common/AppHeader", () => ({ AppHeader: () => <div /> }));
 
 vi.mock("../apis/studio", () => ({ getScene: vi.fn(), patchShot: vi.fn() }));
 

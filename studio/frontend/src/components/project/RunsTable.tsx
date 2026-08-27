@@ -16,6 +16,7 @@ import {
 import { getRuns } from "../../apis/studio";
 import { formatDate } from "../../utils/format";
 import type { RunStatus, RunSummary } from "../../types";
+import { MediaThumb } from "../media/MediaThumb";
 
 interface Props {
   projectId: string;
@@ -201,7 +202,12 @@ export function RunsTable({ projectId, characters, onOpen }: Props) {
                 has not produced anything yet shows its kind instead. */}
             <span className="size-14 shrink-0 overflow-hidden rounded-md border border-line bg-surface-alt">
               {run.thumb ? (
-                <img src={run.thumb.url} alt="" className="h-full w-full object-cover" />
+                <MediaThumb
+                  nodeId={run.thumb.node}
+                  url={run.thumb.url}
+                  name=""
+                  aspect="auto"
+                />
               ) : (
                 <span className="flex h-full w-full items-center justify-center text-xs text-muted">
                   {run.kind}

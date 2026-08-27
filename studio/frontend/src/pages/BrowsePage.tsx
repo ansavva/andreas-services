@@ -1,7 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
-import { AppHeader } from "../components/common/AppHeader";
 import { FolderBrowser, type BrowserNav } from "../components/browse/FolderBrowser";
 import { DEFAULT_SORT, isSortOrder, type FileEntry, type SortOrder } from "../types";
 import { folderPath, objectPath, targetFromPath, type FolderId } from "../utils/location";
@@ -89,10 +88,5 @@ export function BrowsePage() {
     [closeItem, goToFolder, location.search, navigate, sort, setSort, target],
   );
 
-  return (
-    <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-6 p-4 sm:p-6">
-      <AppHeader subtitle="files" />
-      <FolderBrowser nav={nav} />
-    </div>
-  );
+  return <FolderBrowser nav={nav} />;
 }

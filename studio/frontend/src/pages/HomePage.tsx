@@ -1,16 +1,13 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { Alert, Button, Spinner, Text } from "@ansavva/design-system";
 
-import { getCharacters, getProjects } from "../apis/studio";
 import { MediaTile } from "../components/browse/MediaTile";
-import { AppHeader } from "../components/common/AppHeader";
-import { EntityCard } from "../components/entity/EntityCard";
+import { CharactersSection, ProjectsSection } from "../components/entity/EntitySections";
 import { ReelView } from "../components/viewer/ReelView";
 import { useReel } from "../hooks/useReel";
-import { useResource } from "../hooks/useResource";
-import { characterPath, folderPath, objectPath, projectPath } from "../utils/location";
+import { folderPath, objectPath } from "../utils/location";
 
 /**
  * What studio opens on: who there is, what is being made, and what came out most
@@ -25,12 +22,14 @@ import { characterPath, folderPath, objectPath, projectPath } from "../utils/loc
  * The reel stays, third, and unchanged: it is the answer to "what did the last
  * hour produce", which neither list answers and which is most of why anybody
  * opens studio between sessions.
+ *
+ * **The two lists are components now, not markup here.** `/characters` and
+ * `/projects` are real screens the header links to, and they render exactly
+ * these — so home is where all three meet rather than the only place any of them
+ * exists. The page frame and the header went to `AppLayout`.
  */
 export function HomePage() {
   const navigate = useNavigate();
-
-  const characters = useResource(useCallback(() => getCharacters(), []));
-  const projects = useResource(useCallback(() => getProjects(), []));
 
   // Recent is the same recursive walk "Play reel" does at the root, fetched
   // eagerly because it *is* the section — there is nothing to click first.
@@ -40,87 +39,18 @@ export function HomePage() {
   const recent = reel.items.slice(0, 12);
 
   return (
-    <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-8 p-4 sm:p-6">
-      <AppHeader />
-
-      <section className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Text variant="title">
-            Characters{" "}
-            {characters.data && (
-              <span className="font-body text-sm text-muted">({characters.data.length})</span>
-            )}
-          </Text>
-        </div>
-
-        {characters.loading && <Spinner size="md" label="Loading characters" />}
-        {characters.error && (
-          <Alert.Root intent="danger">
-            <Alert.Title>Could not load characters</Alert.Title>
-            <Alert.Description>{characters.error}</Alert.Description>
-          </Alert.Root>
-        )}
-        {characters.data?.length === 0 && (
-          <Text variant="body" tone="muted">
-            No characters yet. `studio character create &lt;slug&gt;` makes one.
-          </Text>
-        )}
-
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {(characters.data ?? []).map((character) => (
-            <EntityCard
-              key={character.id}
-              title={character.display_name}
-              slug={character.slug}
-              hero={character.hero}
-              counts={`${character.counts.references} references · ${character.counts.files} files`}
-              onOpen={() => navigate(characterPath(character.id))}
-            />
-          ))}
-        </div>
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <Text variant="title">
-          Projects{" "}
-          {projects.data && (
-            <span className="font-body text-sm text-muted">({projects.data.length})</span>
-          )}
-        </Text>
-
-        {projects.loading && <Spinner size="md" label="Loading projects" />}
-        {projects.error && (
-          <Alert.Root intent="danger">
-            <Alert.Title>Could not load projects</Alert.Title>
-            <Alert.Description>{projects.error}</Alert.Description>
-          </Alert.Root>
-        )}
-        {projects.data?.length === 0 && (
-          <Text variant="body" tone="muted">
-            No projects yet. `studio projects new &lt;slug&gt;` makes one.
-          </Text>
-        )}
-
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {(projects.data ?? []).map((project) => (
-            <EntityCard
-              key={project.id}
-              title={project.title || project.slug}
-              slug={project.slug}
-              hero={project.hero}
-              counts={`${project.counts.runs} runs · ${project.counts.scenes} scenes · ${project.counts.movies} movies`}
-              onOpen={() => navigate(projectPath(project.id))}
-            />
-          ))}
-        </div>
-      </section>
+    <>
+      <CharactersSection />
+      <ProjectsSection />
 
       <section className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Text variant="title">Recent</Text>
           <div className="flex items-center gap-2">
-            {/* The library's file tree, which is no longer what `/` shows. It is
-                still one click away and still where a link to a folder lands. */}
+            {/* The library's file tree. It is in the header now as well — this
+                stays because it is the thing the tiles beside it come from, and
+                a section that shows twelve of something wants a way to see the
+                rest. */}
             <Button intent="ghost" size="sm" onClick={() => navigate(folderPath(null))}>
               Browse files
             </Button>
@@ -178,6 +108,6 @@ export function HomePage() {
           onClose={() => setPlaying(false)}
         />
       )}
-    </div>
+    </>
   );
 }

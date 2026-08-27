@@ -37,6 +37,17 @@
  */
 export const HOME_PATH = "/";
 
+/**
+ * The two entity indexes, which the header links to.
+ *
+ * Home still lists both, and these are not a demotion of it: a list you scroll
+ * to reach is not navigation, and "where are my characters" was previously
+ * answerable only by going home and looking down the page. They render the same
+ * sections home does, unabridged.
+ */
+export const CHARACTERS_PATH = "/characters";
+export const PROJECTS_PATH = "/projects";
+
 /** A folder node id, or `null` for the library root. */
 export type FolderId = string | null;
 

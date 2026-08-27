@@ -46,8 +46,27 @@ test("a seeded session reaches the app rather than the login form", async ({ pag
   // Asserting on something only the SIGNED-IN shell has. An earlier version
   // asserted "no sign-in button", which also passed against the "Auth is not
   // configured" screen — a test that proved nothing.
+  //
+  // Sign-out is inside the account menu now, so this opens it rather than
+  // looking for a bare button. Both halves are kept deliberately: the account
+  // trigger proves the signed-in shell rendered, and sign-out behind it proves
+  // the menu is the real one and not an empty shell with the right label.
   await page.goto("/");
-  await expect(page.getByRole("button", { name: /sign out/i })).toBeVisible();
+  const account = page.getByRole("button", { name: /account/i });
+  await expect(account).toBeVisible();
+  await account.click();
+  await expect(page.getByRole("menuitem", { name: /sign out/i })).toBeVisible();
+});
+
+test("the header offers the three sections", async ({ page }) => {
+  // The navigation this rework added. It is asserted here rather than trusted
+  // to the screenshots because it is the one thing on every screen: if these
+  // stop rendering, every page loses its way out at once.
+  await page.goto("/");
+  const nav = page.getByRole("navigation", { name: /sections/i }).first();
+  for (const label of ["Characters", "Projects", "Files"]) {
+    await expect(nav.getByRole("link", { name: label })).toBeVisible();
+  }
 });
 
 test("the home page lists the seeded character with its real counts", async ({ page }) => {
