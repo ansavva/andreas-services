@@ -260,14 +260,24 @@ def test_a_file_node_is_written_as_the_two_items_the_schema_describes():
     }
 
 
-@pytest.mark.parametrize("content_type, in_the_reel", [
-    ("image/png", True),
-    ("video/mp4", True),
-    ("application/json", False),
-    ("text/plain; charset=utf-8", False),
-    ("application/yaml", False),
+@pytest.mark.parametrize("name, content_type, in_the_reel", [
+    ("shot.png", "image/png", True),
+    ("clip.mp4", "video/mp4", True),
+    ("request.json", "application/json", False),
+    ("notes.txt", "text/plain; charset=utf-8", False),
+    ("wording.yaml", "application/yaml", False),
+    # **The two that used to disagree, and the reason this is keyed on name.**
+    # A real JPEG stored as `binary/octet-stream`, and a placeholder whose
+    # confirm has not run so it has no type at all. Both are images, the app
+    # shows both, and the content-type rule called both pollution.
+    ("seed.jpg", "binary/octet-stream", True),
+    ("output.png", "", True),
+    # Case is not a signal. The API lowercases before classifying and so must
+    # every other writer, or a phone's `IMG_0001.HEIC` sorts differently in two
+    # of them.
+    ("SHOT.PNG", "image/png", True),
 ])
-def test_only_images_and_videos_carry_the_reel_key(content_type, in_the_reel):
+def test_only_images_and_videos_carry_the_reel_key(name, content_type, in_the_reel):
     """**D5, and it is a sparse index, so the attribute IS the membership.**
 
     `by-recent` is hashed on `reel` rather than on `lib`, so a row without the
@@ -277,25 +287,56 @@ def test_only_images_and_videos_carry_the_reel_key(content_type, in_the_reel):
     was filtered out in memory, consuming the `max_folder_objects` cap on the
     way.
 
-    Cross-checked against `catalog_migrate.in_the_reel`, which makes the same
-    decision on the migration side. The two writers agreeing is the point —
-    a stack seeded from a fixture and a stack raised by the migrator must put
-    the same rows in the reel.
+    **Keyed on the NAME, and cross-checked against `catalog_migrate.in_the_reel`.**
+    Four things decide reel membership — this seeder, the migrator, the API's
+    `_reel_value` and `browse.reel` — and they used to do it two different ways:
+    the two API sites on `keys.kind(name)`, these two on `content_type`. The
+    name wins because it is the rule at both ends of the live path and the only
+    signal available at create, confirm, seed and migrate alike.
+
+    The last two content types in the table are what the disagreement cost:
+    sixteen production rows flagged as pollution while being ordinary images,
+    which blocked `reseat` behind a `verify` that could not pass.
     """
     actions = _items(
-        f'node_items tbl lib-1 node-a node-p "a" file "/r/" "2026" '
+        f'node_items tbl lib-1 node-a node-p "{name}" file "/r/" "2026" '
         f'"{content_type}" 12 "libraries/lib-1/node-a"'
     )
     item = actions[0]["Put"]["Item"]
 
     assert ("reel" in item) is in_the_reel
     assert catalog_migrate.in_the_reel(
-        {"kind": "file", "content_type": content_type}) is in_the_reel
+        {"kind": "file", "name": name, "content_type": content_type}) is in_the_reel
     if in_the_reel:
         # The VALUE is the library id: the index is hashed on it, so every
         # image and video in one library shares a partition and the reel is one
         # query rather than a scan.
         assert item["reel"] == {"S": "lib-1"}
+
+
+def test_the_two_reel_rules_agree():
+    """`REEL_EXTENSIONS` must be exactly what `services/keys.py` calls media.
+
+    The pipeline does not import the backend, so the list is copied and this is
+    the seam that keeps the copy honest — the same technique, and the same
+    reason, as `test_the_two_key_builders_agree`. An extension added to the API
+    and not here is a file the app puts in the reel and `verify` calls pollution.
+    """
+    import pathlib
+    import re
+
+    keys_py = (pathlib.Path(catalog_migrate.__file__).parents[4] / "backend"
+               / "studio_core" / "services" / "keys.py").read_text()
+    found = set()
+    for setname in ("IMAGE_EXTENSIONS", "VIDEO_EXTENSIONS"):
+        match = re.search(rf"^{setname} = frozenset\(\{{(.+?)\}}\)", keys_py,
+                          re.S | re.M)
+        assert match, f"{setname} is gone or no longer a frozenset literal"
+        found |= set(re.findall(r'"([^"]+)"', match.group(1)))
+
+    assert found == set(catalog_migrate.REEL_EXTENSIONS), (
+        f"only in keys.py: {sorted(found - set(catalog_migrate.REEL_EXTENSIONS))}; "
+        f"only in the migrator: {sorted(set(catalog_migrate.REEL_EXTENSIONS) - found)}")
 
 
 def test_a_folder_node_is_never_in_the_reel_and_carries_no_blob():

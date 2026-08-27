@@ -564,12 +564,21 @@ node_items() {
   # reel of media, and under the old `lib`-hashed index every one of them
   # landed there and was filtered out in memory, consuming the enumeration cap
   # on the way. Written on image and video FILE nodes and nothing else.
+  #
+  # **Image and video is decided on the NAME, not on `$content_type`.** This
+  # tested the content type and was one of four places that made this call two
+  # different ways — the API stamps from `keys.kind(name)` and `browse.reel`
+  # re-filters on it, so the name is the rule at both ends of the live path.
+  # The extension list is `keys.IMAGE_EXTENSIONS + VIDEO_EXTENSIONS`;
+  # `test_only_images_and_videos_carry_the_reel_key` holds this and the
+  # migrator's `in_the_reel` to it together.
   jq -c -n --arg table "$1" --arg lib "$2" --arg node "$3" --arg parent "$4" \
     --arg name "$5" --arg kind "$6" --arg path "$7" --arg created "$8" \
     --arg content_type "$9" --argjson size "${10}" --arg blob_key "${11}" \
     "$DDB_JQ_DEFS"'
     ($kind == "file") as $is_file
-    | ($is_file and ($content_type | test("^(image|video)/"))) as $in_reel
+    | ($is_file and ($name | ascii_downcase
+                     | test("\\.(jpg|jpeg|png|webp|gif|avif|bmp|mp4|webm|mov|m4v)$"))) as $in_reel
     | [ put({pk: "NODE#\($node)", sk: "META", node_id: $node, parent_id: $parent,
              lib: $lib, name: $name, kind: $kind, path: $path,
              created_at: $created, updated_at: $created,
