@@ -7,16 +7,16 @@
 // sharing one gate.
 //
 // The three states are the same three the wrapper had:
-//   session unknown    → hold, so a signed-in user is never bounced to /login
-//                        during the token restore.
-//   signed out         → remember where they were headed, then redirect.
+//   session unknown    → hold, so a signed-in user is never bounced out to the
+//                        hosted page during the token restore.
+//   signed out         → straight to Cognito, carrying where they were headed.
 //   profile not loaded → hold, so a first-run account is not judged missing.
-import { Redirect, Stack, usePathname } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 
 import { LoadingPanel } from '../../components/shell';
+import { SignInRedirect } from '../../components/sign-in-redirect';
 import { useAuth } from '../../context/auth-context';
 import { useProfile } from '../../context/profile-context';
-import { sessionKeys, sessionStore } from '../../utils/session-store';
 
 export default function ProtectedLayout() {
   const auth = useAuth();
@@ -25,10 +25,7 @@ export default function ProtectedLayout() {
 
   if (auth.loading) return <LoadingPanel>Checking your session…</LoadingPanel>;
 
-  if (!auth.authenticated) {
-    sessionStore.set(sessionKeys.returnTo, pathname);
-    return <Redirect href="/login" />;
-  }
+  if (!auth.authenticated) return <SignInRedirect returnTo={pathname} />;
 
   if (!profileLoaded) return <LoadingPanel>Loading your profile…</LoadingPanel>;
 

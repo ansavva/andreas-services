@@ -1,9 +1,12 @@
-import SignInLauncherScreen from '../../screens/sign-in-launcher';
-import { sessionKeys, sessionStore } from '../../utils/session-store';
+// `/login` is not a page any more, it is the address sign-out lands on.
+//
+// Cognito's `/logout` sends the browser to a registered `logout_urls` entry, and
+// this is humbugg's. It renders no form and no pitch: it starts the hosted flow
+// straight away, the same as the protected guard does. Cognito's own session
+// cookie is gone by the time anyone arrives, so what they see next is the hosted
+// sign-in form rather than a silent round trip back into the app.
+import { SignInRedirect } from '../../components/sign-in-redirect';
 
 export default function LoginRoute() {
-  // Where `(protected)/_layout.tsx` stashed the destination it bounced someone
-  // off. Read at render rather than after the round trip, because on web the
-  // round trip is a full page load and this component will not survive it.
-  return <SignInLauncherScreen returnTo={sessionStore.get(sessionKeys.returnTo) ?? undefined} />;
+  return <SignInRedirect />;
 }
