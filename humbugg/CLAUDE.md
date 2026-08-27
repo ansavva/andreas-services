@@ -185,6 +185,24 @@ The app calls the backend **cross-origin** in development as well as production,
 so the backend's `CORS_ORIGINS` must list `http://localhost:8081` alongside
 `http://localhost:5173`.
 
+## Testing
+
+**The map is [`docs/TESTING.md`](docs/TESTING.md)** — tiers, commands, "where does
+my test go", and the rules a new test must follow (each traced to a real hazard).
+The short version:
+
+| Tier | Runs | Gate |
+|---|---|---|
+| Backend unit (`Humbugg.Api.Tests`) | every PR | — |
+| Backend integration (`Humbugg.Api.IntegrationTests`, real dev-stack AWS) | local only | `HUMBUGG_INTEGRATION=1` via `scripts/dev-test-integration.sh` |
+| App unit (jest) + browser stubbed (Playwright, committed fixtures) | every PR | — |
+| App browser live (dev stack) | local only | `E2E_LIVE=1` |
+| Marketing unit (vitest/jsdom) | every PR | — |
+| Prod smoke (`humbugg-prod.yaml` post-deploy) | after deploy | detector, not a gate |
+
+Coverage is printed on every PR and gates on nothing, deliberately — the
+reasoning is in the map.
+
 ## Environment Variables (Prod)
 
 All secrets/values live in the `humbugg-production` GitHub Actions environment. The `deploy-infra` job writes the resolved values into SSM Parameter Store under `/humbugg/prod/*`, and the `deploy-backend` + `deploy-frontend` jobs read them at deploy time.

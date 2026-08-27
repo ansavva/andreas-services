@@ -12,7 +12,12 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <PackageReference Include="xunit.v3" Version="3.2.2" />
-    <PackageReference Include="coverlet.collector" Version="10.0.1" PrivateAssets="all" />
+    <!-- Coverage under Microsoft.Testing.Platform. The coverlet.collector this replaces
+         was a VSTest datacollector — referenced for months, collecting nothing, because
+         global.json runs these projects under MTP. Coverage is PRINTED AND GATES ON
+         NOTHING: a threshold picked before anyone reads a real number either sits under
+         it or fires on unrelated PRs until somebody deletes it. -->
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.0.6" />
   </ItemGroup>
 
   <ItemGroup>
