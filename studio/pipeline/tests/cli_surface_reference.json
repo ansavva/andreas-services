@@ -4621,6 +4621,58 @@
           }
         }
       },
+      "delete": {
+        "arguments": {
+          "runref": {
+            "choices": null,
+            "default": null,
+            "dest": "runref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "files": {
+            "choices": [
+              "delete",
+              "keep"
+            ],
+            "default": "keep",
+            "dest": "files",
+            "flag": false,
+            "flags": [
+              "--files"
+            ],
+            "help": "What to do with the run's folder (default: keep it).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "Default project for a bare run slug.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
       "find": {
         "arguments": {},
         "commands": {},

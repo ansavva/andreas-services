@@ -188,6 +188,7 @@ studio runs list <project> --character <name>
 studio runs show <project>/latest
 studio runs outputs <project>/latest --presign    # feed into the next render
 studio runs find --character <name>               # across every project
+studio runs delete <project>/latest              # keeps the folder; --files delete removes it
 
 # Frames: verify a clip, and take the handoff frame for chaining
 studio frames grid <project>/latest --count 4 --dest /tmp/check
@@ -266,8 +267,10 @@ than a render job. The flag survives because the CLI surface is a contract.
   not cosmetic: presigned URLs become `[Image1]…[ImageN]` positionally, so a
   lexical order hands a model the wrong image under the right name.
 - **Nothing here deletes.** Deleting is a record operation and lives on the
-  commands that own the thing; `studio curate` preserves into the destination
-  rather than removing. `studio catalog gc` collects blobs no record names, and
+  commands that own the thing — `studio runs delete`, `studio projects delete`;
+  `studio curate` preserves into the destination rather than removing. Both keep
+  the folder unless asked with `--files delete`, because the reverse default
+  loses generated media to a typo. `studio catalog gc` collects blobs no record names, and
   is a dry run without `--apply`.
 - Provisioning and teardown live in [`infra/README.md`](../../../infra/README.md).
   Which stack your commands reach — per-machine dev, not production — is in
