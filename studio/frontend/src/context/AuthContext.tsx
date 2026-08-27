@@ -86,9 +86,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Async to keep the shape callers already `await`, and because the
       // navigation it starts is the last thing this tab does.
+      //
+      // It deliberately does NOT clear `authenticated` first. Doing so re-runs
+      // the gate's effect, which sends a signed-out visitor to the hosted
+      // SIGN-IN page — racing, and beating, the trip to `/logout` this starts.
+      // The tab is leaving; there is no state worth updating on the way out.
       async logout() {
-        setAuthenticated(false);
-        setEmail(null);
         redirectToHostedSignOut();
       },
 

@@ -172,8 +172,24 @@ export async function buildAuthorizeUrl(returnTo?: string): Promise<string> {
 }
 
 /** Sends the browser to the hosted sign-in page. */
+/**
+ * Set the moment sign-out starts, and never cleared: the tab is leaving.
+ *
+ * Sign-out and sign-in are two `window.location.assign` calls racing to be
+ * last, and sign-in is the one with an `await` in front of it — building the
+ * authorize URL hashes a PKCE verifier. So a sign-in redirect started before
+ * or during sign-out lands AFTER it, replacing the trip to `/logout` with a
+ * trip to `/oauth2/authorize`. Cognito's session cookie is still set at that
+ * point, so it answers with a fresh code and the user is signed straight back
+ * in — sign-out silently does nothing. That is the bug this flag closes.
+ */
+let signingOut = false;
+
 export async function login(returnTo?: string): Promise<void> {
-  window.location.assign(await buildAuthorizeUrl(returnTo));
+  const url = await buildAuthorizeUrl(returnTo);
+  // Re-checked AFTER the await, not before: the gap is the whole problem.
+  if (signingOut) return;
+  window.location.assign(url);
 }
 
 // --- callback ------------------------------------------------------------
@@ -338,6 +354,7 @@ export function refreshTokens(): Promise<StoredTokens> {
  */
 export function logout(): void {
   const { domain, clientId } = requireConfig();
+  signingOut = true;
   clearTokens();
   const params = new URLSearchParams({ client_id: clientId, logout_uri: logoutUri() });
   window.location.assign(`https://${domain}/logout?${params.toString()}`);
