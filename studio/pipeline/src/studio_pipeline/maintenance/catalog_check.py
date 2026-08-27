@@ -1,129 +1,44 @@
-"""`studio catalog migrate` — raise entity rows over a library already recorded.
+"""`studio catalog verify` and `reseat` — is the entity layer intact?
 
-**THIS IS NOT A SECOND INVENTORY.** The bucket is already in the catalog: the
-one-shot that walked it and gave every folder and object a node ran, finished
-and has been retired. What does not exist is the layer *above* those nodes — the
-characters, projects, runs, scenes and movies that the nodes have always
-spelled out as folder names and JSON documents and that nothing could query.
-This command reads that layer out of the tree and writes it down as rows.
+**THIS WAS THE D4 MIGRATOR AND THE MIGRATION IS OVER.** `catalog_migrate.py`
+raised entity rows over a library that had only nodes; it ran against prod,
+which holds 39 character records today, and a library created since is born with
+its entities. `plan`, `apply` and `backfill` are retired — git has them if a
+second library ever needs raising, and nothing in the product can produce one.
 
-    Library    lib-…      the sharing unit                        (recorded)
-     ├ Node    node-…     a folder or a file, with a parent       (recorded)
-     ├ Character char-…   who a subject is                        <- written here
-     ├ Project  proj-…    a unit of production                    <- written here
-     ├ Run      run-…     one submission to a model               <- written here
-     ├ Scene    scene-…   shots stitched into one take            <- written here
-     └ Movie    movie-…   scenes cut into one piece               <- written here
+What outlived it is the half that CHECKS, which was never about migrating:
 
-So every phase below starts from the TABLE, not from a bucket listing. The
-seed's `plan` deliberately took no DynamoDB client because it ran before the
-table existed; here the table *is* the input and all four phases need it. S3 is
-still opened, for two narrow jobs: reading the documents whose bytes carry the
-structure (`profile.yaml`, `project.json`, `request.json`, …), and — in
-`verify` — re-listing the bucket so the check is against the objects rather
-than against the rows that claim them.
+    verify   every entity resolves, every folder it names exists and points
+             back, every reference names a live node, every envelope's outputs
+             exist as rows AND as objects, and every row carries every attribute
+             it is supposed to. It re-derives the entity layer from the tree and
+             compares — so the independent side is the BUCKET, and the listing
+             is what the blob checks resolve against.
+    reseat   rewrite blob keys whose owner prefix has drifted. A key is stamped
+             once at creation and never re-derived, so a moved file keeps a
+             prefix that no longer describes its owner — still correct, since it
+             is a pointer, but it stops LOOKING like it means anything.
 
-FOUR PHASES, EACH ITS OWN INVOCATION
-------------------------------------
-    plan     walk the catalog; report every entity it would create, every
-             document it would parse, and every one it cannot.
-             **UNPARSEABLE must be 0** — otherwise this exits non-zero and
-             `apply` refuses.
-    apply    create the entity rows. Each existing tree's top folder is
-             ADOPTED as the entity's `root` — no folder is created, none is
-             renamed, and none is reparented. Each `references:` entry becomes
-             a `REF#` row; each run/scene/movie document becomes an envelope
-             and STAYS WHERE IT IS as that envelope's payload blob.
-    verify   read both sides back: every entity resolves, every folder it names
-             exists and points back, every reference names a live node, every
-             envelope's outputs exist as rows and as objects.
-    reseat   optional, separate, later, and never automatic. See below.
+`verify` used to be `catalog migrate verify`. It is `catalog verify` now, which
+is the spelling five places in this repo already told people to run.
 
-Every phase is `--dry-run` unless `--apply`, and they are separate commands
-because the ordering between them is the safety property — the same reason the
-catalog seed split its three and the layout migrator before it split its five.
-The journal (`local/migrations/<ts>.json`, git-ignored) records what each phase
-did.
+**`reseat` is the only command here that can lose data** — server-side copy, row
+update, delete of the old object — so it refuses until the journal records a
+passing `verify`, and it is never reached by running anything else.
 
-**IT COPIES NO BYTES, MOVES NO OBJECTS AND DELETES NOTHING.** Every key stays
-exactly where it is; a run's `request.json` is still the same object at the same
-key, and the envelope simply names its node. `reseat` is the one command in this
-file that touches an object, it is a separate invocation, it refuses until
-`verify` has passed, and it is the only reason the word `copy_object` appears
-below.
+WHY THE ROW BUILDERS ARE STILL HERE
+-----------------------------------
+`character_groups` and its siblings describe what each kind's rows contain, and
+`verify` rebuilds from them rather than from a list of required names. Existence
+was never the property worth checking on its own: the first prod migration wrote
+32 entity rows each missing `id`, every existence check passed, `VERIFY: PASS`
+was printed, and every listing in that library answered 500. The same attribute,
+omitted the same way, broke the dev-seed loader on its first successful run.
 
-EVERYTHING HERE IS A PURE FUNCTION OF THE CATALOG
--------------------------------------------------
-Entity ids are derived, not drawn at random:
-
-    char-<uuid5(NAMESPACE_URL, "studio://character/<root node id>")>
-
-and the same shape for the other four, keyed on the node id of the folder the
-entity adopts. Timestamps come from the documents, falling back to the node
-rows. No phase reads a clock.
-
-That is load-bearing and it is inherited straight from the catalog seed, whose
-docstring made the argument: the phases each rebuild their picture from a fresh
-read, so `apply` and `verify` can only agree with `plan` if the plan is
-reproducible. Random ids would make a resumed `apply` create a *second*
-character beside the half-written first one, because nothing would recognise
-the rows already there.
-
-**What changed is what the id is derived FROM, and the change matters.** The
-seed derived a node id from `s3://<bucket>/<key>` because a key was the only
-stable name an object had. An entity is derived from its root NODE ID instead —
-never from its slug and never from a key. A slug is mutable by design now, and
-somebody renaming a folder between `plan` and `apply` must not fork the
-migration; a node id cannot be renamed. It stays an opaque id: nothing reads one
-back to recover anything.
-
-THE LEGACY LAYOUT LIVES HERE AND NOWHERE ELSE
----------------------------------------------
-`domain/paths.py` used to be 334 lines that built `characters/<slug>/…` and
-`projects/<slug>/…`. Every one of those builders is gone, because an entity
-record names its own nodes. This module is the **only** code left that is
-allowed to know the old shape, so the names it needs are declared once below,
-under `LEGACY_*`, and nothing else in this file spells them inline.
-
-Note what that knowledge now is: **folder and document NAMES, resolved through
-the tree by name.** Not keys. `plan` finds a character by asking the library
-root for its child called `characters` and listing that folder's children — one
-query per level against rows that already exist — rather than by constructing
-`characters/<slug>/profile.yaml` and hoping. A tree someone has already tidied
-by hand therefore migrates correctly, and a tree that has drifted is reported
-instead of silently half-read.
-
-D5: THE SPARSE REEL KEY, AND THE FOLDER POLLUTION IT FIXES
-----------------------------------------------------------
-`by-recent` used to be hashed on `lib` and ranged on `created_at`, so every item
-carrying both landed in it — every folder node, and every entity row this
-command adds would have joined them. They were filtered out in memory *after*
-consuming the reel's page cap. The index is re-keyed on a sparse `reel`
-attribute, so `apply` stamps `reel = <lib>` onto exactly the file nodes whose
-content type is an image or a video, and onto nothing else. Folders, documents
-(`request.json` is a file node and is deliberately NOT in the reel), and every
-entity row stay out of the enumeration entirely. That is why the entity records
-below spell their timestamps `created` / `updated` rather than `created_at`:
-belt and braces, and it makes the intent readable off the row.
-
-The stamping is done with per-row conditional updates rather than in the entity
-transactions. They are independent and idempotent, a half-finished stamping pass
-is harmless, and a hundred-item transaction limit has no business deciding how
-many images a library may hold.
-
-RESEAT, AND WHY IT IS NOT PART OF `apply`
------------------------------------------
-The key scheme is `<owner_kind>/<owner_id>/<node_id>.<ext>` — it carries the
-owning entity's id, so a bucket listing leaks no names and per-entity cost,
-lifecycle and bulk delete all become one prefix. Prod's keys predate it. The
-prefix is stamped once at creation and never re-derived, so a key that no longer
-matches its node's owner is still perfectly correct — it is a pointer — it just
-stops *looking* like it means anything.
-
-`verify` reports that drift. `reseat --apply` rewrites it: server-side copy, row
-update, delete of the old object. It is a separate invocation because it is the
-only thing here that can lose data, it refuses to run until the journal records
-a passing `verify`, and it is never reached by running `apply`.
+The derivations these once owned — `entity_id`, `content_type`, `in_the_reel` —
+are in `maintenance/derive.py`, and the journal is in `maintenance/journal.py`.
+Both moved because being imported out of a module named for a migration is why
+nobody knew they were live.
 """
 from __future__ import annotations
 
@@ -131,7 +46,6 @@ import collections
 import contextlib
 import datetime as dt
 import json
-import mimetypes
 import os
 import uuid
 
@@ -223,15 +137,6 @@ def entity_id(kind: str, root_node: str) -> str:
     return f"{KIND_PREFIX[kind]}-{uuid.uuid5(_NAMESPACE, f'studio://{kind}/{root_node}')}"
 
 
-def content_type(name: str) -> str:
-    """Guessed from the extension, not read back with a HEAD.
-
-    Kept from the catalog seed, which measured the trade: every writer in this
-    package sets `ContentType` from exactly this call, so guessing reproduces
-    what is stored, at zero requests against a bucket with thousands of objects.
-    `maintenance/dev_seed.py` is the other caller.
-    """
-    return mimetypes.guess_type(name)[0] or "application/octet-stream"
 
 
 def in_the_reel(row: dict) -> bool:
@@ -426,6 +331,10 @@ def _read(s3, node: dict) -> bytes:
     return s3.get_object(Bucket=s3c.bucket(), Key=key)["Body"].read()
 
 
+def _yaml(body: bytes):
+    return yaml.safe_load(body)
+
+
 def parse(s3, node: dict | None, what: str, unparseable: list[str],
           loader=json.loads) -> dict | None:
     """A document's contents, or None with a reason recorded.
@@ -448,8 +357,6 @@ def parse(s3, node: dict | None, what: str, unparseable: list[str],
     return doc
 
 
-def _yaml(body: bytes):
-    return yaml.safe_load(body)
 
 
 # ── the plan ────────────────────────────────────────────────────────────────
@@ -900,6 +807,60 @@ def _plan_movies(s3, cat, proj, project_root, project_where, by_scene_slug,
 # it has already done and reports it as skipped rather than doing it twice.
 
 
+
+
+# **`id` IS AN ATTRIBUTE, NOT ONLY A KEY, AND LEAVING IT OUT BROKE PROD.**
+#
+# Every record below spells its own id twice — once inside `pk`, once as `id` —
+# and the redundancy is the contract rather than an oversight. The API's
+# unmarshaller (`services/catalog.py::_entity`) *drops* `pk` and `sk` on the way
+# out and never derives an id from either, so a row carrying the id only in its
+# key reads back as a record with no id. `entities_in` then does
+# `found[record["id"]]` and every listing 500s.
+#
+# That is not hypothetical: the first prod migration wrote 32 entity rows this
+# way, `verify` passed on all of them, and `GET /api/characters` and
+# `GET /api/projects` returned 500 until the rows were backfilled. `verify` now
+# checks the attribute for that reason — see `phase_verify`.
+#
+# The same applies to the three listing rows, which additionally need `created`:
+# `routes/runs.py` sorts and `--since`-filters on it, so a listing row without
+# one sorts as the empty string and disappears from every filtered view.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ── apply ───────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+# ── verify ──────────────────────────────────────────────────────────────────
+
+def _list_bucket(s3) -> dict[str, int]:
+    """Every object's size, by key. The independent side of the cross-check."""
+    sizes = {}
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=s3c.bucket()):
+        for obj in page.get("Contents", []):
+            if not obj["Key"].endswith("/"):
+                sizes[obj["Key"]] = obj.get("Size", 0)
+    return sizes
+
+
 def adopt(node_id: str, entity: str) -> dict:
     """Point a folder node back at the entity that adopts it.
 
@@ -922,23 +883,31 @@ def adopt(node_id: str, entity: str) -> dict:
     }}
 
 
-# **`id` IS AN ATTRIBUTE, NOT ONLY A KEY, AND LEAVING IT OUT BROKE PROD.**
+# ── what a row must contain ─────────────────────────────────────────────────
 #
-# Every record below spells its own id twice — once inside `pk`, once as `id` —
-# and the redundancy is the contract rather than an oversight. The API's
-# unmarshaller (`services/catalog.py::_entity`) *drops* `pk` and `sk` on the way
-# out and never derives an id from either, so a row carrying the id only in its
-# key reads back as a record with no id. `entities_in` then does
-# `found[record["id"]]` and every listing 500s.
+# **These outlived the `apply` they were written for, and `verify` is why.**
+# They are the one declaration of what each entity kind's rows hold, and the
+# completeness check below rebuilds from them rather than from a list of
+# required names — so an attribute added to a record is checked the moment it is
+# added, with nothing to keep in step by hand.
 #
-# That is not hypothetical: the first prod migration wrote 32 entity rows this
-# way, `verify` passed on all of them, and `GET /api/characters` and
-# `GET /api/projects` returned 500 until the rows were backfilled. `verify` now
-# checks the attribute for that reason — see `phase_verify`.
-#
-# The same applies to the three listing rows, which additionally need `created`:
-# `routes/runs.py` sorts and `--since`-filters on it, so a listing row without
-# one sorts as the empty string and disappears from every filtered view.
+# The check exists because existence was never the property worth having on its
+# own: the first prod migration wrote 32 entity rows each missing `id`, every
+# existence check passed, `VERIFY: PASS` was printed, and every listing in that
+# library answered 500.
+
+def run_updated(run: dict) -> str:
+    """A run's `updated`, read off the run rather than off a clock.
+
+    The API stamps `updated` at creation and moves it forward on each
+    transition; a run being migrated has already made all of its, so the last
+    timestamp its document carries IS its `updated`. Falling back through
+    completed -> submitted -> created keeps a run that never finished honest
+    instead of dating it to the migration.
+    """
+    return run["completed"] or run["submitted"] or run["created"]
+
+
 def character_groups(char: dict) -> list[list[dict]]:
     """The record, the slug claim, the root pointer, then the reference rows.
 
@@ -988,18 +957,6 @@ def project_groups(proj: dict) -> list[list[dict]]:
              for char in proj["characters"]]
     return [[ddbc.put(record), ddbc.put(claim),
              adopt(proj["root"], proj["id"])] + links]
-
-
-def run_updated(run: dict) -> str:
-    """A run's `updated`, read off the run rather than off a clock.
-
-    The API stamps `updated` at creation and moves it forward on each
-    transition; a run being migrated has already made all of its, so the last
-    timestamp its document carries IS its `updated`. Falling back through
-    completed -> submitted -> created keeps a run that never finished honest
-    instead of dating it to the migration.
-    """
-    return run["completed"] or run["submitted"] or run["created"]
 
 
 def run_groups(run: dict) -> list[list[dict]]:
@@ -1087,142 +1044,6 @@ def movie_groups(movie: dict) -> list[list[dict]]:
 
 GROUPS = {"character": character_groups, "project": project_groups,
           "run": run_groups, "scene": scene_groups, "movie": movie_groups}
-
-
-# ── apply ───────────────────────────────────────────────────────────────────
-
-def stamp_reel(ddb, node_id: str, lib: str) -> bool:
-    """Write the sparse `by-recent` key onto one file node. False if it had one.
-
-    Conditional on the attribute being absent, so the pass is resumable and a
-    second run costs a refused condition per row rather than a rewrite. Not part
-    of any entity transaction: these are independent of each other and of every
-    record, and a partially stamped library is a library whose reel is short,
-    not one that is wrong.
-    """
-    try:
-        ddb.update_item(
-            TableName=ddbc.table(),
-            Key=ddbc.to_item({"pk": f"NODE#{node_id}", "sk": "META"}),
-            UpdateExpression="SET #reel = :reel",
-            ExpressionAttributeNames={"#reel": "reel"},
-            ExpressionAttributeValues=ddbc.to_item({":reel": lib}),
-            ConditionExpression="attribute_exists(pk) AND attribute_not_exists(#reel)",
-        )
-    except ddb.exceptions.ConditionalCheckFailedException:
-        return False
-    return True
-
-
-def backfill(ddb, doc: dict, apply: bool) -> list[str]:
-    """Add the attributes `doc` carries and the stored row lacks. Names them.
-
-    **Strictly additive, and that is what makes it safe to run over a library
-    somebody has been using.** A row already there may have been edited through
-    the app since the migration — a renamed slug, a new hero, a bumped `rev` —
-    so this never overwrites a value that is present. Every attribute it does
-    write is guarded by its own `attribute_not_exists`, so the whole update is
-    refused rather than half-applied if a concurrent write got there first.
-
-    It exists because `apply` skipped an entity whose head row was present,
-    which is right when the row is complete and wrong when an older version of
-    this file wrote an incomplete one. The first prod migration wrote 32 of
-    those; re-running `apply` counted them "already there" and repaired nothing.
-    """
-    got = ddb.get_item(TableName=ddbc.table(),
-                       Key=ddbc.to_item({"pk": doc["pk"], "sk": doc["sk"]}))
-    if "Item" not in got:
-        return []
-    have = ddbc.from_item(got["Item"])
-    # `None` is dropped by `to_item`, so an absent attribute whose value would
-    # be `None` is already what the schema means and is not a gap to close.
-    names = sorted(key for key, value in doc.items()
-                   if key not in ("pk", "sk") and key not in have
-                   and value is not None)
-    if not names or not apply:
-        return names
-
-    ddb.update_item(
-        TableName=ddbc.table(),
-        Key=ddbc.to_item({"pk": doc["pk"], "sk": doc["sk"]}),
-        UpdateExpression="SET " + ", ".join(f"#a{i} = :a{i}"
-                                            for i in range(len(names))),
-        ExpressionAttributeNames={f"#a{i}": key for i, key in enumerate(names)},
-        ExpressionAttributeValues=ddbc.to_item(
-            {f":a{i}": doc[key] for i, key in enumerate(names)}),
-        ConditionExpression=" AND ".join(
-            ["attribute_exists(pk)"]
-            + [f"attribute_not_exists(#a{i})" for i in range(len(names))]),
-    )
-    return names
-
-
-def phase_apply(ddb, plan: dict, apply: bool) -> dict:
-    """Write every entity row, then stamp the reel.
-
-    Order matters and is not alphabetical: characters before projects, because a
-    project's involvement links name character ids; projects before runs, scenes
-    and movies, because each of those names its project. An interrupted `apply`
-    therefore always leaves a prefix of the layer, never a row pointing at one
-    that does not exist yet.
-
-    An entity whose head row is already there is REPAIRED rather than skipped:
-    every row it would have written is checked for attributes the stored one
-    lacks, and only those are added. See `backfill` for why that is not a
-    rewrite.
-    """
-    existing = plan["catalog"]["entities"]
-    created, skipped = collections.Counter(), collections.Counter()
-    repaired, added = collections.Counter(), collections.Counter()
-
-    for kind in ("character", "project", "run", "scene", "movie"):
-        for entity in plan[kind + "s"]:
-            head = (f"{PARTITION[kind]}#{entity['id']}", "META")
-            if head in existing:
-                gaps = 0
-                for group in GROUPS[kind](entity):
-                    for action in group:
-                        doc = action.get("Put", {}).get("Item")
-                        if doc is None:
-                            continue
-                        names = backfill(ddb, ddbc.from_item(doc), apply)
-                        gaps += len(names)
-                        added.update(names)
-                skipped[kind] += 1
-                repaired[kind] += 1 if gaps else 0
-                continue
-            if not apply:
-                created[kind] += 1
-                continue
-            wrote = False
-            for group in GROUPS[kind](entity):
-                if group:
-                    wrote |= ddbc.transact(ddb, group)
-            (created if wrote else skipped)[kind] += 1
-
-    stamped = 0
-    if apply:
-        for node_id in plan["reel"]:
-            stamped += 1 if stamp_reel(ddb, node_id, plan["lib"]) else 0
-    else:
-        stamped = len(plan["reel"])
-
-    return {"created": dict(created), "skipped": dict(skipped),
-            "repaired": dict(repaired), "added": dict(added), "reel": stamped}
-
-
-# ── verify ──────────────────────────────────────────────────────────────────
-
-def _list_bucket(s3) -> dict[str, int]:
-    """Every object's size, by key. The independent side of the cross-check."""
-    sizes = {}
-    paginator = s3.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=s3c.bucket()):
-        for obj in page.get("Contents", []):
-            if not obj["Key"].endswith("/"):
-                sizes[obj["Key"]] = obj.get("Size", 0)
-    return sizes
-
 
 def phase_verify(s3, ddb, plan: dict) -> dict:
     """Re-read the table and re-list the bucket; check the two against each other.
@@ -1538,47 +1359,6 @@ def save_journal(path: str, doc: dict) -> None:
 
 # ── the report ──────────────────────────────────────────────────────────────
 
-def report(plan: dict) -> None:
-    print(f"library    {plan['lib']}  ({plan['library_name']})")
-    print(f"root node  {plan['root']}")
-    print()
-    print(f"{'entity':<12} {'n':>6}  adopts the folder it was read out of")
-    print("-" * 78)
-    for kind in ("character", "project", "run", "scene", "movie"):
-        print(f"{kind + 's':<12} {len(plan[kind + 's']):>6}")
-    refs = sum(len(c["refs"]) for c in plan["characters"])
-    shots = sum(len(s["shots"]) for s in plan["scenes"])
-    print("-" * 78)
-    print(f"{'REF# rows':<12} {refs:>6}  one per reference image; order and group "
-          "are attributes")
-    print(f"{'SHOT# rows':<12} {shots:>6}  one per planned shot")
-    print(f"{'reel':<12} {len(plan['reel']):>6}  image/video file nodes to stamp "
-          "(D5: sparse by-recent)")
-    print(f"{'polluted':<12} {plan['polluted']:>6}  rows carrying `reel` that "
-          "should not — folders and documents")
-    if plan["by_path"]:
-        print(f"{'by path':<12} {len(plan['by_path']):>6}  resolved by NAME PATH, "
-              "not by blob key — an assumption, see `resolve_key`")
-        for entry in sorted(set(plan["by_path"]))[:SHOWN]:
-            print(f"             {entry}")
-        if len(set(plan["by_path"])) > SHOWN:
-            print(f"             … and {len(set(plan['by_path'])) - SHOWN} more distinct")
-    print(f"{'UNRESOLVED':<12} {len(plan['unresolved']):>6}  reported, does NOT "
-          "block: a document names something the tree lost")
-    for entry in plan["unresolved"][:SHOWN]:
-        print(f"             {entry}")
-    if len(plan["unresolved"]) > SHOWN:
-        print(f"             … and {len(plan['unresolved']) - SHOWN} more")
-    print(f"{'UNPARSEABLE':<12} {len(plan['unparseable']):>6}  "
-          + ("" if not plan["unparseable"] else "<-- MUST BE 0 BEFORE `apply`"))
-    for entry in plan["unparseable"]:
-        print(f"             {entry}")
-
-    example = next(iter(plan["characters"]), None) or next(iter(plan["projects"]), None)
-    if example:
-        print("\ne.g.")
-        for field in ("kind", "id", "slug", "root", "where", "created"):
-            print(f"  {field:<8} {example[field]}")
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
@@ -1605,7 +1385,7 @@ def _session(journal_name, phase, apply=None, library=None):
     if phase != "plan":
         if plan["unparseable"]:
             die(f"{len(plan['unparseable'])} unparseable document(s) — run "
-                "`studio catalog migrate plan` and resolve them first")
+                "`studio catalog verify` and resolve them first")
         total = sum(len(plan[k + "s"])
                     for k in ("character", "project", "run", "scene", "movie"))
         print(f"[{'APPLY' if apply else 'dry run'}] {phase}: "
@@ -1622,71 +1402,23 @@ def main():
     pass
 
 
-@main.group("migrate", help=__doc__,
-            short_help="raise entity rows over an already-recorded library")
-def cmd_migrate():
-    pass
 
 
-@cmd_migrate.command("plan")
-@click.option("--library", help="Which library to migrate. Required only when the table holds more than one, which prod always does — `lib-smoke` is seeded by the post-deploy smoke test.")
-@click.option("--journal", help="journal file name (default: the newest)")
-def do_plan(library, journal):
-    """Show the entity rows that would be created, and what cannot be read."""
-    with _session(journal, "plan", library=library) as (_s3, _ddb, plan, jrn):
-        report(plan)
-        jrn["migrate_plan"] = {
-            "lib": plan["lib"], "root": plan["root"],
-            "counts": {k: len(plan[k + "s"]) for k in
-                       ("character", "project", "run", "scene", "movie")},
-            "reel": len(plan["reel"]), "polluted": plan["polluted"],
-            "unparseable": plan["unparseable"],
-            "unresolved": plan["unresolved"],
-            "by_path": sorted(set(plan["by_path"])),
-            # A sample, not the map. Every id here is a pure function of the
-            # catalog, so the mapping is re-derivable and a copy of it in the
-            # journal would only rot — the same call the catalog seed made.
-            "sample": [{"kind": e["kind"], "id": e["id"], "slug": e["slug"],
-                        "root": e["root"], "where": e["where"]}
-                       for e in (plan["characters"] + plan["projects"])[:20]],
-        }
-    if plan["unparseable"]:
-        raise SystemExit(1)
 
 
-@cmd_migrate.command("apply")
-@click.option("--apply", is_flag=True, help="actually do it (default is a dry run)")
-@click.option("--library", help="Which library to migrate. Required only when the table holds more than one, which prod always does — `lib-smoke` is seeded by the post-deploy smoke test.")
-@click.option("--journal", help="journal file name (default: the newest)")
-def do_apply(apply, library, journal):
-    """Create the entity rows. Adopts folders; copies no bytes; deletes nothing."""
-    with _session(journal, "apply", apply, library=library) as (_s3, ddb, plan, jrn):
-        res = phase_apply(ddb, plan, apply)
-        verb = "created" if apply else "would create"
-        for kind in ("character", "project", "run", "scene", "movie"):
-            print(f"{kind + 's':<12} {res['created'].get(kind, 0):>6} {verb}"
-                  f"   {res['skipped'].get(kind, 0):>6} already there"
-                  f"   {res['repaired'].get(kind, 0):>6} repaired")
-        print(f"{'reel':<12} {res['reel']:>6} {verb.replace('create', 'stamp')}"
-              "   (image/video file nodes only)")
-        # Named rather than counted: an attribute an older version of this file
-        # forgot is the thing worth reading off the console, and there are only
-        # ever a handful of distinct names.
-        for name, count in sorted(res["added"].items()):
-            print(f"{'':<12} {count:>6} row(s) "
-                  f"{'given' if apply else 'would be given'} {name}")
-        if apply:
-            jrn["migrate_apply"] = {"lib": plan["lib"], "created": res["created"],
-                                    "skipped": res["skipped"],
-                                    "repaired": res["repaired"],
-                                    "added": res["added"], "reel": res["reel"]}
 
 
-@cmd_migrate.command("verify")
+@main.command("verify")
 @click.option("--library", help="Which library to migrate. Required only when the table holds more than one, which prod always does — `lib-smoke` is seeded by the post-deploy smoke test.")
 @click.option("--journal", help="journal file name (default: the newest)")
 def do_verify(library, journal):
-    """Check every entity resolves, every folder exists, every output is there."""
+    """Check every entity resolves, every folder exists, every output is there.
+
+    **This was `catalog migrate verify` and is now `catalog verify`.** Five
+    places in the code and the docs already told people to run the latter, which
+    did not exist — an error message pointing at a command that answers
+    "Usage: studio catalog ...". The migration it hung under has been retired.
+    """
     with _session(journal, "verify", library=library) as (s3, ddb, plan, jrn):
         res = phase_verify(s3, ddb, plan)
         for kind, count in sorted(res["entities"].items()):
@@ -1726,7 +1458,7 @@ def cmd_reseat(apply, library, journal):
     with _session(journal, "reseat", apply, library=library) as (s3, ddb, plan, jrn):
         if not (jrn.get("migrate_verify") or {}).get("ok"):
             die("this journal records no passing `verify`. Run "
-                "`studio catalog migrate verify` first — reseat deletes objects "
+                "`studio catalog verify` first — reseat deletes objects "
                 "and will not do that against rows nobody has checked.")
         nodes = plan["catalog"]["nodes"]
         drift = key_drift(plan, nodes)

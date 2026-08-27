@@ -7,7 +7,7 @@
 # way to get any; with a long-lived access key boto3 would now manage alone.
 #
 # Nothing here knows what a node or a library is. That is `maintenance/
-# catalog_migrate.py`'s subject; this is the outside world, in `adapters/`.
+# catalog_check.py`'s subject; this is the outside world, in `adapters/`.
 # (It named `catalog_seed.py` until that one-shot was retired with the layout
 # it inventoried.)
 from __future__ import annotations

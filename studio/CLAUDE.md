@@ -225,7 +225,7 @@ Four things worth knowing before using it:
   step.** Hard rule #2 is untouched and still applies: a generation shows its
   full payload and waits for a yes wherever it runs.
 
-**A profile is not a permission boundary.** `catalog gc`, `catalog migrate` and
+**A profile is not a permission boundary.** `catalog gc`, `catalog verify` and
 `dev-seed` reach S3 and DynamoDB under your own IAM key, which holds
 `s3:DeleteObjectVersion` — a grant the deployed API's role deliberately lacks, and
 the thing that makes every delete through the app a recoverable tombstone.

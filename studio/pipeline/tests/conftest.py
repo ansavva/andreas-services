@@ -43,7 +43,7 @@ os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 # assertion in the suite onto a different tree.
 os.environ["STUDIO_S3_BUCKET"] = "studio-prod-media-us-east-1"
 # The catalog table has no default either, for the reason `adapters/ddb.py`
-# gives, so the suite has to name one — `catalog gc` and `catalog migrate`
+# gives, so the suite has to name one — `catalog gc` and `catalog verify`
 # refuse before they reach moto otherwise.
 os.environ["STUDIO_CATALOG_TABLE"] = "studio-prod-catalog"
 # Never let a test reach the real API, whatever is in studio/.env. TWO
@@ -398,7 +398,7 @@ def bucket():
     """An empty moto bucket, with no API in front of it.
 
     For the two maintenance commands that reconcile the bucket against the
-    table and therefore have to see both — `catalog gc` and `catalog migrate`.
+    table and therefore have to see both — `catalog gc` and `catalog verify`.
     Everything else in the suite goes through `fake_api`, because everything
     else in the pipeline goes through the API.
     """

@@ -137,19 +137,19 @@ def test_local_working_dirs_resolve_under_studio():
 
     The journal half of this has now moved twice. It read
     `migrate_layout.JOURNAL_DIR`, then `catalog_seed.JOURNAL_DIR`; the seed is
-    replaced by the entity migrator and `catalog_migrate` holds the same
-    constant, which is what `catalog migrate plan | apply | verify | reseat | gc`
+    replaced by the entity migrator and `catalog_check` holds the same
+    constant, which is what `catalog verify | reseat | gc`
     journal through. The assertion follows the constant rather than going away,
     because what it protects is unchanged: both directories are git-ignored and
     both must sit under `studio/`.
     """
     from studio_pipeline.domain import characters
-    from studio_pipeline.maintenance import catalog_migrate
+    from studio_pipeline.maintenance import catalog_check
 
     root = str(studio_pipeline.STUDIO_DIR)
     assert characters.LOCAL_DIR.startswith(root)
     assert characters.LOCAL_DIR.endswith("local/characters")
-    assert catalog_migrate.JOURNAL_DIR.startswith(root)
+    assert catalog_check.JOURNAL_DIR.startswith(root)
 
 
 def test_every_callback_accepts_the_parameters_click_will_pass():

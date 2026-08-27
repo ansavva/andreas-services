@@ -99,7 +99,7 @@ from studio_pipeline.adapters import ddb as ddbc
 from studio_pipeline.adapters import s3 as s3c
 from studio_pipeline import profiles
 from studio_pipeline.errors import die
-from studio_pipeline.maintenance import catalog_migrate as CM
+from studio_pipeline.maintenance import derive as CM
 
 #: The one "tree" `name_positions` reports under. An entity root is a child of
 #: the library root now, so there is no `characters/` or `projects/` folder to
@@ -605,7 +605,7 @@ def document(doc: dict) -> bytes:
 # somebody edited a seeded row and re-ran the loader, and "refill this stack
 # from the fixture" is what the command means.
 
-#: uuid5 over a URL, matching `catalog_migrate` and the shell loader it
+#: uuid5 over a URL, matching `maintenance/derive` and the shell loader it
 #: replaces. `test_dev_seed` pins the three derivations against the values the
 #: bash implementation produced, so a stack seeded by either is the same stack.
 NAMESPACE = uuid.NAMESPACE_URL

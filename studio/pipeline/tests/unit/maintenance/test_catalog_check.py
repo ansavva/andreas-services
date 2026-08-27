@@ -21,7 +21,7 @@ from click.testing import CliRunner
 
 from studio_pipeline import cli
 from studio_pipeline.adapters import ddb as ddbc
-from studio_pipeline.maintenance import catalog_migrate as cm
+from studio_pipeline.maintenance import catalog_check as cm
 
 REAL = "lib-bf3b86ef-2569-5c55-8ccb-f03cbe3443b5"
 SMOKE = "lib-smoke"
@@ -51,7 +51,7 @@ def test_two_libraries_refuse_and_name_both(catalog_table):
     _library(catalog_table, REAL, "Studio", "node-root")
     _library(catalog_table, SMOKE, "Smoke test", "node-smoke-root")
 
-    result = CliRunner().invoke(cli.main, ["catalog", "migrate", "plan"])
+    result = CliRunner().invoke(cli.main, ["catalog", "verify"])
     assert result.exit_code != 0
     assert "more than one library" in result.output
     assert f"--library {REAL}" in result.output
@@ -79,16 +79,18 @@ def test_a_library_that_is_not_there_lists_the_ones_that_are(catalog_table):
 
 
 def test_every_phase_takes_the_flag(catalog_table):
-    """`plan` alone would be a trap: the phases are separate invocations, so a
-    flag on one and not the next is a migration that plans one library and
-    applies another."""
-    migrate = cli.main.get_command(None, "catalog").get_command(None, "migrate")
-    for name in ("plan", "apply", "verify"):
-        command = migrate.get_command(None, name)
+    """A flag on one command and not the next is a run that checks one library
+    and rewrites another.
+
+    There were three phases under a `migrate` group; `plan` and `apply` are
+    retired and `verify` was promoted to `catalog verify`, which is the spelling
+    five call sites already used. `--library` still has to be on both survivors.
+    """
+    catalog = cli.main.get_command(None, "catalog")
+    for name in ("verify", "reseat"):
+        command = catalog.get_command(None, name)
         flags = {flag for p in command.params for flag in getattr(p, "opts", [])}
-        assert "--library" in flags, f"studio catalog migrate {name}"
-    reseat = cli.main.get_command(None, "catalog").get_command(None, "reseat")
-    assert "--library" in {f for p in reseat.params for f in getattr(p, "opts", [])}
+        assert "--library" in flags, f"studio catalog {name}"
 
 
 # ── the keys a legacy document names ────────────────────────────────────────
@@ -232,34 +234,8 @@ def test_a_runs_updated_comes_off_the_document_not_a_clock():
         _entity("run")["created"]
 
 
-def test_backfill_adds_only_what_is_missing_and_overwrites_nothing(catalog_table):
-    """The repair path: a row an older version of this file wrote incompletely."""
-    catalog_table.put_item(TableName=ddbc.table(), Item=ddbc.to_item(
-        {"pk": "CHAR#char-0000", "sk": "META", "lib": REAL, "slug": "renamed"}))
-
-    added = cm.backfill(catalog_table, {"pk": "CHAR#char-0000", "sk": "META",
-                                        "id": "char-0000", "slug": "subject-a",
-                                        "lib": REAL}, apply=True)
-
-    assert added == ["id"], "only the absent attribute is written"
-    stored = ddbc.from_item(catalog_table.get_item(
-        TableName=ddbc.table(),
-        Key=ddbc.to_item({"pk": "CHAR#char-0000", "sk": "META"}))["Item"])
-    assert stored["id"] == "char-0000"
-    assert stored["slug"] == "renamed", \
-        "a slug edited through the app since the migration must survive repair"
 
 
-def test_backfill_reports_without_writing_when_not_applying(catalog_table):
-    catalog_table.put_item(TableName=ddbc.table(), Item=ddbc.to_item(
-        {"pk": "CHAR#char-0000", "sk": "META", "lib": REAL}))
-
-    assert cm.backfill(catalog_table, {"pk": "CHAR#char-0000", "sk": "META",
-                                       "id": "char-0000"}, apply=False) == ["id"]
-    stored = ddbc.from_item(catalog_table.get_item(
-        TableName=ddbc.table(),
-        Key=ddbc.to_item({"pk": "CHAR#char-0000", "sk": "META"}))["Item"])
-    assert "id" not in stored, "a dry run must not write"
 
 
 # ── reseat: copy, repoint, delete ───────────────────────────────────────────

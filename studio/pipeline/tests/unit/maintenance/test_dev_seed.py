@@ -26,7 +26,7 @@ from moto import mock_s3
 
 from studio_pipeline import cli
 from studio_pipeline.adapters import ddb as ddbc
-from studio_pipeline.maintenance import catalog_migrate as CM
+from studio_pipeline.maintenance import catalog_check as CM
 from studio_pipeline.maintenance import dev_seed as ds
 # The loader's own validator, not a second copy of it. `test_dev_scripts`
 # already sources `dev-aws-seed.sh` and exposes `fixture_problems`; reaching for

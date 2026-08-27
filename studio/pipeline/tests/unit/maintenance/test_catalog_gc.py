@@ -18,7 +18,7 @@ The rows are written out here rather than produced by another command, and that
 is a change worth stating. They used to come from `catalog_seed`, which
 inventoried a bucket into a table — so "no row names it" meant what it meant in
 production because the same code put the rows there. That command is gone: every
-library has rows now, and what replaced it (`catalog migrate`) raises ENTITY rows
+library has rows now, and what replaced it (the retired `catalog migrate`) raised ENTITY rows
 over a library whose nodes already exist. It writes no `blob_key` at all, so it
 cannot stand in.
 
@@ -35,7 +35,7 @@ from studio_pipeline import cli
 from studio_pipeline.adapters import ddb as ddbc
 from studio_pipeline.adapters import s3 as s3c
 from studio_pipeline.maintenance import catalog_gc as cg
-from studio_pipeline.maintenance import catalog_migrate as cm
+from studio_pipeline.maintenance import journal as _journal
 
 
 LIB = "lib-6c2f4a91-8e3d-4b17-9f02-1a5c7d3e9b44"
@@ -271,12 +271,17 @@ def test_more_keys_than_one_batch_are_all_deleted(bucket, monkeypatch):
 def journalled(tmp_path, monkeypatch):
     """The journal, redirected out of `studio/local/migrations/`.
 
-    Patched on `catalog_migrate`, which is where the constant lives now that the
-    catalog seed is gone — `gc` imports the journal helpers from it, so the two
-    commands go on sharing one journal directory and one file format.
+    Patched on `maintenance/journal`, which is where the constant lives — `gc`
+    and `reseat` both read it from there, so the two commands go on sharing one
+    journal directory and one file format.
+
+    **It used to patch `catalog_check`**, and when the constant moved this
+    fixture silently stopped isolating: `journal_path` read the real
+    `studio/local/migrations/`, found a real journal, and
+    `test_apply_refuses_without_a_dry_run` stopped refusing. A redirect that
+    misses is worse than no redirect, because the suite goes green.
     """
-    monkeypatch.setattr(cm, "JOURNAL_DIR", str(tmp_path))
-    monkeypatch.setattr(cg, "JOURNAL_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(_journal, "JOURNAL_DIR", str(tmp_path))
     return tmp_path
 
 

@@ -218,7 +218,7 @@ studio/pipeline/
         │   └── upload.py  download.py  presign.py  convert.py
         │
         └── maintenance/           one-shots, quarantined
-            └── catalog_migrate.py  catalog_gc.py  dev_seed.py
+            └── catalog_check.py  catalog_gc.py  dev_seed.py
 ```
 
 **Why the directories are named after what things ARE.** They used to be one
@@ -283,7 +283,7 @@ External tools:
   the bridge is a leftover that costs a subprocess rather than a necessity. It
   has four importers left: `adapters/ddb.py` for the catalog table, and the
   three `maintenance/` modules that enumerate the raw bucket — `catalog_gc.py`,
-  `catalog_migrate.py` and `dev_seed.py`. Those need credentials that resolve
+  `catalog_check.py` and `dev_seed.py`. Those need credentials that resolve
   (`aws sts get-caller-identity`); everything else does not.
   Everything else needs **no AWS account at all** — that is the point of #308,
   and this bullet said "required" flatly until it landed.
@@ -739,7 +739,7 @@ or projects.
 | `store.py` | **The media store, addressed by path and reached through the API.** Resolve a name path to a node, list its files in natural order, read, write, upload, copy, presign, and ensure a folder exists. No bucket name, no credentials — bytes travel to S3 directly on presigned URLs the API signs, which is what keeps a video out of the Lambda's request limit. `s3.py` is being retired into this. |
 | `api.py` | One transport for every call the CLI makes: bearer token, refresh-on-401, library header, error mapping. Decided once so no caller re-decides it. |
 | `auth.py` | The Cognito sign-in behind `studio login`, and the token cache it writes — **keyed by profile**, so a prod session and a dev session coexist instead of one overwriting the other for every shell on the machine. Its `DEFAULT_API_URL` is deleted: unset is a refusal, not a silent connection to production. |
-| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. Its `BUCKET` constant is gone — a module constant binds at import, which is before Click has parsed `--profile`, so `bucket()` asks `profiles` on every call. One auth path for the whole package — `session()` is what everything else asks for. **Almost gone**: nothing in `domain/`, `engine/` or `objects/` imports it any more. The four that still do are `adapters/ddb.py`, which needs `session()` for the catalog table, and all three one-shots in `maintenance/` — `catalog_gc.py`, `catalog_migrate.py` and `dev_seed.py` — which reconcile the bucket against the table and so have to see both. Its listing helpers and its bucket-prefix knob went with `migrate-layout`, the only caller of either. |
+| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. Its `BUCKET` constant is gone — a module constant binds at import, which is before Click has parsed `--profile`, so `bucket()` asks `profiles` on every call. One auth path for the whole package — `session()` is what everything else asks for. **Almost gone**: nothing in `domain/`, `engine/` or `objects/` imports it any more. The four that still do are `adapters/ddb.py`, which needs `session()` for the catalog table, and all three one-shots in `maintenance/` — `catalog_gc.py`, `catalog_check.py` and `dev_seed.py` — which reconcile the bucket against the table and so have to see both. Its listing helpers and its bucket-prefix knob went with `migrate-layout`, the only caller of either. |
 | `ddb.py` | The catalog table's client and the typed-attribute marshalling every write needs. `TABLE` is gone for the same reason `s3.BUCKET` is. Takes its credentials from `s3.py`, because the bridge resolves a session and not an S3 session. Knows nothing about libraries or nodes. |
 | `replicate.py` | Token, HTTP, download, poll. |
 | `ffmpeg.py` | Probe, stitch, frame grab, contact grid. A scene and a movie join their inputs by identical rules because they call the same function. ffmpeg ships in the wheel; no system install. |
@@ -826,12 +826,22 @@ Replicate purged old prediction inputs and outputs) and `migrate_layout.py`
 section under [The two trees](#the-two-trees--characters-and-projects)).
 `catalog_seed.py` is deleted with the model it seeded — it inventoried a bucket
 whose keys carried the tree, into a catalog that had just been introduced.
-`catalog_migrate.py` (`studio catalog migrate plan | apply | verify`, plus
-`reseat`) replaces it: it derives characters, projects, runs, scenes and movies
-from the tree as it stands, parses each `profile.yaml` and `project.json` into a
-row, and adopts each existing folder as the entity's `root`. It copies no bytes,
-moves no objects and deletes nothing; `reseat` is the separate, later phase that
-rewrites blob keys onto the id scheme.
+`catalog_check.py` (`studio catalog verify`, plus `reseat`) replaced it, and has
+since outlived its own migration: it was `catalog_migrate.py`, and `plan` /
+`apply` / `backfill` were retired in August 2026 once prod carried its 39
+character records and a new library was born with entities. What is left is the
+half that CHECKS — it re-derives characters, projects, runs, scenes and movies
+from the tree as it stands and compares that against the rows, so the
+independent side is the bucket. It copies no bytes, moves no objects and deletes
+nothing; `reseat` is the separate, later phase that rewrites blob keys onto the
+id scheme, and the only command here that can lose data.
+
+Two things came out of it rather than going with it. `maintenance/derive.py`
+holds `entity_id`, `content_type` and `in_the_reel` — the derivations
+`dev_seed`'s loader runs on every object — and `maintenance/journal.py` holds
+the run journal `gc` and `reseat` share. Both were being imported out of a
+module named for a migration, which is why nobody knew they were live and why
+the loader nearly reimplemented all three.
 
 `catalog_gc.py` (`studio catalog gc`) is still the only one that **deletes** —
 blobs no row names, decided by the table and never by the shape of a key.
@@ -839,7 +849,7 @@ blobs no row names, decided by the table and never by the shape of a key.
 out of a dev stack into the shared seed fixture — it calls no model and costs
 nothing, and its gate is hard rule #1 rather than money.
 
-`catalog_migrate.py` has the shape `migrate_layout.py` had — phases as separate
+`catalog_check.py` has the shape `migrate_layout.py` had — phases as separate
 invocations, `--dry-run` unless `--apply`, a journal under `local/migrations/` —
 because the ordering between phases is the safety property. Unlike that command
 it needs no rewrite phase, and for a better reason than "nothing moves": a

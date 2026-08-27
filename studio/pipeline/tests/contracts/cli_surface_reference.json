@@ -144,135 +144,6 @@
           }
         }
       },
-      "migrate": {
-        "arguments": {},
-        "commands": {
-          "apply": {
-            "arguments": {},
-            "commands": {},
-            "options": {
-              "apply": {
-                "choices": null,
-                "default": false,
-                "dest": "apply",
-                "flag": true,
-                "flags": [
-                  "--apply"
-                ],
-                "help": "actually do it (default is a dry run)",
-                "hidden": false,
-                "multiple": false,
-                "nargs": 0,
-                "required": false,
-                "type": "bool"
-              },
-              "journal": {
-                "choices": null,
-                "default": null,
-                "dest": "journal",
-                "flag": false,
-                "flags": [
-                  "--journal"
-                ],
-                "help": "journal file name (default: the newest)",
-                "hidden": false,
-                "multiple": false,
-                "nargs": 1,
-                "required": false,
-                "type": "str"
-              },
-              "library": {
-                "choices": null,
-                "default": null,
-                "dest": "library",
-                "flag": false,
-                "flags": [
-                  "--library"
-                ],
-                "help": "Which library to migrate. Required only when the table holds more than one, which prod always does \u2014 `lib-smoke` is seeded by the post-deploy smoke test.",
-                "hidden": false,
-                "multiple": false,
-                "nargs": 1,
-                "required": false,
-                "type": "str"
-              }
-            }
-          },
-          "plan": {
-            "arguments": {},
-            "commands": {},
-            "options": {
-              "journal": {
-                "choices": null,
-                "default": null,
-                "dest": "journal",
-                "flag": false,
-                "flags": [
-                  "--journal"
-                ],
-                "help": "journal file name (default: the newest)",
-                "hidden": false,
-                "multiple": false,
-                "nargs": 1,
-                "required": false,
-                "type": "str"
-              },
-              "library": {
-                "choices": null,
-                "default": null,
-                "dest": "library",
-                "flag": false,
-                "flags": [
-                  "--library"
-                ],
-                "help": "Which library to migrate. Required only when the table holds more than one, which prod always does \u2014 `lib-smoke` is seeded by the post-deploy smoke test.",
-                "hidden": false,
-                "multiple": false,
-                "nargs": 1,
-                "required": false,
-                "type": "str"
-              }
-            }
-          },
-          "verify": {
-            "arguments": {},
-            "commands": {},
-            "options": {
-              "journal": {
-                "choices": null,
-                "default": null,
-                "dest": "journal",
-                "flag": false,
-                "flags": [
-                  "--journal"
-                ],
-                "help": "journal file name (default: the newest)",
-                "hidden": false,
-                "multiple": false,
-                "nargs": 1,
-                "required": false,
-                "type": "str"
-              },
-              "library": {
-                "choices": null,
-                "default": null,
-                "dest": "library",
-                "flag": false,
-                "flags": [
-                  "--library"
-                ],
-                "help": "Which library to migrate. Required only when the table holds more than one, which prod always does \u2014 `lib-smoke` is seeded by the post-deploy smoke test.",
-                "hidden": false,
-                "multiple": false,
-                "nargs": 1,
-                "required": false,
-                "type": "str"
-              }
-            }
-          }
-        },
-        "options": {}
-      },
       "reseat": {
         "arguments": {},
         "commands": {},
@@ -315,7 +186,43 @@
             "flags": [
               "--library"
             ],
-            "help": "Which library to migrate. Required only when the table holds more than one, which prod always does \u2014 `lib-smoke` is seeded by the post-deploy smoke test.",
+            "help": "Which library to migrate. Required only when the table holds more than one, which prod always does — `lib-smoke` is seeded by the post-deploy smoke test.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "verify": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "journal": {
+            "choices": null,
+            "default": null,
+            "dest": "journal",
+            "flag": false,
+            "flags": [
+              "--journal"
+            ],
+            "help": "journal file name (default: the newest)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "library": {
+            "choices": null,
+            "default": null,
+            "dest": "library",
+            "flag": false,
+            "flags": [
+              "--library"
+            ],
+            "help": "Which library to migrate. Required only when the table holds more than one, which prod always does — `lib-smoke` is seeded by the post-deploy smoke test.",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -442,7 +349,7 @@
             "flags": [
               "--to"
             ],
-            "help": "The reference group: face, body, wardrobe, frame, \u2026 (default: unsorted).",
+            "help": "The reference group: face, body, wardrobe, frame, … (default: unsorted).",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -1064,7 +971,7 @@
             "flags": [
               "--group"
             ],
-            "help": "Only this group (face, body, wardrobe, frame, \u2026).",
+            "help": "Only this group (face, body, wardrobe, frame, …).",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -1604,7 +1511,7 @@
             "flags": [
               "--slot"
             ],
-            "help": "Shoot only this slot id. Repeatable \u2014 see the spec for the ids.",
+            "help": "Shoot only this slot id. Repeatable — see the spec for the ids.",
             "hidden": false,
             "multiple": true,
             "nargs": 1,
@@ -2601,7 +2508,7 @@
             "flags": [
               "--args"
             ],
-            "help": "print as `--key N --key N \u2026`, ready to paste into a run",
+            "help": "print as `--key N --key N …`, ready to paste into a run",
             "hidden": false,
             "multiple": false,
             "nargs": 0,
@@ -3118,7 +3025,7 @@
             "flags": [
               "--note"
             ],
-            "help": "optional free text \u2014 where this came from",
+            "help": "optional free text — where this came from",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -4185,7 +4092,7 @@
         "flags": [
           "--character"
         ],
-        "help": "A character supplying identity. Repeatable \u2014 one piece of work can involve several.",
+        "help": "A character supplying identity. Repeatable — one piece of work can involve several.",
         "hidden": false,
         "multiple": true,
         "nargs": 1,
@@ -4365,7 +4272,7 @@
         "flags": [
           "--model"
         ],
-        "help": "REQUIRED registry key. See `models` \u2014 the engines are peers.",
+        "help": "REQUIRED registry key. See `models` — the engines are peers.",
         "hidden": false,
         "multiple": false,
         "nargs": 1,
@@ -5447,7 +5354,7 @@
             "flags": [
               "--prompts"
             ],
-            "help": "also print every prompt in full \u2014 what each panel and each shot says",
+            "help": "also print every prompt in full — what each panel and each shot says",
             "hidden": false,
             "multiple": false,
             "nargs": 0,
