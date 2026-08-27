@@ -13,9 +13,14 @@ So this rewrites **one top-level command at a time**, on purpose:
 
 Everything not named is left byte-for-byte identical, because the file is
 re-serialised with exactly the settings it was written with
-(`indent=2, sort_keys=True, ensure_ascii=False`, trailing newline) and the
-untouched subtrees round-trip unchanged. The diff is then reviewable, which is
-the only property that makes updating a contract safe.
+(`indent=2, sort_keys=True`, trailing newline) and the untouched subtrees
+round-trip unchanged. The diff is then reviewable, which is the only property
+that makes updating a contract safe.
+
+**`ensure_ascii` must stay at its default.** It was passed `False` here while
+the file on disk escapes every non-ASCII character, so each run also unescaped
+ten em dashes in help strings belonging to commands it was not asked to touch —
+the diff this helper exists to keep reviewable was noise.
 
 It is a helper, not a test, and it is never run by the suite.
 """
@@ -59,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{verb}  studio {name}")
 
     REFERENCE.write_text(
-        json.dumps(reference, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
+        json.dumps(reference, indent=2, sort_keys=True) + "\n")
     return 0
 
 

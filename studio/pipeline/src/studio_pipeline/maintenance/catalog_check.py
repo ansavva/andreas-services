@@ -35,10 +35,24 @@ was never the property worth checking on its own: the first prod migration wrote
 was printed, and every listing in that library answered 500. The same attribute,
 omitted the same way, broke the dev-seed loader on its first successful run.
 
-The derivations these once owned — `entity_id`, `content_type`, `in_the_reel` —
-are in `maintenance/derive.py`, and the journal is in `maintenance/journal.py`.
-Both moved because being imported out of a module named for a migration is why
-nobody knew they were live.
+THE TWO KINDS OF KEY `reseat` EXISTS FOR
+----------------------------------------
+The scheme is `<owner_kind>/<owner_id>/<node_id>.<ext>` — three segments and no
+more. It carries the owning entity's id, so a bucket listing leaks no names and
+per-entity cost, lifecycle and bulk delete are all one prefix. Below the prefix
+it carries a node id, so it leaks no names THERE either — which is the half a
+descriptive key gave back: `desired_key` built
+`<owner_kind>/<owner_id>/<folders>/<filename>` for a while, and the filename put
+character names into 182 production keys.
+
+So prod holds two kinds of key that need reseating: everything written before
+this catalog existed, and everything the descriptive era wrote. See
+`desired_key` for the whole of that argument.
+
+The derivations this module once owned — `entity_id`, `content_type`,
+`in_the_reel` and `extension` — are in `maintenance/derive.py`, and the journal
+is in `maintenance/journal.py`. Both moved because being imported out of a
+module named for a migration is why nobody knew they were live.
 """
 from __future__ import annotations
 
@@ -47,6 +61,7 @@ import contextlib
 import datetime as dt
 import json
 import os
+import posixpath
 import uuid
 
 import botocore.exceptions
@@ -139,16 +154,59 @@ def entity_id(kind: str, root_node: str) -> str:
 
 
 
+def extension(name: str) -> str:
+    """The suffix the API puts on a key, spelled the way the API spells it.
+
+    `posixpath.splitext(...)[1].lower()` — a copy of `services/keys.py::extension`
+    rather than an import, because the pipeline does not depend on the backend
+    package and never has.
+
+    **The copy has to agree exactly, and `test_the_two_key_builders_agree` is
+    what holds it to that.** `desired_key` decides whether a key has drifted by
+    comparing it against what `blob_key_for` stamped at creation; a
+    disagreement about case alone would report every `.PNG` in a library as
+    drift, and `reseat` would rewrite the same objects on every run, forever.
+    """
+    return posixpath.splitext(name)[1].lower()
+
+
+# The extensions `services/keys.py` classifies as image or video, which is what
+# decides reel membership. Copied rather than imported — the pipeline does not
+# depend on the backend package — and held to the original by
+# `test_the_two_reel_rules_agree`.
+REEL_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif",
+                             ".bmp", ".mp4", ".webm", ".mov", ".m4v"})
+
+
 def in_the_reel(row: dict) -> bool:
     """Whether a node row qualifies for the sparse `by-recent` key (D5).
 
-    A file, and an image or a video. **Not a folder** — that is the pollution
-    the re-key fixes. **Not a document**: `request.json` is a file node and has
-    no business in a reel of media. **Not an entity row**, which is not a node
-    at all and never reaches this function.
+    A file, and an image or a video **by its NAME**. Not a folder — that is the
+    pollution the re-key fixes. Not a document: `request.json` is a file node
+    and has no business in a reel of media. Not an entity row, which is not a
+    node at all and never reaches this function.
+
+    **This read `content_type` and now reads the extension, because the API
+    decides it on the extension and the API is what writes production rows.**
+    `catalog._reel_value` stamps from `keys.kind(name)`, and `browse.reel`
+    re-filters the query's results by `keys.kind(record["name"])` — so the name
+    is the rule at BOTH ends of the live path, and a second rule here could only
+    ever disagree with the thing it is checking.
+
+    It did. `content_type` is absent until `confirm-upload` runs `HeadObject`,
+    and it is whatever S3 reports rather than what the file is: sixteen rows in
+    production were flagged `reel_polluted` by this function while being
+    perfectly ordinary images the app was showing correctly. Fifteen were
+    placeholders awaiting a confirm; one was a real JPEG stored as
+    `binary/octet-stream`. Every one of them was a false positive, and together
+    they blocked `reseat` behind a `verify` that could not pass.
+
+    The name is also the only signal available at every point that has to make
+    this call — create, confirm, seed and migrate. `content_type` is available
+    at two of them.
     """
     return (row.get("kind") == "file"
-            and str(row.get("content_type") or "").startswith(("image/", "video/")))
+            and extension(row.get("name") or "") in REEL_EXTENSIONS)
 
 
 # ── reading the catalog ─────────────────────────────────────────────────────
@@ -163,7 +221,12 @@ def read_catalog(ddb, chosen: str | None = None) -> dict:
     rather than merely risky.
     """
     libraries, nodes = {}, {}
-    entities: set[tuple[str, str]] = set()
+    # **Keyed by `(pk, sk)` and holding the ROW, where this used to hold only the
+    # key.** `phase_apply` still asks nothing but `head in existing`, which a
+    # dict answers identically — and `_adopted` needs what is in the row, because
+    # on a library that has already been migrated the record IS the answer the
+    # legacy document used to give.
+    entities: dict[tuple[str, str], dict] = {}
     for item in ddbc.scan(ddb):
         pk, sk = item.get("pk", ""), item.get("sk", "")
         partition = pk.split("#", 1)[0]
@@ -172,9 +235,9 @@ def read_catalog(ddb, chosen: str | None = None) -> dict:
         elif sk == "META" and partition == "NODE" and item.get("node_id"):
             nodes[item["node_id"]] = item
         elif partition in ("CHAR", "PROJ", "RUN", "SCENE", "MOVIE"):
-            entities.add((pk, sk))
+            entities[(pk, sk)] = item
         elif partition == "LIB" and sk.startswith(("CHARSLUG#", "PROJSLUG#")):
-            entities.add((pk, sk))
+            entities[(pk, sk)] = item
 
     if not libraries:
         die(f"no library in '{ddbc.table()}'. This migrates a library that is "
@@ -361,6 +424,88 @@ def parse(s3, node: dict | None, what: str, unparseable: list[str],
 
 # ── the plan ────────────────────────────────────────────────────────────────
 
+# The `pk` prefix each entity kind's rows carry, inverted for reading them back.
+_PARTITION_KIND = {value: key for key, value in PARTITION.items()}
+
+# The `sk` prefix a character's reference rows take. Spelled here as well as in
+# `character_groups`, which writes them, because this reads them back.
+_REF_PREFIX = "REF#"
+
+# Likewise for a scene's shots, which `scene_groups` writes and `report` counts.
+_SHOT_PREFIX = "SHOT#"
+
+
+def _adopted(cat: dict) -> dict[str, list[dict]]:
+    """Every entity the table ALREADY holds, as plan entries.
+
+    **This is what makes the command idempotent, and `reseat` runnable at all.**
+    Every phase below reads the *legacy* layout — a folder under `characters/`
+    with a `profile.yaml` in it, a folder under `projects/` with a
+    `project.json`. `apply` consumes that layout: a character's bible becomes
+    the `profile` attribute on its record and the document goes. So on a library
+    that has been migrated the walk finds adopted folders and no documents, and
+    plans nothing.
+
+    That was not merely unhelpful. `owners()` is built from `plan["characters"]`
+    and `plan["projects"]`, and with both empty every file falls through to the
+    library branch of `desired_key` — so a `reseat` would have moved all 1200
+    production objects under `libraries/` instead of the 181 that needed it. The
+    `UNPARSEABLE` gate was the only thing stopping it, which is a safety
+    property nothing had written down and nobody had chosen.
+
+    An adopted entry is built from the RECORD rather than from a document, and
+    carries only what `phase_verify` reads: the id, the folder it adopted, and
+    the pointers whose targets are worth checking. It is marked `adopted` so
+    `phase_apply` writes nothing for it — there is nothing to write, and
+    `GROUPS` would need fields a stored record does not carry, like the `refs`
+    that are `REF#` rows in their own right.
+
+    `where` is `<kind>s/<id>` rather than the slug the legacy walk used. It is
+    printed in reports, and an id says which row to go and look at while a slug
+    is a character's name.
+    """
+    found: dict[str, list[dict]] = {kind: [] for kind in PARTITION}
+    # The two kinds of child row an entity owns, gathered first so each record
+    # can be given its own. Both are counted by `report` and one is checked by
+    # `phase_verify`, so an adopted entry without them is a crash or a silent
+    # zero rather than a missing nicety.
+    references: dict[str, list[dict]] = collections.defaultdict(list)
+    shots: dict[str, list[dict]] = collections.defaultdict(list)
+    for (pk, sk) in cat["entities"]:
+        partition, _, entity_ref = pk.partition("#")
+        if sk.startswith(_REF_PREFIX):
+            references[entity_ref].append({"node": sk[len(_REF_PREFIX):]})
+        elif partition == PARTITION["scene"] and sk.startswith(_SHOT_PREFIX):
+            shots[entity_ref].append({"id": sk[len(_SHOT_PREFIX):]})
+
+    for (pk, sk), row in cat["entities"].items():
+        kind = _PARTITION_KIND.get(pk.split("#", 1)[0])
+        if kind is None or sk != "META" or row.get("lib") != cat["lib"]:
+            continue
+        entity_ref = pk.split("#", 1)[1]
+        entry = {"kind": kind, "id": entity_ref, "lib": cat["lib"],
+                 "where": f"{kind}s/{entity_ref}", "adopted": True,
+                 "created": row.get("created")}
+        if kind in ("character", "project"):
+            entry["root"] = row.get("root")
+            entry["slug"] = row.get("slug")
+        else:
+            entry["folder"] = row.get("folder")
+            entry["project"] = row.get("project")
+        if kind == "character":
+            entry["refs"] = references.get(entity_ref, [])
+            entry["default_set"] = row.get("default_set") or []
+        if kind == "scene":
+            entry["shots"] = shots.get(entity_ref, [])
+        if kind == "run":
+            entry["outputs"] = row.get("outputs") or []
+            entry["payload"] = row.get("payload") or {}
+        found[kind].append(entry)
+    for entries in found.values():
+        entries.sort(key=lambda e: e["id"])
+    return found
+
+
 def build_plan(s3, ddb, chosen: str | None = None) -> dict:
     """Every entity row this migration would write, parents before children.
 
@@ -391,10 +536,21 @@ def build_plan(s3, ddb, chosen: str | None = None) -> dict:
     # separately, because a name path is a mutable handle — `resolve_key`.
     by_path_hits: list[str] = []
 
+    # **What the table already holds comes first, and the legacy walk then skips
+    # what it has adopted.** Without this the walk is the only source of
+    # entities, so a library that has been migrated plans nothing — see
+    # `_adopted` for what that cost.
+    already = _adopted(cat)
+
     characters = _plan_characters(s3, cat, unparseable, unresolved, by_path_hits)
-    by_slug = {c["slug"]: c["id"] for c in characters}
+    characters += already["character"]
+    by_slug = {c["slug"]: c["id"] for c in characters if c.get("slug")}
     projects, runs, scenes, movies = _plan_projects(
         s3, cat, by_slug, unparseable, unresolved, by_path_hits)
+    projects += already["project"]
+    runs += already["run"]
+    scenes += already["scene"]
+    movies += already["movie"]
 
     # D5. Every file node that qualifies and does not already carry the key.
     # A node that has one is skipped rather than rewritten: the API stamps it on
@@ -419,6 +575,12 @@ def _plan_characters(s3, cat, unparseable, unresolved, by_path_hits) -> list[dic
     out = []
     tree = child(cat, cat["root"], LEGACY_CHARACTERS)
     for folder in folders(cat, tree["node_id"] if tree else None):
+        if folder.get("entity"):
+            # Already an entity: `_adopted` planned it from the record. The
+            # document this walk wants was consumed by the `apply` that adopted
+            # it, so looking for one here reports a migration failure that is
+            # actually a migration success.
+            continue
         slug, root = folder["name"], folder["node_id"]
         where = f"{LEGACY_CHARACTERS}/{slug}"
         try:
@@ -522,6 +684,12 @@ def _plan_projects(s3, cat, by_slug, unparseable, unresolved, by_path_hits):
     projects, runs, scenes, movies = [], [], [], []
     tree = child(cat, cat["root"], LEGACY_PROJECTS)
     for folder in folders(cat, tree["node_id"] if tree else None):
+        if folder.get("entity"):
+            # Already an entity: `_adopted` planned it from the record. The
+            # document this walk wants was consumed by the `apply` that adopted
+            # it, so looking for one here reports a migration failure that is
+            # actually a migration success.
+            continue
         slug, root = folder["name"], folder["node_id"]
         where = f"{LEGACY_PROJECTS}/{slug}"
         try:
@@ -593,6 +761,12 @@ def _plan_runs(s3, cat, proj, project_root, project_where, by_slug,
     out = []
     tree = child(cat, project_root, LEGACY_RUNS)
     for folder in folders(cat, tree["node_id"] if tree else None):
+        if folder.get("entity"):
+            # Already an entity: `_adopted` planned it from the record. The
+            # document this walk wants was consumed by the `apply` that adopted
+            # it, so looking for one here reports a migration failure that is
+            # actually a migration success.
+            continue
         slug, node = folder["name"], folder["node_id"]
         where = f"{project_where}/{LEGACY_RUNS}/{slug}"
         request_node = child(cat, node, LEGACY_REQUEST)
@@ -718,6 +892,12 @@ def _plan_scenes(s3, cat, proj, project_root, project_where, by_run_slug,
     out = []
     tree = child(cat, project_root, LEGACY_SCENES)
     for folder in folders(cat, tree["node_id"] if tree else None):
+        if folder.get("entity"):
+            # Already an entity: `_adopted` planned it from the record. The
+            # document this walk wants was consumed by the `apply` that adopted
+            # it, so looking for one here reports a migration failure that is
+            # actually a migration success.
+            continue
         slug, node = folder["name"], folder["node_id"]
         where = f"{project_where}/{LEGACY_SCENES}/{slug}"
         document = child(cat, node, LEGACY_SCENE_DOC)
@@ -766,6 +946,12 @@ def _plan_movies(s3, cat, proj, project_root, project_where, by_scene_slug,
     out = []
     tree = child(cat, project_root, LEGACY_MOVIES)
     for folder in folders(cat, tree["node_id"] if tree else None):
+        if folder.get("entity"):
+            # Already an entity: `_adopted` planned it from the record. The
+            # document this walk wants was consumed by the `apply` that adopted
+            # it, so looking for one here reports a migration failure that is
+            # actually a migration success.
+            continue
         slug, node = folder["name"], folder["node_id"]
         where = f"{project_where}/{LEGACY_MOVIES}/{slug}"
         document = child(cat, node, LEGACY_MOVIE_DOC)
@@ -1143,6 +1329,8 @@ def phase_verify(s3, ddb, plan: dict) -> dict:
     # there. Same predicate as `backfill`, for the same reason.
     for kind in ("character", "project", "run", "scene", "movie"):
         for entity in plan[kind + "s"]:
+            if entity.get("adopted"):
+                continue  # no document to rebuild a row from — see `phase_apply`
             for group in GROUPS[kind](entity):
                 for action in group:
                     doc = action.get("Put", {}).get("Item")
@@ -1196,79 +1384,87 @@ def owners(plan: dict) -> dict[str, tuple[str, str]]:
 
 
 def desired_key(plan: dict, nodes: dict, node: dict) -> str:
-    """Where a file node's bytes belong:
-    `<owner_kind>/<owner_id>/<folders below the owner>/<name>`.
+    """Where a file node's bytes belong: `<owner_kind>/<owner_id>/<node_id><ext>`.
 
-    **THE KEY IS DESCRIPTIVE, AND IT IS STILL NOT AUTHORITATIVE.** Those are
-    separate properties and D2 originally conflated them. What made the legacy
-    `characters/<slug>/…` keys dangerous was never that they read well — it was
-    that they were LOAD-BEARING: `paths.py` built them, callers parsed them, and
-    records named paths instead of ids. That is what stranded 69 records and what
-    `domain/rewrite.py` existed to patch.
+    **THE KEY IS FLAT, AND IT IS THE SAME STRING THE API STAMPS AT CREATION.**
+    Three segments, always: an owner prefix, an id, and a node id. That is
+    `services/catalog.py::blob_key_for` exactly, which is the point — this
+    function's whole job is to say what a key *should* be, and a second opinion
+    about that is what drift is.
 
-    A record names a node id now, so nothing reads this string. Nothing may
-    start. `test_no_caller_splits_a_blob_key` is the guard, because the moment
-    something derives truth from a key, a rename becomes a data migration again
-    and the whole entity model is back where it started.
+    **This used to build a descriptive key** —
+    `<owner_kind>/<owner_id>/<folders below the owner>/<name>` — on the argument
+    that structure in a key is free once nothing parses one, and buys a bucket a
+    person can read plus a rebuild path if the catalog is ever lost. Two things
+    were wrong with it:
 
-    Given that, the structure costs nothing and buys two things a flat
-    `<node_id>.<ext>` cannot:
+    - **It put character names back in the bucket.** The slug was gone from the
+      prefix, which is the half D2 was written for, and then the *filename*
+      carried the name straight back in: `reference/face/<name>_face_1.png`.
+      Hard rule #1 forbids a character's name in code, docstrings, fixtures and
+      commit messages, and this wrote it into 182 production keys. A leak one
+      segment lower is the same leak.
+    - **It made drift permanent and routine.** A key is stamped once and a
+      rename or a move deliberately does not touch it, so under a descriptive
+      scheme every rename drifted and `reseat` became a chore with no end. Flat,
+      a rename changes nothing and a move only changes the key when it changes
+      the *owner* — which is rare, and is the only drift left.
 
-    - **A bucket you can read.** One listing tells you which entity owns an
-      object, where it sat in the tree, and what it is called. Under the flat
-      scheme a listing is 379 MB of UUIDs and the catalog is the only thing that
-      can say what any of them are.
-    - **A rebuild path.** The catalog has PITR and deletion protection, so this
-      is a second line rather than the only one — but the second line is the
-      difference between "restore the table" and "restore the table or lose the
-      meaning of every byte".
+    What that costs is real and was accepted deliberately: a listing is now
+    UUIDs, so the catalog is the only thing that can say what any byte is. The
+    table carries PITR and deletion protection and that is the whole of the
+    safety net. Nothing writes a manifest into the bucket.
+
+    Nothing may parse the string either way. `test_no_caller_splits_a_blob_key`
+    is the guard, and it did not become less necessary by the key becoming
+    boring: the moment something derives truth from a key, a rename is a data
+    migration again and the entity model is back where it started.
 
     The owner is DERIVED, from the node's `path` — the materialised list of
     ancestor ids the tree already maintains — by finding the nearest ancestor
     some entity adopted. Nothing new is stored.
 
-    **The leaf is the node's `name`, verbatim.** A file is a file: whatever it
-    was uploaded as is what it is called, here and in the app. Nothing mints a
-    name any more (`curate renumber` and `regroup` are gone, group and order are
-    row attributes), so there is no convention for this to encode and none for
-    it to drift from. The extension comes with the name, which is why this no
-    longer guesses one from `content_type`.
+    The extension is decoration for a human reading the S3 console, and it comes
+    off the node's `name`. `content_type` on the row is authoritative; a node
+    with no extension gets a key with none, and nothing reads one back.
     """
     known = owners(plan)
     ancestors = [i for i in (node.get("path") or "").split("/") if i]
-    kind, owner, below = None, None, []
-    for index, ancestor in enumerate(reversed(ancestors)):
+    kind = owner = None
+    for ancestor in reversed(ancestors):
         if ancestor in known:
             kind, owner = known[ancestor]
-            # The folders between the owner's root and this node, in tree order.
-            below = [nodes[i]["name"] for i in ancestors[len(ancestors) - index:]
-                     if i in nodes and nodes[i].get("name")]
             break
-    if kind is None:
-        # Not inside any entity — loose material under the library root. Its
-        # whole path below the root is the structure worth keeping.
-        below = [nodes[i]["name"] for i in ancestors
-                 if i in nodes and nodes[i].get("name") and nodes[i].get("parent_id")]
     prefix = OWNER_PREFIX[kind] if kind else LIBRARY_PREFIX
-    owner = owner or plan["lib"]
-    return "/".join([prefix, owner, *below, node["name"]])
+    return f"{prefix}/{owner or plan['lib']}/{node['node_id']}{extension(node['name'])}"
 
 
 def key_drift(plan: dict, nodes: dict) -> list[dict]:
-    """Every file node whose key no longer describes its owner.
+    """Every file node whose key no longer names its owner.
 
-    Reported by `verify`, rewritten by `reseat`. **A drifted key is not broken,
-    and since the key became descriptive it is not even unusual.**
+    Reported by `verify`, rewritten by `reseat`. **A drifted key is not broken.**
+    It is a pointer, it resolves, the bytes are where the row says, and nothing
+    reads the string. Drift means only that the key names the owner the node had
+    when it was stamped.
 
-    It is a pointer. It resolves, the bytes are where the row says, and nothing
-    reads the string. What drift means now is only that the key describes where
-    the file USED to sit — because a key is stamped once at creation and a
-    rename or a move is a row write that deliberately does not touch it.
+    **Three things reach this list, and the middle one is the only ordinary
+    case.** A key is stamped once at creation and a row write never touches it,
+    so:
 
-    So this is a tidiness report, not a defect report. Any library anyone
-    actually works in will show some, `reseat` is how you clear it when the
-    listing has drifted far enough to annoy you, and a library showing drift is
-    not a library with a problem. Read the count that way.
+    - a key written before this catalog existed — `characters/<slug>/…`,
+      `blobs/<node id>`, `config/pose/…` — which has always been here;
+    - a node MOVED between owners: out of one character and into another, or
+      between a character and a project. Its bytes are still filed under the old
+      owner's prefix;
+    - the 182 descriptive keys `reseat` itself wrote while `desired_key` built
+      `<folders>/<name>`. Reseating once clears them and they do not come back.
+
+    **A rename is no longer one of them**, and under the descriptive scheme it
+    was the commonest by far — the leaf was the file's own name, so renaming a
+    file drifted its key. The leaf is the node id now, which no rename changes,
+    so an ordinary session in an ordinary library produces no drift at all. If
+    this count is climbing on its own, something is moving nodes between
+    entities; that is worth looking at rather than tidying away.
     """
     drift = []
     for node in nodes.values():

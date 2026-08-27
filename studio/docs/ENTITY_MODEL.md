@@ -65,12 +65,11 @@ to decide anything.
 1. **An id is the identity. A slug is a label.** Every entity has a `v4` UUID
    that never changes. The slug is a mutable, library-unique attribute. Renaming
    is one conditional write and touches nothing else, ever.
-2. **No SLUG in any S3 key, and no key is ever parsed.** A key opens with
-   `<owner_kind>/<owner_id>/`, so a listing names no character and no project.
-   Below that it carries the folder path and the file's own name, because a key
-   is decoration for a human and a rebuild path — never an input to code. It is
-   stamped once at creation and never re-derived. See
-   [D2 was revised](#d2-was-revised-the-key-is-descriptive-again).
+2. **No NAME in any S3 key, and no key is ever parsed.** A key is
+   `<owner_kind>/<owner_id>/<node_id><ext>` and stops there — three segments, so
+   a listing names no character, no project and no file. It is stamped once at
+   creation and never re-derived. See
+   [D2, and the descriptive detour](#d2-and-the-descriptive-detour).
 3. **Every mutation is an API route.** The CLI holds no AWS credentials and
    composes no writes of its own; it calls the same routes the SPA calls. This
    was already true for bytes ([#308](#), #302) and is now true for records.
@@ -96,65 +95,76 @@ the git history of this file; the consequences are the rest of this document.
 | | Question | Settled on | Where it lives now |
 |---|---|---|---|
 | **D1** | One table or three? | **One.** `studio-<env>-catalog` gained `CHAR#`, `PROJ#`, `RUN#`, `SCENE#`, `MOVIE#` partitions beside `LIB#`, `USER#` and `NODE#`. | [Item table](#item-table) |
-| **D2** | What an S3 key looks like | **`<owner_kind>/<owner_id>/<folders>/<filename>`** — owner id, then the tree below it, then the file's own name. Stamped once at creation, never parsed, never re-derived. **Revised — see below.** | [S3 layout](#s3-layout) |
+| **D2** | What an S3 key looks like | **`<owner_kind>/<owner_id>/<node_id>.<ext>`** — owner id, then the node's id. Stamped once at creation, never parsed, never re-derived. **Revised once and revised back — see below.** | [S3 layout](#s3-layout) |
 | **D3** | How far it goes | **All five entity types**, not characters and projects alone. | [Entities](#entities) |
 | **D4** | Prod data | **Migrated**, by a forward migrator: `plan` / `apply` / `verify` as separate invocations, journalled under `local/migrations/`. | `maintenance/catalog_check.py` |
 | **D5** | Entities in the reel | **Sparse `by-recent`**, re-keyed on a `reel` attribute written only onto image and video file nodes. Fixed the pre-existing folder pollution on the way past. | [Item table](#item-table) |
 
-### D2 was revised: the key is descriptive again
+### D2, and the descriptive detour
 
-**As first decided, D2 made the key meaningless** — `<owner_kind>/<owner_id>/<node_id>.<ext>`
-— on the reasoning that a readable key is what stranded 69 records and made
-`domain/rewrite.py` necessary.
+**D2 as first decided made the key meaningless** —
+`<owner_kind>/<owner_id>/<node_id>.<ext>` — on the reasoning that a readable key
+is what stranded 69 records and made `domain/rewrite.py` necessary.
 
-**That conflated two properties.** The danger was never that the old keys read
-well. It was that they were **load-bearing**: `paths.py` built them, callers
-parsed them, and records named paths instead of ids. Making the key *unreadable*
-was one way to stop that, and it was not the necessary one — the entity model
-had already stopped it outright by making a record name a node id.
+**That was then revised, on the argument that it conflated two properties.** The
+danger, the revision said, was never that the old keys read well; it was that
+they were **load-bearing** — `paths.py` built them, callers parsed them, records
+named paths instead of ids. The entity model had already stopped that outright by
+making a record name a node id, so structure in a key was free, and it bought a
+bucket a person could read plus a rebuild path if the catalog were ever lost. The
+key became `<owner_kind>/<owner_id>/<folders below the owner>/<filename>` and
+`reseat --apply` rewrote production into it.
 
-So the key is `<owner_kind>/<owner_id>/<folders below the owner>/<filename>`:
+**That revision is reverted. The key is flat again, and this is the settled
+shape:**
 
 ```
-characters/char-45f4c2b4-…/reference/face/IMG_4580.png
-projects/proj-a8091a40-…/runs/run-a5e5d2b1-…/output/wave-porch-1x1.mp4
-libraries/lib-bf3b86ef-…/config/pose/face/front.png
+characters/char-45f4c2b4-…/node-0304a8b0-….png
+projects/proj-a8091a40-…/node-a5e5d2b1-….mp4
+libraries/lib-bf3b86ef-…/node-7c48b0f9-….png
 ```
 
-The slug is gone from the key, which is what D2's hard-rule-#1 half was for, and
-that half stands. What comes back is everything below it.
+Two things went wrong with the descriptive key, and neither is about it being
+load-bearing — that half of the revision's reasoning was correct and still is.
 
-**Two things a flat key cannot do:**
+- **It put character names back in the bucket.** D2's hard-rule-#1 half removed
+  the slug from the *prefix*, and the descriptive leaf carried the name straight
+  back in one segment lower: `…/reference/face/<name>_face_1.png`. Hard rule #1
+  forbids a character's name in code, docstrings, fixtures, tests and commit
+  messages; a bucket listing spelling it out is the same leak the rule exists to
+  prevent, and it reached 182 production keys.
+- **It made drift permanent.** A key is stamped once and a rename is a row write
+  that deliberately does not touch it, so under a descriptive scheme *every*
+  rename drifted. `reseat` stopped being a migration and became a chore with no
+  end — which is why the section it replaced had to argue that a library showing
+  drift was not a library with a problem.
 
-- **A bucket a person can read.** One listing says which entity owns an object,
-  where it sat, and what it is called. Flat, a listing is UUIDs and the catalog
-  is the only thing that can say what any byte is.
-- **A second line of defence.** The catalog has PITR and deletion protection, so
-  this is not the only one — but it is the difference between "restore the
-  table" and "restore the table or lose the meaning of everything".
+**Flat, a rename drifts nothing.** The leaf is the node id and no rename changes
+it. The only drift left is a node that MOVED between owners, plus the two legacy
+eras — pre-catalog keys and the descriptive ones — and both of those clear once.
 
-**The filename is whatever the file was uploaded as, verbatim.** Nothing mints a
-name any more — `curate renumber` and `regroup` are gone, group and order are row
-attributes — so there is no convention for a key to encode and none to drift
-from. Files are files.
+**What this gives up, and it is real.** A listing is UUIDs, so the catalog is the
+only thing that can say what any byte is. Losing the table means losing the
+meaning of every object, not just the index. That is accepted deliberately: the
+table carries PITR and deletion protection and that is the whole of the safety
+net. **Nothing writes a manifest into the bucket** — a rejected option, not an
+oversight, and if the exposure ever stops being acceptable that is the thing to
+build.
 
-**THE PROPERTY THIS RESTS ON: nothing parses a `blob_key`.** It is a pointer, it
-is passed whole to `presign`, and the moment something derives truth from one, a
-rename becomes a data migration again and this is all back where it started.
+**THE PROPERTY THIS STILL RESTS ON: nothing parses a `blob_key`.** It did not
+become less necessary by the key becoming boring. A key is a pointer, it is
+passed whole to `presign`, and the moment something derives truth from one a
+rename is a data migration again and this is all back where it started.
 `test_no_caller_splits_a_blob_key` is the guard, over both halves of the service.
-
-**Drift is now expected, and cosmetic.** A key is stamped at creation; a rename
-or move is a row write that deliberately does not touch it, so any library
-someone works in will show some. `verify` counts it and `reseat --apply` clears
-it — server-side copy, row update, delete of the old object; optional, out of
-band, never automatic, and refusing until a `verify` has passed. A library
-showing drift is not a library with a problem.
+`services/catalog.py::blob_key_for` and `maintenance/catalog_migrate.py::desired_key`
+are the only two builders, they are in different packages, and
+`test_the_two_key_builders_agree` holds them to the same shape — a second opinion
+about what a key should be *is* drift.
 
 **D4 is done, and so is the migrator.** `plan`, `apply`, `verify` and `reseat`
-have all run against production: 273 keys rewritten, drift 0, `VERIFY: PASS`.
-The module stays because `reseat` is not a one-shot — a key is stamped at
-creation and a rename does not touch it, so drift reappears and this is what
-clears it.
+have all run against production. The module stays because `reseat` is not a
+one-shot: it is what clears the descriptive keys, and what clears a key left
+behind when a node changes owner.
 
 ## The data model
 
@@ -430,30 +440,32 @@ stitched output as a node id.
 
 ## S3 layout
 
-Entity-prefixed keys (D2), descriptive below the prefix
-([revised](#d2-was-revised-the-key-is-descriptive-again)).
+Entity-prefixed keys (D2), and nothing below the prefix but the node
+([the detour and back](#d2-and-the-descriptive-detour)).
 
 ```
-characters/<char_id>/<folders>/<filename>   bytes owned by a character
-projects/<proj_id>/<folders>/<filename>     bytes owned by a project (runs, scenes, movies, inputs)
-libraries/<lib_id>/<folders>/<filename>     bytes under the library root, owned by neither
+characters/<char_id>/<node_id>.<ext>   bytes owned by a character
+projects/<proj_id>/<node_id>.<ext>     bytes owned by a project (runs, scenes, movies, inputs)
+libraries/<lib_id>/<node_id>.<ext>     bytes under the library root, owned by neither
 ```
 
 Three prefixes and nothing else. No `blobs/`, no `phrasebook/`, no top-level
-`config/`, **no slug anywhere** — and, below the prefix, the same folder path and
-the same filename the tree shows a person:
+`config/`. **Three segments always** — no slug, no folder path, and no filename:
 
 ```
-characters/char-45f4c2b4-…/reference/face/IMG_4580.png
-projects/proj-a8091a40-…/runs/run-a5e5d2b1-…/request.json
-libraries/lib-bf3b86ef-…/config/pose/face/front.png
+characters/char-45f4c2b4-…/node-0304a8b0-….png
+projects/proj-a8091a40-…/node-a5e5d2b1-….json
+libraries/lib-bf3b86ef-…/node-7c48b0f9-….png
 ```
 
-The structure below the prefix is a **copy** of the tree, not the source of it.
-The catalog remains the only thing that says what exists: S3 has no directories,
-so an empty folder is a node and nothing else, a listing is a paginated prefix
-scan where a query on `NODE#<parent>` is one call, and a rename is a row write
-rather than a mass copy. Read the key, never parse it.
+The extension is decoration for whoever opens the S3 console; `content_type` on
+the row is authoritative and a name with no extension gets a key with none.
+
+**None of the tree is in the key**, and the tree is not diminished by that. The
+catalog is the only thing that says what exists and always was: S3 has no
+directories, so an empty folder is a node and nothing else, a listing is a
+paginated prefix scan where a query on `NODE#<parent>` is one call, and a rename
+is a row write rather than a mass copy. The key is a pointer. Never parse it.
 
 **The owner is derived, not stored.** A node's `path` is already the
 materialised list of ancestor ids; each library keeps a small map of
@@ -660,6 +672,7 @@ maintenance catalog (plan · migrate · verify · gc · reseat) · dev-seed
 | `runs find --character <slug>` | one API query instead of a walk over every project |
 | `runs list --model --status --since` | **new** filters, free from the row |
 | `runs show` | prints the envelope; `--payload` prints the untouched provider documents |
+| `runs delete <runref>` | **new** — `DELETE /api/runs/<id>`, keeping the folder unless `--files delete` |
 | `rewrite check` | **deleted** — the class of bug is gone |
 | `phrasebook add` | `POST /api/phrasebook`; no document to be missing |
 | `upload` / `download` / `presign` | take a node id or a `<entity>/<path>` address that the API resolves |

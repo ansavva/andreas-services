@@ -910,9 +910,11 @@ def is_api_blob(record: dict) -> bool:
     refused to overwrite anything in the library. Measured, not theorised.
 
     So the test is `<owner_prefix>/<entity-or-library id>/…`: one of the three
-    prefixes, then an id. That holds for the flat keys this API still stamps at
-    creation AND for the descriptive ones `reseat` produces, which is what makes
-    it correct while the two coexist.
+    prefixes, then an id. That holds for the flat keys this API stamps AND for
+    the descriptive ones the reseat of that era left in production, which is
+    what makes it correct while the two coexist — and they still do. `reseat`
+    builds a flat key again and clears them, but until it has been run against a
+    given library both shapes are live in it.
 
     **It is still not a check on WHICH owner.** The prefix says who owned the
     node when the key was stamped and drifts the moment the node moves, so

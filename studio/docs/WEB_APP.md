@@ -344,10 +344,20 @@ a file between entities and the prefix goes stale while the key stays correct;
 `studio catalog verify` reports that drift and `reseat` fixes it, out of band and
 never automatically.
 
-Three older shapes survive in prod and all of them are correct forever:
-`characters/<slug>/…` and `projects/<slug>/…` from before the catalog, and
-`blobs/<node_id>` from between the catalog and the entity model. Nothing parses
-any of them, which is exactly why they can be left alone.
+Four older shapes survive in prod and all of them are correct forever:
+`characters/<slug>/…` and `projects/<slug>/…` from before the catalog,
+`blobs/<node_id>` from between the catalog and the entity model, and
+`<entity>/<id>/<folders>/<filename>` — 182 keys — from the spell when the key
+was descriptive and `reseat` rewrote the library into it. Nothing parses any of
+them, which is exactly why they can be left alone; a reseat clears the fourth
+because a flat key is what `desired_key` builds again, and leaves the other
+three, which no `desired_key` has ever claimed.
+
+**`is_api_blob` has to keep accepting the descriptive shape**, and narrowing it
+to the flat one after a reseat would be a regression rather than a tidy-up: it
+gates whether a signed upload may overwrite an object, and a signature makes a
+refusal permanent the moment the URL is handed out. That exact narrowing already
+took the whole production library out of write once.
 
 Because a row and a blob are deleted separately, a blob can outlive every row
 that pointed at it. That is what `studio catalog gc` is for (#318) — it is the
