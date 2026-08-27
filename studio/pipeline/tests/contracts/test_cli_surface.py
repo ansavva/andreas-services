@@ -16,7 +16,7 @@ import pathlib
 import pytest
 
 from studio_pipeline import cli
-from tests import cli_surface
+from tests.contracts import cli_surface
 
 REFERENCE = json.loads(
     (pathlib.Path(__file__).parent / "cli_surface_reference.json").read_text()

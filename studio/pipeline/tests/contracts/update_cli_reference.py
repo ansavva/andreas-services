@@ -8,8 +8,8 @@ leaves a file that can only ever agree with itself.
 
 So this rewrites **one top-level command at a time**, on purpose:
 
-    uv run python -m tests.update_cli_reference character curate projects
-    uv run python -m tests.update_cli_reference --remove rewrite
+    uv run python -m tests.contracts.update_cli_reference character curate projects
+    uv run python -m tests.contracts.update_cli_reference --remove rewrite
 
 Everything not named is left byte-for-byte identical, because the file is
 re-serialised with exactly the settings it was written with
@@ -28,7 +28,7 @@ import pathlib
 import sys
 
 from studio_pipeline import cli
-from tests import cli_surface
+from tests.contracts import cli_surface
 
 REFERENCE = pathlib.Path(__file__).parent / "cli_surface_reference.json"
 

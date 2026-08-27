@@ -27,7 +27,7 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from studio_pipeline import cli
+from studio_pipeline import STUDIO_DIR, cli
 from studio_pipeline.domain import paths as P
 from studio_pipeline.domain import runs as R
 from studio_pipeline.engine import registry as REG
@@ -35,7 +35,7 @@ from studio_pipeline.engine import shoot as SHOOT
 from studio_pipeline.engine import submit as SUB
 
 REPO_CONFIG = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "config"
+    str(STUDIO_DIR), "config"
 )
 
 

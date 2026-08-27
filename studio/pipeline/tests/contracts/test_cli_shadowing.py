@@ -43,9 +43,9 @@ import pathlib
 import click
 import pytest
 
-from studio_pipeline import cli
+from studio_pipeline import STUDIO_DIR, cli
 
-SOURCE_ROOT = pathlib.Path(__file__).resolve().parents[1] / "src" / "studio_pipeline"
+SOURCE_ROOT = STUDIO_DIR / "pipeline" / "src" / "studio_pipeline"
 
 
 def _commands():

@@ -29,7 +29,7 @@ from studio_pipeline.maintenance import dev_seed as ds
 # The loader's own validator, not a second copy of it. `test_dev_scripts`
 # already sources `dev-aws-seed.sh` and exposes `fixture_problems`; reaching for
 # it here is the whole point — a reimplementation would agree with itself.
-from tests import test_dev_scripts as loader
+from tests.support import shell as loader
 
 SOURCE = pathlib.Path(ds.__file__)
 
@@ -51,8 +51,8 @@ RESULT = json.dumps({"status": "succeeded"})
 # **The project's folder is a child of the library root.** There is no
 # `projects/` wrapper: an entity root is a top-level folder named by its slug,
 # which is why `name_positions` reports under `ENTITY_ROOTS` and why a tree
-# shaped the old way is refused — `projects` is not a placeholder-shaped slug,
-# and the publisher is right to say so.
+# shaped the old way is refused — `projects` is not in `DEV_SUBJECTS`, and the
+# publisher is right to say so.
 #
 # (path, kind, body). A folder's body is None.
 TREE = [
@@ -68,11 +68,37 @@ TREE = [
     ("subject-a/runs/2026-08-19_09-12-44_wave-porch/output/wave-porch.JPEG",
      "file", b"jpeg-bytes-of-a-still"),
     ("subject-a/input", "folder", None),
+    # A CHARACTER, so the `entities` half of the contract is exercised too.
+    # It used not to be here, and that omission is why `build` could emit
+    # `{"version": 1}` with no entities at all for as long as it did: the
+    # loader treats `entities` as optional, so a fixture that described none
+    # validated and loaded, and the only test that would have noticed built its
+    # source stack out of node rows exclusively.
+    ("subject-b", "folder", None),
+    ("subject-b/reference", "folder", None),
+    ("subject-b/reference/face", "folder", None),
+    ("subject-b/reference/face/front.png", "file", b"png-bytes-of-a-face"),
 ]
 
 CONTENT_TYPES = {"request.json": "application/json",
                  "result.json": "application/json",
-                 "wave-porch.JPEG": "image/jpeg"}
+                 "wave-porch.JPEG": "image/jpeg",
+                 "front.png": "image/png"}
+
+CHAR_ID = "char-00000000-0000-0000-0000-0000000000b0"
+PROJ_ID = "proj-00000000-0000-0000-0000-0000000000a0"
+FACE = "subject-b/reference/face/front.png"
+
+#: Nested on purpose. A bible is maps inside maps with lists of maps in them
+#: (`wardrobe.tops[].item`), and the publisher carries `profile` through as it
+#: stands — so a fixture built from this one is also what proves the loader's
+#: jq marshaller recurses. See `test_dev_scripts` on the flat version that
+#: turned every inner map into a string.
+PROFILE = {
+    "schema_version": 2,
+    "identity": {"apparent_age": "<age>", "signature_features": ["<cue>"]},
+    "wardrobe": {"tops": [{"item": "<garment>", "colour": "black"}]},
+}
 
 
 def _node_id(path: str) -> str:
@@ -108,6 +134,33 @@ def _rows(tree=TREE, lib=LIB):
             row["size"] = len(body)
             row["content_type"] = CONTENT_TYPES[name]
         items.append(row)
+
+    # The entity rows. Six of them for two entities, because a record is
+    # useless without its slug claim and a project's cast is rows rather than a
+    # list on the record — see `services/catalog.py`. `publish` reads all of
+    # these off the SAME scan that read the nodes above.
+    items += [
+        {"pk": f"LIB#{lib}", "sk": "CHARSLUG#subject-b",
+         "entity": CHAR_ID, "created": stamp.format(90)},
+        {"pk": f"CHAR#{CHAR_ID}", "sk": "META", "id": CHAR_ID, "lib": lib,
+         "slug": "subject-b", "display_name": "<Name>", "fictional": True,
+         "schema_version": 2, "rev": 1,
+         "created": stamp.format(90), "updated": stamp.format(90),
+         "root": _node_id("subject-b"), "hero": None,
+         "default_set": [_node_id(FACE)], "profile": PROFILE},
+        {"pk": f"CHAR#{CHAR_ID}", "sk": f"REF#{_node_id(FACE)}", "lib": lib,
+         "group": "face", "order": 1000, "description": "front, neutral",
+         "tags": ["face"], "created": stamp.format(91)},
+        {"pk": f"LIB#{lib}", "sk": "PROJSLUG#subject-a",
+         "entity": PROJ_ID, "created": stamp.format(92)},
+        {"pk": f"PROJ#{PROJ_ID}", "sk": "META", "id": PROJ_ID, "lib": lib,
+         "slug": "subject-a", "title": "<Title>", "description": "", "rev": 1,
+         "created": stamp.format(92), "updated": stamp.format(92),
+         "root": _node_id("subject-a"), "hero": None,
+         "counts": {"runs": 1, "scenes": 0, "movies": 0}},
+        {"pk": f"PROJ#{PROJ_ID}", "sk": f"CHAR#{CHAR_ID}", "lib": lib,
+         "created": stamp.format(93)},
+    ]
     return items
 
 
@@ -253,7 +306,7 @@ def test_the_documents_pass_the_loaders_own_validator(dev_stack):
     assert result.exit_code == 0, result.output
 
     catalog, manifest = _documents(dev_stack)
-    assert loader._problems(catalog, manifest) == ""
+    assert loader.problems(catalog, manifest) == ""
 
 
 def _documents(dev_stack, version="v1"):
@@ -266,7 +319,7 @@ def _documents(dev_stack, version="v1"):
 
 
 def _apply(*argv):
-    return _publish(*argv, "--apply", "--placeholders-only")
+    return _publish(*argv, "--apply", "--dev-subjects-only")
 
 
 def test_the_git_copy_and_the_bucket_copy_are_byte_identical(dev_stack):
@@ -319,6 +372,10 @@ def test_the_fixture_carries_no_ids(dev_stack):
 
     text = json.dumps(catalog)
     assert "node-" not in text and "lib-" not in text
+    # `char-` and `proj-` too. The entity half arrived after this test did, and
+    # an entity record is where the ids are: `root`, `hero` and every
+    # `default_set` entry are node ids in the table and paths in the fixture.
+    assert "char-" not in text and "proj-" not in text
     assert {k for node in catalog["nodes"] for k in node} <= {
         "path", "kind", "created_at", "source", "content_type"}
 
@@ -358,7 +415,7 @@ def test_a_dry_run_is_the_default_and_writes_nothing(dev_stack):
 def test_apply_without_the_attestation_refuses(dev_stack):
     result = _publish("--path", RUN, "--apply")
     assert result.exit_code == 1
-    assert "--placeholders-only" in result.output
+    assert "--dev-subjects-only" in result.output
 
 
 def test_a_folder_brings_its_subtree_and_its_ancestors(dev_stack):
@@ -392,7 +449,7 @@ def test_an_empty_folder_can_be_promoted_on_its_own(dev_stack):
 
     assert {n["path"] for n in catalog["nodes"]} == {"subject-a", "subject-a/input"}
     assert manifest["object_count"] == 0
-    assert loader._problems(catalog, manifest) == ""
+    assert loader.problems(catalog, manifest) == ""
 
 
 def test_a_selection_over_the_cap_is_refused(dev_stack):
@@ -411,19 +468,23 @@ def test_a_path_that_is_not_in_the_stack_is_named(dev_stack):
 # ── hard rule #1 ────────────────────────────────────────────────────────────
 
 
-def test_a_real_looking_name_anywhere_in_the_stack_refuses_the_publish(dev_stack):
+def _put_nodes(ddb, tree):
+    """The NODE rows for `tree`, dropped into the stack alongside the fixture's."""
+    for item in _rows(tree=tree):
+        if item["sk"] == "META" and item["pk"].startswith("NODE#"):
+            ddb.put_item(TableName=DEV_TABLE, Item=ddbc.to_item(item))
+
+
+def test_an_unlisted_name_anywhere_in_the_stack_refuses_the_publish(dev_stack):
     """The whole stack is checked, not just the selection.
 
     #284: "generating naturally and sanitising afterwards is the wrong order —
     the names would already be in the bucket, the run JSON and the S3 keys." So
-    the property is that the stack was DRIVEN with placeholders, and one
-    non-placeholder character folder in a corner nobody is promoting still fails
-    it.
+    the property is that the stack was DRIVEN with subjects this repo publishes,
+    and one unlisted top-level folder in a corner nobody is promoting still
+    fails it.
     """
-    ddb = dev_stack["ddb"]
-    for item in _rows(tree=[("rosalind", "folder", None)]):
-        if item["sk"] == "META" and item["pk"].startswith("NODE#"):
-            ddb.put_item(TableName=DEV_TABLE, Item=ddbc.to_item(item))
+    _put_nodes(dev_stack["ddb"], [("rosalind", "folder", None)])
 
     result = _publish("--path", RUN)
     assert result.exit_code == 1
@@ -431,46 +492,62 @@ def test_a_real_looking_name_anywhere_in_the_stack_refuses_the_publish(dev_stack
     # left: a top-level folder is somebody's slug, and there is no
     # `characters/` folder to name the group after.
     assert "entity roots/ holds 'rosalind'" in result.output
-    assert "DRIVEN with placeholders" in result.output
+    assert "not a dev subject this repo publishes" in result.output
 
 
-def test_a_segment_shaped_like_a_personal_name_is_refused(dev_stack):
-    ddb = dev_stack["ddb"]
-    for item in _rows(tree=[("subject-a", "folder", None),
-                            ("subject-a/Amelia-Hart", "folder", None)]):
-        if item["sk"] == "META" and item["pk"].startswith("NODE#"):
-            ddb.put_item(TableName=DEV_TABLE, Item=ddbc.to_item(item))
+def test_a_listed_dev_subject_publishes(dev_stack):
+    """**The rule this replaced would have refused `jason` outright.**
+
+    Hard rule #1 is env-scoped: a dev subject may be named in the repo, a
+    production character may not. The old guard was a SHAPE regex —
+    `subject-a`, `demo`, `<word>` — so the fixture's own subject failed it, and
+    the only way through was to name the real thing something it is not.
+    """
+    assert "jason" in ds.DEV_SUBJECTS
+    _put_nodes(dev_stack["ddb"], [("jason", "folder", None)])
+
+    result = _publish("--path", RUN)
+    assert result.exit_code == 0, result.output
+    assert "REFUSED" not in result.output
+
+
+def test_a_capitalised_segment_is_no_longer_refused(dev_stack):
+    """The Title-Case refusal is DELETED, not adapted.
+
+    It existed to catch a real name that the shape regex would otherwise wave
+    through — `subject-a` and `mira` being the same string to a pattern. An
+    allowlist has no such gap, so the check had nothing left to do except refuse
+    perfectly ordinary folders: #284 asks for one deliberately awkward name in
+    the fixture, and `IMG_1966_Original.JPG` only ever passed by accident of how
+    narrowly the pattern was drawn.
+    """
+    _put_nodes(dev_stack["ddb"], [("subject-a", "folder", None),
+                                  ("subject-a/Amelia-Hart", "folder", None)])
 
     result = _publish("--path", "subject-a/Amelia-Hart")
-    assert result.exit_code == 1
-    assert "shape of a personal name" in result.output
+    assert result.exit_code == 0, result.output
+    assert "REFUSED" not in result.output
 
 
-@pytest.mark.parametrize("name, refused", [
-    ("Ada", True),
-    ("Ada-Lovelace", True),
-    ("Ada Lovelace", True),
-    ("Amelia_Hart", True),
-    # #284 asks for one deliberately awkward name. Both of these are that, and
-    # refusing every capital or every non-ASCII byte would refuse the shape the
-    # fixture is supposed to carry.
-    ("wave-porch.JPEG", False),
-    ("IMG_1966_Original.JPG", False),
-    ("ünïcødé — awkward.png", False),
-    ("request.json", False),
-    ("2026-08-19_09-12-44_wave-porch", False),
-    ("subject-a", False),
-])
-def test_which_segment_shapes_read_as_a_personal_name(name, refused):
-    assert ds._title_case(ds.stem(name)) is refused
+def test_the_allowlist_is_the_gate_and_it_is_a_committed_list():
+    """Adding a subject is a reviewed diff. That IS the mechanism.
+
+    The other half is not here: `source()` refuses a `prod` bucket or table
+    before anything is read, so "this is dev material" is enforced by
+    construction and this list only decides which dev subjects are publishable.
+    """
+    assert isinstance(ds.DEV_SUBJECTS, frozenset)
+    assert {"jason", "subject-a", "subject-b"} <= ds.DEV_SUBJECTS
+    assert ds.name_problems({"n1": "rosalind"})
+    assert ds.name_problems({"n1": "jason", "n2": "jason/reference"}) == []
 
 
 def test_capitalised_tokens_in_promoted_text_are_reported_not_refused(dev_stack):
-    """The half of hard rule #1 no regex decides.
+    """The half of hard rule #1 no list decides.
 
     A refusal on capitalised words in prose would fire on every sentence and be
     switched off within a week. So the tokens are printed, on the dry run,
-    before the human types `--apply` — and `--placeholders-only` is where they
+    before the human types `--apply` — and `--dev-subjects-only` is where they
     say they read them. `name_problems` lists what that still cannot catch.
     """
     result = _publish("--path", RUN)
@@ -518,3 +595,132 @@ def test_tree_lists_the_stack_by_path(dev_stack):
     assert result.exit_code == 0, result.output
     assert RUN in result.output
     assert "folder" in result.output and "file" in result.output
+
+
+# ── the entity half ─────────────────────────────────────────────────────────
+#
+# `build` used to emit `{"version": 1, "nodes": …}` and no `entities` key at
+# all, while `dev-aws-seed.sh` documented and validated version 2 with one.
+# `fixture_problems` treats `entities` as optional and never checks `version`,
+# so the wrong document validated, loaded, and produced loose folders under the
+# library root with no character and no project. Every test below would have
+# failed against that, and none of them existed.
+
+
+def _entities(dev_stack, *paths):
+    """Publish `paths` and return `{slug: entity}` out of the bucket copy."""
+    assert _apply(*sum((["--path", p] for p in paths), [])).exit_code == 0
+    catalog, _ = _documents(dev_stack)
+    assert catalog["version"] == 2
+    return {entity["slug"]: entity for entity in catalog["entities"]}
+
+
+def test_a_character_is_promoted_with_its_references(dev_stack):
+    """Root, references and `default_set` — all of them as PATHS, not ids."""
+    character = _entities(dev_stack, "subject-b")["subject-b"]
+
+    assert character["kind"] == "character"
+    assert character["root"] == "subject-b"
+    assert character["display_name"] == "<Name>"
+    assert character["fictional"] is True
+    assert character["references"] == [
+        {"node": FACE, "group": "face", "order": 1000,
+         "description": "front, neutral", "tags": ["face"],
+         "created": "2026-08-19T09:12:44.000091+00:00"},
+    ]
+    assert character["default_set"] == [FACE]
+
+
+def test_a_nested_bible_survives_the_promotion(dev_stack):
+    """`profile` is carried through as it stands, maps and lists and all.
+
+    Not a normalised copy: the fixture seeds a library that should look like the
+    one it came from, and a publisher that flattened a bible would seed a
+    character nobody could shoot. The loader's own jq marshaller is the other
+    half of this and is pinned in `test_dev_scripts`.
+    """
+    character = _entities(dev_stack, "subject-b")["subject-b"]
+    assert character["profile"] == PROFILE
+    assert character["profile"]["wardrobe"]["tops"][0]["item"] == "<garment>"
+    # Ints, not `Decimal`. DynamoDB deserialises every N to one and the document
+    # is written with `json.dumps`, which refuses them — which is exactly how
+    # this failed the first time a nested profile went through it.
+    assert isinstance(character["profile"]["schema_version"], int)
+
+
+def test_a_project_carries_its_cast_by_slug(dev_stack):
+    """`characters` is `PROJ#`/`CHAR#` rows on the way in and slugs on the way out.
+
+    Slugs rather than ids for the same reason as everything else here, and the
+    loader cross-checks them against the characters the fixture itself carries.
+    """
+    promoted = _entities(dev_stack, "subject-a", "subject-b")
+    assert promoted["subject-a"]["kind"] == "project"
+    assert promoted["subject-a"]["title"] == "<Title>"
+    assert promoted["subject-a"]["characters"] == ["subject-b"]
+    assert promoted["subject-a"]["counts"] == {"runs": 1, "scenes": 0, "movies": 0}
+
+
+def test_a_cast_member_who_was_not_promoted_is_dropped(dev_stack):
+    """A project promoted without its character does not name one.
+
+    The loader refuses `characters` naming a slug that is not in the fixture, so
+    carrying the involvement row through unfiltered would publish a document
+    that cannot load.
+    """
+    promoted = _entities(dev_stack, "subject-a")
+    assert "subject-b" not in promoted
+    assert promoted["subject-a"]["characters"] == []
+
+
+def test_an_entity_whose_root_was_not_promoted_is_dropped(dev_stack):
+    """Not repaired — dropped. Inventing the root would put an unreviewed folder
+    in the fixture, and the loader refuses an entity whose root is missing."""
+    assert "subject-b" not in _entities(dev_stack, RUN)
+
+
+def test_promoting_a_subfolder_brings_the_entity_that_owns_it(dev_stack):
+    """Because `expand` adds ancestors, and the top ancestor is the root.
+
+    Not incidental — it is what makes `--path <project>/runs/<run>` produce a
+    fixture that describes the project rather than a loose `runs` folder. The
+    ancestors are added for the loader's sake ("its parent folder is not a node
+    in catalog.json"), and the entity comes with them.
+    """
+    promoted = _entities(dev_stack, "subject-a/input")
+    assert promoted["subject-a"]["kind"] == "project"
+    assert promoted["subject-a"]["root"] == "subject-a"
+
+
+def test_entities_is_written_even_when_there_are_none(dev_stack):
+    """An empty list and an absent key load identically; the key is a statement.
+
+    Driven through the builder rather than the CLI because every top-level
+    folder in `TREE` is somebody's root, so there is no `--path` that reaches
+    none of them — which is itself the point of the test above.
+    """
+    library = ds.read_library(dev_stack["ddb"])
+    paths = ds.name_paths(library)
+    library["records"] = {}
+    assert ds.entities(library, paths, set(paths)) == []
+
+    catalog, _manifest = ds.build(library, paths, set(), {}, "v1")
+    assert catalog["version"] == 2
+    assert catalog["entities"] == []
+
+
+def test_a_default_set_entry_with_no_reference_row_is_dropped(dev_stack):
+    """`default_set` must be a SUBSET of `references` or the loader refuses the
+    whole fixture — so a record that disagrees with its own rows is filtered
+    here rather than published and rejected on somebody's machine."""
+    library = ds.read_library(dev_stack["ddb"])
+    paths = ds.name_paths(library)
+    library["records"][f"CHAR#{CHAR_ID}"]["default_set"] = [
+        _node_id(FACE), _node_id("subject-b/reference"),
+    ]
+    selected = {node_id for node_id, path in paths.items()
+                if path == "subject-b" or path.startswith("subject-b/")}
+
+    character, = [e for e in ds.entities(library, paths, selected)
+                  if e["slug"] == "subject-b"]
+    assert character["default_set"] == [FACE]

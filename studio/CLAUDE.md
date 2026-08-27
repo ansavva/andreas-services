@@ -54,19 +54,38 @@ These hold everywhere in this directory, in every skill, and in anything written
 back to it. Full statements and reasoning in
 [docs/PIPELINE.md](docs/PIPELINE.md#hard-rules).
 
-### 1. NEVER name a character anywhere in the repo
+### 1. NEVER name a PRODUCTION character in the repo
 
-No character name appears in this repository — ever. Not in code, docstrings,
-`SKILL.md` files, examples, comments, tests, fixtures, commit messages, branch
-names, or PR titles and bodies. Characters are **data**: a row in the catalog
-whose `slug` is the name, and a folder of nodes hanging off it. The repo
-describes the machinery that operates on any character; use the `<name>` /
-`<project>` / `<slug>` placeholders.
+No production character's name appears in this repository — ever. Not in code,
+docstrings, `SKILL.md` files, examples, comments, tests, fixtures, commit
+messages, branch names, or PR titles and bodies. Characters are **data**: a row
+in the catalog whose `slug` is the name, and a folder of nodes hanging off it.
+The repo describes the machinery that operates on any character; use the
+`<name>` / `<project>` / `<slug>` placeholders.
 
 The entity model made this cheaper to keep. A slug is an attribute rather than
 a path segment and an S3 key is built from ids, so a bucket listing no longer
 spells out every character in the library — which it did, for as long as the
 key was `characters/<name>/…`.
+
+**This rule used to be absolute — "never name a character anywhere" — and it was
+narrowed in August 2026 rather than dropped.** A **dev subject** lives only in a
+per-machine dev stack and in the shared seed fixture, never in production, and
+may be named: the fixture's `catalog.json` lands in git and every path in it is
+a name, so the absolute form made #284 impossible to finish. Two guards, of
+different kinds:
+
+- **Mechanical** — `dev_seed.source()` refuses a bucket or table whose name
+  contains `prod` before reading anything, so a fixture is dev-origin by
+  construction.
+- **Deliberate** — `DEV_SUBJECTS` in `maintenance/dev_seed.py` is a committed
+  frozenset of the dev subjects this repo publishes. Adding one is a reviewed
+  diff, which is where "should this likeness be in a fixture every machine
+  downloads" gets asked.
+
+It replaced two regexes that matched on the *shape* of a name and could not tell
+`mira` from `demo`. Full reasoning in
+[docs/PIPELINE.md](docs/PIPELINE.md#the-exception-a-dev-subject-may-be-named).
 
 ### 2. NEVER submit without approval of the FULL payload
 
@@ -236,8 +255,8 @@ published — so the script stops on its first read and says so. It is
 human-gated, but **not because publishing generates media**: `studio dev-seed
 publish` promotes nodes that already exist, calls no model and costs nothing.
 The gate is hard rule #1 — `catalog.json` lands in git, so the publisher refuses
-a stack whose path segments are not placeholder-shaped and requires
-`--placeholders-only` before `--apply`. What a fresh stack actually holds is the
+a stack holding any name outside `DEV_SUBJECTS` and requires
+`--dev-subjects-only` before `--apply`. What a fresh stack actually holds is the
 shared material `dev-setup.sh` pushes: the pose plates, and a starting
 `phrasebook/wording.yaml` (#425).
 
@@ -351,7 +370,7 @@ again. `--project` takes a slug or a project id and is never inferred.
   is the mechanism, not a courtesy, and `seeds/smoke.json`,
   `scripts/prod-seed-smoke.py` and `backend/tests/smoke/` all hold it up. See
   [docs/PROD_SMOKE.md](docs/PROD_SMOKE.md).
-- **The CLI surface is a contract.** `pipeline/tests/cli_surface_reference.json`
+- **The CLI surface is a contract.** `pipeline/tests/contracts/cli_surface_reference.json`
   records every option, arity, default and help string. Changing the CLI means
   regenerating it deliberately — never editing it to make a test pass.
 - **`terraform destroy` on `studio/prod` fails by design.** The media bucket

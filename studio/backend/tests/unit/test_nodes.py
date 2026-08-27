@@ -1389,7 +1389,8 @@ def test_a_file_takes_the_prefix_of_the_entity_that_holds_it(catalog_table, sign
 
     The old layout wrote the slug into every key, which made a listing of the
     media bucket a list of character names — hard rule #1 broken in the one place
-    nobody was reading. Each of the three is asserted here rather than only the
+    nobody was reading, and broken for PRODUCTION characters, which the rule
+    still covers absolutely. Each of the three is asserted here rather than only the
     character's, because the fallback to `libraries/` is the one a reader would
     assume is unreachable.
     """

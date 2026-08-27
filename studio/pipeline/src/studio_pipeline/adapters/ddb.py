@@ -80,19 +80,38 @@ def from_item(item: dict) -> dict:
     The deserializer returns `Decimal` for every N, which compares equal to an
     int but formats as `Decimal('12')` in a report and is not JSON-serialisable
     — and this command's whole output is a journal file.
+
+    **It recurses, and the version that did not was a real bug.** The
+    conversion used to run over the top-level attributes only, which was
+    invisible for as long as every row this read was flat: a node row's numbers
+    are `size` and nothing else. An ENTITY row is not flat — a character carries
+    a nested `profile` and a project carries `counts` — so `dev-seed publish`
+    read a `schema_version` sitting two maps deep, handed it to `json.dumps`,
+    and died with "Object of type Decimal is not JSON serializable" halfway
+    through writing the fixture. Lists count too: `default_set` is a list, and a
+    list of numbers had the same hole.
     """
     import decimal
 
     from boto3.dynamodb.types import TypeDeserializer
 
+    def plain(value):
+        if isinstance(value, decimal.Decimal):
+            return (int(value) if value == value.to_integral_value()
+                    else float(value))
+        if isinstance(value, dict):
+            return {k: plain(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [plain(v) for v in value]
+        if isinstance(value, set):
+            # A DynamoDB set deserialises to a `set`, which json.dumps also
+            # refuses. Sorted rather than arbitrary, so a journal file diffs.
+            return sorted(plain(v) for v in value)
+        return value
+
     deserializer = TypeDeserializer()
-    out = {}
-    for key, value in item.items():
-        got = deserializer.deserialize(value)
-        if isinstance(got, decimal.Decimal):
-            got = int(got) if got == got.to_integral_value() else float(got)
-        out[key] = got
-    return out
+    return {key: plain(deserializer.deserialize(value))
+            for key, value in item.items()}
 
 
 def put(doc: dict, *, unique: bool = True) -> dict:

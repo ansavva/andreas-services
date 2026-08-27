@@ -333,7 +333,8 @@ stamped once when the node is created from the owner its parent already resolves
 to, and `catalog.blob_key_for` is the single definition. It carries an id and
 never a name, so a bucket listing no longer spells out every character in the
 library — which is hard rule #1 applied to the one place that had been quietly
-breaking it.
+breaking it. Unaffected by the rule going env-scoped: the exception is for a
+**dev subject** in the repo, and this is the production media bucket.
 
 **It is still a pointer with no meaning in it.** A rename does not touch it, a
 move does not touch it, and nothing outside `services/catalog.py` may split it

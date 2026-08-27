@@ -138,7 +138,8 @@ def test_create_node_derives_a_blob_key_for_a_file_that_omits_one(catalog_table)
     `blobs/<node_id>` became `<owner_kind>/<owner_id>/<node_id>.<ext>`, so a
     bucket listing is per-entity — Storage Lens cost, lifecycle rules, a bulk
     delete that is one prefix — and carries no name, which is hard rule #1
-    enforced in the one place nobody was reading it.
+    enforced in the one place nobody was reading it. Still true with the rule
+    env-scoped: this bucket holds production characters.
     """
     created = catalog.create_node(CATALOG_ROOT, "clip.mp4", catalog.KIND_FILE)
 

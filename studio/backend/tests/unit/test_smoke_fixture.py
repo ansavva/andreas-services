@@ -21,9 +21,10 @@ finds an extra membership. This is the half that fails *before* a merge.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-STUDIO = Path(__file__).resolve().parents[2]
+from tests.paths import STUDIO_DIR
+
+STUDIO = STUDIO_DIR
 FIXTURE_FILE = STUDIO / "seeds" / "smoke.json"
 
 PASSWORD_PLACEHOLDER = "${SMOKE_TEST_USER_PASSWORD}"

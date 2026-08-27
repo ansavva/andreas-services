@@ -7,8 +7,9 @@
 Assumes the recommended answers to D1–D5: one table, entity-prefixed S3 keys,
 all five entity types, migrate prod, sparse reel index.
 
-Names in this document are the repo's fixture placeholders (`subject-a`), per
-hard rule #1.
+Names in this document are the repo's fixture placeholders (`subject-a`). Hard
+rule #1 permits a named dev subject now, but a data-model walkthrough is about
+the shapes rather than about anyone, so the placeholders stay.
 
 ---
 

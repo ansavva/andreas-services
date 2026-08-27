@@ -8,7 +8,7 @@ documents `scripts/dev-aws-seed.sh` loads.
 
     studio dev-seed tree                       what is in this stack, by path
     studio dev-seed publish --path A --path B  a dry run: what would be promoted
-    studio dev-seed publish --path A --apply --placeholders-only
+    studio dev-seed publish --path A --apply --dev-subjects-only
 
 IT GENERATES NOTHING, SO IT COSTS NOTHING
 -----------------------------------------
@@ -75,9 +75,12 @@ caps what a folder can expand into, and there is no `--all`.
 HARD RULE #1 APPLIES TO THE PROMOTION
 -------------------------------------
 `catalog.json` lands in git, so a name in the dev stack becomes a name in the
-repository. The guard below refuses rather than trusting the human to have used
-placeholders — see `name_problems`, which is also honest about the several
-things it cannot catch.
+repository. That is allowed for a DEV SUBJECT and never for a production
+character — the rule is env-scoped (`studio/CLAUDE.md`), and `source()` refuses
+a `prod` bucket or table before anything else runs, so a fixture is dev-origin
+by construction. What is left for `name_problems` to decide is which dev
+subjects this repo publishes, and it reads that off `DEV_SUBJECTS` rather than
+off the shape of the name. It is honest about what it still cannot catch.
 """
 from __future__ import annotations
 
@@ -147,20 +150,43 @@ def source() -> tuple[str, str]:
 
 
 def read_library(ddb, library: str | None = None) -> dict:
-    """The whole library as `{lib, root, nodes: {id: row}}`.
+    """The whole library: its nodes, and the entity rows that own them.
 
     One scan, for the reason `catalog_seed.already_seeded` scans: a dev stack is
     small, and a GSI query would silently omit any row missing one of the
     index's key attributes — which is a row this command should refuse over, not
-    skip.
+    skip. The same scan answers all four shapes, so reading the entities costs
+    nothing on top of reading the tree:
+
+        nodes      node_id -> `NODE#<id>` / `META`
+        records    `CHAR#<id>` or `PROJ#<id>` -> its `META`, tagged with `kind`
+        refs       `CHAR#<id>` -> its `REF#<node>` rows, each carrying `node`
+        involves   `PROJ#<id>` -> the `CHAR#<id>` sort keys it is linked to
+
+    **The entity rows used not to be read at all**, and the fixture `build`
+    wrote was `{"version": 1, nodes}` with no `entities` key while
+    `dev-aws-seed.sh` documented and validated version 2 with one. Nothing
+    caught it because `fixture_problems` treats `entities` as optional and never
+    checks `version`, so the document validated, loaded, and produced loose
+    folders under the library root with no character or project records at all —
+    precisely the outcome the loader's own header says the version bump existed
+    to prevent.
     """
     libraries, metas = {}, {}
+    records, refs, involves = {}, collections.defaultdict(list), collections.defaultdict(list)
     for item in ddbc.scan(ddb):
         pk, sk = item.get("pk", ""), item.get("sk", "")
         if sk == "META" and pk.startswith("LIB#"):
             libraries[pk.removeprefix("LIB#")] = item
         elif sk == "META" and pk.startswith("NODE#") and item.get("node_id"):
             metas[item["node_id"]] = item
+        elif sk == "META" and pk.startswith(("CHAR#", "PROJ#")):
+            kind = "character" if pk.startswith("CHAR#") else "project"
+            records[pk] = dict(item, kind=kind)
+        elif pk.startswith("CHAR#") and sk.startswith("REF#"):
+            refs[pk].append(dict(item, node=sk.removeprefix("REF#")))
+        elif pk.startswith("PROJ#") and sk.startswith("CHAR#"):
+            involves[pk].append(sk)
 
     if not libraries:
         die(f"no library in '{ddbc.table()}'. Sign in to the local app and put "
@@ -179,7 +205,9 @@ def read_library(ddb, library: str | None = None) -> dict:
         die(f"library {lib} names root node {root}, which has no row. The "
             "catalog is broken; `studio catalog verify` reports on it.")
     return {"lib": lib, "root": root, "name": libraries[lib].get("name") or "Studio",
-            "nodes": nodes}
+            "nodes": nodes,
+            "records": {pk: row for pk, row in records.items() if row.get("lib") == lib},
+            "refs": dict(refs), "involves": dict(involves)}
 
 
 def name_paths(library: dict) -> dict[str, str]:
@@ -254,31 +282,35 @@ def expand(paths: dict[str, str], wanted: list[str]) -> dict:
 
 # ── hard rule #1 ────────────────────────────────────────────────────────────
 
-#: The placeholders the repo uses in place of a character or project name.
-#: `<…>` covers the literal placeholders that appear in prose; `subject-a` and
-#: its siblings are what the two test fixtures already use, which is why they
-#: are the shape a human is most likely to reach for.
-PLACEHOLDER = re.compile(r"^(?:<[a-z]+>|subject-[a-z0-9-]+|demo|sample|fixture|example)$")
-
-#: A personal name's shape: `Ada`, `Ada Lovelace`, `Ada-Lovelace`. Deliberately
-#: narrow. It fires on a capitalised alphabetic word and nothing else, so
-#: `IMG_1966_Original.JPG` and an uppercase extension pass — #284 asks for an
-#: awkward name, and refusing every capital would refuse the shape it wants.
-TITLE_CASE = re.compile(r"^[^\W\d_][a-zß-ɏ]+(?:[ _-][^\W\d_][a-zß-ɏ]+)*$")
+#: **The dev subjects that may be named in this repository.**
+#:
+#: This used to be a REGEX over the *shape* of a name —
+#: `^(?:<[a-z]+>|subject-[a-z0-9-]+|demo|sample|fixture|example)$` — with a
+#: second one refusing anything Title Cased. Both are gone, because the rule
+#: they enforced is gone: hard rule #1 is env-scoped now (see `studio/CLAUDE.md`).
+#: A dev subject exists only in a per-machine dev stack and in the shared
+#: fixture, and naming one is fine. A PRODUCTION character is still never named.
+#:
+#: A shape test could not express that distinction — `mira` and `demo` are the
+#: same string to a regex, which the old docstring admitted at length — so the
+#: gate moved to where the distinction actually lives: a list, edited
+#: deliberately. Adding a subject is a reviewed diff on this line, which is a
+#: better gate than a pattern that let every lowercase first name through and
+#: refused every capitalised one.
+#:
+#: The mechanical half of "this is dev material" is NOT here. It is `source()`,
+#: which refuses to read a bucket or table whose name contains `prod` before
+#: anything else happens — so a fixture is dev-origin by construction and this
+#: list only decides WHICH dev subjects are publishable.
+DEV_SUBJECTS = frozenset({
+    "jason",                                  # the seed fixture's subject
+    "subject-a", "subject-b",                 # what the test fixtures use
+    "demo", "sample", "fixture", "example",   # the generic stand-ins
+})
 
 #: Any capitalised word of three letters or more, for the report. Not a refusal
 #: — see `name_problems` on why.
 TITLE_TOKEN = re.compile(r"\b[A-Z][a-z]{2,}\b")
-
-
-def _title_case(text: str) -> bool:
-    return bool(TITLE_CASE.match(text)) and text[:1].isupper()
-
-
-def stem(name: str) -> str:
-    """A file's name without its extension; a folder's name unchanged."""
-    base, dot, ext = name.rpartition(".")
-    return base if dot and base and ext.isalnum() and len(ext) <= 5 else name
 
 
 def name_positions(paths: dict[str, str]) -> dict[str, list[str]]:
@@ -309,61 +341,55 @@ def name_positions(paths: dict[str, str]) -> dict[str, list[str]]:
     return {tree: sorted(names) for tree, names in found.items()}
 
 
-def name_problems(all_paths: dict[str, str], published: dict[str, str]) -> list[str]:
+def name_problems(all_paths: dict[str, str]) -> list[str]:
     """Every reason this promotion may not be published, one per line.
 
-    **WHAT IT CHECKS**
+    **WHAT IT CHECKS.** One thing: every segment in a name position anywhere in
+    the source library is in `DEV_SUBJECTS`. **The whole stack, not just the
+    selection** — #284 is explicit that generating naturally and sanitising
+    afterwards is the wrong order, because by then the name is already in the
+    bucket, the run JSON and the keys. So the property is "this stack was
+    *driven* with subjects that may be published", and a stack with one
+    unlisted name in a corner of it fails whether or not that corner is being
+    promoted.
 
-    1. **The whole stack, not just the selection.** Every segment in a name
-       position anywhere in the source library must be placeholder-shaped. #284
-       is explicit that generating naturally and sanitising afterwards is the
-       wrong order — by then the name is already in the bucket, the run JSON and
-       the keys — so the property being tested is "this stack was *driven* with
-       placeholders", and a stack with one real character name in a corner of it
-       fails it whether or not that corner is being promoted.
-    2. **Every published segment**, for the personal-name shape: a capitalised
-       alphabetic word, alone or hyphen/space/underscore-joined to more of them.
+    **THIS IS NARROWER THAN IT LOOKS, AND DELIBERATELY SO.** It used to be two
+    checks — a shape regex over the name positions and a Title-Case refusal over
+    every published segment — and both are deleted rather than adapted. The
+    Title-Case check has no meaning under an allowlist: it existed to catch a
+    name that the shape test would otherwise wave through, and a list has no
+    such gap. Keeping it would only have refused `<Name>`-shaped folders that
+    are now perfectly publishable.
 
     **WHAT IT CANNOT CATCH.** None of these is hypothetical:
 
-    * **A real name that is slug-shaped.** `projects/mira/` and `projects/demo/`
-      are the same string to a regex. Every lowercase first name in the world
-      passes this, which is exactly why `--placeholders-only` exists: the
-      machine checks the shape and the human attests to the provenance.
     * **A name in a promoted file's BYTES.** A prompt in `request.json`, a
       caption, a bible. Text objects are scanned and their capitalised tokens
       *reported* — but a report is a thing a human reads, and lowercase prose
       naming someone is not reported at all. The reason it is a report rather
       than a refusal is that a refusal on capitalised words in prose would fire
       on every sentence and be turned off within a week.
-    * **A face.** The fixture is media. A still or a clip of a real person
-      carries an identity no text check has any purchase on, and it goes into
-      the bucket rather than into git — outside hard rule #1's letter, and
-      squarely inside what a fixture on every machine should not contain.
-    * **Anything but a first name.** A surname, a nickname, an alias, an
-      initial, a name in another script, a name that happens to also be an
-      ordinary word.
-    * **The attestation itself.** `--placeholders-only` is a flag. Nothing
+    * **A face.** The fixture is media, and media of a real person carries an
+      identity no text check has any purchase on. Under the old absolute rule
+      this was listed as a reason not to publish such a fixture at all. Under
+      the env-scoped rule it is a reason to be deliberate about WHO is on the
+      list: a dev subject's likeness goes into a private bucket that every
+      machine in this account downloads, and adding a name here is the moment
+      that decision is made.
+    * **The attestation itself.** `--dev-subjects-only` is a flag. Nothing
       verifies it, and nothing can.
     """
     problems = []
-
     for tree, names in sorted(name_positions(all_paths).items()):
-        bad = [n for n in names if not PLACEHOLDER.match(n)]
+        bad = [n for n in names if n not in DEV_SUBJECTS]
         if bad:
             problems.append(
-                f"{tree}/ holds {', '.join(repr(n) for n in bad)} — a fixture is "
-                "promoted from a stack DRIVEN with placeholders "
-                "(subject-a, <project>), not from one sanitised afterwards. "
-                "This is the whole stack, not just what you selected.")
-
-    for path in sorted(published.values()):
-        for segment in path.split("/"):
-            if _title_case(stem(segment)):
-                problems.append(
-                    f"{path}: segment {segment!r} has the shape of a personal "
-                    "name. Rename it in the dev stack and re-publish — "
-                    "catalog.json lands in git.")
+                f"{tree}/ holds {', '.join(repr(n) for n in bad)} — not a dev "
+                "subject this repo publishes. A fixture is promoted from a "
+                "stack DRIVEN with listed subjects, not from one sanitised "
+                "afterwards; this is the whole stack, not just what you "
+                "selected. Add the name to DEV_SUBJECTS in dev_seed.py if it "
+                "belongs there, or rename it in the dev stack.")
     return problems
 
 
@@ -391,6 +417,84 @@ def text_tokens(bodies: dict[str, bytes]) -> dict[str, list[str]]:
 # ── the two documents ───────────────────────────────────────────────────────
 
 
+def entities(library: dict, paths: dict[str, str],
+             selected: set[str]) -> list[dict]:
+    """The `entities` half of `catalog.json`: who owns the promoted folders.
+
+    **Everything is expressed as a PATH**, because a fixture carries no ids —
+    see the module docstring. A character's `root`, its `hero`, every entry in
+    its `default_set` and every `references[].node` is the slash-joined chain of
+    names, and `dev-aws-seed.sh` maps them back to the ids it derived for the
+    machine it is seeding.
+
+    **An entity is dropped, not repaired, when its root was not promoted.** The
+    loader refuses an entity whose root is not a folder node in the fixture, and
+    inventing one here would put a folder in the fixture that nobody selected.
+    Reference entries and involvements are filtered the same way and for the
+    same reason: a `REF#` row naming an image that was not promoted is a row
+    pointing at nothing.
+
+    `schema_version`, `profile` and `counts` are carried through as they stand.
+    They are the record's own, and a fixture that normalised them would seed a
+    library subtly unlike the one it was promoted from.
+    """
+    promoted = {paths[n] for n in selected}
+
+    def path_of(node_id):
+        path = paths.get(node_id or "")
+        return path if path in promoted else None
+
+    out = []
+    for pk, row in sorted(library["records"].items(), key=lambda kv: kv[1]["slug"]):
+        root = path_of(row.get("root"))
+        if root is None:
+            continue
+        entity = {"kind": row["kind"], "slug": row["slug"], "root": root}
+
+        if row["kind"] == "character":
+            kept = [entry for entry in library["refs"].get(pk, [])
+                    if path_of(entry["node"])]
+            kept.sort(key=lambda e: (e.get("group") or "", e.get("order") or 0))
+            references = [{"node": paths[entry["node"]],
+                           "group": entry.get("group") or "unsorted",
+                           "order": entry.get("order"),
+                           "description": entry.get("description") or "",
+                           "tags": entry.get("tags") or [],
+                           "created": entry.get("created")}
+                          for entry in kept]
+            # `default_set` must be a SUBSET of `references` or the loader
+            # refuses the whole fixture. Filtered here rather than trusted: a
+            # node sits in the set with its `REF#` row filtered out above only
+            # when the two disagree in the source stack, which is a thing
+            # `catalog verify` reports on and not a thing to publish.
+            named = {ref["node"] for ref in references}
+            entity.update(
+                display_name=row.get("display_name") or row["slug"],
+                fictional=bool(row.get("fictional", True)),
+                schema_version=row.get("schema_version"),
+                hero=path_of(row.get("hero")),
+                default_set=[p for p in (path_of(n)
+                                         for n in row.get("default_set") or [])
+                             if p in named],
+                profile=row.get("profile") or {},
+                references=references,
+            )
+        else:
+            entity.update(
+                title=row.get("title") or row["slug"],
+                description=row.get("description") or "",
+                hero=path_of(row.get("hero")),
+                counts=row.get("counts") or {},
+                characters=sorted(
+                    library["records"][sk]["slug"]
+                    for sk in library["involves"].get(pk, [])
+                    if sk in library["records"]
+                    and path_of(library["records"][sk].get("root"))),
+            )
+        out.append({k: v for k, v in entity.items() if v is not None})
+    return out
+
+
 def source_key(version: str, path: str) -> str:
     """Where a node's bytes live in the seed bucket.
 
@@ -410,6 +514,12 @@ def build(library: dict, paths: dict[str, str], selected: set[str],
     the `size` attribute on the row: the row is what the API recorded and the
     manifest is what the loader will verify a download against, so the manifest
     has to describe the object rather than the record of it.
+
+    **`version` is 2 and `entities` is always present**, even when it is empty.
+    An empty list and a missing key load identically, so writing the key anyway
+    is what makes "this fixture describes no entities" a statement rather than
+    an omission. This document used to say `1` and carry no entities at all —
+    see `read_library`.
     """
     nodes, objects = [], {}
     for node_id in sorted(selected, key=lambda n: paths[n]):
@@ -425,7 +535,8 @@ def build(library: dict, paths: dict[str, str], selected: set[str],
                             "sha256": hashlib.sha256(body).hexdigest()}
         nodes.append(node)
 
-    catalog = {"version": 1, "library_name": library["name"], "nodes": nodes}
+    catalog = {"version": 2, "library_name": library["name"],
+               "entities": entities(library, paths, selected), "nodes": nodes}
     manifest = {"version": version, "object_count": len(objects),
                 "total_bytes": sum(o["size"] for o in objects.values()),
                 "objects": objects}
@@ -499,15 +610,16 @@ def cmd_tree(library):
 @click.option("--max-objects", default=MAX_OBJECTS, show_default=True,
               help="refuse a selection that expands past this many files. #284 "
                    "asks for six to eight: every machine downloads this.")
-@click.option("--placeholders-only", is_flag=True,
-              help="ATTEST that this dev stack was DRIVEN with placeholder names "
-                   "(subject-a, <project>) from the first generation — not "
-                   "renamed afterwards — and that you have read the capitalised "
+@click.option("--dev-subjects-only", is_flag=True,
+              help="ATTEST that this dev stack was DRIVEN with listed dev "
+                   "subjects (see DEV_SUBJECTS) from the first generation — not "
+                   "renamed afterwards — that nothing in it belongs to a "
+                   "PRODUCTION character, and that you have read the capitalised "
                    "tokens reported from the promoted text. Required for --apply. "
-                   "Nothing verifies this; the checks catch shapes, not people.")
+                   "Nothing verifies this; the check reads names, not people.")
 @click.option("--apply", is_flag=True, help="actually do it (default is a dry run)")
 def cmd_publish(wanted, paths_from, fixture_version, seed_bucket, library,
-                max_objects, placeholders_only, apply):
+                max_objects, dev_subjects_only, apply):
     """Copy chosen nodes into the seed bucket and write the fixture documents."""
     wanted = [p.strip("/") for p in wanted]
     if paths_from:
@@ -527,7 +639,6 @@ def cmd_publish(wanted, paths_from, fixture_version, seed_bucket, library,
             + ", ".join(repr(p) for p in picked["missing"])
             + "\n       `studio dev-seed tree` lists them.")
 
-    published = {nid: paths[nid] for nid in picked["all"]}
     files = sorted((nid for nid in picked["all"]
                     if lib["nodes"][nid]["kind"] == "file"),
                    key=lambda n: paths[n])
@@ -548,7 +659,7 @@ def cmd_publish(wanted, paths_from, fixture_version, seed_bucket, library,
                 "`studio catalog verify` reports on it.")
         blobs[node_id] = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
 
-    problems = name_problems(paths, published)
+    problems = name_problems(paths)
     tokens = text_tokens({paths[nid]: body for nid, body in blobs.items()})
 
     catalog, manifest = build(lib, paths, picked["all"], blobs, fixture_version)
@@ -583,10 +694,10 @@ def cmd_publish(wanted, paths_from, fixture_version, seed_bucket, library,
         die(f"{len(problems)} name problem(s). Nothing was written.")
 
     if not apply:
-        print("\nDry run. Re-run with --apply --placeholders-only to publish.")
+        print("\nDry run. Re-run with --apply --dev-subjects-only to publish.")
         return
-    if not placeholders_only:
-        die("--apply needs --placeholders-only. catalog.json lands in git, so "
+    if not dev_subjects_only:
+        die("--apply needs --dev-subjects-only. catalog.json lands in git, so "
             "publishing is the moment hard rule #1 applies to this dev stack's "
             "names. `--help` says exactly what you are attesting to.")
 

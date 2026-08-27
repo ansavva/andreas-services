@@ -18,7 +18,7 @@
 # what that produced. Generating per machine would re-bill on every setup.
 #
 # That property is pinned by a test rather than by this comment:
-# `pipeline/tests/test_dev_scripts.py` greps this file's executable lines. The
+# `pipeline/tests/contracts/test_dev_scripts.py` greps this file's executable lines. The
 # test says what it does and does not catch; read it before adding a command
 # here that runs anything.
 #
@@ -57,7 +57,7 @@
 # written.
 #
 # **This contract was one-sided when it was written here and is not any more.**
-# `studio dev-seed publish` is the writer, and `pipeline/tests/test_dev_seed.py`
+# `studio dev-seed publish` is the writer, and `pipeline/tests/unit/maintenance/test_dev_seed.py`
 # feeds its output through `fixture_problems` below — so the two halves cannot
 # drift without a red test. Neither side had to move to make them agree.
 #
@@ -154,7 +154,9 @@
 # It was `blobs/<node_id>`, flat. The prefix buys per-entity cost attribution,
 # per-entity lifecycle rules and a bulk delete that is one prefix — and it
 # carries **no slug**, which is hard rule #1 applied to a bucket listing rather
-# than only to the repo.
+# than only to the repo. Unchanged by that rule going env-scoped: the exception
+# is for naming a DEV SUBJECT in the repo, and the property this key scheme buys
+# is about the production bucket, where the rule is still absolute.
 #
 # The owner is the entity whose `root` is the first segment of the node's path,
 # and the key is stamped ONCE, here, at creation. Nothing parses it and nothing
@@ -505,19 +507,38 @@ fixture_problems() {
 # "the attribute is absent" is what the schema means by that, and an absent
 # attribute is also what `attribute_not_exists` tests.
 #
-# `ddb` marshals a list as `{"L": …}` and a map as `{"M": …}` now, because an
-# entity row is not flat: a character carries `default_set` (a list of node ids)
-# and `profile` (a nested map), and a run carries `bindings`. A node row never
+# `ddb` marshals a list as `{"L": …}` and a map as `{"M": …}`, because an entity
+# row is not flat: a character carries `default_set` (a list of node ids) and
+# `profile` (a nested map), and a run carries `bindings`. A node row never
 # needed either, which is why this started out handling only strings and
 # numbers.
+#
+# **It is RECURSIVE, and the version that was not silently corrupted a bible.**
+# The first version marshalled one level: a list became `{L: map({S: .})}` and a
+# map became `{M: with_entries(.value |= {S: tostring})}`. A character `profile`
+# is nested several deep and holds lists of maps — `wardrobe.tops[].item`,
+# `consistency.drift_modes[].failure` — so every inner map arrived in DynamoDB
+# as the STRING `{"item":"…","colour":"…"}` and every inner list as a string
+# too. It validated, it loaded, and the bible it seeded was not the bible that
+# was promoted. Nothing caught it because no fixture had ever been published
+# and the two test catalogs both used flat entity documents.
+#
+# `ddbv` handles one value of any shape and calls itself; `ddb` is the top-level
+# item, which additionally DROPS nulls rather than writing `{"NULL": true}` — a
+# folder has no `blob_key`, "the attribute is absent" is what the schema means
+# by that, and an absent attribute is what `attribute_not_exists` tests. Inside
+# a LIST a null is kept as `{"NULL": true}`, because dropping one there would
+# renumber every element after it.
 DDB_JQ_DEFS='
-  def ddb: with_entries(select(.value != null))
-    | with_entries(.value |= (
-        if type == "number" then {N: (. | tostring)}
-        elif type == "boolean" then {BOOL: .}
-        elif type == "array" then {L: (map({S: .}))}
-        elif type == "object" then {M: (with_entries(.value |= {S: (. | tostring)}))}
-        else {S: .} end));
+  def ddbv:
+    if type == "number" then {N: (. | tostring)}
+    elif type == "boolean" then {BOOL: .}
+    elif type == "null" then {NULL: true}
+    elif type == "array" then {L: (map(ddbv))}
+    elif type == "object" then {M: (with_entries(select(.value != null)
+                                                 | .value |= ddbv))}
+    else {S: .} end;
+  def ddb: with_entries(select(.value != null)) | with_entries(.value |= ddbv);
   def put($item): {Put: {TableName: $table, Item: ($item | ddb),
                          ConditionExpression: "attribute_not_exists(pk)"}};
 '

@@ -46,7 +46,7 @@ integration response and two gateway responses at once, and one omission is a
 browser failure with no status attached (`backend/studio_core/app_factory.py`).
 
 Every one of the six sent `PUT` from here anyway, and none of them had ever
-reached the API. `tests/fake_api.py` answered PUT, so the suite agreed with the
+reached the API. `tests/support/fake_api.py` answered PUT, so the suite agreed with the
 adapter rather than with the service — which is why it refuses the verb outright
 now. If the API adopts PUT, this file changes with it and nothing else does.
 

@@ -54,10 +54,12 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-BACKEND = Path(__file__).resolve().parents[1] / "studio_core"
+from tests.paths import INFRA_MODULES, STUDIO_DIR
+
+BACKEND = STUDIO_DIR / "backend" / "studio_core"
 S3_CLIENT = BACKEND / "clients" / "aws" / "s3.py"
 COMPUTE = (
-    Path(__file__).resolve().parents[2] / "infra" / "modules" / "compute" / "main.tf"
+    INFRA_MODULES / "compute" / "main.tf"
 )
 
 # `boto3` names an operation in snake_case and IAM names it in PascalCase.

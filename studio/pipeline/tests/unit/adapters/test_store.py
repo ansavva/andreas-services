@@ -461,7 +461,9 @@ def test_a_blob_key_carries_the_owner_and_the_node_and_no_name(library):
     """**A bucket listing stops leaking hard rule #1.**
 
     `<owner_kind>/<owner_id>/<node_id>.<ext>`, stamped once at creation from the
-    owner the parent already resolves to. Never parsed, never re-derived.
+    owner the parent already resolves to. Never parsed, never re-derived. The
+    rule is env-scoped for the REPO; a production bucket listing is not the
+    repo, and this property is what keeps it clean.
     """
     key = library.fake.nodes[library.face_1]["blob_key"]
     assert key == f"characters/{library.character}/{library.face_1}.webp"

@@ -9,7 +9,7 @@ forward to them. Both are gone — Click resolves the tree itself, so
 `studio runs show --help` is routed rather than rewritten on the way through.
 
 Nothing about the individual command surfaces changed in that move.
-`tests/cli_surface_reference.json` is a snapshot of what argparse exposed —
+`tests/contracts/cli_surface_reference.json` is a snapshot of what argparse exposed —
 every option, its flags, arity, default, choices, repeatability and help — and
 `test_cli_surface.py` asserts the Click tree still matches it.
 """

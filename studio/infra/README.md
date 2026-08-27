@@ -561,7 +561,7 @@ a fixture out of a dev stack rather than building one: a human drives the CLI
 against their own stack as ordinary work, and a handful of the nodes that
 produces become the fixture. So it calls no model, needs no provider token, and
 carries no approval gate of its own — the approval happened when the generations
-were run. `pipeline/tests/test_dev_seed.py` pins that, and says what the pin
+were run. `pipeline/tests/unit/maintenance/test_dev_seed.py` pins that, and says what the pin
 cannot see.
 
 It reads the source stack's **catalog table**, not a bucket listing, and walks
@@ -577,15 +577,30 @@ the loader refuses a fixture whose parent folders are missing, and
 `--max-objects` caps what the expansion can reach. Refusing to publish
 everything is the default, not an option.
 
-`catalog.json` lands in git, so **hard rule #1 applies to the promotion itself**.
-The publisher refuses a stack whose `characters/` or `projects/` segments are not
-placeholder-shaped — the whole stack, not just the selection, because #284 is
-explicit that generating naturally and sanitising afterwards is the wrong order.
-It also refuses any published segment shaped like a personal name, reports the
-capitalised tokens found in promoted text, and requires `--placeholders-only`
-before `--apply`. What that cannot catch is written out in `name_problems`, and
-the short version is: a lowercase first name is indistinguishable from a project
-slug, and a face is not text.
+`catalog.json` lands in git, so **hard rule #1 applies to the promotion itself**
+— in its env-scoped form, which is what made publishing possible at all. A dev
+subject may be named in the repo; a production character may not. Two guards,
+different in kind:
+
+- **`source()`** refuses a bucket or table whose name contains `prod` before it
+  reads anything, so a fixture is dev-origin by construction.
+- **`name_problems`** refuses a stack holding any entity root outside
+  `DEV_SUBJECTS`, a committed frozenset in `dev_seed.py`. The whole stack, not
+  just the selection, because #284 is explicit that generating naturally and
+  sanitising afterwards is the wrong order.
+
+It reports the capitalised tokens found in promoted text and requires
+`--dev-subjects-only` before `--apply`.
+
+**This used to be two regexes** — a shape test (`subject-a`, `demo`, `<word>`)
+plus a refusal on any Title Cased segment — and both are deleted. They could not
+tell `mira` from `demo`, which the old `name_problems` docstring said outright,
+so they admitted every lowercase first name and refused every capitalised folder.
+An allowlist is a worse fit for a machine and a much better fit for the decision:
+adding a subject is a reviewed diff, and that review is where "should this
+likeness be in a fixture every machine downloads" gets asked. What it still
+cannot catch is written out in `name_problems`, and the short version is that a
+face is not text.
 
 ### The two documents
 

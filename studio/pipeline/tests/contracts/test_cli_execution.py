@@ -10,7 +10,7 @@ produces it.
 **These now go through the real adapter stack.** Under the old fixture `store`
 was monkeypatched onto a moto bucket in which a node's id was its key, so a
 command could send a route or a body the API would refuse and still pass here.
-`tests/fake_api.py` answers `api.request` instead, so what is exercised is what
+`tests/support/fake_api.py` answers `api.request` instead, so what is exercised is what
 the CLI actually puts on the wire.
 
 Read-only commands where possible, deliberately: the point is proving the

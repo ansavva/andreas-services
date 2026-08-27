@@ -154,6 +154,51 @@ def _point_config_at_the_dev_stack(dev_stack):
             os.environ[name] = value
 
 
+#: Hosts that bill. The unit suite's guard is a loopback ALLOWLIST, which is
+#: right there and exactly wrong here — real S3, DynamoDB and Cognito are the
+#: whole point of this tree. So the shape inverts: everything is allowed except
+#: the model providers, which nothing in `studio_core/` can reach anyway (it has
+#: no HTTP client in its dependencies) and which nothing here should introduce.
+BILLING_HOSTS = (
+    "api.replicate.com",
+    "replicate.delivery",
+    "api.openai.com",
+    "api.anthropic.com",
+)
+
+
+@pytest.fixture(autouse=True)
+def _no_outbound_sockets(monkeypatch):
+    """Replace the unit suite's loopback allowlist with a provider denylist.
+
+    `tests/conftest.py` autouses a fixture of this name that refuses any socket
+    to anything but loopback. That is correct for a moto-and-test-client suite
+    and would refuse every call this tree exists to make — and because this tree
+    is SKIPPED without `STUDIO_INTEGRATION=1`, it would have refused them
+    silently, staying green in CI and failing only on the machine of whoever
+    next ran the integration suite on purpose.
+
+    Overriding the name here rather than in one module means a test added later
+    inherits this, for the same reason `signed_in` below is overridden here.
+    """
+    import socket
+
+    real_connect = socket.socket.connect
+
+    def guarded(self, address, *args, **kwargs):
+        host = address[0] if isinstance(address, tuple) else address
+        if isinstance(host, str) and any(host == h or host.endswith("." + h)
+                                         for h in BILLING_HOSTS):
+            raise RuntimeError(
+                f"the integration suite tried to reach {host!r}, which bills. "
+                "The app has no model-provider client and must not grow one; "
+                "every paid call in this repo is in the pipeline's "
+                "adapters/replicate.py.")
+        return real_connect(self, address, *args, **kwargs)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded)
+
+
 @pytest.fixture(autouse=True)
 def signed_in():
     """Switch off the unit suite's stub caller for this whole tree.

@@ -22,7 +22,8 @@ which no unit test can do.
 """
 
 import re
-from pathlib import Path
+
+from tests.paths import INFRA_MODULES
 
 import pytest
 
@@ -41,7 +42,7 @@ def _terraform_local(name: str) -> str:
     file has exactly one assignment per name.
     """
     source = (
-        Path(__file__).resolve().parents[2] / "infra" / "modules" / "api_gateway" / "main.tf"
+        INFRA_MODULES / "api_gateway" / "main.tf"
     ).read_text()
     match = re.search(rf'^\s*{name}\s*=\s*"([^"]*)"', source, re.M)
     assert match, f"local.{name} not found in modules/api_gateway/main.tf"
@@ -103,7 +104,7 @@ def _bucket_cors_headers(module: str) -> list[str]:
     exactly one `cors_rule`.
     """
     source = (
-        Path(__file__).resolve().parents[2] / "infra" / "modules" / module / "main.tf"
+        INFRA_MODULES / module / "main.tf"
     ).read_text()
     match = re.search(r"allowed_headers\s*=\s*\[([^\]]*)\]", source)
     assert match, f"no cors_rule allowed_headers in modules/{module}/main.tf"
@@ -133,7 +134,7 @@ def test_the_bucket_allows_put_and_nothing_wider(module):
     widening it is a decision rather than a tidy-up.
     """
     source = (
-        Path(__file__).resolve().parents[2] / "infra" / "modules" / module / "main.tf"
+        INFRA_MODULES / module / "main.tf"
     ).read_text()
     match = re.search(r"allowed_methods\s*=\s*\[([^\]]*)\]", source)
     assert match, f"no cors_rule allowed_methods in modules/{module}/main.tf"
@@ -149,7 +150,7 @@ def test_no_bucket_allows_a_wildcard_origin(module):
     refuses one written into the resource, which that block cannot see.
     """
     source = (
-        Path(__file__).resolve().parents[2] / "infra" / "modules" / module / "main.tf"
+        INFRA_MODULES / module / "main.tf"
     ).read_text()
     match = re.search(r"allowed_origins\s*=\s*(.+)", source)
     assert match, f"no cors_rule allowed_origins in modules/{module}/main.tf"

@@ -23,15 +23,15 @@ code. The code is one package with one dependency set — see [Layout](#layout).
 These are not preferences. They hold everywhere in this repo, in every skill,
 and in anything written back to it.
 
-### 1. NEVER name a character anywhere in the repo
+### 1. NEVER name a PRODUCTION character in the repo
 
-**No character name appears in this repository — ever.** Not in code, docstrings,
-`SKILL.md` files, examples, comments, tests, fixtures, commit messages, branch
-names, or pull request titles and bodies.
+**No production character's name appears in this repository — ever.** Not in
+code, docstrings, `SKILL.md` files, examples, comments, tests, fixtures, commit
+messages, branch names, or pull request titles and bodies.
 
 Characters are **data, not code**: a row in the catalog and a folder of nodes
-(see `studio-media-character`). The repo describes the *machinery* that operates on any
-character, so it never needs to know one by name.
+(see `studio-media-character`). The repo describes the *machinery* that operates
+on any character, so it never needs to know one by name.
 
 Use the placeholder `<name>` in every example and help string:
 
@@ -42,12 +42,45 @@ studio runs outputs <project>/latest --presign
 ```
 
 The same goes for **project** names: a project is usually named after the work,
-but today's are named after characters, so use `<project>` in examples too.
+but today's are named after characters, so use `<project>` in examples too. And
+for anything that identifies a production character indirectly — a scene, a
+catchphrase, a distinctive slug. When writing a commit message or PR about
+character work, describe the change to the tooling, not the character it was
+done for.
 
-The same goes for anything that identifies a character indirectly — a scene, a
-catchphrase, or a distinctive slug. Prefer `<slug>` over a real one. When writing
-a commit message or PR about character work, describe the change to the tooling,
-not the character it was done for.
+#### The exception: a DEV SUBJECT may be named
+
+**This rule used to be absolute, and the absolute form is what it says above
+minus the word "production".** It was narrowed in August 2026, when the dev seed
+fixture was finally published — because the absolute form made the fixture
+impossible to complete.
+
+A **dev subject** is a character that exists only in a per-machine
+`studio-dev-<short12>-*` stack and in the shared seed fixture. It never appears
+in production. Naming one in the repo is fine, and the fixture requires it: a
+fixture carries `catalog.json` into git, and every path in that document is a
+name.
+
+Two things make this safe, and they are different in kind:
+
+- **Mechanical.** `dev_seed.source()` refuses to read a bucket or table whose
+  name contains `prod` before it reads anything at all, so a fixture is
+  dev-origin by construction. There is no path by which a production name
+  reaches `catalog.json`.
+- **Deliberate.** Which dev subjects may be published is `DEV_SUBJECTS` in
+  `maintenance/dev_seed.py` — a committed frozenset. Adding one is a reviewed
+  diff, and that review is where the question "should this person's likeness be
+  in a fixture every machine downloads" gets asked.
+
+What this replaced was a pair of REGEXES: names had to match
+`subject-a`/`demo`/`<word>`, and any Title Cased segment was refused outright.
+The pattern could not tell `mira` from `demo` — its own docstring said so — so it
+refused every capitalised folder and admitted every lowercase first name. A list
+of names is a worse fit for a machine and a much better fit for the decision
+actually being made.
+
+**Production characters are unchanged.** They are still never named, and nothing
+about the fixture path reaches them.
 
 ### 2. NEVER submit without approval of the FULL payload
 
@@ -663,7 +696,7 @@ that had to shell out through `uv run` because no two scripts shared an
 interpreter. Those calls are now ordinary function calls.
 
 The parsing is **Click**, and the port was mechanical on purpose:
-`pipeline/tests/cli_surface_reference.json` records what argparse exposed —
+`pipeline/tests/contracts/cli_surface_reference.json` records what argparse exposed —
 every command, option, flag spelling, arity, default, choice list,
 repeatability, type and help string, 255 params — and `test_cli_surface.py`
 asserts the Click tree still matches it. One thing genuinely could not be
@@ -837,7 +870,10 @@ to invalidate.
    so studio's permissions live at the root even though its skills do not.
 6. Add a test. `pipeline/tests/` is moto-backed and needs no AWS; the suite is
    deliberately weighted towards wiring rather than features, because a
-   restructure is what actually breaks this code.
+   restructure is what actually breaks this code. **Do not stub Replicate in
+   it** — `conftest.py` sets `STUDIO_REPLICATE_MODE=fake` autouse and
+   `adapters/replicate.py` answers locally, with an autouse socket guard behind
+   that for anything reached indirectly. See `studio-code-pipeline`.
 7. Document it in the table above, and in `studio/CLAUDE.md`.
 
 To add a new *model* rather than a new skill, use `studio-media-add-model` — models

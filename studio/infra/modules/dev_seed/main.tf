@@ -32,9 +32,11 @@ terraform {
 #
 # Contents are real model output promoted out of a developer's dev stack, never
 # a copy of anyone's production library. That is what makes it shareable at all,
-# and it is enforced upstream rather than here: `studio dev-seed publish`
-# refuses a tree that was not driven with placeholder names, because
-# `catalog.json` lands in git and hard rule #1 applies to it.
+# and it is enforced upstream rather than here, in two places: `dev_seed.source()`
+# refuses to read a bucket or table named `*prod*` at all, and `name_problems`
+# refuses a tree that was not driven with names in `DEV_SUBJECTS`. `catalog.json`
+# lands in git, and hard rule #1 applies to it in its env-scoped form — a dev
+# subject may be named there, a production character may not.
 
 # `force_destroy` is deliberately ABSENT, and the absence is the decision.
 #

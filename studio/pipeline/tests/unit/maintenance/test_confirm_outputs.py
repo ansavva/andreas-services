@@ -16,7 +16,7 @@ from click.testing import CliRunner
 from studio_pipeline import cli
 from studio_pipeline.adapters import entities as E
 from studio_pipeline.adapters import store
-from tests.fake_api import BUCKET
+from tests.support.fake_api import BUCKET
 
 
 def _run(*args):

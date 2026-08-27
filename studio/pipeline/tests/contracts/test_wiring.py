@@ -13,7 +13,6 @@ suite, are the two that go red on it.
 """
 
 import importlib
-import pathlib
 import pkgutil
 
 import pytest
@@ -65,7 +64,7 @@ def test_no_undefined_names_anywhere():
     if not ruff:
         pytest.skip("ruff not on PATH (it is in the dev dependency group)")
 
-    root = pathlib.Path(__file__).resolve().parents[1]
+    root = studio_pipeline.STUDIO_DIR / "pipeline"
     out = subprocess.run(
         [ruff, "check", "--select", "F821,F822,F811", "--output-format", "concise",
          str(root / "studio_pipeline")],

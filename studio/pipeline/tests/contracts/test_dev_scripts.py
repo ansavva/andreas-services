@@ -21,26 +21,15 @@ import pytest
 
 from studio_pipeline import STUDIO_DIR
 from studio_pipeline.maintenance import catalog_migrate
-
-SCRIPTS = STUDIO_DIR / "scripts"
-SEED = SCRIPTS / "dev-aws-seed.sh"
-SHARED = SCRIPTS / "dev-shared-material.sh"
+from tests.support.shell import SCRIPTS, SEED, SHARED, source_and_run
 
 BUCKET = "studio-dev-abc123456789-media-us-east-1"
 
 
-def _source_and_run(script, snippet: str) -> str:
-    """Source a script and run `snippet` against its functions.
-
-    Safe because both scripts define their functions before doing anything:
-    `dev-aws-seed.sh` puts its body in `main` behind a `BASH_SOURCE` guard for
-    exactly this, and `dev-shared-material.sh` is sourced-only by design.
-    """
-    result = subprocess.run(
-        ["bash", "-c", f'source "{script}"\n{snippet}'],
-        capture_output=True, text=True, check=True,
-    )
-    return result.stdout
+#: Re-exported so this module reads as it did. The implementation moved to
+#: `tests/support/shell.py` when `unit/maintenance/test_dev_seed.py` needed it
+#: too — see that module on why a test importing a test stopped working.
+_source_and_run = source_and_run
 
 
 def _code_lines(path) -> str:
@@ -478,11 +467,7 @@ GOOD_MANIFEST = {
 }
 
 
-def _problems(catalog: dict, manifest: dict) -> str:
-    return _source_and_run(SEED, (
-        f"fixture_problems {json.dumps(json.dumps(catalog))} "
-        f"{json.dumps(json.dumps(manifest))}"
-    ))
+from tests.support.shell import problems as _problems  # noqa: E402
 
 
 def test_a_well_formed_fixture_has_no_problems():
@@ -622,3 +607,62 @@ def test_a_folder_row_survives_the_tab_collapse_trap():
         "|v1/media/a.png|image/png|character|subject-a",
         "porch-teaser|folder|2026-08-19T09:12:44.000003+00:00|||project|porch-teaser",
     ]
+
+
+# ── the jq marshaller ───────────────────────────────────────────────────────
+
+
+def _entity_item(doc: dict) -> dict:
+    """`entity_items` for one character, as the `Put` it would transact."""
+    out = _source_and_run(SEED, (
+        "entity_items T lib-1 char-1 character subject-a node-root "
+        f"2026-08-19T09:12:44+00:00 {json.dumps(json.dumps(doc))}"
+    ))
+    return json.loads(out)[0]["Put"]["Item"]
+
+
+def test_a_nested_bible_is_marshalled_as_maps_and_lists():
+    """**The regression this exists for turned a bible into a string.**
+
+    `DDB_JQ_DEFS`'s `ddb` used to marshal one level: a map became
+    `{M: with_entries(.value |= {S: tostring})}`. A character `profile` is
+    nested several deep and holds lists of maps, so `wardrobe.tops[0]` arrived
+    in DynamoDB as the literal string `{"item":"tee","colour":"black"}` and the
+    seeded bible was not the bible that was promoted. It validated and it
+    loaded; nothing was red.
+
+    It survived because no fixture had ever been published and both hand-written
+    test catalogs used flat entity documents. `test_dev_seed` supplies the other
+    half — a source stack whose character carries a real nested profile.
+    """
+    profile = {
+        "schema_version": 2,
+        "identity": {"apparent_age": "<age>", "signature_features": ["<cue>"]},
+        "wardrobe": {"tops": [{"item": "<garment>", "colour": "black"}]},
+    }
+    item = _entity_item({"display_name": "<Name>", "fictional": True,
+                         "default_set": ["node-a", "node-b"],
+                         "profile": profile})
+
+    tops = item["profile"]["M"]["wardrobe"]["M"]["tops"]
+    assert tops == {"L": [{"M": {"item": {"S": "<garment>"},
+                                 "colour": {"S": "black"}}}]}
+    assert item["profile"]["M"]["identity"]["M"]["signature_features"] == {
+        "L": [{"S": "<cue>"}]}
+    assert item["profile"]["M"]["schema_version"] == {"N": "2"}
+    assert item["default_set"] == {"L": [{"S": "node-a"}, {"S": "node-b"}]}
+    assert item["fictional"] == {"BOOL": True}
+
+
+def test_a_null_is_dropped_from_an_item_and_kept_inside_a_list():
+    """Two different right answers, for two different reasons.
+
+    An absent attribute is what the schema means by "this row has no `hero`",
+    and it is also what `attribute_not_exists` tests — so a top-level null is
+    dropped rather than written as `{"NULL": true}`. Inside a LIST it is kept,
+    because dropping an element renumbers every element after it.
+    """
+    item = _entity_item({"display_name": "<Name>", "hero": None,
+                         "default_set": ["node-a", None]})
+    assert "hero" not in item
+    assert item["default_set"] == {"L": [{"S": "node-a"}, {"NULL": True}]}

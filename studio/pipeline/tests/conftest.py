@@ -7,7 +7,7 @@ tests exist to check: a restructure breaks *wiring*, and a suite that stubs the
 store one function at a time asserts nothing about the route, the body or the
 field names the CLI actually puts on the wire.
 
-So the seam moved down to `adapters.api.request`, and `tests/fake_api.py` answers
+So the seam moved down to `adapters.api.request`, and `tests/support/fake_api.py` answers
 it with an in-memory library keyed on real UUIDs. `adapters/entities.py` and
 `adapters/store.py` now run for real in every test that touches storage, which
 means a route renamed on one side and not the other fails here rather than in
@@ -18,7 +18,9 @@ Bytes stay real, on the same moto bucket as before: presigned URLs are
 `curate dedupe` still hashes genuine bytes and `frames` still runs ffmpeg over a
 genuine file.
 
-Fixture subjects are `subject-a` / `subject-b`, per hard rule #1, and the project
+Fixture subjects are `subject-a` / `subject-b` — generic on purpose even now
+that hard rule #1 is env-scoped and a dev subject may be named: a unit suite
+should not depend on who the seed fixture happens to be about. The project
 is `porch-teaser` — deliberately **not** a character's slug. Entity roots are
 children of the library root now, so a project sharing a character's slug would
 be a name collision in the tree; the old fixture had `characters/subject-a` and
@@ -44,7 +46,18 @@ os.environ["STUDIO_S3_BUCKET"] = "studio-prod-media-us-east-1"
 # gives, so the suite has to name one — `catalog gc` and `catalog migrate`
 # refuse before they reach moto otherwise.
 os.environ["STUDIO_CATALOG_TABLE"] = "studio-prod-catalog"
-# Never let a test reach the real API, whatever is in studio/.env.
+# Never let a test reach the real API, whatever is in studio/.env. TWO
+# mechanisms, and they fail differently on purpose:
+#
+#   * `STUDIO_REPLICATE_MODE=fake` makes `adapters/replicate.py` answer all six
+#     of its functions locally. This is the one that tests are meant to rely on
+#     — it replaced a monkeypatch per test file, which a new file could forget.
+#   * A dud token, so that if the mode is ever unset the live client gets a 401
+#     from Replicate instead of a bill from it.
+#
+# `_no_outbound_sockets` below is the third and the only one that catches a paid
+# call reached indirectly, through a module neither of these knows about.
+os.environ["STUDIO_REPLICATE_MODE"] = "fake"
 os.environ["REPLICATE_API_TOKEN"] = "r8_test_token"
 
 from moto import mock_dynamodb, mock_s3  # noqa: E402
@@ -56,8 +69,9 @@ from studio_pipeline.adapters import auth as _auth  # noqa: E402
 from studio_pipeline.adapters import ddb as ddbc  # noqa: E402
 from studio_pipeline.adapters import s3 as s3c  # noqa: E402
 from studio_pipeline.adapters import store as _store  # noqa: E402
+from studio_pipeline.engine import registry as _registry  # noqa: E402
 
-from tests.fake_api import BUCKET, FakeApi  # noqa: E402
+from tests.support.fake_api import BUCKET, FakeApi  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -105,6 +119,75 @@ def _isolated_profiles(tmp_path, monkeypatch):
     _profiles.select(None)
     yield
     _profiles.select(None)
+
+
+#: Loopback only. moto runs in-process and `FakeApi` is a dict, so a unit test
+#: has no legitimate reason to open a socket to anything else — which makes an
+#: allowlist the right shape here and a denylist the right shape for the
+#: integration suite, where real S3, DynamoDB and Cognito are the point.
+_LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+
+
+@pytest.fixture(autouse=True)
+def _registry_is_a_copy(monkeypatch, tmp_path):
+    """No test may write into `engine/models.json`. It is SOURCE.
+
+    **This is a real incident, not a precaution.** `studio models refresh`
+    calls `REG.save_snapshot`, which rewrites the committed registry in place,
+    and `test_every_subcommand_dispatches` invokes every leaf command in the
+    tree — `models refresh` included. It survived only because the fetch it
+    makes first went to `api.replicate.com` over the network with the dud token
+    above, got a 401, raised `SchemaError` and hit the `continue`. In other
+    words the suite was making live calls to a model provider and depending on
+    them FAILING.
+
+    The moment `STUDIO_REPLICATE_MODE=fake` made that call succeed with an
+    empty body, the refresh wrote an empty snapshot over every model and
+    deleted 391 lines of hand-verified schema. Two board tests went red because
+    `panel_format` reads `snapshot.output_format.enum` — which is the good news;
+    the file had already been corrupted on the run before.
+
+    Same shape as `_auth.CONFIG_DIR` being redirected further up, and the same
+    fix: point the writable path somewhere disposable. Copied rather than
+    emptied, because the registry is READ constantly and an empty one would
+    fail every test for an unrelated reason.
+    """
+    copy = tmp_path / "models.json"
+    copy.write_bytes(pathlib.Path(_registry.PATH).read_bytes())
+    monkeypatch.setattr(_registry, "PATH", str(copy))
+
+
+@pytest.fixture(autouse=True)
+def _no_outbound_sockets(monkeypatch):
+    """The backstop `STUDIO_REPLICATE_MODE` cannot be.
+
+    A config switch can only fake the calls that go through the module it
+    switches. It says nothing about a paid call added to `adapters/s3`, or
+    reached through a dependency, or made by a subprocess — and
+    `test_dev_seed`'s source scan says the same of itself in its own docstring.
+    This closes that by construction: connecting anywhere but loopback raises,
+    so the failure is a stack trace naming the caller rather than an invoice.
+
+    Patched on `socket.socket.connect` rather than on a library, because every
+    HTTP client in the tree ends up there — urllib in `adapters/replicate.py`,
+    urllib3 under botocore — and patching one of them leaves the others open.
+    """
+    import socket
+
+    real_connect = socket.socket.connect
+
+    def guarded(self, address, *args, **kwargs):
+        host = address[0] if isinstance(address, tuple) else address
+        if isinstance(host, str) and host not in _LOOPBACK:
+            raise RuntimeError(
+                f"a test tried to open a socket to {host!r}. Nothing in the "
+                "unit suite talks to the network: moto is in-process, the API "
+                "is a fake, and Replicate answers from "
+                "STUDIO_REPLICATE_MODE=fake. If this is a real integration "
+                "test it belongs in tests/integration/.")
+        return real_connect(self, address, *args, **kwargs)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded)
 
 
 @pytest.fixture(autouse=True)

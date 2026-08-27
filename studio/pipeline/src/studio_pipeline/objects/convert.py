@@ -99,7 +99,7 @@ def _source_name(key: str) -> str:
 @click.option("--add-input", help=("Write into PROJECT's input pool as <project>_in_<n> (the usual "
               "destination)."))
 # `--dest-key` / `--key` and their help text say "S3 key" and take a NAME PATH.
-# Both are frozen: `tests/cli_surface_reference.json` is the argparse-era capture
+# Both are frozen: `tests/contracts/cli_surface_reference.json` is the argparse-era capture
 # of the CLI surface and `test_help_text_survived` compares these strings against
 # it, so correcting the wording here is a contract change and not a comment fix.
 @click.option("--dest-key", help="Explicit destination S3 key instead.")

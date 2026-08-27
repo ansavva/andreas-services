@@ -159,7 +159,9 @@ dev-seed publish --apply` — so today a stack is empty apart from the pose plat
 and a starting phrasebook.** It is human-gated, but **not** because publishing
 generates media: `publish` promotes nodes that already exist in a dev stack, so
 it calls no model and costs nothing. The gate is hard rule #1 — `catalog.json`
-lands in git, so the publisher requires `--placeholders-only` before `--apply`.
+lands in git, so the publisher requires `--dev-subjects-only` before `--apply`
+and refuses any name outside `DEV_SUBJECTS`. That rule is **env-scoped**: a dev
+subject may be named in the repo, a production character never may.
 `studio/CLAUDE.md` has the reasoning.
 
 Running the **CLI** against production is a **named profile**, decided in August
