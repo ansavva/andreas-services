@@ -142,6 +142,29 @@ jobs:
       - name: Build
         run: cd studio/frontend && npm run build
 
+      # END-TO-END, STUBBED. Every `/api/**` is fulfilled from fixtures captured
+      # off the real API, so this needs no AWS, no credentials and no dev stack —
+      # which is what lets it run in a workflow that never writes to AWS. The
+      # live mode (`npm run e2e:live`, against scripts/dev-up.sh) is local only.
+      #
+      # `--with-deps` because the runner has no browser; it is the browser
+      # download, not the app, that makes this step the slow one.
+      - name: Install the browser
+        run: cd studio/frontend && npx playwright install --with-deps chromium
+
+      - name: End-to-end
+        run: cd studio/frontend && npm run e2e
+
+      # The trace is the only thing worth having off a failed run — Playwright
+      # writes one per failure and nothing on a pass.
+      - name: Upload traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: studio/frontend/test-results/
+          retention-days: 7
+
       # The design system ships every component as a .web/.native pair behind
       # one extensionless export, and picking the wrong leaf COMPILES CLEANLY —
       # it only shows up as an unstyled page at runtime. Auditing the source map
