@@ -6,7 +6,9 @@ import type { CharacterRecord } from "../types";
 
 // The header pulls in auth and the library context and says nothing this file
 // asserts on. Everything else is the real component.
-vi.mock("../components/browse/FolderBrowser", () => ({
+// `FolderTab` moved to its own file: it and the standalone browser are two
+// screens sharing one listing, and only one of them can spend the address bar.
+vi.mock("../components/browse/FolderTab", () => ({
   FolderTab: ({ rootId }: { rootId: string }) => <div>files of {rootId}</div>,
 }));
 vi.mock("../components/character/ReferencesGrid", () => ({

@@ -5,7 +5,7 @@ import { Alert, Badge, Button, Spinner, Tabs, Text } from "@ansavva/design-syste
 
 import { ApiError } from "../apis/client";
 import { deleteCharacter, getCharacter, patchCharacter, putCharacterProfile } from "../apis/studio";
-import { FolderTab } from "../components/browse/FolderBrowser";
+import { FolderTab } from "../components/browse/FolderTab";
 import { PageBar } from "../components/layout/PageBar";
 import { CharacterProjects, CharacterRuns } from "../components/character/CharacterWork";
 import { ProfileForm } from "../components/character/ProfileForm";

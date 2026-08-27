@@ -10,7 +10,7 @@ import {
   getProjectMovies,
   getProjectScenes,
 } from "../apis/studio";
-import { FolderTab } from "../components/browse/FolderBrowser";
+import { FolderTab } from "../components/browse/FolderTab";
 import { PageBar } from "../components/layout/PageBar";
 import { EntityRow } from "../components/entity/EntityRow";
 import { MediaThumb } from "../components/media/MediaThumb";

@@ -5,9 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ProjectRecord } from "../types";
 import { TestProviders } from "../test-providers";
 
-vi.mock("../components/browse/FolderBrowser", () => ({
-  FolderTab: () => <div>files</div>,
-}));
+vi.mock("../components/browse/FolderTab", () => ({ FolderTab: () => <div>files</div> }));
 vi.mock("../components/project/RunsTable", () => ({ RunsTable: () => <div>runs table</div> }));
 
 vi.mock("../apis/studio", () => ({
