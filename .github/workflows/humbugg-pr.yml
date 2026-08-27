@@ -197,6 +197,12 @@ jobs:
           npx tsc --noEmit
           npm test
 
+      # The hosted sign-in pages are styled by a committed JSON document, not by
+      # the design system, so nothing else would notice it falling out of step
+      # with the app's brand colours. This is what notices.
+      - name: Cognito branding in sync with brand colours
+        run: cd humbugg/app && npm run brand:check
+
       # A real export, not just a typecheck: Metro resolution failures against
       # the design system's platform leaves only surface when the bundle is
       # actually built, and they would otherwise reach production.

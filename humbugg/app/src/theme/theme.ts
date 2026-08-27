@@ -1,8 +1,10 @@
 // Humbugg's brand, expressed through the design system's native theming seam.
 //
-// Every value below is copied from the `@theme` block in the web app's
-// `src/styles.css` — this file is a re-homing of values that already exist, not
-// a colour-picking exercise. Keep the two in step.
+// The values themselves live in `brand-colors.json`, and they still originate
+// from the `@theme` block in the marketing site's `src/styles.css` — this is a
+// re-homing of values that already exist, not a colour-picking exercise. Keep
+// those two in step by hand; the JSON and the Cognito sign-in pages are kept in
+// step mechanically, by `npm run brand:check` on every PR.
 //
 // THREE THINGS TO KNOW BEFORE EDITING THIS FILE
 //
@@ -27,27 +29,21 @@
 import type { ThemeOverrides } from '@ansavva/design-system';
 import { colors } from '@ansavva/tokens';
 
+import humbugg from './brand-colors.json';
+
 /**
  * Humbugg's semantic roles. Partial by design — `success`, `warning`, `danger`
  * and `dangerHover` are deliberately absent because the web app never
  * overrode them either; it reads the package's own values through
  * `var(--color-danger)` and friends.
+ *
+ * They live in `brand-colors.json` rather than inline because the Cognito
+ * Managed Login pages need the same thirteen values, and the tool that writes
+ * them (`tool/reconcile-cognito-branding.ts`) cannot import this file: it would
+ * pull in `@ansavva/tokens`, whose entry point is TypeScript under
+ * `node_modules`, which Node refuses to type-strip. Data both sides can read is
+ * the only way to keep the sign-in page and the app one colour.
  */
-const humbugg = {
-  bg: '#fbf8ef',
-  card: '#fffdf8',
-  surfaceAlt: '#f1ecdf',
-  ink: '#18332b',
-  muted: '#68746d',
-  line: '#ddd6c5',
-  brand: '#1d5545',
-  primary: '#1d5545',
-  primaryText: '#fffdf8',
-  primaryHover: '#17483a',
-  primaryActive: '#113b30',
-  accent: '#a67628',
-  accentHover: '#8c611e',
-} as const;
 
 /**
  * The provider's theme.

@@ -10,7 +10,9 @@
     "android": "expo start --android",
     "export:web": "expo export -p web",
     "typecheck": "tsc --noEmit",
-    "test": "jest"
+    "test": "jest",
+    "brand": "node tool/reconcile-cognito-branding.ts",
+    "brand:check": "node tool/reconcile-cognito-branding.ts --check"
   },
   "dependencies": {
     "@ansavva/design-system": "0.15.0",

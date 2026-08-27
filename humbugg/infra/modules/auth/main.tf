@@ -184,15 +184,21 @@ resource "aws_cognito_user_pool_client" "main" {
   }
 }
 
-# Cognito's own palette and copy. A branding record has to EXIST for a
-# `managed_login_version = 2` domain to serve anything — see the domain below —
-# so this is not the cosmetic step it looks like. Humbugg's colours would
-# replace `use_cognito_provided_values` with an exported settings document; that
-# is a later change and a strictly optional one.
+# Humbugg's colours on the hosted pages. A branding record also has to EXIST for
+# a `managed_login_version = 2` domain to serve anything — see the domain
+# below — so this resource is load-bearing twice over.
+#
+# `managed-login-settings.json` IS GENERATED. Its colours come from
+# `app/src/theme/brand-colors.json`, the same file the app's ThemeProvider
+# reads, via `npm run brand` in `humbugg/app`; `npm run brand:check` gates the
+# two against drift on every PR. Its structure is AWS's schema, exported from
+# the live branding record — the tool's header has the export command and the
+# console round trip for changing layout.
 resource "aws_cognito_managed_login_branding" "main" {
-  user_pool_id                = aws_cognito_user_pool.main.id
-  client_id                   = aws_cognito_user_pool_client.main.id
-  use_cognito_provided_values = true
+  user_pool_id = aws_cognito_user_pool.main.id
+  client_id    = aws_cognito_user_pool_client.main.id
+
+  settings = file("${path.module}/managed-login-settings.json")
 }
 
 # Where the hosted pages are served from. Exactly one shape at a time: a custom
