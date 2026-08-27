@@ -1,5 +1,10 @@
 # Claude Instructions – humbugg
 
+**Starting work on humbugg? Read [`docs/implementation-plan.md`](docs/implementation-plan.md)
+first.** It records what is built, what is next and — the part the issue tracker cannot hold — the
+order it has to happen in, plus the traps that have already cost this project time. This file covers
+how the service is built and run; that one covers what to build next and why.
+
 ## What this service does
 
 Humbugg is a gift-exchange platform, served from three hostnames:
