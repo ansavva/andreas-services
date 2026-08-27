@@ -6,6 +6,7 @@ import { PublicDetailPage } from "@/pages/PublicDetailPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { AdminPreviewPage } from "@/pages/AdminPreviewPage";
 import { AdminReviewQueuePage } from "@/pages/AdminReviewQueuePage";
+import { AuthCallbackPage } from "@/pages/AuthCallbackPage";
 import "@/index.css";
 
 // Strip trailing slash so React Router's basename is well-formed (e.g. "/app" not "/app/")
@@ -42,6 +43,9 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          {/* Must stay above the catch-all: it would redirect to "/" and
+              drop the ?code= the exchange needs. */}
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
