@@ -150,4 +150,41 @@ describe("handleCallback", () => {
     // `apis/client.ts`. Storing the access token here 401s every call.
     expect(getIdToken()).toBe("id.token.value");
   });
+  /**
+   * Sign-out and sign-in are two `window.location.assign` calls, and the
+   * sign-in one has an `await` in front of it. Clicking "Sign out" used to flip
+   * `authenticated` to false, which re-ran the gate's effect, which called
+   * `login()` — and because that awaits a PKCE hash, its navigation landed
+   * AFTER the trip to `/logout`. Cognito's session cookie was still set, so it
+   * answered the authorize with a fresh code and signed the user straight back
+   * in. Sign-out silently did nothing.
+   *
+   * Ordering the assigns by hand is the only way to reproduce it: the race is
+   * won by whichever resolves last, not by whichever was called first.
+   */
+  it("does not let an in-flight sign-in redirect clobber sign-out", async () => {
+    const { login, logout } = await loadModule();
+
+    // jsdom's `window.location` is not writable and its `assign` throws
+    // "Not implemented", so it is replaced outright rather than spied on.
+    const assign = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { origin: "http://localhost:5173", assign },
+    });
+
+    // Sign-in starts first, exactly as the gate would; it is still hashing.
+    const pending = login("/library");
+    // The user clicks sign out before that hash resolves.
+    logout();
+    await pending;
+
+    const targets = assign.mock.calls.map(([url]) => String(url));
+    expect(targets).toHaveLength(1);
+    expect(targets[0]).toContain("/logout");
+    expect(targets.some((u) => u.includes("/oauth2/authorize"))).toBe(false);
+
+    Object.defineProperty(window, "location", { configurable: true, value: original });
+  });
 });
