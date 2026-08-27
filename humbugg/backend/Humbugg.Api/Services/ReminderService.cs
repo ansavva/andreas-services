@@ -33,7 +33,7 @@ internal sealed class ReminderService(
 
     public async Task<ReminderOverview> GetAsync(string groupId, CancellationToken cancellationToken = default)
     {
-        await RequireOrganizerAsync(groupId, cancellationToken);
+        await RequireManagerAsync(groupId, cancellationToken);
         return await OverviewAsync(groupId, cancellationToken);
     }
 
@@ -42,7 +42,7 @@ internal sealed class ReminderService(
         UpdateReminderSettingsRequest request,
         CancellationToken cancellationToken = default)
     {
-        await RequireOrganizerAsync(groupId, cancellationToken);
+        await RequireManagerAsync(groupId, cancellationToken);
         if (request.IntervalDays is < 1 or > 14)
             throw ApiException.BadRequest("Reminder interval must be between 1 and 14 days.");
         if (request.QuietStartUtcHour is < 0 or > 23 || request.QuietEndUtcHour is < 1 or > 24 ||
@@ -87,7 +87,7 @@ internal sealed class ReminderService(
         ManualReminderRequest request,
         CancellationToken cancellationToken = default)
     {
-        var group = await RequireOrganizerAsync(groupId, cancellationToken);
+        var group = await RequireManagerAsync(groupId, cancellationToken);
         var configuration = await reminders.GetConfigurationAsync(groupId, cancellationToken)
             ?? throw ApiException.Conflict("Configure reminders before sending one.");
         if (configuration.State == ReminderState.Stopped)
@@ -270,12 +270,13 @@ internal sealed class ReminderService(
             invitation.AcceptedUserId);
     }
 
-    private async Task<GroupRecord> RequireOrganizerAsync(string groupId, CancellationToken cancellationToken)
+    private async Task<GroupRecord> RequireManagerAsync(string groupId, CancellationToken cancellationToken)
     {
         var group = await groups.GetAsync(groupId, cancellationToken)
             ?? throw ApiException.NotFound("Exchange not found.");
-        if (group.OwnerUserId != user.UserId)
-            throw ApiException.Forbidden("Only the organizer can manage reminders.");
+        var membership = await members.GetByUserAndGroupAsync(user.UserId, groupId, cancellationToken);
+        if (membership?.IsOrganizer != true)
+            throw ApiException.Forbidden("Only an organizer can manage reminders.");
         plans.EnsureCapability(group.Plan, group.EntitlementId, PlanCapability.AutomaticReminders);
         return group;
     }

@@ -58,6 +58,14 @@ public sealed class GroupsController(IGroupService groups) : ControllerBase
     public Task<Membership> Participation(string groupId, string memberId, [FromBody] ParticipationRequest request, CancellationToken cancellationToken) =>
         groups.UpdateParticipationAsync(groupId, memberId, request, cancellationToken);
 
+    [HttpPatch("{groupId}/members/{memberId}/organizer-role")]
+    public Task<Membership> OrganizerRole(
+        string groupId,
+        string memberId,
+        [FromBody] OrganizerRoleRequest request,
+        CancellationToken cancellationToken) =>
+        groups.UpdateOrganizerRoleAsync(groupId, memberId, request, cancellationToken);
+
     [HttpPut("{groupId}/exclusions")]
     public Task<GroupDetail> Exclusions(string groupId, [FromBody] ExclusionsRequest request, CancellationToken cancellationToken) =>
         groups.SetExclusionsAsync(groupId, request, cancellationToken);

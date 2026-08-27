@@ -28,7 +28,7 @@ public sealed class AccountDeletionTests
     public async Task DeletingAccountDeletesGroupsTheUserOrganizes()
     {
         var world = new World();
-        world.Groups.Add(Group("g-owned", GroupStatus.Open));
+        world.Groups.Add(Group("g-owned", GroupStatus.Open) with { OwnerUserId = "user" });
         world.Members.Items.Add(Member("g-owned", "user", organizer: true));
         world.Members.Items.Add(Member("g-owned", "other", organizer: false));
 
@@ -106,7 +106,7 @@ public sealed class AccountDeletionTests
     {
         var world = new World();
         world.Profiles.Items["user"] = new ProfileRecord("user", "Alex", "now", "now");
-        world.Groups.Add(Group("g-owned", GroupStatus.Open));
+        world.Groups.Add(Group("g-owned", GroupStatus.Open) with { OwnerUserId = "user" });
         world.Members.Items.Add(Member("g-owned", "user", organizer: true));
 
         await world.Deletion.DeleteAsync(TestContext.Current.CancellationToken);

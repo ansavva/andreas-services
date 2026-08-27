@@ -50,7 +50,7 @@ public sealed class DataExportTests
     }
 
     [Fact]
-    public async Task OrganizerRoleIsReflectedInTheExport()
+    public async Task CoOrganizerRoleIsReflectedInTheExport()
     {
         var world = new World();
         world.Groups.Add(Group("g1", "Office Party", GroupStatus.Open));
@@ -58,7 +58,7 @@ public sealed class DataExportTests
 
         var export = await world.Service.ExportAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal("organizer", Assert.Single(export.Memberships).Role);
+        Assert.Equal("co_organizer", Assert.Single(export.Memberships).Role);
     }
 
     // ─── The export never leaks anyone else's personal data ──────────────────
