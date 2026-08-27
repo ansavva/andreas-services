@@ -382,18 +382,27 @@ def test_reseat_never_names_a_version(bucket, catalog_table, monkeypatch):
     assert "VersionId" not in seen
 
 
-# ── the key is descriptive, and still not authoritative ─────────────────────
+# ── the key is flat, and still not authoritative ────────────────────────────
 #
-# D2 originally made the key meaningless — `<owner_kind>/<owner_id>/<node_id>`
-# — on the reasoning that a readable key is what stranded 69 records and made
-# `domain/rewrite.py` necessary. That conflated two things. The danger was that
-# the key was LOAD-BEARING: `paths.py` built it, callers parsed it, records
-# named paths. A record names a node id now, so structure in the key costs
-# nothing and buys a bucket a person can read and a library a person could
-# reconstruct.
+# `<owner_kind>/<owner_id>/<node_id><ext>`. Three segments, and the same string
+# `services/catalog.py::blob_key_for` stamps at creation — a second opinion
+# about what a key should be IS drift, so the two agreeing is the property, not
+# a coincidence worth restating in two places.
 #
-# The whole safety of that rests on one property, which is what the last test
-# here guards: **nothing parses a blob_key.**
+# `desired_key` spent a while building `<owner_kind>/<owner_id>/<folders>/<name>`
+# instead, on the argument that structure is free once nothing parses a key. It
+# was not free. The leaf was the file's own name, so a bucket listing spelled out
+# character names again — hard rule #1, one segment lower than the slug D2
+# removed — and every rename drifted a key, which made `reseat` endless. Both
+# are gone with the folders.
+#
+# What that gave up is a bucket a person can read: a listing is UUIDs now and the
+# catalog is the only thing that can say what a byte is. Accepted deliberately;
+# the table's PITR and deletion protection are the whole safety net and nothing
+# writes a manifest into the bucket.
+#
+# The safety of a key in EITHER shape rests on one property, which is what the
+# last test here guards: **nothing parses a blob_key.**
 
 def _tree_for_key(ddb):
     """A character with a nested pool, and one file at the bottom of it."""
@@ -416,33 +425,95 @@ def _plan_with_one_character(ddb):
         {"id": "char-1", "root": "node-a", "slug": "subject-a"}], "projects": []}
 
 
-def test_the_key_carries_the_folders_below_the_owner(catalog_table):
-    """`reference/face/` is context a flat `<node_id>.png` throws away."""
-    _tree_for_key(catalog_table)
-    plan = _plan_with_one_character(catalog_table)
-    nodes = plan["catalog"]["nodes"]
+def test_the_key_names_the_owner_and_the_node_and_nothing_else(catalog_table):
+    """Three segments. `reference/face/` and the filename are the tree's job.
 
-    assert cm.desired_key(plan, nodes, nodes["node-img"]) == \
-        "characters/char-1/reference/face/IMG_4580.png"
-
-
-def test_the_leaf_is_the_uploaded_filename_verbatim(catalog_table):
-    """A file is a file. Whatever it was uploaded as is what it is called.
-
-    Nothing mints a name any more — `curate renumber` and `regroup` are gone,
-    group and order are row attributes — so there is no convention here to
-    encode and none to drift from. The extension arrives with the name, which
-    is why this no longer guesses one off `content_type`.
+    The node sits four folders deep under a character and none of that reaches
+    the key. `IMG_4580.png` in particular does not: a leaf that is the file's
+    own name is how a listing of this bucket started spelling out character
+    names again.
     """
     _tree_for_key(catalog_table)
     plan = _plan_with_one_character(catalog_table)
     nodes = plan["catalog"]["nodes"]
 
-    assert cm.desired_key(plan, nodes, nodes["node-img"]).endswith("/IMG_4580.png")
+    assert cm.desired_key(plan, nodes, nodes["node-img"]) == \
+        "characters/char-1/node-img.png"
 
 
-def test_material_outside_any_entity_keeps_its_path_under_the_library(catalog_table):
-    """The pose plates. Owned by nobody, and `config/pose/face/` is the point."""
+def test_renaming_a_file_does_not_drift_its_key(catalog_table):
+    """**The reason the folders went.** A rename is a row write and nothing else.
+
+    Under the descriptive scheme the leaf was the node's `name`, so renaming a
+    file changed where its bytes belonged and `verify` reported it — which made
+    drift the normal state of any library anyone worked in, and `reseat` a chore
+    with no end. The leaf is the node id now and no rename touches it.
+    """
+    _tree_for_key(catalog_table)
+    plan = _plan_with_one_character(catalog_table)
+    nodes = plan["catalog"]["nodes"]
+    before = cm.desired_key(plan, nodes, nodes["node-img"])
+
+    nodes["node-img"]["name"] = "porch-wave.png"
+
+    assert cm.desired_key(plan, nodes, nodes["node-img"]) == before
+    assert cm.key_drift(plan, nodes) == \
+        [{"node": "node-img", "from": "blobs/node-img", "to": before}]
+
+
+def test_the_extension_is_the_only_thing_the_name_contributes(catalog_table):
+    """Decoration for the S3 console, and lowercased the way the API writes it.
+
+    `content_type` on the row is authoritative. A name with no extension gets a
+    key with none — the alternative is guessing one from the content type, which
+    is a second opinion about a string a signature is scoped to.
+    """
+    _tree_for_key(catalog_table)
+    plan = _plan_with_one_character(catalog_table)
+    nodes = plan["catalog"]["nodes"]
+
+    nodes["node-img"]["name"] = "IMG_4580.PNG"
+    assert cm.desired_key(plan, nodes, nodes["node-img"]).endswith("/node-img.png")
+
+    nodes["node-img"]["name"] = "LICENCE"
+    assert cm.desired_key(plan, nodes, nodes["node-img"]) == "characters/char-1/node-img"
+
+
+def test_the_two_key_builders_agree():
+    """`desired_key` and the API's `blob_key_for` must produce the same string.
+
+    They are the same decision made in two packages — the pipeline does not
+    import the backend and never has — and if they disagree, every key the API
+    stamps is drift the moment it is written and `reseat` rewrites the library on
+    every run, forever. Read as source text because that is the only seam
+    available across the two, and the same technique
+    `test_no_caller_splits_a_blob_key` already uses.
+    """
+    import pathlib
+    import re
+
+    backend = (pathlib.Path(cm.__file__).parents[4] / "backend" / "studio_core"
+               / "services" / "catalog.py").read_text()
+    stamped = re.search(r"def blob_key_for\(.*?\n    return ([^\n]+)", backend, re.S)
+    assert stamped, "blob_key_for is gone or no longer returns on one line"
+    literal = stamped.group(1).strip()
+
+    # The SHAPE, not a diff of two f-strings: three segments, the owner in the
+    # second, the node id in the third. A FOURTH is the descriptive scheme
+    # coming back, and the fourth is the one that leaked names.
+    segments = literal.split("/")
+    assert len(segments) == 3, literal
+    assert "owner_id" in segments[1], literal
+    assert "node_id" in segments[2], literal
+
+
+def test_material_outside_any_entity_is_filed_under_the_library(catalog_table):
+    """The pose plates. Owned by no character and no project, so the library's.
+
+    `config/pose/` is the tree's, not the key's — the plates are reached by
+    walking nodes like everything else. The one thing the key still has to get
+    right is which of the three prefixes it lands under.
+    """
     _library(catalog_table, REAL, "Studio", "node-root")
     _folder(catalog_table, "node-config", "node-root", "config")
     _folder(catalog_table, "node-pose", "node-config", "pose")
@@ -455,7 +526,7 @@ def test_material_outside_any_entity_keeps_its_path_under_the_library(catalog_ta
     plan = {"lib": REAL, "catalog": cat, "characters": [], "projects": []}
 
     assert cm.desired_key(plan, cat["nodes"], cat["nodes"]["node-plate"]) == \
-        f"libraries/{REAL}/config/pose/front.png"
+        f"libraries/{REAL}/node-plate.png"
 
 
 def test_no_caller_splits_a_blob_key():
