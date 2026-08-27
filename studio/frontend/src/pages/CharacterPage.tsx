@@ -7,12 +7,14 @@ import { ApiError } from "../apis/client";
 import { deleteCharacter, getCharacter, patchCharacter, putCharacterProfile } from "../apis/studio";
 import { FolderTab } from "../components/browse/FolderBrowser";
 import { PageBar } from "../components/layout/PageBar";
+import { CharacterProjects, CharacterRuns } from "../components/character/CharacterWork";
 import { ProfileForm } from "../components/character/ProfileForm";
 import { ReferencesGrid } from "../components/character/ReferencesGrid";
 import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
 import { useResource } from "../hooks/useResource";
 import { CHARACTERS_PATH } from "../utils/location";
 import type { CharacterIdentity, CharacterProfile } from "../types";
+import { useSearchParamState } from "../hooks/useSearchParamState";
 
 /**
  * One character: who they are, what they look like, and everything filed under
@@ -60,6 +62,7 @@ export function CharacterPage() {
   const { characterId = "" } = useParams();
   const navigate = useNavigate();
 
+  const [tab, setTab] = useSearchParamState("tab", "profile");
   const load = useCallback(() => getCharacter(characterId), [characterId]);
   const character = useResource(load);
 
@@ -177,14 +180,23 @@ export function CharacterPage() {
         </Badge>
       </PageBar>
 
-      <Tabs.Root defaultValue="profile">
-        {/* Scrolls rather than wraps. Three labels fit a 390px screen with room
-            to spare, and the rule holds anyway: a tab strip that grows a second
-            row draws a second underline, which reads as two strips. */}
+      {/* `defaultValue` as well as `value`, which the package requires even
+          when controlled: it seeds `useControllableState`, and Tabs does not
+          introspect its List to guess a first tab. */}
+      <Tabs.Root value={tab} defaultValue="profile" onValueChange={setTab}>
+        {/* Scrolls rather than wraps. Three labels fit a 390px screen and five
+            do not, which is exactly why this was already written to scroll: a
+            tab strip that grows a second row draws a second underline, and that
+            reads as two strips. */}
         <Tabs.List className="overflow-x-auto border-b border-line">
           <Tabs.Tab value="profile">Profile</Tabs.Tab>
           <Tabs.Tab value="references">References</Tabs.Tab>
           <Tabs.Tab value="files">Files</Tabs.Tab>
+          {/* The reverse questions. Both routes existed with no caller, so a
+              character was a dead end: who it is, what it looks like, and
+              nothing about the work it appears in. */}
+          <Tabs.Tab value="runs">Runs</Tabs.Tab>
+          <Tabs.Tab value="projects">Projects</Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="profile">
@@ -222,6 +234,14 @@ export function CharacterPage() {
               )
             }
           />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="runs">
+          <CharacterRuns characterId={record.id} />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="projects">
+          <CharacterProjects characterId={record.id} />
         </Tabs.Panel>
 
         <Tabs.Panel value="files">

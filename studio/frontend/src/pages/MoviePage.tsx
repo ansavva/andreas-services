@@ -8,8 +8,9 @@ import { PageBar } from "../components/layout/PageBar";
 import { EntityRow } from "../components/entity/EntityRow";
 import { MediaThumb } from "../components/media/MediaThumb";
 import { useResource } from "../hooks/useResource";
+import { useProjectCrumb } from "../hooks/useProjectCrumb";
 import { formatDate } from "../utils/format";
-import { objectPath, projectPath, scenePath } from "../utils/location";
+import { objectPath, scenePath } from "../utils/location";
 
 /**
  * One movie: the scenes it is cut from, in order, and the finished piece.
@@ -25,6 +26,7 @@ export function MoviePage() {
 
   const load = useCallback(() => getMovie(movieId), [movieId]);
   const { data, loading, error } = useResource(load);
+  const crumbs = useProjectCrumb(data?.project ?? "");
 
   if (loading) {
     return (
@@ -49,11 +51,7 @@ export function MoviePage() {
 
   return (
     <>
-      {/* The crumb label is the word "Project" rather than its slug because a
-          movie carries its project's *id* and nothing else. Reading the name
-          costs a request this page has no other use for; the breadcrumb learns
-          it when `owner` is wired through. */}
-      <PageBar crumbs={[{ label: "Project", to: projectPath(data.project) }]}>
+      <PageBar crumbs={crumbs}>
         <Text variant="display">{data.title || data.slug}</Text>
         <Badge intent="neutral">{data.status}</Badge>
         <Text variant="caption" tone="muted">

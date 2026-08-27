@@ -6,6 +6,7 @@ import { useAuth } from "../../context/AuthContext";
 import { CHARACTERS_PATH, HOME_PATH, PROJECTS_PATH, folderPath } from "../../utils/location";
 import { ChipRow } from "../common/ChipRow";
 import { LibrarySwitcher } from "../common/LibrarySwitcher";
+import { HeaderSearch } from "./HeaderSearch";
 import { AccountIcon } from "../common/icons";
 
 /**
@@ -58,6 +59,10 @@ export function AppHeader() {
         </nav>
 
         <div className="flex-1" />
+
+        {/* Hidden below `md`: a search box and three nav chips cannot share a
+            390px row, and the chips are the thing you cannot do without. */}
+        <HeaderSearch />
 
         {/* Renders nothing while the caller is in one library. See `LibrarySwitcher`. */}
         <LibrarySwitcher />

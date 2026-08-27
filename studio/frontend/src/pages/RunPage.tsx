@@ -7,9 +7,10 @@ import { getNodeText, getRun } from "../apis/studio";
 import { PageBar } from "../components/layout/PageBar";
 import { MediaThumb } from "../components/media/MediaThumb";
 import { useResource } from "../hooks/useResource";
+import { useProjectCrumb } from "../hooks/useProjectCrumb";
 import { formatBytes, formatDate, formatTextContent } from "../utils/format";
 import type { RunAsset } from "../types";
-import { objectPath, projectPath, runPath } from "../utils/location";
+import { objectPath, runPath } from "../utils/location";
 
 /**
  * One run: what studio recorded about it, what came out, and — separately, and
@@ -29,6 +30,7 @@ export function RunPage() {
 
   const load = useCallback(() => getRun(runId), [runId]);
   const { data, loading, error } = useResource(load);
+  const crumbs = useProjectCrumb(projectId);
 
   // Every frame on this page opens into the run, so scrolling the viewer walks
   // what the run produced and was given rather than the folder those files
@@ -59,9 +61,10 @@ export function RunPage() {
   return (
     <>
       {/* The run's project is in its own address — `/p/<id>/r/<id>` — which is
-          what that shape is for: a pasted link is one click from the project
-          without waiting for a request to say there is one. */}
-      <PageBar crumbs={[{ label: "Project", to: projectPath(projectId) }]}>
+          what that shape is for: a pasted link knows which project it belongs
+          to before anything has answered. The name is a request on top of that,
+          not instead of it. */}
+      <PageBar crumbs={crumbs}>
         {/* A run has no name — the date is what a person recognises it by. */}
         <Text variant="display">{formatDate(data.created)}</Text>
         <Badge intent={data.status === "failed" ? "danger" : "neutral"}>{data.status}</Badge>

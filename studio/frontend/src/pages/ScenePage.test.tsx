@@ -7,13 +7,20 @@ import type { SceneRecord, Shot } from "../types";
 // The header pulls in auth and the library context and says nothing this file
 // asserts on. Everything else is the real component.
 
-vi.mock("../apis/studio", () => ({ getScene: vi.fn(), patchShot: vi.fn() }));
+// `getProject` is here for the breadcrumb, which reads the project's name so
+// the trail says where the scene sits rather than just "Project".
+vi.mock("../apis/studio", () => ({
+  getScene: vi.fn(),
+  patchShot: vi.fn(),
+  getProject: vi.fn(),
+}));
 
-import { getScene, patchShot } from "../apis/studio";
+import { getProject, getScene, patchShot } from "../apis/studio";
 import { ScenePage } from "./ScenePage";
 
 const read = vi.mocked(getScene);
 const save = vi.mocked(patchShot);
+const project = vi.mocked(getProject);
 
 const ID = "scene-0001";
 
@@ -59,6 +66,7 @@ function Land() {
 
 function draw(scene: SceneRecord) {
   read.mockResolvedValue(scene);
+  project.mockResolvedValue({ id: "proj-0001", slug: "a-project", title: "A project" } as never);
   landed = "";
   return render(
     <MemoryRouter initialEntries={[`/s/${ID}`]}>

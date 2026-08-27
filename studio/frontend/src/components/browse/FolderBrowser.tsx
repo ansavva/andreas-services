@@ -13,6 +13,7 @@ import {
 } from "../../apis/studio";
 import { useTree } from "../../hooks/useTree";
 import { useResource } from "../../hooks/useResource";
+import { useSearchParamState } from "../../hooks/useSearchParamState";
 import { useSelection } from "../../hooks/useSelection";
 import { useUploads } from "../../hooks/useUploads";
 import type { FileEntry, SortOrder } from "../../types";
@@ -706,14 +707,12 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
  */
 export function useLocalBrowserNav(rootId: string): BrowserNav {
   const navigate = useNavigate();
-  const [folder, setFolder] = useState<FolderId>(rootId);
+  const [folderParam, setFolderParam] = useSearchParamState("folder", "");
   const [sort, setSort] = useState<SortOrder>("newest");
 
-  // The tab is remounted per entity by its `key`, but a character page navigated
-  // to from another character's page is the same mount with a different root.
-  useEffect(() => {
-    setFolder(rootId);
-  }, [rootId]);
+  // The entity's own root is the default, so it is written as absence — a
+  // character's Files tab at rest is `?tab=files` and not `?tab=files&folder=…`.
+  const folder = folderParam || rootId;
 
   return useMemo(
     () => ({
@@ -724,17 +723,17 @@ export function useLocalBrowserNav(rootId: string): BrowserNav {
         // `null` is the *library* root, which a scoped browser has no way to
         // show and no business showing — the boundary crumb is this entity's
         // root, so that is where "up from the top" lands.
-        setFolder(id ?? rootId);
+        setFolderParam(id === null || id === rootId ? "" : id);
       },
       // **Opening a file leaves the tab, and that is the right trade now.** The
       // viewer is a screen with an address; keeping it inside the panel would
       // mean the one thing in this app most worth sending someone was the one
-      // thing with no link. Back returns to the entity, and the tab reopens on
-      // its root — which is where it started.
+      // thing with no link. Back returns to the tab, at the folder it was on —
+      // which is the half `?folder=` bought.
       openFile: (file: FileEntry) => navigate(objectPath(file.id, { in: "f", id: folder })),
       playReel: () => navigate(feedPath({ in: "recursive", id: folder })),
     }),
-    [folder, navigate, rootId, sort],
+    [folder, navigate, rootId, setFolderParam, sort],
   );
 }
 

@@ -19,6 +19,7 @@ import { RunsTable } from "../components/project/RunsTable";
 import { useResource } from "../hooks/useResource";
 import { formatBytes, formatDate } from "../utils/format";
 import { PROJECTS_PATH, characterPath, moviePath, runPath, scenePath } from "../utils/location";
+import { useSearchParamState } from "../hooks/useSearchParamState";
 
 /**
  * One project: what it is, what has been run in it, and everything under it.
@@ -35,6 +36,7 @@ export function ProjectPage() {
   const { projectId = "" } = useParams();
   const navigate = useNavigate();
 
+  const [tab, setTab] = useSearchParamState("tab", "overview");
   const load = useCallback(() => getProject(projectId), [projectId]);
   const project = useResource(load);
 
@@ -100,8 +102,14 @@ export function ProjectPage() {
         </Text>
       </PageBar>
 
-      <Tabs.Root defaultValue="overview">
-        <Tabs.List className="flex-wrap border-b border-line">
+      {/* `defaultValue` as well as `value`, which the package requires even
+          when controlled: it seeds `useControllableState`, and Tabs does not
+          introspect its List to guess a first tab. */}
+      <Tabs.Root value={tab} defaultValue="overview" onValueChange={setTab}>
+        {/* Scrolls rather than wraps, like the character page's. Six labels
+            wrapped to two rows on a phone, and a tab strip that grows a second
+            row draws a second underline — which reads as two strips. */}
+        <Tabs.List className="overflow-x-auto border-b border-line">
           <Tabs.Tab value="overview">Overview</Tabs.Tab>
           <Tabs.Tab value="runs">Runs</Tabs.Tab>
           <Tabs.Tab value="scenes">Scenes</Tabs.Tab>

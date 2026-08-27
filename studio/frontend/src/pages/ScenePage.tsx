@@ -16,9 +16,10 @@ import { AutoTextarea } from "../components/common/AutoTextarea";
 import { PageBar } from "../components/layout/PageBar";
 import { MediaThumb } from "../components/media/MediaThumb";
 import { useResource } from "../hooks/useResource";
+import { useProjectCrumb } from "../hooks/useProjectCrumb";
 import type { Motion, MotionPrompt, Panel, PanelRole, RunAsset, Shot } from "../types";
 import { formatDate } from "../utils/format";
-import { objectPath, projectPath, runPath } from "../utils/location";
+import { objectPath, runPath } from "../utils/location";
 
 /**
  * One scene: the plan, the shots, and the take they were stitched into.
@@ -41,6 +42,7 @@ export function ScenePage() {
 
   const load = useCallback(() => getScene(sceneId), [sceneId]);
   const { data, loading, error, setData } = useResource(load);
+  const crumbs = useProjectCrumb(data?.project ?? "");
   // Every frame on the board opens into the scene, so the viewer scrolls the
   // storyboard in cut order — the handoff, the panels, then the clip — rather
   // than whatever folder the files were written to.
@@ -92,7 +94,7 @@ export function ScenePage() {
 
   return (
     <>
-      <PageBar crumbs={[{ label: "Project", to: projectPath(data.project) }]}>
+      <PageBar crumbs={crumbs}>
         <Text variant="display">{data.title || data.slug}</Text>
         <Badge intent="neutral">{data.status}</Badge>
         <Text variant="caption" tone="muted">
