@@ -38,6 +38,11 @@ output "cognito_user_pool_client_id" {
   value       = module.auth.user_pool_client_id
 }
 
+output "cognito_auth_domain" {
+  description = "Managed login host the SPA redirects to; the deploy workflow writes it to /studio/prod/cognito-auth-domain and builds the SPA with it as VITE_COGNITO_DOMAIN"
+  value       = module.auth.auth_domain
+}
+
 output "media_bucket_name" {
   description = "The media bucket the pipeline writes and the API reads"
   value       = module.media.bucket_name

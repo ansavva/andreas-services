@@ -18,7 +18,6 @@
     "e2e:live": "E2E_LIVE=1 playwright test"
   },
   "dependencies": {
-    "aws-amplify": "^6.15.7",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^6.30.3"

@@ -2,8 +2,11 @@ terraform {
   required_version = ">= 1.5"
   required_providers {
     aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
+      source = "hashicorp/aws"
+      # Tracks the roots. Both of them need >= 6.12 for `modules/auth`'s
+      # managed-login branding resource, and a `~> 5.0` here would make that
+      # unsatisfiable — see `envs/prod/providers.tf`.
+      version = ">= 6.12, < 7.0"
     }
   }
 }

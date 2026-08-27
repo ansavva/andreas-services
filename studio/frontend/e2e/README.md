@@ -21,12 +21,14 @@ the spec that asserts nothing escapes to the network.
 
 ## Why there is no test flag in the app
 
-`App.tsx` renders `<LoginForm />` unless `authenticated`, which comes from
-Amplify. `support/session.ts` seeds the token store Amplify itself reads, so the
-app is signed in without a backdoor compiled into the production bundle and
-without Cognito being contacted. Amplify has to be *configured* for this — built
-with the pool variables empty the app renders "Auth is not configured" instead,
-which an early version of these specs happily passed against.
+`App.tsx` redirects to Cognito Managed Login unless `authenticated`, which is
+whether `auth/oauth.ts` finds an ID token. `support/session.ts` seeds the token
+store that module itself reads — one JSON blob under one localStorage key, the
+same one the callback writes — so the app is signed in without a backdoor
+compiled into the production bundle and without Cognito being contacted. The
+app has to be *configured* for this: built with the Cognito variables empty it
+renders "Auth is not configured" instead, which an early version of these specs
+happily passed against.
 
 ## Live mode
 

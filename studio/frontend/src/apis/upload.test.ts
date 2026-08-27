@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Same stub the other two API suites use: what is under test is the sequence of
 // requests, not the token on them.
-vi.mock("../amplify", () => ({ isAuthConfigured: false }));
+vi.mock("../auth/oauth", () => ({
+  isAuthConfigured: () => false,
+  getIdToken: () => null,
+  refreshTokens: () => Promise.reject(new Error("not signed in")),
+}));
 
 import { contentTypeOf, putSigned, rejectionFor, uploadFile } from "./upload";
 import type { UploadGrant } from "../types";

@@ -1,5 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
+import { CALLBACK_PATH } from "./auth/oauth";
+import { AuthCallbackPage } from "./pages/AuthCallbackPage";
 import { BrowsePage } from "./pages/BrowsePage";
 import { CharacterPage } from "./pages/CharacterPage";
 import { HomePage } from "./pages/HomePage";
@@ -9,7 +11,7 @@ import { RunPage } from "./pages/RunPage";
 import { ScenePage } from "./pages/ScenePage";
 
 /**
- * Eight routes, and every one of them names an id.
+ * Nine routes. Eight name an id; the ninth is where Cognito lands.
  *
  * That is the property the whole entity model exists to give the URL: a
  * character, a project, a run, a scene, a movie and a node are all addressed by
@@ -25,6 +27,7 @@ import { ScenePage } from "./pages/ScenePage";
  * /m/<movie_id>           movie
  * /f          /f/<id>     the folder browser: the library root, or one folder
  * /o/<id>                 one file, open
+ * /auth/callback          where Cognito Managed Login returns with ?code=
  * ```
  *
  * **There is no legacy redirect any more.** Studio used to hand out the S3 key
@@ -43,10 +46,13 @@ import { ScenePage } from "./pages/ScenePage";
  * test is every route resolving to the same thing. What the tests here assert is
  * which component a URL reaches, and that is this file and nothing else.
  *
- * Two things outside it have to agree. CloudFront's viewer-request function must
- * send all of these to `index.html`, which it does by routing on location rather
- * than on extension (`infra/modules/hosting`). And sign-out sends the user to
- * `/`.
+ * Three things outside it have to agree. CloudFront's viewer-request function
+ * must send all of these to `index.html`, which it does by routing on location
+ * rather than on extension (`infra/modules/hosting`). Sign-out sends the user
+ * to `/`. And `/auth/callback` is registered character for character in the
+ * user pool client's `callback_urls` (`infra/modules/auth`) — which is why the
+ * path is the `CALLBACK_PATH` constant the authorize URL is built from rather
+ * than a literal written twice.
  */
 export function StudioRoutes() {
   return (
@@ -62,6 +68,11 @@ export function StudioRoutes() {
       <Route path="/f" element={<BrowsePage />} />
       <Route path="/f/:nodeId" element={<BrowsePage />} />
       <Route path="/o/:nodeId" element={<BrowsePage />} />
+
+      {/* **Above the catch-all, and it has to be.** Cognito returns to this
+          path with `?code=`; matched by `*` below it would redirect home,
+          discarding the code and looping straight back to the hosted page. */}
+      <Route path={CALLBACK_PATH} element={<AuthCallbackPage />} />
 
       {/* `replace`, not a render of home at the wrong address: a bookmark that
           has stopped meaning anything should leave the address bar honest, and

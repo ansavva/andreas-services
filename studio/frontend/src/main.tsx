@@ -1,7 +1,6 @@
-// `./amplify` must be imported before anything that reaches for
-// `aws-amplify/auth`, so `Amplify.configure` has already run by the time the
-// auth context's first session lookup fires.
-import "./amplify";
+// There is no auth SDK to configure here any more. `auth/oauth.ts` reads its
+// two build-time values at import time and holds the session in
+// `localStorage`, so nothing has to run before the first render.
 import "./styles/app.css";
 
 import { StrictMode } from "react";

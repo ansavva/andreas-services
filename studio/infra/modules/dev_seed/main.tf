@@ -5,7 +5,7 @@ terraform {
       source = "hashicorp/aws"
       # The major every other module in this service pins, so a standalone
       # `terraform validate` here means the same thing it means next door.
-      version = "~> 5.0"
+      version = ">= 6.12, < 7.0"
     }
   }
 }

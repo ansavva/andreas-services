@@ -3,8 +3,11 @@ terraform {
 
   required_providers {
     aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
+      source = "hashicorp/aws"
+      # Same floor and ceiling as `envs/prod`, and for the same reason: both
+      # roots build `modules/auth`, whose managed-login branding resource does
+      # not exist before provider 6.12.0. See the note there.
+      version = ">= 6.12, < 7.0"
     }
   }
 }

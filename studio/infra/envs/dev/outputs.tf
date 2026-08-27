@@ -22,6 +22,11 @@ output "cognito_user_pool_client_id" {
   value       = module.auth.user_pool_client_id
 }
 
+output "cognito_auth_domain" {
+  description = "Managed login host the local SPA redirects to; `dev-setup.sh` writes it into frontend/.env.local as VITE_COGNITO_DOMAIN"
+  value       = module.auth.auth_domain
+}
+
 output "media_bucket_name" {
   description = "The development media bucket, written by the seed script and read by the local API"
   value       = module.storage.media_bucket_name

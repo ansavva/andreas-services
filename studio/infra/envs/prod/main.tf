@@ -24,6 +24,17 @@ data "aws_route53_zone" "main" {
 
 data "aws_region" "current" {}
 
+# The shared wildcard, for the Cognito custom auth domain below. The hosting
+# and api_domain modules each look this up for themselves; the auth module
+# cannot, because `envs/dev` uses it too and declares no us-east-1 provider to
+# alias in — so the ARN is resolved here and passed down.
+data "aws_acm_certificate" "wildcard" {
+  provider    = aws.us_east_1
+  domain      = "*.andreas.services"
+  statuses    = ["ISSUED"]
+  most_recent = true
+}
+
 # THE MEDIA BUCKET.
 #
 # Studio owns this bucket. It used to be the other way round: the bucket was
@@ -72,6 +83,30 @@ module "auth" {
   # The pool backs the whole app rather than an admin corner of it, so "app" is
   # the component it serves.
   name = "${local.project}-${local.environment}-app"
+
+  # Exact-match, character for character. `localhost:5173` is registered
+  # alongside the deployed origin because studio's SPA is routinely run from a
+  # developer's machine against a real pool, and Vite's port is pinned at
+  # `frontend/vite.config.ts` for exactly this reason — changing it breaks
+  # sign-in with no apply to warn anyone.
+  callback_urls = [
+    "https://${local.app_domain}/auth/callback",
+    "http://localhost:5173/auth/callback",
+  ]
+
+  # The bare origins: sign-out lands on the app's root, which then bounces
+  # straight back through the hosted authorize page.
+  logout_urls = [
+    "https://${local.app_domain}/",
+    "http://localhost:5173/",
+  ]
+
+  # `studio-auth`, not `auth.studio`: the shared wildcard covers one label, the
+  # same constraint that gave `studio-api` its name above.
+  auth_domain          = "studio-auth.andreas.services"
+  auth_certificate_arn = data.aws_acm_certificate.wildcard.arn
+  route53_zone_id      = data.aws_route53_zone.main.zone_id
+
   tags = local.common_tags
 }
 
@@ -173,7 +208,7 @@ module "hosting" {
 
   # S3 names are globally unique, so this one carries the region suffix the
   # convention reserves for buckets.
-  app_bucket_name = "${local.project}-${local.environment}-app-${data.aws_region.current.name}"
+  app_bucket_name = "${local.project}-${local.environment}-app-${data.aws_region.current.region}"
 
   route53_zone_id = data.aws_route53_zone.main.zone_id
   tags            = local.common_tags
@@ -210,7 +245,7 @@ resource "aws_ssm_parameter" "api_domain" {
 module "dev_seed" {
   source = "../../modules/dev_seed"
 
-  bucket_name = "${local.project}-dev-seed-${data.aws_region.current.name}"
+  bucket_name = "${local.project}-dev-seed-${data.aws_region.current.region}"
 
   tags = merge(local.common_tags, {
     Environment = "dev"
