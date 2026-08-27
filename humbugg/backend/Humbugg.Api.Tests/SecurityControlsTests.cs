@@ -113,7 +113,7 @@ public sealed class SecurityControlsTests
             if (member is not null) members.Add(member);
             Groups = new FakeGroups(Group(drawn), drawn);
             Subject = new GroupService(
-                new FakeUser(), new FakeProfiles(), Groups, new FakeMembers(members),
+                new FakeUser(), new FakeProfiles(), Groups, new FakeMembers(members), new FakeWishes(),
                 new MatchingService(), new PlanCatalog(new()), Audit, new FakeProductAnalytics(),
                 new HumbuggSettings(
                     "us-east-1", "us-east-1", "pool", "client", ["https://humbugg.example"], "https://humbugg.example", null,

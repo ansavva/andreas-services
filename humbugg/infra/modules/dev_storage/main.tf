@@ -55,6 +55,30 @@ resource "aws_dynamodb_table" "groupmembers" {
   tags = var.tags
 }
 
+# One row per wish, keyed (member_id, wish_id). member_id as the partition key is what makes
+# listing a member's wishes a Query rather than a Scan, and what makes every single-item write
+# name its owner — there is no way to address a wish without naming the member it belongs to.
+# No GSI: every access pattern starts from a known member_id.
+resource "aws_dynamodb_table" "wishes" {
+  name         = "${var.resource_prefix}-wishes"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "member_id"
+  range_key    = "wish_id"
+
+  attribute {
+    name = "member_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "wish_id"
+    type = "S"
+  }
+
+  server_side_encryption { enabled = true }
+  tags = var.tags
+}
+
 resource "aws_dynamodb_table" "draws" {
   name         = "${var.resource_prefix}-draws"
   billing_mode = "PAY_PER_REQUEST"

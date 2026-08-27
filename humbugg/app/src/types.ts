@@ -119,13 +119,69 @@ export interface PlusPurchaseStatus {
   updated_at?: string | null;
 }
 
+export type WishKind = 'Product' | 'Custom' | 'Experience' | 'Charity';
+export type WishPriority = 'Low' | 'Normal' | 'High';
+
+/** A wish on your own list. */
+export interface Wish {
+  wish_id: string;
+  kind: WishKind;
+  title: string;
+  url?: string | null;
+  image_url?: string | null;
+  price_cents?: number | null;
+  currency?: string | null;
+  quantity: number;
+  priority: WishPriority;
+  details?: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * A wish on the list of the person you were assigned. Separate from `Wish` on purpose, and not an
+ * alias: purchase claims (#130) will be visible here and never on the owner's own view, so the two
+ * shapes are going to diverge.
+ */
+export interface RecipientWish {
+  wish_id: string;
+  kind: WishKind;
+  title: string;
+  url?: string | null;
+  image_url?: string | null;
+  price_cents?: number | null;
+  currency?: string | null;
+  quantity: number;
+  priority: WishPriority;
+  details?: string | null;
+  position: number;
+}
+
 export interface RecipientAssignment {
   member_id: string;
   display_name: string;
+  /** Free-text general preferences; structured wishes did not replace it. */
   wishlist: string;
   avoidances: string;
   address: Address;
+  wishes: RecipientWish[];
 }
+
+export interface CreateWishInput {
+  kind?: WishKind;
+  title: string;
+  url?: string;
+  image_url?: string;
+  price_cents?: number;
+  currency?: string;
+  quantity?: number;
+  priority?: WishPriority;
+  details?: string;
+}
+
+/** Omitted fields are left unchanged; an empty string clears an optional field. */
+export type UpdateWishInput = Partial<CreateWishInput>;
 
 export interface RevealAssignment {
   giver: Membership;

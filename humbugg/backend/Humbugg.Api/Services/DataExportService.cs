@@ -31,7 +31,8 @@ internal sealed class DataExportService(
     ICurrentUser user,
     IProfileRepository profiles,
     IGroupRepository groups,
-    IMembershipRepository memberships) : IDataExportService
+    IMembershipRepository memberships,
+    IWishRepository wishes) : IDataExportService
 {
     private const string FormatVersion = "1.0";
 
@@ -60,6 +61,9 @@ internal sealed class DataExportService(
                 Wishlist: NullIfEmpty(membership.Wishlist),
                 Avoidances: NullIfEmpty(membership.Avoidances),
                 Address: HasAddress(membership.Address) ? membership.Address : null,
+                // Keyed by the caller's own member_id, so this reads their list and no one else's.
+                Wishes: (await wishes.GetByMemberAsync(membership.MemberId, cancellationToken))
+                    .Select(ExportedWish).ToList(),
                 JoinedAt: membership.CreatedAt,
                 UpdatedAt: membership.UpdatedAt));
         }
@@ -106,6 +110,13 @@ internal sealed class DataExportService(
     }
 
     private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
+
+    private static Wish ExportedWish(WishRecord record) => new(
+        record.WishId, record.Kind, record.Title,
+        NullIfEmpty(record.Url), NullIfEmpty(record.ImageUrl), record.PriceCents,
+        record.PriceCents is null ? null : NullIfEmpty(record.Currency),
+        record.Quantity, record.Priority, NullIfEmpty(record.Details), record.Position,
+        record.CreatedAt, record.UpdatedAt);
 
     private static bool HasAddress(Address? address) => address is not null && new[]
     {
