@@ -390,6 +390,73 @@ again. `--project` takes a slug or a project id and is never inferred.
   deliberately served as text and never parsed. More in
   [docs/WEB_APP.md](docs/WEB_APP.md#conventions--gotchas).
 
+## Testing
+
+**Five tiers. Which one a test belongs in is decided by what it is allowed to
+touch, and that is the same question as which guards apply to it** — conftest
+inheritance is scoped by directory, so the tier boundary and the guard boundary
+are one line.
+
+| Tier | Runs | Talks to | Gate |
+|---|---|---|---|
+| `pipeline/tests/unit/` | every PR | moto + the in-memory `fake_api` | — |
+| `pipeline/tests/contracts/` | every PR | nothing; named for the FAILURE they catch | — |
+| `backend/tests/unit/` | every PR | moto + the Flask test client | — |
+| `frontend` vitest + `e2e/` | every PR | jsdom; e2e stubs `/api/**` from captured fixtures | — |
+| `*/tests/integration/` | **never in CI** | real S3, DynamoDB, Cognito, the running API | `STUDIO_INTEGRATION=1` |
+
+```bash
+uv run --project studio/pipeline pytest studio/pipeline/tests -q   # + backend, frontend
+cd studio/frontend && npm test && npm run e2e                      # vitest, then Playwright
+studio/scripts/dev-test-integration.sh          # both integration suites; needs dev-up.sh
+```
+
+### What a new test may not do
+
+Each of these is a bug that already happened, and each is now enforced rather
+than remembered. If a guard is in the way, the test belongs in a different tier.
+
+- **Do not stub the model provider yourself.** `STUDIO_REPLICATE_MODE=fake` is
+  set autouse; the adapter answers all six of its functions locally. Every test
+  that reached the engine used to monkeypatch it by hand, and a new file that
+  forgot called Replicate for real.
+- **Do not reach the network.** A socket guard allows loopback only in the unit
+  suites, and blocks the provider hosts in the integration suites. The unit
+  suite once made live calls to `api.replicate.com` and depended on them 401-ing.
+- **Do not write to the repo.** `registry.PATH` is redirected at a per-test copy:
+  `studio models refresh` rewrites the committed `models.json`, and the dispatch
+  test invokes every leaf command. It deleted 391 lines of schema.
+- **Do not edit `cli_surface_reference.json` to make a test pass.** Regenerate it
+  with `tests.contracts.update_cli_reference <command>`.
+- **Do not capture an API fixture with `curl`.** `/api/reel` answers with
+  presigned URLs; `frontend/e2e/fixtures/capture.py` scrubs them. A hand-rolled
+  capture put an AWS access key id into git.
+- **Do not skip a tree at module level.** A `pytest_collection_modifyitems` hook
+  or a `test.skip(...)` that is not filtered skips everything — 373 backend tests
+  once reported as 373 skips and exited 0.
+
+### Coverage is measured and gates on nothing
+
+`pytest-cov` on both Python suites, `@vitest/coverage-v8` on the frontend,
+report-only in `studio-pr.yml`. First honest figures, 2026-08-27: **backend 88%,
+pipeline 72%, frontend 36%** (low by design — `vite.config.ts` argues for it).
+
+There is deliberately no `--cov-fail-under`. A threshold picked before anyone has
+read a real number either sits below it and means nothing, or fires on unrelated
+PRs until somebody deletes it. Ratchet from these once there is a trend.
+
+**Aim by the numbers, not by intuition.** Two survey passes over this repo
+produced different rankings and both were wrong: `storyboard.py` was already at
+95% while `movies.py` — patched in two bug-fix PRs and with no test file — was at
+56%. Coverage will not tell you a state machine decides correctly, though; the
+panel table test in `test_storyboard.py` exists because #494 and #498 both
+shipped while those lines were being executed by tests asserting nothing about
+what they decided.
+
+The detail lives beside the code: each suite's `tests/__init__.py` is its map,
+`studio-code-pipeline` covers the pipeline's, and `frontend/e2e/README.md` covers
+the browser one.
+
 ## Local development
 
 **A dev stack comes first.** Both scripts below read this machine's, and
