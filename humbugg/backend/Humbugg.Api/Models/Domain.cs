@@ -149,6 +149,33 @@ public sealed record CreateInvitationsRequest(IReadOnlyList<string>? Emails);
 public sealed record CreateInvitationsResponse(IReadOnlyList<ManagedInvitation> Invitations);
 public sealed record AcceptInvitationRequest(string? Token, bool ConfirmAddressMismatch = false);
 public sealed record AcceptInvitationResponse(string GroupId, bool Accepted);
+public enum ReminderState { Active, Paused, Stopped }
+public enum ReminderRule { UnacceptedInvitation, IncompleteReadiness }
+public sealed record UpdateReminderSettingsRequest(
+    ReminderState State,
+    bool RemindUnacceptedInvitations,
+    bool RemindIncompleteReadiness,
+    int IntervalDays = 3,
+    int QuietStartUtcHour = 9,
+    int QuietEndUtcHour = 20);
+public sealed record ManualReminderRequest(string? InvitationId, ReminderRule Rule);
+public sealed record ReminderSettings(
+    ReminderState State,
+    bool RemindUnacceptedInvitations,
+    bool RemindIncompleteReadiness,
+    int IntervalDays,
+    int QuietStartUtcHour,
+    int QuietEndUtcHour);
+public sealed record ReminderHistoryItem(
+    string ReminderId,
+    ReminderRule Rule,
+    string InvitationId,
+    string Status,
+    string CreatedAt);
+public sealed record ReminderOverview(
+    ReminderSettings Settings,
+    string? NextScheduledAt,
+    IReadOnlyList<ReminderHistoryItem> RecentHistory);
 
 // ─── Self-service data export (GDPR right of access / portability, issue #189) ──────────────────
 //
@@ -324,6 +351,17 @@ internal sealed record InvitationRecord(
     string InvitationId, string GroupId, string Email, string TokenHash, string Status,
     string ExpiresAt, string CreatedAt, string UpdatedAt, string? AcceptedAt = null,
     string? AcceptedUserId = null, string? LastSentAt = null, string? MessageId = null);
+internal sealed record ReminderConfigurationRecord(
+    string GroupId,
+    ReminderState State,
+    bool RemindUnacceptedInvitations,
+    bool RemindIncompleteReadiness,
+    int IntervalDays,
+    int QuietStartUtcHour,
+    int QuietEndUtcHour,
+    string? NextScheduledAt,
+    string? LastManualAt,
+    string UpdatedAt);
 
 public class ApiException(int statusCode, string code, string message) : Exception(message)
 {
