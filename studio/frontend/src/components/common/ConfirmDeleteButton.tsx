@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { buttonClass } from "@ansavva/design-system";
+import { QuestionIcon, TrashIcon } from "./icons";
 
 type Tone = "row" | "chrome" | "bar" | "page";
 type Phase = "idle" | "armed" | "busy";
@@ -190,31 +191,12 @@ export function ConfirmDeleteButton({
               ? `Confirm — delete ${noun}`
               : "Delete"}
         </span>
+      ) : phase === "armed" ? (
+        // A question mark while armed: the icon itself has to say that this
+        // press is not the same as the last one.
+        <QuestionIcon />
       ) : (
-        <svg
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="size-5 fill-none stroke-current stroke-[1.5]"
-        >
-          {phase === "armed" ? (
-            // A question mark while armed: the icon itself has to say that this
-            // press is not the same as the last one.
-            <>
-              <path d="M9.5 9a2.5 2.5 0 1 1 3 2.45V13" />
-              <path d="M12 16.5v.01" />
-              <circle cx="12" cy="12" r="9" />
-            </>
-          ) : (
-            <>
-              <path d="M4 7h16" />
-              <path d="M10 11v6m4-6v6" />
-              <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
-              <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-            </>
-          )}
-        </svg>
+        <TrashIcon />
       )}
     </button>
   );

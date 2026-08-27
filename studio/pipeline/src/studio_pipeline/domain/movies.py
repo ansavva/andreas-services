@@ -225,7 +225,19 @@ def create(project: dict, slug: str, refs: list[str],
                                    os.path.getsize(out_local), "video/mp4")
     store.upload_to_url(signed, pathlib.Path(out_local))
 
-    entities.put_movie_scenes(record["id"], resolved)
+    # **Scene IDS.** This sent `resolved` — a list of dicts carrying the copied
+    # node, the duration and the position — and the route validates every entry
+    # as an id, so it answered 500 and `movies new` died here: after every scene
+    # had been downloaded, stitched and the finished cut uploaded. Nothing
+    # caught it because the fake API stored whatever it was handed.
+    #
+    # The per-cut detail those dicts carried is real and keeps its home in the
+    # stitch report, beside the rest of what the encoder recorded — which is
+    # where `scenes assemble` already puts the same kind of thing.
+    info["cuts"] = [{"n": scene["n"], "scene": scene["scene"], "slug": scene["slug"],
+                     "node": scene["node"], "duration": scene["duration"]}
+                    for scene in resolved]
+    entities.put_movie_scenes(record["id"], [scene["scene"] for scene in resolved])
     record = entities.patch_movie(
         record["id"], characters=sorted(characters), stitch=info, status="assembled",
         output={"node": signed["node"], **probe(out_local)}, assembled=R._now())

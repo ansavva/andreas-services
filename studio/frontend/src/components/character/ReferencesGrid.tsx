@@ -1,23 +1,23 @@
 import { useCallback, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+
+import { Alert, Badge, Button, Select, Spinner, Text, Toggle, ToggleGroup } from "@ansavva/design-system";
 
 import {
-  Alert,
-  Badge,
-  Button,
-  Drawer,
-  Select,
-  Separator,
-  Spinner,
-  Text,
-  Toggle,
-  ToggleGroup,
-} from "@ansavva/design-system";
-
-import { getReferences, getTree, patchReference } from "../../apis/studio";
+  addReference,
+  getReferences,
+  getTree,
+  patchReference,
+  setDefaultSet,
+  type DefaultSetAck,
+} from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import { ENGINE_CAPS, type FileEntry, type ReferenceEntry } from "../../types";
-import { AutoTextarea } from "../common/AutoTextarea";
 import { ChipRow } from "../common/ChipRow";
+import { CheckIcon } from "../common/icons";
+import { objectPath } from "../../utils/location";
+import { MediaThumb } from "../media/MediaThumb";
+import { LoadError } from "../common/LoadError";
 
 interface Props {
   characterId: string;
@@ -25,6 +25,22 @@ interface Props {
   rootId: string;
   /** Marked on the grid. Held on the record because it is small, ordered and read on every shoot. */
   defaultSet: string[];
+  /**
+   * The character's revision, which `PATCH /default-set` compares and refuses on.
+   *
+   * Passed in rather than re-read here: the page already holds the record, and a
+   * second copy fetched by this component would be the stale one exactly when it
+   * matters. Writing without it is what #485 was.
+   */
+  rev: number;
+  /**
+   * The set and the revision the write answered with.
+   *
+   * A patch to merge, never a record to swap in — the route answers with three
+   * fields, so replacing the page's record with it drops everything else the
+   * character is.
+   */
+  onSaved: (ack: DefaultSetAck) => void;
 }
 
 /** The folder the starting layout puts reference images in. A convention, and checked as one. */
@@ -78,17 +94,30 @@ const REFERENCE_FOLDER = "reference";
  * exceeded once it is not. Nothing is lost: under the smallest cap you are under
  * all of them, and over one, the only thing worth reading is which.
  */
-export function ReferencesGrid({ characterId, rootId, defaultSet }: Props) {
+export function ReferencesGrid({ characterId, rootId, defaultSet, rev, onSaved }: Props) {
+  const navigate = useNavigate();
+  // Every tile opens into the pool, so scrolling the viewer walks the character's
+  // references in the order a shoot would send them.
+  const REFS = useMemo(() => ({ in: "refs" as const, id: characterId }), [characterId]);
   const load = useCallback(() => getReferences(characterId), [characterId]);
-  const { data, loading, error, reload } = useResource(load);
+  const { data, loading, error, reload } = useResource(["references", characterId], load);
 
   const [tag, setTag] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
-  const [openNode, setOpenNode] = useState<string | null>(null);
   const [writeError, setWriteError] = useState<string | null>(null);
+  /**
+   * The set being edited, or `null` when it is only being read.
+   *
+   * **The set is edited here and one reference at a time nowhere**, because it
+   * is written whole: `PATCH /default-set` takes the ordered list and the
+   * character's revision, so a per-picture toggle would be a read-modify-write
+   * per press. Seeing the whole pool while choosing is also the point — the cap
+   * is a fact about the set, not about any member of it.
+   */
+  const [picking, setPicking] = useState<Set<string> | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const groups = useMemo(() => Object.entries(data?.groups ?? {}), [data]);
-  const groupNames = useMemo(() => groups.map(([name]) => name), [groups]);
 
   const tags = useMemo(() => {
     const seen = new Set<string>();
@@ -124,12 +153,19 @@ export function ReferencesGrid({ characterId, rootId, defaultSet }: Props) {
     return defaultSet.filter((node) => !attached.has(node));
   }, [defaultSet, groups]);
 
+  /** Every reference in grid order — group order, then position. That IS the shoot order. */
+  const ordered = useMemo(
+    () => groups.flatMap(([, entries]) => entries.map((entry) => entry.node)),
+    [groups],
+  );
+
   const selectionSize = useMemo(() => {
+    if (picking) return picking.size;
     if (tag !== null) {
       return groups.reduce((total, [, entries]) => total + entries.filter(matches).length, 0);
     }
     return defaultSet.length - staleDefaults.length;
-  }, [defaultSet.length, groups, matches, staleDefaults.length, tag]);
+  }, [defaultSet.length, groups, matches, picking, staleDefaults.length, tag]);
 
   /**
    * The engines this selection is too big for, and the one that binds first.
@@ -167,6 +203,30 @@ export function ReferencesGrid({ characterId, rootId, defaultSet }: Props) {
     [characterId, write],
   );
 
+  /**
+   * The set, written whole and in grid order.
+   *
+   * Order matters — it is the order a shoot sends them in — and the grid already
+   * shows one: group by group, position by position. So the picked nodes are
+   * filtered out of `ordered` rather than kept in click order, which is not
+   * information.
+   */
+  const saveDefaultSet = useCallback(async () => {
+    if (!picking) return;
+    setSaving(true);
+    setWriteError(null);
+    try {
+      const ack = await setDefaultSet(characterId, ordered.filter((node) => picking.has(node)), rev);
+      onSaved(ack);
+      setPicking(null);
+      reload();
+    } catch (err) {
+      setWriteError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }, [characterId, onSaved, ordered, picking, reload, rev]);
+
   const dropOn = useCallback(
     (group: string, after: string | null) => {
       if (dragging === null) return;
@@ -180,35 +240,6 @@ export function ReferencesGrid({ characterId, rootId, defaultSet }: Props) {
     [dragging, place],
   );
 
-  /**
-   * Move one place within a group, which is the touch path for what a drag does.
-   *
-   * The API places an entry *after* another one, so a step up lands after the
-   * entry two above it — or at the top of the group, which is what a null anchor
-   * means. A step down lands after its next neighbour. Both are the same single
-   * conditional write a drop makes.
-   */
-  const nudge = useCallback(
-    (entry: ReferenceEntry, group: string, delta: -1 | 1) => {
-      const entries = data?.groups[group] ?? [];
-      const at = entries.findIndex((each) => each.node === entry.node);
-      const to = at + delta;
-      if (at < 0 || to < 0 || to >= entries.length) return;
-      const anchor = delta === -1 ? (entries[at - 2]?.node ?? null) : (entries[at + 1]?.node ?? null);
-      place(entry.node, group, anchor);
-    },
-    [data, place],
-  );
-
-  /** The open entry, re-read from the listing so a write refreshes the sheet under it. */
-  const open = useMemo(() => {
-    if (openNode === null) return null;
-    for (const [group, entries] of groups) {
-      const at = entries.findIndex((entry) => entry.node === openNode);
-      if (at >= 0) return { entry: entries[at]!, group, index: at, total: entries.length };
-    }
-    return null;
-  }, [groups, openNode]);
 
   const attached = useMemo(
     () => new Set(groups.flatMap(([, entries]) => entries.map((entry) => entry.node))),
@@ -219,10 +250,7 @@ export function ReferencesGrid({ characterId, rootId, defaultSet }: Props) {
 
   if (error) {
     return (
-      <Alert.Root intent="danger">
-        <Alert.Title>Could not load references</Alert.Title>
-        <Alert.Description>{error}</Alert.Description>
-      </Alert.Root>
+      <LoadError what="references" message={error} onRetry={reload} />
     );
   }
 
@@ -257,10 +285,46 @@ export function ReferencesGrid({ characterId, rootId, defaultSet }: Props) {
             ))
           )}
 
-          {staleDefaults.length > 0 && tag === null && (
+          {staleDefaults.length > 0 && tag === null && !picking && (
             <Badge intent="warning">
               {staleDefaults.length} no longer a reference
             </Badge>
+          )}
+
+          <div className="flex-1" />
+
+          {/* **Membership is a deliberate act, not a toggle you pass through.**
+              Hard rule #2b treats a character's references as who it IS, so
+              choosing the set a shoot falls back to gets its own mode with its
+              own save rather than writing on every press. */}
+          {picking ? (
+            <>
+              <Button
+                size="sm"
+                disabled={saving}
+                onClick={() => void saveDefaultSet()}
+              >
+                {saving ? "Saving…" : "Save default set"}
+              </Button>
+              <Button
+                intent="ghost"
+                size="sm"
+                disabled={saving}
+                onClick={() => setPicking(null)}
+              >
+                Cancel
+              </Button>
+            </>
+          ) : (
+            groups.length > 0 && (
+              <Button
+                intent="ghost"
+                size="sm"
+                onClick={() => setPicking(new Set(defaultSet))}
+              >
+                Edit default set
+              </Button>
+            )
           )}
         </div>
 
@@ -351,9 +415,20 @@ export function ReferencesGrid({ characterId, rootId, defaultSet }: Props) {
                   <ReferenceTile
                     key={entry.node}
                     entry={entry}
-                    isDefault={entry.default ?? defaultSet.includes(entry.node)}
+                    isDefault={
+                      picking ? picking.has(entry.node) : (entry.default ?? defaultSet.includes(entry.node))
+                    }
+                    picking={picking !== null}
                     dragging={dragging === entry.node}
-                    onOpen={() => setOpenNode(entry.node)}
+                    onOpen={() =>
+                      picking
+                        ? setPicking((current) => {
+                            const next = new Set(current);
+                            if (!next.delete(entry.node)) next.add(entry.node);
+                            return next;
+                          })
+                        : navigate(objectPath(entry.node, REFS))
+                    }
                     onDragStart={() => setDragging(entry.node)}
                     onDragEnd={() => setDragging(null)}
                     onDrop={() => dropOn(group, entry.node)}
@@ -365,29 +440,13 @@ export function ReferencesGrid({ characterId, rootId, defaultSet }: Props) {
         })
       )}
 
-      <Unattached rootId={rootId} attached={attached} />
+      <Unattached
+        rootId={rootId}
+        attached={attached}
+        groups={groups.map(([name]) => name)}
+        onAttach={(node, group) => write(addReference(characterId, { node, group }))}
+      />
 
-      {open && (
-        <ReferenceSheet
-          // The sheet holds a description draft. Keyed on the node so it cannot
-          // outlive the entry it was typed against — a move or a regroup keeps
-          // the same instance, which is wanted, and a different reference does
-          // not.
-          key={open.entry.node}
-          entry={open.entry}
-          group={open.group}
-          groups={groupNames}
-          index={open.index}
-          total={open.total}
-          isDefault={open.entry.default ?? defaultSet.includes(open.entry.node)}
-          onClose={() => setOpenNode(null)}
-          onRegroup={(next) => place(open.entry.node, next, null)}
-          onNudge={(delta) => nudge(open.entry, open.group, delta)}
-          onDescribe={(description) =>
-            write(patchReference(characterId, open.entry.node, { description }))
-          }
-        />
-      )}
     </div>
   );
 }
@@ -403,6 +462,7 @@ export function ReferencesGrid({ characterId, rootId, defaultSet }: Props) {
 function ReferenceTile({
   entry,
   isDefault,
+  picking,
   dragging,
   onOpen,
   onDragStart,
@@ -410,7 +470,10 @@ function ReferenceTile({
   onDrop,
 }: {
   entry: ReferenceEntry;
+  /** In the default set — or, while picking, chosen for it. */
   isDefault: boolean;
+  /** The grid is choosing the default set, so a press picks rather than opens. */
+  picking: boolean;
   dragging: boolean;
   onOpen: () => void;
   onDragStart: () => void;
@@ -440,10 +503,11 @@ function ReferenceTile({
         className="block w-full text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px]
                    focus-visible:outline-primary"
       >
-        <img
-          src={entry.file.url}
-          alt={entry.file.name}
-          className="aspect-square w-full bg-surface-alt object-cover"
+        <MediaThumb
+          nodeId={entry.node}
+          url={entry.file.url}
+          name={entry.file.name}
+          className="w-full"
         />
         <span
           className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t
@@ -453,153 +517,42 @@ function ReferenceTile({
         </span>
       </button>
 
-      {/* A marker, not a control. Membership of the default set is a decision
-          about identity — hard rule #2b — and this grid is where it is *read*,
-          not where it is made. */}
-      {isDefault && (
-        <span className="pointer-events-none absolute left-1.5 top-1.5">
-          <Badge intent="success">default</Badge>
+      {/* A marker while reading, a tick while choosing. Membership is still not
+          something a stray press can change — picking is a mode with its own
+          save, which is what hard rule #2b asks of an identity decision. */}
+      {picking ? (
+        <span
+          className={`pointer-events-none absolute left-1.5 top-1.5 flex size-6 items-center
+                      justify-center rounded-md border ${
+                        isDefault
+                          ? "border-primary bg-primary text-primary-text"
+                          : "border-white/70 bg-black/50"
+                      }`}
+        >
+          {isDefault && <CheckIcon className="size-4 fill-none stroke-current stroke-[3]" />}
         </span>
+      ) : (
+        isDefault && (
+          <span className="pointer-events-none absolute left-1.5 top-1.5">
+            <Badge intent="success">default</Badge>
+          </span>
+        )
       )}
     </div>
   );
 }
 
-/**
- * One reference's fields, and the two controls that move it.
+/*
+ * `ReferenceSheet` was here — a bottom sheet holding a 256px-tall image and the
+ * fields beside it.
  *
- * A bottom sheet on a phone and a right-hand panel from `lg` up, which is one
- * `Drawer` and a handful of `lg:` classes rather than two components: the
- * geometry is the only thing that differs, and `Drawer.Panel` merges what it is
- * given over its own side styles.
+ * A reference pool is judged by LOOKING, and nobody can tell whether a face is
+ * on-model from a thumbnail with a form under it. The picture fills the screen
+ * now (`/o/<node>?in=refs:<char>`) and the fields moved into the viewer's own
+ * panel — see `ReferenceFields`. Regrouping and reordering send the same
+ * `{group, after}` they always did; the drag on the tiles is untouched and is
+ * still the accelerator for pointers that have one.
  */
-function ReferenceSheet({
-  entry,
-  group,
-  groups,
-  index,
-  total,
-  isDefault,
-  onClose,
-  onRegroup,
-  onNudge,
-  onDescribe,
-}: {
-  entry: ReferenceEntry;
-  group: string;
-  groups: string[];
-  index: number;
-  total: number;
-  isDefault: boolean;
-  onClose: () => void;
-  onRegroup: (group: string) => void;
-  onNudge: (delta: -1 | 1) => void;
-  onDescribe: (description: string) => Promise<unknown>;
-}) {
-  const [draft, setDraft] = useState(entry.description);
-
-  return (
-    <Drawer.Root open onOpenChange={(next) => !next && onClose()} side="bottom">
-      <Drawer.Backdrop />
-      <Drawer.Panel
-        // 16px, inline. The panel carries `p-lg`, and `tailwind-merge` does not
-        // read this package's t-shirt spacing keys as spacing — it keeps both
-        // classes and the stylesheet picks, which is not a thing to leave to
-        // chance on the surface a thumb works. `max-h` merges correctly, being
-        // an arbitrary value it does recognise.
-        style={{ padding: "1rem" }}
-        className="max-h-[85vh] rounded-t-lg
-                   lg:inset-y-0 lg:left-auto lg:right-0 lg:h-full lg:max-h-none lg:w-full
-                   lg:max-w-md lg:rounded-none lg:border-l lg:border-t-0"
-      >
-        {/* A direct child of the panel, and it has to be: `Drawer.Panel` decides
-            whether to set `aria-labelledby` by looking for a `Drawer.Title`
-            among its own children, so a title wrapped in a header row of my own
-            leaves the dialog unnamed. Which is why the close is at the foot
-            rather than opposite it — that, plus the backdrop and Escape, which
-            both dismiss. */}
-        <Drawer.Title className="min-w-0 truncate">{entry.file.name}</Drawer.Title>
-
-        <img
-          src={entry.file.url}
-          alt={entry.file.name}
-          className="max-h-64 w-full rounded-md border border-line bg-surface-alt object-contain
-                     lg:max-h-72"
-        />
-
-        <div className="flex flex-wrap items-center gap-1">
-          {isDefault && <Badge intent="success">default set</Badge>}
-          {entry.tags.map((each) => (
-            <Badge key={each} intent="neutral">
-              {each}
-            </Badge>
-          ))}
-        </div>
-
-        <Separator />
-
-        {/* Regrouping and reordering, on every pointer. These send the same
-            `{group, after}` a drop does — see `place` and `nudge`. */}
-        <div className="flex flex-col gap-2">
-          <Text variant="caption" tone="muted">
-            Group
-          </Text>
-          <Select
-            aria-label="Group"
-            options={groups.map((name) => ({ value: name, label: name }))}
-            value={group}
-            onValueChange={(next: string) => {
-              if (next !== group) onRegroup(next);
-            }}
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Text variant="caption" tone="muted" className="tabular-nums">
-            {index + 1} of {total}
-          </Text>
-          <div className="flex-1" />
-          <Button intent="ghost" size="sm" disabled={index === 0} onClick={() => onNudge(-1)}>
-            <span aria-hidden="true">↑</span> Up
-          </Button>
-          <Button
-            intent="ghost"
-            size="sm"
-            disabled={index === total - 1}
-            onClick={() => onNudge(1)}
-          >
-            <span aria-hidden="true">↓</span> Down
-          </Button>
-        </div>
-
-        <Separator />
-
-        {/* Saved on blur rather than per keystroke: one row write per description
-            written, not one per character. */}
-        <div className="flex flex-col gap-2">
-          <Text variant="caption" tone="muted">
-            Description
-          </Text>
-          <AutoTextarea
-            value={draft}
-            aria-label={`Description of ${entry.file.name}`}
-            placeholder="What this reference shows"
-            onValueChange={setDraft}
-            onBlur={() => {
-              if (draft !== entry.description) void onDescribe(draft);
-            }}
-          />
-        </div>
-
-        {/* Full width and at the foot, where a thumb reaches it on a phone. The
-            description saves on blur, so leaving by this button commits it. */}
-        <Drawer.Close className="mt-auto w-full self-stretch rounded-md border border-line py-2 text-center">
-          Done
-        </Drawer.Close>
-      </Drawer.Panel>
-    </Drawer.Root>
-  );
-}
 
 /**
  * Images sitting in `reference/` that no `REF#` row claims.
@@ -619,7 +572,18 @@ function ReferenceSheet({
  * convention the entity model deliberately stopped enforcing, so a character
  * without one simply has no unattached pool to report.
  */
-function Unattached({ rootId, attached }: { rootId: string; attached: ReadonlySet<string> }) {
+function Unattached({
+  rootId,
+  attached,
+  groups,
+  onAttach,
+}: {
+  rootId: string;
+  attached: ReadonlySet<string>;
+  /** Where an image can be attached. Empty until the pool has its first group. */
+  groups: string[];
+  onAttach: (node: string, group: string) => void;
+}) {
   const load = useCallback(async () => {
     const root = await getTree({ node: rootId }, "name");
     const folder = root.folders.find((each) => each.name === REFERENCE_FOLDER);
@@ -628,7 +592,8 @@ function Unattached({ rootId, attached }: { rootId: string; attached: ReadonlySe
     return listing.files.filter((file) => file.kind === "image");
   }, [rootId]);
 
-  const { data } = useResource(load);
+  const { data } = useResource(["unattached", rootId], load);
+  const [target, setTarget] = useState(groups[0] ?? "");
 
   const loose = useMemo(
     () => (data ?? []).filter((file) => !attached.has(file.id)),
@@ -645,23 +610,87 @@ function Unattached({ rootId, attached }: { rootId: string; attached: ReadonlySe
           {loose.length}
         </Text>
       </div>
+      {/* **The copy used to send you to the CLI, and now the button is here.**
+          The rule it was quoting is unchanged: an image becomes identity when
+          somebody says so, never because of the folder it sits in. What changed
+          is only where "somebody says so" can happen — the press still arms and
+          names the group before it commits. */}
       <Text variant="caption" tone="muted">
-        These are files in the folder, not references. An image becomes one when somebody says so —
-        `studio character add-refs &lt;slug&gt; --to &lt;group&gt;`.
+        These are files in the folder, not references. An image becomes one when somebody says so
+        {groups.length === 0 && " — this character has no groups yet, so `studio character add-refs` makes the first"}
+        .
       </Text>
+
+      {groups.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Text variant="caption" tone="muted">
+            Add to
+          </Text>
+          <Select
+            aria-label="Group to add to"
+            options={groups.map((name) => ({ value: name, label: name }))}
+            value={target}
+            onValueChange={setTarget}
+          />
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
         {loose.map((file) => (
-          <div key={file.id} className="overflow-hidden rounded-md border border-dashed border-line">
-            <img
-              src={file.url}
-              alt={file.name}
+          <div
+            key={file.id}
+            className="relative overflow-hidden rounded-md border border-dashed border-line"
+          >
+            <MediaThumb
+              nodeId={file.id}
+              url={file.url}
+              name={file.name}
               title={file.name}
-              className="aspect-square w-full bg-surface-alt object-cover opacity-70"
+              className="w-full"
+              mediaClassName="opacity-70"
             />
+            {groups.length > 0 && (
+              <AttachButton name={file.name} group={target} onAttach={() => onAttach(file.id, target)} />
+            )}
           </div>
         ))}
       </div>
     </section>
+  );
+}
+
+/**
+ * Attach one image, in two presses.
+ *
+ * **Armed rather than immediate, and the armed label names the group.** Hard
+ * rule #2b makes this a decision about who the character IS — separate from
+ * having agreed to spend money rendering the picture — so it gets the same
+ * two-press shape every consequential control in this app uses. The difference
+ * from a delete is only which way it goes.
+ */
+function AttachButton({
+  name,
+  group,
+  onAttach,
+}: {
+  name: string;
+  group: string;
+  onAttach: () => void;
+}) {
+  const [armed, setArmed] = useState(false);
+
+  return (
+    <button
+      type="button"
+      aria-label={armed ? `Confirm — add ${name} to ${group}` : `Add ${name} as a reference`}
+      title={armed ? `Confirm — add to ${group}` : "Add as a reference"}
+      onClick={() => (armed ? onAttach() : setArmed(true))}
+      onBlur={() => setArmed(false)}
+      className={`absolute inset-x-1 bottom-1 rounded-md px-2 py-1 font-body text-xs transition-colors
+                  focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary
+                  ${armed ? "bg-primary text-primary-text" : "bg-black/70 text-white hover:bg-black/85"}`}
+    >
+      {armed ? `Add to ${group}?` : "Add as reference"}
+    </button>
   );
 }

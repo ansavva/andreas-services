@@ -1,17 +1,22 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { CALLBACK_PATH } from "./auth/oauth";
+import { AppLayout } from "./components/layout/AppLayout";
 import { AuthCallbackPage } from "./pages/AuthCallbackPage";
 import { BrowsePage } from "./pages/BrowsePage";
 import { CharacterPage } from "./pages/CharacterPage";
+import { CharactersPage } from "./pages/CharactersPage";
 import { HomePage } from "./pages/HomePage";
 import { MoviePage } from "./pages/MoviePage";
 import { ProjectPage } from "./pages/ProjectPage";
+import { ProjectsPage } from "./pages/ProjectsPage";
 import { RunPage } from "./pages/RunPage";
 import { ScenePage } from "./pages/ScenePage";
+import { ViewerPage } from "./pages/ViewerPage";
 
 /**
- * Nine routes. Eight name an id; the ninth is where Cognito lands.
+ * Every route that names a thing names it by id. One does not: the address
+ * Cognito lands on.
  *
  * That is the property the whole entity model exists to give the URL: a
  * character, a project, a run, a scene, a movie and a node are all addressed by
@@ -20,13 +25,14 @@ import { ScenePage } from "./pages/ScenePage";
  *
  * ```
  * /                       home — characters, projects, and the recent reel
+ * /characters /projects   one list each, which the header links to
  * /c/<char_id>            character: profile, references, its folders, files
  * /p/<proj_id>            project: overview, runs, scenes, movies, inputs, files
  * /p/<proj_id>/r/<run_id> one run — its envelope, outputs, chain and payloads
  * /s/<scene_id>           scene
  * /m/<movie_id>           movie
  * /f          /f/<id>     the folder browser: the library root, or one folder
- * /o/<id>                 one file, open
+ * /o/<id>     /o?in=…     the viewer: one file, among whatever `?in=` names
  * /auth/callback          where Cognito Managed Login returns with ?code=
  * ```
  *
@@ -57,24 +63,45 @@ import { ScenePage } from "./pages/ScenePage";
 export function StudioRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
+      {/* A pathless layout route: it contributes no segment, so every address
+          below is unchanged, and it is what puts one header above all of them
+          instead of seven copies inside them. */}
+      <Route element={<AppLayout />}>
+        <Route path="/" element={<HomePage />} />
 
-      <Route path="/c/:characterId" element={<CharacterPage />} />
-      <Route path="/p/:projectId" element={<ProjectPage />} />
-      <Route path="/p/:projectId/r/:runId" element={<RunPage />} />
-      <Route path="/s/:sceneId" element={<ScenePage />} />
-      <Route path="/m/:movieId" element={<MoviePage />} />
+        <Route path="/characters" element={<CharactersPage />} />
+        <Route path="/projects" element={<ProjectsPage />} />
 
-      <Route path="/f" element={<BrowsePage />} />
-      <Route path="/f/:nodeId" element={<BrowsePage />} />
-      <Route path="/o/:nodeId" element={<BrowsePage />} />
+        <Route path="/c/:characterId" element={<CharacterPage />} />
+        <Route path="/p/:projectId" element={<ProjectPage />} />
+        <Route path="/p/:projectId/r/:runId" element={<RunPage />} />
+        <Route path="/s/:sceneId" element={<ScenePage />} />
+        <Route path="/m/:movieId" element={<MoviePage />} />
+
+        <Route path="/f" element={<BrowsePage />} />
+        <Route path="/f/:nodeId" element={<BrowsePage />} />
+
+        {/* The viewer is its own screen now. `/o` with no id opens a feed at
+            its first frame — see `feedPath` — and the address gains the id as
+            soon as the first pane settles. */}
+        <Route path="/o" element={<ViewerPage />} />
+        <Route path="/o/:nodeId" element={<ViewerPage />} />
+      </Route>
 
       {/* **Above the catch-all, and it has to be.** Cognito returns to this
           path with `?code=`; matched by `*` below it would redirect home,
-          discarding the code and looping straight back to the hosted page. */}
+          discarding the code and looping straight back to the hosted page.
+
+          Outside the layout for the same reason the redirect below is: it
+          renders no page, and mounting a header over a code exchange would
+          paint a shell nobody sees. */}
       <Route path={CALLBACK_PATH} element={<AuthCallbackPage />} />
 
-      {/* `replace`, not a render of home at the wrong address: a bookmark that
+      {/* Outside the layout, deliberately: this renders no page, it only
+          rewrites the address, and mounting a header to do it would paint a
+          shell for the duration of a redirect.
+
+          `replace`, not a render of home at the wrong address: a bookmark that
           has stopped meaning anything should leave the address bar honest, and
           pushing would put the dead URL one back-press away. */}
       <Route path="*" element={<Navigate to="/" replace />} />

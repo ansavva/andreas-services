@@ -497,7 +497,9 @@ def test_creating_a_movie_records_the_cut(empty_api):
 
     movie = _movie(empty_api, project, scenes=[scene["id"]], title="Launch")
 
-    assert movie["scenes"] == [scene["id"]]
+    # Rows, not ids: a create answers in the shape a `GET` sends. See
+    # `test_edges.py` for why that is a rule rather than a preference.
+    assert [row["id"] for row in movie["scenes"]] == [scene["id"]]
     assert [row["id"] for row in catalog.project_entities(project["id"], "movie")] == [
         movie["id"]
     ]

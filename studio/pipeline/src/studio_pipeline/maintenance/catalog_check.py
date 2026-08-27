@@ -1361,9 +1361,23 @@ def phase_verify(s3, ddb, plan: dict) -> dict:
         if not pk.startswith(("NODE#", "LIB#", "USER#")) and item.get("reel"):
             problems["reel_polluted"].append(f"{pk}/{sk} (entity row)")
 
+    # Edges, both directions. An edge row is the ONLY thing that makes a
+    # relationship readable backwards, so a missing one is a question that
+    # silently answers "nothing" and a stale one is a link to a record that is
+    # not there. Neither shows up in any other check: they are rows nothing
+    # points at, describing rows that do.
+    #
+    # Reported, never repaired — `studio catalog edges` writes, this counts.
+    edges = edge_plan_from_rows(rows)
+    for (pk, sk) in sorted(edges["missing"]):
+        problems["edge_missing"].append(f"{pk} -> {sk}")
+    for (pk, sk) in edges["stale"]:
+        problems["edge_stale"].append(f"{pk} -> {sk}")
+
     drift = key_drift(plan, nodes)
     return {"ok": not problems, "problems": dict(problems),
             "entities": dict(counted), "objects": len(sizes),
+            "edges": {"wanted": len(edges["wanted"]), "missing": len(edges["missing"])},
             "drift": drift}
 
 
@@ -1680,3 +1694,153 @@ def cmd_reseat(apply, library, journal):
                                  "failed": failed}
     if apply and failed:
         raise SystemExit(1)
+
+
+# ── edges ───────────────────────────────────────────────────────────────────
+
+
+# The three relationships this file DERIVES, as `(source, target)` partition
+# pairs. Scoping matters in both directions: an edge outside this set is not
+# missing just because nothing here computed it, and not stale either.
+#
+# `PROJ#/CHAR#` and `RUN#/CHAR#` are the two deliberately absent. Involvement is
+# a set a person edits and usage is written once by the run that did it —
+# neither is derivable from another field, so there is nothing to compare them
+# against and a checker that tried would call every one of them stale.
+DERIVED_EDGES = {("MOVIE", "SCENE"), ("SCENE", "RUN"), ("RUN", "RUN")}
+
+
+def edge_plan_from_rows(rows: dict) -> dict:
+    """Which edge rows SHOULD exist, from a table already read.
+
+    Split from `edge_plan` so `verify` — which has just scanned the whole table
+    — does not scan it a second time to ask this.
+
+    Derived from the records themselves rather than from a journal, so it is
+    re-runnable and says the same thing twice:
+
+    | Source | Edge | Read off |
+    |---|---|---|
+    | movie | `MOVIE#<id> / SCENE#<id>` | the `scenes` list on the record |
+    | scene | `SCENE#<id> / RUN#<id>` | every run a `SHOT#` row names — see below |
+    | run | `RUN#<id> / RUN#<parent>` | `lineage.from_run` |
+
+    **A shot names a run in three places.** `run` is the motion render for the
+    whole shot; `panels[n]["run"]` is the still boarded into panel n; and
+    `opens_on["from_run"]` is the run whose last frame it continues from. Read
+    only the first and the production library yields nothing — every shot there
+    has an empty `run` while twenty-five panels carry one.
+
+    **An edge row and a listing row are told apart by counting `#`.** A listing
+    row is `RUN#<created>#<id>` and an edge is `RUN#<id>`, so one separator
+    means an edge and two mean the projection a project's grid pages through.
+    Matching on the prefix alone would have swept every listing row in the
+    library into this and rewritten it.
+    """
+    records: dict[str, dict] = {}
+    shots: dict[str, list[dict]] = collections.defaultdict(list)
+    present: set[tuple[str, str]] = set()
+
+    for (pk, sk), item in rows.items():
+        if sk == "META" and "#" in pk:
+            records[pk] = item
+        elif sk.startswith("SHOT#"):
+            shots[pk].append(item)
+        elif sk.count("#") == 1 and _pair(pk, sk) in DERIVED_EDGES:
+            present.add((pk, sk))
+
+    wanted: dict[tuple[str, str], str] = {}
+
+    def want(pk: str, target: str | None, lib: str | None) -> None:
+        if not target or not lib or not isinstance(target, str):
+            return
+        wanted[(pk, f"{PARTITION[_kind_of(target)]}#{target}")] = lib
+
+    for pk, record in records.items():
+        lib = record.get("lib")
+        if pk.startswith("MOVIE#"):
+            for scene_id in record.get("scenes") or []:
+                # A reprise cuts one scene twice; an edge is set membership, so
+                # the duplicate collapses here exactly as it does on the write.
+                want(pk, scene_id, lib)
+        elif pk.startswith("RUN#"):
+            want(pk, (record.get("lineage") or {}).get("from_run"), lib)
+        elif pk.startswith("SCENE#"):
+            for shot in shots.get(pk, []):
+                want(pk, shot.get("run"), lib)
+                for panel in shot.get("panels") or []:
+                    if isinstance(panel, dict):
+                        want(pk, panel.get("run"), lib)
+                opens_on = shot.get("opens_on")
+                if isinstance(opens_on, dict):
+                    want(pk, opens_on.get("from_run"), lib)
+
+    return {"wanted": wanted, "present": present,
+            "missing": {key: lib for key, lib in wanted.items() if key not in present},
+            "stale": sorted(present - set(wanted)),
+            "records": len(records)}
+
+
+def _pair(pk: str, sk: str) -> tuple[str, str]:
+    return (pk.split("#", 1)[0], sk.split("#", 1)[0])
+
+
+def edge_plan(ddb) -> dict:
+    """`edge_plan_from_rows` over a fresh scan of the table."""
+    rows = {(item.get("pk", ""), item.get("sk", "")): item for item in ddbc.scan(ddb)}
+    return edge_plan_from_rows(rows)
+
+
+def _kind_of(entity_id: str) -> str:
+    """`run-<uuid>` -> `run`. The one place this file parses an id."""
+    prefix = entity_id.split("-", 1)[0]
+    if prefix not in PARTITION:
+        raise ValueError(f"not an entity id: {entity_id}")
+    return prefix
+
+
+@main.command("edges", short_help="write edge rows for records that predate them")
+@click.option("--apply", is_flag=True, help="actually write (default is a dry run)")
+def cmd_edges(apply):
+    """Backfill the edge rows that make a relationship readable backwards.
+
+    **Additive and idempotent.** It writes rows that are missing and never
+    deletes one, so it cannot damage a library and can be run again after any
+    interruption. It is not part of `verify` for that reason — verify reports
+    and this writes.
+
+    Without it every reverse question is empty for material made before the
+    edges existed: a scene cut into a movie last week does not know it, and
+    neither does a run a scene used.
+    """
+    ddb = ddbc.client()
+    if not ddbc.table_exists(ddb):
+        die(f"no table '{ddbc.table()}' — set STUDIO_CATALOG_TABLE or apply the infra.")
+
+    plan = edge_plan(ddb)
+    missing = plan["missing"]
+    print(f"[{'APPLY' if apply else 'dry run'}] {ddbc.table()}")
+    print(f"{'records':<12} {plan['records']:>6}")
+    print(f"{'edges':<12} {len(plan['wanted']):>6}  wanted")
+    print(f"{'missing':<12} {len(missing):>6}")
+    for (pk, sk) in sorted(missing)[:SHOWN]:
+        print(f"  {pk}  ->  {sk}")
+    if len(missing) > SHOWN:
+        print(f"  … and {len(missing) - SHOWN} more")
+
+    if not apply:
+        print("\nnothing written. `--apply` writes exactly what is listed above.")
+        return
+    if not missing:
+        print("\nnothing to do.")
+        return
+
+    now = dt.datetime.now(dt.UTC).isoformat()
+    actions = [
+        {"Put": {"TableName": ddbc.table(),
+                 "Item": ddbc.to_item({"pk": pk, "sk": sk, "lib": lib, "created": now})}}
+        for (pk, sk), lib in sorted(missing.items())
+    ]
+    for start in range(0, len(actions), 100):
+        ddbc.transact(ddb, actions[start : start + 100])
+    print(f"\n{'written':<12} {len(actions):>6}")

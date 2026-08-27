@@ -14,7 +14,20 @@ import type { FileEntry, SortOrder } from "../types";
  * DynamoDB `LastEvaluatedKey` — sorting by date means the whole branch has to be
  * known before any page can be cut from it. See `browse.reel_items`.
  */
-export function useReel(folderId: FolderId, sort: SortOrder, enabled: boolean) {
+export function useReel(
+  folderId: FolderId,
+  sort: SortOrder,
+  enabled: boolean,
+  /**
+   * How many per page. The API's own default is 200.
+   *
+   * Home shows twelve and never pages, so it asks for twelve: the response and
+   * the presigning shrink with it. What does NOT shrink is the enumeration —
+   * the endpoint reads the branch, sorts it and slices, because `total` and the
+   * cursor are defined against the whole of it. See the note in `HomePage`.
+   */
+  pageSize?: number,
+) {
   const [items, setItems] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +57,7 @@ export function useReel(folderId: FolderId, sort: SortOrder, enabled: boolean) {
         forFolder === null ? {} : { node: forFolder },
         forSort,
         next ?? undefined,
+        pageSize,
       );
       if (query.current.id !== id) return;
 
@@ -57,12 +71,26 @@ export function useReel(folderId: FolderId, sort: SortOrder, enabled: boolean) {
       inFlight.current = false;
       setLoading(false);
     }
-  }, []);
+  }, [pageSize]);
 
   useEffect(() => {
     const id = query.current.id + 1;
     query.current = { id, folderId, sort };
     cursor.current = null;
+    // **A new query supersedes whatever is in flight, so the flag is cleared
+    // rather than waited on.** It guards `loadMore` against appending the same
+    // page twice; it must not make a *different* query a no-op, because the
+    // response it is holding the door for is one the id check below is about to
+    // discard anyway — so nothing would ever arrive.
+    //
+    // StrictMode is what made this bite. It runs an effect twice on mount, so
+    // the second run bumped the id and then hit `if (inFlight.current) return`
+    // and did nothing, while the first run's page came back stale against the
+    // new id and was dropped. `items` stayed empty for good — and only
+    // sometimes, since a request that resolved before the second run beat the
+    // race. That is the whole of "Recent is empty on this reload and full on
+    // the last one".
+    inFlight.current = false;
     setItems([]);
     setExhausted(false);
     setTruncated(false);

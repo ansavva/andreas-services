@@ -169,16 +169,22 @@ def _character_ids(names) -> list[str]:
 @main.command("list")
 @click.option("--json", "json_", is_flag=True)
 def do_list(json_):
-    """Every project. **One query**, where this listed folders and read a document each."""
+    """Every project. **One query**, where this listed folders and read a document each.
+
+    **No characters column, because the route does not send one.** It printed
+    one for as long as it has existed and the value was always `—`: the CLI read
+    `character_slugs`, a field nothing has ever returned. `GET /api/projects` is
+    deliberately a summary — id, slug, title, hero, counts, updated — and adding
+    involvement to it would be a `links()` read per project, an N+1 on the one
+    call that exists to avoid one. `studio projects show <project>` has it.
+    """
     found = entities.list_projects()
     if json_:
         print(json.dumps(found, indent=2))
     elif found:
         for record in found:
-            chars = ", ".join(record.get("character_slugs") or []) or "—"
             counts = record.get("counts") or {}
             print(f"{record['slug']:<20} {record.get('title', ''):<24} "
-                  f"characters: {chars:<24} "
                   f"runs {counts.get('runs', 0)}  scenes {counts.get('scenes', 0)}  "
                   f"movies {counts.get('movies', 0)}")
     else:
@@ -225,7 +231,10 @@ def do_show(project, json_):
         return
     print(f"{record['slug']}  ({record['id']})  rev {record.get('rev')}")
     print(f"  title       {record.get('title') or '—'}")
-    print(f"  characters  {', '.join(record.get('character_slugs') or []) or '—'}")
+    # `characters` is a list of `{id, slug, display_name}` — the slug is what a
+    # person types, so it is the slug that is printed.
+    linked = ", ".join(c["slug"] for c in record.get("characters") or []) or "—"
+    print(f"  characters  {linked}")
     print(f"  runs {counts.get('runs', 0)} · scenes {counts.get('scenes', 0)} · "
           f"movies {counts.get('movies', 0)}")
     print(f"  input pool  {counts['input']} image(s)")
@@ -254,6 +263,19 @@ def do_rename(project, new):
     print("  0 objects copied · 0 records rewritten")
 
 
+def _linked_ids(record: dict) -> list[str]:
+    """The ids of the characters a project involves.
+
+    `GET /api/projects/<id>` resolves involvement to `{id, slug, display_name}`
+    objects, while `PUT …/characters` replaces the set by **id** — so the two
+    ends of a link/unlink speak different languages and this is the translation.
+    Reading the field as ids, which is what this did, made `unlink` answer "not
+    linked" for every character that was linked and had `link` send the set back
+    as a mixture of objects and one id string.
+    """
+    return [c["id"] for c in record.get("characters") or []]
+
+
 @main.command("link")
 @click.argument("project", required=True)
 @click.argument("character", required=True)
@@ -266,7 +288,7 @@ def do_link(project, character):
     """
     record = require_project(project)
     char = _character_ids([character])[0]
-    current = list(record.get("characters") or [])
+    current = _linked_ids(record)
     if char in current:
         print(f"{character} is already linked to {record['slug']}", file=sys.stderr)
         return
@@ -281,7 +303,7 @@ def do_unlink(project, character):
     """Remove an involvement link. The files and the runs are untouched."""
     record = require_project(project)
     char = _character_ids([character])[0]
-    current = list(record.get("characters") or [])
+    current = _linked_ids(record)
     if char not in current:
         die(f"{character} is not linked to {record['slug']}")
     entities.put_project_characters(record["id"],

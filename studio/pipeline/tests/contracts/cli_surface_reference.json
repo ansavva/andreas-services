@@ -108,6 +108,27 @@
           }
         }
       },
+      "edges": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "actually write (default is a dry run)",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
       "gc": {
         "arguments": {},
         "commands": {},

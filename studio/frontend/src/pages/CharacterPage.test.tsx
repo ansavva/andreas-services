@@ -6,8 +6,9 @@ import type { CharacterRecord } from "../types";
 
 // The header pulls in auth and the library context and says nothing this file
 // asserts on. Everything else is the real component.
-vi.mock("../components/common/AppHeader", () => ({ AppHeader: () => <div /> }));
-vi.mock("../components/browse/FolderBrowser", () => ({
+// `FolderTab` moved to its own file: it and the standalone browser are two
+// screens sharing one listing, and only one of them can spend the address bar.
+vi.mock("../components/browse/FolderTab", () => ({
   FolderTab: ({ rootId }: { rootId: string }) => <div>files of {rootId}</div>,
 }));
 vi.mock("../components/character/ReferencesGrid", () => ({
@@ -18,15 +19,16 @@ vi.mock("../apis/studio", () => ({
   deleteCharacter: vi.fn(),
   getCharacter: vi.fn(),
   patchCharacter: vi.fn(),
-  putCharacterProfile: vi.fn(),
+  setCharacterProfile: vi.fn(),
 }));
 
-import { getCharacter, patchCharacter, putCharacterProfile } from "../apis/studio";
+import { getCharacter, patchCharacter, setCharacterProfile } from "../apis/studio";
 import { CharacterPage } from "./CharacterPage";
+import { TestProviders } from "../test-providers";
 
 const read = vi.mocked(getCharacter);
 const patch = vi.mocked(patchCharacter);
-const putProfile = vi.mocked(putCharacterProfile);
+const setProfile = vi.mocked(setCharacterProfile);
 
 const ID = "char-0001";
 
@@ -71,16 +73,25 @@ async function open() {
         <Route path="/c/:characterId" element={<CharacterPage />} />
       </Routes>
     </MemoryRouter>,
+  { wrapper: TestProviders },
   );
   await screen.findByRole("tab", { name: "Profile" });
 }
 
 describe("the tab strip", () => {
-  it("is three tabs, and none of them is a folder", async () => {
+  it("is a FIXED list, and none of it is a folder", async () => {
+    // The count is not the point and has changed once already — Runs and
+    // Projects joined when the character stopped being a dead end. What must
+    // not come back is a strip built from the folder listing: it grew and
+    // shrank as folders came and went, every folder tab showed what Files
+    // already held, and at 390px seven of them wrapped into three rows of
+    // underline. The character's root children are `reference`, `corpus`,
+    // `seed` and `archive`, and none of those may appear here.
     await open();
 
     const tabs = screen.getAllByRole("tab").map((tab) => tab.textContent);
-    expect(tabs).toEqual(["Profile", "References", "Files"]);
+    expect(tabs).toEqual(["Profile", "References", "Files", "Runs", "Projects"]);
+    expect(tabs).not.toContain("reference");
   });
 
   it("puts the whole character root behind Files, not one folder per tab", async () => {
@@ -104,19 +115,19 @@ describe("saving identity and the bible together", () => {
     // same row, so sending them the same `rev` makes the second one 409 against
     // a change the page itself just made.
     patch.mockResolvedValue(record({ slug: "<other>", rev: 8 }));
-    putProfile.mockResolvedValue(record({ slug: "<other>", rev: 9 }));
+    setProfile.mockResolvedValue(record({ slug: "<other>", rev: 9 }));
 
     await open();
     await editAndSave("Slug", "<other>");
     // The record fields alone are dirty here, so only the one write goes.
     await waitFor(() => expect(patch).toHaveBeenCalledWith(ID, expect.objectContaining({ rev: 7 })));
-    expect(putProfile).not.toHaveBeenCalled();
+    expect(setProfile).not.toHaveBeenCalled();
 
     cleanup();
     vi.clearAllMocks();
     read.mockResolvedValue(record());
     patch.mockResolvedValue(record({ rev: 8 }));
-    putProfile.mockResolvedValue(record({ rev: 9 }));
+    setProfile.mockResolvedValue(record({ rev: 9 }));
 
     await open();
     // Both halves dirty: the slug, and a leaf inside the first bible section.
@@ -124,18 +135,18 @@ describe("saving identity and the bible together", () => {
     fireEvent.change(screen.getByLabelText("Hair"), { target: { value: "long" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    await waitFor(() => expect(putProfile).toHaveBeenCalled());
+    await waitFor(() => expect(setProfile).toHaveBeenCalled());
     expect(patch).toHaveBeenCalledWith(ID, expect.objectContaining({ rev: 7 }));
-    expect(putProfile).toHaveBeenCalledWith(ID, expect.anything(), 8);
+    expect(setProfile).toHaveBeenCalledWith(ID, expect.anything(), 8);
   });
 
   it("sends only the bible when only the bible moved", async () => {
-    putProfile.mockResolvedValue(record({ rev: 8 }));
+    setProfile.mockResolvedValue(record({ rev: 8 }));
 
     await open();
     await editAndSave("Hair", "long");
 
-    await waitFor(() => expect(putProfile).toHaveBeenCalledWith(ID, expect.anything(), 7));
+    await waitFor(() => expect(setProfile).toHaveBeenCalledWith(ID, expect.anything(), 7));
     expect(patch).not.toHaveBeenCalled();
   });
 

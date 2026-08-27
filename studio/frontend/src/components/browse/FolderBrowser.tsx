@@ -6,30 +6,26 @@ import {
   copyNodes,
   createNode,
   deleteNodes,
-  describeNode,
-  getTree,
   moveNodes,
   renameNode,
 } from "../../apis/studio";
-import { useFolder, type FolderPin } from "../../hooks/useFolder";
-import { useReel } from "../../hooks/useReel";
-import { useResource } from "../../hooks/useResource";
+import { useTree } from "../../hooks/useTree";
 import { useSelection } from "../../hooks/useSelection";
 import { useUploads } from "../../hooks/useUploads";
 import type { FileEntry, SortOrder } from "../../types";
-import type { FolderId, Target } from "../../utils/location";
-import { ChipRow } from "../common/ChipRow";
+import type { FolderId } from "../../utils/location";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
-import { TextPage } from "../text/TextPage";
-import { ReelView } from "../viewer/ReelView";
 import { DestinationPicker } from "./DestinationPicker";
 import { FileRow } from "./FileRow";
+import { FilterControl, folderMatchesFilter, matchesFilter } from "./FilterControl";
 import { FolderCard } from "./FolderCard";
 import { MediaTile } from "./MediaTile";
 import { SortControl } from "./SortControl";
 import { UploadButton } from "./UploadButton";
 import { UploadStatus } from "./UploadStatus";
+import { CopyIcon, FolderIntoIcon, FolderPlusIcon } from "../common/icons";
+import { ConfirmDestroyDialog } from "../common/ConfirmDestroyDialog";
 
 /**
  * How the browser is addressed, supplied by whoever is showing it.
@@ -45,16 +41,16 @@ import { UploadStatus } from "./UploadStatus";
  * boolean through would put a branch in every handler.
  */
 export interface BrowserNav {
-  /** The folder on screen, or the file open over it. */
-  target: Target;
+  /** The folder on screen. A file open over it is a different screen now. */
+  folder: FolderId;
   sort: SortOrder;
   setSort: (next: SortOrder) => void;
   /** `replace` is for the one move that is not a journey — leaving a deleted folder. */
   goToFolder: (id: FolderId, options?: { replace?: boolean }) => void;
+  /** Opens the viewer at this file, with this browser as its context. */
   openFile: (file: FileEntry) => void;
-  closeItem: () => void;
-  /** The reel scrolled onto a different clip. Must never push history. */
-  setCurrent: (file: FileEntry) => void;
+  /** Opens the viewer on everything beneath the folder on screen. */
+  playReel: () => void;
 }
 
 interface Props {
@@ -85,6 +81,16 @@ interface Props {
  * there is no way to have a picker open with no operation chosen, or to close
  * one and leave a stale verb behind for the next.
  */
+/**
+ * Where an armed button stops being enough for a bulk delete.
+ *
+ * Under this many, the cost of being wrong is a handful of frames still on
+ * screen and the two-press button is proportionate. At or above it, the count
+ * has to be typed — a selection is invisible once it is gone, and "select all"
+ * followed by "delete" is two presses from emptying a folder.
+ */
+const BULK_GATE = 5;
+
 type PickerTarget = {
   verb: "move" | "copy";
   ids: string[];
@@ -105,31 +111,23 @@ type PickerTarget = {
  * invalidated mid-flight.
  */
 export function FolderBrowser({ nav, boundary = null }: Props) {
-  const { target, sort } = nav;
-  const openId = target.kind === "object" ? target.id : null;
+  const { folder, sort } = nav;
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [newFolder, setNewFolder] = useState<string | null>(null);
-  const [reelFolder, setReelFolder] = useState<FolderPin>(null);
+  const [filter, setFilter] = useState("");
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
 
   /**
-   * Which folder the page *behind* the overlay is showing.
+   * The listing, straight from the folder the caller names.
    *
-   * Normally that is whatever the address points at — outright for a folder, and
-   * for an open file its parent, which `useFolder` settles. While the recursive
-   * reel is open it is pinned to the folder the reel was launched from, and that
-   * pin is load-bearing: the reel walks across folders and rewrites the address
-   * to each clip as it goes, so without it every scroll would land on a file in a
-   * different folder and re-fetch the listing underneath — a request per clip,
-   * for a listing nobody can see.
+   * `useFolder` used to sit here resolving an *object* address to its parent,
+   * because `/o/<id>` rendered this component with the file open over it. The
+   * viewer is its own screen now, so this only ever shows a folder and the
+   * resolution — and the request it cost on every cold link — is gone with it.
    */
-  const { folderId, data, loading, error, reload } = useFolder(target, sort, reelFolder);
-
-  // "Play reel" walks recursively from wherever you are, so a folder of only
-  // subfolders still opens onto real media. Fetched lazily: the pages cost
-  // nothing until the reel is actually opened that way.
-  const reel = useReel(folderId ?? null, sort, reelFolder !== null);
+  const { data, loading, error, reload } = useTree(folder, sort);
+  const folderId = folder;
 
   /**
    * The listing's own breadcrumbs are where every *path* on this page comes from.
@@ -160,33 +158,32 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
   /** The folder on screen as a real node, which the root has and `folderId` does not. */
   const hereId = crumbs.at(-1)?.id ?? null;
 
+  /**
+   * The listing, narrowed by whatever is typed in the filter.
+   *
+   * Applied before the split so both sections narrow together, and before
+   * `useSelection` sees the media — selecting all should select what is on
+   * screen, not what a filter is hiding.
+   */
+  const files = useMemo(
+    () => (data?.files ?? []).filter((file) => matchesFilter(file, filter)),
+    [data, filter],
+  );
   const media = useMemo(
-    () => (data?.files ?? []).filter((file) => file.kind === "image" || file.kind === "video"),
-    [data],
+    () => files.filter((file) => file.kind === "image" || file.kind === "video"),
+    [files],
   );
   const others = useMemo(
-    () => (data?.files ?? []).filter((file) => file.kind !== "image" && file.kind !== "video"),
-    [data],
+    () => files.filter((file) => file.kind !== "image" && file.kind !== "video"),
+    [files],
   );
-
-  /**
-   * A text file opened by address, and a media file opened by address, are
-   * different things: the first is a code viewer, the second is the reel. Both
-   * are resolved from the listing rather than from a second fetch, because the
-   * listing already carries the presigned URL and the kind.
-   *
-   * Resolved only while the recursive reel is closed: with it open the address
-   * names a clip from some other folder, which this listing is not expected to
-   * hold.
-   */
-  const browsing = reelFolder === null;
-  const openIndex = browsing && openId ? media.findIndex((item) => item.id === openId) : -1;
-  const openText =
-    browsing && openId ? (others.find((item) => item.id === openId) ?? null) : null;
+  const folders = useMemo(
+    () => (data?.folders ?? []).filter((folder) => folderMatchesFilter(folder, filter)),
+    [data, filter],
+  );
 
   const goToFolder = useCallback(
     (nextId: FolderId, options?: { replace?: boolean }) => {
-      setReelFolder(null);
       setActionError(null);
       nav.goToFolder(nextId, options);
     },
@@ -194,18 +191,24 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
   );
 
   /**
-   * Closing the *recursive reel* is not closing an item, and that is why it is a
-   * separate handler. "Play reel" is state, not a navigation — it pushed
-   * nothing — so it only has to drop the pin and put the address back on the
-   * folder it was launched from.
+   * One selection over BOTH lists.
+   *
+   * The grid could be selected and acted on in bulk and the rows below it could
+   * not, so deleting five `result.json` files was five trips through a per-row
+   * menu — while deleting fifty images was two presses. It is one folder, so it
+   * is one selection.
+   *
+   * Keyed on `files` rather than on either half, because `toggleAt` takes an
+   * index and shift-click means "everything between" — a range that stopped at
+   * the boundary between images and text would be a range that lies.
    */
-  const closeReel = useCallback(() => {
-    const launchedFrom = reelFolder ? reelFolder.id : (folderId ?? null);
-    setReelFolder(null);
-    nav.goToFolder(launchedFrom, { replace: true });
-  }, [folderId, nav, reelFolder]);
+  const selection = useSelection(files, folderId ?? null);
 
-  const selection = useSelection(media, folderId ?? null);
+  /** Where each entry sits in the combined list, for the two renders that split it. */
+  const indexOf = useMemo(
+    () => new Map(files.map((file, index) => [file.id, index])),
+    [files],
+  );
 
   /**
    * Where an upload lands: the folder on screen, by its own node id.
@@ -274,75 +277,12 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
     [pickerTarget, run, selection],
   );
 
-  /**
-   * Writes from inside the viewer, which behave differently depending on which
-   * reel you are in.
-   *
-   * In the *recursive* reel the pane simply leaves the list and the reel carries
-   * on — you are working through a walk, and stopping it to go and look at a
-   * folder is not what you asked for. In the *folder* reel the list comes from
-   * the listing, which `run` has already re-fetched, so closing back to the
-   * folder is both correct and what there is left to see.
-   *
-   * Deleting never advances to the next clip on its own. The next clip is one
-   * scroll away, and arriving there automatically at the exact moment you
-   * confirmed a delete is how the wrong thing gets deleted twice.
+  /*
+   * The writes that used to live here — rename, delete and describe for the
+   * pane that was open over this listing — moved to `ViewerPage` with the
+   * viewer itself. They were never about the folder; they acted on one node and
+   * then had to reconcile a listing they happened to be rendered inside.
    */
-  const deleteOpenFile = useCallback(
-    async (file: FileEntry) => {
-      await run(deleteNodes([file.id]));
-      if (reelFolder !== null) reel.dropItem(file.id);
-      else nav.goToFolder(folderId ?? null, { replace: true });
-    },
-    [folderId, nav, reel, reelFolder, run],
-  );
-
-  /**
-   * A rename leaves the address alone, and that is the point of #313.
-   *
-   * The address used to be the object's key, so renaming it stranded the address
-   * bar and every link anyone had sent. It names the node id now, and a rename
-   * does not move a node — so there is nothing to navigate. The reel still drops
-   * the pane, because its name, its key and its presigned URL all went stale even
-   * though its id did not.
-   */
-  /**
-   * A caption or a tag, written onto the file being looked at.
-   *
-   * **Unlike a rename this leaves the pane alone.** A rename invalidates the
-   * name, the key and the presigned URL, so the reel drops the pane and picks
-   * the file up again; a description touches none of the three. Dropping the
-   * pane here would scroll the reel out from under somebody mid-sentence.
-   *
-   * `run` re-fetches the listing, which is what puts the new words back on the
-   * chrome and into `file.tags` for the panel's chips.
-   */
-  const describeOpenFile = useCallback(
-    async (
-      file: FileEntry,
-      changes: { description?: string | null; tags?: string[] | null },
-    ) => {
-      const updated = await run(describeNode(file.id, changes));
-      // Patched from what the API answered, not from what was typed: tags are
-      // folded server-side, and rendering the typed form would be a chip that
-      // disagrees with the selector it just created.
-      if (reelFolder !== null && updated) {
-        reel.refreshItem(file.id, {
-          description: updated.description,
-          tags: updated.tags,
-        });
-      }
-    },
-    [reel, reelFolder, run],
-  );
-
-  const renameOpenFile = useCallback(
-    async (file: FileEntry, name: string) => {
-      await run(renameNode(file.id, name));
-      if (reelFolder !== null) reel.dropItem(file.id);
-    },
-    [reel, reelFolder, run],
-  );
 
   /**
    * Delete the folder you are standing in, then step up into its parent.
@@ -377,13 +317,12 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
     );
   }, [hereId, newFolder, run]);
 
-  // Escape drops the selection, but only when it is the frontmost thing — the
-  // reel, the text page and the move picker each bind Escape to their own close,
-  // and clearing a selection out from under one of them would be a keystroke
-  // doing two things at once. The picker matters most here: it is often open
-  // *on* the selection, so dropping it would be Escape cancelling the move by
-  // emptying what was being moved.
-  const overlayOpen = openId !== null || reelFolder !== null || pickerTarget !== null;
+  // Escape drops the selection, but only when it is the frontmost thing. The
+  // move picker binds Escape to its own close, and it is often open *on* the
+  // selection — so clearing it there would be Escape cancelling the move by
+  // emptying what was being moved. The reel and the text page used to be in
+  // this list and are their own screen now, where this component is unmounted.
+  const overlayOpen = pickerTarget !== null;
   useEffect(() => {
     if (overlayOpen || selection.count === 0) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -419,8 +358,14 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
     [uploads],
   );
 
-  const isEmpty =
-    !loading && !error && data && data.folders.length === 0 && data.files.length === 0;
+  const isEmpty = !loading && !error && data && data.folders.length === 0 && data.files.length === 0;
+
+  // Empty because of the filter is a different sentence from empty because the
+  // folder is: one is undone by clearing a box, the other is a fact about the
+  // library. Saying "this folder is empty" over a folder holding sixty things
+  // is the kind of wrong that makes someone go looking for a bug.
+  const hiddenByFilter =
+    !loading && !error && !isEmpty && folders.length === 0 && media.length === 0 && others.length === 0;
 
   return (
     <div
@@ -497,6 +442,11 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
 
       <div className="flex flex-wrap items-center gap-2 border-y border-line py-2">
         <SortControl value={sort} onChange={nav.setSort} />
+        <FilterControl
+          value={filter}
+          onChange={setFilter}
+          total={(data?.folders.length ?? 0) + (data?.files.length ?? 0)}
+        />
 
         <div className="flex-1" />
 
@@ -537,16 +487,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
                        disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent
                        focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <svg
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="size-5 fill-none stroke-current stroke-[1.5]"
-            >
-              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
-              <path d="M12 10.5v5M9.5 13h5" />
-            </svg>
+            <FolderPlusIcon />
           </button>
         </div>
 
@@ -562,13 +503,20 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
         */}
         <UploadButton onFiles={uploads.start} disabled={hereId === null} />
 
-        {/* Disabled while the folder is unsettled — a cold link to an open file
-            has not learned its parent yet, and `?? null` would play the root. */}
-        <Button
-          size="sm"
-          disabled={folderId === undefined}
-          onClick={() => setReelFolder({ id: folderId ?? null })}
-        >
+        {/* A navigation now, not a piece of state this component holds open.
+            It goes to the viewer with `?in=recursive:<folder>`, which is what
+            makes a reel a place you can link to and press back out of. */}
+        {files.length > 0 && (
+          <Button
+            intent="ghost"
+            size="sm"
+            onClick={selection.count > 0 ? selection.clear : selection.selectAll}
+          >
+            {selection.count > 0 ? "Select none" : "Select all"}
+          </Button>
+        )}
+
+        <Button size="sm" onClick={nav.playReel}>
           Play reel
         </Button>
       </div>
@@ -631,11 +579,103 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
         </Text>
       )}
 
-      {data && data.folders.length > 0 && (
+      {hiddenByFilter && (
+        <Text variant="body" tone="muted">
+          Nothing here matches “{filter}”.
+        </Text>
+      )}
+
+      {/* **The selection bar sits over BOTH lists, not inside the grid.**
+          It used to live in the `Photos & video` section, which was right while
+          only images could be selected — a folder holding nothing but
+          `result.json` files then had no bar at all, and "Select all" under a
+          heading that says "Photos" would now also take the text files. */}
+        {selection.count > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-card px-3 py-2">
+            <Text variant="caption" tone="muted" className="tabular-nums">
+              {selection.count} of {files.length} selected
+            </Text>
+
+            <div className="flex-1" />
+
+            {/* One key per line, in grid order rather than the order they were
+                picked: this is going into a shell loop or a `--keys` argument,
+                and the order you happened to click in is not information. */}
+            <CopyKeyButton
+              value={selection.selectedItems.map((item) => item.key).join("\n")}
+              noun={selectedNoun("key", "keys")}
+            />
+
+            {/* Media has no per-tile menu the way a row does — sixty thumbnails
+                with a control each is the crowding this grid exists to avoid —
+                so this bar is where a bulk move and a bulk copy are reached
+                from. */}
+            <button
+              type="button"
+              onClick={() =>
+                setPickerTarget({
+                  verb: "copy",
+                  ids: selection.selectedItems.map((item) => item.id),
+                  noun: selectedNoun("file", "files"),
+                })
+              }
+              aria-label={`Copy ${selectedNoun("file", "files")} to…`}
+              title={`Copy ${selectedNoun("file", "files")} to…`}
+              className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
+                         focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              {/* Two sheets, one behind the other: the source stays, which is
+                  the whole difference from the arrow on the move button. */}
+              <CopyIcon />
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setPickerTarget({
+                  verb: "move",
+                  ids: selection.selectedItems.map((item) => item.id),
+                  noun: selectedNoun("file", "files"),
+                })
+              }
+              aria-label={`Move ${selectedNoun("file", "files")}`}
+              title={`Move ${selectedNoun("file", "files")}`}
+              className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
+                         focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              {/* A folder with something going into it — the destination is
+                  what a move is about, and the arrow says which way. */}
+              <FolderIntoIcon />
+            </button>
+
+            {/* Under five, the armed button — the cost of being wrong is a
+                handful of frames still on screen. Above it, the count has to
+                be typed: a selection is invisible once it is gone, and
+                "select all" then "delete" is two presses from emptying a
+                folder. */}
+            {selection.count < BULK_GATE ? (
+              <ConfirmDeleteButton
+                tone="bar"
+                noun={selectedNoun("file", "files")}
+                onConfirm={deleteSelected}
+              />
+            ) : (
+              <ConfirmDestroyDialog
+                label={`Delete ${selection.count}`}
+                title={`Delete ${selectedNoun("file", "files")}?`}
+                summary="They are removed from this folder and from the library. Nothing else is touched."
+                confirmWord={String(selection.count)}
+                onConfirm={deleteSelected}
+              />
+            )}
+          </div>
+        )}
+
+      {folders.length > 0 && (
         <section className="flex flex-col gap-2">
           <Text variant="title">Folders</Text>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {data.folders.map((folder) => (
+            {folders.map((folder) => (
               <FolderCard
                 key={folder.id}
                 name={folder.name}
@@ -659,124 +699,24 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
 
       {media.length > 0 && (
         <section className="flex flex-col gap-2">
-          {/*
-            The heading keeps one control, and the selection gets its own bar,
-            which only exists while there is a selection — so the heading line has
-            a fixed shape. The counts are out of the button labels because the bar
-            says "3 selected" two inches to the left.
-          */}
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            {/* "Media" was the API's word for it — `kind` is image | video |
-                text | other — and it leaked into the page as a heading that names
-                a type union rather than a thing. */}
-            <Text variant="title">
-              Photos &amp; video{" "}
-              <span className="font-body text-sm text-muted">({media.length})</span>
-            </Text>
+          {/* "Media" was the API's word for it — `kind` is image | video |
+              text | other — and it leaked into the page as a heading that names
+              a type union rather than a thing. */}
+          <Text variant="title">
+            Photos &amp; video{" "}
+            <span className="font-body text-sm text-muted">({media.length})</span>
+          </Text>
 
-            <Button
-              intent="ghost"
-              size="sm"
-              onClick={selection.count > 0 ? selection.clear : selection.selectAll}
-            >
-              {selection.count > 0 ? "Select none" : "Select all"}
-            </Button>
-          </div>
-
-          {selection.count > 0 && (
-            <div className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-card px-3 py-2">
-              <Text variant="caption" tone="muted" className="tabular-nums">
-                {selection.count} of {media.length} selected
-              </Text>
-
-              <div className="flex-1" />
-
-              {/* One key per line, in grid order rather than the order they were
-                  picked: this is going into a shell loop or a `--keys` argument,
-                  and the order you happened to click in is not information. */}
-              <CopyKeyButton
-                value={selection.selectedItems.map((item) => item.key).join("\n")}
-                noun={selectedNoun("key", "keys")}
-              />
-
-              {/* Media has no per-tile menu the way a row does — sixty thumbnails
-                  with a control each is the crowding this grid exists to avoid —
-                  so this bar is where a bulk move and a bulk copy are reached
-                  from. */}
-              <button
-                type="button"
-                onClick={() =>
-                  setPickerTarget({
-                    verb: "copy",
-                    ids: selection.selectedItems.map((item) => item.id),
-                    noun: selectedNoun("file", "files"),
-                  })
-                }
-                aria-label={`Copy ${selectedNoun("file", "files")} to…`}
-                title={`Copy ${selectedNoun("file", "files")} to…`}
-                className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
-                           focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              >
-                {/* Two sheets, one behind the other: the source stays, which is
-                    the whole difference from the arrow on the move button. */}
-                <svg
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="size-5 fill-none stroke-current stroke-[1.5]"
-                >
-                  <rect x="9" y="9" width="12" height="12" rx="2" />
-                  <path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
-                </svg>
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setPickerTarget({
-                    verb: "move",
-                    ids: selection.selectedItems.map((item) => item.id),
-                    noun: selectedNoun("file", "files"),
-                  })
-                }
-                aria-label={`Move ${selectedNoun("file", "files")}`}
-                title={`Move ${selectedNoun("file", "files")}`}
-                className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
-                           focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              >
-                {/* A folder with something going into it — the destination is
-                    what a move is about, and the arrow says which way. */}
-                <svg
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="size-5 fill-none stroke-current stroke-[1.5]"
-                >
-                  <path d="M2 9V7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1" />
-                  <path d="M2 13h9" />
-                  <path d="m8 16 3-3-3-3" />
-                </svg>
-              </button>
-
-              <ConfirmDeleteButton
-                tone="bar"
-                noun={selectedNoun("file", "files")}
-                onConfirm={deleteSelected}
-              />
-            </div>
-          )}
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-            {media.map((file, index) => (
+            {media.map((file) => (
               <MediaTile
                 key={file.id}
                 file={file}
                 selected={selection.selected.has(file.id)}
                 selectionActive={selection.count > 0}
                 onOpen={() => nav.openFile(file)}
-                onToggleSelect={(extend) => selection.toggleAt(index, extend)}
+                onToggleSelect={(extend) => selection.toggleAt(indexOf.get(file.id) ?? 0, extend)}
               />
             ))}
           </div>
@@ -791,6 +731,9 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
               <FileRow
                 key={file.id}
                 file={file}
+                selected={selection.selected.has(file.id)}
+                selectionActive={selection.count > 0}
+                onToggleSelect={(extend) => selection.toggleAt(indexOf.get(file.id) ?? 0, extend)}
                 onOpen={() => nav.openFile(file)}
                 onRename={(name) => run(renameNode(file.id, name))}
                 onMove={() =>
@@ -805,49 +748,6 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
           </div>
         </section>
       )}
-
-      {/*
-        One viewer, two sources.
-
-        Opening a tile plays *this folder's* media, starting on the one that was
-        clicked — which is what "open this" means and needs no second request,
-        since the listing already has it. "Play reel" plays everything beneath the
-        folder recursively, paged in from the API. Both routes land here.
-      */}
-      {reelFolder !== null ? (
-        <ReelView
-          items={reel.items}
-          loading={reel.loading}
-          exhausted={reel.exhausted}
-          truncated={reel.truncated}
-          startIndex={0}
-          onLoadMore={reel.loadMore}
-          onClose={closeReel}
-          onCurrentChange={nav.setCurrent}
-          onRename={renameOpenFile}
-          onDelete={deleteOpenFile}
-          onDescribe={describeOpenFile}
-        />
-      ) : (
-        openIndex >= 0 && (
-          <ReelView
-            items={media}
-            loading={false}
-            exhausted
-            startIndex={openIndex}
-            onClose={nav.closeItem}
-            onCurrentChange={nav.setCurrent}
-            onRename={renameOpenFile}
-            onDelete={deleteOpenFile}
-            onDescribe={describeOpenFile}
-          />
-        )
-      )}
-
-      {/* A text file gets a page of its own, the way a clip does — same address,
-          same "this is the thing you came for" treatment — and unlike a clip it
-          can be edited, because these are notes and prompts a person wrote. */}
-      {openText && <TextPage file={openText} onClose={nav.closeItem} onSaved={reload} />}
 
       {pickerTarget && (
         <DestinationPicker
@@ -865,160 +765,6 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
         />
       )}
 
-      {/* A share link to a node this folder does not hold — deleted upstream
-          between the link being sent and being opened. The listing loaded fine,
-          so this is specific and worth saying rather than silently showing the
-          folder. The id itself is not shown: it is what the address bar already
-          says, and it names nothing a person can act on. */}
-      {openId && openIndex < 0 && !openText && !loading && !error && (
-        <Alert.Root intent="warning">
-          <Alert.Title>That file is not here any more</Alert.Title>
-          <Alert.Description>
-            Nothing in this folder matches that link. It may have been deleted.
-          </Alert.Description>
-        </Alert.Root>
-      )}
     </div>
-  );
-}
-
-/**
- * A browser driven by component state rather than by the URL — the Files tab.
- *
- * The address bar is spent on the entity, so navigating a subfolder inside a tab
- * cannot touch it: doing so would replace the page you are standing on, and
- * browser-back out of three subfolders would walk back through a character page
- * three times.
- *
- * What is given up is that a folder inside a tab is not linkable. That is the
- * right trade in one direction only, and it is why `/f/<id>` still exists and the
- * tab does not replace it: a *link* to a folder is a link to the browser.
- */
-export function useLocalBrowserNav(rootId: string): BrowserNav {
-  const [folder, setFolder] = useState<FolderId>(rootId);
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [sort, setSort] = useState<SortOrder>("newest");
-
-  // The tab is remounted per entity by its `key`, but a character page navigated
-  // to from another character's page is the same mount with a different root.
-  useEffect(() => {
-    setFolder(rootId);
-    setOpenId(null);
-  }, [rootId]);
-
-  // The target is built inside the memo rather than beside it: a fresh object
-  // literal on every render is a dependency that never compares equal, which
-  // would rebuild the nav — and re-run every effect keyed on it — each time.
-  return useMemo(
-    () => ({
-      target: (openId
-        ? { kind: "object", id: openId }
-        : { kind: "folder", id: folder }) as Target,
-      sort,
-      setSort,
-      goToFolder: (id: FolderId) => {
-        setOpenId(null);
-        // `null` is the *library* root, which a scoped browser has no way to
-        // show and no business showing — the boundary crumb is this entity's
-        // root, so that is where "up from the top" lands.
-        setFolder(id ?? rootId);
-      },
-      openFile: (file: FileEntry) => setOpenId(file.id),
-      closeItem: () => setOpenId(null),
-      setCurrent: (file: FileEntry) => setOpenId(file.id),
-    }),
-    [folder, openId, rootId, sort],
-  );
-}
-
-/**
- * The browser scoped to one entity's folder — a character's or a project's
- * **Files** tab.
- *
- * A component of its own so that the hook driving it is called at the top of
- * *something*: a tab panel renders nothing while it is inactive, so the state
- * belongs to the tab rather than to the page, and switching away genuinely
- * discards it.
- *
- * ## The chip row is where the folder tabs went
- *
- * A character's root children each used to get a tab of their own, beside
- * Profile and References. That made a *listing* into navigation: the strip grew
- * and shrank as folders were created and deleted, every one of those tabs showed
- * a folder the browser one tab over already held, and at 390px the seven of them
- * wrapped into three rows of underline. They are shortcuts now — one scrolling
- * row of a fixed shape, with the browser still the only place a folder opens.
- */
-export function FolderTab({ rootId }: { rootId: string }) {
-  const nav = useLocalBrowserNav(rootId);
-  return (
-    <div className="flex w-full flex-col gap-4">
-      <FolderShortcuts rootId={rootId} nav={nav} />
-      <FolderBrowser nav={nav} boundary={rootId} />
-    </div>
-  );
-}
-
-/**
- * The root's immediate children, as jump targets.
- *
- * Fetched here rather than handed down because both callers want it and only one
- * of them ever had the listing to hand. It is the same `GET /api/tree` the
- * browser itself makes for the root, and it renders nothing at all when the root
- * has no subfolders — a character whose starting folders were deleted gets no
- * empty rail.
- *
- * Scrolls rather than wraps — see `ChipRow`, which the reference tag filter uses
- * too, so the two rows cannot drift apart.
- */
-function FolderShortcuts({ rootId, nav }: { rootId: string; nav: BrowserNav }) {
-  const load = useCallback(() => getTree({ node: rootId }, "name"), [rootId]);
-  const { data } = useResource(load);
-
-  const folders = data?.folders ?? [];
-  if (folders.length === 0) return null;
-
-  // An open file overlays the page, so the folder behind it is not a place
-  // anybody is standing — only a folder target lights a chip.
-  const here = nav.target.kind === "folder" ? nav.target.id : null;
-
-  return (
-    <ChipRow role="group" aria-label="Folder shortcuts">
-      <FolderChip label="Top" active={here === rootId} onClick={() => nav.goToFolder(rootId)} />
-      {folders.map((folder) => (
-        <FolderChip
-          key={folder.id}
-          label={folder.name}
-          active={here === folder.id}
-          onClick={() => nav.goToFolder(folder.id)}
-        />
-      ))}
-    </ChipRow>
-  );
-}
-
-function FolderChip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-current={active ? "true" : undefined}
-      className={`shrink-0 snap-start rounded-full border px-3 py-1 font-body text-sm transition-colors
-                  focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
-                    active
-                      ? "border-primary bg-primary text-primary-text"
-                      : "border-line text-muted hover:bg-surface-alt hover:text-ink"
-                  }`}
-    >
-      {label}
-    </button>
   );
 }

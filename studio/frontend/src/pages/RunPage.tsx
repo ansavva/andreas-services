@@ -1,14 +1,17 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { Alert, Badge, Button, Spinner, Text } from "@ansavva/design-system";
 
 import { getNodeText, getRun } from "../apis/studio";
-import { AppHeader } from "../components/common/AppHeader";
+import { PageBar } from "../components/layout/PageBar";
+import { Backlinks } from "../components/common/Backlinks";
+import { MediaThumb } from "../components/media/MediaThumb";
 import { useResource } from "../hooks/useResource";
+import { useProjectCrumb } from "../hooks/useProjectCrumb";
 import { formatBytes, formatDate, formatTextContent } from "../utils/format";
-import type { RunAsset } from "../types";
-import { objectPath, projectPath, runPath } from "../utils/location";
+import { isTerminal, type RunAsset, type RunRecord } from "../types";
+import { objectPath, runPath, scenePath } from "../utils/location";
 
 /**
  * One run: what studio recorded about it, what came out, and — separately, and
@@ -27,40 +30,60 @@ export function RunPage() {
   const navigate = useNavigate();
 
   const load = useCallback(() => getRun(runId), [runId]);
-  const { data, loading, error } = useResource(load);
+  /**
+   * A run is an async job, and this page was a snapshot of one.
+   *
+   * It showed whatever the status was when it opened and waited for somebody to
+   * press reload — on the one screen in the app whose whole subject is a thing
+   * that changes underneath you. It polls while the run can still move and stops
+   * the moment it cannot, which is what `isTerminal` is for.
+   */
+  const { data, loading, error } = useResource(["run", runId], load, {
+    refetchInterval: (query) => {
+      const status = (query.state.data as RunRecord | undefined)?.status;
+      return status && !isTerminal(status) ? 5_000 : false;
+    },
+  });
+  const crumbs = useProjectCrumb(projectId);
+
+  // Every frame on this page opens into the run, so scrolling the viewer walks
+  // what the run produced and was given rather than the folder those files
+  // happen to sit in.
+  const RUN = useMemo(() => ({ in: "run" as const, id: runId }), [runId]);
 
   if (loading) {
     return (
-      <Shell>
+      <>
         <div className="flex justify-center py-16">
           <Spinner size="lg" label="Loading run" />
         </div>
-      </Shell>
+      </>
     );
   }
 
   if (error || !data) {
     return (
-      <Shell>
+      <>
         <Alert.Root intent="danger">
           <Alert.Title>Could not open this run</Alert.Title>
           <Alert.Description>{error ?? "It may have been deleted."}</Alert.Description>
         </Alert.Root>
-      </Shell>
+      </>
     );
   }
 
   return (
-    <Shell subtitle={formatDate(data.created)}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <Button intent="ghost" size="sm" onClick={() => navigate(projectPath(projectId))}>
-          <span aria-hidden="true">←</span> Project
-        </Button>
+    <>
+      {/* The run's project is in its own address — `/p/<id>/r/<id>` — which is
+          what that shape is for: a pasted link knows which project it belongs
+          to before anything has answered. The name is a request on top of that,
+          not instead of it. */}
+      <PageBar crumbs={crumbs}>
         {/* A run has no name — the date is what a person recognises it by. */}
         <Text variant="display">{formatDate(data.created)}</Text>
         <Badge intent={data.status === "failed" ? "danger" : "neutral"}>{data.status}</Badge>
         <Badge intent="neutral">{data.kind}</Badge>
-      </div>
+      </PageBar>
 
       {data.error && (
         <Alert.Root intent="danger">
@@ -68,6 +91,13 @@ export function RunPage() {
           <Alert.Description>{data.error}</Alert.Description>
         </Alert.Root>
       )}
+
+      <Backlinks label="Used in" links={data.scenes} to={scenePath} />
+      <Backlinks
+        label="Chained into"
+        links={data.derived}
+        to={(id) => runPath(data.project, id)}
+      />
 
       <section className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         <Fact label="Model" value={data.model} />
@@ -91,7 +121,11 @@ export function RunPage() {
         ) : (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
             {data.outputs.map((asset) => (
-              <AssetTile key={asset.node} asset={asset} onOpen={() => navigate(objectPath(asset.node))} />
+              <AssetTile
+                key={asset.node}
+                asset={asset}
+                onOpen={() => navigate(objectPath(asset.node, RUN))}
+              />
             ))}
           </div>
         )}
@@ -118,7 +152,7 @@ export function RunPage() {
                   <AssetTile
                     key={asset.node}
                     asset={asset}
-                    onOpen={() => navigate(objectPath(asset.node))}
+                    onOpen={() => navigate(objectPath(asset.node, RUN))}
                   />
                 ))}
               </div>
@@ -168,7 +202,7 @@ export function RunPage() {
         <PayloadDocument label="request.json" node={data.payload.request} />
         <PayloadDocument label="response.json" node={data.payload.response} />
       </section>
-    </Shell>
+    </>
   );
 }
 
@@ -189,7 +223,7 @@ function PayloadDocument({ label, node }: { label: string; node: string | null }
     [node],
   );
   const [open, setOpen] = useState(false);
-  const { data, loading, error } = useResource(open && node !== null ? load : null);
+  const { data, loading, error } = useResource(open && node !== null ? ["node-text", node] : null, load);
 
   if (node === null) {
     return (
@@ -252,22 +286,13 @@ function AssetTile({ asset, onOpen }: { asset: RunAsset; onOpen: () => void }) {
                  transition-colors hover:bg-surface-alt
                  focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
     >
-      <span className="aspect-square w-full overflow-hidden rounded-md bg-surface-alt">
-        {isVideo ? (
-          // `preload="metadata"` and no poster: the browser paints the first
-          // decoded frame, which is a free thumbnail for a bucket that ships no
-          // derivatives.
-          <video
-            src={asset.url}
-            muted
-            playsInline
-            preload="metadata"
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <img src={asset.url} alt="" className="h-full w-full object-cover" />
-        )}
-      </span>
+      <MediaThumb
+        nodeId={asset.node}
+        url={asset.url}
+        name={asset.name}
+        isVideo={isVideo}
+        className="w-full rounded-md"
+      />
       <Text variant="caption" tone="muted" className="truncate">
         {asset.name}
       </Text>
@@ -293,11 +318,3 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Shell({ children, subtitle }: { children: React.ReactNode; subtitle?: string }) {
-  return (
-    <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-6 p-4 sm:p-6">
-      <AppHeader subtitle={subtitle ?? "run"} />
-      {children}
-    </div>
-  );
-}

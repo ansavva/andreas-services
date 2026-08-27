@@ -841,10 +841,20 @@ class FakeApi:
             "scenes": sum(1 for s in self.scenes.values() if s["project"] == record["id"]),
             "movies": sum(1 for m in self.movies.values() if m["project"] == record["id"]),
         }
+        # `characters` EXPANDED, exactly as `GET /api/projects/<id>` answers —
+        # `{id, slug, display_name}` per link. This used to invent a
+        # `character_slugs` list of bare slugs, which the real API has never
+        # returned; the CLI read it, printed `—` for every project in
+        # production, and the suite passed because the double agreed with the
+        # bug rather than with the service.
         return {**record, "counts": counts,
-                "character_slugs": [self.characters[c]["slug"]
-                                    for c in record.get("characters") or []
-                                    if c in self.characters]}
+                "characters": [
+                    {"id": c,
+                     "slug": self.characters[c]["slug"],
+                     "display_name": self.characters[c].get("display_name")}
+                    for c in record.get("characters") or []
+                    if c in self.characters
+                ]}
 
     def _r_projects(self, method, body, params):
         if method == "GET":
@@ -913,13 +923,21 @@ class FakeApi:
         return self._project_view(record)
 
     def _r_project_inputs(self, method, body, params, ref):
+        """`{folder, inputs}`, as the route answers — NOT a bare array.
+
+        This returned the array directly, which is the one shape the real route
+        does not use. `_as_list` answers `[]` for anything that is not a list,
+        so against the service the pool read as empty every time while every
+        test here passed.
+        """
         record = self._entity(self.projects, ref, "project")
         pool = self._folder_under(record["root"], "input")
-        return [{**self._view(n), "position": i}
-                for i, n in enumerate(
-                    sorted((c for c in self._children(pool["id"])
-                            if c["kind"] == "file"),
-                           key=lambda n: _natural(n["name"])), 1)]
+        return {"folder": pool["id"],
+                "inputs": [{**self._view(n), "position": i}
+                           for i, n in enumerate(
+                               sorted((c for c in self._children(pool["id"])
+                                       if c["kind"] == "file"),
+                                      key=lambda n: _natural(n["name"])), 1)]}
 
     def _r_project_runs(self, method, body, params, ref):
         record = self._entity(self.projects, ref, "project")
@@ -956,8 +974,31 @@ class FakeApi:
                 "model": record["model"], "created": record["created"],
                 "thumb": {"node": outputs[0]} if outputs else None}
 
+    def _backlinks(self, holders: dict, matches) -> list[dict]:
+        """The `{id, slug, title}` rows `support.holders` sends, sorted by slug.
+
+        The real API answers these off `by-sk` edge rows. What matters to a
+        double is not how they are stored but that the FIELD EXISTS and has the
+        service's shape — a fake that omits one lets a client read `undefined`
+        forever and the suite stay green. That is not a hypothetical: this file
+        used to invent a `character_slugs` field the API has never sent, and it
+        kept three real bugs hidden behind 1000 passing tests.
+        """
+        return sorted(
+            ({"id": h["id"], "slug": h.get("slug"), "title": h.get("title")}
+             for h in holders.values() if matches(h)),
+            key=lambda entry: entry.get("slug") or "",
+        )
+
     def _run_view(self, record: dict) -> dict:
         return {**record,
+                "scenes": self._backlinks(
+                    self.scenes,
+                    lambda sc: any(shot.get("run") == record["id"]
+                                   for shot in self.shots.get(sc["id"], []))),
+                "derived": self._backlinks(
+                    self.runs,
+                    lambda r: (r.get("lineage") or {}).get("from_run") == record["id"]),
                 "outputs": [{"node": n, "name": self.nodes.get(n, {}).get("name"),
                              "size": self.nodes.get(n, {}).get("size"),
                              "url": f"memory://{self.nodes.get(n, {}).get('blob_key')}"}
@@ -1067,8 +1108,12 @@ class FakeApi:
     # ── scenes and movies ───────────────────────────────────────────────────
 
     def _scene_view(self, record: dict) -> dict:
-        return {**record, "shots": sorted(self.shots.get(record["id"], []),
-                                          key=lambda s: s["order"])}
+        return {**record,
+                "shots": sorted(self.shots.get(record["id"], []),
+                                key=lambda s: s["order"]),
+                "movies": self._backlinks(
+                    self.movies,
+                    lambda m: record["id"] in (m.get("scenes") or []))}
 
     def _r_scenes(self, method, body, params):
         if method == "GET":
@@ -1161,7 +1206,35 @@ class FakeApi:
                             "Content-Length": str(body["size"])}}
 
     def _movie_view(self, record: dict) -> dict:
-        return dict(record)
+        """`scenes` EXPANDED, in order, exactly as `GET /api/movies/<id>` sends.
+
+        This returned the raw id list off the record. The real route resolves
+        each cut to `{id, slug, title, status, output, thumb}` — so a client
+        written against this double and run against the service would read a
+        string where it expected a row. The same divergence, one entity over,
+        that `character_slugs` already cost three bugs for.
+
+        Duplicates and order survive because the list is what carries them: a
+        movie may cut one scene twice as a reprise.
+        """
+        rows = []
+        for scene_id in record.get("scenes") or []:
+            scene = self.scenes.get(scene_id) or {}
+            # `output` is `{"node": id}` now and a bare id on everything written
+            # before it was — `support.output_node` normalises both on the way
+            # out, and a double that read only one of them would crash on rows
+            # the service serves happily.
+            stored = scene.get("output")
+            node = stored.get("node") if isinstance(stored, dict) else stored
+            drawable = None
+            if node:
+                drawable = {"node": node,
+                            "name": self.nodes.get(node, {}).get("name"),
+                            "url": f"memory://{self.nodes.get(node, {}).get('blob_key')}"}
+            rows.append({"id": scene_id, "slug": scene.get("slug"),
+                         "title": scene.get("title"), "status": scene.get("status"),
+                         "output": drawable, "thumb": drawable})
+        return {**record, "scenes": rows}
 
     def _r_movies(self, method, body, params):
         if method == "GET":
@@ -1206,6 +1279,14 @@ class FakeApi:
 
     def _r_movie_scenes(self, method, body, params, movie_id):
         record = self.movies[movie_id]
+        # Every entry is validated as a scene id, as the route does. This used
+        # to store whatever it was handed, so the CLI passing a list of dicts
+        # round-tripped happily here and 500'd against the service.
+        for scene_id in body["scenes"]:
+            if not isinstance(scene_id, str):
+                raise FakeError(400, f"scenes must be ids, got {type(scene_id).__name__}")
+            if scene_id not in self.scenes:
+                raise FakeError(404, f"no such scene: {scene_id}")
         record["scenes"] = list(body["scenes"])
         return self._movie_view(record)
 

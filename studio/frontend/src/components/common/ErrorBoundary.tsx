@@ -31,6 +31,36 @@ export class ErrorBoundary extends Component<
     return { error };
   }
 
+  /**
+   * Clear on a history move, which is what made `Go back` look dead.
+   *
+   * `history.back()` changes the address and React Router renders the previous
+   * route — but this boundary is ABOVE the router and its `error` was never
+   * cleared, so it went on drawing the same error screen over a route that had
+   * already changed. The URL moved and the page did not.
+   *
+   * Safe to clear here in a way it is not on a button, for the reason the
+   * `Reload` comment gives: what threw is only still in the tree if the route
+   * is the same one, and a `popstate` means it is not.
+   */
+  componentDidMount() {
+    window.addEventListener("popstate", this.clear);
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener("popstate", this.clear);
+  }
+
+  clear = () => this.setState({ error: null });
+
+  goBack = () => {
+    // A pasted or bookmarked address has nothing behind it, so `back()` is a
+    // no-op and no `popstate` ever fires — the button would read as dead for a
+    // second reason. Home is somewhere.
+    if (window.history.length > 1) window.history.back();
+    else window.location.assign("/");
+  };
+
   componentDidCatch(error: Error, info: ErrorInfo) {
     // Kept out of the UI and in the console: a component stack is for whoever is
     // debugging, and putting it on the page would bury the one line that says
@@ -80,7 +110,7 @@ export class ErrorBoundary extends Component<
           <Button intent="primary" size="sm" onClick={() => window.location.reload()}>
             Reload
           </Button>
-          <Button intent="ghost" size="sm" onClick={() => window.history.back()}>
+          <Button intent="ghost" size="sm" onClick={this.goBack}>
             Go back
           </Button>
         </div>

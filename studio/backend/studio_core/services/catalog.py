@@ -220,6 +220,16 @@ PROFILE_SCHEMA_VERSION = 2
 # provider's own response stays an undecoded blob beside it.
 RUN_STATUSES = frozenset({"pending", "running", "succeeded", "failed", "cancelled"})
 
+# The three a run does not come back from. Studio owns this word, so it owns
+# which of its values are endings — the alternative is every caller writing its
+# own set and one of them forgetting `cancelled`.
+#
+# It exists because the app polls. A run page had no idea whether the status it
+# was showing could still change, so it showed whatever was true when the page
+# opened and waited for a human to press reload; a client that knows which
+# states are terminal can stop asking on its own.
+TERMINAL_RUN_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
+
 # The sort key of the record half of a node, of a library, and of every entity.
 META = "META"
 
@@ -1966,6 +1976,93 @@ def links(entity_id: str, target_kind: str) -> list[str]:
     return [_attributes(item)["sk"][len(prefix) :] for item in items]
 
 
+# ──────────────────────────────── edges ────────────────────────────────
+#
+# **An edge is a row whose sort key is the TARGET's id**: `pk = <A>#<a_id>`,
+# `sk = <B>#<b_id>`. That shape is the only one `by-sk` can invert — in that
+# index `sk` is the hash key, and a hash key takes an exact value and never a
+# prefix — so every relationship that has to be readable backwards is spelled
+# this way and no other. `links()` reads one forwards, `linked()` backwards.
+#
+# It is deliberately not the only row shape here, and the other two are not
+# defects:
+#
+# | Shape | Sort key | What it is for |
+# |---|---|---|
+# | **edge** | `<B>#<b_id>` | set membership, readable from both ends |
+# | **listing** | `<KIND>#<created>#<id>` | chronological pagination — `project_entities` |
+# | **ordered child** | `SHOT#<n>`, `REF#<node>` | a positional entity carrying payload |
+#
+# A listing row embeds a timestamp so a project's runs paginate newest-first,
+# which costs it a reverse query it does not need — a run records its `project`
+# on its own record. An ordered child is an entity in its own right: a shot
+# exists before anything has been rendered into it, so its identity is its
+# position and not the run it may later bind.
+#
+# **Where an ordered child points at an entity, it gets an edge row beside it**,
+# written in the SAME transaction — for the reason `create_project_entity`
+# already gives about character usage: a link written afterwards is a link a
+# crash can lose. That is the whole rule, and two relationships used to break
+# it. A movie's scenes were a JSON list, which no index can address into, and a
+# scene's shots named their run in an attribute, which `by-sk` cannot see. Both
+# questions — "which movie cuts this scene", "which scene used this run" — had
+# no answer at any price, which is the exact complaint `linked()` was written to
+# retire for characters.
+
+
+def edge_sk(target_id: str) -> str:
+    """`CHAR#<id>` — the sort key an edge to this entity is filed under."""
+    return f"{ENTITY_KEYS[entity_kind(target_id)][1]}{target_id}"
+
+
+def edge_steps(
+    source_kind: str,
+    source_id: str,
+    lib: str,
+    targets: list[str],
+    current: list[str] | set[str],
+    now: str | None = None,
+) -> list[tuple[dict, Exception | None]]:
+    """Transaction steps that make this entity's edge set exactly `targets`.
+
+    Returned rather than written, so an edge can land in the same transaction as
+    whatever it describes. `set_edges` is the standalone caller.
+
+    Duplicates in `targets` collapse: an edge is set membership. An ordered
+    collection that allows the same target twice — a movie may cut one scene
+    twice as a reprise — keeps its order and its duplicates in its own list or
+    rows, and the edge rows beside it are the deduplicated set.
+    """
+    now = now or _now()
+    pk = _entity_pk(source_kind, source_id)
+    wanted = list(dict.fromkeys(targets))
+
+    steps = [
+        (_put(pk, edge_sk(target), {"lib": lib, "created": now}), None)
+        for target in wanted
+    ]
+    steps += [
+        (_delete(pk, edge_sk(target)), None)
+        for target in set(current) - set(wanted)
+    ]
+    return steps
+
+
+def set_edges(source_kind: str, source_id: str, lib: str,
+              target_kind: str, targets: list[str]) -> list[str]:
+    """Replace this entity's edges of one kind, and answer with the set written.
+
+    A replace rather than an add: the SPA edits a set and the CLI reads the set
+    first, so an add-only endpoint would need a remove beside it and a client
+    that got the difference wrong would accumulate links nothing removes.
+    """
+    current = links(source_id, target_kind)
+    steps = edge_steps(source_kind, source_id, lib, targets, current)
+    for start in range(0, len(steps), TRANSACTION_ITEMS):
+        _write(steps[start : start + TRANSACTION_ITEMS])
+    return list(dict.fromkeys(targets))
+
+
 # ──────────────────────────── entity writes ────────────────────────────
 
 
@@ -2628,38 +2725,14 @@ def detach_reference(char_id: str, node_id: str, record: dict | None = None) -> 
 
 
 def set_project_characters(project_id: str, lib: str, characters: list[str]) -> list[str]:
-    """Replace a project's involvement links.
+    """Replace a project's involvement links. One caller of `set_edges`.
 
-    A replace rather than an add, because the SPA edits a set and the CLI's
-    `projects link` reads the set first — an add-only endpoint would need a
-    remove beside it and a client that got the difference wrong would accumulate
-    links nothing removes.
+    This used to spell the `PROJ#<id> / CHAR#<id>` key itself, and it was the
+    only relationship in the table that got the shape right — so the shape was
+    a habit rather than a rule, and the two relationships written later did not
+    follow it. It is a rule now, and this is the first caller.
     """
-    now = _now()
-    current = set(links(project_id, ENTITY_CHARACTER))
-    wanted = list(dict.fromkeys(characters))
-
-    steps = [
-        (
-            _put(_entity_pk(ENTITY_PROJECT, project_id),
-                 f"{ENTITY_KEYS[ENTITY_CHARACTER][1]}{char_id}",
-                 {"lib": lib, "created": now}),
-            None,
-        )
-        for char_id in wanted
-    ]
-    steps += [
-        (
-            _delete(_entity_pk(ENTITY_PROJECT, project_id),
-                    f"{ENTITY_KEYS[ENTITY_CHARACTER][1]}{char_id}"),
-            None,
-        )
-        for char_id in current - set(wanted)
-    ]
-
-    for start in range(0, len(steps), TRANSACTION_ITEMS):
-        _write(steps[start : start + TRANSACTION_ITEMS])
-    return wanted
+    return set_edges(ENTITY_PROJECT, project_id, lib, ENTITY_CHARACTER, characters)
 
 
 # ──────────────────── runs, scenes and movies ────────────────────
@@ -2698,6 +2771,19 @@ def _listing_sk(kind: str, created: str, entity_id: str) -> str:
     return f"{ENTITY_KEYS[kind][1]}{created}#{entity_id}"
 
 
+def _edge_targets(attributes: dict) -> list[str]:
+    """Every entity id an envelope points at, flattened for `edge_steps`.
+
+    `characters` and `scenes` are lists of ids; `lineage.from_run` is a single
+    parent, and it is an edge like any other — "what came out of this run" is
+    the same question as "which projects involve this character", asked one
+    prefix over.
+    """
+    targets = [*(attributes.get("characters") or []), *(attributes.get("scenes") or [])]
+    parent = (attributes.get("lineage") or {}).get("from_run")
+    return [*targets, *([parent] if parent else [])]
+
+
 def create_project_entity(
     kind: str,
     lib: str,
@@ -2726,9 +2812,13 @@ def create_project_entity(
     on it, no claim row enforced it, and resolving one needed an exact match, a
     substring fallback and an ambiguity error to prop it up.
 
-    The character usage rows go in the same transaction, because "which runs used
-    this character" has to be true the moment the run exists — a link written
-    afterwards is a link a crash can lose.
+    **Every edge this entity carries goes in the same transaction**, because
+    "which runs used this character" has to be true the moment the run exists —
+    a link written afterwards is a link a crash can lose. That reasoning was
+    always general and the code was not: it wrote character rows only, so a
+    movie's scenes and a run's parent were left with no edge at all and no way
+    to be read backwards. `_edge_targets` is the whole list, and `edge_sk` reads
+    each target's kind off its own id.
     """
     parent = _folder_node(parent_id)
     entity_id = _mint(kind)
@@ -2763,15 +2853,7 @@ def create_project_entity(
         ),
         (_bump_counts(project_id, COUNT_FIELD[kind], 1), NotFoundError(project_id)),
         *steps,
-        *[
-            (
-                _put(_entity_pk(kind, entity_id),
-                     f"{ENTITY_KEYS[ENTITY_CHARACTER][1]}{char_id}",
-                     {"lib": lib, "created": now}),
-                None,
-            )
-            for char_id in attributes.get("characters") or []
-        ],
+        *edge_steps(kind, entity_id, lib, _edge_targets(attributes), [], now),
     ]
 
     _write(steps)
@@ -2799,7 +2881,8 @@ def project_entities(project_id: str, kind: str) -> list[dict]:
 
 
 def update_project_entity(
-    kind: str, record: dict, assignments: dict, listing: dict | None = None
+    kind: str, record: dict, assignments: dict, listing: dict | None = None,
+    edges: dict[str, list[str]] | None = None,
 ) -> dict:
     """Move a run, scene or movie forward. **No `rev`, and that is deliberate.**
 
@@ -2813,6 +2896,12 @@ def update_project_entity(
     The listing row is updated in the same transaction when its projection
     changes, so a grid never shows `pending` for a run whose envelope says
     `succeeded`.
+
+    `edges` replaces the edge rows of one or more target kinds, in that same
+    transaction — `{ENTITY_SCENE: [...]}`. Scoped per kind because a replace has
+    to know what it is replacing: writing a movie's scenes must not disturb the
+    characters it involves. The attribute and its edge rows land together or not
+    at all, which is the only reason the list and the rows cannot disagree.
     """
     now = _now()
     assignments = {**assignments, "updated": now}
@@ -2835,6 +2924,10 @@ def update_project_entity(
                 NotFoundError(record["id"]),
             )
         )
+    for target_kind, targets in (edges or {}).items():
+        steps += edge_steps(kind, record["id"], record["lib"], targets,
+                            links(record["id"], target_kind), now)
+
     _write(steps)
     return {**record, **{k: v for k, v in assignments.items() if v is not None}}
 
@@ -2909,7 +3002,51 @@ def _shot_item(scene_id: str, shot_id: str, entry: dict) -> dict:
     )
 
 
-def put_shots(scene_id: str, entries: list[dict]) -> list[dict]:
+def _shot_run_edges(scene_id: str, lib: str, written: list[dict],
+                    now: str) -> list[tuple[dict, Exception | None]]:
+    """Edge rows making `SCENE#<id> / RUN#<id>` exactly the runs its shots bind.
+
+    A shot's identity is its position — it exists as a plan before anything is
+    rendered — so `SHOT#<n>` is the right key for it and the run it later binds
+    is a field. That left the run reachable only by reading every shot of every
+    scene, which is why "which scene used this run" had no answer.
+
+    So the edge lives beside the shot rather than replacing it, and is derived
+    from the shots on every write instead of being maintained incrementally:
+    a shot can gain, change or lose its run through two different routes, and a
+    derived set cannot drift from the thing it is derived from.
+
+    **A shot names a run in three places, not one.** This read `shot["run"]`
+    only, which is the motion render — and in the production library that field
+    is empty on every shot while twenty-five *panels* carry a run, because
+    boarding records the still per panel. So the backlink would have been empty
+    for every boarded scene there: right in the tests, right on a dev stack that
+    had no shots at all, and wrong on the only data that exists.
+
+    | Field | What named the run |
+    |---|---|
+    | `shot["run"]` | the motion render for the whole shot |
+    | `panels[n]["run"]` | the still boarded into panel n |
+    | `opens_on["from_run"]` | the run whose last frame this shot continues from |
+
+    All three are "this scene used that run", which is the question being
+    answered. Duplicates collapse — an edge is set membership.
+    """
+    bound = []
+    for shot in written:
+        if shot.get("run"):
+            bound.append(shot["run"])
+        for panel in shot.get("panels") or []:
+            if isinstance(panel, dict) and panel.get("run"):
+                bound.append(panel["run"])
+        opens_on = shot.get("opens_on")
+        if isinstance(opens_on, dict) and opens_on.get("from_run"):
+            bound.append(opens_on["from_run"])
+    return edge_steps(ENTITY_SCENE, scene_id, lib, bound,
+                      links(scene_id, ENTITY_RUN), now)
+
+
+def put_shots(scene_id: str, lib: str, entries: list[dict]) -> list[dict]:
     """Revise a scene's plan **onto** the work already rendered, not over it.
 
     A plan revision is a person rewriting prompts. `run`, `node` and `panel` are
@@ -2942,6 +3079,7 @@ def put_shots(scene_id: str, entries: list[dict]) -> list[dict]:
         (_delete(_entity_pk(ENTITY_SCENE, scene_id), f"{SHOT_PREFIX}{shot_id}"), None)
         for shot_id in existing
     ]
+    steps += _shot_run_edges(scene_id, lib, written, now)
 
     for start in range(0, len(steps), TRANSACTION_ITEMS):
         _write(steps[start : start + TRANSACTION_ITEMS])
@@ -2949,7 +3087,7 @@ def put_shots(scene_id: str, entries: list[dict]) -> list[dict]:
     return written
 
 
-def update_shot(scene_id: str, shot_id: str, changes: dict) -> dict:
+def update_shot(scene_id: str, lib: str, shot_id: str, changes: dict) -> dict:
     """One shot: which run rendered it, which panel it came from, its plan.
 
     The same field list as `put_shots`, because a shot patched one field at a
@@ -2962,7 +3100,9 @@ def update_shot(scene_id: str, shot_id: str, changes: dict) -> dict:
         raise NotFoundError(shot_id)
 
     merged = {**entry, **{k: v for k, v in changes.items() if k in SHOT_FIELDS}}
-    _write([(_shot_item(scene_id, shot_id, merged), None)])
+    others = [item for item in shots(scene_id) if item["id"] != shot_id]
+    _write([(_shot_item(scene_id, shot_id, merged), None),
+            *_shot_run_edges(scene_id, lib, [*others, merged], _now())])
     return merged
 
 

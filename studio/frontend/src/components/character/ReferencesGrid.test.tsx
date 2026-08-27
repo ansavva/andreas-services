@@ -1,4 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FileEntry, ReferenceEntry, ReferenceIndex, TreeResponse } from "../../types";
@@ -13,6 +14,7 @@ vi.mock("../../apis/studio", () => ({
 
 import { getReferences, getTree, patchReference } from "../../apis/studio";
 import { ReferencesGrid } from "./ReferencesGrid";
+import { TestProviders } from "../../test-providers";
 
 const references = vi.mocked(getReferences);
 const tree = vi.mocked(getTree);
@@ -76,80 +78,24 @@ beforeEach(() => {
   tree.mockResolvedValue(listing({}));
 });
 
+// A router, because a tile opens the viewer now rather than a sheet of its own.
 function renderGrid() {
-  return render(<ReferencesGrid characterId={CHARACTER} rootId={ROOT} defaultSet={[]} />);
+  return render(
+    <MemoryRouter>
+      <ReferencesGrid characterId={CHARACTER} rootId={ROOT} defaultSet={[]} rev={1} onSaved={() => {}} />
+    </MemoryRouter>,
+  { wrapper: TestProviders },
+  );
 }
 
-/** Open the sheet on one entry the way a finger does — a tap on its tile. */
-async function openSheet(node: string) {
-  renderGrid();
-  const tile = await screen.findByTitle(`${node}.png`);
-  fireEvent.click(tile);
-  await screen.findByRole("dialog");
-}
-
-describe("moving a reference without a drag", () => {
-  it("steps down by landing after its next neighbour", async () => {
-    await openSheet("node-b");
-
-    fireEvent.click(screen.getByRole("button", { name: /down/i }));
-
-    await waitFor(() => {
-      expect(patch).toHaveBeenCalledWith(CHARACTER, "node-b", {
-        group: "face",
-        after: "node-c",
-      });
-    });
-  });
-
-  it("steps up by landing after the entry two above it", async () => {
-    await openSheet("node-c");
-
-    fireEvent.click(screen.getByRole("button", { name: /up/i }));
-
-    await waitFor(() => {
-      expect(patch).toHaveBeenCalledWith(CHARACTER, "node-c", {
-        group: "face",
-        after: "node-a",
-      });
-    });
-  });
-
-  it("steps the second entry up to the top of the group, which sends no anchor", async () => {
-    // There is no entry two above the second one, and `after: null` is what the
-    // API reads as "the midpoint below the first" — so the key is absent, not
-    // null. This is the case a naive index-minus-two gets wrong.
-    await openSheet("node-b");
-
-    fireEvent.click(screen.getByRole("button", { name: /up/i }));
-
-    await waitFor(() => {
-      expect(patch).toHaveBeenCalledWith(CHARACTER, "node-b", { group: "face" });
-    });
-  });
-
-  it("cannot step the ends off either end", async () => {
-    // `toBeDisabled` is jest-dom's, which this suite does not install — the
-    // property is on the element itself.
-    const disabled = (name: RegExp) =>
-      (screen.getByRole("button", { name }) as HTMLButtonElement).disabled;
-
-    await openSheet("node-a");
-    expect(disabled(/up/i)).toBe(true);
-    expect(disabled(/down/i)).toBe(false);
-
-    cleanup();
-
-    await openSheet("node-c");
-    expect(disabled(/down/i)).toBe(true);
-    expect(disabled(/up/i)).toBe(false);
-  });
-
-  it("says where the entry sits, so the buttons mean something", async () => {
-    await openSheet("node-b");
-    expect(screen.getByText("2 of 3")).toBeTruthy();
-  });
-});
+/*
+ * The reordering cases moved to `ReferenceFields.test.tsx`.
+ *
+ * They pin what a step up or down SENDS — the anchor arithmetic that a naive
+ * index-minus-two gets wrong — and those controls now live in the viewer's
+ * panel rather than in a sheet this grid opened. The drag on the tiles below is
+ * still here and still tested by what it calls.
+ */
 
 describe("the cap readout", () => {
   /**
@@ -168,7 +114,10 @@ describe("the cap readout", () => {
       counts: { face: size },
     });
     return render(
-      <ReferencesGrid characterId={CHARACTER} rootId={ROOT} defaultSet={nodes} />,
+      <MemoryRouter>
+        <ReferencesGrid characterId={CHARACTER} rootId={ROOT} defaultSet={nodes} rev={1} onSaved={() => {}} />
+      </MemoryRouter>,
+    { wrapper: TestProviders },
     );
   }
 
@@ -269,11 +218,16 @@ describe("a default set that has gone stale", () => {
       counts: { face: 1 },
     });
     return render(
-      <ReferencesGrid
-        characterId={CHARACTER}
-        rootId={ROOT}
-        defaultSet={["node-a", "node-gone-1", "node-gone-2"]}
-      />,
+      <MemoryRouter>
+        <ReferencesGrid
+          characterId={CHARACTER}
+          rootId={ROOT}
+          defaultSet={["node-a", "node-gone-1", "node-gone-2"]}
+          rev={1}
+          onSaved={() => {}}
+        />
+      </MemoryRouter>,
+    { wrapper: TestProviders },
     );
   }
 

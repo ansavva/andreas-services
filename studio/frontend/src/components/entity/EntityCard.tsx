@@ -1,6 +1,7 @@
 import { Text } from "@ansavva/design-system";
 
 import type { HeroImage } from "../../types";
+import { MediaThumb } from "../media/MediaThumb";
 
 interface Props {
   title: string;
@@ -39,7 +40,7 @@ export function EntityCard({ title, slug, hero, counts, onOpen }: Props) {
     >
       <span className="size-16 shrink-0 overflow-hidden rounded-md border border-line bg-surface-alt">
         {hero ? (
-          <img src={hero.url} alt="" className="h-full w-full object-cover" />
+          <MediaThumb nodeId={hero.node} url={hero.url} name="" aspect="auto" />
         ) : (
           <span className="flex h-full w-full items-center justify-center font-heading text-xl text-muted">
             {title.slice(0, 1).toUpperCase()}
@@ -47,14 +48,27 @@ export function EntityCard({ title, slug, hero, counts, onOpen }: Props) {
         )}
       </span>
 
+      {/*
+        `block` on both captions, and it is a bug fix rather than tidying.
+
+        `Text variant="body"` renders a `<p>`; `variant="caption"` renders a
+        `<span>`, which is **inline**. So these two sat on one line with nothing
+        between them and the card read `<slug><counts>` run together — literally
+        "jason0 references · 54 files" — while `truncate` did nothing at all,
+        needing a block box to have a width to truncate against.
+
+        The e2e suite asserts the counts with a regex that still matched as a
+        substring, which is why it went unnoticed: nothing was missing from the
+        DOM, it was only unreadable.
+      */}
       <span className="min-w-0 flex-1">
         <Text variant="body" weight="medium" className="truncate">
           {title}
         </Text>
-        <Text variant="caption" tone="muted" className="truncate">
+        <Text variant="caption" tone="muted" className="block truncate">
           {slug}
         </Text>
-        <Text variant="caption" tone="muted" className="truncate tabular-nums">
+        <Text variant="caption" tone="muted" className="block truncate tabular-nums">
           {counts}
         </Text>
       </span>

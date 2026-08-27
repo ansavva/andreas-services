@@ -1,20 +1,27 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 
 import type { SceneRecord, Shot } from "../types";
 
 // The header pulls in auth and the library context and says nothing this file
 // asserts on. Everything else is the real component.
-vi.mock("../components/common/AppHeader", () => ({ AppHeader: () => <div /> }));
 
-vi.mock("../apis/studio", () => ({ getScene: vi.fn(), patchShot: vi.fn() }));
+// `getProject` is here for the breadcrumb, which reads the project's name so
+// the trail says where the scene sits rather than just "Project".
+vi.mock("../apis/studio", () => ({
+  getScene: vi.fn(),
+  patchShot: vi.fn(),
+  getProject: vi.fn(),
+}));
 
-import { getScene, patchShot } from "../apis/studio";
+import { getProject, getScene, patchShot } from "../apis/studio";
 import { ScenePage } from "./ScenePage";
+import { TestProviders } from "../test-providers";
 
 const read = vi.mocked(getScene);
 const save = vi.mocked(patchShot);
+const project = vi.mocked(getProject);
 
 const ID = "scene-0001";
 
@@ -41,6 +48,7 @@ function record(over: Partial<SceneRecord> = {}): SceneRecord {
     slug: "light-flex",
     title: "Light flex",
     status: "planned",
+    movies: [],
     created: "2026-08-25T00:00:00Z",
     folder: "node-folder",
     output: null,
@@ -49,14 +57,30 @@ function record(over: Partial<SceneRecord> = {}): SceneRecord {
   };
 }
 
+/** Where the router ended up, so a navigation can be asserted on. */
+let landed = "";
+
+function Land() {
+  const location = useLocation();
+  landed = `${location.pathname}${location.search}`;
+  return <div>landed</div>;
+}
+
 function draw(scene: SceneRecord) {
   read.mockResolvedValue(scene);
+  project.mockResolvedValue({ id: "proj-0001", slug: "a-project", title: "A project" } as never);
+  landed = "";
   return render(
     <MemoryRouter initialEntries={[`/s/${ID}`]}>
       <Routes>
         <Route path="/s/:sceneId" element={<ScenePage />} />
+        {/* The board opens frames in the viewer now rather than in a drawer of
+            its own, so what a click does is *navigate* — this stands in for the
+            screen it navigates to. */}
+        <Route path="/o/:nodeId" element={<Land />} />
       </Routes>
     </MemoryRouter>,
+  { wrapper: TestProviders },
   );
 }
 
@@ -405,10 +429,15 @@ it("draws a plate the plan names as a thumbnail, not as a filename", async () =>
   expect(screen.getByRole("button", { name: /front\.png/i })).toBeTruthy();
 });
 
-it("opens a frame large in a drawer instead of leaving the board", async () => {
+it("opens a frame in the viewer, in the scene's own context", async () => {
   // A tile is 80px because a scene holds twenty-odd of them; judging a pose
-  // needs the picture at a size you can read. Navigating to the node page would
-  // work and would lose your place on the board.
+  // needs the picture at a size you can read.
+  //
+  // This used to open a drawer, on the reasoning that navigating away "would
+  // lose your place on the board". The viewer is a real screen now: `?in=scene`
+  // makes its neighbours the storyboard rather than some folder, back returns
+  // to the board, and unlike a drawer the frame can be linked to and made
+  // fullscreen.
   draw(
     record({
       shots: [
@@ -430,8 +459,8 @@ it("opens a frame large in a drawer instead of leaving the board", async () => {
 
   fireEvent.click(screen.getByRole("button", { name: /square to camera/i }));
 
-  // The frame's own name titles the drawer, and the big image is in it.
-  expect(await screen.findByText("shot-01-p1.jpeg")).toBeTruthy();
+  await screen.findByText("landed");
+  expect(landed).toBe(`/o/node-a?in=${encodeURIComponent(`scene:${ID}`)}`);
 });
 
 it("does not offer a viewer for a frame that has not been rendered", async () => {
@@ -439,4 +468,22 @@ it("does not offer a viewer for a frame that has not been rendered", async () =>
 
   await screen.findByText("The whistle comes off");
   expect(screen.queryByRole("button", { name: /not yet/i })).toBeNull();
+});
+
+/**
+ * The way back up. A scene knew nothing of the movie that cut it, because a
+ * movie held its scenes in a JSON list and no index addresses into one.
+ */
+it("names the movie that cut this scene", async () => {
+  draw(record({ movies: [{ id: "movie-3", slug: "the-cut", title: "The cut" }] }));
+
+  expect(await screen.findByText("Cut into")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "The cut" })).toBeTruthy();
+});
+
+it("says nothing when the scene has not been cut into anything", async () => {
+  draw(record());
+
+  await screen.findByText("The whistle comes off");
+  expect(screen.queryByText("Cut into")).toBeNull();
 });

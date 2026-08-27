@@ -1,5 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Outlet } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -18,16 +18,28 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * which must not be swallowed by the project route above it; and
  * `/auth/callback`, which must not be swallowed by the catch-all below it.
  */
+// The layout is stubbed for the same reason every page is: it renders the
+// header, the header asks `useAuth`, and this file's whole point is to exercise
+// the route table without the auth stack. What it must keep is the `Outlet` —
+// the pages below it render *through* the layout now, so a stub without one
+// would make every assertion here fail for a reason that has nothing to do with
+// routing.
+vi.mock("./components/layout/AppLayout", () => ({ AppLayout: () => <Outlet /> }));
+
 vi.mock("./pages/HomePage", () => ({ HomePage: () => <div>home</div> }));
+vi.mock("./pages/CharactersPage", () => ({ CharactersPage: () => <div>characters</div> }));
+vi.mock("./pages/ProjectsPage", () => ({ ProjectsPage: () => <div>projects</div> }));
 vi.mock("./pages/CharacterPage", () => ({ CharacterPage: () => <div>character</div> }));
 vi.mock("./pages/ProjectPage", () => ({ ProjectPage: () => <div>project</div> }));
 vi.mock("./pages/RunPage", () => ({ RunPage: () => <div>run</div> }));
 vi.mock("./pages/ScenePage", () => ({ ScenePage: () => <div>scene</div> }));
 vi.mock("./pages/MoviePage", () => ({ MoviePage: () => <div>movie</div> }));
 vi.mock("./pages/BrowsePage", () => ({ BrowsePage: () => <div>browser</div> }));
+vi.mock("./pages/ViewerPage", () => ({ ViewerPage: () => <div>viewer</div> }));
 vi.mock("./pages/AuthCallbackPage", () => ({ AuthCallbackPage: () => <div>callback</div> }));
 
 import { StudioRoutes } from "./routes";
+import { TestProviders } from "./test-providers";
 
 // Testing Library registers its cleanup with Vitest globals on; they are off
 // here, so an unmounted tree would stay in the document.
@@ -38,12 +50,15 @@ function at(path: string) {
     <MemoryRouter initialEntries={[path]}>
       <StudioRoutes />
     </MemoryRouter>,
+  { wrapper: TestProviders },
   );
 }
 
 describe("the route table", () => {
   it.each([
     ["/", "home"],
+    ["/characters", "characters"],
+    ["/projects", "projects"],
     ["/c/char-9f3c1e57-2a44-4d81-b6e0-77c21f8a4d15", "character"],
     ["/p/proj-4a10b8d2-5c93-47ae-8f61-0d51e6b7c2a9", "project"],
     [
@@ -54,7 +69,14 @@ describe("the route table", () => {
     ["/m/movie-0001", "movie"],
     ["/f", "browser"],
     ["/f/node-0e1c8b73-6f24-4a95-b1d3-8e07c25a9f61", "browser"],
-    ["/o/node-3610c8b4-5d92-4e07-83f1-6c24a9b1e7d5", "browser"],
+    // The viewer is its own screen. This used to reach the browser, which is
+    // exactly the coupling the rework removed: opening a file meant rendering
+    // the folder tree with the file laid over it.
+    ["/o/node-3610c8b4-5d92-4e07-83f1-6c24a9b1e7d5", "viewer"],
+    // No id, which is "play this feed from the start" — see `feedPath`.
+    ["/o", "viewer"],
+    // Above the catch-all, or Cognito's `?code=` is redirected away and the
+    // hosted page loops.
     ["/auth/callback", "callback"],
   ])("sends %s to the %s screen", (path, screenName) => {
     at(path);

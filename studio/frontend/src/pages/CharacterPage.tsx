@@ -4,14 +4,17 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Alert, Badge, Button, Spinner, Tabs, Text } from "@ansavva/design-system";
 
 import { ApiError } from "../apis/client";
-import { deleteCharacter, getCharacter, patchCharacter, putCharacterProfile } from "../apis/studio";
-import { FolderTab } from "../components/browse/FolderBrowser";
+import { deleteCharacter, getCharacter, patchCharacter, setCharacterProfile } from "../apis/studio";
+import { FolderTab } from "../components/browse/FolderTab";
+import { PageBar } from "../components/layout/PageBar";
+import { CharacterProjects, CharacterRuns } from "../components/character/CharacterWork";
 import { ProfileForm } from "../components/character/ProfileForm";
 import { ReferencesGrid } from "../components/character/ReferencesGrid";
-import { AppHeader } from "../components/common/AppHeader";
-import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
 import { useResource } from "../hooks/useResource";
-import type { CharacterIdentity, CharacterProfile } from "../types";
+import { CHARACTERS_PATH } from "../utils/location";
+import type { CharacterIdentity, CharacterProfile, CharacterRecord } from "../types";
+import { useSearchParamState } from "../hooks/useSearchParamState";
+import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog";
 
 /**
  * One character: who they are, what they look like, and everything filed under
@@ -59,8 +62,9 @@ export function CharacterPage() {
   const { characterId = "" } = useParams();
   const navigate = useNavigate();
 
+  const [tab, setTab] = useSearchParamState("tab", "profile");
   const load = useCallback(() => getCharacter(characterId), [characterId]);
-  const character = useResource(load);
+  const character = useResource(["character", characterId], load);
 
   /**
    * The 409 message, as the API worded it.
@@ -81,18 +85,21 @@ export function CharacterPage() {
     ) => {
       setConflict(null);
       try {
-        let record = character.data;
+        // **Merged into what the page holds, never swapped in.** Both writes
+        // answer with the stored record, which has neither `hero_url` nor the
+        // `counts` a `GET` adds — see `EntityPatch`.
+        let patch: Partial<CharacterRecord> = {};
         let at = rev;
 
         if (changes.identity) {
-          record = await patchCharacter(characterId, { rev: at, ...changes.identity });
-          at = record.rev;
+          patch = await patchCharacter(characterId, { rev: at, ...changes.identity });
+          at = patch.rev ?? at;
         }
         if (changes.profile) {
-          record = await putCharacterProfile(characterId, changes.profile, at);
+          patch = { ...patch, ...(await setCharacterProfile(characterId, changes.profile, at)) };
         }
 
-        if (record) character.setData(record);
+        character.setData((current) => (current ? { ...current, ...patch } : current));
       } catch (err) {
         // A 409 is not a failure to write — it is a refusal to overwrite
         // somebody else's write, which is the whole reason `rev` exists. The
@@ -106,17 +113,17 @@ export function CharacterPage() {
 
   if (character.loading) {
     return (
-      <Shell>
+      <>
         <div className="flex justify-center py-16">
           <Spinner size="lg" label="Loading character" />
         </div>
-      </Shell>
+      </>
     );
   }
 
   if (character.error || !character.data) {
     return (
-      <Shell>
+      <>
         <Alert.Root intent="danger">
           <Alert.Title>Could not open this character</Alert.Title>
           <Alert.Description>{character.error ?? "It may have been deleted."}</Alert.Description>
@@ -126,61 +133,79 @@ export function CharacterPage() {
             Back to home
           </Button>
         </div>
-      </Shell>
+      </>
     );
   }
 
   const record = character.data;
 
   return (
-    <Shell subtitle={record.slug}>
+    <>
       {/*
-        Two groups, not one run of five items with `ms-auto` on the last.
+        The two-group layout this page argued for is `PageBar` now, and the
+        argument is unchanged — it just holds for every page instead of this one.
 
-        `ms-auto` pins the delete to the right of whatever *line* it lands on,
+        `ms-auto` pins a control to the right of whatever *line* it lands on,
         and on a phone that line is whichever one the flex run happened to break
         at — so the destructive control moved around under the title depending on
         how long the name was. Two children and `justify-between` give it one
         place on a wide screen and one place on a narrow one: beside the title,
         or on its own line beneath it.
+
+        **No cascade here, and the noun says so.** Projects and runs that name
+        this character hold link rows, and `force` drops those — but the runs
+        themselves stay, because a run really did use this subject and deleting
+        the character is not a reason to delete the work. The API refuses
+        without `force`; the button always sends it, since a person who has read
+        the armed label has answered that question.
       */}
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-          <Text variant="display">{record.display_name}</Text>
-          <Text variant="caption" tone="muted">
-            {record.slug}
-          </Text>
-          {/* The consent question, unchanged in meaning and now a real field
-              rather than a key in a document nobody could query. */}
-          <Badge intent={record.fictional ? "neutral" : "warning"}>
-            {record.fictional ? "fictional" : "real person"}
-          </Badge>
-        </div>
+      <PageBar
+        crumbs={[{ label: "Characters", to: CHARACTERS_PATH }]}
+        actions={
+          <ConfirmDestroyDialog
+            label="Delete"
+            title={`Delete ${record.slug}?`}
+            summary={
+              "The character, its profile and its whole reference library go. " +
+              "Runs that used it stay — a run really did use this subject, and " +
+              "deleting the character is not a reason to delete the work."
+            }
+            confirmWord={record.slug}
+            onConfirm={async () => {
+              await deleteCharacter(record.id, "delete", true);
+              navigate(CHARACTERS_PATH);
+            }}
+          />
+        }
+      >
+        <Text variant="display">{record.display_name}</Text>
+        <Text variant="caption" tone="muted">
+          {record.slug}
+        </Text>
+        {/* The consent question, unchanged in meaning and now a real field
+            rather than a key in a document nobody could query. */}
+        <Badge intent={record.fictional ? "neutral" : "warning"}>
+          {record.fictional ? "fictional" : "real person"}
+        </Badge>
+      </PageBar>
 
-        {/* **No cascade here, and the noun says so.** Projects and runs that
-            name this character hold link rows, and `force` drops those — but
-            the runs themselves stay, because a run really did use this subject
-            and deleting the character is not a reason to delete the work. The
-            API refuses without `force`; the button always sends it, since a
-            person who has read the armed label has answered that question. */}
-        <ConfirmDeleteButton
-          tone="page"
-          noun={`character ${record.slug} and its reference library`}
-          onConfirm={async () => {
-            await deleteCharacter(record.id, "delete", true);
-            navigate("/");
-          }}
-        />
-      </div>
-
-      <Tabs.Root defaultValue="profile">
-        {/* Scrolls rather than wraps. Three labels fit a 390px screen with room
-            to spare, and the rule holds anyway: a tab strip that grows a second
-            row draws a second underline, which reads as two strips. */}
+      {/* `defaultValue` as well as `value`, which the package requires even
+          when controlled: it seeds `useControllableState`, and Tabs does not
+          introspect its List to guess a first tab. */}
+      <Tabs.Root value={tab} defaultValue="profile" onValueChange={setTab}>
+        {/* Scrolls rather than wraps. Three labels fit a 390px screen and five
+            do not, which is exactly why this was already written to scroll: a
+            tab strip that grows a second row draws a second underline, and that
+            reads as two strips. */}
         <Tabs.List className="overflow-x-auto border-b border-line">
           <Tabs.Tab value="profile">Profile</Tabs.Tab>
           <Tabs.Tab value="references">References</Tabs.Tab>
           <Tabs.Tab value="files">Files</Tabs.Tab>
+          {/* The reverse questions. Both routes existed with no caller, so a
+              character was a dead end: who it is, what it looks like, and
+              nothing about the work it appears in. */}
+          <Tabs.Tab value="runs">Runs</Tabs.Tab>
+          <Tabs.Tab value="projects">Projects</Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="profile">
@@ -207,7 +232,25 @@ export function CharacterPage() {
             characterId={record.id}
             rootId={record.root}
             defaultSet={record.default_set}
+            // The set is written against the revision, and the route answers
+            // with `{id, default_set, rev}` — an acknowledgement, not a record.
+            // So it is MERGED. Swapping it in wholesale is what briefly turned
+            // this character into a nameless "real person" on screen.
+            rev={record.rev}
+            onSaved={(ack) =>
+              character.setData((current) =>
+                current ? { ...current, default_set: ack.default_set, rev: ack.rev } : current,
+              )
+            }
           />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="runs">
+          <CharacterRuns characterId={record.id} />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="projects">
+          <CharacterProjects characterId={record.id} />
         </Tabs.Panel>
 
         <Tabs.Panel value="files">
@@ -217,15 +260,7 @@ export function CharacterPage() {
           <FolderTab rootId={record.root} />
         </Tabs.Panel>
       </Tabs.Root>
-    </Shell>
+    </>
   );
 }
 
-function Shell({ children, subtitle }: { children: React.ReactNode; subtitle?: string }) {
-  return (
-    <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-6 p-4 sm:p-6">
-      <AppHeader subtitle={subtitle ?? "character"} />
-      {children}
-    </div>
-  );
-}

@@ -99,7 +99,7 @@ def create_scene():
         listing={"status": "planned", "title": body.get("title") or slug, "slug": slug},
     )
 
-    written = catalog.put_shots(record["id"], shots) if shots else []
+    written = catalog.put_shots(record["id"], record["lib"], shots) if shots else []
     return jsonify({**record, "shots": written}), 201, {
         "Location": f"/api/scenes/{record['id']}"
     }
@@ -193,11 +193,16 @@ def _drawable(entries: list[dict], held: dict) -> list[dict]:
 
 @bp.get("/scenes/<scene_id>")
 def get_scene(scene_id: str):
-    """The record, its plan, and its shots with every image expanded, in `order`."""
+    """The record, its plan, its shots with every image expanded, and the way back.
+
+    `movies` is which movies cut this scene — a question with no answer before
+    the edge rows existed, because a movie held its scenes in a JSON list.
+    """
     held = support.memberships()
     record = _scene(scene_id, held)
     return jsonify({**support.with_output(record),
-                    "shots": _drawable(catalog.shots(record["id"]), held)}), 200
+                    "shots": _drawable(catalog.shots(record["id"]), held),
+                    "movies": support.holders(record["id"], catalog.ENTITY_MOVIE)}), 200
 
 
 # What a PATCH may write, and it is the list of what actually writes to a scene.
@@ -260,7 +265,7 @@ def replace_shots(scene_id: str):
     body = support.body()
     held = support.memberships()
     record = _scene(scene_id, held)
-    return jsonify({"shots": catalog.put_shots(record["id"], _shots(body.get("shots")))}), 200
+    return jsonify({"shots": catalog.put_shots(record["id"], record["lib"], _shots(body.get("shots")))}), 200
 
 
 @bp.patch("/scenes/<scene_id>/shots/<shot_id>")
@@ -278,7 +283,7 @@ def update_shot(scene_id: str, shot_id: str):
     changes = {field: body[field] for field in catalog.SHOT_FIELDS if field in body}
     if not changes:
         raise ValidationError("nothing to change")
-    return jsonify(catalog.update_shot(record["id"], shot_id, changes)), 200
+    return jsonify(catalog.update_shot(record["id"], record["lib"], shot_id, changes)), 200
 
 
 @bp.post("/scenes/<scene_id>/output")

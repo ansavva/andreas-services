@@ -1,4 +1,5 @@
-import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { copyLabel, useCopyToClipboard, type CopyStatus } from "../../hooks/useCopyToClipboard";
+import { CheckIcon, ClipboardIcon, WarningIcon } from "./icons";
 
 type Tone = "row" | "tile" | "chrome";
 
@@ -63,29 +64,10 @@ export function CopyKeyButton({ value, noun = "key", tone = "row", className = "
       <span className="sr-only" aria-live="polite">
         {status === "idle" ? "" : label}
       </span>
-      <svg
-        viewBox="0 0 24 24"
-        aria-hidden="true"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className={`${tone === "tile" ? "size-4" : "size-5"} fill-none stroke-current stroke-[1.5]
-                    ${statusStroke[status]}`}
-      >
-        {status === "copied" ? (
-          <path d="m5 12.5 5 5L19 7" />
-        ) : status === "failed" ? (
-          <>
-            <path d="M12 4 2.5 20.5h19L12 4Z" />
-            <path d="M12 10v4.5" />
-            <path d="M12 17.5v.01" />
-          </>
-        ) : (
-          <>
-            <path d="M9.5 8.5h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Z" />
-            <path d="M15 5.5v-1a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h1" />
-          </>
-        )}
-      </svg>
+      <StatusIcon
+        status={status}
+        className={`${tone === "tile" ? "size-4" : "size-5"} fill-none stroke-current stroke-[1.5] ${statusStroke[status]}`}
+      />
     </button>
   );
 }
@@ -107,3 +89,10 @@ const statusStroke: Record<string, string> = {
   copied: "stroke-success",
   failed: "stroke-danger",
 };
+
+/** The three states this button reports, as the three glyphs that say them. */
+function StatusIcon({ status, className }: { status: CopyStatus; className: string }) {
+  if (status === "copied") return <CheckIcon className={className} />;
+  if (status === "failed") return <WarningIcon className={className} />;
+  return <ClipboardIcon className={className} />;
+}

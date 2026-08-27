@@ -56,9 +56,26 @@ def list_projects():
     held = support.memberships()
     support.member_of(g.library, held)
 
-    records = catalog.entities_in(g.library, KIND)
+    listed = summary_rows(catalog.entities_in(g.library, KIND))
+    return jsonify(listed), 200
+
+
+def summary_rows(records: list[dict]) -> list[dict]:
+    """A project as every listing spells it — slug-ascending.
+
+    **One builder, because there was more than one listing.**
+    `GET /api/characters/<id>/projects` answered the same conceptual thing —
+    a project summary — with `{id, slug, title}` and nothing else, so the SPA
+    drew it with the card it draws every other project list with and threw on
+    `project.counts.runs`. Two routes returning "a project summary" in two
+    shapes is the same defect as one relationship spelled two ways, one level
+    up.
+
+    `hero` costs the batched read it is worth: a listing without one is a grid
+    of empty squares.
+    """
     heroes = catalog.records([record["hero"] for record in records if record.get("hero")])
-    listed = [
+    rows = [
         {
             "id": record["id"],
             "slug": record["slug"],
@@ -69,8 +86,8 @@ def list_projects():
         }
         for record in records
     ]
-    listed.sort(key=lambda entry: entry["slug"])
-    return jsonify(listed), 200
+    rows.sort(key=lambda entry: entry["slug"])
+    return rows
 
 
 @bp.post("/projects")
@@ -103,7 +120,7 @@ def create_project():
     except ConflictError as conflict:
         return support.structured("conflict", str(conflict), 409)
 
-    return jsonify({**record, "characters": characters}), 201, {
+    return jsonify({**record, "characters": _characters(record)}), 201, {
         "Location": f"/api/projects/{record['id']}"
     }
 
@@ -211,6 +228,13 @@ def set_characters(addressed: str):
     A replace rather than an add, because the SPA edits a set and `projects link`
     reads the set first — an add-only endpoint would need a remove beside it, and
     a client that got the difference wrong would accumulate links nothing removes.
+
+    **The answer is the same shape `GET` sends**, and used to be the bare ids
+    this was handed. A record holds `characters` as expanded objects, so a
+    client merging this response into the record it already had replaced those
+    objects with strings — the write succeeded and every chip downstream read
+    unselected, with no type able to catch it. Returning what `GET` returns is
+    what makes the response mergeable at all.
     """
     body = support.body()
     held = support.memberships()
@@ -222,8 +246,8 @@ def set_characters(addressed: str):
     for char_id in characters:
         support.entity_at(catalog.ENTITY_CHARACTER, g.library, char_id, held)
 
-    linked = catalog.set_project_characters(record["id"], record["lib"], characters)
-    return jsonify({"id": record["id"], "characters": linked}), 200
+    catalog.set_project_characters(record["id"], record["lib"], characters)
+    return jsonify({"id": record["id"], "characters": _characters(record)}), 200
 
 
 @bp.get("/projects/<addressed>/inputs")

@@ -10,13 +10,19 @@ import {
   getProjectMovies,
   getProjectScenes,
 } from "../apis/studio";
-import { FolderTab } from "../components/browse/FolderBrowser";
-import { AppHeader } from "../components/common/AppHeader";
-import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
+import { FolderTab } from "../components/browse/FolderTab";
+import { PageBar } from "../components/layout/PageBar";
+import { EntityRow } from "../components/entity/EntityRow";
+import { MediaThumb } from "../components/media/MediaThumb";
+import { ProjectDetails } from "../components/project/ProjectDetails";
 import { RunsTable } from "../components/project/RunsTable";
 import { useResource } from "../hooks/useResource";
+import type { ProjectRecord } from "../types";
 import { formatBytes, formatDate } from "../utils/format";
-import { characterPath, moviePath, runPath, scenePath } from "../utils/location";
+import { PROJECTS_PATH, moviePath, runPath, scenePath } from "../utils/location";
+import { useSearchParamState } from "../hooks/useSearchParamState";
+import { LoadError } from "../components/common/LoadError";
+import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog";
 
 /**
  * One project: what it is, what has been run in it, and everything under it.
@@ -33,22 +39,23 @@ export function ProjectPage() {
   const { projectId = "" } = useParams();
   const navigate = useNavigate();
 
+  const [tab, setTab] = useSearchParamState("tab", "overview");
   const load = useCallback(() => getProject(projectId), [projectId]);
-  const project = useResource(load);
+  const project = useResource(["project", projectId], load);
 
   if (project.loading) {
     return (
-      <Shell>
+      <>
         <div className="flex justify-center py-16">
           <Spinner size="lg" label="Loading project" />
         </div>
-      </Shell>
+      </>
     );
   }
 
   if (project.error || !project.data) {
     return (
-      <Shell>
+      <>
         <Alert.Root intent="danger">
           <Alert.Title>Could not open this project</Alert.Title>
           <Alert.Description>{project.error ?? "It may have been deleted."}</Alert.Description>
@@ -58,7 +65,7 @@ export function ProjectPage() {
             Back to home
           </Button>
         </div>
-      </Shell>
+      </>
     );
   }
 
@@ -68,33 +75,46 @@ export function ProjectPage() {
   const held = counts.runs + counts.scenes + counts.movies;
 
   return (
-    <Shell subtitle={record.slug}>
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+    <>
+      {/* **The noun spells out the cascade, because the button IS the
+          confirmation.** `ConfirmDeleteButton` arms in place rather than
+          opening a modal — the reasoning is in that file — so the armed label
+          is the only thing standing between a click and 29 runs. It says the
+          count for that reason, and the count comes off the record rather
+          than a second fetch.
+
+          The `ms-auto` this used to hang the button off is gone with the bar:
+          it pinned the control to whichever line the flex run broke at, which
+          on a phone moved a destructive button around under the title. */}
+      <PageBar
+        crumbs={[{ label: "Projects", to: PROJECTS_PATH }]}
+        actions={
+          <ConfirmDestroyDialog
+            label="Delete"
+            title={`Delete ${record.slug}?`}
+            summary={deleteSummary(held, counts)}
+            confirmWord={record.slug}
+            onConfirm={async () => {
+              await deleteProject(record.id, "delete", held > 0);
+              navigate(PROJECTS_PATH);
+            }}
+          />
+        }
+      >
         <Text variant="display">{record.title || record.slug}</Text>
         <Text variant="caption" tone="muted">
           {record.slug}
         </Text>
+      </PageBar>
 
-        {/* **The noun spells out the cascade, because the button IS the
-            confirmation.** `ConfirmDeleteButton` arms in place rather than
-            opening a modal — the reasoning is in that file — so the armed label
-            is the only thing standing between a click and 29 runs. It says the
-            count for that reason, and the count comes off the record rather
-            than a second fetch. */}
-        <span className="ms-auto">
-          <ConfirmDeleteButton
-            tone="page"
-            noun={deleteNoun(record.slug, held)}
-            onConfirm={async () => {
-              await deleteProject(record.id, "delete", held > 0);
-              navigate("/");
-            }}
-          />
-        </span>
-      </div>
-
-      <Tabs.Root defaultValue="overview">
-        <Tabs.List className="flex-wrap border-b border-line">
+      {/* `defaultValue` as well as `value`, which the package requires even
+          when controlled: it seeds `useControllableState`, and Tabs does not
+          introspect its List to guess a first tab. */}
+      <Tabs.Root value={tab} defaultValue="overview" onValueChange={setTab}>
+        {/* Scrolls rather than wraps, like the character page's. Six labels
+            wrapped to two rows on a phone, and a tab strip that grows a second
+            row draws a second underline — which reads as two strips. */}
+        <Tabs.List className="overflow-x-auto border-b border-line">
           <Tabs.Tab value="overview">Overview</Tabs.Tab>
           <Tabs.Tab value="runs">Runs</Tabs.Tab>
           <Tabs.Tab value="scenes">Scenes</Tabs.Tab>
@@ -104,43 +124,27 @@ export function ProjectPage() {
         </Tabs.List>
 
         <Tabs.Panel value="overview" className="flex flex-col gap-4">
-          {record.description && <Text variant="body">{record.description}</Text>}
-
           <div className="flex flex-wrap gap-2">
             <Badge intent="neutral">{record.counts.runs} runs</Badge>
             <Badge intent="neutral">{record.counts.scenes} scenes</Badge>
             <Badge intent="neutral">{record.counts.movies} movies</Badge>
           </div>
 
-          <section className="flex flex-col gap-2">
-            <Text variant="title">Characters</Text>
-            {/* Involvement is rows, not a list on the record — which is what
-                makes the reverse question ("which projects involve this
-                character") answerable, and what lets a character delete find
-                what points at it. */}
-            {record.characters.length === 0 ? (
-              <Text variant="body" tone="muted">
-                Nobody is linked to this project yet.
-              </Text>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {record.characters.map((character) => (
-                  <Button
-                    key={character.id}
-                    intent="ghost"
-                    size="sm"
-                    onClick={() => navigate(characterPath(character.id))}
-                  >
-                    {character.display_name}
-                  </Button>
-                ))}
-              </div>
-            )}
-          </section>
+          {/* Involvement is rows, not a list on the record — which is what makes
+              the reverse question ("which projects involve this character")
+              answerable, and what lets a character delete find what points at
+              it. Editing it lives in here with the fields it sits beside. */}
+          <ProjectDetails
+            record={record}
+            // Merged, never swapped in: these routes answer with less than a
+            // `GET` does. See `EntityPatch`.
+            onSaved={(patch) =>
+              project.setData((current) => (current ? { ...current, ...patch } : current))
+            }
+          />
 
           <Text variant="caption" tone="muted">
-            Created {formatDate(record.created)} · updated {formatDate(record.updated)} · revision{" "}
-            {record.rev}
+            Created {formatDate(record.created)} · updated {formatDate(record.updated)}
           </Text>
         </Tabs.Panel>
 
@@ -168,17 +172,17 @@ export function ProjectPage() {
           <FolderTab rootId={record.root} />
         </Tabs.Panel>
       </Tabs.Root>
-    </Shell>
+    </>
   );
 }
 
 function ScenesTab({ projectId }: { projectId: string }) {
   const navigate = useNavigate();
   const load = useCallback(() => getProjectScenes(projectId), [projectId]);
-  const { data, loading, error } = useResource(load);
+  const { data, loading, error, reload } = useResource(["project-scenes", projectId], load);
 
   if (loading) return <Spinner size="md" label="Loading scenes" />;
-  if (error) return <LoadError what="scenes" message={error} />;
+  if (error) return <LoadError what="scenes" message={error} onRetry={reload} />;
   if (!data || data.length === 0)
     return (
       <Text variant="body" tone="muted">
@@ -189,12 +193,12 @@ function ScenesTab({ projectId }: { projectId: string }) {
   return (
     <div className="flex flex-col gap-2">
       {data.map((scene) => (
-        <ListRow
+        <EntityRow
           key={scene.id}
           title={scene.title || scene.slug}
           subtitle={`${scene.slug} · ${formatDate(scene.created)}`}
           status={scene.status}
-          thumbUrl={scene.thumb?.url ?? null}
+          thumb={scene.thumb ?? null}
           onOpen={() => navigate(scenePath(scene.id))}
         />
       ))}
@@ -205,10 +209,10 @@ function ScenesTab({ projectId }: { projectId: string }) {
 function MoviesTab({ projectId }: { projectId: string }) {
   const navigate = useNavigate();
   const load = useCallback(() => getProjectMovies(projectId), [projectId]);
-  const { data, loading, error } = useResource(load);
+  const { data, loading, error, reload } = useResource(["project-movies", projectId], load);
 
   if (loading) return <Spinner size="md" label="Loading movies" />;
-  if (error) return <LoadError what="movies" message={error} />;
+  if (error) return <LoadError what="movies" message={error} onRetry={reload} />;
   if (!data || data.length === 0)
     return (
       <Text variant="body" tone="muted">
@@ -219,12 +223,12 @@ function MoviesTab({ projectId }: { projectId: string }) {
   return (
     <div className="flex flex-col gap-2">
       {data.map((movie) => (
-        <ListRow
+        <EntityRow
           key={movie.id}
           title={movie.title || movie.slug}
           subtitle={`${movie.slug} · ${formatDate(movie.created)}`}
           status={movie.status}
-          thumbUrl={movie.thumb?.url ?? null}
+          thumb={movie.thumb ?? null}
           onOpen={() => navigate(moviePath(movie.id))}
         />
       ))}
@@ -242,10 +246,10 @@ function MoviesTab({ projectId }: { projectId: string }) {
  */
 function InputsTab({ projectId }: { projectId: string }) {
   const load = useCallback(() => getProjectInputs(projectId), [projectId]);
-  const { data, loading, error } = useResource(load);
+  const { data, loading, error, reload } = useResource(["project-inputs", projectId], load);
 
   if (loading) return <Spinner size="md" label="Loading inputs" />;
-  if (error) return <LoadError what="inputs" message={error} />;
+  if (error) return <LoadError what="inputs" message={error} onRetry={reload} />;
   if (!data || data.length === 0)
     return (
       <Text variant="body" tone="muted">
@@ -261,16 +265,18 @@ function InputsTab({ projectId }: { projectId: string }) {
       </Text>
       {data.map((input, index) => (
         <div
-          key={input.node}
+          key={input.id}
           className="flex items-center gap-3 rounded-md border border-line bg-card p-2"
         >
           <Text variant="body" className="w-8 shrink-0 text-right tabular-nums">
             {index + 1}
           </Text>
-          <img
-            src={input.url}
-            alt=""
-            className="size-12 shrink-0 rounded-md border border-line object-cover"
+          <MediaThumb
+            nodeId={input.id}
+            url={input.url}
+            name={input.name}
+            aspect="auto"
+            className="size-12 shrink-0 rounded-md border border-line"
           />
           <div className="min-w-0 flex-1">
             <Text variant="body" className="truncate">
@@ -288,69 +294,17 @@ function InputsTab({ projectId }: { projectId: string }) {
   );
 }
 
-function ListRow({
-  title,
-  subtitle,
-  status,
-  thumbUrl,
-  onOpen,
-}: {
-  title: string;
-  subtitle: string;
-  status: string;
-  thumbUrl: string | null;
-  onOpen: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="flex w-full items-center gap-3 rounded-md border border-line bg-card p-2 text-left
-                 transition-colors hover:bg-surface-alt
-                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-    >
-      <span className="size-14 shrink-0 overflow-hidden rounded-md border border-line bg-surface-alt">
-        {thumbUrl && <img src={thumbUrl} alt="" className="h-full w-full object-cover" />}
-      </span>
-      <span className="min-w-0 flex-1">
-        <Text variant="body" className="truncate">
-          {title}
-        </Text>
-        <Text variant="caption" tone="muted" className="truncate">
-          {subtitle}
-        </Text>
-      </span>
-      <Badge intent="neutral">{status}</Badge>
-    </button>
-  );
-}
-
-function LoadError({ what, message }: { what: string; message: string }) {
-  return (
-    <Alert.Root intent="danger">
-      <Alert.Title>Could not load {what}</Alert.Title>
-      <Alert.Description>{message}</Alert.Description>
-    </Alert.Root>
-  );
-}
-
-function Shell({ children, subtitle }: { children: React.ReactNode; subtitle?: string }) {
-  return (
-    <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-6 p-4 sm:p-6">
-      <AppHeader subtitle={subtitle ?? "project"} />
-      {children}
-    </div>
-  );
-}
-
-
 /**
- * What the delete button says it is about to destroy.
+ * What the delete dialog says is about to go.
  *
  * Spelled out rather than "this project", because the cascade is the part a
  * person cannot see from the header: the runs, scenes and movies go with it,
- * and the armed press is the last chance to notice that.
+ * and the sentence is the last chance to notice that.
  */
-function deleteNoun(slug: string, held: number): string {
-  return held === 0 ? `project ${slug}` : `project ${slug} and its ${held} run(s), scene(s) and movie(s)`;
+function deleteSummary(held: number, counts: ProjectRecord["counts"]): string {
+  if (held === 0) return "It holds no runs, scenes or movies. Its folder and files go with it.";
+  return (
+    `${counts.runs} run(s), ${counts.scenes} scene(s) and ${counts.movies} movie(s) ` +
+    "go with it, along with the project's folder and everything in it."
+  );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Spinner, Text } from "@ansavva/design-system";
 
@@ -34,6 +34,10 @@ interface Props {
     file: FileEntry,
     changes: { description?: string | null; tags?: string[] | null },
   ) => Promise<unknown>;
+  /** Extra fields for the describe panel — see `DescribePanel`'s `extra`. */
+  panelExtra?: (file: FileEntry) => ReactNode;
+  /** A line under the chrome's caption — see `ViewerChrome`'s `aside`. */
+  chromeAside?: (file: FileEntry) => ReactNode;
 }
 
 /** Mount this many panes either side of the snapped one. */
@@ -67,6 +71,8 @@ export function ReelView({
   onRename,
   onDelete,
   onDescribe,
+  panelExtra,
+  chromeAside,
 }: Props) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -213,6 +219,7 @@ export function ReelView({
           fullscreenSupported={supported}
           onToggleFullscreen={() => void toggle()}
           onClose={onClose}
+          aside={chromeAside?.(currentItem)}
           onRename={onRename && ((name) => onRename(currentItem, name))}
           onDelete={onDelete && (() => onDelete(currentItem))}
           describing={describing}
@@ -287,6 +294,7 @@ export function ReelView({
           file={currentItem}
           onSave={(changes) => onDescribe(currentItem, changes)}
           onClose={() => setDescribing(false)}
+          extra={panelExtra?.(currentItem)}
         />
       )}
 

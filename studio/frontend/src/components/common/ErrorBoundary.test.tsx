@@ -2,6 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { ErrorBoundary } from "./ErrorBoundary";
+import { TestProviders } from "../../test-providers";
 
 function Boom(): never {
   throw new Error("panel 3 has no node");
@@ -26,6 +27,7 @@ it("shows what broke instead of a blank page", async () => {
     <ErrorBoundary>
       <Boom />
     </ErrorBoundary>,
+  { wrapper: TestProviders },
   );
 
   expect(screen.getByText("This page could not be drawn")).toBeTruthy();
@@ -40,6 +42,7 @@ it("names the address that failed, because that is what identifies the record", 
     <ErrorBoundary>
       <Boom />
     </ErrorBoundary>,
+  { wrapper: TestProviders },
   );
 
   expect(screen.getByText("/o/node-441cbc02")).toBeTruthy();
@@ -50,6 +53,7 @@ it("stays out of the way when nothing throws", () => {
     <ErrorBoundary>
       <p>the board</p>
     </ErrorBoundary>,
+  { wrapper: TestProviders },
   );
 
   expect(screen.getByText("the board")).toBeTruthy();
@@ -63,6 +67,7 @@ it("still puts the error on the console for whoever is debugging", () => {
     <ErrorBoundary>
       <Boom />
     </ErrorBoundary>,
+  { wrapper: TestProviders },
   );
 
   expect(logged.mock.calls.some((c) => c[0] === "A page failed to render")).toBe(true);

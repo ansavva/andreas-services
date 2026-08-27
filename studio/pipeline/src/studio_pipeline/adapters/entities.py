@@ -337,8 +337,16 @@ def project_inputs(proj_id: str) -> list[dict]:
     to be numbered into the filenames (`<project>_in_<n>.png`), which meant a
     deletion either renumbered every file or left a hole that silently shifted
     what `--input 3` meant. The API orders it; nothing here re-sorts.
+
+    **Unwrapped from `{folder, inputs}`.** This route is the one listing that
+    does not answer with a bare array, and it went through `_as_list`, which
+    answers `[]` for anything that is not a list — so the pool read as empty
+    every time. Silently: an empty pool is an ordinary state, so `projects
+    inputs` printed nothing and `projects show` counted zero, and neither
+    looked like a failure.
     """
-    return _as_list(api.get(f"/api/projects/{proj_id}/inputs"))
+    found = api.get(f"/api/projects/{proj_id}/inputs")
+    return _as_list(found.get("inputs") if isinstance(found, dict) else found)
 
 
 def project_scenes(proj_id: str) -> list[dict]:
@@ -508,7 +516,12 @@ def delete_movie(movie_id: str, *, files: str = "keep") -> dict:
     return api.delete(f"/api/movies/{movie_id}", files=files)
 
 
-def put_movie_scenes(movie_id: str, scenes: list[dict]) -> dict:
+def put_movie_scenes(movie_id: str, scenes: list[str]) -> dict:
+    """Replace the cut list. **Scene ids** — the route validates every entry.
+
+    Typed `list[dict]` and called with dicts, which the service rejects with a
+    500. The answer is the movie in its read shape, so it can be merged.
+    """
     return api.request("PATCH", f"/api/movies/{movie_id}/scenes", {"scenes": scenes})
 
 

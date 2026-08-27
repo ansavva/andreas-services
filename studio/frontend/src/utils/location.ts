@@ -37,6 +37,17 @@
  */
 export const HOME_PATH = "/";
 
+/**
+ * The two entity indexes, which the header links to.
+ *
+ * Home still lists both, and these are not a demotion of it: a list you scroll
+ * to reach is not navigation, and "where are my characters" was previously
+ * answerable only by going home and looking down the page. They render the same
+ * sections home does, unabridged.
+ */
+export const CHARACTERS_PATH = "/characters";
+export const PROJECTS_PATH = "/projects";
+
 /** A folder node id, or `null` for the library root. */
 export type FolderId = string | null;
 
@@ -55,9 +66,67 @@ export function folderPath(id: FolderId): string {
   return id === null ? "/f" : `/f/${id}`;
 }
 
-/** The in-app path for one open file — this is the share link. */
-export function objectPath(id: string): string {
-  return `/o/${id}`;
+/**
+ * What the viewer is scrolling THROUGH, carried in the address.
+ *
+ * **A file opened from a run and the same file opened from a folder are not the
+ * same screen**, and until now they were: `/o/<id>` meant "the folder browser,
+ * with this file open over it", so opening a run's output teleported you into
+ * the file tree and the run you were reading vanished. The neighbours are what
+ * differ, so the neighbours are what the address names.
+ *
+ * Absent is a real state and the one a share link usually has: show the file
+ * alone and say which entity it belongs to. It is not an error and does not
+ * redirect.
+ */
+export type ViewerSource =
+  | { in: "f" | "recursive"; id: FolderId }
+  | { in: "run" | "scene" | "refs"; id: string };
+
+/** The `?in=` value: `f`, `f:<node>`, `run:<id>`, … */
+export function sourceParam({ in: kind, id }: ViewerSource): string {
+  return id === null ? kind : `${kind}:${id}`;
+}
+
+/** Read one back. Anything unrecognised is "no context", which is a legal state. */
+export function sourceFromParam(value: string | null): ViewerSource | null {
+  if (!value) return null;
+  const [kind, id] = value.split(":", 2) as [string, string | undefined];
+
+  // `id || null`, not `id ?? null`: `f:` with nothing after it is how an
+  // encoder that interpolated a null folder spells the library root, and "" is
+  // not a node anything can look up.
+  if (kind === "f" || kind === "recursive") return { in: kind, id: id || null };
+  if (kind === "run" || kind === "scene" || kind === "refs") {
+    return id ? { in: kind, id } : null;
+  }
+  return null;
+}
+
+/**
+ * The in-app path for one open file — this is the share link.
+ *
+ * The id alone is the durable half: it survives every rename and every move, and
+ * a link that has lost its `?in=` still opens the file. The context is a
+ * convenience for whoever is *browsing*, so it is a query parameter rather than
+ * a path segment — nothing about the file's identity depends on it.
+ */
+export function objectPath(id: string, from?: ViewerSource | null): string {
+  return from ? `/o/${id}?in=${encodeURIComponent(sourceParam(from))}` : `/o/${id}`;
+}
+
+/**
+ * The viewer opened on a *feed* rather than on a file — "play this from the
+ * start".
+ *
+ * `/o` with no id, which the route table allows deliberately. The alternative
+ * was for "Play reel" to fetch a page, read the first item's id and navigate to
+ * that, which is a request made solely to build a URL that the viewer is about
+ * to make again. The viewer opens on the first pane and rewrites the address to
+ * it, so the id appears a moment later without anybody waiting for it.
+ */
+export function feedPath(from: ViewerSource): string {
+  return `/o?in=${encodeURIComponent(sourceParam(from))}`;
 }
 
 export function characterPath(id: string): string {

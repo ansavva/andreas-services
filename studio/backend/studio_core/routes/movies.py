@@ -64,7 +64,12 @@ def create_movie():
         # movie. `scenes.py` carries the same field for the same reason.
         listing={"status": "planned", "title": body.get("title") or slug, "slug": slug},
     )
-    return jsonify(record), 201, {"Location": f"/api/movies/{record['id']}"}
+    # Expanded, because `GET` expands. A create that answered with the raw id
+    # list made this the fourth endpoint in the service to spell one
+    # relationship two ways depending on which verb you used.
+    return jsonify({**record, "scenes": _scene_rows(record)}), 201, {
+        "Location": f"/api/movies/{record['id']}"
+    }
 
 
 @bp.get("/movies")
@@ -89,6 +94,23 @@ def get_movie(movie_id: str):
     held = support.memberships()
     record = _movie(movie_id, held)
 
+    return jsonify({**support.with_output(record), "scenes": _scene_rows(record)}), 200
+
+
+def _scene_rows(record: dict) -> list[dict]:
+    """The scenes a movie cuts, in order, as **every** response spells them.
+
+    One builder, because `GET` and the scenes write used to spell this
+    differently: `GET` sent rows and the write answered with the bare ids it had
+    been given. A client that merged the write's answer into the record it was
+    holding replaced rows with strings and every consumer downstream read empty.
+    That is not hypothetical — it is the bug this shape already caused on
+    `PUT /projects/<id>/characters`, and this endpoint was one caller away from
+    the same thing.
+
+    Order and duplicates come from the list, which is what a movie contributes:
+    the same scene may legally be cut twice as a reprise.
+    """
     ordered = record.get("scenes") or []
     found = catalog.entities_by_id(catalog.ENTITY_SCENE, ordered)
 
@@ -98,15 +120,10 @@ def get_movie(movie_id: str):
             for scene_id in ordered]
     nodes = catalog.records([node for node in cuts if node])
 
-    return jsonify(
-        {
-            **support.with_output(record),
-            "scenes": [
-                _scene_row(scene_id, found.get(scene_id) or {}, node, nodes)
-                for scene_id, node in zip(ordered, cuts)
-            ],
-        }
-    ), 200
+    return [
+        _scene_row(scene_id, found.get(scene_id) or {}, node, nodes)
+        for scene_id, node in zip(ordered, cuts)
+    ]
 
 
 def _scene_row(scene_id: str, scene: dict, node: str | None, nodes: dict) -> dict:
@@ -182,8 +199,10 @@ def set_scenes(movie_id: str):
     for scene_id in scenes:
         support.entity_at(catalog.ENTITY_SCENE, g.library, scene_id, held)
 
-    catalog.update_project_entity(KIND, record, {"scenes": scenes})
-    return jsonify({"id": record["id"], "scenes": scenes}), 200
+    catalog.update_project_entity(KIND, record, {"scenes": scenes},
+                                  edges={catalog.ENTITY_SCENE: scenes})
+    return jsonify({"id": record["id"],
+                    "scenes": _scene_rows({**record, "scenes": scenes})}), 200
 
 
 @bp.post("/movies/<movie_id>/output")
