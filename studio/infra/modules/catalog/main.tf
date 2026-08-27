@@ -3,12 +3,14 @@ terraform {
   required_providers {
     aws = {
       source = "hashicorp/aws"
-      # Pinned to the major `envs/prod` pins, as `modules/media` is. It also
-      # keeps a standalone `terraform validate` in this directory honest: under
-      # provider 6.x, `hash_key`/`range_key` warn as deprecated in favour of
-      # `key_schema`, which does not exist in 5.x. Without the constraint the
-      # module validates against a provider prod never uses.
-      version = "~> 5.0"
+      # Pinned to the major `envs/prod` pins, as `modules/media` is, so a
+      # standalone `terraform validate` in this directory sees the provider
+      # prod actually uses. That major moved from 5 to 6 with Managed Login:
+      # `modules/auth`'s branding resource does not exist before 6.12.0 — see
+      # `envs/prod/providers.tf`. Under 6.x `hash_key`/`range_key` warn as
+      # deprecated in favour of `key_schema`; they still work, and swapping
+      # them is a separate change.
+      version = ">= 6.12, < 7.0"
     }
   }
 }

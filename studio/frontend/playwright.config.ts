@@ -7,14 +7,15 @@
  *   E2E_LIVE=1   the same specs against `scripts/dev-up.sh` and this machine's
  *                seeded dev stack. Local only, never in CI.
  *
- * The stubbed mode builds and serves the app itself. It builds WITHOUT
- * `VITE_COGNITO_*`, so Amplify is not configured and reaches no network — the
- * session comes from `support/session.ts`, which seeds the token store Amplify
- * reads rather than putting a test flag in the app.
+ * The stubbed mode builds and serves the app itself, with `VITE_COGNITO_*` set
+ * to values that resolve to nothing real. The session comes from
+ * `support/session.ts`, which seeds the token store `auth/oauth.ts` reads
+ * rather than putting a test flag in the app — so no leg of the OAuth flow
+ * runs and the managed-login host is never contacted.
  */
 import { defineConfig, devices } from "@playwright/test";
 
-import { CLIENT_ID, POOL_ID } from "./e2e/support/session";
+import { AUTH_DOMAIN, CLIENT_ID, POOL_ID } from "./e2e/support/session";
 
 const live = process.env.E2E_LIVE === "1";
 
@@ -43,13 +44,13 @@ export default defineConfig({
         reuseExistingServer: !process.env.CI,
         timeout: 180_000,
         env: {
-          // A pool that does not exist. Amplify must be CONFIGURED — with
-          // these empty the app renders "Auth is not configured" instead of
-          // anything testable — but it is never contacted, because the token
-          // store `support/session.ts` seeds answers first. The client id has
-          // to match the one those localStorage keys are written under.
+          // A pool and a sign-in host that do not exist. The app must be
+          // CONFIGURED — with these empty it renders "Auth is not configured"
+          // instead of anything testable — but neither is ever contacted,
+          // because the token store `support/session.ts` seeds answers first.
           VITE_COGNITO_USER_POOL_ID: POOL_ID,
           VITE_COGNITO_CLIENT_ID: CLIENT_ID,
+          VITE_COGNITO_DOMAIN: AUTH_DOMAIN,
           // Empty on purpose: the app then calls `/api/...` same-origin, which
           // is exactly what `page.route("**/api/**")` intercepts. A base URL
           // here would send the request somewhere the route glob still catches,

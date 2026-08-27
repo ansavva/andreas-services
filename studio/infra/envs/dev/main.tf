@@ -64,14 +64,29 @@ locals {
 }
 
 # A dev pool of studio's own, so signing in locally stops meaning signing in to
-# the live one. Same module as prod — admin-create-only, secretless SRP client,
-# no hosted UI — so the SPA's auth path is the real one. Accounts come from
-# `scripts/create-user.sh` pointed at this pool.
+# the live one. Same module as prod — admin-create-only, secretless client, its
+# own Managed Login pages — so the SPA's auth path is the real one. Accounts
+# come from `scripts/create-user.sh` pointed at this pool.
 module "auth" {
   source = "../../modules/auth"
 
   # `-app`, as in prod: the pool backs the whole app rather than a corner of it.
   name = "${local.resource_prefix}-app"
+
+  # **A default Cognito domain, not a custom one.** `studio-dev-<short12>` is
+  # already unique per machine, which is what a domain prefix has to be, and it
+  # needs no certificate and no DNS record — so a stack applies and destroys in
+  # seconds rather than carrying a ~15-minute custom-domain apply each way. It
+  # is also the only option here: this environment declares no hosting, no
+  # CloudFront and no us-east-1 provider, and none of that should be added for
+  # a sign-in page. The full host comes back out as `cognito_auth_domain`.
+  auth_domain_prefix = local.resource_prefix
+
+  # Only localhost. There is no deployed origin in this environment — the SPA
+  # is Vite on :5173 and the API is Flask on :8000.
+  callback_urls = ["http://localhost:5173/auth/callback"]
+  logout_urls   = ["http://localhost:5173/"]
+
   tags = local.common_tags
 }
 

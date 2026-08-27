@@ -46,11 +46,14 @@ export function AppHeader({ subtitle }: { subtitle?: string }) {
             {email}
           </Text>
         )}
+        {/* No `navigate` afterwards: sign-out leaves for the hosted `/logout`,
+            which ends the Cognito session and returns to `/` itself. Routing
+            in this tab first would only race that navigation. */}
         <Button
           intent="ghost"
           size="sm"
           onClick={() => {
-            void logout().then(() => navigate(HOME_PATH));
+            void logout();
           }}
         >
           Sign out

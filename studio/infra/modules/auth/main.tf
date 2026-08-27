@@ -3,8 +3,15 @@
 # There is no public sign-up and there is not meant to be one: this is a private
 # viewer over a private bucket, so accounts are created out of band with
 # `studio/scripts/create-user.sh` and `allow_admin_create_user_only` is what
-# makes that the only route in. The SPA signs in with SRP through Amplify Auth
-# and the API Gateway Cognito authorizer validates the access token.
+# makes that the only route in. The SPA signs in through Cognito Managed Login
+# (the hosted pages on the domain at the bottom of this file) and the API
+# Gateway Cognito authorizer validates the ID token.
+#
+# **The CLI does not.** `studio login` authenticates with SRP against
+# `InitiateAuth` and holds no browser — which is why the client below keeps
+# `ALLOW_USER_SRP_AUTH` and `ALLOW_REFRESH_TOKEN_AUTH`, and why refresh-token
+# rotation is not enabled here. Read the comment on `explicit_auth_flows`
+# before changing either.
 resource "aws_cognito_user_pool" "main" {
   name = var.name
 
@@ -61,6 +68,18 @@ resource "aws_cognito_user_pool" "main" {
     require_uppercase = true
   }
 
+  # OPTIONAL, never ON. ON forces enrolment at the next sign-in for every
+  # existing account and strands anyone who cannot complete it; OPTIONAL is
+  # inert until a user enrols. Managed Login's hosted pages render both the
+  # enrolment and the challenge, so this is reachable surface rather than a
+  # dormant setting — studio has no in-app screen for either and needs none.
+  # No SMS MFA: it needs an SNS setup and is the weaker factor.
+  mfa_configuration = "OPTIONAL"
+
+  software_token_mfa_configuration {
+    enabled = true
+  }
+
   account_recovery_setting {
     recovery_mechanism {
       name     = "verified_email"
@@ -76,15 +95,54 @@ resource "aws_cognito_user_pool_client" "main" {
   user_pool_id = aws_cognito_user_pool.main.id
 
   # Secretless: the client id ships in a static bundle, so a secret would be
-  # public anyway. SRP never puts the password on the wire.
+  # public anyway. SRP never puts the password on the wire, and the browser's
+  # code flow is protected by PKCE instead.
   generate_secret = false
 
+  allowed_oauth_flows_user_pool_client = true
+
+  # **No `implicit`.** It returns tokens in the URL fragment — browser history,
+  # referrers, server logs — with no PKCE and no exchange step, and OAuth 2.1
+  # removes it. With the managed-login domain below, `/oauth2/authorize` is live
+  # surface on a client whose id ships in a public bundle, so `code` is the only
+  # grant. Cognito has no server-side "require PKCE" toggle: the SPA's PKCE test
+  # (`frontend/src/auth/oauth.test.ts`) is what keeps the challenge from
+  # silently disappearing.
+  allowed_oauth_flows  = ["code"]
+  allowed_oauth_scopes = ["openid", "email", "profile"]
+
+  # Exact-match, character for character — no wildcard host, path or port. A
+  # client with `code` enabled and no matching entry here fails on the redirect,
+  # not at apply time, so register the URL before the app redirects to it.
+  callback_urls = var.callback_urls
+  logout_urls   = var.logout_urls
+
+  supported_identity_providers = ["COGNITO"]
+
+  # **BOTH OF THESE STAY, AND ROTATION MUST NOT BE ADDED.**
+  #
+  # `studio login` is a shipped CLI with no browser
+  # (`pipeline/src/studio_pipeline/adapters/auth.py`): it signs in with
+  # `InitiateAuth` USER_SRP_AUTH and renews with `InitiateAuth`
+  # REFRESH_TOKEN_AUTH. `scripts/dev-token.py` and the prod smoke test take the
+  # same two flows. Dropping either breaks all three.
+  #
+  # Scout's copy of this module drops `ALLOW_REFRESH_TOKEN_AUTH` and enables
+  # `refresh_token_rotation`, and copying that here does not merely change a
+  # policy — Cognito REJECTS rotation alongside `ALLOW_REFRESH_TOKEN_AUTH`, at
+  # apply time, in a service-side validation `terraform validate` cannot see.
+  # So there is no half-measure: rotation for studio means moving the CLI onto
+  # `POST /oauth2/token` first. Until then, do not add it.
   explicit_auth_flows = [
     "ALLOW_USER_SRP_AUTH",
     "ALLOW_REFRESH_TOKEN_AUTH",
   ]
 
   prevent_user_existence_errors = "ENABLED"
+
+  # Without this a refresh token outlives sign-out and stays usable until it
+  # expires. The SPA's sign-out leg calls the hosted `/logout`, which revokes.
+  enable_token_revocation = true
 
   access_token_validity  = 8
   id_token_validity      = 8
@@ -95,3 +153,70 @@ resource "aws_cognito_user_pool_client" "main" {
     refresh_token = "days"
   }
 }
+
+# Cognito's default branding for the managed login (v2) pages. No exported
+# console JSON yet — colours can come later by swapping this for `settings`.
+resource "aws_cognito_managed_login_branding" "main" {
+  user_pool_id                = aws_cognito_user_pool.main.id
+  client_id                   = aws_cognito_user_pool_client.main.id
+  use_cognito_provided_values = true
+}
+
+# THE HOSTED SIGN-IN DOMAIN, IN EITHER OF ITS TWO FORMS.
+#
+# `envs/prod` passes `auth_domain` — a custom host on the shared wildcard
+# certificate, fronted by a Cognito-managed CloudFront distribution the alias
+# records below point at. `envs/dev` passes `auth_domain_prefix` instead and
+# gets `<prefix>.auth.<region>.amazoncognito.com`: a per-machine stack has no
+# certificate and no DNS of its own, and a custom domain would add ~15 minutes
+# to every apply and every destroy to prove nothing.
+#
+# **Branding must exist before the domain.** A managed-login (v2) domain with
+# no branding style serves "Login pages unavailable. Please contact an
+# administrator." — an outage, not a fallback — so the depends_on edge is
+# load-bearing: never let Terraform order the domain first.
+resource "aws_cognito_user_pool_domain" "main" {
+  domain                = var.auth_domain != "" ? var.auth_domain : var.auth_domain_prefix
+  user_pool_id          = aws_cognito_user_pool.main.id
+  certificate_arn       = var.auth_domain != "" ? var.auth_certificate_arn : null
+  managed_login_version = 2
+
+  lifecycle {
+    # Exactly one form. Terraform variable validation cannot see a sibling
+    # variable, so the either/or lives here, where both are in scope.
+    precondition {
+      condition     = (var.auth_domain != "") != (var.auth_domain_prefix != "")
+      error_message = "Set exactly one of auth_domain (a custom host) or auth_domain_prefix (a default Cognito domain)."
+    }
+
+    # A custom host needs a us-east-1 certificate covering it and a zone to put
+    # the alias records in. Missing either, the apply fails ~15 minutes in.
+    precondition {
+      condition     = var.auth_domain == "" || (var.auth_certificate_arn != "" && var.route53_zone_id != "")
+      error_message = "auth_domain requires both auth_certificate_arn and route53_zone_id."
+    }
+  }
+
+  depends_on = [aws_cognito_managed_login_branding.main]
+}
+
+# Cognito fronts the custom domain with its own CloudFront distribution; these
+# alias records point the auth host at it. Empty in the default-domain case,
+# where Cognito owns the DNS.
+resource "aws_route53_record" "auth" {
+  for_each = toset(var.auth_domain != "" ? ["A", "AAAA"] : [])
+
+  zone_id = var.route53_zone_id
+  name    = var.auth_domain
+  type    = each.value
+
+  alias {
+    name                   = aws_cognito_user_pool_domain.main.cloudfront_distribution
+    zone_id                = aws_cognito_user_pool_domain.main.cloudfront_distribution_zone_id
+    evaluate_target_health = false
+  }
+}
+
+# For the `<prefix>.auth.<region>.amazoncognito.com` host that `outputs.tf`
+# composes. Unused in the custom-domain case, and free either way.
+data "aws_region" "current" {}

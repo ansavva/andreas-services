@@ -4,11 +4,11 @@ terraform {
     aws = {
       source = "hashicorp/aws"
       # Pinned to the major `envs/dev` pins, as `modules/media` and
-      # `modules/catalog` are — and for the same reason a standalone
-      # `terraform validate` here is worth keeping honest: under provider 6.x
-      # the table's `hash_key`/`range_key` warn as deprecated in favour of
-      # `key_schema`, which does not exist in 5.x.
-      version = "~> 5.0"
+      # `modules/catalog` are, so a standalone `terraform validate` here sees
+      # the provider the environment actually uses. That major is 6 since
+      # Managed Login — `modules/auth`'s branding resource does not exist
+      # before 6.12.0; see `envs/prod/providers.tf`.
+      version = ">= 6.12, < 7.0"
     }
   }
 }

@@ -1,18 +1,15 @@
-// Cognito auth over Amplify's SRP flow.
+// Cognito auth over Managed Login's hosted pages.
 //
-// There is no register or confirm-signup path: the user pool is
-// admin-create-only, so accounts arrive via `studio/scripts/create-user.sh` and
-// the only flows a user can start are signing in, completing a forced first
-// password change, and resetting a forgotten one.
-import {
-  confirmResetPassword,
-  confirmSignIn,
-  fetchAuthSession,
-  getCurrentUser,
-  resetPassword,
-  signIn,
-  signOut,
-} from "aws-amplify/auth";
+// **The context no longer implements any sign-in step, and that is the point.**
+// It used to carry `login`, `completeNewPassword`, `beginReset` and
+// `finishReset` — Amplify SRP calls driven by a four-mode form in
+// `components/auth/LoginForm.tsx`. All four now happen on Cognito's hosted
+// pages, along with TOTP enrolment and the challenge, which the form could not
+// do at all. What is left here is the session: is there one, whose is it, how
+// does a request get a token, and how does it end.
+//
+// The pool is still admin-create-only, so there is still no sign-up path — the
+// hosted page will not offer one.
 import {
   createContext,
   useCallback,
@@ -23,21 +20,30 @@ import {
   type ReactNode,
 } from "react";
 
-import { isAuthConfigured } from "../amplify";
+import {
+  getIdToken as readIdToken,
+  getUserEmail,
+  isAuthConfigured,
+  isAuthenticated,
+  login as redirectToHostedSignIn,
+  logout as redirectToHostedSignOut,
+  refreshTokens,
+} from "../auth/oauth";
 
 interface AuthContextValue {
   authenticated: boolean;
   loading: boolean;
   email: string | null;
-  /** Set when Cognito wants a new password before the session is usable. */
-  newPasswordRequired: boolean;
-  login(email: string, password: string): Promise<void>;
-  completeNewPassword(password: string): Promise<void>;
-  beginReset(email: string): Promise<void>;
-  finishReset(email: string, code: string, password: string): Promise<void>;
+  /** Whether a pool and a managed-login host were configured at build time. */
+  configured: boolean;
+  /** Leaves for the hosted sign-in page; never resolves in a live browser. */
+  login(returnTo?: string): Promise<void>;
+  /** Clears the local session, then ends the hosted one. */
   logout(): Promise<void>;
   /** The token the API accepts — see the note in `apis/client.ts`. */
   idToken(): Promise<string>;
+  /** Re-reads the token store. The callback page calls this once it lands. */
+  refresh(): void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -46,80 +52,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState<string | null>(null);
-  const [newPasswordRequired, setNewPasswordRequired] = useState(false);
 
-  const refresh = useCallback(async () => {
-    try {
-      const user = await getCurrentUser();
-      setAuthenticated(true);
-      setEmail(user.signInDetails?.loginId ?? user.username);
-    } catch {
-      setAuthenticated(false);
-      setEmail(null);
-    } finally {
-      setLoading(false);
-    }
+  const configured = isAuthConfigured();
+
+  // Synchronous, unlike the Amplify version this replaces: the session is a
+  // localStorage entry rather than a network round trip, so there is nothing
+  // to await and `loading` is true for one render rather than for a request.
+  const refresh = useCallback(() => {
+    setAuthenticated(isAuthenticated());
+    setEmail(getUserEmail());
+    setLoading(false);
   }, []);
 
   useEffect(() => {
-    // With no user pool configured there is no session to restore and every
-    // call below would throw. Settle into "signed out" rather than spinning.
-    if (!isAuthConfigured) {
+    // With nothing configured there is no session to restore and every call
+    // below would throw. Settle into "signed out" rather than spinning.
+    if (!configured) {
       setLoading(false);
       return;
     }
-    void refresh();
-  }, [refresh]);
+    refresh();
+  }, [configured, refresh]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       authenticated,
       loading,
       email,
-      newPasswordRequired,
+      configured,
+      refresh,
 
-      async login(username, password) {
-        const result = await signIn({ username, password });
-        if (
-          !result.isSignedIn &&
-          result.nextStep.signInStep === "CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED"
-        ) {
-          setNewPasswordRequired(true);
-          return;
-        }
-        setNewPasswordRequired(false);
-        await refresh();
-      },
+      login: redirectToHostedSignIn,
 
-      async completeNewPassword(password) {
-        await confirmSignIn({ challengeResponse: password });
-        setNewPasswordRequired(false);
-        await refresh();
-      },
-
-      async beginReset(username) {
-        await resetPassword({ username });
-      },
-
-      async finishReset(username, confirmationCode, newPassword) {
-        await confirmResetPassword({ username, confirmationCode, newPassword });
-      },
-
+      // Async to keep the shape callers already `await`, and because the
+      // navigation it starts is the last thing this tab does.
       async logout() {
-        await signOut();
         setAuthenticated(false);
         setEmail(null);
-        setNewPasswordRequired(false);
+        redirectToHostedSignOut();
       },
 
+      // **Read fresh per request, not cached.** A long-idle tab picks up a
+      // renewed token instead of sending a stale one, and the renewal below
+      // is single-flighted, so a burst of mounting screens costs one call.
       async idToken() {
-        const session = await fetchAuthSession();
-        const token = session.tokens?.idToken?.toString();
-        if (!token) throw new Error("Not signed in");
-        return token;
+        const token = readIdToken();
+        if (token) return token;
+        const renewed = await refreshTokens();
+        return renewed.idToken;
       },
     }),
-    [authenticated, email, loading, newPasswordRequired, refresh],
+    [authenticated, configured, email, loading, refresh],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

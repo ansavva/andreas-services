@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Same stub `client.test.ts` uses, and for the same reason: what is under test
 // is the URL a wrapper builds, not the token on it.
-vi.mock("../amplify", () => ({ isAuthConfigured: false }));
+vi.mock("../auth/oauth", () => ({
+  isAuthConfigured: () => false,
+  getIdToken: () => null,
+  refreshTokens: () => Promise.reject(new Error("not signed in")),
+}));
 
 import {
   copyNodes,
