@@ -13,6 +13,15 @@
 // * **`CSS.escape` is absent** and `@ansavva/design-system`'s `Select` calls it
 //   unguarded when its listbox opens, so opening the library switcher throws
 //   before the option list can be read.
+// * **`IntersectionObserver` is absent**, and the reel builds one over its panes
+//   to decide which is current. Without it, rendering the viewer at all throws
+//   in a constructor — a failure that says nothing about the sequence the test
+//   is actually asserting on.
+// * **`Element.scrollTo` is absent** — jsdom lays nothing out, so it implements
+//   no scrolling. The reel calls it to jump to the pane the address names, and
+//   only when that is not the first one: so without this, a viewer opened on
+//   item one passes and the same viewer opened on item two throws, which is the
+//   most confusing shape a missing API can have.
 
 class MemoryStorage implements Storage {
   private items = new Map<string, string>();
@@ -52,4 +61,33 @@ if (typeof CSS === "undefined") {
   Object.defineProperty(window, "CSS", {
     value: { escape: (value: string) => String(value).replace(/([^\w-])/g, "\\$1") },
   });
+}
+
+/**
+ * A no-op `IntersectionObserver`.
+ *
+ * It observes nothing and reports nothing, which is the honest stub: jsdom lays
+ * nothing out, so there is no intersection to compute and any callback it fired
+ * would be fiction. The reel falls back to the pane it was told to start on,
+ * which is what these tests assert.
+ */
+if (typeof window.IntersectionObserver === "undefined") {
+  class NoopObserver implements IntersectionObserver {
+    readonly root = null;
+    readonly rootMargin = "";
+    readonly thresholds: readonly number[] = [];
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+    takeRecords(): IntersectionObserverEntry[] {
+      return [];
+    }
+  }
+  Object.defineProperty(window, "IntersectionObserver", { value: NoopObserver, writable: true });
+}
+
+if (typeof Element.prototype.scrollTo !== "function") {
+  // A no-op, because there is nothing to scroll. What the reel does with the
+  // result — settle on the pane it jumped to — is state it sets itself.
+  Element.prototype.scrollTo = () => {};
 }

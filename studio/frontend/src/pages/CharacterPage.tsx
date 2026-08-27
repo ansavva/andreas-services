@@ -10,11 +10,11 @@ import { PageBar } from "../components/layout/PageBar";
 import { CharacterProjects, CharacterRuns } from "../components/character/CharacterWork";
 import { ProfileForm } from "../components/character/ProfileForm";
 import { ReferencesGrid } from "../components/character/ReferencesGrid";
-import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
 import { useResource } from "../hooks/useResource";
 import { CHARACTERS_PATH } from "../utils/location";
 import type { CharacterIdentity, CharacterProfile, CharacterRecord } from "../types";
 import { useSearchParamState } from "../hooks/useSearchParamState";
+import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog";
 
 /**
  * One character: who they are, what they look like, and everything filed under
@@ -162,9 +162,15 @@ export function CharacterPage() {
       <PageBar
         crumbs={[{ label: "Characters", to: CHARACTERS_PATH }]}
         actions={
-          <ConfirmDeleteButton
-            tone="page"
-            noun={`character ${record.slug} and its reference library`}
+          <ConfirmDestroyDialog
+            label="Delete"
+            title={`Delete ${record.slug}?`}
+            summary={
+              "The character, its profile and its whole reference library go. " +
+              "Runs that used it stay — a run really did use this subject, and " +
+              "deleting the character is not a reason to delete the work."
+            }
+            confirmWord={record.slug}
             onConfirm={async () => {
               await deleteCharacter(record.id, "delete", true);
               navigate(CHARACTERS_PATH);

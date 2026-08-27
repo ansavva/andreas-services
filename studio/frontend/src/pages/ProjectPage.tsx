@@ -14,14 +14,15 @@ import { FolderTab } from "../components/browse/FolderBrowser";
 import { PageBar } from "../components/layout/PageBar";
 import { EntityRow } from "../components/entity/EntityRow";
 import { MediaThumb } from "../components/media/MediaThumb";
-import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
 import { ProjectDetails } from "../components/project/ProjectDetails";
 import { RunsTable } from "../components/project/RunsTable";
 import { useResource } from "../hooks/useResource";
+import type { ProjectRecord } from "../types";
 import { formatBytes, formatDate } from "../utils/format";
 import { PROJECTS_PATH, moviePath, runPath, scenePath } from "../utils/location";
 import { useSearchParamState } from "../hooks/useSearchParamState";
 import { LoadError } from "../components/common/LoadError";
+import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog";
 
 /**
  * One project: what it is, what has been run in it, and everything under it.
@@ -88,9 +89,11 @@ export function ProjectPage() {
       <PageBar
         crumbs={[{ label: "Projects", to: PROJECTS_PATH }]}
         actions={
-          <ConfirmDeleteButton
-            tone="page"
-            noun={deleteNoun(record.slug, held)}
+          <ConfirmDestroyDialog
+            label="Delete"
+            title={`Delete ${record.slug}?`}
+            summary={deleteSummary(held, counts)}
+            confirmWord={record.slug}
             onConfirm={async () => {
               await deleteProject(record.id, "delete", held > 0);
               navigate(PROJECTS_PATH);
@@ -292,17 +295,17 @@ function InputsTab({ projectId }: { projectId: string }) {
   );
 }
 
-
-
-
-
 /**
- * What the delete button says it is about to destroy.
+ * What the delete dialog says is about to go.
  *
  * Spelled out rather than "this project", because the cascade is the part a
  * person cannot see from the header: the runs, scenes and movies go with it,
- * and the armed press is the last chance to notice that.
+ * and the sentence is the last chance to notice that.
  */
-function deleteNoun(slug: string, held: number): string {
-  return held === 0 ? `project ${slug}` : `project ${slug} and its ${held} run(s), scene(s) and movie(s)`;
+function deleteSummary(held: number, counts: ProjectRecord["counts"]): string {
+  if (held === 0) return "It holds no runs, scenes or movies. Its folder and files go with it.";
+  return (
+    `${counts.runs} run(s), ${counts.scenes} scene(s) and ${counts.movies} movie(s) ` +
+    "go with it, along with the project's folder and everything in it."
+  );
 }

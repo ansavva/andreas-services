@@ -23,12 +23,14 @@ import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
 import { DestinationPicker } from "./DestinationPicker";
 import { FileRow } from "./FileRow";
+import { FilterControl, folderMatchesFilter, matchesFilter } from "./FilterControl";
 import { FolderCard } from "./FolderCard";
 import { MediaTile } from "./MediaTile";
 import { SortControl } from "./SortControl";
 import { UploadButton } from "./UploadButton";
 import { UploadStatus } from "./UploadStatus";
 import { CopyIcon, FolderIntoIcon, FolderPlusIcon } from "../common/icons";
+import { ConfirmDestroyDialog } from "../common/ConfirmDestroyDialog";
 
 /**
  * How the browser is addressed, supplied by whoever is showing it.
@@ -84,6 +86,16 @@ interface Props {
  * there is no way to have a picker open with no operation chosen, or to close
  * one and leave a stale verb behind for the next.
  */
+/**
+ * Where an armed button stops being enough for a bulk delete.
+ *
+ * Under this many, the cost of being wrong is a handful of frames still on
+ * screen and the two-press button is proportionate. At or above it, the count
+ * has to be typed — a selection is invisible once it is gone, and "select all"
+ * followed by "delete" is two presses from emptying a folder.
+ */
+const BULK_GATE = 5;
+
 type PickerTarget = {
   verb: "move" | "copy";
   ids: string[];
@@ -108,6 +120,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [newFolder, setNewFolder] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
 
   /**
@@ -150,13 +163,28 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
   /** The folder on screen as a real node, which the root has and `folderId` does not. */
   const hereId = crumbs.at(-1)?.id ?? null;
 
+  /**
+   * The listing, narrowed by whatever is typed in the filter.
+   *
+   * Applied before the split so both sections narrow together, and before
+   * `useSelection` sees the media — selecting all should select what is on
+   * screen, not what a filter is hiding.
+   */
+  const files = useMemo(
+    () => (data?.files ?? []).filter((file) => matchesFilter(file, filter)),
+    [data, filter],
+  );
   const media = useMemo(
-    () => (data?.files ?? []).filter((file) => file.kind === "image" || file.kind === "video"),
-    [data],
+    () => files.filter((file) => file.kind === "image" || file.kind === "video"),
+    [files],
   );
   const others = useMemo(
-    () => (data?.files ?? []).filter((file) => file.kind !== "image" && file.kind !== "video"),
-    [data],
+    () => files.filter((file) => file.kind !== "image" && file.kind !== "video"),
+    [files],
+  );
+  const folders = useMemo(
+    () => (data?.folders ?? []).filter((folder) => folderMatchesFilter(folder, filter)),
+    [data, filter],
   );
 
   const goToFolder = useCallback(
@@ -317,8 +345,14 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
     [uploads],
   );
 
-  const isEmpty =
-    !loading && !error && data && data.folders.length === 0 && data.files.length === 0;
+  const isEmpty = !loading && !error && data && data.folders.length === 0 && data.files.length === 0;
+
+  // Empty because of the filter is a different sentence from empty because the
+  // folder is: one is undone by clearing a box, the other is a fact about the
+  // library. Saying "this folder is empty" over a folder holding sixty things
+  // is the kind of wrong that makes someone go looking for a bug.
+  const hiddenByFilter =
+    !loading && !error && !isEmpty && folders.length === 0 && media.length === 0 && others.length === 0;
 
   return (
     <div
@@ -395,6 +429,11 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
 
       <div className="flex flex-wrap items-center gap-2 border-y border-line py-2">
         <SortControl value={sort} onChange={nav.setSort} />
+        <FilterControl
+          value={filter}
+          onChange={setFilter}
+          total={(data?.folders.length ?? 0) + (data?.files.length ?? 0)}
+        />
 
         <div className="flex-1" />
 
@@ -517,11 +556,17 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
         </Text>
       )}
 
-      {data && data.folders.length > 0 && (
+      {hiddenByFilter && (
+        <Text variant="body" tone="muted">
+          Nothing here matches “{filter}”.
+        </Text>
+      )}
+
+      {folders.length > 0 && (
         <section className="flex flex-col gap-2">
           <Text variant="title">Folders</Text>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {data.folders.map((folder) => (
+            {folders.map((folder) => (
               <FolderCard
                 key={folder.id}
                 name={folder.name}
@@ -627,11 +672,26 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
                 <FolderIntoIcon />
               </button>
 
-              <ConfirmDeleteButton
-                tone="bar"
-                noun={selectedNoun("file", "files")}
-                onConfirm={deleteSelected}
-              />
+              {/* Under five, the armed button — the cost of being wrong is a
+                  handful of frames still on screen. Above it, the count has to
+                  be typed: a selection is invisible once it is gone, and
+                  "select all" then "delete" is two presses from emptying a
+                  folder. */}
+              {selection.count < BULK_GATE ? (
+                <ConfirmDeleteButton
+                  tone="bar"
+                  noun={selectedNoun("file", "files")}
+                  onConfirm={deleteSelected}
+                />
+              ) : (
+                <ConfirmDestroyDialog
+                  label={`Delete ${selection.count}`}
+                  title={`Delete ${selectedNoun("file", "files")}?`}
+                  summary="They are removed from this folder and from the library. Nothing else is touched."
+                  confirmWord={String(selection.count)}
+                  onConfirm={deleteSelected}
+                />
+              )}
             </div>
           )}
 
