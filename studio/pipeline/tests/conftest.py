@@ -414,9 +414,14 @@ def shared_bucket(bucket):
 
     The pose plates, which sit outside the catalog by design, and a
     `phrasebook/wording.yaml` — which is now HISTORY rather than live data. The
-    phrasebook became `TERM#` rows, so nothing writes that key any more; the
-    objects prod already holds do not disappear because the model changed, and
-    `catalog gc` must go on refusing to collect them.
+    phrasebook became `TERM#` rows, so nothing writes that key any more, and
+    prod's own copy has since been deleted.
+
+    It is kept here because a bucket somewhere may still hold one, and the point
+    to pin is that `catalog gc` goes on refusing to collect it. What changed is
+    only how it is REPORTED: `phrasebook/` left `SHARED_PREFIXES`, so a leftover
+    lands in `outside` — unrecognised, worth a look — rather than being labelled
+    material held outside the catalog on purpose.
     """
     for key in ("config/pose/body/standing.png",
                 "config/pose/face/three-quarter.png",

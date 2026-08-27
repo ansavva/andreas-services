@@ -47,10 +47,12 @@ an image is a reference because a `REF#` row says so rather than because of the
 folder it sits in.
 
 **The pose plates.** `config/pose/{body,face}/*.png` belong to no character and
-no project, have no catalog node, and are read through the API's key-addressed
-route. They are the last raw key in the pipeline and they go when shared
-material gets nodes (spec phase 7). Until then they are here, named and isolated,
-which is the only way a raw key stays visible.
+no project. They are **ordinary nodes** now — spec phase 7 landed, the library is
+created with a `config/` folder, and `studio config sync` uploads them through
+the API like anything else. `shared_read`, `shared_presign` and the
+`shared:<key>` submit marker are all gone with the key-addressed route they
+used, and a plate is recorded in a run's bindings like every other image. The
+names stay here because the shot spec addresses plates by path.
 
 The phrasebook used to be listed beside them and is not: it is `TERM#` rows now,
 so there is no `phrasebook/wording.yaml` to address.

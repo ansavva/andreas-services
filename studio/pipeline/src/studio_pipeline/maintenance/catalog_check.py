@@ -79,14 +79,15 @@ JOURNAL_DIR = str(STUDIO_DIR / "local" / "migrations")
 # Owned by nobody: no character, no project, no library. Read directly, recorded
 # by no node, and therefore never an orphan and never collectable.
 #
-# `config/` comes from `paths.py`, which still names it — the pose plates are
-# the last raw key in the pipeline and are documented there. `phrasebook/` is a
-# **literal on purpose**: the phrasebook is `TERM#` rows now and `paths.py`
-# stopped naming it, but every bucket written before that change still holds
-# `phrasebook/wording.yaml`, and a prefix this list forgot is a prefix
-# `catalog gc` would propose deleting. Legacy knowledge belongs in the migrator;
-# this is the migrator.
-SHARED_PREFIXES = (P.CONFIG + "/", "phrasebook/")
+# `config/` comes from `paths.py`, which still names it — the pose plates.
+#
+# **`phrasebook/` was here and is gone.** It was carried as a literal after the
+# phrasebook became `TERM#` rows, while buckets written before that change still
+# held `phrasebook/wording.yaml`. Prod was the only one, its 16 entries are rows
+# now, and the object is deleted. What stopped being true is the label: a
+# leftover document is not shared material held outside the catalog on purpose.
+# Nothing about collection changes — that is an allowlist, over in `catalog_gc`.
+SHARED_PREFIXES = (P.CONFIG + "/",)
 
 # ── the legacy layout: the ONLY declaration of it left in the package ───────
 #

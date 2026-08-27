@@ -4,10 +4,12 @@ Material that belongs to no character and no project. Here that means **pose
 plates**: one image per body or head orientation, used as a framing guide when a
 reference shoot renders a character's standard set.
 
-The other shared material in the repo is `studio/phrasebook/wording.yaml`, and
-it follows the opposite rule — a seed copied in only when the bucket has none,
-because from the first `studio phrasebook add` the bucket's copy is the live
-document. Both pushes live in `scripts/dev-shared-material.sh`.
+**The plates are the only shared material left.** `phrasebook/wording.yaml` was
+the other, seeded here under the opposite rule — copied in only when the bucket
+had none, because from the first `studio phrasebook add` the bucket's copy was
+the live document. The phrasebook is `TERM#` rows now, so there is no document
+to seed and no second push. `scripts/dev-shared-material.sh` is a wrapper around
+`studio config sync` and nothing else.
 
 ```
 config/pose/face/*.png    eight orientations
@@ -29,12 +31,13 @@ so it belongs to no character.
 
 ## This directory is the source of truth; S3 holds a copy
 
-`studio/scripts/dev-setup.sh` syncs it to `s3://<media bucket>/config/`, and
-`domain/paths.py` builds keys under that root. Two rules follow:
+`studio/scripts/dev-setup.sh` pushes it into the library through
+`studio config sync --apply`, and `domain/paths.py` builds keys under that root.
+Two rules follow:
 
-- **Edit here, never in S3.** The sync is one-way and additive
-  (`aws s3 sync --size-only`, never `--delete`), so an object edited in the
-  bucket survives until someone changes the file of the same name here.
+- **Edit here, never in the library.** The push is one-way and additive — it
+  uploads only the plates with no node and never deletes — so an object edited
+  in the bucket survives until someone changes the file of the same name here.
 - **A model only ever sees the S3 copy.** Assets reach Replicate as a
   short-lived presigned URL of an S3 object and never as bytes from disk, so a
   plate that has not been synced cannot be used. `studio character shoot` checks

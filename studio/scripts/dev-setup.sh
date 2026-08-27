@@ -263,23 +263,22 @@ EOF
   # -------------------------------------------------------------------------
   # 3b. Push the shared material out to the bucket.
   #
-  #     Shared material is what belongs to no character and no project, has no
-  #     catalog node, and therefore cannot be created through the API: the pose
-  #     plates under `config/`, and `phrasebook/wording.yaml`. Both are put in
-  #     the bucket directly, by `dev-shared-material.sh` — which `dev-aws-seed.sh`
-  #     also sources, so the rules live in one place.
+  #     Shared material is what belongs to no character and no project: the pose
+  #     plates under `config/`. They go in through `dev-shared-material.sh` —
+  #     which `dev-aws-seed.sh` also sources, so the rules live in one place.
   #
-  #     The plates are a SYNC: studio/config/ is the source of truth and S3 holds
-  #     a copy, because a model may only be handed a presigned URL of an S3
-  #     object, never bytes from disk. So they have to exist in the bucket before
-  #     `studio character shoot` can use them.
+  #     The plates are a SYNC: studio/config/ is the source of truth and the
+  #     library holds a copy, because a model may only be handed a presigned URL
+  #     of a stored object, never bytes from disk. So they have to exist in the
+  #     bucket before `studio character shoot` can use them. They are ordinary
+  #     nodes, so the push goes through `studio config sync` rather than writing
+  #     objects directly.
   #
-  #     The phrasebook is a COPY-IF-ABSENT, and the asymmetry is deliberate: the
-  #     bucket's copy is the live document the moment anyone runs
-  #     `studio phrasebook add`, so syncing the repo copy over it would delete
-  #     their entries. Putting the first one there is all this does — and it is
-  #     what `add` needs, because `PATCH /api/text` overwrites and never invents
-  #     (#425).
+  #     `phrasebook/wording.yaml` used to be pushed here too, as a COPY-IF-ABSENT
+  #     — the bucket's copy became the live document the moment anyone ran
+  #     `studio phrasebook add`, so syncing the repo copy over it would have
+  #     deleted their entries (#425). The phrasebook is `TERM#` rows now. There
+  #     is no document, `add` needs no seed, and this pushes one thing.
   # -------------------------------------------------------------------------
   # shellcheck source=dev-shared-material.sh
   source "$STUDIO_DIR/scripts/dev-shared-material.sh"
