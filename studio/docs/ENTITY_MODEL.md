@@ -205,9 +205,50 @@ parses it.
 | **Scene** | `SCENE#<scene_id>` | `META` | |
 | **Scene in project** | `PROJ#<proj_id>` | `SCENE#<created>#<scene_id>` | |
 | **Shot** | `SCENE#<scene_id>` | `SHOT#<shot_id>` | one row per planned shot |
+| **Scene ↔ run** | `SCENE#<scene_id>` | `RUN#<run_id>` | which runs a scene's shots bound; reverse-queryable |
 | **Movie** | `MOVIE#<movie_id>` | `META` | |
 | **Movie in project** | `PROJ#<proj_id>` | `MOVIE#<created>#<movie_id>` | |
+| **Movie ↔ scene** | `MOVIE#<movie_id>` | `SCENE#<scene_id>` | which scenes a movie cuts; reverse-queryable |
+| **Run ↔ parent run** | `RUN#<run_id>` | `RUN#<parent_id>` | what a run was chained off |
 | **Phrasebook term** | `LIB#<lib>` | `TERM#<model>#<avoid>` | the wording lists, finally a table |
+
+### The three row shapes, and which one a relationship gets
+
+Every row above is one of three things. The distinction is not cosmetic — it
+decides whether a question has an answer at all, and getting it wrong is silent.
+
+| Shape | Sort key | For | Reverse |
+|---|---|---|---|
+| **Edge** | `<TARGET>#<target_id>` | set membership | **free** — `by-sk` |
+| **Listing** | `<KIND>#<created>#<id>` | chronological pagination | none, and none needed |
+| **Ordered child** | `SHOT#<n>`, `REF#<node_id>` | a positional entity with payload | varies |
+
+**An edge puts the target's id in the SORT KEY, and that is the whole rule.** In
+`by-sk` the sort key becomes the hash key, and a hash key takes an exact value
+and never a prefix — so a relationship is readable backwards if and only if its
+target id is the entire sort key after the prefix. `PROJ#<id>/CHAR#<id>` is; a
+listing row's `RUN#<created>#<id>` is not, which costs it a reverse query it
+does not need, because a run records its `project` on its own record.
+
+An **ordered child** is an entity in its own right, not a link. A shot exists as
+a plan before anything has been rendered into it, so its identity is its
+position and the run it may later bind is a field. **Where an ordered child
+points at an entity, it gets an edge row beside it**, written in the same
+transaction — a link written afterwards is a link a crash can lose.
+
+**Two relationships did not follow this and were only fixed in August 2026.** A
+movie's scenes were a JSON list on the record, which no index can address into,
+and a scene's run was an attribute on a `SHOT#` row, which `by-sk` cannot see.
+So "which movie cuts this scene" and "which scene used this run" had no answer
+at any price — the exact complaint this model was built to retire, left standing
+for everything except characters. The rule was followed by six edges and written
+down nowhere, which is how the two written last came to miss it.
+
+Both kept their original shape and gained an edge beside it, because both carry
+something an edge cannot express: a movie may legally cut one scene twice as a
+reprise, and an edge is set membership. `studio catalog edges` backfills the
+rows for records that predate them, and `studio catalog verify` reports a
+missing or stale one.
 
 **Two items per entity, for the same reason a node is two items.** The `META`
 row is the record; the claim / membership row is what makes the entity listable

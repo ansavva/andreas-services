@@ -668,3 +668,129 @@ def test_reseat_files_an_adopted_library_under_its_owner(bucket, catalog_table):
 # and are directly above.
 
 
+
+
+# ── edges ───────────────────────────────────────────────────────────────────
+#
+# The backfill for records made before a relationship was a row. Every
+# assertion here is about telling an EDGE row from a LISTING row, because they
+# share a prefix and only one of them is this command's business.
+
+
+def _put(ddb, doc):
+    ddb.put_item(TableName=ddbc.table(), Item=ddbc.to_item(doc))
+
+
+def _record(ddb, pk, **fields):
+    _put(ddb, {"pk": pk, "sk": "META", "lib": REAL, **fields})
+
+
+def test_a_movie_gets_an_edge_for_every_scene_it_cuts(catalog_table):
+    _record(catalog_table, "MOVIE#movie-1", scenes=["scene-1", "scene-2"])
+
+    missing = cm.edge_plan(catalog_table)["missing"]
+
+    assert set(missing) == {("MOVIE#movie-1", "SCENE#scene-1"),
+                            ("MOVIE#movie-1", "SCENE#scene-2")}
+
+
+def test_a_reprise_wants_one_edge_not_two(catalog_table):
+    """The list keeps the duplicate; an edge is set membership."""
+    _record(catalog_table, "MOVIE#movie-1", scenes=["scene-1", "scene-1"])
+
+    assert list(cm.edge_plan(catalog_table)["missing"]) == [
+        ("MOVIE#movie-1", "SCENE#scene-1")]
+
+
+def test_a_scene_gets_an_edge_for_the_run_each_shot_binds(catalog_table):
+    _record(catalog_table, "SCENE#scene-1")
+    _put(catalog_table, {"pk": "SCENE#scene-1", "sk": "SHOT#shot-01", "run": "run-1"})
+    _put(catalog_table, {"pk": "SCENE#scene-1", "sk": "SHOT#shot-02"})  # planned
+
+    assert list(cm.edge_plan(catalog_table)["missing"]) == [
+        ("SCENE#scene-1", "RUN#run-1")]
+
+
+def test_a_run_gets_an_edge_to_its_parent(catalog_table):
+    _record(catalog_table, "RUN#run-2", lineage={"from_run": "run-1", "from_output": None})
+    _record(catalog_table, "RUN#run-1", lineage={"from_run": None, "from_output": None})
+
+    assert list(cm.edge_plan(catalog_table)["missing"]) == [("RUN#run-2", "RUN#run-1")]
+
+
+def test_a_listing_row_is_not_mistaken_for_an_edge(catalog_table):
+    """`RUN#<created>#<id>` under a project. Two separators, not one.
+
+    Matching on the prefix alone would sweep every listing row in the library
+    into this and rewrite it — they are the rows a project's grid pages
+    through, and they carry a projection an edge row does not have.
+    """
+    _record(catalog_table, "MOVIE#movie-1", scenes=["scene-1"])
+    _put(catalog_table, {"pk": "PROJ#proj-1", "sk": "RUN#2026-08-27T00:00:00Z#run-1",
+                         "lib": REAL, "id": "run-1", "status": "succeeded"})
+
+    plan = cm.edge_plan(catalog_table)
+    assert ("PROJ#proj-1", "RUN#2026-08-27T00:00:00Z#run-1") not in plan["present"]
+    assert list(plan["missing"]) == [("MOVIE#movie-1", "SCENE#scene-1")]
+
+
+def test_an_edge_that_is_already_there_is_not_written_again(catalog_table):
+    _record(catalog_table, "MOVIE#movie-1", scenes=["scene-1"])
+    _put(catalog_table, {"pk": "MOVIE#movie-1", "sk": "SCENE#scene-1", "lib": REAL})
+
+    assert cm.edge_plan(catalog_table)["missing"] == {}
+
+
+def test_the_backfill_is_a_dry_run_until_it_is_applied(catalog_table):
+    _record(catalog_table, "MOVIE#movie-1", scenes=["scene-1"])
+
+    result = CliRunner().invoke(cli.main, ["catalog", "edges"])
+    assert result.exit_code == 0, result.output
+    assert "dry run" in result.output
+    assert cm.edge_plan(catalog_table)["missing"] != {}
+
+    applied = CliRunner().invoke(cli.main, ["catalog", "edges", "--apply"])
+    assert applied.exit_code == 0, applied.output
+    assert cm.edge_plan(catalog_table)["missing"] == {}
+
+
+def test_the_backfill_can_be_run_twice(catalog_table):
+    """Additive and idempotent, which is what makes it safe to re-run."""
+    _record(catalog_table, "MOVIE#movie-1", scenes=["scene-1"])
+
+    for _ in range(2):
+        assert CliRunner().invoke(
+            cli.main, ["catalog", "edges", "--apply"]).exit_code == 0
+
+    assert cm.edge_plan(catalog_table)["missing"] == {}
+
+
+def test_verify_reports_a_missing_edge(catalog_table):
+    """Reported, never repaired. `catalog edges` writes; verify counts."""
+    _record(catalog_table, "MOVIE#movie-1", scenes=["scene-1"])
+
+    plan = cm.edge_plan(catalog_table)
+    assert list(plan["missing"]) == [("MOVIE#movie-1", "SCENE#scene-1")]
+
+
+def test_verify_reports_an_edge_to_a_record_that_is_gone(catalog_table):
+    """A stale edge is a link to nothing — the other half of the same check."""
+    _record(catalog_table, "MOVIE#movie-1", scenes=[])
+    _put(catalog_table, {"pk": "MOVIE#movie-1", "sk": "SCENE#scene-gone", "lib": REAL})
+
+    assert cm.edge_plan(catalog_table)["stale"] == [("MOVIE#movie-1", "SCENE#scene-gone")]
+
+
+def test_involvement_links_are_not_called_stale(catalog_table):
+    """`PROJ#/CHAR#` is a set a person edits — nothing derives it.
+
+    A checker that compared it against a derived set would call every
+    involvement link in the library stale and bury the two real findings.
+    """
+    _record(catalog_table, "PROJ#proj-1")
+    _put(catalog_table, {"pk": "PROJ#proj-1", "sk": "CHAR#char-1", "lib": REAL})
+    _put(catalog_table, {"pk": "RUN#run-1", "sk": "CHAR#char-1", "lib": REAL})
+
+    plan = cm.edge_plan(catalog_table)
+    assert plan["stale"] == []
+    assert plan["missing"] == {}
