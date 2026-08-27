@@ -472,7 +472,7 @@ aws sts get-caller-identity                          # confirm the access key re
 ```
 
 `dev-aws-seed.sh` is in the list because that is where it belongs, not because
-it works: it stops on its first read until a fixture is published. #284 landed
+it works: `v1` is published and it loads. #284 landed
 the publisher; nobody has run it. It is listed after `dev-user.sh` because the
 library it writes needs a member, and the `sub` comes from the dev pool.
 
@@ -488,14 +488,12 @@ lines in `studio/.env`. It runs from the SessionStart hook and tolerates a
 missing stack, warning and carrying on. `dev-up.sh` does not: an API with no
 Cognito pool 500s on every call, so failing early is the faster way to find out.
 
-> **What you get today is a stack with only the shared material in it.** The
-> bucket, the table and the pool are provisioned; `dev-aws-seed.sh` exists
-> (#285) and stops on its first read, because **no fixture has ever been
-> published** — there is nothing to download and nothing that script has ever
-> loaded end to end. Its first read is `v1/catalog.json` out of the seed bucket,
-> and it fails identically whether that object is missing or the bucket is,
-> which is why the message names the fixture. `dev-aws-reset.sh` empties a stack
-> and does not re-seed.
+> **What you get today is a seeded stack.** The bucket, the table and the pool
+> are provisioned, `v1` is published, and `dev-aws-seed.sh` loads it in about
+> two seconds — one character and its seed pool. This block used to say the
+> opposite, in the same words, for as long as nobody had run `studio dev-seed
+> publish --apply`. `dev-aws-reset.sh` empties a stack and does not re-seed; run
+> the loader again afterwards.
 >
 > What *is* there is what `dev-setup.sh` pushes: the pose plates under
 > `config/`, and — since #425 — a starting `phrasebook/wording.yaml`, copied
@@ -520,11 +518,12 @@ that declines to answer its own question makes every reader run the same
 command. The lesson worth keeping is the first one — **an existence claim about
 infrastructure rots the moment CI runs, so date it or check it.**
 
-**What is certain is that nothing has ever been published into it.** No fixture
-exists — `studio/fixtures/dev-seed/` is not in this repo and `studio dev-seed
-publish --apply` has never been run — so `scripts/dev-aws-seed.sh` still stops
-on its first read. That used to be true for two reasons; it is now true for one.
-Nothing below has been executed either way. What changed with #284 is that the
+**`v1` was published on 2026-08-27**, which is the first time anything was —
+`studio/fixtures/dev-seed/v1/` is in this repo and `scripts/dev-aws-seed.sh`
+loads it in about two seconds. The paragraph above is about the BUCKET's
+existence and still reads as it did; this one used to say the fixture had never
+been published and no longer can. Taking the lesson at its word: dated, and
+checked. What changed with #284 is that the
 design is code rather than a comment in `modules/dev_storage/main.tf` describing
 a bucket nobody had written.
 
@@ -588,7 +587,7 @@ a fixture out of a dev stack rather than building one: a human drives the CLI
 against their own stack as ordinary work, and a handful of the nodes that
 produces become the fixture. So it calls no model, needs no provider token, and
 carries no approval gate of its own — the approval happened when the generations
-were run. `pipeline/tests/test_dev_seed.py` pins that, and says what the pin
+were run. `pipeline/tests/unit/maintenance/test_dev_seed.py` pins that, and says what the pin
 cannot see.
 
 It reads the source stack's **catalog table**, not a bucket listing, and walks
@@ -604,15 +603,30 @@ the loader refuses a fixture whose parent folders are missing, and
 `--max-objects` caps what the expansion can reach. Refusing to publish
 everything is the default, not an option.
 
-`catalog.json` lands in git, so **hard rule #1 applies to the promotion itself**.
-The publisher refuses a stack whose `characters/` or `projects/` segments are not
-placeholder-shaped — the whole stack, not just the selection, because #284 is
-explicit that generating naturally and sanitising afterwards is the wrong order.
-It also refuses any published segment shaped like a personal name, reports the
-capitalised tokens found in promoted text, and requires `--placeholders-only`
-before `--apply`. What that cannot catch is written out in `name_problems`, and
-the short version is: a lowercase first name is indistinguishable from a project
-slug, and a face is not text.
+`catalog.json` lands in git, so **hard rule #1 applies to the promotion itself**
+— in its env-scoped form, which is what made publishing possible at all. A dev
+subject may be named in the repo; a production character may not. Two guards,
+different in kind:
+
+- **`source()`** refuses a bucket or table whose name contains `prod` before it
+  reads anything, so a fixture is dev-origin by construction.
+- **`name_problems`** refuses a stack holding any entity root outside
+  `DEV_SUBJECTS`, a committed frozenset in `dev_seed.py`. The whole stack, not
+  just the selection, because #284 is explicit that generating naturally and
+  sanitising afterwards is the wrong order.
+
+It reports the capitalised tokens found in promoted text and requires
+`--dev-subjects-only` before `--apply`.
+
+**This used to be two regexes** — a shape test (`subject-a`, `demo`, `<word>`)
+plus a refusal on any Title Cased segment — and both are deleted. They could not
+tell `mira` from `demo`, which the old `name_problems` docstring said outright,
+so they admitted every lowercase first name and refused every capitalised folder.
+An allowlist is a worse fit for a machine and a much better fit for the decision:
+adding a subject is a reviewed diff, and that review is where "should this
+likeness be in a fixture every machine downloads" gets asked. What it still
+cannot catch is written out in `name_problems`, and the short version is that a
+face is not text.
 
 ### The two documents
 
@@ -631,10 +645,22 @@ somebody's machine. Neither side needed changing to make them agree.
 `v1/` is a version **prefix**, not object versioning: a fixture change is
 additive and a machine is re-seeded to a known revision by naming `v2/`.
 
-One thing is worth saying plainly: **nothing has ever been published.** Until a
-human runs `studio dev-seed publish --apply` against a stack they have driven, a
-fresh dev stack holds only the shared material `dev-setup.sh` pushes — whether or
-not the bucket is standing there empty by then.
+One thing is worth saying plainly: **`v1` exists, and everything above was
+written before it did.** It carries one character and its seed pool — 54 stills,
+12.4 MB, 59 nodes and one entity row.
+
+What it does NOT carry is the rest of #284's list: a run folder with
+`request.json` and `result.json`, a short video, a folder three deep. Those are
+model output and cost money to generate, so the shapes the app's run, scene and
+movie surfaces care about are still unexercised by a fresh stack. Adding them is
+a `v2/` prefix, which is additive by design — that is what the version prefix is
+for.
+
+Publishing it also found three defects in `dev-aws-seed.sh` that had survived
+since #285 landed, all for the same reason: the script had never run past its
+first read. The plate push ran before the library it needs existed, an entity
+record went in without the `id` every read indexes on, and the bytes moved one
+`aws s3 cp` per object — 564 seconds for 54 of them, now 71.
 
 ---
 

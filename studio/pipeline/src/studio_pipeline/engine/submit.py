@@ -92,7 +92,7 @@ def as_node(value: str) -> str:
     """A node id passed through; anything else read as a name path and resolved.
 
     `--key`, `--start-key` and `--end-key` are frozen flag names — they are in
-    `tests/cli_surface_reference.json`, which is a contract — but what they now
+    `tests/contracts/cli_surface_reference.json`, which is a contract — but what they now
     take is a node id. A name path is still accepted and resolved because a
     person reaching for one of these flags is looking at a listing rather than
     at a row, and `GET /api/resolve` is exactly the translation between the two.

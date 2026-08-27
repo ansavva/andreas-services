@@ -30,8 +30,37 @@ import re
 import subprocess
 from pathlib import Path
 
-import boto3
-import pytest
+# **Before boto3 builds a client, and that ordering is the whole point.**
+#
+# `tests/conftest.py` — the parent of this directory — does
+# `os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")` so the unit suite has
+# something for moto to accept. On a machine whose real key lives in
+# `~/.aws/credentials`, which is this repo's documented arrangement since August
+# 2026, that is not a no-op: an environment variable BEATS the credentials file,
+# so the sentinel shadows the real key and every call in this tree fails
+# `InvalidClientTokenId` before it reaches a single assertion.
+#
+# So this suite could only ever have run on a machine that exported its key —
+# and it is skipped without `STUDIO_INTEGRATION=1`, so nothing said otherwise.
+# Dropped only when the value is still the sentinel, so a machine that genuinely
+# supplies its key by environment keeps it.
+# **Only when this suite is actually going to run**, and that guard is the whole
+# fix. pytest imports every conftest during COLLECTION, including this one, on an
+# ordinary `pytest -q` where every test below is skipped. Deleting the sentinel
+# there leaves the unit suite with no credentials at all, botocore falls through
+# its provider chain to the EC2 metadata service at 169.254.169.254, and the
+# socket guard in `tests/conftest.py` refuses it — four failures in
+# `test_clients.py`, on CI only, because a developer machine has
+# `~/.aws/credentials` for boto3 to find instead.
+#
+# Both guards were behaving correctly. It is their interaction that was wrong.
+if os.environ.get("STUDIO_INTEGRATION") == "1":
+    for _sentinel_var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"):
+        if os.environ.get(_sentinel_var) == "testing":
+            del os.environ[_sentinel_var]
+
+import boto3  # noqa: E402 — after the credential fix above
+import pytest  # noqa: E402
 
 STATE_BUCKET = "andreas-services-terraform-state"
 SCRIPTS = Path(__file__).resolve().parents[3] / "scripts"
@@ -152,6 +181,51 @@ def _point_config_at_the_dev_stack(dev_stack):
             os.environ.pop(name, None)
         else:
             os.environ[name] = value
+
+
+#: Hosts that bill. The unit suite's guard is a loopback ALLOWLIST, which is
+#: right there and exactly wrong here — real S3, DynamoDB and Cognito are the
+#: whole point of this tree. So the shape inverts: everything is allowed except
+#: the model providers, which nothing in `studio_core/` can reach anyway (it has
+#: no HTTP client in its dependencies) and which nothing here should introduce.
+BILLING_HOSTS = (
+    "api.replicate.com",
+    "replicate.delivery",
+    "api.openai.com",
+    "api.anthropic.com",
+)
+
+
+@pytest.fixture(autouse=True)
+def _no_outbound_sockets(monkeypatch):
+    """Replace the unit suite's loopback allowlist with a provider denylist.
+
+    `tests/conftest.py` autouses a fixture of this name that refuses any socket
+    to anything but loopback. That is correct for a moto-and-test-client suite
+    and would refuse every call this tree exists to make — and because this tree
+    is SKIPPED without `STUDIO_INTEGRATION=1`, it would have refused them
+    silently, staying green in CI and failing only on the machine of whoever
+    next ran the integration suite on purpose.
+
+    Overriding the name here rather than in one module means a test added later
+    inherits this, for the same reason `signed_in` below is overridden here.
+    """
+    import socket
+
+    real_connect = socket.socket.connect
+
+    def guarded(self, address, *args, **kwargs):
+        host = address[0] if isinstance(address, tuple) else address
+        if isinstance(host, str) and any(host == h or host.endswith("." + h)
+                                         for h in BILLING_HOSTS):
+            raise RuntimeError(
+                f"the integration suite tried to reach {host!r}, which bills. "
+                "The app has no model-provider client and must not grow one; "
+                "every paid call in this repo is in the pipeline's "
+                "adapters/replicate.py.")
+        return real_connect(self, address, *args, **kwargs)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded)
 
 
 @pytest.fixture(autouse=True)

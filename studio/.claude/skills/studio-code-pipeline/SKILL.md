@@ -50,7 +50,7 @@ These are the ones that have actually cost time.
   `curate` and `run` had no handler to dispatch to. Usage never reaches either.
   `pipeline/tests/` is weighted towards **wiring and execution** for that reason,
   not features — a restructure is what actually breaks this code.
-- **The CLI surface is a contract.** `pipeline/tests/cli_surface_reference.json`
+- **The CLI surface is a contract.** `pipeline/tests/contracts/cli_surface_reference.json`
   records every option, arity, default, choice list and help string — 255 params,
   captured off the real argparse parsers before the Click port. Changing the CLI
   means regenerating it *deliberately*; never edit it to make a test pass. It is
@@ -77,16 +77,87 @@ These are the ones that have actually cost time.
 cd studio/pipeline && uv run pytest tests/ -q     # moto-backed, needs no AWS
 uv run ruff check studio/pipeline
 uv run python scripts/lint_skills.py              # the docs guard
+
+# With a number. The config lives in studio/pipeline/pyproject.toml and pytest's
+# rootdir is the REPO root, so coverage has to be pointed at it by hand — run
+# without --cov-config and it measures the test files too and reports ~83%.
+uv run --project studio/pipeline pytest studio/pipeline/tests -q \
+  --cov=studio_pipeline --cov-config=studio/pipeline/pyproject.toml \
+  --cov-report=term-missing:skip-covered
 ```
 
-The suite never reaches the network: `conftest.py` pins a fake
-`REPLICATE_API_TOKEN` and stands up a miniature of the real library under moto —
+**Coverage is reported and gates on nothing.** The first honest figures, measured
+2026-08-27 when the tooling went in:
+
+| Suite | Branch coverage | |
+|---|---|---|
+| `backend/` | **88%** | |
+| `pipeline/` | **70%** | `catalog_check.py` is 29% of 681 statements — far and away the largest hole, and not one anybody had guessed at |
+| `frontend/` | **36%** | by design; `vite.config.ts` argues for it |
+
+There is no `--cov-fail-under`. A threshold picked before anyone has read a real
+number either sits below it, and means nothing, or fires on unrelated PRs until
+somebody deletes it. Ratchet from these once there is a trend to ratchet.
+
+The suite stands up a miniature of the real library under moto —
 `mock_dynamodb` **and** `mock_s3`, because the library is a catalog table with a
 bucket behind it. **Mock both.** The catalog is what says a thing exists;
 seeding only the bucket produces a tree nothing can list, which is the shape of
 the old S3-as-truth fixture and no longer resembles what the code reads. An
 autouse fixture also blocks any reach at a real table, so an unmocked call fails
 rather than escaping.
+
+### Nothing in a test may bill
+
+**Do not stub the provider in your test.** `conftest.py` sets
+`STUDIO_REPLICATE_MODE=fake` autouse, and the adapter answers every one of its
+six functions locally — a deterministic prediction id, an immediate `succeeded`,
+and a real decodable placeholder PNG that hashing and contact sheets can work
+on. A test that needs a genuine clip points `STUDIO_REPLICATE_FAKE_DIR` at a
+directory holding `output.mp4`.
+
+That is one switch because it used to be none: each test that reached the engine
+patched the adapter by hand, and a new test file that forgot called the provider
+for real. Three guards now, and they fail differently on purpose:
+
+| Guard | Catches |
+|---|---|
+| `STUDIO_REPLICATE_MODE=fake` | every call through the adapter |
+| a dud `REPLICATE_API_TOKEN` | a live call if the mode is ever unset — 401, not a bill |
+| an autouse socket guard | a paid call reached **indirectly**, which neither of the above can see |
+
+`live` is the default and `fake` is set only by `conftest.py`, so running
+`studio` by hand bills exactly as it always did and hard rule #2's approval gate
+is untouched.
+
+### The integration tier
+
+```bash
+studio/scripts/dev-up.sh                      # the API the CLI talks to
+studio/scripts/dev-test-integration.sh        # both suites; needs a seeded stack
+studio/scripts/dev-test-integration.sh pipeline   # or just one
+```
+
+`pipeline/tests/integration/` runs the real `studio` binary against the running
+API and this machine's dev stack. It is skipped without `STUDIO_INTEGRATION=1`
+and **never runs in CI** — CI has no dev stack and never writes to AWS.
+
+Two things about it are load-bearing:
+
+- **Every test shells out.** `tests/conftest.py` pins the bucket and table to
+  PRODUCTION names at import, substitutes sentinel credentials and starts moto.
+  All correct for a unit suite; all wrong here. A subprocess with an environment
+  built from scratch sidesteps every one of them, and is what a developer types.
+- **The binary is `sys.prefix/bin/studio`, not `studio` off PATH.** A developer
+  with several worktrees has a `.venv` in each and one of them on PATH, so a run
+  from this tree cheerfully tested the main checkout's binary and reported a
+  pass. Caught only because an error message had been reworded here.
+
+**A test may not write to the repo either.** `conftest.py` redirects
+`registry.PATH` at a per-test copy of `models.json`, because `studio models
+refresh` rewrites it in place and the dispatch test invokes every leaf command
+there is. That went unnoticed for as long as the schema fetch reached the
+network and got a 401 — the suite depended on a live provider call *failing*.
 
 It deliberately mirrors `studio/backend/tests/conftest.py` — both halves of
 studio read the same library, so the two fixtures agreeing is what makes a

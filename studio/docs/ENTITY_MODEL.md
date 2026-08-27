@@ -97,7 +97,7 @@ the git history of this file; the consequences are the rest of this document.
 | **D1** | One table or three? | **One.** `studio-<env>-catalog` gained `CHAR#`, `PROJ#`, `RUN#`, `SCENE#`, `MOVIE#` partitions beside `LIB#`, `USER#` and `NODE#`. | [Item table](#item-table) |
 | **D2** | What an S3 key looks like | **`<owner_kind>/<owner_id>/<node_id>.<ext>`** — owner id, then the node's id. Stamped once at creation, never parsed, never re-derived. **Revised once and revised back — see below.** | [S3 layout](#s3-layout) |
 | **D3** | How far it goes | **All five entity types**, not characters and projects alone. | [Entities](#entities) |
-| **D4** | Prod data | **Migrated**, by a forward migrator: `plan` / `apply` / `verify` as separate invocations, journalled under `local/migrations/`. | `maintenance/catalog_migrate.py` |
+| **D4** | Prod data | **Migrated**, by a forward migrator: `plan` / `apply` / `verify` as separate invocations, journalled under `local/migrations/`. | `maintenance/catalog_check.py` |
 | **D5** | Entities in the reel | **Sparse `by-recent`**, re-keyed on a `reel` attribute written only onto image and video file nodes. Fixed the pre-existing folder pollution on the way past. | [Item table](#item-table) |
 
 ### D2, and the descriptive detour
@@ -676,7 +676,7 @@ maintenance catalog (plan · migrate · verify · gc · reseat) · dev-seed
 | `rewrite check` | **deleted** — the class of bug is gone |
 | `phrasebook add` | `POST /api/phrasebook`; no document to be missing |
 | `upload` / `download` / `presign` | take a node id or a `<entity>/<path>` address that the API resolves |
-| `catalog migrate` | the D4 migrator — `plan` / `apply` / `verify`, run against prod |
+| `catalog verify` | every entity resolves, every row carries every attribute. Was `catalog migrate verify`; the migrator around it is retired |
 | `catalog reseat` | rewrite blob keys that no longer describe where their file sits |
 
 **Addressing on the command line.** A slug is still what a person types.
@@ -754,6 +754,12 @@ the browsing experience, not a replacement for it.
 ## Migration
 
 Assumes D4 = migrate.
+
+**This ran. The commands below no longer exist** — `plan` and `apply` were
+retired in August 2026 once prod carried its entity rows, and `verify` was
+promoted to `studio catalog verify`. What follows is the runbook as it was
+executed, kept because the ORDERING is the safety property and a future
+migration of any kind should copy it. `git log` has the code.
 
 `studio catalog migrate plan | apply | verify`, then `reseat` — separate
 invocations, `--dry-run` unless `--apply`, journalled under

@@ -848,7 +848,10 @@ def _folder_node(node_id: str) -> dict:
 # **The blob key is the opposite: stamped once, at creation, and never
 # re-derived.** It carries the owner's id so a bucket listing is per-entity —
 # Storage Lens cost, lifecycle rules, a bulk delete that is one prefix — and
-# carries no name, so a listing of the bucket stops leaking hard rule #1.
+# carries no name, so a listing of the PRODUCTION bucket stops leaking hard
+# rule #1. That half of the rule is unchanged by the rule going env-scoped: a
+# dev subject may be named in the repo, and a production character still may
+# not be named anywhere — including in a key nobody thought of as prose.
 #
 # The honest cost, stated where somebody would be tempted to fix it: move a file
 # from a character to a project and its key keeps the old prefix. The key is

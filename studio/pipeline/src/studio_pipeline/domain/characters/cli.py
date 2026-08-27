@@ -9,8 +9,8 @@ worth quoting because every line of it is now false:
 
 The bible is a validated `profile` map on the record; the described index is one
 `REF#` row per image; and `characters/<slug>/…` is not an address at all — a
-bucket listing carried every character's name, which was hard rule #1 broken in
-the one place nobody looked.
+bucket listing carried every character's name, production ones included, which
+was hard rule #1 broken in the one place nobody looked.
 
     the record   id, slug, display_name, fictional, rev, root, hero,
                  default_set, profile          — one row, queryable

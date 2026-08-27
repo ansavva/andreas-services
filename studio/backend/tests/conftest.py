@@ -350,6 +350,45 @@ class SignedIn:
         return [dict(library) for library in self.libraries]
 
 
+#: Loopback only. moto runs in-process and every request in this suite is made
+#: through Flask's test client, so a unit test here has no legitimate reason to
+#: open a socket at all. The integration suite next door is the opposite case —
+#: real S3, DynamoDB and Cognito are the point there — so it takes a DENYLIST of
+#: provider hosts instead, and this fixture is deliberately not applied to it.
+_LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+
+
+@pytest.fixture(autouse=True)
+def _no_outbound_sockets(monkeypatch):
+    """No unit test reaches the network, and the failure names the caller.
+
+    The app itself cannot bill — its production dependencies are boto3, Flask,
+    Werkzeug, mangum, asgiref and PyJWT, with no HTTP client among them, and
+    nothing under `studio_core/` names a model provider. So this is not a
+    spend guard the way its twin in `pipeline/tests` is; it is a guard against a
+    unit test quietly depending on real AWS and passing for the wrong reason,
+    which is what `tests/integration/` exists to do on purpose and with a flag.
+
+    Patched on `socket.socket.connect` because every client ends up there —
+    urllib3 under botocore included — and patching one library leaves the rest.
+    """
+    import socket
+
+    real_connect = socket.socket.connect
+
+    def guarded(self, address, *args, **kwargs):
+        host = address[0] if isinstance(address, tuple) else address
+        if isinstance(host, str) and host not in _LOOPBACK:
+            raise RuntimeError(
+                f"a test tried to open a socket to {host!r}. The unit suite is "
+                "moto plus the Flask test client and talks to nothing. If this "
+                "is a real integration test it belongs in tests/integration/, "
+                "which runs under STUDIO_INTEGRATION=1.")
+        return real_connect(self, address, *args, **kwargs)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded)
+
+
 @pytest.fixture(autouse=True)
 def signed_in(monkeypatch):
     """Sign every request in as the library's owner, unless a test says otherwise."""

@@ -153,13 +153,16 @@ generated media would exercise nothing against an empty second copy. That is
 over: studio has a per-machine dev stack like every other service, and
 `dev-setup.sh` and `dev-up.sh` point at it. The reasoning was answered rather
 than abandoned — the dev stack is *seeded* from a published fixture, so it is
-not meant to be empty. **The loader exists (`dev-aws-seed.sh`, #285) and no
-fixture has ever been published — #284 landed as code and nobody has run `studio
-dev-seed publish --apply` — so today a stack is empty apart from the pose plates
-and a starting phrasebook.** It is human-gated, but **not** because publishing
+not meant to be empty. **Both halves now work end to end.** #284 and #285
+landed as code in August and went unrun for weeks; `v1` was published on
+2026-08-27 and a fresh stack seeds from it in about two seconds. It carries one
+character and its seed pool — no runs, scenes or movies, because those are model
+output and cost money to make. Publishing is human-gated, but **not** because it
 generates media: `publish` promotes nodes that already exist in a dev stack, so
 it calls no model and costs nothing. The gate is hard rule #1 — `catalog.json`
-lands in git, so the publisher requires `--placeholders-only` before `--apply`.
+lands in git, so the publisher requires `--dev-subjects-only` before `--apply`
+and refuses any name outside `DEV_SUBJECTS`. That rule is **env-scoped**: a dev
+subject may be named in the repo, a production character never may.
 `studio/CLAUDE.md` has the reasoning.
 
 Running the **CLI** against production is a **named profile**, decided in August
@@ -373,7 +376,7 @@ infra/
 
 ### Deployment (CI/CD)
 - **Standard**: GitHub Actions. Filenames follow `<service>-<env>.yaml` (combined deploy) and `<service>-pr.yml` (combined PR workflow) — e.g. `humbugg-prod.yaml`, `scout-pr.yml` — so the service and the trigger environment (PR vs Prod) are visible at a glance. Auxiliary workflows append a scope suffix after the env segment (e.g. `shared-prod-infra-plan.yaml`).
-- **One combined PR workflow per service**: each service has a single `<service>-pr.yml` that runs on every PR. It validates only — lint, unit tests, Terraform validate, and a build to prove the image compiles. **PR workflows never write to AWS.** There are no ephemeral preview environments; they were removed because the maintenance and teardown cost outweighed their value for a solo repo.
+- **One combined PR workflow per service**: each service has a single `<service>-pr.yml` that runs on every PR. It validates only — lint, unit tests, Terraform validate, and a build to prove the image compiles. Where a service has a browser suite it runs there too, stubbed: studio's Playwright specs answer every `/api/**` from committed fixtures. **PR workflows never write to AWS**, which is also why no service's integration suite runs on PR — those are local, behind a flag. There are no ephemeral preview environments; they were removed because the maintenance and teardown cost outweighed their value for a solo repo.
 - **One combined prod deploy per service**: each service has a single `<service>-prod.yaml` with four jobs chained via `needs:`: `detect-changes → build-and-push → deploy-infra → update-lambda + deploy-frontend`. Image build runs **before** Terraform applies because Lambda resources reference `${ecr_repo}:latest` with `lifecycle { ignore_changes = [image_uri, environment] }`, so the image must already exist before Terraform creates the Lambda. Putting build-and-push first eliminates the chicken-and-egg trap on fresh AWS accounts. `update-lambda` then sets env vars and pins the function code to `:${{ github.sha }}` for traceability. This eliminates races between separate infra and app workflows that shared SSM params.
 - **Path filtering**: `dorny/paths-filter@v3` — only deploy when the service's files change
 - **Separate jobs**: `update-lambda` and `deploy-frontend` run independently after `deploy-infra`

@@ -48,13 +48,27 @@ import click
 
 from studio_pipeline.adapters import ddb as ddbc
 from studio_pipeline.adapters import s3 as s3c
+from studio_pipeline.domain import paths as P
 from studio_pipeline.errors import die
-from studio_pipeline.maintenance.catalog_migrate import (
-    SHARED_PREFIXES,
+from studio_pipeline.maintenance.journal import (
     journal_path,
     load_journal,
     save_journal,
 )
+
+#: Prefixes that belong to nobody and must never be proposed for deletion.
+#:
+#: `config/` comes from `paths.py`, which still names it — the pose plates are
+#: the last raw key in the pipeline. `phrasebook/` is a **literal on purpose**:
+#: the phrasebook is `TERM#` rows now and `paths.py` stopped naming it, but every
+#: bucket written before that change still holds `phrasebook/wording.yaml`, and a
+#: prefix this list forgot is a prefix this command would offer to delete.
+#:
+#: It used to live in `catalog_check.py`, whose comment argued that "legacy
+#: knowledge belongs in the migrator; this is the migrator". The migrator has
+#: been retired, and this is the only caller — so the knowledge lives with the
+#: command whose safety depends on it.
+SHARED_PREFIXES = (P.CONFIG + "/", "phrasebook/")
 
 # The allowlist. `blobs/` is what `services/catalog.py::blob_key_for` writes;
 # the other two are the trees `paths.py` built before the table existed and that
@@ -98,7 +112,7 @@ def referenced_keys(ddb) -> set[str]:
     rather than a reason to ignore it — every ambiguity here resolves towards
     not deleting.
 
-    A scan rather than an index query, for the reason `catalog_migrate.verify`
+    A scan rather than an index query, for the reason `catalog_check.verify`
     scans: a GSI drops any row missing one of its key attributes, and a dropped
     row reads here as "nothing references this". That got sharper with the
     sparse `by-recent` key — an index a row is deliberately absent from is now

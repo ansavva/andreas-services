@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from studio_core.errors import AuthError
+from studio_core.errors import AuthError, UpstreamError
 from studio_core.services import identity
 
 # Re-derived rather than imported from `conftest`: a relative import needs this
@@ -63,11 +63,22 @@ def test_a_token_from_another_pool_is_refused(id_token, monkeypatch):
     monkeypatch.setenv("STUDIO_COGNITO_USER_POOL_ID", "us-east-1_hezDSsl7m")
     identity.reset_jwks_client()
     try:
-        # AuthError specifically: the dev token's `kid` is not in prod's key set,
-        # so `get_signing_key_from_jwt` raises `PyJWKClientError` and
-        # `caller_sub` turns it into a 401. Catching bare `Exception` here would
-        # let a connection failure pass as if it were a rejection.
-        with pytest.raises(AuthError):
+        # **Either refusal, and the assertion used to name only one.**
+        #
+        # It expected `AuthError`: fetch the other pool's key set, find the dev
+        # token's `kid` missing from it, 401. That holds only while the other
+        # pool EXISTS. `us-east-1_hezDSsl7m` has since been deleted, so the
+        # fetch 404s and `identity` raises `UpstreamError` instead — which is
+        # the right answer to "this service is pointed at a pool that is not
+        # there", and a 5xx rather than a quiet 401.
+        #
+        # The property under test is that a token minted by one pool is NEVER
+        # accepted by a service configured for another. Both satisfy it; which
+        # one you get depends on whether the other pool happens to exist, and
+        # that is not a fact about this code. Naming both is the honest
+        # assertion — and still narrow enough that a SUCCESS fails the test,
+        # which a bare `Exception` would not be.
+        with pytest.raises((AuthError, UpstreamError)):
             identity.caller_sub(f"Bearer {id_token}")
     finally:
         identity.reset_jwks_client()

@@ -54,19 +54,38 @@ These hold everywhere in this directory, in every skill, and in anything written
 back to it. Full statements and reasoning in
 [docs/PIPELINE.md](docs/PIPELINE.md#hard-rules).
 
-### 1. NEVER name a character anywhere in the repo
+### 1. NEVER name a PRODUCTION character in the repo
 
-No character name appears in this repository — ever. Not in code, docstrings,
-`SKILL.md` files, examples, comments, tests, fixtures, commit messages, branch
-names, or PR titles and bodies. Characters are **data**: a row in the catalog
-whose `slug` is the name, and a folder of nodes hanging off it. The repo
-describes the machinery that operates on any character; use the `<name>` /
-`<project>` / `<slug>` placeholders.
+No production character's name appears in this repository — ever. Not in code,
+docstrings, `SKILL.md` files, examples, comments, tests, fixtures, commit
+messages, branch names, or PR titles and bodies. Characters are **data**: a row
+in the catalog whose `slug` is the name, and a folder of nodes hanging off it.
+The repo describes the machinery that operates on any character; use the
+`<name>` / `<project>` / `<slug>` placeholders.
 
 The entity model made this cheaper to keep. A slug is an attribute rather than
 a path segment and an S3 key is built from ids, so a bucket listing no longer
 spells out every character in the library — which it did, for as long as the
 key was `characters/<name>/…`.
+
+**This rule used to be absolute — "never name a character anywhere" — and it was
+narrowed in August 2026 rather than dropped.** A **dev subject** lives only in a
+per-machine dev stack and in the shared seed fixture, never in production, and
+may be named: the fixture's `catalog.json` lands in git and every path in it is
+a name, so the absolute form made #284 impossible to finish. Two guards, of
+different kinds:
+
+- **Mechanical** — `dev_seed.source()` refuses a bucket or table whose name
+  contains `prod` before reading anything, so a fixture is dev-origin by
+  construction.
+- **Deliberate** — `DEV_SUBJECTS` in `maintenance/dev_seed.py` is a committed
+  frozenset of the dev subjects this repo publishes. Adding one is a reviewed
+  diff, which is where "should this likeness be in a fixture every machine
+  downloads" gets asked.
+
+It replaced two regexes that matched on the *shape* of a name and could not tell
+`mira` from `demo`. Full reasoning in
+[docs/PIPELINE.md](docs/PIPELINE.md#the-exception-a-dev-subject-may-be-named).
 
 ### 2. NEVER submit without approval of the FULL payload
 
@@ -206,7 +225,7 @@ Four things worth knowing before using it:
   step.** Hard rule #2 is untouched and still applies: a generation shows its
   full payload and waits for a yes wherever it runs.
 
-**A profile is not a permission boundary.** `catalog gc`, `catalog migrate` and
+**A profile is not a permission boundary.** `catalog gc`, `catalog verify` and
 `dev-seed` reach S3 and DynamoDB under your own IAM key, which holds
 `s3:DeleteObjectVersion` — a grant the deployed API's role deliberately lacks, and
 the thing that makes every delete through the app a recoverable tombstone.
@@ -231,13 +250,16 @@ studio dev-seed publish --path <p>                   # promote a fixture (dry ru
 ./studio/scripts/dev-aws-destroy.sh                  # tear it down; the machine id is kept
 ```
 
-**`dev-aws-seed.sh` has never loaded anything**, because no fixture has been
-published — so the script stops on its first read and says so. It is
-human-gated, but **not because publishing generates media**: `studio dev-seed
-publish` promotes nodes that already exist, calls no model and costs nothing.
+**A fixture exists, and `dev-aws-seed.sh` loads it.** `v1` was published on
+2026-08-27 — the first publish since #284 landed — and holds one character and
+its seed pool: 54 stills, 12.4 MB, loaded in about two seconds by `studio
+dev-seed load` — the bytes are copied server-side and never come through this
+machine. Everything above this paragraph used to say the opposite. Publishing is
+human-gated, but **not because it generates media**: `studio dev-seed publish`
+promotes nodes that already exist, calls no model and costs nothing.
 The gate is hard rule #1 — `catalog.json` lands in git, so the publisher refuses
-a stack whose path segments are not placeholder-shaped and requires
-`--placeholders-only` before `--apply`. What a fresh stack actually holds is the
+a stack holding any name outside `DEV_SUBJECTS` and requires
+`--dev-subjects-only` before `--apply`. What a fresh stack actually holds is the
 shared material `dev-setup.sh` pushes: the pose plates, and a starting
 `phrasebook/wording.yaml` (#425).
 
@@ -351,7 +373,7 @@ again. `--project` takes a slug or a project id and is never inferred.
   is the mechanism, not a courtesy, and `seeds/smoke.json`,
   `scripts/prod-seed-smoke.py` and `backend/tests/smoke/` all hold it up. See
   [docs/PROD_SMOKE.md](docs/PROD_SMOKE.md).
-- **The CLI surface is a contract.** `pipeline/tests/cli_surface_reference.json`
+- **The CLI surface is a contract.** `pipeline/tests/contracts/cli_surface_reference.json`
   records every option, arity, default and help string. Changing the CLI means
   regenerating it deliberately — never editing it to make a test pass.
 - **`terraform destroy` on `studio/prod` fails by design.** The media bucket
@@ -367,6 +389,73 @@ again. `--project` takes a slug or a project id and is never inferred.
 - The app's API takes the **ID token**, not the access token; the run JSON is
   deliberately served as text and never parsed. More in
   [docs/WEB_APP.md](docs/WEB_APP.md#conventions--gotchas).
+
+## Testing
+
+**Five tiers. Which one a test belongs in is decided by what it is allowed to
+touch, and that is the same question as which guards apply to it** — conftest
+inheritance is scoped by directory, so the tier boundary and the guard boundary
+are one line.
+
+| Tier | Runs | Talks to | Gate |
+|---|---|---|---|
+| `pipeline/tests/unit/` | every PR | moto + the in-memory `fake_api` | — |
+| `pipeline/tests/contracts/` | every PR | nothing; named for the FAILURE they catch | — |
+| `backend/tests/unit/` | every PR | moto + the Flask test client | — |
+| `frontend` vitest + `e2e/` | every PR | jsdom; e2e stubs `/api/**` from captured fixtures | — |
+| `*/tests/integration/` | **never in CI** | real S3, DynamoDB, Cognito, the running API | `STUDIO_INTEGRATION=1` |
+
+```bash
+uv run --project studio/pipeline pytest studio/pipeline/tests -q   # + backend, frontend
+cd studio/frontend && npm test && npm run e2e                      # vitest, then Playwright
+studio/scripts/dev-test-integration.sh          # both integration suites; needs dev-up.sh
+```
+
+### What a new test may not do
+
+Each of these is a bug that already happened, and each is now enforced rather
+than remembered. If a guard is in the way, the test belongs in a different tier.
+
+- **Do not stub the model provider yourself.** `STUDIO_REPLICATE_MODE=fake` is
+  set autouse; the adapter answers all six of its functions locally. Every test
+  that reached the engine used to monkeypatch it by hand, and a new file that
+  forgot called Replicate for real.
+- **Do not reach the network.** A socket guard allows loopback only in the unit
+  suites, and blocks the provider hosts in the integration suites. The unit
+  suite once made live calls to `api.replicate.com` and depended on them 401-ing.
+- **Do not write to the repo.** `registry.PATH` is redirected at a per-test copy:
+  `studio models refresh` rewrites the committed `models.json`, and the dispatch
+  test invokes every leaf command. It deleted 391 lines of schema.
+- **Do not edit `cli_surface_reference.json` to make a test pass.** Regenerate it
+  with `tests.contracts.update_cli_reference <command>`.
+- **Do not capture an API fixture with `curl`.** `/api/reel` answers with
+  presigned URLs; `frontend/e2e/fixtures/capture.py` scrubs them. A hand-rolled
+  capture put an AWS access key id into git.
+- **Do not skip a tree at module level.** A `pytest_collection_modifyitems` hook
+  or a `test.skip(...)` that is not filtered skips everything — 373 backend tests
+  once reported as 373 skips and exited 0.
+
+### Coverage is measured and gates on nothing
+
+`pytest-cov` on both Python suites, `@vitest/coverage-v8` on the frontend,
+report-only in `studio-pr.yml`. First honest figures, 2026-08-27: **backend 88%,
+pipeline 72%, frontend 36%** (low by design — `vite.config.ts` argues for it).
+
+There is deliberately no `--cov-fail-under`. A threshold picked before anyone has
+read a real number either sits below it and means nothing, or fires on unrelated
+PRs until somebody deletes it. Ratchet from these once there is a trend.
+
+**Aim by the numbers, not by intuition.** Two survey passes over this repo
+produced different rankings and both were wrong: `storyboard.py` was already at
+95% while `movies.py` — patched in two bug-fix PRs and with no test file — was at
+56%. Coverage will not tell you a state machine decides correctly, though; the
+panel table test in `test_storyboard.py` exists because #494 and #498 both
+shipped while those lines were being executed by tests asserting nothing about
+what they decided.
+
+The detail lives beside the code: each suite's `tests/__init__.py` is its map,
+`studio-code-pipeline` covers the pipeline's, and `frontend/e2e/README.md` covers
+the browser one.
 
 ## Local development
 

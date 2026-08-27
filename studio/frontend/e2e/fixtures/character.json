@@ -1,0 +1,101 @@
+{
+  "counts": {
+    "files": 54,
+    "references": 0
+  },
+  "created": "2026-08-27T02:19:24.255341+00:00",
+  "default_set": [],
+  "display_name": "jason",
+  "fictional": true,
+  "hero_url": null,
+  "id": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc",
+  "lib": "lib-160af8b7-bf45-5fd0-b4d1-8bd7e52fac07",
+  "profile": {
+    "body": {
+      "arms": "<>",
+      "back": "<taper, lats, blades, spinal furrow \u2014 the body plate shot from behind has nothing else to check itself against>",
+      "body_hair": "<state it explicitly if it matters \u2014 generators default to smooth>",
+      "chest_and_shoulders": "<>",
+      "feet": "<>",
+      "hands": "<palm and finger shape, nails, veins, hair; which wrist wears what>",
+      "lower_body": "<thighs, calves, hips; the shape, not just the size>",
+      "midsection": "<how defined, honestly \u2014 \"trim\" and \"shredded\" are not the same>",
+      "neck": "<thickness AND length, the muscles that show, where facial hair stops>",
+      "posture": "<how they sit, stand, gesture>",
+      "silhouette": "<proportion \u2014 usually the single most reliable on-model cue>"
+    },
+    "consistency": {
+      "drift_modes": [
+        {
+          "failure": "<what the model does>",
+          "fix": "<what to state in the prompt instead>"
+        }
+      ],
+      "must": [
+        "<>"
+      ],
+      "never": [
+        "<>"
+      ]
+    },
+    "face": {
+      "ears": "<size, set, lobes>",
+      "eyebrows": "<shape, weight, how they sit>",
+      "eyes": "<set, colour, lids, resting gaze>",
+      "facial_hair": "<default state; what it is never>",
+      "hair": "<colour, length, how it is worn, finish>",
+      "mouth_and_jaw": "<lips, resting expression, jawline, chin>",
+      "nose": "<the shape, and what must not drift>",
+      "skin": "<tone, texture, weathering, folds>",
+      "structure": "<overall shape, proportion, dominant planes>"
+    },
+    "identity": {
+      "apparent_age": "<e.g. late 30s to mid 40s>",
+      "build": "<body type in one line>",
+      "height_read": "<how tall they read against people and furniture>",
+      "home_turf": "<recurring setting / world>",
+      "register": "<demeanour in a few words>",
+      "signature_features": [
+        "<cue>"
+      ],
+      "speech": "<language + accent in a few words>"
+    },
+    "rendering": {
+      "backgrounds": "<default environments>",
+      "default_style": "Realistic",
+      "framing": "<shot sizes that suit them>",
+      "optional_styles": []
+    },
+    "text_identity_block": "<>",
+    "voice": {
+      "accent": "<>",
+      "accent_cues": [
+        "<>"
+      ],
+      "delivery": "<sentence length, pacing, volume>",
+      "language": "<language spoken lines are written in>",
+      "manner": "<how they behave on camera>"
+    },
+    "wardrobe": {
+      "accessories": [
+        "<accessory, and which wrist / how worn>"
+      ],
+      "always_dressed": true,
+      "footwear": "<>",
+      "lower_body": "<>",
+      "palette": "<the colours the character and their world live in>",
+      "tops": [
+        {
+          "colour": "<one plain colour, optional>",
+          "detail": "<colour, cut, any embroidery or graphic>",
+          "item": "<garment>"
+        }
+      ]
+    }
+  },
+  "rev": 1,
+  "root": "node-43fbd3f9-35f7-540c-b1c7-68b35c15b25d",
+  "schema_version": 2,
+  "slug": "jason",
+  "updated": "2026-08-27T02:19:24.255341+00:00"
+}

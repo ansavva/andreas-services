@@ -282,3 +282,29 @@ studio/output/
 # The pipeline package's virtualenv. `uv.lock` IS committed — it is an
 # application, not a library, so a reproducible resolve is the point.
 studio/pipeline/.venv/
+
+# Scratch space for material staged into a dev stack. Seed photos land here
+# before `studio character add-to` uploads them, and the canonical copy is then
+# the dev stack and the seed bucket — never git. Ignored rather than trusted to
+# discipline: 25 MB of a dev subject's photos are one `git add -A` away.
+tmp/
+
+# The published dev-seed fixture. `studio dev-seed publish --apply` writes the
+# two JSON documents to BOTH the seed bucket and here, so `catalog.json` is
+# reviewable in a diff before it reaches anyone's machine — that is the whole
+# point of `FIXTURE_DIR` and those two files ARE committed.
+#
+# The media is not. Blobs go to s3://studio-dev-seed-us-east-1/<version>/media/
+# and nowhere else. `publish` does not write them locally today; this line is
+# here so that staying true is enforced rather than remembered.
+studio/fixtures/dev-seed/*/media/
+
+# vitest's coverage output. The Python side is already covered by `.coverage`
+# and `htmlcov/` above; this is the one the JS toolchain writes.
+studio/frontend/coverage/
+
+# Playwright: browser downloads, traces and the html report. The FIXTURES are
+# committed on purpose (they are the stub); these are run artefacts.
+studio/frontend/test-results/
+studio/frontend/playwright-report/
+studio/frontend/blob-report/

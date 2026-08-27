@@ -9,7 +9,7 @@ forward to them. Both are gone — Click resolves the tree itself, so
 `studio runs show --help` is routed rather than rewritten on the way through.
 
 Nothing about the individual command surfaces changed in that move.
-`tests/cli_surface_reference.json` is a snapshot of what argparse exposed —
+`tests/contracts/cli_surface_reference.json` is a snapshot of what argparse exposed —
 every option, its flags, arity, default, choices, repeatability and help — and
 `test_cli_surface.py` asserts the Click tree still matches it.
 """
@@ -35,7 +35,7 @@ from studio_pipeline.engine import runner as _runner
 from studio_pipeline.engine import shoot as _shoot
 from studio_pipeline.maintenance import catalog_gc as _catalog_gc
 from studio_pipeline.maintenance import ref_descriptions as _ref_descriptions
-from studio_pipeline.maintenance import catalog_migrate as _catalog
+from studio_pipeline.maintenance import catalog_check as _catalog
 from studio_pipeline.maintenance import confirm_outputs as _confirm_outputs
 from studio_pipeline.maintenance import dev_seed as _dev_seed
 from studio_pipeline.objects import config_sync as _config_sync
@@ -171,7 +171,7 @@ _scenes.main.add_command(_board.cmd_check, "check")
 
 # `gc` reads as a fifth catalog phase and is its own module because it is the
 # only one that deletes. Attaching it here rather than defining it inside
-# `catalog_migrate.py` keeps that separation visible: the migrator copies no
+# `catalog_check.py` keeps that separation visible: the migrator copies no
 # bytes, moves no objects and deletes nothing, and nothing in it should have to
 # say so twice.
 _catalog.main.add_command(_catalog_gc.cmd_gc, "gc")
