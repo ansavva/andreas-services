@@ -37,6 +37,7 @@ vi.mock("./pages/BrowsePage", () => ({ BrowsePage: () => <div>browser</div> }));
 vi.mock("./pages/ViewerPage", () => ({ ViewerPage: () => <div>viewer</div> }));
 
 import { StudioRoutes } from "./routes";
+import { TestProviders } from "./test-providers";
 
 // Testing Library registers its cleanup with Vitest globals on; they are off
 // here, so an unmounted tree would stay in the document.
@@ -47,6 +48,7 @@ function at(path: string) {
     <MemoryRouter initialEntries={[path]}>
       <StudioRoutes />
     </MemoryRouter>,
+  { wrapper: TestProviders },
   );
 }
 

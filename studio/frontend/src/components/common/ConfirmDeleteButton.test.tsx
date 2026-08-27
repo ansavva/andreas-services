@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ConfirmDeleteButton } from "./ConfirmDeleteButton";
+import { TestProviders } from "../../test-providers";
 
 afterEach(cleanup);
 
@@ -19,14 +20,14 @@ describe("a page-level destroy, which renders as text in every phase", () => {
    * to miss — the accessible name and the visible text simply disagreed.
    */
   it("says the bare word at rest, not the confirmation", () => {
-    render(<ConfirmDeleteButton tone="page" noun={NOUN} onConfirm={() => Promise.resolve()} />);
+    render(<ConfirmDeleteButton tone="page" noun={NOUN} onConfirm={() => Promise.resolve()} />, { wrapper: TestProviders });
 
     expect(button().textContent).toContain("Delete");
     expect(button().textContent).not.toContain("Confirm");
   });
 
   it("spells out what goes, once armed", () => {
-    render(<ConfirmDeleteButton tone="page" noun={NOUN} onConfirm={() => Promise.resolve()} />);
+    render(<ConfirmDeleteButton tone="page" noun={NOUN} onConfirm={() => Promise.resolve()} />, { wrapper: TestProviders });
 
     fireEvent.click(button());
 
@@ -36,7 +37,7 @@ describe("a page-level destroy, which renders as text in every phase", () => {
   it("names the whole thing to a screen reader in both phases", () => {
     // The visible word is short at rest; the accessible name is not, and it has
     // to contain the visible label either way (WCAG 2.5.3).
-    render(<ConfirmDeleteButton tone="page" noun={NOUN} onConfirm={() => Promise.resolve()} />);
+    render(<ConfirmDeleteButton tone="page" noun={NOUN} onConfirm={() => Promise.resolve()} />, { wrapper: TestProviders });
 
     expect(button().getAttribute("aria-label")).toBe(`Delete ${NOUN}`);
 
@@ -45,7 +46,7 @@ describe("a page-level destroy, which renders as text in every phase", () => {
   });
 
   it("lets the armed sentence wrap, so a long noun cannot push the page sideways", () => {
-    render(<ConfirmDeleteButton tone="page" noun={NOUN} onConfirm={() => Promise.resolve()} />);
+    render(<ConfirmDeleteButton tone="page" noun={NOUN} onConfirm={() => Promise.resolve()} />, { wrapper: TestProviders });
 
     fireEvent.click(button());
 
@@ -57,7 +58,7 @@ describe("a page-level destroy, which renders as text in every phase", () => {
 
   it("deletes only on the second press", async () => {
     const confirm = vi.fn(() => Promise.resolve());
-    render(<ConfirmDeleteButton tone="page" noun={NOUN} onConfirm={confirm} />);
+    render(<ConfirmDeleteButton tone="page" noun={NOUN} onConfirm={confirm} />, { wrapper: TestProviders });
 
     fireEvent.click(button());
     expect(confirm).not.toHaveBeenCalled();
@@ -67,7 +68,7 @@ describe("a page-level destroy, which renders as text in every phase", () => {
   });
 
   it("disarms when focus leaves, so a half-press is never left live", () => {
-    render(<ConfirmDeleteButton tone="page" noun={NOUN} onConfirm={() => Promise.resolve()} />);
+    render(<ConfirmDeleteButton tone="page" noun={NOUN} onConfirm={() => Promise.resolve()} />, { wrapper: TestProviders });
 
     fireEvent.click(button());
     expect(button().textContent).toContain("Confirm");
@@ -79,7 +80,7 @@ describe("a page-level destroy, which renders as text in every phase", () => {
 
 describe("the tones that are an icon at rest", () => {
   it.each(["row", "bar"] as const)("shows no text for %s until it is armed", (tone) => {
-    render(<ConfirmDeleteButton tone={tone} noun={NOUN} onConfirm={() => Promise.resolve()} />);
+    render(<ConfirmDeleteButton tone={tone} noun={NOUN} onConfirm={() => Promise.resolve()} />, { wrapper: TestProviders });
 
     expect(button().textContent).not.toContain("Delete");
 

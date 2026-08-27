@@ -17,6 +17,7 @@ import { ChipRow } from "../common/ChipRow";
 import { CheckIcon } from "../common/icons";
 import { objectPath } from "../../utils/location";
 import { MediaThumb } from "../media/MediaThumb";
+import { LoadError } from "../common/LoadError";
 
 interface Props {
   characterId: string;
@@ -99,7 +100,7 @@ export function ReferencesGrid({ characterId, rootId, defaultSet, rev, onSaved }
   // references in the order a shoot would send them.
   const REFS = useMemo(() => ({ in: "refs" as const, id: characterId }), [characterId]);
   const load = useCallback(() => getReferences(characterId), [characterId]);
-  const { data, loading, error, reload } = useResource(load);
+  const { data, loading, error, reload } = useResource(["references", characterId], load);
 
   const [tag, setTag] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -249,10 +250,7 @@ export function ReferencesGrid({ characterId, rootId, defaultSet, rev, onSaved }
 
   if (error) {
     return (
-      <Alert.Root intent="danger">
-        <Alert.Title>Could not load references</Alert.Title>
-        <Alert.Description>{error}</Alert.Description>
-      </Alert.Root>
+      <LoadError what="references" message={error} onRetry={reload} />
     );
   }
 
@@ -594,7 +592,7 @@ function Unattached({
     return listing.files.filter((file) => file.kind === "image");
   }, [rootId]);
 
-  const { data } = useResource(load);
+  const { data } = useResource(["unattached", rootId], load);
   const [target, setTarget] = useState(groups[0] ?? "");
 
   const loose = useMemo(

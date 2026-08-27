@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { BrowserRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 
 import { Alert, Spinner } from "@ansavva/design-system";
 
@@ -93,6 +94,7 @@ function LibraryGate() {
   // one library does not survive into another.
   return (
     <ErrorBoundary key={current}>
+      <DiscardOnLibrarySwitch library={current} />
       <StudioRoutes />
     </ErrorBoundary>
   );
@@ -109,17 +111,59 @@ function LibraryGate() {
  * The route table itself is in `routes.tsx`. See there for what each shape means.
  */
 export function App() {
-  return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Gate>
-          {/* Inside the gate: the library list is an authenticated call, and
-              there is no token to make it with before sign-in. */}
-          <LibraryProvider>
-            <LibraryGate />
-          </LibraryProvider>
-        </Gate>
-      </BrowserRouter>
-    </AuthProvider>
+  /**
+   * One client for the app's lifetime.
+   *
+   * `staleTime` is deliberately short rather than zero: it is long enough that
+   * going back to a page you were just on is instant, and short enough that a
+   * library somebody else is also writing to does not look frozen. Retries are
+   * off because every call here is behind an authorizer that answers 401 the
+   * same way three times, and a failed listing already offers its own retry.
+   */
+  const client = useMemo(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: { staleTime: 30_000, retry: false, refetchOnWindowFocus: false },
+        },
+      }),
+    [],
   );
+
+  return (
+    <QueryClientProvider client={client}>
+      <AuthProvider>
+        <BrowserRouter>
+          <Gate>
+            {/* Inside the gate: the library list is an authenticated call, and
+                there is no token to make it with before sign-in. */}
+            <LibraryProvider>
+              <LibraryGate />
+            </LibraryProvider>
+          </Gate>
+        </BrowserRouter>
+      </AuthProvider>
+    </QueryClientProvider>
+  );
+}
+
+/**
+ * Empty the cache when the library changes.
+ *
+ * **The remount above is no longer enough, and that is what a cache costs.**
+ * Discarding component state used to discard every answer with it; a cache
+ * outlives the components that filled it, so without this a switch would redraw
+ * the previous library's characters from memory and only correct itself when
+ * something refetched. Keys are not library-scoped instead, because that would
+ * put the library context inside `useResource` and every component test would
+ * need a provider to render at all.
+ *
+ * Renders nothing. It is an effect that needs to sit inside the provider.
+ */
+function DiscardOnLibrarySwitch({ library }: { library: string }) {
+  const client = useQueryClient();
+  useEffect(() => {
+    client.clear();
+  }, [client, library]);
+  return null;
 }

@@ -30,6 +30,7 @@ import { MediaTile } from "./browse/MediaTile";
 import { MediaSurface } from "./viewer/MediaSurface";
 import { TextPage } from "./text/TextPage";
 import { ViewerChrome } from "./viewer/ViewerChrome";
+import { TestProviders } from "../test-providers";
 
 const signed = vi.mocked(getAsset);
 const fetched = vi.mocked(getNodeText);
@@ -69,6 +70,7 @@ describe("re-signing a tile whose URL expired", () => {
         onOpen={() => {}}
         onToggleSelect={() => {}}
       />,
+    { wrapper: TestProviders },
     );
 
     // The element reports its own failure; that is the whole re-sign trigger.
@@ -88,7 +90,7 @@ describe("re-signing a tile whose URL expired", () => {
   it("asks the same way from the viewer as from the grid", async () => {
     // Two components, one hook, two call sites — and only one of them was
     // covered until a control showed the other could be swapped silently.
-    render(<MediaSurface file={FILE} />);
+    render(<MediaSurface file={FILE} />, { wrapper: TestProviders });
 
     fireEvent.error(screen.getByRole("img"));
 
@@ -119,6 +121,7 @@ describe("the download button", () => {
         onToggleFullscreen={() => {}}
         onClose={() => {}}
       />,
+    { wrapper: TestProviders },
     );
 
     fireEvent.click(screen.getByLabelText("Download"));
@@ -129,7 +132,7 @@ describe("the download button", () => {
 
 describe("opening a text file", () => {
   it("reads by node id, and still shows the name path", async () => {
-    render(<TextPage file={FILE} onClose={() => {}} />);
+    render(<TextPage file={FILE} onClose={() => {}} />, { wrapper: TestProviders });
 
     await waitFor(() => expect(fetched).toHaveBeenCalledWith(FILE.id));
     // The path is what a person copies into a `studio` command. Nothing

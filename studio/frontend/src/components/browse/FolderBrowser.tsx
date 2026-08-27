@@ -779,7 +779,7 @@ export function FolderTab({ rootId }: { rootId: string }) {
  */
 function FolderShortcuts({ rootId, nav }: { rootId: string; nav: BrowserNav }) {
   const load = useCallback(() => getTree({ node: rootId }, "name"), [rootId]);
-  const { data } = useResource(load);
+  const { data } = useResource(["folder-shortcuts", rootId], load);
 
   const folders = data?.folders ?? [];
   if (folders.length === 0) return null;

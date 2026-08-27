@@ -173,7 +173,12 @@ export function useViewerFeed(
     return [];
   }, [nodeId, source]);
 
-  const entity = useResource(kind === "f" || kind === "recursive" ? null : load);
+  // Keyed on the whole source, so a run's frames and a scene's board are
+  // different entries and a cold `/o/<id>` link is its own.
+  const entity = useResource(
+    kind === "f" || kind === "recursive" ? null : ["viewer-feed", kind, source?.id ?? nodeId],
+    load,
+  );
 
   const media = useMemo(
     () => (tree.data?.files ?? []).filter(drawable),

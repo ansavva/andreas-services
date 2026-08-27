@@ -22,6 +22,7 @@ vi.mock("../apis/studio", () => ({
 
 import { getCharacter, patchCharacter, putCharacterProfile } from "../apis/studio";
 import { CharacterPage } from "./CharacterPage";
+import { TestProviders } from "../test-providers";
 
 const read = vi.mocked(getCharacter);
 const patch = vi.mocked(patchCharacter);
@@ -70,6 +71,7 @@ async function open() {
         <Route path="/c/:characterId" element={<CharacterPage />} />
       </Routes>
     </MemoryRouter>,
+  { wrapper: TestProviders },
   );
   await screen.findByRole("tab", { name: "Profile" });
 }

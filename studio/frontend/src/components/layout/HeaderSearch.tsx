@@ -32,8 +32,8 @@ export function HeaderSearch() {
   const navigate = useNavigate();
   const [value, setValue] = useState("");
 
-  const characters = useResource(useCallback(() => getCharacters(), []));
-  const projects = useResource(useCallback(() => getProjects(), []));
+  const characters = useResource(["characters"], useCallback(() => getCharacters(), []));
+  const projects = useResource(["projects"], useCallback(() => getProjects(), []));
 
   /**
    * The value is the PATH, which is what makes selecting one a navigation.

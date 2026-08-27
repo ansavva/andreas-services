@@ -17,6 +17,7 @@ vi.mock("../apis/studio", () => ({
 
 import { getProject, getScene, patchShot } from "../apis/studio";
 import { ScenePage } from "./ScenePage";
+import { TestProviders } from "../test-providers";
 
 const read = vi.mocked(getScene);
 const save = vi.mocked(patchShot);
@@ -78,6 +79,7 @@ function draw(scene: SceneRecord) {
         <Route path="/o/:nodeId" element={<Land />} />
       </Routes>
     </MemoryRouter>,
+  { wrapper: TestProviders },
   );
 }
 

@@ -20,6 +20,7 @@ import { useResource } from "../hooks/useResource";
 import { formatBytes, formatDate } from "../utils/format";
 import { PROJECTS_PATH, characterPath, moviePath, runPath, scenePath } from "../utils/location";
 import { useSearchParamState } from "../hooks/useSearchParamState";
+import { LoadError } from "../components/common/LoadError";
 
 /**
  * One project: what it is, what has been run in it, and everything under it.
@@ -38,7 +39,7 @@ export function ProjectPage() {
 
   const [tab, setTab] = useSearchParamState("tab", "overview");
   const load = useCallback(() => getProject(projectId), [projectId]);
-  const project = useResource(load);
+  const project = useResource(["project", projectId], load);
 
   if (project.loading) {
     return (
@@ -190,10 +191,10 @@ export function ProjectPage() {
 function ScenesTab({ projectId }: { projectId: string }) {
   const navigate = useNavigate();
   const load = useCallback(() => getProjectScenes(projectId), [projectId]);
-  const { data, loading, error } = useResource(load);
+  const { data, loading, error, reload } = useResource(["project-scenes", projectId], load);
 
   if (loading) return <Spinner size="md" label="Loading scenes" />;
-  if (error) return <LoadError what="scenes" message={error} />;
+  if (error) return <LoadError what="scenes" message={error} onRetry={reload} />;
   if (!data || data.length === 0)
     return (
       <Text variant="body" tone="muted">
@@ -220,10 +221,10 @@ function ScenesTab({ projectId }: { projectId: string }) {
 function MoviesTab({ projectId }: { projectId: string }) {
   const navigate = useNavigate();
   const load = useCallback(() => getProjectMovies(projectId), [projectId]);
-  const { data, loading, error } = useResource(load);
+  const { data, loading, error, reload } = useResource(["project-movies", projectId], load);
 
   if (loading) return <Spinner size="md" label="Loading movies" />;
-  if (error) return <LoadError what="movies" message={error} />;
+  if (error) return <LoadError what="movies" message={error} onRetry={reload} />;
   if (!data || data.length === 0)
     return (
       <Text variant="body" tone="muted">
@@ -257,10 +258,10 @@ function MoviesTab({ projectId }: { projectId: string }) {
  */
 function InputsTab({ projectId }: { projectId: string }) {
   const load = useCallback(() => getProjectInputs(projectId), [projectId]);
-  const { data, loading, error } = useResource(load);
+  const { data, loading, error, reload } = useResource(["project-inputs", projectId], load);
 
   if (loading) return <Spinner size="md" label="Loading inputs" />;
-  if (error) return <LoadError what="inputs" message={error} />;
+  if (error) return <LoadError what="inputs" message={error} onRetry={reload} />;
   if (!data || data.length === 0)
     return (
       <Text variant="body" tone="muted">
@@ -306,14 +307,6 @@ function InputsTab({ projectId }: { projectId: string }) {
 }
 
 
-function LoadError({ what, message }: { what: string; message: string }) {
-  return (
-    <Alert.Root intent="danger">
-      <Alert.Title>Could not load {what}</Alert.Title>
-      <Alert.Description>{message}</Alert.Description>
-    </Alert.Root>
-  );
-}
 
 
 

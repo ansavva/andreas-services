@@ -25,7 +25,7 @@ export function MoviePage() {
   const navigate = useNavigate();
 
   const load = useCallback(() => getMovie(movieId), [movieId]);
-  const { data, loading, error } = useResource(load);
+  const { data, loading, error } = useResource(["movie", movieId], load);
   const crumbs = useProjectCrumb(data?.project ?? "");
 
   if (loading) {

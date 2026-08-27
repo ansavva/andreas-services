@@ -14,6 +14,7 @@ import { setLibrary } from "../../apis/client";
 import { getLibraries } from "../../apis/studio";
 import { LibraryProvider, STORAGE_KEY } from "../../context/LibraryContext";
 import { LibrarySwitcher } from "./LibrarySwitcher";
+import { TestProviders } from "../../test-providers";
 
 const libraries = vi.mocked(getLibraries);
 const chose = vi.mocked(setLibrary);
@@ -42,6 +43,7 @@ function renderAt(path = "/f/node-1") {
         <Address />
       </LibraryProvider>
     </MemoryRouter>,
+  { wrapper: TestProviders },
   );
 }
 

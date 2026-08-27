@@ -2,12 +2,13 @@ import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 
-import { Alert, Spinner, Text } from "@ansavva/design-system";
+import { Spinner, Text } from "@ansavva/design-system";
 
 import { getCharacters, getProjects } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import { characterPath, projectPath } from "../../utils/location";
 import { EntityCard } from "./EntityCard";
+import { LoadError } from "../common/LoadError";
 
 /**
  * The two entity lists, as sections that can be rendered anywhere.
@@ -31,6 +32,7 @@ function Section({
   loading,
   error,
   errorTitle,
+  onRetry,
   empty,
   action,
   children,
@@ -40,6 +42,7 @@ function Section({
   loading: boolean;
   error: string | null;
   errorTitle: string;
+  onRetry?: () => void;
   empty: ReactNode;
   action?: ReactNode;
   children: ReactNode;
@@ -55,12 +58,7 @@ function Section({
       </div>
 
       {loading && <Spinner size="md" label={`Loading ${title.toLowerCase()}`} />}
-      {error && (
-        <Alert.Root intent="danger">
-          <Alert.Title>{errorTitle}</Alert.Title>
-          <Alert.Description>{error}</Alert.Description>
-        </Alert.Root>
-      )}
+      {error && <LoadError what={errorTitle.replace("Could not load ", "")} message={error} onRetry={onRetry} />}
       {count === 0 && empty}
 
       {children}
@@ -70,7 +68,10 @@ function Section({
 
 export function CharactersSection({ action }: { action?: ReactNode }) {
   const navigate = useNavigate();
-  const { data, loading, error } = useResource(useCallback(() => getCharacters(), []));
+  const { data, loading, error, reload } = useResource(
+    ["characters"],
+    useCallback(() => getCharacters(), []),
+  );
 
   return (
     <Section
@@ -79,6 +80,7 @@ export function CharactersSection({ action }: { action?: ReactNode }) {
       loading={loading}
       error={error}
       errorTitle="Could not load characters"
+      onRetry={reload}
       action={action}
       empty={
         <Text variant="body" tone="muted">
@@ -104,7 +106,10 @@ export function CharactersSection({ action }: { action?: ReactNode }) {
 
 export function ProjectsSection({ action }: { action?: ReactNode }) {
   const navigate = useNavigate();
-  const { data, loading, error } = useResource(useCallback(() => getProjects(), []));
+  const { data, loading, error, reload } = useResource(
+    ["projects"],
+    useCallback(() => getProjects(), []),
+  );
 
   return (
     <Section
@@ -113,6 +118,7 @@ export function ProjectsSection({ action }: { action?: ReactNode }) {
       loading={loading}
       error={error}
       errorTitle="Could not load projects"
+      onRetry={reload}
       action={action}
       empty={
         <Text variant="body" tone="muted">

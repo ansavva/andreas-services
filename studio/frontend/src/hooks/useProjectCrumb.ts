@@ -21,7 +21,7 @@ import { useResource } from "./useResource";
  */
 export function useProjectCrumb(projectId: string): Crumb[] {
   const load = useCallback(() => getProject(projectId), [projectId]);
-  const { data } = useResource(projectId ? load : null);
+  const { data } = useResource(projectId ? ["project", projectId] : null, load);
 
   return useMemo(
     () => [

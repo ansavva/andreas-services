@@ -61,8 +61,19 @@ export function getTree(where: FolderRef, sort: SortOrder) {
 }
 
 /** One page of images and videos beneath a folder, recursively. */
-export function getReel(where: FolderRef, sort: SortOrder, cursor?: string) {
-  return apiGet<ReelResponse>("/api/reel", { ...where, sort, cursor });
+export function getReel(
+  where: FolderRef,
+  sort: SortOrder,
+  cursor?: string,
+  pageSize?: number,
+) {
+  return apiGet<ReelResponse>("/api/reel", {
+    ...where,
+    sort,
+    cursor,
+    // `apiGet` builds a query string, so the number goes over as one.
+    page_size: pageSize === undefined ? undefined : String(pageSize),
+  });
 }
 
 /** One node's record, by id. The SPA reads it for `parent_id`. */

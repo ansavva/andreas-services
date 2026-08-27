@@ -41,7 +41,7 @@ export function ScenePage() {
   const navigate = useNavigate();
 
   const load = useCallback(() => getScene(sceneId), [sceneId]);
-  const { data, loading, error, setData } = useResource(load);
+  const { data, loading, error, setData } = useResource(["scene", sceneId], load);
   const crumbs = useProjectCrumb(data?.project ?? "");
   // Every frame on the board opens into the scene, so the viewer scrolls the
   // storyboard in cut order — the handoff, the panels, then the clip — rather

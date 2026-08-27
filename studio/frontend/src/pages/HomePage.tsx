@@ -1,11 +1,12 @@
 import { useNavigate } from "react-router-dom";
 
-import { Alert, Button, Spinner, Text } from "@ansavva/design-system";
+import { Button, Spinner, Text } from "@ansavva/design-system";
 
 import { MediaTile } from "../components/browse/MediaTile";
 import { CharactersSection, ProjectsSection } from "../components/entity/EntitySections";
 import { useReel } from "../hooks/useReel";
 import { feedPath, folderPath, objectPath } from "../utils/location";
+import { LoadError } from "../components/common/LoadError";
 
 /**
  * What studio opens on: who there is, what is being made, and what came out most
@@ -29,11 +30,24 @@ import { feedPath, folderPath, objectPath } from "../utils/location";
 export function HomePage() {
   const navigate = useNavigate();
 
-  // Recent is the same recursive walk "Play reel" does at the root, fetched
-  // eagerly because it *is* the section — there is nothing to click first.
-  const reel = useReel(null, "newest", true);
+  /**
+   * Recent is the same recursive walk "Play reel" does at the root, fetched
+   * eagerly because it *is* the section — there is nothing to click first.
+   *
+   * It asks for the twelve it draws rather than the API's default of two
+   * hundred, which shrinks the response and the presigning.
+   *
+   * **It does not shrink the enumeration, and that is the honest limit here.**
+   * `/api/reel` reads the branch, filters, sorts and slices, because `total` and
+   * the cursor are defined against the whole of it — a windowed read makes both
+   * meaningless, which is what a test caught when this tried it. Making home
+   * cheap needs a purpose-built "recent" rather than a page of the reel
+   * pretending to be one.
+   */
+  const RECENT = 12;
+  const reel = useReel(null, "newest", true, RECENT);
 
-  const recent = reel.items.slice(0, 12);
+  const recent = reel.items.slice(0, RECENT);
 
   return (
     <>
@@ -65,12 +79,7 @@ export function HomePage() {
         </div>
 
         {reel.loading && recent.length === 0 && <Spinner size="md" label="Loading recent media" />}
-        {reel.error && (
-          <Alert.Root intent="danger">
-            <Alert.Title>Could not load recent media</Alert.Title>
-            <Alert.Description>{reel.error}</Alert.Description>
-          </Alert.Root>
-        )}
+        {reel.error && <LoadError what="recent media" message={reel.error} />}
 
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
           {recent.map((file) => (

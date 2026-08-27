@@ -1,13 +1,14 @@
 import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { Alert, Badge, Spinner, Text } from "@ansavva/design-system";
+import { Badge, Spinner, Text } from "@ansavva/design-system";
 
 import { getCharacterProjects, getCharacterRuns } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import { formatDate } from "../../utils/format";
 import { projectPath, runPath } from "../../utils/location";
 import { EntityCard } from "../entity/EntityCard";
+import { LoadError } from "../common/LoadError";
 
 /**
  * What this character has been IN — the two questions a character page could
@@ -26,10 +27,10 @@ import { EntityCard } from "../entity/EntityCard";
 export function CharacterRuns({ characterId }: { characterId: string }) {
   const navigate = useNavigate();
   const load = useCallback(() => getCharacterRuns(characterId), [characterId]);
-  const { data, loading, error } = useResource(load);
+  const { data, loading, error, reload } = useResource(["character-runs", characterId], load);
 
   if (loading) return <Spinner size="md" label="Loading runs" />;
-  if (error) return <Failed what="runs" message={error} />;
+  if (error) return <LoadError what="runs" message={error} onRetry={reload} />;
 
   const runs = data?.runs ?? [];
   if (runs.length === 0) {
@@ -73,10 +74,10 @@ export function CharacterRuns({ characterId }: { characterId: string }) {
 export function CharacterProjects({ characterId }: { characterId: string }) {
   const navigate = useNavigate();
   const load = useCallback(() => getCharacterProjects(characterId), [characterId]);
-  const { data, loading, error } = useResource(load);
+  const { data, loading, error, reload } = useResource(["character-projects", characterId], load);
 
   if (loading) return <Spinner size="md" label="Loading projects" />;
-  if (error) return <Failed what="projects" message={error} />;
+  if (error) return <LoadError what="projects" message={error} onRetry={reload} />;
   if (!data || data.length === 0) {
     return (
       <Text variant="body" tone="muted">
@@ -101,11 +102,3 @@ export function CharacterProjects({ characterId }: { characterId: string }) {
   );
 }
 
-function Failed({ what, message }: { what: string; message: string }) {
-  return (
-    <Alert.Root intent="danger">
-      <Alert.Title>Could not load {what}</Alert.Title>
-      <Alert.Description>{message}</Alert.Description>
-    </Alert.Root>
-  );
-}

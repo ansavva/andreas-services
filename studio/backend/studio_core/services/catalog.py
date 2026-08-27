@@ -220,6 +220,16 @@ PROFILE_SCHEMA_VERSION = 2
 # provider's own response stays an undecoded blob beside it.
 RUN_STATUSES = frozenset({"pending", "running", "succeeded", "failed", "cancelled"})
 
+# The three a run does not come back from. Studio owns this word, so it owns
+# which of its values are endings — the alternative is every caller writing its
+# own set and one of them forgetting `cancelled`.
+#
+# It exists because the app polls. A run page had no idea whether the status it
+# was showing could still change, so it showed whatever was true when the page
+# opened and waited for a human to press reload; a client that knows which
+# states are terminal can stop asking on its own.
+TERMINAL_RUN_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
+
 # The sort key of the record half of a node, of a library, and of every entity.
 META = "META"
 

@@ -9,7 +9,7 @@ import { MediaThumb } from "../components/media/MediaThumb";
 import { useResource } from "../hooks/useResource";
 import { useProjectCrumb } from "../hooks/useProjectCrumb";
 import { formatBytes, formatDate, formatTextContent } from "../utils/format";
-import type { RunAsset } from "../types";
+import { isTerminal, type RunAsset, type RunRecord } from "../types";
 import { objectPath, runPath } from "../utils/location";
 
 /**
@@ -29,7 +29,20 @@ export function RunPage() {
   const navigate = useNavigate();
 
   const load = useCallback(() => getRun(runId), [runId]);
-  const { data, loading, error } = useResource(load);
+  /**
+   * A run is an async job, and this page was a snapshot of one.
+   *
+   * It showed whatever the status was when it opened and waited for somebody to
+   * press reload — on the one screen in the app whose whole subject is a thing
+   * that changes underneath you. It polls while the run can still move and stops
+   * the moment it cannot, which is what `isTerminal` is for.
+   */
+  const { data, loading, error } = useResource(["run", runId], load, {
+    refetchInterval: (query) => {
+      const status = (query.state.data as RunRecord | undefined)?.status;
+      return status && !isTerminal(status) ? 5_000 : false;
+    },
+  });
   const crumbs = useProjectCrumb(projectId);
 
   // Every frame on this page opens into the run, so scrolling the viewer walks
@@ -202,7 +215,7 @@ function PayloadDocument({ label, node }: { label: string; node: string | null }
     [node],
   );
   const [open, setOpen] = useState(false);
-  const { data, loading, error } = useResource(open && node !== null ? load : null);
+  const { data, loading, error } = useResource(open && node !== null ? ["node-text", node] : null, load);
 
   if (node === null) {
     return (

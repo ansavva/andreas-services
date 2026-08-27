@@ -47,7 +47,7 @@ interface Props {
  */
 export function ReferenceFields({ characterId, node, onChanged }: Props) {
   const load = useCallback(() => getReferences(characterId), [characterId]);
-  const { data, loading, reload } = useResource(load);
+  const { data, loading, reload } = useResource(["references", characterId], load);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

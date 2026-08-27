@@ -11,6 +11,7 @@ vi.mock("../../apis/studio", () => ({
 
 import { getReferences, patchReference } from "../../apis/studio";
 import { ReferenceFields } from "./ReferenceFields";
+import { TestProviders } from "../../test-providers";
 
 const references = vi.mocked(getReferences);
 const patch = vi.mocked(patchReference);
@@ -44,7 +45,7 @@ beforeEach(() => {
 
 /** The panel as the viewer renders it: on whichever node is open. */
 async function open(node: string) {
-  render(<ReferenceFields characterId={CHARACTER} node={node} onChanged={() => {}} />);
+  render(<ReferenceFields characterId={CHARACTER} node={node} onChanged={() => {}} />, { wrapper: TestProviders });
   await screen.findByText("Reference");
 }
 
@@ -129,6 +130,7 @@ describe("moving a reference without a drag", () => {
 it("renders nothing for a node no reference row claims", async () => {
   const { container } = render(
     <ReferenceFields characterId={CHARACTER} node="node-loose" onChanged={() => {}} />,
+  { wrapper: TestProviders },
   );
   await waitFor(() => expect(references).toHaveBeenCalled());
   expect(container.textContent).toBe("");

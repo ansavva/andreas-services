@@ -493,6 +493,25 @@ export interface ProjectInput {
 
 export type RunStatus = "pending" | "running" | "succeeded" | "failed" | "cancelled";
 
+/**
+ * The three a run does not come back from — mirrored from `catalog.py`'s
+ * `TERMINAL_RUN_STATUSES`, which owns the word.
+ *
+ * The app polls a run while it can still change and stops when it cannot. The
+ * set is duplicated here rather than fetched because it is part of the API's
+ * shape, like the union above it: a status the backend added and this did not
+ * know about would be *non*-terminal here, which errs toward asking again
+ * rather than toward showing a stale answer for ever.
+ */
+export const TERMINAL_RUN_STATUSES: readonly RunStatus[] = [
+  "succeeded",
+  "failed",
+  "cancelled",
+];
+
+export const isTerminal = (status: RunStatus): boolean =>
+  TERMINAL_RUN_STATUSES.includes(status);
+
 export type RunKind = "image" | "video";
 
 /** What a model charged, when the provider reported it. Never computed here. */

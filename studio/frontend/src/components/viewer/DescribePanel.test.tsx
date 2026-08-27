@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { FileEntry } from "../../types";
 import { DescribePanel } from "./DescribePanel";
+import { TestProviders } from "../../test-providers";
 
 afterEach(cleanup);
 
@@ -21,7 +22,7 @@ function file(over: Partial<FileEntry> = {}): FileEntry {
 }
 
 function show(over: Partial<FileEntry> = {}, onSave = vi.fn().mockResolvedValue({})) {
-  render(<DescribePanel file={file(over)} onSave={onSave} onClose={vi.fn()} />);
+  render(<DescribePanel file={file(over)} onSave={onSave} onClose={vi.fn()} />, { wrapper: TestProviders });
   return onSave;
 }
 

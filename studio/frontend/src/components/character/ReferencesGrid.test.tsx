@@ -14,6 +14,7 @@ vi.mock("../../apis/studio", () => ({
 
 import { getReferences, getTree, patchReference } from "../../apis/studio";
 import { ReferencesGrid } from "./ReferencesGrid";
+import { TestProviders } from "../../test-providers";
 
 const references = vi.mocked(getReferences);
 const tree = vi.mocked(getTree);
@@ -83,6 +84,7 @@ function renderGrid() {
     <MemoryRouter>
       <ReferencesGrid characterId={CHARACTER} rootId={ROOT} defaultSet={[]} rev={1} onSaved={() => {}} />
     </MemoryRouter>,
+  { wrapper: TestProviders },
   );
 }
 
@@ -115,6 +117,7 @@ describe("the cap readout", () => {
       <MemoryRouter>
         <ReferencesGrid characterId={CHARACTER} rootId={ROOT} defaultSet={nodes} rev={1} onSaved={() => {}} />
       </MemoryRouter>,
+    { wrapper: TestProviders },
     );
   }
 
@@ -224,6 +227,7 @@ describe("a default set that has gone stale", () => {
           onSaved={() => {}}
         />
       </MemoryRouter>,
+    { wrapper: TestProviders },
     );
   }
 

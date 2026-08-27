@@ -64,7 +64,7 @@ export function CharacterPage() {
 
   const [tab, setTab] = useSearchParamState("tab", "profile");
   const load = useCallback(() => getCharacter(characterId), [characterId]);
-  const character = useResource(load);
+  const character = useResource(["character", characterId], load);
 
   /**
    * The 409 message, as the API worded it.
