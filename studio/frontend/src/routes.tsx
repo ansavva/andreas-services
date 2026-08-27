@@ -10,6 +10,7 @@ import { ProjectPage } from "./pages/ProjectPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { RunPage } from "./pages/RunPage";
 import { ScenePage } from "./pages/ScenePage";
+import { ViewerPage } from "./pages/ViewerPage";
 
 /**
  * Ten routes, and every one that names a thing names it by id.
@@ -28,7 +29,7 @@ import { ScenePage } from "./pages/ScenePage";
  * /s/<scene_id>           scene
  * /m/<movie_id>           movie
  * /f          /f/<id>     the folder browser: the library root, or one folder
- * /o/<id>                 one file, open
+ * /o/<id>     /o?in=…     the viewer: one file, among whatever `?in=` names
  * ```
  *
  * **There is no legacy redirect any more.** Studio used to hand out the S3 key
@@ -72,7 +73,12 @@ export function StudioRoutes() {
 
         <Route path="/f" element={<BrowsePage />} />
         <Route path="/f/:nodeId" element={<BrowsePage />} />
-        <Route path="/o/:nodeId" element={<BrowsePage />} />
+
+        {/* The viewer is its own screen now. `/o` with no id opens a feed at
+            its first frame — see `feedPath` — and the address gains the id as
+            soon as the first pane settles. */}
+        <Route path="/o" element={<ViewerPage />} />
+        <Route path="/o/:nodeId" element={<ViewerPage />} />
       </Route>
 
       {/* Outside the layout, deliberately: this renders no page, it only

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { Alert, Breadcrumbs, Button, Input, Spinner, Text } from "@ansavva/design-system";
 
@@ -6,23 +7,19 @@ import {
   copyNodes,
   createNode,
   deleteNodes,
-  describeNode,
   getTree,
   moveNodes,
   renameNode,
 } from "../../apis/studio";
-import { useFolder, type FolderPin } from "../../hooks/useFolder";
-import { useReel } from "../../hooks/useReel";
+import { useTree } from "../../hooks/useTree";
 import { useResource } from "../../hooks/useResource";
 import { useSelection } from "../../hooks/useSelection";
 import { useUploads } from "../../hooks/useUploads";
 import type { FileEntry, SortOrder } from "../../types";
-import type { FolderId, Target } from "../../utils/location";
+import { feedPath, objectPath, type FolderId } from "../../utils/location";
 import { ChipRow } from "../common/ChipRow";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
-import { TextPage } from "../text/TextPage";
-import { ReelView } from "../viewer/ReelView";
 import { DestinationPicker } from "./DestinationPicker";
 import { FileRow } from "./FileRow";
 import { FolderCard } from "./FolderCard";
@@ -45,16 +42,16 @@ import { UploadStatus } from "./UploadStatus";
  * boolean through would put a branch in every handler.
  */
 export interface BrowserNav {
-  /** The folder on screen, or the file open over it. */
-  target: Target;
+  /** The folder on screen. A file open over it is a different screen now. */
+  folder: FolderId;
   sort: SortOrder;
   setSort: (next: SortOrder) => void;
   /** `replace` is for the one move that is not a journey — leaving a deleted folder. */
   goToFolder: (id: FolderId, options?: { replace?: boolean }) => void;
+  /** Opens the viewer at this file, with this browser as its context. */
   openFile: (file: FileEntry) => void;
-  closeItem: () => void;
-  /** The reel scrolled onto a different clip. Must never push history. */
-  setCurrent: (file: FileEntry) => void;
+  /** Opens the viewer on everything beneath the folder on screen. */
+  playReel: () => void;
 }
 
 interface Props {
@@ -105,31 +102,22 @@ type PickerTarget = {
  * invalidated mid-flight.
  */
 export function FolderBrowser({ nav, boundary = null }: Props) {
-  const { target, sort } = nav;
-  const openId = target.kind === "object" ? target.id : null;
+  const { folder, sort } = nav;
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [newFolder, setNewFolder] = useState<string | null>(null);
-  const [reelFolder, setReelFolder] = useState<FolderPin>(null);
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
 
   /**
-   * Which folder the page *behind* the overlay is showing.
+   * The listing, straight from the folder the caller names.
    *
-   * Normally that is whatever the address points at — outright for a folder, and
-   * for an open file its parent, which `useFolder` settles. While the recursive
-   * reel is open it is pinned to the folder the reel was launched from, and that
-   * pin is load-bearing: the reel walks across folders and rewrites the address
-   * to each clip as it goes, so without it every scroll would land on a file in a
-   * different folder and re-fetch the listing underneath — a request per clip,
-   * for a listing nobody can see.
+   * `useFolder` used to sit here resolving an *object* address to its parent,
+   * because `/o/<id>` rendered this component with the file open over it. The
+   * viewer is its own screen now, so this only ever shows a folder and the
+   * resolution — and the request it cost on every cold link — is gone with it.
    */
-  const { folderId, data, loading, error, reload } = useFolder(target, sort, reelFolder);
-
-  // "Play reel" walks recursively from wherever you are, so a folder of only
-  // subfolders still opens onto real media. Fetched lazily: the pages cost
-  // nothing until the reel is actually opened that way.
-  const reel = useReel(folderId ?? null, sort, reelFolder !== null);
+  const { data, loading, error, reload } = useTree(folder, sort);
+  const folderId = folder;
 
   /**
    * The listing's own breadcrumbs are where every *path* on this page comes from.
@@ -169,41 +157,13 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
     [data],
   );
 
-  /**
-   * A text file opened by address, and a media file opened by address, are
-   * different things: the first is a code viewer, the second is the reel. Both
-   * are resolved from the listing rather than from a second fetch, because the
-   * listing already carries the presigned URL and the kind.
-   *
-   * Resolved only while the recursive reel is closed: with it open the address
-   * names a clip from some other folder, which this listing is not expected to
-   * hold.
-   */
-  const browsing = reelFolder === null;
-  const openIndex = browsing && openId ? media.findIndex((item) => item.id === openId) : -1;
-  const openText =
-    browsing && openId ? (others.find((item) => item.id === openId) ?? null) : null;
-
   const goToFolder = useCallback(
     (nextId: FolderId, options?: { replace?: boolean }) => {
-      setReelFolder(null);
       setActionError(null);
       nav.goToFolder(nextId, options);
     },
     [nav],
   );
-
-  /**
-   * Closing the *recursive reel* is not closing an item, and that is why it is a
-   * separate handler. "Play reel" is state, not a navigation — it pushed
-   * nothing — so it only has to drop the pin and put the address back on the
-   * folder it was launched from.
-   */
-  const closeReel = useCallback(() => {
-    const launchedFrom = reelFolder ? reelFolder.id : (folderId ?? null);
-    setReelFolder(null);
-    nav.goToFolder(launchedFrom, { replace: true });
-  }, [folderId, nav, reelFolder]);
 
   const selection = useSelection(media, folderId ?? null);
 
@@ -274,75 +234,12 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
     [pickerTarget, run, selection],
   );
 
-  /**
-   * Writes from inside the viewer, which behave differently depending on which
-   * reel you are in.
-   *
-   * In the *recursive* reel the pane simply leaves the list and the reel carries
-   * on — you are working through a walk, and stopping it to go and look at a
-   * folder is not what you asked for. In the *folder* reel the list comes from
-   * the listing, which `run` has already re-fetched, so closing back to the
-   * folder is both correct and what there is left to see.
-   *
-   * Deleting never advances to the next clip on its own. The next clip is one
-   * scroll away, and arriving there automatically at the exact moment you
-   * confirmed a delete is how the wrong thing gets deleted twice.
+  /*
+   * The writes that used to live here — rename, delete and describe for the
+   * pane that was open over this listing — moved to `ViewerPage` with the
+   * viewer itself. They were never about the folder; they acted on one node and
+   * then had to reconcile a listing they happened to be rendered inside.
    */
-  const deleteOpenFile = useCallback(
-    async (file: FileEntry) => {
-      await run(deleteNodes([file.id]));
-      if (reelFolder !== null) reel.dropItem(file.id);
-      else nav.goToFolder(folderId ?? null, { replace: true });
-    },
-    [folderId, nav, reel, reelFolder, run],
-  );
-
-  /**
-   * A rename leaves the address alone, and that is the point of #313.
-   *
-   * The address used to be the object's key, so renaming it stranded the address
-   * bar and every link anyone had sent. It names the node id now, and a rename
-   * does not move a node — so there is nothing to navigate. The reel still drops
-   * the pane, because its name, its key and its presigned URL all went stale even
-   * though its id did not.
-   */
-  /**
-   * A caption or a tag, written onto the file being looked at.
-   *
-   * **Unlike a rename this leaves the pane alone.** A rename invalidates the
-   * name, the key and the presigned URL, so the reel drops the pane and picks
-   * the file up again; a description touches none of the three. Dropping the
-   * pane here would scroll the reel out from under somebody mid-sentence.
-   *
-   * `run` re-fetches the listing, which is what puts the new words back on the
-   * chrome and into `file.tags` for the panel's chips.
-   */
-  const describeOpenFile = useCallback(
-    async (
-      file: FileEntry,
-      changes: { description?: string | null; tags?: string[] | null },
-    ) => {
-      const updated = await run(describeNode(file.id, changes));
-      // Patched from what the API answered, not from what was typed: tags are
-      // folded server-side, and rendering the typed form would be a chip that
-      // disagrees with the selector it just created.
-      if (reelFolder !== null && updated) {
-        reel.refreshItem(file.id, {
-          description: updated.description,
-          tags: updated.tags,
-        });
-      }
-    },
-    [reel, reelFolder, run],
-  );
-
-  const renameOpenFile = useCallback(
-    async (file: FileEntry, name: string) => {
-      await run(renameNode(file.id, name));
-      if (reelFolder !== null) reel.dropItem(file.id);
-    },
-    [reel, reelFolder, run],
-  );
 
   /**
    * Delete the folder you are standing in, then step up into its parent.
@@ -377,13 +274,12 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
     );
   }, [hereId, newFolder, run]);
 
-  // Escape drops the selection, but only when it is the frontmost thing — the
-  // reel, the text page and the move picker each bind Escape to their own close,
-  // and clearing a selection out from under one of them would be a keystroke
-  // doing two things at once. The picker matters most here: it is often open
-  // *on* the selection, so dropping it would be Escape cancelling the move by
-  // emptying what was being moved.
-  const overlayOpen = openId !== null || reelFolder !== null || pickerTarget !== null;
+  // Escape drops the selection, but only when it is the frontmost thing. The
+  // move picker binds Escape to its own close, and it is often open *on* the
+  // selection — so clearing it there would be Escape cancelling the move by
+  // emptying what was being moved. The reel and the text page used to be in
+  // this list and are their own screen now, where this component is unmounted.
+  const overlayOpen = pickerTarget !== null;
   useEffect(() => {
     if (overlayOpen || selection.count === 0) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -562,13 +458,10 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
         */}
         <UploadButton onFiles={uploads.start} disabled={hereId === null} />
 
-        {/* Disabled while the folder is unsettled — a cold link to an open file
-            has not learned its parent yet, and `?? null` would play the root. */}
-        <Button
-          size="sm"
-          disabled={folderId === undefined}
-          onClick={() => setReelFolder({ id: folderId ?? null })}
-        >
+        {/* A navigation now, not a piece of state this component holds open.
+            It goes to the viewer with `?in=recursive:<folder>`, which is what
+            makes a reel a place you can link to and press back out of. */}
+        <Button size="sm" onClick={nav.playReel}>
           Play reel
         </Button>
       </div>
@@ -806,49 +699,6 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
         </section>
       )}
 
-      {/*
-        One viewer, two sources.
-
-        Opening a tile plays *this folder's* media, starting on the one that was
-        clicked — which is what "open this" means and needs no second request,
-        since the listing already has it. "Play reel" plays everything beneath the
-        folder recursively, paged in from the API. Both routes land here.
-      */}
-      {reelFolder !== null ? (
-        <ReelView
-          items={reel.items}
-          loading={reel.loading}
-          exhausted={reel.exhausted}
-          truncated={reel.truncated}
-          startIndex={0}
-          onLoadMore={reel.loadMore}
-          onClose={closeReel}
-          onCurrentChange={nav.setCurrent}
-          onRename={renameOpenFile}
-          onDelete={deleteOpenFile}
-          onDescribe={describeOpenFile}
-        />
-      ) : (
-        openIndex >= 0 && (
-          <ReelView
-            items={media}
-            loading={false}
-            exhausted
-            startIndex={openIndex}
-            onClose={nav.closeItem}
-            onCurrentChange={nav.setCurrent}
-            onRename={renameOpenFile}
-            onDelete={deleteOpenFile}
-            onDescribe={describeOpenFile}
-          />
-        )
-      )}
-
-      {/* A text file gets a page of its own, the way a clip does — same address,
-          same "this is the thing you came for" treatment — and unlike a clip it
-          can be edited, because these are notes and prompts a person wrote. */}
-      {openText && <TextPage file={openText} onClose={nav.closeItem} onSaved={reload} />}
-
       {pickerTarget && (
         <DestinationPicker
           verb={pickerTarget.verb}
@@ -865,19 +715,6 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
         />
       )}
 
-      {/* A share link to a node this folder does not hold — deleted upstream
-          between the link being sent and being opened. The listing loaded fine,
-          so this is specific and worth saying rather than silently showing the
-          folder. The id itself is not shown: it is what the address bar already
-          says, and it names nothing a person can act on. */}
-      {openId && openIndex < 0 && !openText && !loading && !error && (
-        <Alert.Root intent="warning">
-          <Alert.Title>That file is not here any more</Alert.Title>
-          <Alert.Description>
-            Nothing in this folder matches that link. It may have been deleted.
-          </Alert.Description>
-        </Alert.Root>
-      )}
     </div>
   );
 }
@@ -895,39 +732,36 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
  * tab does not replace it: a *link* to a folder is a link to the browser.
  */
 export function useLocalBrowserNav(rootId: string): BrowserNav {
+  const navigate = useNavigate();
   const [folder, setFolder] = useState<FolderId>(rootId);
-  const [openId, setOpenId] = useState<string | null>(null);
   const [sort, setSort] = useState<SortOrder>("newest");
 
   // The tab is remounted per entity by its `key`, but a character page navigated
   // to from another character's page is the same mount with a different root.
   useEffect(() => {
     setFolder(rootId);
-    setOpenId(null);
   }, [rootId]);
 
-  // The target is built inside the memo rather than beside it: a fresh object
-  // literal on every render is a dependency that never compares equal, which
-  // would rebuild the nav — and re-run every effect keyed on it — each time.
   return useMemo(
     () => ({
-      target: (openId
-        ? { kind: "object", id: openId }
-        : { kind: "folder", id: folder }) as Target,
+      folder,
       sort,
       setSort,
       goToFolder: (id: FolderId) => {
-        setOpenId(null);
         // `null` is the *library* root, which a scoped browser has no way to
         // show and no business showing — the boundary crumb is this entity's
         // root, so that is where "up from the top" lands.
         setFolder(id ?? rootId);
       },
-      openFile: (file: FileEntry) => setOpenId(file.id),
-      closeItem: () => setOpenId(null),
-      setCurrent: (file: FileEntry) => setOpenId(file.id),
+      // **Opening a file leaves the tab, and that is the right trade now.** The
+      // viewer is a screen with an address; keeping it inside the panel would
+      // mean the one thing in this app most worth sending someone was the one
+      // thing with no link. Back returns to the entity, and the tab reopens on
+      // its root — which is where it started.
+      openFile: (file: FileEntry) => navigate(objectPath(file.id, { in: "f", id: folder })),
+      playReel: () => navigate(feedPath({ in: "recursive", id: folder })),
     }),
-    [folder, openId, rootId, sort],
+    [folder, navigate, rootId, sort],
   );
 }
 
@@ -978,9 +812,7 @@ function FolderShortcuts({ rootId, nav }: { rootId: string; nav: BrowserNav }) {
   const folders = data?.folders ?? [];
   if (folders.length === 0) return null;
 
-  // An open file overlays the page, so the folder behind it is not a place
-  // anybody is standing — only a folder target lights a chip.
-  const here = nav.target.kind === "folder" ? nav.target.id : null;
+  const here = nav.folder;
 
   return (
     <ChipRow role="group" aria-label="Folder shortcuts">

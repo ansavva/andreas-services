@@ -5,7 +5,6 @@ import {
   Alert,
   Badge,
   Button,
-  Drawer,
   Field,
   Input,
   Spinner,
@@ -42,9 +41,13 @@ export function ScenePage() {
 
   const load = useCallback(() => getScene(sceneId), [sceneId]);
   const { data, loading, error, setData } = useResource(load);
-  // One viewer for the whole board rather than one per tile: a scene holds
-  // twenty-odd frames and twenty mounted drawers is twenty portals.
-  const [viewing, setViewing] = useState<RunAsset | null>(null);
+  // Every frame on the board opens into the scene, so the viewer scrolls the
+  // storyboard in cut order — the handoff, the panels, then the clip — rather
+  // than whatever folder the files were written to.
+  const openFrame = useCallback(
+    (asset: RunAsset) => navigate(objectPath(asset.node, { in: "scene", id: sceneId })),
+    [navigate, sceneId],
+  );
 
   // The route answers with the merged shot, so the page swaps that one row in
   // rather than refetching the scene — a re-GET would re-sign every panel URL
@@ -102,7 +105,9 @@ export function ScenePage() {
           <Text variant="title">The cut</Text>
           <button
             type="button"
-            onClick={() => navigate(objectPath(data.output!.node))}
+            onClick={() =>
+              navigate(objectPath(data.output!.node, { in: "scene", id: sceneId }))
+            }
             className="w-full max-w-md overflow-hidden rounded-md border border-line bg-card
                        focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
@@ -159,7 +164,7 @@ export function ScenePage() {
                   n={index + 1}
                   bracketed={isBracketed(data.shots)}
                   onOpenRun={(run) => navigate(runPath(data.project, run))}
-                  onView={setViewing}
+                  onView={openFrame}
                   onSave={saveShot}
                 />
               ))}
@@ -167,45 +172,21 @@ export function ScenePage() {
         )}
       </section>
 
-      <FrameViewer asset={viewing} onClose={() => setViewing(null)} />
     </>
   );
 }
 
-/**
- * One frame, big.
+/*
+ * `FrameViewer` was here — a right-hand `Drawer` holding one frame at 75vh.
  *
- * A storyboard tile is 80px because a shot has several and a scene has seven of
- * them; judging whether a pose is right needs the picture at a size you can
- * actually read. Opening the node page would work and loses your place on the
- * board — a drawer keeps the board underneath.
+ * It existed because opening a frame "would work and loses your place on the
+ * board", which was true when the only alternative was the folder browser: a
+ * storyboard tile led to the file tree, and back was a different screen. The
+ * viewer is a screen with an address now, so `/o/<node>?in=scene:<id>` keeps
+ * the board one back-press away AND makes the frame linkable — which a drawer
+ * never was. It also could not be made fullscreen: `Drawer` portals to
+ * `<body>`, and nothing portalled is painted inside a fullscreen element.
  */
-function FrameViewer({ asset, onClose }: { asset: RunAsset | null; onClose: () => void }) {
-  const isVideo = (asset?.content_type ?? "").startsWith("video/");
-  return (
-    <Drawer.Root
-      open={asset !== null}
-      onOpenChange={(open: boolean) => {
-        if (!open) onClose();
-      }}
-      side="right"
-    >
-      <Drawer.Backdrop />
-      <Drawer.Panel className="flex w-full max-w-2xl flex-col gap-3 p-4">
-        <Drawer.Title>{asset?.name ?? "Frame"}</Drawer.Title>
-        {asset?.url &&
-          (isVideo ? (
-            <video src={asset.url} controls playsInline className="max-h-[75vh] w-full object-contain" />
-          ) : (
-            <img src={asset.url} alt="" className="max-h-[75vh] w-full object-contain" />
-          ))}
-        <div className="flex flex-wrap gap-2">
-          <Drawer.Close>Close</Drawer.Close>
-        </div>
-      </Drawer.Panel>
-    </Drawer.Root>
-  );
-}
 
 /** The planned runtime, which is what a scene will cost time-wise once shot. */
 function plannedRuntime(shots: Shot[]): number {

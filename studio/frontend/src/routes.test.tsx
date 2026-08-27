@@ -34,6 +34,7 @@ vi.mock("./pages/RunPage", () => ({ RunPage: () => <div>run</div> }));
 vi.mock("./pages/ScenePage", () => ({ ScenePage: () => <div>scene</div> }));
 vi.mock("./pages/MoviePage", () => ({ MoviePage: () => <div>movie</div> }));
 vi.mock("./pages/BrowsePage", () => ({ BrowsePage: () => <div>browser</div> }));
+vi.mock("./pages/ViewerPage", () => ({ ViewerPage: () => <div>viewer</div> }));
 
 import { StudioRoutes } from "./routes";
 
@@ -64,7 +65,12 @@ describe("the route table", () => {
     ["/m/movie-0001", "movie"],
     ["/f", "browser"],
     ["/f/node-0e1c8b73-6f24-4a95-b1d3-8e07c25a9f61", "browser"],
-    ["/o/node-3610c8b4-5d92-4e07-83f1-6c24a9b1e7d5", "browser"],
+    // The viewer is its own screen. This used to reach the browser, which is
+    // exactly the coupling the rework removed: opening a file meant rendering
+    // the folder tree with the file laid over it.
+    ["/o/node-3610c8b4-5d92-4e07-83f1-6c24a9b1e7d5", "viewer"],
+    // No id, which is "play this feed from the start" — see `feedPath`.
+    ["/o", "viewer"],
   ])("sends %s to the %s screen", (path, screenName) => {
     at(path);
     expect(screen.getByText(screenName)).toBeDefined();

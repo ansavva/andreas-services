@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { Alert, Badge, Button, Spinner, Text } from "@ansavva/design-system";
@@ -29,6 +29,11 @@ export function RunPage() {
 
   const load = useCallback(() => getRun(runId), [runId]);
   const { data, loading, error } = useResource(load);
+
+  // Every frame on this page opens into the run, so scrolling the viewer walks
+  // what the run produced and was given rather than the folder those files
+  // happen to sit in.
+  const RUN = useMemo(() => ({ in: "run" as const, id: runId }), [runId]);
 
   if (loading) {
     return (
@@ -92,7 +97,11 @@ export function RunPage() {
         ) : (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
             {data.outputs.map((asset) => (
-              <AssetTile key={asset.node} asset={asset} onOpen={() => navigate(objectPath(asset.node))} />
+              <AssetTile
+                key={asset.node}
+                asset={asset}
+                onOpen={() => navigate(objectPath(asset.node, RUN))}
+              />
             ))}
           </div>
         )}
@@ -119,7 +128,7 @@ export function RunPage() {
                   <AssetTile
                     key={asset.node}
                     asset={asset}
-                    onOpen={() => navigate(objectPath(asset.node))}
+                    onOpen={() => navigate(objectPath(asset.node, RUN))}
                   />
                 ))}
               </div>

@@ -3,27 +3,38 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { FolderBrowser, type BrowserNav } from "../components/browse/FolderBrowser";
 import { DEFAULT_SORT, isSortOrder, type FileEntry, type SortOrder } from "../types";
-import { folderPath, objectPath, targetFromPath, type FolderId } from "../utils/location";
+import {
+  feedPath,
+  folderPath,
+  objectPath,
+  sourceParam,
+  targetFromPath,
+  type FolderId,
+} from "../utils/location";
 
 /**
- * The library's file browser, at `/f`, `/f/<node_id>` and `/o/<node_id>`.
+ * The library's file browser, at `/f` and `/f/<node_id>`.
  *
  * **The URL is the state.** Nothing here mirrors the location into component
  * state: doing so is what makes browser back and a pasted link disagree, and
  * both have to work for a share link to mean anything. That is the whole of what
- * this page is now — the listing, the selection, the uploads and the viewer live
- * in `FolderBrowser`, which a character's and a project's Files tab render too.
+ * this page is — the listing, the selection and the uploads live in
+ * `FolderBrowser`, which a character's and a project's Files tab render too.
  *
- * The split is not tidying. Those tabs cannot be driven by the URL — the address
- * bar is spent naming the entity — so the browser had to stop reaching for the
- * router itself, and this file is what took over doing it. See `BrowserNav`.
+ * **`/o/` is not this page any more.** It used to be: an object address
+ * rendered this browser with the file open over it, which is why opening a run
+ * output landed you in the file tree. Opening a file is a navigation to
+ * `ViewerPage` now, and this page's job stops at the folder.
  */
 export function BrowsePage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
 
-  const target = useMemo(() => targetFromPath(location.pathname), [location.pathname]);
+  const folder = useMemo(() => {
+    const target = targetFromPath(location.pathname);
+    return target.kind === "folder" ? target.id : null;
+  }, [location.pathname]);
 
   const sortParam = params.get("sort");
   const sort: SortOrder = isSortOrder(sortParam) ? sortParam : DEFAULT_SORT;
@@ -52,40 +63,23 @@ export function BrowsePage() {
     [location.search, navigate],
   );
 
-  /**
-   * Closing an *item* goes back rather than pushing the folder again.
-   *
-   * Opening it pushed a history entry, so closing should undo that entry —
-   * otherwise open-then-close leaves a folder entry behind per item viewed, and
-   * the browser's back button walks a trail of the same folder over and over.
-   * Someone who arrived on a shared link has no entry to undo (`location.key` is
-   * React Router's `"default"` for the first entry in a session), so that case
-   * navigates to the folder instead of stepping out of the app.
-   */
-  const closeItem = useCallback(() => {
-    if (location.key === "default") {
-      const parent = target.kind === "folder" ? target.id : null;
-      navigate({ pathname: folderPath(parent), search: location.search }, { replace: true });
-    } else {
-      navigate(-1);
-    }
-  }, [location.key, location.search, navigate, target]);
-
   const nav: BrowserNav = useMemo(
     () => ({
-      target,
+      folder,
       sort,
       setSort,
       goToFolder,
-      openFile: (file: FileEntry) =>
-        navigate({ pathname: objectPath(file.id), search: location.search }),
-      closeItem,
-      // Scrolling the reel rewrites the URL rather than pushing to it. Twenty
-      // clips scrolled past would otherwise be twenty back presses to escape.
-      setCurrent: (file: FileEntry) =>
-        navigate({ pathname: objectPath(file.id), search: location.search }, { replace: true }),
+      // The sort rides along into the viewer so its sequence is the order the
+      // grid was showing. Anything else means clicking the third tile and
+      // arriving somewhere else in the reel.
+      openFile: (file: FileEntry) => {
+        const search = new URLSearchParams({ in: sourceParam({ in: "f", id: folder }) });
+        if (sort !== DEFAULT_SORT) search.set("sort", sort);
+        navigate({ pathname: objectPath(file.id), search: search.toString() });
+      },
+      playReel: () => navigate(feedPath({ in: "recursive", id: folder })),
     }),
-    [closeItem, goToFolder, location.search, navigate, sort, setSort, target],
+    [folder, goToFolder, navigate, sort, setSort],
   );
 
   return <FolderBrowser nav={nav} />;

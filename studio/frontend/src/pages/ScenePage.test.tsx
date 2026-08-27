@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 
 import type { SceneRecord, Shot } from "../types";
@@ -48,12 +48,26 @@ function record(over: Partial<SceneRecord> = {}): SceneRecord {
   };
 }
 
+/** Where the router ended up, so a navigation can be asserted on. */
+let landed = "";
+
+function Land() {
+  const location = useLocation();
+  landed = `${location.pathname}${location.search}`;
+  return <div>landed</div>;
+}
+
 function draw(scene: SceneRecord) {
   read.mockResolvedValue(scene);
+  landed = "";
   return render(
     <MemoryRouter initialEntries={[`/s/${ID}`]}>
       <Routes>
         <Route path="/s/:sceneId" element={<ScenePage />} />
+        {/* The board opens frames in the viewer now rather than in a drawer of
+            its own, so what a click does is *navigate* — this stands in for the
+            screen it navigates to. */}
+        <Route path="/o/:nodeId" element={<Land />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -404,10 +418,15 @@ it("draws a plate the plan names as a thumbnail, not as a filename", async () =>
   expect(screen.getByRole("button", { name: /front\.png/i })).toBeTruthy();
 });
 
-it("opens a frame large in a drawer instead of leaving the board", async () => {
+it("opens a frame in the viewer, in the scene's own context", async () => {
   // A tile is 80px because a scene holds twenty-odd of them; judging a pose
-  // needs the picture at a size you can read. Navigating to the node page would
-  // work and would lose your place on the board.
+  // needs the picture at a size you can read.
+  //
+  // This used to open a drawer, on the reasoning that navigating away "would
+  // lose your place on the board". The viewer is a real screen now: `?in=scene`
+  // makes its neighbours the storyboard rather than some folder, back returns
+  // to the board, and unlike a drawer the frame can be linked to and made
+  // fullscreen.
   draw(
     record({
       shots: [
@@ -429,8 +448,8 @@ it("opens a frame large in a drawer instead of leaving the board", async () => {
 
   fireEvent.click(screen.getByRole("button", { name: /square to camera/i }));
 
-  // The frame's own name titles the drawer, and the big image is in it.
-  expect(await screen.findByText("shot-01-p1.jpeg")).toBeTruthy();
+  await screen.findByText("landed");
+  expect(landed).toBe(`/o/node-a?in=${encodeURIComponent(`scene:${ID}`)}`);
 });
 
 it("does not offer a viewer for a frame that has not been rendered", async () => {

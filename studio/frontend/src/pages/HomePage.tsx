@@ -1,13 +1,11 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { Alert, Button, Spinner, Text } from "@ansavva/design-system";
 
 import { MediaTile } from "../components/browse/MediaTile";
 import { CharactersSection, ProjectsSection } from "../components/entity/EntitySections";
-import { ReelView } from "../components/viewer/ReelView";
 import { useReel } from "../hooks/useReel";
-import { folderPath, objectPath } from "../utils/location";
+import { feedPath, folderPath, objectPath } from "../utils/location";
 
 /**
  * What studio opens on: who there is, what is being made, and what came out most
@@ -34,7 +32,6 @@ export function HomePage() {
   // Recent is the same recursive walk "Play reel" does at the root, fetched
   // eagerly because it *is* the section — there is nothing to click first.
   const reel = useReel(null, "newest", true);
-  const [playing, setPlaying] = useState(false);
 
   const recent = reel.items.slice(0, 12);
 
@@ -54,7 +51,14 @@ export function HomePage() {
             <Button intent="ghost" size="sm" onClick={() => navigate(folderPath(null))}>
               Browse files
             </Button>
-            <Button size="sm" disabled={reel.items.length === 0} onClick={() => setPlaying(true)}>
+            {/* A navigation, like every other reel in the app now — the
+                overlay this page used to hold open could not be linked to and
+                could not be backed out of. */}
+            <Button
+              size="sm"
+              disabled={reel.items.length === 0}
+              onClick={() => navigate(feedPath({ in: "recursive", id: null }))}
+            >
               Play reel
             </Button>
           </div>
@@ -72,42 +76,23 @@ export function HomePage() {
           {recent.map((file) => (
             // Selection is a *browser* affordance and there is nothing here to
             // act on a selection with, so the tiles open and do not pick.
+            //
+            // They open into the same walk they were drawn from, so the twelve
+            // shown here are the start of the reel rather than twelve dead ends
+            // — this section is a preview of that feed, and opening one should
+            // not be a different thing from pressing Play.
             <MediaTile
               key={file.id}
               file={file}
               selected={false}
               selectionActive={false}
-              onOpen={() => navigate(objectPath(file.id))}
+              onOpen={() => navigate(objectPath(file.id, { in: "recursive", id: null }))}
               onToggleSelect={() => undefined}
             />
           ))}
         </div>
       </section>
 
-      {/*
-        The reel over home walks the whole library, exactly as it does from the
-        root of the browser, with two things left off deliberately.
-
-        It renames and deletes nothing: this page owns no listing to re-fetch
-        afterwards, and both are one press away on the clip's own page.
-
-        And it does **not** rewrite the address as it scrolls, which the browser's
-        reel does. There the address is a folder and a clip in it, so replacing it
-        is free; here it is `/`, and putting `/o/<id>` in its place would unmount
-        this page under the open reel — the route would change to the browser
-        while the overlay was still on screen.
-      */}
-      {playing && (
-        <ReelView
-          items={reel.items}
-          loading={reel.loading}
-          exhausted={reel.exhausted}
-          truncated={reel.truncated}
-          startIndex={0}
-          onLoadMore={reel.loadMore}
-          onClose={() => setPlaying(false)}
-        />
-      )}
     </>
   );
 }
