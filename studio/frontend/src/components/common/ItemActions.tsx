@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { Dropdown } from "@ansavva/design-system";
 
 import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { DotsIcon } from "./icons";
 
 interface Props {
   /** What is being acted on, written into every label. */
@@ -98,15 +99,7 @@ export function ItemActions({
         title={`Actions for ${name}`}
         className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink"
       >
-        <svg
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-          className="size-5 fill-current stroke-none"
-        >
-          <circle cx="5" cy="12" r="1.6" />
-          <circle cx="12" cy="12" r="1.6" />
-          <circle cx="19" cy="12" r="1.6" />
-        </svg>
+        <DotsIcon />
       </Dropdown.Trigger>
 
       {/* Right-aligned: the trigger sits at the end of a row, so a menu growing

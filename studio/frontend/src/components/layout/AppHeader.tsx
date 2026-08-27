@@ -6,6 +6,7 @@ import { useAuth } from "../../context/AuthContext";
 import { CHARACTERS_PATH, HOME_PATH, PROJECTS_PATH, folderPath } from "../../utils/location";
 import { ChipRow } from "../common/ChipRow";
 import { LibrarySwitcher } from "../common/LibrarySwitcher";
+import { AccountIcon } from "../common/icons";
 
 /**
  * The persistent strip: where you can go, and who you are.
@@ -128,16 +129,7 @@ function AccountMenu({ email, onSignOut }: { email: string | null; onSignOut: ()
                    hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2
                    focus-visible:outline-primary"
       >
-        <svg
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="size-5 fill-none stroke-current stroke-[1.5]"
-        >
-          <circle cx="12" cy="8" r="3.5" />
-          <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
-        </svg>
+        <AccountIcon />
       </Dropdown.Trigger>
 
       {/* Right-aligned: the trigger is the last thing on the row, so a menu

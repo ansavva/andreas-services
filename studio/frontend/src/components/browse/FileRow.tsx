@@ -6,6 +6,7 @@ import { formatBytes, formatDate } from "../../utils/format";
 import type { FileEntry } from "../../types";
 import { ItemActions } from "../common/ItemActions";
 import { RenameForm } from "../common/RenameForm";
+import { FileIcon } from "../common/icons";
 
 interface Props {
   file: FileEntry;
@@ -47,14 +48,7 @@ export function FileRow({ file, onOpen, onRename, onMove, onCopyTo, onDelete }: 
                    disabled:cursor-default disabled:opacity-60
                    focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
       >
-        <svg
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-          className="size-5 shrink-0 fill-none stroke-muted stroke-[1.5]"
-        >
-          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" />
-          <path d="M14 3v5h5" />
-        </svg>
+        <FileIcon className="size-5 shrink-0 fill-none stroke-muted stroke-[1.5]" />
 
         <span className="min-w-0 flex-1">
           <Text variant="body" className="truncate">

@@ -1,5 +1,11 @@
 import { formatDuration } from "../../utils/format";
 import type { ReelPlayback } from "../../hooks/useReelPlayback";
+import {
+  PauseIcon,
+  PlayIcon,
+  SeekBackIcon,
+  SeekForwardIcon,
+} from "../common/icons";
 
 interface Props {
   playback: ReelPlayback;
@@ -32,20 +38,18 @@ export function VideoScrubber({ playback }: Props) {
                  backdrop-blur-sm"
     >
       <TransportButton label={`Back ${SKIP_SECONDS} seconds`} onClick={() => seekBy(-SKIP_SECONDS)}>
-        <path d="M11 7 6 12l5 5" />
-        <path d="M18 7l-5 5 5 5" />
+        <SeekBackIcon />
       </TransportButton>
 
       <TransportButton label={paused ? "Play (space)" : "Pause (space)"} onClick={togglePaused}>
-        {paused ? <path d="M8 5v14l11-7Z" /> : <path d="M9 5v14M15 5v14" />}
+        {paused ? <PlayIcon /> : <PauseIcon />}
       </TransportButton>
 
       <TransportButton
         label={`Forward ${SKIP_SECONDS} seconds`}
         onClick={() => seekBy(SKIP_SECONDS)}
       >
-        <path d="M13 7l5 5-5 5" />
-        <path d="M6 7l5 5-5 5" />
+        <SeekForwardIcon />
       </TransportButton>
 
       <span className="w-10 shrink-0 text-right font-body text-[11px] tabular-nums text-white/80">
@@ -100,15 +104,7 @@ function TransportButton({
                  hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2
                  focus-visible:outline-primary"
     >
-      <svg
-        viewBox="0 0 24 24"
-        aria-hidden="true"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="size-5 fill-none stroke-current stroke-[1.5]"
-      >
-        {children}
-      </svg>
+      {children}
     </button>
   );
 }

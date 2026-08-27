@@ -6,6 +6,15 @@ import type { FileEntry } from "../../types";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
 import { RenameButton } from "../common/RenameButton";
+import {
+  CloseIcon,
+  DescribeIcon,
+  DownloadIcon,
+  FullscreenEnterIcon,
+  FullscreenExitIcon,
+  SoundOffIcon,
+  SoundOnIcon,
+} from "../common/icons";
 
 interface Props {
   file: FileEntry;
@@ -112,16 +121,8 @@ export function ViewerChrome({
           ends the clip.
         */}
         {onToggleMuted && (
-          <ChromeButton
-            label={muted ? "Unmute (m)" : "Mute (m)"}
-            onClick={onToggleMuted}
-          >
-            <path d="M11 5 6 9H3v6h3l5 4Z" />
-            {muted ? (
-              <path d="m16 9 5 6m0-6-5 6" />
-            ) : (
-              <path d="M15.5 8.5a5 5 0 0 1 0 7M18 6a9 9 0 0 1 0 12" />
-            )}
+          <ChromeButton label={muted ? "Unmute (m)" : "Mute (m)"} onClick={onToggleMuted}>
+            {muted ? <SoundOffIcon /> : <SoundOnIcon />}
           </ChromeButton>
         )}
 
@@ -134,14 +135,14 @@ export function ViewerChrome({
             onClick={onToggleDescribing}
             pressed={describing}
           >
-            <path d="M4 6h16M4 12h10M4 18h7" />
+            <DescribeIcon />
           </ChromeButton>
         )}
 
         {onRename && <RenameButton name={file.name} onRename={onRename} tone="chrome" />}
 
         <ChromeButton label="Download" onClick={() => void download()}>
-          <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />
+          <DownloadIcon />
         </ChromeButton>
 
         {fullscreenSupported && (
@@ -149,11 +150,7 @@ export function ViewerChrome({
             label={isFullscreen ? "Exit fullscreen (f)" : "Fullscreen (f)"}
             onClick={onToggleFullscreen}
           >
-            {isFullscreen ? (
-              <path d="M9 3v6H3m12-6v6h6M9 21v-6H3m12 6v-6h6" />
-            ) : (
-              <path d="M3 9V3h6M21 9V3h-6M3 15v6h6m12-6v6h-6" />
-            )}
+            {isFullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
           </ChromeButton>
         )}
 
@@ -162,7 +159,7 @@ export function ViewerChrome({
         )}
 
         <ChromeButton label="Close (Esc)" onClick={onClose}>
-          <path d="M6 6l12 12M18 6 6 18" />
+          <CloseIcon />
         </ChromeButton>
       </div>
     </div>
@@ -192,9 +189,7 @@ function ChromeButton({
                  focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary
                  ${pressed ? "bg-white/20 text-white" : "text-white/80"}`}
     >
-      <svg viewBox="0 0 24 24" aria-hidden="true" className="size-5 fill-none stroke-current stroke-[1.5]">
-        {children}
-      </svg>
+      {children}
     </button>
   );
 }

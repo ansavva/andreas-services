@@ -15,6 +15,7 @@ import {
 
 import type { CharacterIdentity, CharacterProfile, ProfileValue } from "../../types";
 import { AutoTextarea } from "../common/AutoTextarea";
+import { ChevronDownIcon } from "../common/icons";
 
 interface Props {
   /** Slug, display name and the consent flag — saved by a different route from the bible. */
@@ -692,16 +693,10 @@ function RailLink({
 
 function Chevron({ open }: { open: boolean }) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+    <ChevronDownIcon
       className={`size-4 shrink-0 fill-none stroke-current stroke-[1.5] transition-transform
                   motion-reduce:transition-none ${open ? "rotate-180" : ""}`}
-    >
-      <path d="m6 9 6 6 6-6" />
-    </svg>
+    />
   );
 }
 

@@ -5,6 +5,7 @@ import { Alert, Breadcrumbs, Button, Dialog, Spinner, Text } from "@ansavva/desi
 import { getTree } from "../../apis/studio";
 import type { Crumb, FolderEntry } from "../../types";
 import type { FolderId } from "../../utils/location";
+import { ArrowUpIcon, FolderIcon } from "../common/icons";
 
 interface Props {
   /** Which operation this is picking a destination for. */
@@ -241,17 +242,7 @@ function PickerRow({
                  disabled:hover:bg-transparent
                  focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
     >
-      <svg
-        viewBox="0 0 24 24"
-        aria-hidden="true"
-        className="size-5 shrink-0 fill-none stroke-muted stroke-[1.5]"
-      >
-        {up ? (
-          <path d="M12 19V5m0 0-6 6m6-6 6 6" strokeLinecap="round" strokeLinejoin="round" />
-        ) : (
-          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
-        )}
-      </svg>
+      {up ? <ArrowUpIcon className="size-5 shrink-0 fill-none stroke-muted stroke-[1.5]" /> : <FolderIcon className="size-5 shrink-0 fill-none stroke-muted stroke-[1.5]" />}
       <Text variant="body" className="truncate">
         {children}
       </Text>

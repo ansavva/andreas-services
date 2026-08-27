@@ -2,6 +2,7 @@ import { Checkbox } from "@ansavva/design-system";
 
 import type { FileEntry } from "../../types";
 import { MediaThumb } from "../media/MediaThumb";
+import { CheckIcon } from "../common/icons";
 
 interface Props {
   file: FileEntry;
@@ -79,15 +80,7 @@ export function MediaTile({
                     pointer-coarse:opacity-100 ${selectionActive ? "opacity-100" : "opacity-0"}`}
       >
         <Checkbox.Indicator>
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="size-3.5 fill-none stroke-current stroke-[3]"
-          >
-            <path d="m5 12.5 5 5L19 7" />
-          </svg>
+          <CheckIcon className="size-3.5 fill-none stroke-current stroke-[3]" />
         </Checkbox.Indicator>
       </Checkbox.Root>
     </div>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { RenameForm, toneStyles, type RenameTone } from "./RenameForm";
+import { PencilIcon } from "./icons";
 
 interface Props {
   /** The current name, which is what the field opens pre-filled with. */
@@ -52,16 +53,7 @@ export function RenameButton({ name, onRename, tone = "chrome", className = "" }
                   focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary
                   ${className}`}
     >
-      <svg
-        viewBox="0 0 24 24"
-        aria-hidden="true"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="size-5 fill-none stroke-current stroke-[1.5]"
-      >
-        <path d="M4 20h4l10-10a2.83 2.83 0 1 0-4-4L4 16Z" />
-        <path d="M13.5 6.5 17.5 10.5" />
-      </svg>
+      <PencilIcon />
     </button>
   );
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Input, Text } from "@ansavva/design-system";
+import { CheckIcon, CloseIcon } from "./icons";
 
 export type RenameTone = "row" | "chrome";
 
@@ -99,10 +100,10 @@ export function RenameForm({ name, onRename, onClose, tone = "row", className = 
       <div ref={fieldRef} className="flex min-w-0 items-center gap-1">
         <Input value={value} onValueChange={setValue} placeholder={name} />
         <IconButton type="submit" tone={tone} disabled={busy} label="Save name">
-          <path d="m5 12.5 5 5L19 7" />
+          <CheckIcon />
         </IconButton>
         <IconButton type="button" tone={tone} onClick={onClose} label="Cancel rename (Esc)">
-          <path d="M6 6l12 12M18 6 6 18" />
+          <CloseIcon />
         </IconButton>
       </div>
 
@@ -129,15 +130,7 @@ function IconButton({
       className={`shrink-0 rounded-md transition-colors disabled:opacity-60 ${toneStyles[tone]}
                   focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary`}
     >
-      <svg
-        viewBox="0 0 24 24"
-        aria-hidden="true"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="size-5 fill-none stroke-current stroke-[1.5]"
-      >
-        {children}
-      </svg>
+      {children}
     </button>
   );
 }

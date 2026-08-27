@@ -5,6 +5,7 @@ import { Text } from "@ansavva/design-system";
 import { describeFolder } from "../../utils/format";
 import { ItemActions } from "../common/ItemActions";
 import { RenameForm } from "../common/RenameForm";
+import { FolderIcon } from "../common/icons";
 
 interface Props {
   name: string;
@@ -48,13 +49,7 @@ export function FolderCard({ name, prefix, onOpen, onRename, onMove, onDelete }:
         className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-3 py-2.5 text-left
                    focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
       >
-        <svg
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-          className="size-5 shrink-0 fill-none stroke-muted stroke-[1.5]"
-        >
-          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
-        </svg>
+        <FolderIcon className="size-5 shrink-0 fill-none stroke-muted stroke-[1.5]" />
 
         <span className="min-w-0 flex-1">
           <Text variant="body" weight="medium" className="truncate">

@@ -27,6 +27,7 @@ import { MediaTile } from "./MediaTile";
 import { SortControl } from "./SortControl";
 import { UploadButton } from "./UploadButton";
 import { UploadStatus } from "./UploadStatus";
+import { CopyIcon, FolderIntoIcon, FolderPlusIcon } from "../common/icons";
 
 /**
  * How the browser is addressed, supplied by whoever is showing it.
@@ -433,16 +434,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
                        disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent
                        focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <svg
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="size-5 fill-none stroke-current stroke-[1.5]"
-            >
-              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
-              <path d="M12 10.5v5M9.5 13h5" />
-            </svg>
+            <FolderPlusIcon />
           </button>
         </div>
 
@@ -612,16 +604,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
               >
                 {/* Two sheets, one behind the other: the source stays, which is
                     the whole difference from the arrow on the move button. */}
-                <svg
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="size-5 fill-none stroke-current stroke-[1.5]"
-                >
-                  <rect x="9" y="9" width="12" height="12" rx="2" />
-                  <path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
-                </svg>
+                <CopyIcon />
               </button>
 
               <button
@@ -640,17 +623,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
               >
                 {/* A folder with something going into it — the destination is
                     what a move is about, and the arrow says which way. */}
-                <svg
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="size-5 fill-none stroke-current stroke-[1.5]"
-                >
-                  <path d="M2 9V7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1" />
-                  <path d="M2 13h9" />
-                  <path d="m8 16 3-3-3-3" />
-                </svg>
+                <FolderIntoIcon />
               </button>
 
               <ConfirmDeleteButton
