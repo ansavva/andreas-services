@@ -31,8 +31,9 @@
 # The consequence to know: a password changed by hand in the console is reverted
 # on the next run. Change it in WEBSITE_ADMIN_PASSWORD instead, or pass --no-converge.
 #
-# The password is set `--permanent`, so there is no FORCE_CHANGE_PASSWORD
-# challenge for the server-side USER_PASSWORD_AUTH sign-in to get stuck behind.
+# The password is set `--permanent`, so sign-in does not open on a
+# FORCE_CHANGE_PASSWORD screen. The hosted pages can serve that challenge, but
+# a password the script would revert on the next run is not worth setting.
 
 set -euo pipefail
 

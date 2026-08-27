@@ -1,12 +1,8 @@
 /**
- * Admin authentication: server-side Cognito login (USER_PASSWORD_AUTH) with the
- * resulting ID token stored in a signed, httpOnly session cookie. The token is
+ * Admin session: the ID token obtained from the hosted code exchange
+ * (`oauth.server.ts`), stored in a signed, httpOnly cookie. The token is
  * verified on every protected request and forwarded to the backend admin API.
  */
-import {
-  CognitoIdentityProviderClient,
-  InitiateAuthCommand,
-} from "@aws-sdk/client-cognito-identity-provider";
 import { CognitoJwtVerifier } from "aws-jwt-verify";
 import { createCookieSessionStorage, redirect } from "react-router";
 
@@ -39,40 +35,18 @@ function verifier() {
   return _verifier;
 }
 
-/** Authenticate against Cognito. Returns the ID token or throws with a
- *  user-safe message on invalid credentials. */
-export async function login(email: string, password: string): Promise<{ idToken: string; email: string }> {
-  const client = new CognitoIdentityProviderClient({ region: env.region });
-  try {
-    const out = await client.send(
-      new InitiateAuthCommand({
-        AuthFlow: "USER_PASSWORD_AUTH",
-        ClientId: env.cognitoClientId,
-        AuthParameters: { USERNAME: email, PASSWORD: password },
-      }),
-    );
-    const idToken = out.AuthenticationResult?.IdToken;
-    if (!idToken) {
-      // e.g. a NEW_PASSWORD_REQUIRED challenge — not supported by this simple flow.
-      throw new Error("Login could not be completed. Reset the admin password and try again.");
-    }
-    return { idToken, email };
-  } catch (err) {
-    const name = (err as { name?: string }).name;
-    if (name === "NotAuthorizedException" || name === "UserNotFoundException") {
-      throw new Error("Incorrect email or password.");
-    }
-    throw err;
-  }
+/** Verify an ID token minted by the hosted flow. Throws when invalid. */
+export async function verifyIdToken(idToken: string) {
+  return verifier().verify(idToken);
 }
 
-export async function createUserSession(idToken: string, email: string, redirectTo: string) {
+/** `Set-Cookie` for a new admin session, for callers that must send other
+ *  cookies in the same response. */
+export async function sessionCookieHeader(idToken: string, email: string): Promise<string> {
   const session = await storage.getSession();
   session.set(SESSION_KEY, idToken);
   session.set(EMAIL_KEY, email);
-  return redirect(redirectTo, {
-    headers: { "Set-Cookie": await storage.commitSession(session) },
-  });
+  return storage.commitSession(session);
 }
 
 export async function logout(request: Request, redirectTo = "/admin/login") {

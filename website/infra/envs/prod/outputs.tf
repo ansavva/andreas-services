@@ -39,6 +39,17 @@ output "cognito_user_pool_client_id" {
   value = module.auth.user_pool_client_id
 }
 
+output "cognito_auth_domain" {
+  description = "Host serving the hosted sign-in pages"
+  value       = module.auth.auth_domain
+}
+
+output "cognito_client_secret" {
+  description = "Client secret for the www Lambda's code exchange"
+  value       = module.auth.client_secret
+  sensitive   = true
+}
+
 output "intake_table_name" {
   description = "Intake DynamoDB table name, passed to the API Lambda"
   value       = module.data.intake_table_name
