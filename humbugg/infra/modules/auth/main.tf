@@ -111,9 +111,8 @@ resource "aws_cognito_user_pool" "main" {
 
   # OPTIONAL, never ON. ON forces enrolment at the next sign-in for every existing
   # account and strands anyone who cannot complete it; OPTIONAL is inert until a
-  # user enrols. There is nowhere to enrol yet — that arrives with either a
-  # settings-screen TOTP flow or Managed Login (#365) — so this is dormant
-  # capability, not a live second factor.
+  # user enrols. Enrolment now exists: the Managed Login pages below carry the
+  # TOTP flow, which is what #365 unlocked.
   mfa_configuration = "OPTIONAL"
 
   software_token_mfa_configuration {
@@ -131,6 +130,10 @@ resource "aws_cognito_user_pool" "main" {
   }
 }
 
+# The region is only ever needed to spell out a DEFAULT Cognito domain's host,
+# which the module has no other way to learn.
+data "aws_region" "current" {}
+
 resource "aws_cognito_user_pool_client" "main" {
   name         = "${var.project}-${var.environment}-app"
   user_pool_id = aws_cognito_user_pool.main.id
@@ -139,10 +142,34 @@ resource "aws_cognito_user_pool_client" "main" {
   callback_urls   = var.callback_urls
   logout_urls     = var.logout_urls
 
-  explicit_auth_flows = [
-    "ALLOW_USER_SRP_AUTH",
-    "ALLOW_REFRESH_TOKEN_AUTH",
-  ]
+  # Authorization code + PKCE against the Managed Login pages. Without
+  # `allowed_oauth_flows_user_pool_client` no /oauth2 endpoint answers at all and
+  # `callback_urls` above are inert, so this line is what makes them live.
+  # Registration is exact-match: every redirect URI the app can produce, web and
+  # custom-scheme alike, has to appear literally in those lists.
+  allowed_oauth_flows_user_pool_client = true
+  allowed_oauth_flows                  = ["code"]
+  allowed_oauth_scopes                 = ["openid", "email", "profile"]
+  supported_identity_providers         = ["COGNITO"]
+
+  # **`ALLOW_REFRESH_TOKEN_AUTH` must never come back while this block exists.**
+  # Cognito rejects the pair at apply time — `terraform validate` and `tflint`
+  # both pass on a configuration that cannot apply, so the only warning is a
+  # failed deploy. The two changed together in one apply for that reason.
+  #
+  # SRP survives because it is the last direct-auth flow left for admin and dev
+  # tooling — #373's authenticated round trip against a per-machine dev pool
+  # signs in that way. The hosted pages do NOT need it: Managed Login talks to
+  # the pool server-side and never calls InitiateAuth as this client.
+  refresh_token_rotation {
+    feature = "ENABLED"
+    # A rotated refresh token invalidates its predecessor immediately, so two
+    # requests that raced the same expiry would leave one holding a dead token.
+    # The grace window lets the loser retry with what it already had.
+    retry_grace_period_seconds = 30
+  }
+
+  explicit_auth_flows = ["ALLOW_USER_SRP_AUTH"]
 
   prevent_user_existence_errors = "ENABLED"
   enable_token_revocation       = true
@@ -154,5 +181,78 @@ resource "aws_cognito_user_pool_client" "main" {
     access_token  = "hours"
     id_token      = "hours"
     refresh_token = "days"
+  }
+}
+
+# Cognito's own palette and copy. A branding record has to EXIST for a
+# `managed_login_version = 2` domain to serve anything — see the domain below —
+# so this is not the cosmetic step it looks like. Humbugg's colours would
+# replace `use_cognito_provided_values` with an exported settings document; that
+# is a later change and a strictly optional one.
+resource "aws_cognito_managed_login_branding" "main" {
+  user_pool_id                = aws_cognito_user_pool.main.id
+  client_id                   = aws_cognito_user_pool_client.main.id
+  use_cognito_provided_values = true
+}
+
+# Where the hosted pages are served from. Exactly one shape at a time: a custom
+# domain in prod (a name on Humbugg's own certificate, aliased below), or a
+# default `<prefix>.auth.<region>.amazoncognito.com` for the per-machine dev
+# stacks — those take the default so a dev stack costs no certificate SAN, no
+# DNS record and no ~15-minute apply either way.
+#
+# `depends_on` is load-bearing, not tidiness: a v2 domain created before its
+# branding record serves "Login pages unavailable" to every visitor. That is an
+# outage, not a graceful fallback to v1.
+resource "aws_cognito_user_pool_domain" "main" {
+  domain          = var.auth_domain != null ? var.auth_domain : var.auth_domain_prefix
+  user_pool_id    = aws_cognito_user_pool.main.id
+  certificate_arn = var.auth_domain != null ? var.auth_certificate_arn : null
+
+  managed_login_version = 2
+
+  depends_on = [aws_cognito_managed_login_branding.main]
+
+  lifecycle {
+    precondition {
+      condition     = (var.auth_domain == null) != (var.auth_domain_prefix == null)
+      error_message = "Set exactly one of auth_domain (a custom domain) or auth_domain_prefix (a default Cognito domain)."
+    }
+
+    precondition {
+      condition     = var.auth_domain == null || (var.auth_certificate_arn != null && var.route53_zone_id != null)
+      error_message = "auth_domain also requires auth_certificate_arn and route53_zone_id."
+    }
+  }
+}
+
+# A Cognito custom domain is a CloudFront distribution Cognito owns, so it needs
+# the same A + AAAA alias pair any CloudFront alias does. The default-domain case
+# resolves on its own and creates neither.
+resource "aws_route53_record" "auth_a" {
+  count = var.auth_domain != null ? 1 : 0
+
+  zone_id = var.route53_zone_id
+  name    = var.auth_domain
+  type    = "A"
+
+  alias {
+    name                   = aws_cognito_user_pool_domain.main.cloudfront_distribution
+    zone_id                = aws_cognito_user_pool_domain.main.cloudfront_distribution_zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "auth_aaaa" {
+  count = var.auth_domain != null ? 1 : 0
+
+  zone_id = var.route53_zone_id
+  name    = var.auth_domain
+  type    = "AAAA"
+
+  alias {
+    name                   = aws_cognito_user_pool_domain.main.cloudfront_distribution
+    zone_id                = aws_cognito_user_pool_domain.main.cloudfront_distribution_zone_id
+    evaluate_target_health = false
   }
 }

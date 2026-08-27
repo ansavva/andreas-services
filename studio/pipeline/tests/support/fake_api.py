@@ -1305,16 +1305,26 @@ class FakeApi:
     def _r_phrasebook(self, method, body, params):
         if method == "GET":
             model = params.get("model")
-            return [t for t in self.terms if not model or t["model"] == model]
+            # `{"terms": [...]}`, which is what the route returns. This answered
+            # a BARE LIST, and the difference is the whole reason the CLI read an
+            # empty phrasebook against every real library while the suite passed:
+            # `entities.phrasebook` sent the response through `_as_list`, which
+            # answers `[]` for anything that is not a list.
+            return {"terms": [t for t in self.terms
+                              if not model or t["model"] == model]}
         if method != "POST":
             raise FakeError(405, method)
         if any(t["model"] == body["model"] and t["avoid"] == body["avoid"]
                for t in self.terms):
             raise FakeError(409, f"{body['avoid']!r} is already recorded for "
                                  f"{body['model']}")
+        # `created`, matching `catalog.add_term`. This said `added` and a
+        # date-only stamp, which the real backend has never written — the fake
+        # was the more capable of the two, so the suite passed while
+        # `phrasebook show` printed no dates at all against a real library.
         term = {"model": body["model"], "avoid": body["avoid"], "use": body["use"],
                 "note": body.get("note") or "", "replicate": body.get("replicate"),
-                "added": _now()[:10]}
+                "created": _now()}
         self.terms.append(term)
         return term
 

@@ -30,6 +30,31 @@ if [ -f "$REPO/studio/scripts/dev-setup.sh" ]; then
   bash "$REPO/studio/scripts/dev-setup.sh" >&2 || true
 fi
 
+# Worktrees: the installed agent skills (expo/eas/design-system/runpod/...) are
+# machine-local and gitignored — .agents/, the .claude/skills/* symlinks and
+# skills-lock.json — so a fresh worktree checkout has only the committed skills.
+# Rather than re-running `npx skills add` per worktree (network, duplicated
+# trees), link each missing skill straight to the main checkout's .agents/skills
+# store. Absolute links on purpose: the main checkout's own symlinks are
+# relative (../../.agents/skills/...) and would dangle here, where .agents/ does
+# not exist. Per-entry rather than the whole directory so committed skills in
+# the worktree are left alone. skills-lock.json is linked too so dev-setup.sh's
+# ensure_skills keeps short-circuiting. Non-fatal, like everything else here.
+COMMON_DIR="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+MAIN_ROOT="$(dirname "$COMMON_DIR")"
+if [ -n "$COMMON_DIR" ] && [ "$MAIN_ROOT" != "$REPO" ] && [ -d "$MAIN_ROOT/.agents/skills" ]; then
+  mkdir -p "$REPO/.claude/skills"
+  for src in "$MAIN_ROOT"/.claude/skills/*; do
+    [ -e "$src" ] || continue
+    name="$(basename "$src")"
+    target="$(readlink -f "$src" 2>/dev/null || echo "$src")"
+    [ -e "$REPO/.claude/skills/$name" ] || ln -s "$target" "$REPO/.claude/skills/$name" || true
+  done
+  if [ -f "$MAIN_ROOT/skills-lock.json" ] && [ ! -e "$REPO/skills-lock.json" ]; then
+    ln -s "$MAIN_ROOT/skills-lock.json" "$REPO/skills-lock.json" || true
+  fi
+fi
+
 # Cloud-only steps below. Local dev environments already have these set up.
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0

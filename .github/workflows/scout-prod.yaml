@@ -241,6 +241,8 @@ jobs:
             --name /scout/prod/cognito-user-pool-id --value "$(tf cognito_user_pool_id)"
           aws ssm put-parameter --overwrite --type String \
             --name /scout/prod/cognito-client-id --value "$(tf cognito_user_pool_client_id)"
+          aws ssm put-parameter --overwrite --type String \
+            --name /scout/prod/cognito-auth-domain --value "$(tf cognito_auth_domain)"
 
   # ---------------------------------------------------------------------------
   # Bootstrap the first Cognito admin user (the pool is admin-create-user only).
@@ -458,6 +460,7 @@ jobs:
           # Vite inlines these; empty ships an SPA whose login can never succeed.
           put VITE_COGNITO_USER_POOL_ID /scout/prod/cognito-user-pool-id
           put VITE_COGNITO_CLIENT_ID    /scout/prod/cognito-client-id
+          put VITE_COGNITO_DOMAIN       /scout/prod/cognito-auth-domain
 
       - name: Install dependencies
         run: cd scout/frontend && npm ci

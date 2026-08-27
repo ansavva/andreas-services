@@ -60,7 +60,8 @@ def add_term():
         raise ValidationError("model and avoid may not contain '#'")
 
     try:
-        record = catalog.add_term(g.library, model, avoid, use, body.get("note"))
+        record = catalog.add_term(g.library, model, avoid, use, body.get("note"),
+                                  body.get("replicate"))
     except ConflictError as conflict:
         return support.structured("conflict", str(conflict), 409)
     return jsonify(record), 201

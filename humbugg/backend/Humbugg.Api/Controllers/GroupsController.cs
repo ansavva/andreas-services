@@ -22,6 +22,14 @@ public sealed class GroupsController(IGroupService groups) : ControllerBase
     public Task<GroupDetail> Update(string groupId, [FromBody] UpdateGroupRequest request, CancellationToken cancellationToken) =>
         groups.UpdateAsync(groupId, request, cancellationToken);
 
+    [HttpPut("{groupId}/customization")]
+    public Task<GroupDetail> Customize(string groupId, [FromBody] UpdateCustomizationRequest request, CancellationToken cancellationToken) =>
+        groups.UpdateCustomizationAsync(groupId, request, cancellationToken);
+
+    [AllowAnonymous, HttpGet("{groupId}/invitation")]
+    public Task<InvitationPreview> Invitation(string groupId, [FromQuery(Name = "invite_token")] string? inviteToken, CancellationToken cancellationToken) =>
+        groups.GetInvitationAsync(groupId, inviteToken, cancellationToken);
+
     [HttpDelete("{groupId}")]
     public async Task<IActionResult> Delete(string groupId, CancellationToken cancellationToken)
     {
@@ -58,6 +66,14 @@ public sealed class GroupsController(IGroupService groups) : ControllerBase
     public Task<Membership> Participation(string groupId, string memberId, [FromBody] ParticipationRequest request, CancellationToken cancellationToken) =>
         groups.UpdateParticipationAsync(groupId, memberId, request, cancellationToken);
 
+    [HttpPatch("{groupId}/members/{memberId}/organizer-role")]
+    public Task<Membership> OrganizerRole(
+        string groupId,
+        string memberId,
+        [FromBody] OrganizerRoleRequest request,
+        CancellationToken cancellationToken) =>
+        groups.UpdateOrganizerRoleAsync(groupId, memberId, request, cancellationToken);
+
     [HttpPut("{groupId}/exclusions")]
     public Task<GroupDetail> Exclusions(string groupId, [FromBody] ExclusionsRequest request, CancellationToken cancellationToken) =>
         groups.SetExclusionsAsync(groupId, request, cancellationToken);
@@ -69,7 +85,11 @@ public sealed class GroupsController(IGroupService groups) : ControllerBase
     public Task<GroupDetail> Reset(string groupId, CancellationToken cancellationToken) => groups.ResetAsync(groupId, cancellationToken);
 
     [HttpGet("{groupId}/assignment")]
-    public Task<RecipientAssignment> Assignment(string groupId, CancellationToken cancellationToken) => groups.GetAssignmentAsync(groupId, cancellationToken);
+    public Task<RecipientAssignment> Assignment(
+        string groupId,
+        [FromQuery(Name = "draw_version")] string? drawVersion,
+        CancellationToken cancellationToken) =>
+        groups.GetAssignmentAsync(groupId, drawVersion, cancellationToken);
 
     [HttpPost("{groupId}/assignment/reveal")]
     public Task<RevealResponse> Reveal(string groupId, [FromBody] RevealRequest request, CancellationToken cancellationToken) =>

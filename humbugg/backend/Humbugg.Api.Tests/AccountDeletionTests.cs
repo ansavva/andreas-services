@@ -28,7 +28,7 @@ public sealed class AccountDeletionTests
     public async Task DeletingAccountDeletesGroupsTheUserOrganizes()
     {
         var world = new World();
-        world.Groups.Add(Group("g-owned", GroupStatus.Open));
+        world.Groups.Add(Group("g-owned", GroupStatus.Open) with { OwnerUserId = "user" });
         world.Members.Items.Add(Member("g-owned", "user", organizer: true));
         world.Members.Items.Add(Member("g-owned", "other", organizer: false));
 
@@ -106,7 +106,7 @@ public sealed class AccountDeletionTests
     {
         var world = new World();
         world.Profiles.Items["user"] = new ProfileRecord("user", "Alex", "now", "now");
-        world.Groups.Add(Group("g-owned", GroupStatus.Open));
+        world.Groups.Add(Group("g-owned", GroupStatus.Open) with { OwnerUserId = "user" });
         world.Members.Items.Add(Member("g-owned", "user", organizer: true));
 
         await world.Deletion.DeleteAsync(TestContext.Current.CancellationToken);
@@ -200,13 +200,14 @@ public sealed class AccountDeletionTests
         public InMemoryMembers Members { get; } = new();
         public CapturingAudit Audit { get; } = new();
         public FakeAnonymizer Anonymizer { get; } = new();
+        public FakeWishes Wishes { get; } = new();
         public AccountDeletionService Deletion { get; }
         public GroupService GroupService { get; }
 
         public World()
         {
-            Deletion = new AccountDeletionService(User, Profiles, Groups, Members, Audit, Anonymizer);
-            GroupService = new GroupService(User, Profiles, Groups, Members, new MatchingService(), new PlanCatalog(new()), Audit, new NoopAnalytics(),
+            Deletion = new AccountDeletionService(User, Profiles, Groups, Members, Wishes, Audit, Anonymizer);
+            GroupService = new GroupService(User, Profiles, Groups, Members, Wishes, new MatchingService(), new PlanCatalog(new()), Audit, new NoopAnalytics(),
                 new HumbuggSettings("us-east-1", "us-east-1", "pool", "client", ["http://localhost:5173"], "http://localhost:5173", null,
                     "profiles", "groups", "members", "draws", "audit", "analytics"));
         }

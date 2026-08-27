@@ -179,7 +179,11 @@ builder.Services.AddScoped<IEmailPreferenceGate, AccountEmailPreferenceGate>();
 builder.Services.AddScoped<ITransactionalEmailService, TransactionalEmailService>();
 builder.Services.AddScoped<IProfileRepository, ProfileRepository>();
 builder.Services.AddScoped<IGroupRepository, GroupRepository>();
+builder.Services.AddScoped<ITemplateRepository, TemplateRepository>();
 builder.Services.AddScoped<IMembershipRepository, MembershipRepository>();
+builder.Services.AddScoped<IWishRepository, WishRepository>();
+builder.Services.AddScoped<IInvitationRepository, InvitationRepository>();
+builder.Services.AddScoped<IReminderRepository, ReminderRepository>();
 builder.Services.AddScoped<IAuditRepository, AuditRepository>();
 builder.Services.AddScoped<IAuditActorAnonymizer, AuditActorAnonymizer>();
 builder.Services.AddScoped<IAnalyticsSink, DynamoDbAnalyticsSink>();
@@ -190,6 +194,13 @@ builder.Services.AddScoped<IAuditTrail, AuditTrail>();
 builder.Services.AddScoped<IProductAnalytics, ProductAnalytics>();
 builder.Services.AddScoped<IProfileService, ProfileService>();
 builder.Services.AddScoped<IGroupService, GroupService>();
+builder.Services.AddScoped<IWishService, WishService>();
+builder.Services.AddScoped<IInvitationService, InvitationService>();
+builder.Services.AddScoped<ILateParticipantService, LateParticipantService>();
+builder.Services.AddScoped<ReminderService>();
+builder.Services.AddScoped<IReminderService>(services => services.GetRequiredService<ReminderService>());
+builder.Services.AddScoped<IReminderProcessor>(services => services.GetRequiredService<ReminderService>());
+builder.Services.AddScoped<IExchangeTemplateService, ExchangeTemplateService>();
 builder.Services.AddScoped<IAccountDeletionService, AccountDeletionService>();
 builder.Services.AddScoped<IDataExportService, DataExportService>();
 builder.Services.AddScoped<IBillingService, BillingService>();
@@ -235,7 +246,11 @@ public sealed record HumbuggSettings(
     string AppBucket = "",
     string AvatarBaseUrl = "http://localhost:5173",
     string? S3EndpointUrl = null,
-    string BillingRecordsTable = "humbugg-billing")
+    string BillingRecordsTable = "humbugg-billing",
+    string WishesTable = "humbugg-wishes",
+    string InvitationsTable = "humbugg-invitations",
+    string RemindersTable = "humbugg-reminders",
+    string TemplatesTable = "humbugg-templates")
 {
     public static HumbuggSettings FromEnvironment()
     {
@@ -263,7 +278,11 @@ public sealed record HumbuggSettings(
             Environment.GetEnvironmentVariable("HUMBUGG_APP_BUCKET") ?? "",
             (Environment.GetEnvironmentVariable("HUMBUGG_AVATAR_BASE_URL")?.TrimEnd('/')) ?? appBaseUrl,
             Environment.GetEnvironmentVariable("S3_ENDPOINT_URL"),
-            RequiredTable("HUMBUGG_BILLING_TABLE"));
+            RequiredTable("HUMBUGG_BILLING_TABLE"),
+            RequiredTable("HUMBUGG_WISHES_TABLE"),
+            RequiredTable("HUMBUGG_INVITATIONS_TABLE"),
+            RequiredTable("HUMBUGG_REMINDERS_TABLE"),
+            RequiredTable("HUMBUGG_TEMPLATES_TABLE"));
     }
 
     // Table names are per-environment and carry no safe default: prod, each
@@ -274,7 +293,7 @@ public sealed record HumbuggSettings(
     // fall back to (humbugg-audit-events, humbugg-billing) were pre-rename
     // tables that have since been deleted outright.
     //
-    // The deploy workflow sets all eight; dev-aws-setup.sh writes all eight
+    // The deploy workflow sets all eleven; dev-aws-setup.sh writes all eleven
     // into humbugg/backend/.env from Terraform outputs. A missing one means the
     // environment is genuinely misconfigured, so fail at startup and say which.
     private static string RequiredTable(string variable) =>

@@ -79,8 +79,15 @@ Browser ──▶ CloudFront (www + apex)
 - **No SES.** Intake submissions are stored in DynamoDB only and reviewed in the
   Cognito-protected `/admin` dashboard. Single admin user, bootstrapped via
   `scripts/create-admin-user.sh`.
+- **Admin sign-in is Cognito Managed Login** at `website-auth.andreas.services`.
+  The client is confidential: `admin/login` redirects to hosted authorize,
+  `admin/callback` exchanges the code in the SSR Lambda and stores the ID token
+  in the 8h session cookie. **No refresh token is stored** — expiry bounces back
+  through authorize. Redirect URIs are exact-match at Cognito, so they are built
+  from `PUBLIC_ORIGIN`, never from `request.url` (CloudFront strips Host).
 - **Server-only code** lives in `frontend/app/lib/*.server.ts` (env, api client,
-  Cognito session, markdown loader) so it is stripped from the browser bundle.
+  Cognito session + OAuth, markdown loader) so it is stripped from the browser
+  bundle.
 - **Companion blog**: markdown files in `frontend/app/content/writing/*.md`
   (frontmatter: `title`, `date`, `description`, `videoUrl`, optional `ogImage`),
   bundled at build via `import.meta.glob`. Adding a post = adding a file.

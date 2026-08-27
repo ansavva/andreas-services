@@ -1,5 +1,6 @@
 using System.Net.Mail;
 using System.Text.Encodings.Web;
+using Humbugg.Api.Models;
 
 namespace Humbugg.Api.Services.Email.Core;
 
@@ -10,7 +11,8 @@ public sealed record InvitationEmail(
     string RecipientName,
     string OrganizerName,
     string ExchangeName,
-    Uri InvitationUrl);
+    Uri InvitationUrl,
+    ExchangeCustomization? Customization = null);
 
 /// <summary>Contains the application data needed to render an exchange reminder.</summary>
 /// <remarks><see cref="RecipientUserId"/> is the recipient's Humbugg account id, used to honor their
@@ -22,7 +24,8 @@ public sealed record ReminderEmail(
     string ExchangeName,
     string Reminder,
     Uri ExchangeUrl,
-    string? RecipientUserId = null);
+    string? RecipientUserId = null,
+    ExchangeCustomization? Customization = null);
 
 /// <summary>Contains the application data needed to announce a completed draw.</summary>
 public sealed record DrawCompletedEmail(
@@ -30,7 +33,8 @@ public sealed record DrawCompletedEmail(
     string ToAddress,
     string RecipientName,
     string ExchangeName,
-    Uri ExchangeUrl);
+    Uri ExchangeUrl,
+    ExchangeCustomization? Customization = null);
 
 /// <summary>Contains the application data needed to announce an available assignment.</summary>
 public sealed record AssignmentAvailableEmail(
@@ -38,7 +42,8 @@ public sealed record AssignmentAvailableEmail(
     string ToAddress,
     string RecipientName,
     string ExchangeName,
-    Uri AssignmentUrl);
+    Uri AssignmentUrl,
+    ExchangeCustomization? Customization = null);
 
 /// <summary>Contains the application data needed to render a general exchange update.</summary>
 /// <remarks><see cref="RecipientUserId"/> is the recipient's Humbugg account id, used to honor their
@@ -51,7 +56,8 @@ public sealed record AccountExchangeEventEmail(
     string EventSummary,
     string ActionLabel,
     Uri ExchangeUrl,
-    string? RecipientUserId = null);
+    string? RecipientUserId = null,
+    ExchangeCustomization? Customization = null);
 
 /// <summary>
 /// Renders Humbugg-owned product copy into transport-neutral transactional messages.
@@ -97,7 +103,7 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
             intro,
             "View your invitation",
             input.InvitationUrl,
-            "This invitation is for an exchange you were invited to join.");
+            "This invitation is for an exchange you were invited to join.", customization: input.Customization);
     }
 
     /// <inheritdoc />
@@ -115,7 +121,7 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
             "Open the exchange",
             input.ExchangeUrl,
             "You are receiving this reminder because you participate in this exchange.",
-            input.RecipientUserId);
+            input.RecipientUserId, input.Customization);
     }
 
     /// <inheritdoc />
@@ -132,7 +138,7 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
             $"The draw for {exchange} is complete. Your private assignment is ready.",
             "View your assignment",
             input.ExchangeUrl,
-            "Only you can view your assignment after signing in.");
+            "Only you can view your assignment after signing in.", customization: input.Customization);
     }
 
     /// <inheritdoc />
@@ -149,7 +155,7 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
             $"Your private assignment for {exchange} is now available.",
             "View your private assignment",
             input.AssignmentUrl,
-            "Humbugg never includes the recipient's name in email. Sign in to reveal it privately.");
+            "Humbugg never includes the recipient's name in email. Sign in to reveal it privately.", customization: input.Customization);
     }
 
     /// <inheritdoc />
@@ -167,7 +173,7 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
             Text(input.ActionLabel),
             input.ExchangeUrl,
             "This is an account-related update for an exchange you organize or participate in.",
-            input.RecipientUserId);
+            input.RecipientUserId, input.Customization);
     }
 
     /// <summary>
@@ -183,7 +189,8 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
         string actionLabel,
         Uri actionUrl,
         string reason,
-        string? recipientUserId = null)
+        string? recipientUserId = null,
+        ExchangeCustomization? customization = null)
     {
         ValidateAddress(toAddress);
         ArgumentNullException.ThrowIfNull(actionUrl);
@@ -195,6 +202,10 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
         var safeLabel = HtmlEncoder.Default.Encode(actionLabel);
         var safeUrl = HtmlEncoder.Default.Encode(actionUrl.AbsoluteUri);
         var safeReason = HtmlEncoder.Default.Encode(reason);
+        var primary = customization?.PrimaryColor is { Length: 7 } color && color[0] == '#' ? color : "#7C2D12";
+        var customCopy = string.Join(" ", new[] { customization?.Greeting, customization?.Instructions }
+            .Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => Text(value!)));
+        var safeCustomCopy = HtmlEncoder.Default.Encode(customCopy);
         var html = $$"""
             <!doctype html>
             <html lang="en">
@@ -203,10 +214,11 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
                 <meta name="viewport" content="width=device-width, initial-scale=1">
                 <title>{{HtmlEncoder.Default.Encode(subject)}}</title>
               </head>
-              <body>
+              <body style="color:#1f2937">
                 <main>
-                  <h1>{{HtmlEncoder.Default.Encode(subject)}}</h1>
+                  <h1><span style="color:{{primary}}">{{HtmlEncoder.Default.Encode(subject)}}</span></h1>
                   <p>Hello {{safeRecipient}},</p>
+                  {{(safeCustomCopy.Length == 0 ? "" : $"<p>{safeCustomCopy}</p>")}}
                   <p>{{safeIntro}}</p>
                   <p><a href="{{safeUrl}}">{{safeLabel}}</a></p>
                   <p>{{safeReason}}</p>
@@ -215,7 +227,7 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
               </body>
             </html>
             """;
-        var text = $"{subject}\n\nHello {recipientName},\n\n{intro}\n\n{actionLabel}: {actionUrl.AbsoluteUri}\n\n{reason}\n\n— Humbugg";
+        var text = $"{subject}\n\nHello {recipientName},\n\n{(customCopy.Length == 0 ? "" : customCopy + "\n\n")}{intro}\n\n{actionLabel}: {actionUrl.AbsoluteUri}\n\n{reason}\n\n— Humbugg";
 
         return new TransactionalEmail(
             EmailMessageId.Create(category, eventId, toAddress),

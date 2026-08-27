@@ -37,7 +37,7 @@ the system on user/organizer action or when a legal record reaches the end of it
 | 7 | **Product analytics** | `event_type`, `plan`, `group_id` surrogate, timestamp, allow-listed aggregate dimensions | `humbugg-prod-analytics-events` | Server (`GroupService`) | Retained; **contains no PII by construction** — wishlist/address/email/token/assignment are structurally impossible to record (`docs/analytics.md`) |
 | 8 | **Transactional email metadata** | message id, recipient reference, delivery state | `humbugg-prod-email-messages` | Email pipeline | **90-day TTL** (only TTL in the service) |
 | 9 | **Billing / customer records** | Stripe customer id, payment/entitlement history, invoices | **Stripe** (test mode today; live is #159) | Stripe checkout | Under Stripe + financial-record retention; **not** in the product-profile store; deletion anonymizes the link, never erases the financial record |
-| 10 | **Client-side storage** | Cognito tokens (Amplify → `localStorage`); functional `sessionStorage` keys | User's browser | SPA | Session / until sign-out or cleared — see §6 |
+| 10 | **Client-side storage** | Cognito tokens (`localStorage` on web, the OS keychain on a device); functional `sessionStorage` keys | User's browser or device | Product app | Session / until sign-out or cleared — see §6 |
 
 Humbugg does **not** collect special-category data (Art. 9) and does not knowingly serve children.
 
@@ -84,8 +84,12 @@ exclusions and re-draw. No human-review workflow is required for a Secret-Santa 
 
 ## 4. Consent management (Art. 7)
 
-- **Terms & Privacy consent at signup (#188).** Signup requires an active, unchecked-by-default
-  checkbox agreeing to the current Terms and Privacy Policy. Consent is recorded server-side with at
+- **Terms & Privacy consent at account creation (#188).** An active, unchecked-by-default checkbox
+  agreeing to the current Terms and Privacy Policy gates the **profile-setup form**, which is the
+  first screen a new account reaches and one it cannot get past — the backend rejects a first
+  profile save that carries no valid consent. The checkbox sat on the signup form until sign-up
+  became a Cognito hosted page, which cannot carry Humbugg's own terms (#365). Consent is recorded
+  server-side with at
   minimum the **policy version** and a **UTC timestamp** associated with the user, so it can be
   evidenced (Art. 7(1)). The policy version references `POLICY_VERSION` in
   `frontend/src/config/policies` so it stays in sync when policies change. The data export (#189)
@@ -120,9 +124,9 @@ SDK**. What the SPA stores:
 
 | Key / store | Purpose | Category | Lifetime |
 |---|---|---|---|
-| Cognito tokens (Amplify → `localStorage`) | Keep the user signed in; authorize API calls | **Strictly necessary** | Until sign-out / token expiry |
+| Cognito tokens (`humbugg.auth.*` in `localStorage` on web, `expo-secure-store` on a device) | Keep the user signed in; authorize API calls | **Strictly necessary** | Until sign-out / token expiry |
 | `humbugg:returnTo` (`sessionStorage`) | Return the user to their destination after auth | Functional | Tab session |
-| `humbugg:email` (`sessionStorage`) | Pre-fill email across the auth/confirm steps | Functional | Tab session |
+| `humbugg:oauthVerifier`, `humbugg:oauthState` (`sessionStorage`) | Carry the PKCE verifier and CSRF state across the redirect to the hosted sign-in page | **Strictly necessary** | Deleted at the end of the sign-in it belongs to |
 | `humbugg:join:{groupId}` (`sessionStorage`) | Preserve an invite token through the sign-in redirect | Functional | Tab session |
 | `humbugg:invite:{groupId}` (`sessionStorage`) | Remember a freshly minted invite URL in the organizer view | Functional | Tab session |
 

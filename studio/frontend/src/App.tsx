@@ -1,27 +1,49 @@
 import { useEffect, useMemo, type ReactNode } from "react";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 
 import { Alert, Spinner } from "@ansavva/design-system";
 
-import { isAuthConfigured } from "./amplify";
-import { LoginForm } from "./components/auth/LoginForm";
+import { CALLBACK_PATH, login } from "./auth/oauth";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { LibraryProvider, useLibrary } from "./context/LibraryContext";
 import { StudioRoutes } from "./routes";
 
+/**
+ * Signed in, or on the way to Cognito's hosted sign-in page.
+ *
+ * **There is no in-app form to render any more.** A signed-out visitor is sent
+ * to Managed Login, which owns the password, the forced first change, the
+ * reset and the TOTP challenge — all four of which the deleted
+ * `components/auth/LoginForm.tsx` either faked or could not do. So the
+ * signed-out branch is a redirect and a spinner, not a screen.
+ *
+ * The redirect is in an effect rather than in the render path because it is a
+ * navigation: building the authorize URL hashes a PKCE verifier, which is
+ * async, and starting that during render would fire it on every re-render.
+ */
 function Gate({ children }: { children: ReactNode }) {
-  const { authenticated, loading } = useAuth();
+  const { authenticated, loading, configured } = useAuth();
+  const { pathname, search } = useLocation();
 
-  if (!isAuthConfigured) {
+  useEffect(() => {
+    if (!configured || loading || authenticated) return;
+    // Where they were headed, so the hosted round trip lands them back on it
+    // rather than on home. The module-level `login`, not the context's: the
+    // context value is rebuilt on every auth state change, and depending on it
+    // here would re-fire the redirect.
+    void login(`${pathname}${search}`);
+  }, [authenticated, configured, loading, pathname, search]);
+
+  if (!configured) {
     return (
       <div className="flex min-h-full items-center justify-center p-6">
         <div className="max-w-md">
           <Alert.Root intent="warning">
             <Alert.Title>Auth is not configured</Alert.Title>
             <Alert.Description>
-              Set VITE_COGNITO_USER_POOL_ID and VITE_COGNITO_CLIENT_ID (see .env.local.example).
+              Set VITE_COGNITO_CLIENT_ID and VITE_COGNITO_DOMAIN (see .env.local.example).
             </Alert.Description>
           </Alert.Root>
         </div>
@@ -29,15 +51,40 @@ function Gate({ children }: { children: ReactNode }) {
     );
   }
 
-  if (loading) {
+  if (!authenticated) {
     return (
       <div className="flex min-h-full items-center justify-center">
-        <Spinner size="lg" label="Restoring your session" />
+        <Spinner size="lg" label={loading ? "Restoring your session" : "Taking you to sign in"} />
       </div>
     );
   }
 
-  return authenticated ? <>{children}</> : <LoginForm />;
+  return <>{children}</>;
+}
+
+/**
+ * The gate, and everything behind it.
+ *
+ * Split out of `App` so `/auth/callback` can skip it: that route completes
+ * sign-in, so it necessarily renders with no session, and the gate would bounce
+ * it back to the hosted page in a loop. It cannot simply live inside the gate
+ * either — `LibraryProvider` below fetches on mount, and there is no token to
+ * fetch with until the exchange this bypass exists for has finished.
+ */
+function GatedApp() {
+  const { pathname } = useLocation();
+
+  if (pathname === CALLBACK_PATH) return <StudioRoutes />;
+
+  return (
+    <Gate>
+      {/* Inside the gate: the library list is an authenticated call, and there
+          is no token to make it with before sign-in. */}
+      <LibraryProvider>
+        <LibraryGate />
+      </LibraryProvider>
+    </Gate>
+  );
 }
 
 /**
@@ -105,8 +152,9 @@ function LibraryGate() {
  *
  * Every screen behind it makes an authenticated call on mount — every `/api`
  * route is behind the Cognito authorizer — so a page rendered before sign-in
- * would 401 on a link that is perfectly good. Signing in leaves the URL where it
- * was, and the screen it names renders on the far side of it.
+ * would 401 on a link that is perfectly good. The URL is stashed before the
+ * hosted round trip and restored after it, so the screen a link named renders
+ * on the far side of signing in.
  *
  * The route table itself is in `routes.tsx`. See there for what each shape means.
  */
@@ -131,16 +179,14 @@ export function App() {
   );
 
   return (
+    // `GatedApp` rather than the gate inline: it has to read the location to
+    // let `/auth/callback` through unauthenticated, and only a child of the
+    // router can. The query client wraps everything, including that path —
+    // clearing the cache on a library switch has to outlive any one route.
     <QueryClientProvider client={client}>
       <AuthProvider>
         <BrowserRouter>
-          <Gate>
-            {/* Inside the gate: the library list is an authenticated call, and
-                there is no token to make it with before sign-in. */}
-            <LibraryProvider>
-              <LibraryGate />
-            </LibraryProvider>
-          </Gate>
+          <GatedApp />
         </BrowserRouter>
       </AuthProvider>
     </QueryClientProvider>

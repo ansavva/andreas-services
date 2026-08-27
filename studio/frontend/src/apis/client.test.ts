@@ -3,7 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // No user pool in a test, and none needed: what is under test is the header the
 // client puts on a request, not the token. `isAuthConfigured` false is also the
 // bare-checkout state, so this exercises the path a developer runs locally.
-vi.mock("../amplify", () => ({ isAuthConfigured: false }));
+vi.mock("../auth/oauth", () => ({
+  isAuthConfigured: () => false,
+  getIdToken: () => null,
+  refreshTokens: () => Promise.reject(new Error("not signed in")),
+}));
 
 import { apiGet, setLibrary } from "./client";
 

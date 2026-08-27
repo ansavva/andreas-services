@@ -15,6 +15,8 @@ internal interface IMembershipRepository
     Task<MembershipRecord> CreateAsync(string groupId, string userId, string displayName, bool organizer, CancellationToken cancellationToken = default);
     Task<MembershipRecord> UpdatePrivateAsync(string memberId, string wishlist, string avoidances, Address address, CancellationToken cancellationToken = default);
     Task<MembershipRecord> UpdateParticipationAsync(string memberId, bool participating, CancellationToken cancellationToken = default);
+    Task<MembershipRecord> UpdateOrganizerAsync(string memberId, bool organizer, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("This membership repository does not support organizer role updates.");
     Task AnonymizeAsync(string memberId, string pseudonym, string displayName, CancellationToken cancellationToken = default);
     Task DeleteAsync(string memberId, CancellationToken cancellationToken = default);
     Task DeleteByGroupAsync(string groupId, CancellationToken cancellationToken = default);
@@ -57,9 +59,7 @@ internal sealed class MembershipRepository(IAmazonDynamoDB db, HumbuggSettings s
 
     public async Task<MembershipRecord> CreateAsync(string groupId, string userId, string displayName, bool organizer, CancellationToken cancellationToken = default)
     {
-        var now = DateTimeOffset.UtcNow.ToString("O");
-        var memberId = MemberId(groupId, userId);
-        var record = new MembershipRecord(memberId, groupId, userId, displayName, organizer, true, "", "", new(), now, now);
+        var record = NewRecord(groupId, userId, displayName, organizer);
         await db.PutItemAsync(new PutItemRequest
         {
             TableName = settings.GroupMembersTable,
@@ -76,6 +76,13 @@ internal sealed class MembershipRepository(IAmazonDynamoDB db, HumbuggSettings s
     public Task<MembershipRecord> UpdateParticipationAsync(string memberId, bool participating, CancellationToken cancellationToken = default) =>
         UpdateAsync(memberId, "SET is_participating = :participating, updated_at = :now",
             new() { [":participating"] = DynamoValues.B(participating) }, cancellationToken);
+
+    public Task<MembershipRecord> UpdateOrganizerAsync(string memberId, bool organizer, CancellationToken cancellationToken = default) =>
+        UpdateAsync(
+            memberId,
+            "SET is_organizer = :organizer, updated_at = :now",
+            new() { [":organizer"] = DynamoValues.B(organizer) },
+            cancellationToken);
 
     private async Task<MembershipRecord> UpdateAsync(string memberId, string expression, Dictionary<string, AttributeValue> values, CancellationToken cancellationToken)
     {
@@ -102,11 +109,12 @@ internal sealed class MembershipRepository(IAmazonDynamoDB db, HumbuggSettings s
         {
             TableName = settings.GroupMembersTable,
             Key = new() { ["member_id"] = DynamoValues.S(memberId) },
-            UpdateExpression = "SET user_id = :user, display_name = :name, wishlist = :empty, avoidances = :empty, address = :address, updated_at = :now",
+            UpdateExpression = "SET user_id = :user, display_name = :name, is_organizer = :notOrganizer, wishlist = :empty, avoidances = :empty, address = :address, updated_at = :now",
             ExpressionAttributeValues = new()
             {
                 [":user"] = DynamoValues.S(pseudonym),
                 [":name"] = DynamoValues.S(displayName),
+                [":notOrganizer"] = DynamoValues.B(false),
                 [":empty"] = DynamoValues.S(""),
                 [":address"] = DynamoValues.AddressValue(new Address()),
                 [":now"] = DynamoValues.S(DateTimeOffset.UtcNow.ToString("O"))
@@ -137,7 +145,7 @@ internal sealed class MembershipRepository(IAmazonDynamoDB db, HumbuggSettings s
         }
     }
 
-    private static Dictionary<string, AttributeValue> Write(MembershipRecord record) => new()
+    internal static Dictionary<string, AttributeValue> Write(MembershipRecord record) => new()
     {
         ["member_id"] = DynamoValues.S(record.MemberId),
         ["group_id"] = DynamoValues.S(record.GroupId),
@@ -156,6 +164,28 @@ internal sealed class MembershipRepository(IAmazonDynamoDB db, HumbuggSettings s
         item.String("member_id"), item.String("group_id"), item.String("user_id"), item.String("display_name"),
         item.Bool("is_organizer"), item.Bool("is_participating"), item.String("wishlist"), item.String("avoidances"),
         item.Address("address"), item.String("created_at"), item.String("updated_at"));
+
+    internal static MembershipRecord NewRecord(
+        string groupId,
+        string userId,
+        string displayName,
+        bool organizer,
+        bool participating = true)
+    {
+        var now = DateTimeOffset.UtcNow.ToString("O");
+        return new MembershipRecord(
+            MemberId(groupId, userId),
+            groupId,
+            userId,
+            displayName,
+            organizer,
+            participating,
+            "",
+            "",
+            new(),
+            now,
+            now);
+    }
 
     private static string MemberId(string groupId, string userId) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{groupId}:{userId}"))).ToLowerInvariant()[..32];

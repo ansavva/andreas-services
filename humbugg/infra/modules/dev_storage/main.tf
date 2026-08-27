@@ -55,6 +55,30 @@ resource "aws_dynamodb_table" "groupmembers" {
   tags = var.tags
 }
 
+# One row per wish, keyed (member_id, wish_id). member_id as the partition key is what makes
+# listing a member's wishes a Query rather than a Scan, and what makes every single-item write
+# name its owner — there is no way to address a wish without naming the member it belongs to.
+# No GSI: every access pattern starts from a known member_id.
+resource "aws_dynamodb_table" "wishes" {
+  name         = "${var.resource_prefix}-wishes"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "member_id"
+  range_key    = "wish_id"
+
+  attribute {
+    name = "member_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "wish_id"
+    type = "S"
+  }
+
+  server_side_encryption { enabled = true }
+  tags = var.tags
+}
+
 resource "aws_dynamodb_table" "draws" {
   name         = "${var.resource_prefix}-draws"
   billing_mode = "PAY_PER_REQUEST"
@@ -131,6 +155,63 @@ resource "aws_dynamodb_table" "billing" {
     projection_type = "ALL"
   }
 
+  server_side_encryption { enabled = true }
+  tags = var.tags
+}
+
+resource "aws_dynamodb_table" "invitations" {
+  name         = "${var.resource_prefix}-invitations"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "invitation_id"
+  attribute {
+    name = "invitation_id"
+    type = "S"
+  }
+  attribute {
+    name = "group_id"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "group_id-index"
+    hash_key        = "group_id"
+    projection_type = "ALL"
+  }
+
+  server_side_encryption { enabled = true }
+  tags = var.tags
+}
+
+resource "aws_dynamodb_table" "reminders" {
+  name         = "${var.resource_prefix}-reminders"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "group_id"
+  range_key    = "record_key"
+  attribute {
+    name = "group_id"
+    type = "S"
+  }
+  attribute {
+    name = "record_key"
+    type = "S"
+  }
+  server_side_encryption { enabled = true }
+  tags = var.tags
+}
+
+resource "aws_dynamodb_table" "templates" {
+  name         = "${var.resource_prefix}-templates"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "user_id"
+  range_key    = "template_id"
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+  attribute {
+    name = "template_id"
+    type = "S"
+  }
   server_side_encryption { enabled = true }
   tags = var.tags
 }

@@ -38,10 +38,11 @@ function stubOnly(reason: string): void {
   test.skip(LIVE, reason);
 }
 
-test("a seeded session reaches the app rather than the login form", async ({ page }) => {
-  // `App.tsx` renders `<LoginForm />` unless `authenticated`, so if the seeded
-  // token store stopped satisfying Amplify every spec below would fail with a
-  // confusing selector error instead of this one sentence.
+test("a seeded session reaches the app rather than the hosted sign-in page", async ({ page }) => {
+  // `App.tsx` redirects to Cognito Managed Login unless `authenticated`, so if
+  // the seeded token store stopped satisfying `auth/oauth.ts` every spec below
+  // would fail against a page that is not even served from this origin —
+  // a confusing selector error instead of this one sentence.
   //
   // Asserting on something only the SIGNED-IN shell has. An earlier version
   // asserted "no sign-in button", which also passed against the "Auth is not

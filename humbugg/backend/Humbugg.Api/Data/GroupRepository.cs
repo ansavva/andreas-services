@@ -13,6 +13,18 @@ internal interface IGroupRepository
     Task CreateDrawAsync(string groupId, IReadOnlyDictionary<string, string> assignments, string actorUserId, CancellationToken cancellationToken = default);
     Task<DrawRecord?> GetDrawAsync(string groupId, CancellationToken cancellationToken = default);
     Task ResetDrawAsync(string groupId, CancellationToken cancellationToken = default);
+    Task SaveLateProposalAsync(
+        string groupId,
+        string expectedDrawId,
+        LateParticipantProposalRecord proposal,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("This group repository does not support late-participant proposals.");
+    Task<string> ApplyLateProposalAsync(
+        string groupId,
+        string expectedDrawId,
+        LateParticipantProposalRecord proposal,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("This group repository does not support late-participant proposals.");
 }
 
 internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settings) : IGroupRepository
@@ -130,9 +142,100 @@ internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settin
         if (!response.IsItemSet) return null;
         var assignments = response.Item.TryGetValue("assignments", out var map) && map.M is not null
             ? map.M.ToDictionary(pair => pair.Key, pair => pair.Value.S ?? "") : [];
-        return new DrawRecord(groupId, response.Item.String("draw_id"), assignments,
-            response.Item.String("created_at"), response.Item.String("created_by"));
+        return new DrawRecord(
+            groupId,
+            response.Item.String("draw_id"),
+            assignments,
+            response.Item.String("created_at"),
+            response.Item.String("created_by"),
+            ReadProposal(response.Item),
+            EmptyToNull(response.Item.String("last_late_proposal_id")),
+            EmptyToNull(response.Item.String("last_late_member_id")),
+            ReadStringList(response.Item, "last_affected_member_ids"));
     }
+
+    public Task SaveLateProposalAsync(
+        string groupId,
+        string expectedDrawId,
+        LateParticipantProposalRecord proposal,
+        CancellationToken cancellationToken = default) =>
+        db.UpdateItemAsync(new UpdateItemRequest
+        {
+            TableName = settings.DrawsTable,
+            Key = Key(groupId),
+            UpdateExpression = "SET late_proposal = :proposal",
+            ConditionExpression = "draw_id = :draw",
+            ExpressionAttributeValues = new()
+            {
+                [":draw"] = DynamoValues.S(expectedDrawId),
+                [":proposal"] = ProposalValue(proposal)
+            }
+        }, cancellationToken);
+
+    public async Task<string> ApplyLateProposalAsync(
+        string groupId,
+        string expectedDrawId,
+        LateParticipantProposalRecord proposal,
+        CancellationToken cancellationToken = default)
+    {
+        var newDrawId = Guid.NewGuid().ToString();
+        var now = DateTimeOffset.UtcNow.ToString("O");
+        await db.TransactWriteItemsAsync(
+            LateProposalTransaction(groupId, expectedDrawId, proposal, newDrawId, now, settings),
+            cancellationToken);
+        return newDrawId;
+    }
+
+    internal static TransactWriteItemsRequest LateProposalTransaction(
+        string groupId,
+        string expectedDrawId,
+        LateParticipantProposalRecord proposal,
+        string newDrawId,
+        string now,
+        HumbuggSettings settings) =>
+        new()
+        {
+            TransactItems =
+            [
+                new()
+                {
+                    Update = new Update
+                    {
+                        TableName = settings.DrawsTable,
+                        Key = Key(groupId),
+                        UpdateExpression = "SET draw_id = :newDraw, assignments = :assignments, updated_at = :now, last_late_proposal_id = :proposalId, last_late_member_id = :memberId, last_affected_member_ids = :affected REMOVE late_proposal",
+                        ConditionExpression = "draw_id = :expectedDraw AND late_proposal.proposal_id = :proposalId AND late_proposal.expires_at > :now",
+                        ExpressionAttributeValues = new()
+                        {
+                            [":newDraw"] = DynamoValues.S(newDrawId),
+                            [":assignments"] = AssignmentsValue(proposal.Assignments),
+                            [":now"] = DynamoValues.S(now),
+                            [":proposalId"] = DynamoValues.S(proposal.ProposalId),
+                            [":memberId"] = DynamoValues.S(proposal.MemberId),
+                            [":affected"] = new() { L = proposal.AffectedMemberIds.Select(DynamoValues.S).ToList() },
+                            [":expectedDraw"] = DynamoValues.S(expectedDrawId)
+                        }
+                    }
+                },
+                new()
+                {
+                    Update = new Update
+                    {
+                        TableName = settings.GroupMembersTable,
+                        Key = new() { ["member_id"] = DynamoValues.S(proposal.MemberId) },
+                        UpdateExpression = "SET is_participating = :active, updated_at = :now",
+                        ConditionExpression = "group_id = :group AND is_participating = :inactive",
+                        ExpressionAttributeValues = new()
+                        {
+                            [":active"] = DynamoValues.B(true),
+                            [":inactive"] = DynamoValues.B(false),
+                            [":group"] = DynamoValues.S(groupId),
+                            [":now"] = DynamoValues.S(now)
+                        }
+                    }
+                }
+            ]
+        };
 
     public Task ResetDrawAsync(string groupId, CancellationToken cancellationToken = default)
     {
@@ -158,6 +261,42 @@ internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settin
     }
 
     private static Dictionary<string, AttributeValue> Key(string groupId) => new() { ["group_id"] = DynamoValues.S(groupId) };
+    private static AttributeValue AssignmentsValue(IReadOnlyDictionary<string, string> assignments) =>
+        new() { M = assignments.ToDictionary(pair => pair.Key, pair => DynamoValues.S(pair.Value)) };
+    private static AttributeValue ProposalValue(LateParticipantProposalRecord proposal) => new()
+    {
+        M = new()
+        {
+            ["proposal_id"] = DynamoValues.S(proposal.ProposalId),
+            ["member_id"] = DynamoValues.S(proposal.MemberId),
+            ["expected_draw_id"] = DynamoValues.S(proposal.ExpectedDrawId),
+            ["assignments"] = AssignmentsValue(proposal.Assignments),
+            ["affected_member_ids"] = new() { L = proposal.AffectedMemberIds.Select(DynamoValues.S).ToList() },
+            ["expires_at"] = DynamoValues.S(proposal.ExpiresAt)
+        }
+    };
+    private static LateParticipantProposalRecord? ReadProposal(IReadOnlyDictionary<string, AttributeValue> item)
+    {
+        if (!item.TryGetValue("late_proposal", out var value) || value.M is null || value.M.Count == 0)
+            return null;
+        var proposal = value.M;
+        var assignments = proposal.TryGetValue("assignments", out var assignmentValue) && assignmentValue.M is not null
+            ? assignmentValue.M.ToDictionary(pair => pair.Key, pair => pair.Value.S ?? "", StringComparer.Ordinal)
+            : [];
+        return new(
+            proposal.String("proposal_id"),
+            proposal.String("member_id"),
+            proposal.String("expected_draw_id"),
+            assignments,
+            ReadStringList(proposal, "affected_member_ids") ?? [],
+            proposal.String("expires_at"));
+    }
+    private static IReadOnlyList<string>? ReadStringList(
+        IReadOnlyDictionary<string, AttributeValue> item,
+        string key) =>
+        item.TryGetValue(key, out var value) && value.L is not null
+            ? value.L.Select(entry => entry.S ?? "").Where(entry => entry.Length > 0).ToList()
+            : null;
     private static string Status(GroupStatus status) => status == GroupStatus.Open ? "open" : "drawn";
     private static GroupStatus ReadStatus(string status) => status == "drawn" ? GroupStatus.Drawn : GroupStatus.Open;
 
@@ -178,6 +317,8 @@ internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settin
         ["created_at"] = DynamoValues.S(group.CreatedAt),
         ["updated_at"] = DynamoValues.S(group.UpdatedAt),
         ["spending_limit_cents"] = group.SpendingLimitCents is null ? new AttributeValue { NULL = true } : DynamoValues.N(group.SpendingLimitCents.Value)
+        ,
+        ["customization"] = CustomizationValue(group.Customization)
     };
 
     private static GroupRecord Read(IReadOnlyDictionary<string, AttributeValue> item) => new(
@@ -185,7 +326,27 @@ internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settin
         EmptyToNull(item.String("event_date")), EmptyToNull(item.String("signup_deadline")), item.Long("spending_limit_cents"),
         item.String("currency", "USD"), ReadPlan(item.String("plan")), EmptyToNull(item.String("entitlement_id")),
         ReadStatus(item.String("status")), item.String("invite_hash"), item.Exclusions(),
-        item.String("created_at"), item.String("updated_at"));
+        item.String("created_at"), item.String("updated_at"), ReadCustomization(item));
+    private static AttributeValue CustomizationValue(ExchangeCustomization? value) => value is null
+        ? new AttributeValue { NULL = true }
+        : new AttributeValue
+        {
+            M = new()
+            {
+                ["greeting"] = DynamoValues.S(value.Greeting),
+                ["instructions"] = DynamoValues.S(value.Instructions),
+                ["primary_color"] = DynamoValues.S(value.PrimaryColor),
+                ["accent_color"] = DynamoValues.S(value.AccentColor),
+                ["image"] = DynamoValues.S(value.ImageDataUrl ?? "")
+            }
+        };
+    private static ExchangeCustomization? ReadCustomization(IReadOnlyDictionary<string, AttributeValue> item)
+    {
+        if (!item.TryGetValue("customization", out var value) || value.NULL == true || value.M is null) return null;
+        return new(value.M.String("greeting"), value.M.String("instructions"),
+            value.M.String("primary_color", "#7C2D12"), value.M.String("accent_color", "#F59E0B"),
+            EmptyToNull(value.M.String("image")));
+    }
     internal static PlanCode ReadPlan(string value) => string.IsNullOrWhiteSpace(value)
         ? PlanCode.Free
         : Enum.TryParse<PlanCode>(value, true, out var plan)

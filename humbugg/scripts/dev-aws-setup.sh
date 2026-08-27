@@ -66,6 +66,7 @@ terraform -chdir="$TF_DIR" "${apply_args[@]}"
 outputs="$(terraform_output_json)"
 pool_id="$(jq -r '.cognito_user_pool_id.value' <<<"$outputs")"
 client_id="$(jq -r '.cognito_client_id.value' <<<"$outputs")"
+auth_domain="$(jq -r '.cognito_auth_domain.value' <<<"$outputs")"
 bucket="$(jq -r '.app_bucket_name.value' <<<"$outputs")"
 
 upsert_env() {
@@ -108,11 +109,15 @@ upsert_env "$backend_env" HUMBUGG_AVATAR_PRESIGNED_READS "true"
 upsert_env "$backend_env" HUMBUGG_PROFILES_TABLE "$(jq -r '.table_names.value.profiles' <<<"$outputs")"
 upsert_env "$backend_env" HUMBUGG_GROUPS_TABLE "$(jq -r '.table_names.value.groups' <<<"$outputs")"
 upsert_env "$backend_env" HUMBUGG_GROUPMEMBERS_TABLE "$(jq -r '.table_names.value.groupmembers' <<<"$outputs")"
+upsert_env "$backend_env" HUMBUGG_WISHES_TABLE "$(jq -r '.table_names.value.wishes' <<<"$outputs")"
 upsert_env "$backend_env" HUMBUGG_DRAWS_TABLE "$(jq -r '.table_names.value.draws' <<<"$outputs")"
 upsert_env "$backend_env" HUMBUGG_AUDIT_EVENTS_TABLE "$(jq -r '.table_names.value.audit_events' <<<"$outputs")"
 upsert_env "$backend_env" HUMBUGG_ANALYTICS_EVENTS_TABLE "$(jq -r '.table_names.value.analytics_events' <<<"$outputs")"
 upsert_env "$backend_env" HUMBUGG_EMAIL_MESSAGES_TABLE "$(jq -r '.table_names.value.email_messages' <<<"$outputs")"
 upsert_env "$backend_env" HUMBUGG_BILLING_TABLE "$(jq -r '.table_names.value.billing' <<<"$outputs")"
+upsert_env "$backend_env" HUMBUGG_INVITATIONS_TABLE "$(jq -r '.table_names.value.invitations' <<<"$outputs")"
+upsert_env "$backend_env" HUMBUGG_REMINDERS_TABLE "$(jq -r '.table_names.value.reminders' <<<"$outputs")"
+upsert_env "$backend_env" HUMBUGG_TEMPLATES_TABLE "$(jq -r '.table_names.value.templates' <<<"$outputs")"
 remove_env "$backend_env" COGNITO_ENDPOINT_URL
 remove_env "$backend_env" COGNITO_ISSUER_URL
 
@@ -132,10 +137,14 @@ remove_env "$web_env" VITE_COGNITO_ENDPOINT_URL
 # The product app holds the auth flow, and reaches the backend cross-origin at
 # its dev port rather than through a same-origin proxy.
 app_env="$HUMBUGG_DIR/app/.env.local"
-upsert_env "$app_env" EXPO_PUBLIC_COGNITO_USER_POOL_ID "$pool_id"
 upsert_env "$app_env" EXPO_PUBLIC_COGNITO_CLIENT_ID "$client_id"
-upsert_env "$app_env" EXPO_PUBLIC_AWS_REGION "$AWS_REGION_VALUE"
+# The Managed Login host. A dev stack takes a default Cognito domain, so this is
+# `<prefix>.auth.<region>.amazoncognito.com` rather than a name Humbugg owns.
+upsert_env "$app_env" EXPO_PUBLIC_COGNITO_DOMAIN "$auth_domain"
 upsert_env "$app_env" EXPO_PUBLIC_API_BASE_URL "http://127.0.0.1:5001/api"
+# Read by Amplify, which this app no longer uses; the hosted flow needs neither.
+remove_env "$app_env" EXPO_PUBLIC_COGNITO_USER_POOL_ID
+remove_env "$app_env" EXPO_PUBLIC_AWS_REGION
 
 ok "AWS development resources are ready and local env files were updated."
 

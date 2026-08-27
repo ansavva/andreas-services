@@ -264,10 +264,15 @@ load_dev_stack_outputs() {
     die "Terraform state does not match this machine ID."
   DEV_POOL_ID="$(jq -r '.outputs.cognito_user_pool_id.value // empty' <<<"$state_json")"
   DEV_CLIENT_ID="$(jq -r '.outputs.cognito_user_pool_client_id.value // empty' <<<"$state_json")"
+  # `<prefix>.auth.<region>.amazoncognito.com` — this stack's Managed Login
+  # host, which the SPA redirects to. Checked below with the rest: an empty one
+  # is a stack applied before #364, and the local app cannot sign in at all
+  # against it, so failing here beats a blank sign-in button later.
+  DEV_AUTH_DOMAIN="$(jq -r '.outputs.cognito_auth_domain.value // empty' <<<"$state_json")"
   DEV_BUCKET="$(jq -r '.outputs.media_bucket_name.value // empty' <<<"$state_json")"
   DEV_TABLE="$(jq -r '.outputs.catalog_table_name.value // empty' <<<"$state_json")"
-  [[ -n "$DEV_POOL_ID" && -n "$DEV_CLIENT_ID" && -n "$DEV_BUCKET" && -n "$DEV_TABLE" ]] ||
-    die "Terraform state is missing required development outputs."
+  [[ -n "$DEV_POOL_ID" && -n "$DEV_CLIENT_ID" && -n "$DEV_AUTH_DOMAIN" && -n "$DEV_BUCKET" && -n "$DEV_TABLE" ]] ||
+    die "Terraform state is missing required development outputs. Re-run ./studio/scripts/dev-aws-setup.sh."
 }
 
 load_dev_user_password() {

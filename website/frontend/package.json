@@ -16,7 +16,6 @@
     "lint": "eslint app server"
   },
   "dependencies": {
-    "@aws-sdk/client-cognito-identity-provider": "^3.700.0",
     "@react-router/architect": "^7.18.1",
     "@react-router/node": "^7.18.1",
     "aws-jwt-verify": "^5.2.1",

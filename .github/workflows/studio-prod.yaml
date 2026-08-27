@@ -266,6 +266,11 @@ jobs:
           put /studio/prod/catalog-table         "$(tf catalog_table_name)"
           put /studio/prod/cognito-user-pool-id  "$(tf cognito_user_pool_id)"
           put /studio/prod/cognito-client-id     "$(tf cognito_user_pool_client_id)"
+          # The Managed Login host. `deploy-frontend` reads it back as
+          # VITE_COGNITO_DOMAIN, and it must be written by THIS job: infra
+          # applies before the frontend builds, so the SPA can never ship
+          # redirecting at a domain that does not exist yet.
+          put /studio/prod/cognito-auth-domain   "$(tf cognito_auth_domain)"
 
   # ---------------------------------------------------------------------------
   # Set the Lambda's env vars and pin its code to :sha.
@@ -449,6 +454,11 @@ jobs:
           # Vite inlines these; empty ships an SPA whose login can never succeed.
           put VITE_COGNITO_USER_POOL_ID /studio/prod/cognito-user-pool-id
           put VITE_COGNITO_CLIENT_ID    /studio/prod/cognito-client-id
+          # The Managed Login host the SPA redirects to. Empty is not a
+          # degraded sign-in but no sign-in at all — there is no in-app form
+          # to fall back to any more — which is what `put`'s emptiness check
+          # is for.
+          put VITE_COGNITO_DOMAIN       /studio/prod/cognito-auth-domain
 
       - name: Install dependencies
         run: cd studio/frontend && npm ci

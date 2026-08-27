@@ -67,3 +67,8 @@ output "cognito_user_pool_client_id" {
   description = "Cognito user pool client ID for the admin console (VITE_COGNITO_CLIENT_ID)"
   value       = module.auth.user_pool_client_id
 }
+
+output "cognito_auth_domain" {
+  description = "Managed login host (VITE_COGNITO_DOMAIN)"
+  value       = module.auth.auth_domain
+}

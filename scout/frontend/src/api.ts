@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { useAuth } from "@/context/AuthContext";
+import { getIdToken, login as startLogin, refreshTokens } from "@/auth/oauth";
 import type {
   AdminEvent,
   AdminImage,
@@ -30,21 +30,52 @@ function buildQuery(params: Record<string, string | undefined>): string {
 }
 
 /**
+ * Sends one request, and on a 401 refreshes the tokens once and sends it
+ * again. A 401 after that — or a refresh that fails — means the session is
+ * finished, so the browser goes back to the hosted sign-in page.
+ *
+ * The token is read from the store rather than closed over, because a
+ * refresh replaces it mid-call. The API Gateway authorizer reads the **ID**
+ * token, so that is what goes on the wire.
+ */
+async function fetchWithAuth(url: string, init: RequestInit): Promise<Response> {
+  const send = (token: string | null) => {
+    const headers: Record<string, string> = {
+      ...(init.headers as Record<string, string> | undefined),
+    };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    return fetch(url, { ...init, headers });
+  };
+
+  const token = getIdToken();
+  const res = await send(token);
+  if (res.status !== 401 || !token) return res;
+
+  try {
+    const refreshed = await refreshTokens();
+    const retried = await send(refreshed.idToken);
+    if (retried.status !== 401) return retried;
+  } catch {
+    /* fall through to re-login */
+  }
+
+  void startLogin(`${window.location.pathname}${window.location.search}`);
+  return res;
+}
+
+/**
  * Typed Scout API client. Admin calls carry the Cognito bearer token; public
  * calls are unauthenticated. JSON bodies are sent and parsed automatically.
  */
 export function useApi() {
-  const { idToken } = useAuth();
-
   const request = useCallback(
     async <T>(path: string, init?: RequestInit): Promise<T> => {
       const headers: Record<string, string> = {
         ...(init?.headers as Record<string, string> | undefined),
       };
-      if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
       if (init?.body) headers["Content-Type"] = "application/json";
 
-      const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
+      const res = await fetchWithAuth(`${API_BASE}${path}`, { ...init, headers });
       if (!res.ok) {
         let detail = `HTTP ${res.status}`;
         try {
@@ -58,7 +89,7 @@ export function useApi() {
       const text = await res.text();
       return (text ? JSON.parse(text) : {}) as T;
     },
-    [idToken]
+    []
   );
 
   return useMemo(() => {
@@ -119,9 +150,7 @@ export function useApi() {
       fetchArtifactChunk: async (url: string, offset: number): Promise<ArtifactChunk> => {
         const sep = url.includes("?") ? "&" : "?";
         const full = `${url}${sep}offset=${offset}`;
-        const headers: Record<string, string> = {};
-        if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
-        const res = await fetch(full, { headers });
+        const res = await fetchWithAuth(full, {});
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return (await res.json()) as ArtifactChunk;
       },
@@ -223,7 +252,7 @@ export function useApi() {
         request<{ items: DeletedItem[] }>(`/admin/deleted/${entityType}`),
       restore: (pk: string, sk: string) => post(`/admin/restore`, { pk, sk }),
     };
-  }, [request, idToken]);
+  }, [request]);
 }
 
 export type ScoutApi = ReturnType<typeof useApi>;

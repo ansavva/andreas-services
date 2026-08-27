@@ -315,9 +315,33 @@ def test_a_term_is_a_row_and_needs_no_document_to_exist_first(library):
     library has never held a phrasebook at all.
     """
     E.add_phrasebook_term("kling", "bare chest", "chest", note="from a refusal")
-    assert E.phrasebook(model="kling") == [
-        {"model": "kling", "avoid": "bare chest", "use": "chest",
-         "note": "from a refusal", "replicate": None, "added": "2026-01-01"}]
+    (row,) = E.phrasebook(model="kling")
+    # `created`, the stamp every row in this table carries. It read `added` —
+    # the document's field name — which the backend has never written.
+    assert row["created"].startswith("2026-01-01T")
+    assert {k: v for k, v in row.items() if k != "created"} == {
+        "model": "kling", "avoid": "bare chest", "use": "chest",
+        "note": "from a refusal", "replicate": None}
+
+
+def test_the_wrapped_listing_shape_is_unwrapped_and_not_silently_dropped(library):
+    """`GET /api/phrasebook` answers `{"terms": [...]}`, not a bare array.
+
+    Every other listing route this adapter calls answers an array, so the
+    response went through `_as_list` — which returns `[]` for any shape that is
+    not a list. The result was an empty phrasebook for every model in every
+    library, indistinguishable from a library that genuinely held none, for the
+    whole life of the migration. Prod held 16 terms and `phrasebook show`
+    printed `{}`.
+
+    It survived because the fake answered this one route with a bare list. That
+    is fixed at the fake; this pins the adapter so a return to `_as_list` alone
+    fails here rather than in a library nobody is looking at.
+    """
+    E.add_phrasebook_term("kling", "bare chest", "chest")
+
+    assert [t["avoid"] for t in E.phrasebook(model="kling")] == ["bare chest"]
+    assert [t["avoid"] for t in E.phrasebook()] == ["bare chest"]
 
 
 def test_a_duplicate_pair_is_refused(library):

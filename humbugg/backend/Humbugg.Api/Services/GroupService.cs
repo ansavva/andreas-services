@@ -13,6 +13,8 @@ public interface IGroupService
     Task<GroupDetail> CreateAsync(CreateGroupRequest request, CancellationToken cancellationToken = default);
     Task<GroupDetail> GetAsync(string groupId, CancellationToken cancellationToken = default);
     Task<GroupDetail> UpdateAsync(string groupId, UpdateGroupRequest request, CancellationToken cancellationToken = default);
+    Task<GroupDetail> UpdateCustomizationAsync(string groupId, UpdateCustomizationRequest request, CancellationToken cancellationToken = default);
+    Task<InvitationPreview> GetInvitationAsync(string groupId, string? inviteToken, CancellationToken cancellationToken = default);
     Task DeleteAsync(string groupId, CancellationToken cancellationToken = default);
     Task<InviteResponse> RotateInviteAsync(string groupId, CancellationToken cancellationToken = default);
     Task<GroupDetail> JoinAsync(string groupId, JoinGroupRequest request, CancellationToken cancellationToken = default);
@@ -21,10 +23,12 @@ public interface IGroupService
     Task<Membership> ClearMyPrivateDataAsync(string groupId, CancellationToken cancellationToken = default);
     Task LeaveAsync(string groupId, CancellationToken cancellationToken = default);
     Task<Membership> UpdateParticipationAsync(string groupId, string memberId, ParticipationRequest request, CancellationToken cancellationToken = default);
+    Task<Membership> UpdateOrganizerRoleAsync(string groupId, string memberId, OrganizerRoleRequest request, CancellationToken cancellationToken = default);
     Task<GroupDetail> SetExclusionsAsync(string groupId, ExclusionsRequest request, CancellationToken cancellationToken = default);
     Task<RecipientAssignment> DrawAsync(string groupId, CancellationToken cancellationToken = default);
     Task<GroupDetail> ResetAsync(string groupId, CancellationToken cancellationToken = default);
     Task<RecipientAssignment> GetAssignmentAsync(string groupId, CancellationToken cancellationToken = default);
+    Task<RecipientAssignment> GetAssignmentAsync(string groupId, string? drawVersion, CancellationToken cancellationToken = default);
     Task<RevealResponse> RevealAsync(string groupId, RevealRequest request, CancellationToken cancellationToken = default);
 }
 
@@ -33,6 +37,7 @@ internal sealed class GroupService(
     IProfileRepository profiles,
     IGroupRepository groups,
     IMembershipRepository memberships,
+    IWishRepository wishes,
     IMatchingService matching,
     IPlanCatalog plans,
     IAuditTrail audit,
@@ -110,10 +115,43 @@ internal sealed class GroupService(
         return await GetAsync(groupId, cancellationToken);
     }
 
+    public async Task<GroupDetail> UpdateCustomizationAsync(string groupId, UpdateCustomizationRequest request, CancellationToken cancellationToken = default)
+    {
+        var (group, membership) = await RequireMembershipAsync(groupId, cancellationToken);
+        RequireOrganizer(membership);
+        plans.EnsureCapability(group.Plan, group.EntitlementId, PlanCapability.ExchangeCustomization);
+        var customization = CustomizationValidation.Validate(request);
+        await groups.UpdateAsync(groupId, new Dictionary<string, AttributeValue>
+        {
+            ["customization"] = new()
+            {
+                M = new()
+                {
+                    ["greeting"] = DynamoValues.S(customization.Greeting),
+                    ["instructions"] = DynamoValues.S(customization.Instructions),
+                    ["primary_color"] = DynamoValues.S(customization.PrimaryColor),
+                    ["accent_color"] = DynamoValues.S(customization.AccentColor),
+                    ["image"] = DynamoValues.S(customization.ImageDataUrl ?? "")
+                }
+            }
+        }, cancellationToken: cancellationToken);
+        return await GetAsync(groupId, cancellationToken);
+    }
+
+    public async Task<InvitationPreview> GetInvitationAsync(string groupId, string? inviteToken, CancellationToken cancellationToken = default)
+    {
+        var group = await RequireGroupAsync(groupId, cancellationToken);
+        var token = Validation.InviteToken(inviteToken);
+        if (token is null || !CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(Hash(token)), Encoding.UTF8.GetBytes(group.InviteHash)))
+            throw ApiException.Forbidden("This invitation is invalid or has expired.");
+        return new(group.GroupId, group.Name, group.Customization ?? new ExchangeCustomization());
+    }
+
     public async Task DeleteAsync(string groupId, CancellationToken cancellationToken = default)
     {
-        var (_, membership) = await RequireMembershipAsync(groupId, cancellationToken);
-        RequireOrganizer(membership);
+        var (group, _) = await RequireMembershipAsync(groupId, cancellationToken);
+        RequireOwner(group);
         await memberships.DeleteByGroupAsync(groupId, cancellationToken);
         await groups.DeleteAsync(groupId, cancellationToken);
         await audit.RecordAsync(AuditAction.GroupDeleted, groupId, AuditTarget.Group(groupId), cancellationToken: cancellationToken);
@@ -190,6 +228,9 @@ internal sealed class GroupService(
         // exchange. Allowed at any time (open or drawn) — it is the participant's own data. Clearing
         // already-empty fields is a harmless no-op, so the action is idempotent.
         var (_, membership) = await RequireMembershipAsync(groupId, cancellationToken);
+        // Structured wishes are the same category of data as the free-text list this control was
+        // written for, so "erase my wishlist" has to mean both or the button quietly under-delivers.
+        await wishes.DeleteByMemberAsync(membership.MemberId, cancellationToken);
         var cleared = await memberships.UpdatePrivateAsync(membership.MemberId, "", "", new Address(), cancellationToken);
         await audit.RecordAsync(AuditAction.ParticipantDataCleared, groupId, AuditTarget.Member(membership.MemberId), cancellationToken: cancellationToken);
         return Private(cleared);
@@ -199,6 +240,9 @@ internal sealed class GroupService(
     {
         var (group, membership) = await RequireMembershipAsync(groupId, cancellationToken); RequireOpen(group);
         if (membership.IsOrganizer) throw ApiException.Conflict("The organizer must delete the group instead of leaving it.");
+        // Before the membership row goes: member_id is the only key these rows have, so deleting the
+        // membership first would strand them with nothing able to address them again.
+        await wishes.DeleteByMemberAsync(membership.MemberId, cancellationToken);
         await memberships.DeleteAsync(membership.MemberId, cancellationToken);
         await audit.RecordAsync(AuditAction.ParticipantLeft, groupId, AuditTarget.Member(membership.MemberId), cancellationToken: cancellationToken);
         var remaining = group.Exclusions.Where(pair => !pair.Contains(membership.MemberId, StringComparer.Ordinal)).ToList();
@@ -225,6 +269,35 @@ internal sealed class GroupService(
         await audit.RecordAsync(AuditAction.ParticipationChanged, groupId, AuditTarget.Member(memberId),
             new Dictionary<string, string> { ["is_participating"] = request.IsParticipating.Value ? "true" : "false" }, cancellationToken: cancellationToken);
         return Public(updated);
+    }
+
+    public async Task<Membership> UpdateOrganizerRoleAsync(
+        string groupId,
+        string memberId,
+        OrganizerRoleRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var (group, _) = await RequireMembershipAsync(groupId, cancellationToken);
+        RequireOwner(group);
+        plans.EnsureCapability(group.Plan, group.EntitlementId, PlanCapability.CoOrganizers);
+        if (request.IsOrganizer is null)
+            throw ApiException.BadRequest("is_organizer must be true or false.");
+        var member = await memberships.GetAsync(memberId, cancellationToken);
+        if (member is null || member.GroupId != groupId)
+            throw ApiException.NotFound("Participant not found.");
+        if (member.UserId == group.OwnerUserId && !request.IsOrganizer.Value)
+            throw ApiException.Conflict("The exchange owner cannot be removed as an organizer.");
+        var updated = await memberships.UpdateOrganizerAsync(memberId, request.IsOrganizer.Value, cancellationToken);
+        await audit.RecordAsync(
+            AuditAction.RoleChanged,
+            groupId,
+            AuditTarget.Role(memberId),
+            new Dictionary<string, string>
+            {
+                ["role"] = request.IsOrganizer.Value ? "co_organizer" : "participant"
+            },
+            cancellationToken: cancellationToken);
+        return Public(updated, group);
     }
 
     public async Task<GroupDetail> SetExclusionsAsync(string groupId, ExclusionsRequest request, CancellationToken cancellationToken = default)
@@ -264,7 +337,7 @@ internal sealed class GroupService(
                 ["participant_count"] = assignments.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 ["days_to_draw"] = DaysSince(group.CreatedAt).ToString(System.Globalization.CultureInfo.InvariantCulture)
             }, cancellationToken);
-        return await GetAssignmentAsync(groupId, cancellationToken);
+        return await GetAssignmentAsync(groupId, cancellationToken: cancellationToken);
     }
 
     public async Task<GroupDetail> ResetAsync(string groupId, CancellationToken cancellationToken = default)
@@ -277,11 +350,16 @@ internal sealed class GroupService(
         return await GetAsync(groupId, cancellationToken);
     }
 
-    public async Task<RecipientAssignment> GetAssignmentAsync(string groupId, CancellationToken cancellationToken = default)
+    public async Task<RecipientAssignment> GetAssignmentAsync(
+        string groupId,
+        string? drawVersion = null,
+        CancellationToken cancellationToken = default)
     {
         var (group, membership) = await RequireMembershipAsync(groupId, cancellationToken);
         if (group.Status != GroupStatus.Drawn) throw ApiException.Conflict("Assignments have not been created yet.");
         var draw = await groups.GetDrawAsync(groupId, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(drawVersion) && draw?.DrawId != drawVersion)
+            throw ApiException.Conflict("This assignment link is obsolete. Open the exchange again for fresh assignment access.");
         if (draw is null || !draw.Assignments.TryGetValue(membership.MemberId, out var recipientId))
             throw ApiException.NotFound("You do not have an assignment in this draw.");
         var recipient = await memberships.GetAsync(recipientId, cancellationToken)
@@ -289,20 +367,33 @@ internal sealed class GroupService(
         // Assignment view milestone — recorded once per member; the assignment itself is never recorded.
         await analytics.TrackAsync(AnalyticsEventType.AssignmentViewed, group.Plan, groupId,
             $"assignment_viewed:{membership.MemberId}", cancellationToken: cancellationToken);
-        return Assignment(recipient);
+        return Assignment(recipient, await wishes.GetByMemberAsync(recipient.MemberId, cancellationToken));
     }
+
+    public Task<RecipientAssignment> GetAssignmentAsync(
+        string groupId,
+        CancellationToken cancellationToken = default) =>
+        GetAssignmentAsync(groupId, null, cancellationToken);
 
     public async Task<RevealResponse> RevealAsync(string groupId, RevealRequest request, CancellationToken cancellationToken = default)
     {
-        var (group, actor) = await RequireMembershipAsync(groupId, cancellationToken); RequireOrganizer(actor);
+        var (group, _) = await RequireMembershipAsync(groupId, cancellationToken); RequireOwner(group);
         if (group.Status != GroupStatus.Drawn) throw ApiException.Conflict("Assignments have not been created yet.");
         var reason = Validation.Required(request.Reason, "reason", 500);
         var draw = await groups.GetDrawAsync(groupId, cancellationToken) ?? throw ApiException.NotFound("Draw record not found.");
         await audit.RecordAsync(AuditAction.AssignmentRevealed, groupId, AuditTarget.Group(groupId),
             new Dictionary<string, string> { ["reason"] = reason }, cancellationToken: cancellationToken);
         var members = (await memberships.GetByGroupAsync(groupId, cancellationToken)).ToDictionary(item => item.MemberId, StringComparer.Ordinal);
-        var revealed = draw.Assignments.Where(pair => members.ContainsKey(pair.Key) && members.ContainsKey(pair.Value))
-            .Select(pair => new RevealAssignment(Public(members[pair.Key]), Assignment(members[pair.Value]))).ToList();
+        var pairs = draw.Assignments.Where(pair => members.ContainsKey(pair.Key) && members.ContainsKey(pair.Value))
+            .ToList();
+        var revealed = new List<RevealAssignment>(pairs.Count);
+        foreach (var pair in pairs)
+        {
+            var recipient = members[pair.Value];
+            revealed.Add(new RevealAssignment(
+                Public(members[pair.Key]),
+                Assignment(recipient, await wishes.GetByMemberAsync(recipient.MemberId, cancellationToken))));
+        }
         return new RevealResponse(revealed);
     }
 
@@ -316,6 +407,7 @@ internal sealed class GroupService(
         return (group, membership);
     }
     private static void RequireOrganizer(MembershipRecord member) { if (!member.IsOrganizer) throw ApiException.Forbidden("Only the organizer can perform this action."); }
+    private void RequireOwner(GroupRecord group) { if (group.OwnerUserId != user.UserId) throw ApiException.Forbidden("Only the exchange owner can perform this action."); }
     private static void RequireOpen(GroupRecord group) { if (group.Status != GroupStatus.Open) throw ApiException.Conflict("Reset the draw before changing the roster or matching rules."); }
     private static async Task ConditionalGroupUpdate(Func<Task<GroupRecord>> operation)
     {
@@ -324,14 +416,38 @@ internal sealed class GroupService(
 
     private GroupDetail Detail(GroupRecord group, MembershipRecord member, IReadOnlyList<MembershipRecord> all) => new(
         group.GroupId, group.Name, group.Status, group.EventDate, Amount(group.SpendingLimitCents), group.Currency,
-        group.Plan, plans.Get(group.Plan).ParticipantLimit, member.IsOrganizer, group.CreatedAt, group.UpdatedAt, group.Description, group.SignupDeadline,
-        member.IsOrganizer ? group.Exclusions : [], all.Select(Public).ToList());
+        group.Plan, plans.Get(group.Plan).ParticipantLimit, member.IsOrganizer, member.UserId == group.OwnerUserId, group.CreatedAt, group.UpdatedAt, group.Description, group.SignupDeadline,
+        member.IsOrganizer ? group.Exclusions : [], all.Select(item => Public(item, group)).ToList(), Customization: group.Customization);
     private GroupSummary Summary(GroupRecord group, MembershipRecord member) => new(
         group.GroupId, group.Name, group.Status, group.EventDate, Amount(group.SpendingLimitCents), group.Currency,
-        group.Plan, plans.Get(group.Plan).ParticipantLimit, member.IsOrganizer, group.CreatedAt, group.UpdatedAt);
-    private static Membership Public(MembershipRecord member) => new(member.MemberId, member.DisplayName, member.IsOrganizer, member.IsParticipating);
-    private static Membership Private(MembershipRecord member) => new(member.MemberId, member.DisplayName, member.IsOrganizer, member.IsParticipating, member.Wishlist, member.Avoidances, member.Address);
-    private static RecipientAssignment Assignment(MembershipRecord member) => new(member.MemberId, member.DisplayName, member.Wishlist, member.Avoidances, member.Address);
+        group.Plan, plans.Get(group.Plan).ParticipantLimit, member.IsOrganizer, member.UserId == group.OwnerUserId, group.CreatedAt, group.UpdatedAt);
+    private static Membership Public(MembershipRecord member, GroupRecord? group = null) => new(
+        member.MemberId,
+        member.DisplayName,
+        member.IsOrganizer,
+        member.IsParticipating,
+        IsOwner: group is not null && member.UserId == group.OwnerUserId,
+        IsReady: !string.IsNullOrWhiteSpace(member.Wishlist));
+    private static Membership Private(MembershipRecord member) => new(
+        member.MemberId,
+        member.DisplayName,
+        member.IsOrganizer,
+        member.IsParticipating,
+        member.Wishlist,
+        member.Avoidances,
+        member.Address,
+        IsReady: !string.IsNullOrWhiteSpace(member.Wishlist));
+    // The giver's view of their recipient. Projected through RecipientWish rather than Wish so that
+    // owner-only state added later (purchase claims, #130) cannot reach this path by default.
+    private static RecipientAssignment Assignment(MembershipRecord member, IReadOnlyList<WishRecord> wishes) => new(
+        member.MemberId, member.DisplayName, member.Wishlist, member.Avoidances, member.Address,
+        wishes.Select(RecipientWishOf).ToList());
+    private static RecipientWish RecipientWishOf(WishRecord record) => new(
+        record.WishId, record.Kind, record.Title,
+        Empty(record.Url), Empty(record.ImageUrl), record.PriceCents,
+        record.PriceCents is null ? null : Empty(record.Currency),
+        record.Quantity, record.Priority, Empty(record.Details), record.Position);
+    private static string? Empty(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
     private static decimal? Amount(long? cents) => cents is null ? null : cents.Value / 100m;
     private static long DaysSince(string isoTimestamp) =>
         DateTimeOffset.TryParse(isoTimestamp, System.Globalization.CultureInfo.InvariantCulture,

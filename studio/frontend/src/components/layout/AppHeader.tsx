@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 
 import { Dropdown, Text } from "@ansavva/design-system";
 
@@ -35,7 +35,6 @@ import { AccountIcon } from "../common/icons";
  * navigation, and it is pressed roughly never.
  */
 export function AppHeader() {
-  const navigate = useNavigate();
   const { email, logout } = useAuth();
 
   return (
@@ -66,10 +65,14 @@ export function AppHeader() {
 
         {/* Renders nothing while the caller is in one library. See `LibrarySwitcher`. */}
         <LibrarySwitcher />
-        <AccountMenu
-          email={email}
-          onSignOut={() => void logout().then(() => navigate(HOME_PATH))}
-        />
+        {/* No `navigate` afterwards: sign-out leaves for the hosted `/logout`,
+            which ends the Cognito session and returns to `/` itself. Routing in
+            this tab first would only race that navigation.
+
+            Carried over from `components/common/AppHeader.tsx`, which this
+            replaced — the two changes crossed, and the header moving here does
+            not make the Managed Login behaviour optional. */}
+        <AccountMenu email={email} onSignOut={() => void logout()} />
       </div>
 
       <nav aria-label="Sections" className="px-4 pb-2 sm:hidden">

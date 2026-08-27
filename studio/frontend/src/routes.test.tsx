@@ -13,9 +13,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * **It matters more than it looks.** The route table is the one place the entity
  * ids in the URL are turned into a screen, and a wrong turn there is invisible
  * until somebody opens a link: a bad listing is a blank page, a bad route is the
- * *wrong* page, rendered confidently. It also pins the two shapes that are easy
- * to lose — `/f` with no id, which is the library root, and `/p/<id>/r/<id>`,
- * which must not be swallowed by the project route above it.
+ * *wrong* page, rendered confidently. It also pins the three shapes that are
+ * easy to lose — `/f` with no id, which is the library root; `/p/<id>/r/<id>`,
+ * which must not be swallowed by the project route above it; and
+ * `/auth/callback`, which must not be swallowed by the catch-all below it.
  */
 // The layout is stubbed for the same reason every page is: it renders the
 // header, the header asks `useAuth`, and this file's whole point is to exercise
@@ -35,6 +36,7 @@ vi.mock("./pages/ScenePage", () => ({ ScenePage: () => <div>scene</div> }));
 vi.mock("./pages/MoviePage", () => ({ MoviePage: () => <div>movie</div> }));
 vi.mock("./pages/BrowsePage", () => ({ BrowsePage: () => <div>browser</div> }));
 vi.mock("./pages/ViewerPage", () => ({ ViewerPage: () => <div>viewer</div> }));
+vi.mock("./pages/AuthCallbackPage", () => ({ AuthCallbackPage: () => <div>callback</div> }));
 
 import { StudioRoutes } from "./routes";
 import { TestProviders } from "./test-providers";
@@ -73,9 +75,21 @@ describe("the route table", () => {
     ["/o/node-3610c8b4-5d92-4e07-83f1-6c24a9b1e7d5", "viewer"],
     // No id, which is "play this feed from the start" — see `feedPath`.
     ["/o", "viewer"],
+    // Above the catch-all, or Cognito's `?code=` is redirected away and the
+    // hosted page loops.
+    ["/auth/callback", "callback"],
   ])("sends %s to the %s screen", (path, screenName) => {
     at(path);
     expect(screen.getByText(screenName)).toBeDefined();
+  });
+
+  it("does not let the catch-all swallow the Cognito callback", () => {
+    // The path arrives carrying `?code=` and `?state=`, and the catch-all one
+    // line below it would `Navigate` home — discarding the code and looping
+    // straight back to the hosted sign-in page. Ordering is the whole fix, and
+    // nothing but this assertion pins it.
+    at("/auth/callback?code=abc123&state=xyz789");
+    expect(screen.getByText("callback")).toBeDefined();
   });
 
   it("sends an old key-shaped share link home rather than resolving it", () => {

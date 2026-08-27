@@ -10,7 +10,7 @@ output "invoke_url" {
 
 output "execute_api_url" {
   description = "Raw execute-api URL (for CloudFront origin)"
-  value       = "https://${aws_api_gateway_rest_api.main.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${var.stage_name}"
+  value       = "https://${aws_api_gateway_rest_api.main.id}.execute-api.${data.aws_region.current.region}.amazonaws.com/${var.stage_name}"
 }
 
 data "aws_region" "current" {}

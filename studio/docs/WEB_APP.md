@@ -85,7 +85,7 @@ on the `NAME#` item is the only authority on whether a name is free.
 |---|---|
 | Backend | Flask (Python 3.11) + Mangum, Docker container Lambda behind API Gateway REST |
 | Frontend | Vite + React 19 + Tailwind v4 + the design system's **web** leaves, static build to S3 + CloudFront |
-| Auth | AWS Cognito (admin-create-only user pool); SRP via Amplify Auth on the SPA, Cognito authorizer on every `/api` route |
+| Auth | AWS Cognito (admin-create-only user pool); **Cognito Managed Login** (hosted pages at `studio-auth.andreas.services`) with the authorization-code flow + PKCE on the SPA, Cognito authorizer on every `/api` route. The `studio` CLI still signs in with SRP directly — see `infra/modules/auth`. |
 | Data | **DynamoDB, single-table** (`studio-prod-catalog`) — one item pair per node, three `ALL`-projected GSIs. No cache. Listings are a query. |
 | Blobs | S3, addressed only by a row's opaque `blob_key`. Never listed. |
 | Routing | By node id. `/f/<id>` is a folder, `/o/<id>` is one open file; a pre-#313 name path is resolved once and redirected. |
@@ -447,11 +447,12 @@ that breaks every time the pipeline ships.
 - **The API takes the ID token, never the access token.** A REST
   `COGNITO_USER_POOLS` authorizer only reads the incoming token as an *access*
   token when the method declares `authorization_scopes`. This one declares none
-  — and cannot usefully, since the pool has no resource server and Amplify's SRP
-  flow mints only `aws.cognito.signin.user.admin` — so it validates an
-  *identity* token. Send `session.tokens.idToken` (`apis/client.ts`). The
-  failure mode is the confusing one: sign-in succeeds, the app renders, and
-  every `/api` call 401s.
+  — and cannot usefully, since the pool has no resource server and the code
+  flow's `openid email profile` are identity scopes rather than custom ones —
+  so it validates an *identity* token. Send the stored `idToken`
+  (`auth/oauth.ts`, read by `apis/client.ts`); the code flow still issues one
+  because `openid` is requested. The failure mode is the confusing one: sign-in
+  succeeds, the app renders, and every `/api` call 401s.
 - **An authorizer rejection carries no CORS headers unless you add them.** It is
   generated before the integration runs, so Flask's `CORS(...)` never sees it
   and the MOCK preflight only covers the OPTIONS. `modules/api_gateway` sets

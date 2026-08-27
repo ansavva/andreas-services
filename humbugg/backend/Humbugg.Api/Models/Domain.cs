@@ -3,6 +3,15 @@ using System.Text.Json.Serialization;
 namespace Humbugg.Api.Models;
 
 public enum GroupStatus { Open, Drawn }
+
+// A wish is one entry on a participant's list. `Custom` covers anything that is not a purchasable
+// product — "a day out", "learn to bake" — and is the fallback when a URL cannot be resolved into a
+// product (#129), so a failed extraction degrades to a usable wish rather than blocking the user.
+public enum WishKind { Product, Custom, Experience, Charity }
+
+// Ordering hint for the giver, not a sort key: the list's own order is `position`, which the owner
+// controls. Priority says how much the wish is wanted, which is a different question from where it sits.
+public enum WishPriority { Low, Normal, High }
 public enum PlanCode { Free, Plus, Work }
 public enum BillingCadence { Free, OneTime, Annual }
 
@@ -50,7 +59,30 @@ public sealed record Membership(
     bool IsParticipating,
     string? Wishlist = null,
     string? Avoidances = null,
-    Address? Address = null);
+    Address? Address = null,
+    bool IsOwner = false,
+    bool IsReady = false);
+
+public sealed record ExchangeCustomization(
+    string Greeting = "",
+    string Instructions = "",
+    string PrimaryColor = "#7C2D12",
+    string AccentColor = "#F59E0B",
+    string? ImageDataUrl = null);
+
+public sealed record InvitationPreview(string GroupId, string ExchangeName, ExchangeCustomization Customization);
+public sealed record ExchangeTemplate(
+    string TemplateId, string Name, string ExchangeName, string Description,
+    int SignupDeadlineDaysBeforeEvent, string WishlistPrompt,
+    string ExclusionsPolicy, ReminderSettings ReminderPreferences, ExchangeCustomization Customization,
+    IReadOnlyList<TemplateParticipant> PriorParticipants,
+    string? SourceGroupId, string CreatedAt, string UpdatedAt);
+public sealed record TemplateParticipant(string MemberId, string DisplayName, string Email);
+public sealed record SaveTemplateRequest(string? Name, string? SourceGroupId);
+public sealed record UpdateTemplateRequest(string? Name, string? ExchangeName, string? Description,
+    int? SignupDeadlineDaysBeforeEvent, string? WishlistPrompt, string? ExclusionsPolicy,
+    ReminderSettings? ReminderPreferences, UpdateCustomizationRequest? Customization);
+public sealed record ApplyTemplateRequest(string? TargetGroupId, string? EventDate, IReadOnlyList<string>? PriorMemberIds);
 
 public sealed record GroupSummary(
     string GroupId,
@@ -62,6 +94,7 @@ public sealed record GroupSummary(
     PlanCode Plan,
     int ParticipantLimit,
     bool IsOrganizer,
+    bool IsOwner,
     string CreatedAt,
     string UpdatedAt);
 
@@ -75,24 +108,110 @@ public sealed record GroupDetail(
     PlanCode Plan,
     int ParticipantLimit,
     bool IsOrganizer,
+    bool IsOwner,
     string CreatedAt,
     string UpdatedAt,
     string Description,
     string? SignupDeadline,
     IReadOnlyList<string[]> Exclusions,
     IReadOnlyList<Membership> Members,
-    string? InviteUrl = null);
+    string? InviteUrl = null,
+    ExchangeCustomization? Customization = null);
+
+// ─── Wishes ─────────────────────────────────────────────────────────────────────────────────────
+//
+// Two projections of the same stored row, and the split is deliberate rather than ceremonial.
+// `Wish` is what an owner sees of their own list. `RecipientWish` is what their assigned giver sees.
+// They carry the same fields today, which is exactly why the seam has to exist now: #130 adds
+// purchase claims, which every gift viewer may see and the owner may never see, and #132 adds gift
+// progress. Projecting both from one record through one type would make that leak a one-line
+// mistake. Neither type is ever the stored record.
+public sealed record Wish(
+    string WishId,
+    WishKind Kind,
+    string Title,
+    string? Url,
+    string? ImageUrl,
+    long? PriceCents,
+    string? Currency,
+    int Quantity,
+    WishPriority Priority,
+    string? Details,
+    int Position,
+    string CreatedAt,
+    string UpdatedAt);
+
+// The giver's view. Deliberately has no CreatedAt/UpdatedAt: when a recipient last edited their list
+// is the recipient's business, and an edit timestamp moving is a signal about their behaviour.
+public sealed record RecipientWish(
+    string WishId,
+    WishKind Kind,
+    string Title,
+    string? Url,
+    string? ImageUrl,
+    long? PriceCents,
+    string? Currency,
+    int Quantity,
+    WishPriority Priority,
+    string? Details,
+    int Position);
 
 public sealed record RecipientAssignment(
     string MemberId,
     string DisplayName,
+    // Free-text general preferences. Structured wishes did not replace this field — see WishRecord —
+    // so a list written before wishes existed still reaches the giver intact.
     string Wishlist,
     string Avoidances,
-    Address Address);
+    Address Address,
+    IReadOnlyList<RecipientWish> Wishes);
 
 public sealed record RevealAssignment(Membership Giver, RecipientAssignment Recipient);
 public sealed record RevealResponse(IReadOnlyList<RevealAssignment> Assignments);
+public sealed record LateParticipantPreview(
+    string ProposalId,
+    string MemberId,
+    int AffectedParticipantCount,
+    string ExpiresAt);
+public sealed record ConfirmLateParticipantRequest(string? ProposalId, bool Confirm);
+public sealed record LateParticipantResult(
+    string MemberId,
+    int AffectedParticipantCount,
+    string AssignmentVersion);
 public sealed record InviteResponse(string InviteUrl);
+public enum InvitationStatus { Sent, Delivered, Bounced, Accepted, Expired, Revoked }
+public sealed record ManagedInvitation(string InvitationId, string Email, InvitationStatus Status, string ExpiresAt, string? AcceptedAt, string? LastSentAt);
+public sealed record CreateInvitationsRequest(IReadOnlyList<string>? Emails);
+public sealed record CreateInvitationsResponse(IReadOnlyList<ManagedInvitation> Invitations);
+public sealed record AcceptInvitationRequest(string? Token, bool ConfirmAddressMismatch = false);
+public sealed record AcceptInvitationResponse(string GroupId, bool Accepted);
+public enum ReminderState { Active, Paused, Stopped }
+public enum ReminderRule { UnacceptedInvitation, IncompleteReadiness }
+public sealed record UpdateReminderSettingsRequest(
+    ReminderState State,
+    bool RemindUnacceptedInvitations,
+    bool RemindIncompleteReadiness,
+    int IntervalDays = 3,
+    int QuietStartUtcHour = 9,
+    int QuietEndUtcHour = 20);
+public sealed record ManualReminderRequest(string? InvitationId, ReminderRule Rule);
+public sealed record ReminderSettings(
+    ReminderState State,
+    bool RemindUnacceptedInvitations,
+    bool RemindIncompleteReadiness,
+    int IntervalDays,
+    int QuietStartUtcHour,
+    int QuietEndUtcHour);
+public sealed record ReminderHistoryItem(
+    string ReminderId,
+    ReminderRule Rule,
+    string InvitationId,
+    string Status,
+    string CreatedAt);
+public sealed record ReminderOverview(
+    ReminderSettings Settings,
+    string? NextScheduledAt,
+    IReadOnlyList<ReminderHistoryItem> RecentHistory);
 
 // ─── Self-service data export (GDPR right of access / portability, issue #189) ──────────────────
 //
@@ -136,6 +255,8 @@ public sealed record ExportedMembership(
     string? Wishlist,
     string? Avoidances,
     Address? Address,
+    // The caller's own wishes. Personal data they authored, so the export must carry it (#189).
+    IReadOnlyList<Wish> Wishes,
     string JoinedAt,
     string UpdatedAt);
 
@@ -162,11 +283,40 @@ public sealed record UpdateGroupRequest(
     string? EventDate,
     string? SignupDeadline,
     decimal? SpendingLimit);
+public sealed record UpdateCustomizationRequest(
+    string? Greeting, string? Instructions, string? PrimaryColor, string? AccentColor, string? Image);
 public sealed record JoinGroupRequest(string? InviteToken);
 public sealed record UpdateMembershipRequest(string? Wishlist, string? Avoidances, Address? Address);
 public sealed record ParticipationRequest(bool? IsParticipating);
+public sealed record OrganizerRoleRequest(bool? IsOrganizer);
 public sealed record ExclusionsRequest(IReadOnlyList<string[]>? Exclusions);
 public sealed record RevealRequest(string? Reason);
+
+public sealed record CreateWishRequest(
+    string? Kind,
+    string? Title,
+    string? Url,
+    string? ImageUrl,
+    long? PriceCents,
+    string? Currency,
+    int? Quantity,
+    string? Priority,
+    string? Details);
+
+// Every field is nullable and absence means "leave alone", so a partial edit cannot blank a field
+// the caller never mentioned. Clearing an optional field is an explicit empty string.
+public sealed record UpdateWishRequest(
+    string? Kind,
+    string? Title,
+    string? Url,
+    string? ImageUrl,
+    long? PriceCents,
+    string? Currency,
+    int? Quantity,
+    string? Priority,
+    string? Details);
+
+public sealed record ReorderWishesRequest(IReadOnlyList<string>? WishIds);
 
 internal sealed record ProfileRecord(
     string UserId,
@@ -192,7 +342,8 @@ internal sealed record GroupRecord(
     string InviteHash,
     IReadOnlyList<string[]> Exclusions,
     string CreatedAt,
-    string UpdatedAt);
+    string UpdatedAt,
+    ExchangeCustomization? Customization = null);
 internal sealed record MembershipRecord(
     string MemberId,
     string GroupId,
@@ -205,12 +356,66 @@ internal sealed record MembershipRecord(
     Address Address,
     string CreatedAt,
     string UpdatedAt);
+// Stored row. `MemberId` is the partition key and `WishId` the sort key, so listing one member's
+// wishes is a Query and never a Scan, and every single-item operation must name the owning member —
+// ownership is enforced by the key itself rather than by a check someone can forget.
+//
+// GroupId and UserId are stored although MemberId already implies both. They make ownership and the
+// owning list explicit on the row, which is what the audit trail and the deletion sweep read, and
+// what keeps a row interpretable without joining back to the membership table.
+internal sealed record WishRecord(
+    string MemberId,
+    string WishId,
+    string GroupId,
+    string UserId,
+    WishKind Kind,
+    string Title,
+    string Url,
+    string ImageUrl,
+    long? PriceCents,
+    string Currency,
+    int Quantity,
+    WishPriority Priority,
+    string Details,
+    int Position,
+    string CreatedAt,
+    string UpdatedAt);
+
 internal sealed record DrawRecord(
     string GroupId,
     string DrawId,
     IReadOnlyDictionary<string, string> Assignments,
     string CreatedAt,
-    string CreatedBy);
+    string CreatedBy,
+    LateParticipantProposalRecord? LateProposal = null,
+    string? LastLateProposalId = null,
+    string? LastLateMemberId = null,
+    IReadOnlyList<string>? LastAffectedMemberIds = null);
+internal sealed record LateParticipantProposalRecord(
+    string ProposalId,
+    string MemberId,
+    string ExpectedDrawId,
+    IReadOnlyDictionary<string, string> Assignments,
+    IReadOnlyList<string> AffectedMemberIds,
+    string ExpiresAt);
+public sealed record MinimalAssignmentResult(
+    IReadOnlyDictionary<string, string> Assignments,
+    IReadOnlyList<string> AffectedMemberIds);
+internal sealed record InvitationRecord(
+    string InvitationId, string GroupId, string Email, string TokenHash, string Status,
+    string ExpiresAt, string CreatedAt, string UpdatedAt, string? AcceptedAt = null,
+    string? AcceptedUserId = null, string? LastSentAt = null, string? MessageId = null);
+internal sealed record ReminderConfigurationRecord(
+    string GroupId,
+    ReminderState State,
+    bool RemindUnacceptedInvitations,
+    bool RemindIncompleteReadiness,
+    int IntervalDays,
+    int QuietStartUtcHour,
+    int QuietEndUtcHour,
+    string? NextScheduledAt,
+    string? LastManualAt,
+    string UpdatedAt);
 
 public class ApiException(int statusCode, string code, string message) : Exception(message)
 {

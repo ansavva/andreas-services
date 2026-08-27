@@ -540,8 +540,23 @@ def phrasebook(model: str | None = None) -> list[dict]:
     to write through `PATCH /api/text`, a route that overwrites and cannot
     create, so a library that had never held `phrasebook/wording.yaml` refused
     the first entry anybody tried to record. A row has no such precondition.
+
+    **This route wraps, and `_as_list` alone silently swallowed it.** It answers
+    `{"terms": [...]}` where every other listing route here answers a bare
+    array, so `_as_list` — which returns `[]` for any shape that is not a list —
+    turned every read into an empty phrasebook. Not "the phrasebook is empty",
+    which is a legitimate state and reads identically: `show` printed `{}`,
+    `models` printed nothing, and `check` reported no wording list, for every
+    model, whatever the library held. The claim that reading was never the
+    broken half of this migration was wrong.
+
+    Unnoticed because the pipeline's fake API answered this route with a bare
+    list, so the suite exercised a shape the service does not return.
     """
-    return _as_list(api.get("/api/phrasebook", model=model))
+    found = api.get("/api/phrasebook", model=model)
+    if isinstance(found, dict):
+        return _as_list(found.get("terms"))
+    return _as_list(found)
 
 
 def add_phrasebook_term(model: str, avoid: str, use: str, *,

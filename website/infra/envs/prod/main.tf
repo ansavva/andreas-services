@@ -5,6 +5,7 @@ locals {
   www_domain  = "www.andreas.services"
   apex_domain = "andreas.services"
   api_domain  = "website-api.andreas.services"
+  auth_domain = "website-auth.andreas.services"
 
   common_tags = {
     Project     = local.project
@@ -21,6 +22,15 @@ data "aws_route53_zone" "main" {
 
 data "aws_region" "current" {}
 
+# Shared wildcard from `infra/`. Cognito custom domains, like CloudFront, only
+# take a us-east-1 certificate.
+data "aws_acm_certificate" "wildcard" {
+  provider    = aws.us_east_1
+  domain      = "*.andreas.services"
+  statuses    = ["ISSUED"]
+  most_recent = true
+}
+
 module "data" {
   source      = "../../modules/data"
   project     = local.project
@@ -33,7 +43,23 @@ module "data" {
 module "auth" {
   source = "../../modules/auth"
   name   = "${local.project}-${local.environment}-admin"
-  tags   = local.common_tags
+
+  auth_domain          = local.auth_domain
+  auth_certificate_arn = data.aws_acm_certificate.wildcard.arn
+  route53_zone_id      = data.aws_route53_zone.main.zone_id
+
+  # localhost entries let `npm run dev` drive the real hosted pages; the dev
+  # server is Vite's default port.
+  callback_urls = [
+    "https://${local.www_domain}/admin/callback",
+    "http://localhost:5173/admin/callback",
+  ]
+  logout_urls = [
+    "https://${local.www_domain}/admin/login",
+    "http://localhost:5173/admin/login",
+  ]
+
+  tags = local.common_tags
 }
 
 module "compute" {
@@ -88,7 +114,7 @@ module "hosting" {
 
   # S3 names are globally unique, so this one carries the region suffix the
   # convention reserves for buckets.
-  assets_bucket_name = "${local.project}-${local.environment}-assets-${data.aws_region.current.name}"
+  assets_bucket_name = "${local.project}-${local.environment}-assets-${data.aws_region.current.region}"
 
   www_api_domain  = module.compute.www_api_domain
   route53_zone_id = data.aws_route53_zone.main.zone_id

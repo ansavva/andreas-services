@@ -1,6 +1,4 @@
-import { fetchAuthSession } from "aws-amplify/auth";
-
-import { isAuthConfigured } from "../amplify";
+import { getIdToken, isAuthConfigured, refreshTokens } from "../auth/oauth";
 
 const API_URL = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 
@@ -45,9 +43,9 @@ export class ApiError extends Error {
  * authorizer checks — and every call 401s while sign-in itself looks perfectly
  * healthy. Same choice `website` and `scout` make against the same authorizer.
  *
- * The token is fetched per request rather than cached: Amplify already caches
- * and refreshes it internally, and reading it fresh means a long-idle tab picks
- * up a rotated token instead of sending a stale one.
+ * The token is read out of the store per request rather than cached here, so a
+ * long-idle tab picks up a renewed one instead of sending a stale one. When it
+ * has expired anyway, `request` below renews once on the 401 and retries.
  */
 export async function apiGet<T>(path: string, params?: Record<string, string | undefined>): Promise<T> {
   return request<T>("GET", path, { params });
@@ -92,6 +90,7 @@ async function request<T>(
   method: string,
   path: string,
   options: { params?: Record<string, string | undefined>; body?: unknown },
+  retriedAfterRefresh = false,
 ): Promise<T> {
   const url = new URL(`${API_URL}${path}`, window.location.origin);
   for (const [key, value] of Object.entries(options.params ?? {})) {
@@ -110,9 +109,8 @@ async function request<T>(
   // `app_factory.CORS_HEADERS` and in `modules/api_gateway`'s `cors_headers`;
   // missing from either, this fails as a network error with no status.
   if (currentLibrary) headers["X-Studio-Library"] = currentLibrary;
-  if (isAuthConfigured) {
-    const session = await fetchAuthSession();
-    const token = session.tokens?.idToken?.toString();
+  if (isAuthConfigured()) {
+    const token = getIdToken();
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
@@ -121,6 +119,29 @@ async function request<T>(
     headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });
+
+  // **Renew once on a 401, then retry — and only once.** Nothing proactively
+  // renews the token, so the first request after an 8-hour ID token expires is
+  // what discovers it, and every screen fetches on mount. `refreshTokens` is
+  // single-flight, so a burst of them costs one call to the token endpoint.
+  //
+  // The retry flag is what keeps a genuinely unauthorized call (a revoked
+  // session, a member removed from a library) from looping: a renewed token
+  // that still 401s is answered as a 401.
+  //
+  // A renewal that FAILS is the end of the session. `refreshTokens` clears the
+  // store on its way out, so the message below is what this screen shows and
+  // the next navigation or reload finds no token and goes to the hosted page.
+  // Redirecting from here instead was rejected: an API call is not a place to
+  // navigate from, and several in flight would each fire one.
+  if (response.status === 401 && !retriedAfterRefresh && isAuthConfigured()) {
+    try {
+      await refreshTokens();
+    } catch {
+      throw new ApiError("Your session has expired. Sign in again.", 401);
+    }
+    return request<T>(method, path, options, true);
+  }
 
   if (!response.ok) {
     // The API's own errors are JSON; API Gateway's authorizer rejections are

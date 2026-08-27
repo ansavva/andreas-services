@@ -58,17 +58,21 @@ from studio_pipeline.maintenance.journal import (
 
 #: Prefixes that belong to nobody and must never be proposed for deletion.
 #:
-#: `config/` comes from `paths.py`, which still names it — the pose plates are
-#: the last raw key in the pipeline. `phrasebook/` is a **literal on purpose**:
-#: the phrasebook is `TERM#` rows now and `paths.py` stopped naming it, but every
-#: bucket written before that change still holds `phrasebook/wording.yaml`, and a
-#: prefix this list forgot is a prefix this command would offer to delete.
+#: `config/` comes from `paths.py`, which still names it — the pose plates.
 #:
-#: It used to live in `catalog_check.py`, whose comment argued that "legacy
-#: knowledge belongs in the migrator; this is the migrator". The migrator has
-#: been retired, and this is the only caller — so the knowledge lives with the
-#: command whose safety depends on it.
-SHARED_PREFIXES = (P.CONFIG + "/", "phrasebook/")
+#: **`phrasebook/` was here and is gone**, and dropping it changes a LABEL and
+#: not a safety property. Collection is the `COLLECTABLE_PREFIXES` allowlist
+#: below, so a `phrasebook/` object was never collectable by either list; this
+#: one only decides whether an uncollectable key is reported as `shared`
+#: (outside the catalog on purpose) or `outside` (unrecognised, look at it).
+#:
+#: It was carried as a literal after the phrasebook became `TERM#` rows, while
+#: buckets written before that change still held `phrasebook/wording.yaml`.
+#: Prod was the only one, its 16 entries are rows now, and the object is
+#: deleted. Calling a leftover document "outside the catalog by design" is the
+#: part that has stopped being true — it is a leftover, and `outside` is the
+#: bucket that says so to whoever runs this next.
+SHARED_PREFIXES = (P.CONFIG + "/",)
 
 # The allowlist. `blobs/` is what `services/catalog.py::blob_key_for` writes;
 # the other two are the trees `paths.py` built before the table existed and that

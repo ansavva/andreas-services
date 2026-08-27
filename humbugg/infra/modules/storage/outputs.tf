@@ -19,10 +19,14 @@ output "dynamodb_table_arns" {
     profiles         = aws_dynamodb_table.profiles.arn
     groups           = aws_dynamodb_table.groups.arn
     groupmembers     = aws_dynamodb_table.groupmembers.arn
+    wishes           = aws_dynamodb_table.wishes.arn
     draws            = aws_dynamodb_table.draws.arn
     audit_events     = aws_dynamodb_table.audit_events.arn
     analytics_events = aws_dynamodb_table.analytics_events.arn
     billing          = aws_dynamodb_table.billing.arn
+    invitations      = aws_dynamodb_table.invitations.arn
+    reminders        = aws_dynamodb_table.reminders.arn
+    templates        = aws_dynamodb_table.templates.arn
   }
 }
 

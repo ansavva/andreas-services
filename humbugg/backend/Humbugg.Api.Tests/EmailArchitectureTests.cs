@@ -28,7 +28,8 @@ public sealed class EmailArchitectureTests
         Assert.True(Directory.Exists(consumers));
         Assert.True(File.Exists(Path.Combine(consumers, "ConsumerHost.cs")));
         Assert.True(Directory.Exists(Path.Combine(consumers, "EmailStatus")));
-        Assert.Equal(["email-status"], ConsumerHost.RegisteredConsumerNames);
+        Assert.True(Directory.Exists(Path.Combine(consumers, "Reminders")));
+        Assert.Equal(["email-status", "reminders"], ConsumerHost.RegisteredConsumerNames);
     }
 
     [Fact]

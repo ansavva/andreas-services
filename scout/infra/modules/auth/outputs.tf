@@ -12,3 +12,8 @@ output "user_pool_client_id" {
   description = "Cognito User Pool Client ID"
   value       = aws_cognito_user_pool_client.main.id
 }
+
+output "auth_domain" {
+  description = "Managed login host (VITE_COGNITO_DOMAIN)"
+  value       = aws_cognito_user_pool_domain.main.domain
+}

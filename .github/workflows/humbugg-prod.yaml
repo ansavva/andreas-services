@@ -51,6 +51,7 @@ env:
   MARKETING_ECR_REPO: humbugg-prod-marketing
   API_LAMBDA_NAME: humbugg-prod-api
   EMAIL_STATUS_LAMBDA_NAME: humbugg-prod-email-status
+  REMINDERS_LAMBDA_NAME: humbugg-prod-reminders
   MARKETING_LAMBDA_NAME: humbugg-prod-marketing
 
 jobs:
@@ -294,6 +295,7 @@ jobs:
           put marketing-ecr-url    "$(tf marketing_ecr_repository_url)"
           put cognito-user-pool-id "$(tf cognito_user_pool_id)"
           put cognito-client-id    "$(tf cognito_client_id)"
+          put cognito-auth-domain  "$(tf cognito_auth_domain)"
           put s3-bucket            "$(tf marketing_bucket)"
           put cf-dist-id           "$(tf cloudfront_distribution_id)"
           put app-s3-bucket        "$(tf app_bucket)"
@@ -372,11 +374,15 @@ jobs:
             --arg cognito_client_id "${COGNITO_CLIENT_ID}" \
             --arg profiles_table "humbugg-prod-profiles" \
             --arg groups_table "humbugg-prod-groups" \
+            --arg invitations_table "humbugg-prod-invitations" \
+            --arg reminders_table "humbugg-prod-reminders" \
             --arg groupmembers_table "humbugg-prod-groupmembers" \
+            --arg wishes_table "humbugg-prod-wishes" \
             --arg draws_table "humbugg-prod-draws" \
             --arg audit_events_table "humbugg-prod-audit-events" \
             --arg analytics_events_table "humbugg-prod-analytics-events" \
             --arg billing_table "humbugg-prod-billing" \
+            --arg templates_table "humbugg-prod-templates" \
             --arg analytics_enabled "${{ vars.HUMBUGG_ANALYTICS_ENABLED || 'true' }}" \
             --arg email_messages_table "humbugg-prod-email-messages" \
             --arg app_bucket "humbugg-prod-app-files-us-east-1" \
@@ -402,11 +408,15 @@ jobs:
               COGNITO_CLIENT_ID: $cognito_client_id,
               HUMBUGG_PROFILES_TABLE: $profiles_table,
               HUMBUGG_GROUPS_TABLE: $groups_table,
+              HUMBUGG_INVITATIONS_TABLE: $invitations_table,
+              HUMBUGG_REMINDERS_TABLE: $reminders_table,
               HUMBUGG_GROUPMEMBERS_TABLE: $groupmembers_table,
+              HUMBUGG_WISHES_TABLE: $wishes_table,
               HUMBUGG_DRAWS_TABLE: $draws_table,
               HUMBUGG_AUDIT_EVENTS_TABLE: $audit_events_table,
               HUMBUGG_ANALYTICS_EVENTS_TABLE: $analytics_events_table,
               HUMBUGG_BILLING_TABLE: $billing_table,
+              HUMBUGG_TEMPLATES_TABLE: $templates_table,
               HUMBUGG_ANALYTICS_ENABLED: $analytics_enabled,
               HUMBUGG_EMAIL_MESSAGES_TABLE: $email_messages_table,
               HUMBUGG_APP_BUCKET: $app_bucket,
@@ -438,6 +448,36 @@ jobs:
               HUMBUGG_EMAIL_MESSAGES_TABLE: $email_messages_table
             }}' > /tmp/env-humbugg-email-status.json
 
+          # Exactly the seven tables the reminder consumer opens — it resolves its own
+          # settings rather than the API's full contract, so draws, analytics and billing
+          # are deliberately absent. Keep this list and
+          # AwsLambdaReminderConsumer.SettingsFromEnvironment() in step.
+          jq -n \
+            --arg profiles_table "humbugg-prod-profiles" \
+            --arg groups_table "humbugg-prod-groups" \
+            --arg invitations_table "humbugg-prod-invitations" \
+            --arg reminders_table "humbugg-prod-reminders" \
+            --arg groupmembers_table "humbugg-prod-groupmembers" \
+            --arg audit_events_table "humbugg-prod-audit-events" \
+            --arg email_messages_table "humbugg-prod-email-messages" \
+            --arg app_base_url "https://app.humbugg.com" \
+            --arg mailer_base_url "${HUMBUGG_MAILER_BASE_URL}" \
+            '{Variables: {
+              HUMBUGG_CONSUMER: "reminders",
+              HUMBUGG_PROFILES_TABLE: $profiles_table,
+              HUMBUGG_GROUPS_TABLE: $groups_table,
+              HUMBUGG_INVITATIONS_TABLE: $invitations_table,
+              HUMBUGG_REMINDERS_TABLE: $reminders_table,
+              HUMBUGG_GROUPMEMBERS_TABLE: $groupmembers_table,
+              HUMBUGG_AUDIT_EVENTS_TABLE: $audit_events_table,
+              HUMBUGG_EMAIL_MESSAGES_TABLE: $email_messages_table,
+              HUMBUGG_EMAIL_PROVIDER: "mailer",
+              HUMBUGG_MAILER_BASE_URL: $mailer_base_url,
+              HUMBUGG_MAILER_AUTH_MODE: "sigv4",
+              HUMBUGG_MAILER_SERVICE_ID: "humbugg",
+              APP_BASE_URL: $app_base_url
+            }}' > /tmp/env-humbugg-reminders.json
+
           # The marketing SSR Lambda no longer authenticates anyone — sign-in moved
           # to the product app — so the Cognito variables it used to receive are
           # gone. Its canonical origin is baked in at build time via
@@ -463,6 +503,15 @@ jobs:
 
           aws lambda wait function-updated \
             --function-name "${EMAIL_STATUS_LAMBDA_NAME}" \
+            --region "${{ env.AWS_REGION }}"
+
+          aws lambda update-function-configuration \
+            --function-name "${REMINDERS_LAMBDA_NAME}" \
+            --region "${{ env.AWS_REGION }}" \
+            --environment file:///tmp/env-humbugg-reminders.json
+
+          aws lambda wait function-updated \
+            --function-name "${REMINDERS_LAMBDA_NAME}" \
             --region "${{ env.AWS_REGION }}"
 
           aws lambda update-function-configuration \
@@ -494,6 +543,17 @@ jobs:
 
           aws lambda wait function-updated \
             --function-name "${EMAIL_STATUS_LAMBDA_NAME}" \
+            --region "${{ env.AWS_REGION }}"
+
+          aws lambda update-function-code \
+            --function-name "${REMINDERS_LAMBDA_NAME}" \
+            --image-uri "${API_ECR_URL}:${{ github.sha }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --output table \
+            --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
+
+          aws lambda wait function-updated \
+            --function-name "${REMINDERS_LAMBDA_NAME}" \
             --region "${{ env.AWS_REGION }}"
 
           aws lambda update-function-code \
@@ -631,8 +691,11 @@ jobs:
           put APP_S3_BUCKET                    /humbugg/prod/app-s3-bucket
           put APP_CF_DIST_ID                   /humbugg/prod/app-cf-dist-id
           # Metro inlines these; empty ships an app that cannot sign anyone in.
-          put EXPO_PUBLIC_COGNITO_USER_POOL_ID /humbugg/prod/cognito-user-pool-id
+          # The pool id is not among them: since #365 the app reaches Cognito only
+          # through the Managed Login host, and the client id is the only pool
+          # identifier it still needs.
           put EXPO_PUBLIC_COGNITO_CLIENT_ID    /humbugg/prod/cognito-client-id
+          put EXPO_PUBLIC_COGNITO_DOMAIN       /humbugg/prod/cognito-auth-domain
 
       - name: Install product app dependencies
         env:
@@ -647,7 +710,6 @@ jobs:
       - name: Export product app for web
         env:
           EXPO_PUBLIC_API_BASE_URL: https://api.humbugg.com
-          EXPO_PUBLIC_AWS_REGION: ${{ env.AWS_REGION }}
         run: cd humbugg/app && npx expo export -p web --source-maps
 
       - name: Assert the app build took the native leaf

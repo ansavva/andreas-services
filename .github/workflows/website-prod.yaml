@@ -269,6 +269,11 @@ jobs:
           put /website/prod/api-url                "$(tf api_domain)"
           put /website/prod/cognito-user-pool-id   "$(tf cognito_user_pool_id)"
           put /website/prod/cognito-client-id      "$(tf cognito_user_pool_client_id)"
+          put /website/prod/cognito-auth-domain    "$(tf cognito_auth_domain)"
+          # put() hardcodes --type String; the client secret needs SecureString.
+          aws ssm put-parameter --overwrite --type SecureString \
+            --name /website/prod/cognito-client-secret \
+            --value "$(tf cognito_client_secret)" > /dev/null
 
   # ---------------------------------------------------------------------------
   # Set Lambda env vars and pin both functions to :sha.
@@ -319,6 +324,9 @@ jobs:
           API_URL=$(get api-url)
           POOL_ID=$(get cognito-user-pool-id)
           CLIENT_ID=$(get cognito-client-id)
+          COGNITO_DOMAIN=$(get cognito-auth-domain)
+          COGNITO_CLIENT_SECRET=$(aws ssm get-parameter --name /website/prod/cognito-client-secret \
+            --with-decryption --query Parameter.Value --output text)
           INTAKE_TABLE=$(get intake-table)
 
           jq -n --arg origin "https://www.andreas.services" \
@@ -333,12 +341,17 @@ jobs:
 
           jq -n --arg api "${API_URL}" --arg pool "${POOL_ID}" \
                 --arg client "${CLIENT_ID}" --arg secret "${SESSION_SECRET}" \
+                --arg domain "${COGNITO_DOMAIN}" --arg clientsecret "${COGNITO_CLIENT_SECRET}" \
+                --arg origin "https://www.andreas.services" \
             '{Variables: {
-              NODE_ENV:             "production",
-              WEBSITE_API_URL:      $api,
-              COGNITO_USER_POOL_ID: $pool,
-              COGNITO_CLIENT_ID:    $client,
-              SESSION_SECRET:       $secret
+              NODE_ENV:              "production",
+              PUBLIC_ORIGIN:         $origin,
+              WEBSITE_API_URL:       $api,
+              COGNITO_USER_POOL_ID:  $pool,
+              COGNITO_CLIENT_ID:     $client,
+              COGNITO_DOMAIN:        $domain,
+              COGNITO_CLIENT_SECRET: $clientsecret,
+              SESSION_SECRET:        $secret
             }}' > /tmp/env-frontend.json
 
           set_env() {

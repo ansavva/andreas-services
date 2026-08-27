@@ -44,7 +44,9 @@
         {
           "photosPermission": "Humbugg uses your photo library so you can choose a profile picture."
         }
-      ]
+      ],
+      "expo-web-browser",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true
