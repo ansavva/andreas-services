@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { Text } from "@ansavva/design-system";
 
 import { getAsset } from "../../apis/studio";
@@ -31,6 +33,12 @@ interface Props {
   /** Whether the describe panel is up, and the toggle — absent where it cannot write. */
   describing?: boolean;
   onToggleDescribing?: () => void;
+  /**
+   * A line under the caption — where this file sits, when nothing else says.
+   *
+   * Only the contextless viewer supplies one. See `OwnerLink`.
+   */
+  aside?: ReactNode;
 }
 
 /**
@@ -59,6 +67,7 @@ export function ViewerChrome({
   onToggleMuted,
   describing = false,
   onToggleDescribing,
+  aside,
 }: Props) {
   async function download() {
     // Signed with `response-content-disposition: attachment` server-side. A
@@ -100,6 +109,7 @@ export function ViewerChrome({
             {file.tags.join(" · ")}
           </Text>
         )}
+        {aside}
       </div>
 
       <div className="pointer-events-auto flex shrink-0 items-center gap-1">

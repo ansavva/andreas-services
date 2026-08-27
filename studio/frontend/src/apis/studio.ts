@@ -24,7 +24,6 @@ import type {
   SceneRecord,
   Shot,
   SceneSummary,
-  SelectionResponse,
   SortOrder,
   TextResponse,
   TreeResponse,
@@ -343,7 +342,11 @@ export function patchCharacter(
   id: string,
   body: { rev: number; slug?: string; display_name?: string; fictional?: boolean; hero?: string },
 ) {
-  return apiSend<CharacterRecord>("PATCH", `/api/characters/${encodeURIComponent(id)}`, body);
+  return apiSend<EntityPatch<CharacterRecord>>(
+    "PATCH",
+    `/api/characters/${encodeURIComponent(id)}`,
+    body,
+  );
 }
 
 /**
@@ -351,8 +354,12 @@ export function patchCharacter(
  *
  * A whole-document write rather than a merge because that is what the profile
  * editor produces: it renders every section it was given and hands the same
- * shape back, so a field it removed was removed on purpose. `patchCharacterProfile`
- * is the merge, for a caller changing one section.
+ * shape back, so a field it removed was removed on purpose.
+ *
+ * **The route also merges, and this app has no wrapper for that.** `{patch}`
+ * updates the sections it names and leaves the rest; the wrapper for it was
+ * written, never called, and is deleted rather than kept as a promise nothing
+ * behind it is exercising. Add it back the day a caller wants one section.
  *
  * **`PATCH`, despite replacing.** The two operations share one address and are
  * told apart by which key the body carries, so they cannot use different verbs:
@@ -362,19 +369,13 @@ export function patchCharacter(
  * and nothing caught it because the backend tests call the route directly.
  */
 export function putCharacterProfile(id: string, profile: CharacterProfile, rev: number) {
-  return apiSend<CharacterRecord>("PATCH", `/api/characters/${encodeURIComponent(id)}/profile`, {
-    profile,
-    rev,
-  });
+  return apiSend<EntityPatch<CharacterRecord>>(
+    "PATCH",
+    `/api/characters/${encodeURIComponent(id)}/profile`,
+    { profile, rev },
+  );
 }
 
-/** Merge one section of the bible, leaving the rest alone. */
-export function patchCharacterProfile(id: string, patch: CharacterProfile, rev: number) {
-  return apiSend<CharacterRecord>("PATCH", `/api/characters/${encodeURIComponent(id)}/profile`, {
-    patch,
-    rev,
-  });
-}
 
 /**
  * Delete a character.
@@ -445,15 +446,6 @@ export function patchReference(
   );
 }
 
-/** Bulk describe or regroup, in one transaction. */
-export function putReferences(
-  id: string,
-  entries: Array<{ node: string; group: string; description?: string; tags?: string[] }>,
-) {
-  return apiSend<ReferenceIndex>("PATCH", `/api/characters/${encodeURIComponent(id)}/references`, {
-    entries,
-  });
-}
 
 /** Detach an entry. The file stays exactly where it is. */
 export function deleteReference(id: string, node: string) {
@@ -485,6 +477,27 @@ export function deleteReference(id: string, node: string) {
  * `fictional` was suddenly undefined. The data was never touched; only the
  * screen was wrong, which is the worst way for a type to be a lie.
  */
+/**
+ * What a WRITE to an entity answers with — never as much as a `GET`.
+ *
+ * **This is a whole class of bug, not one route.** `GET /characters/<id>` adds
+ * `hero_url` and `counts` on top of the stored record; `GET /projects/<id>`
+ * adds the expanded `characters`. Every `PATCH` returns `jsonify(updated)` —
+ * the record as stored, without any of it — and the wrappers here all claimed
+ * the full type.
+ *
+ * It bit twice before being named. Feeding a default-set acknowledgement into
+ * the page's record left a character with no name, no slug and no `fictional`,
+ * so it rendered as a "real person"; feeding a `PATCH /characters` reply in
+ * crashed the project page on `record.counts.runs`.
+ *
+ * So a write is typed as what it is — a patch — and every caller MERGES it into
+ * what it already holds. Merging is correct whatever a route omits, which is
+ * the property that makes this safe against the next route that omits
+ * something new.
+ */
+export type EntityPatch<T> = Partial<T> & { id: string; rev: number };
+
 export interface DefaultSetAck {
   id: string;
   default_set: string[];
@@ -498,19 +511,6 @@ export function putDefaultSet(id: string, nodes: string[], rev: number) {
   });
 }
 
-/**
- * What a model would actually be shown, in order, with URLs.
- *
- * The one route both halves of studio must agree on, which is why it is a route.
- * An over-cap selection comes back **409** carrying the index rather than
- * truncated — the refusal is the point, and it arrives before any money is spent.
- */
-export function getSelection(
-  id: string,
-  params: { pick?: string; tag?: string; limit?: string } = {},
-) {
-  return apiGet<SelectionResponse>(`/api/characters/${encodeURIComponent(id)}/selection`, params);
-}
 
 /**
  * Revise one shot of a storyboard.
@@ -559,7 +559,11 @@ export function patchProject(
   id: string,
   body: { rev: number; slug?: string; title?: string; description?: string; hero?: string },
 ) {
-  return apiSend<ProjectRecord>("PATCH", `/api/projects/${encodeURIComponent(id)}`, body);
+  return apiSend<EntityPatch<ProjectRecord>>(
+    "PATCH",
+    `/api/projects/${encodeURIComponent(id)}`,
+    body,
+  );
 }
 
 /**
@@ -582,10 +586,24 @@ export function deleteProject(
 }
 
 /** Replace the involvement links wholesale — this is `projects link` / `unlink`. */
+/**
+ * Replace who a project is about.
+ *
+ * **The answer is `{id, characters}` where `characters` is a list of ID
+ * STRINGS** — `catalog.set_project_characters` returns the links it wrote. A
+ * `GET` expands the same field into `{id, slug, display_name}` objects, so the
+ * two are the same name and different shapes, and merging this one into a
+ * record replaces objects with strings. It looks right and reads back wrong:
+ * `characters.map(c => c.id)` becomes a list of `undefined`, so every chip goes
+ * unselected while the write itself succeeded. Refetch the project instead of
+ * merging.
+ */
 export function putProjectCharacters(id: string, characters: string[]) {
-  return apiSend<ProjectRecord>("PATCH", `/api/projects/${encodeURIComponent(id)}/characters`, {
-    characters,
-  });
+  return apiSend<{ id: string; characters: string[] }>(
+    "PATCH",
+    `/api/projects/${encodeURIComponent(id)}/characters`,
+    { characters },
+  );
 }
 
 /** The working pool, name-ascending. Position in this list is `--input N`. */

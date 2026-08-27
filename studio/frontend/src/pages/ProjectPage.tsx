@@ -15,10 +15,11 @@ import { PageBar } from "../components/layout/PageBar";
 import { EntityRow } from "../components/entity/EntityRow";
 import { MediaThumb } from "../components/media/MediaThumb";
 import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
+import { ProjectDetails } from "../components/project/ProjectDetails";
 import { RunsTable } from "../components/project/RunsTable";
 import { useResource } from "../hooks/useResource";
 import { formatBytes, formatDate } from "../utils/format";
-import { PROJECTS_PATH, characterPath, moviePath, runPath, scenePath } from "../utils/location";
+import { PROJECTS_PATH, moviePath, runPath, scenePath } from "../utils/location";
 import { useSearchParamState } from "../hooks/useSearchParamState";
 import { LoadError } from "../components/common/LoadError";
 
@@ -120,43 +121,28 @@ export function ProjectPage() {
         </Tabs.List>
 
         <Tabs.Panel value="overview" className="flex flex-col gap-4">
-          {record.description && <Text variant="body">{record.description}</Text>}
-
           <div className="flex flex-wrap gap-2">
             <Badge intent="neutral">{record.counts.runs} runs</Badge>
             <Badge intent="neutral">{record.counts.scenes} scenes</Badge>
             <Badge intent="neutral">{record.counts.movies} movies</Badge>
           </div>
 
-          <section className="flex flex-col gap-2">
-            <Text variant="title">Characters</Text>
-            {/* Involvement is rows, not a list on the record — which is what
-                makes the reverse question ("which projects involve this
-                character") answerable, and what lets a character delete find
-                what points at it. */}
-            {record.characters.length === 0 ? (
-              <Text variant="body" tone="muted">
-                Nobody is linked to this project yet.
-              </Text>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {record.characters.map((character) => (
-                  <Button
-                    key={character.id}
-                    intent="ghost"
-                    size="sm"
-                    onClick={() => navigate(characterPath(character.id))}
-                  >
-                    {character.display_name}
-                  </Button>
-                ))}
-              </div>
-            )}
-          </section>
+          {/* Involvement is rows, not a list on the record — which is what makes
+              the reverse question ("which projects involve this character")
+              answerable, and what lets a character delete find what points at
+              it. Editing it lives in here with the fields it sits beside. */}
+          <ProjectDetails
+            record={record}
+            // Merged, never swapped in: these routes answer with less than a
+            // `GET` does. See `EntityPatch`.
+            onSaved={(patch) =>
+              project.setData((current) => (current ? { ...current, ...patch } : current))
+            }
+            onReload={project.reload}
+          />
 
           <Text variant="caption" tone="muted">
-            Created {formatDate(record.created)} · updated {formatDate(record.updated)} · revision{" "}
-            {record.rev}
+            Created {formatDate(record.created)} · updated {formatDate(record.updated)}
           </Text>
         </Tabs.Panel>
 

@@ -9,6 +9,7 @@ import { useResource } from "../../hooks/useResource";
 import { characterPath, projectPath } from "../../utils/location";
 import { EntityCard } from "./EntityCard";
 import { LoadError } from "../common/LoadError";
+import { CreateEntityDialog } from "./CreateEntityDialog";
 
 /**
  * The two entity lists, as sections that can be rendered anywhere.
@@ -24,6 +25,26 @@ import { LoadError } from "../common/LoadError";
  * means the index pages need their own fetch regardless and the two paths drift.
  * One place per list, three callers.
  */
+
+/**
+ * Nothing here yet, and the way to change that.
+ *
+ * **The button appears only when the heading has none.** Both were shown at
+ * first and an empty list drew "New project" twice, a handspan apart — the
+ * section's own action and the empty state's call to action, which are the same
+ * control. Home passes no action, so its empty state carries the button; the
+ * index pages put it in the heading, where it stays once the list fills up.
+ */
+function Empty({ kind, hasAction }: { kind: "character" | "project"; hasAction: boolean }) {
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <Text variant="body" tone="muted">No {kind}s yet.</Text>
+      {!hasAction && (
+        <CreateEntityDialog kind={kind} />
+      )}
+    </div>
+  );
+}
 
 /** The shared frame: a heading with a count, and whichever of the four states applies. */
 function Section({
@@ -82,11 +103,7 @@ export function CharactersSection({ action }: { action?: ReactNode }) {
       errorTitle="Could not load characters"
       onRetry={reload}
       action={action}
-      empty={
-        <Text variant="body" tone="muted">
-          No characters yet. `studio character create &lt;slug&gt;` makes one.
-        </Text>
-      }
+      empty={<Empty kind="character" hasAction={action !== undefined} />}
     >
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {(data ?? []).map((character) => (
@@ -120,11 +137,7 @@ export function ProjectsSection({ action }: { action?: ReactNode }) {
       errorTitle="Could not load projects"
       onRetry={reload}
       action={action}
-      empty={
-        <Text variant="body" tone="muted">
-          No projects yet. `studio projects new &lt;slug&gt;` makes one.
-        </Text>
-      }
+      empty={<Empty kind="project" hasAction={action !== undefined} />}
     >
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {(data ?? []).map((project) => (

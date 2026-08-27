@@ -4,6 +4,7 @@ import { useLocation, useNavigate, useParams, useSearchParams } from "react-rout
 import { deleteNodes, describeNode, renameNode } from "../apis/studio";
 import { ReferenceFields } from "../components/character/ReferenceFields";
 import { TextPage } from "../components/text/TextPage";
+import { OwnerLink } from "../components/viewer/OwnerLink";
 import { ReelView } from "../components/viewer/ReelView";
 import { useViewerFeed } from "../hooks/useViewerFeed";
 import { DEFAULT_SORT, isSortOrder, type FileEntry, type SortOrder } from "../types";
@@ -138,6 +139,9 @@ export function ViewerPage() {
       onRename={rename}
       onDelete={remove}
       onDescribe={describe}
+      // A link that arrived with no context: say what the file belongs to and
+      // offer the way there. Everywhere else the neighbours already say it.
+      chromeAside={source === null ? (file) => <OwnerLink nodeId={file.id} /> : undefined}
       // Only in a character's reference pool. Elsewhere a node has no group, no
       // position and no caption, and the panel is the file's own fields alone.
       panelExtra={

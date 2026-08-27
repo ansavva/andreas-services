@@ -1,3 +1,4 @@
+import { CreateEntityDialog } from "../components/entity/CreateEntityDialog";
 import { CharactersSection } from "../components/entity/EntitySections";
 
 /**
@@ -13,5 +14,7 @@ import { CharactersSection } from "../components/entity/EntitySections";
  * pointing at the page you are standing on.
  */
 export function CharactersPage() {
-  return <CharactersSection />;
+  return (
+    <CharactersSection action={<CreateEntityDialog kind="character" />} />
+  );
 }

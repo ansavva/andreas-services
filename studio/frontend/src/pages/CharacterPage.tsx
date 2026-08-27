@@ -13,7 +13,7 @@ import { ReferencesGrid } from "../components/character/ReferencesGrid";
 import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
 import { useResource } from "../hooks/useResource";
 import { CHARACTERS_PATH } from "../utils/location";
-import type { CharacterIdentity, CharacterProfile } from "../types";
+import type { CharacterIdentity, CharacterProfile, CharacterRecord } from "../types";
 import { useSearchParamState } from "../hooks/useSearchParamState";
 
 /**
@@ -85,18 +85,21 @@ export function CharacterPage() {
     ) => {
       setConflict(null);
       try {
-        let record = character.data;
+        // **Merged into what the page holds, never swapped in.** Both writes
+        // answer with the stored record, which has neither `hero_url` nor the
+        // `counts` a `GET` adds — see `EntityPatch`.
+        let patch: Partial<CharacterRecord> = {};
         let at = rev;
 
         if (changes.identity) {
-          record = await patchCharacter(characterId, { rev: at, ...changes.identity });
-          at = record.rev;
+          patch = await patchCharacter(characterId, { rev: at, ...changes.identity });
+          at = patch.rev ?? at;
         }
         if (changes.profile) {
-          record = await putCharacterProfile(characterId, changes.profile, at);
+          patch = { ...patch, ...(await putCharacterProfile(characterId, changes.profile, at)) };
         }
 
-        if (record) character.setData(record);
+        character.setData((current) => (current ? { ...current, ...patch } : current));
       } catch (err) {
         // A 409 is not a failure to write — it is a refusal to overwrite
         // somebody else's write, which is the whole reason `rev` exists. The

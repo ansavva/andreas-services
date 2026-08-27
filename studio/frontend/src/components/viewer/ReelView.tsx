@@ -36,6 +36,8 @@ interface Props {
   ) => Promise<unknown>;
   /** Extra fields for the describe panel — see `DescribePanel`'s `extra`. */
   panelExtra?: (file: FileEntry) => ReactNode;
+  /** A line under the chrome's caption — see `ViewerChrome`'s `aside`. */
+  chromeAside?: (file: FileEntry) => ReactNode;
 }
 
 /** Mount this many panes either side of the snapped one. */
@@ -70,6 +72,7 @@ export function ReelView({
   onDelete,
   onDescribe,
   panelExtra,
+  chromeAside,
 }: Props) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -216,6 +219,7 @@ export function ReelView({
           fullscreenSupported={supported}
           onToggleFullscreen={() => void toggle()}
           onClose={onClose}
+          aside={chromeAside?.(currentItem)}
           onRename={onRename && ((name) => onRename(currentItem, name))}
           onDelete={onDelete && (() => onDelete(currentItem))}
           describing={describing}
