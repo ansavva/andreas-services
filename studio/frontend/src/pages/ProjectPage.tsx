@@ -265,14 +265,14 @@ function InputsTab({ projectId }: { projectId: string }) {
       </Text>
       {data.map((input, index) => (
         <div
-          key={input.node}
+          key={input.id}
           className="flex items-center gap-3 rounded-md border border-line bg-card p-2"
         >
           <Text variant="body" className="w-8 shrink-0 text-right tabular-nums">
             {index + 1}
           </Text>
           <MediaThumb
-            nodeId={input.node}
+            nodeId={input.id}
             url={input.url}
             name={input.name}
             aspect="auto"

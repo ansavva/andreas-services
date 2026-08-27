@@ -5,12 +5,13 @@ import { Alert, Badge, Button, Spinner, Text } from "@ansavva/design-system";
 
 import { getNodeText, getRun } from "../apis/studio";
 import { PageBar } from "../components/layout/PageBar";
+import { Backlinks } from "../components/common/Backlinks";
 import { MediaThumb } from "../components/media/MediaThumb";
 import { useResource } from "../hooks/useResource";
 import { useProjectCrumb } from "../hooks/useProjectCrumb";
 import { formatBytes, formatDate, formatTextContent } from "../utils/format";
 import { isTerminal, type RunAsset, type RunRecord } from "../types";
-import { objectPath, runPath } from "../utils/location";
+import { objectPath, runPath, scenePath } from "../utils/location";
 
 /**
  * One run: what studio recorded about it, what came out, and — separately, and
@@ -90,6 +91,13 @@ export function RunPage() {
           <Alert.Description>{data.error}</Alert.Description>
         </Alert.Root>
       )}
+
+      <Backlinks label="Used in" links={data.scenes} to={scenePath} />
+      <Backlinks
+        label="Chained into"
+        links={data.derived}
+        to={(id) => runPath(data.project, id)}
+      />
 
       <section className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         <Fact label="Model" value={data.model} />

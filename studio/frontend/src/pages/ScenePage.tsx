@@ -5,6 +5,7 @@ import { Alert, Badge, Spinner, Text } from "@ansavva/design-system";
 
 import { getScene, patchShot } from "../apis/studio";
 import { PageBar } from "../components/layout/PageBar";
+import { Backlinks } from "../components/common/Backlinks";
 import { MediaThumb } from "../components/media/MediaThumb";
 import { ShotCard } from "../components/scene/ShotCard";
 import { isBracketed } from "../components/scene/Sends";
@@ -12,7 +13,7 @@ import { useResource } from "../hooks/useResource";
 import { useProjectCrumb } from "../hooks/useProjectCrumb";
 import type { RunAsset, Shot } from "../types";
 import { formatDate } from "../utils/format";
-import { objectPath, runPath } from "../utils/location";
+import { moviePath, objectPath, runPath } from "../utils/location";
 
 /**
  * One scene: the plan, the shots, and the take they were stitched into.
@@ -94,6 +95,8 @@ export function ScenePage() {
           {formatDate(data.created)}
         </Text>
       </PageBar>
+
+      <Backlinks label="Cut into" links={data.movies} to={moviePath} />
 
       {data.output && (
         <section className="flex flex-col gap-2">

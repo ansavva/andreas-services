@@ -241,3 +241,43 @@ def test_creating_a_movie_answers_in_the_read_shape(empty_api):
     read = empty_api.get(f"/api/movies/{created['id']}").get_json()
 
     assert created["scenes"] == read["scenes"]
+
+
+# ── listing shapes ──────────────────────────────────────────────────────────
+#
+# One level up from a relationship: two routes that return "the same
+# conceptual thing" have to return the same shape too, for exactly the same
+# reason. A client draws both with one component.
+
+
+def test_a_characters_projects_are_the_same_rows_the_project_list_sends(empty_api):
+    """The SPA draws both with `EntityCard`, which reads `counts` and `hero`.
+
+    This route sent `{id, slug, title}` and nothing else, so the Projects tab
+    on a character threw on `project.counts.runs` and the whole tab was the
+    error boundary.
+    """
+    character = _character(empty_api)
+    _project(empty_api, characters=[character["id"]])
+
+    listed = empty_api.get("/api/projects").get_json()
+    involved = empty_api.get(f"/api/characters/{character['id']}/projects").get_json()
+
+    assert involved == listed
+
+
+def test_the_input_pool_is_an_envelope_and_says_so(empty_api):
+    """Pinned because it is the one listing that is NOT a bare array.
+
+    Both clients assumed it was: the SPA typed it as a list and called `.map`
+    on an object, and the CLI put it through a normaliser that answers `[]` for
+    anything that is not a list — so the pool read as empty every time, which
+    looks exactly like an empty pool.
+    """
+    project = _project(empty_api)
+
+    body = empty_api.get(f"/api/projects/{project['id']}/inputs").get_json()
+
+    assert isinstance(body, dict)
+    assert set(body) == {"folder", "inputs"}
+    assert body["inputs"] == []

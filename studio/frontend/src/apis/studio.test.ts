@@ -7,6 +7,7 @@ vi.mock("../amplify", () => ({ isAuthConfigured: false }));
 import {
   copyNodes,
   getProjectMovies,
+  getProjectInputs,
   getProjectScenes,
   deleteNodes,
   getAsset,
@@ -187,5 +188,28 @@ describe("project listings", () => {
     );
 
     await expect(getProjectScenes("proj-1")).resolves.toEqual([]);
+  });
+
+  // The THIRD of these, found the same way and fixed after the other two.
+  // `/inputs` answers `{folder, inputs}` — a different envelope again, which is
+  // why fixing scenes and movies did not fix it — and it was typed as the bare
+  // array, so the Inputs tab called `.map` on an object and threw.
+  it("unwraps the input pool out of its folder envelope", async () => {
+    const rows = [{ id: "node-1", name: "plate.png", url: "https://x/1" }];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ folder: "node-f", inputs: rows }) }),
+    );
+
+    await expect(getProjectInputs("proj-1")).resolves.toEqual(rows);
+  });
+
+  it("reads an empty input pool as none, not as a crash", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ folder: "node-f", inputs: [] }) }),
+    );
+
+    await expect(getProjectInputs("proj-1")).resolves.toEqual([]);
   });
 });

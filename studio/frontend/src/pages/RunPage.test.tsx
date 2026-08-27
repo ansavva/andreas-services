@@ -34,6 +34,8 @@ function record(over: Partial<RunRecord> = {}): RunRecord {
     cost: null,
     error: null,
     outputs: [],
+    scenes: [],
+    derived: [],
     bindings: {},
     lineage: { from_run: null, from_output: null },
     payload: { prompt: null, request: null, response: null },
@@ -102,4 +104,31 @@ it("names the project in the trail", async () => {
   await open();
 
   await waitFor(() => expect(screen.getByText("A project")).toBeTruthy());
+});
+
+/**
+ * The way back up, which did not exist.
+ *
+ * A run arrived at from the reel was a dead end: it knew its project and
+ * nothing else, so the scene that used it was reachable only by going back to
+ * the project and down the other branch. `by-sk` edge rows answer it now.
+ */
+it("names the scene that used this run, and goes there", async () => {
+  read.mockResolvedValue(
+    record({ scenes: [{ id: "scene-9", slug: "a-scene", title: "A scene" }] } as Partial<RunRecord>),
+  );
+  await open();
+
+  const link = await screen.findByRole("button", { name: "A scene" });
+  expect(screen.getByText("Used in")).toBeTruthy();
+  expect(link).toBeTruthy();
+});
+
+it("says nothing at all when no scene has used it", async () => {
+  read.mockResolvedValue(record());
+  await open();
+
+  // The ordinary case — most runs are never cut into anything, so a permanent
+  // "Used in: —" would be noise on almost every run in the library.
+  expect(screen.queryByText("Used in")).toBeNull();
 });

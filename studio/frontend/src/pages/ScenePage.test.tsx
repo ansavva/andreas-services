@@ -48,6 +48,7 @@ function record(over: Partial<SceneRecord> = {}): SceneRecord {
     slug: "light-flex",
     title: "Light flex",
     status: "planned",
+    movies: [],
     created: "2026-08-25T00:00:00Z",
     folder: "node-folder",
     output: null,
@@ -467,4 +468,22 @@ it("does not offer a viewer for a frame that has not been rendered", async () =>
 
   await screen.findByText("The whistle comes off");
   expect(screen.queryByRole("button", { name: /not yet/i })).toBeNull();
+});
+
+/**
+ * The way back up. A scene knew nothing of the movie that cut it, because a
+ * movie held its scenes in a JSON list and no index addresses into one.
+ */
+it("names the movie that cut this scene", async () => {
+  draw(record({ movies: [{ id: "movie-3", slug: "the-cut", title: "The cut" }] }));
+
+  expect(await screen.findByText("Cut into")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "The cut" })).toBeTruthy();
+});
+
+it("says nothing when the scene has not been cut into anything", async () => {
+  draw(record());
+
+  await screen.findByText("The whistle comes off");
+  expect(screen.queryByText("Cut into")).toBeNull();
 });

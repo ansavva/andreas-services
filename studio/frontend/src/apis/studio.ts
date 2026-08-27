@@ -614,9 +614,21 @@ export function setProjectCharacters(id: string, characters: string[]) {
   );
 }
 
-/** The working pool, name-ascending. Position in this list is `--input N`. */
+/**
+ * The working pool, name-ascending. Position in this list is `--input N`.
+ *
+ * **Unwrapped from `{folder, inputs}`.** This was typed as a bare array and is
+ * not one, so the Inputs tab did `data.map` on an object and threw — the whole
+ * tab was the error boundary. The type said otherwise, and a type on an
+ * `apiGet` is an assertion about a shape nobody checked, not a check.
+ *
+ * `folder` is dropped rather than returned: nothing here uploads into the pool,
+ * and a caller that needs it can ask for it when there is one.
+ */
 export function getProjectInputs(id: string) {
-  return apiGet<ProjectInput[]>(`/api/projects/${encodeURIComponent(id)}/inputs`);
+  return apiGet<{ folder: string; inputs: ProjectInput[] }>(
+    `/api/projects/${encodeURIComponent(id)}/inputs`,
+  ).then((page) => page.inputs ?? []);
 }
 
 /**

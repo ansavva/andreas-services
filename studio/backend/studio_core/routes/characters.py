@@ -47,6 +47,7 @@ from flask import Blueprint, g, jsonify, request
 
 from studio_core.clients.aws import s3
 from studio_core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
+from studio_core.routes import projects as project_routes
 from studio_core.routes import support
 from studio_core import config
 from studio_core.services import catalog, keys, layout
@@ -988,15 +989,16 @@ def character_runs(addressed: str):
 
 @bp.get("/characters/<addressed>/projects")
 def character_projects(addressed: str):
-    """Every project that involves this character — a question with no answer before."""
+    """Every project that involves this character — a question with no answer before.
+
+    **The same rows `GET /api/projects` sends.** This answered `{id, slug,
+    title}` and nothing else, so the SPA drew them with the card it draws every
+    other project list with and threw on `project.counts.runs` — the tab was a
+    blank error page. One builder now, in `routes/projects.py`.
+    """
     held = support.memberships()
     record = _character(addressed, held)
 
     project_ids = catalog.linked(record["id"], catalog.ENTITY_PROJECT)
     found = catalog.entities_by_id(catalog.ENTITY_PROJECT, project_ids)
-    return jsonify(
-        [
-            {"id": project["id"], "slug": project["slug"], "title": project.get("title")}
-            for project in found.values()
-        ]
-    ), 200
+    return jsonify(project_routes.summary_rows(list(found.values()))), 200

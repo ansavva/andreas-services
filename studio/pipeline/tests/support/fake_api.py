@@ -923,13 +923,21 @@ class FakeApi:
         return self._project_view(record)
 
     def _r_project_inputs(self, method, body, params, ref):
+        """`{folder, inputs}`, as the route answers — NOT a bare array.
+
+        This returned the array directly, which is the one shape the real route
+        does not use. `_as_list` answers `[]` for anything that is not a list,
+        so against the service the pool read as empty every time while every
+        test here passed.
+        """
         record = self._entity(self.projects, ref, "project")
         pool = self._folder_under(record["root"], "input")
-        return [{**self._view(n), "position": i}
-                for i, n in enumerate(
-                    sorted((c for c in self._children(pool["id"])
-                            if c["kind"] == "file"),
-                           key=lambda n: _natural(n["name"])), 1)]
+        return {"folder": pool["id"],
+                "inputs": [{**self._view(n), "position": i}
+                           for i, n in enumerate(
+                               sorted((c for c in self._children(pool["id"])
+                                       if c["kind"] == "file"),
+                                      key=lambda n: _natural(n["name"])), 1)]}
 
     def _r_project_runs(self, method, body, params, ref):
         record = self._entity(self.projects, ref, "project")

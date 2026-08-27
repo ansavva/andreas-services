@@ -483,8 +483,18 @@ export interface ProjectRecord {
  * stored. Renaming a file therefore renumbers the pool, and showing the numbers
  * is how that stops being a surprise.
  */
+/**
+ * One file in the pool.
+ *
+ * **`id`, not `node`.** `support.assets` draws the line: a pointer a record
+ * holds says `node`, and a node reported by its own id says `id`. The pool is
+ * a listing of the `input/` folder's children, so it is the second — and this
+ * said `node`, which is `undefined` against the route and left every thumbnail
+ * in the tab blank. The same divergence cost every tile on the run page once,
+ * in the other direction.
+ */
 export interface ProjectInput {
-  node: string;
+  id: string;
   name: string;
   size?: number;
   content_type?: string | null;
@@ -594,6 +604,10 @@ export interface RunRecord {
   folder: string;
   outputs: RunAsset[];
   lineage: RunLineage;
+  /** Which scenes bound this run into a shot. */
+  scenes: Backlink[];
+  /** What was chained off it — `lineage.from_run` read the other way. */
+  derived: Backlink[];
   cost: RunCost | null;
   error: string | null;
   payload: { request: string | null; response: string | null; prompt: string | null };
@@ -755,11 +769,27 @@ export interface SceneSummary {
   thumb?: HeroImage | null;
 }
 
+/**
+ * A link back UP the tree — which scene used this run, which movie cut this
+ * scene. Thin on purpose: id, slug and title are what a link needs to be drawn.
+ *
+ * These are answered off `by-sk` edge rows, and until those existed the
+ * questions had no answer at any price: a run lived in a shot's attribute and a
+ * movie's scenes in a JSON list, and no index can see into either.
+ */
+export interface Backlink {
+  id: string;
+  slug: string | null;
+  title: string | null;
+}
+
 export interface SceneRecord extends SceneSummary {
   folder: string;
   shots: Shot[];
   /** The stitched take, once `assemble` has uploaded it. */
   output: RunAsset | null;
+  /** Which movies cut this scene. */
+  movies: Backlink[];
 
   /** Prepended byte-identically to every panel prompt — one look, stated once. */
   setting?: string;

@@ -56,9 +56,26 @@ def list_projects():
     held = support.memberships()
     support.member_of(g.library, held)
 
-    records = catalog.entities_in(g.library, KIND)
+    listed = summary_rows(catalog.entities_in(g.library, KIND))
+    return jsonify(listed), 200
+
+
+def summary_rows(records: list[dict]) -> list[dict]:
+    """A project as every listing spells it — slug-ascending.
+
+    **One builder, because there was more than one listing.**
+    `GET /api/characters/<id>/projects` answered the same conceptual thing —
+    a project summary — with `{id, slug, title}` and nothing else, so the SPA
+    drew it with the card it draws every other project list with and threw on
+    `project.counts.runs`. Two routes returning "a project summary" in two
+    shapes is the same defect as one relationship spelled two ways, one level
+    up.
+
+    `hero` costs the batched read it is worth: a listing without one is a grid
+    of empty squares.
+    """
     heroes = catalog.records([record["hero"] for record in records if record.get("hero")])
-    listed = [
+    rows = [
         {
             "id": record["id"],
             "slug": record["slug"],
@@ -69,8 +86,8 @@ def list_projects():
         }
         for record in records
     ]
-    listed.sort(key=lambda entry: entry["slug"])
-    return jsonify(listed), 200
+    rows.sort(key=lambda entry: entry["slug"])
+    return rows
 
 
 @bp.post("/projects")
