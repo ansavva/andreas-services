@@ -2992,14 +2992,23 @@ def terms(lib: str, model: str | None = None) -> list[dict]:
     return [_entity(item) for item in items]
 
 
-def add_term(lib: str, model: str, avoid: str, use: str, note: str | None = None) -> dict:
+def add_term(lib: str, model: str, avoid: str, use: str, note: str | None = None,
+             replicate: str | None = None) -> dict:
     """Claim one avoid/use pair. A duplicate is a 409, not an overwrite.
 
     Conditional, for the reason every claim here is: the pair *is* the key, so
     "already there" is a condition failure rather than a read somebody raced.
+
+    `replicate` is `<owner>/<name>`, carried for display and stored per row
+    rather than per model — there is no model row to hang it off, and a term is
+    the only thing this table knows about a model. It was accepted by the route
+    and dropped here for the whole life of the migration, which made
+    `phrasebook show` print `replicate: null` and `phrasebook models` print `?`
+    for every model. The pipeline's fake API stored it, so the suite passed.
     """
     now = _now()
-    record = {"model": model, "avoid": avoid, "use": use, "note": note, "created": now}
+    record = {"model": model, "avoid": avoid, "use": use, "note": note,
+              "replicate": replicate, "created": now}
     _write(
         [
             (

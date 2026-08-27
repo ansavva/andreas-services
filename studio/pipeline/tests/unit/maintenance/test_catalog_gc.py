@@ -137,12 +137,25 @@ def test_a_config_object_is_never_listed(shared_bucket, catalog_table):
     assert plate not in found["orphans"]
 
 
-def test_a_phrasebook_object_is_never_listed(shared_bucket, catalog_table):
+def test_a_leftover_phrasebook_is_unrecognised_but_still_not_collected(
+        shared_bucket, catalog_table):
+    """`phrasebook/` left `SHARED_PREFIXES` when the document was deleted.
+
+    The phrasebook is `TERM#` rows, so an object under this prefix is a leftover
+    rather than shared material held outside the catalog on purpose — and the
+    report should say so. It moves from `shared` to `outside`.
+
+    **`outside` is still never collected.** That is the allowlist's doing, not
+    this list's, which is the whole point of `test_an_unknown_prefix_is_refused_
+    rather_than_collected` below: dropping a prefix from `SHARED_PREFIXES` can
+    relabel a key but can never put it at risk.
+    """
     _seeded(shared_bucket, catalog_table)
     found = _survey(shared_bucket, catalog_table)
 
     assert "phrasebook/wording.yaml" not in cg.referenced_keys(catalog_table)
-    assert "phrasebook/wording.yaml" in found["shared"]
+    assert "phrasebook/wording.yaml" in found["outside"]
+    assert "phrasebook/wording.yaml" not in found["shared"]
     assert not [k for k in found["orphans"] if k.startswith("phrasebook/")]
 
 
@@ -196,7 +209,11 @@ def test_a_healthy_bucket_reports_zero(shared_bucket, catalog_table):
 
     assert found["orphans"] == []
     assert cg.orphan_bytes(found) == 0
-    assert len(found["shared"]) == 3            # two pose plates + the phrasebook
+    assert len(found["shared"]) == 2            # the two pose plates
+    # The fixture's leftover `phrasebook/wording.yaml` is unrecognised now that
+    # `phrasebook/` has left `SHARED_PREFIXES`. Uncollected either way — the
+    # allowlist decides that — but reported as something to look at.
+    assert found["outside"] == ["phrasebook/wording.yaml"]
 
 
 @pytest.mark.parametrize("key", [

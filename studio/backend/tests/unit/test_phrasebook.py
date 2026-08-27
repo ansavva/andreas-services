@@ -110,6 +110,42 @@ def test_a_hash_in_a_model_or_a_word_is_refused(empty_api):
     ).status_code == 400
 
 
+def test_replicate_is_stored_and_read_back(empty_api, catalog_table):
+    """It was accepted by the route and dropped before the write.
+
+    `phrasebook show` reads `replicate` to head each model's section and
+    `phrasebook models` prints it in a column, so both showed nothing for the
+    whole life of the migration. Not caught because the pipeline's fake API
+    stored the field the real one discarded — which is why this test is here
+    and not beside the CLI.
+    """
+    empty_api.post("/api/phrasebook", json={
+        "model": MODEL, "avoid": "sultry", "use": "composed",
+        "replicate": "google/nano-banana-pro"})
+
+    item = _item(catalog_table, f"LIB#{CATALOG_LIBRARY}", f"TERM#{MODEL}#sultry")
+
+    assert item["replicate"]["S"] == "google/nano-banana-pro"
+    terms = empty_api.get(f"/api/phrasebook?model={MODEL}").get_json()["terms"]
+    assert terms[0]["replicate"] == "google/nano-banana-pro"
+
+
+def test_a_term_carries_created_and_not_the_documents_added(empty_api):
+    """The row's stamp is `created`, like every other row in this table.
+
+    Pinned because the CLI's `show` asked for `added` — the YAML document's
+    field name — and so printed no date at all against a real library.
+    """
+    empty_api.post(
+        "/api/phrasebook", json={"model": MODEL, "avoid": "sultry", "use": "composed"}
+    )
+
+    term = empty_api.get(f"/api/phrasebook?model={MODEL}").get_json()["terms"][0]
+
+    assert "added" not in term
+    assert term["created"]
+
+
 def test_every_field_but_the_note_is_required(empty_api):
     for missing in ("model", "avoid", "use"):
         body = {"model": MODEL, "avoid": "sultry", "use": "composed"}

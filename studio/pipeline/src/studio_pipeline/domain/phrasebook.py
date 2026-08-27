@@ -23,8 +23,17 @@ and a plain sync would have deleted its entries.
 
 None of that exists any more. A row has no precondition: `add` on an empty
 library writes one row and succeeds, and there is nothing for a sync to
-clobber. Reading was never the broken half — a missing phrasebook read as an
-empty one — and it still is not.
+clobber.
+
+**This used to claim reading was never the broken half. It was.** `GET
+/api/phrasebook` answers `{"terms": [...]}` where every other listing route
+answers a bare array, and `adapters.entities.phrasebook` passed the response
+through `_as_list`, which returns `[]` for any shape that is not a list. So
+every read came back empty — for every model, in every library, whatever it
+held — and an empty phrasebook is a legitimate state that looks identical.
+Prod held 16 terms and `show` printed `{}`. The pipeline's fake API answered
+this one route with a bare list, so the suite never saw it. Fixed in the
+adapter, pinned in `tests/unit/adapters/test_entities.py`.
 
 Two smaller things went with it. Uniqueness is now the key's: a duplicate
 avoid-phrase for one model is a **409** rather than a second entry silently
@@ -93,10 +102,15 @@ def _section(rows: list[dict]) -> dict:
     Deliberately the same shape the YAML document had — `replicate` plus
     `entries` — because that is what every `SKILL.md` example shows and what a
     person reading the output expects. The storage changed; the reading did not.
+
+    **The date field is `created`, not the document's `added`.** Rows carry the
+    same `created` stamp every other row in the table does, and the reader was
+    left asking for `added` when the migration made them rows — so the date was
+    silently absent from every section `show` printed.
     """
     replicate = next((r["replicate"] for r in rows if r.get("replicate")), None)
     return {"replicate": replicate,
-            "entries": [{k: r[k] for k in ("avoid", "use", "note", "added")
+            "entries": [{k: r[k] for k in ("avoid", "use", "note", "created")
                          if r.get(k)} for r in rows]}
 
 
