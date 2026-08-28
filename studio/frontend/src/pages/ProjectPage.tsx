@@ -242,7 +242,7 @@ function MoviesTab({ projectId }: { projectId: string }) {
  * **The number is the whole point.** `--input N` is a *position* in this list,
  * which the API sorts name-ascending — nothing stores it, so renaming a file
  * renumbers the pool. Showing the positions is what stops that being a surprise
- * the first time a shoot picks the wrong plate.
+ * the first time a turnaround picks the wrong angle image.
  */
 function InputsTab({ projectId }: { projectId: string }) {
   const load = useCallback(() => getProjectInputs(projectId), [projectId]);

@@ -98,11 +98,11 @@ const SECTIONS: ReadonlyArray<{ key: string; hint: string }> = [
   },
   {
     key: "body",
-    hint: "Proportions. A shoot states them in the prompt so the angle image's own build does not decide the figure's — a face plate takes what shows above a mid-chest crop, a body plate takes all of it.",
+    hint: "Proportions. A turnaround states them in the prompt so the angle image's own build does not decide the figure's — a face angle takes what shows above a mid-chest crop, a body angle takes all of it.",
   },
   {
     key: "wardrobe",
-    hint: "What the character usually wears. A shoot takes the first tops entry for its plain-top plate; the rest is prompt material.",
+    hint: "What the character usually wears. A turnaround takes the first tops entry for its plain-top angle; the rest is prompt material.",
   },
   {
     key: "rendering",

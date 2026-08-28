@@ -638,7 +638,7 @@ export interface RunRecord {
    * Every image this run sends, IN ORDER, each with its role and provenance.
    *
    * The order is not presentational: a model is handed a list and prompts cite
-   * positions in it ("the first image is an existing plate"), so this is the
+   * positions in it ("the first image is an existing reference"), so this is the
    * order the model sees.
    */
   sends: RunSend[];
@@ -765,7 +765,7 @@ export interface Panel {
   aspect_ratio?: string | null;
   /**
    * Where this panel's own reference images come from when it renders — a
-   * character's plates, by default set or by name, plus any explicit nodes.
+   * character's references, by default set or by name, plus any explicit nodes.
    *
    * **Not the same list as the shot's.** These steer the STILL; what the video
    * engine is sent is the shot's own `motion.references` plus the scene's frames.
@@ -828,7 +828,7 @@ export interface Motion {
   /**
    * The reference block resolved into drawable images, by the API.
    *
-   * A stored plan NAMES its plates ("this character, these files"); a board has
+   * A stored plan NAMES its references ("this character, these files"); a board has
    * to draw them. Expanded server-side because resolving which pictures a pick
    * means is the character module's job, not a second copy in the browser.
    */

@@ -179,7 +179,7 @@ def panel_format(panel_entry: dict, video_model: str) -> str | None:
     `.webp` and GPT Image writes `.webp` by default, so a whole board can be
     rendered in a format the shots it exists for cannot open.
 
-    And among the formats that *are* accepted, the smallest wins. A PNG plate off
+    And among the formats that *are* accepted, the smallest wins. A PNG panel off
     these models runs ~2 MiB against ~0.3 MiB for the same picture as JPEG, and a
     panel is sent to a video model many times over its life. Kling's failure at
     around 14 MiB of images was a two-minute silence and a retryable-looking

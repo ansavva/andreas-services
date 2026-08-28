@@ -548,7 +548,7 @@ Both have node ids, `store.shared_read` / `shared_presign` are deleted, and
 `?key=` is gone — `GET /api/asset` takes `?node=` and nothing else. **One
 addressing scheme, no exceptions.**
 
-The plates were pushed straight into the bucket as `config/angle/…` for as long
+The angle images were pushed straight into the bucket as `config/angle/…` for as long
 as nothing owned them, and those nodeless objects outlived the change. They were
 deleted in August 2026 once `config sync` had written the node-backed copies;
 `catalog gc` does not collect them, deliberately, so it was a targeted removal.
@@ -841,7 +841,7 @@ Deploying first also works and costs a **degraded window**: from the moment
 yet — and the entity pages are empty until `apply` runs. File browsing is
 unaffected, because nodes do not change.
 
-**`studio config sync` is not optional in prod.** The plates have been objects
+**`studio config sync` is not optional in prod.** The angle images have been objects
 with no node since before the catalog, and `catalog_seed` deliberately recorded
 none for them. Every shoot refuses until they have rows. The old objects are
 left where they are and become collectable by `catalog gc`.
@@ -864,11 +864,11 @@ running anything with `--apply`.
 
 **Dev stacks — no migration.** A stack holds the angle images and nothing else,
 so there is no character, project or run to raise a row over. What each needs is
-the re-keyed GSI and the plates as nodes:
+the re-keyed GSI and the angle images as nodes:
 
 ```bash
 ./studio/scripts/dev-aws-setup.sh     # applies the GSI change
-./studio/scripts/dev-setup.sh         # pushes the plates through the API
+./studio/scripts/dev-setup.sh         # pushes the angle images through the API
 ```
 
 Given there is nothing to preserve, `dev-aws-destroy.sh` and re-provision is

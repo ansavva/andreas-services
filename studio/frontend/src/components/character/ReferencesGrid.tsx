@@ -142,7 +142,7 @@ export function ReferencesGrid({ characterId, rootId, defaultSet, rev, onSaved }
    * The members of the default set that are still references.
    *
    * **Counting the ids rather than the entries was a lie this screen told.** A
-   * default-set member whose `REF#` row is gone — a re-shot plate, detached and
+   * default-set member whose `REF#` row is gone — a re-rendered reference, detached and
    * never re-pointed — is an image a shoot cannot send. The grid said "7" while
    * the shoot sent three, and one character in production carried four of them.
    * Detaching prunes the set now, so this cannot accumulate again; the count

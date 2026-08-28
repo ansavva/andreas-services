@@ -60,7 +60,7 @@ consequences:
    then curated identity, then chained run outputs, then the working pool — and
    then discarded that reasoning. `bindings` was the residue: field name to node
    ids. **Position in that list is cited by the prompt** (a real production
-   prompt reads "the FIRST image is an existing plate of him"), so the ordering
+   prompt reads "the FIRST image is an existing angle image of him"), so the ordering
    was load-bearing and its meaning was nowhere.
 3. **Approval left no artifact.** Hard rule #2 says show the full payload, get an
    explicit yes, and re-approve after **any** edit. It was enforced by a

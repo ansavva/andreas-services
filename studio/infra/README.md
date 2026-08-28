@@ -658,7 +658,7 @@ for.
 
 Publishing it also found three defects in `dev-aws-seed.sh` that had survived
 since #285 landed, all for the same reason: the script had never run past its
-first read. The plate push ran before the library it needs existed, an entity
+first read. The angle image push ran before the library it needs existed, an entity
 record went in without the `id` every read indexes on, and the bytes moved one
 `aws s3 cp` per object — 564 seconds for 54 of them, now 71.
 

@@ -684,12 +684,12 @@ that breaks every time the pipeline ships.
 - **There is no query string left that becomes an S3 key.** `GET /api/asset`
   takes `?node=` and nothing else. It was the last one, and it survived because
   that route was also how the **pipeline** read *shared* material: the
-  phrasebook and the `config/angle/` plates belonged to no character and no
+  phrasebook and the the `config/angle/` images belonged to no character and no
   project, nothing recorded a node for them, and `GET /api/resolve` 404s on a
   thing with no node.
 
   Both halves closed rather than one. The phrasebook is `TERM#` rows, so there
-  is no document to address; the plates are ordinary nodes in a `config/` folder
+  is no document to address; the angle images are ordinary nodes in a `config/` folder
   the library is created with. So `keys.clean_key`, `_normalise` and
   `_reject_traversal` are deleted along with `clean_prefix` and
   `assert_inside_root` before them, and `keys.py` is `clean_name` and the

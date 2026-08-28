@@ -106,7 +106,7 @@ def validate_bindings(raw, lib: str) -> dict:
     from here.
 
     The existence check is one `BatchGetItem` over the whole binding map, so a
-    run with three references and an input plate costs one extra read.
+    run with three references and one input image costs one extra read.
     """
     if raw is None:
         return {}

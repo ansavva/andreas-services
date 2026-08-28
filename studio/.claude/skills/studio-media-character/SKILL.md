@@ -452,9 +452,9 @@ No new skill directory — ever. The character is now usable by the whole pipeli
 Names are lowercase `[a-z0-9_-]`. There is no reserved-name list: characters live
 under `characters/`, so a project named `misc` simply is not one.
 
-### When a plate comes back wrong, read the bible before rewriting the prompt
+### When an angle image comes back wrong, read the bible before rewriting the prompt
 
-A shoot fills its prompts from the bible, so a plate that is confidently and
+A turnaround fills its prompts from the bible, so an angle image that is confidently and
 repeatably wrong is usually the record being followed correctly. Rewording the
 prompt against it just argues with the source. In one session the same character
 came back short and stocky, then narrow-chinned, then long-haired at the nape —
@@ -492,7 +492,7 @@ hair however tight the wording, because they are two rolls of a die.
 left three-quarter, and being literally the same pixels it matches on every axis
 a second render could drift on. Record the provenance in the description and tag
 it `mirrored`, so nobody later reads it as independent evidence of the face. It
-costs nothing, and it is what `config/angle/` already does for its own plates.
+costs nothing, and it is what `config/angle/` already does for its own angle images.
 
 ## A bible describes identity, not a fixed look
 

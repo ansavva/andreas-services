@@ -94,7 +94,7 @@ export function RunPlan({
  *
  * **Order is not presentational.** A model is handed a list and prompts cite
  * positions in it — a real production prompt in this library reads "the FIRST
- * image is an existing plate of him" — so the number on each tile is part of the
+ * image is an existing reference of him" — so the number on each tile is part of the
  * payload rather than a label for it.
  */
 function Sends({ sends, onView }: { sends: RunSend[]; onView: (a: RunAsset) => void }) {

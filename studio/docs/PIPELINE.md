@@ -377,8 +377,8 @@ querying the table, not by listing a folder.
     input/          the project working pool
 
 config/             the angle images, shared by the library and owned by no entity
-    pose/body/*.png     how to stand, for a turnaround
-    pose/face/*.png     head-angle plates
+    angle/body/*.png    how to stand, for a turnaround
+    angle/face/*.png     head-angle images
 ```
 
 **`profile.yaml` and `project.json` are gone.** The bible is a validated map on
@@ -456,7 +456,7 @@ membership of a set of named generic sheets — and that set had already been
 emptied. A generic anatomy sheet used to be listed in it, which sent it to
 `reference/`, where it was indexed as identity and tagged `body`; `--pick-tag
 body` could then hand a model a stranger's sculpt as one of the character's own
-reference angles. Generic pose material is **config**: it lives in the repo and
+reference angles. Generic guide material is **config**: it lives in the repo and
 is copied to `config/angle/`, and never into a character. So by the end only the
 regex ever fired, and the "or a named sheet" half of the rule matched nothing.
 
@@ -502,8 +502,8 @@ why it went.
 **`config/` is the one tree whose source of truth is the repo.** It lives at
 `studio/config/`, and `dev-setup.sh` syncs it out (`--size-only`, never
 `--delete`). The bucket holds a copy because a model may only be handed a
-presigned URL of an S3 object — a plate that was never synced cannot be used, so
-`shoot` checks for them and says to re-run the script. Editing a plate in the
+presigned URL of an S3 object — an angle image that was never synced cannot be used, so
+`turnaround` checks for them and says to re-run the script. Editing an angle image in the
 bucket rather than the repo is how they diverge.
 
 **`phrasebook/wording.yaml` is seeded from the repo and then owned by the

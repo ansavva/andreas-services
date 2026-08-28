@@ -3273,8 +3273,8 @@ def source_of(record: dict) -> dict:
 #
 # **The order is the meaning, not a presentation detail.** A model is handed a
 # list of images and the prompt cites positions in it — a production prompt in
-# this library reads "the FIRST image is an existing plate of him" — so a send
-# that came back in a different order would make plate *n* the wrong plate. That
+# this library reads "the FIRST image is an existing reference of him" — so a send
+# that came back in a different order would make reference *n* the wrong one. That
 # is why the sort key is a zero-padded number: a range query returns bind order
 # without anything having to sort it afterwards.
 #

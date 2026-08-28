@@ -91,10 +91,10 @@ Error code 1201: The number of images and elements exceeds the limit, max number
 
 It fails fast and cheap, but only after a submit, and the two facts that produce
 the mistake sit in different rows of the schema table above. With a character
-whose `default_set` holds seven — a full face turnaround plus body plates, which
+whose `default_set` holds seven — a full face turnaround plus body angle images, which
 is the shape `shoot` produces — binding `--character` and a start frame together
 is over the line by exactly one. Narrow the selection with `--pick`; the start
-frame already carries wardrobe and framing, so drop a body plate rather than a
+frame already carries wardrobe and framing, so drop a body angle image rather than a
 face one.
 
 ### An end frame clears the reference list
