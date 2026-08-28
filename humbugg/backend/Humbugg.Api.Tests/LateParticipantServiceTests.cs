@@ -247,6 +247,7 @@ public sealed class LateParticipantServiceTests
             Groups,
             Members,
             new FakeWishes(),
+            new FakeInvitations(),
             new MatchingService(),
             new PlanCatalog(new()),
             Audit,
@@ -316,6 +317,13 @@ public sealed class LateParticipantServiceTests
 
     private sealed class FakeMembers : IMembershipRepository
     {
+        public Task MarkAssignmentViewedAsync(string memberId, string drawId, CancellationToken cancellationToken = default)
+        {
+            var index = Items.FindIndex(item => item.MemberId == memberId);
+            if (index >= 0) Items[index] = Items[index] with { AssignmentViewedDrawId = drawId };
+            return Task.CompletedTask;
+        }
+
         public List<MembershipRecord> Items { get; } =
         [
             Member("a", "user-a", organizer: true),

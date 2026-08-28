@@ -496,6 +496,19 @@ function OrganizerPanel(props: OrganizerProps) {
         </View>
       </View>
 
+      <View style={{ marginTop: 24 }}>
+        {/* The readiness dashboard is its own screen (#133) — the organizer's "who is holding
+            this up" question, kept off the participant's page. */}
+        <Link href={`/organize/${group.group_id}`} asChild>
+          <Pressable accessibilityRole="link" style={styles.panel}>
+            <Text style={[styles.small, styles.semibold]}>See who is ready →</Text>
+            <Text style={[styles.smallMuted, { marginTop: 4 }]}>
+              Wishlists, addresses and who still needs a nudge.
+            </Text>
+          </Pressable>
+        </Link>
+      </View>
+
       {group.status === 'open' ? (
         <View style={{ marginTop: 28, gap: 28 }}>
           <View>

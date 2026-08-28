@@ -17,6 +17,7 @@ internal interface IMembershipRepository
     Task<MembershipRecord> UpdateParticipationAsync(string memberId, bool participating, CancellationToken cancellationToken = default);
     Task<MembershipRecord> UpdateOrganizerAsync(string memberId, bool organizer, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("This membership repository does not support organizer role updates.");
+    Task MarkAssignmentViewedAsync(string memberId, string drawId, CancellationToken cancellationToken = default);
     Task AnonymizeAsync(string memberId, string pseudonym, string displayName, CancellationToken cancellationToken = default);
     Task DeleteAsync(string memberId, CancellationToken cancellationToken = default);
     Task DeleteByGroupAsync(string groupId, CancellationToken cancellationToken = default);
@@ -84,6 +85,19 @@ internal sealed class MembershipRepository(IAmazonDynamoDB db, HumbuggSettings s
             new() { [":organizer"] = DynamoValues.B(organizer) },
             cancellationToken);
 
+    // Records that this member has opened their assignment for this draw. Deliberately NOT routed
+    // through UpdateAsync: that touches updated_at, and reading your own assignment is not an edit
+    // to your membership — it would move a timestamp the organizer dashboard reads as activity.
+    public Task MarkAssignmentViewedAsync(string memberId, string drawId, CancellationToken cancellationToken = default) =>
+        db.UpdateItemAsync(new UpdateItemRequest
+        {
+            TableName = settings.GroupMembersTable,
+            Key = new() { ["member_id"] = DynamoValues.S(memberId) },
+            UpdateExpression = "SET assignment_viewed_draw_id = :draw",
+            ExpressionAttributeValues = new() { [":draw"] = DynamoValues.S(drawId) },
+            ConditionExpression = "attribute_exists(member_id)"
+        }, cancellationToken);
+
     private async Task<MembershipRecord> UpdateAsync(string memberId, string expression, Dictionary<string, AttributeValue> values, CancellationToken cancellationToken)
     {
         values[":now"] = DynamoValues.S(DateTimeOffset.UtcNow.ToString("O"));
@@ -109,7 +123,7 @@ internal sealed class MembershipRepository(IAmazonDynamoDB db, HumbuggSettings s
         {
             TableName = settings.GroupMembersTable,
             Key = new() { ["member_id"] = DynamoValues.S(memberId) },
-            UpdateExpression = "SET user_id = :user, display_name = :name, is_organizer = :notOrganizer, wishlist = :empty, avoidances = :empty, address = :address, updated_at = :now",
+            UpdateExpression = "SET user_id = :user, display_name = :name, is_organizer = :notOrganizer, wishlist = :empty, avoidances = :empty, address = :address, updated_at = :now REMOVE assignment_viewed_draw_id",
             ExpressionAttributeValues = new()
             {
                 [":user"] = DynamoValues.S(pseudonym),
@@ -145,25 +159,34 @@ internal sealed class MembershipRepository(IAmazonDynamoDB db, HumbuggSettings s
         }
     }
 
-    internal static Dictionary<string, AttributeValue> Write(MembershipRecord record) => new()
+    internal static Dictionary<string, AttributeValue> Write(MembershipRecord record)
     {
-        ["member_id"] = DynamoValues.S(record.MemberId),
-        ["group_id"] = DynamoValues.S(record.GroupId),
-        ["user_id"] = DynamoValues.S(record.UserId),
-        ["display_name"] = DynamoValues.S(record.DisplayName),
-        ["is_organizer"] = DynamoValues.B(record.IsOrganizer),
-        ["is_participating"] = DynamoValues.B(record.IsParticipating),
-        ["wishlist"] = DynamoValues.S(record.Wishlist),
-        ["avoidances"] = DynamoValues.S(record.Avoidances),
-        ["address"] = DynamoValues.AddressValue(record.Address),
-        ["created_at"] = DynamoValues.S(record.CreatedAt),
-        ["updated_at"] = DynamoValues.S(record.UpdatedAt)
-    };
+        var item = new Dictionary<string, AttributeValue>(StringComparer.Ordinal)
+        {
+            ["member_id"] = DynamoValues.S(record.MemberId),
+            ["group_id"] = DynamoValues.S(record.GroupId),
+            ["user_id"] = DynamoValues.S(record.UserId),
+            ["display_name"] = DynamoValues.S(record.DisplayName),
+            ["is_organizer"] = DynamoValues.B(record.IsOrganizer),
+            ["is_participating"] = DynamoValues.B(record.IsParticipating),
+            ["wishlist"] = DynamoValues.S(record.Wishlist),
+            ["avoidances"] = DynamoValues.S(record.Avoidances),
+            ["address"] = DynamoValues.AddressValue(record.Address),
+            ["created_at"] = DynamoValues.S(record.CreatedAt),
+            ["updated_at"] = DynamoValues.S(record.UpdatedAt)
+        };
+        // Absent rather than empty when nobody has looked: the attribute's absence is what
+        // AnonymizeAsync's REMOVE leaves behind, so the two paths agree on what "never viewed" is.
+        if (record.AssignmentViewedDrawId is not null)
+            item["assignment_viewed_draw_id"] = DynamoValues.S(record.AssignmentViewedDrawId);
+        return item;
+    }
 
     private static MembershipRecord Read(IReadOnlyDictionary<string, AttributeValue> item) => new(
         item.String("member_id"), item.String("group_id"), item.String("user_id"), item.String("display_name"),
         item.Bool("is_organizer"), item.Bool("is_participating"), item.String("wishlist"), item.String("avoidances"),
-        item.Address("address"), item.String("created_at"), item.String("updated_at"));
+        item.Address("address"), item.String("created_at"), item.String("updated_at"),
+        item.TryGetValue("assignment_viewed_draw_id", out var viewed) ? viewed.S : null);
 
     internal static MembershipRecord NewRecord(
         string groupId,

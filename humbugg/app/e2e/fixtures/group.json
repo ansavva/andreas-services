@@ -20,5 +20,6 @@
       "is_owner": true,
       "is_ready": true
     }
-  ]
+  ],
+  "requires_address": false
 }

@@ -44,15 +44,27 @@ Do not read the Plus milestone being nearly closed as "Plus is done".
 
 Four issues, in this order. Everything else queues behind them.
 
-### 1. #133 — organizer readiness dashboard ← **the keystone**
+### 1. #133 — organizer readiness dashboard ← **the keystone** · **built**
 
-Filed under Free, but it is also the only plausible home for five of the six shipped Plus features.
-The app has **no organizer surface at all**: the invitation list, reminder settings, co-organizer
-management and the template picker have nowhere to render. Build this and the Plus backend stops
-being dark.
+`GET /api/groups/{id}/readiness`, organizer-only and ungated by plan, rendered at
+**`/organize/{groupId}`** in the app. The organizer surface the other five things needed now exists;
+the invitation list, reminder settings, co-organizer management and the template picker have
+somewhere to render, and wiring them there is what stops the Plus backend being dark. That wiring is
+**not** done — #133's own acceptance criteria did not cover it.
 
-It reads across wishlist readiness, address readiness, and post-draw progress, which is why it comes
-after #127/#128 (done) and pairs naturally with #132.
+What the dashboard reports: joined and participating counts, wishlist readiness, address readiness,
+whether each participant has opened their match since the draw, and one nudge list combining
+outstanding participants with unaccepted invitations. Every state is decided by the server and the
+app only renders its label, so "ready" cannot come to mean two things.
+
+Two acceptance criteria are **not** met, both deliberately:
+
+- **Purchased / sent / received.** That is #132's data. The API sends `gift_progress: null` and the
+  panel says "not tracked yet" rather than reporting three zeroes, which would be a false claim
+  rather than a missing one. The contract and the panel are in place for #132 to fill.
+- **"Works for each Work exchange."** It is not plan-gated and works for a Work exchange that
+  exists, but see the Work note under "Seams" — the wish roll-up is O(participants) queries, which
+  is nothing at 6 or 50 and far too much at 10,000.
 
 ### 2. #141 — Plus upgrade and purchase experience
 
@@ -65,7 +77,7 @@ states (canceled, paid, failed/expired/refunded, still-confirming).
 Re-author for React Native: `StyleSheet` not Tailwind, `Linking`/`expo-web-browser` not
 `window.location.assign`, a persistent store not `sessionStorage` for the resume-intent key.
 
-### 3. #130 → #131 → #132 — the rest of the wishlist spine
+### 3. #130 → #131 → #132 — the rest of the wishlist spine · **now has somewhere to land**
 
 All three hang off the wish model added in #127. Take them in that order: claims and questions are
 independent of each other but both inform what #132 has to display, and #133 renders all three.
@@ -116,6 +128,13 @@ exactly what exists and what remains, so read that before estimating. #136 (repe
 **Work** — ten issues, correctly cold. It is two tiers away. Do not start it until a stranger can
 complete a Free exchange unaided.
 
+*One thing Work now inherits:* the readiness dashboard counts wishes with one DynamoDB Query per
+participant, because the wishes table has no group index — `member_id` is the partition key
+precisely so no wish can be addressed without naming its owner, and indexing wish content to build
+an organizer roll-up would trade that away. Ten at a time over 6 or 50 participants is nothing; over
+Work's 10,000 it is not. Work needs a stored per-member count before it ships, not a GSI over the
+wishes.
+
 ---
 
 ## Seams that exist for a reason
@@ -131,6 +150,25 @@ is their own business.
 **The free-text `wishlist` field was not replaced.** #127 added structured wishes *alongside* it, and
 it now carries general preferences ("Likes, sizes and hobbies"). That is why there was no data
 migration and why a list written before wishes existed still reaches its giver intact.
+
+**`requires_address` is a group setting, not a guess.** The readiness dashboard cannot ask whether
+everyone has given a mailing address without knowing whether this exchange posts its gifts. An
+exchange handed over at a party never needs one, and reporting every participant as "missing an
+address" would train the organizer to ignore the column. The organizer sets it from the dashboard;
+off by default, and off means the address column reads `not_required` rather than `missing`.
+
+**Assignment views are recorded on the membership row, not read back from analytics.**
+`assignment_viewed_draw_id` is written the first time a member opens their match. Analytics already
+tracks the same milestone and cannot answer this: it is deduplicated, and `HUMBUGG_ANALYTICS_ENABLED
+=false` switches it off — a product surface must not change meaning when telemetry is disabled.
+Storing the **draw id** rather than a flag is what makes it self-invalidating: a reset and a
+late-participant reassignment each mint a new draw id, so everyone reverts to "has not looked",
+which is the truth, because the link they followed is the one the API now refuses as obsolete.
+
+**Invitation status has exactly one definition, `InvitationStatusRule`.** The managed-invitation list
+and the readiness nudge list read the same rows through different services. Two copies of the
+"revoked → accepted → expired → delivery feedback" ladder would eventually disagree about what
+"bounced" means, and bounced is the status an organizer most needs to act on.
 
 **Wishes are keyed `(member_id, wish_id)`.** Listing is a Query, never a Scan, and no single-item
 write can address a wish without naming its owner — ownership is structural rather than a check
@@ -174,6 +212,13 @@ and `skipped` is not a failure. A dropped infra deploy therefore surfaces two me
 leaves and the app renders entirely unstyled while compiling and passing every test. Run
 `node humbugg/scripts/assert-design-system-leaves.mjs native humbugg/app/dist` after an
 `expo export -p web --source-maps`. Grepping the bundle for `react-native-web` is not a substitute.
+
+**`dev-up-app.sh` and `dev-aws-setup.sh` have to agree on the env keys.** They stopped agreeing at
+#365: the hosted-login migration made the pool id and the region no longer app configuration, and
+`dev-aws-setup.sh` now *removes* both from an existing `app/.env.local` — while `dev-up-app.sh` kept
+demanding them. The product app's dev server refused to start on every machine, with an error telling
+you to re-run the setup script that had just deleted the keys. Fixed on 2026-08-28. If you add or
+retire an `EXPO_PUBLIC_*`, change both files in the same commit.
 
 **Run the exact CI commands, not approximations.** `terraform validate` on the prod env only is not
 `tflint --recursive`; `dotnet build` is not `dotnet format --verify-no-changes`. Both have failed a

@@ -18,6 +18,11 @@ public sealed class GroupsController(IGroupService groups) : ControllerBase
     [HttpGet("{groupId}")]
     public Task<GroupDetail> Get(string groupId, CancellationToken cancellationToken) => groups.GetAsync(groupId, cancellationToken);
 
+    /// <summary>The organizer readiness dashboard (#133). Organizer-only; no plan gate.</summary>
+    [HttpGet("{groupId}/readiness")]
+    public Task<GroupReadiness> Readiness(string groupId, CancellationToken cancellationToken) =>
+        groups.GetReadinessAsync(groupId, cancellationToken);
+
     [HttpPatch("{groupId}")]
     public Task<GroupDetail> Update(string groupId, [FromBody] UpdateGroupRequest request, CancellationToken cancellationToken) =>
         groups.UpdateAsync(groupId, request, cancellationToken);

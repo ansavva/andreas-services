@@ -106,6 +106,8 @@ export interface GroupSummary {
   is_owner: boolean;
   created_at: string;
   updated_at: string;
+  /** Whether this exchange posts its gifts, and so whether a mailing address is asked for. */
+  requires_address?: boolean;
 }
 
 export interface GroupDetail extends GroupSummary {
@@ -241,3 +243,108 @@ export interface ReminderOverview {
   next_scheduled_at?: string | null;
   recent_history: ReminderHistoryItem[];
 }
+
+// ─── Organizer readiness (#133) ─────────────────────────────────────────────────────────────────
+//
+// Mirrors the backend's `GroupReadiness`. Every state below is DECIDED BY THE SERVER; nothing here
+// re-derives one from a wish count or an address. That is the whole point of the seam — "ready" has
+// to mean one thing, and a second implementation on this side is how it quietly stops meaning it.
+
+export type ReadinessState = 'ready' | 'missing' | 'not_required' | 'not_applicable';
+export type ParticipantRole = 'owner' | 'co_organizer' | 'participant';
+export type NudgeReason =
+  | 'no_wishlist'
+  | 'no_address'
+  | 'assignment_not_viewed'
+  | 'invitation_not_accepted';
+
+export interface ParticipantReadiness {
+  member_id: string;
+  display_name: string;
+  role: ParticipantRole;
+  is_participating: boolean;
+  wishlist: ReadinessState;
+  wish_count: number;
+  has_general_preferences: boolean;
+  address: ReadinessState;
+  assignment: ReadinessState;
+  nudges: NudgeReason[];
+}
+
+export interface PendingInvitation {
+  invitation_id: string;
+  email: string;
+  status: InvitationStatus;
+  expires_at: string;
+  last_sent_at?: string | null;
+}
+
+/** Aggregate counts only — absent until gift tracking ships (#132). */
+export interface GiftProgress {
+  purchased: number;
+  sent: number;
+  received: number;
+  total: number;
+}
+
+export interface ReadinessCounts {
+  members: number;
+  participating: number;
+  not_participating: number;
+  pending_invitations: number;
+  wishlist_ready: number;
+  address_ready: number;
+  assignments_viewed: number;
+  needs_nudge: number;
+}
+
+export interface GroupReadiness {
+  group_id: string;
+  status: GroupStatus;
+  plan: PlanCode;
+  requires_address: boolean;
+  counts: ReadinessCounts;
+  participants: ParticipantReadiness[];
+  pending_invitations: PendingInvitation[];
+  gift_progress?: GiftProgress | null;
+}
+
+/**
+ * What each state is called, per dimension. Keyed by the union rather than by string, so a state
+ * added to the backend enum fails this file to compile until somebody decides what to call it —
+ * which is cheaper than shipping a row that renders a blank chip.
+ */
+export const READINESS_LABELS: Record<'wishlist' | 'address' | 'assignment', Record<ReadinessState, string>> = {
+  wishlist: {
+    ready: 'Wishlist ready',
+    missing: 'No wishlist',
+    not_required: 'Wishlist not needed',
+    not_applicable: 'Not participating',
+  },
+  address: {
+    ready: 'Address on file',
+    missing: 'No address',
+    not_required: 'Address not needed',
+    not_applicable: 'Not participating',
+  },
+  assignment: {
+    ready: 'Opened their match',
+    missing: 'Has not looked yet',
+    not_required: 'Not needed',
+    not_applicable: 'Before the draw',
+  },
+};
+
+/** What the organizer is being asked to chase, in the words they would use to chase it. */
+export const NUDGE_LABELS: Record<NudgeReason, string> = {
+  no_wishlist: 'Has not written a wishlist',
+  no_address: 'Has not given a mailing address',
+  assignment_not_viewed: 'Has not opened their match',
+  invitation_not_accepted: 'Has not accepted their invitation',
+};
+
+export const PARTICIPANT_ROLE_LABELS: Record<ParticipantRole, string> = {
+  owner: 'Owner',
+  co_organizer: 'Co-organizer',
+  participant: 'Participant',
+};

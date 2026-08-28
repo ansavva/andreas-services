@@ -1,0 +1,468 @@
+// The organizer readiness dashboard (#133).
+//
+// The behaviours worth pinning are the ones a screenshot cannot check: that the screen never
+// re-derives readiness (it renders the state the API sent, even an unexpected one), that a
+// participant who follows the URL is told why they cannot see it, that a long roster stays
+// complete, and that each row carries one sentence for a screen reader instead of three loose chips.
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+
+const mocks = {
+  push: jest.fn(),
+  getGroup: jest.fn(),
+  getReadiness: jest.fn(),
+  updateGroup: jest.fn(),
+  width: 1280,
+};
+
+jest.mock('expo-router', () => {
+  const { Text } = require('react-native');
+  return {
+    useRouter: () => ({ push: mocks.push }),
+    Link: ({ children }: { children?: React.ReactNode }) => <Text>{children}</Text>,
+  };
+});
+
+// The error class is declared INSIDE the factory. Babel hoists `import ... from './organize'`
+// above a top-level class declaration, so a class defined out here is still in its temporal dead
+// zone when the factory runs, and the screen's `err instanceof ApiError` throws on `undefined`
+// instead of branching. `jest.requireMock` below is how a test gets hold of the same class.
+jest.mock('../api/client', () => {
+  // Plain assignment, not a TypeScript parameter property: the out-of-scope guard reads the
+  // desugared `this.status = status` as a free variable and rejects the whole factory.
+  class ApiError extends Error {
+    status: number;
+    constructor(status: number, _code: string, message: string) {
+      super(message);
+      this.status = status;
+    }
+  }
+  return {
+    api: {
+      getGroup: (...args: unknown[]) => mocks.getGroup(...args),
+      getReadiness: (...args: unknown[]) => mocks.getReadiness(...args),
+      updateGroup: (...args: unknown[]) => mocks.updateGroup(...args),
+    },
+    ApiError,
+  };
+});
+
+jest.mock('../context/auth-context', () => ({
+  useAuth: () => ({ accessToken: () => Promise.resolve('token'), authenticated: true }),
+}));
+
+jest.mock('../components/shell', () => {
+  const { Text, View } = require('react-native');
+  return {
+    Shell: ({ children }: { children?: React.ReactNode }) => <View>{children}</View>,
+    Card: ({ children }: { children?: React.ReactNode }) => <View>{children}</View>,
+    // Wraps in Text like the real one — a bare string under a View is not a text host, and
+    // getByText would not find it.
+    LoadingPanel: ({ children }: { children?: React.ReactNode }) => <Text>{children}</Text>,
+  };
+});
+
+// The one seam the layout tests need: a phone is a narrow window, not a different renderer.
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => ({ width: mocks.width, height: 800, scale: 2, fontScale: 1 }),
+}));
+
+import OrganizeScreen from './organize';
+import type { GroupReadiness, ParticipantReadiness } from '../types';
+
+const { ApiError } = jest.requireMock('../api/client') as {
+  ApiError: new (status: number, code: string, message: string) => Error;
+};
+
+const participant = (
+  name: string,
+  overrides: Partial<ParticipantReadiness> = {},
+): ParticipantReadiness => ({
+  member_id: `member-${name}`,
+  display_name: name,
+  role: 'participant',
+  is_participating: true,
+  wishlist: 'ready',
+  wish_count: 3,
+  has_general_preferences: true,
+  address: 'not_required',
+  assignment: 'not_applicable',
+  nudges: [],
+  ...overrides,
+});
+
+const readiness = (overrides: Partial<GroupReadiness> = {}): GroupReadiness => {
+  const participants = overrides.participants ?? [participant('Alex', { role: 'owner' })];
+  const participating = participants.filter((person) => person.is_participating).length;
+  return {
+    group_id: 'group-1',
+    status: 'open',
+    plan: 'free',
+    requires_address: false,
+    participants,
+    pending_invitations: [],
+    gift_progress: null,
+    ...overrides,
+    counts: {
+      members: participants.length,
+      participating,
+      not_participating: participants.length - participating,
+      pending_invitations: overrides.pending_invitations?.length ?? 0,
+      wishlist_ready: participants.filter((p) => p.wishlist === 'ready').length,
+      address_ready: participants.filter((p) => p.address === 'ready').length,
+      assignments_viewed: participants.filter((p) => p.assignment === 'ready').length,
+      needs_nudge:
+        participants.filter((p) => p.nudges.length > 0).length +
+        (overrides.pending_invitations?.length ?? 0),
+      ...overrides.counts,
+    },
+  };
+};
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  mocks.width = 1280;
+  mocks.getGroup.mockResolvedValue({ group_id: 'group-1', name: 'Office Secret Santa' });
+  mocks.getReadiness.mockResolvedValue(readiness());
+  mocks.updateGroup.mockResolvedValue({});
+});
+
+describe('loading and failure', () => {
+  it('holds a loading state until both calls resolve', async () => {
+    let release: (value: unknown) => void = () => {};
+    mocks.getReadiness.mockReturnValue(new Promise((resolve) => { release = resolve; }));
+
+    render(<OrganizeScreen groupId="group-1" />);
+    expect(screen.getByText('Checking who is ready…')).toBeOnTheScreen();
+
+    release(readiness());
+    await waitFor(() => expect(screen.getByText('Who is ready')).toBeOnTheScreen());
+  });
+
+  it('tells a participant why the dashboard is closed to them rather than showing nothing', async () => {
+    mocks.getReadiness.mockRejectedValue(new ApiError(403, 'forbidden', 'nope'));
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Only an organizer of this exchange can see its readiness dashboard.'),
+      ).toBeOnTheScreen(),
+    );
+  });
+
+  it('surfaces any other failure with the message the API gave', async () => {
+    mocks.getReadiness.mockRejectedValue(new Error('The exchange is on fire.'));
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() => expect(screen.getByText('The exchange is on fire.')).toBeOnTheScreen());
+  });
+});
+
+describe('the empty and settled states', () => {
+  it('says nobody has joined instead of drawing an empty roster', async () => {
+    mocks.getReadiness.mockResolvedValue(readiness({ participants: [] }));
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Nobody has joined yet. Share the invitation link.')).toBeOnTheScreen(),
+    );
+  });
+
+  it('says nobody needs chasing when nobody does', async () => {
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() => expect(screen.getByText('Nobody — everyone is ready')).toBeOnTheScreen());
+    expect(screen.getByText('Every participant has done what the exchange asks.')).toBeOnTheScreen();
+  });
+});
+
+describe('the nudge list', () => {
+  it('names each person once with every reason they are being chased', async () => {
+    mocks.getReadiness.mockResolvedValue(
+      readiness({
+        status: 'drawn',
+        requires_address: true,
+        participants: [
+          participant('Alex', { role: 'owner', address: 'ready', assignment: 'ready' }),
+          participant('Sam', {
+            wishlist: 'missing',
+            wish_count: 0,
+            address: 'missing',
+            assignment: 'missing',
+            nudges: ['no_wishlist', 'no_address', 'assignment_not_viewed'],
+          }),
+        ],
+      }),
+    );
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() => expect(screen.getByText('1 to chase')).toBeOnTheScreen());
+    expect(
+      screen.getByText(
+        'Has not written a wishlist · Has not given a mailing address · Has not opened their match',
+      ),
+    ).toBeOnTheScreen();
+  });
+
+  it('calls out a bounced invitation as an address problem, not a slow reply', async () => {
+    mocks.getReadiness.mockResolvedValue(
+      readiness({
+        pending_invitations: [
+          {
+            invitation_id: 'i-1',
+            email: 'nobody@example.com',
+            status: 'bounced',
+            expires_at: '2026-12-01T00:00:00Z',
+          },
+          {
+            invitation_id: 'i-2',
+            email: 'slow@example.com',
+            status: 'sent',
+            expires_at: '2026-12-01T00:00:00Z',
+          },
+        ],
+      }),
+    );
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Their invitation bounced — check the address')).toBeOnTheScreen(),
+    );
+    expect(screen.getByText('Has not accepted their invitation')).toBeOnTheScreen();
+  });
+});
+
+describe('what the roster shows', () => {
+  it('renders the state the server sent and does not recompute it from the wish count', async () => {
+    // Deliberately contradictory: three wishes and a "missing" verdict. The server decides; if this
+    // screen ever starts inferring readiness from wish_count, this test is what catches it.
+    mocks.getReadiness.mockResolvedValue(
+      readiness({
+        participants: [participant('Sam', { wishlist: 'missing', wish_count: 3, nudges: ['no_wishlist'] })],
+      }),
+    );
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() => expect(screen.getByText('No wishlist')).toBeOnTheScreen());
+    expect(screen.queryByText('3 wishes')).toBeNull();
+  });
+
+  it('counts a single wish in the singular', async () => {
+    mocks.getReadiness.mockResolvedValue(
+      readiness({ participants: [participant('Sam', { wish_count: 1 })] }),
+    );
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() => expect(screen.getByText('1 wish')).toBeOnTheScreen());
+  });
+
+  it('hides the address and assignment chips the exchange is not asking about', async () => {
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() => expect(screen.getByText('3 wishes')).toBeOnTheScreen());
+    expect(screen.queryByText('Address not needed')).toBeNull();
+    // "Before the draw" appears once, as the Matches-opened tile's value — never as a row chip.
+    expect(screen.getAllByText('Before the draw')).toHaveLength(1);
+  });
+
+  it('shows a match chip once the draw has happened', async () => {
+    mocks.getReadiness.mockResolvedValue(
+      readiness({
+        status: 'drawn',
+        participants: [
+          participant('Alex', { assignment: 'ready' }),
+          participant('Sam', { assignment: 'missing', nudges: ['assignment_not_viewed'] }),
+        ],
+      }),
+    );
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() => expect(screen.getByText('Opened their match')).toBeOnTheScreen());
+    expect(screen.getByText('Has not looked yet')).toBeOnTheScreen();
+  });
+
+  it('asks nothing of somebody sitting the exchange out', async () => {
+    mocks.getReadiness.mockResolvedValue(
+      readiness({
+        participants: [
+          participant('Alex'),
+          participant('Sam', {
+            is_participating: false,
+            wishlist: 'not_applicable',
+            address: 'not_applicable',
+            assignment: 'not_applicable',
+            wish_count: 0,
+          }),
+        ],
+      }),
+    );
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() => expect(screen.getByText('Participant · Sitting out')).toBeOnTheScreen());
+    expect(screen.getByText('1 sitting out')).toBeOnTheScreen();
+  });
+
+  it('keeps a long roster complete rather than truncating it', async () => {
+    const many = Array.from({ length: 120 }, (_, index) =>
+      participant(`Person ${String(index).padStart(3, '0')}`, {
+        member_id: `member-${index}`,
+        wishlist: index % 3 === 0 ? 'missing' : 'ready',
+        wish_count: index % 3 === 0 ? 0 : 2,
+        nudges: index % 3 === 0 ? ['no_wishlist'] : [],
+      }),
+    );
+    mocks.getReadiness.mockResolvedValue(readiness({ participants: many }));
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    // Person 000 has no list, so they are named twice — once to chase, once in the roster.
+    await waitFor(() => expect(screen.getAllByText('Person 000')).toHaveLength(2));
+    expect(screen.getByText('Person 119')).toBeOnTheScreen();
+    // 40 of the 120 are missing a list; the roll-up and the nudge panel must agree on that.
+    expect(screen.getByText('40 to chase')).toBeOnTheScreen();
+    expect(screen.getByText('80 of 120')).toBeOnTheScreen();
+  });
+});
+
+describe('the address setting', () => {
+  it('saves the switch and reloads, so the counts follow the setting', async () => {
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('Not needed')).toBeOnTheScreen());
+
+    mocks.getReadiness.mockResolvedValue(
+      readiness({ requires_address: true, participants: [participant('Alex', { address: 'missing', nudges: ['no_address'] })] }),
+    );
+    fireEvent.press(screen.getByLabelText('Gifts are posted to a mailing address'));
+
+    await waitFor(() =>
+      expect(mocks.updateGroup).toHaveBeenCalledWith('token', 'group-1', { requires_address: true }),
+    );
+    await waitFor(() => expect(screen.getByText('No address')).toBeOnTheScreen());
+  });
+
+  it('reports a failed save without pretending the setting changed', async () => {
+    mocks.updateGroup.mockRejectedValue(new Error('Nope.'));
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => screen.getByLabelText('Gifts are posted to a mailing address'));
+    fireEvent.press(screen.getByLabelText('Gifts are posted to a mailing address'));
+
+    await waitFor(() => expect(screen.getByText('Nope.')).toBeOnTheScreen());
+    expect(screen.getByText('Not needed')).toBeOnTheScreen();
+  });
+});
+
+describe('gift progress', () => {
+  it('says gift progress is not tracked rather than reporting zero of everything', async () => {
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() => expect(screen.getByText('Not tracked yet.')).toBeOnTheScreen());
+    expect(screen.queryByText('0 of 1')).toBeNull();
+  });
+
+  it('renders the counts once the API sends them', async () => {
+    mocks.getReadiness.mockResolvedValue(
+      readiness({ gift_progress: { purchased: 4, sent: 2, received: 1, total: 5 } }),
+    );
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() => expect(screen.getByText('4 of 5')).toBeOnTheScreen());
+    expect(screen.getByText('2 of 5')).toBeOnTheScreen();
+    expect(screen.getByText('1 of 5')).toBeOnTheScreen();
+    expect(screen.queryByText('Not tracked yet.')).toBeNull();
+  });
+});
+
+describe('mobile and assistive technology', () => {
+  it('renders the whole dashboard at a 390px phone width', async () => {
+    mocks.width = 390;
+    mocks.getReadiness.mockResolvedValue(
+      readiness({
+        status: 'drawn',
+        requires_address: true,
+        participants: [
+          participant('Alex', { role: 'owner', address: 'ready', assignment: 'ready' }),
+          participant('Sam', { address: 'missing', assignment: 'missing', nudges: ['no_address', 'assignment_not_viewed'] }),
+        ],
+      }),
+    );
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() => expect(screen.getByText('Who is ready')).toBeOnTheScreen());
+    // Every tile, chip and row survives the narrow layout — the columns change, the content does not.
+    expect(screen.getByText('Taking part')).toBeOnTheScreen();
+    expect(screen.getByText('Matches opened')).toBeOnTheScreen();
+    expect(screen.getByText('No address')).toBeOnTheScreen();
+    expect(screen.getByText('Has not looked yet')).toBeOnTheScreen();
+  });
+
+  it('gives every participant row one sentence rather than three loose chips', async () => {
+    mocks.getReadiness.mockResolvedValue(
+      readiness({
+        status: 'drawn',
+        requires_address: true,
+        participants: [
+          participant('Sam', {
+            wishlist: 'missing',
+            wish_count: 0,
+            address: 'ready',
+            assignment: 'missing',
+            nudges: ['no_wishlist', 'assignment_not_viewed'],
+          }),
+        ],
+      }),
+    );
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText('Sam, Participant, No wishlist, Address on file, Has not looked yet'),
+      ).toBeOnTheScreen(),
+    );
+  });
+
+  it('says who is not participating in that same sentence, and stops there', async () => {
+    mocks.getReadiness.mockResolvedValue(
+      readiness({
+        participants: [
+          participant('Sam', {
+            is_participating: false,
+            wishlist: 'not_applicable',
+            address: 'not_applicable',
+            assignment: 'not_applicable',
+          }),
+        ],
+      }),
+    );
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Sam, Participant, not participating')).toBeOnTheScreen(),
+    );
+  });
+
+  it('gives each meter a label that reads as a fraction', async () => {
+    mocks.getReadiness.mockResolvedValue(
+      readiness({
+        participants: [participant('Alex'), participant('Sam', { wishlist: 'missing', wish_count: 0, nudges: ['no_wishlist'] })],
+      }),
+    );
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() => expect(screen.getByLabelText('Wishlists: 1 of 2')).toBeOnTheScreen());
+  });
+});

@@ -114,7 +114,7 @@ public sealed class SecurityControlsTests
             Groups = new FakeGroups(Group(drawn, member?.IsOrganizer == true ? "user" : "owner"), drawn);
             Subject = new GroupService(
                 new FakeUser(), new FakeProfiles(), Groups, new FakeMembers(members), new FakeWishes(),
-                new MatchingService(), new PlanCatalog(new()), Audit, new FakeProductAnalytics(),
+                new FakeInvitations(), new MatchingService(), new PlanCatalog(new()), Audit, new FakeProductAnalytics(),
                 new HumbuggSettings(
                     "us-east-1", "us-east-1", "pool", "client", ["https://humbugg.example"], "https://humbugg.example", null,
                     "profiles", "groups", "members", "draws", "audit", "analytics"));
@@ -174,6 +174,14 @@ public sealed class SecurityControlsTests
     private sealed class FakeMembers(IEnumerable<MembershipRecord> items) : IMembershipRepository
     {
         private readonly List<MembershipRecord> items = items.ToList();
+        // Real behaviour, not a counter: the readiness dashboard reads this field back, so a fake
+        // that swallowed the write would let a test pass on a value production never stores.
+        public Task MarkAssignmentViewedAsync(string memberId, string drawId, CancellationToken cancellationToken = default)
+        {
+            var index = items.FindIndex(item => item.MemberId == memberId);
+            if (index >= 0) items[index] = items[index] with { AssignmentViewedDrawId = drawId };
+            return Task.CompletedTask;
+        }
         public Task<MembershipRecord?> GetByUserAndGroupAsync(string userId, string groupId, CancellationToken cancellationToken = default) => Task.FromResult(items.FirstOrDefault(item => item.UserId == userId && item.GroupId == groupId));
         public Task<IReadOnlyList<MembershipRecord>> GetByGroupAsync(string groupId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<MembershipRecord>>(items.Where(item => item.GroupId == groupId).ToList());
         public Task<IReadOnlyList<MembershipRecord>> GetByUserAsync(string userId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<MembershipRecord>>(items.Where(item => item.UserId == userId).ToList());

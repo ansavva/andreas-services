@@ -36,6 +36,8 @@ export async function stubApi(page: Page): Promise<void> {
       return route.fulfill(json(fixture('membership')));
     if (p === `/api/groups/${group.group_id}/members/me/wishes`)
       return route.fulfill(json(fixture('wishes')));
+    if (p === `/api/groups/${group.group_id}/readiness`)
+      return route.fulfill(json(fixture('readiness')));
     if (p === `/api/groups/${group.group_id}/invitation`)
       return route.fulfill(json(fixture('invitation')));
 

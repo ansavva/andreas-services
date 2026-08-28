@@ -158,6 +158,9 @@ public sealed class InvitationServiceTests
     private sealed class FakeMembers(bool organizer = false) : IMembershipRepository
     {
         public int CreateCalls { get; private set; }
+        // Not exercised here: this fake's service never reads an assignment.
+        public Task MarkAssignmentViewedAsync(string memberId, string drawId, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
         public Task<IReadOnlyList<MembershipRecord>> GetByGroupAsync(string groupId, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<MembershipRecord>>([]);
         public Task<MembershipRecord?> GetByUserAndGroupAsync(string userId, string groupId, CancellationToken cancellationToken = default) =>

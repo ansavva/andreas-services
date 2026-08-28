@@ -311,6 +311,14 @@ public sealed class WishServiceTests
     private sealed class FakeMembers(IEnumerable<MembershipRecord> items) : IMembershipRepository
     {
         private readonly List<MembershipRecord> members = items.ToList();
+        // Real behaviour, not a counter: the readiness dashboard reads this field back, so a fake
+        // that swallowed the write would let a test pass on a value production never stores.
+        public Task MarkAssignmentViewedAsync(string memberId, string drawId, CancellationToken cancellationToken = default)
+        {
+            var index = members.FindIndex(item => item.MemberId == memberId);
+            if (index >= 0) members[index] = members[index] with { AssignmentViewedDrawId = drawId };
+            return Task.CompletedTask;
+        }
         public Task<MembershipRecord?> GetByUserAndGroupAsync(string userId, string groupId, CancellationToken cancellationToken = default) => Task.FromResult(members.FirstOrDefault(item => item.UserId == userId && item.GroupId == groupId));
         public Task<IReadOnlyList<MembershipRecord>> GetByGroupAsync(string groupId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<MembershipRecord>>(members.Where(item => item.GroupId == groupId).ToList());
         public Task<IReadOnlyList<MembershipRecord>> GetByUserAsync(string userId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<MembershipRecord>>(members.Where(item => item.UserId == userId).ToList());

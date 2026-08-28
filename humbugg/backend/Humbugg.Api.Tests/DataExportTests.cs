@@ -206,6 +206,14 @@ public sealed class DataExportTests
     private sealed class InMemoryMembers : IMembershipRepository
     {
         private readonly List<MembershipRecord> items = [];
+        // Real behaviour, not a counter: the readiness dashboard reads this field back, so a fake
+        // that swallowed the write would let a test pass on a value production never stores.
+        public Task MarkAssignmentViewedAsync(string memberId, string drawId, CancellationToken cancellationToken = default)
+        {
+            var index = items.FindIndex(item => item.MemberId == memberId);
+            if (index >= 0) items[index] = items[index] with { AssignmentViewedDrawId = drawId };
+            return Task.CompletedTask;
+        }
         public void Add(MembershipRecord member) => items.Add(member);
         public Task<MembershipRecord?> GetAsync(string memberId, CancellationToken cancellationToken = default) =>
             Task.FromResult(items.FirstOrDefault(item => item.MemberId == memberId));

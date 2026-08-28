@@ -91,6 +91,7 @@ async function main() {
   write('group', await call('GET', `/groups/${groupId}`));
   write('membership', await call('GET', `/groups/${groupId}/members/me`));
   write('wishes', await call('GET', `/groups/${groupId}/members/me/wishes`));
+  write('readiness', await call('GET', `/groups/${groupId}/readiness`));
 }
 
 await main();
