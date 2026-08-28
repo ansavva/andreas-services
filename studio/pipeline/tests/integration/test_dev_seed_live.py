@@ -76,7 +76,7 @@ def test_a_selected_profile_beats_a_prod_bucket_in_the_environment(studio, seede
 def test_the_shared_config_folder_does_not_block_a_publish(studio, seeded):
     """**The regression this tier existed for about ten minutes before finding.**
 
-    The pose plates are nodes under `config/`, and the loader creates them. The
+    The angle images are nodes under `config/`, and the loader creates them. The
     publisher checks every top-level folder against `DEV_SUBJECTS`, so a stack
     the loader had successfully seeded was refused over a folder the loader had
     just made. It had never fired because the plate push was broken.

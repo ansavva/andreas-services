@@ -266,14 +266,14 @@ s3://studio-prod-media-us-east-1/
   characters/<char id>/<node id>.<ext>    bytes owned by a character
   projects/<proj id>/<node id>.<ext>      bytes owned by a project
                                           (runs, scenes, movies, inputs)
-  libraries/<lib id>/<node id>.<ext>      owned by neither: the pose plates,
+  libraries/<lib id>/<node id>.<ext>      owned by neither: the angle images,
                                           and anything loose under the root
   phrasebook/wording.yaml                 one legacy object, no row. See below.
 ```
 
 **This section used to draw a folder tree here** — `characters/<name>/` holding
 `profile.yaml` and `reference/`, `projects/<project>/` holding `runs/` and
-`scenes/`, plus a top-level `config/pose/` and a `blobs/<node id>`. **None of
+`scenes/`, plus a top-level `config/angle/` and a `blobs/<node id>`. **None of
 that is in the bucket.** It was the pre-catalog layout, where a key was a path
 and the bucket was the index; the entity model made a record name a node id, and
 `catalog migrate` then `reseat` rewrote production out of it. There are no
@@ -314,13 +314,13 @@ named it. `studio catalog gc` (#318) is the only sanctioned way to find one —
 would be guessing.
 
 **Shared material has rows now, and that is what emptied the raw `config/`
-prefix.** The pose plates are ordinary nodes in a `config/` folder the
+prefix.** The angle images are ordinary nodes in a `config/` folder the
 library is created with, so their bytes are `libraries/<lib id>/…` like anything
 else the library owns. `studio/config/` in source control stays their source of
 truth and the library holds a copy, because a model may only be handed a
 presigned URL of a stored object; `scripts/dev-shared-material.sh` pushes them
 through `studio config sync` and no longer writes to the bucket itself. Nothing
-in Terraform creates or owns them. The nodeless `config/pose/…` objects that
+in Terraform creates or owns them. The nodeless `config/angle/…` objects that
 predated this were deleted in August 2026, deliberately and by hand — `catalog
 gc` does not collect them.
 
@@ -495,7 +495,7 @@ Cognito pool 500s on every call, so failing early is the faster way to find out.
 > publish --apply`. `dev-aws-reset.sh` empties a stack and does not re-seed; run
 > the loader again afterwards.
 >
-> What *is* there is what `dev-setup.sh` pushes: the pose plates under
+> What *is* there is what `dev-setup.sh` pushes: the angle images under
 > `config/`, and — since #425 — a starting `phrasebook/wording.yaml`, copied
 > from the repo when the key is absent so `studio phrasebook add` works on a
 > fresh stack. Neither has a catalog node, so neither shows the library

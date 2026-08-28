@@ -970,7 +970,7 @@ def is_api_blob(record: dict) -> bool:
     The two upload routes share this so they cannot disagree about which objects
     are writable through a signature — a distinction a signed URL makes permanent
     the moment it is handed out. A key of any other shape predates the catalog
-    (#309) — `characters/<slug>/…`, `blobs/<node_id>`, `config/pose/…` — and
+    (#309) — `characters/<slug>/…`, `blobs/<node_id>`, `config/angle/…` — and
     overwriting bytes written before this table existed is not what those routes
     are for.
     """

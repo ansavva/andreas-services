@@ -3,7 +3,7 @@
     {
       "content_type": "image/png",
       "id": "node-0a2c7551-17c0-4a72-970e-6f7f807f9d0a",
-      "key": "config/pose/source/head-sheet.png",
+      "key": "config/angle/source/head-sheet.png",
       "kind": "image",
       "last_modified": "2026-08-27T04:33:19.124980+00:00",
       "name": "head-sheet.png",
@@ -13,7 +13,7 @@
     {
       "content_type": "image/jpeg",
       "id": "node-0bdebc82-cb50-42f9-9e0c-e20e2f510569",
-      "key": "config/pose/source/body-sheet.jpg",
+      "key": "config/angle/source/body-sheet.jpg",
       "kind": "image",
       "last_modified": "2026-08-27T04:33:17.854453+00:00",
       "name": "body-sheet.jpg",
@@ -23,7 +23,7 @@
     {
       "content_type": "image/png",
       "id": "node-3900e10d-0e1e-40a9-ac74-fd55de418d77",
-      "key": "config/pose/face/three-quarter-right.png",
+      "key": "config/angle/face/three-quarter-right.png",
       "kind": "image",
       "last_modified": "2026-08-27T04:33:16.511029+00:00",
       "name": "three-quarter-right.png",
@@ -33,7 +33,7 @@
     {
       "content_type": "image/png",
       "id": "node-aed48445-e567-452f-b87d-d2e1242e37ec",
-      "key": "config/pose/face/three-quarter-left.png",
+      "key": "config/angle/face/three-quarter-left.png",
       "kind": "image",
       "last_modified": "2026-08-27T04:33:15.459442+00:00",
       "name": "three-quarter-left.png",
@@ -43,7 +43,7 @@
     {
       "content_type": "image/png",
       "id": "node-17ddae79-7a3c-4884-8a67-7c7e251b91f4",
-      "key": "config/pose/face/three-quarter-back-right.png",
+      "key": "config/angle/face/three-quarter-back-right.png",
       "kind": "image",
       "last_modified": "2026-08-27T04:33:14.351601+00:00",
       "name": "three-quarter-back-right.png",
@@ -53,7 +53,7 @@
     {
       "content_type": "image/png",
       "id": "node-73b73cbb-9ae3-4fc8-811c-5418d1d3aca2",
-      "key": "config/pose/face/three-quarter-back-left.png",
+      "key": "config/angle/face/three-quarter-back-left.png",
       "kind": "image",
       "last_modified": "2026-08-27T04:33:13.220001+00:00",
       "name": "three-quarter-back-left.png",
@@ -63,7 +63,7 @@
     {
       "content_type": "image/png",
       "id": "node-7f4ac626-ea66-4717-b3e7-16aa1fb3035b",
-      "key": "config/pose/face/profile-right.png",
+      "key": "config/angle/face/profile-right.png",
       "kind": "image",
       "last_modified": "2026-08-27T04:33:12.159206+00:00",
       "name": "profile-right.png",
@@ -73,7 +73,7 @@
     {
       "content_type": "image/png",
       "id": "node-ee1a39da-1d2d-4958-bde1-f87cd6ffa79a",
-      "key": "config/pose/face/profile-left.png",
+      "key": "config/angle/face/profile-left.png",
       "kind": "image",
       "last_modified": "2026-08-27T04:33:11.107934+00:00",
       "name": "profile-left.png",
@@ -83,7 +83,7 @@
     {
       "content_type": "image/png",
       "id": "node-daf098d1-7d92-443b-bc32-1305be9fa84c",
-      "key": "config/pose/face/front.png",
+      "key": "config/angle/face/front.png",
       "kind": "image",
       "last_modified": "2026-08-27T04:33:10.053977+00:00",
       "name": "front.png",
@@ -93,7 +93,7 @@
     {
       "content_type": "image/png",
       "id": "node-18ad9530-b6ab-4907-b179-d8c9dc694960",
-      "key": "config/pose/face/back.png",
+      "key": "config/angle/face/back.png",
       "kind": "image",
       "last_modified": "2026-08-27T04:33:08.953961+00:00",
       "name": "back.png",
@@ -103,7 +103,7 @@
     {
       "content_type": "image/png",
       "id": "node-fe5a4a6b-0416-429f-a13c-01f6d0290c36",
-      "key": "config/pose/body/three-quarter-back-right.png",
+      "key": "config/angle/body/three-quarter-back-right.png",
       "kind": "image",
       "last_modified": "2026-08-27T04:33:07.555683+00:00",
       "name": "three-quarter-back-right.png",
@@ -113,7 +113,7 @@
     {
       "content_type": "image/png",
       "id": "node-4ee8f17b-8043-499f-97ce-eb4b1e6b4c2a",
-      "key": "config/pose/body/three-quarter-back-left.png",
+      "key": "config/angle/body/three-quarter-back-left.png",
       "kind": "image",
       "last_modified": "2026-08-27T04:33:06.329895+00:00",
       "name": "three-quarter-back-left.png",
@@ -123,7 +123,7 @@
     {
       "content_type": "image/png",
       "id": "node-b21e7e61-7ac7-4769-87bd-4c3af479167a",
-      "key": "config/pose/body/profile-right.png",
+      "key": "config/angle/body/profile-right.png",
       "kind": "image",
       "last_modified": "2026-08-27T04:33:05.119889+00:00",
       "name": "profile-right.png",
@@ -133,7 +133,7 @@
     {
       "content_type": "image/png",
       "id": "node-b9b6e794-ee36-4c70-89f3-b6e4056af912",
-      "key": "config/pose/body/profile-left.png",
+      "key": "config/angle/body/profile-left.png",
       "kind": "image",
       "last_modified": "2026-08-27T04:33:03.912414+00:00",
       "name": "profile-left.png",
@@ -143,7 +143,7 @@
     {
       "content_type": "image/png",
       "id": "node-362a25fe-0972-437a-8156-2c67df266394",
-      "key": "config/pose/body/front.png",
+      "key": "config/angle/body/front.png",
       "kind": "image",
       "last_modified": "2026-08-27T04:33:02.613117+00:00",
       "name": "front.png",
@@ -153,7 +153,7 @@
     {
       "content_type": "image/png",
       "id": "node-e41d8ef0-fbd5-456b-baca-1dbc76831588",
-      "key": "config/pose/body/back.png",
+      "key": "config/angle/body/back.png",
       "kind": "image",
       "last_modified": "2026-08-27T04:33:01.430505+00:00",
       "name": "back.png",

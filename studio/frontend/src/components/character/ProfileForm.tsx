@@ -98,7 +98,7 @@ const SECTIONS: ReadonlyArray<{ key: string; hint: string }> = [
   },
   {
     key: "body",
-    hint: "Proportions. A shoot states them in the prompt so the pose plate's own build does not decide the figure's — a face plate takes what shows above a mid-chest crop, a body plate takes all of it.",
+    hint: "Proportions. A shoot states them in the prompt so the angle image's own build does not decide the figure's — a face plate takes what shows above a mid-chest crop, a body plate takes all of it.",
   },
   {
     key: "wardrobe",

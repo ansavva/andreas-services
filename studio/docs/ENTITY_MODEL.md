@@ -531,7 +531,7 @@ Folders a person makes by hand keep working and belong to nobody in particular.
 
 ### Shared material
 
-`phrasebook/wording.yaml` and `config/pose/` were the two things with no catalog
+`phrasebook/wording.yaml` and `config/angle/` were the two things with no catalog
 node, and they were the sole reason `GET /api/asset?key=` took a raw S3 key.
 Both are closed.
 
@@ -539,7 +539,7 @@ Both are closed.
   per-model list of avoid/use pairs, which is a table wearing a YAML file.
   `phrasebook add` can no longer fail on a library that has never held the
   document, because there is no document.
-- **Pose plates are nodes** in a `config/` folder the library is created with,
+- **Angle images are nodes** in a `config/` folder the library is created with,
   populated through the API by `studio config sync`. Their source of truth stays
   the repo, and the library holds a copy because a model may only be handed a
   presigned URL of a stored object.
@@ -548,7 +548,7 @@ Both have node ids, `store.shared_read` / `shared_presign` are deleted, and
 `?key=` is gone — `GET /api/asset` takes `?node=` and nothing else. **One
 addressing scheme, no exceptions.**
 
-The plates were pushed straight into the bucket as `config/pose/…` for as long
+The plates were pushed straight into the bucket as `config/angle/…` for as long
 as nothing owned them, and those nodeless objects outlived the change. They were
 deleted in August 2026 once `config sync` had written the node-backed copies;
 `catalog gc` does not collect them, deliberately, so it was a targeted removal.
@@ -831,7 +831,7 @@ which prod is half-migrated and visibly wrong.
 studio catalog migrate plan       # UNPARSEABLE must be 0, or apply refuses
 studio catalog migrate apply
 studio catalog migrate verify
-studio config sync --apply        # the pose plates, which have no node in prod
+studio config sync --apply        # the angle images, which have no node in prod
 # then merge: studio-prod.yaml applies the GSI and ships the new image
 studio catalog reseat --apply     # optional, later, never automatic
 ```
@@ -862,7 +862,7 @@ are still your own IAM key, which holds `s3:DeleteObjectVersion`. Read
 [studio/CLAUDE.md](../CLAUDE.md#reaching-production---profile-prod) before
 running anything with `--apply`.
 
-**Dev stacks — no migration.** A stack holds the pose plates and nothing else,
+**Dev stacks — no migration.** A stack holds the angle images and nothing else,
 so there is no character, project or run to raise a row over. What each needs is
 the re-keyed GSI and the plates as nodes:
 
@@ -893,7 +893,7 @@ Each phase is a PR, green on its own, and the service keeps working throughout.
 | 4 | **Runs typed** | `POST /api/runs` gains the envelope; `runs.py` records ids; `rewrite.py` and `runs find`'s walk deleted |
 | 5 | **Scenes + movies typed** | Same, one tier up |
 | 6 | **SPA — entities** | Home, character page, project page, run page; browser rescoped, `LegacyRedirect` deleted |
-| 7 | **Shared material** | Phrasebook rows, pose plates as nodes, `?key=` and `keys.clean_key` deleted |
+| 7 | **Shared material** | Phrasebook rows, angle images as nodes, `?key=` and `keys.clean_key` deleted |
 | 8 | **Migrator** | `catalog migrate`, then `reseat` |
 | 9 | **Sweep** | Name-path routes deleted, docs rewritten, `PIPELINE.md` and `WEB_APP.md` reconciled against this file |
 

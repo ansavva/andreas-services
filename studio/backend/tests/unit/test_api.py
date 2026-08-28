@@ -5,7 +5,7 @@ name-path write surface (`/api/folder`, `/api/object`, `/api/objects/*`,
 `PATCH /api/text?key=`) are gone with the entity model — two live addressing
 schemes was one more than the service could keep honest, and the exception that
 held the second one open (shared material with no catalog node) closed when the
-phrasebook became rows and the pose plates became nodes.
+phrasebook became rows and the angle images became nodes.
 
 `GET /api/resolve?path=` is the one thing that still takes a slash-joined name
 path, and it is the reason the CLI's spelling keeps working: it turns an

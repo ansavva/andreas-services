@@ -10,9 +10,9 @@ the date-tie break, `_folder_entry` for "a folder has no LastModified",
 **Every route here is addressed by node id, and there is no second scheme.**
 `?prefix=` and `?key=` are both gone. The name path survived this long for two
 reasons and the entity model answered both: share links made of names now point
-at `/f/<node_id>`, and *shared* material — the phrasebook and the `config/pose/`
-plates — had no node to be addressed by, which is the single exception that kept
-`keys.clean_key` alive. The phrasebook is `TERM#` rows and the plates are
+at `/f/<node_id>`, and *shared* material — the phrasebook and the `config/angle/`
+angle images — had no node to be addressed by, which is the single exception that kept
+`keys.clean_key` alive. The phrasebook is `TERM#` rows and the angle images are
 ordinary nodes in a `config/` folder, so the exception closed and the function
 went with it.
 

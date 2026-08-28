@@ -49,8 +49,8 @@ def spec():
 def test_spec_loads_and_every_slot_is_complete(spec):
     assert spec["angles"], "the spec defines no angles"
     for angle in spec["angles"]:
-        assert angle["group"] in P.POSE_GROUPS
-        assert angle["pose_image"].startswith(P.CONFIG + "/")
+        assert angle["group"] in P.ANGLE_GROUPS
+        assert angle["angle_image"].startswith(P.CONFIG + "/")
         assert angle["description"].strip()
         assert angle["tags"]
 
@@ -64,16 +64,16 @@ def test_default_set_is_slots_and_fits_the_smallest_cap(spec):
 
 
 def test_every_pose_image_exists_in_the_repo(spec):
-    """The plates are committed, so a angle naming a missing one is a broken spec.
+    """The plates are committed, so an angle naming a missing one is a broken spec.
 
     They reach the bucket from this directory via dev-setup.sh, which cannot copy
     out a file that was never committed.
     """
     missing = [
-        angle["pose_image"] for angle in spec["angles"]
-        if not os.path.isfile(os.path.join(REPO_CONFIG, angle["pose_image"].split("/", 1)[1]))
+        angle["angle_image"] for angle in spec["angles"]
+        if not os.path.isfile(os.path.join(REPO_CONFIG, angle["angle_image"].split("/", 1)[1]))
     ]
-    assert not missing, f"pose plate(s) not in studio/config/: {missing}"
+    assert not missing, f"angle image(s) not in studio/config/: {missing}"
 
 
 def test_opposite_slots_carry_opposite_frame_directions(spec):
@@ -83,10 +83,10 @@ def test_opposite_slots_carry_opposite_frame_directions(spec):
     first turnaround reproduced it — because the prompt said "turned to THEIR LEFT so
     the viewer sees the LEFT side of the face", which instructs two opposite
     rotations at once. Direction is now stated only as the edge of frame the
-    face points toward, so a angle and its twin must name opposite edges.
+    face points toward, so an angle and its twin must name opposite edges.
     """
     by_id = {s["id"]: s for s in spec["angles"]}
-    for group in P.POSE_GROUPS:
+    for group in P.ANGLE_GROUPS:
         for pair in ("three_quarter", "profile", "three_quarter_back"):
             left, right = f"{group}_{pair}_left", f"{group}_{pair}_right"
             # A pair may be absent — the body front three-quarters were dropped
@@ -118,7 +118,7 @@ def test_back_three_quarter_slots_turn_the_shoulders_and_forbid_a_profile(spec):
         drifted wider on nearly every one.
     """
     backs = [s for s in spec["angles"] if "three_quarter_back" in s["id"]]
-    assert len(backs) == 2 * len(P.POSE_GROUPS), "expected a back pair per group"
+    assert len(backs) == 2 * len(P.ANGLE_GROUPS), "expected a back pair per group"
     for angle in backs:
         text = angle["prompt"]
         assert "SHOULDERS TOGETHER" in text, f"{angle['id']} does not turn the torso"
@@ -144,7 +144,7 @@ def test_face_back_three_quarters_bind_a_torso_guide(spec):
         torso = angle.get("torso_image")
         assert torso, f"{angle['id']} binds no torso guide"
         # Same orientation as the head plate, from the body set.
-        assert torso == angle["pose_image"].replace("/face/", "/body/"), angle["id"]
+        assert torso == angle["angle_image"].replace("/face/", "/body/"), angle["id"]
         assert "{torso_slot}" in angle["prompt"], angle["id"]
     others = [s for s in spec["angles"] if s not in face_backs]
     assert not [s["id"] for s in others if s.get("torso_image")], \
@@ -155,7 +155,7 @@ def test_every_slot_states_the_build_and_disowns_the_guides(spec):
     """A plate exists to record a person, and the first ones lost their build.
 
     The figure came back lean and narrow-shouldered with none of the bible's
-    taper or arm mass, because the pose plate is a mannequin with proportions of
+    taper or arm mass, because the angle image is a mannequin with proportions of
     its own and `{guide}`'s "not its build, proportions" was one buried clause
     against a whole reference image. `{build}` puts the bible's own silhouette
     and arms in the foreground; the intro disowns the guide explicitly.
@@ -370,13 +370,13 @@ def test_three_quarter_slots_say_what_forty_five_degrees_looks_like(spec):
 def test_the_set_covers_the_orientations_each_group_can_render(spec):
     """Face covers all eight. Body covers six.
 
-    The body front three-quarters are gone, and deliberately: their pose plate
+    The body front three-quarters are gone, and deliberately: their angle image
     is a figure gpt-image-2 refuses (four refusals across two models, both as an
     upscale subject and as a guide), so the angles could not be rendered at all.
     An angle nobody can render is worse than an absent one — it reads as coverage
     and fails at spend time, and one refusal aborts the whole batch around it.
     """
-    counts = {g: len([s for s in spec["angles"] if s["group"] == g]) for g in P.POSE_GROUPS}
+    counts = {g: len([s for s in spec["angles"] if s["group"] == g]) for g in P.ANGLE_GROUPS}
     assert counts == {"face": 8, "body": 6}, counts
     gone = {"body_three_quarter_left", "body_three_quarter_right"}
     assert not gone & {s["id"] for s in spec["angles"]}
@@ -408,7 +408,7 @@ PROFILE = {
 
 def test_prompts_fill_completely_and_carry_the_bible(spec):
     for angle in spec["angles"]:
-        # A angle binding a second guide gets a position for it; one that does
+        # An angle binding a second guide gets a position for it; one that does
         # not must render without ever being handed a `torso_slot` to fill.
         torso = 2 if angle.get("torso_image") else None
         text = TURN.build_prompt(angle, spec, PROFILE, 1, [3, 4], torso)
@@ -448,7 +448,7 @@ def test_identity_citations_read_as_a_list(positions, expected):
 # --- the invariant the feature rests on ------------------------------------
 
 def test_a_plate_binds_as_a_node_like_every_other_image(library, spec):
-    """A pose plate is recorded now, and that is the point of the change.
+    """An angle image is recorded now, and that is the point of the change.
 
     It used to be the one image a run could be shown and not remember: plates
     had no node, so they travelled under a `shared:<key>` marker that was
@@ -457,7 +457,7 @@ def test_a_plate_binds_as_a_node_like_every_other_image(library, spec):
     else.
     """
     _seed_plates(library.fake, spec)
-    plate = library.fake._resolve(TURN.plate_key(spec["angles"][0]))["id"]
+    plate = library.fake._resolve(TURN.angle_key(spec["angles"][0]))["id"]
     assert R.check_bindings({"input_images": [plate]}) == {"input_images": [plate]}
 
 
@@ -471,14 +471,14 @@ def test_a_plates_path_is_refused_like_any_other_path(library, spec):
     """
     _seed_plates(library.fake, spec)
     with pytest.raises(R.RunError, match="not a node id"):
-        R.check_bindings({"input_images": [TURN.plate_key(spec["angles"][0])]})
+        R.check_bindings({"input_images": [TURN.angle_key(spec["angles"][0])]})
     with pytest.raises(R.RunError, match="not a node id"):
         R.check_bindings({"input_images": ["elsewhere/front.png"]})
 
 
 def test_pose_key_rejects_a_group_that_is_not_one():
     with pytest.raises(P.PathError):
-        P.pose_key("wardrobe", "front.png")
+        P.angle_key("wardrobe", "front.png")
 
 
 # --- the model override ----------------------------------------------------
@@ -555,13 +555,13 @@ def _seed_plates(fake, spec):
     """Every plate the spec names, as a node under the library's `config/`.
 
     Plates were shared material with no node and were seeded straight into the
-    bucket; they are ordinary nodes now, which is what lets `check_plates` ask
+    bucket; they are ordinary nodes now, which is what lets `check_angles` ask
     the catalog like everything else. `put_shared` still carries the name
     because they belong to the library rather than to any entity.
     """
     # Deduped: a torso guide is shared by several face angles, and `put_shared`
     # would otherwise make a second node with the same name in the same folder.
-    for key in dict.fromkeys(k for angle in spec["angles"] for k in TURN.plate_keys(angle)):
+    for key in dict.fromkeys(k for angle in spec["angles"] for k in TURN.angle_keys(angle)):
         fake.put_shared(key, b"png-bytes")
 
 
@@ -580,7 +580,7 @@ def _seed_pool(fake, library, *names: str):
 
 def test_missing_plates_point_at_dev_setup(library, spec):
     with pytest.raises(TURN.TurnaroundError, match="dev-setup"):
-        TURN.check_plates(spec["angles"])
+        TURN.check_angles(spec["angles"])
 
 
 def test_plates_present_pass_the_check(library, spec):
@@ -592,7 +592,7 @@ def test_plates_present_pass_the_check(library, spec):
     objects.
     """
     _seed_plates(library.fake, spec)
-    TURN.check_plates(spec["angles"])  # no raise
+    TURN.check_angles(spec["angles"])  # no raise
 
 
 def test_identity_prefers_seed_over_generated_references(library):
@@ -649,7 +649,7 @@ def test_seed_pick_rejects_a_file_that_is_not_there(library):
 
 
 def test_citations_match_where_the_plate_actually_lands(library, spec):
-    """`{pose_slot}` must come from the RESOLVED order, never be assumed.
+    """`{angle_slot}` must come from the RESOLVED order, never be assumed.
 
     `gather` de-dupes, filters by what the model accepts and orders by category,
     so it is the only authority on where the plate ended up. This is the test
@@ -664,10 +664,10 @@ def test_citations_match_where_the_plate_actually_lands(library, spec):
                            aspect_ratio=None, dry_run=True, yes=False, dest=None,
                            expires=3600, identity=[seed])
     args = TURN.angle_args(angle, spec, entry, "subject-a", opts)
-    args.key = [TURN.plate_key(angle), *opts.identity]
+    args.key = [TURN.angle_key(angle), *opts.identity]
     bindings = SUB.gather(entry, args)
     ordered = bindings[entry["images"]["refs"]]
-    plate = library.fake._resolve(TURN.plate_key(angle))["id"]
+    plate = library.fake._resolve(TURN.angle_key(angle))["id"]
 
     assert len(ordered) == 2, ordered
     plate_position = ordered.index(plate) + 1
@@ -755,7 +755,7 @@ def test_the_pose_sheet_split_is_deterministic(tmp_path):
     """Same sheet in, same boxes out — the split is measured, not hand-tuned."""
     from PIL import Image
 
-    from scripts.split_pose_sheet import find_figures
+    from scripts.split_angle_sheet import find_figures
 
     sheet = Image.new("L", (400, 200), color=40)
     for x0 in (20, 140, 260):                      # three figures, evenly spaced
@@ -990,7 +990,7 @@ def test_review_sheet_labels_images_in_the_order_the_model_gets_them(library, sp
     Image.new("RGB", (40, 60), "grey").save(tmp_path / "src.png")
     png = (tmp_path / "src.png").read_bytes()
 
-    plate = library.fake.put_shared("config/pose/face/front.png", png)["id"]
+    plate = library.fake.put_shared("config/angle/face/front.png", png)["id"]
     seed = library.fake._child(library.character_root, "seed")
     photo = library.fake.put_file(seed["id"], "subject-a_1.png", png)["id"]
 
@@ -1101,11 +1101,11 @@ def test_a_start_frame_is_format_checked_like_every_other_image(library, monkeyp
 def test_a_turnaround_finds_the_plates_that_config_sync_pushed(library, spec, monkeypatch):
     """**The gap between the check and the thing that fills the library.**
 
-    `check_plates` resolves each plate as a name path, so a plate needs a node.
+    `check_angles` resolves each plate as a name path, so a plate needs a node.
     Nothing gave it one: `dev-shared-material.sh` pushed the plates in with
     `aws s3 sync` — correct while they were addressed by raw key — and the
     backend named a `config` folder constant that no route ever called. So a
-    freshly provisioned stack refused every shoot with "pose plate(s) missing",
+    freshly provisioned stack refused every shoot with "angle image(s) missing",
     naming the script that had just run.
 
     It went unnoticed because this suite's own fixture creates plates as nodes,
@@ -1115,27 +1115,27 @@ def test_a_turnaround_finds_the_plates_that_config_sync_pushed(library, spec, mo
     """
     from studio_pipeline.objects import config_sync
 
-    monkeypatch.setattr(config_sync, "local_plates",
-                        lambda: [(TURN.plate_key(angle), "/dev/null")
+    monkeypatch.setattr(config_sync, "local_angle_images",
+                        lambda: [(TURN.angle_key(angle), "/dev/null")
                                  for angle in spec["angles"]])
     monkeypatch.setattr(config_sync.store, "upload",
                         lambda path, _src, **kw: library.fake.put_shared(path, b"png-bytes"))
 
-    assert config_sync.missing(config_sync.local_plates()), "nothing to push — the test is hollow"
+    assert config_sync.missing(config_sync.local_angle_images()), "nothing to push — the test is hollow"
     result = CliRunner().invoke(cli.main, ["config", "sync", "--apply"])
     assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
 
-    TURN.check_plates(spec["angles"])          # the refusal this existed to stop
-    assert not config_sync.missing(config_sync.local_plates())
+    TURN.check_angles(spec["angles"])          # the refusal this existed to stop
+    assert not config_sync.missing(config_sync.local_angle_images())
 
 
 def test_config_sync_is_a_dry_run_without_apply(library, spec, monkeypatch):
     from studio_pipeline.objects import config_sync
 
-    monkeypatch.setattr(config_sync, "local_plates",
-                        lambda: [(TURN.plate_key(spec["angles"][0]), "/dev/null")])
+    monkeypatch.setattr(config_sync, "local_angle_images",
+                        lambda: [(TURN.angle_key(spec["angles"][0]), "/dev/null")])
     result = CliRunner().invoke(cli.main, ["config", "sync"])
     assert result.exit_code == 0
     assert "--apply" in result.output
     with pytest.raises(TURN.TurnaroundError, match="dev-setup"):
-        TURN.check_plates(spec["angles"])
+        TURN.check_angles(spec["angles"])

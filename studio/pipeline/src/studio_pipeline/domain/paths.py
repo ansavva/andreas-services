@@ -46,13 +46,13 @@ nothing afterwards requires them, a person may rename or delete any of them, and
 an image is a reference because a `REF#` row says so rather than because of the
 folder it sits in.
 
-**The pose plates.** `config/pose/{body,face}/*.png` belong to no character and
+**The angle images.** `config/angle/{body,face}/*.png` belong to no character and
 no project. They are **ordinary nodes** now — spec phase 7 landed, the library is
 created with a `config/` folder, and `studio config sync` uploads them through
 the API like anything else. `shared_read`, `shared_presign` and the
 `shared:<key>` submit marker are all gone with the key-addressed route they
-used, and a plate is recorded in a run's bindings like every other image. The
-names stay here because the angle spec addresses plates by path.
+used, and an angle image is recorded in a run's bindings like every other image. The
+names stay here because the angle spec addresses angle images by path.
 
 The phrasebook used to be listed beside them and is not: it is `TERM#` rows now,
 so there is no `phrasebook/wording.yaml` to address.
@@ -62,10 +62,10 @@ from __future__ import annotations
 import re
 
 # Neither a character nor a project: shared, generic material kept in the repo
-# and copied out to S3. `POSE_GROUPS` mirrors the character reference groups it
-# guides, so a `body` slot asks for a `body` plate.
+# and copied out to S3. `ANGLE_GROUPS` mirrors the character reference groups it
+# guides, so a `body` angle asks for a `body` image.
 CONFIG = "config"
-POSE_GROUPS = ("body", "face")
+ANGLE_GROUPS = ("body", "face")
 
 # The four folders a new character starts with. `reference` is no longer
 # structural — reference-ness is a `REF#` row, not a location — so these are a
@@ -132,20 +132,20 @@ def config_key(*parts: str) -> str:
     return config_prefix(*parts)
 
 
-def pose_prefix(group: str) -> str:
-    if group not in POSE_GROUPS:
-        raise PathError(f"unknown pose group {group!r}; expected one of {list(POSE_GROUPS)}")
+def angle_prefix(group: str) -> str:
+    if group not in ANGLE_GROUPS:
+        raise PathError(f"unknown angle group {group!r}; expected one of {list(ANGLE_GROUPS)}")
     return config_prefix("pose", group)
 
 
-def pose_key(group: str, basename: str) -> str:
-    """A plate's key. `basename` carries its own extension.
+def angle_key(group: str, basename: str) -> str:
+    """An angle image's key. `basename` carries its own extension.
 
     **A NAME PATH, resolved like any other.** This docstring used to say the
-    plate was SHARED — handed to `store.shared_presign` rather than
-    `store.presign`, because nothing wrote a catalog row for a plate and
+    angle image was SHARED — handed to `store.shared_presign` rather than
+    `store.presign`, because nothing wrote a catalog row for an angle image and
     resolving one would 404. Both halves are gone: `studio config sync` gives
-    every plate a node, and `shared_presign` / `shared_read` were deleted with
+    every angle image a node, and `shared_presign` / `shared_read` were deleted with
     the exception they existed for.
     """
-    return join(pose_prefix(group), basename)
+    return join(angle_prefix(group), basename)

@@ -3,7 +3,7 @@
 
 A pose sheet — several figures laid out in a grid on a flat background — is
 useless as a model input whole: passing it asks the model to match ten poses at
-once. This cuts it into one plate per figure, which is what a turnaround
+once. This cuts it into one angle image per figure, which is what a turnaround
 binds per slot.
 
 The cut is measured, not hand-tuned. Figures are found by projecting "pixels
@@ -15,8 +15,8 @@ of the subject and the background is the darker. Captioned sheets work too: a
 label forms its own row band and is discarded for being far too short to be a
 figure.
 
-    uv run python scripts/split_pose_sheet.py sheet.jpg --out /tmp/plates
-    uv run python scripts/split_pose_sheet.py sheet.jpg --out /tmp/plates --report
+    uv run python scripts/split_angle_sheet.py sheet.jpg --out /tmp/angles
+    uv run python scripts/split_angle_sheet.py sheet.jpg --out /tmp/angles --report
 
 Output is `<row>-<n>.png`, numbered left to right, top row first. Naming them for
 what they SHOW is a judgement call made by eye afterwards — the point of this
@@ -24,7 +24,7 @@ script is the geometry.
 
 Naming the output is a judgement call made by eye against the sheet's own
 captions, which is why this writes `<row>-<n>.png` and stops there. Where the
-plates end up, and under what names, is a separate and gated step — see
+angle images end up, and under what names, is a separate and gated step — see
 studio/config/README.md.
 """
 
@@ -48,7 +48,7 @@ THRESHOLD_MARGIN = 25
 MIN_ROW_FRACTION = 0.4
 # Ignore bands thinner than this: a stray highlight is not a figure.
 MIN_BAND = 10
-# Breathing room around each figure, so a plate is not cropped tight to the skin.
+# Breathing room around each figure, so an angle image is not cropped tight to the skin.
 PAD = 8
 
 
@@ -105,7 +105,7 @@ def split(path: str, out_dir: str, report: bool = False) -> list[str]:
         raise SystemExit(1)
 
     os.makedirs(out_dir, exist_ok=True)
-    # Group boxes back into rows so the filenames say which row a plate came from.
+    # Group boxes back into rows so the filenames say which row an angle image came from.
     # Tops within a tolerance are the same row; a bigger jump starts the next one.
     ROW_TOLERANCE = 40
     rows: dict[int, int] = {}
@@ -134,12 +134,12 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("sheet", help="The pose sheet image.")
-    ap.add_argument("--out", required=True, help="Directory to write the plates into.")
+    ap.add_argument("--out", required=True, help="Directory to write the angle images into.")
     ap.add_argument("--report", action="store_true", help="Print each box as it is written.")
     args = ap.parse_args()
 
     written = split(args.sheet, args.out, args.report)
-    print(f"{len(written)} plate(s) -> {args.out}", file=sys.stderr)
+    print(f"{len(written)} angle image(s) -> {args.out}", file=sys.stderr)
     return 0
 
 

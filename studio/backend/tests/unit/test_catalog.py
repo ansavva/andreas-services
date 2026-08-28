@@ -234,7 +234,7 @@ def test_is_api_blob_accepts_a_descriptive_key(catalog_table):
     [
         "characters/subject-a/reference/face/x.png",   # the legacy slug layout
         "blobs/node-0001",                             # the flat pre-owner scheme
-        "config/pose/face/front.png",                  # shared material, never ours
+        "config/angle/face/front.png",                  # shared material, never ours
         "phrasebook/wording.yaml",
         "characters/char-0001",                        # a prefix with no file under it
     ],

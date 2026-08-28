@@ -389,7 +389,7 @@ This adds attributes and rows, touches no object in S3, and skips any run that
 already has a plan, so a second run reports zero. `--apply` exists so a person
 reads the report first.
 
-**One gap nothing can close.** Before pose plates became catalog nodes they
+**One gap nothing can close.** Before angle images became catalog nodes they
 travelled through `gather` marked `shared:<key>` and were **stripped before the
 record was written**. Runs from that era under-report their images, and a
 text-only generation is indistinguishable from one. Counted in the report, never

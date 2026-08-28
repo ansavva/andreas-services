@@ -277,7 +277,7 @@ promotes nodes that already exist, calls no model and costs nothing.
 The gate is hard rule #1 — `catalog.json` lands in git, so the publisher refuses
 a stack holding any name outside `DEV_SUBJECTS` and requires
 `--dev-subjects-only` before `--apply`. What a fresh stack actually holds is the
-shared material `dev-setup.sh` pushes: the pose plates, and nothing else. It
+shared material `dev-setup.sh` pushes: the angle images, and nothing else. It
 used to seed a starting `phrasebook/wording.yaml` too (#425); the phrasebook is
 `TERM#` rows now, so there is no document to seed.
 

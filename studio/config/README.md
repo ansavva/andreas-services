@@ -12,10 +12,10 @@ to seed and no second push. `scripts/dev-shared-material.sh` is a wrapper around
 `studio config sync` and nothing else.
 
 ```
-config/pose/face/*.png    eight orientations
-config/pose/body/*.png    six of the same eight
-config/pose/source/       the sheets the plates came from
-config/pose/prompts/*.md  prompts to regenerate either set
+config/angle/face/*.png    eight orientations
+config/angle/body/*.png    six of the same eight
+config/angle/source/       the sheets the plates came from
+config/angle/prompts/*.md  prompts to regenerate either set
 ```
 
 The eight, in turn order: `front`, `three-quarter-right`, `profile-right`,
@@ -83,7 +83,7 @@ same sculpt, which is a consistency no second render could match.
 ## Provenance, and how to replace the body plates
 
 The **face** plates are cut straight from `pose/source/head-sheet.png` with
-`pipeline/scripts/split_pose_sheet.py` — measured cuts, so the split is
+`pipeline/scripts/split_angle_sheet.py` — measured cuts, so the split is
 reproducible and every plate is the same sculpt. gpt-image-2 was tried first on
 one tile: it isolated the right cell and gained resolution, but re-drew the
 sculpt, and a guide set cannot afford to drift between plates.
@@ -114,11 +114,11 @@ want a set with no third-party lineage, regenerate and keep the filenames:
 ```bash
 # one sheet, then split it into plates with the same script
 studio run --model gpt-image-2 --project <project> --name pose-sheet --no-refs \
-  --prompt-file config/pose/prompts/body-sheet.md --dry-run
-uv run python pipeline/scripts/split_pose_sheet.py <the sheet> --out config/pose/body
+  --prompt-file config/angle/prompts/body-sheet.md --dry-run
+uv run python pipeline/scripts/split_angle_sheet.py <the sheet> --out config/angle/body
 ```
 
-`config/pose/prompts/face-sheet.md` holds a prompt for generating a head sheet
+`config/angle/prompts/face-sheet.md` holds a prompt for generating a head sheet
 from scratch, for the case where no source sheet exists.
 
 Because every consumer addresses a plate by filename, swapping the images is a

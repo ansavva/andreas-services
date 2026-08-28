@@ -386,7 +386,7 @@ the bucket itself (`media_root_prefix = ""`).
 ├── scenes/<slug>/              # storyboard/ + shots/ + output/
 ├── chains/<name>.json          # a scene's shot-to-shot plan
 └── input/                      # the working pool
-config/pose/                    # the pose plates; source of truth is the repo
+config/angle/                    # the angle images; source of truth is the repo
 ```
 
 **No `characters/` or `projects/` wrapper**, and no `profile.yaml`,
@@ -684,7 +684,7 @@ that breaks every time the pipeline ships.
 - **There is no query string left that becomes an S3 key.** `GET /api/asset`
   takes `?node=` and nothing else. It was the last one, and it survived because
   that route was also how the **pipeline** read *shared* material: the
-  phrasebook and the `config/pose/` plates belonged to no character and no
+  phrasebook and the `config/angle/` plates belonged to no character and no
   project, nothing recorded a node for them, and `GET /api/resolve` 404s on a
   thing with no node.
 

@@ -4,9 +4,9 @@
 node id; `clean_key`, `_normalise` and `_reject_traversal` went with the two
 routes that needed them — `GET /api/asset?key=` and `PATCH /api/text?key=`. The
 last thing holding them up was *shared* material: `phrasebook/wording.yaml` and
-the `config/pose/` plates belonged to no character and no project, had no node,
+the `config/angle/` angle images belonged to no character and no project, had no node,
 and so had no id to be addressed by. The entity model closed that — the
-phrasebook is `TERM#` rows and the plates are nodes in a `config/` folder — so
+phrasebook is `TERM#` rows and the angle images are nodes in a `config/` folder — so
 the exception it justified closed with it. One addressing scheme, no
 exceptions.
 

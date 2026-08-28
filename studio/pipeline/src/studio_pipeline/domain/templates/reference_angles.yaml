@@ -3,8 +3,8 @@
 # of the body.
 #
 # One angle = one recorded run. `studio character turnaround` reads this file, fills
-# each prompt from the character's own bible, binds the angle's pose plate from
-# `config/pose/`, and stops — the result stays in its run. Putting an image into
+# each prompt from the character's own bible, binds the angle's angle image from
+# `config/angle/`, and stops — the result stays in its run. Putting an image into
 # `reference/` changes who a character IS, so it is a separate human decision.
 #
 # The `description` and `tags` below are still this file's job, and they are used
@@ -18,10 +18,10 @@
 #   * NO CHARACTER SPECIFICS. Placeholders only. `{identity_block}`, `{top}`,
 #     `{minimal}` and `{must}` are filled from the bible at build time. A
 #     character's name, wardrobe or backdrop must never appear here (hard rule 1).
-#   * `pose_image` is an S3 KEY under `config/`, whose source of truth is the
+#   * `angle_image` is an S3 KEY under `config/`, whose source of truth is the
 #     repo (`studio/config/`) and which `dev-setup.sh` copies out. A model is
 #     only ever handed a presigned URL of an S3 object.
-#   * `{pose_slot}` and `{identity_slots}` are filled with the REAL `[ImageN]`
+#   * `{angle_slot}` and `{identity_slots}` are filled with the REAL `[ImageN]`
 #     positions at build time. Never write `[Image1]` literally — `gather()`
 #     decides the resolved order, and a hard-coded number aims the pose-guide
 #     instruction at whatever happens to be in that position.
@@ -29,7 +29,7 @@
 #     `--model` overrides them and an unknown field fails preflight. Model-only
 #     knobs go under `per_model`.
 #
-# The prompts are deliberately blunt about the plate being a guide and nothing
+# The prompts are deliberately blunt about the angle image being a guide and nothing
 # else: an unqualified reference image invites a model to blend it, which would
 # put a grey mannequin's proportions into a character's body.
 
@@ -58,7 +58,7 @@ defaults:
     face, and its framing. Take nothing else from it — not its build,
     proportions, skin, head, face or hair, and do not blend it into the person.
   # A SECOND guide, bound only where the first cannot carry the whole pose. The
-  # face plates end at a neck stump, so they say nothing about which way the
+  # face angle images end at a neck stump, so they say nothing about which way the
   # shoulders point — and a symmetric stump reads as square to the camera. Both
   # back three-quarters duly came back as a correctly turned head on a flat
   # back, even with the prompt insisting the shoulders turn: the reference image
@@ -82,15 +82,15 @@ defaults:
   quality: >-
     Clean and sharp, evenly lit, the whole subject in frame and in focus, no
     filter, no vignette, no added grain, no border.
-  # Body plates deliberately strip wardrobe back so the silhouette reads. This
-  # is the one place a plate overrides the bible's wardrobe, which is why the
+  # Body angle images deliberately strip wardrobe back so the silhouette reads. This
+  # is the one place an angle image overrides the bible's wardrobe, which is why the
   # body `must_intro` below says so out loud.
   # No trailing full stop: the angle prompts punctuate after it, as they do for
   # `{top}`.
   minimal: >-
     Wearing plain, close-fitting, unbranded dark shorts and nothing else, so the
     build, proportions and posture read clearly
-  # A turnaround is used by comparing plates to each other, so the head must be
+  # A turnaround is used by comparing angle images to each other, so the head must be
   # the SAME SIZE in all of them. "Cropped at mid-chest" fixes the bottom edge
   # and says nothing about scale: a live set came back with some heads half
   # again as large as others, which reads as several sessions rather than one.
@@ -109,9 +109,9 @@ defaults:
     does not drift off camera.
   must_intro_face: >-
     Preserve these identity cues exactly:
-  # A body plate exists to record a BUILD, and the first one rendered lost it:
+  # A body angle image exists to record a BUILD, and the first one rendered lost it:
   # the figure came back lean and narrow-shouldered, nothing like the bible's
-  # taper or arm mass. The pose plate caused it — an untextured mannequin with
+  # taper or arm mass. The angle image caused it — an untextured mannequin with
   # its own proportions, against which `{guide}`'s "not its build, proportions"
   # was one buried clause. Same lesson as the crop and the profile: foreground
   # it, and put something checkable in it. `{build}` is the bible's own
@@ -152,7 +152,7 @@ defaults:
     those come from the reference images and the identity cues below:
   must_intro_body: >-
     Preserve these identity cues exactly — but the wardrobe named above governs
-    this plate, so ignore any clothing rule among them:
+    this angle image, so ignore any clothing rule among them:
 
 # Applied ONLY when that model is the resolved one, so an override never carries
 # another model's vocabulary into the payload.
@@ -168,7 +168,7 @@ per_model:
 
 # ── the angles ───────────────────────────────────────────────────────────────
 #
-# EIGHT orientations, the same eight for face and for body, one per pose plate:
+# EIGHT orientations, the same eight for face and for body, one per angle image:
 # front, three-quarter and profile to each side, both three-quarter-backs, and
 # back. A `-left` angle and its `-right` twin must face OPPOSITE ways — a live
 # set once had two "three-quarter" frames turned the same way, which looks like
@@ -192,12 +192,12 @@ angles:
   # ── face ──────────────────────────────────────────────────────────────
   - id: face_front
     group: face
-    pose_image: config/pose/face/front.png
+    angle_image: config/angle/face/front.png
     description: >-
       Head and shoulders, front on, looking straight down the lens, neutral expression, grey studio backdrop.
     tags: [face, front, neutral, studio]
     prompt: >-
-      {identity_slots} show the person. {pose_slot} {guide}
+      {identity_slots} show the person. {angle_slot} {guide}
       A studio portrait of the person, front on, squared to the camera, looking straight down the lens. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame. {scale_face}
@@ -208,12 +208,12 @@ angles:
 
   - id: face_three_quarter_right
     group: face
-    pose_image: config/pose/face/three-quarter-right.png
+    angle_image: config/angle/face/three-quarter-right.png
     description: >-
       Head and shoulders, face turned toward the right edge of frame, eyes to camera, grey studio backdrop.
     tags: [face, three-quarter, right, studio]
     prompt: >-
-      {identity_slots} show the person. {pose_slot} {guide}
+      {identity_slots} show the person. {angle_slot} {guide}
       A studio portrait of the person, turned about 45 degrees so the nose points toward the RIGHT edge of the frame, eyes returning to the lens. {turn_check} Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame. {scale_face}
@@ -224,12 +224,12 @@ angles:
 
   - id: face_profile_right
     group: face
-    pose_image: config/pose/face/profile-right.png
+    angle_image: config/angle/face/profile-right.png
     description: >-
       Head and shoulders in full profile, face toward the right edge of frame, grey studio backdrop.
     tags: [face, profile, right, studio]
     prompt: >-
-      {identity_slots} show the person. {pose_slot} {guide}
+      {identity_slots} show the person. {angle_slot} {guide}
       A studio portrait of the person, in FULL PROFILE, turned 90 degrees so the nose points directly at the RIGHT edge of the frame, gaze level and straight ahead. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame. {scale_face}
@@ -240,13 +240,13 @@ angles:
 
   - id: face_three_quarter_back_right
     group: face
-    pose_image: config/pose/face/three-quarter-back-right.png
-    torso_image: config/pose/body/three-quarter-back-right.png
+    angle_image: config/angle/face/three-quarter-back-right.png
+    torso_image: config/angle/body/three-quarter-back-right.png
     description: >-
       Head and shoulders from behind at three-quarters, head and shoulders turned together, a sliver of the face at the right edge of the head, grey studio backdrop.
     tags: [face, three-quarter, back, right, studio]
     prompt: >-
-      {identity_slots} show the person. {pose_slot} {guide}
+      {identity_slots} show the person. {angle_slot} {guide}
       {torso_slot} {guide_torso}
       A studio portrait of the person seen FROM BEHIND at three-quarters — the
       head AND THE SHOULDERS TOGETHER turned about 135 degrees away from the
@@ -267,12 +267,12 @@ angles:
 
   - id: face_back
     group: face
-    pose_image: config/pose/face/back.png
+    angle_image: config/angle/face/back.png
     description: >-
       Head and shoulders straight from behind, the back of the head to the lens, grey studio backdrop.
     tags: [face, back, studio]
     prompt: >-
-      {identity_slots} show the person. {pose_slot} {guide}
+      {identity_slots} show the person. {angle_slot} {guide}
       A studio portrait of the person, directly away from the camera, the back of the head to the lens. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame. {scale_face}
@@ -283,13 +283,13 @@ angles:
 
   - id: face_three_quarter_back_left
     group: face
-    pose_image: config/pose/face/three-quarter-back-left.png
-    torso_image: config/pose/body/three-quarter-back-left.png
+    angle_image: config/angle/face/three-quarter-back-left.png
+    torso_image: config/angle/body/three-quarter-back-left.png
     description: >-
       Head and shoulders from behind at three-quarters, head and shoulders turned together, a sliver of the face at the left edge of the head, grey studio backdrop.
     tags: [face, three-quarter, back, left, studio]
     prompt: >-
-      {identity_slots} show the person. {pose_slot} {guide}
+      {identity_slots} show the person. {angle_slot} {guide}
       {torso_slot} {guide_torso}
       A studio portrait of the person seen FROM BEHIND at three-quarters — the
       head AND THE SHOULDERS TOGETHER turned about 135 degrees away from the
@@ -310,12 +310,12 @@ angles:
 
   - id: face_profile_left
     group: face
-    pose_image: config/pose/face/profile-left.png
+    angle_image: config/angle/face/profile-left.png
     description: >-
       Head and shoulders in full profile, face toward the left edge of frame, grey studio backdrop.
     tags: [face, profile, left, studio]
     prompt: >-
-      {identity_slots} show the person. {pose_slot} {guide}
+      {identity_slots} show the person. {angle_slot} {guide}
       A studio portrait of the person, in FULL PROFILE, turned 90 degrees so the nose points directly at the LEFT edge of the frame, gaze level and straight ahead. Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame. {scale_face}
@@ -326,12 +326,12 @@ angles:
 
   - id: face_three_quarter_left
     group: face
-    pose_image: config/pose/face/three-quarter-left.png
+    angle_image: config/angle/face/three-quarter-left.png
     description: >-
       Head and shoulders, face turned toward the left edge of frame, eyes to camera, grey studio backdrop.
     tags: [face, three-quarter, left, studio]
     prompt: >-
-      {identity_slots} show the person. {pose_slot} {guide}
+      {identity_slots} show the person. {angle_slot} {guide}
       A studio portrait of the person, turned about 45 degrees so the nose points toward the LEFT edge of the frame, eyes returning to the lens. {turn_check} Neutral expression, mouth
       closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
       no hips and no legs anywhere in the frame. {scale_face}
@@ -343,13 +343,13 @@ angles:
   # ── body ──────────────────────────────────────────────────────────────
   - id: body_front
     group: body
-    pose_image: config/pose/body/front.png
+    angle_image: config/angle/body/front.png
     description: >-
       Full body head to feet, front on, arms relaxed at the sides, white seamless backdrop.
     tags: [body, front, neutral, full-body, studio]
     prompt: >-
-      {identity_slots} show the person. {pose_slot} {guide}
-      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
+      {identity_slots} show the person. {angle_slot} {guide}
+      A full-length studio angle image of the person, THE WHOLE FIGURE FROM HEAD TO
       FEET IN FRAME including both feet, standing front on, squared to the camera, weight even on
       both legs, arms relaxed at the sides and clear of the body.
       {face_intro}
@@ -359,13 +359,13 @@ angles:
 
   - id: body_profile_right
     group: body
-    pose_image: config/pose/body/profile-right.png
+    angle_image: config/angle/body/profile-right.png
     description: >-
       Full body head to feet in side profile facing the right edge of frame, white seamless backdrop.
     tags: [body, profile, right, full-body, studio]
     prompt: >-
-      {identity_slots} show the person. {pose_slot} {guide}
-      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
+      {identity_slots} show the person. {angle_slot} {guide}
+      A full-length studio angle image of the person, THE WHOLE FIGURE FROM HEAD TO
       FEET IN FRAME including both feet, standing in FULL PROFILE, turned 90 degrees so the chest and the face point directly at the RIGHT edge of the frame, weight even on
       both legs, arms relaxed at the sides and clear of the body.
       {face_intro}
@@ -375,13 +375,13 @@ angles:
 
   - id: body_three_quarter_back_right
     group: body
-    pose_image: config/pose/body/three-quarter-back-right.png
+    angle_image: config/angle/body/three-quarter-back-right.png
     description: >-
       Full body head to feet from behind at three-quarters, body angled not square, a sliver of the face at the right edge of the head, white seamless backdrop.
     tags: [body, three-quarter, back, right, full-body, studio]
     prompt: >-
-      {identity_slots} show the person. {pose_slot} {guide}
-      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
+      {identity_slots} show the person. {angle_slot} {guide}
+      A full-length studio angle image of the person, THE WHOLE FIGURE FROM HEAD TO
       FEET IN FRAME including both feet, seen FROM BEHIND at three-quarters —
       the head AND THE SHOULDERS TOGETHER turned about 135 degrees away from
       the lens, so the back of the figure faces the camera. THE SHOULDERS ARE
@@ -399,13 +399,13 @@ angles:
 
   - id: body_back
     group: body
-    pose_image: config/pose/body/back.png
+    angle_image: config/angle/body/back.png
     description: >-
       Full body head to feet, straight from behind, white seamless backdrop.
     tags: [body, back, full-body, studio]
     prompt: >-
-      {identity_slots} show the person. {pose_slot} {guide}
-      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
+      {identity_slots} show the person. {angle_slot} {guide}
+      A full-length studio angle image of the person, THE WHOLE FIGURE FROM HEAD TO
       FEET IN FRAME including both feet, standing directly away from the camera, the back of the head and body to the lens, weight even on
       both legs, arms relaxed at the sides and clear of the body.
       {face_intro}
@@ -415,13 +415,13 @@ angles:
 
   - id: body_three_quarter_back_left
     group: body
-    pose_image: config/pose/body/three-quarter-back-left.png
+    angle_image: config/angle/body/three-quarter-back-left.png
     description: >-
       Full body head to feet from behind at three-quarters, body angled not square, a sliver of the face at the left edge of the head, white seamless backdrop.
     tags: [body, three-quarter, back, left, full-body, studio]
     prompt: >-
-      {identity_slots} show the person. {pose_slot} {guide}
-      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
+      {identity_slots} show the person. {angle_slot} {guide}
+      A full-length studio angle image of the person, THE WHOLE FIGURE FROM HEAD TO
       FEET IN FRAME including both feet, seen FROM BEHIND at three-quarters —
       the head AND THE SHOULDERS TOGETHER turned about 135 degrees away from
       the lens, so the back of the figure faces the camera. THE SHOULDERS ARE
@@ -439,13 +439,13 @@ angles:
 
   - id: body_profile_left
     group: body
-    pose_image: config/pose/body/profile-left.png
+    angle_image: config/angle/body/profile-left.png
     description: >-
       Full body head to feet in side profile facing the left edge of frame, white seamless backdrop.
     tags: [body, profile, left, full-body, studio]
     prompt: >-
-      {identity_slots} show the person. {pose_slot} {guide}
-      A full-length studio plate of the person, THE WHOLE FIGURE FROM HEAD TO
+      {identity_slots} show the person. {angle_slot} {guide}
+      A full-length studio angle image of the person, THE WHOLE FIGURE FROM HEAD TO
       FEET IN FRAME including both feet, standing in FULL PROFILE, turned 90 degrees so the chest and the face point directly at the LEFT edge of the frame, weight even on
       both legs, arms relaxed at the sides and clear of the body.
       {face_intro}

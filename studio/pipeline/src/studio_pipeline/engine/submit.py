@@ -29,14 +29,14 @@ which any rename invalidated; the record now names the thing itself.
 
 THERE IS NO EXCEPTION LEFT, AND THERE WAS ONE
 ---------------------------------------------
-A pose plate is bound to the same field as the character's own images and its
+An angle image is bound to the same field as the character's own images and its
 POSITION in that list is cited by the prompt, so it could never be handled
-somewhere else. While plates had no catalog node they travelled through `gather`
+somewhere else. While angle images had no catalog node they travelled through `gather`
 marked `shared:<key>`, stripped before the record was written and restored at
-presign time — so a plate was sent and cited correctly and was *not* recorded,
+presign time — so an angle image was sent and cited correctly and was *not* recorded,
 which that marker's own comment called a real gap.
 
-The gap is closed rather than narrowed: plates are ordinary nodes in the
+The gap is closed rather than narrowed: angle images are ordinary nodes in the
 library's `config/` folder, so `as_node` resolves one like any other name path
 and a run records it. Everything the marker needed — `SHARED_PREFIX`,
 `as_shared`, `is_shared`, `shared_key`, and `store.shared_presign` under it — is
@@ -119,7 +119,7 @@ _RECORDS: dict[str, dict] = {}
 def describe(ref: str) -> dict:
     """`{"name", "size"}` for one gathered image.
 
-    Every reference has a row now, including a pose plate, so there is one
+    Every reference has a row now, including an angle image, so there is one
     answer rather than two. `size` may still be absent — a placeholder whose
     upload was never confirmed has no bytes — and the byte warning reads that as
     "not known" rather than as 0, which is a real size.
@@ -157,7 +157,7 @@ def recorded(bindings: dict) -> dict:
 
     Every gathered reference is a node id now, so this is the identity function
     and is kept as a named seam rather than inlined. It used to drop the pose
-    plates, which had no id to record — the one thing a run could be shown and
+    angle images, which had no id to record — the one thing a run could be shown and
     not remember. See the module docstring for why that is over.
     """
     return dict(bindings)
@@ -341,7 +341,7 @@ def _warn_total_bytes(entry: dict, bindings: dict) -> None:
     exactly what three consecutive failures were spent on.
 
     Video only, because that is where the evidence is. The image models have
-    taken five 2.4 MiB plates — around 12 MiB — repeatedly and without
+    taken five 2.4 MiB angle images — around 12 MiB — repeatedly and without
     complaint, so warning about them would be a false alarm on every reference
     turnaround, and a warning that cries wolf is worse than none.
 
@@ -553,7 +553,7 @@ def draft(entry: dict, payload: dict, bindings: dict, args) -> dict:
     prompt_source = json.load(open(args.prompt_json)) if getattr(args, "prompt_json", None) else None
     # `--character` doubles as "resolve refs from" and "this run is of", which is
     # the same thing for `studio run`. A turnaround resolves its own images
-    # (seed photos, a pose plate) and so passes no `--character`, but the run is
+    # (seed photos, an angle image) and so passes no `--character`, but the run is
     # still OF that character — and `runs find --character` is how that
     # association is read back. Hence the explicit override.
     characters = list(getattr(args, "record_characters", None) or args.character or [])

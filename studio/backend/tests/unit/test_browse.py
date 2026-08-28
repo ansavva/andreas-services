@@ -332,7 +332,7 @@ def test_reel_items_carry_their_full_name_path(catalog_tree):
 # Both take a **node record** now — the route resolves the id and checks it
 # against the caller's memberships, and neither function takes a string of any
 # kind. The last raw S3 key in this service was `/api/asset?key=`, kept alive by
-# *shared* material: the phrasebook and the `config/pose/` plates belonged to no
+# *shared* material: the phrasebook and the `config/angle/` plates belonged to no
 # character and no project, had no catalog node, and so had no id to address.
 # The entity model closed that — the phrasebook is `TERM#` rows and the plates are
 # ordinary nodes in a `config/` folder — so the exception closed with it, and
@@ -418,7 +418,7 @@ def test_asset_url_reaches_a_blob_no_name_path_could(catalog_tree):
 def test_shared_material_is_reached_by_id_like_everything_else(catalog_tree, media_bucket):
     """**The exception that closed, asserted as the rule that replaced it.**
 
-    The pose plates used to have no catalog node, which is the sole reason
+    The angle images used to have no catalog node, which is the sole reason
     `GET /api/asset?key=` took a raw S3 key and the sole reason
     `keys.clean_key` outlived #312. They are ordinary nodes in a `config/` folder
     now, pushed through `POST /api/nodes` by the deploy, so they sign through the

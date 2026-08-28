@@ -391,7 +391,7 @@ A reference library is chosen from **by tag**, so an angle nobody shot is an ang
 nobody can pick. `shoot` renders the fourteen every character should have —
 eight `face` and six `body`. Face is a full turn: front, three-quarter and
 profile to each side, both three-quarter-backs, and back. Body is the same turn
-**without the two front three-quarters**, whose pose plate is refused as
+**without the two front three-quarters**, whose angle image is refused as
 sensitive content by every model that has tried it. Face angles are cropped at
 mid-chest; body angles are the whole figure, head to feet.
 
@@ -401,7 +401,7 @@ left edge. This is not pedantry: the wording it replaced said "turned to THEIR
 LEFT so the viewer sees the LEFT side of the face", which instructs two opposite
 rotations at once, and both three-quarters duly came back facing the same way.
 
-Each is one recorded run built from three things: a **pose plate** (a generic,
+Each is one recorded run built from three things: a **angle image** (a generic,
 anonymous, untextured figure that says only how to stand), the character's **seed
 photographs** (who it is), and a prompt filled from the character's own bible —
 its usual top, and every cue in `consistency.must`.
@@ -432,7 +432,7 @@ studio character turnaround <name> --project <project> --angle body_back   # re-
 - **`--review-sheet DIR` shows the images each payload sends**, captioned
   `[ImageN]` in the order the model receives them. A key is a name; a name is not
   a look, and the mistakes that matter here are visual.
-- The pose plates live in the repo under `studio/config/` and are copied to the
+- The angle images live in the repo under `studio/config/` and are copied to the
   bucket by `studio/scripts/dev-setup.sh`. If a shoot says one is missing, re-run
   that script.
 
@@ -480,7 +480,7 @@ Four failure shapes worth knowing, because none is obvious from reading the text
   cannot be checked from the side.
 - **State the numbers you have.** `identity.height_read` is usually the only
   proportion given as a figure, and a figure on a plain backdrop has no scale of
-  its own. Adjectives lose to a pose plate; a stated height does not.
+  its own. Adjectives lose to an angle image; a stated height does not.
 
 ### Making a matched pair without a second render
 
@@ -492,7 +492,7 @@ hair however tight the wording, because they are two rolls of a die.
 left three-quarter, and being literally the same pixels it matches on every axis
 a second render could drift on. Record the provenance in the description and tag
 it `mirrored`, so nobody later reads it as independent evidence of the face. It
-costs nothing, and it is what `config/pose/` already does for its own plates.
+costs nothing, and it is what `config/angle/` already does for its own plates.
 
 ## A bible describes identity, not a fixed look
 

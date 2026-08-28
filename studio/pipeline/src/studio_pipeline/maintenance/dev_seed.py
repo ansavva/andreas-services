@@ -314,11 +314,11 @@ def expand(paths: dict[str, str], wanted: list[str]) -> dict:
 #: at all — nobody's slug, no entity's root, and nothing a person chose.
 #:
 #: **Leaving `config` out of this broke the publisher the moment the loader
-#: started working.** The pose plates are ordinary nodes under `config/`, pushed
+#: started working.** The angle images are ordinary nodes under `config/`, pushed
 #: by `studio config sync`. `dev-aws-seed.sh` pushed them BEFORE it wrote the
 #: library, so the push failed on every fresh stack and `config/` never existed
 #: — which is the only reason the name check had never seen it. Fixing that
-#: ordering made the plates land, and the very next `dev-seed publish` refused
+#: ordering made the angle images land, and the very next `dev-seed publish` refused
 #: the stack over a folder the loader had just created.
 #:
 #: `catalog_gc.SHARED_PREFIXES` is the same idea for the same two names, on the

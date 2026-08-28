@@ -74,7 +74,7 @@ entity is found by asking for it, not by listing a folder that groups it.
     movies/<movie_id>/      scenes cut into one piece: scenes/ + output/
     input/                  the project working pool
 
-config/pose/                the turnaround's framing plates
+config/angle/                the turnaround's framing plates
 ```
 
 **The documents that used to define these things are gone.** No `profile.yaml`,
@@ -129,13 +129,13 @@ Ids are stable, so any run replays by re-minting.
 
 ## SHARED MATERIAL, AND THE TRAP THAT USED TO BE HERE
 
-The `config/pose/` plates belong to **no character and no project** — they are
+The `config/angle/` plates belong to **no character and no project** — they are
 the library's, and the repo is their source of truth.
 
 **They are ordinary nodes, and that is the change.** They had no catalog record
 for as long as nothing owned them, so they were reached by raw key through a
 separate route, and every command that resolved a path answered "not found" for
-them. That was quiet where it cost most: a turnaround binds a pose plate as
+them. That was quiet where it cost most: a turnaround binds an angle image as
 its framing guide, and a plate the shoot could not see took the guide with it
 and returned a render that was plausible and wrongly framed. They resolve like
 anything else now, and `studio download`, `studio presign` and `--folder` all

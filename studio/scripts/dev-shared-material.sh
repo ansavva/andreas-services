@@ -3,15 +3,15 @@
 # The two pushes of SHARED MATERIAL into a media bucket. Sourced, never run.
 #
 # Shared material is what belongs to no character and no project: the
-# `config/pose/` plates. `studio/config/` is the source of truth and the library
+# `config/angle/` angle images. `studio/config/` is the source of truth and the library
 # holds a copy, because a model may only be handed a presigned URL of a stored
 # object.
 #
 # **This no longer writes to the bucket, and that is the whole of the change.**
-# It used to `aws s3 sync` the plates in as bare objects, which was correct while
+# It used to `aws s3 sync` the angle images in as bare objects, which was correct while
 # they were addressed by raw key and had no catalog record by design. They are
-# ordinary nodes now — `check_plates` resolves each one as a name path before a
-# shoot spends anything — so an object with no row is a plate the shoot cannot
+# ordinary nodes now — `check_angles` resolves each one as a name path before a
+# shoot spends anything — so an object with no row is an angle image the shoot cannot
 # see, and the refusal it prints names this very script. Rows are the API's to
 # write, so the push goes through `studio config sync` and this is a wrapper
 # around it.
@@ -40,7 +40,7 @@ push_pose_plates() {
   # keep their existing call sites and neither grows a second idea of where the
   # library is.
   #
-  # Idempotent and additive: `config sync` uploads only the plates with no node
+  # Idempotent and additive: `config sync` uploads only the angle images with no node
   # and never deletes, for the reason the `--delete` refusal gave before it —
   # anything else under `config/` was put there by something this does not know
   # about.
