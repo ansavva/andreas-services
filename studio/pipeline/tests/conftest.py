@@ -366,6 +366,11 @@ def library(fake_api):
                        bindings={"image_input": [lib.face_1, lib.face_2]},
                        characters=[lib.character])
     lib.run = run["id"]
+    # **The fixture goes through the gate rather than around it.** A run is
+    # created as a draft, and the API refuses to move one out of the unsubmitted
+    # states without an approval naming its exact payload — so a fixture that
+    # skipped this step would be seeding a state the service cannot produce.
+    E.approve_run(lib.run, run["plan_digest"])
     signed = E.add_run_output(lib.run, "output-1.jpeg", 9, "image/jpeg")
     _confirm(fake_api, signed, b"jpeg-out")
     E.patch_run(lib.run, status="succeeded", prediction_id="s7k2m9x4qwe1",

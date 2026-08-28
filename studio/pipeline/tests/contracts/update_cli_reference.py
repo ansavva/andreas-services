@@ -17,10 +17,11 @@ re-serialised with exactly the settings it was written with
 round-trip unchanged. The diff is then reviewable, which is the only property
 that makes updating a contract safe.
 
-**`ensure_ascii` must stay at its default.** It was passed `False` here while
-the file on disk escapes every non-ASCII character, so each run also unescaped
-ten em dashes in help strings belonging to commands it was not asked to touch —
-the diff this helper exists to keep reviewable was noise.
+**How the file is encoded is not decided here.** `cli_surface.dumps` is the one
+serializer and this calls it, because the encoding has been got wrong twice in
+opposite directions — each time rewriting ten help strings belonging to commands
+nobody asked to touch. `test_the_reference_is_canonically_serialised` is what
+now holds it, so a drift is a red test rather than a silent rewrite.
 
 It is a helper, not a test, and it is never run by the suite.
 """
@@ -28,14 +29,14 @@ It is a helper, not a test, and it is never run by the suite.
 from __future__ import annotations
 
 import argparse
-import json
-import pathlib
 import sys
 
 from studio_pipeline import cli
 from tests.contracts import cli_surface
 
-REFERENCE = pathlib.Path(__file__).parent / "cli_surface_reference.json"
+#: Named once, in `cli_surface`, so the helper and the test cannot end up
+#: talking about different files.
+REFERENCE = cli_surface.REFERENCE
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -46,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="a top-level command that no longer exists")
     args = parser.parse_args(argv)
 
-    reference = json.loads(REFERENCE.read_text())
+    reference = cli_surface.load()
 
     for name in args.remove:
         if reference.pop(name, None) is None:
@@ -63,8 +64,7 @@ def main(argv: list[str] | None = None) -> int:
         reference[name] = cli_surface.from_click(command)
         print(f"{verb}  studio {name}")
 
-    REFERENCE.write_text(
-        json.dumps(reference, indent=2, sort_keys=True) + "\n")
+    REFERENCE.write_text(cli_surface.dumps(reference))
     return 0
 
 

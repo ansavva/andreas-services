@@ -501,7 +501,30 @@ export interface ProjectInput {
   url: string;
 }
 
-export type RunStatus = "pending" | "running" | "succeeded" | "failed" | "cancelled";
+export type RunStatus =
+  // Before anything is submitted. A run is created when it is PLANNED now, so
+  // the row no longer says that anything happened — see `RunRecord.plan`.
+  | "draft"
+  | "approved"
+  | "discarded"
+  // After. `adopted` is a synthetic run wrapping an artifact that already
+  // existed; nothing was submitted and nothing billed.
+  | "pending"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "adopted";
+
+/** The states that come before a submission, mirrored from `catalog.py`. */
+export const UNSUBMITTED_RUN_STATUSES: readonly RunStatus[] = [
+  "draft",
+  "approved",
+  "discarded",
+];
+
+export const isUnsubmitted = (status: RunStatus): boolean =>
+  UNSUBMITTED_RUN_STATUSES.includes(status);
 
 /**
  * The three a run does not come back from — mirrored from `catalog.py`'s
@@ -517,6 +540,10 @@ export const TERMINAL_RUN_STATUSES: readonly RunStatus[] = [
   "succeeded",
   "failed",
   "cancelled",
+  // A discarded draft is gone. A draft is NOT here — it can still be approved
+  // and submitted, so the run page has to keep watching one.
+  "discarded",
+  "adopted",
 ];
 
 export const isTerminal = (status: RunStatus): boolean =>
@@ -598,8 +625,42 @@ export interface RunRecord {
   created: string;
   submitted: string | null;
   completed: string | null;
-  /** Role → the nodes bound to it, e.g. `image_input`. */
+  /**
+   * Role → the nodes bound to it, e.g. `image_input`.
+   *
+   * **Derived from `sends` by the API**, and answered from the old stored
+   * attribute for runs that predate them. Kept because it is the shape that
+   * groups by model input, which is what the payload actually looks like;
+   * `sends` is the shape that says why each image is there.
+   */
   bindings: Record<string, RunAsset[]>;
+  /**
+   * Every image this run sends, IN ORDER, each with its role and provenance.
+   *
+   * The order is not presentational: a model is handed a list and prompts cite
+   * positions in it ("the first image is an existing plate"), so this is the
+   * order the model sees.
+   */
+  sends: RunSend[];
+  /**
+   * The AUTHORED half — what a person decided, as studio's own data.
+   *
+   * `null` on a run that predates the plan and could not be reconstructed.
+   * `plan.origin` says whether a person wrote it or `catalog backfill-plans`
+   * rebuilt it from the recorded request.
+   */
+  plan: RunPlan | null;
+  /** A hash over the plan AND the ordered sends — what an approval names. */
+  plan_digest: string | null;
+  /** Who said yes, when, and to which payload. `null` until somebody has. */
+  approval: RunApproval | null;
+  /**
+   * Whether the payload moved after it was approved.
+   *
+   * Computed by the API on every read rather than stored — a gate that trusted
+   * a cached answer would pass the exact case it exists to catch.
+   */
+  stale: boolean;
   characters: string[];
   folder: string;
   outputs: RunAsset[];
@@ -611,6 +672,60 @@ export interface RunRecord {
   cost: RunCost | null;
   error: string | null;
   payload: { request: string | null; response: string | null; prompt: string | null };
+}
+
+/**
+ * What one image a run sends is FOR, and where it came from.
+ *
+ * `role` is read off the model registry — which field of the model's input this
+ * binds to decides it — and `source` is derived by the API from where the node
+ * sits, so a run submitted today and a run reconstructed from history describe
+ * their images in the same words.
+ */
+export interface RunSend extends RunAsset {
+  order: number;
+  /** The model input this binds to, e.g. `image_input`, `start_image`. */
+  field: string;
+  /** `null` on a run backfilled from a model no longer in the registry. */
+  role: "start" | "end" | "reference" | "input" | null;
+  source: RunSendSource;
+}
+
+export interface RunSendSource {
+  kind: "character" | "run" | "input-pool" | "project" | "object";
+  character?: string;
+  /** The reference group a character's image was filed under, e.g. `face`. */
+  group?: string;
+  order?: number;
+  run?: string;
+  /** 1-based, matching what a runref's `#2` means. */
+  output?: number;
+  project?: string;
+  /** 1-based position in the project's input pool — what `--input N` means. */
+  position?: number;
+}
+
+export interface RunPlan {
+  version: number;
+  /** `authored` if a person wrote it; `backfilled` if it was reconstructed. */
+  origin: "authored" | "backfilled";
+  /** A structured prompt document, or plain prose. Never decoded by studio. */
+  prompt: unknown;
+  /** Everything else the model was given — aspect ratio, quality, duration. */
+  params: Record<string, unknown>;
+  note?: string | null;
+}
+
+export interface RunApproval {
+  /**
+   * The Cognito sub of whoever approved it — or the literal `backfill`, for a
+   * run approved before approvals were recorded. Naming the mechanism rather
+   * than a person is deliberate: nobody consented in a browser to a run made
+   * last August, and a row implying they had would be undetectable later.
+   */
+  by: string;
+  at: string;
+  digest: string;
 }
 
 /** A page of runs. `cursor` is `null` when there is nothing after this page. */

@@ -55,9 +55,11 @@ def test_a_node_id_binding_is_kept_shape_and_all(library):
 def test_recording_a_run_creates_the_envelope_before_the_submission(library):
     """The ordering that leaves a record behind when a prediction times out.
 
-    `status` is `pending` and there are no outputs — the run exists, and the
-    submission has not happened. A store that recorded nothing until success
-    would lose exactly the runs worth investigating.
+    `status` is `draft` and there are no outputs — the run exists, and neither
+    the approval nor the submission has happened. A store that recorded nothing
+    until success would lose exactly the runs worth investigating; a store that
+    recorded nothing until the approval would leave the payload a person is
+    supposed to read with no address.
     """
     record = R.record_request(library.project, kind="image",
                               engine="nano-banana-pro",
@@ -65,8 +67,10 @@ def test_recording_a_run_creates_the_envelope_before_the_submission(library):
                               input={"prompt": "a porch"},
                               bindings={"image_input": [library.face_1]},
                               characters=[library.character])
-    assert record["status"] == "pending"
+    assert record["status"] == "draft"
     assert record["outputs"] == []
+    assert record["approval"] is None
+    assert record["plan_digest"].startswith("sha256:")
     assert record["folder"].startswith("node-")
     assert record["payload"]["request"].startswith("node-")
     assert record["payload"]["response"] is None
@@ -195,6 +199,9 @@ def test_a_run_that_never_produced_output_has_none(library):
 def test_recording_a_result_patches_the_row_and_stores_the_response(library):
     record = R.record_request(library.project, kind="image", engine="e",
                               model="m", input={}, bindings={})
+    # Through the gate, not around it: the API refuses to move a run out of the
+    # unsubmitted states without an approval naming its exact payload.
+    E.approve_run(record["id"], record["plan_digest"])
     R.record_result(record["id"], prediction_id="pred-1", status="succeeded",
                     outputs=[], source_urls=["https://replicate.test/x"])
     after = E.get_run(record["id"])
@@ -208,6 +215,7 @@ def test_an_exception_is_recorded_rather_than_raising_on_the_way_in(library):
     a `TypeError` on the way to recording that it failed."""
     record = R.record_request(library.project, kind="image", engine="e",
                               model="m", input={}, bindings={})
+    E.approve_run(record["id"], record["plan_digest"])
     R.record_result(record["id"], prediction_id=None, status="failed",
                     error=RuntimeError("the provider said no"))
     assert E.get_run(record["id"])["error"] == "the provider said no"
@@ -464,3 +472,200 @@ def test_an_owner_slash_name_is_inferred_from_the_live_schema(library, monkeypat
     assert entry["model"] == "vendor/an-upscaler"
     assert entry["prompt"] is None, "no prompt input in the schema"
     assert entry["images"]["start"] == "image"
+
+
+# ── the approval gate, from this side of the wire ───────────────────────────
+#
+# Hard rule #2 says never submit without approval of the full payload, and
+# re-approve after any edit. Until now that was a `click.confirm` in a terminal
+# and nothing else: it left no trace, so nothing could check that the payload
+# somebody said yes to was the payload that went out.
+
+
+def test_a_draft_cannot_be_submitted_until_it_is_approved(library):
+    """The refusal comes from the API, so it binds the app as well as the CLI."""
+    from studio_pipeline.adapters import api
+
+    record = R.record_request(library.project, kind="image", engine="e",
+                              model="m", input={"prompt": "a porch"}, bindings={})
+
+    with pytest.raises(api.ApiError):
+        E.patch_run(record["id"], status="running")
+
+
+def test_approving_then_rewording_the_prompt_refuses_the_submission(library):
+    """**Approve-then-edit, the failure the digest exists to catch.**
+
+    A payload is approved, a prompt is reworded, and the run goes out carrying
+    words nobody read. The rule said not to; nothing checked it.
+    """
+    from studio_pipeline.adapters import api
+
+    record = R.record_request(library.project, kind="image", engine="e",
+                              model="m", input={"prompt": "a porch"}, bindings={})
+    E.approve_run(record["id"], record["plan_digest"])
+
+    E.patch_run_plan(record["id"], {"prompt": "a porch at dusk"})
+
+    with pytest.raises(api.ApiError):
+        E.patch_run(record["id"], status="running")
+
+
+def test_the_cli_approves_a_draft_only_after_showing_its_payload(library):
+    """`runs approve` re-renders the payload and asks. **There is no `--yes`.**
+
+    An approval flag is the door an agent walks through while believing some
+    earlier exchange counted as consent — the sentence `board.py` and `shoot.py`
+    both already carry. It matters more here, because what this writes is a
+    durable record that somebody consented.
+    """
+    # A plan, because that is what `submit.draft` writes — the render reads what
+    # is STORED rather than rebuilding a payload from arguments, so a run with no
+    # plan has nothing to show and that is the honest answer.
+    record = R.record_request(library.project, kind="image", engine="e",
+                              model="google/nano-banana-pro",
+                              input={"prompt": "a porch at dawn"},
+                              plan={"prompt": "a porch at dawn",
+                                    "params": {"output_format": "png"}},
+                              sends=[{"field": "image_input", "role": "reference",
+                                      "node": library.face_1}],
+                              bindings={"image_input": [library.face_1]})
+
+    result = CliRunner().invoke(cli.main, ["runs", "approve", record["id"]], input="y\n")
+
+    assert result.exit_code == 0, result.output
+    assert "a porch at dawn" in result.output, "the payload is shown before the ask"
+    assert "IMAGES" in result.output, "the pictures are part of the payload"
+    assert E.get_run(record["id"])["status"] == "approved"
+
+
+def test_declining_the_cli_gate_approves_nothing(library):
+    record = R.record_request(library.project, kind="image", engine="e",
+                              model="m", input={"prompt": "a porch"}, bindings={})
+
+    result = CliRunner().invoke(cli.main, ["runs", "approve", record["id"]], input="n\n")
+
+    assert result.exit_code == 1
+    assert E.get_run(record["id"])["status"] == "draft"
+
+
+def test_discarding_a_draft_removes_it_and_its_folder(library):
+    """**`--files delete` by default, the opposite of `runs delete`.**
+
+    A submitted run's folder holds media somebody paid for. A draft's holds two
+    payload documents and an empty `output/` — nothing was ever made — so keeping
+    it by default would leave an orphan per abandoned idea.
+    """
+    from studio_pipeline.adapters import api
+
+    record = R.record_request(library.project, kind="image", engine="e",
+                              model="m", input={}, bindings={})
+
+    result = CliRunner().invoke(cli.main, ["runs", "discard", record["id"]])
+
+    assert result.exit_code == 0, result.output
+    with pytest.raises(api.NotFound):
+        E.get_run(record["id"])
+
+
+def test_a_submitted_run_cannot_be_discarded(library):
+    """`discard` is for work that never happened; `delete` is for work that did."""
+    result = CliRunner().invoke(cli.main, ["runs", "discard", library.run])
+
+    assert result.exit_code != 0
+    assert "delete" in result.output
+
+
+def test_the_sends_carry_the_role_the_registry_gives_them(library):
+    """The half `bindings` threw away.
+
+    `gather` decides an image is a start frame or a reference and then records a
+    `{field: [node, …]}` map, so a run page could say six images went out and
+    never which was which.
+    """
+    from studio_pipeline.engine import registry as REG
+    from studio_pipeline.engine import submit as SUB
+
+    entry = REG.get("kling")
+    sends = SUB.sends_for(entry, {"start_image": library.input_3,
+                                  "reference_images": [library.face_1, library.face_2]})
+
+    assert [(s["field"], s["role"]) for s in sends] == [
+        ("start_image", "start"),
+        ("reference_images", "reference"),
+        ("reference_images", "reference"),
+    ]
+
+
+def test_the_plan_is_the_prompt_and_the_params_and_no_images(library):
+    """**`plan` is studio's; `request.json` is the provider's.**
+
+    The line is the same one a scene already holds — a shot's `motion.prompt` is
+    authored and queryable while the run it renders into keeps the provider
+    payload as an undecoded blob. It carries no image fields at all: those are
+    sends, presigned in at the last moment.
+    """
+    from studio_pipeline.engine import registry as REG
+    from studio_pipeline.engine import submit as SUB
+
+    plan = SUB.plan_of(REG.get("nano-banana-pro"),
+                       {"prompt": "a porch", "aspect_ratio": "9:16",
+                        "output_format": "png"})
+
+    assert plan["prompt"] == "a porch"
+    assert plan["params"] == {"aspect_ratio": "9:16", "output_format": "png"}
+    assert plan["origin"] == "authored"
+
+
+def test_a_dry_run_leaves_a_draft_that_can_be_approved_and_submitted(library, monkeypatch):
+    """**The flow this whole change exists for, end to end.**
+
+    `--dry-run` rendered a payload to a terminal and kept nothing, so the thing
+    hard rule #2 asks a person to read had no address: it could not be opened in
+    the app, linked to, or approved later. It leaves a draft now, and the draft
+    is what `runs approve` and `runs submit` act on.
+
+    The three steps are deliberately three commands. Reading a payload and
+    sending it are different acts, and the whole point of recording an approval
+    is that they can happen in different places — a terminal, or a browser.
+    """
+    monkeypatch.setenv("REPLICATE_API_TOKEN", "r8_fake")
+
+    dry = CliRunner().invoke(cli.main, [
+        "run", "--model", "nano-banana-pro", "--project", "porch-teaser",
+        "--prompt", "a porch at dawn", "--key", library.face_1, "--dry-run",
+    ])
+    assert dry.exit_code == 0, dry.output
+
+    drafts = E.query_runs(project=library.project, status="draft")["runs"]
+    assert len(drafts) == 1, "a dry run leaves exactly one draft"
+    draft = E.get_run(drafts[0]["id"])
+    assert draft["status"] == "draft"
+    assert draft["plan"]["prompt"] == "a porch at dawn"
+    assert [s["role"] for s in draft["sends"]] == ["reference"]
+
+    approved = CliRunner().invoke(cli.main, ["runs", "approve", draft["id"]], input="y\n")
+    assert approved.exit_code == 0, approved.output
+
+    submitted = CliRunner().invoke(cli.main, ["runs", "submit", draft["id"]])
+    assert submitted.exit_code == 0, submitted.output
+
+    after = E.get_run(draft["id"])
+    assert after["status"] == "succeeded"
+    assert after["outputs"], "the submitted draft produced its output"
+
+
+def test_a_dry_run_bills_nothing(library, monkeypatch):
+    """A draft costs a row and no bytes. **Nothing reaches the provider.**"""
+    monkeypatch.setenv("REPLICATE_API_TOKEN", "r8_fake")
+
+    result = CliRunner().invoke(cli.main, [
+        "run", "--model", "nano-banana-pro", "--project", "porch-teaser",
+        "--prompt", "a porch", "--key", library.face_1, "--dry-run",
+    ])
+
+    assert result.exit_code == 0, result.output
+    draft = E.get_run(E.query_runs(project=library.project, status="draft")["runs"][0]["id"])
+    assert draft["prediction_id"] is None
+    assert draft["outputs"] == []
+    assert draft["approval"] is None

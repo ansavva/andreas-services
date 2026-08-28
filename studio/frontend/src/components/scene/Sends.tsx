@@ -135,7 +135,7 @@ export function isBracketed(shots: Shot[]): boolean {
  * is a dashed rectangle the same size as a real one, not a sentence floating
  * where a picture should be. Two or three words inside it say why it is empty.
  */
-function Slot({ note }: { note: string }) {
+export function Slot({ note }: { note: string }) {
   return (
     <span
       className="flex aspect-[3/4] w-20 shrink-0 items-center justify-center rounded-md
@@ -163,7 +163,7 @@ function panelHint(panel: Panel, demoted: boolean): string | undefined {
   return undefined;
 }
 
-function SendRow({ label, children }: { label: string; children: React.ReactNode }) {
+export function SendRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
       <Text variant="caption" tone="muted">

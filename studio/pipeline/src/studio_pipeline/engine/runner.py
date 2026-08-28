@@ -320,11 +320,9 @@ def cmd_run(**options):
     except MS.SchemaError as e:
         die(str(e))
 
-    # A LABEL for the approval render, not an id: nothing has been created yet,
-    # and a run's id is minted by `POST /api/runs` at the moment the record is
-    # written. It used to be a locally generated timestamp-slug that then became
-    # the folder name, which is precisely the identity-in-a-string this model
-    # removes.
+    # A LABEL for the approval render, not an id. A dry run replaces it with the
+    # real one below, once the draft exists; a live submission renders under the
+    # label because `execute` mints the record and submits in one act.
     run = f"{args.project['slug']}/{R.slugify(args.name)}"
 
     # **Has this exact submission already been paid for?** See `engine/ledger`
@@ -341,11 +339,26 @@ def cmd_run(**options):
             "       Nothing has been sent. To generate it again anyway: --again")
 
     if args.dry_run:
+        # **A dry run now leaves a DRAFT, and that is the whole of its upgrade.**
+        # It rendered a payload to a terminal and kept nothing, so the thing hard
+        # rule #2 asks a person to read had no address: it could not be opened in
+        # the app, linked to, or approved later. The draft costs a row and no
+        # bytes, bills nothing, is hidden from every listing, and is what
+        # `studio runs approve` then acts on.
+        #
         # `json_`, not `json` — `--json` cannot be a Python attribute name, so
         # Click was given the safe spelling and this line read the unsafe one.
         # It made `--dry-run` raise AttributeError, which is the command the
         # approval rule tells everyone to use before spending money.
-        print(SUB.render(entry, run, payload, bindings, args.json_))
+        try:
+            record = SUB.draft(entry, payload, bindings, args)
+        except SUB.SubmitError as e:
+            die(str(e))
+        print(SUB.render(entry, record["id"], payload, bindings, args.json_))
+        print(f"\ndraft {record['id']} — nothing submitted, nothing billed.\n"
+              f"       approve it:  studio runs approve {record['id']}\n"
+              f"       discard it:  studio runs discard {record['id']}",
+              file=sys.stderr)
         return 0
 
     try:

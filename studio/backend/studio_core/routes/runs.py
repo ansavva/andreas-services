@@ -29,6 +29,34 @@ through, so a URL where a node id belongs is refused for the SPA too.
 
 The refusal is a **400 carrying a code**, because a client has to act on it —
 upload the bytes first — and matching on prose is how that stops working.
+
+## A run is created when it is PLANNED, not when it is submitted
+
+This is the change that made a run approvable, and it altered what the row
+means. `POST /api/runs` used to be called after a person had said yes at a
+terminal, so the existence of the row *was* the record of a submission. It is
+called when the run is planned now, and the row starts at `draft`.
+
+What that buys is the whole of the feature: a plan that can be read, edited and
+linked to before anything bills, and an **approval that is an artifact** rather
+than a `y` that scrolled off a terminal. `plan_digest` hashes what was approved,
+`POST /runs/<id>/approve` records it, and the transition into `pending` is
+refused unless the two still agree. Hard rule #2's "re-approve after **any**
+edit" stops being a thing a person remembers.
+
+Three consequences are load-bearing and each is defended below:
+
+* `draft` and `discarded` are hidden from listings by default, because a grid
+  mixing intentions with submissions is a grid nobody can read;
+* a draft is **not counted** in the project's run count — the count is bumped by
+  the transition into `pending`, once, guarded by `counted`;
+* the images a run binds are `SEND#` rows, ordered, carrying the role and the
+  provenance that `bindings` could never hold. `bindings` is still answered, and
+  is derived from them.
+
+**It is not a permission boundary.** The CLI and the SPA hold tokens from the
+same pool, so an agent can approve a run it wrote. What is enforced is that an
+approval names a payload and dies when that payload changes.
 """
 
 import json
@@ -39,7 +67,7 @@ from flask import Blueprint, g, jsonify, request
 
 from studio_core import config
 from studio_core.clients.aws import s3
-from studio_core.errors import ValidationError
+from studio_core.errors import ConflictError, ValidationError
 from studio_core.routes import projects as project_routes
 from studio_core.routes import support
 from studio_core.services import catalog, layout
@@ -114,6 +142,145 @@ class _InvalidBinding(Exception):
     """A URL where a node id belongs. Caught at the route to answer with a code."""
 
 
+def validate_sends(raw, lib: str) -> list[dict]:
+    """The ordered images a run binds, each with what it is FOR and where it came from.
+
+    **The same three checks `validate_bindings` makes, because a send is a
+    binding that remembers why.** A URI scheme is hard rule #3; a node that does
+    not exist is a run that would fail at the provider rather than here; a node
+    in another library is somebody else's file. One `BatchGetItem` over the whole
+    list, so a run with six references costs one extra read.
+
+    `role` is validated against `catalog.SEND_ROLES` and `source` is not. The
+    role decides what the model is given and a wrong one is a different payload;
+    `source` is provenance for a reader, is derived rather than authored, and
+    gains nothing from a schema this service would then have to keep in step
+    with the pipeline's idea of where an image can come from.
+    """
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValidationError("sends must be a list")
+
+    entries = []
+    for index, entry in enumerate(raw):
+        if not isinstance(entry, dict):
+            raise ValidationError(f"sends[{index}] must be an object")
+        node = entry.get("node")
+        field = entry.get("field")
+        role = entry.get("role")
+        if not isinstance(node, str) or not node:
+            raise ValidationError(f"sends[{index}].node must be a node id")
+        if URL_SCHEME.match(node):
+            raise _InvalidBinding(
+                f"sends[{index}].node is a URL; a send names a node. "
+                "S3 is the only origin."
+            )
+        if not isinstance(field, str) or not field:
+            raise ValidationError(f"sends[{index}].field must name a model input")
+        if role is not None and role not in catalog.SEND_ROLES:
+            raise ValidationError(
+                f"sends[{index}].role must be one of "
+                f"{', '.join(sorted(catalog.SEND_ROLES))}"
+            )
+        source = entry.get("source")
+        if source is not None and not isinstance(source, dict):
+            raise ValidationError(f"sends[{index}].source must be an object")
+        entries.append({"field": field, "role": role, "node": node,
+                        "source": source})
+
+    found = catalog.records([entry["node"] for entry in entries])
+    for index, entry in enumerate(entries):
+        record = found.get(entry["node"])
+        if record is None:
+            raise ValidationError(f"sends[{index}].node names no node")
+        if record["lib"] != lib:
+            raise ValidationError(f"sends[{index}].node is in another library")
+        # **Derived here, not reported by the caller**, unless the caller
+        # insisted. The pipeline knows why it picked an image, but the pipeline
+        # is not the only thing that creates runs and a run reconstructed from
+        # history has no `gather` behind it — so provenance is computed from
+        # where the node sits, once, and a run submitted today describes its
+        # images in the same words as a run backfilled from 2026.
+        if entry["source"] is None:
+            entry["source"] = catalog.source_of(record)
+    return entries
+
+
+def sends_from_bindings(bindings: dict) -> list[dict]:
+    """A `{field: [node, …]}` map read as sends, with the WHY left null.
+
+    **The bridge, and it is deliberately lossy in one direction only.** A caller
+    that has not learned to send `sends` still gets ordered rows — the map
+    preserves order within a field, and Python preserves the field order the
+    caller wrote — so nothing regresses. What it cannot supply is `role` and
+    `source`, because the map never carried them: deciding an image is a start
+    frame happens in `engine/submit.py::gather`, which is on the other side of
+    this call.
+
+    A null `role` is honest about that. Guessing one from the field name would
+    put the registry in this service, which has no registry and must not grow
+    one — `models.json` is the pipeline's, and a second copy of it here is a
+    second answer to what a model accepts.
+    """
+    return [
+        {"field": field, "role": None, "node": node, "source": None}
+        for field, nodes in (bindings or {}).items()
+        for node in nodes
+    ]
+
+
+def bindings_of(send_entries: list[dict], record: dict | None = None) -> dict:
+    """Sends read back as the `{field: [node, …]}` map every client already draws.
+
+    **Derived, so there is only one truth.** The map was an attribute until the
+    send rows existed; keeping both would be two spellings of one relationship,
+    which is the failure the entity model exists to end. The response shape does
+    not change, so no client had to be touched on the day this landed.
+
+    **A run with no send rows falls back to the stored attribute, and that is not
+    a courtesy — it is every run that existed before this.** Every one of them
+    carries `bindings` and no `SEND#` row, so deriving unconditionally would have
+    answered `{}` for the whole library: a run page reading "Nothing was bound"
+    over a generation that plainly bound six images. The fallback retires itself
+    — `catalog backfill-plans` raises the rows, and after it there is nothing
+    left for this branch to answer.
+    """
+    out: dict[str, list[str]] = {}
+    for entry in send_entries:
+        out.setdefault(entry["field"], []).append(entry["node"])
+    if not out and record:
+        stored = record.get("bindings") or {}
+        return {name: (value if isinstance(value, list) else [value])
+                for name, value in stored.items()}
+    return out
+
+
+def _source_for(node_id: str, record: dict | None) -> dict:
+    """Where one image came from, for a send row that did not record it.
+
+    A node the catalog cannot find still gets an answer rather than an error:
+    the send genuinely points at it, and a run whose reference was deleted has
+    to stay openable.
+    """
+    if record is None:
+        return {"kind": "object"}
+    return catalog.source_of(record)
+
+
+def digest_of(record: dict, send_entries: list[dict] | None = None) -> str:
+    """The digest of what this run would send, as it stands right now.
+
+    Recomputed rather than read off the row wherever a decision depends on it —
+    the stored `plan_digest` is a cache for a client to compare against, and a
+    gate that trusted its own cache would pass exactly the case it exists to
+    catch.
+    """
+    if send_entries is None:
+        send_entries = catalog.sends(record["id"])
+    return catalog.plan_digest(record.get("plan"), send_entries)
+
+
 def _document(folder_id: str, name: str, text: str, owner) -> dict:
     """One payload document: a node, its bytes, and the length actually encoded.
 
@@ -139,17 +306,24 @@ def _document(folder_id: str, name: str, text: str, owner) -> dict:
 
 @bp.post("/runs")
 def create_run():
-    """Record a run before it is submitted, so a timeout still leaves a record.
+    """Create the run as a **draft**, before anything has been approved.
 
-    **Before the submission, and that is the whole ordering.** `request.json` and
-    `result.json` were two writes for this reason, and they are two calls here: a
-    prediction that times out, or a process that is killed, leaves an envelope
-    saying `pending` with the exact input beside it rather than nothing at all.
+    **The ordering moved one step earlier and that is the whole feature.** The
+    record was always written before the submission, so that a prediction which
+    times out still leaves an envelope rather than nothing. It is now written
+    before the *approval* too, which is what gives an approval something to be
+    attached to: a plan with an address, editable, linkable, and hashable.
+
+    That does mean a row no longer asserts that anything happened, which is why
+    a draft is hidden from listings and left out of the project's run count until
+    it is submitted. See the module docstring.
 
     One transaction writes the envelope, the project's listing row, the character
-    usage rows, the run's folder and its `output/` folder. The payload documents
-    are S3 writes and cannot be in it — so a failure part-way leaves a run folder
-    holding fewer children than it should, which is a visible, re-runnable state.
+    usage rows, the run's folder and its `output/` folder. The sends and the
+    payload documents follow, because neither can be in it — the sends are their
+    own rows keyed on an id this transaction is still minting, and the documents
+    are S3 writes. A failure part-way leaves a draft holding less than it should,
+    which is visible and re-runnable, and which nothing has yet paid for.
     """
     body = support.body()
     held = support.memberships()
@@ -169,10 +343,21 @@ def create_run():
     for char_id in characters:
         support.entity_at(catalog.ENTITY_CHARACTER, g.library, char_id, held)
 
+    # `sends` is what a caller that knows about roles supplies; `bindings` is the
+    # older spelling and is read as sends with the WHY left null. Both go through
+    # the same node checks, so hard rule #3 is enforced whichever one arrives.
     try:
-        bindings = validate_bindings(body.get("bindings"), project["lib"])
+        if body.get("sends") is not None:
+            send_entries = validate_sends(body["sends"], project["lib"])
+        else:
+            bindings = validate_bindings(body.get("bindings"), project["lib"])
+            send_entries = validate_sends(sends_from_bindings(bindings), project["lib"])
     except _InvalidBinding as refusal:
         return support.structured("invalid_binding", str(refusal), 400)
+
+    plan = body.get("plan")
+    if plan is not None and not isinstance(plan, dict):
+        raise ValidationError("plan must be an object")
 
     parent = project_routes.folder_for(project, layout.RUN_PARENT)
     record = catalog.create_project_entity(
@@ -185,14 +370,21 @@ def create_run():
         # `<timestamp>_<hint>` label was a worse copy of `created`.
         slug=None,
         attributes={
-            "status": "pending",
+            "status": "draft",
             "kind": kind,
             "engine": body.get("engine"),
             "model": model,
+            # The AUTHORED half. `plan` is studio's own and is validated as a
+            # map and no further: which knobs a model has is registry data, the
+            # registry is the pipeline's, and a copy of it here would be a
+            # second answer to what a model accepts.
+            "plan": plan,
+            "plan_digest": None,
+            "approval": None,
+            "counted": False,
             "prediction_id": None,
             "submitted": None,
             "completed": None,
-            "bindings": bindings,
             "characters": characters,
             "outputs": [],
             "lineage": body.get("lineage") or {"from_run": None, "from_output": None},
@@ -200,13 +392,20 @@ def create_run():
             "error": None,
             "payload": {"request": None, "response": None, "prompt": None},
         },
-        listing={"status": "pending", "model": model, "kind": kind},
+        listing={"status": "draft", "model": model, "kind": kind},
         subfolders=(layout.OUTPUT_FOLDER,),
+        # A draft is an intention. Counting it here would make a project report
+        # runs nobody bought; `update_run` counts it when it is submitted.
+        count=False,
     )
+
+    written = catalog.put_sends(record["id"], send_entries)
+    assignments = {"plan_digest": catalog.plan_digest(plan, written)}
 
     payload = _write_payload(record, body)
     if payload:
-        record = catalog.update_project_entity(KIND, record, {"payload": payload})
+        assignments["payload"] = payload
+    record = catalog.update_project_entity(KIND, record, assignments)
 
     return jsonify(
         {
@@ -214,6 +413,8 @@ def create_run():
             "status": record["status"],
             "folder": record["folder"],
             "payload": record["payload"],
+            "plan_digest": record["plan_digest"],
+            "sends": written,
             "created": record["created"],
         }
     ), 201, {"Location": f"/api/runs/{record['id']}"}
@@ -288,6 +489,15 @@ def list_runs():
     if args.get("since"):
         runs = [run for run in runs if (run.get("created") or "") >= args["since"]]
 
+    # **Drafts and discards are hidden unless they are asked for**, and this has
+    # to come after the filters so that `?status=draft` can still name one. A run
+    # is created when it is planned now, so a grid that showed everything would
+    # mix intentions with submissions — and the thing a person opens the runs
+    # screen to see is what was actually made.
+    if not args.get("status") and args.get("include") != "drafts":
+        runs = [run for run in runs
+                if run.get("status") not in catalog.HIDDEN_RUN_STATUSES]
+
     limit = _limit(args.get("limit"))
     offset = _limit(args.get("cursor")) or 0
     window = runs[offset : offset + limit] if limit else runs[offset:]
@@ -341,7 +551,10 @@ def get_run(run_id: str):
     held = support.memberships()
     record = _run(run_id, held)
 
-    node_ids = [node for entries in record.get("bindings", {}).values() for node in entries]
+    send_entries = catalog.sends(record["id"])
+    bindings = bindings_of(send_entries, record)
+    node_ids = [entry["node"] for entry in send_entries]
+    node_ids += [node for entries in bindings.values() for node in entries]
     node_ids += record.get("outputs") or []
     nodes = catalog.records(node_ids)
 
@@ -350,20 +563,196 @@ def get_run(run_id: str):
 
     return jsonify(
         {
+            # The three authored fields are always present, `None` included. An
+            # attribute cleared to `None` is REMOVEd from the row, so a record
+            # read back has no key at all — and a client would have to tell
+            # "absent" from "null" to draw the difference between a run with no
+            # plan and one whose plan was cleared. There is no difference.
+            "plan": None,
+            "plan_digest": None,
+            "approval": None,
             **record,
             "scenes": support.holders(record["id"], catalog.ENTITY_SCENE),
             "derived": support.holders(record["id"], catalog.ENTITY_RUN),
+            # **The ordered list, each image with what it is for and where it
+            # came from.** This is the half `bindings` never held: the map says
+            # an image was sent, and a send says it was the start frame, or the
+            # third face reference of a named character.
+            "sends": [
+                {**entry,
+                 # **Derived on read when the row has none**, which is every
+                 # send `catalog backfill-plans` wrote: it runs outside this
+                 # service and cannot call `source_of`, and a second
+                 # implementation of provenance in the pipeline would be a
+                 # second dialect — the exact thing deriving it was for. So the
+                 # rows carry what only the pipeline knew (field, role, order)
+                 # and this fills in what only the catalog knows.
+                 "source": entry.get("source")
+                 or _source_for(entry["node"], nodes.get(entry["node"])),
+                 **support.asset(entry["node"], nodes.get(entry["node"]))}
+                for entry in send_entries
+            ],
+            # Derived from the sends rather than stored, so the two cannot
+            # disagree. The shape is unchanged, which is why nothing that drew a
+            # run had to be touched.
             "bindings": {
-                name: expand(entries) for name, entries in record.get("bindings", {}).items()
+                name: expand(entries) for name, entries in bindings.items()
             },
+            "stale": record.get("approval") is not None
+            and record["approval"].get("digest") != digest_of(record, send_entries),
             "outputs": expand(record.get("outputs") or []),
         }
     ), 200
 
 
+# ─────────────────────── the plan, and the gate on it ───────────────────────
+
+
+def _draftable(record: dict) -> None:
+    """A plan may be edited until the run has been submitted, and not after.
+
+    **The refusal is about honesty, not about locking.** Once a prediction has
+    gone out, `request.json` records exactly what the provider was given; a plan
+    edited afterwards would sit beside it describing something that was never
+    sent, and the run page would show the two as though they agreed.
+    """
+    if record.get("status") not in catalog.UNSUBMITTED_RUN_STATUSES:
+        raise ConflictError(
+            f"run {record['id']} has been submitted ({record['status']}); "
+            "its plan is what was sent and cannot be rewritten"
+        )
+
+
+def _revised(record: dict, assignments: dict, send_entries: list[dict]) -> dict:
+    """Write a plan change, recompute the digest, and **drop any approval.**
+
+    This is hard rule #2's "re-approve after **any** edit", made mechanical. It
+    was a sentence in a document until now, checked by nobody, and the failure it
+    names — approve a payload, edit it, submit the edit — is one that has
+    actually happened in this repository.
+
+    Returning the run to `draft` rather than merely clearing `approval` keeps one
+    answer to "can this be submitted" instead of two that have to agree.
+    """
+    digest = catalog.plan_digest(assignments.get("plan", record.get("plan")),
+                                 send_entries)
+    assignments = {**assignments, "plan_digest": digest, "approval": None,
+                   "status": "draft"}
+    return catalog.update_project_entity(
+        KIND, record, assignments, {"status": "draft"}
+    )
+
+
+@bp.patch("/runs/<run_id>/plan")
+def update_plan(run_id: str):
+    """Rewrite a draft's authored half. Clears the approval, every time."""
+    body = support.body()
+    held = support.memberships()
+    record = _run(run_id, held)
+    _draftable(record)
+
+    plan = body.get("plan")
+    if not isinstance(plan, dict):
+        raise ValidationError("plan must be an object")
+
+    send_entries = catalog.sends(record["id"])
+    updated = _revised(record, {"plan": plan}, send_entries)
+    return jsonify({**updated, "sends": send_entries}), 200
+
+
+@bp.patch("/runs/<run_id>/sends")
+def update_sends(run_id: str):
+    """Replace the ordered images a draft binds. Clears the approval, every time.
+
+    A replace rather than a merge, because position is the meaning: send 3 is the
+    third image the model is handed, and a prompt citing "the first image" makes
+    a reorder a real change rather than a cosmetic one.
+    """
+    body = support.body()
+    held = support.memberships()
+    record = _run(run_id, held)
+    _draftable(record)
+
+    try:
+        entries = validate_sends(body.get("sends"), record["lib"])
+    except _InvalidBinding as refusal:
+        return support.structured("invalid_binding", str(refusal), 400)
+
+    written = catalog.put_sends(record["id"], entries)
+    updated = _revised(record, {}, written)
+    return jsonify({**updated, "sends": written}), 200
+
+
+@bp.post("/runs/<run_id>/approve")
+def approve_run(run_id: str):
+    """Record that a person read this payload and said yes to **this** payload.
+
+    **`digest` is required and is compared, not stored.** The client sends the
+    digest of what it just showed somebody; this recomputes the digest of what is
+    actually on the row and refuses a mismatch. That is compare-and-swap, and it
+    is the difference between an approval and a timestamp: a `y` at a terminal
+    said nothing about what it was a yes *to*.
+
+    **This is not a permission boundary and the docstring will not pretend it
+    is.** Both halves of studio hold tokens from the same pool, so an agent can
+    call this on a run it wrote. What it cannot do is approve one payload and
+    send another.
+    """
+    body = support.body()
+    held = support.memberships()
+    record = _run(run_id, held)
+
+    if record.get("status") not in ("draft", "approved"):
+        raise ConflictError(
+            f"run {record['id']} is {record['status']}; only a draft is approved"
+        )
+
+    claimed = body.get("digest")
+    if not isinstance(claimed, str) or not claimed:
+        raise ValidationError("digest is required — approve a payload, not a run")
+
+    send_entries = catalog.sends(record["id"])
+    current = digest_of(record, send_entries)
+    if claimed != current:
+        return support.structured(
+            "stale_digest",
+            "the plan changed after the payload you approved was rendered; "
+            "review it again",
+            409,
+            digest=current,
+        )
+
+    approval = {"by": g.caller_sub, "at": catalog.now(), "digest": current}
+    updated = catalog.update_project_entity(
+        KIND, record, {"approval": approval, "status": "approved"},
+        {"status": "approved"},
+    )
+    return jsonify({**updated, "sends": send_entries}), 200
+
+
+@bp.delete("/runs/<run_id>/approve")
+def revoke_approval(run_id: str):
+    """Take an approval back. A draft again, and submittable by nobody."""
+    held = support.memberships()
+    record = _run(run_id, held)
+    if record.get("status") != "approved":
+        raise ConflictError(f"run {record['id']} is {record['status']}, not approved")
+
+    updated = catalog.update_project_entity(
+        KIND, record, {"approval": None, "status": "draft"}, {"status": "draft"}
+    )
+    return jsonify(updated), 200
+
+
 @bp.patch("/runs/<run_id>")
 def update_run(run_id: str):
     """Move a run forward: submitted, succeeded, failed, cancelled.
+
+    **The transition into `pending` is the gate, and it is here rather than in
+    the CLI on purpose.** The API is the only thing both halves of studio pass
+    through — the same argument that moved hard rule #3 out of the pipeline's
+    `runs.py` and into this module. A check the CLI made alone would be a rule
+    the SPA did not have.
 
     **No `rev`, and that is deliberate.** A character is edited by a person, twice
     at once, and losing somebody's paragraph is the failure optimistic concurrency
@@ -380,11 +769,37 @@ def update_run(run_id: str):
 
     assignments = {}
     listing = {}
+    bump_count = False
     if "status" in body:
         if body["status"] not in catalog.RUN_STATUSES:
             raise ValidationError(
                 f"status must be one of {', '.join(sorted(catalog.RUN_STATUSES))}"
             )
+        # **The gate is on LEAVING the unsubmitted set, not on reaching
+        # `pending`, and the difference is the whole of it.** `engine/submit.py`
+        # writes `running` when it does not poll and `succeeded` when it does; it
+        # never passes through `pending` at all. A check that named one status
+        # would have been a gate the only caller walks straight past — enforced
+        # in the tests, refused by nothing in practice.
+        leaving = (
+            record.get("status") in catalog.UNSUBMITTED_RUN_STATUSES
+            and body["status"] not in catalog.UNSUBMITTED_RUN_STATUSES
+            # An adoption is not a submission. It files an artifact that already
+            # existed, calls no provider and bills nothing, so there is no
+            # payload for anybody to have approved.
+            and body["status"] != catalog.ADOPTED
+        )
+        if leaving:
+            refusal = _refuse_submission(record)
+            if refusal is not None:
+                return refusal
+            # **Counted here, once, because this is where a run stops being an
+            # intention.** A draft is created uncounted; without this a project
+            # would report zero runs however many it had actually made.
+            bump_count = not record.get("counted")
+            if bump_count:
+                assignments["counted"] = True
+            assignments.setdefault("submitted", catalog.now())
         assignments["status"] = body["status"]
         listing["status"] = body["status"]
     for field in ("prediction_id", "submitted", "completed", "error", "cost", "lineage"):
@@ -405,8 +820,45 @@ def update_run(run_id: str):
         edges = {catalog.ENTITY_RUN: [parent] if parent else []}
 
     return jsonify(
-        catalog.update_project_entity(KIND, record, assignments, listing, edges=edges)
+        catalog.update_project_entity(KIND, record, assignments, listing,
+                                      edges=edges, bump_count=bump_count)
     ), 200
+
+
+def _refuse_submission(record: dict):
+    """The one check that makes hard rule #2 enforceable. `None` means go ahead.
+
+    Called only when a run is leaving the unsubmitted set — a run already
+    `running` or `succeeded` moves on freely, because that is the machine
+    reporting what a prediction did rather than anybody asking to spend money.
+
+    Two refusals, and they fail differently because a client acts on them
+    differently: `not_approved` means show the payload and ask, `stale_digest`
+    means the payload moved after somebody said yes and has to be read again.
+
+    **The digest is recomputed here rather than trusted off the row.** A gate
+    that read its own cached answer would pass exactly the case it exists to
+    catch — a plan written by some path that forgot to update `plan_digest`.
+    """
+    if record.get("status") != "approved":
+        return support.structured(
+            "not_approved",
+            f"run {record['id']} is {record.get('status')} and has not been "
+            "approved; nothing may be submitted without approval of the full "
+            "payload",
+            409,
+        )
+    approval = record.get("approval") or {}
+    current = digest_of(record)
+    if approval.get("digest") != current:
+        return support.structured(
+            "stale_digest",
+            "the payload changed after it was approved; review and approve it "
+            "again before submitting",
+            409,
+            digest=current,
+        )
+    return None
 
 
 @bp.post("/runs/<run_id>/outputs")

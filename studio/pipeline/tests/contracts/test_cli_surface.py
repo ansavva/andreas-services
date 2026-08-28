@@ -109,3 +109,31 @@ def test_help_text_survived(name):
                     continue
                 lost.append(f"studio {name} {scope} --{param}".replace("  ", " "))
     assert not lost, f"help text changed or lost on: {lost}"
+
+
+def test_the_reference_is_canonically_serialised():
+    """**The file must already be exactly what `cli_surface.dumps` would write.**
+
+    This is the enforcement that a docstring was standing in for, and standing in
+    badly: how the reference is encoded has been got wrong twice, in opposite
+    directions — once by escaping every non-ASCII character while the file held
+    literal ones, once by the reverse. Both times, a helper asked to add a single
+    command also rewrote ten help strings belonging to commands nobody had
+    touched, which buries the reviewable diff that is the only thing making it
+    safe to update a contract at all.
+
+    A sentence saying "use these settings" cannot fail. This can, and it fails on
+    the commit that introduces the drift rather than on the unrelated PR that
+    next runs the helper.
+
+    If this goes red: do not hand-edit the file to match. Run
+    `uv run python -m tests.contracts.update_cli_reference <command>` for a
+    command you actually changed, and the whole file comes back canonical — then
+    read the diff, which is the point.
+    """
+    on_disk = cli_surface.REFERENCE.read_text()
+
+    assert cli_surface.dumps(json.loads(on_disk)) == on_disk, (
+        "cli_surface_reference.json is not in the form `cli_surface.dumps` "
+        "writes, so the next update to it will rewrite lines nobody changed"
+    )

@@ -67,11 +67,80 @@ def to_item(doc: dict) -> dict:
     `blob_key`, and "the attribute is absent" is what the schema means by that.
     An absent attribute is also what `attribute_not_exists` tests, so writing
     NULLs would quietly defeat the uniqueness conditions below.
+
+    **Every `float` becomes a `Decimal`, and it has to happen here.**
+    `TypeSerializer` refuses a float outright — DynamoDB's N is a decimal type
+    and boto3 will not guess a binary-float rounding for you — so a document
+    containing one raised `TypeError: Float types are not supported` from three
+    frames inside boto3, naming nothing about which attribute was at fault.
+
+    Nothing that came through here held a float until `catalog backfill-plans`
+    started writing a run's PARAMS, which are whatever the model was given:
+    `topazlabs/image-upscale` takes `face_enhancement_strength: 0.8`, and 131 of
+    production's 254 runs are upscales. It was caught by trialling the backfill
+    on a single run, which is what `--limit` is for.
+
+    The conversion goes through `str`, so 0.8 is stored as 0.8 rather than as
+    the seventeen digits its binary representation actually is. **This mirrors
+    `services/catalog.py::_decimals` deliberately** — the backend hit the same
+    wall when a run started recording what a prediction cost — and `from_item`
+    below is the inverse on the way out.
     """
+    import decimal
+
     from boto3.dynamodb.types import TypeSerializer
 
+    def decimals(value):
+        if isinstance(value, float):
+            return decimal.Decimal(str(value))
+        if isinstance(value, dict):
+            return {k: decimals(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [decimals(v) for v in value]
+        return value
+
     serializer = TypeSerializer()
-    return {k: serializer.serialize(v) for k, v in doc.items() if v is not None}
+    return {k: serializer.serialize(decimals(v))
+            for k, v in doc.items() if v is not None}
+
+
+def to_map(doc: dict) -> dict:
+    """A dict -> a typed map with its `None`s KEPT as NULL.
+
+    **The difference from `to_item` is the whole reason this exists.** That one
+    drops a `None` because an absent attribute is what the node schema means by
+    "this folder has no blob key" — and `attribute_not_exists` is what enforces
+    uniqueness, so writing NULLs there would quietly defeat it.
+
+    A **value map** is the opposite case. `plan` holds whatever a person chose,
+    and `prompt: None` is a real answer for a model that takes no prompt —
+    `topazlabs/image-upscale` is 131 of production's 254 runs. Dropping it makes
+    a stored plan a different document from the one that was hashed, so
+    `plan_digest` disagrees with the plan sitting beside it: `catalog verify`
+    reports `stale_plan_digest`, and every one of those runs tells a person on
+    its own page that the payload changed after it was approved, which is a lie
+    about work nobody touched.
+
+    It also has to match what the BACKEND writes for an authored plan.
+    `services/catalog.py` serialises through `TypeSerializer` without dropping,
+    so `submit.py`'s `plan_of` stores `prompt: NULL` for a promptless model. Two
+    writers producing two shapes of one document would give identical payloads
+    two different digests.
+    """
+    import decimal
+
+    from boto3.dynamodb.types import TypeSerializer
+
+    def decimals(value):
+        if isinstance(value, float):
+            return decimal.Decimal(str(value))
+        if isinstance(value, dict):
+            return {k: decimals(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [decimals(v) for v in value]
+        return value
+
+    return {k: TypeSerializer().serialize(decimals(v)) for k, v in doc.items()}
 
 
 def from_item(item: dict) -> dict:

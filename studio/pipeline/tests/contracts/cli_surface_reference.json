@@ -66,6 +66,42 @@
   "catalog": {
     "arguments": {},
     "commands": {
+      "backfill-plans": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply_",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "Write. Without it this reports and changes nothing.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "limit": {
+            "choices": null,
+            "default": null,
+            "dest": "limit",
+            "flag": false,
+            "flags": [
+              "--limit"
+            ],
+            "help": "Stop after this many runs (for a trial).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          }
+        }
+      },
       "confirm-outputs": {
         "arguments": {},
         "commands": {},
@@ -4549,6 +4585,40 @@
           }
         }
       },
+      "approve": {
+        "arguments": {
+          "runref": {
+            "choices": null,
+            "default": null,
+            "dest": "runref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "Default project for a bare runref.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
       "delete": {
         "arguments": {
           "runref": {
@@ -4593,6 +4663,58 @@
               "--project"
             ],
             "help": "Default project for a bare run slug.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "discard": {
+        "arguments": {
+          "runref": {
+            "choices": null,
+            "default": null,
+            "dest": "runref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "files": {
+            "choices": [
+              "delete",
+              "keep"
+            ],
+            "default": "delete",
+            "dest": "files",
+            "flag": false,
+            "flags": [
+              "--files"
+            ],
+            "help": "What to do with the run's folder (default: delete it).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "Default project for a bare runref.",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -4851,6 +4973,40 @@
               "--project"
             ],
             "help": "Default project for a bare run slug.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "submit": {
+        "arguments": {
+          "runref": {
+            "choices": null,
+            "default": null,
+            "dest": "runref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "Default project for a bare runref.",
             "hidden": false,
             "multiple": false,
             "nargs": 1,

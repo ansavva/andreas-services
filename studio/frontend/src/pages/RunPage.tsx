@@ -3,10 +3,11 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { Alert, Badge, Button, Spinner, Text } from "@ansavva/design-system";
 
-import { getNodeText, getRun } from "../apis/studio";
+import { approveRun, getNodeText, getRun, revokeRunApproval } from "../apis/studio";
 import { PageBar } from "../components/layout/PageBar";
 import { Backlinks } from "../components/common/Backlinks";
 import { MediaThumb } from "../components/media/MediaThumb";
+import { ApproveBar, RunPlan } from "../components/run/RunPlan";
 import { useResource } from "../hooks/useResource";
 import { useProjectCrumb } from "../hooks/useProjectCrumb";
 import { formatBytes, formatDate, formatTextContent } from "../utils/format";
@@ -24,6 +25,13 @@ import { objectPath, runPath, scenePath } from "../utils/location";
  * bodies are the provider's, the pipeline changes their shape freely, and this
  * page shows them as **text and nothing else**. It does not parse them, it does
  * not pick fields out of them, and it must not start.
+ *
+ * **`plan` is the third thing, and it is neither of those.** It is what a person
+ * decided — the prompt, the parameters, and the ordered images with a word each
+ * about why — recorded by studio and safe to render as fields for the same
+ * reason the envelope is. Before it existed, intent lived only inside
+ * `request.json`, so this page could show what came out of a run and never what
+ * it was for.
  */
 export function RunPage() {
   const { projectId = "", runId = "" } = useParams();
@@ -38,13 +46,37 @@ export function RunPage() {
    * that changes underneath you. It polls while the run can still move and stops
    * the moment it cannot, which is what `isTerminal` is for.
    */
-  const { data, loading, error } = useResource(["run", runId], load, {
+  const { data, loading, error, setData } = useResource(["run", runId], load, {
     refetchInterval: (query) => {
       const status = (query.state.data as RunRecord | undefined)?.status;
       return status && !isTerminal(status) ? 5_000 : false;
     },
   });
   const crumbs = useProjectCrumb(projectId);
+
+  const [approving, setApproving] = useState(false);
+  const [approveError, setApproveError] = useState<string | null>(null);
+
+  /**
+   * Approve or revoke, then swap the record in rather than refetching.
+   *
+   * The route answers with the whole updated run, and a re-GET would re-sign
+   * every send and every output URL to show one badge changing.
+   */
+  const decide = useCallback(
+    async (act: () => Promise<RunRecord>) => {
+      setApproving(true);
+      setApproveError(null);
+      try {
+        setData(await act());
+      } catch (err) {
+        setApproveError((err as Error).message);
+      } finally {
+        setApproving(false);
+      }
+    },
+    [setData],
+  );
 
   // Every frame on this page opens into the run, so scrolling the viewer walks
   // what the run produced and was given rather than the folder those files
@@ -112,6 +144,26 @@ export function RunPage() {
         />
       </section>
 
+      {/* **Above the outputs, because it is what the outputs came from.** The
+          page used to open on the result of a submission with no account of the
+          intent behind it, which is the wrong way round for the one screen a
+          person opens to ask "what was this?" */}
+      <RunPlan run={data} onView={(asset) => navigate(objectPath(asset.node, RUN))} />
+
+      {/* **Under the plan, not over it.** Its own sentence says "reads the
+          payload above", and it sat above the payload — so the control that
+          spends money was the first thing on the screen and the thing it asks
+          you to read was the second. */}
+      <ApproveBar
+        run={data}
+        busy={approving}
+        error={approveError}
+        onApprove={() =>
+          void decide(() => approveRun(data.id, data.plan_digest ?? ""))
+        }
+        onRevoke={() => void decide(() => revokeRunApproval(data.id))}
+      />
+
       <section className="flex flex-col gap-2">
         <Text variant="title">Outputs</Text>
         {data.outputs.length === 0 ? (
@@ -131,6 +183,13 @@ export function RunPage() {
         )}
       </section>
 
+      {/* **Only when there are no sends to have drawn instead.**
+          `Plan → Images` says everything this said and more — the order, the
+          role, and which character group each picture came from — so drawing
+          both put the same three pictures on the screen twice, the second time
+          with less information. This is what a run that predates the send rows
+          and has not been backfilled still needs, and it retires itself. */}
+      {data.sends.length === 0 && (
       <section className="flex flex-col gap-2">
         <Text variant="title">Bindings</Text>
         {/* Node ids, never URLs and never paths. A URL-shaped binding is refused
@@ -160,6 +219,7 @@ export function RunPage() {
           ))
         )}
       </section>
+      )}
 
       <section className="flex flex-col gap-2">
         <Text variant="title">Chain</Text>

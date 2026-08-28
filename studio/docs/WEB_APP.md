@@ -444,6 +444,20 @@ that breaks every time the pipeline ships.
 
 ## Conventions & gotchas
 
+- **A run page shows three different kinds of thing, and conflating them is the
+  one mistake to avoid here.** The *envelope* is studio's and safe to render as
+  fields. The *payload documents* are the provider's and are shown as text and
+  never decoded — that rule survived the entity model by moving to where it is
+  actually true. The *plan* is studio's too, and is the authored half a run
+  gained: the prompt, the params, and one ordered `SEND#` row per bound image
+  with its role and provenance. `bindings` is derived from those sends and only
+  falls back to the stored attribute for a run the backfill has not reached.
+  See [RUN_PLAN.md](RUN_PLAN.md).
+- **Approving in the app is a real write, and it is bound to a hash.** `POST
+  /api/runs/<id>/approve` sends the digest the page was showing; the API
+  recomputes and answers 409 if the payload moved. It is not a permission
+  boundary — the CLI holds the same kind of token — so the page states the
+  digest in words rather than implying an authority it does not have.
 - **The API takes the ID token, never the access token.** A REST
   `COGNITO_USER_POOLS` authorizer only reads the incoming token as an *access*
   token when the method declares `authorization_scopes`. This one declares none

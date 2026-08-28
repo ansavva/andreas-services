@@ -121,6 +121,14 @@ submit time, since the signed URL itself is ~2 KB of noise and expires.
 The gate covers what is sent to the model. The surrounding steps — presigning,
 polling, downloads, uploads, recording the run — do not need approval.
 
+**`--dry-run` leaves a DRAFT now, and the approval is a row.** The run is created
+when it is planned rather than when it is submitted, so the payload printed above
+has an address: it can be opened in the app, edited, and approved later with
+`studio runs approve`. The approval records a hash of the plan and the ordered
+images, and **the API refuses the submission if either has moved since** — which
+is the "re-approve after any edit" sentence below, made mechanical. See
+[RUN_PLAN.md](RUN_PLAN.md).
+
 **Approval is of a payload, not of a plan.** A yes to "shall I render this?", an
 answer to a multiple-choice question, or a payload shown earlier in the
 conversation is not approval of the request about to be sent. Show it again and
@@ -209,6 +217,7 @@ studio/pipeline/
         │
         ├── engine/                MODEL INVOCATION
         │   ├── models.json        the REGISTRY — models are data, not code
+        │   ├── resubmit.py        send a draft somebody already approved
         │   ├── runner.py          `studio run` / `studio models`
         │   ├── shoot.py           `studio character shoot` — the standard set
         │   ├── board.py           `studio scenes board` / `render` / `check`
@@ -219,6 +228,7 @@ studio/pipeline/
         │
         └── maintenance/           one-shots, quarantined
             └── catalog_check.py  catalog_gc.py  dev_seed.py
+                backfill_plans.py  — give every pre-plan run one
 ```
 
 **Why the directories are named after what things ARE.** They used to be one

@@ -77,6 +77,12 @@ WIRE_SURFACE = {
     "/api/runs/<id>",
     "/api/runs/<id>/outputs",
     "/api/runs/<id>/response",
+    # The plan and its approval. `plan` and `sends` are the authored half a run
+    # gained; `approve` is the one that carries a digest, so that a yes names the
+    # payload it was a yes to and dies when that payload changes.
+    "/api/runs/<id>/plan",
+    "/api/runs/<id>/sends",
+    "/api/runs/<id>/approve",
     # scenes
     "/api/scenes",
     "/api/scenes/<id>",

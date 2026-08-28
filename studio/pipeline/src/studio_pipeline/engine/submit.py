@@ -498,15 +498,131 @@ def render(entry: dict, run: str, payload: dict, bindings: dict, as_json: bool) 
 # 4-9. execute — record, presign, submit, poll, upload, close
 # --------------------------------------------------------------------------
 
-def execute(entry: dict, payload: dict, bindings: dict, token: str, args) -> dict:
-    """Run the submission and return the RUN RECORD.
+def plan_of(entry: dict, payload: dict) -> dict:
+    """The AUTHORED half of a run — what a person decided, as studio's own data.
 
-    It returned an exit code, and every batch caller then went back for
+    **The line is drawn at the rendered provider input**, which is the same line
+    a scene already holds: a shot's `motion.prompt` is authored and queryable
+    while the run it renders into keeps the provider payload as an undecoded
+    blob. `plan` is studio's; `request.json` is the provider's; neither is a copy
+    of the other, because the plan carries no image fields at all — those are
+    sends, and they are presigned in at the last moment.
+    """
+    return {
+        "version": 1,
+        "origin": "authored",
+        "prompt": payload.get("prompt"),
+        "params": {k: v for k, v in payload.items() if k != "prompt"},
+    }
+
+
+def sends_for(entry: dict, bindings: dict) -> list[dict]:
+    """Every bound image as an ordered send, with the ROLE the registry gives it.
+
+    **The role is the half `bindings` threw away.** `gather` decides an image is
+    a start frame or a reference and then records a `{field: [node, …]}` map, so
+    a run page could say six images went out and never which was which. The
+    mapping from field name to role is registry data — `images.start`, `.end`,
+    `.refs` — so it is read from the entry rather than guessed from the name.
+
+    `source` is left out deliberately: the API derives it from where each node
+    sits, so a run submitted today and a run reconstructed from history describe
+    their images in the same words. See `catalog.source_of`.
+    """
+    images = entry.get("images") or {}
+    role_of = {images.get(name): role for name, role in
+               (("start", "start"), ("end", "end"), ("refs", "reference"))
+               if images.get(name)}
+    return [
+        {"field": field, "role": role_of.get(field, "input"), "node": node}
+        for field, value in bindings.items()
+        for node in (value if isinstance(value, list) else [value])
+    ]
+
+
+def draft(entry: dict, payload: dict, bindings: dict, args) -> dict:
+    """Create the run as a DRAFT. **Nothing has billed and nothing is approved.**
+
+    Split out of `execute` so that the payload a person reads has an address.
+    `--dry-run` stops here, which is the point of the split: what used to be a
+    block of text that scrolled away is a record that can be opened in the app,
+    edited, linked to and approved later.
+    """
+    kind = entry["kind"]
+    project = args.project          # the project record, resolved by the caller
+    prompt_source = json.load(open(args.prompt_json)) if getattr(args, "prompt_json", None) else None
+    # `--character` doubles as "resolve refs from" and "this run is of", which is
+    # the same thing for `studio run`. A reference shoot resolves its own images
+    # (seed photos, a pose plate) and so passes no `--character`, but the run is
+    # still OF that character — and `runs find --character` is how that
+    # association is read back. Hence the explicit override.
+    characters = list(getattr(args, "record_characters", None) or args.character or [])
+    try:
+        return R.record_request(
+            project["id"], kind=kind, engine=entry["skill"],
+            model=entry["model"], input=payload,
+            bindings=recorded(bindings),
+            plan=plan_of(entry, payload),
+            sends=sends_for(entry, bindings),
+            characters=REFS.character_ids(characters),
+            prompt_source=prompt_source)
+    except R.RunError as e:
+        raise SubmitError(f"refusing to record an invalid request: {e}")
+    except REFS.RefError as e:
+        raise SubmitError(f"refusing to record a run against an unknown character: {e}")
+
+
+def approve(record: dict) -> dict:
+    """Record consent to exactly the payload that was just rendered.
+
+    **The digest is what makes this an approval rather than a timestamp.** It is
+    the one the API computed when the draft was written, so approving says yes to
+    a specific set of words and a specific ordered list of images — and the API
+    refuses it if either has moved since.
+
+    This does not weaken hard rule #2 and it does not satisfy it either. The rule
+    is about a person reading a payload and answering; what this adds is that the
+    answer survives, names what it was an answer to, and dies when that changes.
+    """
+    try:
+        return entities.approve_run(record["id"], record["plan_digest"])
+    except api.ApiError as exc:
+        raise SubmitError(
+            f"could not approve run {record['id']}: {exc}\n"
+            f"       If the payload moved since it was rendered, read it again: "
+            f"studio runs show {record['id']}"
+        ) from exc
+
+
+def execute(entry: dict, payload: dict, bindings: dict, token: str, args) -> dict:
+    """Draft, approve, submit — and return the RUN RECORD.
+
+    **Unchanged from the outside, and that is deliberate.** Invoking `studio run`
+    without `--dry-run` is the request to submit, exactly as it has always been,
+    so the approval is recorded here rather than demanded as a second command.
+    What changed is that the yes now leaves a row naming the payload it was for.
+
+    A person who wants the two steps apart has them: `--dry-run` leaves the
+    draft, and `studio runs approve` re-renders it and asks.
+
+    It returned an exit code once, and every batch caller then went back for
     `<project>/latest` to find out which run it had just made — a lookup that is
-    wrong the moment two runs land in one project close together, and that
-    could not be right at all: a run has no name to be looked up by.
-    Returning the record removes the question. Failure is still an exception, so
-    the callers that only wanted "did it work" are unchanged.
+    wrong the moment two runs land in one project close together, and that could
+    not be right at all: a run has no name to be looked up by.
+    """
+    record = draft(entry, payload, bindings, args)
+    approve(record)
+    return submit(entry, record, payload, bindings, token, args)
+
+
+def submit(entry: dict, record: dict, payload: dict, bindings: dict,
+           token: str, args) -> dict:
+    """The half that bills. Refused by the API unless the run is approved.
+
+    **The status moves to `pending` BEFORE the provider is called**, which is
+    what puts the gate in front of the money rather than behind it. It also makes
+    a killed process legible: a run left at `pending` with no prediction id was
+    submitted and never answered, where a run left at `draft` never went out.
     """
     kind = entry["kind"]
     d = defaults(kind)
@@ -517,30 +633,23 @@ def execute(entry: dict, payload: dict, bindings: dict, token: str, args) -> dic
     # that was ever worth having — what the downloaded file is called.
     name = R.slugify(getattr(args, "name", None) or d["slug"])
 
-    prompt_source = json.load(open(args.prompt_json)) if getattr(args, "prompt_json", None) else None
-    # `--character` doubles as "resolve refs from" and "this run is of", which is
-    # the same thing for `studio run`. A reference shoot resolves its own images
-    # (seed photos, a pose plate) and so passes no `--character`, but the run is
-    # still OF that character — and `runs find --character` is how that
-    # association is read back. Hence the explicit override.
-    characters = list(getattr(args, "record_characters", None) or args.character or [])
-    try:
-        record = R.record_request(
-            project["id"], kind=kind, engine=entry["skill"],
-            model=entry["model"], input=payload,
-            # Node ids only. A pose plate is dropped here rather than stored as
-            # a raw key, because a record that mixes the two addressing schemes
-            # is exactly what the entity model exists to end — see the module
-            # docstring for when this stops being lossy.
-            bindings=recorded(bindings),
-            characters=REFS.character_ids(characters),
-            prompt_source=prompt_source)
-    except R.RunError as e:
-        raise SubmitError(f"refusing to record an invalid request: {e}")
-    except REFS.RefError as e:
-        raise SubmitError(f"refusing to record a run against an unknown character: {e}")
     run_id = record["id"]
     print(f"run {run_id}  (in {project['slug']})", file=sys.stderr)
+
+    # **The submission is declared before the provider is called.** The API
+    # refuses this transition unless the run is approved and the approval still
+    # matches the payload, so the gate stands in front of the money rather than
+    # behind it — and a process killed after this point leaves a run at
+    # `pending` with no prediction id, which reads as "went out, never answered"
+    # rather than as a draft nobody submitted.
+    try:
+        entities.patch_run(run_id, status="pending")
+    except api.ApiError as exc:
+        raise SubmitError(
+            f"refusing to submit run {run_id}: {exc}\n"
+            f"       Nothing was sent and nothing billed. Read the payload and "
+            f"approve it: studio runs approve {run_id}"
+        ) from exc
 
     # Mint presigned URLs at the last possible moment; they are never stored.
     for f, val in bindings.items():

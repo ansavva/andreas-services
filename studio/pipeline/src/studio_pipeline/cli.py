@@ -36,6 +36,7 @@ from studio_pipeline.engine import shoot as _shoot
 from studio_pipeline.maintenance import catalog_gc as _catalog_gc
 from studio_pipeline.maintenance import ref_descriptions as _ref_descriptions
 from studio_pipeline.maintenance import catalog_check as _catalog
+from studio_pipeline.maintenance import backfill_plans as _backfill_plans
 from studio_pipeline.maintenance import confirm_outputs as _confirm_outputs
 from studio_pipeline.maintenance import dev_seed as _dev_seed
 from studio_pipeline.objects import config_sync as _config_sync
@@ -180,6 +181,12 @@ _catalog.main.add_command(_ref_descriptions.cmd_reseat_descriptions, "descriptio
 # rows it repairs are the ones a listing hides, and it finds them by asking the
 # entities that name their outputs rather than by scanning the table.
 _catalog.main.add_command(_confirm_outputs.cmd_confirm_outputs, "confirm-outputs")
+# `backfill-plans` gives every run that predates the plan one. A maintenance
+# command rather than an API route because `PATCH /api/runs/<id>/plan` refuses a
+# submitted run — a plan edited after the fact would sit beside `request.json`
+# describing something that was never sent — and a backfill route able to do it
+# anyway would be a permanent hole cut for a one-shot.
+_catalog.main.add_command(_backfill_plans.cmd_backfill_plans, "backfill-plans")
 
 
 for _name, _cmd in [
