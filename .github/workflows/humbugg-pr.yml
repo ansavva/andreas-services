@@ -63,10 +63,23 @@ jobs:
         run: dotnet restore humbugg/backend/Humbugg.slnx
       - name: Format check
         run: dotnet format humbugg/backend/Humbugg.slnx --verify-no-changes --no-restore
+      # COVERAGE IS PRINTED AND GATES ON NOTHING. There is no threshold, deliberately:
+      # one picked before anyone has read a real number either sits under it (and means
+      # nothing) or fires on unrelated PRs until somebody deletes it. The integration
+      # project self-skips here (no HUMBUGG_INTEGRATION), so its report reads near zero
+      # by design — the unit project's number is the one to watch.
       - name: Test
         run: |
           cd humbugg/backend
-          dotnet test Humbugg.slnx --configuration Release --no-restore
+          dotnet test Humbugg.slnx --configuration Release --no-restore -- --coverage --coverage-output-format cobertura
+
+      - name: Coverage summary
+        run: |
+          for report in $(find humbugg/backend -path '*/TestResults/*.cobertura.xml'); do
+            rate=$(grep -o 'line-rate="[0-9.]*"' "$report" | head -1 | grep -o '[0-9.]*')
+            project=$(echo "$report" | sed 's|humbugg/backend/||;s|/bin/.*||')
+            echo "$project line coverage: $(awk "BEGIN {printf \"%.1f%%\", $rate * 100}")"
+          done
 
   # ---------------------------------------------------------------------------
   # Tier 1 – verify Docker build + marketing site build (no push, no deploy)
@@ -148,7 +161,7 @@ jobs:
         run: |
           cd humbugg/marketing
           npm run typecheck
-          npm test
+          npm test -- --coverage
           npm run build
 
       # The design system ships one component as a .web/.native pair behind a
@@ -195,7 +208,7 @@ jobs:
         run: |
           cd humbugg/app
           npx tsc --noEmit
-          npm test
+          npm test -- --coverage
 
       # The hosted sign-in pages are styled by a committed JSON document, not by
       # the design system, so nothing else would notice it falling out of step
@@ -228,3 +241,26 @@ jobs:
       # because Tailwind class strings mean nothing in a project with no Tailwind.
       - name: Assert the app build took the native leaf
         run: node humbugg/scripts/assert-design-system-leaves.mjs native humbugg/app/dist
+
+      # The browser tier, stubbed. Playwright's webServer performs its own export
+      # (with --clear: Metro's cache does not key on env) using the e2e values — a
+      # same-origin /api base so page.route catches everything, and fake-but-present
+      # Cognito config — then serves it statically. Every /api/** answer comes from
+      # committed fixtures captured by e2e/support/capture-fixtures.mjs; no AWS, no
+      # credentials, which is what lets this run in a workflow that never writes to
+      # AWS. `--with-deps` because the runner has no browser; the browser download,
+      # not the app, is what makes this step slow.
+      - name: Install Playwright chromium
+        run: cd humbugg/app && npx playwright install --with-deps chromium
+
+      - name: Browser suite (stubbed)
+        run: cd humbugg/app && npm run e2e
+
+      # Playwright writes one trace per failure and nothing on a pass.
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: humbugg/app/test-results/
+          retention-days: 7

@@ -106,11 +106,17 @@ internal sealed class ReminderRepository(IAmazonDynamoDB db, HumbuggSettings set
                 TableName = settings.RemindersTable,
                 Key = Key(groupId, ConfigurationKey),
                 UpdateExpression = "SET last_manual_at = :now, updated_at = :now",
-                ConditionExpression = "attribute_exists(group_id) AND (attribute_not_exists(last_manual_at) OR last_manual_at <= :cutoff)",
+                // A configuration that has never run manually carries last_manual_at as a NULL-type
+                // attribute (SaveConfigurationAsync writes it that way), which attribute_not_exists
+                // does not match and a string comparison silently evaluates false against — so
+                // without the attribute_type arm, the first manual reminder after configuring was
+                // always refused as "sent too recently". Caught by the integration tier.
+                ConditionExpression = "attribute_exists(group_id) AND (attribute_not_exists(last_manual_at) OR attribute_type(last_manual_at, :nulltype) OR last_manual_at <= :cutoff)",
                 ExpressionAttributeValues = new()
                 {
                     [":now"] = DynamoValues.S(now),
-                    [":cutoff"] = DynamoValues.S(cutoff)
+                    [":cutoff"] = DynamoValues.S(cutoff),
+                    [":nulltype"] = DynamoValues.S("NULL")
                 }
             }, cancellationToken);
             return true;
