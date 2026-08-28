@@ -134,7 +134,7 @@ answer to a multiple-choice question, or a payload shown earlier in the
 conversation is not approval of the request about to be sent. Show it again and
 wait. There is deliberately no `--yes`-style flag on any generating command: an
 approval flag is precisely the door an agent walks through while believing some
-earlier exchange counted as consent. If one reappears, it is a bug.
+earlier exchange counted as approval. If one reappears, it is a bug.
 
 ### 2b. NEVER put an image into a character without approval
 
@@ -858,6 +858,16 @@ blobs no row names, decided by the table and never by the shape of a key.
 `dev_seed.py` (`studio dev-seed tree | publish`) **promotes** a handful of nodes
 out of a dev stack into the shared seed fixture — it calls no model and costs
 nothing, and its gate is hard rule #1 rather than money.
+
+`drop_fictional.py` (`studio catalog drop-fictional`) removes the retired
+`fictional` attribute from character rows that predate its removal. It is the
+one command here whose subject is a *dead* field: the service, the pipeline and
+the app all stopped reading `fictional` in August 2026, and a row still carrying
+it reads as an answer to a question nothing asks any more. It removes one
+attribute per character, touches no object and deletes nothing else, so it
+journals nothing — but the removal is not recoverable from the table, and
+point-in-time recovery is the only other copy. Prod and this machine's dev stack
+were swept on 2026-08-28: four rows, and a re-run reports zero.
 
 `catalog_check.py` has the shape `migrate_layout.py` had — phases as separate
 invocations, `--dry-run` unless `--apply`, a journal under `local/migrations/` —

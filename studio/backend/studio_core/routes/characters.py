@@ -19,8 +19,8 @@ the four consequences of that are the whole reason this module exists:
 ## The two things this module decides rather than stores
 
 **The profile schema.** `profile` is the whole of the old `profile.yaml` minus
-the three fields promoted to real columns (`name` → `slug`, `display_name`,
-`fictional`) and the two that became rows (`references:`, and `default_set`,
+the two fields promoted to real columns (`name` → `slug` and `display_name`)
+and the two that became rows (`references:`, and `default_set`,
 which stays on the record as a short ordered list of node ids because it is read
 on every generation). The sections are validated here — nowhere else in the
 service has an opinion about the shape of a bible.
@@ -225,7 +225,6 @@ def list_characters():
             "id": record["id"],
             "slug": record["slug"],
             "display_name": record.get("display_name"),
-            "fictional": record.get("fictional"),
             "hero": _hero(record, heroes),
             "counts": {"references": len(catalog.references(record["id"])),
                        "files": files.get(record["id"], 0)},
@@ -257,9 +256,6 @@ def create_character():
     display_name = body.get("display_name")
     if display_name is not None and not isinstance(display_name, str):
         raise ValidationError("display_name must be a string")
-    fictional = body.get("fictional")
-    if not isinstance(fictional, bool):
-        raise ValidationError("fictional is required and must be true or false")
 
     root = catalog.library(g.library)["root_node"]
     try:
@@ -268,7 +264,6 @@ def create_character():
             root,
             slug=slug,
             display_name=display_name,
-            fictional=fictional,
             profile=clean_profile(body.get("profile")),
             layout=layout.CHARACTER_LAYOUT,
         )
@@ -317,10 +312,6 @@ def update_character(addressed: str):
         if not isinstance(body["display_name"], str) or not body["display_name"]:
             raise ValidationError("display_name must be a non-empty string")
         assignments["display_name"] = body["display_name"]
-    if "fictional" in body:
-        if not isinstance(body["fictional"], bool):
-            raise ValidationError("fictional must be true or false")
-        assignments["fictional"] = body["fictional"]
     if "hero" in body:
         assignments["hero"] = (
             _node_in(record, body["hero"], "hero")["node_id"] if body["hero"] else None

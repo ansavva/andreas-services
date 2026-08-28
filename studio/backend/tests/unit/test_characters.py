@@ -40,7 +40,7 @@ def _item(client, pk, sk):
 def _create(api, slug="subject-a", **body):
     resp = api.post(
         "/api/characters",
-        json={"slug": slug, "display_name": "Subject", "fictional": True, **body},
+        json={"slug": slug, "display_name": "Subject", **body},
     )
     assert resp.status_code == 201, resp.get_data(as_text=True)
     return resp.get_json()
@@ -143,9 +143,7 @@ def test_a_taken_slug_is_409_and_leaves_nothing_behind(empty_api, catalog_table)
     """
     _create(empty_api)
 
-    resp = empty_api.post(
-        "/api/characters", json={"slug": "subject-a", "fictional": True}
-    )
+    resp = empty_api.post("/api/characters", json={"slug": "subject-a"})
 
     assert resp.status_code == 409
     assert resp.get_json()["error"] == "conflict"
@@ -156,18 +154,8 @@ def test_a_taken_slug_is_409_and_leaves_nothing_behind(empty_api, catalog_table)
 def test_a_slug_is_refused_rather_than_repaired(empty_api):
     """It becomes half a primary key, so the string sent is the string claimed."""
     assert empty_api.post(
-        "/api/characters", json={"slug": "Subject A", "fictional": True}
+        "/api/characters", json={"slug": "Subject A"}
     ).status_code == 400
-
-
-def test_the_consent_question_is_required(empty_api):
-    """`fictional` has no default, and the absence of one is the point.
-
-    Defaulting it either way would answer a consent question on somebody's behalf
-    — and the safe-looking default is the one that silently marks a real person
-    as invented.
-    """
-    assert empty_api.post("/api/characters", json={"slug": "subject-a"}).status_code == 400
 
 
 # ──────────────────────────── read and address ────────────────────────────

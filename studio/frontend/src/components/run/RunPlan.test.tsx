@@ -183,7 +183,7 @@ describe("the approve bar", () => {
 
   it("approves only after the dialog is confirmed", () => {
     /**
-     * One click is not consent. The dialog restates what is being approved —
+     * One click is not an approval. The dialog restates what is being approved —
      * the prompt, the parameters and the images, in order — because hard rule #2
      * is about a person reading a payload, not about a button existing.
      */
@@ -201,7 +201,7 @@ describe("the approve bar", () => {
 
   it("names the backfill rather than pretending a person approved it", () => {
     /**
-     * Nobody consented in a browser to a run made last August. The stamp names
+     * Nobody approved a run made last August in a browser. The stamp names
      * the mechanism so a future reader can tell the difference, which a row
      * carrying somebody's sub could not.
      */

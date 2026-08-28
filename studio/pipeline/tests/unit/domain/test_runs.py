@@ -515,9 +515,9 @@ def test_the_cli_approves_a_draft_only_after_showing_its_payload(library):
     """`runs approve` re-renders the payload and asks. **There is no `--yes`.**
 
     An approval flag is the door an agent walks through while believing some
-    earlier exchange counted as consent — the sentence `board.py` and `shoot.py`
-    both already carry. It matters more here, because what this writes is a
-    durable record that somebody consented.
+    earlier exchange counted as approval — the sentence `board.py` and
+    `shoot.py` both already carry. It matters more here, because what this
+    writes is a durable record that somebody said yes.
     """
     # A plan, because that is what `submit.draft` writes — the render reads what
     # is STORED rather than rebuilding a payload from arguments, so a run with no

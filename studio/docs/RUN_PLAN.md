@@ -40,7 +40,7 @@ movie ⊃ scene ⊃ shot ⊃ panel
 **Storyboarding has no approval step, and never had one.** `scenes board` runs
 the same `click.confirm` everything else does, and no scene, shot or panel
 carries an approved state. A storyboard is an *economic* preview; hard rule #2's
-confirm is a *consent* gate. This added the consent record, at the run tier only
+confirm is an *approval* gate. This added the approval record, at the run tier only
 — scenes inherit it, because `scenes board` and `scenes render` produce runs.
 
 ---
@@ -120,7 +120,7 @@ intended",** which is what `draft` and `discarded` are for.
   │                                                                │
   │    plan_digest  sha256( plan ⊕ sends )   recomputed on write    │
   │                                                                │
-  │  CONSENT ────────────────────────────────────────────────────  │
+  │  APPROVAL ───────────────────────────────────────────────────  │
   │    approval    { by, at, digest }  |  null                     │
   │                                                                │
   │  RECORDED ───────────────────────────────────────────────────  │
@@ -241,8 +241,8 @@ Two consequences of a row no longer asserting that anything happened:
 
 `plan_digest` hashes **everything a person approves**: the plan, and the ordered
 sends as `(field, role, node)`. `source` is excluded — provenance is for a
-reader, and re-deriving it more accurately later must not void a consent nobody's
-payload changed.
+reader, and re-deriving it more accurately later must not void an approval
+nobody's payload changed.
 
 It is recomputed by the API on every write that can change either, and never
 accepted from a client. Approving sends the digest the client believes it is
@@ -298,7 +298,7 @@ studio runs discard run-<uuid>              # a draft that will not be submitted
   `runs approve` acts on.
 - **No `--yes`, and there will not be one.** `runs approve` re-renders the full
   payload and asks. An approval flag is the door an agent walks through while
-  believing some earlier exchange counted as consent — and it would now produce a
+  believing some earlier exchange counted as approval — and it would now produce a
   *signed-looking* artifact, which is worse.
 - **`runs discard` deletes the folder by default**, the opposite of `runs delete`.
   A submitted run's folder holds media somebody paid for; a draft's holds two

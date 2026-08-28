@@ -151,7 +151,7 @@ def test_the_digest_changes_when_a_role_changes():
 
 
 def test_the_digest_ignores_source():
-    """**Provenance is for a reader, and re-deriving it must not void consent.**
+    """**Provenance is for a reader, and re-deriving it must not void approval.**
 
     `source` says which character group an image came from. Nothing about the
     payload changes if a later backfill describes that more accurately, so an

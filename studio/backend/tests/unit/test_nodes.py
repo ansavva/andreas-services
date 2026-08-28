@@ -1268,7 +1268,7 @@ def test_confirming_in_another_library_is_403(catalog_table, media_bucket, signe
 
 def _character(slug="subject-a"):
     body = _post(
-        "/api/characters", {"slug": slug, "display_name": "Subject", "fictional": True}
+        "/api/characters", {"slug": slug, "display_name": "Subject"}
     )
     assert body.status_code == 201, body.get_data(as_text=True)
     return body.get_json()

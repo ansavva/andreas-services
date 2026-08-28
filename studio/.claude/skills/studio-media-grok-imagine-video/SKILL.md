@@ -28,11 +28,6 @@ Where it wins over the others:
 | Reference images | **none** | 3–9 |
 | Negative direction | **ignored entirely** | honoured |
 
-## A likeness is a likeness
-
-A character built from photographs of a real person is a real person's likeness.
-Settle consent before anything is published.
-
 ## The model
 
 `xai/grok-imagine-video` — <https://replicate.com/xai/grok-imagine-video>

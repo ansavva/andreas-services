@@ -602,11 +602,11 @@ def _plan_characters(s3, cat, unparseable, unresolved, by_path_hits) -> list[dic
         if doc is None:
             continue
 
-        # The three fields promoted out of the bible onto the record, and the
+        # The two fields promoted out of the bible onto the record, and the
         # two that become rows. Everything left is `profile`, stored as nested
         # maps and validated by the API from here on.
         profile = {k: v for k, v in doc.items()
-                   if k not in ("name", "display_name", "fictional",
+                   if k not in ("name", "display_name",
                                 "schema_version", "references", "default_set")}
 
         refs, seen = [], set()
@@ -630,7 +630,6 @@ def _plan_characters(s3, cat, unparseable, unresolved, by_path_hits) -> list[dic
             "kind": "character", "id": entity_id("character", root), "lib": cat["lib"],
             "slug": slug, "root": root, "where": where,
             "display_name": doc.get("display_name") or slug,
-            "fictional": bool(doc.get("fictional", True)),
             "schema_version": doc.get("schema_version"),
             "profile": profile,
             # The bible already expressed this choice, so it is carried rather
@@ -1111,7 +1110,7 @@ def character_groups(char: dict) -> list[list[dict]]:
         "pk": f"CHAR#{char['id']}", "sk": "META", "id": char["id"],
         "lib": char["lib"],
         "slug": char["slug"], "display_name": char["display_name"],
-        "fictional": char["fictional"], "schema_version": char["schema_version"],
+        "schema_version": char["schema_version"],
         "rev": 1, "created": char["created"], "updated": char["updated"],
         "root": char["root"], "hero": char["hero"],
         "default_set": char["default_set"], "profile": char["profile"],
@@ -1266,7 +1265,7 @@ def run_plan_checks(rows: dict, node_exists) -> tuple[dict[str, list[str]], list
         where = f"run {run.get('id') or pk}"
         # A draft has no approval yet by definition, and an adopted run wraps an
         # artifact that was never submitted — neither has a payload anybody was
-        # supposed to consent to.
+        # supposed to approve.
         if run.get("status") in ("draft", "approved", "discarded", "adopted"):
             continue
 

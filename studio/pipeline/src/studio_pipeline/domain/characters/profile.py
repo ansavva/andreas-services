@@ -3,26 +3,24 @@
 THE BIBLE IS A FIELD ON A ROW, NOT A DOCUMENT IN A BUCKET
 ---------------------------------------------------------
 `characters/<slug>/profile.yaml` is gone. The bible is `profile` on the
-character record — a validated map the API owns — and three of its keys were
+character record — a validated map the API owns — and two of its keys were
 promoted out of it into real fields, because they are not description, they are
 identity:
 
     name          -> the record's `slug`, library-unique and mutable
     display_name  -> a field, so a listing can draw a card without parsing YAML
-    fictional     -> a field, because the consent question governs publication
-                     and must be answerable without reading a document
 
 Two more keys became rows rather than fields: `references:` is one `REF#` row
 per image and `default_set:` is an ordered list of node ids on the record. So
 nothing in the bible names a file any more, and a rename cannot strand a
 description.
 
-**`load_profile` merges the three promoted fields back in**, and that is a
+**`load_profile` merges the two promoted fields back in**, and that is a
 compatibility seam with a reason rather than a courtesy: `engine/turnaround.py` and
 `domain/prompt.py` read a bible as one map and index it by key —
 `profile["wardrobe"]`, `profile["consistency"]`, and `name` / `display_name`
 where a prompt has to write the character into prose. Handing them a map with
-three keys silently missing would not fail; it would render slightly worse
+two keys silently missing would not fail; it would render slightly worse
 prompts, which is the failure that does not get noticed.
 
 `rev` CLOSED THE WINDOW THAT `updated_at` LEFT OPEN
@@ -70,14 +68,13 @@ from studio_pipeline.domain.characters.base import (
 
 # The keys of the DOCUMENT a person edits — the bible as one map, which is the
 # shape `load_profile` returns and the shape `edit` round-trips. It is the
-# record's `profile` plus the three promoted fields; `references` and
+# record's `profile` plus the two promoted fields; `references` and
 # `default_set` are deliberately absent, because they are rows and a document
 # that carried them would invite someone to edit a copy of them.
 PROFILE_KEYS = (
     "schema_version",
     "name",
     "display_name",
-    "fictional",
     "identity",
     "face",
     "body",
@@ -87,8 +84,8 @@ PROFILE_KEYS = (
     "consistency",
     "text_identity_block",
 )
-#: The three that live on the record rather than inside `profile`.
-PROMOTED = ("name", "display_name", "fictional")
+#: The two that live on the record rather than inside `profile`.
+PROMOTED = ("name", "display_name")
 
 
 def parse_profile(text: str, where: str) -> dict:
@@ -144,7 +141,6 @@ def document(record: dict) -> dict:
         "schema_version": profile.pop("schema_version", None) or record.get("schema_version"),
         "name": record["slug"],
         "display_name": record.get("display_name") or record["slug"],
-        "fictional": bool(record.get("fictional", True)),
     }
     merged.update(profile)
     return merged
@@ -153,10 +149,10 @@ def document(record: dict) -> dict:
 def load_profile(name: str) -> dict:
     """The bible of one character, as one map. **The reader every engine uses.**
 
-    Returns the record's `profile` with `name` (= the slug), `display_name` and
-    `fictional` merged back in — see the module docstring for why those three
-    are fields and why they are put back here. One API call; there is no
-    document to fetch and no YAML to parse.
+    Returns the record's `profile` with `name` (= the slug) and `display_name`
+    merged back in — see the module docstring for why those two are fields and
+    why they are put back here. One API call; there is no document to fetch and
+    no YAML to parse.
     """
     try:
         return document(resolve(name))
@@ -164,8 +160,8 @@ def load_profile(name: str) -> dict:
         die(f"no character {name!r} (see `studio character list`).")
 
 
-def split_document(data: dict) -> tuple[dict, str, bool]:
-    """A document -> (the `profile` map, display_name, fictional).
+def split_document(data: dict) -> tuple[dict, str]:
+    """A document -> (the `profile` map, display_name).
 
     The inverse of `document`. `name` is dropped rather than written: the slug
     is claimed by a row and a rename is `PATCH /api/characters/<id>`, so a
@@ -189,7 +185,7 @@ def split_document(data: dict) -> tuple[dict, str, bool]:
     display = str(data.get("display_name") or "").strip()
     if display.startswith("<"):  # the unfilled template placeholder
         display = ""
-    return profile, display, bool(data.get("fictional", True))
+    return profile, display
 
 
 def save_profile(record: dict, data: dict, rev: int | None = None) -> dict:
@@ -199,24 +195,22 @@ def save_profile(record: dict, data: dict, rev: int | None = None) -> dict:
     the record's own for an explicit file. The API refuses a stale one, which is
     the whole of the conflict story now; nothing here re-reads and compares.
 
-    `display_name` and `fictional` ride on the record rather than in `profile`,
-    so a document that changes one costs a second call. It is done second and
-    with the bumped `rev`, so a failure leaves the bible written and the label
-    stale — the recoverable half, and re-running fixes it.
+    `display_name` rides on the record rather than in `profile`, so a document
+    that changes it costs a second call. It is done second and with the bumped
+    `rev`, so a failure leaves the bible written and the label stale — the
+    recoverable half, and re-running fixes it.
     """
     char_id = record["id"]
-    profile, display, fictional = split_document(data)
+    profile, display = split_document(data)
     try:
         after = entities.put_profile(char_id, profile,
                                      record["rev"] if rev is None else rev)
     except api.Conflict as exc:
         die(f"{exc}\n       {record['slug']}'s bible was written by someone else since "
             "you read it — re-run `edit` to pick it up rather than overwriting.")
-    if (display and display != after.get("display_name")) or \
-            fictional != bool(after.get("fictional", True)):
+    if display and display != after.get("display_name"):
         after = entities.patch_character(char_id, after["rev"],
-                                         display_name=display or None,
-                                         fictional=fictional)
+                                         display_name=display or None)
     return after
 
 
@@ -293,7 +287,6 @@ def cmd_show(name, json_, profile_):
                if n.get("kind") == "folder"]
     print(f"{record['slug']}  ({record['id']})  rev {record.get('rev')}")
     print(f"  display   {record.get('display_name') or '—'}")
-    print(f"  fictional {str(bool(record.get('fictional', True))).lower()}")
     print(f"  refs      {' · '.join(f'{g} {n}' for g, n in sorted(counts.items())) or '—'}"
           f"      default set: {len(record.get('default_set') or [])}"
           f"{f' ({len(stale)} STALE)' if stale else ''}")
@@ -335,10 +328,10 @@ def cmd_create(name, display_name, dry_run, from_profile, model, project, turnar
         die("--turnaround needs a real bible: the blank template has no wardrobe or consistency "
             "block to build a prompt from. Pass --from-profile.")
 
-    profile, from_file, fictional = split_document(data)
+    profile, from_file = split_document(data)
     try:
         record = entities.create_character(name, display_name=display_name or from_file or name,
-                                           fictional=fictional, profile=profile)
+                                           profile=profile)
     except api.Conflict:
         die(f"character {name!r} already exists")
     made = [f"{n['name']}/" for n in store.children_of(record["root"])

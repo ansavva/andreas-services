@@ -26,7 +26,7 @@ def _project(api, slug="rooftop-teaser", **body):
 
 
 def _character(api, slug="subject-a"):
-    return api.post("/api/characters", json={"slug": slug, "fictional": True}).get_json()
+    return api.post("/api/characters", json={"slug": slug}).get_json()
 
 
 def _scene(api, project, slug="stadium-encounter", shots=None):

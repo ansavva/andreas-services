@@ -96,15 +96,14 @@ def test_show_lists_the_folders_the_character_actually_has(library):
 def test_the_bible_reads_as_one_map_with_the_promoted_fields_merged_back(library):
     """`load_profile` is the reader every engine uses, and its shape is pinned.
 
-    `name`, `display_name` and `fictional` were promoted OUT of the document
-    onto the record. `engine/shoot.py` and `domain/prompt.py` read them by those
-    names, so the reader merges them back in rather than making four modules
-    learn where each one lives now.
+    `name` and `display_name` were promoted OUT of the document onto the
+    record. `engine/shoot.py` and `domain/prompt.py` read them by those names,
+    so the reader merges them back in rather than making four modules learn
+    where each one lives now.
     """
     data = CHARACTER.load_profile("subject-a")
     assert data["name"] == "subject-a"
     assert data["display_name"] == "Subject A"
-    assert data["fictional"] is True
     assert data["consistency"]["must"] == ["<…>"]
 
 

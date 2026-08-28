@@ -18,7 +18,7 @@ import { AutoTextarea } from "../common/AutoTextarea";
 import { ChevronDownIcon } from "../common/icons";
 
 interface Props {
-  /** Slug, display name and the consent flag — saved by a different route from the bible. */
+  /** Slug and display name — saved by a different route from the bible. */
   identity: CharacterIdentity;
   profile: CharacterProfile;
   /** The revision both were read at — sent back with the save. */
@@ -701,7 +701,7 @@ function Chevron({ open }: { open: boolean }) {
 }
 
 /**
- * Slug, display name and the consent flag.
+ * Slug and display name.
  *
  * **Renaming here moves nothing.** No object is copied, no run document is
  * rewritten, and every reference, binding and default-set entry keeps pointing at
@@ -733,18 +733,6 @@ function RecordFields({
           onValueChange={(displayName) => onChange({ ...value, display_name: displayName })}
         />
       </Field.Root>
-
-      {/* Not a `<label>` — `Switch.Root` is a `<button>`, which is not labelable. */}
-      <div className="flex items-center gap-3">
-        <Switch.Root
-          checked={value.fictional}
-          aria-label="Fictional"
-          onCheckedChange={(fictional) => onChange({ ...value, fictional })}
-        >
-          <Switch.Thumb />
-        </Switch.Root>
-        <Text variant="body">Fictional</Text>
-      </div>
     </>
   );
 }

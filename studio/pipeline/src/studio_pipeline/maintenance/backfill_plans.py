@@ -83,7 +83,7 @@ from studio_pipeline.errors import reports
 ORIGIN = "backfilled"
 
 #: Who a backfilled approval names. **Not a person**, deliberately: nobody
-#: consented in a browser to a run made in August, and a row claiming they did
+#: approved a run made in August in a browser, and a row claiming they did
 #: would be a lie a future reader cannot detect. The mechanism names itself.
 APPROVED_BY = "backfill"
 
@@ -174,7 +174,7 @@ def sends_from(bindings: dict, roles: dict[str, str]) -> list[dict]:
 
 
 def approval_for(run: dict, digest: str) -> dict:
-    """A stamp naming when the payload was actually consented to.
+    """A stamp naming when the payload was actually approved.
 
     **`at` is the run's `created`, and it is a real timestamp rather than a
     convenient one.** `engine/submit.py` calls `record_request` immediately after

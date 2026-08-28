@@ -426,7 +426,7 @@ def test_a_plans_reference_block_comes_back_as_images(empty_api):
     project = _project(empty_api)
     made = empty_api.post(
         "/api/characters",
-        json={"slug": "subject-a", "display_name": "Subject A", "fictional": True},
+        json={"slug": "subject-a", "display_name": "Subject A"},
     )
     assert made.status_code == 201, made.get_data(as_text=True)
     character = made.get_json()

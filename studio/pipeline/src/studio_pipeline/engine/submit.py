@@ -573,7 +573,7 @@ def draft(entry: dict, payload: dict, bindings: dict, args) -> dict:
 
 
 def approve(record: dict) -> dict:
-    """Record consent to exactly the payload that was just rendered.
+    """Record approval of exactly the payload that was just rendered.
 
     **The digest is what makes this an approval rather than a timestamp.** It is
     the one the API computed when the draft was written, so approving says yes to

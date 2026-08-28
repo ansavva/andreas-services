@@ -778,7 +778,7 @@ def test_there_is_no_flag_that_approves_spending():
     """`--yes` is gone, from `turnaround` and from `create --turnaround`.
 
     An approval flag is the door an agent walks through while believing some
-    earlier exchange counted as consent. Approval has to come from the person
+    earlier exchange counted as approval. It has to come from the person
     reading the payload, so nothing may answer the prompt on their behalf.
     """
     import click

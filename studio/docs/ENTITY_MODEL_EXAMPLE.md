@@ -60,7 +60,6 @@ JSON; the table stores DynamoDB's typed form).
   "lib": "lib-6c2f4a91-8e3d-4b17-9f02-1a5c7d3e9b44",
   "slug": "subject-a",
   "display_name": "Subject A",
-  "fictional": true,
   "schema_version": 2,
   "rev": 4,
   "created": "2026-03-02T11:04:18.442119+00:00",
@@ -122,8 +121,8 @@ JSON; the table stores DynamoDB's typed form).
 }
 ```
 
-Everything that was `profile.yaml` is here except three things that were
-promoted to real fields (`name` → `slug`, `display_name`, `fictional`) and two
+Everything that was `profile.yaml` is here except two things that were
+promoted to real fields (`name` → `slug`, `display_name`) and two
 that became rows (`references:`, `default_set:` — the latter stays on the record
 as an ordered list of node ids because it is small, ordered and read on every
 generation).
@@ -452,8 +451,7 @@ Content-Type: application/json
 
 {
   "slug": "subject-a",
-  "display_name": "Subject A",
-  "fictional": true
+  "display_name": "Subject A"
 }
 ```
 
@@ -466,7 +464,6 @@ Location: /api/characters/char-9f3c1e57-2a44-4d81-b6e0-77c21f8a4d15
   "lib": "lib-6c2f4a91-8e3d-4b17-9f02-1a5c7d3e9b44",
   "slug": "subject-a",
   "display_name": "Subject A",
-  "fictional": true,
   "rev": 1,
   "created": "2026-03-02T11:04:18.442119+00:00",
   "updated": "2026-03-02T11:04:18.442119+00:00",
@@ -813,7 +810,6 @@ subject-a   Subject A    refs 41   files 62   updated 2026-08-19
 $ studio character show subject-a
 subject-a  (char-9f3c1e57-…)  rev 4
   display   Subject A
-  fictional true
   refs      face 18 · body 14 · wardrobe 6 · frame 3      default set: 3
   root      node-3b9d5a1e-…   reference/ corpus/ seed/ archive/ my-notes/
 ```
